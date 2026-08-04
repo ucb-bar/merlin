@@ -97,9 +97,43 @@ def _rocc_handle(req: dict, target: str) -> dict:
         return {"findings": findings, "class_histogram": trace["summary"]["class_histogram"],
                 "n_unknown": n_unknown, "n": len(classes)}
     if cmd == "debug":
-        return {"error": "debug is only for a self-hosted-ISA (external_backend) target; for a RoCC/MLIR "
-                         "target use disasm/lint + the numeric self_check"}
-    return {"error": f"unknown cmd {cmd!r} (use asm|disasm|lint)"}
+        return _rocc_debug(req, target)
+    return {"error": f"unknown cmd {cmd!r} (use asm|disasm|lint|debug)"}
+
+
+def _rocc_debug(req: dict, target: str) -> dict:
+    """LITE DEBUGGER for a RoCC / command-buffer target (e.g. gemmini): answer the agent's OWN command
+    buffer on the RTL-derived mlc arc model and return the REDACTED per-op hardware state (cycles +
+    scratchpad/accumulator/DRAM-refill counts per command + the RTL fingerprint). The counterpart of the
+    external_backend kernel.S debugger. Golden-free: it runs the agent's cb over the capsule's CANONICAL
+    inputs; the OUTPUT values and the pass/fail verdict are withheld by ``program_oracle`` (answer key)."""
+    from merlin.targetgen.contract.materialize import public_capsules_for
+    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.targetgen import program_oracle as PO
+    import _common as _C
+    cname = (req.get("capsule") or "").strip()
+    caps_root = public_capsules_for(load_target_experiment(_C.EXP / "target_experiment.yaml"))
+    cap_dir = caps_root / cname
+    if not cname or not (cap_dir / "capsule.yaml").exists():
+        avail = sorted(p.parent.name for p in caps_root.glob("*/capsule.yaml"))
+        return {"error": f"debug: unknown capsule {cname!r}; pick one of {avail}"}
+    raw = req.get("command_buffer")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception as e:  # noqa: BLE001
+            return {"error": f"debug: command_buffer is not valid JSON: {str(e)[-200:]}"}
+    if not isinstance(raw, dict) or not raw.get("commands"):
+        return {"error": "debug: pass your emitted command_buffer.json (it must contain 'commands'); "
+                         "for a RoCC target the debugger runs your COMMAND BUFFER on the arc model"}
+    try:
+        out = PO.run_command_buffer_debug(target, cb=raw, capsule_dir=cap_dir)
+    except PO.OracleUnavailable as e:
+        return {"error": f"debug oracle unavailable (mlc arc model absent): {e}"}
+    except Exception as e:  # noqa: BLE001 — a run fault is the agent's cb error, reported as-is
+        return {"error": f"debug run failed: {type(e).__name__}: {str(e)[-300:]}"}
+    out["capsule"] = cname
+    return out
 
 
 def _handle(req: dict) -> dict:

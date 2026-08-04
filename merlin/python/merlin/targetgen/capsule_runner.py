@@ -356,13 +356,28 @@ def suite_for(target: str, *, dtype: str = "i8xi8_i32") -> str:
     return _config_for_target(target, None, dtype).suite
 
 
-def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: bool) -> str:
+def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: bool,
+                              cb: dict | None = None, capsule: dict | None = None,
+                              trace: dict | None = None) -> str:
     """A mandatory hardware/oracle tier failed while the cheap tiers already passed (numeric fails raise
     earlier), so the defect is in the emitted hardware artifact, NOT the command buffer. Return a
     target-agnostic localization hint so the failure is never an opaque 'oracle != golden' — plus the first
     concrete artifact finding if the decoder produced any (gemmini). For a float/oracle-only target (atlas,
     no cheap trace decode) the generic hint still fires. This is what makes the np12r class localizable on
-    EVERY endpoint: it names WHERE to look (the artifact encoding), not just THAT hardware disagreed."""
+    EVERY endpoint: it names WHERE to look (the artifact encoding), not just THAT hardware disagreed.
+
+    When the decoded trace + command buffer are available, an ADVISORY, FAIL-CLOSED cross-check
+    (:mod:`divergence_localizer`) is run first: it diffs the decoded config fields against the agent's OWN
+    command buffer + capsule spec and, if it can derive a concrete divergence, names the FIRST op+field
+    (never a golden value, never a fix). The oracle stays the arbiter; a field it cannot anchor is simply
+    not flagged, so the generic hint always still fires underneath."""
+    concrete = ""
+    if trace is not None:
+        try:
+            from . import divergence_localizer as _DL
+            concrete = _DL.format_finding(_DL.localize(cb, capsule, trace))
+        except Exception:  # noqa: BLE001 — the localizer is advisory; never let it break the failure path
+            concrete = ""
     findings = (trace_check_res or {}).get("violations") or []
     if independent_float:
         hint = (" Decode your OWN emitted artifact (the disassembler / instruction_trace.json) and verify "
@@ -376,7 +391,8 @@ def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: b
                 "against your intent.")
     if findings:
         hint += f" Your own artifact check also flagged: {findings[0]}"
-    return hint
+    # The concrete cross-check (when derivable) is the most actionable line — lead with it.
+    return (concrete + hint) if concrete else hint
 
 
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
@@ -424,6 +440,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
 
     tiers: dict[str, TierResult] = {}
     trace_check_res = {"status": "skipped", "violations": []}
+    decoded_trace: dict | None = None            # kept for the advisory divergence localizer (D2)
     numeric = {"status": "skipped"}
     failure: dict | None = None
     status = "pass"
@@ -531,6 +548,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         if cfg.trace_gate == "rocc_insn":
             trace = RD.decode_text(llvm_text, source=str(paths.generated / cfg.fourth_output_name),
                                    target=eff_target)
+            decoded_trace = trace                # hand to the advisory localizer on an oracle divergence
             # Validating OUR OWN decoder's output must never crash the capsule before the oracle runs: a
             # schema hiccup (e.g. the manifest maps a funct to a class the enum lacks) is our tooling's
             # limitation, not the backend's defect — record it and continue, not a pre-oracle RUNNER_CRASH.
@@ -698,8 +716,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # circuits the authoritative oracle" class we fixed on the trace side, here on the oracle side.
             if not okt and mand:
                 raise CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"),
-                                  _mismatch_reason + _encoding_divergence_hint(trace_check_res,
-                                                                               independent_float))
+                                  _mismatch_reason + _encoding_divergence_hint(
+                                      trace_check_res, independent_float,
+                                      cb=cb, capsule=capsule, trace=decoded_trace))
 
     except CertFailure as cf:
         status = "fail"

@@ -10,11 +10,16 @@ golden is ever involved — asm encodes the syntax YOU chose; disasm/lint inspec
   python isa_tools.py disasm submission/kernel.S
   # static-lint your kernel.S -> illegal opcodes, missing terminator, instruction-class coverage
   python isa_tools.py lint submission/kernel.S --op matmul
-  # LITE DEBUGGER: run your kernel.S on the functional model to instruction N, then dump machine state +
-  # named DRAM windows (watch a region fill or NOT as your DMA/compute advances). The OUTPUT region is
-  # withheld (that's the answer); debug your INPUT/scratch regions. --region base:nbytes is repeatable.
+  # LITE DEBUGGER (self-hosted-ISA / external_backend target): run your kernel.S on the functional model
+  # to instruction N, then dump machine state + named DRAM windows (watch a region fill or NOT as your
+  # DMA/compute advances). The OUTPUT region is withheld (that's the answer); debug INPUT/scratch regions.
   python isa_tools.py debug submission/kernel.S --capsule A1_mvin_mvout --run-to 40 \
          --region 0x80001000:256 --region 0x80002000:256
+  # LITE DEBUGGER (RoCC / command-buffer target, e.g. gemmini): answer YOUR command_buffer.json on the
+  # RTL-derived arc model and see per-op HARDWARE STATE (cycles + scratchpad/accumulator/DRAM-refill
+  # counts per command + the RTL fingerprint). The output VALUES and pass/fail verdict are withheld
+  # (answer key). This runs your INTENDED computation; use disasm/lint for the emitted .insn ENCODING.
+  python isa_tools.py debug selfcheck_out/A6_resident_reuse/command_buffer.json --capsule A6_resident_reuse
 """
 from __future__ import annotations
 import argparse
@@ -28,7 +33,8 @@ from pathlib import Path
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Derived ISA dev tools (assembler/disassembler/linter/debugger).")
     ap.add_argument("cmd", choices=["asm", "disasm", "lint", "debug"])
-    ap.add_argument("file", help="asm: a mnemonic listing; disasm/lint/debug: your kernel.S")
+    ap.add_argument("file", help="asm: a mnemonic listing; disasm/lint/debug: your kernel.S "
+                                 "(RoCC/command-buffer target: your emitted command_buffer.json)")
     ap.add_argument("--op", default="matmul", help="lint coverage: the capsule op (default matmul)")
     ap.add_argument("--output-dtype", default=None)
     ap.add_argument("--movement", action="store_true", help="lint coverage: a data-movement capsule")
@@ -59,7 +65,9 @@ def main(argv=None):
         if not a.capsule:
             print(json.dumps({"error": "debug needs --capsule NAME (the capsule to run your kernel on)"}))
             return 2
-        req = {"cmd": "debug", "capsule": a.capsule, "kernel_s": text,
+        # send BOTH artifact keys; the broker picks by endpoint (external_backend -> kernel_s; RoCC/
+        # command-buffer -> command_buffer). The shim imports no merlin, so it cannot know which applies.
+        req = {"cmd": "debug", "capsule": a.capsule, "kernel_s": text, "command_buffer": text,
                "run_to": a.run_to, "regions": regions, "state_summary": a.state, "timeout": a.timeout}
     else:
         req = {"cmd": a.cmd, "op": a.op, "output_dtype": a.output_dtype, "movement": a.movement}

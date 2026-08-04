@@ -31,6 +31,7 @@ hard fail.
 | Public Gemmini facts | `tmp/.../gemmini-rocc-tests/include/gemmini.h`, `gemmini_params.h` | ISA encoding, DIM, dtypes. |
 | Public capsule contract | `merlin/contract/` (schemas, grammar, command-buffer ABI, integrity policy) + public/dev capsule inputs | The interface you compile and the schemas you must satisfy. |
 | Toolchain | `third_party/llvm-install/` | LLVM/MLIR 23 to build the OOT package. |
+| **ISA dev tools** (staged `isa_tools.py`) | `<ws>/isa_tools.py` (driver-brokered) | Oracle-free assembler / disassembler / linter, **and a lite debugger**. `asm`/`disasm`/`lint` encode the syntax YOU chose and inspect YOUR OWN emitted MLIR. `debug` answers YOUR OWN `command_buffer.json` on the RTL-derived arc model and returns per-op hardware STATE (cycles + scratchpad/accumulator/DRAM-refill counts + RTL fingerprint) — **output values and the pass/fail verdict are withheld** (never a golden). Use it when the cheap tiers pass but the hardware oracle fails. |
 
 ## FORBIDDEN (would break comparability or integrity)
 

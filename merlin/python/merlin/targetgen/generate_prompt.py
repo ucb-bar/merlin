@@ -476,6 +476,16 @@ emitted MLIR — never a golden). Use it so you never hand-write a wrong `.insn`
   histogram. Run it BEFORE every `self_check` (it is instant and catches the exact encoding mistake that
   makes an otherwise-correct kernel fail the trace gate).
 
+When a capsule passes the cheap tiers but fails the hardware oracle (the numeric/trace check is green yet
+the RTL oracle disagrees), OBSERVE the hardware behavior of YOUR OWN command buffer with the lite debugger:
+- `python isa_tools.py debug submission/command_buffer.json --capsule <name>` — answers YOUR command
+  buffer on the RTL-derived arc model and reports per-op HARDWARE STATE: `per_command` (cycles +
+  scratchpad-read / accumulator-write / DRAM-refill counts for each command), aggregate `metrics`
+  (bytes moved, accumulator commits, evictions), and the RTL `oracle` fingerprint. The output VALUES and
+  the pass/fail verdict are WITHHELD (that is the answer key). This runs your INTENDED computation, so pair
+  it with `disasm`/`lint` on the emitted `.mlir` (the encoding) to catch a field the command buffer cannot
+  carry (a store stride, a readout dtype, a tile DRAM offset).
+
 """
 
 

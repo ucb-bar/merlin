@@ -524,6 +524,91 @@ def run_program_debug(target: str, *, model_ext: str, cb: dict, kernel_s: Path, 
 
 
 # --------------------------------------------------------------------------------------------------
+# COMMAND-BUFFER LITE DEBUGGER — the RoCC / command-buffer counterpart of run_program_debug (above).
+# A self-hosted-ISA target ships a kernel.S we run to instruction N; a command-buffer target (gemmini
+# RoCC, OPU) instead ships a COMMAND BUFFER, which we answer on the RTL-derived mlc arc model and read
+# back the per-op HARDWARE-STATE effects (cycles + scratchpad/accumulator/DRAM-refill counts per command,
+# plus the RTL fingerprint). This gives the agent the observability it lacked: watch its OWN intended
+# computation's traffic on the compiled-from-RTL model, per command, instead of only a redacted verdict.
+#
+# INTEGRITY (same contract as run_program_debug): the model runs the AGENT'S OWN command buffer over the
+# capsule's CANONICAL INPUTS (which the agent is given), so nothing here is a golden. Two things are
+# REFUSED so the answer key never leaks: (1) the OUTPUT tensor values (mlc computes them; a correct cb
+# would otherwise hand the agent its own answer, scrape-able across capsules), and (2) the `correct`
+# verdict (that is the withheld oracle result the redacted self-check exists to keep back). Only the
+# RTL-derived effect COUNTS (which carry no output value) and the fingerprint cross back. NOTE: this
+# answers the command buffer (the intended computation) on the arc model — it is the complement of the
+# static artifact decode (rocc_decode / divergence_localizer), which inspects the emitted .insn ENCODING;
+# use both (state here, encoding there).
+# --------------------------------------------------------------------------------------------------
+
+_CB_DEBUG_REDACTED_KEYS = ("outputs", "correct", "reference", "elf", "console")
+
+
+def _inject_canonical_inputs(target: str, cb: dict, capsule_dir) -> dict:
+    """Return a COPY of ``cb`` with the capsule's canonical leaf operands attached as tensor ``data`` and
+    resident handles resolved, so the mlc arc command-buffer runner can answer it. Target-agnostic: the
+    leaves are the SAME deterministic operands the grader materializes (:func:`capsule_golden.
+    materialize_capsule_leaves`) — the inputs the agent is given, never a golden. Resident-pack handles
+    (a ``RES_PACK`` dst) are rewritten to their source tensor so the matmul operands name real tensors."""
+    import copy
+    import numpy as np
+    from . import capsule_common, capsule_golden
+    cb = copy.deepcopy(cb)
+    cap = capsule_common.load_capsule(capsule_dir)
+    leaves = capsule_golden.materialize_capsule_leaves(cap)
+    tensors = cb.get("tensors") or {}
+    for name, t in tensors.items():
+        if name in leaves and t.get("role") in ("input", "weight", "bias"):
+            shape = t.get("shape") or list(leaves[name].shape)
+            t["data"] = np.asarray(leaves[name].to_list(), dtype=np.int64).reshape(shape).tolist()
+    # resolve RES_PACK handles (dst produced from a real src tensor) in the matmul operands
+    handle = {c.get("operands", {}).get("dst"): c.get("operands", {}).get("src")
+              for c in cb.get("commands", []) if c.get("opcode") == "RES_PACK"}
+    for c in cb.get("commands", []):
+        if c.get("opcode") in ("MATMUL", "MATMUL_RESIDENT"):
+            for k, v in list(c.get("operands", {}).items()):
+                if v in handle and handle[v] in tensors:
+                    c["operands"][k] = handle[v]
+    return cb
+
+
+def run_command_buffer_debug(target: str, *, cb: dict, capsule_dir) -> dict[str, Any]:
+    """Answer the agent's OWN command buffer on the target's RTL-derived mlc arc model and return the
+    REDACTED per-op hardware-state effects. Target-agnostic (mlc infers the target/config from the cb).
+    Returns ``{halted, metrics, raw_metrics, per_command, oracle, redacted, ...}`` — the output VALUES and
+    the ``correct`` verdict are stripped (see the section note). Raises :class:`OracleUnavailable` when the
+    mlc arc model for ``target`` is absent (fail closed)."""
+    from merlin.targetgen.rtl import mlc_bridge
+    if not mlc_bridge.arc_available(target):
+        raise OracleUnavailable(f"mlc arc model unavailable for target {target!r}")
+    prepared = _inject_canonical_inputs(target, cb, capsule_dir)
+    # arc_run_command_buffer calls require_mlc(); make mlc importable for just this call (same context the
+    # program cosim uses — never a global sys.path insert).
+    with _mlc_importable(mlc_bridge.mlc_dir()):
+        try:
+            res = mlc_bridge.arc_run_command_buffer(prepared)
+        except Exception as e:  # noqa: BLE001 — a run fault is surfaced, never a fabricated pass
+            raise OracleUnavailable(f"{target} arc command-buffer run failed: {type(e).__name__}: {e}")
+    # REDACT the answer-bearing keys; keep only the RTL-derived effect counts + provenance.
+    safe = {k: v for k, v in res.items() if k not in _CB_DEBUG_REDACTED_KEYS}
+    n_out = len((res.get("outputs") or {}))
+    return {
+        "halted": True,
+        "metrics": safe.get("metrics"),
+        "raw_metrics": safe.get("raw_metrics"),
+        "per_command": safe.get("per_command"),        # per-op cycles + spad/acc/DRAM counts (no values)
+        "oracle": safe.get("oracle"),
+        "n_output_tensors": n_out,                      # count only — the VALUES are withheld (answer key)
+        "redacted": list(_CB_DEBUG_REDACTED_KEYS),
+        "note": ("Per-op HARDWARE STATE for YOUR command buffer on the RTL-derived arc model (cycles + "
+                 "scratchpad/accumulator/DRAM-refill counts per command). The output VALUES and the pass/"
+                 "fail verdict are withheld (answer key). This runs your INTENDED computation; to inspect "
+                 "the emitted .insn ENCODING use the disassembler + instruction_trace.json."),
+    }
+
+
+# --------------------------------------------------------------------------------------------------
 # CYCLE-ACCURATE VERILATOR tier (L4) — the SAME assembled program run on a program-driven Verilator
 # sim of the target's RTL top (a bare-core TileLink harness), for RTL-CERTIFIED outputs. This is the
 # first truly RTL-grounded atlas oracle: the arc cosim (L3) is the RTL-DERIVED functional gold; this
