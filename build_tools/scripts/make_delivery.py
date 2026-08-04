@@ -63,6 +63,22 @@ the loader prints `DUT forcefuly exit`. Everything between the banner and `DONE`
 
 If your `tools/pyuartsi` is the pinned submodule (`c1bbb3a`), invoke it as `python3 -m pyuartsi` and drop
 `--use_symbols` — that version has neither the console-script entry point nor that flag.""",
+    "gemmelos_bearly25": """\
+```bash
+# Load and run over UART-TSI (the Chipyard host tool; NOT pyuartsi):
+make tsi-run TTY=<your tty> BINARY=<THIS.elf>
+#   equivalently: uart_tsi +tty=<tty> +baudrate=921600 <THIS.elf>
+
+# or over JTAG:
+openocd -f platform/bearly25/bearly25.cfg -c "reset run" -c "halt" \\
+        -c "load_image <THIS.elf>" -c "resume 0x80000000"
+```
+This is a **bare-metal** ELF (entry `_start`, resumed at `0x80000000`, `-mcmodel=medany`, static) — not a
+Zephyr image, because your SDK has no RTOS. Console output goes over HTIF, which is what the TSI/FESVR
+link carries. If your flow needs UART0 (`PLATFORM=CHIP`) output instead, tell us and we will rebuild with
+a UART console — it is a harness swap, not a recompile of the model.
+
+Note `uart_tsi` uploads each segment's **MemSiz**, so the estimated upload time below is real.""",
     "default": """\
 Load the ELF with your usual loader and capture the console. The image is self-contained: no filesystem,
 no host I/O, no arguments. It ends by rebooting, after printing `DONE`.""",
@@ -179,6 +195,38 @@ STATUS = {
 }
 
 
+def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int):
+    """Build a BARE-METAL image for a board with no RTOS, and run it on spike.
+
+    Used for Baremetal-IDE-style targets (gemmelos). Same lowering, same c_runtime artifacts and the same
+    console protocol as the Zephyr path — only the harness differs (crt.S + our linker script + an
+    absolute memory map instead of a Zephyr app). The map is packed inside the board's real DRAM, which
+    the default spike map is not: its arena at 0xC0000000 and weights at 0x2_0000_0000 are simply not
+    memory on a 1 GB chip, so the image would fault on its first activation.
+    """
+    from merlin.runtime.backends import spike_model
+
+    # The SAME package, features and int8 datapath the Zephyr path uses. Not optional: lowering the raw
+    # bundle here scored cos 0.925 on deepjscc, which the prepared path gets bit-exact.
+    pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
+    b = spike_model.build(bundle, work, inputs_npz=bundle / "inputs.npz",
+                          dram_base=brd.dram_base, dram_bytes=brd.dram_bytes,
+                          int8_compute=True, features=frozenset([PEROP_BLOCK_NAME]),
+                          rvv_schedule=pkg.schedule_text,
+                          cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=brd.vlen)
+    refs = {"fp32": np.load(bundle / "golden.npy")}
+    if (bundle / "golden_w8a8.npy").is_file():
+        refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
+    run = spike_model.run(b["elf"], harts=1, mem_bytes=b["mem_bytes"], timeout=timeout,
+                          isa=zm.spike_isa(brd.vlen))
+    res = dict(run)
+    res.update(zm._gate(run["prefix"], refs))
+    res.setdefault("metrics", run.get("metrics", {}))
+    res["vlen"] = brd.vlen or 128
+    return res, {"elf": b["elf"], "ram_bytes": b["mem_bytes"],
+                 "build_hash": b.get("build_hash", "")}
+
+
 def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int):
     """Build one image and run it on spike at the board's VLEN and hart count."""
     pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
@@ -248,15 +296,26 @@ def main(argv=None) -> int:
         for harts in hart_list:
             work = Path(tempfile.mkdtemp(prefix=f"delivery_{model}_h{harts}_"))
             try:
-                res, board_build = build_one(bundle, brd, harts, vlen=brd.vlen, work=work,
-                                             timeout=a.timeout)
+                if brd.flow == boards.FLOW_BAREMETAL:
+                    if harts != 1:
+                        # gemmelos dispatches hart 1 through its own thread-lib, not OpenMP; a
+                        # multi-hart bare-metal image is a separate integration, so say so rather than
+                        # shipping something untested.
+                        problems.append(f"{model} h{harts}: baremetal multicore not implemented "
+                                        f"(hart 1 waits in wfi; their thread-lib dispatches it)")
+                        continue
+                    res, board_build = build_baremetal(bundle, brd, work=work, timeout=a.timeout)
+                else:
+                    res, board_build = build_one(bundle, brd, harts, vlen=brd.vlen, work=work,
+                                                 timeout=a.timeout)
             except Exception as exc:                                        # noqa: BLE001
                 problems.append(f"{model} h{harts}: {type(exc).__name__}: "
                                 f"{str(exc).splitlines()[0][:200]}")
                 continue
             elf_name = f"{model}_{a.dtype}_h{harts}_{brd.name}.elf"
             shutil.copy2(board_build["elf"], dest / elf_name)
-            rep = elf_audit.audit(dest / elf_name, brd, ram_bytes=board_build["ram_bytes"])
+            rep = elf_audit.audit(dest / elf_name, brd,
+                                  ram_bytes=board_build["ram_bytes"])
             audits[elf_name] = rep.to_dict()
             if not rep.ok:
                 problems += [f"{elf_name}: {p}" for p in rep.problems]

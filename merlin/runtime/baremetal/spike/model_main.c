@@ -87,6 +87,11 @@ int main(int hart) {
   htif_puts("METRIC cycles ");
   htif_putd((long)(c1 - c0));
   htif_putc('\n');
+  /* Build identity, so a console log mailed back from someone else's board can be tied to a specific
+     binary instead of being unattributable. Absent unless the builder defines it -> byte-identical. */
+#ifdef MERLIN_BUILD_HASH
+  htif_puts("METRIC build_hash " MERLIN_BUILD_HASH "\n");
+#endif
   htif_puts("DONE\n");
   htif_exit(0);
   return 0;

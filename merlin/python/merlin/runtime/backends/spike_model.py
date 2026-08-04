@@ -71,20 +71,58 @@ ARENA_BASE = 0xC0000000           # arena lives here (literal-addressed, in -m m
 DRAM_BASE = 0x80000000
 
 
-def _layout(arena_bytes: int, weights_bytes: int) -> dict:
-    """Absolute-address memory map: code@0x80000000, arena@0xC0000000, weights above it.
-    spike -m must span DRAM_BASE .. weights_base + weights_bytes."""
-    weights_base = ARENA_BASE + arena_bytes
-    weights_base = (weights_base + 0xFFFFFFF) & ~0xFFFFFFF          # 256MB align
-    weights_base = max(weights_base, 0x200000000)
-    mem_end = weights_base + weights_bytes
-    mem_bytes = ((mem_end - DRAM_BASE) + 0x3FFFFFFF) & ~0x3FFFFFFF  # round to 1GB
-    return {"arena_base": ARENA_BASE, "weights_base": weights_base, "mem_bytes": mem_bytes}
+def _layout(arena_bytes: int, weights_bytes: int, *, dram_base: int = DRAM_BASE,
+            dram_bytes: int | None = None, code_reserve: int = 64 * 1024 * 1024) -> dict:
+    """Absolute-address memory map for the bare-metal image.
+
+    Default (``dram_bytes=None``) is the historical spike map: code@0x80000000, arena@0xC0000000,
+    weights 256 MB-aligned above it and at least 0x2_0000_0000. spike is told to span it with ``-m``,
+    so "above the DRAM a real board has" costs nothing there.
+
+    On a REAL board it costs everything: an arena at 0xC0000000 and weights at 0x2_0000_0000 are simply
+    not memory, so the image faults on its first activation. Given ``dram_bytes`` the map is packed
+    inside ``[dram_base, dram_base + dram_bytes)`` instead — code first, then the weights blob, then the
+    arena taking the rest — and it FAILS CLOSED if the model does not fit rather than emitting an image
+    that addresses memory the chip does not have.
+    """
+    if dram_bytes is None:
+        weights_base = ARENA_BASE + arena_bytes
+        weights_base = (weights_base + 0xFFFFFFF) & ~0xFFFFFFF      # 256MB align
+        weights_base = max(weights_base, 0x200000000)
+        mem_end = weights_base + weights_bytes
+        mem_bytes = ((mem_end - DRAM_BASE) + 0x3FFFFFFF) & ~0x3FFFFFFF   # round to 1GB
+        return {"arena_base": ARENA_BASE, "weights_base": weights_base, "mem_bytes": mem_bytes}
+
+    align = 1 << 20                                                  # 1 MB is enough for a blob base
+    weights_base = (dram_base + code_reserve + align - 1) & ~(align - 1)
+    arena_base = (weights_base + weights_bytes + align - 1) & ~(align - 1)
+    end = dram_base + dram_bytes
+    if arena_base + arena_bytes > end:
+        raise RuntimeError(
+            f"does not fit: code {code_reserve / 2**20:.0f} MB + weights "
+            f"{weights_bytes / 2**20:.1f} MB + arena {arena_bytes / 2**20:.0f} MB exceeds the board's "
+            f"{dram_bytes / 2**20:.0f} MB at {hex(dram_base)}. Shrink the arena or the model.")
+    return {"arena_base": arena_base, "weights_base": weights_base,
+            "mem_bytes": dram_bytes, "code_reserve": code_reserve}
 
 
 def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None = None,
-          arena_mb: int = 256) -> dict:
-    """Build the whole-model spike ELF. Returns {elf, mem_bytes, weights_base, ...}."""
+          arena_mb: int = 256, *, dram_base: int = DRAM_BASE,
+          dram_bytes: int | None = None, int8_compute: bool = False,
+          features: "frozenset[str] | None" = None, rvv_schedule: str | None = None,
+          cflags_override: list[str] | None = None, vlen: int | None = None) -> dict:
+    """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
+
+    Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
+
+    The lowering arguments mirror ``zephyr_model.build_app`` and all default to the historical
+    behavior, so existing callers are byte-identical: ``int8_compute`` selects the real W8A8 integer
+    datapath, ``features``/``rvv_schedule``/``cflags_override`` let a tuned RVV package drive this path
+    the way it drives the Zephyr one, and ``vlen`` pins ``-march=...zvl<N>b`` to the vector length the
+    image will actually run on. Passing none of them lowers ``model.mlir`` raw — correct only when the
+    caller wants the unprepared module, which is NOT what a delivery wants (measured: raw scored
+    ``cos 0.925`` where the prepared path is bit-exact).
+    """
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
@@ -93,17 +131,36 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     clang = toolchain.clang()
     h, rt = _harness_dir(), _c_runtime_dir()
     arena_bytes = arena_mb * 1024 * 1024
+    prepared_path = model_dir / "model.mlir"
+    vectorize = False
+    if int8_compute or features or rvv_schedule:
+        from . import zephyr_model as _zm
+        prepared_path, features = _zm.prepare_for_lowering(
+            prepared_path, work, int8_compute=int8_compute, features=features)
+        vectorize = True
+    # TWO flag sets, because two compilers: the model object is built by CLANG (an RVV package's
+    # cflags are clang flags -- `-fno-vectorize` is not a GCC option and the harness units would fail
+    # to compile with them), while crt.S/htif.c/the generated call are built by the GCC that owns this
+    # bare-metal environment. Only the -march has to agree between them, which is what `vlen` pins.
+    from .zephyr_model import march_with_vlen
+    clang_cflags = list(cflags_override or RVV_CFLAGS)
+    gcc_cflags = list(RVV_CFLAGS)
+    if vlen is not None:
+        clang_cflags = march_with_vlen(clang_cflags, vlen)
+        gcc_cflags = march_with_vlen(gcc_cflags, vlen)
 
     # 1. lower MLIR -> LLVM IR -> rv64gcv object
-    res = lower_model_file(model_dir / "model.mlir", work / "lower",
-                           targets=(), textual=True)   # produce only the .ll
-    _run([clang, "--target=riscv64-unknown-elf", *RVV_CFLAGS, "-c", res.ll_path,
+    res = lower_model_file(prepared_path, work / "lower", targets=(), textual=True,
+                           vectorize=vectorize, transform_schedule=rvv_schedule,
+                           features=features)   # produce only the .ll
+    _run([clang, "--target=riscv64-unknown-elf", *clang_cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 
     # 2. generate the data-driven runtime artifacts (arg table, call, weights.bin, io)
     cgen = work / "cgen"
     info = c_runtime.generate(model_dir, cgen, inputs_npz)
-    lay = _layout(arena_bytes, info["weights_bytes"])
+    lay = _layout(arena_bytes, info["weights_bytes"], dram_base=dram_base,
+                  dram_bytes=dram_bytes)
 
     # 3. weights.bin -> binary blob object (placed at the absolute weights address)
     _run([ld, "-r", "-b", "binary", "-o", work / "weights_blob.o", "weights.bin"],
@@ -115,10 +172,18 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     addr_defs = [f"-DMERLIN_ARENA_BASE_ADDR={hex(lay['arena_base'])}ULL",
                  f"-DMERLIN_ARENA_SIZE_BYTES={hex(arena_bytes)}ULL",
                  f"-DMERLIN_WEIGHTS_BASE_ADDR={hex(lay['weights_base'])}ULL"]
+    # Build identity: the sha256 prefix of the lowered model object plus the weights blob -- exactly
+    # what computes the answer -- printed by the harness as `METRIC build_hash`.
+    import hashlib as _hashlib
+    _hh = _hashlib.sha256()
+    for _f in (work / "model.o", cgen / "weights.bin"):
+        _hh.update(_f.read_bytes())
+    build_hash = _hh.hexdigest()[:12]
     units = {
         "model_call.o": (cgen / "model_call.c", inc),
         "merlin_model.o": (rt / "merlin_model.c", inc),
-        "model_main.o": (h / "model_main.c", inc + addr_defs),
+        "model_main.o": (h / "model_main.c",
+                         inc + addr_defs + [f'-DMERLIN_BUILD_HASH="{build_hash}"']),
         "mlir_rt.o": (runtime_dir() / "abi/mlir_runtime.c", []),
         "crt.o": (h / "crt.S", []),
         "htif.o": (h / "htif.c", []),
@@ -127,17 +192,17 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     }
     objs = []
     for obj, (src, extra) in units.items():
-        _run([gcc, *RVV_CFLAGS, *extra, "-c", src, "-o", work / obj])
+        _run([gcc, *gcc_cflags, *extra, "-c", src, "-o", work / obj])
         objs.append(work / obj)
     objs += [work / "model.o", work / "weights_blob.o"]
 
     # 5. link: weights blob at its absolute high address.
     elf = work / "model.elf"
-    _run([gcc, *RVV_CFLAGS, "-nostdlib", "-nostartfiles",
+    _run([gcc, *gcc_cflags, "-nostdlib", "-nostartfiles",
           f"-Wl,--defsym,MERLIN_WEIGHTS_BASE={hex(lay['weights_base'])}",
           "-T", h / "model_link.ld", *objs, "-lm", "-o", elf])
-    return {"elf": elf, "mem_bytes": lay["mem_bytes"],
-            "weights_base": lay["weights_base"], **info}
+    return {"elf": elf, "mem_bytes": lay["mem_bytes"], "build_hash": build_hash,
+            "arena_base": lay["arena_base"], "weights_base": lay["weights_base"], **info}
 
 
 def run(elf: str | Path, harts: int = 1, mem_bytes: int = 1 << 30,
@@ -166,7 +231,12 @@ def run(elf: str | Path, harts: int = 1, mem_bytes: int = 1 << 30,
     for l in console.splitlines():
         if l.startswith("METRIC "):
             _, k, v = l.split()
-            metrics[k] = int(v)
+            # Not every metric is a number: `build_hash` is a hex digest. Keeping the string beats
+            # crashing the parse of an otherwise complete run.
+            try:
+                metrics[k] = int(v)
+            except ValueError:
+                metrics[k] = v
         elif l.startswith("ARGMAX "):
             p = l.split()
             argmax = np.array([int(x) for x in p[2:2 + int(p[1])]], dtype=np.int64)

@@ -28,6 +28,12 @@ from dataclasses import dataclass
 CONSOLE_HTIF = "htif"
 CONSOLE_UART = "uart"
 
+#: How an image for this board is produced. Not every RISC-V target runs an RTOS: `baremetal` targets
+#: are built by `runtime.backends.spike_model` (crt.S + our own linker script + an absolute memory map),
+#: which is the closer match for a Baremetal-IDE-style SDK than porting a Zephyr board would be.
+FLOW_ZEPHYR = "zephyr"
+FLOW_BAREMETAL = "baremetal"
+
 
 @dataclass(frozen=True)
 class Board:
@@ -51,6 +57,9 @@ class Board:
     #: RISCV_ISA_EXT_V; what is lost is Zephyr saving vector state across a context switch, which
     #: this image does not need (one pinned cooperative worker per hart, no preemption mid-kernel).
     zephyr_vector_ext: bool = True
+    flow: str = FLOW_ZEPHYR
+    #: bytes to reserve for code+stack before the weights blob in a baremetal layout
+    code_reserve: int = 64 * 1024 * 1024
     notes: str = ""
 
     @property
@@ -95,6 +104,24 @@ BOARDS: dict[str, Board] = {
         notes="Kodiak tapeout. DTS says ram0=256MB and MP_MAX_NUM_CPUS=2; the chip has 512MB and 3 "
               "working cores. Its Zephyr lacks RISCV_V_KERNEL_ONLY and requires FPU_SHARING=y "
               "alongside V with eager switching."),
+    # gemmelos: NOT a Zephyr target. github.com/Rakanic/gemmelos-bringup is a fork of
+    # ucb-bar/Baremetal-IDE -- a bare-metal CMake SDK with no RTOS (grep -ri zephyr returns nothing) --
+    # covering two chips selected by -DCHIP=. Facts below come from its platform/<chip>/*.ld and
+    # chip_config.h. Its default linker script declares 256 MB of DRAM; the silicon has 1 GB, which is
+    # what we build for. VLEN=128 is stated by its own OPE kernel ("VLEN=128/LMUL=4 gives VLMAX=16");
+    # their spike runs use 256, so the two are not interchangeable. Console is UART0 @115200 8N2 for
+    # PLATFORM=CHIP builds and HTIF for PLATFORM=SIMS; our bare-metal harness speaks HTIF, which is what
+    # the uart_tsi/FESVR link carries.
+    "gemmelos_bearly25": Board(
+        name="gemmelos_bearly25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
+        console=CONSOLE_HTIF, flow=FLOW_BAREMETAL,
+        notes="Bearly ML 25 via Baremetal-IDE (-DCHIP=bearly25). 2 harts, hart 1 idles in wfi until "
+              "dispatched; -march=rv64gcv_zfh -mabi=lp64d -mcmodel=medany; entry _start resumed at "
+              "0x80000000. NOT Zephyr."),
+    "gemmelos_dsp25": Board(
+        name="gemmelos_dsp25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
+        console=CONSOLE_HTIF, flow=FLOW_BAREMETAL,
+        notes="DSP 25 via Baremetal-IDE (-DCHIP=dsp25). Same ABI/entry as bearly25; NOT Zephyr."),
 }
 
 

@@ -118,3 +118,68 @@ def test_a_non_numeric_metric_does_not_take_the_whole_run_down():
     """int() on every METRIC crashed the parser on the first identity string."""
     r = zm._parse_console("METRIC tag deadbeef\nOUT 1 0\nDONE", 0)
     assert r["metrics"]["tag"] == "deadbeef"
+
+
+def test_a_board_declares_how_it_is_built():
+    """Not every RISC-V target runs an RTOS. gemmelos-bringup is a Baremetal-IDE fork with no Zephyr
+    anywhere in it, so the descriptor has to say which producer applies or the packager would try to
+    build a Zephyr app for a board that has none."""
+    assert boards.board("chipyard_kodiak").flow == boards.FLOW_ZEPHYR
+    for name in ("gemmelos_bearly25", "gemmelos_dsp25"):
+        b = boards.board(name)
+        assert b.flow == boards.FLOW_BAREMETAL
+        assert b.dram_bytes == 1024 * 1024 * 1024, "the silicon has 1 GB (its .ld declares 256 MB)"
+        assert b.vlen == 128, "stated by its own OPE kernel; their spike runs use 256"
+
+
+def test_the_baremetal_layout_is_packed_inside_the_boards_dram():
+    """The historical spike map puts the arena at 0xC0000000 and the weights at 0x2_0000_0000 -- not
+    memory on a 1 GB chip, so an unadjusted image faults on its first activation."""
+    from merlin.runtime.backends import spike_model
+
+    brd = boards.board("gemmelos_bearly25")
+    lay = spike_model._layout(64 * 1024 * 1024, 8 * 1024 * 1024,
+                              dram_base=brd.dram_base, dram_bytes=brd.dram_bytes)
+    end = brd.dram_base + brd.dram_bytes
+    assert brd.dram_base < lay["weights_base"] < lay["arena_base"] < end
+    assert lay["mem_bytes"] == brd.dram_bytes
+
+    # Omitting dram_bytes must keep the historical spike map, byte-for-byte.
+    assert spike_model._layout(64 * 1024 * 1024, 8 * 1024 * 1024)["arena_base"] == 0xC0000000
+
+
+def test_an_image_too_big_for_the_board_fails_closed():
+    """Better a build error here than a boot that dies before main on someone else's bench."""
+    import pytest
+
+    from merlin.runtime.backends import spike_model
+
+    with pytest.raises(RuntimeError, match="does not fit"):
+        spike_model._layout(900 * 1024 * 1024, 200 * 1024 * 1024,
+                            dram_base=0x80000000, dram_bytes=256 * 1024 * 1024)
+
+
+def test_the_baremetal_build_applies_the_same_preparation_as_the_zephyr_one():
+    """Lowering the raw bundle scored cos 0.925 on deepjscc where the prepared path is bit-exact: the
+    int8 datapath and the per-op tags are not optional extras, they are the numbers."""
+    import inspect
+
+    from merlin.runtime.backends import spike_model, zephyr_model
+
+    src = inspect.getsource(spike_model.build)
+    assert "prepare_for_lowering" in src
+    assert "int8_compute" in inspect.signature(spike_model.build).parameters
+    # ...and both backends must call the SAME preparation, not two copies of it.
+    assert "prepare_for_lowering" in inspect.getsource(zephyr_model.build_app)
+
+
+def test_the_two_compilers_do_not_share_flag_sets():
+    """An RVV package's cflags are CLANG flags; the bare-metal harness units are built by GCC, which
+    rejects -fno-vectorize outright. Only the -march has to agree."""
+    import inspect
+
+    from merlin.runtime.backends import spike_model
+
+    src = inspect.getsource(spike_model.build)
+    assert "clang_cflags" in src and "gcc_cflags" in src
+    assert "*clang_cflags" in src and "*gcc_cflags" in src

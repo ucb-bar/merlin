@@ -315,6 +315,48 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     return out
 
 
+def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = False,
+                         features: "frozenset[str] | None" = None,
+                         blocking: bool = True) -> tuple[Path, frozenset[str]]:
+    """``(prepared_mlir, concrete_features)`` — everything that must happen to a captured module
+    before ``lower_model_file``, shared by every whole-model backend.
+
+    This is deliberately NOT Zephyr-specific: a bare-metal image (``spike_model.build``) has to apply
+    the identical preparation or it computes different numbers from the same bundle. That is not
+    hypothetical — the bare-metal path, lowering ``model.mlir`` raw, scored ``cos 0.925`` on a bundle
+    the prepared path gets bit-exact, because without ``int8_compute`` it runs a dequantize-to-f32
+    datapath and without the per-op tags every contraction falls to scalar loops.
+
+    ``blocking`` gates the per-op register-blocking step (opt-in via the ``PEROP_BLOCK_NAME`` sentinel
+    in ``features``): each contraction's block is derived from the PREPARED IR — the geometry the
+    pipeline will actually see — then the ops are specialized + tagged and the sentinel is swapped for
+    the concrete, table-specific feature. Doing both here is what keeps the schedule's arms and the
+    IR's tags in sync: they are generated from ONE table. Skipping the tagging leaves nothing for any
+    arm to match and every contraction silently falls to convert-linalg-to-loops (measured: deepjscc
+    484M -> 1242M cycles at bit-identical output — a 2.56x regression that looks like a bad block but
+    is an untagged build).
+    """
+    from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
+    features = frozenset(features or frozenset())
+    _lanes = _vec_lanes(features)
+    prepared = _prepare_model_mlir(mlir_path, work, int8_compute=int8_compute,
+                                   tag_vec_ranks=_lanes is not None,
+                                   vec_lanes=_lanes or _VEC_RANK_LANES)
+    if not blocking:
+        return prepared, features
+    from ...llvmlower import perop_blocks as _pb
+    from ...llvmlower.impr_features import PEROP_BLOCK_NAME, ensure_perop_block
+    if PEROP_BLOCK_NAME in features:
+        from ...kernels.shapes import contraction_shapes as _cshapes
+        table = _pb.block_table(_cshapes(prepared), nr_cap=_PEROP_NR_CAP)
+        if table:
+            prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
+            features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}
+        else:
+            features = features - {PEROP_BLOCK_NAME}
+    return prepared, features
+
+
 # ---- generated Zephyr-app sources --------------------------------------------------
 
 def _main_c(rvv_hart: int, dump_cap: int = 4096, weights_base: int | None = None,
@@ -572,7 +614,12 @@ CONFIG_HEAP_MEM_POOL_SIZE=65536
     # costs memory if it over-covers. LAZY=n is deliberate: the other chipyard silicon boards disable
     # lazy vector switching explicitly, and Kodiak's defconfig is the one that leaves it at its
     # default y — we do not inherit that.
-    if not brd.zephyr_vector_ext:
+    # Whether Zephyr's own kernel can be built with V is a property of the TREE, not of the board:
+    # without RISCV_V_KERNEL_ONLY, setting CONFIG_RISCV_ISA_EXT_V puts `v` in the global -march and no
+    # matching libgcc multilib exists (the link falls back to a 32-bit one). So require both the board's
+    # permission and the tree's capability -- otherwise pointing ZEPHYR_BASE at a tree that lacks the
+    # symbol breaks every board, including spike_riscv64.
+    if not (brd.zephyr_vector_ext and _kconfig_has("RISCV_V_KERNEL_ONLY")):
         # Zephyr's kernel stays scalar (see Board.zephyr_vector_ext); the model object still carries V
         # from its own -march, and mstatus.VS is enabled at boot by reset.S under CONFIG_FPU.
         return common + ("\n# CONFIG_RISCV_ISA_EXT_V intentionally NOT set: this Zephyr has no\n"
@@ -690,19 +737,6 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     # 1. model.mlir -> normalize (SAME prep passes the dispatch_runtime applies, so
     #    quantized / bf16 / over-rank / bool-cast models lower correctly — without these
     #    the whole-model path only handles already-clean LLMs) -> LLVM IR -> object.
-    from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
-    _lanes = _vec_lanes(features or frozenset())
-    prepared = _prepare_model_mlir(model_dir / "model.mlir", work, int8_compute=int8_compute,
-                                   tag_vec_ranks=_lanes is not None,
-                                   vec_lanes=_lanes or _VEC_RANK_LANES)
-    # PER-OP REGISTER BLOCKING (opt-in via the PEROP_BLOCK_NAME sentinel in `features`): derive each
-    # contraction's own block from the PREPARED IR — the geometry the pipeline will actually see — then
-    # specialize + tag the ops and swap the sentinel for the concrete, table-specific feature. Doing it
-    # here rather than in the caller is what keeps the schedule's arms and the IR's tags in sync: they
-    # are generated from ONE table. Without the tagging step no arm matches anything and every
-    # contraction silently falls to convert-linalg-to-loops (measured: deepjscc 484M -> 1242M cycles at
-    # bit-identical output — a 2.56x regression that looks like a bad block but is an untagged build).
-    features = frozenset(features or frozenset())
     # Board facts as DATA (runtime.boards): the console options, the vector-state width, the DT RAM
     # label and the DRAM ceiling all come from the descriptor instead of being assumed. `vlen` given
     # explicitly wins over the board's, so a caller can sweep it.
@@ -710,17 +744,9 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     brd = _board_desc(board, **({"vlen": vlen} if vlen is not None else {}))
     if vlen is None and brd.vlen is not None:
         vlen = brd.vlen                       # build for the board's real vector length by default
-    if backend == "rvv":
-        from ...llvmlower import perop_blocks as _pb
-        from ...llvmlower.impr_features import PEROP_BLOCK_NAME, ensure_perop_block
-        if PEROP_BLOCK_NAME in features:
-            from ...kernels.shapes import contraction_shapes as _cshapes
-            table = _pb.block_table(_cshapes(prepared), nr_cap=_PEROP_NR_CAP)
-            if table:
-                prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
-                features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}
-            else:
-                features = features - {PEROP_BLOCK_NAME}
+    prepared, features = prepare_for_lowering(model_dir / "model.mlir", work,
+                                             int8_compute=int8_compute, features=features,
+                                             blocking=(backend == "rvv"))
     # For the rvv backend, bake native RVV (fixed-width vector ops on the matmuls) into the
     # IR rather than leaving it to clang's auto-vectorizer — see llvmlower.pipeline.
     res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
