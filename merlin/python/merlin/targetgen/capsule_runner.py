@@ -365,16 +365,17 @@ def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: b
     EVERY endpoint: it names WHERE to look (the artifact encoding), not just THAT hardware disagreed."""
     findings = (trace_check_res or {}).get("violations") or []
     if independent_float:
-        hint = (" Disassemble/lint your emitted artifact and verify EVERY op actually fires with valid "
-                "config/addresses — a config or compute op that silently no-ops produces wrong output only "
-                "on hardware, never in a cheap check.")
+        hint = (" Decode your OWN emitted artifact (the disassembler / instruction_trace.json) and verify "
+                "every op fires with the operands you intend — a config/compute op that silently no-ops "
+                "produces wrong output only on hardware, never in a cheap check.")
     else:
         hint = (" The command-buffer tiers (numeric + trace) PASSED, so the divergence is in your "
-                "emit_target_artifact hardware encoding — fields the command buffer cannot carry (config "
-                "SCALES, accumulate, dataflow, DRAM addresses). Disassemble/lint your artifact and check for "
-                "a degenerate config scale (0.0).")
+                "emit_target_artifact hardware encoding — some field the command buffer cannot carry (a "
+                "config scale, an accumulate/dataflow bit, a readout dtype, a DRAM address). Decode your OWN "
+                "emitted artifact (the disassembler / instruction_trace.json) and check each op's operands "
+                "against your intent.")
     if findings:
-        hint += f" Your own artifact check flagged: {findings[0]}"
+        hint += f" Your own artifact check also flagged: {findings[0]}"
     return hint
 
 
