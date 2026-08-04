@@ -28,12 +28,59 @@ def _decode_operand(bits: list[int | None], word: int) -> int:
     return val
 
 
+def _sel(word: int, hi: int, lo: int) -> int:
+    return (word >> lo) & ((1 << (hi - lo + 1)) - 1)
+
+
+def _fixed_reverse_opcode(model: IsaModel) -> dict[int, list[str]]:
+    """Map the (opcode-field-width) opcode value -> mnemonic(s). The opcode-table values may be wider than
+    the opcode field (an extension selector carved off the top); match on the field-width low bits, so an
+    extension variant that shares the base opcode groups under it (disambiguated later by the ext field)."""
+    hi, lo = model.field_layout["opcode"]
+    mask = (1 << (hi - lo + 1)) - 1
+    rev: dict[int, list[str]] = {}
+    for mnem, val in model.opcode_table.items():
+        rev.setdefault(int(val) & mask, []).append(mnem)
+    return rev
+
+
+def _disassemble_fixed(model: IsaModel, words: list[int]) -> list[dict]:
+    """Field-layout decode for a fixed-format ISA (every instruction shares one layout, opcode-selected).
+    Extracts each declared field; ``illegal`` when the opcode value is not in the derived table."""
+    wmask = (1 << model.inst_width) - 1
+    nib = (model.inst_width + 3) // 4
+    op_hi, op_lo = model.field_layout["opcode"]
+    rev = _fixed_reverse_opcode(model)
+    recs: list[dict] = []
+    for i, raw in enumerate(words):
+        w = int(raw) & wmask
+        opv = _sel(w, op_hi, op_lo)
+        mnems = rev.get(opv)
+        operands = {name: _sel(w, hi, lo) for name, (hi, lo) in model.field_layout.items()
+                    if name != "opcode"}
+        rec: dict = {"index": i, "word": f"0x{w:0{nib}x}", "operands": operands}
+        if not mnems:
+            rec.update({"illegal": True, "mnemonic": None})
+        else:
+            rec["mnemonic"] = mnems[0]
+            if len(mnems) > 1:
+                rec["ambiguous"] = list(mnems)
+        recs.append(rec)
+    return recs
+
+
 def disassemble(model: IsaModel, words: list[int]) -> list[dict]:
     """Decode a word stream → per-instruction records. Each record is
     ``{index, word, mnemonic, role, operands}`` for a recognized instruction, or
     ``{index, word, illegal: True, mnemonic: None}`` for a word that matches NO op the ISA defines (the
     fingerprint of an invented/garbled encoding). ``ambiguous`` lists all classes when a word matches more
-    than one signature (an overlapping encoding worth surfacing). Empty model → every word is ``illegal``."""
+    than one signature (an overlapping encoding worth surfacing). Empty model → every word is ``illegal``.
+
+    Two decode strategies, chosen by the model: a FIXED-FORMAT target (one field layout selected by an
+    opcode field — the mlc ``isa_encoding`` derivation) decodes by field extraction at the target's
+    ``inst_width``; a variable-format self-hosted ISA decodes by matching each op's derived signature."""
+    if model.is_fixed_format():
+        return _disassemble_fixed(model, words)
     recs: list[dict] = []
     entries = list(model.by_mnemonic.values())
     for i, raw in enumerate(words):

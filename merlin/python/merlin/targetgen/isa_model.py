@@ -35,6 +35,18 @@ class IsaModel:
     dram_base: int = 0
     halt_mnemonics: tuple[str, ...] = ()
     halt_signatures: tuple[tuple[int, int], ...] = ()
+    # --- fixed-format encoding (a target whose EVERY instruction shares one field layout, opcode-selected,
+    # e.g. a wide-word SIMT core). Derived by mlc's isa_encoding pass (field bit-ranges + opcode table) and
+    # consumed by the disassembler's field-layout path. Empty for a variable-format self-hosted ISA, whose
+    # per-op decode signatures live in ``by_mnemonic`` instead.
+    inst_width: int = 32
+    field_layout: dict[str, tuple[int, int]] = field(default_factory=dict)
+    opcode_table: dict[str, int] = field(default_factory=dict)
+
+    def is_fixed_format(self) -> bool:
+        """True when the target's ISA is one fixed field layout selected by an opcode field (the mlc
+        isa_encoding derivation), so the disassembler extracts fields rather than matching signatures."""
+        return bool(self.field_layout) and "opcode" in self.field_layout and bool(self.opcode_table)
 
     # -- lookups ---------------------------------------------------------------------------------
     def is_empty(self) -> bool:
@@ -119,3 +131,35 @@ def isa_model_for(te_or_target: Any, *, model_ext: str | None = None, timeout: i
 
     return IsaModel(target=target, by_mnemonic=by_mnem, asm_mnemonics=asm, roles=roles,
                     dram_base=dram_base, halt_mnemonics=halt_mnem, halt_signatures=halt_sigs)
+
+
+def isa_model_from_encoding(target: str, fact: dict) -> IsaModel:
+    """Build a fixed-format :class:`IsaModel` from an mlc ``isa_encoding`` fact (``{inst_width, fields,
+    opcodes, provenance}`` — the field bit-ranges + opcode table derived from the target's RTL decoder).
+    Returns an empty model when the fact carries no field layout (caller no-ops). Nothing here is
+    target-specific; the fact is the sole input."""
+    fields_in = fact.get("fields") or {}
+    field_layout = {str(k): (int(v[0]), int(v[1])) for k, v in fields_in.items()
+                    if isinstance(v, (list, tuple)) and len(v) == 2}
+    opcode_table = {str(k): int(v) for k, v in (fact.get("opcodes") or {}).items()}
+    if not field_layout or not opcode_table:
+        return IsaModel(target=target)
+    width = int(fact.get("inst_width") or 0) or (max((hi for hi, _ in field_layout.values()), default=31) + 1)
+    return IsaModel(target=target, inst_width=width, field_layout=field_layout, opcode_table=opcode_table)
+
+
+def isa_model_for_target(target: str) -> IsaModel:
+    """The IsaModel for a target, preferring the mlc-derived fixed-format encoding fact (from the RTL
+    decoder) when present, else the shipped-ISA-definition probe (:func:`isa_model_for`). This is the seam a
+    fixed-format wide-word target (e.g. a SIMT core) enters through; a variable-format self-hosted ISA falls
+    through to the probe path unchanged."""
+    try:
+        from .rtl import mlc_bridge
+        fact = mlc_bridge.isa_encoding_for(target)
+    except Exception:  # noqa: BLE001 — mlc absent / cache missing -> fall back to the probe path
+        fact = None
+    if fact:
+        m = isa_model_from_encoding(target, fact)
+        if not m.is_empty() or m.is_fixed_format():
+            return m
+    return isa_model_for(target)

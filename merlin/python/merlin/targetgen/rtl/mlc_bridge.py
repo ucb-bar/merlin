@@ -144,6 +144,27 @@ def core_hw_mlir(target: str) -> Path | None:
     return next((p for p in cands if p.exists() and ".generic." not in p.name), None)
 
 
+def isa_encoding_for(target: str) -> dict | None:
+    """The mlc-derived instruction-ENCODING fact (``{inst_width, fields, opcodes, provenance}``) for a
+    target, from ``runs/circt-arc/<arc_target>/outputs/muon_isa.json`` — the field bit-ranges + opcode table
+    the mlc ``isa_encoding`` pass recovers from the target's RTL decoder. Uses the ORACLE-path arc alias
+    (:func:`_arc_target`) because the encoding is the aliased CORE's own ISA (a SIMT SoC's decoder is the
+    embedded core's), unlike structural geometry. Returns the parsed fact, or None when mlc / the cache is
+    absent — an honest fallback the caller degrades on, never a guessed encoding."""
+    d = mlc_dir()
+    if d is None:
+        return None
+    p = d / "runs" / "circt-arc" / _arc_target(target) / "outputs" / "muon_isa.json"
+    if not p.is_file():
+        return None
+    try:
+        import json
+        fact = json.loads(p.read_text())
+        return fact if isinstance(fact, dict) and fact.get("fields") else None
+    except Exception:  # noqa: BLE001 — unreadable/garbled cache ⇒ honest None
+        return None
+
+
 def opu_artifact_paths(target: str) -> dict | None:
     """Resolved ``{hw, man, so}`` artifact paths for a SPATIAL/OPU target via mlc's per-target
     fingerprint map — which knows the two-level ``runs/circt-arc/<family>/<config>/outputs`` layout the
