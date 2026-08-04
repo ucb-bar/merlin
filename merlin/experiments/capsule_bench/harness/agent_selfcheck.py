@@ -263,16 +263,21 @@ def main(argv=None):
         console_tail = None
         for lg in (cr.parent / "artifacts").glob("*_console.log") if (cr.parent / "artifacts").is_dir() else []:
             console_tail = lg.read_text()[-800:]
-        rows.append({
-            "capsule": name, "pass": passed, "barrier_tier": barrier_tier, "barrier_status": bar,
-            "tiers": tiers,
-            "numeric": num,                                   # full diff stats, golden value redacted
-            "trace_summary": tr,                              # YOUR instruction counts (mvin/mvout/compute/…)
-            "trace_check": d.get("trace_check"),
-            "failure": d.get("failure"),                      # full plane + detail
-            "your_artifacts": own,                            # copied to ./selfcheck_out/<capsule>/
-            "sim_console_tail": console_tail,
-        })
+        row = {"capsule": name, "pass": passed, "barrier_tier": barrier_tier, "barrier_status": bar}
+        if not passed:
+            # FULL debug detail ONLY for a FAILING capsule (the one you are working). A passing capsule's
+            # diff stats / trace dump / console tail are noise that re-inflates the agent's context every
+            # round (the self_check output is re-fed each turn) — the pass flag is all that's needed for it.
+            row.update({
+                "tiers": tiers,
+                "numeric": num,                               # full diff stats, reference value redacted
+                "trace_summary": tr,                          # YOUR instruction counts (mvin/mvout/compute/…)
+                "trace_check": d.get("trace_check"),
+                "failure": d.get("failure"),                  # full plane + detail
+                "your_artifacts": own,                        # copied to ./selfcheck_out/<capsule>/
+                "sim_console_tail": console_tail,
+            })
+        rows.append(row)
     n = len(rows)
     # n==0 here means the grade returned WITHOUT a top-level build failure yet wrote no capsule_result
     # under cb_root — a harness/path problem (not "all clear", not a stubbed grader). Say so loudly with

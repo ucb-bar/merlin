@@ -672,7 +672,8 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
                 import opencode_agent as _OA
             except ImportError as e:  # Phase 3 not landed yet
                 raise SystemExit(f"--driver opencode is not available yet: {e}")
-            return _OA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout)
+            return _OA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
+                                 subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL)
         inner = (f'claude --print --model {model} --effort {effort} '
                  f'--permission-mode bypassPermissions --add-dir {ws} '
                  f'--output-format stream-json --verbose < {ws_task}')
@@ -907,6 +908,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE", ""),
                     help="AWS profile (~/.aws) for --provider bedrock; else the env-var cred chain")
     ap.add_argument("--max-rounds", type=int, default=6)
+    ap.add_argument("--plateau-rounds", type=int, default=3,
+                    help="stop early (not converged) after this many consecutive rounds with NO progress "
+                         "— neither the pass count nor the total numeric mismatch improved. Bounds the "
+                         "token spend of a stuck agent that keeps re-sending its (uncached) context each "
+                         "round with nothing to show. 0 disables the plateau stop.")
     ap.add_argument("--round-timeout", type=int, default=14400,
                     help="per-round agent wall cap (s). Default 4h (matches launch_ab_batch): a TIGHT "
                          "cap is net-detrimental — it doesn't cut the work (fixed by difficulty), it "
@@ -1150,7 +1156,21 @@ def main(argv: list[str] | None = None) -> int:
     # and EACH wait, so a fresh --resume invocation continues exactly where it stopped — not from 0.
     state_p = run_dir / "qa_loop_state.yaml"
     rounds_summary: list = []
+    _best_progress = None            # plateau early-stop: best (#passed, -total_mismatch) seen so far
+    _plateau_stall = 0               # consecutive rounds with no progress
     rl_waits_used = 0
+
+    def _progress_key(v: dict) -> tuple:
+        """Round progress, higher is better: (#passed, -total residual numeric mismatch). A non-passing
+        capsule with no numeric mismatch (a structural fail) counts as a large residual, so a structural
+        stall never reads as 'solved'. Used only to detect a plateau — never to grade."""
+        tot = 0
+        for pc in (v.get("per_capsule") or []):
+            if pc.get("status") == "pass":
+                continue
+            mc = pc.get("mismatch_count")
+            tot += int(mc) if isinstance(mc, int) else 1_000_000
+        return (v.get("n_passed") or 0, -tot)
     active_wall_s = 0.0              # cumulative time DOING work (launch+grade) across all invocations
     rate_limit_wait_s = 0.0         # cumulative time slept waiting for five-hour window resets
     started_at = datetime.now(timezone.utc).isoformat()
@@ -1253,6 +1273,21 @@ def main(argv: list[str] | None = None) -> int:
               f"answer_access_clean={audit['clean']}")
         rnd = rnd + 1
         _checkpoint(rnd)  # next_round advances only after a completed (non-rate-limited) round
+        # Plateau early-stop: a stuck agent re-sends its (uncached) growing context every round for no
+        # gain — bound that spend. Stop after N consecutive rounds with no progress (neither the pass
+        # count nor the total numeric mismatch improved). Disabled with --plateau-rounds 0.
+        if a.plateau_rounds and not verdict.get("all_pass"):
+            _prog = _progress_key(verdict)
+            if _best_progress is None or _prog > _best_progress:
+                _best_progress, _plateau_stall = _prog, 0
+            else:
+                _plateau_stall += 1
+                if _plateau_stall >= a.plateau_rounds:
+                    print(f"[plateau] no progress (pass count + mismatch) for {a.plateau_rounds} "
+                          f"consecutive rounds; stopping early (not converged) at "
+                          f"{verdict.get('n_passed')}/{verdict.get('n_capsules')} to avoid burning tokens "
+                          f"on a stuck loop. Raise/relax with --plateau-rounds.")
+                    break
         # realistic (abc2): the agent self-paces — it self-checks via the tool and drops READY_FOR_BARRIER
         # when it believes it's done. Break to the verilator barrier on that marker OR on spike all-pass.
         ready = _EXPERIMENT == "realistic" and (ws / "submission" / READY_MARKER).exists()
