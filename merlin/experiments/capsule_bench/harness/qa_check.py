@@ -47,8 +47,13 @@ _NUM = re.compile(r"-?\d+(?:\.\d+)?")
 def _redact_detail(detail: str | None) -> str | None:
     if not detail:
         return None
-    # keep the plane/category prose, scrub concrete numbers (could echo expected/actual values)
-    return _NUM.sub("#", detail)[:240]
+    # Scrub concrete numbers (could echo expected/actual values) — the anti-answer-leak guard. The length
+    # cap only bounds a runaway oracle dump; it must NOT chop the structured localization hint
+    # (_encoding_divergence_hint), whose ACTIONABLE tail — "decode your OWN emitted artifact via the
+    # disassembler / instruction_trace.json and check each op's operands" — runs past ~240 chars. Cutting it
+    # left the agent told WHERE (the encoding) but not the self-inspection METHOD. 800 fits the full hint
+    # while still bounding a pathological dump.
+    return _NUM.sub("#", detail)[:800]
 
 
 def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
