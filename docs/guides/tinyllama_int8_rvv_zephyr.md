@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: runtime
 last_verified: 2026-07-26
-related: [getting_started, rvv_e2e, zephyr, model2mlir, reproducibility, compilation_strategies]
+related: [getting_started, rvv_e2e, zephyr, model2mlir, reproducibility, compilation_strategies, vision_workloads_rvv_zephyr]
 code_refs:
   - merlin/python/merlin/compile_cli.py
   - merlin/python/merlin/llvmlower/pipeline.py
@@ -25,6 +25,11 @@ sustained loop for application development.
 
 This guide is the whole path on a fresh machine. It assumes nothing except the base install in
 [Getting started](getting_started.md); every stage states its oracle and what a `not_run` means.
+
+For the same pipeline applied to **conv / FFT / recurrent** models — a spectral vision transformer,
+a speech encoder-decoder, a recurrent control policy and a convolutional codec — see
+[Vision, audio and control workloads on multicore RVV](vision_workloads_rvv_zephyr.md). It also
+covers what a register block claims about a model's extents, and which models fit a 512 MB SoC.
 
 > **The one thing to know up front.** There are four places a number can come from here and they
 > are not interchangeable. **spike** proves correctness and cannot tell you anything about speed —
