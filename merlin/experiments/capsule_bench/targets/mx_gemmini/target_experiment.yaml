@@ -28,6 +28,12 @@ hardware_spec:
   rtl_config: generators/gemmini/src/main/scala/gemmini/ConfigsFP.scala   # GemminiMxFPConfigs.defaultMxFPConfig
   isa: rocc_custom3   # same RoCC opcode set as gemmini
   dim: 16             # 16x16 WS systolic mesh (meshRows == meshColumns)
+  # Shipped ISA doc for the derived assembler/disassembler/linter — the MX-Gemmini MMIO/RoCC command word
+  # (derived from mxgemmini_mmio.h:66). Self-contained (no model venv). The MMIO map + microscaling dtypes +
+  # E8M0 block scale + bf16 accumulate are carried as derived ABI data in the sibling mmio_abi.py.
+  isa_headers:
+    - experiments/capsule_bench/targets/mx_gemmini/contracts/hwbringup_mx_v0/isa_include/isa_definition.py
+  hwbringup_set: experiments/capsule_bench/targets/mx_gemmini/contracts/hwbringup_mx_v0
 
 # The generic op-capsule corpus (a matmul golden is op-derived). MX-specific low-bit capsules (block
 # e8m0 scaling) can be added as a sibling set to exercise the MxRequantizer path.

@@ -26,6 +26,12 @@ rtl:
 
 hardware_spec:
   target_contract: out/artifacts/targets/radiance_oot/contracts/target_contract.yaml
+  # Shipped ISA doc for the derived assembler/disassembler/linter — the stock-LLVM-emittable Vortex CUSTOM0
+  # warp-control surface (derived from radiance-kernels vx_intrinsics.h + RISCVInstrInfoVX.td). Self-contained
+  # (no model venv); the merlin IsaModel introspects it in-process. Fork-only 64-bit/mnemonic ops are residue.
+  isa_headers:
+    - experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/isa_include/isa_definition.py
+  hwbringup_set: experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0
 
 # The generic op-capsule corpus (a matmul golden is op-derived, target-neutral). SIMT-warp-shaped
 # capsules can be added as a radiance sibling set once the cyclotron front-half is a runner config.

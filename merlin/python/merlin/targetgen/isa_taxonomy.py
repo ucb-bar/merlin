@@ -71,14 +71,28 @@ def derive_isa_taxonomy(te, *, model_ext: str | None = None, timeout: int = 120)
                 or (m.contract.get("toolchain") or {}).get("model")
         except Exception:  # noqa: BLE001
             mext = None
-    if not mext:
-        return {}
-    py = _model_venv_python(mext)
+    import os
+    import sys
     import tempfile
+    if mext:
+        # A target backed by a model package: introspect its ISA definition in that model's own venv
+        # (the ISA def imports the model package), cwd = the model project root.
+        py = _model_venv_python(mext)
+        run_cwd = str(ext_path(mext))
+        run_env = None
+    else:
+        # A target that ships a SELF-CONTAINED ISA definition (no model package to import) — introspect it
+        # in-process, with the definition's own directory importable so its sibling ``isa_patterns`` module
+        # resolves. Target-agnostic: any target shipping a self-contained ISA doc gets the tools without
+        # registering a model venv (fail-closed — a bad import just yields the empty taxonomy below).
+        py = sys.executable
+        run_cwd = str(isa.parent)
+        run_env = dict(os.environ)
+        run_env["PYTHONPATH"] = str(isa.parent) + os.pathsep + run_env.get("PYTHONPATH", "")
     with tempfile.TemporaryDirectory() as td:
         out = Path(td) / "taxonomy.json"
         cmd = [str(py), str(_HELPER), "--isa-module", str(isa), "--out", str(out)]
-        p = subprocess.run(cmd, cwd=str(ext_path(mext)), capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, cwd=run_cwd, capture_output=True, text=True, timeout=timeout, env=run_env)
         if p.returncode != 0 or not out.is_file():
             return {}
         tax = json.loads(out.read_text())
