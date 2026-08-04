@@ -63,6 +63,26 @@ RVV_CFLAGS = ["-march=rv64gcv", "-fno-vectorize", "-fno-slp-vectorize", *_CFLAGS
 SCALAR_CFLAGS = ["-march=rv64gc", *_CFLAGS_COMMON]
 
 
+def march_with_vlen(cflags: list[str], vlen: int | None) -> list[str]:
+    """``cflags`` with the ``-march=`` entry pinned to ``vlen`` via ``zvl<N>b``.
+
+    The COMPILER's assumed vector length has to match the one the code will run on, or a fixed-width
+    schedule silently lands at a different LMUL: plain ``-march=rv64gcv`` means the V minimum of 128,
+    so on a 256-bit unit every vector group doubles (measured on the K1: doubled LMUL -> spills). Pair
+    this with :func:`spike_isa` so the build and the simulation state the same number. ``None`` leaves
+    the flags untouched, so the default path is byte-identical.
+    """
+    if vlen is None:
+        return list(cflags)
+    out = []
+    for f in cflags:
+        if f.startswith("-march=") and "zvl" not in f:
+            out.append(f"{f}_zvl{int(vlen)}b")
+        else:
+            out.append(f)
+    return out
+
+
 def _cflags(backend: str) -> list[str]:
     if backend == "scalar":
         return SCALAR_CFLAGS
@@ -557,7 +577,7 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
               cflags_override: list[str] | None = None,
               features: "frozenset[str] | None" = None,
               n_harts: int = 1, iters: int = 1, warmup: int = 0,
-              omp_threads: int | None = None) -> dict:
+              omp_threads: int | None = None, vlen: int | None = None) -> dict:
     """Lower the model, generate the Zephyr app, and build ``zephyr.elf``.
 
     ``backend``: ``"rvv"`` (vector tile / Saturn) or ``"scalar"`` (scalar tile). The
@@ -590,7 +610,8 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
             f"n_harts={n_harts} requires backend='rvv' (got {backend!r})")
     if iters < 1:
         raise ZephyrModelError(f"iters must be >= 1, got {iters}")
-    cflags = cflags_override or _cflags(backend)
+    # A VLEN the build assumes must match the one it will run on -- see march_with_vlen.
+    cflags = march_with_vlen(cflags_override or _cflags(backend), vlen)
 
     gcc = _spike.gcc_path()
     ld = gcc.with_name("riscv64-unknown-elf-ld")
@@ -716,9 +737,35 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
             "ram_bytes": ram_bytes, **info}
 
 
-def run_on_spike(elf: str | Path, *, harts: int = 2, isa: str = "rv64gcv_zfh_zvfh",
+#: Base ISA string for a whole-model RVV spike run. VLEN is NOT part of it — see `spike_isa`.
+DEFAULT_SPIKE_ISA = "rv64gcv_zfh_zvfh"
+
+
+def spike_isa(vlen: int | None = None, base: str = DEFAULT_SPIKE_ISA) -> str:
+    """``base`` ISA string with an explicit VLEN, expressed as the ``zvl<N>b`` extension.
+
+    spike takes its vector length from the ISA string, and with no ``zvl`` extension it uses the V
+    minimum of 128. That is a silent trap for a board whose vector unit is wider: the image is
+    validated at a vector length the hardware does not have, and a fixed-width schedule compiled for
+    one VLEN maps to a different LMUL on the other (the measured K1 case -- ``-march=rv64gcv`` assumes
+    128 while the board is 256, which doubles LMUL and spills). Pinning it here lets a run state the
+    vector length it actually exercised. ``None`` keeps spike's default.
+    """
+    if vlen is None:
+        return base
+    if vlen < 128 or vlen & (vlen - 1):
+        raise ZephyrModelError(f"VLEN must be a power of two >= 128, got {vlen}")
+    return f"{base}_zvl{int(vlen)}b"
+
+
+def run_on_spike(elf: str | Path, *, harts: int = 2, isa: str = DEFAULT_SPIKE_ISA,
+                 vlen: int | None = None,
                  mem_bytes: int = 1 << 31, timeout: int = 3600) -> dict[str, Any]:
-    """Run the Zephyr ELF on spike ``-pN``; parse the OUT/ARGMAX/METRIC/DONE markers."""
+    """Run the Zephyr ELF on spike ``-pN``; parse the OUT/ARGMAX/METRIC/DONE markers.
+
+    ``vlen`` pins the simulated vector length (via :func:`spike_isa`); None = spike's default 128.
+    """
+    isa = spike_isa(vlen, isa) if vlen is not None else isa
     cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}",
            f"-m{hex(0x80000000)}:{hex(mem_bytes)}", str(elf)]
     proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
@@ -1006,7 +1053,8 @@ def build_and_run(model_dir: str | Path, work: str | Path, *, board: str = "spik
                   omp_threads: int | None = None,
                   rvv_schedule: str | None = None,
                   cflags_override: list[str] | None = None,
-                  features: "frozenset[str] | None" = None) -> dict[str, Any]:
+                  features: "frozenset[str] | None" = None,
+                  vlen: int | None = None) -> dict[str, Any]:
     """Build the Zephyr image and (for spike) run + gate. ``references`` (a ``{tier: array}``
     dict, e.g. ``{"w8a8": ..., "fp32": ...}``) drives the multi-tier int8 gate; a single
     ``reference`` array keeps the legacy strict fp32 gate.
@@ -1022,12 +1070,16 @@ def build_and_run(model_dir: str | Path, work: str | Path, *, board: str = "spik
                   arena_mb=arena_mb, cpus=max(harts, rvv_hart + 1), int8_compute=int8_compute,
                   n_harts=n_harts, iters=iters, warmup=warmup, omp_threads=omp_threads,
                   rvv_schedule=rvv_schedule,
-                  cflags_override=cflags_override, features=features)
+                  cflags_override=cflags_override, features=features, vlen=vlen)
     result: dict[str, Any] = {"elf": str(b["elf"]), "app_dir": str(b["app_dir"]),
-                              "ram_bytes": b["ram_bytes"], "n_harts": n_harts, "iters": iters}
+                              "ram_bytes": b["ram_bytes"], "n_harts": n_harts, "iters": iters,
+                              # the vector length the build AND the run agreed on (None = spike's
+                              # default 128); recorded so a result cannot be read as another VLEN's
+                              "vlen": vlen}
     if board != "spike_riscv64":
         return result  # FireSim path runs the elf separately (firesim_runner / queue)
-    run = run_on_spike(b["elf"], harts=harts, mem_bytes=b["ram_bytes"], timeout=timeout)
+    run = run_on_spike(b["elf"], harts=harts, mem_bytes=b["ram_bytes"], timeout=timeout,
+                       vlen=vlen)
     result.update(run)
     refs = references if references is not None else reference
     if refs is not None:
