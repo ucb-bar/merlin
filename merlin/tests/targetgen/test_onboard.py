@@ -76,7 +76,11 @@ def test_generated_oot_target_resolves_via_search_path_outside_the_answer_surfac
 
 # --------------------------------------------------------------------------- Delta 2: onboard flow
 @pytest.mark.parametrize("target,kind,endpoint,mesh_key", [
-    ("radiance", "simt", "inline_asm_insn", None),
+    # radiance SIMT (Muon) is a self-hosted 64-bit re-encoded ISA — its whole instruction stream is emitted
+    # as words (like atlas' kernel.S), NOT stock RISC-V .insn on a stock substrate (proven: stock LLVM
+    # cannot emit a valid Muon instruction; the core re-encodes every op to 64 bits). So endpoint_kind is
+    # external_backend, derived from facts — not inline_asm_insn.
+    ("radiance", "simt", "external_backend", None),
     ("atlas", "systolic", "external_backend", "rows"),   # self-hosted ISA (kernel.S), not RoCC .insn
     ("mx_gemmini", "systolic", "inline_asm_insn", "rows"),
 ])
