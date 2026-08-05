@@ -183,3 +183,18 @@ def test_the_two_compilers_do_not_share_flag_sets():
     src = inspect.getsource(spike_model.build)
     assert "clang_cflags" in src and "gcc_cflags" in src
     assert "*clang_cflags" in src and "*gcc_cflags" in src
+
+
+def test_the_hart_count_reaches_the_block_table():
+    """A plumbing test, because this exact wire was missing: prepare_for_lowering accepted `harts`
+    and then called block_table without it, so every multicore build silently blocked for the
+    UNSPLIT extents and died with a masked parallel dim. The signature alone proves nothing."""
+    import inspect
+
+    from merlin.runtime.backends import zephyr_model as zm
+
+    src = inspect.getsource(zm.prepare_for_lowering)
+    assert "harts=harts" in src, "block_table must receive the hart count, not just the signature"
+    assert "harts" in inspect.signature(zm.prepare_for_lowering).parameters
+    # ...and build_app must pass the image's hart count down, not the default.
+    assert "harts=n_harts" in inspect.getsource(zm.build_app)

@@ -348,7 +348,7 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     from ...llvmlower.impr_features import PEROP_BLOCK_NAME, ensure_perop_block
     if PEROP_BLOCK_NAME in features:
         from ...kernels.shapes import contraction_shapes as _cshapes
-        table = _pb.block_table(_cshapes(prepared), nr_cap=_PEROP_NR_CAP)
+        table = _pb.block_table(_cshapes(prepared), nr_cap=_PEROP_NR_CAP, harts=harts)
         if table:
             prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
             features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}
