@@ -98,7 +98,7 @@ def _fixed_format_encoding_block(te) -> str:
     return "\n".join(out)
 
 
-def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn") -> str:
+def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn", inst_width: int = 32) -> str:
     """A CONCRETE, derived one-liner describing what the 4th-entrypoint artifact must be — derived from
     the fact bundle + the codegen ENDPOINT (never a gemmini literal). A RoCC ``inline_asm_insn`` target
     emits a host `.insn` word stream encoding the discovered opcodes; a self-hosted-ISA ``external_backend``
@@ -118,8 +118,8 @@ def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn") -> str:
     # is what stops it inventing opcodes (the AW2 hallucination finding).
     if endpoint == "external_backend":
         return ("a `kernel.S` of `.word`/`.insn` directives encoding the target's OWN instructions "
-                "(compute each 32-bit encoding from the opcode/funct/field layout in the ISA definition "
-                "shipped in your bundle; the bundled example kernel shows the required instruction "
+                f"(compute each {inst_width}-bit encoding from the opcode/funct/field layout in the ISA "
+                "definition shipped in your bundle; the bundled example kernel shows the required instruction "
                 "sequence) that STOCK LLVM (`llvm-mc -triple=riscv64`) assembles into IMEM words — emit "
                 "assembler text ONLY: NOT an MLIR module, NOT `llvm.inline_asm`, NOT the model's mnemonic "
                 "assembler syntax (stock LLVM cannot assemble the target's custom mnemonics)" + _mesh)
@@ -298,6 +298,12 @@ def prompt_slots(te, manifest) -> dict:
     from .rtl.mlc_bridge import render_fact_bundle_for, fact_bundle_for
     target = te.target
     bundle = fact_bundle_for(target)                  # KIND-routed; discovered ONCE; feeds brief + emit framing
+    _iw = 32                                           # instruction width for the emit framing — DERIVED, not literal
+    try:
+        from .isa_model import isa_model_for_target
+        _iw = isa_model_for_target(target).inst_width or 32
+    except Exception:  # noqa: BLE001 — no derivable model -> keep the 32-bit default phrasing
+        pass
     return {
         "target": target,
         "tool_stem": f"{target}-opt",                 # not "gemmini-opt"
@@ -311,7 +317,7 @@ def prompt_slots(te, manifest) -> dict:
         # The grading model the runner will actually apply — float-tolerance vs exact-integer — classified
         # from the corpus goldens (never a per-target branch), so the agent is not told the wrong contract.
         "grading_model": _GRADE_FLOAT if _corpus_uses_independent_float_goldens(te) else _GRADE_INTEGER,
-        "emit_framing": _emit_framing(bundle, manifest.endpoint_kind),  # endpoint-aware, derived from the bundle
+        "emit_framing": _emit_framing(bundle, manifest.endpoint_kind, inst_width=_iw),  # endpoint+width derived
         "isa_facts": render_fact_bundle_for(target, bundle),  # KIND-routed provenance-tagged ISA brief (agent info)
         "corpus_rel": te.corpus_rel(),                # the primary corpus (isa/), repo-root-relative
         "corpus_families": te.corpus_siblings(),      # globbed, not a hardcoded ISA/layers/model_slices list
