@@ -94,6 +94,41 @@ def _smem_evidence(gs: Path) -> str | None:
     return f"smem mem : UInt<{width.strip()}>[{dims[0]}] [{dims[1]}]"
 
 
+def _isa_block() -> dict[str, Any]:
+    """The ISA facts, DERIVED from the mlc ``isa_encoding`` fact (the RTL-decoder field layout + opcode
+    table + address-space macros) rather than a hand-copied list. Encoding width, the src/dst operand
+    counts, predication, the opcode classes, and the address spaces all come from the derived fact; the
+    intrinsic-helper names stay from the HW's own headers. Falls back to the ISA-doc values when the fact is
+    not yet derived (mlc/cache absent) — an honest degrade, marked in the evidence."""
+    intrinsics = {"smem": ["store_shared", "load32_shared", "load16_shared", "store64_shared"],
+                  "sync": ["mu_barrier", "mu_fence_smem", "mu_fence"],
+                  "simt": ["vx_thread_id", "vx_warp_id", "vx_core_id", "vx_split", "vx_join", "vx_tmc"]}
+    try:
+        from . import mlc_bridge
+        fact = mlc_bridge.isa_encoding_for("muon")
+    except Exception:  # noqa: BLE001 — mlc/cache absent
+        fact = None
+    if fact and fact.get("fields"):
+        fields = fact.get("fields", {})
+        return {
+            "encoding_bits": fact.get("inst_width"),
+            "max_src_operands": sum(1 for k in fields if k.startswith("rs")),
+            "max_dst_operands": sum(1 for k in fields if k == "rd"),
+            "predicated_execution": "pred" in fields,
+            "instruction_classes": sorted(fact.get("opcodes", {})),
+            "address_spaces": fact.get("address_spaces", {}),
+            "intrinsics": intrinsics,
+            "evidence": "DERIVED from mlc isa_encoding fact (muon_isa.json): RTL-decoder field layout + "
+                        "opcode table + address-space macros; intrinsic names from lib/include/*intrinsics.h",
+        }
+    return {
+        "encoding_bits": 64, "max_src_operands": 4, "max_dst_operands": 1, "predicated_execution": True,
+        "instruction_classes": [], "intrinsics": intrinsics,
+        "evidence": "isa_encoding fact not yet derived (mlc absent); ISA-doc fallback "
+                    "(isa.md 64-bit encoding, 4 src/1 dst, predication)",
+    }
+
+
 def build_facts() -> dict[str, Any]:
     """Merge cyclotron-config geometry + RTL hierarchy/FIRRTL evidence + ISA-doc facts -> facts dict."""
     gs = _gen_src_dir()
@@ -145,18 +180,7 @@ def build_facts() -> dict[str, Any]:
                 "evidence": f"{cores} cores x {lanes} lanes x 2 flop/FMA = {peak_flops_cycle} flop/cycle "
                             f"@ {CLOCK_HZ/1e6:g} MHz = {peak_gflops:g} GFLOP/s",
             },
-            "isa": {
-                "encoding_bits": 64, "max_src_operands": 4, "max_dst_operands": 1,
-                "predicated_execution": True,
-                "instruction_classes": ["GMEM_LD", "GMEM_ST", "SMEM_LD", "SMEM_ST", "FMA",
-                                        "BARRIER", "FENCE_SMEM", "TMC", "SPLIT", "JOIN", "WSPAWN"],
-                "intrinsics": {"smem": ["store_shared", "load32_shared", "load16_shared", "store64_shared"],
-                               "sync": ["mu_barrier", "mu_fence_smem", "mu_fence"],
-                               "simt": ["vx_thread_id", "vx_warp_id", "vx_core_id", "vx_split", "vx_join",
-                                        "vx_tmc"]},
-                "evidence": "generators/radiance/docs/isa.md (64-bit encoding, 4 src/1 dst, predication) "
-                            "+ radiance-kernels lib/include/{mu_intrinsics.h,vx_intrinsics.h}",
-            },
+            "isa": _isa_block(),
         },
         "rtl_hierarchy_counts": hier,
     }
