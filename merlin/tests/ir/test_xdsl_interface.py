@@ -135,3 +135,34 @@ def test_use_after_evict_is_flagged():
 
 def test_clean_module_passes_evict_analysis():
     assert analyses.check_no_use_after_evict(i.build_example(2)) == []
+
+
+def _parse_type_str(ty: str) -> str:
+    """Parse a type string through xDSL's builtin parser and print it back."""
+    import io
+
+    from xdsl.context import Context
+    from xdsl.dialects.builtin import Builtin
+    from xdsl.parser import Parser
+    from xdsl.printer import Printer
+
+    ctx = Context()
+    ctx.load_dialect(Builtin)
+    parsed = Parser(ctx, ty).parse_type()
+    s = io.StringIO()
+    Printer(stream=s).print_attribute(parsed)
+    return s.getvalue()
+
+
+@pytest.mark.parametrize("elem", ["f8E4M3FN", "f8E5M2"])
+def test_fp8_element_types_parse_and_roundtrip(elem):
+    """fp8 capsule interfaces spell tensors with MLIR's 8-bit float names; the pinned
+    xDSL builtin parser lacks them, so merlin's kit registers them (import side effect
+    of importing the interface dialect). Parsing must succeed and print back exactly."""
+    assert _parse_type_str(f"tensor<16x32x{elem}>") == f"tensor<16x32x{elem}>"
+
+
+@pytest.mark.parametrize("elem", ["i8", "i32", "f32", "bf16", "f16"])
+def test_non_fp8_element_types_still_parse(elem):
+    """The fp8 parser hook must not regress the existing integer/float element types."""
+    assert _parse_type_str(f"tensor<8x8x{elem}>") == f"tensor<8x8x{elem}>"

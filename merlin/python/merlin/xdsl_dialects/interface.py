@@ -10,6 +10,9 @@ See docs/core_dialects.md and docs/dialects.md.
 from __future__ import annotations
 
 from ._common import HAS_XDSL, Visibility
+# Importing the fp8 kit installs the parser hook so fp8 capsule interfaces
+# (tensor<...xf8E4M3FN> / f8E5M2) parse without the agent registering the type.
+from . import fp8 as _fp8  # noqa: F401 - imported for its registration side effect
 
 DIALECT_NAME = "interface"
 OPS = ["resident_pack", "resident_evict", "matmul", "accumulator.create", "accumulate",
