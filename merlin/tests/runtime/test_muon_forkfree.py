@@ -143,3 +143,42 @@ def test_forkfree_float_path_uses_derived_zfinx_march_and_is_correct(tmp_path):
     vlines = [l for l in console.splitlines() if l.startswith("V ")]
     assert vlines == ["V 4.000", "V 7.000"], f"wrong float result: {vlines}\n{console[-300:]}"
     assert "DONE" in console
+
+
+def test_real_fp32_capsule_grades_forkfree_against_its_golden(tmp_path):
+    """The capstone: a REAL corpus capsule (R0_gemm_fp32, a 16x16 fp32 GEMM) grades FORK-FREE end to end.
+    The runner-owned harness embeds the capsule's canonical operands, runs a whole-computation kernel
+    function through the fork-free driver (stock LLVM + derived zfinx transcode + fork-free link), and the
+    cyclotron output matches the independent golden within the capsule's float tolerance -- closing the gap
+    where live fork-free coverage was ~0. Gated on stock LLVM + the derived fact + cyclotron."""
+    import yaml
+    import numpy as np
+    from merlin.common.paths import repo_root
+    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.runtime.backends import muon_harness as MH
+    if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
+        pytest.skip("stock LLVM / derived fact / cyclotron not all available")
+    gfile = repo_root() / "merlin/contract/capsules/radiance/isa/R0_gemm_fp32/golden.yaml"
+    if not gfile.is_file():
+        pytest.skip("R0_gemm_fp32 capsule not present")
+    g = yaml.safe_load(gfile.read_text())
+    ins = g["oracle_provenance"]["inputs"]
+    y_gold = np.array(g["outputs"]["Y0"], dtype=np.float32)
+    # a whole-computation reference kernel FUNCTION (the shape the emit contract asks the agent for):
+    # Y0 = A0 @ W, row-major 16x16. arg order = [weight] ++ [lhs] ++ [out].
+    kfn = ("void radiance_kernel(float* W, float* A0, float* Y0){"
+           "for(int i=0;i<16;i++)for(int j=0;j<16;j++){float a=0.0f;"
+           "for(int k=0;k<16;k++)a+=A0[i*16+k]*W[k*16+j];Y0[i*16+j]=a;}}")
+    prog = MH.build_program(
+        kfn,
+        [MH.TensorArg("W", 16, 16, ins["W"]["decoded"], "f32"),
+         MH.TensorArg("A0", 16, 16, ins["A0"]["decoded"], "f32")],
+        [MH.TensorArg("Y0", 16, 16, [0.0] * 256, "f32")],
+        kernel_symbol="radiance_kernel")
+    elf = muon.compile_kernel_forkfree(prog, tmp_path, target="radiance")
+    console, cycles, _ = muon.run_elf(str(elf), simulator="cyclotron", timeout=300)
+    outputs, _ = muon.parse_output(console, cycles)
+    y = np.array(outputs["Y0"], dtype=np.float32)
+    assert y.shape == (16, 16)
+    max_err = float(np.max(np.abs(y - y_gold)))
+    assert max_err <= 0.03125, f"fork-free GEMM diverges from the golden: max abs err {max_err}"
