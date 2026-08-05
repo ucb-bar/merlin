@@ -66,7 +66,36 @@ def _isa_spec_block(te) -> str:
                   "  your emitted encoding using the exact field layout the ISA definition specifies; the",
                   "  legal-opcode values in the ISA facts below are DECODE GATES, not the instruction",
                   "  semantics — take semantics + field packing from these files, never from the value list."]
-    return "\n".join(lines) + "\n\n"
+    lines.append(_fixed_format_encoding_block(te))
+    return "\n".join(l for l in lines if l) + "\n\n"
+
+
+def _fixed_format_encoding_block(te) -> str:
+    """For a FIXED-FORMAT wide-word target (a SIMT core whose whole ISA is one field layout selected by an
+    opcode field), render the RTL-DERIVED encoding — the exact bit layout, opcode table, and address spaces
+    the compiler must emit — so the agent packs correct words instead of inventing a layout. Empty for a
+    variable-format self-hosted ISA (that grounding is the shipped ISA definition above)."""
+    try:
+        from .isa_model import isa_model_for_target
+        m = isa_model_for_target(getattr(te, "target", ""))
+    except Exception:  # noqa: BLE001
+        return ""
+    if not m.is_fixed_format():
+        return ""
+    fl = sorted(m.field_layout.items(), key=lambda kv: -kv[1][0])
+    fields = ", ".join(f"{n}[{hi}:{lo}]" for n, (hi, lo) in fl)
+    ops = ", ".join(sorted(m.opcode_table))
+    out = [f"\n**Derived {m.inst_width}-bit instruction encoding (from this target's RTL decoder — the exact",
+           "layout the hardware decodes; emit words that match it):**",
+           f"- fields: {fields}",
+           f"- opcodes: {ops}"]
+    if m.address_spaces:
+        sp = ", ".join(f"{k}={v}" for k, v in sorted(m.address_spaces.items()))
+        out.append(f"- address spaces (field `{m.address_space_field}`): {sp} — a memory op's space is set "
+                   "in that field; a plain load defaults to the first space, so a scratchpad access MUST set it.")
+    out.append("The `disasm`/`lint` tools decode your emitted words against exactly this layout — run them "
+               "before every `self_check`.")
+    return "\n".join(out)
 
 
 def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn") -> str:
