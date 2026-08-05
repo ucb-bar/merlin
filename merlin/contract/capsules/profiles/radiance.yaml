@@ -46,3 +46,21 @@ capsules:
    source_role: handauthored_compiler_test,
    source_reference: 'contained MX PE tile (mxfp8 e4m3, E8M0 block scale, bf16 accumulate) via simt_cluster.mx_pe',
    label: public, modes: {}}
+# Hidden holdout set (label: hidden) — parity with atlas/gemmini. These are UNSEEN SIMT GEMM shapes graded
+# only at run end; their goldens are masked from the agent by the sandbox, so an agent that hardcodes a
+# public answer cannot generalize to them. For an external_backend/SIMT target the executing cyclotron
+# oracle + these hidden shapes ARE the anti-cheese (a host-computed fake produces wrong output on unseen
+# inputs) — the trace-gate anti-cheese of a RoCC target has no analog here and is not applicable.
+- {cat: hidden, name: RH0_gemm_fp16_hidden, kind: isa, op: matmul, operand_dtype: fp16,
+   M: 32, K: 16, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: hidden SIMT fp16 GEMM (unseen M=32 shape), label: hidden, modes: {}}
+- {cat: hidden, name: RH1_gemm_bf16_kaccum_hidden, kind: isa, op: matmul, operand_dtype: bf16,
+   M: 16, K: 48, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: hidden SIMT bf16 GEMM (unseen K=48 accumulate), label: hidden,
+   modes: {k_accumulate: true}}
+- {cat: hidden, name: RH2_gemm_fp32_hidden, kind: isa, op: matmul, operand_dtype: f32,
+   M: 16, K: 16, N: 32, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: hidden SIMT fp32 GEMM (unseen N=32 shape), label: hidden, modes: {}}
