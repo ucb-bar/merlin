@@ -554,8 +554,14 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str)
          "2. Base every ISA / mesh / datapath / encoding decision on the **Target ISA facts** above + the",
          "   capability contract under `merlin/contract/` — never guess or hardcode; derive any fact not given.",
          "3. After EVERY build, run `python3 agent_selfcheck.py --submission submission --capsules all` and",
-         "   iterate until all required capsules pass — a submission you did not self-check is not acceptable."]
-    n = 4
+         "   iterate until all required capsules pass — a submission you did not self-check is not acceptable.",
+         "4. GRADEABLE-FLOOR FIRST (do this in your FIRST minutes, before deep encoder / ISA / parse work):",
+         "   write `submission/manifest.yaml` declaring your entrypoints + a minimal CLI that ANSWERS all of",
+         "   them (even trivially / with empty output) so `agent_selfcheck` can invoke your package and the",
+         "   grader reaches the capsules. A round that ends WITHOUT a valid manifest scores 0 no matter how",
+         "   much compiler you built — make the package structurally gradeable EARLY, THEN iterate on real",
+         "   codegen. If you run low on time, a graded-but-imperfect package beats an ungradeable one."]
+    n = 5
     if has_cpp and not has_xdsl:                                # arm-2
         L.append(f"{n}. Scaffold the package with the granted C++ OOT generators "
                  "(`targetgen/generate/{mlir_scaffold,llvm_plan,target_repo}`), not ad-hoc hand files.")
