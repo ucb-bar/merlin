@@ -301,7 +301,8 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
                  "console_provenance": ship.get("console_provenance", {})}
 
 
-def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None):
+def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
+                     backend: str = "rvv"):
     """Build the board image and return its facts, without running it anywhere.
 
     The honest use for this is when the numbers are already established on better evidence than a
@@ -327,6 +328,16 @@ def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None)
                 "build_hash": b.get("build_hash", ""), "console": b.get("console", CONSOLE_HTIF),
                 "chip_freq_hz": b.get("chip_freq_hz"),
                 "console_provenance": b.get("console_provenance", {})}
+    if backend != "rvv":
+        # A scalar image gets none of the vector machinery: no RVV package, no per-op register
+        # blocking, no -march vector width. Passing them would be meaningless at best and would
+        # reintroduce vector instructions at worst -- the whole point is an image that runs on a hart
+        # with no vector unit.
+        b = zm.build_app(bundle, work, board=brd.name, backend=backend, rvv_hart=0,
+                         cpus=max(harts, brd.harts), n_harts=harts, int8_compute=True,
+                         sdk_dir=sdk_dir)
+        return {"elf": b["elf"], "ram_bytes": b["ram_bytes"],
+                "build_hash": b.get("build_hash", ""), "backend": backend}
     b = zm.build_app(bundle, work, board=brd.name, backend="rvv", rvv_hart=0,
                      cpus=max(harts, brd.harts), n_harts=harts, int8_compute=True,
                      rvv_schedule=pkg.schedule_text,
@@ -363,6 +374,11 @@ def main(argv=None) -> int:
     ap.add_argument("--dram-mb", type=int, default=None, help="the board's REAL DRAM")
     ap.add_argument("--vlen", type=int, default=None, help="the board's REAL vector length")
     ap.add_argument("--dtype", default="int8")
+    ap.add_argument("--scalar-harts", default="",
+                    help="comma-separated hart counts to ALSO build as SCALAR images (no vector "
+                         "instructions). The point is a heterogeneous SoC: a chip may bring up more "
+                         "cores than it attaches vector units to, and a scalar image is the only way "
+                         "to use the extra ones. Slower per core, but it is the whole machine.")
     ap.add_argument("--timeout", type=int, default=14400)
     ap.add_argument("--no-spike-models", default="",
                     help="comma-separated models to build+audit WITHOUT simulating, while the rest "
@@ -397,6 +413,11 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 2
     hart_list = [int(h) for h in a.harts.split(",") if h.strip()]
+    scalar_hart_list = [int(h) for h in a.scalar_harts.split(",") if h.strip()]
+    if any(h > brd.harts for h in scalar_hart_list):
+        print(f"[make_delivery] refusing a scalar image over more than {brd.harts} harts",
+              file=sys.stderr)
+        return 2
     if max(hart_list) > brd.harts:
         print(f"[make_delivery] refusing {max(hart_list)} harts: {brd.name} has {brd.harts}",
               file=sys.stderr)
@@ -438,25 +459,37 @@ def main(argv=None) -> int:
                 problems.append(f"{model} h{harts}: baremetal multicore not implemented "
                                 f"(hart 1 waits in wfi; their thread-lib dispatches it)")
                 continue
-            todo.append((model, bundle, harts))
+            todo.append((model, bundle, harts, "rvv"))
+        # SCALAR images, when asked for. Their reason to exist is a heterogeneous SoC: the vector
+        # units may sit on fewer harts than the chip brings up, and a scalar image is the only way
+        # to put the remaining cores to work.
+        for harts in scalar_hart_list:
+            if brd.flow == boards.FLOW_BAREMETAL and harts != 1:
+                continue
+            todo.append((model, bundle, harts, "scalar"))
 
     def _one(item):
-        model, bundle, harts = item
-        work = Path(tempfile.mkdtemp(prefix=f"delivery_{model}_h{harts}_"))
-        if a.no_spike or model in no_spike_models:
-            print(f"  [{model} h{harts}] building (no simulation) in {work}", flush=True)
-            board_build = build_board_only(bundle, brd, harts, work=work, sdk_dir=a.sdk_dir)
-            print(f"  [{model} h{harts}] built: {board_build['ram_bytes'] // 2**20} MB region, "
+        model, bundle, harts, backend = item
+        tag = f"{model} h{harts}" + ("" if backend == "rvv" else f" {backend}")
+        work = Path(tempfile.mkdtemp(prefix=f"delivery_{model}_{backend}_h{harts}_"))
+        # A scalar image has no vector gate to run and no RVV package to apply; it is built and
+        # audited, never simulated, and the package says so rather than implying a gate.
+        if a.no_spike or model in no_spike_models or backend != "rvv":
+            print(f"  [{tag}] building (no simulation) in {work}", flush=True)
+            board_build = build_board_only(bundle, brd, harts, work=work, sdk_dir=a.sdk_dir,
+                                           backend=backend)
+            print(f"  [{tag}] built: {board_build['ram_bytes'] // 2**20} MB region, "
                   f"{board_build['build_hash']}", flush=True)
-            return {"console": "", "metrics": {}, "outputs": None}, board_build
-        print(f"  [{model} h{harts}] building + simulating in {work}", flush=True)
+            return {"console": "", "metrics": {}, "outputs": None, "backend": backend}, \
+                board_build
+        print(f"  [{tag}] building + simulating in {work}", flush=True)
         if brd.flow == boards.FLOW_BAREMETAL:
             out = build_baremetal(bundle, brd, work=work, timeout=a.timeout, sdk_dir=a.sdk_dir)
         else:
             out = build_one(bundle, brd, harts, vlen=brd.vlen, work=work, timeout=a.timeout,
                             sdk_dir=a.sdk_dir)
         cyc = out[0]["metrics"].get("cycles")
-        print(f"  [{model} h{harts}] done: {cyc:,} cycles, gate={out[0].get('tier_ok')}", flush=True)
+        print(f"  [{tag}] done: {cyc:,} cycles, gate={out[0].get('tier_ok')}", flush=True)
         return out
 
     # CONCURRENTLY, because the wall clock here is spike, not us: each image is one single-threaded
@@ -475,7 +508,7 @@ def main(argv=None) -> int:
             try:
                 done[item] = fut.result()
             except Exception as exc:                                        # noqa: BLE001
-                msg = f"{item[0]} h{item[2]}: {type(exc).__name__}: {str(exc).splitlines()[0][:200]}"
+                msg = f"{item[0]} h{item[2]} {item[3]}: {type(exc).__name__}: {str(exc).splitlines()[0][:200]}"
                 problems.append(msg)
                 # Say it NOW: a failure held until the final summary reads as an image still building,
                 # and the rest of the set can take tens of minutes.
@@ -483,25 +516,34 @@ def main(argv=None) -> int:
 
     for model in models:
         outputs = {}
-        for harts in hart_list:
+        for harts, backend in ([(h, "rvv") for h in hart_list]
+                               + [(h, "scalar") for h in scalar_hart_list]):
             got = done.get((model, repo_root() / f"out/artifacts/recaptures/{model}_{a.dtype}_full",
-                            harts))
+                            harts, backend))
             if got is None:
                 continue
             res, board_build = got
-            elf_name = f"{model}_{a.dtype}_h{harts}_{brd.name}.elf"
+            # Scalar images carry `_scalar` so a directory listing cannot confuse the two: they are
+            # different instruction sets for different harts, not two builds of one thing.
+            suffix = "" if backend == "rvv" else f"_{backend}"
+            elf_name = f"{model}_{a.dtype}_h{harts}{suffix}_{brd.name}.elf"
             shutil.copy2(board_build["elf"], dest / elf_name)
+            # require_vector is the whole point of a scalar image being scalar: demanding vector
+            # instructions there would fail a correct build, and NOT checking it on a vector build
+            # would let a silently-scalar image ship as if it had been vectorized.
             rep = elf_audit.audit(dest / elf_name, brd,
-                                  ram_bytes=board_build["ram_bytes"])
+                                  ram_bytes=board_build["ram_bytes"],
+                                  require_vector=(backend == "rvv"))
             audits[elf_name] = rep.to_dict()
             if not rep.ok:
                 problems += [f"{elf_name}: {p}" for p in rep.problems]
             if res["console"]:
-                (dest / f"{model}_h{harts}.expected_console.txt").write_text(res["console"])
+                (dest / f"{model}_h{harts}{suffix}.expected_console.txt").write_text(res["console"])
             if res["outputs"] is not None:
                 outputs[harts] = res["outputs"]
             binaries.append({
                 "model": model, "elf": elf_name, "harts": harts, "dtype": a.dtype,
+                "backend": backend,
                 "build_hash": board_build.get("build_hash", ""),
                 "ram_bytes": board_build["ram_bytes"],
                 "spike_cycles": res["metrics"].get("cycles"),
@@ -653,6 +695,19 @@ def _provenance(no_spike: bool, no_spike_models: set) -> str:
     return spike
 
 
+def _upload_note(seconds) -> str:
+    """Upload time, flagged when it exceeds a typical harness timeout.
+
+    Not cosmetic: a 10-minute timeout is a common default, and an image whose UPLOAD alone takes longer
+    is reported as a failure that no rebuild can fix. Measured: a 120 MB image needs ~24 minutes over a
+    921600-baud TSI link, because the loader transmits MemSiz, not file size."""
+    if seconds is None:
+        return "n/a"
+    mins = seconds / 60.0
+    flag = "  **raise your timeout**" if seconds > 600 else ""
+    return f"{mins:.0f} min{flag}"
+
+
 def _verdict(b: dict) -> str:
     """What we can honestly say about one binary. `not simulated` is a distinct answer from a gate
     that ran and did not pass — conflating them would let a skipped check read as a soft failure."""
@@ -702,7 +757,8 @@ def _readme(brd, manifest: dict) -> str:
     hart_counts = sorted({b["harts"] for b in manifest["binaries"]})
     rows = "\n".join(
         f"| `{b['elf']}` | {b['model']} | {b['harts']} | "
-        f"{b['ram_bytes'] // 2**20} MB | {b['upload_estimate_s']}s | "
+        f"{'RVV' if b.get('backend', 'rvv') == 'rvv' else 'scalar'} | "
+        f"{b['ram_bytes'] // 2**20} MB | {_upload_note(b['upload_estimate_s'])} | "
         f"{_verdict(b)} |"
         for b in manifest["binaries"])
     statuses = "\n".join(f"- **{m}** — {STATUS.get(m, 'no status recorded')}"
@@ -769,8 +825,14 @@ different SoC, different frequency.
         firesim_doc = ""
     simulated = any(b.get("spike_cycles") is not None for b in manifest["binaries"])
     sim_line = ("""\
-- Ran the identical image on spike at **%d-bit** vectors, and gated the output against the W8A8
-  reference.""" % (brd.vlen or 128) if simulated else """\
+- Ran the image on spike at **%d-bit** vectors and gated the output against the W8A8 reference. That
+  simulated image differs from the one you have in exactly one way: spike provides a debug host, so it
+  was linked with the host-assisted console instead of your UART. Both share a `build_hash` — a digest
+  of the lowered model object plus the weights — so the computation is byte-for-byte the same, and the
+  packager refuses to ship the pair if those hashes disagree. Two consequences for the log you send
+  back: your run prints two extra `METRIC` lines (`console`, `chip_freq_hz`) that the reference does
+  not, and `METRIC cycles` will differ because it is a different chip. Grading reads the `OUT` line, so
+  neither affects PASS/FAIL.""" % (brd.vlen or 128) if simulated else """\
 - **Did NOT run these exact binaries through a functional simulator.** The lowering they were built
   from is validated on stronger evidence — the same models, same schedule, executing our own Saturn
   RTL on an FPGA, bit-exact against the W8A8 reference (see above). What is specific to these

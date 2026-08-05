@@ -327,3 +327,60 @@ def test_kodiak_records_the_vector_width_its_owner_confirmed():
     area, so it bounds the truth from above at best. Building for 128 on a 512-bit unit is the
     documented K1 trap -- a lower LMUL leaving most of the datapath idle."""
     assert boards.board("chipyard_kodiak").vlen == 512
+
+
+def test_scalar_multicore_is_supported_so_a_non_vector_hart_is_reachable():
+    """A heterogeneous SoC may bring up more cores than it attaches vector units to, and a scalar
+    image is the ONLY way to use the extra ones. This used to be refused outright on the grounds that
+    the multicore lowering layers its forall under the RVV schedule -- true, but the scalar path has
+    its own OpenMP route (convert-linalg-to-parallel-loops + convert-scf-to-openmp), so it only needed
+    routing to. Measured on a 3-hart scalar image: 272 fork_call sites, zero vector instructions."""
+    import inspect
+
+    src = inspect.getsource(zm.build_app)
+    assert "requires backend='rvv'" not in src, "scalar multicore must not be refused"
+    # The two backends reach multicore by different routes; both must be wired.
+    assert 'parallel=(backend != "rvv" and n_harts > 1)' in src
+    assert 'parallel_harts=(n_harts if n_harts > 1' in src
+
+
+def test_an_rvv_image_is_refused_past_the_vector_harts():
+    """Building too far does not fail cleanly: the worker on a scalar hart traps on its first vector
+    instruction and never reaches the barrier, so the image hangs with nothing printed. Measured on a
+    3-core/2-vector-core chip: the 1-hart images passed and every 3-hart image timed out."""
+    import inspect
+
+    src = inspect.getsource(zm.build_app)
+    assert "n_harts > brd.n_vector_harts" in src
+    assert "deadlock" in src, "the error must name the failure mode, not just the limit"
+
+
+def test_which_harts_have_vectors_is_stated_not_assumed():
+    """A count alone means 0..N-1. On a chip whose vector units sit on harts 0 and 2 that assumption
+    deadlocks exactly like building too many harts does, and nothing readable states the mapping --
+    the device tree lists identical cpu@N nodes."""
+    kodiak = boards.board("chipyard_kodiak")
+    assert kodiak.harts == 3 and kodiak.n_vector_harts == 2
+    assert kodiak.hart_ids_for("rvv") == (0, 1)
+    # A scalar image may use every hart; that is the point of having one.
+    assert kodiak.hart_ids_for("scalar") == (0, 1, 2)
+    # Non-contiguous sets are expressible.
+    odd = boards.board("x", harts=3, vector_hart_ids=(0, 2))
+    assert odd.hart_ids_for("rvv") == (0, 2) and odd.n_vector_harts == 2
+    # A homogeneous board keeps the default so its image stays byte-identical.
+    assert boards.board("spike_riscv64").hart_ids_for("rvv") == tuple(range(8))
+
+
+def test_the_hart_list_reaches_the_openmp_shim():
+    """Pinning is where a wrong hart set becomes a deadlock, so the shim must WALK the list rather
+    than count -- and shrink the pool rather than put two workers on one hart, which would serialize
+    silently and report a speed-up that never happened."""
+    from merlin.common.paths import merlin_dir
+
+    import inspect
+
+    src = (merlin_dir() / "runtime/c/libomp_zephyr.c").read_text()
+    assert "MERLIN_OMP_HART_IDS" in src
+    assert "omp_nthreads = i;" in src, "the shim must shrink the pool, not double-pin"
+    assert "MERLIN_OMP_HART_IDS" in inspect.getsource(zm._cmakelists), \
+        "the build must actually emit the list"
