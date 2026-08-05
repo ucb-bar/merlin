@@ -314,6 +314,14 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     subprocess.run([str(objcopy), "-O", "binary", "--only-section=.text", str(obj), str(binf)],
                    capture_output=True)
     words = FixedFormatTranscoder(model).transcode_text(binf.read_bytes())
+    # Self-check the emitted stream with the SAME derived disassembler the agent tooling uses: every word
+    # must decode to a defined opcode. This catches a transcoder regression at BUILD time (cheap) instead
+    # of in a paid oracle run, and enforces the derived tooling on the emit path (fail closed on illegal).
+    from ...targetgen import isa_disasm as _disasm
+    illegal = [i for i, d in enumerate(_disasm.disassemble(model, words)) if d.get("illegal")]
+    if illegal:
+        raise MuonError(f"transcoded kernel has {len(illegal)} undecodable word(s) at index {illegal[:5]}; "
+                        "the derived disassembler rejects the emitted stream (fail closed)")
     ks = work / "kernel_muon.S"
     ks.write_text(emit_kernel_asm(words, model.inst_width))
 
