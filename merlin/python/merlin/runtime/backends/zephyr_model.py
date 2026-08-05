@@ -758,7 +758,8 @@ CONFIG_HEAP_MEM_POOL_SIZE=65536
 
 def _cmakelists(model_archive: Path, rt: Path, abi: Path, cgen: Path,
                 weights_section_ld: Path | None = None, omp: bool = False,
-                n_harts: int = 1, hart_ids: "tuple[int, ...] | None" = None) -> str:
+                n_harts: int = 1, hart_ids: "tuple[int, ...] | None" = None,
+                backend: str = "rvv") -> str:
     # In external-weights mode, a linker snippet places the renamed .merlin_weights
     # section into the WEIGHTS DT memory-region (its own high address). main.c addresses
     # the blob by literal (not its symbol), so --gc-sections would drop the whole
@@ -779,9 +780,15 @@ def _cmakelists(model_archive: Path, rt: Path, abi: Path, cgen: Path,
     if omp:
         omp_debug += (f"target_compile_definitions(app PRIVATE "
                       f"MERLIN_OMP_MAX_THREADS={max(int(n_harts), 1)})\n")
-        # WHICH harts the pool may use, when they are not simply 0..n-1. Passed as an initializer
-        # list; the shim walks it instead of counting. A wrong hart set is a deadlock (a worker on a
-        # hart with no vector unit traps and never reaches the barrier), so it is stated, not assumed.
+        # Whether the pool must stay on vector-capable harts. For a VECTOR image the shim DISCOVERS
+        # which those are at startup (each hart probes its own mstatus.VS writability, which is
+        # hardwired to zero without a vector unit) -- so a heterogeneous SoC needs nobody to tell us
+        # which harts they are, and the image cannot deadlock by fanning out onto a scalar hart. A
+        # SCALAR image sets 0: it may use every hart, which is the point of building one.
+        omp_debug += (f"target_compile_definitions(app PRIVATE "
+                      f"MERLIN_OMP_VECTOR_POOL={1 if backend == 'rvv' else 0})\n")
+        # A descriptor may still PIN the set (`vector_hart_ids`), which the runtime probe overrides
+        # when it is on. Kept for a chip whose probe cannot be trusted, and as documentation.
         if hart_ids is not None:
             ids = ", ".join(str(int(h)) for h in hart_ids)
             omp_debug += (f"target_compile_definitions(app PRIVATE "
@@ -1011,7 +1018,7 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
             "} GROUP_LINK_IN(WEIGHTS)\n")
     (app / "CMakeLists.txt").write_text(
         _cmakelists(archive, rt, abi, cgen, weights_section_ld, omp=(n_harts > 1),
-                    n_harts=n_harts, hart_ids=hart_ids))
+                    n_harts=n_harts, hart_ids=hart_ids, backend=backend))
     # Board overlay. External mode: ram0 = 1 GB (code + arena) and a separate WEIGHTS
     # memory-region holding the blob at EXT_WEIGHTS_BASE. Otherwise: grow ram0 only when
     # the model needs > the stock 256 MB (small models keep the default that boots reliably

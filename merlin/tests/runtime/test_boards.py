@@ -384,3 +384,41 @@ def test_the_hart_list_reaches_the_openmp_shim():
     assert "omp_nthreads = i;" in src, "the shim must shrink the pool, not double-pin"
     assert "MERLIN_OMP_HART_IDS" in inspect.getsource(zm._cmakelists), \
         "the build must actually emit the list"
+
+
+def test_vector_capable_harts_are_discovered_at_runtime_not_assumed():
+    """The image asks the HARDWARE which harts can run vector code, at startup.
+
+    `mstatus.VS` is WARL: writable on a hart that implements V, hardwired to zero on one that does
+    not. So enabling it and reading it back distinguishes them WITHOUT trapping -- which matters,
+    because the obvious probe (run a vector instruction and see if it faults) needs a recoverable
+    trap handler per hart, and an unrecovered fault on a board we cannot attach to is the exact
+    failure being diagnosed.
+
+    This supersedes both the "vector harts are 0..n-1" assumption and the build-time list: a 3-core
+    chip with vector units on 2 harts needs nobody to tell us which 2. Verified on spike at VLEN=512:
+    the image printed `METRIC vector_harts 0 1 2` plus a per-hart width and still gated w8a8/cos 1.0.
+    """
+    from merlin.common.paths import merlin_dir
+
+    src = (merlin_dir() / "runtime/c/libomp_zephyr.c").read_text()
+    assert "omp_hart_has_vector" in src
+    # The non-trapping WARL test, and misa used only to CONFIRM (a core may tie misa to zero, so a
+    # zero there must not veto a hart that VS proved has vector state).
+    assert "csrw mstatus" in src and "misa != 0" in src
+    # vlenb is read only once VS is known live, since reading it with VS=Off traps.
+    assert src.index("csrw mstatus") < src.index("csrr %0, vlenb")
+    # The probe must not be bounded by the requested thread count -- that would only ever look at
+    # the first N harts, reintroducing the assumption it exists to remove.
+    assert "MERLIN_OMP_MAX_HARTS" in src
+    assert "cpu < MERLIN_OMP_MAX_THREADS" not in src
+
+
+def test_a_scalar_image_is_not_confined_to_vector_harts():
+    """A scalar image may use every hart -- that is the only way to reach a core with no vector unit,
+    and on a chip with more cores than vector units it is the difference between using the machine
+    and using part of it."""
+    import inspect
+
+    src = inspect.getsource(zm._cmakelists)
+    assert "MERLIN_OMP_VECTOR_POOL={1 if backend == 'rvv' else 0}" in src
