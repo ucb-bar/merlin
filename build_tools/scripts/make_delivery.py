@@ -791,6 +791,29 @@ Every binary here runs on one hart. We did not ship a multi-hart bare-metal imag
 your second hart goes through your own thread-lib rather than the OpenMP runtime our multicore lowering
 targets, and shipping that untested would waste your bench time. If you want it, that integration is
 ours to do next — say so and we will build against your dispatch.""")
+    # A scalar image is a different ISA for a different set of harts, not a slower build of the same
+    # thing. Someone looking at two files that differ by one word in the name needs that said.
+    scalar_bins = [b for b in manifest["binaries"] if b.get("backend", "rvv") != "rvv"]
+    if scalar_bins:
+        n_vec = brd.n_vector_harts
+        scalar_section = """\
+## The `_scalar` binaries — how to use every core
+
+Your chip brings up **%d** cores but only **%d** of them have a vector unit, so a vector image can only
+use %d. The `_scalar` binaries contain **no vector instructions at all** (we check this before shipping:
+zero `vsetvli`/`vfmacc`/`vle`/`vse` in the image), which means every hart can run them — that is the
+only way to put all %d cores to work.
+
+The trade is real and worth stating: scalar is much slower per core than RVV, so a %d-hart scalar image
+is not automatically faster than a %d-hart vector one. Which wins is an empirical question on your
+silicon, and it is one of the more interesting numbers you could send back. What the scalar image is
+unambiguously good for is a core that would otherwise sit idle.
+
+These are **not** simulated: there is no vector gate to run on them, so they ship built and ELF-audited
+only, and the table says so.
+""" % (brd.harts, n_vec, n_vec, brd.harts, brd.harts, n_vec)
+    else:
+        scalar_section = ""
     fs = manifest.get("firesim_evidence") or {}
     if fs:
         rows_fs = []
@@ -890,8 +913,8 @@ one is a one-line rebuild on our side. In particular we would like to know `vlen
 
 {superseded_doc}## The binaries
 
-| file | model | harts | linked region | est. upload | our verdict |
-|---|---|---|---|---|---|
+| file | model | harts | ISA | linked region | est. upload | our verdict |
+|---|---|---|---|---|---|---|
 {rows}
 
 Upload time is the *memory* size, not the file size — a UART loader transmits `MemSiz`, so a big
@@ -921,6 +944,7 @@ It prints `PASS`/`FAIL` with the cosine and per-element error against the same r
 warns if the log's `build_hash` is not one of ours.
 
 {pair_section}
+{scalar_section}
 
 {firesim_doc}
 ## Status of each model — please read before reporting a number
