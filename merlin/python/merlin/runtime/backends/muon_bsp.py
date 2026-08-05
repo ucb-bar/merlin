@@ -56,14 +56,17 @@ def _custom_slot_opcodes(model) -> dict[int, str]:
     return {int(v): n for n, v in model.opcode_table.items() if n.startswith("CUSTOM")}
 
 
-def _transcode_word(word: int, tx: FixedFormatTranscoder, customs: dict[int, str], model) -> int:
+def _transcode_word(word: int, tx: FixedFormatTranscoder, customs: dict[int, str], model,
+                    override_imm: int | None = None) -> int:
     """Re-map one standard-rv32 word into the target's fixed-format word.
 
     * A CUSTOM-slot opcode is decoded at the standard register-register (``.insn r``) positions and
       re-encoded through the derived :func:`assemble_fixed`.
-    * An ``auipc`` is a HI20 relocation site in a relocatable boot object: emit the clean opcode+``rd``
-      word with a zero immediate (the linker fills it), instead of failing closed as the base transcoder
-      does for a stride-changed PC-relative pair.
+    * An ``auipc`` is emitted as the clean opcode+``rd`` word with a zero immediate — either a HI20
+      relocation site the linker fills, or the high half of an assembler-resolved pcrel pair whose whole
+      (rescaled) displacement is carried by the low instruction (see :func:`_pcrel_lo_overrides`).
+    * ``override_imm`` (set for the low instruction of an assembler-resolved pcrel pair) replaces the
+      decoded immediate with the full displacement already scaled to the target stride.
     * Everything else goes through the derived base-ISA transcoder.
     """
     op = word & 0x7F
@@ -79,17 +82,69 @@ def _transcode_word(word: int, tx: FixedFormatTranscoder, customs: dict[int, str
     auipc = model.opcode_table.get("AUIPC")
     if auipc is not None and op == int(auipc):
         return assemble_fixed(model, "AUIPC", {"rd": (word >> 7) & 0x1F})
-    return tx.encode(_it._decode_rv32(word, tx.stride_ratio))
+    d = _it._decode_rv32(word, tx.stride_ratio)
+    if override_imm is not None:
+        d.imm = override_imm                     # the full pcrel displacement, rescaled to the target stride
+    return tx.encode(d)
 
 
-def _transcode_section(data: bytes, tx: FixedFormatTranscoder, customs, model) -> bytes:
+# standard rv32 opcodes used to pair an assembler-resolved ``auipc`` with its low half (the source substrate
+# is rv32, so these are the psABI-fixed rv32 encodings — a family constant, not a target literal).
+_RV32_AUIPC = 0x17
+_RV32_ITYPE_LO = frozenset({0x13, 0x03, 0x67})   # addi / load / jalr (imm in bits[31:20])
+_RV32_STORE = 0x23                               # store (imm split across bits[31:25]+[11:7])
+
+
+def _pcrel_lo_overrides(data: bytes, reloc_offsets: set[int], stride_ratio: int) -> dict[int, int]:
+    """A same-section PC-relative reference (``la``/address-of a local symbol in this same section) is
+    resolved by the ASSEMBLER at assembly time into a bare ``auipc``+low pair with NO relocation — its
+    displacement is baked in at the rv32 (4-byte) instruction stride. Under the target's changed stride that
+    displacement must be rescaled, but the base transcoder cannot tell a pcrel-low ``addi`` from an ordinary
+    one. So pre-pair here: for each ``auipc`` that is NOT a relocation site, find its low instruction (the next
+    one that consumes ``auipc.rd`` as ``rs1``) and return ``{low_insn_byte_offset: scaled_full_displacement}``.
+    The ``auipc`` itself is emitted zero (the wide format carries the whole displacement contiguously in the
+    low instruction); the low instruction's immediate is replaced by the full displacement scaled to the new
+    stride. A relocation-site ``auipc`` is skipped — the linker resolves that pair. Returns an empty map for a
+    section with no assembler-resolved pcrel pairs (e.g. every self-contained single-warp kernel)."""
+    words = [w for (w,) in struct.iter_unpack("<I", data)]
+    out: dict[int, int] = {}
+    for i, w in enumerate(words):
+        if (w & 0x7F) != _RV32_AUIPC or (i * 4) in reloc_offsets:
+            continue
+        rd = (w >> 7) & 0x1F
+        if rd == 0:
+            continue
+        hi = w & 0xFFFFF000                      # auipc adds imm[31:12]<<12 (low 12 bits are zero)
+        hi = hi - (1 << 32) if hi & 0x80000000 else hi
+        for j in range(i + 1, min(i + 16, len(words))):
+            wj = words[j]
+            op = wj & 0x7F
+            if ((wj >> 15) & 0x1F) != rd:        # not consuming auipc.rd as base -> keep scanning
+                if ((wj >> 7) & 0x1F) == rd and op not in (_RV32_AUIPC,):
+                    break                        # rd overwritten before use -> not a pcrel pair
+                continue
+            if op in _RV32_ITYPE_LO:
+                lo = (wj >> 20) & 0xFFF
+            elif op == _RV32_STORE:
+                lo = (((wj >> 25) & 0x7F) << 5) | ((wj >> 7) & 0x1F)
+            else:
+                break
+            lo = lo - (1 << 12) if lo & 0x800 else lo    # sign-extend the 12-bit low part
+            out[j * 4] = ((hi + lo) * stride_ratio) & 0xFFFFFFFF
+            break
+    return out
+
+
+def _transcode_section(data: bytes, tx: FixedFormatTranscoder, customs, model,
+                       pcrel_overrides: dict[int, int] | None = None) -> bytes:
     if len(data) % 4:
         raise BootBuildError("executable section length is not a multiple of 4 (compressed insns?)")
     stride = tx.width // 8
     fmt = "<Q" if stride == 8 else "<I"
+    overrides = pcrel_overrides or {}
     out = bytearray()
-    for (w,) in struct.iter_unpack("<I", data):
-        out += struct.pack(fmt, _transcode_word(w, tx, customs, model))
+    for idx, (w,) in enumerate(struct.iter_unpack("<I", data)):
+        out += struct.pack(fmt, _transcode_word(w, tx, customs, model, override_imm=overrides.get(idx * 4)))
     return bytes(out)
 
 
@@ -129,14 +184,24 @@ def transcode_boot_object(rv32_obj: str | Path, out_obj: str | Path, *, isa_mode
     tx = FixedFormatTranscoder(isa_model)
     customs = _custom_slot_opcodes(isa_model)
 
-    code_idx = set()
-    for s in secs:
-        if s["type"] == _SHT_PROGBITS and (s["flags"] & _SHF_EXECINSTR):
-            s["data"] = bytearray(_transcode_section(bytes(s["data"]), tx, customs, isa_model))
-            s["size"] = len(s["data"])
-            code_idx.add(s["idx"])
+    code_idx = {s["idx"] for s in secs
+                if s["type"] == _SHT_PROGBITS and (s["flags"] & _SHF_EXECINSTR)}
     if not code_idx:
         raise BootBuildError("no executable PROGBITS section found to transcode")
+    # Collect each code section's relocation offsets (un-scaled rv32 offsets) BEFORE transcoding: an ``auipc``
+    # AT a reloc offset is linker-resolved; one NOT at a reloc offset is an assembler-resolved pcrel pair whose
+    # low half must be rescaled here (:func:`_pcrel_lo_overrides`).
+    reloc_off = {i: set() for i in code_idx}
+    for s in secs:
+        if s["type"] == _SHT_RELA and s["info"] in code_idx:
+            rdat = s["data"]
+            for i in range(len(rdat) // 12):
+                reloc_off[s["info"]].add(struct.unpack_from("<I", rdat, i * 12)[0])
+    for s in secs:
+        if s["idx"] in code_idx:
+            ov = _pcrel_lo_overrides(bytes(s["data"]), reloc_off[s["idx"]], stride_ratio)
+            s["data"] = bytearray(_transcode_section(bytes(s["data"]), tx, customs, isa_model, ov))
+            s["size"] = len(s["data"])
 
     for s in secs:
         if s["type"] == _SHT_SYMTAB:

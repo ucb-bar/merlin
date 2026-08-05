@@ -58,3 +58,34 @@ def test_base_isa_word_still_goes_through_the_transcoder():
     tc, customs = _tc(m)
     addi = 0x00B50513                                 # addi a0, a0, 11
     assert MB._transcode_word(addi, tc, customs, m) == tc.transcode_text(addi.to_bytes(4, "little"))[0]
+
+
+def test_pcrel_pair_without_reloc_is_rescaled_to_target_stride():
+    # a same-section `la`/&sym the assembler resolved into a bare auipc+addi (NO relocation) carries its
+    # displacement at the rv32 (4-byte) stride; under the target's 8-byte stride it must be rescaled x2.
+    import struct
+    auipc = (0 << 12) | (10 << 7) | 0x17                        # auipc a0, 0   (high part 0, within ±2KB)
+    addi = (40 << 20) | (10 << 15) | (0 << 12) | (10 << 7) | 0x13   # addi a0, a0, 40  (the pcrel low part)
+    data = struct.pack("<II", auipc, addi)
+    ov = MB._pcrel_lo_overrides(data, reloc_offsets=set(), stride_ratio=2)
+    assert ov == {4: 80}                                        # the addi (byte off 4) carries 40*2 = 80
+
+
+def test_pcrel_pair_at_a_reloc_site_is_left_to_the_linker():
+    # when the auipc IS a relocation site, the linker resolves the pair — no override is emitted here.
+    import struct
+    auipc = (0 << 12) | (10 << 7) | 0x17
+    addi = (40 << 20) | (10 << 15) | (10 << 7) | 0x13
+    data = struct.pack("<II", auipc, addi)
+    assert MB._pcrel_lo_overrides(data, reloc_offsets={0}, stride_ratio=2) == {}
+
+
+def test_override_immediate_is_encoded_into_the_low_instruction():
+    from merlin.targetgen import isa_disasm
+    m = isa_model_from_encoding("synth", FACT)
+    tc, customs = _tc(m)
+    addi = (40 << 20) | (10 << 15) | (0 << 12) | (10 << 7) | 0x13
+    w = MB._transcode_word(addi, tc, customs, m, override_imm=80)
+    rec = isa_disasm.disassemble(m, [w])[0]
+    assert rec["operands"]["imm24"] == 80                       # the rescaled displacement, contiguous
+    assert rec["operands"]["rd"] == 10 and rec["operands"]["rs1"] == 10
