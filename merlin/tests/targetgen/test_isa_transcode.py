@@ -52,6 +52,25 @@ def test_transcode_negative_store_immediate_high_byte_in_rd():
     assert rec["operands"]["rs1"] == 10 and rec["operands"]["rs2"] == 11
 
 
+def test_transcode_jal_clears_funct3():
+    # J-type has no funct3 field: bits [14:12] of an rv32 jal are immediate bits. A *resolved*
+    # same-section jal (nonzero displacement) must not leak those bits into the target's f3 field —
+    # the fixed format carries the whole displacement in the contiguous immediate.
+    m = isa_model_from_encoding("synth", MUON_FACT)
+    tc = FixedFormatTranscoder(m)
+    off = -144                                       # displacement whose bits [14:12] are nonzero
+    o = off & 0x1FFFFF
+    word32 = ((((o >> 20) & 1) << 31) | (((o >> 1) & 0x3FF) << 21) | (((o >> 11) & 1) << 20)
+              | (((o >> 12) & 0xFF) << 12) | (1 << 7) | 0x6F)   # jal ra, -144
+    assert (word32 >> 12) & 0x7 != 0                 # rv32 word really has stray bits at [14:12]
+    rec = isa_disasm.disassemble(m, tc.transcode_text(struct.pack("<I", word32)))[0]
+    assert rec["mnemonic"] == "JAL"
+    assert rec["operands"]["f3"] == 0                # the fix: funct3 cleared for J-type
+    # displacement is scaled by the 4->8 byte stride ratio, reconstructed from imm24 + rs2 high byte
+    imm32 = (rec["operands"]["rs2"] << 24) | rec["operands"]["imm24"]
+    assert imm32 - (1 << 32) == off * tc.stride_ratio
+
+
 def test_transcode_fma_places_third_source():
     # a 4-register FMA re-maps to the target's rs3 field; the 2-bit format lands in f7.
     fact = {**MUON_FACT,

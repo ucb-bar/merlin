@@ -100,7 +100,9 @@ def _decode_rv32(word: int, stride_ratio: int) -> _Decoded:
             | (((word >> 25) & 0x3F) << 5) | (((word >> 8) & 0xF) << 1)
         imm = _sx(b, 13) * stride_ratio
     elif op in _JTYPE:
-        rs1, rs2, f7 = 0, 0, 0
+        # J-type has no funct3 field; bits [14:12] are immediate bits, so f3 must be cleared (the wide
+        # format carries the whole displacement in the contiguous immediate).
+        rs1, rs2, f7, f3 = 0, 0, 0, 0
         j = (((word >> 31) & 1) << 20) | (((word >> 12) & 0xFF) << 12) \
             | (((word >> 20) & 1) << 11) | (((word >> 21) & 0x3FF) << 1)
         imm = _sx(j, 21) * stride_ratio
@@ -108,7 +110,8 @@ def _decode_rv32(word: int, stride_ratio: int) -> _Decoded:
         if op == _AUIPC:
             raise TranscodeError("auipc: a PC-relative pair is not a pure field re-map under a changed "
                                  "instruction stride; keep this reference relocation-based (fail closed)")
-        rs1, rs2, f7 = 0, 0, 0
+        # U-type likewise has no funct3 field; bits [14:12] are part of the upper immediate.
+        rs1, rs2, f7, f3 = 0, 0, 0, 0
         imm = (word >> 12) & 0xFFFFF                    # lui upper immediate (hardware applies << 12)
     elif op in _RTYPE:
         has_imm = False                                # rs2 is a real register; funct7 already in f7
