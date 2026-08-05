@@ -329,6 +329,29 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     return elf
 
 
+def compile_for_oracle(kernel_src: str, workdir: str | Path, *, target: str = "radiance") -> tuple[Path, str]:
+    """Compile an emitted kernel for the grading oracle, PREFERRING the fork-free thesis path and recording
+    which toolchain actually produced the graded ELF. Returns ``(elf, toolchain)`` where ``toolchain`` is
+    ``"fork-free"`` (stock LLVM + the RTL-derived transcode — what a real new target has) or
+    ``"clang-muon-fork"`` (the vendor fork, EVAL-ONLY: a reference a real new target would NOT have).
+
+    The fork is never a silent fallback — its use is stamped so the experiment MEASURES fork-free coverage
+    (how many capsules the thesis path grades on its own). Set ``MERLIN_MUON_FORKFREE_ONLY=1`` for a pure
+    thesis run: the fork is refused and a kernel the fork-free path can't yet build (e.g. a multi-warp
+    ``mu_schedule`` kernel, until the multi-thread transcode lands) fails closed rather than borrowing it."""
+    forkfree_only = _env("MERLIN_MUON_FORKFREE_ONLY", "") not in ("", "0", "false", "False")
+    ff_err: Exception | None = None
+    try:
+        return compile_kernel_forkfree(kernel_src, workdir, target=target), "fork-free"
+    except (MuonError, MuonUnavailable) as e:
+        ff_err = e
+    if forkfree_only:
+        raise MuonError(f"MERLIN_MUON_FORKFREE_ONLY set but the fork-free build could not produce this "
+                        f"kernel (no fork fallback): {ff_err}")
+    # eval-only reference: the vendor fork. Stamped, never hidden.
+    return compile_kernel(kernel_src, workdir), "clang-muon-fork"
+
+
 # --- run ------------------------------------------------------------------------------------------
 def _cycles_from_console(console: str) -> int | None:
     """Cycle count from the simulator's ``finished after <N> cycles`` line (cyclotron/VCS), parsed

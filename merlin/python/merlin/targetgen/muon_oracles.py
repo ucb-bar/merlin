@@ -56,7 +56,10 @@ def _adapter(simulator: str) -> Callable:
             raise muon.MuonUnavailable(f"muon {simulator} oracle not available")
         flops = flops_from_cb(cb)
         t0 = time.perf_counter()
-        elf = muon.compile_kernel(kernel_src, workdir)
+        # Prefer the FORK-FREE thesis path (stock LLVM + RTL-derived transcode); record which toolchain
+        # actually produced the graded ELF so the experiment measures fork-free coverage, never a hidden
+        # fork fallback. MERLIN_MUON_FORKFREE_ONLY makes this fail closed instead of borrowing the fork.
+        elf, toolchain = muon.compile_for_oracle(kernel_src, workdir, target=cb.get("target", "radiance"))
         t1 = time.perf_counter()
         console, cycles, summary = muon.run_elf(elf, simulator=simulator, timeout=timeout)
         t2 = time.perf_counter()
@@ -66,6 +69,7 @@ def _adapter(simulator: str) -> Callable:
             "cycles": cycles,
             "oracle": dict(muon.ORACLE[simulator]),
             "console": console,
+            "toolchain": toolchain,
             "timing": _timing(t1 - t0, t2 - t1),
             "gflops": muon.gflops(flops, cycles),
             "pct_fp_peak": muon.pct_fp_peak(flops, cycles),

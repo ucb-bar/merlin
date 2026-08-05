@@ -77,3 +77,35 @@ def test_forkfree_e2e_regenerated_from_source_is_correct_on_cyclotron(tmp_path):
     expected = "0000000b 00000016 00000021 0000002c 00000037 00000042 0000004d 00000058"
     assert expected in console, f"fork-free kernel produced wrong output:\n{console[-400:]}"
     assert "DONE" in console
+
+
+# a self-contained, relocation-free, single-warp kernel emitting the OUT/DONE grading protocol in decimal.
+_PROTOCOL_KERNEL = r"""
+#include <stdint.h>
+static inline uint32_t hid(void){uint32_t r;__asm__ volatile("csrr %0,0xF14":"=r"(r));return r;}
+static inline void pc(char c){*(volatile char*)0xFF080000u=c;}
+static void pd(uint32_t v){char b[10];int n=0;if(!v){pc('0');return;}while(v){b[n++]=(char)('0'+v%10);v/=10;}while(n)pc(b[--n]);}
+int main(void){
+  volatile uint32_t A[8],B[8],C[8];
+  for(int i=0;i<8;i++){A[i]=(uint32_t)(i+1);B[i]=(uint32_t)(10*(i+1));}
+  for(int i=0;i<8;i++)C[i]=A[i]+B[i];
+  if(hid()==0){pc('O');pc('U');pc('T');pc(' ');pc('Y');pc(' ');pc('1');pc(' ');pc('8');
+    for(int i=0;i<8;i++){pc(' ');pd(C[i]);}pc('\n');pc('D');pc('O');pc('N');pc('E');pc('\n');}
+  return 0;
+}
+"""
+
+
+def test_grading_oracle_routes_forkfree_and_stamps_the_toolchain(tmp_path):
+    """P3 live-wiring: the capsule grading oracle (the SAME adapter a real run calls) compiles the emitted
+    kernel via the fork-free thesis path FIRST, records ``toolchain`` so the experiment measures fork-free
+    coverage (never a hidden fork fallback), runs cyclotron, and parses the graded outputs. Proves the infra
+    the live run uses works offline. Gated on the stock toolchain + the derived fact + cyclotron."""
+    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.targetgen import muon_oracles as MO
+    if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
+        pytest.skip("stock LLVM / derived fact / cyclotron not all available")
+    res = MO.cyclotron_adapter()({"target": "radiance"}, _PROTOCOL_KERNEL, tmp_path, 180)
+    assert res["toolchain"] == "fork-free", f"expected the thesis path, got {res['toolchain']!r}"
+    assert res["outputs"] == {"Y": [[11, 22, 33, 44, 55, 66, 77, 88]]}, res["outputs"]
+    assert res["cycles"] and res["cycles"] > 0
