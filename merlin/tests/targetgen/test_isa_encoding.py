@@ -129,6 +129,40 @@ def test_lint_fixed_flags_illegal_opcode():
     assert any(f["rule"] == "illegal_opcode" for f in findings)
 
 
+# a 64-bit fixed-format fact (Muon-shaped: opcode[6:0], ext2[8:7], rd[16:9], rs1[27:20]) for the full
+# agent-facing chain: encode -> .quad -> stock llvm-mc -> read back -> disasm -> lint.
+WIDE_FACT = {
+    "inst_width": 64,
+    "fields": {"opcode": [6, 0], "ext2": [8, 7], "rd": [16, 9], "rs1": [27, 20]},
+    "opcodes": {"LOAD": 3, "STORE": 0x23, "OP": 0x33},
+    "address_spaces": {"global": 0, "shared": 1},
+    "address_space_field": "ext2",
+}
+
+
+def test_agent_chain_encode_assemble_disasm_lint(tmp_path):
+    """The exact chain the ISA-tools broker runs for a fixed-format target: assemble the emitted words with
+    stock llvm-mc grouped at the target width, then disassemble + lint. Proves a 64-bit kernel round-trips
+    through the real assembler (not just in-memory)."""
+    from merlin.targetgen.contract.toolchain import mlir_bin
+    from merlin.targetgen.program_oracle import _assemble_kernel_words
+    from merlin.targetgen import isa_lint
+    if not (mlir_bin("llvm-mc").is_file() and mlir_bin("llvm-objcopy").is_file()):
+        pytest.skip("prebuilt stock LLVM (llvm-mc/llvm-objcopy) unavailable")
+    m = isa_model_from_encoding("synth", WIDE_FACT)
+    words = [isa_asm.encode_mem_op(m, "LOAD", "shared", {"rd": 5, "rs1": 6}),
+             isa_asm.assemble_fixed(m, "OP", {"rd": 1, "rs1": 2}),
+             isa_asm.encode_mem_op(m, "STORE", "global", {"rd": 0, "rs1": 3})]
+    ks = tmp_path / "kernel.S"
+    ks.write_text(".text\n" + isa_asm.to_data_lines(words, 64))
+    got = _assemble_kernel_words(ks, tmp_path, inst_width=64)
+    assert got == words, f"assemble round-trip failed: {[hex(w) for w in got]} vs {[hex(w) for w in words]}"
+    recs = isa_disasm.disassemble(m, got)
+    assert [r["mnemonic"] for r in recs] == ["LOAD", "OP", "STORE"]
+    assert recs[0]["operands"]["ext2"] == 1 and recs[2]["operands"]["ext2"] == 0
+    assert not isa_lint.lint(m, got)   # all valid -> clean
+
+
 # --- corpus integration: the real RTL-derived Muon fact decodes a real reference ELF -----------------
 
 def _llvm(tool: str) -> str | None:
