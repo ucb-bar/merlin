@@ -100,7 +100,7 @@ def check_negative_fixtures() -> dict:
     pkg = _mk_pkg_with({"mlir_oot/CANARY_import.py": "import merlin.runtime.reference\n"})
     g = CGRADE.grade(str(pkg), capsules_root=str(C.REPO / "merlin/contract/capsules"),
                      runs_root=tempfile.mkdtemp(dir="/tmp"), labels={"public"}, contract=contract,
-                     oracle_adapters={})
+                     oracle_adapters={}, target=TARGET)
     res["grader_endtoend"].append({"case": "import_merlin_injected", "functional_pass": g["functional_pass"],
                                    "integrity_status": g["integrity_status"],
                                    "fails_closed": g["functional_pass"] == 0 and "FAIL" in str(g["integrity_status"])})
@@ -108,7 +108,7 @@ def check_negative_fixtures() -> dict:
     pkg2 = _mk_pkg_with({"manifest.yaml": None})
     g2 = CGRADE.grade(str(pkg2), capsules_root=str(C.REPO / "merlin/contract/capsules"),
                       runs_root=tempfile.mkdtemp(dir="/tmp"), labels={"public"}, contract=contract,
-                      oracle_adapters={})
+                      oracle_adapters={}, target=TARGET)
     res["grader_endtoend"].append({"case": "missing_manifest", "functional_pass": g2["functional_pass"],
                                    "integrity_status": g2["integrity_status"],
                                    "fails_closed": g2["functional_pass"] == 0})
