@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .gemmini_codegen import _ceil_dim, _pad_rowmajor, _parse, CodegenError
-from ..commandbuffer import materialize_inputs
+from .gemmini_codegen import _ceil_dim, _pad_rowmajor, _parse, CodegenError   # sibling — moves together
+from merlin.runtime.commandbuffer import materialize_inputs
 
 # ISA/ABI encoding constants — DERIVED from the single source of truth (gemmini's capability manifest +
 # the RTL fact bundle), not hand-copied. Byte-parity with the former literals is pinned by

@@ -25,10 +25,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ..metrics import COMMON_METRIC_NAMES
-from ..reference import outputs_match, reference_outputs
-from .base import BackendInfo, BackendKind, TargetClass, register
-from .gemmini_codegen import generate_driver
+from merlin.runtime.metrics import COMMON_METRIC_NAMES
+from merlin.runtime.reference import outputs_match, reference_outputs
+from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
+from .gemmini_codegen import generate_driver   # sibling — moves with this backend package
 
 # Self-register this reference NPU backend with the class registry (base._REGISTRY). Discovery in
 # base._ensure_discovered imports this module to run the call, so the core carries no name -> module

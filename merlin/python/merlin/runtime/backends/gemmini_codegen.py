@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..commandbuffer import materialize_inputs
+from merlin.runtime.commandbuffer import materialize_inputs
 
 DIM = 16
 # relu is bit-exact (max(0,x)). requant is NOT: Gemmini's acc_scale is ignored on the full-i32
