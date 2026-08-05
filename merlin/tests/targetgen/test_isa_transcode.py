@@ -35,6 +35,19 @@ def test_derive_march_reads_the_fp_mode_from_the_opcode_table():
     assert derive_march(isa_model_from_encoding("synth", MUON_FACT)) == "rv32im"
 
 
+def test_transcode_custom0_simt_op_as_register_form():
+    # CUSTOM0 (the SIMT-control opcode family: tmc/wspawn/split/join) is a register-register `.insn r` form
+    # -- opcode + f3/f7 select the op, rd/rs1/rs2 are GPRs. It must transcode (not fail closed) so SIMT
+    # control can be injected into a kernel. Here a tmc-shaped word (opcode 0x0b, rs1 = the mask reg).
+    fact = {**MUON_FACT, "opcodes": {**MUON_FACT["opcodes"], "CUSTOM0": 0x0B}}
+    m = isa_model_from_encoding("synth", fact)
+    d = _decode_rv32(0x0B | (5 << 15), m.inst_width // 8 // 4)
+    assert d.opcode == 0x0B and not d.has_imm and d.rs1 == 5      # register form, no immediate
+    w = FixedFormatTranscoder(m).encode(d)
+    assert (w & 0x7F) == 0x0B                                     # opcode packed from the derived table
+    assert (w >> 20) & 0xFF == 5                                  # rs1 (the mask) at the derived position
+
+
 def test_transcode_addi_places_fields_at_target_positions():
     m = isa_model_from_encoding("synth", MUON_FACT)
     tc = FixedFormatTranscoder(m)

@@ -38,12 +38,16 @@ _LOAD, _OP_IMM, _STORE, _OP = 0x03, 0x13, 0x23, 0x33
 _LUI, _AUIPC, _JAL, _JALR, _SYSTEM = 0x37, 0x17, 0x6F, 0x67, 0x73
 _OP_FP = 0x53                        # zfinx FP is register-register (GPRs)
 _FMA = {0x43, 0x47, 0x4B, 0x4F}      # MADD / MSUB / NMSUB / NMADD — fused multiply-add (4 source regs)
+# CUSTOM0..3 (the SIMT-control / accelerator opcodes: tmc, wspawn, split, join, barrier, ...) are
+# register-register `.insn r` forms — opcode + f3 + f7 select the operation, rd/rs1/rs2 are GPRs. Standard
+# RISC-V custom-opcode values; the target's own table is still what the packer uses (compared as data).
+_CUSTOM = {0x0B, 0x2B, 0x5B, 0x7B}
 _ITYPE = {_LOAD, _OP_IMM, _JALR, _SYSTEM}
 _STYPE = {_STORE}
 _BTYPE = {0x63}          # BRANCH
 _JTYPE = {_JAL}
 _UTYPE = {_LUI, _AUIPC}
-_RTYPE = {_OP, _OP_FP}   # register-register (incl. zfinx FP, which uses GPRs)
+_RTYPE = {_OP, _OP_FP} | _CUSTOM   # register-register (incl. zfinx FP on GPRs + the SIMT CUSTOM ops)
 
 
 # Standard RISC-V opcode VALUES for the FP-extension family (a fixed external fact of stock RISC-V,
