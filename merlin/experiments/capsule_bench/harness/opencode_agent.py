@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import signal
 import subprocess
 import tempfile
 from pathlib import Path
@@ -127,14 +128,31 @@ def _parse_run_error(stdout: str) -> str | None:
 
 def _capture(cmd: list, env: dict, timeout: int, cwd: str) -> tuple[int, str, str]:
     """Run ``cmd`` capturing stdout to a FILE (opencode truncates a piped stream at 64 KiB and still exits 0,
-    cutting the JSON mid-stream). stdin=DEVNULL because ``run`` blocks on an open stdin pipe."""
+    cutting the JSON mid-stream). stdin=DEVNULL because ``run`` blocks on an open stdin pipe.
+
+    ``cmd`` is ``bash -c '<bwrap ... opencode ...>'``, so a plain ``subprocess.run(timeout=)`` would SIGKILL
+    only the outer bash and leave the bwrap->opencode grandchildren alive (bwrap ``--die-with-parent`` does
+    not reliably cascade across the extra shell + PID namespace); the orphaned child keeps the inherited
+    stderr pipe open, hanging the parent's own post-timeout reap (observed: a stalled GLM-5 agent sat at the
+    1800s cap with the driver blocked and no result). Run in a NEW SESSION and, on timeout, SIGKILL the whole
+    PROCESS GROUP so the entire tree dies and the reap returns promptly; the caller maps TimeoutExpired to a
+    rc=124 round result."""
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".out", prefix="oc_out_", delete=False)
     tmp.close()
     try:
         with open(tmp.name, "w") as out:
-            p = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.PIPE,
-                               text=True, timeout=timeout, cwd=cwd, env=env)
-        return p.returncode, Path(tmp.name).read_text(), (p.stderr or "")
+            p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.PIPE,
+                                 text=True, cwd=cwd, env=env, start_new_session=True)
+            try:
+                _out, stderr = p.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(os.getpgid(p.pid), signal.SIGKILL)   # whole tree: bash -> bwrap -> opencode
+                except (ProcessLookupError, PermissionError):
+                    p.kill()
+                p.wait()
+                raise
+        return p.returncode, Path(tmp.name).read_text(), (stderr or "")
     finally:
         try:
             os.unlink(tmp.name)

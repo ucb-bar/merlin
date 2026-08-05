@@ -420,7 +420,7 @@ AFTER you converge on the fast functional tier, so tight, narrow loops cost you 
 
 ## Target ISA facts (derived — build your lowering on these)
 {isa_spec}{isa_facts}
-{isa_dev_tools}{seam_menu}## Final status line (end of `submission/REPORT.md`) — write exactly one of:
+{isa_dev_tools}{seam_menu}{enforced_workflow}## Final status line (end of `submission/REPORT.md`) — write exactly one of:
 1. "Backend passes all required public/dev capsules and is ready for hidden grading."
 2. "Backend does not yet pass all required public/dev capsules; remaining failures listed by capsule + plane."
 3. "Backend is not comparable because it violates the compiler/runtime/integrity boundary."
@@ -521,10 +521,68 @@ the RTL oracle disagrees), OBSERVE the hardware behavior of YOUR OWN command buf
 def _is_assisted_arm(arm: str) -> bool:
     """The seam menu is exposed only to arms that are actually granted the CCA spine (the assisted arms);
     raw_baseline is not, so it must not be told to reach for tools it cannot use. Target-agnostic."""
-    return "merlin_assisted" in arm
+    return "merlin_assisted" in arm or "rtlchecks" in arm
 
 
-def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseline") -> str:
+def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str) -> str:
+    """The per-arm MANDATORY development workflow — a compulsory checklist (not an optional aid) matching
+    the experiment ladder: it names ONLY the tools the arm actually grants, so raw_baseline gets just the
+    build + self-check floor, arm-2 the C++ generators, arm-3 the xDSL/CCA + own-artifact lint, and arm-4
+    ALSO the RTL-facts derivation. Fully DERIVED from ``granted_tools`` (the arm's allowed-tool set from its
+    bundle grant) so it stays target-agnostic and precisely per-arm; when the grant set is not threaded
+    (direct/test callers) it falls back to a coarse arm-string approximation. This is what compels the agent
+    to USE the tools (availability != usage) and to develop in xDSL with no regex."""
+    if granted_tools is None:                                   # coarse fallback; real runs thread the grant
+        assisted = _is_assisted_arm(arm)
+        granted_tools = set()
+        if assisted:
+            granted_tools |= {"xdsl_dialects", "kernels/cca", "action_catalog"}
+        if "rtlchecks" in arm:
+            granted_tools.add("targetgen/rtl/")
+        if arm == "cpp_merlininfra":
+            granted_tools = {"targetgen/generate/mlir_scaffold"}
+    g = granted_tools
+    def _has(sub: str) -> bool:
+        return any(sub in p for p in g)
+    has_xdsl = _has("xdsl_dialects") or _has("targetgen/synthesize")
+    has_cca = _has("kernels/cca") or _has("action_catalog")
+    has_rtl = _has("targetgen/rtl/") or _has("rtl_facts")
+    has_cpp = _has("mlir_scaffold") or _has("llvm_plan") or _has("target_repo")
+    art = "submission/kernel.S" if endpoint_kind == "external_backend" else "your emitted submission/*.mlir"
+    L = ["## MANDATORY development workflow (do ALL of these BEFORE the final status line — not optional)",
+         "1. Your compiler backend lives under `submission/`; compute is COMPILER-GENERATED (never a hand kernel).",
+         "2. Base every ISA / mesh / datapath / encoding decision on the **Target ISA facts** above + the",
+         "   capability contract under `merlin/contract/` — never guess or hardcode; derive any fact not given.",
+         "3. After EVERY build, run `python3 agent_selfcheck.py --submission submission --capsules all` and",
+         "   iterate until all required capsules pass — a submission you did not self-check is not acceptable."]
+    n = 4
+    if has_cpp and not has_xdsl:                                # arm-2
+        L.append(f"{n}. Scaffold the package with the granted C++ OOT generators "
+                 "(`targetgen/generate/{mlir_scaffold,llvm_plan,target_repo}`), not ad-hoc hand files.")
+        n += 1
+    if has_xdsl:                                                # arm-3 and arm-4
+        L.append(f"{n}. Author the backend as an **xDSL pass pipeline** (`xdsl_dialects/`, "
+                 "`targetgen/synthesize/`, `targetgen/generate/`) — structured IR passes, NOT ad-hoc string "
+                 "assembly, and with **NO regular expressions** (`import re` / regex text-matching is "
+                 "prohibited; parse the IR structurally). This is checked on your submission.")
+        n += 1
+        if has_cca:
+            L.append(f"{n}. Enumerate your lever set with `cca_contract.check_bijection(\"{target}\")` + "
+                     "`action_catalog.escalation_ladder(axis, \"" + target + "\")` and build every leverable axis.")
+            n += 1
+        L.append(f"{n}. Before every self_check, run `python isa_tools.py lint` and `disasm` on {art} and "
+                 "confirm every instruction decodes and the kernel halts.")
+        n += 1
+    if has_rtl:                                                 # arm-4 only (the CIRCT / RTL-facts arm)
+        L.append(f"{n}. RTL-checks arm: DERIVE the ISA / mesh / datapath from the granted RTL-extracted facts "
+                 "(`targetgen/rtl/` + the RTL facts pin) — do not hand-invent them — and run the CIRCT RTL "
+                 "checks on your lowering. Your backend must be a compilation FROM those RTL-derived facts.")
+        n += 1
+    return "\n".join(L) + "\n\n"
+
+
+def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseline",
+                  granted_tools=None) -> str:
     """Render a target's full task prompt = the ONE shared template + the derived slots. ``experiment``
     and ``arm`` are the target-AGNOSTIC axes (they select the scope label / optional blocks); the target
     axis is entirely the {slot} substitutions, so for a fixed (experiment, arm) two targets' prompts
@@ -550,10 +608,12 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
             isa_dev_tools = _ISA_DEVTOOLS
         elif s["endpoint_kind"] == "inline_asm_insn":
             isa_dev_tools = _ROCC_DEVTOOLS
+    enforced_workflow = _enforced_workflow(arm, s["endpoint_kind"], granted_tools, s["target"])
     return _TEMPLATE.format(target=s["target"], scope_label=scope, corpus_families=families,
                             tool_stem=s["tool_stem"], kernel_symbol=s["kernel_symbol"],
                             endpoint_desc=s["endpoint_desc"], emit_framing=s["emit_framing"],
                             emit_symbol_note=s["emit_symbol_note"], grading_model=s["grading_model"],
                             isa_facts=s["isa_facts"], sim_tier_ladder=ladder, seam_menu=seam_menu,
                             isa_spec=s["isa_spec"], dram_contract=s["dram_contract"],
-                            termination_contract=s["termination_contract"], isa_dev_tools=isa_dev_tools)
+                            termination_contract=s["termination_contract"], isa_dev_tools=isa_dev_tools,
+                            enforced_workflow=enforced_workflow)

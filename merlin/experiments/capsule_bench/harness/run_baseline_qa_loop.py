@@ -27,6 +27,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -438,6 +439,19 @@ def claude_runtime_binds() -> list[str]:
     return _BW.claude_runtime_binds()
 
 
+def _granted_merlin_tools(arm: str) -> set:
+    """The merlin tool paths THIS arm's bundle grants (its ``allowed_files.txt``) — the authoritative,
+    per-arm set the enforced-workflow prompt block is derived from, so arm-4's RTL-facts grant (via the
+    rtlchecks bundle RX.ARM_BUNDLE was swapped to) distinguishes it from arm-3. Empty when the file is
+    absent (render_prompt then falls back to its coarse arm-string gate). Target-agnostic."""
+    bdir = C.BUNDLES / RX.ARM_BUNDLE[arm]
+    f = bdir / "allowed_files.txt"
+    if not f.is_file():
+        return set()
+    return {ln.strip() for ln in f.read_text().splitlines()
+            if ln.strip().startswith(("merlin/", "experiments/"))}
+
+
 def bwrap_cmd(inner: str, ws: Path, bundle: dict) -> str:
     """bwrap argv (deny-by-default) + claude runtime binds + TOOLCHAIN binds (the legit build+sim tools,
     bound back over the /scratch* masks) + the DERIVED answer-mask pass + toolchain env. The mask set now
@@ -537,7 +551,8 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
         _generated_task = not _task_md.is_file()
         if _generated_task:
             from merlin.targetgen.generate_prompt import render_prompt
-            body = render_prompt(_te(), _manifest(), "realistic", arm)
+            body = render_prompt(_te(), _manifest(), "realistic", arm,
+                                 granted_tools=_granted_merlin_tools(arm))
         else:
             body = _task_md.read_text()
         if os.environ.get("PILOT_LANG", "").strip().lower() == "cpp":
@@ -578,7 +593,7 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
     # diff). The runtime-only operational blocks below (language mandate + the 20-public/L3 scope note) are
     # still appended: they carry run-specific numbers the target-agnostic template deliberately omits.
     from merlin.targetgen.generate_prompt import render_prompt
-    pilot = render_prompt(_te(), _manifest(), _EXPERIMENT, arm)
+    pilot = render_prompt(_te(), _manifest(), _EXPERIMENT, arm, granted_tools=_granted_merlin_tools(arm))
     # Language mandate (env PILOT_LANG=cpp|python). The C++ arms (baseline/cpp_merlininfra) are forced to
     # the status-quo C++ OOT MLIR; the merlin arms (arm-3 merlin_assisted + arm-4 merlin_assisted_rtlchecks,
     # both carry "merlin_assisted") DEFAULT to the xDSL/Python path — the whole point of those arms is to
@@ -688,8 +703,20 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
         tpath.parent.mkdir(parents=True, exist_ok=True)
         epath = run_dir / "rounds" / f"round_{rnd:02d}.stderr.log"
         with open(tpath, "w") as tf, open(epath, "w") as ef:
-            proc = subprocess.run(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef,
-                                  timeout=timeout)
+            # start_new_session + killpg on timeout: the command is `bash -c '<bwrap ... claude ...>'`, so a
+            # plain subprocess timeout SIGKILLs only the outer bash and leaves the bwrap->claude tree alive
+            # (bwrap --die-with-parent does not reliably cascade). Kill the whole process group instead.
+            proc = subprocess.Popen(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef,
+                                    start_new_session=True)
+            try:
+                proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    proc.kill()
+                proc.wait()
+                raise
     finally:
         _stop_selfcheck_broker(ws, broker)
     return proc.returncode, tpath
