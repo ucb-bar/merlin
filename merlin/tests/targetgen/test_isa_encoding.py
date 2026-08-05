@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from merlin.targetgen.isa_model import isa_model_from_encoding
-from merlin.targetgen import isa_disasm
+from merlin.targetgen import isa_disasm, isa_asm
 
 
 # a minimal fixed-format fact: opcode[2:0] selects, rd[7:4] + rs1[11:8] operands, 16-bit words
@@ -57,6 +57,33 @@ def test_carved_opcode_groups_extension_variants():
     rec = isa_disasm.disassemble(m, [0x3])[0]
     assert rec["mnemonic"] in ("base", "variant")
     assert set(rec.get("ambiguous", [])) == {"base", "variant"}
+
+
+def test_fixed_format_encode_decode_round_trip():
+    m = isa_model_from_encoding("synth", SYNTH_FACT)
+    w = isa_asm.assemble_fixed(m, "add", {"rd": 3, "rs1": 5})
+    assert w == 0x531
+    rec = isa_disasm.disassemble(m, [w])[0]
+    assert rec["mnemonic"] == "add" and rec["operands"] == {"rd": 3, "rs1": 5}
+    # opcode-table value placed at the opcode low bit fills opcode + any carved extension above it
+    fact = {"inst_width": 8, "fields": {"opcode": [2, 0], "ext2": [4, 3]}, "opcodes": {"nu": 0b11011}}
+    mm = isa_model_from_encoding("synth", fact)
+    assert isa_asm.assemble_fixed(mm, "nu") == 0b11011   # opcode[2:0]=0b011, ext2[4:3]=0b11
+
+
+def test_assemble_fixed_refuses_bad_input():
+    m = isa_model_from_encoding("synth", SYNTH_FACT)
+    with pytest.raises(isa_asm.AssembleError):
+        isa_asm.assemble_fixed(m, "nope", {})            # unknown opcode
+    with pytest.raises(isa_asm.AssembleError):
+        isa_asm.assemble_fixed(m, "add", {"rd": 16})     # rd is 4-bit, 16 does not fit
+    with pytest.raises(isa_asm.AssembleError):
+        isa_asm.assemble_fixed(m, "add", {"zzz": 1})     # unknown field
+
+
+def test_to_data_lines_width():
+    assert isa_asm.to_data_lines([0x531], 16).strip() == ".word 0x00000531"
+    assert isa_asm.to_data_lines([0xdeadbeefcafe], 64).strip() == ".quad 0x0000deadbeefcafe"
 
 
 # --- corpus integration: the real RTL-derived Muon fact decodes a real reference ELF -----------------
@@ -112,3 +139,16 @@ def test_muon_rtl_fact_decodes_reference_elf(tmp_path):
     for r in recs:
         for f in ("rd", "rs1", "rs2", "rs3"):
             assert r["operands"].get(f, 0) <= 255
+
+    # ENCODE round-trip: re-encoding the decoded physical fields reproduces exactly those bits of every
+    # real instruction (the imm/alias overlaps are excluded; opcode is set by the mnemonic).
+    phys = [f for f in m.field_layout if f not in ("opcode", "csrimm", "imm24")]
+    covered = 0
+    for name in ["opcode"] + phys:
+        hi, lo = m.field_layout[name]
+        covered |= ((1 << (hi - lo + 1)) - 1) << lo
+    for w, r in zip(words, recs):
+        mnem = r["mnemonic"]
+        ops = {f: r["operands"][f] for f in phys}
+        enc = isa_asm.assemble_fixed(m, mnem, ops)
+        assert enc == (w & covered), f"re-encode of {mnem} differs on modeled bits: {enc:#018x} vs {w & covered:#018x}"

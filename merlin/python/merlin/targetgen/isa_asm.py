@@ -106,3 +106,48 @@ def to_word_lines(words: list[int]) -> str:
     """Render assembled words as the ``.word 0x........`` lines the agent drops into ``kernel.S`` (which
     stock ``llvm-mc`` then assembles into IMEM words)."""
     return "".join(f".word 0x{w & 0xFFFFFFFF:08x}\n" for w in words)
+
+
+# --- fixed-format encoder (the inverse of isa_disasm's field-layout decode) ------------------------
+def _pack_field(word: int, hi: int, lo: int, value: int, name: str) -> int:
+    """Place an unsigned value into the inclusive bit-range ``[hi:lo]``. Refuses a value that does not fit
+    the field (rather than truncating into a silently-wrong word)."""
+    if value < 0:
+        raise AssembleError(f"field '{name}'={value} is negative; provide the raw unsigned field value")
+    width = hi - lo + 1
+    if value >> width:
+        raise AssembleError(f"field '{name}'={value} does not fit its {width}-bit range [{hi}:{lo}]")
+    return word | (value << lo)
+
+
+def assemble_fixed(model: IsaModel, mnemonic: str, operands: dict[str, int] | None = None) -> int:
+    """Assemble one instruction of a FIXED-FORMAT ISA (one field layout selected by an opcode field — the
+    mlc ``isa_encoding`` derivation) → its ``inst_width``-bit word. ``mnemonic`` names an entry in the
+    derived opcode table; ``operands`` are ``{field_name: unsigned_value}`` for the layout's fields (omitted
+    fields default to 0). The opcode value is placed at the opcode field's low bit, which fills the opcode
+    AND any extension bits carved contiguously above it (e.g. an address-space selector). Raises
+    :class:`AssembleError` on an unknown mnemonic, an unknown/oversized field, or a non-fixed-format model."""
+    if not model.is_fixed_format():
+        raise AssembleError("assemble_fixed requires a fixed-format model (field layout + opcode table)")
+    if mnemonic not in model.opcode_table:
+        valid = ", ".join(sorted(model.opcode_table)) or "(none)"
+        raise AssembleError(f"unknown instruction '{mnemonic}' — opcodes: {valid}")
+    operands = operands or {}
+    unknown = set(operands) - set(model.field_layout) | ({"opcode"} & set(operands))
+    if unknown:
+        valid = ", ".join(sorted(set(model.field_layout) - {"opcode"})) or "(none)"
+        raise AssembleError(f"'{mnemonic}' has no settable field(s) {sorted(unknown)}; fields: {valid}")
+    _, op_lo = model.field_layout["opcode"]
+    word = int(model.opcode_table[mnemonic]) << op_lo
+    for name, value in operands.items():
+        hi, lo = model.field_layout[name]
+        word = _pack_field(word, hi, lo, int(value), name)
+    return word & ((1 << model.inst_width) - 1)
+
+
+def to_data_lines(words: list[int], inst_width: int) -> str:
+    """Render assembled words as the assembler data directive stock ``llvm-mc`` emits little-endian: a wide
+    (>32-bit) word becomes ``.quad`` (8 bytes), else ``.word`` (4 bytes)."""
+    if inst_width > 32:
+        return "".join(f".quad 0x{w & ((1 << 64) - 1):016x}\n" for w in words)
+    return to_word_lines(words)
