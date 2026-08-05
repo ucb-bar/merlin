@@ -272,8 +272,10 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     fork-free linker (:func:`muon_link.link_fork_free`) links the vendored boot/runtime objects (``bsp_objs``
     — the crt0-like boot that uses the target's own SIMT instructions, a shipped runtime asset) + the kernel.
     No clang-muon in compile/assemble/link — every field position is DERIVED from the target's RTL encoding.
-    The kernel must have NO relocations (self-contained; it signals results via inline MMIO), else it fails
-    closed (a relocation cannot be a pure field re-map). Returns the ELF path."""
+    A self-contained (relocation-free) kernel takes the flat .text re-map fast path; a kernel that carries an
+    R_RISCV relocation (a constant pool, a cross-section global, or a mu_schedule warp-callback pointer) is
+    transcoded at the OBJECT level (reloc records preserved) and the fork-free linker resolves every
+    relocation at the derived field positions. Returns the ELF path."""
     from ...targetgen.isa_model import isa_model_from_encoding
     from ...targetgen.isa_transcode import FixedFormatTranscoder, to_data_lines, emit_kernel_asm, derive_march
     from ...targetgen.rtl import mlc_bridge
@@ -305,32 +307,50 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
                          "-c", str(src), "-o", str(obj)], capture_output=True, text=True)
     if cc.returncode != 0:
         raise MuonError(f"stock rv32 compile failed:\n{cc.stderr[-2000:]}")
-    if any("R_RISCV" in ln for ln in
-           subprocess.run([str(objdump), "-r", str(obj)], capture_output=True, text=True).stdout.splitlines()):
-        raise MuonError("kernel has relocations; the transcoder needs a self-contained kernel (fail closed)")
+    has_reloc = any("R_RISCV" in ln for ln in
+                    subprocess.run([str(objdump), "-r", str(obj)],
+                                   capture_output=True, text=True).stdout.splitlines())
 
-    # 2. transcode the rv32 .text -> target fixed-format words -> assembly.
-    binf = work / "kernel.text.bin"
-    subprocess.run([str(objcopy), "-O", "binary", "--only-section=.text", str(obj), str(binf)],
-                   capture_output=True)
-    words = FixedFormatTranscoder(model).transcode_text(binf.read_bytes())
-    # Self-check the emitted stream with the SAME derived disassembler the agent tooling uses: every word
-    # must decode to a defined opcode. This catches a transcoder regression at BUILD time (cheap) instead
-    # of in a paid oracle run, and enforces the derived tooling on the emit path (fail closed on illegal).
+    # The emitted stream is self-checked with the SAME derived disassembler the agent tooling uses: every
+    # word must decode to a defined opcode. This catches a transcoder regression at BUILD time (cheap)
+    # instead of in a paid oracle run, and enforces the derived tooling on the emit path (fail closed).
     from ...targetgen import isa_disasm as _disasm
-    illegal = [i for i, d in enumerate(_disasm.disassemble(model, words)) if d.get("illegal")]
-    if illegal:
-        raise MuonError(f"transcoded kernel has {len(illegal)} undecodable word(s) at index {illegal[:5]}; "
-                        "the derived disassembler rejects the emitted stream (fail closed)")
-    ks = work / "kernel_muon.S"
-    ks.write_text(emit_kernel_asm(words, model.inst_width))
 
-    # 3. STOCK assemble.
+    def _lint_words(words: list[int]) -> None:
+        illegal = [i for i, d in enumerate(_disasm.disassemble(model, words)) if d.get("illegal")]
+        if illegal:
+            raise MuonError(f"transcoded kernel has {len(illegal)} undecodable word(s) at index "
+                            f"{illegal[:5]}; the derived disassembler rejects the emitted stream")
+
     kobj = work / "kernel_muon.o"
-    a = subprocess.run([str(mc), "--triple=riscv32", "--filetype=obj", str(ks), "-o", str(kobj)],
-                       capture_output=True, text=True)
-    if a.returncode != 0:
-        raise MuonError(f"stock llvm-mc failed:\n{a.stderr[-1500:]}")
+    if not has_reloc:
+        # 2a. FAST PATH (self-contained kernel, no relocations): transcode the rv32 .text to a flat word
+        # blob and re-assemble it as one exported entry. A pure field re-map — the proven functional path.
+        binf = work / "kernel.text.bin"
+        subprocess.run([str(objcopy), "-O", "binary", "--only-section=.text", str(obj), str(binf)],
+                       capture_output=True)
+        words = FixedFormatTranscoder(model).transcode_text(binf.read_bytes())
+        _lint_words(words)
+        ks = work / "kernel_muon.S"
+        ks.write_text(emit_kernel_asm(words, model.inst_width))
+        a = subprocess.run([str(mc), "--triple=riscv32", "--filetype=obj", str(ks), "-o", str(kobj)],
+                           capture_output=True, text=True)
+        if a.returncode != 0:
+            raise MuonError(f"stock llvm-mc failed:\n{a.stderr[-1500:]}")
+    else:
+        # 2b. RELOCATION-PRESERVING PATH: transcode the whole OBJECT (grow code sections, scale symbol
+        # values + reloc offsets, preserve reloc records + all other sections verbatim) so the fork-free
+        # linker resolves every relocation at the DERIVED field positions. This admits a kernel with
+        # internal calls (a mu_schedule warp callback), a constant pool, or .rodata — none of which a flat
+        # .text re-map can carry. Same object mechanism the fork-free BSP already uses.
+        from . import muon_bsp
+        muon_bsp.transcode_boot_object(obj, kobj, isa_model=model)
+        # lint the transcoded .text with the derived disassembler (fail closed on illegal), same as 2a.
+        ktext = work / "kernel_muon.text.bin"
+        subprocess.run([str(objcopy), "-O", "binary", "--only-section=.text", str(kobj), str(ktext)],
+                       capture_output=True)
+        stride, wb = model.inst_width // 8, ktext.read_bytes()
+        _lint_words([int.from_bytes(wb[i:i + stride], "little") for i in range(0, len(wb), stride)])
 
     # 4. FORK-FREE link: boot/runtime (regenerated fork-free from source if not supplied) + the kernel.
     if bsp_objs is None:

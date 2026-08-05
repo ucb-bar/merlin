@@ -18,18 +18,22 @@ def _stock_clang() -> bool:
     return mlir_bin("clang").is_file() and mlir_bin("llvm-objcopy").is_file()
 
 
-def test_forkfree_fails_closed_on_a_kernel_with_relocations(tmp_path):
-    """A kernel that is NOT self-contained (a global table -> a relocation) cannot be a pure field re-map;
-    the fork-free driver must refuse rather than emit a mis-encoded kernel."""
+def test_forkfree_builds_a_kernel_with_a_relocation_via_the_object_transcode(tmp_path):
+    """A kernel that is NOT self-contained (a global table -> a PC-relative relocation) is NOT a flat .text
+    re-map, but the driver no longer refuses it: it transcodes the whole OBJECT (preserving the reloc
+    records) and links via the fork-free linker, which resolves each relocation at the DERIVED field
+    positions. Hermetic (build only): asserts a real relocation survived and an ELF was produced."""
     if not _stock_clang():
         pytest.skip("stock LLVM (clang/objcopy) unavailable")
     from merlin.targetgen.rtl import mlc_bridge
     if not mlc_bridge.isa_encoding_for("radiance"):
         pytest.skip("derived ISA encoding fact not present")
-    # a global lookup table forces a PC-relative relocation into the kernel .text
-    src = "static const int T[4]={1,2,3,4};\nvolatile int s;\nint main(void){s=T[s&3];return 0;}"
-    with pytest.raises(muon.MuonError, match="relocation"):
-        muon.compile_kernel_forkfree(src, tmp_path, bsp_objs=[], target="radiance")
+    # a volatile global table forces a PC-relative relocation that survives -O2 into the kernel object
+    src = ("static volatile int T[4]={1,2,3,4};\nvolatile int s;\n"
+           "int main(void){s=T[s&3];return 0;}")
+    elf = muon.compile_kernel_forkfree(src, tmp_path, target="radiance")
+    assert _reloc_kernel_object_has_relocations(tmp_path), "no relocation survived; test would be vacuous"
+    assert elf.is_file()
 
 
 def test_forkfree_needs_the_derived_fact(tmp_path, monkeypatch):
@@ -76,6 +80,56 @@ def test_forkfree_e2e_regenerated_from_source_is_correct_on_cyclotron(tmp_path):
     console, cycles, _ = muon.run_elf(str(elf), simulator="cyclotron", timeout=180)
     expected = "0000000b 00000016 00000021 0000002c 00000037 00000042 0000004d 00000058"
     assert expected in console, f"fork-free kernel produced wrong output:\n{console[-400:]}"
+    assert "DONE" in console
+
+
+# the SAME vecadd, but reading its addends from a VOLATILE cross-section global. The volatile load cannot be
+# constant-folded, so stock clang emits real R_RISCV_PCREL_HI20/LO12 relocations (an auipc+lw pair) into the
+# object -- exactly the shape a constant pool or a mu_schedule warp-callback pointer produces. The flat .text
+# re-map fails closed on that auipc; the build must transcode the whole OBJECT (preserving the reloc records)
+# and let the fork-free linker resolve them at the DERIVED field positions.
+_RELOC_KERNEL = r"""
+#include <stdint.h>
+static volatile uint32_t B[8]={10,20,30,40,50,60,70,80};
+static inline uint32_t hid(void){uint32_t r;__asm__ volatile("csrr %0,0xF14":"=r"(r));return r;}
+static inline void pc(char c){*(volatile char*)0xFF080000u=c;}
+static inline void ph(uint32_t v){for(int i=7;i>=0;--i){uint32_t n=(v>>(i*4))&0xF;pc(n<10?(char)('0'+n):(char)('a'+n-10));}}
+int main(void){
+  volatile uint32_t C[8];
+  for(int i=0;i<8;i++)C[i]=(uint32_t)(i+1)+B[i];
+  if(hid()==0){pc('O');pc('U');pc('T');pc(' ');for(int i=0;i<8;i++){ph(C[i]);pc(' ');}pc('\n');
+               pc('D');pc('O');pc('N');pc('E');pc('\n');}
+  return 0;
+}
+"""
+
+
+def _reloc_kernel_object_has_relocations(work) -> bool:
+    """objdump the intermediate rv32 object the driver left behind: assert it really carried an R_RISCV
+    relocation (guards against a compiler build that folds the volatile load away and reverts to the fast
+    path, which would make the test silently vacuous)."""
+    from merlin.targetgen.contract.toolchain import mlir_bin
+    import subprocess
+    rr = subprocess.run([str(mlir_bin("llvm-objdump")), "-r", str(work / "kernel.o")],
+                        capture_output=True, text=True).stdout
+    return any("R_RISCV" in ln for ln in rr.splitlines())
+
+
+def test_forkfree_kernel_with_a_relocation_takes_the_reloc_preserving_path(tmp_path):
+    """A kernel whose data reference survives as an R_RISCV relocation (the auipc+lw of a constant pool /
+    a mu_schedule warp-callback pointer) cannot be a flat .text re-map. The build must transcode the whole
+    OBJECT (preserving the reloc records) and let the fork-free linker resolve every relocation at the
+    DERIVED field positions. Proves it is functionally correct on cyclotron -- the P2c relocation-preserving
+    path. Gated on stock LLVM + the derived fact + cyclotron."""
+    from merlin.targetgen.rtl import mlc_bridge
+    if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
+        pytest.skip("stock LLVM / derived fact / cyclotron not all available")
+    elf = muon.compile_kernel_forkfree(_RELOC_KERNEL, tmp_path, target="radiance")
+    assert _reloc_kernel_object_has_relocations(tmp_path), "no relocation survived; test would be vacuous"
+    assert elf.is_file()
+    console, _cycles, _ = muon.run_elf(str(elf), simulator="cyclotron", timeout=180)
+    expected = "0000000b 00000016 00000021 0000002c 00000037 00000042 0000004d 00000058"
+    assert expected in console, f"reloc-path kernel produced wrong output:\n{console[-400:]}"
     assert "DONE" in console
 
 
