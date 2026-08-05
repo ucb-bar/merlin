@@ -243,8 +243,30 @@ def compile_kernel(kernel_src: str, workdir: str | Path) -> Path:
     return elf
 
 
-def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[str | Path],
-                            *, target: str = "radiance", march: str = "rv32im") -> Path:
+# The target's assembler shim: its SIMT pseudo-mnemonics as explicit .insn CUSTOM0 forms + the warp-count
+# CSR name, prepended so a STOCK assembler accepts the boot source (mu_start.S #defines RISCV_CUSTOM0 itself
+# via the C preprocessor; only the vx_* macros + the `nw` CSR need supplying). A muon-target BSP asset, kept
+# in this per-target edge module.
+_FORKFREE_BSP_PREAMBLE = (
+    ".set nw, 0xfc1\n"
+    ".macro vx_tmc reg\n.insn r 0x0b, 0, 0, x0, \\reg, x0\n.endm\n"
+    ".macro vx_wspawn n, f\n.insn r 0x0b, 1, 0, x0, \\n, \\f\n.endm\n"
+)
+
+
+def build_forkfree_bsp(workdir: str | Path, *, target: str = "radiance", num_warps: int = 1) -> list[Path]:
+    """Reproducibly build the fork-free BSP (boot + runtime shims) from the target's shipped sources — no
+    transient or committed binaries. Returns the object list :func:`compile_kernel_forkfree` links."""
+    from . import muon_bsp
+    from ...targetgen.contract.toolchain import mlir_bin
+    lib = lib_dir()
+    return muon_bsp.build_bsp(lib / "src/mu_start.S", lib / "tohost.S", Path(workdir) / "bsp",
+                              target=target, clang=str(mlir_bin("clang")), mc=str(mlir_bin("llvm-mc")),
+                              asm_preamble=_FORKFREE_BSP_PREAMBLE, num_warps=num_warps)
+
+
+def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[str | Path] | None = None,
+                            *, target: str = "radiance", march: str = "rv32im", num_warps: int = 1) -> Path:
     """FORK-FREE build of a self-contained kernel: STOCK clang compiles the kernel C to rv32, the derived
     transcoder re-maps it into the target's fixed-format words, STOCK llvm-mc assembles them, and the
     fork-free linker (:func:`muon_link.link_fork_free`) links the vendored boot/runtime objects (``bsp_objs``
@@ -298,7 +320,9 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     if a.returncode != 0:
         raise MuonError(f"stock llvm-mc failed:\n{a.stderr[-1500:]}")
 
-    # 4. FORK-FREE link: vendored boot/runtime + the transcoded kernel.
+    # 4. FORK-FREE link: boot/runtime (regenerated fork-free from source if not supplied) + the kernel.
+    if bsp_objs is None:
+        bsp_objs = build_forkfree_bsp(work, target=target, num_warps=num_warps)
     elf = work / "kernel.radiance.elf"
     muon_link.link_fork_free([*[str(o) for o in bsp_objs], str(kobj)],
                              str(lib_dir() / "linker/mu_link.ld"), str(elf), target=target)

@@ -42,34 +42,38 @@ def test_forkfree_needs_the_derived_fact(tmp_path, monkeypatch):
         muon.compile_kernel_forkfree("int main(void){return 0;}", tmp_path, bsp_objs=[], target="radiance")
 
 
-def test_forkfree_e2e_when_bsp_present(tmp_path):
-    """If the vendored BSP objects + stock tools are present, the driver builds a valid Muon kernel whose
-    every instruction decodes cleanly (the compile+transcode+assemble+link chain is coherent). The cyclotron
-    functional check is exercised in the session proof (byte-identical to the fork baseline)."""
-    import os
-    if not _stock_clang():
-        pytest.skip("stock LLVM unavailable")
+# a self-contained uniform kernel: derives its inputs in-code (no rodata/relocation), computes
+# C[i]=A[i]+B[i] with A[i]=i+1, B[i]=10(i+1) (=> 11,22,...,88), and prints via inline MMIO to the
+# cyclotron console, guarded to hart 0 so the byte stream is clean. No mu_schedule, no vendor intrinsics.
+_VECADD_KERNEL = r"""
+#include <stdint.h>
+#define N 8
+static inline uint32_t hid(void){uint32_t r;__asm__ volatile("csrr %0,0xF14":"=r"(r));return r;}
+static inline void pc(char c){*(volatile char*)0xFF080000u=c;}
+static inline void ph(uint32_t v){for(int i=7;i>=0;--i){uint32_t n=(v>>(i*4))&0xF;pc(n<10?(char)('0'+n):(char)('a'+n-10));}}
+int main(void){
+  volatile uint32_t A[N],B[N],C[N];
+  for(int i=0;i<N;i++){A[i]=(uint32_t)(i+1);B[i]=(uint32_t)(10*(i+1));}
+  for(int i=0;i<N;i++)C[i]=A[i]+B[i];
+  if(hid()==0){pc('O');pc('U');pc('T');pc(' ');for(int i=0;i<N;i++){ph(C[i]);pc(' ');}pc('\n');
+               pc('D');pc('O');pc('N');pc('E');pc('\n');}
+  return 0;
+}
+"""
+
+
+def test_forkfree_e2e_regenerated_from_source_is_correct_on_cyclotron(tmp_path):
+    """L2 of the offline validation ladder, fully REPRODUCIBLE: build a kernel with the fork-free driver,
+    REGENERATING the entire BSP (boot + shims) from the shipped sources — no transient/committed binaries —
+    then run it on cyclotron and assert the correct computed result. This exercises the exact infra a live
+    run uses, so a live run never debugs the pipeline. Gated on the stock toolchain + the derived fact +
+    cyclotron being available."""
     from merlin.targetgen.rtl import mlc_bridge
-    from merlin.targetgen.isa_model import isa_model_from_encoding
-    from merlin.targetgen import isa_disasm
-    from merlin.targetgen.contract.toolchain import mlir_bin
-    fact = mlc_bridge.isa_encoding_for("radiance")
-    bsp_root = os.environ.get("MERLIN_MUON_BSP_OBJS")   # dir holding mu_start.rebuilt.o / murt.o / tohost.o
-    if not (fact and bsp_root):
-        pytest.skip("no derived fact / MERLIN_MUON_BSP_OBJS not set (vendored BSP objects)")
-    bsp = [Path(bsp_root) / n for n in ("mu_start.rebuilt.o", "murt.o", "tohost.o")]
-    if not all(b.is_file() for b in bsp):
-        pytest.skip("vendored BSP objects not all present")
-    kc = ("static inline void pc(char c){*(volatile char*)0xFF080000u=c;}"
-          "int main(void){volatile int a=3,b=4;int c=a+b;pc('0'+c);return 0;}")
-    elf = muon.compile_kernel_forkfree(kc, tmp_path, bsp, target="radiance")
+    if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
+        pytest.skip("stock LLVM / derived fact / cyclotron not all available")
+    elf = muon.compile_kernel_forkfree(_VECADD_KERNEL, tmp_path, target="radiance")   # BSP regenerated
     assert elf.is_file()
-    # the kernel section decodes clean under the derived model
-    m = isa_model_from_encoding("radiance", fact)
-    binf = tmp_path / "t.bin"
-    subprocess.run([str(mlir_bin("llvm-objcopy")), "-O", "binary", "--only-section=.text",
-                    str(elf), str(binf)], capture_output=True)
-    import struct
-    words = [w for (w,) in struct.iter_unpack("<Q", binf.read_bytes())]
-    illegal = [r for r in isa_disasm.disassemble(m, words) if r.get("illegal")]
-    assert not illegal, f"{len(illegal)} undecodable words in the fork-free ELF"
+    console, cycles, _ = muon.run_elf(str(elf), simulator="cyclotron", timeout=180)
+    expected = "0000000b 00000016 00000021 0000002c 00000037 00000042 0000004d 00000058"
+    assert expected in console, f"fork-free kernel produced wrong output:\n{console[-400:]}"
+    assert "DONE" in console

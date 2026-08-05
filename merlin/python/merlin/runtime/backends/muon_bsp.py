@@ -219,3 +219,34 @@ def build_boot_object(boot_asm: str | Path, out_obj: str | Path, *, target: str,
         if asm.returncode != 0:
             raise BootBuildError(f"stock assemble failed:\n{asm.stderr[-2000:]}")
         return transcode_boot_object(rv32_obj, out_obj, isa_model=isa_model)
+
+
+def build_bsp(boot_src: str | Path, tohost_src: str | Path, out_dir: str | Path, *, target: str,
+              clang: str | Path, mc: str | Path, asm_preamble: str = "", num_warps: int = 1,
+              isa_model=None) -> list[Path]:
+    """Reproducibly build the WHOLE fork-free BSP for a fixed-format SIMT target from its shipped sources —
+    no transient or committed binaries. Returns the object list a linker consumes: the transcoded boot
+    object (via :func:`build_boot_object`) plus the data-only runtime shims. The occupancy shim
+    (``__mu_num_warps``) is generated from ``num_warps``; ``tohost_src`` is the sim-exit mailbox source.
+    Both shims are pure DATA (no instructions), so a stock assembler emits them directly — only the boot's
+    executable sections need transcoding. Everything is stock-toolchain only; ``target`` is a parameter."""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    clang, mc = str(clang), str(mc)
+    boot_o = out / "boot.forkfree.o"
+    build_boot_object(boot_src, boot_o, target=target, clang=clang, asm_preamble=asm_preamble,
+                      isa_model=isa_model)
+    # occupancy shim: override the BSP's weak __mu_num_warps (a plain data word — no relocation, no
+    # instruction, so it links as-is and needs no transcode).
+    murt_s = out / "murt.S"
+    murt_s.write_text(".section .data\n.globl __mu_num_warps\n.p2align 2\n"
+                      f"__mu_num_warps: .word {int(num_warps)}\n")
+    objs = [boot_o]
+    for name, src in (("murt.o", murt_s), ("tohost.o", Path(tohost_src))):
+        o = out / name
+        r = subprocess.run([mc, "--triple=riscv32", "--filetype=obj", str(src), "-o", str(o)],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            raise BootBuildError(f"stock assemble of {name} failed:\n{r.stderr[-1500:]}")
+        objs.append(o)
+    return objs
