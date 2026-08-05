@@ -81,13 +81,28 @@ def test_multicore_image_links_the_shim_and_sizes_the_soc():
     assert "cpu@3" not in ov and "cpu@1" not in ov
 
 
-def test_multicore_requires_the_rvv_backend(tmp_path):
-    """The forall is layered under the RVV schedule; scalar would build a serial image."""
+def test_scalar_multicore_parallelizes_at_the_linalg_loop_level():
+    """Scalar multicore is SUPPORTED, and reaches multicore by a different route than rvv.
+
+    This test used to assert the opposite -- that a scalar multi-hart build was refused because the
+    multicore lowering layers its forall under the RVV transform schedule. That reasoning was right
+    about the rvv route and wrong about the conclusion: the scalar path has its own OpenMP route
+    (convert-linalg-to-parallel-loops + convert-scf-to-openmp, the pipeline the K1 big models use), so
+    it only needed routing to rather than refusing.
+
+    It matters because it is the ONLY way to use a hart with no vector unit, and a heterogeneous SoC --
+    more cores brought up than vector units attached -- is normal. On a 3-core/2-vector-core chip that
+    third core is a third of the machine. Measured on a 3-hart scalar image: 272 fork_call sites, 100+
+    outlined parallel regions, zero vector instructions.
+    """
+    import inspect
+
     zm = _zm()
-    if not zm.available():
-        pytest.skip("Zephyr/spike toolchain unavailable")
-    with pytest.raises(zm.ZephyrModelError, match="requires backend='rvv'"):
-        zm.build_app(_bundle(), tmp_path, backend="scalar", n_harts=4)
+    src = inspect.getsource(zm.build_app)
+    assert "requires backend='rvv'" not in src
+    # The two routes, both wired: scalar via `parallel`, rvv via `parallel_harts`.
+    assert 'parallel=(backend != "rvv" and n_harts > 1)' in src
+    assert 'parallel_harts=(n_harts if n_harts > 1' in src
 
 
 @pytest.mark.parametrize("threads", [2, 4, 8])
