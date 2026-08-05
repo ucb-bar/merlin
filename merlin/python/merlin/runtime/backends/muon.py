@@ -266,7 +266,7 @@ def build_forkfree_bsp(workdir: str | Path, *, target: str = "radiance", num_war
 
 
 def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[str | Path] | None = None,
-                            *, target: str = "radiance", march: str = "rv32im", num_warps: int = 1) -> Path:
+                            *, target: str = "radiance", march: str | None = None, num_warps: int = 1) -> Path:
     """FORK-FREE build of a self-contained kernel: STOCK clang compiles the kernel C to rv32, the derived
     transcoder re-maps it into the target's fixed-format words, STOCK llvm-mc assembles them, and the
     fork-free linker (:func:`muon_link.link_fork_free`) links the vendored boot/runtime objects (``bsp_objs``
@@ -275,7 +275,7 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     The kernel must have NO relocations (self-contained; it signals results via inline MMIO), else it fails
     closed (a relocation cannot be a pure field re-map). Returns the ELF path."""
     from ...targetgen.isa_model import isa_model_from_encoding
-    from ...targetgen.isa_transcode import FixedFormatTranscoder, to_data_lines, emit_kernel_asm
+    from ...targetgen.isa_transcode import FixedFormatTranscoder, to_data_lines, emit_kernel_asm, derive_march
     from ...targetgen.rtl import mlc_bridge
     from ...targetgen.contract.toolchain import mlir_bin
     from . import muon_link
@@ -291,6 +291,10 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     if not fact:
         raise MuonUnavailable(f"no derived ISA encoding fact for target {target!r}")
     model = isa_model_from_encoding(target, fact)
+    # Derive the compile -march (incl. the FP mode: zfinx vs FP-regs) from the target's own opcode table
+    # when the caller did not pin one, so a float kernel compiles to the target's actual FP encoding.
+    if march is None:
+        march = derive_march(model)
 
     # 1. STOCK compile -> rv32 object (self-contained: no PIC, no jump tables, no relaxation).
     src = work / "kernel.c"

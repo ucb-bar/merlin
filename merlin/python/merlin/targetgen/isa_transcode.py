@@ -46,6 +46,32 @@ _UTYPE = {_LUI, _AUIPC}
 _RTYPE = {_OP, _OP_FP}   # register-register (incl. zfinx FP, which uses GPRs)
 
 
+# Standard RISC-V opcode VALUES for the FP-extension family (a fixed external fact of stock RISC-V,
+# compared as data against the target's DERIVED opcode table — never assumed present of the target).
+_OPV_OP_FP, _OPV_LOAD_FP, _OPV_STORE_FP = 0x53, 0x07, 0x27
+
+
+def derive_march(model: IsaModel) -> str:
+    """Derive the stock-LLVM ``-march`` for a fork-free build from the target's DERIVED opcode table.
+
+    Base is ``rv32im`` (the integer substrate the transcoder re-maps). The FP mode is read from WHICH FP
+    opcodes the target's decoder actually defines, compared by standard VALUE (never by opcode name):
+
+      * ``OP_FP`` present, NO FP load/store  -> ``_zfinx`` (FP arithmetic on GPRs; the compiler emits plain
+        integer loads for FP data, which the base transcoder already handles);
+      * ``OP_FP`` present WITH FP load/store  -> ``f`` (a separate FP register file — FLW/FSW appear);
+      * no ``OP_FP``                          -> integer only.
+
+    Fail-safe: an empty/opaque opcode table yields the integer base (a float kernel then fails closed at
+    compile rather than silently mis-compiling). This is how the fork-free build learns a target's FP mode
+    without a hand-set flag — e.g. Muon defines OP_FP + FMA but no FP load/store, so it derives to zfinx."""
+    values = {int(v) for v in model.opcode_table.values()}
+    march = "rv32im"
+    if _OPV_OP_FP in values:
+        march += "f" if (_OPV_LOAD_FP in values or _OPV_STORE_FP in values) else "_zfinx"
+    return march
+
+
 class TranscodeError(ValueError):
     """A word the derived model cannot faithfully re-map (an unknown opcode, or a PC-relative form the
     changed instruction stride would corrupt). Raised rather than emitting a silently-wrong word."""

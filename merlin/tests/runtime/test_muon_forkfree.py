@@ -109,3 +109,37 @@ def test_grading_oracle_routes_forkfree_and_stamps_the_toolchain(tmp_path):
     assert res["toolchain"] == "fork-free", f"expected the thesis path, got {res['toolchain']!r}"
     assert res["outputs"] == {"Y": [[11, 22, 33, 44, 55, 66, 77, 88]]}, res["outputs"]
     assert res["cycles"] and res["cycles"] > 0
+
+
+# a self-contained HARDWARE-FLOAT kernel: it materializes float operands from integer bit patterns (no
+# constant pool -> no relocations), computes in FP, and prints fixed decimals. Exercises the derived-march
+# (zfinx) FP path end to end. y = A*2 + 1 for A in {1.5, 3.0} -> 4.000, 7.000.
+_FLOAT_KERNEL = r"""
+#include <stdint.h>
+static inline uint32_t hid(void){uint32_t r;__asm__ volatile("csrr %0,0xF14":"=r"(r));return r;}
+static inline void pc(char c){*(volatile char*)0xFF080000u=c;}
+static void pu(uint32_t v){char b[12];int n=0;if(!v){pc('0');return;}while(v){b[n++]=(char)('0'+v%10);v/=10;}while(n)pc(b[--n]);}
+static float u2f(uint32_t b){union{uint32_t u;float f;}x; x.u=b; return x.f;}
+static void pf(float x){uint32_t ip=(uint32_t)x;float fr=x-(float)ip;float k=u2f(0x447a0000u),h=u2f(0x3f000000u);
+  uint32_t fp=(uint32_t)(fr*k+h);pu(ip);pc('.');if(fp<100)pc('0');if(fp<10)pc('0');pu(fp);}
+int main(void){
+  if(hid()==0){uint32_t a[2];a[0]=0x3fc00000u;a[1]=0x40400000u;float two=u2f(0x40000000u),one=u2f(0x3f800000u);
+    for(int i=0;i<2;i++){float y=u2f(a[i])*two+one;pc('V');pc(' ');pf(y);pc('\n');}
+    pc('D');pc('O');pc('N');pc('E');pc('\n');}
+  return 0;
+}
+"""
+
+
+def test_forkfree_float_path_uses_derived_zfinx_march_and_is_correct(tmp_path):
+    """The fork-free build DERIVES its -march (incl. the FP mode) from the target's opcode table, so a
+    hardware-float kernel compiles to the target's actual FP encoding (Muon = zfinx) with no hand-set flag.
+    Proves the float codegen path end to end on cyclotron. Gated on stock LLVM + derived fact + cyclotron."""
+    from merlin.targetgen.rtl import mlc_bridge
+    if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
+        pytest.skip("stock LLVM / derived fact / cyclotron not all available")
+    elf = muon.compile_kernel_forkfree(_FLOAT_KERNEL, tmp_path, target="radiance")   # march DERIVED
+    console, _cycles, _ = muon.run_elf(str(elf), simulator="cyclotron", timeout=180)
+    vlines = [l for l in console.splitlines() if l.startswith("V ")]
+    assert vlines == ["V 4.000", "V 7.000"], f"wrong float result: {vlines}\n{console[-300:]}"
+    assert "DONE" in console

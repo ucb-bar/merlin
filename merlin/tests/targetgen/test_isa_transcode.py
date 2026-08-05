@@ -12,7 +12,7 @@ import pytest
 
 from merlin.targetgen.isa_model import isa_model_from_encoding
 from merlin.targetgen import isa_disasm
-from merlin.targetgen.isa_transcode import FixedFormatTranscoder, TranscodeError, _decode_rv32
+from merlin.targetgen.isa_transcode import FixedFormatTranscoder, TranscodeError, _decode_rv32, derive_march
 
 # a Muon-shaped fixed-format model (the field positions the derived radiance fact carries)
 MUON_FACT = {
@@ -21,6 +21,18 @@ MUON_FACT = {
                "rs1": [27, 20], "rs2": [35, 28], "f7": [58, 52], "imm24": [59, 36]},
     "opcodes": {"LOAD": 0x03, "OP_IMM": 0x13, "STORE": 0x23, "OP": 0x33, "BRANCH": 0x63, "JAL": 0x6F},
 }
+
+
+def test_derive_march_reads_the_fp_mode_from_the_opcode_table():
+    # OP_FP present, no FP load/store -> zfinx (FP on GPRs), the Muon shape.
+    m = isa_model_from_encoding("synth", {**MUON_FACT, "opcodes": {**MUON_FACT["opcodes"], "OP_FP": 0x53}})
+    assert derive_march(m) == "rv32im_zfinx"
+    # OP_FP + a FP load/store opcode -> a separate FP register file ('f').
+    m2 = isa_model_from_encoding("synth", {**MUON_FACT,
+                                           "opcodes": {**MUON_FACT["opcodes"], "OP_FP": 0x53, "LOAD_FP": 0x07}})
+    assert derive_march(m2) == "rv32imf"
+    # no OP_FP -> integer only.
+    assert derive_march(isa_model_from_encoding("synth", MUON_FACT)) == "rv32im"
 
 
 def test_transcode_addi_places_fields_at_target_positions():
