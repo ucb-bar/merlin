@@ -50,8 +50,18 @@ def parse_mlir_text(text: str, ctx=None):
     """
     from xdsl.parser import Parser
 
+    from ..common.ir_lock import IR_LOCK
+
     text = PAREN_RESULTS.sub(r"\1\2", text)
-    return Parser(ctx or make_context(), text).parse_module()
+    # THE serialization point for xDSL parsing, held here rather than at call sites because the call
+    # sites are not discoverable by inspection: locking the two obvious ones in `build_app` still left
+    # `c_runtime.generate` parsing twice for the @forward signature, and the resulting race surfaced as
+    # a *mutation* invariant ("Can't add to a block an operation already attached to a block") on
+    # perfectly valid IR, in whichever image happened to lose the race. Parsing a whole model is tens
+    # of seconds against builds and simulations that take minutes, so the cost of serializing here is
+    # small and the alternative is a build whose success depends on scheduling.
+    with IR_LOCK:
+        return Parser(ctx or make_context(), text).parse_module()
 
 
 def parse_mlir_file(path: str | Path, ctx=None):

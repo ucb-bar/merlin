@@ -7,6 +7,8 @@ physical DRAM dies before main(). So the descriptor is the contract, and these t
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from merlin.runtime import boards
@@ -198,3 +200,34 @@ def test_the_hart_count_reaches_the_block_table():
     assert "harts" in inspect.signature(zm.prepare_for_lowering).parameters
     # ...and build_app must pass the image's hart count down, not the default.
     assert "harts=n_harts" in inspect.getsource(zm.build_app)
+
+
+def test_every_in_process_mlir_parse_in_build_app_is_serialized():
+    """xDSL's parser is not thread-safe, and build_app parses TWICE: once to lower, and once to size
+    RAM from the activation peak. The second one is easy to miss because it looks like arithmetic
+    rather than codegen -- but it produced the same bogus ParseError under three concurrent builds."""
+    import inspect
+
+    from merlin.runtime.backends import zephyr_model as zm
+
+    src = inspect.getsource(zm.build_app)
+    assert src.count("with IR_LOCK") >= 2, "both parses must hold the lock"
+    # The RAM-sizing parse specifically.
+    head, _, tail = src.partition("activation_peak_bytes(model_dir")
+    assert "with IR_LOCK" in head.rsplit("\n\n", 1)[-1] or "with IR_LOCK:\n                peak" in src
+
+
+def test_mlir_parsing_is_serialized_at_the_only_place_a_parser_is_built():
+    """xDSL's parser is not thread-safe, and locking CALL SITES does not work: after covering the two
+    obvious ones in build_app, `c_runtime.generate` was still parsing twice for the @forward
+    signature, and the race surfaced as a mutation invariant ("Can't add to a block an operation
+    already attached to a block") on valid IR — in whichever concurrent build lost. The lock belongs
+    at the parse boundary, which is the single place a Parser is constructed."""
+    import inspect
+
+    from merlin.frontends import linalg_mlir
+
+    assert "IR_LOCK" in inspect.getsource(linalg_mlir.parse_mlir_text)
+    # If a second Parser construction ever appears, it bypasses the lock and this must fail.
+    src = Path(inspect.getfile(linalg_mlir)).read_text()
+    assert src.count("Parser(") == 1, "every parse must go through the serialized entry point"

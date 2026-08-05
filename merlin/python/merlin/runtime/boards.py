@@ -39,7 +39,7 @@ FLOW_BAREMETAL = "baremetal"
 class Board:
     """Everything the generated app needs to know about a target."""
 
-    name: str                     # the Zephyr board identifier passed to `-DBOARD=`
+    name: str                     # this descriptor's identity (appears in filenames, manifests)
     dram_bytes: int               # usable DRAM at `dram_base` (the REAL chip's, not the DTS default)
     harts: int                    # harts the SoC has
     vlen: int | None = None       # hardware vector length in bits; None = unknown, assume the V minimum
@@ -57,10 +57,30 @@ class Board:
     #: RISCV_ISA_EXT_V; what is lost is Zephyr saving vector state across a context switch, which
     #: this image does not need (one pinned cooperative worker per hart, no preemption mid-kernel).
     zephyr_vector_ext: bool = True
+    #: Kernel tick rate to force, or None to accept the board's own. This is about OUR image, not
+    #: about the board: it runs a single-shot inference on one pinned COOP worker per hart, with no
+    #: preemption and no timeouts to resolve, so it needs almost no ticks. Where a board pairs a slow
+    #: timer with a high tick rate the default is pathological -- Kodiak declares
+    #: SYS_CLOCK_HW_CYCLES_PER_SEC=40000 with SYS_CLOCK_TICKS_PER_SEC=10000, i.e. a tick every 4
+    #: cycles, and every tick saves/restores 32 vector registers under the FPU_SHARING=y that board
+    #: also requires. The result is an image that spends essentially all of its time in the timer ISR.
+    tick_hz: int | None = None
+    #: The Zephyr board to build against, when it differs from `name`. Some chips have no Zephyr port
+    #: of their own: gemmelos-bringup is a Baremetal-IDE fork with zero Zephyr in it, but its SoCs are
+    #: Chipyard-based, so the generic `chipyard_riscv64` board describes them (DRAM at 0x80000000,
+    #: CLINT at 0x02000000, HTIF console over the TSI/FESVR link they already load through). Keeping
+    #: the names separate lets the package say WHICH CHIP it is for while the build says which port it
+    #: used -- so the README can be honest that it is a generic port, not a bespoke one.
+    zephyr_board: str | None = None
     flow: str = FLOW_ZEPHYR
     #: bytes to reserve for code+stack before the weights blob in a baremetal layout
     code_reserve: int = 64 * 1024 * 1024
     notes: str = ""
+
+    @property
+    def build_board(self) -> str:
+        """The Zephyr board identifier to pass to ``-DBOARD=`` (defaults to this descriptor's name)."""
+        return self.zephyr_board or self.name
 
     @property
     def vector_max_len(self) -> int:
@@ -87,6 +107,17 @@ BOARDS: dict[str, Board] = {
     "chipyard_riscv64": Board(
         name="chipyard_riscv64", dram_bytes=256 * 1024 * 1024, harts=4, vlen=256,
         console=CONSOLE_HTIF, notes="Verilator/FireSim multi-Saturn SoC"),
+    # The FPGA TARGET is its own board, not the DTS default. `chipyard_riscv64` keeps ram0's 256 MB
+    # because that is what a Verilator/spike run of that config has; the FireSim dual-Saturn target has
+    # WithExtMemSize = 16 GB at 0x80000000 (see zephyr_model.DRAM_END, and the whole-model TinyLlama
+    # run whose 482 MB of weights could not otherwise have been linked). Conflating the two is what
+    # made whisper_tiny -- 464 MB of region -- look like it did not fit on a 16 GB target.
+    "firesim_dual_saturn": Board(
+        name="firesim_dual_saturn", zephyr_board="chipyard_riscv64",
+        dram_bytes=16 * 1024 * 1024 * 1024, harts=2, vlen=256, console=CONSOLE_HTIF,
+        notes="FireSim alveo_u250_firesim_dual_saturn_v256d128: 2 Shuttle tiles each with a Saturn "
+              "unit at vLen=256/dLen=128, 25 MHz fpga_frequency (~24.9 MHz effective measured), "
+              "16 GB target DRAM."),
     "chipyard_kodiak": Board(
         name="chipyard_kodiak", dram_bytes=512 * 1024 * 1024, harts=3, vlen=None,
         console=CONSOLE_HTIF,
@@ -100,7 +131,7 @@ BOARDS: dict[str, Board] = {
         # (what we want for correctness across any preemption) but is the setting that mis-routed
         # V-illegal-instruction traps on a FireSim Saturn tile. This image runs ONE pinned cooperative
         # worker per hart, so it should never preempt mid-kernel.
-        fpu_sharing=True, zephyr_vector_ext=False,
+        fpu_sharing=True, zephyr_vector_ext=False, tick_hz=100,
         notes="Kodiak tapeout. DTS says ram0=256MB and MP_MAX_NUM_CPUS=2; the chip has 512MB and 3 "
               "working cores. Its Zephyr lacks RISCV_V_KERNEL_ONLY and requires FPU_SHARING=y "
               "alongside V with eager switching."),
@@ -118,6 +149,21 @@ BOARDS: dict[str, Board] = {
         notes="Bearly ML 25 via Baremetal-IDE (-DCHIP=bearly25). 2 harts, hart 1 idles in wfi until "
               "dispatched; -march=rv64gcv_zfh -mabi=lp64d -mcmodel=medany; entry _start resumed at "
               "0x80000000. NOT Zephyr."),
+    # The SAME chip through Zephyr rather than bare metal, which is the only way to get RVV MULTICORE
+    # there: on bare metal hart 1 waits in wfi for their own thread-lib to dispatch it, while Zephyr
+    # SMP + merlin's OpenMP shim drives both harts the way every other multicore image here does.
+    # Facts from platform/bearly25/chip_config.h: SYS_CLK_FREQ 50 MHz, MTIME_FREQ 50 kHz (hence the
+    # tick override -- a 50 kHz timebase against a default 10 kHz tick rate is the Kodiak pathology
+    # again), CLINT at 0x02000000, DRAM at 0x80000000. TWO harts, confirmed by the chip's owner; their
+    # tree is ambiguous about it (thread-lib/hthread.h says 2, four other lib copies say 4) and
+    # guessing high would be a silent SMP-boot hang, so this is a fact worth having been told.
+    "gemmelos_bearly25_zephyr": Board(
+        name="gemmelos_bearly25_zephyr", zephyr_board="chipyard_riscv64",
+        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128, console=CONSOLE_HTIF,
+        flow=FLOW_ZEPHYR, tick_hz=100,
+        notes="Bearly ML 25 via the GENERIC chipyard Zephyr board (their SDK has no Zephyr port). "
+              "50 MHz core, 50 kHz CLINT timebase, CLINT 0x02000000, DRAM 0x80000000 (1 GB real, "
+              "256 MB in their .ld). 2 harts (confirmed by the chip's owner)."),
     "gemmelos_dsp25": Board(
         name="gemmelos_dsp25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
         console=CONSOLE_HTIF, flow=FLOW_BAREMETAL,

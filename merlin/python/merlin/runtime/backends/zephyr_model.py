@@ -562,6 +562,17 @@ def _prj_conf(cpus: int, backend: str, brd=None) -> str:
     # finishing. Both options default to `n` in Zephyr, so this must be stated. (Lesson 3,
     # merlin_hetero_runner.) A non-HTIF board configures its own console via its defconfig; we say
     # nothing rather than setting options its driver does not have.
+    # A tick every few cycles is a real pathology, not a tuning preference: measured on the Kodiak
+    # config, four spike images each burned 58 minutes of CPU without finishing a single inference,
+    # because the board pairs a 40 kHz timer with a 10 kHz tick rate and its required FPU_SHARING=y
+    # makes every tick save 32 vector registers. Our image has one pinned COOP worker per hart, no
+    # preemption and no timeouts, so it needs almost no ticks. Emitted only when the descriptor asks.
+    tick_conf = ("" if getattr(brd, "tick_hz", None) is None else f"""
+# This image is a single-shot inference on pinned cooperative workers: no preemption, no timeouts to
+# resolve, so it does not need the board's default tick rate (and paying it costs a vector-state
+# save/restore per tick under FPU_SHARING).
+CONFIG_SYS_CLOCK_TICKS_PER_SEC={brd.tick_hz}
+""")
     console_conf = ("""# SMP-safe HTIF console (buffered + syscall; both default to n upstream).
 CONFIG_UART_HTIF_BUFFERED_OUTPUT=y
 CONFIG_UART_HTIF_BUFFERED_OUTPUT_SIZE=256
@@ -604,7 +615,7 @@ CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=-1
 
 CONFIG_MAIN_STACK_SIZE=32768
 CONFIG_HEAP_MEM_POOL_SIZE=65536
-"""
+{tick_conf}"""
     if backend == "scalar":
         return common  # no vector config at all — the model object is rv64gc.
     # rvv: eager per-thread V save/restore + keep global -march scalar so the
@@ -795,10 +806,19 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
         # Size ram0 to the in-image weights blob + activation-arena headroom (default 256 MB
         # is too small for multi-hundred-MB int8/fp8 blobs). ARENA_SIZE=-1 claims the
         # leftover. Spike gets a matching -m; FireSim DRAM is fixed by the bitstream.
+        from ...common.ir_lock import IR_LOCK
         from ...common.mlir_query import activation_peak_bytes
-        ram_bytes = (ram_bytes_override if ram_bytes_override is not None
-                     else _ram_for_weights(weights_size,
-                                           activation_peak_bytes(model_dir / "model.mlir")))
+        if ram_bytes_override is not None:
+            ram_bytes = ram_bytes_override
+        else:
+            # This is the OTHER in-process MLIR parse in this function, and it is easy to miss because
+            # it sizes memory rather than generating code. It still needs the lock: with three
+            # concurrent build_app calls it produced a bogus ParseError on valid IR (the same
+            # "Could not build linalg op" signature), which then read as a broken build rather than a
+            # race. Serializing the whole parse-adjacent surface is what makes concurrency usable.
+            with IR_LOCK:
+                peak = activation_peak_bytes(model_dir / "model.mlir")
+            ram_bytes = _ram_for_weights(weights_size, peak)
 
     archive = work / "libmerlinmodel.a"
     archive.unlink(missing_ok=True)
@@ -870,7 +890,7 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     build_dir = work / "build"
     env = _tool_env()
     _run([_conda_bin() / "cmake", "-B", build_dir, "-G", "Ninja",
-          f"-DBOARD={board}", "-S", app], env=env)
+          f"-DBOARD={brd.build_board}", "-S", app], env=env)
     _run([_conda_bin() / "ninja", "-C", build_dir], env=env)
     elf = build_dir / "zephyr" / "zephyr.elf"
     if not elf.is_file():

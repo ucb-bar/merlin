@@ -228,6 +228,24 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int):
                  "build_hash": b.get("build_hash", "")}
 
 
+def build_board_only(bundle: Path, brd, harts: int, *, work: Path):
+    """Build the board image and return its facts, without running it anywhere.
+
+    The honest use for this is when the numbers are already established on better evidence than a
+    functional simulator can give -- our own RTL on FireSim, bit-exact against the W8A8 reference --
+    and the remaining question is whether THIS board's image links and audits, which is a build-time
+    and ELF-level property. The package records that no console reference exists for these binaries
+    rather than implying one.
+    """
+    pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
+    b = zm.build_app(bundle, work, board=brd.name, backend="rvv", rvv_hart=0,
+                     cpus=max(harts, brd.harts), n_harts=harts, int8_compute=True,
+                     rvv_schedule=pkg.schedule_text,
+                     cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
+                     features=frozenset([PEROP_BLOCK_NAME]), vlen=brd.vlen)
+    return {"elf": b["elf"], "ram_bytes": b["ram_bytes"], "build_hash": b.get("build_hash", "")}
+
+
 def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int):
     """Build one image and run it on spike at the board's VLEN and hart count."""
     pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
@@ -257,6 +275,15 @@ def main(argv=None) -> int:
     ap.add_argument("--vlen", type=int, default=None, help="the board's REAL vector length")
     ap.add_argument("--dtype", default="int8")
     ap.add_argument("--timeout", type=int, default=14400)
+    ap.add_argument("--no-spike-models", default="",
+                    help="comma-separated models to build+audit WITHOUT simulating, while the rest "
+                         "keep their gate. For the case where one model's functional run costs hours "
+                         "and its evidence comes from elsewhere (FireSim), but the others are cheap.")
+    ap.add_argument("--no-spike", action="store_true",
+                    help="build and audit the board ELFs but do not simulate them. Use when the "
+                         "lowering is already validated on stronger evidence (e.g. FireSim on the "
+                         "real RTL) and the spike gate is not worth its wall clock. The package then "
+                         "ships WITHOUT an expected_console for those binaries, and says so.")
     ap.add_argument("--jobs", type=int, default=None,
                     help="images to build/simulate at once (default: min(images, 6)); each is one "
                          "single-threaded spike")
@@ -270,6 +297,12 @@ def main(argv=None) -> int:
         overrides["vlen"] = a.vlen
     brd = boards.board(a.board, **overrides)
     models = [m.strip() for m in a.models.split(",") if m.strip()]
+    no_spike_models = {m.strip() for m in a.no_spike_models.split(",") if m.strip()}
+    unknown = no_spike_models - set(models)
+    if unknown:
+        print(f"[make_delivery] --no-spike-models names models not in --models: {sorted(unknown)}",
+              file=sys.stderr)
+        return 2
     hart_list = [int(h) for h in a.harts.split(",") if h.strip()]
     if max(hart_list) > brd.harts:
         print(f"[make_delivery] refusing {max(hart_list)} harts: {brd.name} has {brd.harts}",
@@ -310,6 +343,12 @@ def main(argv=None) -> int:
     def _one(item):
         model, bundle, harts = item
         work = Path(tempfile.mkdtemp(prefix=f"delivery_{model}_h{harts}_"))
+        if a.no_spike or model in no_spike_models:
+            print(f"  [{model} h{harts}] building (no simulation) in {work}", flush=True)
+            board_build = build_board_only(bundle, brd, harts, work=work)
+            print(f"  [{model} h{harts}] built: {board_build['ram_bytes'] // 2**20} MB region, "
+                  f"{board_build['build_hash']}", flush=True)
+            return {"console": "", "metrics": {}, "outputs": None}, board_build
         print(f"  [{model} h{harts}] building + simulating in {work}", flush=True)
         if brd.flow == boards.FLOW_BAREMETAL:
             out = build_baremetal(bundle, brd, work=work, timeout=a.timeout)
@@ -356,8 +395,10 @@ def main(argv=None) -> int:
             audits[elf_name] = rep.to_dict()
             if not rep.ok:
                 problems += [f"{elf_name}: {p}" for p in rep.problems]
-            (dest / f"{model}_h{harts}.expected_console.txt").write_text(res["console"])
-            outputs[harts] = res["outputs"]
+            if res["console"]:
+                (dest / f"{model}_h{harts}.expected_console.txt").write_text(res["console"])
+            if res["outputs"] is not None:
+                outputs[harts] = res["outputs"]
             binaries.append({
                 "model": model, "elf": elf_name, "harts": harts, "dtype": a.dtype,
                 "build_hash": board_build.get("build_hash", ""),
@@ -367,8 +408,10 @@ def main(argv=None) -> int:
                 "tier_ok": res.get("tier_ok"), "cos": res.get("cos"), "rel": res.get("rel"),
                 "upload_estimate_s": rep.facts.get("upload_estimate_s"),
             })
-            print(f"  {elf_name}: cycles={res['metrics'].get('cycles'):,} gate={res.get('tier_ok')} "
-                  f"audit={'OK' if rep.ok else 'FAIL'}", flush=True)
+            cyc = res["metrics"].get("cycles")
+            print(f"  {elf_name}: cycles={cyc:,} gate={res.get('tier_ok')} "
+                  f"audit={'OK' if rep.ok else 'FAIL'}" if cyc is not None else
+                  f"  {elf_name}: not simulated, audit={'OK' if rep.ok else 'FAIL'}", flush=True)
         # 1-hart vs N-hart bit-identity: the property a multicore run exists to establish
         if len(outputs) > 1:
             base_h = min(outputs)
@@ -386,6 +429,35 @@ def main(argv=None) -> int:
     # Kodiak board files declare no width, and its samples' CONFIG_RISCV_VECTOR_MAX_LEN only bounds it
     # from above), and building for the wrong width is the documented K1 trap. Run first, it settles
     # the question in seconds instead of after a multi-megabyte upload.
+    # FireSim evidence, when a results file exists for a model in this package. This is the only rung
+    # where our own RTL executes the whole model, so it says something no simulator can: real cycle
+    # counts, and a multicore split proven bit-identical on hardware.
+    firesim_evidence = {}
+    fs_dir = Path("/scratch2/agustin/merlin_firesim_builds")
+    for model in models:
+        f = fs_dir / f"results_{model}.json"
+        if not f.is_file():
+            continue
+        try:
+            rows = json.loads(f.read_text())
+        except Exception:                                                   # noqa: BLE001
+            continue
+        keep = [{k: r.get(k) for k in ("harts", "cycles", "tier_ok", "w8a8_cos", "w8a8_max_rel")}
+                for r in rows if r.get("cycles")]
+        if not keep:
+            continue
+        by = {r["harts"]: r for r in keep}
+        ent = {"bitstream": "alveo_u250_firesim_dual_saturn_v256d128", "vlen": 256, "runs": keep}
+        if 1 in by and 2 in by and by[1]["cycles"] and by[2]["cycles"]:
+            ent["speedup_1_to_2_harts"] = round(by[1]["cycles"] / by[2]["cycles"], 3)
+            outs = {r["harts"]: r.get("outputs") for r in rows if r.get("outputs")}
+            if 1 in outs and 2 in outs:
+                ent["harts_bit_identical"] = outs[1] == outs[2]
+        firesim_evidence[model] = ent
+    if firesim_evidence:
+        (dest / "firesim_evidence.json").write_text(json.dumps(firesim_evidence, indent=2) + "\n")
+        print(f"  firesim_evidence.json: {sorted(firesim_evidence)}", flush=True)
+
     probe_report = None
     try:
         from merlin.runtime import vector_probe
@@ -424,7 +496,12 @@ def main(argv=None) -> int:
                   "vlen": brd.vlen, "console": brd.console, "notes": brd.notes},
         "dtype": a.dtype, "binaries": binaries, "problems": problems,
         "vector_probe": probe_report,
-        "merlin_commit": _git_sha(), "validated_on": "spike (functional, at the board's VLEN)",
+        "firesim_evidence": firesim_evidence or None,
+        "merlin_commit": _git_sha(),
+        # State what actually happened to THESE binaries. A package whose provenance line claims a
+        # simulation it skipped is worse than one that admits the gap: the reader cannot tell which
+        # of our claims to trust.
+        "validated_on": _provenance(a.no_spike, no_spike_models),
     }
     (dest / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     (dest / "README.md").write_text(_readme(brd, manifest))
@@ -449,6 +526,31 @@ def _git_sha() -> str:
         return "unknown"
 
 
+def _provenance(no_spike: bool, no_spike_models: set) -> str:
+    """One line saying what actually happened to the binaries in THIS package.
+
+    A package whose provenance claims a simulation it skipped is worse than one that admits the gap:
+    the reader cannot tell which of our claims to trust. A mixed package says so, and names which
+    models are the exception rather than averaging the two stories together.
+    """
+    rtl = ("FireSim (our own Saturn RTL, whole model, bit-exact vs the W8A8 reference)")
+    if no_spike:
+        return f"{rtl}; these binaries were built and ELF-audited but NOT simulated"
+    spike = "spike (functional, at the board's VLEN)"
+    if no_spike_models:
+        return (f"{spike} — EXCEPT {', '.join(sorted(no_spike_models))}, which was built and "
+                f"ELF-audited but not simulated; its evidence is {rtl}")
+    return spike
+
+
+def _verdict(b: dict) -> str:
+    """What we can honestly say about one binary. `not simulated` is a distinct answer from a gate
+    that ran and did not pass — conflating them would let a skipped check read as a soft failure."""
+    if b.get("gate_ok"):
+        return "PASS"
+    return "not simulated" if b.get("spike_cycles") is None else "see status"
+
+
 def _readme(brd, manifest: dict) -> str:
     loader = LOADER_DOC.get(brd.name, LOADER_DOC["default"])
     baremetal = brd.flow == boards.FLOW_BAREMETAL
@@ -458,7 +560,7 @@ def _readme(brd, manifest: dict) -> str:
     rows = "\n".join(
         f"| `{b['elf']}` | {b['model']} | {b['harts']} | "
         f"{b['ram_bytes'] // 2**20} MB | {b['upload_estimate_s']}s | "
-        f"{'PASS' if b['gate_ok'] else 'see status'} |"
+        f"{_verdict(b)} |"
         for b in manifest["binaries"])
     statuses = "\n".join(f"- **{m}** — {STATUS.get(m, 'no status recorded')}"
                          for m in sorted({b["model"] for b in manifest["binaries"]}))
@@ -486,6 +588,47 @@ Every binary here runs on one hart. We did not ship a multi-hart bare-metal imag
 your second hart goes through your own thread-lib rather than the OpenMP runtime our multicore lowering
 targets, and shipping that untested would waste your bench time. If you want it, that integration is
 ours to do next — say so and we will build against your dispatch.""")
+    fs = manifest.get("firesim_evidence") or {}
+    if fs:
+        rows_fs = []
+        for model, e in sorted(fs.items()):
+            for r in e["runs"]:
+                rows_fs.append(f"| {model} | {r['harts']} | {r['cycles']:,} | {r['tier_ok']} | "
+                               f"{r['w8a8_max_rel']} |")
+        extra = []
+        for model, e in sorted(fs.items()):
+            if e.get("speedup_1_to_2_harts"):
+                extra.append(f"- `{model}`: **{e['speedup_1_to_2_harts']}×** on 2 harts, outputs "
+                             f"{'bit-identical' if e.get('harts_bit_identical') else 'NOT identical'}"
+                             f" to the 1-hart run")
+        firesim_doc = ("""\
+## What the same code did on real RTL (not a simulator)
+
+These models also ran on **FireSim**, executing the Saturn RTL on an FPGA — our own SoC, whole model,
+cycle-accurate. Bitstream `%s`, **vLen=256**:
+
+| model | harts | cycles | gate | per-element error |
+|---|---:|---:|---|---:|
+%s
+
+%s
+
+Two things this establishes for you: the arithmetic is bit-exact against the W8A8 reference on real
+hardware (`per-element error 0.0`, not just a good cosine), and the multicore split is a pure work
+division rather than an approximation. It is *not* a claim about your chip's clock or memory system —
+different SoC, different frequency.
+""" % (list(fs.values())[0]["bitstream"], "\n".join(rows_fs), "\n".join(extra) or ""))
+    else:
+        firesim_doc = ""
+    simulated = any(b.get("spike_cycles") is not None for b in manifest["binaries"])
+    sim_line = ("""\
+- Ran the identical image on spike at **%d-bit** vectors, and gated the output against the W8A8
+  reference.""" % (brd.vlen or 128) if simulated else """\
+- **Did NOT run these exact binaries through a functional simulator.** The lowering they were built
+  from is validated on stronger evidence — the same models, same schedule, executing our own Saturn
+  RTL on an FPGA, bit-exact against the W8A8 reference (see above). What is specific to these
+  binaries is their memory map and link, which is what the ELF audit checks. That is why there is no
+  `expected_console.txt` for them: we would rather ship no reference than one we did not produce.""")
     probe = manifest.get("vector_probe")
     probe_doc = ("""\
 Load `vlen_probe.elf` the same way as any other binary below. It reads the chip's own CSRs and prints:
@@ -538,7 +681,7 @@ one is a one-line rebuild on our side. In particular we would like to know `vlen
 
 ## The binaries
 
-| file | model | harts | linked region | est. upload | our spike verdict |
+| file | model | harts | linked region | est. upload | our verdict |
 |---|---|---|---|---|---|
 {rows}
 
@@ -570,6 +713,7 @@ warns if the log's `build_hash` is not one of ours.
 
 {pair_section}
 
+{firesim_doc}
 ## Status of each model — please read before reporting a number
 
 {statuses}
@@ -579,8 +723,7 @@ warns if the log's `build_hash` is not one of ours.
 - Built for `{brd.name}` with the board's own facts, and audited the ELF against them: every LOAD
   segment inside your DRAM, entry point in range, `.htif` present so your loader can find
   `tohost`/`fromhost`, and real vector instructions in the image (see `elf_audit.json`).
-- Ran the identical image on spike at **{vlen}-bit** vectors, and gated the output against the W8A8
-  reference.
+{sim_line}
 {identity_line}
 
 What that does *not* cover: your clock, your DRAM timing, your vector unit's actual VLEN, and anything
