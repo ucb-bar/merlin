@@ -9,26 +9,70 @@ import json
 from pathlib import Path
 from typing import Any
 
-# every Gemmini instruction class the bench knows about (so 0-counts are explicit "not covered")
-ALL_CLASSES = ["CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
-               "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV"]
-ALL_MODES = ["i8", "relu", "acc_scale", "k_accumulate", "resident_reuse",
-             "conv2d", "movement", "padded_edge"]
+# LAST-RESORT reference vocabulary (the RoCC/systolic instruction classes + gemmini corpus mode tags),
+# used ONLY when a target's ISA vocabulary cannot be derived AND no trace was observed — so a bare
+# no-target aggregate call is still meaningful. A real graded run derives the class universe from the
+# TARGET's own ISA + the decoded traces (see _isa_class_vocabulary / aggregate), so atlas MXU classes and
+# radiance SIMT classes are counted, never silently dropped against a gemmini-shaped list.
+_FALLBACK_CLASSES = ["CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
+                     "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV"]
+_FALLBACK_MODES = ["i8", "relu", "acc_scale", "k_accumulate", "resident_reuse",
+                   "conv2d", "movement", "padded_edge"]
 TIERS = ["L0", "L1", "L2", "L3", "L4", "L5"]
 
 
+def _isa_class_vocabulary(target: str | None) -> list[str]:
+    """The target's OWN ISA class names, DERIVED from its capability manifest — a self-hosted-ISA/SIMT
+    target's decoded-instruction classes (contract ``interfaces[].instruction_classes``), or a
+    RoCC/systolic target's ``encoding.semantic_class`` + ``config_subtype`` names (the config op is
+    refined into its subtypes in the decoded trace). Returns ``[]`` when no manifest resolves — the
+    caller then relies on the observed-trace union + the reference fallback. Never a target-name branch."""
+    if not target:
+        return []
+    try:
+        from .target_experiment import load_capability_manifest
+        m = load_capability_manifest(target)
+    except Exception:  # noqa: BLE001 — no resolvable manifest -> rely on observed traces
+        return []
+    out: list[str] = []
+    for itf in (m.contract.get("interfaces") or []):     # self-hosted ISA / SIMT decoded classes
+        out += list(itf.get("instruction_classes") or [])
+    enc = m.encoding or {}
+    sc = enc.get("semantic_class") or {}
+    cst = enc.get("config_subtype") or {}
+    for name in sc.values():                              # RoCC/systolic semantic classes
+        if cst and str(name).upper() == "CONFIG":        # replaced by its subtypes in the trace
+            continue
+        out.append(name)
+    out += list(cst.values())
+    return [c for c in dict.fromkeys(out) if c]
+
+
 def aggregate(results: list[dict], capsules: list[dict] | None = None,
-              traces: dict[str, dict] | None = None) -> dict:
-    """Aggregate capsule_result dicts (+ optional capsules/traces) into a coverage dict."""
+              traces: dict[str, dict] | None = None, *, target: str | None = None) -> dict:
+    """Aggregate capsule_result dicts (+ optional capsules/traces) into a coverage dict.
+
+    The instruction-class universe is DERIVED from ``target``'s own ISA unioned with the classes the
+    decoded traces actually exercised; the mode universe is the union of the modes the graded capsules
+    declare. So the not-covered rows reflect THIS target's vocabulary, not a hardcoded gemmini list."""
     capsules = capsules or []
     cap_by_name = {c["name"]: c for c in capsules}
     traces = traces or {}
 
+    universe_classes = set(_isa_class_vocabulary(target))
+    for _tr in traces.values():
+        universe_classes |= {i.get("class") for i in (_tr.get("instructions") or []) if i.get("class")}
+    universe_modes: set[str] = set()
+    for _c in capsules:
+        universe_modes |= {m for m, on in ((_c.get("expected") or {}).get("modes") or {}).items() if on}
+    classes = sorted(universe_classes) or list(_FALLBACK_CLASSES)
+    modes = sorted(universe_modes) or list(_FALLBACK_MODES)
+
     by_kind: dict[str, int] = {}
     by_label: dict[str, int] = {}
     by_tier_reached = {t: 0 for t in TIERS}
-    mode_cov = {m: 0 for m in ALL_MODES}
-    class_cov = {c: 0 for c in ALL_CLASSES}
+    mode_cov = {m: 0 for m in modes}
+    class_cov = {c: 0 for c in classes}
     unavail = {"vcs": 0, "firesim": 0}
 
     for r in results:
@@ -76,13 +120,11 @@ def render_markdown(cov: dict, results: list[dict]) -> str:
         L.append(f"| {t} | {cov['by_tier_reached'].get(t, 0)} |")
     L += ["", "## Instruction-class coverage (explicit not-covered rows)", "",
           "| class | capsules exercising |", "|---|---|"]
-    for c in ALL_CLASSES:
-        n = cov["instruction_class_coverage"].get(c, 0)
+    for c, n in cov["instruction_class_coverage"].items():
         mark = "" if n else "  _(not covered)_"
         L.append(f"| {c} | {n}{mark} |")
     L += ["", "## Mode coverage", "", "| mode | passing capsules |", "|---|---|"]
-    for m in ALL_MODES:
-        n = cov["mode_coverage"].get(m, 0)
+    for m, n in cov["mode_coverage"].items():
         mark = "" if n else "  _(not covered)_"
         L.append(f"| {m} | {n}{mark} |")
     L += ["", "## Heavy-oracle availability (honest)", "",
