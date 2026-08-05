@@ -192,6 +192,18 @@ def resolve(name: str) -> TargetInfo:
     gen = _discover([generated_target_home()])
     if name in gen:
         return _resolve_external(name, gen[name])
+    # 3b. opt-in native fetch of the published <target>-mlir repo into the generated home, then
+    # re-discover. Off by default (no surprise network calls); set MERLIN_TARGET_AUTOFETCH=1 to enable.
+    if os.environ.get("MERLIN_TARGET_AUTOFETCH", "").strip() not in ("", "0", "false", "False"):
+        from .oot_fetch import fetch, FetchError  # lazy: oot_fetch imports from this module
+        try:
+            fetch(name, champion=os.environ.get("MERLIN_TARGET_CHAMPION") or None)
+        except FetchError:
+            pass
+        else:
+            gen = _discover([generated_target_home()])
+            if name in gen:
+                return _resolve_external(name, gen[name])
     # 4. legacy generated location
     return TargetInfo(
         name=name, kind="generated", base=target_base(name),
