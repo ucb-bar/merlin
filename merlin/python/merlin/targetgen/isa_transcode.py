@@ -36,8 +36,8 @@ from .isa_model import IsaModel
 # are compared against the TARGET's own derived opcode_table before use, never assumed of the target).
 _LOAD, _OP_IMM, _STORE, _OP = 0x03, 0x13, 0x23, 0x33
 _LUI, _AUIPC, _JAL, _JALR, _SYSTEM = 0x37, 0x17, 0x6F, 0x67, 0x73
-_OP_FP = 0x53                        # zfinx FP is register-register (GPRs); FMA (0x43/47/4b/4f, 4-register)
-                                     # is not yet re-mapped and fails closed via the default branch.
+_OP_FP = 0x53                        # zfinx FP is register-register (GPRs)
+_FMA = {0x43, 0x47, 0x4B, 0x4F}      # MADD / MSUB / NMSUB / NMADD — fused multiply-add (4 source regs)
 _ITYPE = {_LOAD, _OP_IMM, _JALR, _SYSTEM}
 _STYPE = {_STORE}
 _BTYPE = {0x63}          # BRANCH
@@ -66,6 +66,7 @@ class _Decoded:
     imm: int        # full signed immediate (already stride-scaled for branch/jal)
     has_imm: bool   # False for register-register ops (the second-source field is a real register)
     is_store_like: bool  # store/branch: the immediate's high byte lives in the rd field
+    rs3: int = 0    # third source register (fused-multiply-add only); placed only for non-immediate forms
 
 
 def _decode_rv32(word: int, stride_ratio: int) -> _Decoded:
@@ -77,8 +78,12 @@ def _decode_rv32(word: int, stride_ratio: int) -> _Decoded:
     rs1 = (word >> 15) & 0x1F
     rs2 = (word >> 20) & 0x1F
     f7 = (word >> 25) & 0x7F
-    imm, has_imm, is_store_like = 0, True, False
-    if op in _ITYPE:
+    imm, has_imm, is_store_like, rs3 = 0, True, False, 0
+    if op in _FMA:
+        # R4-type: rs3 in bits [31:27], the 2-bit format in [26:25] (the target carries it in f7's low
+        # bits), rm in f3; no immediate, three real source registers.
+        has_imm, rs3, f7 = False, (word >> 27) & 0x1F, (word >> 25) & 0x3
+    elif op in _ITYPE:
         rs2 = 0
         if op == _OP_IMM and f3 in (0x1, 0x5):        # slli/srli/srai: shamt is the imm; funct7 -> f7
             imm = (word >> 20) & 0x1F
@@ -109,7 +114,7 @@ def _decode_rv32(word: int, stride_ratio: int) -> _Decoded:
         has_imm = False                                # rs2 is a real register; funct7 already in f7
     else:
         raise TranscodeError(f"opcode {op:#04x} is not handled by the base-ISA transcoder")
-    return _Decoded(op, rd, f3, rs1, rs2, f7, imm, has_imm, is_store_like)
+    return _Decoded(op, rd, f3, rs1, rs2, f7, imm, has_imm, is_store_like, rs3)
 
 
 class FixedFormatTranscoder:
@@ -165,6 +170,13 @@ class FixedFormatTranscoder:
         word = self._place(word, "rs2", rs2)
         if d.f7 and "f7" in self.fl:
             word = self._place(word, "f7", d.f7)
+        # third source (fused-multiply-add) — only for non-immediate forms; its field overlaps the
+        # contiguous immediate field, so placing it under an immediate would corrupt the immediate.
+        if d.rs3:
+            if d.has_imm or "rs3" not in self.fl:
+                raise TranscodeError("this instruction needs a third-source (rs3) field the target's layout "
+                                     "does not provide (or an immediate form overlaps it) — fail closed")
+            word = self._place(word, "rs3", d.rs3)
         return word & ((1 << self.width) - 1)
 
     def transcode_text(self, text: bytes) -> list[int]:

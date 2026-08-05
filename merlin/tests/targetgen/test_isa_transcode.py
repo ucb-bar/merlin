@@ -52,6 +52,31 @@ def test_transcode_negative_store_immediate_high_byte_in_rd():
     assert rec["operands"]["rs1"] == 10 and rec["operands"]["rs2"] == 11
 
 
+def test_transcode_fma_places_third_source():
+    # a 4-register FMA re-maps to the target's rs3 field; the 2-bit format lands in f7.
+    fact = {**MUON_FACT,
+            "fields": {**MUON_FACT["fields"], "rs3": [43, 36]},
+            "opcodes": {**MUON_FACT["opcodes"], "MADD": 0x43}}
+    m = isa_model_from_encoding("synth", fact)
+    tc = FixedFormatTranscoder(m)
+    # fmadd  rd=1, rs1=2, rs2=3, rs3=4, rm=0, fmt=0
+    w32 = (4 << 27) | (0 << 25) | (3 << 20) | (2 << 15) | (0 << 12) | (1 << 7) | 0x43
+    word = tc.transcode_text(struct.pack("<I", w32))[0]
+    rec = isa_disasm.disassemble(m, [word])[0]
+    assert rec["mnemonic"] == "MADD"
+    assert rec["operands"]["rd"] == 1 and rec["operands"]["rs1"] == 2
+    assert rec["operands"]["rs2"] == 3 and rec["operands"]["rs3"] == 4
+
+
+def test_fma_fails_closed_without_an_rs3_field():
+    # a target whose layout has no rs3 field cannot carry a fused-multiply-add -> fail closed.
+    m = isa_model_from_encoding("synth", {**MUON_FACT, "opcodes": {**MUON_FACT["opcodes"], "MADD": 0x43}})
+    tc = FixedFormatTranscoder(m)
+    w32 = (4 << 27) | (3 << 20) | (2 << 15) | (1 << 7) | 0x43
+    with pytest.raises(TranscodeError):
+        tc.transcode_text(struct.pack("<I", w32))
+
+
 def test_transcode_fails_closed_on_auipc():
     m = isa_model_from_encoding("synth", MUON_FACT)
     tc = FixedFormatTranscoder(m)
