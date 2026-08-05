@@ -50,8 +50,15 @@ class Board:
     #: instruction, never reaches the barrier its peers are waiting on, and the image hangs until
     #: whoever is running it gives up on a timeout. Measured on a 3-core tapeout where 2 cores have V:
     #: the 1-hart images passed and every 3-hart image timed out.
-    #: None means "all of them"; the vector-capable harts are assumed to be 0..vector_harts-1.
+    #: None means "all of them"; with only a count, the vector-capable harts are taken to be
+    #: 0..vector_harts-1 -- see `vector_hart_ids` when that is not true.
     vector_harts: int | None = None
+    #: WHICH harts are vector-capable, when they are not the first `vector_harts` of them. A count
+    #: alone silently assumes 0..N-1, and on a chip whose vector units sit on (say) harts 0 and 2 that
+    #: assumption deadlocks exactly like building too many harts does -- a worker lands on a scalar
+    #: hart, traps, and never reaches the barrier. Nothing readable states the mapping (the device tree
+    #: lists identical cpu@N nodes), so it is a fact someone has to tell us. None = the count's default.
+    vector_hart_ids: tuple[int, ...] | None = None
     vlen: int | None = None       # hardware vector length in bits; None = unknown, assume the V minimum
     console: str = CONSOLE_HTIF
     dram_base: int = 0x80000000
@@ -108,7 +115,21 @@ class Board:
     @property
     def n_vector_harts(self) -> int:
         """Harts that can execute vector code. Defaults to all of them."""
+        if self.vector_hart_ids is not None:
+            return len(self.vector_hart_ids)
         return int(self.vector_harts if self.vector_harts is not None else self.harts)
+
+    def hart_ids_for(self, backend: str) -> tuple[int, ...]:
+        """The harts an image for ``backend`` may run on.
+
+        A vector image is restricted to the vector-capable harts; a scalar one may use every hart,
+        which is the only way to reach a core that has no vector unit.
+        """
+        if backend != "rvv":
+            return tuple(range(self.harts))
+        if self.vector_hart_ids is not None:
+            return tuple(self.vector_hart_ids)
+        return tuple(range(self.n_vector_harts))
 
     @property
     def vector_max_len(self) -> int:

@@ -340,6 +340,38 @@ int merlin_omp_init(int n_threads)
 		 * walk them skipping the master's so the mapping stays 1:1 even when the master
 		 * is not on hart 0 (the FireSim vector-tile case pins it to hart 1). */
 		int cpu = (i <= omp_master_cpu) ? (i - 1) : i;
+#ifdef MERLIN_OMP_HART_IDS
+		/* HETEROGENEOUS SoC: the harts that may run this pool are listed explicitly, because
+		 * "hart 0..n-1" is an assumption and a wrong one is a DEADLOCK, not a slowdown -- a
+		 * worker placed on a hart without a vector unit traps on its first vector instruction
+		 * and never reaches the barrier its peers are waiting on. Nothing readable says which
+		 * harts are vector-capable: the device tree lists identical cpu@N nodes. So the set is
+		 * a build parameter (Board.vector_hart_ids), and this walks it skipping the master's. */
+		{
+			static const int hart_ids[] = MERLIN_OMP_HART_IDS;
+			const int n_ids = (int)(sizeof(hart_ids) / sizeof(hart_ids[0]));
+			int k = 0;
+			cpu = -1;
+			for (int j = 0; j < n_ids; j++) {
+				if (hart_ids[j] == omp_master_cpu) {
+					continue;       /* the master already owns this one */
+				}
+				if (++k == i) {
+					cpu = hart_ids[j];
+					break;
+				}
+			}
+			if (cpu < 0) {
+				/* More threads requested than usable harts. Shrink rather than pin a
+				 * second worker onto a hart already running one, which would serialize
+				 * silently and report a speed-up that never happened. */
+				printk("merlin_omp: only %d usable hart(s), running %d thread(s)\n",
+				       k + 1, i);
+				omp_nthreads = i;
+				break;
+			}
+		}
+#endif
 
 		atomic_set(&w->done, 0);
 		w->gtid = cpu;
