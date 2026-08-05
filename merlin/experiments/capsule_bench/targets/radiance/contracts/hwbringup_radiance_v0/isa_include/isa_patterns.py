@@ -7,15 +7,20 @@ library code, so it may carry the concrete RISC-V field layout its own encoder u
 ``isa_definition.py`` carries ``opcode=0b1110111`` etc. Merlin core holds none of this; it derives the
 taxonomy by differential-probing the ``to_bytecode`` below (see ``oracle_helpers/isa_introspect.py``).
 
-Scope + provenance (fail-closed): we model the **stock-LLVM-emittable, standard 32-bit RISC-V ``.insn r``
-warp-control surface** — the Vortex CUSTOM0 ops whose raw encoding the shipped header
-``radiance-kernels/lib/include/vx_intrinsics.h`` composes as ``.insn r CUSTOM0, funct3, funct7, rd, rs1,
-rs2``. That is precisely the SIMT-divergence surface merlin's derive-don't-fork lowering targets on stock
-LLVM (tmc / split / join / pred / wspawn / barrier / rast). The Muon-LLVM fork additionally defines these
-ops in a 64-bit instruction format (``RISCVInstrInfoVX.td``) with 8-bit register fields and an ``ext2``
-address-space qualifier; the mnemonic-only ops (``sw.shared`` / ``fexp.h`` / ``nu.invoke`` / ``vx_tex``)
-are expressible ONLY in that 64-bit fork format and are recorded as honest residue in ``isa_definition.py``
-(they are not emitted here rather than emitted with a fabricated 32-bit encoding).
+Scope + provenance: this module is a mnemonic→ROLE taxonomy for the Vortex CUSTOM0 warp-control ops
+(tmc / split / join / pred / wspawn / barrier / rast), each cited to the ``.insn r CUSTOM0, funct3,
+funct7, rd, rs1, rs2`` form the shipped header ``radiance-kernels/lib/include/vx_intrinsics.h`` composes.
+The 32-bit R-type layout below is the taxonomy substrate isa_introspect probes for roles — it is NOT the
+target's emit encoding.
+
+The emit encoding for EVERY op (warp-control AND compute AND memory) is the target's 64-bit FIXED-FORMAT
+word, whose field layout + opcode table are DERIVED from the RTL decoder and exposed by
+``merlin.targetgen.isa_model.isa_model_for_target("radiance")`` (opcodes incl. ``MADD``/``OP_FP`` compute,
+``LOAD``/``STORE`` with an ``ext2`` address-space field global=0/shared=1). That derived word is what the
+shipped ``isa_tools.py disasm``/``lint`` decode against and what merlin's FORK-FREE backend emits into
+(stock rv32 compile → ``isa_transcode`` re-encode; no Muon-LLVM fork needed). See the corrected residue
+note in ``isa_definition.py`` and the worked ``example_kernel/gemm_tile.S`` — a real, assembled,
+disassembly-clean compute kernel. Compute here is DERIVABLE, not a fork-only capability.
 """
 from __future__ import annotations
 
