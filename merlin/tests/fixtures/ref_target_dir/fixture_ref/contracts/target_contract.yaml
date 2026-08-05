@@ -1,0 +1,13 @@
+# Hand-authored MINIMAL curated-REFERENCE target for the reference-plugin backend-discovery test
+# (merlin/tests/runtime/test_oot_backend_discovery.py::test_reference_target_plugin_backend_autoloads).
+# fixture_ref is a SYNTHETIC target name. Unlike an OOT package (reached via MERLIN_TARGET_PATH), a
+# reference target lives under targets_dir() (here redirected via MERLIN_TARGETS_DIR to this fixture
+# tree) and is enumerated by target_registry.list_targets(); base._oot_backend_modules now also loads a
+# reference target's plugin.backend (injecting the reference root as the path), so an evicted reference
+# backend auto-registers with ZERO env — the mechanism the gemmini backend eviction rides.
+name: fixture_ref
+version: '0.1'
+plugin:
+  backend: backend.py
+runtime:
+  default_backend: simulator

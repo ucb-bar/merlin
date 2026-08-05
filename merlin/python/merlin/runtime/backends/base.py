@@ -135,8 +135,9 @@ _oot_env_seen: str | None = None
 
 
 def _oot_backend_modules() -> list[tuple[str, Path]]:
-    """``(target-name, backend-file)`` for every OOT target package reachable via ``MERLIN_TARGET_PATH``
-    (or the freshly-generated home) whose contract's ``plugin`` block declares a ``backend`` module path.
+    """``(target-name, backend-file/dir)`` for every target whose contract's ``plugin`` block declares a
+    ``backend`` — OOT packages reachable via ``MERLIN_TARGET_PATH`` / the freshly-generated home, AND curated
+    in-tree reference targets (so a reference backend evicted into its own package dir is auto-loaded too).
     Empty when targetgen is unavailable or nothing declares a backend — the core degrades honestly."""
     try:
         from ...targetgen import target_registry
@@ -146,14 +147,23 @@ def _oot_backend_modules() -> list[tuple[str, Path]]:
         names = list(target_registry.external_targets())
     except Exception:  # noqa: BLE001 — a malformed search path must not break the registry
         return []
+    # curated in-tree REFERENCE targets may ALSO declare a plugin.backend — the physical eviction of a
+    # reference backend into its own package dir under merlin/targets/<name>/backend/. They are NOT in
+    # external_targets() (which is env + generated only), so add them here; ``plugin()`` omits ``path`` for a
+    # reference (external_root is None), so inject the reference package root. External wins a name clash.
+    try:
+        ref_names = [n for n in target_registry.list_targets() if n not in names]
+    except Exception:  # noqa: BLE001 — a missing reference tree must not break discovery
+        ref_names = []
     out: list[tuple[str, Path]] = []
-    for name in names:
+    for name in [*names, *ref_names]:
         try:
-            plugin = target_registry.resolve(name).plugin()
+            info = target_registry.resolve(name)
+            plugin = info.plugin()
         except Exception:  # noqa: BLE001 — skip a package whose contract will not parse
             continue
         rel = plugin.get("backend")
-        root = plugin.get("path")
+        root = plugin.get("path") or str(info.base)   # reference: base is the package root (no injected path)
         if not rel or not root:
             continue
         path = Path(root) / rel

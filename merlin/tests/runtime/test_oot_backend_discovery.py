@@ -149,3 +149,57 @@ def test_core_clean_without_target_path_pkg():
     assert "fixture_npu_pkg" not in res["backends"], res["backends"]
     assert res["oot_in_sys_modules"] is False
     assert res["sibling_in_sys_modules"] is False
+
+
+# --- reference-target plugin.backend (the gemmini-eviction mechanism) -------------------------------
+_REF_TARGETS_DIR = merlin_dir() / "tests" / "fixtures" / "ref_target_dir"
+
+_REF_PROBE = """
+import json, sys
+import merlin.runtime.backends.base as base
+result = {
+    "backends": base.list_backends(),
+    "in_sys_modules": "merlin._oot_backends.fixture_ref" in sys.modules,
+}
+if "fixture_ref" in base.list_backends():
+    result["module_name"] = getattr(base.get_backend("fixture_ref"), "__name__", None)
+print(json.dumps(result))
+"""
+
+
+def _run_with_targets_dir(code: str, targets_dir: str | None) -> dict:
+    """Run ``code`` in a clean interpreter with ``MERLIN_TARGETS_DIR`` set (redirecting the curated
+    reference-target root) and ``MERLIN_TARGET_PATH`` UNSET — so only reference discovery is exercised."""
+    env = dict(os.environ)
+    env.pop("MERLIN_TARGET_PATH", None)
+    if targets_dir is not None:
+        env["MERLIN_TARGETS_DIR"] = targets_dir
+    else:
+        env.pop("MERLIN_TARGETS_DIR", None)
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env)
+    assert proc.returncode == 0, f"subprocess failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    return json.loads([ln for ln in proc.stdout.splitlines() if ln.strip()][-1])
+
+
+def _require_ref_fixture() -> None:
+    if not (_REF_TARGETS_DIR / "fixture_ref" / "contracts" / "target_contract.yaml").is_file():
+        pytest.skip(f"reference-target fixture missing at {_REF_TARGETS_DIR}")
+
+
+def test_reference_target_plugin_backend_autoloads():
+    """A CURATED REFERENCE target (under targets_dir(), enumerated by list_targets()) that declares a
+    ``plugin.backend`` has that backend auto-loaded with ZERO env — no MERLIN_TARGET_PATH needed. This is
+    the mechanism the in-tree gemmini reference backend rides once evicted into its own package dir: the
+    reference root is injected as the backend path, and base loads + registers it by file path."""
+    _require_ref_fixture()
+    res = _run_with_targets_dir(_REF_PROBE, str(_REF_TARGETS_DIR))
+    assert "fixture_ref" in res["backends"], res["backends"]
+    assert res["module_name"] == "merlin._oot_backends.fixture_ref"
+    assert res["in_sys_modules"] is True
+
+
+def test_reference_plugin_absent_when_no_such_reference():
+    """Sanity/negative: point targets_dir() at an EMPTY reference root — the fixture backend must not
+    load (discovery is honest, not a hardcoded fallback)."""
+    res = _run_with_targets_dir(_REF_PROBE, str(_REF_TARGETS_DIR / "fixture_ref" / "contracts"))
+    assert "fixture_ref" not in res["backends"]
