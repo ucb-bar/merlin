@@ -63,6 +63,24 @@ def test_absent_runtime_abi_fails_closed_never_defaults():
         mh._render_helpers(empty)                              # needs mhartid + console_mmio
 
 
+def test_simt_runtime_scaffold_is_rendered_from_derived_facts():
+    # the multi-warp spawn/park/wait scaffold emits its SIMT-control ops + CSRs ENTIRELY from runtime_abi:
+    # a perturbed fact makes the emitted C track it, with zero shared-code edits.
+    prog = muon.render_simt_runtime(_model(_PERTURBED), num_warps=8,
+                                    worker_body="/*compute*/", globals="volatile int C[1];")
+    assert ".insn r 0x5b,3,0,x0,%0,%1" in prog          # wspawn: perturbed opcode 0x5b + funct3 3
+    assert ".insn r 0x5b,2,0,x0,x0,x0" in prog           # tmc x0 park: perturbed opcode + funct3, rs1=x0
+    assert "csrr %0,0xde0" in prog                        # perturbed warp_id CSR
+    assert "csrr %0,0xde1" in prog                        # perturbed warp_mask CSR
+    assert "MU_NUM_WARPS 8u" in prog and "volatile int C[1];" in prog
+    assert "0xcc1" not in prog and "0x0b" not in prog     # radiance's facts do not leak
+
+
+def test_simt_runtime_fails_closed_without_runtime_abi():
+    with pytest.raises(KeyError):
+        muon.render_simt_runtime(IsaModel(target="synth_simt"), num_warps=4, worker_body="")
+
+
 def test_transcoder_refuses_a_non_riscv_base():
     # the fixed-format transcoder's rv32 decode taxonomy is gated on a RISC-V base family (explicit + fail-closed).
     from merlin.targetgen.isa_transcode import FixedFormatTranscoder, TranscodeError

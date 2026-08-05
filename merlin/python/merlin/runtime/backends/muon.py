@@ -259,6 +259,48 @@ def render_simt_preamble(model) -> str:
             f".macro vx_wspawn n, f\n.insn r {wsp['opcode']:#04x}, {wsp['funct3']}, 0, x0, \\n, \\f\n.endm\n")
 
 
+def render_simt_runtime(model, *, num_warps: int, worker_body: str, manager_tail: str = "",
+                        globals: str = "") -> str:
+    """Render the fork-free MULTI-WARP SIMT scaffold as self-contained C, with every SIMT-control op and CSR
+    DERIVED from the target's ``runtime_abi`` — no hardcoded opcode/funct3/CSR number. The proven-correct
+    pattern (validated bit-exact on the RTL-arc oracle): warp 0 spawns ``num_warps`` warps at a nullary worker
+    entry, each worker computes its own tile (``worker_body``, which may read ``_wid()`` to pick its slice) and
+    PARKS via the derived ``tmc`` op sourced from ``x0`` (guaranteed 0, the vendor vx_tmc_zero form) then traps
+    in a self-loop; warp 0 runs its own tile, then WAITS on the active-warp-mask CSR until only it remains
+    (the BSP's vx_wspawn_wait primitive) and runs ``manager_tail`` (e.g. a result copy). Results are left in
+    memory for the oracle to read back — no console print (which races across lanes on a SIMT core).
+
+    ``worker_body``/``manager_tail`` are the capsule's per-warp computation (target-agnostic C); ``globals`` are
+    file-scope declarations (e.g. the output buffer) placed after the include; this function contributes ONLY
+    the derived control scaffold. Fail closed if the runtime ABI lacks the ops/CSRs."""
+    tmc, wsp = model.sfu_op("tmc"), model.sfu_op("wspawn")
+    wid_csr, wmask_csr = model.special_csr("warp_id"), model.special_csr("warp_mask")
+    # the derived .insn control ops (opcode+funct3 from the SFU dispatch); rs1=x0 for the guaranteed park.
+    tmc_zero = f'__asm__ volatile(".insn r {tmc["opcode"]:#04x},{tmc["funct3"]},0,x0,x0,x0")'
+    wspawn = (f'__asm__ volatile(".insn r {wsp["opcode"]:#04x},{wsp["funct3"]},0,x0,%0,%1"'
+              f'::"r"(n),"r"(f))')
+    return f"""#include <stdint.h>
+{globals}
+static inline uint32_t _wid(void){{uint32_t r;__asm__ volatile("csrr %0,{wid_csr:#x}":"=r"(r));return r;}}
+static inline uint32_t _wmask(void){{uint32_t r;__asm__ volatile("csrr %0,{wmask_csr:#x}":"=r"(r));return r;}}
+static inline void _park(void){{{tmc_zero};for(;;){{}}}}
+static inline void _spawn(uint32_t n,void(*f)(void)){{{wspawn};}}
+#define MU_NUM_WARPS {num_warps}u
+__attribute__((noreturn)) static void _mu_worker(void){{
+  uint32_t wid=_wid();
+  {worker_body}
+  _park();
+}}
+int main(void){{
+  _spawn(MU_NUM_WARPS,_mu_worker);
+  {{ uint32_t wid=0; {worker_body} }}
+  while(_wmask()!=1){{}}
+  {manager_tail}
+  return 0;
+}}
+"""
+
+
 def _model_for(target: str):
     """The derived IsaModel for a target, or a MuonUnavailable when no encoding fact is present (fail closed)."""
     from ...targetgen.isa_model import isa_model_from_encoding
