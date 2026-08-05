@@ -149,7 +149,11 @@ def _handle(req: dict) -> dict:
         return _rocc_handle(req, target)
     from merlin.targetgen import isa_asm, isa_disasm, isa_lint
     model = _model()
-    if model.is_empty():
+    # A fixed-format model (a wide-word SIMT core's whole ISA, from its RTL decoder) carries its ops in
+    # ``field_layout``/``opcode_table`` and leaves ``by_mnemonic`` empty, so ``is_empty()`` is True even
+    # though the disassembler/linter (which branch on ``is_fixed_format()``) can fully use it. Only refuse
+    # when the model is BOTH signature-empty and not fixed-format — i.e. the target truly ships no ISA.
+    if model.is_empty() and not model.is_fixed_format():
         return {"error": "no derived ISA model for this target (it ships no ISA definition)"}
     cmd = req.get("cmd")
 
