@@ -197,3 +197,34 @@ def test_muon_rtl_fact_decodes_reference_elf(tmp_path):
         ops = {f: r["operands"][f] for f in phys}
         enc = isa_asm.assemble_fixed(m, mnem, ops)
         assert enc == (w & covered), f"re-encode of {mnem} differs on modeled bits: {enc:#018x} vs {w & covered:#018x}"
+
+
+def test_muon_fact_decodes_whole_corpus(tmp_path):
+    """The RTL-derived layout decodes EVERY built reference ELF in the radiance-kernels corpus with zero
+    illegal instructions — the broad regression that the encoding fact generalizes across the real kernel
+    set, not just one example."""
+    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.common.paths import env as _env
+    fact = mlc_bridge.isa_encoding_for("radiance")
+    objcopy, objdump = _llvm("llvm-objcopy"), _llvm("llvm-objdump")
+    corpus = _env("MERLIN_RADIANCE_KERNELS")
+    if not (fact and objcopy and objdump and corpus):
+        pytest.skip("mlc fact / LLVM tools / radiance-kernels corpus not all present")
+    elfs = sorted(Path(f"{corpus}/kernels").glob("*/kernel.radiance.elf"))
+    if not elfs:
+        pytest.skip("no built reference ELFs in the corpus")
+    m = isa_model_from_encoding("radiance", fact)
+    n_words, n_elfs, dirty = 0, 0, []
+    for elf in elfs:
+        words = _text_words(str(elf), objcopy, objdump, tmp_path)
+        if not words:
+            continue
+        n_elfs += 1
+        n_words += len(words)
+        recs = isa_disasm.disassemble(m, words)
+        bad = [r for r in recs if r.get("illegal")]
+        if bad:
+            dirty.append((elf.parent.name, len(bad), len(recs)))
+    assert n_elfs >= 5, f"expected many built ELFs, saw {n_elfs}"
+    assert not dirty, f"{len(dirty)} ELFs had undecodable words: {dirty[:6]}"
+    print(f"\n[corpus] decoded {n_words} instructions across {n_elfs} reference ELFs, 0 illegal")
