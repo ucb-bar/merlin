@@ -832,6 +832,18 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     brd = _board_desc(board, **({"vlen": vlen} if vlen is not None else {}))
     if vlen is None and brd.vlen is not None:
         vlen = brd.vlen                       # build for the board's real vector length by default
+    # A vector model may only fan out over harts that HAVE a vector unit. A heterogeneous SoC is normal
+    # -- three cores brought up, a vector unit on two of them -- and the difference is invisible in the
+    # device tree, which lists identical cpu@N nodes. Fanning out too far does not fail cleanly: the
+    # worker on the scalar hart takes an illegal instruction, never reaches the barrier its peers wait
+    # on, and the image hangs until the operator times out. Measured on a 3-core tapeout with 2
+    # vector cores: the 1-hart images passed and every 3-hart image timed out at 10 minutes.
+    if backend == "rvv" and n_harts > brd.n_vector_harts:
+        raise ZephyrModelError(
+            f"{brd.name}: refusing an RVV image over {n_harts} harts -- only {brd.n_vector_harts} of "
+            f"its {brd.harts} harts can execute vector code. The extra worker would trap on its first "
+            f"vector instruction and deadlock the barrier (a timeout, with no fault printed). Build "
+            f"{brd.n_vector_harts} harts or fewer, or use backend='scalar' to use every hart.")
     # Parse + lower under IR_LOCK: xDSL's parser is not thread-safe, and a delivery builds several
     # images in one process. See common.ir_lock -- the symptom is a bogus ParseError on valid IR.
     from ...common.ir_lock import IR_LOCK

@@ -42,6 +42,16 @@ class Board:
     name: str                     # this descriptor's identity (appears in filenames, manifests)
     dram_bytes: int               # usable DRAM at `dram_base` (the REAL chip's, not the DTS default)
     harts: int                    # harts the SoC has
+    #: How many of those harts can execute VECTOR code, when that differs from `harts`. A
+    #: heterogeneous SoC is normal -- a chip may bring up three cores and attach a vector unit to only
+    #: two of them -- and the difference is invisible in every place you would look for it: the device
+    #: tree lists identical `cpu@N` nodes, and `arch_num_cpus()` counts all of them. Fanning an RVV
+    #: model out over a hart with no vector unit does not fail cleanly: that worker takes an illegal
+    #: instruction, never reaches the barrier its peers are waiting on, and the image hangs until
+    #: whoever is running it gives up on a timeout. Measured on a 3-core tapeout where 2 cores have V:
+    #: the 1-hart images passed and every 3-hart image timed out.
+    #: None means "all of them"; the vector-capable harts are assumed to be 0..vector_harts-1.
+    vector_harts: int | None = None
     vlen: int | None = None       # hardware vector length in bits; None = unknown, assume the V minimum
     console: str = CONSOLE_HTIF
     dram_base: int = 0x80000000
@@ -96,6 +106,11 @@ class Board:
         return self.zephyr_board or self.name
 
     @property
+    def n_vector_harts(self) -> int:
+        """Harts that can execute vector code. Defaults to all of them."""
+        return int(self.vector_harts if self.vector_harts is not None else self.harts)
+
+    @property
     def vector_max_len(self) -> int:
         """Bits to size the per-thread vector save area. 32 registers of this width per thread, so an
         over-large value is paid by every thread; the V minimum is 128."""
@@ -137,7 +152,7 @@ BOARDS: dict[str, Board] = {
     # a 512-bit unit is the documented K1 trap (a fixed-width kernel lands at a lower LMUL and leaves
     # three quarters of the datapath idle), so the fact matters even though our vector code is scalable.
     "chipyard_kodiak": Board(
-        name="chipyard_kodiak", dram_bytes=512 * 1024 * 1024, harts=3, vlen=512,
+        name="chipyard_kodiak", dram_bytes=512 * 1024 * 1024, harts=3, vector_harts=2, vlen=512,
         console=CONSOLE_HTIF,
         # FPU_SHARING=y here is REQUIRED, not preferred, and it is why the board's own defconfig sets
         # it. The Zephyr this board pins calls `z_riscv_vstate_save`/`_restore` from isr.S whenever
