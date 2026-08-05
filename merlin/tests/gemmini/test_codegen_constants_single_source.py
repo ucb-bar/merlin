@@ -8,8 +8,10 @@ the ISA encoding must go through the manifest, and this fails if the emitter is 
 """
 from __future__ import annotations
 
-from merlin.runtime.backends import gemmini_codegen_mlir as gm
+from merlin.runtime.backends import base as _bk
 from merlin.targetgen.target_experiment import load_capability_manifest
+
+gm = _bk.get_backend("gemmini").gemmini_codegen_mlir
 
 
 def _enc():

@@ -46,7 +46,7 @@ from .oot_runner import (CertFailure, Package, build_package, integrity_scan,
 SUITE = "gemmini-capsule-bench"
 CONTRACT_VERSION = "0.1"
 
-# tier -> simulator name understood by runtime.backends.gemmini / adapters
+# tier -> simulator name understood by the gemmini backend / adapters
 _TIER_SIM = {"L2": "spike", "L3": "verilator", "L4": "vcs", "L5": "firesim"}
 _RTL_TIERS = {"L3", "L4", "L5"}
 
@@ -90,9 +90,10 @@ class OracleUnavailable(Exception):
     pass
 
 
-def _spike_verilator_adapter(sim: str) -> Callable:
+def _spike_verilator_adapter(sim: str, target: str) -> Callable:
     def run(cb, llvm_text, workdir, timeout):
-        from ..runtime.backends import gemmini as gem
+        from ..runtime.backends import base as _bk
+        gem = _bk.get_backend(target)  # this target's backend owns the sim-availability probe
         if not gem.available(sim):
             raise OracleUnavailable(f"{sim} not available")
         return oot_compile.run_on_oracle(cb, llvm_text, simulator=sim,
@@ -157,13 +158,14 @@ def _bespoke_sim_via(target: str) -> str:
     return ""
 
 
-def _sim_engine_adapters(sim_via: str) -> dict[str, Callable]:
+def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
     """The concrete oracle adapters a DECLARED sim ENGINE provides (additive registry, mirroring
     ``sandbox.toolchain.SIM_TOOLCHAINS``): ``chipyard`` elaborates spike (L2) + verilator (L3). An
     unknown/absent engine contributes none (the arc RTL tier still carries the grade). A new bespoke sim
     registers one branch here — the engine name is DERIVED from the target's contract, never assumed."""
     if sim_via == "chipyard":
-        return {"L2": _spike_verilator_adapter("spike"), "L3": _spike_verilator_adapter("verilator")}
+        return {"L2": _spike_verilator_adapter("spike", target),
+                "L3": _spike_verilator_adapter("verilator", target)}
     return {}
 
 
@@ -216,7 +218,7 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
         from . import muon_oracles as _MO
         return _MO.default_adapters()
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
-    adapters.update(_sim_engine_adapters(sim_via))                    # optional declared bespoke sim (chipyard)
+    adapters.update(_sim_engine_adapters(sim_via, target))           # optional declared bespoke sim (chipyard)
     return adapters
 
 
@@ -257,7 +259,8 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
     arc_ok = mlc_bridge.arc_available(target)
     if sim_via == "chipyard":
         try:
-            from ..runtime.backends import gemmini as _gem
+            from ..runtime.backends import base as _bk
+            _gem = _bk.get_backend(target)  # resolve THIS target's backend (chipyard spike availability)
             spike_ok = bool(_gem.available("spike"))
         except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
             spike_ok = False
@@ -352,8 +355,8 @@ def default_adapters() -> dict[str, Callable]:
     """Back-compat gemmini-only default (L2/L3 spike/verilator). DO NOT use as an unrouted fallback — a
     non-gemmini target would be mis-graded. New callers use :func:`oracle_adapters` (self-routing) or
     :func:`_resolve_oracle_adapters`. Retained only for the explicitly-gemmini perf-bench script."""
-    return {"L2": _spike_verilator_adapter("spike"),
-            "L3": _spike_verilator_adapter("verilator")}
+    return {"L2": _spike_verilator_adapter("spike", "gemmini"),      # target-ok: explicitly gemmini-only back-compat
+            "L3": _spike_verilator_adapter("verilator", "gemmini")}  # target-ok: explicitly gemmini-only back-compat
 
 
 def qa_loop_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:

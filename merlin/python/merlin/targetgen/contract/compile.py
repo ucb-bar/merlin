@@ -37,7 +37,9 @@ def _is_movement_cb(cb: dict[str, Any]) -> bool:
 
 def _movement_harness_c(cb: dict[str, Any]) -> str:
     """Harness for a pure-movement kernel gemmini_kernel(src*, dst*): embed src, print dst."""
-    from merlin.runtime.backends.gemmini_codegen import _ceil_dim, _pad_rowmajor
+    from merlin.runtime.backends import base as _bk
+    _gcg = _bk.get_backend("gemmini").gemmini_codegen  # target-ok: reference RoCC-compile path reaches gemmini codegen internals
+    _ceil_dim, _pad_rowmajor = _gcg._ceil_dim, _gcg._pad_rowmajor
     from merlin.runtime.commandbuffer import materialize_inputs
     mv = next(c for c in cb["commands"]
               if c.get("opcode") == "VECTOR_MAP" and c["attributes"].get("combine") == "identity")
@@ -68,8 +70,9 @@ def _movement_harness_c(cb: dict[str, Any]) -> str:
 
 def link_elf(cb: dict[str, Any], obj: Path, workdir: Path) -> Path:
     """Build the runner-owned harness from ``cb`` and link it with the package object -> ELF."""
-    from merlin.runtime.backends import gemmini as gem
-    from merlin.runtime.backends.gemmini_codegen_mlir import _harness_c
+    from merlin.runtime.backends import base as _bk
+    gem = _bk.get_backend("gemmini")  # target-ok: reference RoCC-compile path reaches gemmini codegen internals
+    _harness_c = gem.gemmini_codegen_mlir._harness_c
     harness = _movement_harness_c(cb) if _is_movement_cb(cb) else _harness_c(cb)
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
     rt, common = gem.rocc_tests_dir(), gem._common_dir()
@@ -111,7 +114,8 @@ def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
     spike/verilator — only VCS/FireSim adapters that route through a queue set it).
     """
     import time
-    from merlin.runtime.backends import gemmini as gem
+    from merlin.runtime.backends import base as _bk
+    gem = _bk.get_backend("gemmini")  # target-ok: reference RoCC-compile path reaches gemmini codegen internals
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_run_"))
     _t0 = time.perf_counter()
     elf = compile_lowered_to_elf(cb, lowered_mlir_text, work)

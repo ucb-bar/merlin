@@ -48,5 +48,5 @@ def test_oracle_runner_resolves_ladder_and_cycle_window_to_the_target():
 def test_contract_text_render_fills_placeholders_in_comments():
     # the parse_output reference lives in a YAML comment; the text renderer resolves it too
     text = render_contract_text("oracle_runner_contract.yaml", "gemmini")
-    assert "merlin.runtime.backends.gemmini.parse_output" in text
+    assert 'get_backend("gemmini").parse_output' in text
     assert "{target}" not in text

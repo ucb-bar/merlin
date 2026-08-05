@@ -213,8 +213,8 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
 
 def build_object(cb: dict, workdir: str | Path) -> Path:
     """Lower the MLIR kernel for ``cb`` to a rv64gcv object; return the .o path."""
-    from ...llvmlower.pipeline import lower_to_llvm_ir
-    from ...llvmlower import codegen
+    from merlin.llvmlower.pipeline import lower_to_llvm_ir
+    from merlin.llvmlower import codegen
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
     text, _ = emit_kernel_mlir(cb)
@@ -224,7 +224,7 @@ def build_object(cb: dict, workdir: str | Path) -> Path:
 
 
 def rocc_instruction_count(obj: str | Path) -> int:
-    from ...llvmlower.custom_isa import disassemble
+    from merlin.llvmlower.custom_isa import disassemble
     dis = disassemble(obj)
     return sum(1 for ln in dis.splitlines()
                if ".insn" in ln and len(ln.split()) > 1 and ln.split()[1].endswith("7b"))
@@ -288,7 +288,7 @@ def run_on_spike(cb: dict, workdir: str | Path | None = None, *, simulator: str 
     import subprocess
     import tempfile
     from . import gemmini as gem
-    from ..reference import outputs_match, reference_outputs
+    from merlin.runtime.reference import outputs_match, reference_outputs
 
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="gemmini_mlir_run_"))
     work.mkdir(parents=True, exist_ok=True)

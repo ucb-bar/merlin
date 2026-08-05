@@ -21,7 +21,9 @@ from typing import Any, Callable
 
 from . import claude_cli
 from ..eval.gemmini_conformance import build
-from ...runtime.backends import gemmini
+from ...runtime.backends import base as _bk
+
+gemmini = _bk.get_backend("gemmini")
 
 ISA_REFERENCE = r"""
 Gemmini (chipyard) bare-metal C, via libgemmini intrinsics. Constants/macros available after

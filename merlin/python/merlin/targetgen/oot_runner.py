@@ -346,7 +346,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     ``target`` labels the run; when omitted it is derived from the package manifest's ``target``
     field, so the runner is target-agnostic rather than hardcoded to the reference target.
     """
-    from ..runtime.backends import gemmini as gem
+    from ..runtime.backends import base as _bk
     from ..runtime.reference import reference_outputs, outputs_match
     from ..runtime.simulator import simulate
     from .eval.gemmini_suite import toolchain_shas
@@ -355,6 +355,9 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     rung = interface_mlir.stem.split(".")[0]
     if target is None:
         target = _package_target(package_dir)
+    # Resolve the package's runtime backend from the run's target (not a name literal) — the runner is
+    # target-agnostic, so a package for any registered target reaches its own backend helpers.
+    gem = _bk.get_backend(target)
 
     spec = RunSpec(project="merlin", suite=SUITE, method=f"{run_id}", seed=seed, run_id=run_id,
                    project_root=Path(runs_root), tracking_mode="local", target=target,

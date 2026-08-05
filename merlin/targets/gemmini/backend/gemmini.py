@@ -54,7 +54,7 @@ def chipyard_root() -> Path:
     ``/path/to/chipyard`` placeholder — which made ``available('spike'/'verilator')`` False even with
     a real toolchain, so every oracle reported NOT_RUN_IS_NOT_PASS. Resolve through
     ``merlin.common.paths`` (env/.env → ext_path) with the placeholder only as a last resort."""
-    from ...common.paths import env as _env, ext_path as _ext_path
+    from merlin.common.paths import env as _env, ext_path as _ext_path
     root = os.environ.get("MERLIN_CHIPYARD") or _env("MERLIN_CHIPYARD")
     if root:
         return Path(root)
@@ -84,7 +84,7 @@ def platform_dram_base() -> int:
     """The bare-metal linker load address, DERIVED from this target's chipyard RTL build memory map
     (``runtime_build.platform_dram_base`` reads the ``memory@`` region of the sim config's ``memmap.json``)
     rather than baked in the linker script. Falls back to the platform default if the build is absent."""
-    from ...targetgen import runtime_build as _rb
+    from merlin.targetgen import runtime_build as _rb
     return _rb.platform_dram_base("gemmini", "chipyard")
 
 
@@ -96,7 +96,7 @@ def _rtl_sim_config() -> str:
     if env:
         return env
     try:
-        from ...targetgen.target_experiment import load_capability_manifest
+        from merlin.targetgen.target_experiment import load_capability_manifest
         cfg = (load_capability_manifest("gemmini").contract.get("runtime") or {}).get("rtl_sim_config")
         if cfg:
             return str(cfg)
@@ -124,7 +124,7 @@ def rocc_tests_dir() -> Path:
     # by 0 -> all-zero matmul in the C driver (the MLIR .insn path is immune; it hardcodes the float-1.0
     # scale bits). The sandbox already binds this curated harness via MERLIN_GEMMINI_HARNESS_DIR; using it
     # as the default makes the direct (non-sandboxed) path header-correct and chipyard-contamination-proof.
-    from ...common.paths import merlin_dir
+    from merlin.common.paths import merlin_dir
     curated = merlin_dir() / "experiments/capsule_bench/targets/gemmini/contracts/harness_curated/gemmini-rocc-tests"
     if curated.is_dir():
         return curated
@@ -227,7 +227,7 @@ def parse_output(text: str) -> tuple[dict[str, list], dict[str, int]]:
     """Parse the OUT/METRIC/DONE console into (outputs, raw metrics) — shared protocol parser, with
     the gemmini-specific robustness: strip stray Verilator ``%Warning:`` fragments + tolerate a
     malformed METRIC line instead of raising."""
-    from .base import parse_console
+    from merlin.runtime.backends.base import parse_console
     return parse_console(text, error_cls=GemminiError, strip_warnings=True, tolerant_metric=True)
 
 

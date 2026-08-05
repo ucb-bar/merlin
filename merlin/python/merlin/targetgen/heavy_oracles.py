@@ -42,7 +42,8 @@ def vcs_adapter() -> Callable:
     def run(cb, llvm_text, workdir, timeout):
         import subprocess
         import time
-        from merlin.runtime.backends import gemmini as gem
+        from merlin.runtime.backends import base as _bk
+        gem = _bk.get_backend("gemmini")  # target-ok: reference RoCC/VCS oracle reuses gemmini ELF-build + parse_output
         simv = gemmini_simv()
         if simv is None:
             raise OracleUnavailable("VCS simv not found (set MERLIN_GEMMINI_SIMV)")

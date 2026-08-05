@@ -144,8 +144,9 @@ def test_qa_checkpoint_is_full_ladder_for_chipyard():
     # gemmini/chipyard: the cycle-accurate checkpoint = spike (L2) + verilator (L3), same as before.
     ckpt = CR.qa_checkpoint_adapters("gemmini", "chipyard")
     assert set(ckpt) == {"L2", "L3"}
-    assert [c.cell_contents for c in ckpt["L2"].__closure__] == ["spike"]
-    assert [c.cell_contents for c in ckpt["L3"].__closure__] == ["verilator"]
+    # the chipyard adapter closure captures (sim, target) — assert as a set (cell order is not contractual)
+    assert {c.cell_contents for c in ckpt["L2"].__closure__} == {"spike", "gemmini"}
+    assert {c.cell_contents for c in ckpt["L3"].__closure__} == {"verilator", "gemmini"}
 
 
 def test_qa_adapters_are_cyclotron_for_a_simt_target():

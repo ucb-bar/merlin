@@ -122,7 +122,8 @@ def test_gemmini_pipeline_descends_and_simulates():
 # --- codegen smoke (no toolchain) ---
 def test_gemmini_codegen_emits_real_driver():
     """A4: the C0 driver uses the explicit low-level Gemmini intrinsic sequence."""
-    from merlin.runtime.backends.gemmini_codegen import generate_driver
+    from merlin.runtime.backends import base as _bk
+    generate_driver = _bk.get_backend("gemmini").gemmini_codegen.generate_driver
 
     src = generate_driver(c0_command_buffer())
     for needle in ("gemmini_config_ex", "gemmini_mvin", "gemmini_preload",
@@ -133,7 +134,8 @@ def test_gemmini_codegen_emits_real_driver():
 
 
 # --- oracle-gated: compile + run on real Gemmini, three-way bit-exact, per conformance rung ---
-from merlin.runtime.backends import gemmini  # noqa: E402  (import-safe without toolchain)
+from merlin.runtime.backends import base as _bk  # noqa: E402
+gemmini = _bk.get_backend("gemmini")  # import-safe without toolchain (registration is lazy)
 from merlin.targetgen.eval.gemmini_conformance import RUNGS, build  # noqa: E402
 
 RUNG_IDS = sorted(RUNGS)

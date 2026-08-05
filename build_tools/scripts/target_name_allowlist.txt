@@ -15,8 +15,6 @@
 build_tools/scripts/check_no_target_name.py                   # defines the target-name set it hunts
 
 # ---------------------------------------------------------------- REFERENCE target implementations (OV11 #98 evicts these to a published package via MERLIN_TARGET_PATH)
-merlin/python/merlin/runtime/backends/gemmini.py              # gemmini runtime backend (reference target)
-merlin/python/merlin/runtime/backends/gemmini_codegen_mlir.py # gemmini MLIR codegen (reference target)
 merlin/python/merlin/runtime/backends/muon.py                # muon runtime backend (reference target)
 merlin/python/merlin/runtime/backends/saturn_vec.py          # saturn vector backend (reference target)
 merlin/python/merlin/cost_model/calibrate.py                 # gemmini cost calibration (reference target)

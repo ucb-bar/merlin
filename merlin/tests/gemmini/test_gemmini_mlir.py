@@ -10,9 +10,11 @@ import pytest
 pytestmark = pytest.mark.slow
 
 from merlin.runtime import reference_outputs, simulate
-from merlin.runtime.backends import gemmini_codegen_mlir as gm
-from merlin.runtime.backends import gemmini as gem
+from merlin.runtime.backends import base as _bk
 from merlin.targetgen.eval.gemmini_conformance import build
+
+gem = _bk.get_backend("gemmini")
+gm = gem.gemmini_codegen_mlir
 
 
 NONREQUANT = ["C0", "C1", "C4", "C4e", "C5"]
@@ -29,7 +31,7 @@ def test_kernel_is_mlir_inline_asm_not_c():
 
 def test_requant_rejected_on_mlir_path():
     """The MLIR-faithful path explicitly refuses requant (not bit-exact; documented)."""
-    from merlin.runtime.backends.gemmini_codegen import CodegenError
+    CodegenError = gem.gemmini_codegen.CodegenError
     cb = build("C0")
     commit = next(c for c in cb["commands"] if c["opcode"] == "COMMIT")
     commit.setdefault("attributes", {})["epilogue"] = ["requant"]

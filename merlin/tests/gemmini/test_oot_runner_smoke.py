@@ -15,7 +15,8 @@ import yaml
 # fast gate. Runs in the full suite (no filter) / nightly.
 pytestmark = pytest.mark.slow
 
-from merlin.runtime.backends import gemmini as gem
+from merlin.runtime.backends import base as _bk
+gem = _bk.get_backend("gemmini")
 from merlin.targetgen.contract import schemas, toolchain as mlir_tc
 from merlin.targetgen.oot_runner import certify
 
