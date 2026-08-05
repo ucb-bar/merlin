@@ -237,6 +237,16 @@ _SIM_ORACLES: dict[str, _SimOracle] = {
 }
 
 
+def register_sim_oracle(sim_via: str, *, adapters: Callable[[str], dict],
+                        available: Callable[[str], tuple[bool, str]], exclusive: bool) -> None:
+    """Register a bespoke-sim oracle under its ``sim_via`` engine name (idempotent) — the public seam a
+    NEW simulator uses to plug into oracle routing without editing :func:`oracle_adapters` /
+    :func:`oracle_available`. ``exclusive=True`` replaces the arc/program default (a self-hosted SIMT
+    core graded on its own kernel ELF); ``exclusive=False`` layers additive tiers on top of the arc
+    default (a chipyard-style sim). See :class:`_SimOracle`."""
+    _SIM_ORACLES[sim_via] = _SimOracle(adapters=adapters, available=available, exclusive=exclusive)
+
+
 def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
     """The oracle adapters per tier for a target. The mlc ARC model is the DEFAULT RTL tier (works for
     ANY mlc target, no bespoke sim); a target that DECLARES a bespoke sim (``sim_via``) additionally gets
