@@ -76,12 +76,14 @@ def _model_venv_python(model_ext: str) -> Path:
     return py
 
 
-def _assemble_kernel_words(kernel_s: Path, workdir: Path) -> list[int]:
-    """Assemble an agent-emitted ``.word``/``.insn`` kernel into little-endian IMEM u32 words using the
+def _assemble_kernel_words(kernel_s: Path, workdir: Path, inst_width: int = 32) -> list[int]:
+    """Assemble an agent-emitted ``.word``/``.insn``/``.quad`` kernel into little-endian IMEM words using the
     PREBUILT stock LLVM (``llvm-mc`` + ``llvm-objcopy`` from the MLIR install; override via
     ``MERLIN_MLIR_INSTALL``). Target-agnostic: the encoding lives in the emitted directives (grounded on
     the target's shipped ISA definition), so merlin needs no per-target assembler and holds no opcode
-    table. ``llvm-mc`` accepts ``#``/``//`` comments + labels natively (labels emit no ``.text`` bytes).
+    table. ``inst_width`` (32 or 64) selects the word size the ``.text`` bytes are grouped into — a
+    fixed-width wide-word ISA (a SIMT core's 64-bit encoding) is read as u64, the default RoCC/word ISA as
+    u32. ``llvm-mc`` accepts ``#``/``//`` comments + labels natively (labels emit no ``.text`` bytes).
     Raises :class:`OracleUnavailable` if the toolchain is absent or the kernel does not assemble."""
     from merlin.targetgen.contract.toolchain import mlir_bin
     mc, objcopy = mlir_bin("llvm-mc"), mlir_bin("llvm-objcopy")
@@ -98,7 +100,8 @@ def _assemble_kernel_words(kernel_s: Path, workdir: Path) -> list[int]:
     if b.returncode != 0:
         raise OracleUnavailable(f"llvm-objcopy failed: {b.stderr[-400:]}")
     import numpy as np
-    words = [int(w) for w in np.frombuffer(binf.read_bytes(), dtype="<u4")]
+    dtype = "<u8" if inst_width > 32 else "<u4"
+    words = [int(w) for w in np.frombuffer(binf.read_bytes(), dtype=dtype)]
     if not words:
         raise OracleUnavailable("kernel.S assembled to zero .text words (empty/all-comment kernel)")
     return words

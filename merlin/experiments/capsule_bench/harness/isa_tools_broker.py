@@ -38,8 +38,13 @@ def _model():
     if _MODEL is None:
         import _common as _C
         from merlin.targetgen.target_experiment import load_target_experiment
-        from merlin.targetgen.isa_model import isa_model_for
-        _MODEL = isa_model_for(load_target_experiment(_C.EXP / "target_experiment.yaml"))
+        from merlin.targetgen.isa_model import isa_model_for, isa_model_for_target
+        te = load_target_experiment(_C.EXP / "target_experiment.yaml")
+        # prefer the mlc-derived fixed-format encoding fact (a wide-word SIMT core's whole ISA, from its RTL
+        # decoder) so those tools work too; fall back to the shipped-ISA-definition probe for a
+        # variable-format self-hosted ISA.
+        m = isa_model_for_target(getattr(te, "target", "")) if getattr(te, "target", "") else None
+        _MODEL = m if (m is not None and (m.is_fixed_format() or not m.is_empty())) else isa_model_for(te)
     return _MODEL
 
 
@@ -50,7 +55,9 @@ def _assemble(kernel_s_text: str) -> list[int]:
     with tempfile.TemporaryDirectory() as td:
         ks = Path(td) / "kernel.S"
         ks.write_text(kernel_s_text or "")
-        return _assemble_kernel_words(ks, Path(td))
+        # a fixed-format wide-word ISA (a SIMT core) is grouped at its own instruction width, so the
+        # disassembler/linter see whole instructions rather than half-words.
+        return _assemble_kernel_words(ks, Path(td), inst_width=getattr(_model(), "inst_width", 32))
 
 
 _ENDPOINT = None  # (endpoint_kind, target), derived once
