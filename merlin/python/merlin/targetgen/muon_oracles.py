@@ -1,10 +1,14 @@
 """Muon oracle adapters for the parallel Muon capsule runner.
 
 An adapter has the same shape the Gemmini ``capsule_runner`` uses --
-``(cb, kernel_src, workdir, timeout) -> {outputs, cycles, oracle, console, timing, ...}`` -- or it
-raises :class:`merlin.runtime.backends.muon.MuonUnavailable` to signal honest unavailability (never a
-silent pass). Unlike the Gemmini adapter, ``kernel_src`` is the **SIMT C++ kernel** emitted by the
-Muon backend's ``lower_target_to_llvm`` entrypoint (clang-muon compiles it), not LLVM-dialect MLIR.
+``(cb, kernel_src, workdir, timeout) -> {outputs, cycles, oracle, console, toolchain, timing, ...}`` --
+or it raises :class:`merlin.runtime.backends.muon.MuonUnavailable` to signal honest unavailability (never
+a silent pass). ``kernel_src`` is the artifact the Muon backend's ``lower_target_to_llvm`` entrypoint emits:
+per the generic ``kernel_abi`` it is a whole-computation kernel FUNCTION (``{target}_kernel(...)``), which
+the runner-owned self-contained-C harness (:mod:`..runtime.backends.muon_harness`) wraps so the FORK-FREE
+driver builds it with a stock toolchain; a full-program artifact (one with ``main``) is compiled directly.
+The result records ``toolchain`` (``fork-free`` vs the eval-only ``clang-muon-fork``) so the experiment
+measures fork-free coverage.
 
 This module imports nothing from the frozen Gemmini ``capsule_runner``; it is a parallel path.
 """
@@ -56,10 +60,14 @@ def _adapter(simulator: str) -> Callable:
             raise muon.MuonUnavailable(f"muon {simulator} oracle not available")
         flops = flops_from_cb(cb)
         t0 = time.perf_counter()
-        # Prefer the FORK-FREE thesis path (stock LLVM + RTL-derived transcode); record which toolchain
-        # actually produced the graded ELF so the experiment measures fork-free coverage, never a hidden
-        # fork fallback. MERLIN_MUON_FORKFREE_ONLY makes this fail closed instead of borrowing the fork.
-        elf, toolchain = muon.compile_for_oracle(kernel_src, workdir, target=cb.get("target", "radiance"))
+        # If the artifact is a whole-computation kernel FUNCTION (the generic kernel_abi), wrap it in the
+        # runner-owned self-contained-C harness (operands from the cb) so the fork-free driver can build it;
+        # a full-program artifact (has main) is passed through. Then prefer the FORK-FREE thesis path (stock
+        # LLVM + RTL-derived transcode) and record which toolchain produced the graded ELF, so the experiment
+        # measures fork-free coverage and never hides a fork fallback (MERLIN_MUON_FORKFREE_ONLY fails closed).
+        from ..runtime.backends import muon_harness as _mh
+        program = _mh.program_from_cb(cb, kernel_src) or kernel_src
+        elf, toolchain = muon.compile_for_oracle(program, workdir, target=cb.get("target", "radiance"))
         t1 = time.perf_counter()
         console, cycles, summary = muon.run_elf(elf, simulator=simulator, timeout=timeout)
         t2 = time.perf_counter()

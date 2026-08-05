@@ -560,6 +560,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 if _tspec.get("role") in ("input", "weight", "bias") and _tname in _raws:
                     _tspec["preload_b64"] = _b64.b64encode(_raws[_tname]).decode()
 
+        # Attach the golden's DECODED operand values so a self-hosted kernel harness (the fork-free SIMT
+        # path) can embed them and run the emitted kernel on the SAME operands the independent golden used.
+        # Generic + additive: empty for integer capsules, ignored by adapters that grade the command buffer.
+        _vals = CG.canonical_input_values(capsule, capsule_dir)
+        if _vals:
+            cb["canonical_inputs"] = _vals
+
         # Stamp the HARNESS-owned canonical DRAM layout onto every cb tensor (inputs+output), matched by
         # name. The agent's kernel was told these exact addresses (see the emit contract), so preload,
         # kernel, and readback all agree on one address map — the harness never trusts the agent to have

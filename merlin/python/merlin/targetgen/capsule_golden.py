@@ -110,6 +110,25 @@ def canonical_input_raws(capsule: dict, capsule_dir: str | Path | None = None) -
     return out
 
 
+def canonical_input_values(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, dict]:
+    """The DECODED per-leaf operand values the independent float golden was computed with, keyed by tensor
+    name — read from ``golden.yaml`` ``oracle_provenance.inputs[name]`` (``decoded`` = a flat row-major list
+    of numbers, plus ``shape``). Unlike :func:`canonical_input_raws` (byte-level ``fp8_raw_hex`` for the
+    palette-preload program oracle), this returns the actual numeric operands a self-contained kernel harness
+    embeds. Each value is ``{"shape": [r, c], "values": [...]}``. Empty when the golden records no decoded
+    inputs (e.g. an integer capsule reproduced on the Tensor engine)."""
+    gy = _load_golden_yaml(capsule_dir)
+    if not gy:
+        return {}
+    ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
+    out: dict[str, dict] = {}
+    for name, spec in ins.items():
+        decoded = spec.get("decoded")
+        if decoded is not None:
+            out[name] = {"shape": list(spec.get("shape") or []), "values": list(decoded)}
+    return out
+
+
 def golden_source(capsule: dict, capsule_dir: str | Path | None = None) -> str:
     """The golden's PROVENANCE: ``merlin_tensor_int`` when it is (re)computed on the integer
     :class:`~merlin.runtime.tensor.Tensor` engine, or the INDEPENDENT source declared in the capsule's

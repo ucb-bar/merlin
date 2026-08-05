@@ -6,7 +6,7 @@ and the OUT/DONE protocol). The end-to-end cyclotron proof on a real capsule liv
 test_muon_forkfree suite."""
 from __future__ import annotations
 
-from merlin.runtime.backends.muon_harness import build_program, TensorArg
+from merlin.runtime.backends.muon_harness import build_program, program_from_cb, TensorArg
 
 
 _KFN = ("void radiance_kernel(float* W, float* A0, float* Y0){"
@@ -51,3 +51,34 @@ def test_integer_output_uses_base10_not_float_print():
     assert "_in_X[0]=0x00000007u;" in p
     assert "k((int32_t*)_in_X, (int32_t*)_out_Y);" in p
     assert "_pu(_out_Y[i]);" in p and "_pf(" not in p.split("int main")[1]   # integer path prints base-10
+
+
+# a command buffer the runner produces + the operand values it attaches (canonical_inputs).
+_CB = {
+    "tensors": {"W": {"shape": [2, 2], "role": "weight"}, "A0": {"shape": [2, 2], "role": "input"},
+                "Y0": {"shape": [2, 2], "role": "output"}},
+    "commands": [{"opcode": "MATMUL", "operands": {"weight": "W", "lhs": "A0", "out": "Y0"}}],
+    "canonical_inputs": {"W": {"shape": [2, 2], "values": [1.0, 2.0, 3.0, 4.0]},
+                         "A0": {"shape": [2, 2], "values": [0.5, 0.25, 0.125, 1.0]}},
+}
+_FN = "void radiance_kernel(float* W, float* A0, float* Y0){Y0[0]=A0[0]*W[0];}"
+
+
+def test_program_from_cb_derives_abi_order_and_embeds_operands():
+    p = program_from_cb(_CB, _FN)
+    assert p is not None
+    # ABI order [weight] ++ [lhs] ++ [out] -> radiance_kernel(W, A0, Y0)
+    assert "radiance_kernel((float*)_in_W, (float*)_in_A0, (float*)_out_Y0);" in p
+    assert "_in_W[0]=0x3f800000u;" in p and "_in_A0[0]=0x3f000000u;" in p   # 1.0, 0.5
+    assert '_ps("OUT Y0 2 2");' in p
+
+
+def test_program_from_cb_passes_through_a_full_program():
+    # an artifact that is already a full program (has main) is graded directly, not re-wrapped.
+    assert program_from_cb(_CB, "int main(void){return 0;}") is None
+
+
+def test_program_from_cb_fails_safe_without_operands():
+    # no canonical operands attached -> None (the caller compiles the artifact as-is; never grades unfed).
+    cb = {k: v for k, v in _CB.items() if k != "canonical_inputs"}
+    assert program_from_cb(cb, _FN) is None

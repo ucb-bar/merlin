@@ -5,9 +5,10 @@ The Muon path used to be a hand fork of the Gemmini runner. It is now a config: 
 :class:`RunnerConfig` (SIMT tier ladder, cyclotron/vcs sims, the ``kernel.cpp`` 4th artifact, no RoCC
 trace gate, fp-tolerance output matching, the SIMT perf headline) + the cyclotron/VCS oracle adapters.
 
-Its 4th entrypoint emits a **SIMT C++ kernel** the oracle compiles with clang-muon (endpoint
-``external_backend``); the RoCC trace gate is absent (``trace_gate=None``) because a SIMT target has no
-command-ISA analog. The public ``run_capsule``/``run_suite``/``main`` API is preserved for callers.
+Its 4th entrypoint emits a **whole-computation SIMT kernel FUNCTION** (endpoint ``external_backend``); the
+runner-owned harness wraps it for the fork-free oracle (a full-program artifact still compiles directly).
+The RoCC trace gate is absent (``trace_gate=None``) because a SIMT target has no command-ISA analog. The
+public ``run_capsule``/``run_suite``/``main`` API is preserved for callers.
 """
 from __future__ import annotations
 

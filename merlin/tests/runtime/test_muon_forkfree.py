@@ -182,3 +182,35 @@ def test_real_fp32_capsule_grades_forkfree_against_its_golden(tmp_path):
     assert y.shape == (16, 16)
     max_err = float(np.max(np.abs(y - y_gold)))
     assert max_err <= 0.03125, f"fork-free GEMM diverges from the golden: max abs err {max_err}"
+
+
+def test_grading_adapter_wraps_a_kernel_function_and_grades_forkfree(tmp_path):
+    """Full LIVE wiring: the cyclotron grading adapter (the SAME entrypoint a real run calls) is handed a
+    whole-computation kernel FUNCTION + a cb carrying the canonical operands, wraps it in the runner-owned
+    harness, grades fork-free, and matches R0's golden -- so live fork-free coverage is real, not ~0."""
+    import yaml
+    import numpy as np
+    from merlin.common.paths import repo_root
+    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.targetgen import muon_oracles as MO
+    if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
+        pytest.skip("stock LLVM / derived fact / cyclotron not all available")
+    gfile = repo_root() / "merlin/contract/capsules/radiance/isa/R0_gemm_fp32/golden.yaml"
+    if not gfile.is_file():
+        pytest.skip("R0_gemm_fp32 capsule not present")
+    g = yaml.safe_load(gfile.read_text())
+    ins = g["oracle_provenance"]["inputs"]
+    y_gold = np.array(g["outputs"]["Y0"], dtype=np.float32)
+    cb = {"target": "radiance",
+          "tensors": {"W": {"shape": [16, 16], "role": "weight"}, "A0": {"shape": [16, 16], "role": "input"},
+                      "Y0": {"shape": [16, 16], "role": "output"}},
+          "commands": [{"opcode": "MATMUL", "operands": {"weight": "W", "lhs": "A0", "out": "Y0"}}],
+          "canonical_inputs": {"W": {"shape": [16, 16], "values": ins["W"]["decoded"]},
+                               "A0": {"shape": [16, 16], "values": ins["A0"]["decoded"]}}}
+    kfn = ("void radiance_kernel(float* W, float* A0, float* Y0){"
+           "for(int i=0;i<16;i++)for(int j=0;j<16;j++){float a=0.0f;"
+           "for(int k=0;k<16;k++)a+=A0[i*16+k]*W[k*16+j];Y0[i*16+j]=a;}}")
+    res = MO.cyclotron_adapter()(cb, kfn, tmp_path, 300)
+    assert res["toolchain"] == "fork-free"
+    y = np.array(res["outputs"]["Y0"], dtype=np.float32)
+    assert float(np.max(np.abs(y - y_gold))) <= 0.03125

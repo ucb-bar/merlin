@@ -107,3 +107,79 @@ def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[Tenso
     body.append("  return 0;")
     body.append("}")
     return "\n".join(body) + "\n"
+
+
+def _kernel_symbol(kernel_fn_src: str) -> str:
+    """The kernel's function name, extracted structurally (no regex): the identifier just before the first
+    ``(`` — i.e. the last token of the text preceding the parameter list. Robust to the return type/qualifiers."""
+    head = kernel_fn_src.split("(", 1)[0]
+    toks = head.replace("*", " ").split()
+    if not toks:
+        raise ValueError("cannot find a kernel function name in the emitted artifact")
+    return toks[-1]
+
+
+def _shape2d(shape: list) -> tuple[int, int]:
+    """A tensor shape as (rows, cols): a 2-D shape verbatim, a 1-D shape as a row vector, higher rank
+    flattened to (prod/last, last) so the row-major byte order the kernel/harness use is preserved."""
+    dims = [int(d) for d in (shape or []) if int(d) > 0] or [1]
+    if len(dims) == 1:
+        return 1, dims[0]
+    rows = 1
+    for d in dims[:-1]:
+        rows *= d
+    return rows, dims[-1]
+
+
+def program_from_cb(cb: dict, kernel_fn_src: str) -> str | None:
+    """Build the self-contained harness program for a capsule directly from its COMMAND BUFFER, or return
+    None when the artifact is already a full program (has ``main``) — the caller then compiles it directly.
+
+    Derives the kernel ABI order from the cb the runner already validated: each matmul/gemm command names
+    its ``weight``/``rhs``, ``lhs`` and ``out``/``dst`` operands, so the argument order is
+    ``[weight] ++ [lhs in command order] ++ [outputs in command order]`` (the generic kernel_abi). Operand
+    VALUES come from ``cb['canonical_inputs']`` (the runner attaches the golden's decoded operands there);
+    shapes from ``cb['tensors']``. Returns None (fail-safe to direct compile) if the operands are not
+    available, so this never silently grades an un-fed kernel."""
+    if "int main" in kernel_fn_src:
+        return None
+    tensors = cb.get("tensors") or {}
+    values = cb.get("canonical_inputs") or {}
+    if not values:
+        return None                                   # no operands attached -> let the caller compile as-is
+
+    def _pick(operands: dict, *keys: str) -> str | None:
+        for k in keys:
+            if operands.get(k):
+                return operands[k]
+        return None
+
+    weights, lhses, outs, seen = [], [], [], set()
+    for cmd in cb.get("commands", []):
+        op = (cmd.get("opcode") or "").upper()
+        if "MATMUL" not in op and "GEMM" not in op:
+            continue
+        o = cmd.get("operands", {})
+        for role, bucket in ((("weight", "rhs"), weights), (("lhs",), lhses), (("out", "dst"), outs)):
+            nm = _pick(o, *role)
+            if nm and nm not in seen:
+                seen.add(nm)
+                bucket.append(nm)
+    if not (lhses and outs):
+        return None                                   # not a shape we can harness -> compile as-is
+
+    def _arg(name: str, with_values: bool) -> TensorArg | None:
+        shp = (tensors.get(name) or {}).get("shape")
+        r, c = _shape2d(shp)
+        if with_values:
+            v = (values.get(name) or {}).get("values")
+            if v is None or len(v) != r * c:
+                return None
+            return TensorArg(name, r, c, [float(x) for x in v], "f32")
+        return TensorArg(name, r, c, [0.0] * (r * c), "f32")
+
+    in_args = [_arg(n, True) for n in (weights + lhses)]
+    out_args = [_arg(n, False) for n in outs]
+    if any(a is None for a in in_args + out_args):
+        return None                                   # a missing operand/shape -> fail safe, do not guess
+    return build_program(kernel_fn_src, in_args, out_args, kernel_symbol=_kernel_symbol(kernel_fn_src))
