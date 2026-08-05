@@ -184,10 +184,13 @@ def test_real_fp32_capsule_grades_forkfree_against_its_golden(tmp_path):
     assert max_err <= 0.03125, f"fork-free GEMM diverges from the golden: max abs err {max_err}"
 
 
-def test_grading_adapter_wraps_a_kernel_function_and_grades_forkfree(tmp_path):
+@pytest.mark.parametrize("capsule", ["R0_gemm_fp32", "R2_gemm_bf16"])
+def test_grading_adapter_wraps_a_kernel_function_and_grades_forkfree(tmp_path, capsule):
     """Full LIVE wiring: the cyclotron grading adapter (the SAME entrypoint a real run calls) is handed a
     whole-computation kernel FUNCTION + a cb carrying the canonical operands, wraps it in the runner-owned
-    harness, grades fork-free, and matches R0's golden -- so live fork-free coverage is real, not ~0."""
+    harness, grades fork-free, and matches the capsule's golden -- so live fork-free coverage is real, not
+    ~0. Covers both an fp32 (R0) and a bf16 (R2) GEMM: the f32-materialize + fp32-accumulate reference
+    matches the pre-rounded bf16 golden within tolerance."""
     import yaml
     import numpy as np
     from merlin.common.paths import repo_root
@@ -195,10 +198,11 @@ def test_grading_adapter_wraps_a_kernel_function_and_grades_forkfree(tmp_path):
     from merlin.targetgen import muon_oracles as MO
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
         pytest.skip("stock LLVM / derived fact / cyclotron not all available")
-    gfile = repo_root() / "merlin/contract/capsules/radiance/isa/R0_gemm_fp32/golden.yaml"
-    if not gfile.is_file():
-        pytest.skip("R0_gemm_fp32 capsule not present")
-    g = yaml.safe_load(gfile.read_text())
+    cdir = repo_root() / "merlin/contract/capsules/radiance/isa" / capsule
+    if not (cdir / "golden.yaml").is_file():
+        pytest.skip(f"{capsule} capsule not present")
+    g = yaml.safe_load((cdir / "golden.yaml").read_text())
+    atol = float(yaml.safe_load((cdir / "capsule.yaml").read_text())["numeric_policy"]["atol"])
     ins = g["oracle_provenance"]["inputs"]
     y_gold = np.array(g["outputs"]["Y0"], dtype=np.float32)
     cb = {"target": "radiance",
@@ -213,4 +217,4 @@ def test_grading_adapter_wraps_a_kernel_function_and_grades_forkfree(tmp_path):
     res = MO.cyclotron_adapter()(cb, kfn, tmp_path, 300)
     assert res["toolchain"] == "fork-free"
     y = np.array(res["outputs"]["Y0"], dtype=np.float32)
-    assert float(np.max(np.abs(y - y_gold))) <= 0.03125
+    assert float(np.max(np.abs(y - y_gold))) <= atol
