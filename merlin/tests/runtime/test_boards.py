@@ -74,10 +74,23 @@ def test_kodiaks_config_reflects_what_its_zephyr_can_actually_build():
 
     FPU_SHARING must be y: its Zephyr's isr.S calls z_riscv_vstate_save/_restore whenever V is on with
     eager switching, and those live in fpu.c/fpu.S which only compile under FPU_SHARING -- with n the
-    image does not link. And Zephyr-level V must be OFF: that tree has no RISCV_V_KERNEL_ONLY, so
-    enabling V puts `v` in the GLOBAL march and SDK 0.17.0 has no matching libgcc multilib (the link
-    falls back to a 32-bit one: "ELFCLASS32 incompatible with ELFCLASS64"). Vectors still work because
-    reset.S enables mstatus.VS under CONFIG_FPU, and our model.o carries `v` itself.
+    image does not link. Zephyr-level V is OFF because enabling it puts `v` in the GLOBAL march and SDK
+    0.17.0 has no matching libgcc multilib (the link falls back to a 32-bit one: "ELFCLASS32
+    incompatible with ELFCLASS64").
+
+    TWO CLAIMS THAT USED TO BE HERE WERE WRONG, and the second one caused a shipped binary to trap on
+    silicon:
+
+    * "that tree has no RISCV_V_KERNEL_ONLY" -- it HAS one, in `arch/riscv/Kconfig.isa`, and it exists
+      precisely to strip `v` from the global march while re-adding it per-file. That is the proper way
+      to turn Zephyr's V support on here, and is the better long-term route than keeping it off.
+    * "vectors still work because reset.S enables mstatus.VS under CONFIG_FPU" -- reset.S enables VS for
+      the BOOT context only. A thread's initial mstatus is MSTATUS_DEF_RESTORE (MPP | MPIE), with VS
+      added only under CONFIG_RISCV_ISA_EXT_V, so switching into the worker puts VS back to Off. With V
+      off in Zephyr, NOTHING enabled vector state for the thread that runs the model. Measured: the
+      image trapped with mcause=2 on `csrr a0, vlenb` in forward()'s prologue. The generated worker now
+      sets VS|FS itself (see the test below); spike and the Saturn RTL do not enforce VS, which is why
+      this survived every simulated run.
     """
     b = boards.board("chipyard_kodiak")
     assert b.fpu_sharing is True and b.zephyr_vector_ext is False
@@ -280,3 +293,37 @@ def test_mlir_parsing_is_serialized_at_the_only_place_a_parser_is_built():
     # If a second Parser construction ever appears, it bypasses the lock and this must fail.
     src = Path(inspect.getfile(linalg_mlir)).read_text()
     assert src.count("Parser(") == 1, "every parse must go through the serialized entry point"
+
+
+def test_the_generated_worker_enables_vector_state_before_running_the_model():
+    """A freshly created Zephyr thread starts with mstatus.VS = Off.
+
+    The RISC-V port builds a thread's initial mstatus from MSTATUS_DEF_RESTORE (MPP | MPIE only); VS is
+    added just under CONFIG_RISCV_ISA_EXT_V, which these images do not set. reset.S enables VS for the
+    BOOT context, but switching into the worker restores mstatus from the thread's own frame and VS
+    goes back to Off -- and with VS Off every vector instruction and vector CSR read traps.
+
+    Measured on a tapeout that enforces VS: the image died with mcause=2 on `csrr a0, vlenb` in the
+    prologue of forward() (LLVM sizing a VLEN-scaled stack frame), before computing anything, having
+    printed only its banner. spike and the Saturn RTL do NOT enforce VS, so every simulated run passed
+    -- which is exactly why this needs a source-level test rather than a run.
+
+    `libomp_zephyr.c::omp_enable_vector()` already did this per OpenMP worker; a single-hart image has
+    no pool, so nothing enabled it at all.
+    """
+    for n_harts in (1, 2, 3):
+        src = zm._main_c(0, n_harts=n_harts)
+        assert "csrw mstatus" in src, f"n_harts={n_harts}: worker never enables vector state"
+        # 0x600 = mstatus.VS bits[10:9], 0x6000 = mstatus.FS bits[14:13].
+        assert "0x00000600UL | 0x00006000UL" in src
+        # Ordering is the whole point: after the banner is fine, before the model is mandatory.
+        assert src.index("csrw mstatus") < src.index("merlin_run("), \
+            f"n_harts={n_harts}: vector state enabled after the model already ran"
+
+
+def test_kodiak_records_the_vector_width_its_owner_confirmed():
+    """VLEN=512, confirmed by the chip's owner. Nothing in that board's repo states it: the DTS says
+    `riscv,isa = "rv64gc"` with no `v`, and the samples' CONFIG_RISCV_VECTOR_MAX_LEN only sizes a save
+    area, so it bounds the truth from above at best. Building for 128 on a 512-bit unit is the
+    documented K1 trap -- a lower LMUL leaving most of the datapath idle."""
+    assert boards.board("chipyard_kodiak").vlen == 512

@@ -441,6 +441,30 @@ static void merlin_worker(void *a, void *b, void *c) {{
    * stale log and a fresh one are indistinguishable. This is the sha256 prefix of the lowered model
    * object plus the weights blob, i.e. of exactly what computes the answer. */
   printk("METRIC build_hash %s\\n", MERLIN_BUILD_HASH);
+
+  /* ENABLE VECTOR STATE FOR THIS THREAD, before any vector instruction runs.
+   *
+   * A freshly created Zephyr thread starts with mstatus.VS = Off: the RISC-V port builds a thread's
+   * initial mstatus from MSTATUS_DEF_RESTORE (MPP | MPIE), and the VS bit is only OR'd in under
+   * CONFIG_RISCV_ISA_EXT_V, which these images do not set (it puts `v` in the GLOBAL -march, and no
+   * matching libgcc multilib exists). reset.S does enable VS, but only for the BOOT context -- a
+   * context switch into this thread restores mstatus from the thread's own frame and VS goes back to
+   * Off. With VS = Off every vector instruction AND every vector CSR read traps.
+   *
+   * That trap is not hypothetical: the lowered model's entry function begins with `csrr a0, vlenb`
+   * (LLVM sizing a VLEN-scaled stack frame for scalable vectors), so the image dies in the prologue
+   * of forward() with mcause=2 before computing anything. It was reported from a tapeout that
+   * enforces VS; spike and the Saturn RTL do not enforce it, which is why every simulated run passed.
+   *
+   * `libomp_zephyr.c::omp_enable_vector()` already does this for each OpenMP worker, for exactly this
+   * reason -- but a single-hart image has no pool, so nothing enabled it. Setting FS too keeps the FP
+   * state live. Harmless when the state is already dirty. */
+  {{
+    unsigned long ms;
+    __asm__ volatile("csrr %0, mstatus" : "=r"(ms));
+    ms |= 0x00000600UL | 0x00006000UL;      /* mstatus.VS | mstatus.FS */
+    __asm__ volatile("csrw mstatus, %0" ::"r"(ms));
+  }}
 {omp_init}
   /* SUSTAINED INFERENCE: warmup runs settle caches/branch predictors and (on multicore)
    * the pool; only the MERLIN_ITERS runs after them are reported. Every iteration reuses

@@ -131,8 +131,13 @@ BOARDS: dict[str, Board] = {
         notes="FireSim alveo_u250_firesim_dual_saturn_v256d128: 2 Shuttle tiles each with a Saturn "
               "unit at vLen=256/dLen=128, 25 MHz fpga_frequency (~24.9 MHz effective measured), "
               "16 GB target DRAM."),
+    # VLEN=512 is CONFIRMED by the chip's owner (2026-08-05), which retires the earlier inference: the
+    # DTS says `riscv,isa = "rv64gc"` with no `v` at all, and the samples' CONFIG_RISCV_VECTOR_MAX_LEN
+    # only sizes Zephyr's save area, so nothing in the repo stated the real width. Building for 128 on
+    # a 512-bit unit is the documented K1 trap (a fixed-width kernel lands at a lower LMUL and leaves
+    # three quarters of the datapath idle), so the fact matters even though our vector code is scalable.
     "chipyard_kodiak": Board(
-        name="chipyard_kodiak", dram_bytes=512 * 1024 * 1024, harts=3, vlen=None,
+        name="chipyard_kodiak", dram_bytes=512 * 1024 * 1024, harts=3, vlen=512,
         console=CONSOLE_HTIF,
         # FPU_SHARING=y here is REQUIRED, not preferred, and it is why the board's own defconfig sets
         # it. The Zephyr this board pins calls `z_riscv_vstate_save`/`_restore` from isr.S whenever
