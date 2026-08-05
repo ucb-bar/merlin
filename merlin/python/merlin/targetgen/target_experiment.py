@@ -197,6 +197,7 @@ class CapabilityManifest:
     rtl_tiers: tuple[str, ...]
     perf_fields: tuple[str, ...]
     trace_gate: str | None         # trace-gate plugin name (e.g. "rocc_insn") or None
+    force_match_policy: dict | None  # optional oracle output-equality override (float target -> {compare,atol})
     encoding_required: bool
     encoding: dict                 # the ABI encoding surface RTL can't ground (readout_bits/semantic_class/...)
     contract: dict                 # the full target_contract.yaml (for consumers that need more)
@@ -244,6 +245,10 @@ def load_capability_manifest(target: str) -> CapabilityManifest:
         # the contract explicitly declares one). Keys on the endpoint, never a target name.
         trace_gate=runner.get("trace_gate",
                               prof.trace_gate if endpoint == "inline_asm_insn" else None),
+        # Optional oracle output-equality override (a float target declares {compare: float, atol: ...}
+        # so its oracle comparison is tolerant regardless of the per-capsule numeric_policy). None ->
+        # the capsule's own numeric_policy governs (integer capsules -> exact).
+        force_match_policy=runner.get("force_match_policy"),
         encoding_required=prof.encoding_required,
         encoding=encoding,
         contract=contract)

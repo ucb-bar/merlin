@@ -447,9 +447,9 @@ def _descriptor_for(target: str) -> Path:
 
 
 def _ensure_contract_on_path(descriptor: Path) -> None:
-    """If the descriptor names an out-of-tree ``target_contract`` (e.g. radiance's contract lives in the
-    ``radiance_oot`` package), prepend its package root to ``MERLIN_TARGET_PATH`` so the registry resolves
-    the manifest. Read from the descriptor, so it stays target-agnostic."""
+    """If the descriptor names an out-of-tree ``target_contract`` (e.g. radiance's contract lives under
+    the ``radiance`` target package), prepend its package root to ``MERLIN_TARGET_PATH`` so the registry
+    resolves the manifest. Read from the descriptor, so it stays target-agnostic."""
     from merlin.common.paths import repo_root
     raw = yaml.safe_load(descriptor.read_text())
     tc = (raw.get("hardware_spec") or {}).get("target_contract")

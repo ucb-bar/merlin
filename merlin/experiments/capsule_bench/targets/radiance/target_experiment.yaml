@@ -4,9 +4,11 @@
 # matmul. It is matmul-capable and has a validated model — it simply exercises a DIFFERENT oracle path
 # than gemmini/atlas.
 #
-# Authoritative source: the committed OOT target contract at
-#   out/artifacts/targets/radiance_oot/contracts/target_contract.yaml
-# (family=simt_tensor, ops=[matmul, elementwise], compute_units simt_cluster + mx_pe, cyclotron sim).
+# Authoritative source: the materialized (regenerable) target contract at
+#   out/artifacts/targets/radiance/contracts/target_contract.yaml
+# derived by `capability_manifests.write_oot_target("radiance", ...)` from the hand-owned residual +
+# the RTL-derived Muon facts (family=simt_tensor, ops=[matmul, elementwise], compute_units
+# simt_cluster + mx_pe, cyclotron sim). The contract is gitignored (generated); the residual is tracked.
 # Plug it into Merlin via MERLIN_TARGET_PATH; its facts are extracted deterministically from the real
 # RadianceMuonConfig RTL by muon_introspect (elaborated FIRRTL + cyclotron config + ISA docs ->
 # muon_facts.json), the SIMT analog of the arc decoder-derived ISA.
@@ -25,7 +27,7 @@ rtl:
   via: mlc            # facts via muon_introspect (RadianceMuonConfig RTL); arc-matmul discovery is N/A (SIMT)
 
 hardware_spec:
-  target_contract: out/artifacts/targets/radiance_oot/contracts/target_contract.yaml
+  target_contract: out/artifacts/targets/radiance/contracts/target_contract.yaml
   # Shipped ISA doc for the derived assembler/disassembler/linter — the stock-LLVM-emittable Vortex CUSTOM0
   # warp-control surface (derived from radiance-kernels vx_intrinsics.h + RISCVInstrInfoVX.td). Self-contained
   # (no model venv); the merlin IsaModel introspects it in-process. Fork-only 64-bit/mnemonic ops are residue.

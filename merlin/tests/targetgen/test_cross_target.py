@@ -6,8 +6,8 @@ Real, committed target descriptors drive this — nothing gemmini-specific and n
                DERIVED from RTL via mlc discovery, and its RTL oracle is the mlc arc MXU model
                (arc_available=True). This is the real 2nd target the plan calls for.
   * RADIANCE — the RadianceMuon / Muon SIMT config. A real, matmul-capable target (SIMT tensor-core +
-               an embedded gemmini-mx MX PE; committed OOT contract at
-               out/artifacts/targets/radiance_oot) that exercises a DIFFERENT oracle path than an arc
+               an embedded gemmini-mx MX PE; derived contract materialized at
+               out/artifacts/targets/radiance) that exercises a DIFFERENT oracle path than an arc
                MXU: its RTL oracle is the bespoke cyclotron perf model (muon_oracles.cyclotron_adapter,
                toolchain.sim_via=cyclotron), and its facts come from muon_introspect, NOT the arc
                decoder. So arc_available=False is by design (radiance is not an mlc arc-matmul target),
@@ -142,11 +142,12 @@ def test_radiance_uses_the_simt_cyclotron_oracle_not_arc_mxu():
     assert muon_oracles.default_adapters()                # radiance ships real L-tier oracle adapters
     assert _te("radiance").sim_via == "cyclotron"
 
-    # And it is genuinely matmul-capable per its committed OOT contract (not degraded to nothing).
-    import yaml
-    contract = yaml.safe_load(
-        (repo_root() / "out/artifacts/targets/radiance_oot/contracts/target_contract.yaml").read_text())
-    assert "matmul" in contract["capabilities"]["ops"]
+    # And it is genuinely matmul-capable per its DERIVED contract (not degraded to nothing). The
+    # target_contract.yaml is gitignored (regenerable from the residual + RTL facts), so derive it via
+    # the manifest deriver rather than reading a committed generated file.
+    from merlin.targetgen import capability_manifests as cm
+    manifest = cm.manifest_for("radiance")
+    assert "matmul" in manifest["capabilities"]["ops"]
 
 
 def test_mx_gemmini_is_a_systolic_gemmini_variant_graded_by_chipyard():

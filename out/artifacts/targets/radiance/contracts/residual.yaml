@@ -82,6 +82,16 @@ memory_model:
   resident: true
   shared_memory: true
 name: radiance
+# Grading knobs the SIMT family default (families._PROFILES['simt']) does NOT cover — the float dtype,
+# the cyclotron/VCS tier ladder, the declared bespoke sim engine, and the float output-match tolerance
+# (the SIMT device prints fixed-decimal floats). rtl_tiers / perf_fields / trace_gate are the simt family
+# defaults and are filled at read time, so they are not re-declared here. This is what makes the shared
+# capsule_runner's manifest-derived RunnerConfig reproduce the former hand-forked muon config.
+runner:
+  dtype: f32
+  tier_sim: {L2: cyclotron, L3: vcs}
+  sim_via: cyclotron
+  force_match_policy: {compare: float, atol: 1.0e-3}
 plugin:
   dialect_module: radiance_mlir.dialect
   lowering_entrypoint: radiance_mlir.lowering:lower

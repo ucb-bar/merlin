@@ -25,6 +25,7 @@ import dataclasses
 import datetime as _dt
 import json
 import traceback as _traceback
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -169,6 +170,73 @@ def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
     return {}
 
 
+@dataclass(frozen=True)
+class _SimOracle:
+    """A DECLARED bespoke simulator's oracle contribution, keyed by the sim-ENGINE name a target's
+    contract/descriptor declares (``sim_via``) — the same additive-registry pattern as
+    :func:`_sim_engine_adapters` and ``sandbox.toolchain.SIM_TOOLCHAINS``, so the shared dispatch below
+    never branches on a literal engine name.
+
+    ``exclusive`` engines grade the emitted kernel ELF DIRECTLY and REPLACE the arc/program-oracle default
+    entirely — a self-hosted SIMT core (cyclotron) must not be graded by the arc command-buffer path,
+    which would grade the wrong artifact. Non-exclusive engines are ADDITIVE: their higher-fidelity tiers
+    layer on top of the arc default (chipyard: spike L2 / verilator L3 over the arc L3). A new bespoke sim
+    registers ONE entry here + ships its adapter module; the dispatch is unchanged."""
+    adapters: Callable[[str], dict]                 # target -> {tier: adapter}
+    available: Callable[[str], tuple[bool, str]]    # target -> (ok, reason) pre-spend probe
+    exclusive: bool                                 # replaces (True) vs augments (False) the arc default
+
+
+def _chipyard_available(target: str) -> tuple[bool, str]:
+    """chipyard (gemmini/mx-gemmini): the loop-tier spike binary carries GO; the mlc arc model is the
+    fallback gold tier when spike is absent. Preserves the prior gemmini availability semantics exactly."""
+    from .rtl import mlc_bridge
+    arc_ok = mlc_bridge.arc_available(target)
+    try:
+        from ..runtime.backends import base as _bk
+        _gem = _bk.get_backend(target)  # resolve THIS target's backend (chipyard spike availability)
+        spike_ok = bool(_gem.available("spike"))
+    except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
+        spike_ok = False
+    if spike_ok:
+        return True, f"{target!r}: chipyard spike oracle available (loop tier)"
+    if arc_ok:
+        return True, f"{target!r}: chipyard sim absent but mlc arc oracle available (fallback)"
+    return False, f"{target!r}: neither the chipyard spike sim nor the mlc arc oracle is available"
+
+
+def _cyclotron_adapters(target: str) -> dict[str, Callable]:
+    """A self-hosted SIMT target graded on its emitted kernel ELF by the bespoke cyclotron/VCS oracle
+    (``muon_oracles``) — NOT the arc command-buffer path, which grades the wrong artifact for a SIMT
+    kernel. The muon adapters fail closed (MuonUnavailable) when the MERLIN_MUON_* toolchain env is
+    unset, so an unwired target degrades honestly, never mis-grades."""
+    from . import muon_oracles as _MO
+    return _MO.default_adapters()
+
+
+def _cyclotron_available(target: str) -> tuple[bool, str]:
+    """cyclotron (SIMT): require the cyclotron oracle; the mlc arc command-buffer adapter grades the wrong
+    artifact for a SIMT kernel, so it is NOT a valid fallback (that was a false-green). Fail closed."""
+    try:
+        from ..runtime.backends import muon as _muon
+        if _muon.available("cyclotron"):
+            return True, f"{target!r}: cyclotron SIMT oracle available"
+    except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
+        pass
+    return False, (f"{target!r}: cyclotron SIMT oracle unavailable (set the MERLIN_MUON_* env); the mlc "
+                   "arc command-buffer adapter grades the wrong artifact for a SIMT target and is not "
+                   "a valid fallback")
+
+
+#: DECLARED bespoke-sim oracle registry, keyed by sim ENGINE (``sim_via``) — the seam that keeps oracle
+#: routing target-name-free (a new sim engine registers here; the dispatch below is untouched).
+_SIM_ORACLES: dict[str, _SimOracle] = {
+    "chipyard": _SimOracle(lambda t: _sim_engine_adapters("chipyard", t), _chipyard_available,
+                           exclusive=False),
+    "cyclotron": _SimOracle(_cyclotron_adapters, _cyclotron_available, exclusive=True),
+}
+
+
 def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
     """The oracle adapters per tier for a target. The mlc ARC model is the DEFAULT RTL tier (works for
     ANY mlc target, no bespoke sim); a target that DECLARES a bespoke sim (``sim_via``) additionally gets
@@ -180,7 +248,18 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
 
     ``sim_via=None`` (unspecified) is self-resolved from the target's contract via :func:`_bespoke_sim_via`
     so a bare ``oracle_adapters(target)`` is fully contract-routed — never a silent gemmini default. An
-    explicit ``""`` (arc-only, e.g. atlas) is honored as-is and NOT re-resolved."""
+    explicit ``""`` (arc-only, e.g. atlas) is honored as-is and NOT re-resolved.
+
+    Routing order is DELIBERATE: a declared EXCLUSIVE bespoke sim (a self-hosted SIMT core, ``sim_via=
+    cyclotron``) takes precedence over the ``external_backend`` program-oracle default. A SIMT core's
+    endpoint is ALSO ``external_backend`` (it emits a kernel, not ``.insn``), but its kernel ELF must be
+    graded by its own sim — the arc-cosim program oracle grades the wrong artifact for it. So the sim
+    engine is resolved first; only when no exclusive sim is declared does the endpoint select the oracle."""
+    if sim_via is None:                                              # unspecified -> derive from contract
+        sim_via = _bespoke_sim_via(target)
+    so = _SIM_ORACLES.get(sim_via)
+    if so is not None and so.exclusive:                             # self-hosted SIMT: replaces arc/program default
+        return so.adapters(target)
     endpoint_kind, model_ext = _endpoint_of(target)
     if endpoint_kind == "external_backend":
         # Self-hosted-ISA program oracle. ``model_ext`` (the model project that lays out operands + owns
@@ -208,17 +287,9 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
         if vl is not None:
             adapters["L4"] = vl
         return adapters
-    if sim_via is None:                                              # unspecified -> derive from contract
-        sim_via = _bespoke_sim_via(target)
-    if sim_via == "cyclotron":
-        # A self-hosted SIMT target graded on its emitted kernel ELF by the bespoke cyclotron/VCS oracle
-        # (muon_oracles) — NOT the arc command-buffer path, which grades the wrong artifact for a SIMT
-        # kernel. Replaces the arc seed entirely; the muon adapters fail closed (MuonUnavailable) when the
-        # MERLIN_MUON_* toolchain env is unset, so an unwired target degrades honestly, never mis-grades.
-        from . import muon_oracles as _MO
-        return _MO.default_adapters()
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
-    adapters.update(_sim_engine_adapters(sim_via, target))           # optional declared bespoke sim (chipyard)
+    if so is not None:                                               # optional ADDITIVE bespoke sim (chipyard)
+        adapters.update(so.adapters(target))
     return adapters
 
 
@@ -236,9 +307,19 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
     Returns ``(ok, reason)``. ``ok is False`` means grading would only ever emit ``oracle_unavailable``:
     a real (gradeable) run must NOT be launched on it — the sanctioned way to proceed without an oracle
     is an EXPLICIT structure-only smoke (``--no-oracle``). This is the preflight the launcher + the
-    GO/NO_GO validator share so a run that cannot be graded aborts before spending tokens."""
-    endpoint_kind, model_ext = _endpoint_of(target)
+    GO/NO_GO validator share so a run that cannot be graded aborts before spending tokens.
+
+    Routing order mirrors :func:`oracle_adapters` exactly: a declared EXCLUSIVE bespoke sim
+    (``sim_via == "cyclotron"``, a self-hosted SIMT core) is probed FIRST and takes precedence over the
+    ``external_backend`` program-oracle default (a SIMT core's endpoint is also external_backend, but the
+    arc command-buffer path grades the wrong artifact for it, so arc_available must NOT false-green it)."""
     from .rtl import mlc_bridge
+    if sim_via is None:
+        sim_via = _bespoke_sim_via(target)
+    so = _SIM_ORACLES.get(sim_via)
+    if so is not None and so.exclusive:               # self-hosted SIMT: its own sim carries the grade
+        return so.available(target)
+    endpoint_kind, model_ext = _endpoint_of(target)
     if endpoint_kind == "external_backend":
         if not mlc_bridge.arc_available(target):
             return False, (f"external_backend target {target!r}: mlc arc cosim unavailable "
@@ -253,37 +334,10 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
         except _PU as e:
             return False, f"external_backend target {target!r}: {e}"
         return True, (f"external_backend program oracle available (mlc arc cosim + model venv {model_ext!r})")
-    # command_buffer / arc-default target (+ an optional DECLARED bespoke sim)
-    if sim_via is None:
-        sim_via = _bespoke_sim_via(target)
-    arc_ok = mlc_bridge.arc_available(target)
-    if sim_via == "chipyard":
-        try:
-            from ..runtime.backends import base as _bk
-            _gem = _bk.get_backend(target)  # resolve THIS target's backend (chipyard spike availability)
-            spike_ok = bool(_gem.available("spike"))
-        except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
-            spike_ok = False
-        if spike_ok:
-            return True, f"{target!r}: chipyard spike oracle available (loop tier)"
-        if arc_ok:
-            return True, f"{target!r}: chipyard sim absent but mlc arc oracle available (fallback)"
-        return False, f"{target!r}: neither the chipyard spike sim nor the mlc arc oracle is available"
-    if sim_via == "cyclotron":
-        # A SIMT target graded on its emitted kernel ELF by the bespoke cyclotron oracle. The generic mlc
-        # arc adapter grades the COMMAND BUFFER (the wrong artifact for a self-hosted SIMT kernel), so
-        # arc_available must NOT report GO here — that was a false-green. Require the cyclotron oracle;
-        # fail closed otherwise (never fall back to the mis-targeting arc command-buffer path).
-        try:
-            from ..runtime.backends import muon as _muon
-            if _muon.available("cyclotron"):
-                return True, f"{target!r}: cyclotron SIMT oracle available"
-        except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
-            pass
-        return False, (f"{target!r}: cyclotron SIMT oracle unavailable (set the MERLIN_MUON_* env); the mlc "
-                       "arc command-buffer adapter grades the wrong artifact for a SIMT target and is not "
-                       "a valid fallback")
-    if arc_ok:
+    # command_buffer / arc-default target (+ an optional ADDITIVE declared bespoke sim, e.g. chipyard)
+    if so is not None:
+        return so.available(target)
+    if mlc_bridge.arc_available(target):
         return True, f"{target!r}: mlc arc oracle available"
     return False, (f"{target!r}: mlc arc model unavailable (set MERLIN_MLC_DIR and build the arc model)")
 
