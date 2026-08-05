@@ -243,6 +243,68 @@ def compile_kernel(kernel_src: str, workdir: str | Path) -> Path:
     return elf
 
 
+def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[str | Path],
+                            *, target: str = "radiance", march: str = "rv32im") -> Path:
+    """FORK-FREE build of a self-contained kernel: STOCK clang compiles the kernel C to rv32, the derived
+    transcoder re-maps it into the target's fixed-format words, STOCK llvm-mc assembles them, and the
+    fork-free linker (:func:`muon_link.link_fork_free`) links the vendored boot/runtime objects (``bsp_objs``
+    — the crt0-like boot that uses the target's own SIMT instructions, a shipped runtime asset) + the kernel.
+    No clang-muon in compile/assemble/link — every field position is DERIVED from the target's RTL encoding.
+    The kernel must have NO relocations (self-contained; it signals results via inline MMIO), else it fails
+    closed (a relocation cannot be a pure field re-map). Returns the ELF path."""
+    from ...targetgen.isa_model import isa_model_from_encoding
+    from ...targetgen.isa_transcode import FixedFormatTranscoder, to_data_lines, emit_kernel_asm
+    from ...targetgen.rtl import mlc_bridge
+    from ...targetgen.contract.toolchain import mlir_bin
+    from . import muon_link
+
+    work = Path(workdir)
+    work.mkdir(parents=True, exist_ok=True)
+    clang, mc, objcopy, objdump = (mlir_bin("clang"), mlir_bin("llvm-mc"),
+                                   mlir_bin("llvm-objcopy"), mlir_bin("llvm-objdump"))
+    for t in (clang, mc, objcopy, objdump):
+        if not t.is_file():
+            raise MuonUnavailable(f"stock LLVM tool absent: {t} (set MERLIN_MLIR_INSTALL)")
+    fact = mlc_bridge.isa_encoding_for(target)
+    if not fact:
+        raise MuonUnavailable(f"no derived ISA encoding fact for target {target!r}")
+    model = isa_model_from_encoding(target, fact)
+
+    # 1. STOCK compile -> rv32 object (self-contained: no PIC, no jump tables, no relaxation).
+    src = work / "kernel.c"
+    src.write_text(kernel_c, encoding="utf-8")
+    obj = work / "kernel.o"
+    cc = subprocess.run([str(clang), "--target=riscv32", f"-march={march}", "-mabi=ilp32", "-mno-relax",
+                         "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-pic", "-fno-jump-tables",
+                         "-c", str(src), "-o", str(obj)], capture_output=True, text=True)
+    if cc.returncode != 0:
+        raise MuonError(f"stock rv32 compile failed:\n{cc.stderr[-2000:]}")
+    if any("R_RISCV" in ln for ln in
+           subprocess.run([str(objdump), "-r", str(obj)], capture_output=True, text=True).stdout.splitlines()):
+        raise MuonError("kernel has relocations; the transcoder needs a self-contained kernel (fail closed)")
+
+    # 2. transcode the rv32 .text -> target fixed-format words -> assembly.
+    binf = work / "kernel.text.bin"
+    subprocess.run([str(objcopy), "-O", "binary", "--only-section=.text", str(obj), str(binf)],
+                   capture_output=True)
+    words = FixedFormatTranscoder(model).transcode_text(binf.read_bytes())
+    ks = work / "kernel_muon.S"
+    ks.write_text(emit_kernel_asm(words, model.inst_width))
+
+    # 3. STOCK assemble.
+    kobj = work / "kernel_muon.o"
+    a = subprocess.run([str(mc), "--triple=riscv32", "--filetype=obj", str(ks), "-o", str(kobj)],
+                       capture_output=True, text=True)
+    if a.returncode != 0:
+        raise MuonError(f"stock llvm-mc failed:\n{a.stderr[-1500:]}")
+
+    # 4. FORK-FREE link: vendored boot/runtime + the transcoded kernel.
+    elf = work / "kernel.radiance.elf"
+    muon_link.link_fork_free([*[str(o) for o in bsp_objs], str(kobj)],
+                             str(lib_dir() / "linker/mu_link.ld"), str(elf), target=target)
+    return elf
+
+
 # --- run ------------------------------------------------------------------------------------------
 def _cycles_from_console(console: str) -> int | None:
     """Cycle count from the simulator's ``finished after <N> cycles`` line (cyclotron/VCS), parsed
