@@ -145,6 +145,27 @@ def assemble_fixed(model: IsaModel, mnemonic: str, operands: dict[str, int] | No
     return word & ((1 << model.inst_width) - 1)
 
 
+def encode_mem_op(model: IsaModel, mnemonic: str, space: str,
+                  operands: dict[str, int] | None = None) -> int:
+    """Assemble a memory instruction targeting a named ADDRESS SPACE. ``mnemonic`` is the base memory opcode
+    (e.g. the target's load/store); ``space`` is a derived address-space name (e.g. global / shared); the
+    space's value is placed into the derived address-space selector field, and the rest of ``operands``
+    (width/register/immediate fields) pack as usual. This is the seam a compiler calls so a load/store to a
+    given memory space gets the right extension bits — the address-space bug (a plain load into a scratchpad
+    region) becomes impossible to emit by construction. Raises :class:`AssembleError` when the target has no
+    derived address spaces / selector, or the space is unknown."""
+    if not model.address_spaces or not model.address_space_field:
+        raise AssembleError("this target has no derived address-space selector; use assemble_fixed")
+    if space not in model.address_spaces:
+        valid = ", ".join(sorted(model.address_spaces)) or "(none)"
+        raise AssembleError(f"unknown address space '{space}'; spaces: {valid}")
+    ops = dict(operands or {})
+    if model.address_space_field in ops and ops[model.address_space_field] != model.address_spaces[space]:
+        raise AssembleError(f"operand '{model.address_space_field}' conflicts with space '{space}'")
+    ops[model.address_space_field] = model.address_spaces[space]
+    return assemble_fixed(model, mnemonic, ops)
+
+
 def to_data_lines(words: list[int], inst_width: int) -> str:
     """Render assembled words as the assembler data directive stock ``llvm-mc`` emits little-endian: a wide
     (>32-bit) word becomes ``.quad`` (8 bytes), else ``.word`` (4 bytes)."""

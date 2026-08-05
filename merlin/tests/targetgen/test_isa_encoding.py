@@ -86,6 +86,49 @@ def test_to_data_lines_width():
     assert isa_asm.to_data_lines([0xdeadbeefcafe], 64).strip() == ".quad 0x0000deadbeefcafe"
 
 
+# a fixed-format fact with an address-space selector: opcode[2:0], ext2[4:3], rd[8:5]; 16-bit
+MEM_FACT = {
+    "inst_width": 16,
+    "fields": {"opcode": [2, 0], "ext2": [4, 3], "rd": [8, 5]},
+    "opcodes": {"LOAD": 2, "STORE": 1},
+    "address_spaces": {"global": 0, "shared": 1},
+    "address_space_field": "ext2",
+}
+
+
+def test_encode_mem_op_sets_the_space_selector():
+    m = isa_model_from_encoding("synth", MEM_FACT)
+    assert m.address_spaces == {"global": 0, "shared": 1} and m.address_space_field == "ext2"
+    g = isa_asm.encode_mem_op(m, "LOAD", "global", {"rd": 3})
+    s = isa_asm.encode_mem_op(m, "LOAD", "shared", {"rd": 3})
+    assert isa_disasm.disassemble(m, [g])[0]["operands"]["ext2"] == 0
+    assert isa_disasm.disassemble(m, [s])[0]["operands"]["ext2"] == 1
+    # a shared op differs from the global op only in the derived ext2 bits
+    assert (s ^ g) == (1 << 3)
+    with pytest.raises(isa_asm.AssembleError):
+        isa_asm.encode_mem_op(m, "LOAD", "nowhere", {})          # unknown space
+    with pytest.raises(isa_asm.AssembleError):
+        isa_asm.encode_mem_op(m, "LOAD", "global", {"ext2": 1})  # operand conflicts with the space
+
+
+def test_lint_flags_undefined_address_space():
+    from merlin.targetgen import isa_lint
+    m = isa_model_from_encoding("synth", MEM_FACT)
+    good = isa_asm.encode_mem_op(m, "LOAD", "shared", {"rd": 1})
+    bad = isa_asm.assemble_fixed(m, "LOAD", {"ext2": 2, "rd": 1})   # ext2=2 is not a defined space (0/1)
+    findings = isa_lint.lint(m, [good, bad])
+    rules = {(f["rule"], f.get("index")) for f in findings}
+    assert ("undefined_address_space", 1) in rules
+    assert not any(f["rule"] == "undefined_address_space" and f.get("index") == 0 for f in findings)
+
+
+def test_lint_fixed_flags_illegal_opcode():
+    from merlin.targetgen import isa_lint
+    m = isa_model_from_encoding("synth", MEM_FACT)
+    findings = isa_lint.lint(m, [0b111])   # opcode 7 not in {LOAD=2, STORE=1}
+    assert any(f["rule"] == "illegal_opcode" for f in findings)
+
+
 # --- corpus integration: the real RTL-derived Muon fact decodes a real reference ELF -----------------
 
 def _llvm(tool: str) -> str | None:
@@ -130,6 +173,8 @@ def test_muon_rtl_fact_decodes_reference_elf(tmp_path):
 
     m = isa_model_from_encoding("radiance", fact)
     assert m.is_fixed_format() and m.inst_width == 64
+    # the derived address spaces (global/shared) came through with their selector field
+    assert m.address_spaces and m.address_space_field in m.field_layout
     words = _text_words(elf, objcopy, objdump, tmp_path)
     assert words, "no code words extracted"
     recs = isa_disasm.disassemble(m, words)

@@ -23,6 +23,39 @@ from . import isa_taxonomy as IT
 Finding = dict
 
 
+def _lint_fixed(model: IsaModel, words: list[int]) -> list[Finding]:
+    """Lint a FIXED-FORMAT kernel (one field layout selected by an opcode field — the mlc isa_encoding
+    derivation). Two static, false-positive-free checks: an undecodable opcode, and a memory instruction
+    carrying an address-space selector value the target does not define (a fabricated extension — the same
+    bug class as a plain load routed into a scratchpad region). The address-space check runs only when the
+    target's spaces + selector field are derived (derive-or-skip)."""
+    recs = D.disassemble(model, words)
+    findings: list[Finding] = []
+    real = [r for r in recs if not r.get("illegal")]
+    for r in recs:
+        if r.get("illegal"):
+            findings.append({"rule": "illegal_opcode", "severity": "error", "index": r["index"],
+                             "detail": f"word {r['word']} has an opcode this ISA does not define — an "
+                                       "invented or mis-encoded instruction (use the derived encoder)"})
+    if words and not real:
+        findings.append({"rule": "no_recognized_instructions", "severity": "error",
+                         "detail": "no emitted word decodes to a defined instruction — the kernel is empty "
+                                   "or entirely mis-encoded"})
+    if model.address_spaces and model.address_space_field:
+        valid = set(model.address_spaces.values())
+        by_val = {v: k for k, v in model.address_spaces.items()}
+        for r in real:
+            v = r.get("operands", {}).get(model.address_space_field)
+            if v is not None and v not in valid:
+                spaces = ", ".join(f"{k}={n}" for k, n in sorted(model.address_spaces.items()))
+                findings.append({"rule": "undefined_address_space", "severity": "warning", "index": r["index"],
+                                 "detail": f"instruction '{r.get('mnemonic')}' selects address space "
+                                           f"{v} in field '{model.address_space_field}', which this target "
+                                           f"does not define (spaces: {spaces}) — the memory access will not "
+                                           "route to a real space"})
+    return findings
+
+
 def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype: str | None = None,
          epilogue: tuple[str, ...] = (), movement: bool = False) -> list[Finding]:
     """Lint an assembled word stream → a list of findings, each
@@ -35,6 +68,8 @@ def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype:
     op to load operands / store the result, cannot be correct). That check is purely ROLE-derived from the
     model — no target name, no class literal, no golden — and skips any role the target's ISA does not
     define (derive-or-skip, never a false positive)."""
+    if model.is_fixed_format():
+        return _lint_fixed(model, words)
     if model.is_empty():
         return [{"rule": "no_isa_model", "severity": "info",
                  "detail": "this target ships no ISA definition; static ISA lint is unavailable"}]

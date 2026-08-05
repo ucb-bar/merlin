@@ -42,6 +42,11 @@ class IsaModel:
     inst_width: int = 32
     field_layout: dict[str, tuple[int, int]] = field(default_factory=dict)
     opcode_table: dict[str, int] = field(default_factory=dict)
+    # address-space selection: ``address_spaces`` maps a memory-space name to the value the
+    # ``address_space_field`` (an opcode-extension selector) carries for it — derived from the target's own
+    # address-space qualifier macros. Empty for a single flat address space.
+    address_spaces: dict[str, int] = field(default_factory=dict)
+    address_space_field: str = ""
 
     def is_fixed_format(self) -> bool:
         """True when the target's ISA is one fixed field layout selected by an opcode field (the mlc
@@ -145,7 +150,10 @@ def isa_model_from_encoding(target: str, fact: dict) -> IsaModel:
     if not field_layout or not opcode_table:
         return IsaModel(target=target)
     width = int(fact.get("inst_width") or 0) or (max((hi for hi, _ in field_layout.values()), default=31) + 1)
-    return IsaModel(target=target, inst_width=width, field_layout=field_layout, opcode_table=opcode_table)
+    spaces = {str(k): int(v) for k, v in (fact.get("address_spaces") or {}).items()}
+    as_field = str(fact.get("address_space_field") or "")
+    return IsaModel(target=target, inst_width=width, field_layout=field_layout, opcode_table=opcode_table,
+                    address_spaces=spaces, address_space_field=(as_field if as_field in field_layout else ""))
 
 
 def isa_model_for_target(target: str) -> IsaModel:
