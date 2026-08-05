@@ -381,6 +381,41 @@ def main(argv=None) -> int:
                 else:
                     print(f"  {model}: {h}-hart output bit-identical to {base_h}-hart", flush=True)
 
+    # The VECTOR PROBE. Cheapest useful thing in the package: a ~10 KB image that reports the board's
+    # own vlenb, misa.V and mstatus.VS. Every VLEN statement we make is otherwise an inference (the
+    # Kodiak board files declare no width, and its samples' CONFIG_RISCV_VECTOR_MAX_LEN only bounds it
+    # from above), and building for the wrong width is the documented K1 trap. Run first, it settles
+    # the question in seconds instead of after a multi-megabyte upload.
+    probe_report = None
+    try:
+        from merlin.runtime import vector_probe
+
+        pwork = Path(tempfile.mkdtemp(prefix="delivery_probe_"))
+        pelf = vector_probe.build(pwork, dram_base=brd.dram_base, dram_bytes=brd.dram_bytes,
+                                  vlen=brd.vlen)
+        shutil.copy2(pelf, dest / "vlen_probe.elf")
+        # Prove it works on the widths in play before shipping it, INCLUDING one it was not built
+        # for -- that independence is the whole point of the probe.
+        checks = {}
+        for v in sorted({128, 256, brd.vlen or 128}):
+            checks[v] = vector_probe.parse(
+                vector_probe.run_on_spike(dest / "vlen_probe.elf", vlen=v,
+                                          dram_base=brd.dram_base))
+        probe_report = {"elf": "vlen_probe.elf", "bytes": (dest / "vlen_probe.elf").stat().st_size,
+                        "spike_selfcheck": {str(k): v for k, v in checks.items()}}
+        bad = [v for v, r in checks.items()
+               if not (r.get("complete") and r.get("consistent") and r.get("vlen_bits") == v)]
+        if bad:
+            problems.append(f"vlen_probe.elf misreported the VLEN at {bad} — not shipping a probe "
+                            f"whose answer we cannot trust")
+            (dest / "vlen_probe.elf").unlink(missing_ok=True)
+            probe_report = None
+        else:
+            print(f"  vlen_probe.elf: {probe_report['bytes']} bytes, correct at "
+                  f"{sorted(checks)} on spike", flush=True)
+    except Exception as exc:                                                # noqa: BLE001
+        problems.append(f"vlen_probe: {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
+
     (dest / "elf_audit.json").write_text(json.dumps(audits, indent=2) + "\n")
     (dest / "grade.py").write_text(GRADE_PY)
     (dest / "grade.py").chmod(0o755)
@@ -388,6 +423,7 @@ def main(argv=None) -> int:
         "board": {"name": brd.name, "dram_bytes": brd.dram_bytes, "harts": brd.harts,
                   "vlen": brd.vlen, "console": brd.console, "notes": brd.notes},
         "dtype": a.dtype, "binaries": binaries, "problems": problems,
+        "vector_probe": probe_report,
         "merlin_commit": _git_sha(), "validated_on": "spike (functional, at the board's VLEN)",
     }
     (dest / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -427,19 +463,54 @@ def _readme(brd, manifest: dict) -> str:
     statuses = "\n".join(f"- **{m}** — {STATUS.get(m, 'no status recorded')}"
                          for m in sorted({b["model"] for b in manifest["binaries"]}))
     vlen = brd.vlen or 128
+    paired = sorted({b["model"] for b in manifest["binaries"]
+                     if sum(1 for o in manifest["binaries"] if o["model"] == b["model"]) > 1})
+    unpaired = sorted({b["model"] for b in manifest["binaries"]} - set(paired))
     pair_section = ("""\
 ## Please run BOTH hart counts
 
-The pair exists so you can check them against each other: **the outputs must be bit-identical.** They
-are the same computation split differently, so any difference at all is vector/SMP state on the SoC, not
-rounding — and that is a far more useful signal for you than either run alone. We verified this holds on
-spike at your vector length before shipping.""" if len(hart_counts) > 1 else """\
+For %s the package carries one binary per hart count, and the pair exists so you can check them
+against each other: **the outputs must be bit-identical.** They are the same computation split
+differently, so any difference at all is vector/SMP state on the SoC, not rounding — and that is a far
+more useful signal for you than either run alone. We verified this holds on spike at your vector length
+before shipping.%s""" % (", ".join("`%s`" % m for m in paired),
+                         ("\n\n%s single-hart only: we could not build a multi-hart image for "
+                          "%s, and would not ship one we had not run." %
+                          (", ".join("`%s`" % m for m in unpaired)
+                           + (" ships" if len(unpaired) == 1 else " ship"),
+                           "it" if len(unpaired) == 1 else "them")) if unpaired else "")
+                    if len(hart_counts) > 1 else """\
 ## Only one hart, deliberately
 
 Every binary here runs on one hart. We did not ship a multi-hart bare-metal image because dispatching
 your second hart goes through your own thread-lib rather than the OpenMP runtime our multicore lowering
 targets, and shipping that untested would waste your bench time. If you want it, that integration is
 ours to do next — say so and we will build against your dispatch.""")
+    probe = manifest.get("vector_probe")
+    probe_doc = ("""\
+Load `vlen_probe.elf` the same way as any other binary below. It reads the chip's own CSRs and prints:
+
+```
+PROBE hartid <n>            which hart answered
+PROBE misa_ext_bits <n>     the extension letters your hardware advertises
+PROBE misa_v_bit <0|1>      does misa claim V at all
+PROBE mstatus_vs <0..3>     is vector state ENABLED (0 = off; vector instructions would trap)
+PROBE vlenb <bytes>         the authoritative vector length; VLEN bits = vlenb * 8
+PROBE vlmax_e8 / vlmax_e32  the same width derived again via vsetvli, as a cross-check
+DONE
+```
+
+**Please send this back before anything else.** Your board files declare no vector width anywhere
+(`riscv,isa = "rv64gc"`, and the samples' `CONFIG_RISCV_VECTOR_MAX_LEN` sizes Zephyr's save area, so it
+only bounds the real width from above), so we built the model images for %d-bit vectors as our best
+inference. If `vlenb` says otherwise, the model binaries are still CORRECT — fixed-width vector code
+runs at a lower LMUL on a wider unit — but they leave performance on the table, and we would rebuild.
+It costs seconds and saves a multi-megabyte upload spent on the wrong assumption.
+
+If `mstatus_vs` comes back 0, stop there and tell us: vector state is off, and every vector
+instruction in the model images would trap. The probe deliberately stops before reading `vlenb` in
+that case rather than taking the trap.""" % (brd.vlen or 128)
+                 if probe else "*(not included in this package)*")
     identity_line = ("- Confirmed 1-hart and %d-hart outputs are bit-identical." % max(hart_counts)
                      if len(hart_counts) > 1 else
                      "- Single-hart images only (see above), so there is no hart-split to check.")
@@ -473,6 +544,10 @@ one is a one-line rebuild on our side. In particular we would like to know `vlen
 
 Upload time is the *memory* size, not the file size — a UART loader transmits `MemSiz`, so a big
 embedded weights blob costs minutes per attempt.
+
+## Run this FIRST: `vlen_probe.elf` (~10 KB, seconds)
+
+{probe_doc}
 
 ## Run one
 
