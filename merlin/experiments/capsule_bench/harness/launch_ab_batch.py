@@ -98,24 +98,32 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
     return cmd
 
 
-# answer surfaces locked (chmod 000) right before any spend — prior backends, hidden capsules, goldens,
-# results, the experimenter's agent memory. Defence-in-depth on top of the per-bundle workspace assembly.
-ANSWER_SURFACES = [
-    f"out/artifacts/targets/{C.TARGET}",
-    "merlin/contract/capsules/hidden",
-    f"out/artifacts/capsule-bench/{C.TARGET}",
-]
+# Host-side answer surfaces locked (chmod 000) right before any spend — defence-in-depth on top of the
+# per-bundle workspace assembly + the bwrap answer masks. DERIVED from the descriptor so a new target
+# locks ITS OWN surfaces: the per-target hidden holdout dir (the answers) + stale prior results. NOTE
+# the target's contract dir (out/artifacts/targets/<target>) is deliberately NOT locked — it holds the
+# capability contract, not an answer, and locking it would break the run's own contract resolution.
+def _answer_surfaces_to_lock(te) -> list[str]:
+    locks: list[str] = []
+    if te is not None:
+        h = te.hidden_corpus()                                # per-target hidden set (capsules/<t>/hidden)
+        if h:
+            locks.append(str(C.REPO / h.rstrip("/")))
+    locks.append(str(C.REPO / f"out/artifacts/capsule-bench/{C.TARGET}"))  # stale prior results
+    return locks
 
 
 def _run_preflight() -> int:
     """Lock answer surfaces + run verify_no_cheat.py (the authoritative gate). Returns 0 iff safe."""
     C.require_scaffolding()   # fail loudly if MERLIN_TARGET_EXPERIMENT points at a scaffolding-less dir
+    from merlin.targetgen.target_experiment import load_target_experiment, bundles_match_descriptor
+    desc = C.EXP / "target_experiment.yaml"          # C.EXP honors MERLIN_TARGET_EXPERIMENT
+    te = load_target_experiment(desc) if desc.is_file() else None
     locked = []
-    for rel in ANSWER_SURFACES:
-        p = C.REPO / rel
-        if p.exists():
-            subprocess.run(["chmod", "-R", "000", str(p)], capture_output=True)
-            locked.append(rel)
+    for p in _answer_surfaces_to_lock(te):
+        if Path(p).exists():
+            subprocess.run(["chmod", "-R", "000", p], capture_output=True)
+            locked.append(p)
     print(f"  locked answer surfaces (chmod 000): {locked or '(none present)'}")
     vnc = SCRIPTS / "verify_no_cheat.py"
     if not vnc.is_file():
@@ -128,10 +136,7 @@ def _run_preflight() -> int:
     # Descriptor governs the shared hardware spec: refuse if any active arm bundle drifted from it (so
     # every arm gets exactly the ISA/RTL the target_experiment.yaml declares — a fair, honest run).
     try:
-        from merlin.targetgen.target_experiment import load_target_experiment, bundles_match_descriptor
-        desc = C.EXP / "target_experiment.yaml"          # C.EXP honors MERLIN_TARGET_EXPERIMENT
-        if desc.is_file():
-            te = load_target_experiment(desc)
+        if te is not None:
             bundles = C.BUNDLES
             manifests = [bundles / ARMS[arm][4] / "input_bundle_manifest.yaml" for arm in ARMS
                          if (bundles / ARMS[arm][4] / "input_bundle_manifest.yaml").is_file()]
