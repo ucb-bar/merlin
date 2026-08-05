@@ -355,9 +355,6 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     rung = interface_mlir.stem.split(".")[0]
     if target is None:
         target = _package_target(package_dir)
-    # Resolve the package's runtime backend from the run's target (not a name literal) — the runner is
-    # target-agnostic, so a package for any registered target reaches its own backend helpers.
-    gem = _bk.get_backend(target)
 
     spec = RunSpec(project="merlin", suite=SUITE, method=f"{run_id}", seed=seed, run_id=run_id,
                    project_root=Path(runs_root), tracking_mode="local", target=target,
@@ -389,6 +386,16 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         if not pkg.tool.exists():
             raise CertFailure("build", FailureCategory.ELABORATION_ERROR,
                               f"package tool not found after build: {pkg.tool}")
+
+        # Resolve the package's runtime backend from the run's target (not a name literal) — the
+        # runner is target-agnostic, so a package for any registered target reaches its own backend
+        # helpers. Done AFTER load_package so a broken/unknown package fails closed on the manifest
+        # (K0) rather than raising here; an unregistered target is a fail-closed contract violation.
+        try:
+            gem = _bk.get_backend(target)
+        except KeyError as e:
+            raise CertFailure("contract", FailureCategory.STRUCTURAL_INVARIANT_VIOLATION,
+                              f"package declares target {target!r} with no registered backend") from e
 
         # K2: parse
         p = run_entrypoint(pkg, "parse", inp, timeout=timeout)

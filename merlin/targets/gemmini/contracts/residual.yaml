@@ -18,6 +18,11 @@
 name: gemmini
 version: 0.1
 family: tensor_resident
+# Runtime backend, evicted from core runtime/backends/ into this package's backend/ dir. The deriver
+# passes this through, so a regenerated OOT package (write_oot_target) ships plugin.backend too and
+# self-registers "gemmini" via base._oot_backend_modules.
+plugin:
+  backend: backend
 # Codegen endpoint + grading knobs the shared RunnerConfig reads (rtl_tiers + the rocc_insn trace gate
 # ride the systolic family default; declared here only where they differ from it). Fork-free .insn on
 # stock LLVM — no gemmini-forked toolchain.
