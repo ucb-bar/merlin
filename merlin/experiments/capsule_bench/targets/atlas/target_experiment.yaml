@@ -33,5 +33,15 @@ capsule_corpus: merlin/contract/capsules/atlas/isa
 toolchain:
   sim_via: ""         # arc-only (the mlc arc MXU model is the RTL tier)
 
+# Pre-flight end-to-end oracle smoke: a KNOWN-GOOD, self-contained npu_model Program that ships its own
+# golden_result. The pre-flight assembles it, runs it on the arc cosim, reads back the output, and asserts
+# a BIT-EXACT match against that golden — proving the grading oracle produces a correct verdict end-to-end
+# BEFORE a paid run (not merely that arc_available is True). MatmulProgram is the model's canonical single
+# fp8->bf16 MXU matmul validation program (npu_model.configs.programs.__all__), the same known-good program
+# the L4 verilator equivalence test uses. A per-target SETUP choice, so declared here — the ISA/datapath it
+# exercises is still DERIVED from the RTL by mlc.
+preflight:
+  smoke_program: MatmulProgram
+
 answer_surfaces:
   prior_backends: []  # no prior atlas backends to hide yet

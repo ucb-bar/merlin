@@ -294,6 +294,52 @@ def program_oracle_adapter(target: str, *, model_ext: str) -> Callable:
     return run
 
 
+def run_program_oracle_smoke(target: str, *, model_ext: str, program: str, workdir,
+                             max_cycles: int = 20000, timeout: int = 600) -> dict[str, Any]:
+    """END-TO-END pre-flight oracle smoke for a self-hosted-ISA (``external_backend``) target: run a
+    KNOWN-GOOD, self-contained model ``program`` (one that ships its OWN ``golden_result``) through the
+    FULL grading path — assemble (the model's assembler) → arc cosim → read back the output region — and
+    compare the read-back result to that golden BIT-EXACT.
+
+    ``arc_available`` + adapter routing only prove the oracle's pieces are wired; they do NOT prove the
+    path computes the right answer. This does: if a real run cannot be graded to a correct verdict, the
+    launcher must learn that BEFORE spending tokens (the atlas 0/11-at-\\$43 lesson). ``program`` is the
+    caller's PARAMETER — the concrete known-good program name is a per-target SETUP fact declared in the
+    descriptor, never a literal here (this module is HW-agnostic).
+
+    Returns ``{ok, program, cycles, oracle, shape, mismatches, reason}``. Raises
+    :class:`OracleUnavailable` when the model venv / cosim is absent or the program does not halt (so the
+    caller decides NO_GO vs. a clean skip — never a silent pass)."""
+    import numpy as np
+    wd = Path(workdir)
+    gwd, rwd = wd / "golden", wd / "run"
+    gwd.mkdir(parents=True, exist_ok=True)
+    rwd.mkdir(parents=True, exist_ok=True)
+    # 1) the program's OWN golden — computed by the model's fp8/bf16 datapath (the INDEPENDENT reference,
+    #    not the cosim), so a bit-exact match certifies the whole assemble→run→readback chain.
+    gb = emit_bundle(model_ext=model_ext, program=program, fix_itype_rd=True, workdir=gwd, timeout=timeout)
+    g = gb.get("golden")
+    if not g:
+        raise OracleUnavailable(
+            f"{program!r}: model program ships no golden_result — cannot form a bit-exact smoke verdict")
+    golden = _decode_output(base64.b64decode(g["b64"]), list(g["shape"]), str(g["dtype"]), None)
+    # 2) the FULL oracle path: assemble → arc cosim → read back the declared output region.
+    res = run_program_oracle(target, model_ext=model_ext, program=program, max_cycles=max_cycles,
+                             workdir=rwd, timeout=timeout)
+    got = np.array(next(iter(res["outputs"].values())))
+    shape_ok = tuple(got.shape) == tuple(golden.shape)
+    mism = None if not shape_ok else int(np.count_nonzero(got != golden))
+    ok = bool(shape_ok and mism == 0)
+    if ok:
+        reason = f"{program} matches its golden bit-exact on the {res.get('oracle')}"
+    elif not shape_ok:
+        reason = f"{program}: output shape {tuple(got.shape)} != golden {tuple(golden.shape)}"
+    else:
+        reason = f"{program}: diverged from its golden ({mism} element(s) differ) on {res.get('oracle')}"
+    return {"ok": ok, "program": program, "cycles": int(res.get("cycles") or 0),
+            "oracle": res.get("oracle"), "shape": list(got.shape), "mismatches": mism, "reason": reason}
+
+
 # --------------------------------------------------------------------------------------------------
 # FAST FUNCTIONAL tier — the same assembled program run on the target model's high-level FUNCTIONAL
 # core (pure Python, no arc .so), for per-round QA feedback. The cycle-exact cosim (above) stays the

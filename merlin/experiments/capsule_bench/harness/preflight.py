@@ -222,9 +222,57 @@ def check_oracle_available() -> dict:
     cg_ok, cg_why = CR.codegen_smoke(TARGET)
     if ok and csmoke_ok and not cg_ok:
         reason = f"grading oracle ready but our codegen backend is broken: {cg_why}"
-    return {"available": ok and csmoke_ok and cg_ok, "reason": reason, "sim_via": sim_via,
-            "compiler_smoke": {"ok": csmoke_ok, "reason": csmoke_why},
-            "codegen_smoke": {"ok": cg_ok, "reason": cg_why}}
+    # For a self-hosted-ISA (external_backend) target, the pieces being present is STILL not proof the
+    # oracle grades to a CORRECT verdict end-to-end. Run a KNOWN-GOOD self-contained model program all the
+    # way through the grading path (assemble -> arc cosim -> readback) and require a BIT-EXACT match to its
+    # own golden. Infra-absence or a mismatch is surfaced as NO_GO (never a crash, never a silent skip) so
+    # a run that can only ever emit unavailable/false verdicts is refused before a paid pilot. n/a for a
+    # non-external_backend target (its command_buffer/chipyard oracle is covered above). Contract-routed,
+    # no target-name branch — the concrete known-good program is DECLARED in the descriptor.
+    prog_smoke = _program_oracle_smoke(sim_okay=ok and csmoke_ok and cg_ok, desc=desc)
+    if prog_smoke.get("ok") is False:
+        reason = f"grading oracle pieces present but the end-to-end smoke failed: {prog_smoke.get('reason')}"
+    return {"available": ok and csmoke_ok and cg_ok and prog_smoke["ok"], "reason": reason,
+            "sim_via": sim_via, "compiler_smoke": {"ok": csmoke_ok, "reason": csmoke_why},
+            "codegen_smoke": {"ok": cg_ok, "reason": cg_why}, "program_smoke": prog_smoke}
+
+
+def _program_oracle_smoke(*, sim_okay: bool, desc: Path) -> dict:
+    """Run the descriptor-declared KNOWN-GOOD program end-to-end through the target's grading oracle and
+    return ``{ok, reason, ...}``. Only meaningful for an ``external_backend`` (program-oracle) target; any
+    other target returns ``ok=True`` with an n/a reason (its oracle is validated by the checks above). Not
+    run when the earlier pieces are already broken (``sim_okay`` False) — the failing piece is the actionable
+    blocker, not a moot smoke. Fails CLOSED: a target that is external_backend but declares no
+    ``preflight.smoke_program`` (or no ``runner.model_ext``) is NO_GO, and an ``OracleUnavailable`` (infra
+    absent) is NO_GO — never a pass. Target-agnostic: the program name + model_ext are read from the
+    descriptor/contract, no literal here."""
+    from merlin.targetgen import capsule_runner as CR
+    endpoint_kind, model_ext = CR._endpoint_of(TARGET)
+    if endpoint_kind != "external_backend":
+        return {"ok": True, "reason": "n/a (not an external_backend program-oracle target)"}
+    if not sim_okay:
+        return {"ok": True, "reason": "n/a (an earlier oracle/codegen check already blocks — fix that first)"}
+    if desc.is_file():
+        from merlin.targetgen.target_experiment import load_target_experiment
+        program = load_target_experiment(desc).preflight_smoke_program
+    else:
+        program = None
+    if not program:
+        return {"ok": False, "reason": (f"external_backend target {TARGET!r} declares no "
+                                        "preflight.smoke_program — cannot run an end-to-end oracle smoke")}
+    if not model_ext:
+        return {"ok": False, "reason": (f"external_backend target {TARGET!r} declares no runner.model_ext — "
+                                        "cannot resolve the model venv that lays out operands + the golden")}
+    from merlin.targetgen import program_oracle as PO
+    try:
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix="oracle_smoke_") as td:
+            r = PO.run_program_oracle_smoke(TARGET, model_ext=model_ext, program=program,
+                                            workdir=Path(td), timeout=600)
+        return {"ok": bool(r["ok"]), "reason": r["reason"], "program": program,
+                "cycles": r.get("cycles"), "oracle": r.get("oracle")}
+    except PO.OracleUnavailable as e:
+        return {"ok": False, "program": program,
+                "reason": f"end-to-end oracle smoke could not run (infra absent): {e}"}
 
 
 def main() -> int:
@@ -261,6 +309,9 @@ def main() -> int:
         (f"numeric oracle runnable for a gradeable run ({R['oracle'].get('reason')})", oracle_ok),
         (f"our codegen backend emits a runnable kernel ({R['oracle'].get('codegen_smoke', {}).get('reason')})",
          R["oracle"].get("codegen_smoke", {}).get("ok", True)),
+        (f"known-good program grades bit-exact end-to-end through the oracle "
+         f"({R['oracle'].get('program_smoke', {}).get('reason')})",
+         R["oracle"].get("program_smoke", {}).get("ok", True)),
         ("bareMetalC corroboration table with golden hashes; conv externally-deferred noted", True),
         ("VCS/FireSim remain unavailable, never counted as pass", True),
     ]

@@ -41,6 +41,12 @@ class TargetExperiment:
     # declared, not derived). Names under ``artifacts/targets/<target>/``.
     prior_backends: tuple[str, ...]
     path: Path                         # the descriptor file this came from
+    # OPTIONAL: the KNOWN-GOOD self-contained model program the pre-flight runs end-to-end through the
+    # grading oracle (assemble→cosim→readback, compared bit-exact to its own golden) to prove the oracle
+    # produces a correct verdict BEFORE a paid run — not just that ``arc_available`` is True. Genuinely
+    # per-target SETUP (which shipped validation program to smoke), so declared, not derived. Only an
+    # ``external_backend`` (self-hosted-ISA program-oracle) target needs one; others leave it None.
+    preflight_smoke_program: str | None = None
 
     @property
     def exp_name(self) -> str:
@@ -111,6 +117,8 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         rtl_repo=(lambda r: str(r) if r else None)((doc.get("rtl") or {}).get("repo")),
         prior_backends=tuple((doc.get("answer_surfaces") or {}).get("prior_backends") or ()),
         path=p,
+        preflight_smoke_program=(lambda s: str(s) if s else None)(
+            (doc.get("preflight") or {}).get("smoke_program")),
     )
 
 
