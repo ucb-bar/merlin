@@ -39,6 +39,7 @@ import yaml
 import _common as C
 import run_agent_experiment as RX  # reuse bundle/workspace/bwrap primitives
 import _ratelimit as RL  # five-hour rate-limit detection + reset epoch (shared)
+import resume_on_quota as ROQ  # cut-short (timeout / weekly-quota) detection + checkpoint/resume policy
 
 SCRIPTS = Path(__file__).resolve().parent  # this scripts/ dir (selfcheck_broker.py, selfcheck_shim.py)
 
@@ -1270,6 +1271,21 @@ def main(argv: list[str] | None = None) -> int:
             _checkpoint(rnd)
             break
 
+        # WEEKLY (seven-day) quota wall: the subscription budget is exhausted and resets DAYS later, so a
+        # same-session sleep-and-retry (what the five-hour branch below does) is pointless — it would burn
+        # every remaining round against the wall. Crucially this can fire AFTER real work (the agent built
+        # a partial submission), so grading it as a normal round would score a misleading 0 and discard the
+        # partial. Instead: checkpoint at THIS round (a later --resume continues it — the workspace
+        # submission/ persists), write a DISTINCT status, and exit early with a distinct code.
+        if ROQ.weekly_quota_hit(tpath):
+            active_wall_s += time.time() - _rstart
+            _checkpoint(rnd)  # next_round stays rnd: --resume after the weekly reset continues THIS round
+            sp = ROQ.write_quota_status(run_dir, ROQ.REASON_WEEKLY, rnd, transcript=tpath)
+            print(f"[round {rnd}] {ROQ.STATUS_WEEKLY}: weekly (seven-day) subscription budget exhausted "
+                  f"~mid-round; partial submission checkpointed. Relaunch with --resume (same run_id) "
+                  f"after the weekly reset — see {sp}. Exiting (not a converged/failed 0).", flush=True)
+            return ROQ.QUOTA_WEEKLY_EXIT_CODE
+
         # Rate-limit backoff: if the org five-hour budget REJECTED this round (zero work), don't
         # consume it — sleep until the window resets and retry the SAME round index.
         if RL.round_rejected(tpath):
@@ -1299,6 +1315,18 @@ def main(argv: list[str] | None = None) -> int:
             round_brief.write(run_dir, ws, rnd)
         except Exception as _e:  # noqa: BLE001
             print(f"[round {rnd}] round_brief skipped: {type(_e).__name__}: {_e}")
+        # If this round was CUT SHORT mid-work but is resumable in-budget (a wall-clock timeout, rc=124),
+        # its partial submission/ persists in the workspace — do NOT treat it as a converged/failed final.
+        # Prepend a RESUME banner to the next round's brief so the fresh session CONTINUES the partial
+        # (finish manifest.yaml + the CLI + the target artifact first) instead of restarting from scratch.
+        _cut, _cut_reason = ROQ.round_was_cut_short(run_dir, rc=rc, transcript=tpath)
+        if _cut and ROQ.resume_policy(_cut_reason) == ROQ.RESUME_IN_BUDGET:
+            try:
+                ROQ.prepend_resume_note(ws, _cut_reason)
+                print(f"[round {rnd}] cut short ({_cut_reason}); partial submission preserved — next round "
+                      f"will RESUME it (finish manifest.yaml + CLI + target artifact first).")
+            except Exception as _e:  # noqa: BLE001
+                print(f"[round {rnd}] resume-note skipped: {type(_e).__name__}: {_e}")
         rsum = ET.parse_transcript(tpath)
         audit = audit_transcript(tpath, arm)
         rounds_summary.append({"round": rnd, "agent_rc": rc,
