@@ -94,6 +94,20 @@ def _tool_activity(run_dir: Path) -> int:
     return n
 
 
+def _terminal_reason(run_dir: Path) -> str | None:
+    """Detect a round that ENDED on a provider/API error (esp. a rate-limit / quota 429) rather than a
+    clean finish or a wall-clock timeout. Such a round is NOT a valid demonstration — the agent was cut
+    off by quota, not by finishing. Scans the transcripts for the terminal markers the drivers emit."""
+    blob = "\n".join(_transcript_commands(run_dir))
+    if '"terminal_reason":"api_error"' in blob or '"terminal_reason": "api_error"' in blob:
+        if "seven_day" in blob or "weekly limit" in blob:
+            return "rate_limit_weekly(429)"
+        if "429" in blob or "rate_limit" in blob:
+            return "rate_limit(429)"
+        return "api_error"
+    return None
+
+
 def _submission_sources(run_dir: Path) -> list[Path]:
     sub = run_dir / "submission"
     return [p for p in sub.rglob("*") if p.is_file() and p.suffix in (".py", ".txt", ".md", ".yaml", ".mlir")]
@@ -153,10 +167,21 @@ def evaluate(run_dir: Path) -> dict:
     if rc == 124:
         timeout_class = "budget_exhausted" if activity >= 10 else "stalled"
     graded = bool(n_caps) and bool(pub)
+    # A structural/integrity FAIL (e.g. no manifest.yaml -> contract plane) means the package was rejected
+    # BEFORE any capsule compiled — it is NOT a valid graded outcome even though a score json exists.
+    integrity = str(pub.get("integrity_status") or "")
+    integrity_fail = "FAIL" in integrity.upper()
+    terminated = _terminal_reason(run_dir)             # 429 / quota / api_error cut the round short
     submission = (run_dir / "submission").is_dir() and any((run_dir / "submission").iterdir())
     clean = bool(r0.get("answer_access_clean", True)) and not (r0.get("audit_hits") or [])
     conf = _conformance(run_dir, arm)
     issues: list[str] = []
+    if terminated:
+        issues.append(f"NOT COMPLETED — round terminated by {terminated} (agent cut off by quota/provider, "
+                      f"not a finish); {activity} tool calls before the cut. Restore quota / add resume.")
+    if integrity_fail:
+        issues.append(f"STRUCTURAL/INTEGRITY FAIL — {integrity} (package rejected before any capsule "
+                      f"compiled; n_capsules={n_caps}). NOT a valid graded result.")
     if not bounded:
         if timeout_class == "budget_exhausted":
             issues.append(f"NOT COMPLETED — active agent ({activity} tool calls) hit the round cap "
@@ -175,7 +200,8 @@ def evaluate(run_dir: Path) -> dict:
         issues += [f"non-conformant: {v}" for v in conf["violations"]]
     return {"run": str(run_dir), "arm": arm, "bounded": bounded, "submission": submission,
             "graded": graded, "n_capsules": n_caps, "n_passed": n_pass, "tool_calls": tool_calls,
-            "timeout_class": timeout_class, "clean": clean, "conformance": conf, "wall_seconds": wall,
+            "timeout_class": timeout_class, "terminated": terminated, "integrity_fail": integrity_fail,
+            "clean": clean, "conformance": conf, "wall_seconds": wall,
             "verdict": "GO" if not issues else "ISSUES", "issues": issues}
 
 
