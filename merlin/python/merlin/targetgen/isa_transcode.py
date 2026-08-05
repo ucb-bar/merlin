@@ -30,18 +30,20 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
-from ...targetgen.isa_model import IsaModel
+from .isa_model import IsaModel
 
 # Standard RISC-V base-opcode field values (a fixed external fact of the stock rv32 toolchain — these
 # are compared against the TARGET's own derived opcode_table before use, never assumed of the target).
 _LOAD, _OP_IMM, _STORE, _OP = 0x03, 0x13, 0x23, 0x33
 _LUI, _AUIPC, _JAL, _JALR, _SYSTEM = 0x37, 0x17, 0x6F, 0x67, 0x73
+_OP_FP = 0x53                        # zfinx FP is register-register (GPRs); FMA (0x43/47/4b/4f, 4-register)
+                                     # is not yet re-mapped and fails closed via the default branch.
 _ITYPE = {_LOAD, _OP_IMM, _JALR, _SYSTEM}
 _STYPE = {_STORE}
 _BTYPE = {0x63}          # BRANCH
 _JTYPE = {_JAL}
 _UTYPE = {_LUI, _AUIPC}
-_RTYPE = {_OP}
+_RTYPE = {_OP, _OP_FP}   # register-register (incl. zfinx FP, which uses GPRs)
 
 
 class TranscodeError(ValueError):
@@ -110,7 +112,7 @@ def _decode_rv32(word: int, stride_ratio: int) -> _Decoded:
     return _Decoded(op, rd, f3, rs1, rs2, f7, imm, has_imm, is_store_like)
 
 
-class MuonTranscoder:
+class FixedFormatTranscoder:
     """Re-packs decoded standard-rv32 instructions into a target's fixed-format words using ONLY the
     derived :class:`IsaModel` (field bit-ranges + opcode table + instruction width)."""
 

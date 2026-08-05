@@ -12,7 +12,7 @@ import pytest
 
 from merlin.targetgen.isa_model import isa_model_from_encoding
 from merlin.targetgen import isa_disasm
-from merlin.runtime.backends.muon_codegen import MuonTranscoder, TranscodeError, _decode_rv32
+from merlin.targetgen.isa_transcode import FixedFormatTranscoder, TranscodeError, _decode_rv32
 
 # a Muon-shaped fixed-format model (the field positions the derived radiance fact carries)
 MUON_FACT = {
@@ -25,7 +25,7 @@ MUON_FACT = {
 
 def test_transcode_addi_places_fields_at_target_positions():
     m = isa_model_from_encoding("synth", MUON_FACT)
-    tc = MuonTranscoder(m)
+    tc = FixedFormatTranscoder(m)
     # rv32 `addi a0, a0, 11` = 0x00b50513 (imm=11, rs1=x10, f3=0, rd=x10, op=OP_IMM)
     word = tc.transcode_text(struct.pack("<I", 0x00B50513))[0]
     rec = isa_disasm.disassemble(m, [word])[0]
@@ -40,7 +40,7 @@ def test_transcode_negative_store_immediate_high_byte_in_rd():
     # a store with a negative offset: the full 32-bit immediate's high byte must land in the rd field
     # (store has no destination reg) so the sign survives — the bug that broke backward branches.
     m = isa_model_from_encoding("synth", MUON_FACT)
-    tc = MuonTranscoder(m)
+    tc = FixedFormatTranscoder(m)
     # `sw a1, -4(a0)` = imm=-4, rs1=x10, rs2=x11, f3=2, op=STORE  -> encode by hand:
     imm = -4 & 0xFFF
     word32 = (((imm >> 5) & 0x7F) << 25) | (11 << 20) | (10 << 15) | (2 << 12) | ((imm & 0x1F) << 7) | 0x23
@@ -54,7 +54,7 @@ def test_transcode_negative_store_immediate_high_byte_in_rd():
 
 def test_transcode_fails_closed_on_auipc():
     m = isa_model_from_encoding("synth", MUON_FACT)
-    tc = MuonTranscoder(m)
+    tc = FixedFormatTranscoder(m)
     auipc = (0 << 12) | (5 << 7) | 0x17            # auipc x5, 0
     with pytest.raises(TranscodeError):
         tc.transcode_text(struct.pack("<I", auipc))
@@ -70,7 +70,7 @@ def test_branch_displacement_scaled_by_stride():
 def test_requires_fixed_format_model():
     from merlin.targetgen.isa_model import IsaModel
     with pytest.raises(TranscodeError):
-        MuonTranscoder(IsaModel(target="x"))       # empty / not fixed-format
+        FixedFormatTranscoder(IsaModel(target="x"))       # empty / not fixed-format
 
 
 def _stock_clang():
@@ -103,7 +103,7 @@ def test_stock_rv32_kernel_transcodes_to_clean_muon(tmp_path):
     if not text:
         pytest.skip("empty .text")
     m = isa_model_from_encoding("radiance", fact)
-    tc = MuonTranscoder(m)
+    tc = FixedFormatTranscoder(m)
     try:
         words = tc.transcode_text(text)
     except TranscodeError as e:
