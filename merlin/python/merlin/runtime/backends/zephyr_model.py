@@ -181,7 +181,41 @@ _VEC_RANK_LANES = 8
 #: cap); KC is carried through to the v3 recipe, which tiles K by 1 and does not use it. MR is
 #: NOT capped here -- perop_blocks.DEFAULT_MR pins it at 1 for a measured instruction-selection
 #: reason (the vfmacc.vf scalar-A form).
+#:
+#: 16 is the champion's value, measured on a VLEN=256 board. It is an ELEMENT COUNT, so it does not
+#: scale with the vector length -- and a fixed element count on a wider unit is spent as a smaller
+#: LMUL, not as more work. Measured on the same model built two ways:
+#:
+#:   VLEN=128:  e16,m2  / e8,m1  / e16,m1     -- 16 elements across one or two whole registers
+#:   VLEN=512:  e16,mf2 / e8,mf4 / e16,mf4    -- the same 16 elements in HALF or a QUARTER of one
+#:
+#: i.e. the 512-bit machine issued the same number of vector instructions doing the same 16 elements
+#: each as the 128-bit one. Three quarters of the datapath went unused.
 _PEROP_NR_CAP = 16
+
+#: The VLEN the champion cap above was measured at. Used only as the ratio's denominator, so this
+#: board's tuned value is reproduced exactly rather than re-derived.
+_PEROP_NR_CAP_REF_VLEN = 256
+
+
+def perop_nr_cap(vlen: int | None) -> int:
+    """The N-tile cap for a board with this vector length.
+
+    Scales the measured cap with the vector length so a wider unit gets a wider tile (the same LMUL)
+    instead of the same tile at a smaller LMUL. Deliberately **scales up only**: at or below the
+    reference width the champion's value is returned unchanged, so no already-validated configuration
+    moves as a side effect of this function existing.
+
+    What is verified is the EMITTED CODE -- that the wider cap turns fractional-LMUL ops into whole-
+    register ones. Whether that is faster on a given chip is a cycle question we cannot answer without
+    that chip: a wider tile also raises register pressure, and past some width it spills. So this
+    changes what a wide-VLEN board is offered, and the cycle claim belongs to whoever runs it.
+    """
+    if not vlen or vlen <= _PEROP_NR_CAP_REF_VLEN:
+        return _PEROP_NR_CAP
+    return _PEROP_NR_CAP * (int(vlen) // _PEROP_NR_CAP_REF_VLEN)
+
+
 _PEROP_KC = 16
 
 DEFAULT_RAM_BYTES = 256 * 1024 * 1024   # spike/chipyard `ram0` default (0x10000000)
@@ -317,7 +351,8 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
 
 def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = False,
                          features: "frozenset[str] | None" = None,
-                         blocking: bool = True, harts: int = 1) -> tuple[Path, frozenset[str]]:
+                         blocking: bool = True, harts: int = 1,
+                         vlen: int | None = None) -> tuple[Path, frozenset[str]]:
     """``(prepared_mlir, concrete_features)`` — everything that must happen to a captured module
     before ``lower_model_file``, shared by every whole-model backend.
 
@@ -348,7 +383,10 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     from ...llvmlower.impr_features import PEROP_BLOCK_NAME, ensure_perop_block
     if PEROP_BLOCK_NAME in features:
         from ...kernels.shapes import contraction_shapes as _cshapes
-        table = _pb.block_table(_cshapes(prepared), nr_cap=_PEROP_NR_CAP, harts=harts)
+        # The N-tile cap follows the board's vector length: a fixed element count on a wider unit
+        # is spent as a smaller LMUL rather than as more work per instruction (measured: the same
+        # model emitted e8,m1 at VLEN=128 and e8,mf4 -- a quarter of a register -- at VLEN=512).
+        table = _pb.block_table(_cshapes(prepared), nr_cap=perop_nr_cap(vlen), harts=harts)
         if table:
             prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
             features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}
@@ -862,7 +900,8 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     with IR_LOCK:
         prepared, features = prepare_for_lowering(model_dir / "model.mlir", work,
                                                  int8_compute=int8_compute, features=features,
-                                                 blocking=(backend == "rvv"), harts=n_harts)
+                                                 blocking=(backend == "rvv"), harts=n_harts,
+                                                 vlen=vlen)
     # For the rvv backend, bake native RVV (fixed-width vector ops on the matmuls) into the
     # IR rather than leaving it to clang's auto-vectorizer — see llvmlower.pipeline.
         # Multicore reaches the two backends by DIFFERENT routes, because they parallelize at
