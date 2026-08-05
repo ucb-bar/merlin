@@ -36,6 +36,29 @@ def test_forkfree_builds_a_kernel_with_a_relocation_via_the_object_transcode(tmp
     assert elf.is_file()
 
 
+def test_multiwarp_graded_on_the_rtl_arc_oracle(tmp_path):
+    """The generalizable, vendor-sim-free multi-warp grade: emit the SIMT scaffold ENTIRELY from the derived
+    runtime_abi (render_simt_runtime — wspawn/tmc/CSRs all from facts), build it fork-free, run it on the
+    target's RTL-derived arc model (mlc cosim_muon, compiled from the RTL via CIRCT-arc), and read the output
+    buffer back from memory (no console print, which races across lanes). Proves the emitted multi-warp kernel
+    is bit-exact correct against the oracle a real new target would have (its RTL), NOT a vendor sim. Gated on
+    the stock toolchain + the derived fact + the compiled arc model."""
+    import struct
+    from merlin.targetgen.rtl import mlc_bridge
+    if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.arc_oracle_available("radiance")):
+        pytest.skip("stock LLVM / derived fact / RTL-arc model not all available")
+    model = muon._model_for("radiance")
+    body = "for(uint32_t i=wid;i<8;i+=MU_NUM_WARPS)C[i]=(i+1)+10*(i+1);"
+    prog = muon.render_simt_runtime(model, num_warps=4, worker_body=body, globals="volatile uint32_t C[8];")
+    elf = muon.compile_kernel_forkfree(prog, tmp_path, target="radiance", num_warps=4)
+    # C's address from the linked ELF (never hardcoded); read its 8 words back from the arc model's memory.
+    from merlin.targetgen.contract.toolchain import mlir_bin
+    st = subprocess.run([str(mlir_bin("llvm-objdump")), "-t", str(elf)], capture_output=True, text=True).stdout
+    c_addr = next(int(l.split()[0], 16) for l in st.splitlines() if l.rstrip().endswith(" C") or l.rstrip().endswith("\tC"))
+    data = muon.run_elf_arc(elf, target="radiance", base=c_addr, length=32)
+    assert list(struct.unpack("<8I", data)) == [11, 22, 33, 44, 55, 66, 77, 88]
+
+
 def test_forkfree_needs_the_derived_fact(tmp_path, monkeypatch):
     """Without a derived ISA encoding fact for the target, the driver fails closed (never guesses)."""
     if not _stock_clang():

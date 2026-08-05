@@ -106,6 +106,63 @@ def cyclotron_root() -> Path:
     return chipyard_root() / "generators/radiance/cyclotron"
 
 
+# --- RTL-derived oracle (ModeLIR / mlc cosim), the sim-independent way to grade a device run ------------
+# A real new target ships RTL but NOT a vendor reference sim (cyclotron). The generalizable oracle is the
+# model mlc COMPILES from that RTL via CIRCT-arc (arcilator) — mlc's `cosim_<core>` harness — run through the
+# mlc venv (mlc is not importable here; same by-path contract as rtl.mlc_bridge). The device kernel computes
+# into memory and we read the OUTPUT BUFFER back — no console print (which races across lanes on a SIMT core),
+# so this grades a MULTI-WARP run faithfully where the console harness cannot.
+def _arc_cosim_assets(target: str) -> tuple[Path, Path, Path] | None:
+    """(mlc_venv_python, model.so, state-manifest.json) for a target's RTL-arc cosim model, or None when the
+    mlc checkout / compiled model is absent (fail closed — the caller degrades, never fabricates a result)."""
+    from ...targetgen.rtl import mlc_bridge
+    d = mlc_bridge.mlc_dir()
+    if d is None:
+        return None
+    py = d / ".venv/bin/python"
+    run = d / "runs" / "circt-arc" / mlc_bridge._arc_target(target) / "outputs"
+    so = d / "runs" / "circt-arc" / mlc_bridge._arc_target(target) / "native_run" / "libmuon_model.so"
+    manifest = run / "muon_core_state.json"
+    return (py, so, manifest) if (py.is_file() and so.is_file() and manifest.is_file()) else None
+
+
+def arc_oracle_available(target: str = "radiance") -> bool:
+    """True when the target's RTL-arc cosim model (the sim-independent oracle) is present."""
+    return _arc_cosim_assets(target) is not None
+
+
+def run_elf_arc(elf: str | Path, *, target: str = "radiance", base: int, length: int,
+                max_cycles: int = 120000, timeout: int = 900) -> bytes | None:
+    """Run a device ELF on the target's RTL-derived arc model (mlc `cosim_muon`) and read the output buffer
+    ``[base, base+length)`` back from memory — the generalizable, vendor-sim-free device oracle. Returns the
+    readback bytes, or None when the arc model is absent (fail closed). The heavy arc run happens in the mlc
+    venv via a small by-path driver (mlc is not importable in this venv)."""
+    assets = _arc_cosim_assets(target)
+    if assets is None:
+        return None
+    py, so, manifest = assets
+    out = Path(elf).with_suffix(".arc_readback.bin")
+    driver = (
+        "import sys, struct\n"
+        "from mlc.backends.cosim_muon import MuonCosim, recover_l1_gmem_image\n"
+        "so, manifest, elf, base, length, mc, outp = sys.argv[1:8]\n"
+        "base=int(base); length=int(length); mc=int(mc)\n"
+        "sim=MuonCosim(so, manifest); sim.load(elf); sim.boot(); sim.run(max_cycles=mc)\n"
+        "img,_=recover_l1_gmem_image(sim.core, sim.slave, base, length)\n"
+        "open(outp,'wb').write(bytes(img))\n"
+    )
+    drv = out.with_suffix(".driver.py")
+    drv.write_text(driver, encoding="utf-8")
+    from ...targetgen.rtl import mlc_bridge
+    proc = subprocess.run([str(py), str(drv), str(so), str(manifest), str(elf),
+                           str(base), str(length), str(max_cycles), str(out)],
+                          capture_output=True, text=True, timeout=timeout,
+                          cwd=str(mlc_bridge.mlc_dir()))     # mlc resolves its discovery caches vs its repo root
+    if proc.returncode != 0 or not out.is_file():
+        raise MuonError(f"arc cosim run failed (rc {proc.returncode}):\n{(proc.stderr or proc.stdout)[-1500:]}")
+    return out.read_bytes()
+
+
 def config_path() -> Path:
     return Path(_env("MERLIN_MUON_CONFIG", DEFAULT_CONFIG))
 
