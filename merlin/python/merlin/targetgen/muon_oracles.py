@@ -100,6 +100,65 @@ def vcs_muon_adapter() -> Callable:
     return _adapter("vcs")
 
 
+def _shape2d(shape) -> tuple[int, int]:
+    dims = [int(d) for d in (shape or []) if int(d) > 0] or [1]
+    if len(dims) == 1:
+        return 1, dims[0]
+    r = 1
+    for d in dims[:-1]:
+        r *= d
+    return r, dims[-1]
+
+
+def _output_symbols(elf: str | Path) -> dict[str, int]:
+    """Symbol -> address for the ELF's globals, read structurally from the object's symbol table (no regex)."""
+    import subprocess
+    from .contract.toolchain import mlir_bin
+    st = subprocess.run([str(mlir_bin("llvm-objdump")), "-t", str(elf)], capture_output=True, text=True).stdout
+    out: dict[str, int] = {}
+    for ln in st.splitlines():
+        parts = ln.split()
+        if len(parts) >= 2 and all(c in "0123456789abcdef" for c in parts[0]) and parts[0]:
+            out[parts[-1]] = int(parts[0], 16)
+    return out
+
+
+def arc_readback_adapter() -> Callable:
+    """RTL-derived MULTI-WARP oracle: build the emitted kernel fork-free, run it on the target's arc model
+    (the model mlc COMPILES from the RTL via CIRCT-arc — the oracle a real new target actually has, unlike a
+    vendor sim), and read each output tensor's buffer back from memory. No console print, so it grades a
+    multi-warp SIMT run faithfully (console output races across lanes). Each cb output tensor is expected to be
+    a file-scope global of the SAME name in the emitted program (the kernel_abi output-buffer contract); its
+    ``[addr, addr+rows*cols*4)`` region is read back. Fails closed (``MuonUnavailable``) when the arc model is
+    absent — never fabricates a verdict."""
+    import struct
+
+    def run(cb: dict, kernel_src: str, workdir: str | Path, timeout: int) -> dict:
+        target = cb.get("target", "radiance")
+        if not muon.arc_oracle_available(target):
+            raise muon.MuonUnavailable(f"RTL-arc model for {target!r} not available")
+        t0 = time.perf_counter()
+        elf, toolchain = muon.compile_for_oracle(kernel_src, workdir, target=target)
+        syms = _output_symbols(elf)
+        tensors = cb.get("tensors", {})
+        outputs: dict[str, list] = {}
+        for name, t in tensors.items():
+            if not (isinstance(t, dict) and str(t.get("role", "")).lower() in ("output", "out", "dst")):
+                continue
+            if name not in syms:
+                raise muon.MuonError(f"output tensor {name!r} is not a global in the emitted kernel "
+                                     "(the arc-readback oracle needs the output buffer as a named global)")
+            r, c = _shape2d(t.get("shape"))
+            data = muon.run_elf_arc(elf, target=target, base=syms[name], length=r * c * 4, timeout=timeout)
+            outputs[name] = [list(struct.unpack("<%dI" % c, data[i * c * 4:(i + 1) * c * 4])) for i in range(r)]
+        t1 = time.perf_counter()
+        return {"outputs": outputs, "oracle": {"kind": "rtl-arc", "source": "mlc-cosim-from-rtl"},
+                "toolchain": toolchain, "timing": _timing(t1 - t0, 0.0)}
+    return run
+
+
 def default_adapters() -> dict[str, Callable]:
-    """Tier -> adapter for the Muon runner. L2 = cyclotron (perf), L3 = VCS-RTL cert."""
+    """Tier -> adapter for the Muon runner. L2 = cyclotron (perf), L3 = VCS-RTL cert. The RTL-arc readback
+    oracle (``arc_readback_adapter``) is the sim-independent, multi-warp-capable grade a real new target has
+    (its RTL-compiled model); selected by the harness when a run needs memory-readback rather than console."""
     return {"L2": cyclotron_adapter(), "L3": vcs_muon_adapter()}

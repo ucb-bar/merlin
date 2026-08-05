@@ -59,6 +59,16 @@ def test_multiwarp_graded_on_the_rtl_arc_oracle(tmp_path):
     assert list(struct.unpack("<8I", data)) == [11, 22, 33, 44, 55, 66, 77, 88]
 
 
+def test_arc_readback_adapter_fails_closed_without_the_model(tmp_path, monkeypatch):
+    """The RTL-arc readback grading adapter (the sim-independent multi-warp oracle) must fail closed with
+    MuonUnavailable when the compiled arc model is absent — never fabricate a verdict. Hermetic."""
+    from merlin.targetgen import muon_oracles as MO
+    monkeypatch.setattr(muon, "arc_oracle_available", lambda target="radiance": False)
+    with pytest.raises(muon.MuonUnavailable):
+        MO.arc_readback_adapter()({"target": "radiance", "tensors": {}}, "int main(void){return 0;}",
+                                  tmp_path, 60)
+
+
 def test_forkfree_needs_the_derived_fact(tmp_path, monkeypatch):
     """Without a derived ISA encoding fact for the target, the driver fails closed (never guesses)."""
     if not _stock_clang():
