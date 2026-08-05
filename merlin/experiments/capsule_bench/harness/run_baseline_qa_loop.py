@@ -750,6 +750,16 @@ def _start_selfcheck_broker(ws: Path):
         (ws / ".isa_channel" / "STOP").unlink(missing_ok=True)
         _stage_shim(ws, "isa_tools_shim.py", "isa_tools.py")
         broker_specs.append(("isa_tools_broker.py", "isa_tools_broker.log"))
+        # CCA contract tools (check_bijection + escalation_ladder) — the arm-4 prompt MANDATES these but
+        # full merlin cannot import in the sandbox (merlin/kernels/types.py shadows stdlib `types` on a
+        # flat sys.path; regions.py needs the unstaged merlin.common.paths). A driver-side broker runs
+        # them OUTSIDE the box, exactly like the ISA tools. Oracle-free (public CCA<->action structure).
+        # Same channel-dir + STOP pattern; the shim is staged under BOTH mandated module names.
+        (ws / ".cca_channel").mkdir(parents=True, exist_ok=True)
+        (ws / ".cca_channel" / "STOP").unlink(missing_ok=True)
+        _stage_shim(ws, "cca_shim.py", "cca_contract.py")
+        _stage_shim(ws, "cca_shim.py", "action_catalog.py")
+        broker_specs.append(("cca_broker.py", "cca_broker.log"))
     brokers = []
     for name, log in broker_specs:
         brokers.append(subprocess.Popen(
@@ -765,6 +775,9 @@ def _stop_selfcheck_broker(ws: Path, brokers) -> None:
     isa_ch = ws / ".isa_channel"
     if isa_ch.is_dir():                                  # assisted-arm ISA-tools broker (if it was started)
         (isa_ch / "STOP").write_text("stop")
+    cca_ch = ws / ".cca_channel"
+    if cca_ch.is_dir():                                  # assisted-arm CCA-contract broker (if it was started)
+        (cca_ch / "STOP").write_text("stop")
     for b in (brokers if isinstance(brokers, list) else [brokers]):
         try:
             b.wait(timeout=15)
