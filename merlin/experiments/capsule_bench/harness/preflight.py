@@ -216,8 +216,15 @@ def check_oracle_available() -> dict:
     reason = why if ok else why
     if ok and not csmoke_ok:
         reason = f"sim present but compile toolchain broken: {csmoke_why}"
-    return {"available": ok and csmoke_ok, "reason": reason, "sim_via": sim_via,
-            "compiler_smoke": {"ok": csmoke_ok, "reason": csmoke_why}}
+    # Our OWN emit path must also produce a runnable artifact — not just the oracle's compiler. For a
+    # self-hosted fixed-format backend this drives the full fork-free build->sim the live run uses, so a
+    # broken codegen path is caught pre-spend rather than tool-crashing on every capsule (n/a otherwise).
+    cg_ok, cg_why = CR.codegen_smoke(TARGET)
+    if ok and csmoke_ok and not cg_ok:
+        reason = f"grading oracle ready but our codegen backend is broken: {cg_why}"
+    return {"available": ok and csmoke_ok and cg_ok, "reason": reason, "sim_via": sim_via,
+            "compiler_smoke": {"ok": csmoke_ok, "reason": csmoke_why},
+            "codegen_smoke": {"ok": cg_ok, "reason": cg_why}}
 
 
 def main() -> int:
@@ -252,6 +259,8 @@ def main() -> int:
         ("input-bundle tree hashes reproduce + bundle_lock.yaml written", bundle_ok),
         ("token/cost captured on a REAL claude stream-json (not synthetic)", tokens_ok),
         (f"numeric oracle runnable for a gradeable run ({R['oracle'].get('reason')})", oracle_ok),
+        (f"our codegen backend emits a runnable kernel ({R['oracle'].get('codegen_smoke', {}).get('reason')})",
+         R["oracle"].get("codegen_smoke", {}).get("ok", True)),
         ("bareMetalC corroboration table with golden hashes; conv externally-deferred noted", True),
         ("VCS/FireSim remain unavailable, never counted as pass", True),
     ]

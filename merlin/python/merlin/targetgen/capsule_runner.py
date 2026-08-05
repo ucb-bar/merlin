@@ -285,6 +285,60 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
     return False, (f"{target!r}: mlc arc model unavailable (set MERLIN_MLC_DIR and build the arc model)")
 
 
+def codegen_smoke(target: str) -> tuple[bool, str]:
+    """Pre-spend check that the target's OWN compiler backend can emit a RUNNABLE kernel — the codegen
+    analogue of :func:`runtime_build.compiler_smoke` (which validates the *oracle's* compile toolchain).
+    ``oracle_available`` proves we can GRADE; this proves we can PRODUCE the artifact being graded, so a
+    broken emit path is a NO_GO before a paid run tool-crashes on every capsule.
+
+    Target-agnostic, dispatched purely on derived facts: a target whose ISA model is FIXED-FORMAT (a 64-bit
+    re-encoded ISA that needs the transcode path) and whose reference sim is cyclotron drives the FULL
+    fork-free build the live run uses — stock clang -> derived transcode -> stock assemble -> fork-free link
+    (BSP regenerated from source) -> reference sim -> assert the computed result — so the exact pipeline is
+    exercised offline and a live run never debugs it. Any other target returns n/a (the oracle-side
+    compiler_smoke covers a compile-based backend)."""
+    try:
+        from .isa_model import isa_model_for_target
+        if not isa_model_for_target(target).is_fixed_format():
+            return True, "n/a (ISA is not fixed-format — no fork-free re-encode smoke for this emit path)"
+    except Exception as e:  # noqa: BLE001 — no derived model -> nothing to smoke here
+        return True, f"n/a (no fixed-format ISA model: {str(e)[-120:]})"
+    if _bespoke_sim_via(target) != "cyclotron":
+        return True, "n/a (fixed-format ISA but no cyclotron reference sim declared for the fork-free smoke)"
+    try:
+        from ..runtime.backends import muon as _muon
+    except Exception as e:  # noqa: BLE001
+        return True, f"n/a (fork-free backend unimportable: {str(e)[-120:]})"
+    if not _muon.available("cyclotron"):
+        # cyclotron absence is already reported by oracle_available; not this gate's job to double-block.
+        return True, "n/a (reference sim absent — oracle_available reports this separately)"
+    # a self-contained, relocation-free kernel: derives its own inputs, prints via inline MMIO, guarded to
+    # one thread so the byte stream is clean. C[i]=A[i]+B[i] with A[i]=i+1, B[i]=10(i+1) -> 11,22,...,88.
+    kernel = ("#include <stdint.h>\n"
+              "static inline uint32_t hid(void){uint32_t r;__asm__ volatile(\"csrr %0,0xF14\":\"=r\"(r));return r;}\n"
+              "static inline void pc(char c){*(volatile char*)0xFF080000u=c;}\n"
+              "static inline void ph(uint32_t v){for(int i=7;i>=0;--i){uint32_t n=(v>>(i*4))&0xF;"
+              "pc(n<10?(char)('0'+n):(char)('a'+n-10));}}\n"
+              "int main(void){volatile uint32_t A[8],B[8],C[8];"
+              "for(int i=0;i<8;i++){A[i]=(uint32_t)(i+1);B[i]=(uint32_t)(10*(i+1));}"
+              "for(int i=0;i<8;i++)C[i]=A[i]+B[i];"
+              "if(hid()==0){for(int i=0;i<8;i++){ph(C[i]);pc('\\n');}}return 0;}\n")
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as td:
+        try:
+            elf = _muon.compile_kernel_forkfree(kernel, td, target=target)   # BSP regenerated from source
+            console, _cyc, _ = _muon.run_elf(str(elf), simulator="cyclotron", timeout=180)
+        except Exception as e:  # noqa: BLE001 — a broken emit path is exactly what this gate must catch
+            return False, f"fork-free codegen smoke failed: {type(e).__name__}: {str(e)[-200:]}"
+    want = ["0000000b", "00000016", "00000021", "0000002c",
+            "00000037", "00000042", "0000004d", "00000058"]
+    missing = [w for w in want if w not in console]
+    if missing:
+        return False, (f"fork-free kernel ran but produced the wrong result (missing {missing}); "
+                       f"console tail: {console[-200:]!r}")
+    return True, f"fork-free codegen emits a runnable kernel with the correct result on the {target!r} reference sim"
+
+
 def _resolve_oracle_adapters(target: str) -> dict[str, Callable]:
     """Contract-routed adapter set for ``target`` — the ``run_capsule`` default when a caller passes no
     adapters. Calls the module :func:`oracle_adapters` (self-resolving sim_via) so an unrouted grade goes
