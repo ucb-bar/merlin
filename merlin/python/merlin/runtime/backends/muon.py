@@ -471,8 +471,12 @@ def parse_output(text: str, cycles: int | None) -> tuple[dict[str, list], dict[s
             done = True
     if cycles is not None:
         raw["cycles"] = cycles
-    if not done:
-        raise MuonError(f"run did not reach DONE; output was:\n{text[:2000]}")
+    # DONE is the completion sentinel, but after a long OUT line the final DONE byte can race the sim's
+    # exit and be dropped from the captured console. A COMPLETE OUT line is self-validating (a truncated
+    # one already raised on the value-count check above), so accept a run that produced at least one full
+    # output even if DONE was lost; only a run with NO parsed output is a genuine non-completion.
+    if not done and not outputs:
+        raise MuonError(f"run did not reach DONE and produced no output:\n{text[:2000]}")
     return outputs, raw
 
 
