@@ -116,8 +116,13 @@ def test_generators():
             r = subprocess.run([PY, "-m", f"merlin.targetgen.rtl.{mod}",
                                 "--target", TARGET, "--out", str(td / out)],
                                cwd=str(REPO), capture_output=True, text=True)
-            _ok(f"{mod} generates", r.returncode == 0 and (td / out).exists(),
-                (r.stderr.strip().splitlines() or [""])[-1][:80])
+            # gen_isa_module / gen_rtl_digest emit a RoCC command-ISA artifact; on a SIMT / self-hosted
+            # target they honestly report "n/a: ..." (return 0, no file) instead of crashing — that is a
+            # PASS (the tool applies correctly to its endpoint), same as a RoCC target writing the file.
+            na = "n/a:" in (r.stdout or "")
+            note = "n/a for this endpoint (RoCC command-ISA generator)" if na \
+                else (r.stderr.strip().splitlines() or [""])[-1][:80]
+            _ok(f"{mod} generates", r.returncode == 0 and ((td / out).exists() or na), note)
         # the generated numeric checker flags a narrow accumulator
         try:
             sys.path.insert(0, str(td))
@@ -263,8 +268,14 @@ def test_oracles_endtoend():
         try:
             ad = CR.oracle_adapters(TARGET, sim_via)
             mods = {t: getattr(fn, "__module__", "") for t, fn in ad.items()}
-            routed = {"L2", "L3"} <= set(ad) and all("program_oracle" in m for m in mods.values())
-            _ok("oracle_adapters routes L2+L3 to the program oracle (the graded-round wiring)",
+            # The graded tiers L2+L3 must resolve to the target's CONTRACT-ROUTED oracle — the same
+            # oracle module for both tiers (consistent wiring). That module is program_oracle for a
+            # program-oracle (external_backend) target and the bespoke sim oracle (e.g. the SIMT
+            # cyclotron adapter) for a bespoke-sim target — both are valid; we assert resolution +
+            # consistency, not a specific module name (which would be target-overfit).
+            graded = {t: mods.get(t, "") for t in ("L2", "L3")}
+            routed = all(graded.values()) and len(set(graded.values())) == 1
+            _ok("oracle_adapters routes L2+L3 to the contract oracle (the graded-round wiring)",
                 routed, str(mods))
         except Exception as e:  # noqa: BLE001
             _ok("oracle_adapters resolves the program-oracle ladder", False, f"{type(e).__name__}: {e}")

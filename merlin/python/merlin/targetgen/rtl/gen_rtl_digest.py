@@ -22,11 +22,22 @@ from pathlib import Path
 from .facts import load_facts
 
 
+class NotARoccTarget(ValueError):
+    """Raised when the facts carry no RoCC ``funct_decode_table`` — the RTL digest is keyed on the
+    command-ISA decode table and does not apply to a SIMT / self-hosted-ISA target. Fail CLOSED with a
+    clear reason rather than KeyError."""
+
+
 def generate(facts: dict) -> str:
     f = facts["facts"]
     src = f.get("source", {})
     gen = facts.get("generator", {})
-    fd = next(i for i in f["interfaces"] if i.get("name") == "funct_decode_table")
+    fd = next((i for i in (f.get("interfaces") or []) if i.get("name") == "funct_decode_table"), None)
+    if fd is None:
+        raise NotARoccTarget(
+            "target facts carry no RoCC funct_decode_table interface (endpoint is not a RoCC command "
+            "ISA); the RTL digest generator does not apply — a SIMT / self-hosted-ISA target is "
+            "documented by its own derived isa_tools model instead.")
     names = {int(k): v for k, v in fd["names"].items()}
     mesh = next((a for a in f.get("arrays", []) if a.get("name") == "mesh"), {})
     mems = {m["name"]: m for m in f.get("memories", [])}
@@ -93,7 +104,11 @@ def main(argv=None):
         facts = load_facts(a.target)
     else:
         ap.error("provide --facts <facts.json> or --target <name> to regenerate the facts from RTL")
-    md = generate(facts)
+    try:
+        md = generate(facts)
+    except NotARoccTarget as e:
+        print(f"n/a: {e}")            # honest n/a — not a crash: does not apply to this target's endpoint
+        return 0
     if a.out:
         Path(a.out).write_text(md)
         print(f"wrote {a.out} ({len(md.splitlines())} lines)")

@@ -38,9 +38,20 @@ from dataclasses import dataclass, field
 '''
 
 
+class NotARoccTarget(ValueError):
+    """Raised when the facts carry no RoCC ``funct_decode_table`` — this generator emits a RoCC
+    command-ISA module and does not apply to a SIMT / self-hosted-ISA target (which uses its own
+    derived isa_tools model instead). Fail CLOSED with a clear reason rather than KeyError."""
+
+
 def generate(facts: dict, encoding: dict | None = None) -> str:
     f = facts["facts"]
-    fd = next(i for i in f["interfaces"] if i.get("name") == "funct_decode_table")
+    fd = next((i for i in (f.get("interfaces") or []) if i.get("name") == "funct_decode_table"), None)
+    if fd is None:
+        raise NotARoccTarget(
+            "target facts carry no RoCC funct_decode_table interface (endpoint is not a RoCC command "
+            "ISA); the RoCC ISA-module generator does not apply — a SIMT / self-hosted-ISA target uses "
+            "its own derived isa_tools model (isa_asm/isa_disasm) instead.")
     names = {int(k): v for k, v in fd["names"].items()}
     legal = sorted(fd["legal_funct"])
     opcode = fd["custom_opcode"]
@@ -180,7 +191,12 @@ def main(argv=None):
         encoding = load_capability_manifest(a.target).encoding
     except Exception:  # noqa: BLE001 — no manifest -> emit the RTL-derived encoder only
         pass
-    code = generate_header(facts, encoding or {}, a.target) if a.header else generate(facts, encoding)
+    try:
+        code = generate_header(facts, encoding or {}, a.target) if a.header else generate(facts, encoding)
+    except NotARoccTarget as e:
+        # Honest n/a — not a crash: this RoCC generator does not apply to this target's endpoint.
+        print(f"n/a: {e}")
+        return 0
     if a.out:
         Path(a.out).write_text(code)
         print(f"wrote {a.out} ({len(code.splitlines())} lines) from {a.facts}")
