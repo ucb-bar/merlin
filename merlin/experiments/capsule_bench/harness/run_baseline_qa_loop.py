@@ -449,7 +449,13 @@ def bwrap_cmd(inner: str, ws: Path, bundle: dict) -> str:
     from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as _surfaces
     parts = RX.bwrap_argv(ws, bundle) + claude_runtime_binds() + TC.toolchain_binds()
     parts = _BW.apply_answer_masks(parts, _surfaces(_te()))
-    return " ".join(parts) + f" bash -c '{TC.sandbox_env(ws)} {inner}'"
+    payload = f"{TC.sandbox_env(ws)} {inner}"
+    # Single-quote the whole payload for the OUTER `bash -c`, escaping any embedded single quotes (the
+    # POSIX '\'' idiom). ``inner`` may itself be shlex-quoted by the caller (the opencode driver quotes
+    # its prompt arg, e.g. "…(if present)…"), so a naive f"…'{inner}'" would let those quotes close the
+    # wrapper early and expose a `(` to the outer shell (opencode arm died rc=2 on exactly this). The
+    # INNER bash still re-parses the payload as a script, so $(…)/\( \) in mask_selftest keep working.
+    return " ".join(parts) + " bash -c '" + payload.replace("'", "'\\''") + "'"
 
 
 def _corpus_probe_paths() -> tuple[Path, Path]:
