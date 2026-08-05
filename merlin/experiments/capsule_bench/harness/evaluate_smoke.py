@@ -79,6 +79,21 @@ def _transcript_commands(run_dir: Path) -> list[str]:
     return cmds
 
 
+def _tool_activity(run_dir: Path) -> int:
+    """Count tool-use events across the round transcripts. This distinguishes a true STALL (a provider/
+    driver hang produces near-zero tool activity) from a BUDGET-EXHAUSTED round (an actively-working agent
+    that simply ran past the round cap) — both surface as rc=124 but are very different failures."""
+    n = 0
+    files = [run_dir / "transcript.jsonl"] + sorted((run_dir / "rounds").glob("round_*.transcript.jsonl"))
+    for f in files:
+        if not f.is_file():
+            continue
+        for line in f.read_text().splitlines():
+            if '"type":"tool_use"' in line or '"type": "tool_use"' in line:
+                n += 1
+    return n
+
+
 def _submission_sources(run_dir: Path) -> list[Path]:
     sub = run_dir / "submission"
     return [p for p in sub.rglob("*") if p.is_file() and p.suffix in (".py", ".txt", ".md", ".yaml", ".mlir")]
@@ -130,14 +145,26 @@ def evaluate(run_dir: Path) -> dict:
     n_caps = r0.get("n_capsules") or 0
     n_pass = r0.get("n_passed") or 0
     tool_calls = r0.get("tool_calls")
-    bounded = (rc != 124)                              # 124 = round-timeout hit = the agent stalled / hung
+    activity = _tool_activity(run_dir)                 # tool-use events: the stall-vs-budget discriminator
+    if tool_calls is None:
+        tool_calls = activity
+    bounded = (rc != 124)                              # 124 = round-timeout hit (stall OR budget-exhausted)
+    timeout_class = None
+    if rc == 124:
+        timeout_class = "budget_exhausted" if activity >= 10 else "stalled"
     graded = bool(n_caps) and bool(pub)
     submission = (run_dir / "submission").is_dir() and any((run_dir / "submission").iterdir())
     clean = bool(r0.get("answer_access_clean", True)) and not (r0.get("audit_hits") or [])
     conf = _conformance(run_dir, arm)
     issues: list[str] = []
     if not bounded:
-        issues.append(f"NOT BOUNDED — round timed out (rc=124, wall={wall}s); the agent stalled (hang class)")
+        if timeout_class == "budget_exhausted":
+            issues.append(f"NOT COMPLETED — active agent ({activity} tool calls) hit the round cap "
+                          f"(rc=124, wall={wall}s); this is a BUDGET limit, not a stall — raise "
+                          f"--max-rounds/--round-timeout (arm-4 compile-from-RTL needs the full budget)")
+        else:
+            issues.append(f"NOT BOUNDED — round timed out with near-zero tool activity ({activity} calls, "
+                          f"rc=124, wall={wall}s); STALL/hang class (provider or driver)")
     if not submission:
         issues.append("no submission produced")
     if not graded:
@@ -148,7 +175,7 @@ def evaluate(run_dir: Path) -> dict:
         issues += [f"non-conformant: {v}" for v in conf["violations"]]
     return {"run": str(run_dir), "arm": arm, "bounded": bounded, "submission": submission,
             "graded": graded, "n_capsules": n_caps, "n_passed": n_pass, "tool_calls": tool_calls,
-            "clean": clean, "conformance": conf, "wall_seconds": wall,
+            "timeout_class": timeout_class, "clean": clean, "conformance": conf, "wall_seconds": wall,
             "verdict": "GO" if not issues else "ISSUES", "issues": issues}
 
 
