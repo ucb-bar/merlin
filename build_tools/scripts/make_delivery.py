@@ -44,6 +44,7 @@ from merlin.common.artifacts import new_product                             # no
 from merlin.common.paths import repo_root                                   # noqa: E402
 from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME                 # noqa: E402
 from merlin.runtime import boards, elf_audit                                # noqa: E402
+from merlin.runtime.boards import CONSOLE_HTIF                              # noqa: E402
 from merlin.runtime.backends import zephyr_model as zm                      # noqa: E402
 from merlin.rvvgen.registry import load_rvv_package                         # noqa: E402
 
@@ -65,21 +66,71 @@ the loader prints `DUT forcefuly exit`. Everything between the banner and `DONE`
 If your `tools/pyuartsi` is the pinned submodule (`c1bbb3a`), invoke it as `python3 -m pyuartsi` and drop
 `--use_symbols` — that version has neither the console-script entry point nor that flag.""",
     "gemmelos_bearly25": """\
+**Output comes out of UART0 at 115200 baud, 8 data bits, 2 stop bits** — the same console your own
+`printf` uses on a `PLATFORM=CHIP` build. Open that terminal first, then load:
+
 ```bash
 # Load and run over UART-TSI (the Chipyard host tool; NOT pyuartsi):
-make tsi-run TTY=<your tty> BINARY=<THIS.elf>
-#   equivalently: uart_tsi +tty=<tty> +baudrate=921600 <THIS.elf>
+make tsi-run TTY=<your TSI tty> BINARY=<THIS.elf>
+#   equivalently: uart_tsi +tty=<TSI tty> +baudrate=921600 <THIS.elf>
 
 # or over JTAG:
 openocd -f platform/bearly25/bearly25.cfg -c "reset run" -c "halt" \\
         -c "load_image <THIS.elf>" -c "resume 0x80000000"
 ```
-This is a **bare-metal** ELF (entry `_start`, resumed at `0x80000000`, `-mcmodel=medany`, static) — not a
-Zephyr image, because your SDK has no RTOS. Console output goes over HTIF, which is what the TSI/FESVR
-link carries. If your flow needs UART0 (`PLATFORM=CHIP`) output instead, tell us and we will rebuild with
-a UART console — it is a harness swap, not a recompile of the model.
+
+**You do not need to set up the UART or the PLL.** The image does it itself, first thing in `main`,
+using the same sequence as your `bmark-lib/simple_setup.c::init_test()`: enable TX/RX with 2 stop bits,
+program the divisor for the 50 MHz reset clock, park the clock domains on the slow source, program the
+PLL to **500 MHz** (the ratio your own demos use), switch the domains over, then **re-program the baud
+divisor** for the new clock. Every address, register offset and clock rate was read out of
+`platform/bearly25/chip_config.h`, `driver/rocket-chip-blocks/uart/uart.h`, `driver/intel/pll/pll.h` and
+`platform/bearly25/include/hal_rcc.h` in your repo — nothing is hardcoded on our side, and the derived
+values match the disassembly of the working `dsp-whisper.elf` you sent (UART0 `0x10020000`, clock
+selector `0x130000`, PLL `0x140000`, `DIV` at offset 24, 50 MHz reference).
+
+There is **no handshake**: unlike your `libbmark` benchmarks these images do not wait for `SOH`/`ENQ`
+from a host tester. They start computing as soon as they are resumed and print when done.
+
+This is a **bare-metal** ELF (entry `_start`, resumed at `0x80000000`, `-mcmodel=medany`, static), built
+against our own `crt.S` and linker script rather than your CMake — so `glossy`, `libbmark` and your
+linker scripts are not involved and cannot conflict.
 
 Note `uart_tsi` uploads each segment's **MemSiz**, so the estimated upload time below is real.""",
+    "gemmelos_bearly25_zephyr": """\
+**Output comes out of UART0 at 115200 baud** — the same console your own `printf` uses on a
+`PLATFORM=CHIP` build. Open that terminal first, then load:
+
+```bash
+# Load and run over UART-TSI (the Chipyard host tool; NOT pyuartsi):
+make tsi-run TTY=<your TSI tty> BINARY=<THIS.elf>
+#   equivalently: uart_tsi +tty=<TSI tty> +baudrate=921600 <THIS.elf>
+
+# or over JTAG:
+openocd -f platform/bearly25/bearly25.cfg -c "reset run" -c "halt" \\
+        -c "load_image <THIS.elf>" -c "resume 0x80000000"
+```
+
+**You do not need to set up the UART or the PLL.** These are Zephyr images and Zephyr brings the
+console up during boot, before any of our code runs. Two consequences worth knowing:
+
+- The chip stays on its **50 MHz reset clock** — we do not program the PLL on this path, because the
+  console is initialised before we could. So wall-clock time is roughly 10x what the same work would
+  take at the 500 MHz your demos run at. **The reported `cycles` are unaffected** and are the number to
+  compare; they are what the multicore speed-up is measured in.
+- The baud divisor is computed by Zephyr's SiFive UART driver as
+  `(SYS_CLOCK_HW_CYCLES_PER_SEC * RTC_CLOCK_DIVIDER_VALUE) / 115200 - 1`. We set those to `50000` and
+  `1000` — i.e. your `MTIME_FREQ` and `SYS_CLK_FREQ / MTIME_FREQ` from `platform/bearly25/chip_config.h`
+  — which gives divisor **433**, exactly what your `uart_init()` computes. (The board's own defaults
+  imply a 1 GHz peripheral clock and would have produced garbage.)
+
+Why Zephyr and not your bare-metal SDK: this is the **multicore** package, and driving both harts goes
+through Zephyr SMP plus our OpenMP shim. Your bare-metal path dispatches hart 1 from your own
+`thread-lib`, which we have not integrated. The single-hart bare-metal package is the one that matches
+your SDK exactly, and it also runs at 500 MHz.
+
+There is **no handshake**: these images do not wait for `SOH`/`ENQ` from a host tester. They boot,
+compute, print, and stop.""",
     "default": """\
 Load the ELF with your usual loader and capture the console. The image is self-contained: no filesystem,
 no host I/O, no arguments. It ends by rebooting, after printing `DONE`.""",
@@ -196,7 +247,7 @@ STATUS = {
 }
 
 
-def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int):
+def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None):
     """Build a BARE-METAL image for a board with no RTOS, and run it on spike.
 
     Used for Baremetal-IDE-style targets (gemmelos). Same lowering, same c_runtime artifacts and the same
@@ -224,11 +275,33 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int):
     res.update(zm._gate(run["prefix"], refs))
     res.setdefault("metrics", run.get("metrics", {}))
     res["vlen"] = brd.vlen or 128
-    return res, {"elf": b["elf"], "ram_bytes": b["mem_bytes"],
-                 "build_hash": b.get("build_hash", "")}
+    ship = b
+    if brd.console != CONSOLE_HTIF:
+        # The image above is the one we GATE: spike provides the host that HTIF needs. The image we
+        # SHIP has to speak the board's own console instead, so it is built separately -- with the
+        # same bundle, package, features and vlen, so `build_hash` (a digest of the lowered model
+        # object plus the weights blob) is identical and the package can say the compute is the same
+        # binary content and only the output channel differs.
+        ship = spike_model.build(bundle, work / "board", inputs_npz=bundle / "inputs.npz",
+                                 dram_base=brd.dram_base, dram_bytes=brd.dram_bytes,
+                                 int8_compute=True, features=frozenset([PEROP_BLOCK_NAME]),
+                                 rvv_schedule=pkg.schedule_text,
+                                 cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=brd.vlen,
+                                 console=brd.console, sdk_dir=sdk_dir, sdk_chip=brd.sdk_chip,
+                                 chip_freq_hz=brd.chip_freq_hz)
+        if ship.get("build_hash") != b.get("build_hash"):
+            raise RuntimeError(
+                f"the gated image and the shipped image disagree on build_hash "
+                f"({b.get('build_hash')} vs {ship.get('build_hash')}) -- they are not the same "
+                "computation, so the gate does not cover what is being shipped")
+    return res, {"elf": ship["elf"], "ram_bytes": ship["mem_bytes"],
+                 "build_hash": ship.get("build_hash", ""),
+                 "console": ship.get("console", CONSOLE_HTIF),
+                 "chip_freq_hz": ship.get("chip_freq_hz"),
+                 "console_provenance": ship.get("console_provenance", {})}
 
 
-def build_board_only(bundle: Path, brd, harts: int, *, work: Path):
+def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None):
     """Build the board image and return its facts, without running it anywhere.
 
     The honest use for this is when the numbers are already established on better evidence than a
@@ -238,15 +311,31 @@ def build_board_only(bundle: Path, brd, harts: int, *, work: Path):
     rather than implying one.
     """
     pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
+    if brd.flow == boards.FLOW_BAREMETAL:
+        # Respect the board's FLOW. Skipping the simulation must not also silently change which
+        # harness the image is built with: a board whose SDK has no RTOS cannot run a Zephyr image,
+        # and building one anyway would ship an ELF that cannot boot on the target it names.
+        from merlin.runtime.backends import spike_model
+        b = spike_model.build(bundle, work, inputs_npz=bundle / "inputs.npz",
+                              dram_base=brd.dram_base, dram_bytes=brd.dram_bytes,
+                              int8_compute=True, features=frozenset([PEROP_BLOCK_NAME]),
+                              rvv_schedule=pkg.schedule_text,
+                              cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=brd.vlen,
+                              console=brd.console, sdk_dir=sdk_dir, sdk_chip=brd.sdk_chip,
+                              chip_freq_hz=brd.chip_freq_hz)
+        return {"elf": b["elf"], "ram_bytes": b["mem_bytes"],
+                "build_hash": b.get("build_hash", ""), "console": b.get("console", CONSOLE_HTIF),
+                "chip_freq_hz": b.get("chip_freq_hz"),
+                "console_provenance": b.get("console_provenance", {})}
     b = zm.build_app(bundle, work, board=brd.name, backend="rvv", rvv_hart=0,
                      cpus=max(harts, brd.harts), n_harts=harts, int8_compute=True,
                      rvv_schedule=pkg.schedule_text,
                      cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
-                     features=frozenset([PEROP_BLOCK_NAME]), vlen=brd.vlen)
+                     features=frozenset([PEROP_BLOCK_NAME]), vlen=brd.vlen, sdk_dir=sdk_dir)
     return {"elf": b["elf"], "ram_bytes": b["ram_bytes"], "build_hash": b.get("build_hash", "")}
 
 
-def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int):
+def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, sdk_dir=None):
     """Build one image and run it on spike at the board's VLEN and hart count."""
     pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
     refs = {"fp32": np.load(bundle / "golden.npy")}
@@ -261,7 +350,7 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int):
         bundle, work / f"board_h{harts}", board=brd.name, backend="rvv", rvv_hart=0,
         cpus=max(2, harts), int8_compute=True, rvv_schedule=pkg.schedule_text,
         cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
-        features=frozenset([PEROP_BLOCK_NAME]), n_harts=harts, vlen=vlen)
+        features=frozenset([PEROP_BLOCK_NAME]), n_harts=harts, vlen=vlen, sdk_dir=sdk_dir)
     return res, board_build
 
 
@@ -288,6 +377,10 @@ def main(argv=None) -> int:
                     help="images to build/simulate at once (default: min(images, 6)); each is one "
                          "single-threaded spike")
     ap.add_argument("--out", default=None, help="destination dir (default: an out/artifacts product)")
+    ap.add_argument("--sdk-dir", default=None,
+                    help="the target's own SDK checkout. REQUIRED for a board whose console is its "
+                         "own UART: the UART address and the clock rates its baud divisor depends on "
+                         "are derived from that SDK's headers rather than hardcoded here.")
     a = ap.parse_args(argv)
 
     overrides = {}
@@ -307,6 +400,13 @@ def main(argv=None) -> int:
     if max(hart_list) > brd.harts:
         print(f"[make_delivery] refusing {max(hart_list)} harts: {brd.name} has {brd.harts}",
               file=sys.stderr)
+        return 2
+    # Fail here rather than three hours into a build: without the SDK there is no way to know this
+    # chip's console, and the fallback (a host-assisted channel) is precisely the bug that made the
+    # first delivery print nothing on real hardware.
+    if brd.console != CONSOLE_HTIF and not a.sdk_dir:
+        print(f"[make_delivery] {brd.name} has a '{brd.console}' console: pass --sdk-dir "
+              f"<the target's SDK checkout> so its facts can be derived", file=sys.stderr)
         return 2
 
     if a.out:
@@ -345,15 +445,16 @@ def main(argv=None) -> int:
         work = Path(tempfile.mkdtemp(prefix=f"delivery_{model}_h{harts}_"))
         if a.no_spike or model in no_spike_models:
             print(f"  [{model} h{harts}] building (no simulation) in {work}", flush=True)
-            board_build = build_board_only(bundle, brd, harts, work=work)
+            board_build = build_board_only(bundle, brd, harts, work=work, sdk_dir=a.sdk_dir)
             print(f"  [{model} h{harts}] built: {board_build['ram_bytes'] // 2**20} MB region, "
                   f"{board_build['build_hash']}", flush=True)
             return {"console": "", "metrics": {}, "outputs": None}, board_build
         print(f"  [{model} h{harts}] building + simulating in {work}", flush=True)
         if brd.flow == boards.FLOW_BAREMETAL:
-            out = build_baremetal(bundle, brd, work=work, timeout=a.timeout)
+            out = build_baremetal(bundle, brd, work=work, timeout=a.timeout, sdk_dir=a.sdk_dir)
         else:
-            out = build_one(bundle, brd, harts, vlen=brd.vlen, work=work, timeout=a.timeout)
+            out = build_one(bundle, brd, harts, vlen=brd.vlen, work=work, timeout=a.timeout,
+                            sdk_dir=a.sdk_dir)
         cyc = out[0]["metrics"].get("cycles")
         print(f"  [{model} h{harts}] done: {cyc:,} cycles, gate={out[0].get('tier_ok')}", flush=True)
         return out
@@ -463,17 +564,26 @@ def main(argv=None) -> int:
         from merlin.runtime import vector_probe
 
         pwork = Path(tempfile.mkdtemp(prefix="delivery_probe_"))
-        pelf = vector_probe.build(pwork, dram_base=brd.dram_base, dram_bytes=brd.dram_bytes,
-                                  vlen=brd.vlen)
-        shutil.copy2(pelf, dest / "vlen_probe.elf")
-        # Prove it works on the widths in play before shipping it, INCLUDING one it was not built
-        # for -- that independence is the whole point of the probe.
+        # The probe we CHECK speaks HTIF, because that is the console spike provides; the probe we
+        # SHIP speaks the board's own. Same source, same -march, differing only in the linked console
+        # object -- so the self-check below covers the CSR reads and the reporting, which is what can
+        # be wrong about a probe, while the shipped twin is the one that can actually be heard.
+        selfcheck_elf = vector_probe.build(pwork / "htif", dram_base=brd.dram_base,
+                                           dram_bytes=brd.dram_bytes, vlen=brd.vlen)
         checks = {}
         for v in sorted({128, 256, brd.vlen or 128}):
             checks[v] = vector_probe.parse(
-                vector_probe.run_on_spike(dest / "vlen_probe.elf", vlen=v,
-                                          dram_base=brd.dram_base))
+                vector_probe.run_on_spike(selfcheck_elf, vlen=v, dram_base=brd.dram_base))
+        pelf = selfcheck_elf
+        if brd.console != CONSOLE_HTIF:
+            pelf = vector_probe.build(pwork / "board", dram_base=brd.dram_base,
+                                      dram_bytes=brd.dram_bytes, vlen=brd.vlen,
+                                      console=brd.console, sdk_dir=a.sdk_dir,
+                                      sdk_chip=brd.sdk_chip, chip_freq_hz=brd.chip_freq_hz)
+        shutil.copy2(pelf, dest / "vlen_probe.elf")
         probe_report = {"elf": "vlen_probe.elf", "bytes": (dest / "vlen_probe.elf").stat().st_size,
+                        "console": brd.console,
+                        "spike_selfcheck_console": CONSOLE_HTIF,
                         "spike_selfcheck": {str(k): v for k, v in checks.items()}}
         bad = [v for v, r in checks.items()
                if not (r.get("complete") and r.get("consistent") and r.get("vlen_bits") == v)]
@@ -551,8 +661,41 @@ def _verdict(b: dict) -> str:
     return "not simulated" if b.get("spike_cycles") is None else "see status"
 
 
+#: Prepended when the console had to be corrected. Someone who already tried an earlier build and got
+#: nothing needs to know WHY before they spend bench time on another one -- and needs to be able to
+#: check the claim rather than take it on faith.
+SUPERSEDED_DOC = """\
+## If you tried our earlier binaries and saw nothing
+
+That was our bug, and this is the fix. The earlier images wrote their output over **HTIF**, which is a
+*host-assisted* channel: the program writes a word to `tohost` and then waits for a host debugger to
+acknowledge it by clearing it. On spike, on FireSim, and under `uart_tsi` there is such a host, so it
+worked everywhere we could test. On the real chip with nothing attached, nothing ever clears `tohost` —
+so the image emitted at most one character into a memory word no one reads and then **spun forever
+inside its first print, before any model work ran.** From the outside that is indistinguishable from a
+core that never booted, which is exactly what you saw. The chip's own UART was never initialised
+either, so nothing would have come out of it regardless.
+
+Your own code states the rule we broke — `c2c-demos/dsp-whisper/src/main.c`: *"init_test sets up the
+PLL AND the UART divisor... It MUST run before any printf on silicon — the console UART is not usable
+until then (a printf to it would hang the core)."*
+
+These images speak your UART instead, and you can verify that without running them:
+
+```bash
+riscv64-unknown-elf-readelf -S <THIS.elf> | grep -c '\\.htif'   # the console is not HTIF
+riscv64-unknown-elf-nm      <THIS.elf> | grep -c tohost        # nothing waits on a host
+```
+
+**The compiled model is unchanged** — same lowering, same schedule, same weights. Only the output
+channel was wrong.
+
+"""
+
+
 def _readme(brd, manifest: dict) -> str:
     loader = LOADER_DOC.get(brd.name, LOADER_DOC["default"])
+    superseded_doc = SUPERSEDED_DOC if brd.sdk_chip else ""
     baremetal = brd.flow == boards.FLOW_BAREMETAL
     image = ("bare-metal ELF (our own crt/linker script — your SDK has no RTOS)" if baremetal
              else "Zephyr image")
@@ -574,8 +717,12 @@ def _readme(brd, manifest: dict) -> str:
 For %s the package carries one binary per hart count, and the pair exists so you can check them
 against each other: **the outputs must be bit-identical.** They are the same computation split
 differently, so any difference at all is vector/SMP state on the SoC, not rounding — and that is a far
-more useful signal for you than either run alone. We verified this holds on spike at your vector length
-before shipping.%s""" % (", ".join("`%s`" % m for m in paired),
+more useful signal for you than either run alone. %s%s""" % (", ".join("`%s`" % m for m in paired),
+                         ("We verified this holds on spike at your vector length before shipping."
+                          if any(b.get("spike_cycles") is not None for b in manifest["binaries"])
+                          else "We verified this property on our own RTL rather than on these exact "
+                               "images (see the FireSim table below): 1-hart and 2-hart outputs came "
+                               "back bit-identical there."),
                          ("\n\n%s single-hart only: we could not build a multi-hart image for "
                           "%s, and would not ship one we had not run." %
                           (", ".join("`%s`" % m for m in unpaired)
@@ -674,12 +821,12 @@ We have no access to this board — you running these is the first time they tou
 | harts on the chip | {brd.harts} | your chip |
 | harts these binaries use | {', '.join(str(h) for h in hart_counts)} | {'single-hart only — see below' if len(hart_counts) == 1 else 'one binary per count'} |
 | vector length | {vlen} bits{'' if brd.vlen else ' (assumed — the V minimum, since nothing declares it)'} | {'stated in your repo' if brd.vlen else 'NOT declared anywhere in the board files'} |
-| console | {brd.console} | {'your `chip_config.h` / SIMS platform' if baremetal else 'board DT'} |
+| console | {brd.console} | {'derived from your SDK headers' if brd.sdk_chip else ('your `chip_config.h` / SIMS platform' if baremetal else 'board DT')} |
 
 **If any of those is wrong, tell us** — a mismatch is the most likely cause of a silent hang, and each
 one is a one-line rebuild on our side. In particular we would like to know `vlenb` on the real chip.
 
-## The binaries
+{superseded_doc}## The binaries
 
 | file | model | harts | linked region | est. upload | our verdict |
 |---|---|---|---|---|---|

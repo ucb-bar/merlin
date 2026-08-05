@@ -58,3 +58,78 @@ def test_the_probe_reports_the_hardwares_width_not_the_one_it_was_built_for(tmp_
         assert rep["complete"], f"probe did not finish at VLEN {width}"
         assert rep["vlen_bits"] == width, f"probe reported {rep['vlen_bits']} at VLEN {width}"
         assert rep["consistent"]
+
+
+# ---------------------------------------------------------------- the console backend wiring ------
+# These read the harness SOURCES rather than a built image, because the bug they guard against was a
+# wiring bug: a parameter that was accepted and then dropped. Building an ELF proves the code compiles;
+# only checking the call proves the fact reached it.
+
+def _harness(name: str) -> str:
+    return (merlin_dir() / "runtime/baremetal/spike" / name).read_text()
+
+
+def test_both_console_backends_implement_the_same_abi():
+    """`console_uart.c` and `htif.c` are two backends for one four-symbol ABI, chosen at link time. If
+    they drift, an image links against half a console."""
+    api = ("htif_putc", "htif_puts", "htif_putd", "htif_exit", "console_init")
+    for backend in ("htif.c", "console_uart.c"):
+        src = _harness(backend)
+        for sym in api:
+            assert f"{sym}(" in src, f"{backend} does not define {sym}"
+
+
+def test_the_uart_backend_refuses_to_build_without_derived_facts():
+    """A defaulted console address produces NO output, which is the one failure a remote user cannot
+    debug. So the absence of the derived macros must be a compile error, not a fallback."""
+    src = _harness("console_uart.c")
+    assert "#error" in src
+    for macro in ("MERLIN_UART_BASE", "MERLIN_UART_DIV_OFF", "MERLIN_SYS_CLK_HZ",
+                  "MERLIN_UART_TX_FULL_BIT"):
+        assert f"!defined({macro})" in src, f"{macro} is not guarded"
+    # No MMIO literal may be baked in: the whole point is that these come from the target's headers.
+    assert "0x10020000" not in src
+
+
+def test_the_uart_backend_reprograms_the_divisor_after_raising_the_pll():
+    """The divisor is relative to a clock the PLL just changed. Skipping the second write leaves the
+    console emitting GARBAGE rather than nothing -- which reads as a corrupt program, not a bad UART.
+    So the divisor must be written twice: once for the reset clock, once after the switch."""
+    src = _harness("console_uart.c")
+    assert src.count("UART_REG(MERLIN_UART_DIV_OFF) = baud_div") == 2
+    # And the PLL sequence must be gated on a target frequency being asked for, so that "leave the
+    # chip on its reset clock" is expressible.
+    assert "#ifdef MERLIN_CHIP_FREQ_HZ" in src
+
+
+def test_the_model_harness_brings_the_console_up_before_printing():
+    """Ordering is the whole bug: the vendor SDK's own comment is that a printf before the UART is
+    configured hangs the core. `console_init()` must therefore be called before the first output."""
+    for unit in ("model_main.c", "vlen_probe.c"):
+        src = _harness(unit)
+        assert "console_init();" in src, f"{unit} never brings the console up"
+        # Scoped to main's body: both units define print HELPERS above main, and where those are
+        # declared says nothing about when they run. What matters is the order inside the entry point.
+        body = src[src.index("int main("):]
+        assert "console_init();" in body, f"{unit} does not bring the console up in main()"
+        assert body.index("console_init();") < body.index("htif_put"), \
+            f"{unit} prints before console_init()"
+
+
+def test_the_trap_handler_reports_through_the_console_abi():
+    """A trap used to be reported by writing `tohost` directly, which on a board with no host is a
+    silent hang. Routed through the console ABI it PRINTS the cause -- the difference between a
+    reported fault and an unexplained lockup on hardware we cannot attach to."""
+    src = _harness("crt.S")
+    assert "call  htif_exit" in src
+    assert "la    t1, tohost" not in src
+
+
+def test_the_probe_passes_the_console_choice_through_to_the_link():
+    """The probe is the FIRST thing run on a board, so it above all must speak that board's channel:
+    an HTIF probe on silicon hangs on its second character and reports nothing."""
+    import inspect
+
+    src = inspect.getsource(vector_probe.build)
+    assert "console_uart.c" in src
+    assert "sdk_chip" in src and "derive_uart_console" in src

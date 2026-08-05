@@ -72,6 +72,19 @@ class Board:
     #: the names separate lets the package say WHICH CHIP it is for while the build says which port it
     #: used -- so the README can be honest that it is a generic port, not a bespoke one.
     zephyr_board: str | None = None
+    #: For `console == CONSOLE_UART`: the key that selects this chip's platform directory inside its
+    #: SDK checkout, from whose headers the UART/PLL/clock-selector facts are DERIVED at build time
+    #: (`runtime.sdk_facts`). It is a lookup key into the target's own tree, not a fact about the
+    #: chip -- the facts themselves are never written down here, because a literal MMIO address in
+    #: shared code is silently wrong for the next tapeout. None for boards whose console needs no
+    #: bring-up (a host-assisted HTIF link is alive before the core starts).
+    sdk_chip: str | None = None
+    #: DT label of the console UART node, for the `chosen`/`&label` overlay. A label is a property of
+    #: the board's device tree, not of the chip -- unlike the address, which is derived.
+    uart_label: str = "uart0"
+    #: PLL target for a UART console, or None to stay on the chip's reset clock. Also the clock a
+    #: returned `METRIC cycles` should be divided by, which is why the image prints it.
+    chip_freq_hz: int | None = None
     flow: str = FLOW_ZEPHYR
     #: bytes to reserve for code+stack before the weights blob in a baremetal layout
     code_reserve: int = 64 * 1024 * 1024
@@ -145,10 +158,13 @@ BOARDS: dict[str, Board] = {
     # the uart_tsi/FESVR link carries.
     "gemmelos_bearly25": Board(
         name="gemmelos_bearly25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
-        console=CONSOLE_HTIF, flow=FLOW_BAREMETAL,
+        console=CONSOLE_UART, sdk_chip="bearly25", chip_freq_hz=500_000_000,
+        flow=FLOW_BAREMETAL,
         notes="Bearly ML 25 via Baremetal-IDE (-DCHIP=bearly25). 2 harts, hart 1 idles in wfi until "
               "dispatched; -march=rv64gcv_zfh -mabi=lp64d -mcmodel=medany; entry _start resumed at "
-              "0x80000000. NOT Zephyr."),
+              "0x80000000. NOT Zephyr. Console is the chip's own UART0 (facts derived from its SDK "
+              "headers): PLATFORM=CHIP builds have no host to service HTIF, so an HTIF image hangs in "
+              "its first print. PLL raised to 500 MHz, the frequency their own demos run at."),
     # The SAME chip through Zephyr rather than bare metal, which is the only way to get RVV MULTICORE
     # there: on bare metal hart 1 waits in wfi for their own thread-lib to dispatch it, while Zephyr
     # SMP + merlin's OpenMP shim drives both harts the way every other multicore image here does.
@@ -159,15 +175,25 @@ BOARDS: dict[str, Board] = {
     # guessing high would be a silent SMP-boot hang, so this is a fact worth having been told.
     "gemmelos_bearly25_zephyr": Board(
         name="gemmelos_bearly25_zephyr", zephyr_board="chipyard_riscv64",
-        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128, console=CONSOLE_HTIF,
+        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
+        console=CONSOLE_UART, sdk_chip="bearly25",
         flow=FLOW_ZEPHYR, tick_hz=100,
         notes="Bearly ML 25 via the GENERIC chipyard Zephyr board (their SDK has no Zephyr port). "
               "50 MHz core, 50 kHz CLINT timebase, CLINT 0x02000000, DRAM 0x80000000 (1 GB real, "
-              "256 MB in their .ld). 2 harts (confirmed by the chip's owner)."),
+              "256 MB in their .ld). 2 harts (confirmed by the chip's owner). Console is the chip's "
+              "own UART: that board's defconfig selects UART_HTIF, which needs a host servicing "
+              "tohost and hangs on silicon, and the generic chipyard DT already describes this SoC's "
+              "UART at the address the SDK headers give. No PLL programming on this path -- the RTOS "
+              "brings its console up before our code runs, so the chip stays on its 50 MHz reset "
+              "clock and the baud divisor matches it; cycle counts are unaffected."),
     "gemmelos_dsp25": Board(
         name="gemmelos_dsp25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
-        console=CONSOLE_HTIF, flow=FLOW_BAREMETAL,
-        notes="DSP 25 via Baremetal-IDE (-DCHIP=dsp25). Same ABI/entry as bearly25; NOT Zephyr."),
+        console=CONSOLE_UART, sdk_chip="dsp25", chip_freq_hz=500_000_000,
+        flow=FLOW_BAREMETAL,
+        notes="DSP 25 via Baremetal-IDE (-DCHIP=dsp25). Same ABI/entry as bearly25; NOT Zephyr. "
+              "Console is UART0, derived from its own platform/dsp25 headers -- where the clock "
+              "selector sits at RCC_BASE+0x30000 rather than at RCC_BASE, which is why that address "
+              "is derived from the SDK's RCC_CLOCK_SELECTOR define and not assumed."),
 }
 
 

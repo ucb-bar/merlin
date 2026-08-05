@@ -26,12 +26,18 @@ from .backends.spike_model import DRAM_BASE, RVV_CFLAGS, _harness_dir, _run
 
 
 def build(work: str | Path, *, dram_base: int = DRAM_BASE, dram_bytes: int | None = None,
-          vlen: int | None = None) -> Path:
+          vlen: int | None = None, console: str = "htif", sdk_dir: str | Path | None = None,
+          sdk_chip: str | None = None, chip_freq_hz: int | None = None) -> Path:
     """Link the probe ELF into ``work`` and return its path.
 
     ``vlen`` only affects the ``-march`` the probe itself is built with; the number it REPORTS comes
     from the hardware's own CSRs, so the two are independent on purpose — a probe built for 128 still
     reports 256 on a 256-bit unit, which is exactly the mismatch we are trying to detect.
+
+    ``console`` matters more here than anywhere else: this image exists to be the FIRST thing run on a
+    board, so it has to speak the channel that board actually has. An HTIF probe on silicon with no
+    host attached hangs on its second character and reports nothing — turning the cheap test into
+    another unexplained hang. See ``sdk_facts`` for where the UART facts come from.
     """
     work = Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -42,10 +48,25 @@ def build(work: str | Path, *, dram_base: int = DRAM_BASE, dram_bytes: int | Non
         from .backends.zephyr_model import march_with_vlen
         cflags = march_with_vlen(cflags, vlen)
 
+    from .boards import CONSOLE_HTIF, CONSOLE_UART
+    console_defs: list[str] = []
+    console_src = h / "htif.c"
+    if console == CONSOLE_UART:
+        from .sdk_facts import derive_uart_console
+        if not sdk_dir or not sdk_chip:
+            raise RuntimeError("console='uart' needs sdk_dir + sdk_chip (facts are derived, "
+                               "never hardcoded)")
+        console_defs = derive_uart_console(sdk_dir, sdk_chip).macros(chip_freq_hz=chip_freq_hz)
+        console_src = h / "console_uart.c"
+    elif console != CONSOLE_HTIF:
+        raise RuntimeError(f"unknown console kind {console!r}")
+
     objs = []
-    for obj, src in (("probe_main.o", h / "vlen_probe.c"), ("crt.o", h / "crt.S"),
-                     ("htif.o", h / "htif.c"), ("libc_min.o", h / "libc_min.c")):
-        _run([gcc, *cflags, "-c", src, "-o", work / obj])
+    for obj, src, extra in (("probe_main.o", h / "vlen_probe.c", []),
+                            ("crt.o", h / "crt.S", []),
+                            ("console.o", console_src, console_defs),
+                            ("libc_min.o", h / "libc_min.c", [])):
+        _run([gcc, *cflags, *extra, "-c", src, "-o", work / obj])
         objs.append(work / obj)
 
     elf = work / "vlen_probe.elf"

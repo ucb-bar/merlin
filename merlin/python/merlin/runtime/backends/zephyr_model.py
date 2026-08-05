@@ -361,7 +361,8 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
 
 def _main_c(rvv_hart: int, dump_cap: int = 4096, weights_base: int | None = None,
             n_harts: int = 1, iters: int = 1, warmup: int = 0,
-            omp_threads: int | None = None, build_hash: str = "") -> str:
+            omp_threads: int | None = None, build_hash: str = "",
+            console: str = "htif") -> str:
     """Generate the Zephyr worker main: one COOP thread pinned to ``rvv_hart`` calls
     ``merlin_run`` and dumps the output with the same OUT/ARGMAX/METRIC/DONE protocol the
     bare-metal harness uses (so the host parser is shared).
@@ -380,6 +381,14 @@ def _main_c(rvv_hart: int, dump_cap: int = 4096, weights_base: int | None = None
     # bug (at 1 thread the parallel regions run serially on the master through the very same
     # outlined functions).
     nth = n_harts if omp_threads is None else omp_threads
+    # How the image STOPS. On a host-assisted console `sys_reboot` is the exit protocol: the SoC turns
+    # it into an HTIF `tohost=1` and the loader reports the run finished. With the HTIF console
+    # configured out that SoC's `sys_arch_reboot` is an empty function, while `sys_reboot` is declared
+    # noreturn and ends in `CODE_UNREACHABLE` -- so calling it would fall through into undefined
+    # behavior right after the results were printed, which on a board reads as a crash at the end of a
+    # good run. Idle instead: the output is already out, and the operator resets the board anyway.
+    halt = ("sys_reboot(SYS_REBOOT_COLD)" if console == "htif"
+            else "for (;;) k_cpu_idle()")
     omp_include = '#include "libomp_zephyr.h"\n' if n_harts > 1 else ""
     omp_init = (f'  int nth = merlin_omp_init({nth});\n'
                 f'  printk("METRIC omp_threads %d\\n", nth);\n'
@@ -498,12 +507,12 @@ int main(void) {{
   int rc = k_thread_cpu_pin(t, MERLIN_RVV_HART);
   if (rc != 0) {{
     printk("FAIL k_thread_cpu_pin hart %d rc=%d\\n", MERLIN_RVV_HART, rc);
-    sys_reboot(SYS_REBOOT_COLD);
+    {halt};
     return 1;
   }}
   k_thread_start(t);
   k_sem_take(&merlin_done, K_FOREVER);
-  sys_reboot(SYS_REBOOT_COLD);
+  {halt};
   return 0;
 }}
 """
@@ -551,10 +560,15 @@ def _kconfig_has(symbol: str) -> bool:
     return False
 
 
-def _prj_conf(cpus: int, backend: str, brd=None) -> str:
+def _prj_conf(cpus: int, backend: str, brd=None, console_facts=None) -> str:
     """Generated app config. ``brd`` is a :class:`runtime.boards.Board`; None keeps the
-    historical chipyard/HTIF defaults so existing callers are byte-identical."""
-    from ..boards import CONSOLE_HTIF, board as _board
+    historical chipyard/HTIF defaults so existing callers are byte-identical.
+
+    ``console_facts`` is a :class:`runtime.sdk_facts.UartConsoleFacts` and is REQUIRED when the board
+    declares a UART console: the baud divisor the RTOS driver computes depends on two clock numbers
+    that belong to the chip, and defaulting either of them produces a console that emits garbage.
+    """
+    from ..boards import CONSOLE_HTIF, CONSOLE_UART, board as _board
     brd = brd if brd is not None else _board("spike_riscv64")
     # HTIF: the direct-putchar path races under SMP (a worker on hart != 0 printing) and silently
     # wedges, so use the buffered + syscall path. It is also the fix for an apparent hang: unbuffered
@@ -573,12 +587,46 @@ def _prj_conf(cpus: int, backend: str, brd=None) -> str:
 # save/restore per tick under FPU_SHARING).
 CONFIG_SYS_CLOCK_TICKS_PER_SEC={brd.tick_hz}
 """)
-    console_conf = ("""# SMP-safe HTIF console (buffered + syscall; both default to n upstream).
+    if brd.console == CONSOLE_HTIF:
+        console_conf = """# SMP-safe HTIF console (buffered + syscall; both default to n upstream).
 CONFIG_UART_HTIF_BUFFERED_OUTPUT=y
 CONFIG_UART_HTIF_BUFFERED_OUTPUT_SIZE=256
 CONFIG_UART_HTIF_SYSCALL_PRINT=y
-""" if brd.console == CONSOLE_HTIF else
-        f"# console: board-provided ({brd.console}); no merlin override.\n")
+"""
+    elif brd.console == CONSOLE_UART:
+        if console_facts is None:
+            raise RuntimeError(
+                f"board {brd.name} declares a UART console but no SDK facts were derived; the baud "
+                "divisor depends on the chip's own clock rates and must not be defaulted")
+        # Saying nothing here was a SILENT failure: the chipyard board's own defconfig sets
+        # CONFIG_UART_HTIF=y, so "let the board configure its console" left the image on a
+        # host-assisted channel that hangs on silicon. Turn it off explicitly.
+        #
+        # The SiFive-style driver computes
+        #   div = (SYS_CLOCK_HW_CYCLES_PER_SEC * RTC_CLOCK_DIVIDER_VALUE) / baud - 1
+        # so both terms must describe THIS chip. The board defaults (1 MHz mtime x 1000) imply a 1 GHz
+        # peripheral clock; against real hardware that programs a wildly wrong divisor and the console
+        # emits GARBAGE rather than nothing -- which reads as a corrupt program, not a misconfigured
+        # UART. Both numbers come from the SDK's chip_config.h.
+        divider = console_facts.sys_clk_hz // console_facts.mtime_hz
+        if divider * console_facts.mtime_hz != console_facts.sys_clk_hz:
+            raise RuntimeError(
+                f"core clock {console_facts.sys_clk_hz} is not an integer multiple of the mtime rate "
+                f"{console_facts.mtime_hz}; the RTOS peripheral-clock model cannot express it")
+        console_conf = f"""# Console: the chip's own UART. Facts derived from its SDK headers, not assumed.
+CONFIG_UART_HTIF=n
+CONFIG_CONSOLE=y
+CONFIG_SERIAL=y
+CONFIG_UART_CONSOLE=y
+CONFIG_UART_SIFIVE=y
+CONFIG_UART_SIFIVE_PORT_0=y
+# Peripheral clock = {console_facts.sys_clk_hz} Hz, expressed as the mtime rate times the
+# core/mtime divider, which is how this SoC's headers model it.
+CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC={console_facts.mtime_hz}
+CONFIG_RTC_CLOCK_DIVIDER_VALUE={divider}
+"""
+    else:
+        raise RuntimeError(f"unknown console kind {brd.console!r} for board {brd.name}")
     # FPU_SHARING=y mis-routes V-illegal-instruction traps into the FP path, which retries forever --
     # a hang with NO fault printed (the FireSim Saturn-tile hang). Off unless a board needs otherwise;
     # note this also compiles out fpu.c/fpu.S, i.e. no FP/vector state is saved across a context
@@ -703,7 +751,8 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
               cflags_override: list[str] | None = None,
               features: "frozenset[str] | None" = None,
               n_harts: int = 1, iters: int = 1, warmup: int = 0,
-              omp_threads: int | None = None, vlen: int | None = None) -> dict:
+              omp_threads: int | None = None, vlen: int | None = None,
+              sdk_dir: str | Path | None = None) -> dict:
     """Lower the model, generate the Zephyr app, and build ``zephyr.elf``.
 
     ``backend``: ``"rvv"`` (vector tile / Saturn) or ``"scalar"`` (scalar tile). The
@@ -723,6 +772,10 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
 
     ``iters``/``warmup`` build the SUSTAINED-inference image (per-iteration cycle metrics
     over a reused arena); the defaults are the single-shot behavior.
+
+    ``sdk_dir`` is the target's own SDK checkout, REQUIRED when the board declares a UART console:
+    the UART address and the two clock rates its baud divisor depends on are derived from that SDK's
+    headers (``runtime.sdk_facts``) rather than written down here.
     """
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -831,10 +884,24 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     (app / "src" / "main.c").write_text(
         _main_c(rvv_hart, weights_base=weights_base, n_harts=n_harts,
                 iters=iters, warmup=warmup, omp_threads=omp_threads,
-                build_hash=build_hash))
+                build_hash=build_hash, console=brd.console))
     # A multicore image needs every hart it fans out to, plus the master's.
     cpus = max(cpus, n_harts, rvv_hart + 1)
-    (app / "prj.conf").write_text(_prj_conf(cpus, backend, brd))
+    # Console facts, when the board has a console of its own to bring up. Derived here (not in
+    # _prj_conf) because the DT overlay below needs the same values, and deriving twice invites the
+    # config and the device tree to disagree about which UART this is.
+    from ..boards import CONSOLE_UART
+    from ..sdk_facts import DEFAULT_BAUD as _DEFAULT_BAUD
+    console_facts = None
+    if brd.console == CONSOLE_UART:
+        from ..sdk_facts import derive_uart_console
+        if not sdk_dir or not brd.sdk_chip:
+            raise ZephyrModelError(
+                f"{brd.name} declares a UART console, so it needs sdk_dir + the descriptor's "
+                "sdk_chip: the UART address and its clock rates are derived from the target SDK's "
+                "own headers, never hardcoded or defaulted")
+        console_facts = derive_uart_console(sdk_dir, brd.sdk_chip)
+    (app / "prj.conf").write_text(_prj_conf(cpus, backend, brd, console_facts))
     rt = runtime_dir() / "c"
     abi = runtime_dir() / "abi"
     weights_section_ld = None
@@ -854,6 +921,16 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     # the model needs > the stock 256 MB (small models keep the default that boots reliably
     # on FireSim). Plus, for chipyard, the disable-cpu@2..7 overlay.
     overlay = ""
+    if console_facts is not None:
+        # Point `chosen` at the chip's UART and state its address from the DERIVED fact rather than
+        # trusting the board DT to already agree: the config above selects the driver, but `chosen`
+        # is what the console actually binds to, and a board whose DT says HTIF would keep using it.
+        overlay += (f"/ {{\n\tchosen {{\n"
+                    f"\t\tzephyr,console = &{brd.uart_label};\n"
+                    f"\t\tzephyr,shell-uart = &{brd.uart_label};\n\t}};\n}};\n\n"
+                    f"&{brd.uart_label} {{\n\tstatus = \"okay\";\n"
+                    f"\treg = <{hex(console_facts.uart_base)} 0x1000>;\n"
+                    f"\tcurrent-speed = <{_DEFAULT_BAUD}>;\n}};\n\n")
     if external:
         wsz = (weights_size + 0xFFF) & ~0xFFF                       # 4 KB align
         # The WEIGHTS region lives under a 2-cell (#address/size-cells=2) container so its
@@ -879,18 +956,29 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
                 f"correct the board descriptor if the real DRAM is larger.")
         overlay += (f"&{brd.ram_label} {{\n\treg = <{hex(brd.dram_base)} "
                     f"{hex(ram_bytes)}>;\n}};\n")
-    if board.startswith("chipyard"):
+    # Keyed on the board we actually BUILD (`build_board`), not on this descriptor's name: a chip with
+    # no Zephyr port of its own is built against a generic port, and testing the descriptor name here
+    # silently skipped this overlay for exactly those boards.
+    if brd.build_board.startswith("chipyard"):
         cpu_overlay = _chipyard_cpu_overlay(cpus)
         if cpu_overlay:
             overlay += ("\n" if overlay else "") + cpu_overlay
-    if overlay:
-        (app / "boards" / f"{board}.overlay").write_text(overlay)
 
     # 5. configure + build.
     build_dir = work / "build"
     env = _tool_env()
+    # Pass the overlay EXPLICITLY. Zephyr's automatic discovery matches `boards/<BOARD>.overlay`
+    # against the board being built, so writing it under this descriptor's name meant that for any
+    # board built through a generic port (build_board != name) the overlay was silently IGNORED --
+    # taking the DRAM-size override and the CPU-disable overlay with it, with no warning and a
+    # successful build. Naming one file and pointing cmake at it cannot miss that way.
+    extra = []
+    if overlay:
+        overlay_file = app / "merlin.overlay"
+        overlay_file.write_text(overlay)
+        extra.append(f"-DEXTRA_DTC_OVERLAY_FILE={overlay_file}")
     _run([_conda_bin() / "cmake", "-B", build_dir, "-G", "Ninja",
-          f"-DBOARD={brd.build_board}", "-S", app], env=env)
+          f"-DBOARD={brd.build_board}", *extra, "-S", app], env=env)
     _run([_conda_bin() / "ninja", "-C", build_dir], env=env)
     elf = build_dir / "zephyr" / "zephyr.elf"
     if not elf.is_file():

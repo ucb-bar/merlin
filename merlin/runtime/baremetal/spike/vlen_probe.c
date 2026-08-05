@@ -27,6 +27,7 @@
  */
 #include <stdint.h>
 
+void console_init(void);
 void htif_puts(const char *s);
 void htif_putd(long v);
 void htif_putc(char c);
@@ -44,6 +45,10 @@ static void kv(const char *k, long v)
 int main(void)
 {
 	uint64_t hartid = 0, misa = 0, mstatus = 0, vlenb = 0, vl8 = 0, vl32 = 0;
+
+	/* Console first, or there is nothing to read the answers on. On real silicon this programs the
+	 * UART's clocks and baud divisor; printing before it hangs the core. */
+	console_init();
 
 	__asm__ volatile("csrr %0, mhartid" : "=r"(hartid));
 	kv("hartid", (long)hartid);

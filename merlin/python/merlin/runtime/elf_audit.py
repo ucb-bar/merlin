@@ -203,6 +203,23 @@ def audit(elf: str | Path, brd, *, expect_htif: bool | None = None,
         rep.problems.append(
             "no .htif section: the loader locates tohost/fromhost by scanning for it, so it would see "
             "neither console output nor the exit request and report a timeout")
+    if not want_htif and ".htif" in sections and getattr(brd, "flow", "") == "baremetal":
+        # The inverse check, and the one that matters for a board nobody here can attach to. HTIF is
+        # host-ASSISTED: the image writes tohost and waits for a host to clear it, so on silicon with
+        # no host it hangs on its second character -- inside the first print, before any model work,
+        # looking exactly like a core that never booted. That is not hypothetical; it is what the first
+        # binaries sent to such a board did.
+        #
+        # Scoped to the BARE-METAL flow, where this harness owns the console and `.htif` can only have
+        # come from linking the HTIF backend. Under an RTOS the same section name is also allocated by
+        # the SoC's reboot support (a NOBITS block nothing writes once the HTIF console is configured
+        # out), so flagging it there would be a false alarm on a correctly-built image.
+        rep.problems.append(
+            f"a .htif section is present but this board's console is '{brd.console}': HTIF needs a host "
+            "servicing tohost, and with none the image hangs in its first print before running the "
+            "model -- indistinguishable from a core that never booted")
+    rep.facts["console"] = brd.console
+    rep.facts["has_htif_section"] = ".htif" in sections
 
     # Instruction mix. A shipped image with no vector ops is a run that silently measured the scalar
     # fallback -- worse than a failure, because it looks like a result.

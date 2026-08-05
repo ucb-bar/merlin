@@ -13,6 +13,29 @@ import pytest
 
 from merlin.runtime import boards
 from merlin.runtime.backends import zephyr_model as zm
+from merlin.runtime.sdk_facts import UartConsoleFacts
+
+
+@pytest.fixture()
+def uart_facts():
+    """Console facts as `sdk_facts` derives them, without needing an SDK checkout on disk.
+
+    The values mirror a real tapeout's (a 50 MHz core with a 50 kHz mtime, so the divider is 1000) so
+    the clock arithmetic under test is the arithmetic that runs.
+    """
+    return UartConsoleFacts(
+        uart_base=0x10020000,
+        reg={"TXDATA": 0, "RXDATA": 4, "TXCTRL": 8, "RXCTRL": 12, "IE": 16, "IP": 20, "DIV": 24},
+        tx_full_bit=31, txen_bit=0, rxen_bit=0, nstop_bit=1,
+        sys_clk_hz=50_000_000, mtime_hz=50_000,
+        pll_base=0x140000,
+        pll={"POWERGOOD_VNN": 0x5C, "PLLEN": 0x60, "LDO_ENABLE": 0x64, "RATIO": 0x6C,
+             "FRACTION": 0x70, "MDIV_RATIO": 0x74, "ZDIV0_RATIO": 0x78, "ZDIV1_RATIO": 0x80,
+             "PLLFWEN_B": 0x100},
+        clksel_base=0x130000,
+        clksel={"UNCORE": 0, "TILE0": 4, "TILE1": 8, "CLKTAP": 12},
+        clksel_slow=0, clksel_pll=1,
+    )
 
 
 def test_kodiak_is_described_by_its_silicon_not_its_dts():
@@ -74,14 +97,40 @@ def test_a_vector_capable_tree_still_gets_the_full_vector_config():
 
 def test_htif_console_options_are_set_only_for_an_htif_board():
     """Both options default to n upstream, and unbuffered HTIF emits one char per host round-trip --
-    on a ~20 MHz core that looks like the model never finishing. A non-HTIF board must not get options
-    its driver does not have."""
+    on a ~20 MHz core that looks like the model never finishing."""
     htif = zm._prj_conf(2, "rvv", boards.board("chipyard_kodiak"))
     assert "CONFIG_UART_HTIF_BUFFERED_OUTPUT=y" in htif
     assert "CONFIG_UART_HTIF_SYSCALL_PRINT=y" in htif
-    uart = zm._prj_conf(2, "rvv", boards.board("x", console=boards.CONSOLE_UART))
-    assert "UART_HTIF" not in uart
-    assert "board-provided" in uart
+    assert "UART_SIFIVE" not in htif
+
+
+def test_a_uart_board_without_derived_facts_is_refused():
+    """This used to emit a comment saying the board configures its own console -- which was a SILENT
+    failure, because the generic chipyard board's defconfig sets CONFIG_UART_HTIF=y. The image kept a
+    host-assisted console and hung in its first print on silicon. There is no safe default here."""
+    with pytest.raises(RuntimeError, match="no SDK facts"):
+        zm._prj_conf(2, "rvv", boards.board("x", console=boards.CONSOLE_UART))
+
+
+def test_a_uart_board_turns_htif_off_and_states_both_clock_terms(uart_facts):
+    """The driver computes its divisor as (SYS_CLOCK_HW_CYCLES_PER_SEC * RTC_CLOCK_DIVIDER_VALUE)/baud
+    - 1, so BOTH terms must describe the chip. The board's own defaults imply a 1 GHz peripheral clock
+    and would emit garbage rather than nothing -- which reads as a corrupt program, not a bad UART."""
+    conf = zm._prj_conf(2, "rvv", boards.board("x", console=boards.CONSOLE_UART), uart_facts)
+    assert "CONFIG_UART_HTIF=n" in conf
+    assert "CONFIG_UART_SIFIVE=y" in conf and "CONFIG_UART_SIFIVE_PORT_0=y" in conf
+    assert "CONFIG_UART_CONSOLE=y" in conf
+    assert f"CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC={uart_facts.mtime_hz}" in conf
+    assert (f"CONFIG_RTC_CLOCK_DIVIDER_VALUE="
+            f"{uart_facts.sys_clk_hz // uart_facts.mtime_hz}") in conf
+
+
+def test_a_core_clock_that_is_not_a_multiple_of_the_mtime_rate_is_refused(uart_facts):
+    """The RTOS models the peripheral clock as mtime x an integer divider; a chip that does not fit
+    that model must fail loudly rather than be rounded into a wrong baud rate."""
+    odd = type(uart_facts)(**{**uart_facts.__dict__, "mtime_hz": 30_000})
+    with pytest.raises(RuntimeError, match="integer multiple"):
+        zm._prj_conf(2, "rvv", boards.board("x", console=boards.CONSOLE_UART), odd)
 
 
 def test_the_scalar_backend_still_carries_no_vector_config():

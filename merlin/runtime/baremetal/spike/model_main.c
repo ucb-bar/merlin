@@ -15,6 +15,7 @@
 #include "model_gen.h"
 #include "model_io.h"
 
+void console_init(void);
 void htif_puts(const char *);
 void htif_putd(long);
 void htif_putc(char);
@@ -35,6 +36,9 @@ int main(int hart) {
     for (;;)
       ;
   }
+  /* Before the first character. On a hosted substrate this is a no-op; on real silicon it programs
+   * the console UART's clocks and baud divisor, without which printing hangs the core. */
+  console_init();
   uint64_t c0;
   __asm__ volatile("csrr %0, mcycle" : "=r"(c0));
 
@@ -91,6 +95,17 @@ int main(int hart) {
      binary instead of being unattributable. Absent unless the builder defines it -> byte-identical. */
 #ifdef MERLIN_BUILD_HASH
   htif_puts("METRIC build_hash " MERLIN_BUILD_HASH "\n");
+#endif
+  /* Which channel this log came out of, and the clock `cycles` above was counted against -- a cycle
+     count is uninterpretable as time without it, and someone reading a mailed-back log has no other
+     way to tell a 50 MHz reset-clock run from a PLL-raised one. */
+#ifdef MERLIN_CONSOLE_NAME
+  htif_puts("METRIC console " MERLIN_CONSOLE_NAME "\n");
+#endif
+#ifdef MERLIN_CHIP_FREQ_HZ
+  htif_puts("METRIC chip_freq_hz ");
+  htif_putd((long)(uint64_t)MERLIN_CHIP_FREQ_HZ);
+  htif_putc('\n');
 #endif
   htif_puts("DONE\n");
   htif_exit(0);

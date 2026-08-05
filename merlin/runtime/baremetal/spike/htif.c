@@ -11,6 +11,14 @@
 volatile uint64_t tohost __attribute__((section(".htif")));
 volatile uint64_t fromhost __attribute__((section(".htif")));
 
+void console_init(void) {
+  /* Nothing to bring up: the host is already listening on tohost/fromhost before the core starts.
+   * Defined so `model_main.c` can call it unconditionally and the console backend stays a link-time
+   * choice. NOTE this backend REQUIRES that host -- with nothing servicing tohost (i.e. on real
+   * silicon) htif_putc below spins forever on its second character. Boards without a host must link
+   * `console_uart.c` instead; see boards.Board.console. */
+}
+
 void htif_putc(char c) {
   while (tohost)
     ;

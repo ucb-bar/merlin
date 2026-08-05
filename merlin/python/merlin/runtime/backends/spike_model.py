@@ -28,6 +28,7 @@ import numpy as np
 from ...common.paths import repo_root
 from ...llvmlower import c_runtime, toolchain
 from ...llvmlower.lower import lower_model_file
+from ..boards import CONSOLE_HTIF, CONSOLE_UART
 from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
 
 RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2",
@@ -110,7 +111,9 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
           arena_mb: int = 256, *, dram_base: int = DRAM_BASE,
           dram_bytes: int | None = None, int8_compute: bool = False,
           features: "frozenset[str] | None" = None, rvv_schedule: str | None = None,
-          cflags_override: list[str] | None = None, vlen: int | None = None) -> dict:
+          cflags_override: list[str] | None = None, vlen: int | None = None,
+          console: str = "htif", sdk_dir: str | Path | None = None,
+          sdk_chip: str | None = None, chip_freq_hz: int | None = None) -> dict:
     """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
 
     Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
@@ -122,6 +125,14 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     image will actually run on. Passing none of them lowers ``model.mlir`` raw — correct only when the
     caller wants the unprepared module, which is NOT what a delivery wants (measured: raw scored
     ``cos 0.925`` where the prepared path is bit-exact).
+
+    ``console`` selects the output channel and is a real correctness knob, not a preference. The
+    default ``htif`` needs a **host** servicing ``tohost`` (spike, FireSim, uart_tsi); on bare silicon
+    nothing does, so the image hangs inside its first print before any model work -- looking exactly
+    like a core that never booted. Boards without such a host pass ``console="uart"`` together with
+    ``sdk_dir``/``sdk_chip``, from which the UART, PLL and clock-selector facts are derived (see
+    ``runtime.sdk_facts``); ``chip_freq_hz`` additionally raises the PLL to that frequency the way the
+    vendor SDK's own ``init_test()`` does, and ``None`` leaves the chip on its reset clock.
     """
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -182,14 +193,33 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     for _f in (work / "model.o", cgen / "weights.bin"):
         _hh.update(_f.read_bytes())
     build_hash = _hh.hexdigest()[:12]
+    # Console backend: one of two implementations of the same four-symbol ABI. `uart` needs the
+    # target's own MMIO facts, derived from its SDK headers -- never defaulted, because a wrong
+    # console address produces no output at all, the one failure the far end cannot debug.
+    console_defs: list[str] = []
+    console_src = h / "htif.c"
+    console_facts = None
+    if console == CONSOLE_UART:
+        from ..sdk_facts import derive_uart_console
+        if not sdk_dir or not sdk_chip:
+            raise RuntimeError(
+                "console='uart' needs sdk_dir + sdk_chip: the UART/PLL/clock facts are derived from "
+                "the target SDK's own headers, never hardcoded")
+        console_facts = derive_uart_console(sdk_dir, sdk_chip)
+        console_defs = console_facts.macros(chip_freq_hz=chip_freq_hz)
+        console_src = h / "console_uart.c"
+    elif console != CONSOLE_HTIF:
+        raise RuntimeError(f"unknown console kind {console!r}")
+
     units = {
         "model_call.o": (cgen / "model_call.c", inc),
         "merlin_model.o": (rt / "merlin_model.c", inc),
         "model_main.o": (h / "model_main.c",
-                         inc + addr_defs + [f'-DMERLIN_BUILD_HASH="{build_hash}"']),
+                         inc + addr_defs + console_defs
+                         + [f'-DMERLIN_BUILD_HASH="{build_hash}"']),
         "mlir_rt.o": (runtime_dir() / "abi/mlir_runtime.c", []),
         "crt.o": (h / "crt.S", []),
-        "htif.o": (h / "htif.c", []),
+        "console.o": (console_src, console_defs),
         "libc_min.o": (h / "libc_min.c", []),
         "malloc.o": (h / "merlin_malloc.c", addr_defs),
     }
@@ -205,7 +235,9 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
           f"-Wl,--defsym,MERLIN_WEIGHTS_BASE={hex(lay['weights_base'])}",
           "-T", h / "model_link.ld", *objs, "-lm", "-o", elf])
     return {"elf": elf, "mem_bytes": lay["mem_bytes"], "build_hash": build_hash,
-            "arena_base": lay["arena_base"], "weights_base": lay["weights_base"], **info}
+            "arena_base": lay["arena_base"], "weights_base": lay["weights_base"],
+            "console": console, "chip_freq_hz": chip_freq_hz,
+            "console_provenance": dict(console_facts.provenance) if console_facts else {}, **info}
 
 
 def run(elf: str | Path, harts: int = 1, mem_bytes: int = 1 << 30,

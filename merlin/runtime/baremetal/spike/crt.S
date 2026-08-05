@@ -44,14 +44,17 @@ _start:
 5:
   j     5b
 
-_merlin_trap:                 # fail fast: exit(0x1000 | (mcause << 1) | 1)
-  csrr  t0, mcause
-  slli  t0, t0, 1
-  ori   t0, t0, 1
-  li    t1, 0x1000
-  or    t0, t0, t1
-  la    t1, tohost
-  sd    t0, 0(t1)
+# Fail fast on any trap, THROUGH the console ABI rather than by writing tohost directly.
+# htif_exit(0x800 | mcause) reproduces the previous HTIF word bit for bit -- that backend encodes a
+# code as (code << 1) | 1, so 0x800|mcause becomes 0x1000 | (mcause << 1) | 1 as before -- while on a
+# board with no host the UART backend PRINTS the cause instead. That is the difference between a
+# reported fault and an unexplained hang on hardware we cannot attach a debugger to.
+# Assumes sp is valid, which it is for any trap after startup (sp is set a few instructions in).
+_merlin_trap:
+  csrr  a0, mcause
+  li    t0, 0x800             # not an `ori` immediate (I-type is -2048..2047)
+  or    a0, a0, t0
+  call  htif_exit
 6:
   j     6b
 
