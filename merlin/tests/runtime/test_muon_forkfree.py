@@ -228,7 +228,7 @@ def test_real_fp32_capsule_grades_forkfree_against_its_golden(tmp_path):
         [MH.TensorArg("W", 16, 16, ins["W"]["decoded"], "f32"),
          MH.TensorArg("A0", 16, 16, ins["A0"]["decoded"], "f32")],
         [MH.TensorArg("Y0", 16, 16, [0.0] * 256, "f32")],
-        kernel_symbol="radiance_kernel")
+        kernel_symbol="radiance_kernel", model=muon._model_for("radiance"))
     elf = muon.compile_kernel_forkfree(prog, tmp_path, target="radiance")
     console, cycles, _ = muon.run_elf(str(elf), simulator="cyclotron", timeout=300)
     outputs, _ = muon.parse_output(console, cycles)

@@ -66,8 +66,9 @@ def _adapter(simulator: str) -> Callable:
         # LLVM + RTL-derived transcode) and record which toolchain produced the graded ELF, so the experiment
         # measures fork-free coverage and never hides a fork fallback (MERLIN_MUON_FORKFREE_ONLY fails closed).
         from ..runtime.backends import muon_harness as _mh
-        program = _mh.program_from_cb(cb, kernel_src) or kernel_src
-        elf, toolchain = muon.compile_for_oracle(program, workdir, target=cb.get("target", "radiance"))
+        target = cb.get("target", "radiance")
+        program = _mh.program_from_cb(cb, kernel_src, muon._model_for(target)) or kernel_src
+        elf, toolchain = muon.compile_for_oracle(program, workdir, target=target)
         t1 = time.perf_counter()
         console, cycles, summary = muon.run_elf(elf, simulator=simulator, timeout=timeout)
         t2 = time.perf_counter()

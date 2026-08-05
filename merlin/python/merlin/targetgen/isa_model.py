@@ -47,6 +47,43 @@ class IsaModel:
     # address-space qualifier macros. Empty for a single flat address space.
     address_spaces: dict[str, int] = field(default_factory=dict)
     address_space_field: str = ""
+    # runtime ABI: the SIMT runtime contract a fork-free backend needs on top of the encoding — derived by
+    # mlc's runtime_abi pass from the target's own artifacts (core RTL CSR table + SFU dispatch + core params,
+    # the shipped BSP asm, the sim config). Keys: ``base_isa_family`` (e.g. "riscv32"), ``xlen``,
+    # ``special_csrs`` {role: number}, ``sfu_ops`` {op: {opcode, funct3}}, ``apertures`` {name: address},
+    # ``provenance``. Empty for a target whose runtime ABI has not been derived (the consumer fails closed).
+    runtime_abi: dict = field(default_factory=dict)
+
+    def special_csr(self, role: str) -> int:
+        """The derived CSR number for a named role (e.g. ``warp_id``/``num_warps``/``mhartid``). Raises when the
+        runtime ABI does not carry it — the fork-free consumer must fail closed, never guess a CSR number."""
+        csrs = (self.runtime_abi or {}).get("special_csrs") or {}
+        if role not in csrs:
+            raise KeyError(f"runtime_abi has no special CSR {role!r} for target {self.target!r} "
+                           "(derive it, do not hardcode)")
+        return int(csrs[role])
+
+    def sfu_op(self, op: str) -> dict:
+        """The derived ``{opcode, funct3}`` for a SIMT-control op (e.g. ``tmc``/``wspawn``). Raises when the
+        runtime ABI does not carry it (fail closed)."""
+        ops = (self.runtime_abi or {}).get("sfu_ops") or {}
+        if op not in ops:
+            raise KeyError(f"runtime_abi has no SFU op {op!r} for target {self.target!r} "
+                           "(derive it, do not hardcode)")
+        return dict(ops[op])
+
+    def aperture(self, name: str) -> int:
+        """The derived address for a named memory aperture (``dram_base``/``stack_base``/``console_mmio``).
+        Raises when the runtime ABI does not carry it (fail closed)."""
+        aps = (self.runtime_abi or {}).get("apertures") or {}
+        if name not in aps:
+            raise KeyError(f"runtime_abi has no aperture {name!r} for target {self.target!r} "
+                           "(derive it, do not hardcode)")
+        return int(aps[name])
+
+    def base_isa_family(self) -> str:
+        """The derived base-ISA family (e.g. ``riscv32``), or ``""`` when not derived."""
+        return str((self.runtime_abi or {}).get("base_isa_family") or "")
 
     def is_fixed_format(self) -> bool:
         """True when the target's ISA is one fixed field layout selected by an opcode field (the mlc
@@ -152,8 +189,10 @@ def isa_model_from_encoding(target: str, fact: dict) -> IsaModel:
     width = int(fact.get("inst_width") or 0) or (max((hi for hi, _ in field_layout.values()), default=31) + 1)
     spaces = {str(k): int(v) for k, v in (fact.get("address_spaces") or {}).items()}
     as_field = str(fact.get("address_space_field") or "")
+    runtime_abi = fact.get("runtime_abi") if isinstance(fact.get("runtime_abi"), dict) else {}
     return IsaModel(target=target, inst_width=width, field_layout=field_layout, opcode_table=opcode_table,
-                    address_spaces=spaces, address_space_field=(as_field if as_field in field_layout else ""))
+                    address_spaces=spaces, address_space_field=(as_field if as_field in field_layout else ""),
+                    runtime_abi=runtime_abi or {})
 
 
 def isa_model_for_target(target: str) -> IsaModel:

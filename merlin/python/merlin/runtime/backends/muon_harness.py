@@ -25,11 +25,6 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
-# The console MMIO putchar aperture the cyclotron/print-runtime consumes. A per-target BSP fact (the same
-# address the vendor print runtime writes); kept in this per-target edge module, not a shared code path.
-CONSOLE_MMIO_ADDR = 0xFF080000
-
-
 @dataclass
 class TensorArg:
     """One kernel argument: a named tensor with a shape and its flat row-major values."""
@@ -58,10 +53,17 @@ def _emit_fill(arr: str, arg: TensorArg) -> list[str]:
     return lines
 
 
-_HELPERS = f"""
+def _render_helpers(model) -> str:
+    """The harness's print/identity helpers, with the hart-id CSR and the console-MMIO putchar aperture DERIVED
+    from the target's ``runtime_abi`` — no hardcoded CSR number or address. The hart-id CSR is the RISC-V machine
+    ``mhartid``; the console aperture is the target's own (sim/BSP-defined) putchar region. Fail closed if the
+    runtime ABI does not carry them."""
+    hid_csr = model.special_csr("mhartid")
+    console = model.aperture("console_mmio")
+    return f"""
 #include <stdint.h>
-static inline uint32_t _hid(void){{uint32_t r;__asm__ volatile("csrr %0,0xF14":"=r"(r));return r;}}
-static inline void _pc(char c){{*(volatile char*)0x{CONSOLE_MMIO_ADDR:08x}u=c;}}
+static inline uint32_t _hid(void){{uint32_t r;__asm__ volatile("csrr %0,{hid_csr:#x}":"=r"(r));return r;}}
+static inline void _pc(char c){{*(volatile char*)0x{console:08x}u=c;}}
 static void _pu(uint32_t v){{char b[12];int n=0;if(!v){{_pc('0');return;}}while(v){{b[n++]=(char)('0'+v%10);v/=10;}}while(n)_pc(b[--n]);}}
 static void _ps(const char*s){{while(*s)_pc(*s++);}}
 static float _u2f(uint32_t b){{union{{uint32_t u;float f;}}x;x.u=b;return x.f;}}
@@ -74,7 +76,7 @@ static void _pf(float x){{if(x<0.0f){{_pc('-');x=-x;}}uint32_t ip=(uint32_t)x;fl
 
 
 def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[TensorArg],
-                  *, kernel_symbol: str) -> str:
+                  *, kernel_symbol: str, model) -> str:
     """Assemble the self-contained C program: helpers + the agent's kernel function + a ``main`` that
     embeds every input, calls ``kernel_symbol(<inputs>, <outputs>)``, and prints ``OUT <name> <r> <c> ...``
     for each output followed by ``DONE``. ``args`` is the kernel's input arguments in ABI order (weight,
@@ -84,7 +86,8 @@ def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[Tenso
     # reassemble-after-transcode path. Prepended to the agent's definition (which starts with its return
     # type), yielding e.g. `static inline __attribute__((always_inline)) void radiance_kernel(...)`.
     kernel_inlined = "static inline __attribute__((always_inline)) " + kernel_fn_src.strip()
-    body: list[str] = [_HELPERS.strip(), "", kernel_inlined, "", "int main(void){", "  if(_hid()!=0)return 0;"]
+    body: list[str] = [_render_helpers(model).strip(), "", kernel_inlined, "", "int main(void){",
+                       "  if(_hid()!=0)return 0;"]
     call_ptrs: list[str] = []
     for a in args:
         arr = f"_in_{a.name}"
@@ -131,7 +134,7 @@ def _shape2d(shape: list) -> tuple[int, int]:
     return rows, dims[-1]
 
 
-def program_from_cb(cb: dict, kernel_fn_src: str) -> str | None:
+def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
     """Build the self-contained harness program for a capsule directly from its COMMAND BUFFER, or return
     None when the artifact is already a full program (has ``main``) — the caller then compiles it directly.
 
@@ -182,4 +185,5 @@ def program_from_cb(cb: dict, kernel_fn_src: str) -> str | None:
     out_args = [_arg(n, False) for n in outs]
     if any(a is None for a in in_args + out_args):
         return None                                   # a missing operand/shape -> fail safe, do not guess
-    return build_program(kernel_fn_src, in_args, out_args, kernel_symbol=_kernel_symbol(kernel_fn_src))
+    return build_program(kernel_fn_src, in_args, out_args, kernel_symbol=_kernel_symbol(kernel_fn_src),
+                         model=model)

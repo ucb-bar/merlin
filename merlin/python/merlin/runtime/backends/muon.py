@@ -247,22 +247,52 @@ def compile_kernel(kernel_src: str, workdir: str | Path) -> Path:
 # CSR name, prepended so a STOCK assembler accepts the boot source (mu_start.S #defines RISCV_CUSTOM0 itself
 # via the C preprocessor; only the vx_* macros + the `nw` CSR need supplying). A muon-target BSP asset, kept
 # in this per-target edge module.
-_FORKFREE_BSP_PREAMBLE = (
-    ".set nw, 0xfc1\n"
-    ".macro vx_tmc reg\n.insn r 0x0b, 0, 0, x0, \\reg, x0\n.endm\n"
-    ".macro vx_wspawn n, f\n.insn r 0x0b, 1, 0, x0, \\n, \\f\n.endm\n"
-)
+def render_simt_preamble(model) -> str:
+    """Render the stock-assembler shim the BSP source needs, ENTIRELY from the target's derived ``runtime_abi``
+    — the SIMT-control pseudo-mnemonics as explicit ``.insn`` CUSTOM-slot forms (opcode + funct3 from the SFU
+    dispatch) plus the num-warps CSR alias the boot references (``csrr t0, nw``). No opcode/funct3/CSR literal:
+    every value comes from ``model.runtime_abi`` (fail closed if it is absent — never a hardcoded default)."""
+    tmc, wsp = model.sfu_op("tmc"), model.sfu_op("wspawn")
+    nw = model.special_csr("num_warps")
+    return (f".set nw, {nw:#05x}\n"
+            f".macro vx_tmc reg\n.insn r {tmc['opcode']:#04x}, {tmc['funct3']}, 0, x0, \\reg, x0\n.endm\n"
+            f".macro vx_wspawn n, f\n.insn r {wsp['opcode']:#04x}, {wsp['funct3']}, 0, x0, \\n, \\f\n.endm\n")
+
+
+def _model_for(target: str):
+    """The derived IsaModel for a target, or a MuonUnavailable when no encoding fact is present (fail closed)."""
+    from ...targetgen.isa_model import isa_model_from_encoding
+    from ...targetgen.rtl import mlc_bridge
+    fact = mlc_bridge.isa_encoding_for(target)
+    if not fact:
+        raise MuonUnavailable(f"no derived ISA encoding fact for target {target!r}")
+    return isa_model_from_encoding(target, fact)
+
+
+def forkfree_compile_triple(model) -> tuple[str, str]:
+    """Derive the STOCK-clang ``--target`` triple + ``-mabi`` from the target's derived ``base_isa_family`` —
+    the source substrate the fixed-format core re-encodes (Muon re-encodes rv32 → ``riscv32``/``ilp32``). Fail
+    closed on a non-RISC-V base: the transcoder's RISC-V decode taxonomy would silently mis-decode it."""
+    fam = model.base_isa_family()
+    if fam == "riscv32":
+        return "riscv32", "ilp32"
+    if fam == "riscv64":
+        return "riscv64", "lp64"
+    raise MuonError(f"fork-free build needs a RISC-V base substrate; derived base_isa_family={fam!r} "
+                    f"for target {model.target!r} (fail closed — the re-encode assumes a RISC-V source)")
 
 
 def build_forkfree_bsp(workdir: str | Path, *, target: str = "radiance", num_warps: int = 1) -> list[Path]:
     """Reproducibly build the fork-free BSP (boot + runtime shims) from the target's shipped sources — no
-    transient or committed binaries. Returns the object list :func:`compile_kernel_forkfree` links."""
+    transient or committed binaries. The assembler shim is rendered from the target's derived ``runtime_abi``
+    (:func:`render_simt_preamble`), not a hardcoded preamble. Returns the object list
+    :func:`compile_kernel_forkfree` links."""
     from . import muon_bsp
     from ...targetgen.contract.toolchain import mlir_bin
     lib = lib_dir()
     return muon_bsp.build_bsp(lib / "src/mu_start.S", lib / "tohost.S", Path(workdir) / "bsp",
                               target=target, clang=str(mlir_bin("clang")), mc=str(mlir_bin("llvm-mc")),
-                              asm_preamble=_FORKFREE_BSP_PREAMBLE, num_warps=num_warps)
+                              asm_preamble=render_simt_preamble(_model_for(target)), num_warps=num_warps)
 
 
 def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[str | Path] | None = None,
@@ -298,11 +328,14 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     if march is None:
         march = derive_march(model)
 
-    # 1. STOCK compile -> rv32 object (self-contained: no PIC, no jump tables, no relaxation).
+    # 1. STOCK compile -> base-ISA object (self-contained: no PIC, no jump tables, no relaxation). The source
+    # substrate triple + ABI are DERIVED from the target's base_isa_family (Muon re-encodes rv32); fail closed
+    # on a non-RISC-V base.
+    triple, mabi = forkfree_compile_triple(model)
     src = work / "kernel.c"
     src.write_text(kernel_c, encoding="utf-8")
     obj = work / "kernel.o"
-    cc = subprocess.run([str(clang), "--target=riscv32", f"-march={march}", "-mabi=ilp32", "-mno-relax",
+    cc = subprocess.run([str(clang), f"--target={triple}", f"-march={march}", f"-mabi={mabi}", "-mno-relax",
                          "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-pic", "-fno-jump-tables",
                          "-c", str(src), "-o", str(obj)], capture_output=True, text=True)
     if cc.returncode != 0:

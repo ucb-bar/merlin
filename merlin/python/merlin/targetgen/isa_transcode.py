@@ -157,6 +157,14 @@ class FixedFormatTranscoder:
     def __init__(self, model: IsaModel):
         if not model.is_fixed_format():
             raise TranscodeError("transcoder requires a fixed-format model (field layout + opcode table)")
+        # The rv32 decode taxonomy below (_OP_IMM/_STYPE/_BTYPE/_AUIPC …) is the RISC-V base ISA — valid only
+        # when the target re-encodes a RISC-V substrate. Make that assumption EXPLICIT + fail-closed: if the
+        # derived runtime ABI declares a non-RISC-V base family, refuse rather than silently mis-decode. (A
+        # target whose runtime ABI has not been derived leaves the family blank -> the legacy path is allowed.)
+        fam = model.base_isa_family()
+        if fam and not fam.startswith("riscv"):
+            raise TranscodeError(f"fixed-format transcode assumes a RISC-V base substrate; derived "
+                                 f"base_isa_family={fam!r} for target {model.target!r} (fail closed)")
         self.fl = dict(model.field_layout)
         self.width = int(model.inst_width)
         self.opcodes = {int(v) for v in model.opcode_table.values()}
