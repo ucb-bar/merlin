@@ -373,7 +373,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                     blocks.append({"type": "text", "text": c["text"]})
                 elif "toolUse" in c:
                     tu = c["toolUse"]
-                    blocks.append({"type": "tool_use", "name": tu["name"], "input": tu.get("input", {})})
+                    blocks.append({"type": "tool_use", "id": tu.get("toolUseId"),
+                                   "name": tu["name"], "input": tu.get("input", {})})
             emit({"type": "assistant", "message": {
                 "id": f"bedrock_{rnd}_{it}", "model": mid,
                 "usage": {"input_tokens": u.get("inputTokens", 0),
@@ -408,6 +409,11 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                     output = _bash_in_sandbox(te, ws, bundle, inp.get("command", ""), sandbox, cmd_timeout)
                 results.append({"toolResult": {"toolUseId": tu["toolUseId"],
                                                 "content": [{"text": output or "(no output)"}]}})
+            # claude-compatible tool_result event so the transcript is the authoritative record (post-hoc
+            # trace reads + the mask-leak audit no longer need to reconstruct results from broker channels).
+            emit({"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": r["toolResult"]["toolUseId"],
+                 "content": r["toolResult"]["content"][0]["text"]} for r in results]}})
             messages.append({"role": "user", "content": results})
     finally:
         tf.close()

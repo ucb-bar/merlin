@@ -170,6 +170,7 @@ def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
         tok = info.get("tokens") or {}
         cache = tok.get("cache") or {}
         blocks = []
+        tool_results = []
         for p in msg.get("parts", []) or []:
             if not isinstance(p, dict):
                 continue
@@ -177,8 +178,13 @@ def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
                 blocks.append({"type": "text", "text": p.get("text", "")})
             elif p.get("type") == "tool":
                 st = p.get("state") or {}
-                blocks.append({"type": "tool_use", "name": p.get("tool", "tool"),
+                cid = p.get("callID") or p.get("id")            # same id links tool_use <-> tool_result
+                blocks.append({"type": "tool_use", "id": cid, "name": p.get("tool", "tool"),
                                "input": st.get("input", {}) if isinstance(st, dict) else {}})
+                out = st.get("output") if isinstance(st, dict) else None
+                if out is not None:
+                    tool_results.append({"type": "tool_result", "tool_use_id": cid,
+                                         "content": out if isinstance(out, str) else json.dumps(out)})
         emit({"type": "assistant", "message": {
             "id": f"opencode_{rnd}_{info.get('id', '')}",
             "model": info.get("modelID") or mid,
@@ -187,6 +193,10 @@ def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
                       "cache_read_input_tokens": cache.get("read", 0) or 0,
                       "cache_creation_input_tokens": cache.get("write", 0) or 0},
             "content": blocks}})
+        # claude-compatible tool_result events so the transcript is self-authoritative + the mask-leak
+        # audit can correlate each read's result (parity with the claude-CLI path).
+        if tool_results:
+            emit({"type": "user", "message": {"content": tool_results}})
 
 
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
