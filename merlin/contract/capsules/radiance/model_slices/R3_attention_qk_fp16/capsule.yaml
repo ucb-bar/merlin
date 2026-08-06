@@ -10,13 +10,13 @@ inputs:
   shape:
   - 16
   - 32
-  dtype: f16
+  dtype: fp16
 - name: K
   role: input
   shape:
   - 16
   - 32
-  dtype: f16
+  dtype: fp16
 operation:
   op: attention_qk
   attributes:

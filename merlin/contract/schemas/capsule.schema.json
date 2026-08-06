@@ -24,7 +24,7 @@
           "name": {"type": "string"},
           "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]},
           "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
-          "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16", "fp8_e4m3"]},
+          "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "fp16", "f32", "bf16", "fp8_e4m3", "fp8_e5m2", "mxfp8", "mxfp6", "mxfp4", "fp6_e3m2", "fp4_e2m1", "e8m0"]},
           "layout": {"type": "string"}
         },
         "additionalProperties": false
@@ -34,7 +34,7 @@
       "type": "object",
       "required": ["op"],
       "properties": {
-        "op": {"type": "string", "enum": ["matmul", "linear", "conv2d", "movement", "attention_qk", "attention_pv", "resident_reuse"]},
+        "op": {"type": "string", "enum": ["matmul", "linear", "conv2d", "movement", "attention_qk", "attention_pv", "resident_reuse", "rmsnorm"]},
         "attributes": {"type": "object", "additionalProperties": true}
       },
       "additionalProperties": false
@@ -44,7 +44,7 @@
       "required": ["compare", "dtype"],
       "properties": {
         "compare": {"type": "string", "enum": ["exact_int", "tolerance_float"]},
-        "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16", "fp8_e4m3"]},
+        "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "fp16", "f32", "bf16", "fp8_e4m3", "fp8_e5m2", "mxfp8", "mxfp6", "mxfp4", "fp6_e3m2", "fp4_e2m1", "e8m0"]},
         "acc_scale": {"type": "number"},
         "requant_shift": {"type": "integer"},
         "rtol": {"type": "number"},
@@ -75,7 +75,8 @@
             "resident_reuse": {"type": "boolean"},
             "conv2d": {"type": "boolean"},
             "movement": {"type": "boolean"},
-            "padded_edge": {"type": "boolean"}
+            "padded_edge": {"type": "boolean"},
+            "rmsnorm": {"type": "boolean"}
           },
           "additionalProperties": false
         }

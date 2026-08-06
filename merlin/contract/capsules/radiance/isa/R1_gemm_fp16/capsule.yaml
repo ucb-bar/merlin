@@ -10,13 +10,13 @@ inputs:
   shape:
   - 32
   - 16
-  dtype: f16
+  dtype: fp16
 - name: A0
   role: input
   shape:
   - 16
   - 32
-  dtype: f16
+  dtype: fp16
 operation:
   op: matmul
   attributes:
