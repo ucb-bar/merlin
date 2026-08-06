@@ -113,34 +113,53 @@ def _submission_sources(run_dir: Path) -> list[Path]:
     return [p for p in sub.rglob("*") if p.is_file() and p.suffix in (".py", ".txt", ".md", ".yaml", ".mlir")]
 
 
-def _conformance(run_dir: Path, arm: str) -> dict:
+# Human-readable violation text for the core checks conformance.py computes (exec-command / AST derived).
+_CORE_VIOL = {
+    "no_regex_ok": "submission uses regex (import re) — prohibited for development",
+    "isa_tools_used": "never ran isa_tools (disasm/lint/asm) on its own emitted artifact",
+    "asm_used": "external_backend but never assembled words via `isa_tools asm` (hand-packed encodings)",
+    "cca_used": "never enumerated the lever set (cca_contract / action_catalog) — mandated for assisted arms",
+    "full_selfcheck": "never ran a full `--capsules all` self-check (only spot-checked one capsule)",
+}
+
+
+def _endpoint_of(run_dir: Path) -> str:
+    """endpoint_kind for the conformance computation. Prefer the run manifest; else infer external_backend
+    from a shipped kernel.S (self-hosted ISA) — only affects whether `asm_used` is required."""
+    ek = _load_yaml(run_dir / "run_manifest.yaml").get("endpoint_kind")
+    if ek:
+        return ek
+    sub = run_dir / "submission"
+    return "external_backend" if (sub.is_dir() and any(sub.rglob("kernel.S"))) else ""
+
+
+def _conformance(run_dir: Path, arm: str, round_block: dict | None = None) -> dict:
     """Per-arm dev-conformance: did the agent use the right contracts/info/tools + develop in xDSL w/o
-    regex, as the arm's ladder rung requires? Best-effort from the transcript + submission source."""
+    regex, as the arm's ladder rung requires? The CORE signals (no-regex via AST, isa_tools/asm/cca use,
+    full self-check) come from the authoritative :mod:`conformance` — the per-round block the run recorded
+    if present, else recomputed from the persisted transcript + submission — so this tool and the live run
+    never diverge. Layered on top are the evaluate-only extras conformance.py does not cover (contract
+    consulted, xDSL authoring, arm-4 RTL derivation)."""
+    import conformance as _CONF
+    if round_block and isinstance(round_block, dict) and round_block.get("checks"):
+        base = round_block                                     # authoritative: computed live with the real endpoint
+    else:
+        tps = sorted((run_dir / "rounds").glob("round_*.transcript.jsonl"))
+        tp = tps[-1] if tps else run_dir / "transcript.jsonl"
+        base = _CONF.compute(tp, run_dir / "submission", arm, _endpoint_of(run_dir))
+    checks: dict = dict(base.get("checks") or {})
+    viol: list[str] = [_CORE_VIOL[k] for k, v in checks.items() if v is False and k in _CORE_VIOL]
+
     blob = "\n".join(_transcript_commands(run_dir))
     assisted = ("merlin_assisted" in arm) or ("rtlchecks" in arm)
-    is_arm4 = "rtlchecks" in arm
-    checks: dict = {}
-    viol: list[str] = []
-    # floor (all arms): consulted the contract + ran the self-check oracle loop
-    checks["contracts_read"] = ("merlin/contract" in blob)
-    checks["self_check_ran"] = ("agent_selfcheck.py" in blob) or ("agent_selfcheck" in blob)
-    if not checks["self_check_ran"]:
-        viol.append("never ran agent_selfcheck (the required oracle iteration loop)")
-    if assisted:                                       # arm-3 / arm-4
-        srcs = _submission_sources(run_dir)
-        src_text = "\n".join(p.read_text(errors="ignore") for p in srcs if p.suffix == ".py")
+    checks["contracts_read"] = ("merlin/contract" in blob)     # floor: consulted the capability contract
+    if assisted:                                               # arm-3 / arm-4: authored via xDSL
+        src_text = "\n".join(p.read_text(errors="ignore")
+                             for p in _submission_sources(run_dir) if p.suffix == ".py")
         checks["xdsl_authored"] = ("xdsl" in src_text.lower()) or ("xdsl" in blob.lower())
-        # NO regex in the agent's development (the cardinal dev rule) — a submission `import re` / re.compile
-        checks["no_regex"] = not (("import re" in src_text) or ("re.compile" in src_text)
-                                  or ("re.match" in src_text) or ("re.search" in src_text))
-        checks["isa_tools_ran"] = ("isa_tools.py" in blob)
         if not checks["xdsl_authored"]:
             viol.append("no evidence the backend was authored in xDSL")
-        if not checks["no_regex"]:
-            viol.append("submission uses regex (import re) — prohibited for development")
-        if not checks["isa_tools_ran"]:
-            viol.append("never ran isa_tools disasm/lint on its own emitted artifact")
-    if is_arm4:                                        # arm-4 only: genuine RTL derivation
+    if "rtlchecks" in arm:                                     # arm-4 only: genuine RTL derivation
         checks["rtl_derived"] = ("targetgen/rtl" in blob) or ("rtl_facts" in blob) or ("circt" in blob.lower())
         if not checks["rtl_derived"]:
             viol.append("arm-4 but no evidence it derived from the RTL facts / ran the CIRCT checks")
@@ -174,7 +193,8 @@ def evaluate(run_dir: Path) -> dict:
     terminated = _terminal_reason(run_dir)             # 429 / quota / api_error cut the round short
     submission = (run_dir / "submission").is_dir() and any((run_dir / "submission").iterdir())
     clean = bool(r0.get("answer_access_clean", True)) and not (r0.get("audit_hits") or [])
-    conf = _conformance(run_dir, arm)
+    rlast = rounds[-1] if rounds else {}                # conformance reflects the FINAL round's submission
+    conf = _conformance(run_dir, arm, rlast.get("conformance"))
     issues: list[str] = []
     if terminated:
         issues.append(f"NOT COMPLETED — round terminated by {terminated} (agent cut off by quota/provider, "

@@ -1206,6 +1206,11 @@ def main(argv: list[str] | None = None) -> int:
     # and EACH wait, so a fresh --resume invocation continues exactly where it stopped — not from 0.
     state_p = run_dir / "qa_loop_state.yaml"
     rounds_summary: list = []
+    try:                             # endpoint_kind — drives the per-round dev-conformance flag (asm applies only to external_backend)
+        from merlin.targetgen.generate_prompt import prompt_slots as _pslots
+        _endpoint_kind = _pslots(_te(), _manifest()).get("endpoint_kind", "")
+    except Exception:  # noqa: BLE001
+        _endpoint_kind = ""
     _best_progress = None            # plateau early-stop: best (#passed, -total_mismatch) seen so far
     _plateau_stall = 0               # consecutive rounds with no progress
     rl_waits_used = 0
@@ -1329,7 +1334,17 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[round {rnd}] resume-note skipped: {type(_e).__name__}: {_e}")
         rsum = ET.parse_transcript(tpath)
         audit = audit_transcript(tpath, arm)
-        rounds_summary.append({"round": rnd, "agent_rc": rc,
+        # dev-conformance FLAG (never a grade gate): did the agent develop the way this arm mandates?
+        try:
+            import conformance as _CONF
+            conf = _CONF.compute(tpath, ws / "submission", arm, _endpoint_kind)
+            _bad = _CONF.failing_checks(conf)
+            if _bad:
+                print(f"[round {rnd}] NOT CONFORMANT — failing: {', '.join(_bad)} "
+                      "(flag only; the capsule grade still reports)")
+        except Exception as _e:  # noqa: BLE001
+            conf = {"conformant": None, "error": f"{type(_e).__name__}: {_e}"}
+        rounds_summary.append({"round": rnd, "agent_rc": rc, "conformance": conf,
                                "all_pass": verdict.get("all_pass"),
                                "n_passed": verdict.get("n_passed"),
                                "n_capsules": verdict.get("n_capsules"),
