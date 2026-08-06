@@ -1006,9 +1006,10 @@ def _cmakelists(model_archive: Path, rt: Path, abi: Path, cgen: Path,
         omp_debug += ("target_compile_definitions(app PRIVATE MERLIN_PROF_ZEPHYR=1)\n"
                       f"target_compile_definitions(app PRIVATE "
                       f"MERLIN_PROF_HEARTBEAT_MS={DEBUG_HEARTBEAT_S * 1000})\n")
-    if debug:
-        omp_debug += (f'target_compile_definitions(app PRIVATE '
-                      f'"MERLIN_BUILD_HASH=\\"{build_hash}\\"")\n')
+    # The build identity is a macro in EVERY image, not just debug ones: the allocation guard below
+    # is always linked, and a `FAIL alloc` line has to name the binary it came from.
+    omp_debug += (f'target_compile_definitions(app PRIVATE '
+                  f'"MERLIN_BUILD_HASH=\\"{build_hash}\\"")\n')
     # PLL BRING-UP, only when the descriptor asks for a clock the chip is not already on. Without it
     # the image runs at the reset clock, which on the SoC this was written for is a tenth of what the
     # vendor's own demos use. The macros are the SAME derived set the bare-metal console uses -- one
@@ -1028,8 +1029,12 @@ target_sources(app PRIVATE
   {cgen}/model_call.c
   {rt}/merlin_model.c
   {abi}/mlir_runtime.c
+  {rt}/merlin_alloc_guard_zephyr.c
 {dbg_src}{"  " + str(rt) + "/libomp_zephyr.c" + chr(10) if omp else ""})
 target_include_directories(app PRIVATE {rt} {cgen})
+# Route the lowered model's allocations through the guard, so a heap that runs out reports the size
+# it could not satisfy instead of storing through a null pointer. See merlin_alloc_guard_zephyr.c.
+zephyr_link_libraries(-Wl,--wrap=malloc)
 {omp_debug}
 {ext}
 # The lowered model object + weights blob, pre-built (clang rv64gcv / ld -r -b binary),

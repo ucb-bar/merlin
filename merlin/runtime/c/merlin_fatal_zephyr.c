@@ -58,7 +58,11 @@ void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
 	       mcause, mepc, mtval,
 	       (unsigned)((mstatus >> 9) & 3), (unsigned)((mstatus >> 13) & 3),
 	       MERLIN_BUILD_HASH);
-	/* Terminate in the protocol so the host parser reports a FAILED run rather than an absent one. */
+	/* Terminate in the protocol so the host parser reports a FAILED run rather than an absent one.
+	 * The WALL_CYCLES sentinel matters as much as DONE: it is the marker the FireSim runner blocks
+	 * on, and without it a crashed run holds the FPGA for its entire timeout. A whisper build that
+	 * faulted eight minutes in sat on the board for four hours before anyone could see why. */
+	printk("=== MODELBLASTER_WALL_CYCLES === 0\n");
 	printk("DONE\n");
 
 	k_fatal_halt(reason);
