@@ -65,6 +65,7 @@ static inline uint64_t merlin_prof_rdtime(void) {
 #if defined(MERLIN_PROF_ZEPHYR) && defined(MERLIN_PROF_HEARTBEAT_MS)
 #include <zephyr/kernel.h>
 #include <zephyr/arch/cpu.h>
+#include <stdbool.h>
 
 static int64_t merlin_prof_next_beat;
 
@@ -84,12 +85,23 @@ static int64_t merlin_prof_next_beat;
  * costs nothing when the model is progressing normally.
  */
 static void merlin_prof_beat(int32_t id) {
+  static bool beat_once;
   int64_t now_ms = k_uptime_get();
   unsigned long ms;
 
-  if (now_ms < merlin_prof_next_beat) {
+  /* ALWAYS emit the first one, however fast the run is.
+   *
+   * Rate-limiting alone means a model that finishes inside one interval prints no ALIVE at all --
+   * measured on the FPGA, where the whole inference is 1.4 seconds of simulated time against a 5-second
+   * beat. Zero lines is then ambiguous in the worst way: it looks identical to a heartbeat that is
+   * broken or was never linked in, which is exactly the doubt this line exists to remove. One
+   * unconditional beat makes ABSENCE meaningful -- if you see none at all, the mechanism really is
+   * dead, and that is worth knowing too.
+   */
+  if (beat_once && now_ms < merlin_prof_next_beat) {
     return;
   }
+  beat_once = true;
   merlin_prof_next_beat = now_ms + (int64_t)MERLIN_PROF_HEARTBEAT_MS;
   __asm__ volatile("csrr %0, mstatus" : "=r"(ms));
   printk("ALIVE t=%lld op=%d hart=%d vs=%u\n", (long long)(now_ms / 1000), (int)id,
