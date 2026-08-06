@@ -444,14 +444,16 @@ def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
                          features=frozenset([PEROP_BLOCK_NAME]),
                          sdk_dir=sdk_dir, debug=debug)
         return {"elf": b["elf"], "ram_bytes": b["ram_bytes"],
-                "build_hash": b.get("build_hash", ""), "backend": backend}
+                "build_hash": b.get("build_hash", ""), "backend": backend,
+                "op_profile_table": b.get("op_profile_table")}
     b = zm.build_app(bundle, work, board=brd.name, backend="rvv", rvv_hart=0,
                      cpus=max(harts, brd.harts), n_harts=harts, int8_compute=True,
                      rvv_schedule=pkg.schedule_text,
                      cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
                      features=frozenset([PEROP_BLOCK_NAME]), vlen=brd.vlen, sdk_dir=sdk_dir,
                      debug=debug)
-    return {"elf": b["elf"], "ram_bytes": b["ram_bytes"], "build_hash": b.get("build_hash", "")}
+    return {"elf": b["elf"], "ram_bytes": b["ram_bytes"], "build_hash": b.get("build_hash", ""),
+            "op_profile_table": b.get("op_profile_table")}
 
 
 def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, sdk_dir=None,
@@ -477,12 +479,20 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
         bundle, work, board="spike_riscv64",          # run on spike; the ELF for the board is separate
         backend=backend, rvv_hart=0, harts=max(2, harts), int8_compute=True, n_harts=harts,
         features=frozenset([PEROP_BLOCK_NAME]), references=refs, timeout=timeout, **tune)
-    board_build = zm.build_app(
-        bundle, work / f"board_h{harts}", board=brd.name, backend=backend, rvv_hart=0,
-        cpus=max(2, harts, brd.harts if not vec else 2), int8_compute=True,
-        features=frozenset([PEROP_BLOCK_NAME]), n_harts=harts, sdk_dir=sdk_dir,
-        debug=debug, **tune)
-    return res, board_build
+    def board(dbg: bool):
+        return zm.build_app(
+            bundle, work / f"board_h{harts}{'_dbg' if dbg else ''}", board=brd.name,
+            backend=backend, rvv_hart=0,
+            cpus=max(2, harts, brd.harts if not vec else 2), int8_compute=True,
+            features=frozenset([PEROP_BLOCK_NAME]), n_harts=harts, sdk_dir=sdk_dir,
+            debug=dbg, **tune)
+
+    # Both variants come out of ONE simulation. They are the same model, the same lowering and the same
+    # references; the debug build only adds instrumentation, so gating it separately would burn hours of
+    # spike to re-establish an answer we already have. Shipping them together is the point: the plain
+    # image is what you run for a number, and the instrumented one is what you run when that goes wrong,
+    # without a second round trip to us to ask for it.
+    return res, board(False), (board(True) if debug else None)
 
 
 def main(argv=None) -> int:
@@ -513,7 +523,7 @@ def main(argv=None) -> int:
                     help="images to build/simulate at once (default: min(images, 6)); each is one "
                          "single-threaded spike")
     ap.add_argument("--debug", action="store_true",
-                    help="build DIAGNOSTIC images instead of delivery ones. Same computation, but "
+                    help="ALSO build a diagnostic twin of every image, into the same package. Same computation, but "
                          "each announces the stage it reached, heartbeats while it runs (naming the "
                          "op it is inside), probes that the linked DRAM region really exists, reports "
                          "stack high-water marks, and turns a fault into one greppable FAIL line "
@@ -604,11 +614,15 @@ def main(argv=None) -> int:
         if a.no_spike or model in no_spike_models:
             print(f"  [{tag}] building (no simulation) in {work}", flush=True)
             board_build = build_board_only(bundle, brd, harts, work=work, sdk_dir=a.sdk_dir,
-                                           backend=backend, debug=a.debug)
+                                           backend=backend, debug=False)
+            dbg_build = (build_board_only(bundle, brd, harts, work=work / "dbg",
+                                          sdk_dir=a.sdk_dir, backend=backend, debug=True)
+                         if a.debug else None)
             print(f"  [{tag}] built: {board_build['ram_bytes'] // 2**20} MB region, "
-                  f"{board_build['build_hash']}", flush=True)
-            return {"console": "", "metrics": {}, "outputs": None, "backend": backend}, \
-                board_build
+                  f"{board_build['build_hash']}"
+                  + (f" (+debug {dbg_build['build_hash']})" if dbg_build else ""), flush=True)
+            return ({"console": "", "metrics": {}, "outputs": None, "backend": backend},
+                    board_build, dbg_build)
         print(f"  [{tag}] building + simulating in {work}", flush=True)
         if brd.flow == boards.FLOW_BAREMETAL:
             out = build_baremetal(bundle, brd, work=work, timeout=a.timeout, sdk_dir=a.sdk_dir)
@@ -649,7 +663,7 @@ def main(argv=None) -> int:
                             harts, backend))
             if got is None:
                 continue
-            res, board_build = got
+            res, board_build, dbg_build = got
             # Scalar images carry `_scalar` so a directory listing cannot confuse the two: they are
             # different instruction sets for different harts, not two builds of one thing.
             suffix = "" if backend == "rvv" else f"_{backend}"
@@ -682,6 +696,35 @@ def main(argv=None) -> int:
             print(f"  {elf_name}: cycles={cyc:,} gate={res.get('tier_ok')} "
                   f"audit={'OK' if rep.ok else 'FAIL'}" if cyc is not None else
                   f"  {elf_name}: not simulated, audit={'OK' if rep.ok else 'FAIL'}", flush=True)
+            # The instrumented twin, in the SAME package. Someone debugging a board does not want to
+            # come back to us for a different download, and someone reporting a number does not want to
+            # sift diagnostics out of it -- so both are here, distinguished by the filename.
+            if dbg_build is not None:
+                dbg_name = f"{model}_{a.dtype}_h{harts}{suffix}_debug_{brd.name}.elf"
+                shutil.copy2(dbg_build["elf"], dest / dbg_name)
+                drep = elf_audit.audit(dest / dbg_name, brd, ram_bytes=dbg_build["ram_bytes"],
+                                       require_vector=(backend == "rvv"))
+                audits[dbg_name] = drep.to_dict()
+                if not drep.ok:
+                    problems += [f"{dbg_name}: {q}" for q in drep.problems]
+                # The op-id -> op-name table for this model. A debug run prints ~1000 `PROF <id> ...`
+                # lines and an `ALIVE ... op=<id>`; without this file every one of those ids is an
+                # unreadable integer, which makes the trace worthless to whoever mails it back.
+                tbl = dbg_build.get("op_profile_table")
+                if tbl and Path(tbl).is_file():
+                    shutil.copy2(tbl, dest / f"{model}_h{harts}{suffix}.op_table.json")
+                binaries.append({
+                    "model": model, "elf": dbg_name, "harts": harts, "dtype": a.dtype,
+                    "backend": backend, "debug": True,
+                    "build_hash": dbg_build.get("build_hash", ""),
+                    "ram_bytes": dbg_build["ram_bytes"],
+                    "spike_cycles": None, "spike_vlen": None,
+                    "gate_ok": bool(res.get("ok")), "tier_ok": res.get("tier_ok"),
+                    "cos": res.get("cos"), "rel": res.get("rel"),
+                    "upload_estimate_s": drep.facts.get("upload_estimate_s"),
+                })
+                print(f"  {dbg_name}: instrumented twin, audit={'OK' if drep.ok else 'FAIL'}",
+                      flush=True)
         # 1-hart vs N-hart bit-identity: the property a multicore run exists to establish
         if len(outputs) > 1:
             base_h = min(outputs)
@@ -943,11 +986,20 @@ channel was wrong.
 
 
 DEBUG_DOC = r"""\
-## These are DIAGNOSTIC images
+## Every binary here comes in two builds
 
-Same computation as the delivery package, same references, same grading — but built to explain
-themselves, because the last two rounds came back as "it printed a few lines and stopped" and there was
-no way to tell a hang from a crash from an unfinished upload. Extra lines you will see:
+Look at the `build` column above. For each model and hart count there are **two** ELFs:
+
+- the **plain** one — what you run to get a number. Minimal output, nothing extra in the way.
+- the **`_debug`** one — the same model, same lowering, same weights, same references, but built to
+  explain itself. Run this one the moment the plain one does something you cannot interpret.
+
+They are separate binaries with separate `build_hash` values, so a log always says which you ran. Both
+were produced from a single simulation of the shared computation, so the instrumented build is not a
+different program in any way that affects the answer — it just says more.
+
+**Please send back the `_debug` log for anything that fails.** The extra lines are the difference
+between "it stopped" and a diagnosis:
 
 | line | means |
 |---|---|
@@ -960,8 +1012,15 @@ no way to tell a hang from a crash from an unfinished upload. Extra lines you wi
 `grade.py` reads all of this: run it on a log that stopped early and it reports the last stage, the
 fault, and any failed memory probe instead of just saying the run did not complete.
 
-**These are the ones to run when something goes wrong**, not instead of the delivery package. They are
-the same size and speed, so there is no cost to running a debug image first if you prefer.
+The `PROF <id> <ticks> <hits>` lines are a **per-op trace** of the whole model — roughly a thousand
+of them. `<model>_h<N>.op_table.json` in this package maps each id to the op it measured (name, family,
+result shape), so the trace reads as "this much time in that operator" rather than as integers. The
+`op=<id>` field in `ALIVE` uses the same ids, which is what makes a stalled run point at a specific
+operator instead of at the model as a whole.
+
+If you only have time for one thing: run **`deepjscc` at 1 hart, `_debug`**. It is the smallest image
+here, uploads in a couple of minutes, and its log answers vector width, per-hart vector state, real
+clock, DRAM extent, stack usage and the whole op trace in one go.
 
 """
 
@@ -970,7 +1029,7 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
     loader = LOADER_DOC.get(brd.name, LOADER_DOC["default"])
     # Each board gets the explanation of ITS last failure, not a generic one.
     superseded_doc = SUPERSEDED_DOC if brd.sdk_chip else KODIAK_VSTATE_DOC
-    debug_doc = DEBUG_DOC if debug else ""
+    debug_doc = DEBUG_DOC if any(b.get("debug") for b in manifest["binaries"]) else ""
     # Say what was actually checked for THIS board's console. Claiming a `.htif` check on a board whose
     # console is its own UART is both wrong and exactly the kind of detail that erodes trust in the
     # rest of the list.
@@ -984,6 +1043,7 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
     rows = "\n".join(
         f"| `{b['elf']}` | {b['model']} | {b['harts']} | "
         f"{'RVV' if b.get('backend', 'rvv') == 'rvv' else 'scalar'} | "
+        f"{'**diagnostic**' if b.get('debug') else 'plain'} | "
         f"{b['ram_bytes'] // 2**20} MB | {_upload_note(b['upload_estimate_s'])} | "
         f"{_verdict(b)} |"
         for b in manifest["binaries"])
@@ -1156,8 +1216,8 @@ one is a one-line rebuild on our side. In particular we would like to know `vlen
 
 {superseded_doc}## The binaries
 
-| file | model | harts | ISA | linked region | est. upload | our verdict |
-|---|---|---|---|---|---|---|
+| file | model | harts | ISA | build | linked region | est. upload | our verdict |
+|---|---|---|---|---|---|---|---|
 {rows}
 
 Upload time is the *memory* size, not the file size — a UART loader transmits `MemSiz`, so a big

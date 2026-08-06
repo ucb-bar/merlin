@@ -1356,8 +1356,16 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     elf = build_dir / "zephyr" / "zephyr.elf"
     if not elf.is_file():
         raise ZephyrModelError(f"build produced no elf at {elf}")
-    return {"elf": elf, "app_dir": app, "build_dir": build_dir, "backend": backend,
-            "ram_bytes": ram_bytes, "build_hash": build_hash, **info}
+    out = {"elf": elf, "app_dir": app, "build_dir": build_dir, "backend": backend,
+           "ram_bytes": ram_bytes, "build_hash": build_hash, **info}
+    # The per-op table has to travel WITH the image. A debug run emits a thousand `PROF <id> ...` lines
+    # and an `ALIVE ... op=<id>` naming where it stopped, and every one of those ids is meaningless
+    # without the mapping from id to op name, family and shape. Shipping the trace without the table is
+    # shipping a log nobody can read.
+    if prof_table is not None:
+        out["op_profile_table"] = Path(work) / "op_profile_table.json"
+        out["op_profile_ops"] = len(prof_table)
+    return out
 
 
 #: Base ISA string for a whole-model RVV spike run. VLEN is NOT part of it — see `spike_isa`.
