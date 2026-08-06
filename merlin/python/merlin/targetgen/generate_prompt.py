@@ -441,14 +441,17 @@ AFTER you converge on the fast functional tier, so tight, narrow loops cost you 
 _SEAM_MENU = """## Menu of OOT modification points (merlin_assisted — the machine-checkable lever set)
 The granted CCA spine is not just files to read: two answer-free calls ENUMERATE the full,
 target-specific set of compiler seams you may modify for `{target}`, so you build the right lever set
-instead of guessing from the file tree (neither imports the oracle or the grader):
-- `cca_contract.check_bijection("{target}")` — the *what-to-build* checklist: which lever axes this
-  target's ISA/RTL admits vs. which the compiler already routes (`orphan_fields` = leverable axes still
-  to wire; `orphan_routes` = routes with no backing lever). Build every leverable axis; add no phantom.
-- `action_catalog.escalation_ladder(axis, "{target}")` — for one axis, the full
+instead of guessing from the file tree (neither imports the oracle or the grader). Both are runnable
+CLIs exactly like `isa_tools.py` — run them from the workspace root:
+- `python cca_contract.py check-bijection {target}` — the *what-to-build* checklist: which lever axes
+  this target's ISA/RTL admits vs. which the compiler already routes (`orphan_fields` = leverable axes
+  still to wire; `orphan_routes` = routes with no backing lever). Build every leverable axis; add no
+  phantom. (API form, if you prefer: `from cca_contract import check_bijection; check_bijection("{target}")`.)
+- `python action_catalog.py escalation-ladder <axis> {target}` — for one axis, the full
   FLAG→KNOB→HEURISTIC→PASS→CODEGEN ladder weakest→strongest, each row naming the concrete OOT-relative
   seam file to edit and whether it is forkable today (the "which section, and the next stronger lever"
-  answer). The seams point at YOUR generated OOT package, not our in-tree reference.
+  answer). The seams point at YOUR generated OOT package, not our in-tree reference. (API form:
+  `from action_catalog import escalation_ladder; escalation_ladder("<axis>", "{target}")`.)
 
 """
 
@@ -579,8 +582,9 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str)
                  "prohibited; parse the IR structurally). This is checked on your submission.")
         n += 1
         if has_cca:
-            L.append(f"{n}. Enumerate your lever set with `cca_contract.check_bijection(\"{target}\")` + "
-                     "`action_catalog.escalation_ladder(axis, \"" + target + "\")` and build every leverable axis.")
+            L.append(f"{n}. Enumerate your lever set: run `python cca_contract.py check-bijection {target}` "
+                     f"+ `python action_catalog.py escalation-ladder <axis> {target}` (runnable CLIs, like "
+                     "`isa_tools.py`) and build every leverable axis they list.")
             n += 1
         L.append(f"{n}. Before every self_check, run `python isa_tools.py lint` and `disasm` on {art} and "
                  "confirm every instruction decodes and the kernel halts.")

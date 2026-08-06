@@ -7,7 +7,10 @@ identical for every accelerator. No target semantics here.
 from __future__ import annotations
 from typing import Any
 
-from ..contract import interface_emit as _IE
+try:
+    from ..contract import interface_emit as _IE
+except ImportError:  # sandbox: staged flat on sys.path (no parent package) — use the flat interface_emit shim
+    import interface_emit as _IE  # type: ignore[no-redef]
 
 
 def parse_interface(mlir_text: str) -> dict[str, Any]:
