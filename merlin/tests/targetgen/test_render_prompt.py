@@ -68,20 +68,29 @@ def test_grading_model_is_derived_from_the_corpus_not_hardcoded_integer():
     assert "exact-integer" not in as_["grading_model"]
 
 
+# Whole sections whose CONTENT is derived from endpoint_kind (how the kernel receives operands + how it
+# terminates) — a RoCC/pointer-argument endpoint and a self-hosted-ISA DRAM-map+halt endpoint legitimately
+# differ here. They are derived, not overfit, so the shared-skeleton comparison must drop them.
+_ENDPOINT_SECTIONS = ("## DRAM address", "## Program termination")
+
+
 def _canonicalize(p: str, s: dict) -> str:
     # replace target-specific slot VALUES with fixed tokens, and drop the derived per-target blocks
-    # (the ISA-facts brief + the corpus-family bullets) — what remains is the shared skeleton.
+    # (the ISA-facts brief, the corpus-family bullets, and the endpoint-derived ABI/termination sections) —
+    # what remains is the shared skeleton.
     for val, tok in ((s["kernel_symbol"], "KSYM"), (s["tool_stem"], "TOOL"), (s["target"], "T")):
         p = p.replace(val, tok)
     p = p.replace(s["endpoint_desc"], "ENDPOINT")
     p = p.replace(s["grading_model"], "GRADING")   # float-vs-integer grading model is a derived slot
-    out, in_facts = [], False
+    out, in_facts, in_endpoint = [], False, False
     for ln in p.splitlines():
+        if ln.startswith("## "):                   # section boundary: re-decide whether we're in a dropped one
+            in_endpoint = any(ln.startswith(h) for h in _ENDPOINT_SECTIONS)
         if ln.startswith("## Target ISA facts"):
             in_facts = True
         if ln.startswith("## Final status line"):
             in_facts = False
-        if in_facts or ln.startswith("- `"):
+        if in_facts or in_endpoint or ln.startswith("- `"):
             continue
         out.append(ln)
     return "\n".join(out)
