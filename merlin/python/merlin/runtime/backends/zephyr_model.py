@@ -1482,10 +1482,17 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
                 # Most metrics are counters, but not all: `build_hash` is a hex identity string. A
                 # parser that assumes int() crashes on the first non-numeric metric and takes the whole
                 # run with it, so keep the raw string when it is not a number.
-                try:
-                    metrics[parts[1]] = int(parts[2])
-                except ValueError:
-                    metrics[parts[1]] = parts[2]
+                #
+                # And some carry a LIST: `METRIC vector_harts 0 1 2` names every vector-capable hart.
+                # Reading only the first token reported it as `0`, which says "zero vector harts" --
+                # precisely the opposite of what a chip with three of them was reporting.
+                if len(parts) > 3:
+                    metrics[parts[1]] = " ".join(parts[2:])
+                else:
+                    try:
+                        metrics[parts[1]] = int(parts[2])
+                    except ValueError:
+                        metrics[parts[1]] = parts[2]
         elif l.startswith("ARGMAX "):
             p = l.split()
             argmax = np.array([int(x) for x in p[2:2 + int(p[1])]], dtype=np.int64)

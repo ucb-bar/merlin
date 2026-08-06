@@ -254,10 +254,16 @@ def parse_console(text):
         if l.startswith("METRIC "):
             p = l.split()
             if len(p) >= 3 and p[1] != "iter_cycles":
-                try:
-                    metrics[p[1]] = int(p[2])
-                except ValueError:
-                    metrics[p[1]] = p[2]
+                # Some metrics carry a LIST, not a scalar: `METRIC vector_harts 0 1 2` names every
+                # vector-capable hart. Taking only p[2] reported "vector_harts: 0", which reads as
+                # "zero vector harts" -- the exact opposite of what a 3-hart chip was saying.
+                if len(p) > 3:
+                    metrics[p[1]] = " ".join(p[2:])
+                else:
+                    try:
+                        metrics[p[1]] = int(p[2])
+                    except ValueError:
+                        metrics[p[1]] = p[2]
     return vals, metrics
 
 
