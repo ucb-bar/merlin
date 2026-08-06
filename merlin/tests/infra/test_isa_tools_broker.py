@@ -47,6 +47,10 @@ def _model() -> IsaModel:
 def broker(monkeypatch):
     BR = _load_broker()
     m = _model()
+    # Hermetic: pin the endpoint+target to the fake model's (self-hosted external_backend), so routing does
+    # not depend on the ambient MERLIN_TARGET_EXPERIMENT (whose default gemmini endpoint would send asm to
+    # the RoCC path and ignore the monkeypatched model).
+    monkeypatch.setattr(BR, "_endpoint_and_target", lambda: ("external_backend", "fake"))
     monkeypatch.setattr(BR, "_model", lambda: m)
     monkeypatch.setattr(BR, "_assemble", lambda text: A.assemble_text(m, text))  # bypass llvm-mc
     return BR

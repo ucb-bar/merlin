@@ -41,7 +41,12 @@ def load_capsule(capsule_dir: str | Path, *, contract: str | Path | None = None)
     """Load + validate a capsule.yaml; stamp its directory for interface-MLIR resolution."""
     d = Path(capsule_dir)
     cap = yaml.safe_load((d / "capsule.yaml").read_text(encoding="utf-8"))
-    schemas.validate(cap, "capsule", contract=contract)
+    try:
+        schemas.validate(cap, "capsule", contract=contract)
+    except schemas.ContractViolation as e:
+        # Fail closed on a schema-invalid capsule (a corpus bug must surface, never be silently dropped),
+        # but name the offending capsule so a discovery-time crash is instantly diagnosable.
+        raise schemas.ContractViolation(f"capsule '{d.name}' ({d}): {e}") from e
     cap["__dir__"] = str(d)
     return cap
 
