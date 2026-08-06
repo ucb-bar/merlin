@@ -69,36 +69,59 @@ def test_the_config_follows_the_board():
     assert "CONFIG_FPU_SHARING=n" in conf
 
 
-def test_kodiaks_config_reflects_what_its_zephyr_can_actually_build():
-    """Two settings Kodiak forces, both learned by failing to link, both recorded in the descriptor.
+def test_kodiak_lets_zephyr_manage_vector_state():
+    """Kodiak's vector config, and the reasoning that had to be corrected twice to arrive at it.
 
-    FPU_SHARING must be y: its Zephyr's isr.S calls z_riscv_vstate_save/_restore whenever V is on with
-    eager switching, and those live in fpu.c/fpu.S which only compile under FPU_SHARING -- with n the
-    image does not link. Zephyr-level V is OFF because enabling it puts `v` in the GLOBAL march and SDK
-    0.17.0 has no matching libgcc multilib (the link falls back to a 32-bit one: "ELFCLASS32
-    incompatible with ELFCLASS64").
+    The descriptor used to say `fpu_sharing=True, zephyr_vector_ext=False`, on this argument: that
+    tree's isr.S calls z_riscv_vstate_save/_restore whenever V is on with eager switching, those live
+    in fpu.c/fpu.S, and fpu.c only compiles under FPU_SHARING -- so V without FPU_SHARING would not
+    link; and enabling V at all would put `v` in the global -march, for which SDK 0.17.0 has no libgcc
+    multilib ("ELFCLASS32 incompatible with ELFCLASS64").
 
-    TWO CLAIMS THAT USED TO BE HERE WERE WRONG, and the second one caused a shipped binary to trap on
-    silicon:
+    Both halves were true of the Zephyr the `kodiak` BRANCH pins (submodule 5a06eb0d) and false of the
+    tree we build against. ZEPHYR_BASE is the `dev` pin (852bb170), two commits later, which contains
+    "riscv: decouple V/F save-restore + add RISCV_V_KERNEL_ONLY (Saturn fork)". There,
+    arch/riscv/core/CMakeLists.txt compiles v.c under CONFIG_RISCV_ISA_EXT_V *independently of*
+    FPU_SHARING and says so in a comment, and RISCV_V_KERNEL_ONLY keeps `v` out of the global -march.
+    Verified by building: z_riscv_vstate_save/_restore link with FPU_SHARING=n.
 
-    * "that tree has no RISCV_V_KERNEL_ONLY" -- it HAS one, in `arch/riscv/Kconfig.isa`, and it exists
-      precisely to strip `v` from the global march while re-adding it per-file. That is the proper way
-      to turn Zephyr's V support on here, and is the better long-term route than keeping it off.
-    * "vectors still work because reset.S enables mstatus.VS under CONFIG_FPU" -- reset.S enables VS for
-      the BOOT context only. A thread's initial mstatus is MSTATUS_DEF_RESTORE (MPP | MPIE), with VS
-      added only under CONFIG_RISCV_ISA_EXT_V, so switching into the worker puts VS back to Off. With V
-      off in Zephyr, NOTHING enabled vector state for the thread that runs the model. Measured: the
-      image trapped with mcause=2 on `csrr a0, vlenb` in forward()'s prologue. The generated worker now
-      sets VS|FS itself (see the test below); spike and the Saturn RTL do not enforce VS, which is why
-      this survived every simulated run.
+    What the stale pair cost: with no CONFIG_RISCV_ISA_EXT_V, no thread's mstatus carries VS (a
+    thread's initial mstatus is MSTATUS_DEF_RESTORE = MPP|MPIE, and VS is OR'd in only under that
+    symbol), so the OpenMP master lost vector state the moment pool creation context-switched it out,
+    and FPU_SHARING=y then mis-routed the resulting illegal-instruction trap into the FP retry path --
+    a hang with nothing printed. On the chip: every single-hart image PASSED and every multi-hart image
+    FAILED. Neither spike nor the Saturn RTL enforces mstatus.VS, which is why no simulation caught it.
+
+    The settings asserted below are the ones the chip's OWN known-working RVV+SMP sample uses
+    (origin/kodiak:samples/q8_gemm_minmax/prj.conf, which ships a ref-out): ISA_EXT_V on,
+    VECTOR_MAX_LEN 512, FPU_SHARING off.
     """
     b = boards.board("chipyard_kodiak")
-    assert b.fpu_sharing is True and b.zephyr_vector_ext is False
+    assert b.fpu_sharing is False and b.zephyr_vector_ext is True
     conf = zm._prj_conf(b.harts, "rvv", b)
     assert "CONFIG_MP_MAX_NUM_CPUS=3" in conf
-    assert "CONFIG_FPU_SHARING=y" in conf
-    assert "CONFIG_RISCV_ISA_EXT_V=y" not in conf
-    assert "CONFIG_FPU=y" in conf, "mstatus.VS comes from CONFIG_FPU on this tree"
+    assert "CONFIG_FPU_SHARING=n" in conf
+    assert "CONFIG_RISCV_ISA_EXT_V=y" in conf, "Zephyr must manage per-thread vector state"
+    assert "CONFIG_RISCV_VECTOR_MAX_LEN=512" in conf, "the chip's own sample states 512"
+    assert "CONFIG_RISCV_V_KERNEL_ONLY=y" in conf, "keeps `v` out of the global -march"
+
+
+def test_a_stale_vector_ext_flag_is_refused_rather_than_built():
+    """Denying Zephyr vector state on a tree that supports it is always a stale descriptor now.
+
+    It is not a harmless conservative choice: it is the exact configuration that shipped a Kodiak
+    package where every multi-hart image hung silently. The flag exists for trees that CANNOT express
+    V without polluting the global -march; on a tree that can, the build must stop rather than quietly
+    produce the image again.
+    """
+    import dataclasses
+    import pytest
+
+    b = dataclasses.replace(boards.board("chipyard_kodiak"), zephyr_vector_ext=False)
+    if not zm._kconfig_has("RISCV_V_KERNEL_ONLY"):
+        pytest.skip("this Zephyr tree genuinely cannot express V without the global -march")
+    with pytest.raises(RuntimeError, match="zephyr_vector_ext"):
+        zm._prj_conf(b.harts, "rvv", b)
 
 
 def test_a_vector_capable_tree_still_gets_the_full_vector_config():

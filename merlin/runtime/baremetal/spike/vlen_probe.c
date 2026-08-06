@@ -42,6 +42,81 @@ static void kv(const char *k, long v)
 	htif_putc('\n');
 }
 
+/* How fast is this core REALLY running?
+ *
+ * Not a curiosity. One of the two boards this ships to was left on its 50 MHz reset clock because our
+ * Zephyr path never programmed the PLL, while the vendor's own demos run the part at 500 MHz -- so
+ * every cycle count we reported was against a clock nobody had established. And now that there IS a
+ * variant that programs the PLL, "did it take?" is a question a returned log has to be able to answer:
+ * a PLL that silently did not engage looks like a model that is merely slow.
+ *
+ * mcycle counts core clocks; mtime counts a fixed reference the SDK states (MTIME_FREQ). Their ratio
+ * over the same interval is the core frequency, measured rather than declared. Costs a fraction of a
+ * second. Reported in kHz so it fits an integer print without losing anything that matters.
+ */
+static void probe_clock(void)
+{
+#ifdef MERLIN_MTIME_HZ
+	uint64_t t0, t1, c0, c1;
+	/* Roughly a tenth of a second of the reference clock -- long enough that the read overhead does
+	 * not skew it, short enough that nobody notices. */
+	const uint64_t ticks = (uint64_t)MERLIN_MTIME_HZ / 10u;
+
+	__asm__ volatile("rdtime %0" : "=r"(t0));
+	__asm__ volatile("rdcycle %0" : "=r"(c0));
+	do {
+		__asm__ volatile("rdtime %0" : "=r"(t1));
+	} while (t1 - t0 < ticks);
+	__asm__ volatile("rdcycle %0" : "=r"(c1));
+
+	kv("mtime_hz_declared", (long)MERLIN_MTIME_HZ);
+	if (t1 > t0) {
+		kv("core_khz_measured",
+		   (long)(((c1 - c0) * (uint64_t)MERLIN_MTIME_HZ) / ((t1 - t0) * 1000u)));
+	}
+#endif
+}
+
+/* Does the DRAM we linked for actually answer?
+ *
+ * We build gemmelos images for 1 GB because the chip's owner said 1 GB, while that chip's own linker
+ * script declares 256 MB -- and the largest model needs a region well past 256 MB. If the smaller
+ * number is the true one, the image writes into nothing and dies with no output, which is the exact
+ * symptom we have twice mistaken for a hang. Settling that costs seconds here versus a
+ * many-minute upload of the model that depends on the answer.
+ *
+ * Write-then-read a pattern at a few points across the region rather than walking it: a walk of
+ * hundreds of megabytes is itself minutes on a slow core. `volatile` so the compiler cannot decide the
+ * read is redundant, and a fence between them so the write is not still sitting in a buffer.
+ */
+static void probe_memory(void)
+{
+#if defined(MERLIN_REGION_BASE) && defined(MERLIN_REGION_BYTES)
+	const uint64_t base = (uint64_t)MERLIN_REGION_BASE;
+	const uint64_t span = (uint64_t)MERLIN_REGION_BYTES;
+
+	kv("region_mb", (long)(span >> 20));
+	/* Start at 1/8 rather than 0: the low part of the region holds this program. */
+	for (int i = 1; i <= 8; i++) {
+		uint64_t off = (span >> 3) * (uint64_t)i;
+		volatile uint64_t *p;
+		uint64_t want, got;
+
+		if (off >= span) {
+			off = span - 4096u;
+		}
+		p = (volatile uint64_t *)(uintptr_t)(base + off);
+		want = 0x5A5A5A5A00000000ULL | (uint64_t)i;
+		*p = want;
+		__asm__ volatile("fence rw, rw" ::: "memory");
+		got = *p;
+		htif_puts("PROBE mem_mb ");
+		htif_putd((long)(off >> 20));
+		htif_puts(got == want ? " ok\n" : " FAIL\n");
+	}
+#endif
+}
+
 int main(void)
 {
 	uint64_t hartid = 0, misa = 0, mstatus = 0, vlenb = 0, vl8 = 0, vl32 = 0;
@@ -86,6 +161,9 @@ int main(void)
 	kv("vlmax_e8", (long)vl8);
 	__asm__ volatile("vsetvli %0, zero, e32, m1, ta, ma" : "=r"(vl32));
 	kv("vlmax_e32", (long)vl32);
+
+	probe_clock();
+	probe_memory();
 
 	htif_puts("DONE\n");
 	htif_exit(0);

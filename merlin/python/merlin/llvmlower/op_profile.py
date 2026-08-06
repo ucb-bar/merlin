@@ -162,7 +162,13 @@ def find_forward_ops(mlir_text: str) -> tuple[int, int, list[dict]]:
         line = lines[i]
         stripped = line.strip()
         if depth == 0:
-            if stripped.startswith("func.return"):
+            # Both spellings. MLIR prints func's terminator as bare `return` in the pretty form and
+            # `func.return` in the generic one, and which you get depends on who last round-tripped
+            # the module -- the per-op tagging pass emits the pretty form. Matching only the
+            # qualified name meant the scan ran off the end of the function, hit the module's closing
+            # brace, and reported "unbalanced braces" for IR that was perfectly well formed. The
+            # split on whitespace is so `returns_something` cannot masquerade as the terminator.
+            if stripped.split(" ", 1)[0].rstrip(":") in ("return", "func.return"):
                 ret_line = i
                 break
             # A top-level op boundary is an SSA-assignment line (``%r = <op> ...``) at the
@@ -184,9 +190,9 @@ def find_forward_ops(mlir_text: str) -> tuple[int, int, list[dict]]:
                 })
         depth += _depth_delta(line)
         if depth < 0:                      # closed the function body without a return
-            raise OpProfileError("unbalanced braces before `func.return` in @forward")
+            raise OpProfileError("unbalanced braces before the terminator of @forward")
     if ret_line is None:
-        raise OpProfileError("no `func.return` found in @forward")
+        raise OpProfileError("no `return`/`func.return` found in @forward")
     for rec in ops:
         rec["elems"] = _elem_count(rec["result_type"])
     return start, ret_line, ops

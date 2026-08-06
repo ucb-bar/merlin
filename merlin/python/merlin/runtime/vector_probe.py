@@ -27,7 +27,8 @@ from .backends.spike_model import DRAM_BASE, RVV_CFLAGS, _harness_dir, _run
 
 def build(work: str | Path, *, dram_base: int = DRAM_BASE, dram_bytes: int | None = None,
           vlen: int | None = None, console: str = "htif", sdk_dir: str | Path | None = None,
-          sdk_chip: str | None = None, chip_freq_hz: int | None = None) -> Path:
+          sdk_chip: str | None = None, chip_freq_hz: int | None = None,
+          mtime_hz: int | None = None) -> Path:
     """Link the probe ELF into ``work`` and return its path.
 
     ``vlen`` only affects the ``-march`` the probe itself is built with; the number it REPORTS comes
@@ -61,8 +62,21 @@ def build(work: str | Path, *, dram_base: int = DRAM_BASE, dram_bytes: int | Non
     elif console != CONSOLE_HTIF:
         raise RuntimeError(f"unknown console kind {console!r}")
 
+    # Facts the probe cannot read out of a CSR, so they are passed in and CHECKED against the hardware
+    # rather than reported back to us as our own assumptions. The region is the one the model images
+    # are linked for -- the probe writes and reads across it, which is how a board whose real DRAM is
+    # smaller than we were told announces itself in seconds instead of as a silent boot failure minutes
+    # into a model upload. The mtime rate is the SDK's own MTIME_FREQ, used as the reference against
+    # which mcycle gives a MEASURED core frequency (the number that says whether a PLL took effect).
+    probe_defs: list[str] = []
+    if dram_bytes:
+        probe_defs += [f"-DMERLIN_REGION_BASE={hex(dram_base)}ULL",
+                       f"-DMERLIN_REGION_BYTES={hex(int(dram_bytes))}ULL"]
+    if mtime_hz:
+        probe_defs.append(f"-DMERLIN_MTIME_HZ={int(mtime_hz)}u")
+
     objs = []
-    for obj, src, extra in (("probe_main.o", h / "vlen_probe.c", []),
+    for obj, src, extra in (("probe_main.o", h / "vlen_probe.c", probe_defs),
                             ("crt.o", h / "crt.S", []),
                             ("console.o", console_src, console_defs),
                             ("libc_min.o", h / "libc_min.c", [])):

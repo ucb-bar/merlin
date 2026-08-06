@@ -64,7 +64,24 @@ The run ends by itself: the image calls `sys_reboot()`, which the SoC turns into
 the loader prints `DUT forcefuly exit`. Everything between the banner and `DONE` is what we need back.
 
 If your `tools/pyuartsi` is the pinned submodule (`c1bbb3a`), invoke it as `python3 -m pyuartsi` and drop
-`--use_symbols` — that version has neither the console-script entry point nor that flag.""",
+`--use_symbols` — that version has neither the console-script entry point nor that flag.
+
+### Please raise `--baudrate` for the large images
+
+The `57600` above is what your own `scripts/run_experiments.py` uses, and it is what the upload column
+in the table below assumes. At that rate the loader moves about **5.6 KB/s**, so the biggest model spends
+**hours** on the wire before a single instruction executes — with `--fesvr` polling `tohost` in a loop
+that has no timeout, so from the outside that is indistinguishable from a hang. We think this, not the
+compiled code, is why `whisper_tiny` came back FAIL on every hart count.
+
+`pyuartsi`'s serial layer takes the baud straight through to pyserial, and its own `Baudrate` enum goes
+to 4000000. At **921600** the same image is ~16x quicker. If a higher rate is not reliable on your
+setup, please tell us what is and we will quote honest numbers against it — and start with `deepjscc`,
+whose upload is about a megabyte at any baud.
+
+(Two corrections to what we sent last time, both ours: we quoted upload times computed from `MemSiz` at
+921600 baud. Your loader transmits only `SHT_PROGBITS` sections — so the byte count was too *high* — and
+you run it at 57600 — so the rate was 16x too *optimistic*. The table below fixes both.)""",
     "gemmelos_bearly25": """\
 **Output comes out of UART0 at 115200 baud, 8 data bits, 2 stop bits** — the same console your own
 `printf` uses on a `PLATFORM=CHIP` build. Open that terminal first, then load:
@@ -131,6 +148,39 @@ your SDK exactly, and it also runs at 500 MHz.
 
 There is **no handshake**: these images do not wait for `SOH`/`ENQ` from a host tester. They boot,
 compute, print, and stop.""",
+    "gemmelos_bearly25_zephyr_500mhz": """\
+**Output comes out of UART0 at 115200 baud.** Open that terminal first, then load exactly as for the
+50 MHz package:
+
+```bash
+make tsi-run TTY=<your TSI tty> BINARY=<THIS.elf>
+#   equivalently: uart_tsi +tty=<TSI tty> +baudrate=921600 <THIS.elf>
+```
+
+**This package is the 50 MHz one with your PLL raised to 500 MHz.** Identical model, identical
+lowering, identical weights; the only difference is that the image programs the clock before running.
+Run the 50 MHz package first — if that works and this one prints garbage, the divisor is wrong and you
+have lost nothing but one upload.
+
+The sequence is yours, not ours (`bmark-lib/simple_setup.c::init_test`), replayed against values read
+out of your own headers rather than written down by us:
+
+1. park every clock-selector domain on the slow source (`0x130000`, 4 domains, from `hal_rcc.h`);
+2. program the PLL at `0x140000` — ratio `500 MHz / SYS_CLK_FREQ` = **10**, fraction 0, then
+   `MDIV/ZDIV0/ZDIV1 = 1`, `LDO_ENABLE`, `PLLEN`, `POWERGOOD_VNN`, `PLLFWEN_B` in the order
+   `driver/intel/pll/pll.c::configure_pll` uses;
+3. switch the domains onto it;
+4. **re-program `UART0->DIV`** (offset 24) to `500000000 / 115200 - 1` = **4339**.
+
+Step 4 is the one that decides whether you get output or line noise, and it runs *after* Zephyr's
+SiFive driver has initialised the UART — the hook is ordered at `CONFIG_SERIAL_INIT_PRIORITY + 1`
+precisely so the driver cannot overwrite it with a divisor for the old clock.
+
+**What we could not check:** spike has no PLL, so this code path has never executed anywhere. What we
+did verify is that the emitted instructions are the right ones — we disassembled the image and read the
+sequence back (the four `0x130000` writes, ratio 10, and `DIV = 4339`). If it misbehaves, the 50 MHz
+package is unaffected, and `PROBE core_khz_measured` from `vlen_probe.elf` will tell us what the chip
+actually settled at.""",
     "default": """\
 Load the ELF with your usual loader and capture the console. The image is self-contained: no filesystem,
 no host I/O, no arguments. It ends by rebooting, after printing `DONE`.""",
@@ -152,10 +202,48 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 
 
+def diagnose(text):
+    """What a log that did NOT finish can still tell you.
+
+    "this log has no OUT line" is true of a hang, a crash, an unfinished upload and a board that never
+    booted -- four different problems, one message, and no way to tell them apart without asking. A
+    debug image emits STAGE/ALIVE/MEM/FAIL lines precisely so the log answers that itself, and this
+    prints what it found rather than making someone grep for it.
+    """
+    lines = text.splitlines()
+    def last(prefix):
+        return next((l for l in reversed(lines) if l.startswith(prefix)), None)
+    out = []
+    bh = next((l.split()[2] for l in lines
+               if l.startswith("METRIC build_hash") and len(l.split()) > 2), None)
+    if bh:
+        out.append(f"  build_hash : {bh}")
+    fatal = last("FAIL ")
+    if fatal:
+        out.append(f"  FAULT      : {fatal}")
+    stage = last("STAGE ")
+    out.append(f"  last STAGE : {stage if stage else '(none — not a debug image)'}")
+    alive = last("ALIVE ")
+    if alive:
+        out.append(f"  last ALIVE : {alive}")
+        out.append("               (it was still executing — a hang here is a slow op, not a dead core)")
+    bad_mem = [l for l in lines if l.startswith("MEM ") and l.endswith("FAIL")]
+    if bad_mem:
+        out.append(f"  MEMORY     : {len(bad_mem)} probe(s) FAILED — the linked region is larger than "
+                   "the DRAM that answers: " + ", ".join(l.split()[1] for l in bad_mem))
+    vs = [l for l in lines if "mstatus_vs" in l]
+    if vs:
+        out.append("  vector st. : " + "; ".join(l.replace("METRIC ", "") for l in vs[:4]))
+    return "\\n".join(out)
+
+
 def parse_console(text):
     out_line = next((l for l in text.splitlines() if l.startswith("OUT ")), None)
     if out_line is None or "DONE" not in text:
-        raise SystemExit("this log has no OUT line and/or no DONE — the run did not complete")
+        raise SystemExit("this run did not complete (no OUT line and/or no DONE). What the log does "
+                         "say:\\n" + diagnose(text) +
+                         "\\n\\nIf every field above is empty this is a delivery image; the debug "
+                         "package's images answer all of them.")
     parts = out_line.split()
     n = int(parts[1])
     bits = [int(x) for x in parts[2:2 + n]]
@@ -235,15 +323,23 @@ STATUS = {
     "spectformer": "VERIFIED. Bit-exact against the W8A8 reference on spike (1 and 3 harts) and on a "
                    "SpacemiT K1 board (real RVV silicon): w8a8_rel = 0.0. A failure here is about the "
                    "board, not about us — which is why this is the one to run first.",
-    "deepjscc": "VERIFIED with per-op register blocking: w8a8_cos = 1.0, rel = 0.0. (With the older "
-                "per-op-CLASS schedule this model scored 0.9176; that is fixed, not hidden.)",
+    "deepjscc": "VERIFIED: w8a8_cos = 1.0, rel = 0.0, on both the vector and the scalar image, at "
+                "every hart count, on spike. The scalar image is newly correct — the one in the "
+                "previous package computed w8a8_cos 0.9176 because per-op register blocking was "
+                "applied only to vector builds, and scalar images were shipped without ever being "
+                "simulated. Both halves of that are fixed: the blocking is unconditional, and no "
+                "image ships now without a gate behind it.",
     "lstmnetvit": "KNOWN DIVERGENT on RISC-V: w8a8_cos 0.9943 on spike and on the K1, while the same "
                   "IR is exact on x86. The 1-hart and N-hart runs ARE bit-identical, so it is useful "
                   "for bring-up and timing. Do not treat its output as an accuracy result — the cause "
                   "is ours to fix, not yours to debug.",
-    "whisper_tiny": "Builds and lowers with 100% of its MACs on the vector path (per-op blocking). Its "
-                    "encoder attention makes it much longer-running than the others; treat a long run "
-                    "as expected rather than as a hang, and send the console log whatever it says.",
+    "whisper_tiny": "RE-EXPORTED SMALLER since the last package, because its problem was never the "
+                    "code — it was the upload. Its token-embedding table was still fp32 (torchao's "
+                    "default filter matches nn.Linear only), 76 MB of a 117 MB bundle, with the TIED "
+                    "output projection stored a second time at a quarter the size. Quantizing it "
+                    "takes the image from 127 MB to 71 MB. It is still by far the largest thing here "
+                    "and still the longest-running; check the upload column against your link speed "
+                    "before starting, and send the console log whatever it says.",
 }
 
 
@@ -302,7 +398,7 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
 
 
 def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
-                     backend: str = "rvv"):
+                     backend: str = "rvv", debug: bool = False):
     """Build the board image and return its facts, without running it anywhere.
 
     The honest use for this is when the numbers are already established on better evidence than a
@@ -329,39 +425,63 @@ def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
                 "chip_freq_hz": b.get("chip_freq_hz"),
                 "console_provenance": b.get("console_provenance", {})}
     if backend != "rvv":
-        # A scalar image gets none of the vector machinery: no RVV package, no per-op register
-        # blocking, no -march vector width. Passing them would be meaningless at best and would
-        # reintroduce vector instructions at worst -- the whole point is an image that runs on a hart
-        # with no vector unit.
+        # A scalar image gets none of the vector machinery -- no RVV package, no -march vector width --
+        # but it DOES get per-op register blocking, and leaving it out was a correctness bug, not a
+        # simplification.
+        #
+        # Measured: without it, deepjscc's scalar image returns w8a8_cos 0.9176 (max_rel 5.0) while its
+        # vector image returns 1.0. 1-hart and 3-hart scalar produce the SAME wrong answer, so the
+        # scalar multicore route is not the cause; and an RVV build stripped of the RVV package but
+        # keeping the blocking is still exact, so the package is not the cause either. The blocking is.
+        # That image shipped and came back FAIL from the chip's owner, with no way to tell a wrong
+        # answer from a crash.
+        #
+        # It does not vectorise the image -- the point of a scalar build is a hart with no vector unit,
+        # and that property is checked, not assumed: `forward` audits at 0 vector instructions with
+        # this on, and `_audit` below fails the package if any appear.
         b = zm.build_app(bundle, work, board=brd.name, backend=backend, rvv_hart=0,
                          cpus=max(harts, brd.harts), n_harts=harts, int8_compute=True,
-                         sdk_dir=sdk_dir)
+                         features=frozenset([PEROP_BLOCK_NAME]),
+                         sdk_dir=sdk_dir, debug=debug)
         return {"elf": b["elf"], "ram_bytes": b["ram_bytes"],
                 "build_hash": b.get("build_hash", ""), "backend": backend}
     b = zm.build_app(bundle, work, board=brd.name, backend="rvv", rvv_hart=0,
                      cpus=max(harts, brd.harts), n_harts=harts, int8_compute=True,
                      rvv_schedule=pkg.schedule_text,
                      cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
-                     features=frozenset([PEROP_BLOCK_NAME]), vlen=brd.vlen, sdk_dir=sdk_dir)
+                     features=frozenset([PEROP_BLOCK_NAME]), vlen=brd.vlen, sdk_dir=sdk_dir,
+                     debug=debug)
     return {"elf": b["elf"], "ram_bytes": b["ram_bytes"], "build_hash": b.get("build_hash", "")}
 
 
-def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, sdk_dir=None):
-    """Build one image and run it on spike at the board's VLEN and hart count."""
+def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, sdk_dir=None,
+              debug: bool = False, backend: str = "rvv"):
+    """Build one image and run it on spike at the board's VLEN and hart count.
+
+    Both backends come through here. A SCALAR image used to be built and shipped without ever being
+    simulated, on the reasoning that it has no vector gate to run -- but the gate that matters is
+    numerical, not architectural, and skipping it shipped a deepjscc scalar image that computed
+    w8a8_cos 0.9176. It is graded against the same references as the vector one now.
+    """
+    # The RVV package is exactly that: RVV. A scalar build takes neither its schedule nor its cflags
+    # (which carry the vector -march), but does take the per-op register blocking, which is what makes
+    # the arithmetic right rather than what makes it vector.
+    vec = backend == "rvv"
     pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
+    tune = dict(rvv_schedule=pkg.schedule_text,
+                cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=vlen) if vec else {}
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
     res = zm.build_and_run(
         bundle, work, board="spike_riscv64",          # run on spike; the ELF for the board is separate
-        backend="rvv", rvv_hart=0, harts=max(2, harts), int8_compute=True, n_harts=harts,
-        rvv_schedule=pkg.schedule_text, cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
-        features=frozenset([PEROP_BLOCK_NAME]), references=refs, vlen=vlen, timeout=timeout)
+        backend=backend, rvv_hart=0, harts=max(2, harts), int8_compute=True, n_harts=harts,
+        features=frozenset([PEROP_BLOCK_NAME]), references=refs, timeout=timeout, **tune)
     board_build = zm.build_app(
-        bundle, work / f"board_h{harts}", board=brd.name, backend="rvv", rvv_hart=0,
-        cpus=max(2, harts), int8_compute=True, rvv_schedule=pkg.schedule_text,
-        cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
-        features=frozenset([PEROP_BLOCK_NAME]), n_harts=harts, vlen=vlen, sdk_dir=sdk_dir)
+        bundle, work / f"board_h{harts}", board=brd.name, backend=backend, rvv_hart=0,
+        cpus=max(2, harts, brd.harts if not vec else 2), int8_compute=True,
+        features=frozenset([PEROP_BLOCK_NAME]), n_harts=harts, sdk_dir=sdk_dir,
+        debug=debug, **tune)
     return res, board_build
 
 
@@ -392,6 +512,13 @@ def main(argv=None) -> int:
     ap.add_argument("--jobs", type=int, default=None,
                     help="images to build/simulate at once (default: min(images, 6)); each is one "
                          "single-threaded spike")
+    ap.add_argument("--debug", action="store_true",
+                    help="build DIAGNOSTIC images instead of delivery ones. Same computation, but "
+                         "each announces the stage it reached, heartbeats while it runs (naming the "
+                         "op it is inside), probes that the linked DRAM region really exists, reports "
+                         "stack high-water marks, and turns a fault into one greppable FAIL line "
+                         "carrying the build hash. For a board we cannot attach to, this is what "
+                         "makes ONE returned console log a diagnosis instead of a new question.")
     ap.add_argument("--out", default=None, help="destination dir (default: an out/artifacts product)")
     ap.add_argument("--sdk-dir", default=None,
                     help="the target's own SDK checkout. REQUIRED for a board whose console is its "
@@ -474,10 +601,10 @@ def main(argv=None) -> int:
         work = Path(tempfile.mkdtemp(prefix=f"delivery_{model}_{backend}_h{harts}_"))
         # A scalar image has no vector gate to run and no RVV package to apply; it is built and
         # audited, never simulated, and the package says so rather than implying a gate.
-        if a.no_spike or model in no_spike_models or backend != "rvv":
+        if a.no_spike or model in no_spike_models:
             print(f"  [{tag}] building (no simulation) in {work}", flush=True)
             board_build = build_board_only(bundle, brd, harts, work=work, sdk_dir=a.sdk_dir,
-                                           backend=backend)
+                                           backend=backend, debug=a.debug)
             print(f"  [{tag}] built: {board_build['ram_bytes'] // 2**20} MB region, "
                   f"{board_build['build_hash']}", flush=True)
             return {"console": "", "metrics": {}, "outputs": None, "backend": backend}, \
@@ -487,7 +614,7 @@ def main(argv=None) -> int:
             out = build_baremetal(bundle, brd, work=work, timeout=a.timeout, sdk_dir=a.sdk_dir)
         else:
             out = build_one(bundle, brd, harts, vlen=brd.vlen, work=work, timeout=a.timeout,
-                            sdk_dir=a.sdk_dir)
+                            sdk_dir=a.sdk_dir, debug=a.debug, backend=backend)
         cyc = out[0]["metrics"].get("cycles")
         print(f"  [{tag}] done: {cyc:,} cycles, gate={out[0].get('tier_ok')}", flush=True)
         return out
@@ -614,14 +741,27 @@ def main(argv=None) -> int:
                                            dram_bytes=brd.dram_bytes, vlen=brd.vlen)
         checks = {}
         for v in sorted({128, 256, brd.vlen or 128}):
+            # -m must match the region the probe was BUILT for: the probe now writes and reads across
+            # that region, so a simulator with less memory than the board makes an honest probe look
+            # broken (it faults at the simulator's edge, exactly as it would on a board with less DRAM
+            # than we were told -- which is the whole point of the check).
             checks[v] = vector_probe.parse(
-                vector_probe.run_on_spike(selfcheck_elf, vlen=v, dram_base=brd.dram_base))
+                vector_probe.run_on_spike(selfcheck_elf, vlen=v, dram_base=brd.dram_base,
+                                          mem_bytes=brd.dram_bytes))
         pelf = selfcheck_elf
         if brd.console != CONSOLE_HTIF:
+            # The board image also carries the chip's reference-clock rate, so the probe can report a
+            # MEASURED core frequency alongside the declared one -- the only way a returned log can say
+            # whether the PLL programming took effect.
+            mtime_hz = None
+            if a.sdk_dir and brd.sdk_chip:
+                from merlin.runtime.sdk_facts import derive_uart_console
+                mtime_hz = derive_uart_console(a.sdk_dir, brd.sdk_chip).mtime_hz
             pelf = vector_probe.build(pwork / "board", dram_base=brd.dram_base,
                                       dram_bytes=brd.dram_bytes, vlen=brd.vlen,
                                       console=brd.console, sdk_dir=a.sdk_dir,
-                                      sdk_chip=brd.sdk_chip, chip_freq_hz=brd.chip_freq_hz)
+                                      sdk_chip=brd.sdk_chip, chip_freq_hz=brd.chip_freq_hz,
+                                      mtime_hz=mtime_hz)
         shutil.copy2(pelf, dest / "vlen_probe.elf")
         probe_report = {"elf": "vlen_probe.elf", "bytes": (dest / "vlen_probe.elf").stat().st_size,
                         "console": brd.console,
@@ -656,7 +796,7 @@ def main(argv=None) -> int:
         "validated_on": _provenance(a.no_spike, no_spike_models),
     }
     (dest / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    (dest / "README.md").write_text(_readme(brd, manifest))
+    (dest / "README.md").write_text(_readme(brd, manifest, debug=a.debug))
     if manifest_writer is not None:
         for f in sorted(dest.iterdir()):
             manifest_writer.add_artifact(f.name)
@@ -699,8 +839,14 @@ def _upload_note(seconds) -> str:
     """Upload time, flagged when it exceeds a typical harness timeout.
 
     Not cosmetic: a 10-minute timeout is a common default, and an image whose UPLOAD alone takes longer
-    is reported as a failure that no rebuild can fix. Measured: a 120 MB image needs ~24 minutes over a
-    921600-baud TSI link, because the loader transmits MemSiz, not file size."""
+    is reported as a failure that no rebuild can fix. This is the single most likely explanation for
+    whisper_tiny coming back FAIL on both boards while everything smaller passed.
+
+    The number is per-board, because the two loaders in use disagree by an order of magnitude on the
+    same ELF and neither matches the other's assumption -- `uart_tsi` writes PT_LOAD MemSiz (zero-fill
+    included), `pyuartsi` writes only PROGBITS sections -- and the baud comes from each board's own
+    documented loader command. A single formula for both is what put "4 min" beside an image that takes
+    an hour. See `runtime.elf_audit.upload_bytes`."""
     if seconds is None:
         return "n/a"
     mins = seconds / 60.0
@@ -719,6 +865,44 @@ def _verdict(b: dict) -> str:
 #: Prepended when the console had to be corrected. Someone who already tried an earlier build and got
 #: nothing needs to know WHY before they spend bench time on another one -- and needs to be able to
 #: check the claim rather than take it on faith.
+KODIAK_VSTATE_DOC = """\
+## Why every multi-hart image failed last time, and what changed
+
+Your table was the diagnosis: **every `h1` PASSED and every `h2`/`h3` FAILED**, deterministically, with
+no fault printed. That shape is specific. Here is the chain, and all of it is our bug.
+
+Our generated config did not set `CONFIG_RISCV_ISA_EXT_V`, so Zephyr never put `mstatus.VS` into a
+thread's initial mstatus and never saved or restored vector state across a context switch. The single
+worker image survives that because it enables VS by hand and then never context-switches again. A
+multi-hart image calls `merlin_omp_init`, which creates and joins a probe thread per hart and then
+creates the pool — so the **master** switches out and comes back with VS = Off, and takes an
+illegal-instruction trap on its own share of the first parallel region. And because we also set
+`CONFIG_FPU_SHARING=y`, that trap was routed into the FP retry path and spun silently instead of
+reporting. The stall watchdog could not tell you either: the master runs the watchdog, and the master
+was the thread that was stuck.
+
+The reason we had those two settings was a stale note in our own board descriptor, which described the
+Zephyr your **`kodiak` branch** pins (submodule `5a06eb0d`). We build against the `dev` pin
+(`852bb170`), two commits later, which contains *"riscv: decouple V/F save-restore + add
+RISCV_V_KERNEL_ONLY"* — there, `v.c` compiles under `CONFIG_RISCV_ISA_EXT_V` independently of
+`FPU_SHARING`, exactly as its CMakeLists comment says. We had simply never re-checked.
+
+What these images use instead is **your own working sample's configuration** —
+`samples/q8_gemm_minmax/prj.conf` on the `kodiak` branch, the one with a checked-in `ref-out`:
+`CONFIG_RISCV_ISA_EXT_V=y`, `CONFIG_RISCV_VECTOR_MAX_LEN=512`, `CONFIG_FPU_SHARING=n`. (That file is
+also the only place in your repo the real VLEN is written down, which is where our 512 comes from.)
+Belt and braces, the OpenMP shim now re-arms `mstatus.VS` at every parallel-region entry including the
+master's, so the image is correct even where Zephyr is not managing it.
+
+**We could not reproduce this in any simulator**, and that is worth saying plainly rather than
+implying the fix is tested: neither spike nor the Saturn RTL on FireSim enforces `mstatus.VS`, so both
+ran the broken image perfectly. Every image here does now report what it found — look for
+`METRIC hart<N>_mstatus_vs`. A `2` or `3` means Zephyr is managing vector state; a `0` would mean we
+are back where we started.
+
+"""
+
+
 SUPERSEDED_DOC = """\
 ## If you tried our earlier binaries and saw nothing
 
@@ -748,9 +932,41 @@ channel was wrong.
 """
 
 
-def _readme(brd, manifest: dict) -> str:
+DEBUG_DOC = r"""\
+## These are DIAGNOSTIC images
+
+Same computation as the delivery package, same references, same grading — but built to explain
+themselves, because the last two rounds came back as "it printed a few lines and stopped" and there was
+no way to tell a hang from a crash from an unfinished upload. Extra lines you will see:
+
+| line | means |
+|---|---|
+| `STAGE <name> hart=N t=<ms>` | it reached that milestone. The gap between two STAGEs is where the time went; the last one is where it stopped. |
+| `ALIVE t=<s> op=<id> hart=N vs=<0..3>` | still executing, at most every few seconds, naming the op index it just entered and whether vector state is live. **If these keep coming, it is not hung — it is working, and the model is simply long.** Printed from the model's own thread between two ops (a timer interrupt cannot be used: printing from one corrupts the HTIF console), so the last one names the op it stopped inside. |
+| `MEM <addr> ok\|FAIL` | write-then-read across the linked DRAM region, before the model runs. A `FAIL` means the region is larger than the memory that answers. |
+| `STACK <thread> size=.. unused=.. used=..` | high-water marks. We reserve 8 MB per worker on one old measurement; this is us checking that against yours. |
+| `FAIL fatal reason=.. mcause=.. mepc=.. mtval=.. vs=.. build_hash=..` | a fault, with everything needed to place it, followed by `DONE` so the log is still a complete record. |
+
+`grade.py` reads all of this: run it on a log that stopped early and it reports the last stage, the
+fault, and any failed memory probe instead of just saying the run did not complete.
+
+**These are the ones to run when something goes wrong**, not instead of the delivery package. They are
+the same size and speed, so there is no cost to running a debug image first if you prefer.
+
+"""
+
+
+def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
     loader = LOADER_DOC.get(brd.name, LOADER_DOC["default"])
-    superseded_doc = SUPERSEDED_DOC if brd.sdk_chip else ""
+    # Each board gets the explanation of ITS last failure, not a generic one.
+    superseded_doc = SUPERSEDED_DOC if brd.sdk_chip else KODIAK_VSTATE_DOC
+    debug_doc = DEBUG_DOC if debug else ""
+    # Say what was actually checked for THIS board's console. Claiming a `.htif` check on a board whose
+    # console is its own UART is both wrong and exactly the kind of detail that erodes trust in the
+    # rest of the list.
+    console_check = ("`.htif` present so your loader can find `tohost`/`fromhost`"
+                     if brd.console == CONSOLE_HTIF
+                     else "no `.htif` section and no `tohost` symbol, so nothing waits on a host")
     baremetal = brd.flow == boards.FLOW_BAREMETAL
     image = ("bare-metal ELF (our own crt/linker script — your SDK has no RTOS)" if baremetal
              else "Zephyr image")
@@ -945,6 +1161,7 @@ warns if the log's `build_hash` is not one of ours.
 
 {pair_section}
 {scalar_section}
+{debug_doc}
 
 {firesim_doc}
 ## Status of each model — please read before reporting a number
@@ -954,8 +1171,8 @@ warns if the log's `build_hash` is not one of ours.
 ## What we already checked, without the board
 
 - Built for `{brd.name}` with the board's own facts, and audited the ELF against them: every LOAD
-  segment inside your DRAM, entry point in range, `.htif` present so your loader can find
-  `tohost`/`fromhost`, and real vector instructions in the image (see `elf_audit.json`).
+  segment inside your DRAM, entry point in range, {console_check}, and the expected instruction mix —
+  real vector instructions in an RVV image, and *zero* in a scalar one (see `elf_audit.json`).
 {sim_line}
 {identity_line}
 

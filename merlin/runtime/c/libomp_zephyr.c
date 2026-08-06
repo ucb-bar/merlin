@@ -285,6 +285,24 @@ static void omp_call_micro(void *fn, int argc, void **a, int32_t gtid)
 	int32_t tid = gtid;
 	int32_t bound = 0;
 
+	/* RE-ARM VECTOR STATE, on EVERY region entry and for EVERY team member including the master.
+	 *
+	 * Enabling mstatus.VS once per thread is not enough. VS lives in the thread's saved mstatus, and
+	 * a Zephyr built WITHOUT CONFIG_RISCV_ISA_EXT_V never puts it there -- so a context switch
+	 * restores VS = Off and the next vector instruction traps. The master is the one this bites: it
+	 * enables VS in the generated harness, then merlin_omp_init creates and joins a probe thread per
+	 * hart and creates the pool, and every one of those is a switch. It comes back with VS off and
+	 * takes the trap on its own slice of the first parallel region -- which, on a build with
+	 * FPU_SHARING=y, is mis-routed into the FP retry path and hangs with nothing printed. That is
+	 * exactly the shape of the Kodiak report: single-hart passed, every multi-hart image failed
+	 * silently, and the stall watchdog could not say so because the master runs the watchdog.
+	 *
+	 * The board config is fixed separately (Zephyr now manages V state there). This stays because it
+	 * is two CSR accesses per region against a whole-image hang, and because it is correct on any
+	 * tree, including one whose Kconfig cannot express V at all.
+	 */
+	omp_enable_vector();
+
 	switch (argc) {
 	case 0:
 		((kmpc_micro0_t)fn)(&tid, &bound);
@@ -356,6 +374,19 @@ int merlin_omp_num_threads(void)
 	return omp_nthreads;
 }
 
+void merlin_omp_report_stacks(void)
+{
+	for (int i = 1; i < omp_nthreads; i++) {
+		size_t unused = 0;
+
+		if (k_thread_stack_space_get(&omp_workers[i].thread, &unused) == 0) {
+			printk("STACK omp%d size=%u unused=%u used=%u\n", i,
+			       (unsigned)MERLIN_OMP_WORKER_STACK, (unsigned)unused,
+			       (unsigned)(MERLIN_OMP_WORKER_STACK - unused));
+		}
+	}
+}
+
 /* Which harts a vector kernel may run on, DISCOVERED by asking each hart itself.
  *
  * A probe has to execute ON the hart it is asking about, so each gets a short-lived thread pinned to
@@ -371,12 +402,22 @@ static K_THREAD_STACK_ARRAY_DEFINE(merlin_probe_stacks, MERLIN_OMP_MAX_HARTS, 10
 static struct k_thread merlin_probe_threads[MERLIN_OMP_MAX_HARTS];
 static volatile int8_t omp_vec_of_hart[MERLIN_OMP_MAX_HARTS];     /* -1 unknown, 0 no, 1 yes */
 static volatile uint32_t omp_vlenb_of_hart[MERLIN_OMP_MAX_HARTS];
+/* mstatus.VS as the thread found it, BEFORE omp_enable_vector() ran. This is the fact that
+ * distinguishes "Zephyr is managing vector state for us" (2/3, Initial or Clean) from "every thread
+ * starts with it off and only our own CSR write saves us" (0) -- and a 0 here on a hart that
+ * nonetheless reports a vlenb is the precise signature of the Kodiak multi-hart hang. */
+static volatile uint8_t omp_vs_on_entry[MERLIN_OMP_MAX_HARTS];
 
 static void omp_probe_entry(void *p0, void *p1, void *p2)
 {
 	int cpu = (int)(intptr_t)p0;
 	ARG_UNUSED(p1);
 	ARG_UNUSED(p2);
+
+	unsigned long ms0;
+
+	__asm__ volatile("csrr %0, mstatus" : "=r"(ms0));
+	omp_vs_on_entry[cpu] = (uint8_t)((ms0 >> 9) & 3);
 
 	bool has_v = omp_hart_has_vector();
 	unsigned long vlenb = 0;
@@ -395,6 +436,7 @@ static void omp_discover_vector_harts(int cpus)
 	for (int i = 0; i < MERLIN_OMP_MAX_HARTS; i++) {
 		omp_vec_of_hart[i] = -1;
 		omp_vlenb_of_hart[i] = 0;
+		omp_vs_on_entry[i] = 0xFF;              /* never probed */
 	}
 	for (int cpu = 0; cpu < cpus && cpu < MERLIN_OMP_MAX_HARTS; cpu++) {
 		if (cpu == omp_master_cpu) {
@@ -428,6 +470,11 @@ static void omp_discover_vector_harts(int cpus)
 	printk("\n");
 	for (int cpu = 0; cpu < cpus && cpu < MERLIN_OMP_MAX_HARTS; cpu++) {
 		printk("METRIC hart%d_vlen_bits %u\n", cpu, omp_vlenb_of_hart[cpu] * 8u);
+	}
+	/* Whether the RTOS handed each thread live vector state, or we had to switch it on ourselves.
+	 * 255 = that hart was never probed. */
+	for (int cpu = 0; cpu < cpus && cpu < MERLIN_OMP_MAX_HARTS; cpu++) {
+		printk("METRIC hart%d_mstatus_vs %u\n", cpu, (unsigned)omp_vs_on_entry[cpu]);
 	}
 }
 
