@@ -493,6 +493,13 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     return elf
 
 
+def is_mlir_artifact(artifact_text: str) -> bool:
+    """True when the emitted 4th artifact is an LLVM-dialect MLIR module (the thesis path — a compiler
+    lowering) rather than a C/C++ kernel: it defines a kernel via ``llvm.func @`` (structural, no regex).
+    A C/C++ kernel never carries that token, so the oracle routes MLIR to the fork-free MLIR build."""
+    return "llvm.func @" in artifact_text
+
+
 def _kernel_symbol_from_mlir(mlir_text: str) -> str:
     """The kernel function name from an LLVM-dialect MLIR module, parsed STRUCTURALLY (no regex): the
     identifier after the first ``llvm.func @`` up to its ``(``. Fail closed if absent."""
