@@ -77,3 +77,38 @@ def test_mlir_forkfree_grades_on_cyclotron(tmp_path):
 
 def test_kernel_symbol_parsed_structurally():
     assert muon._kernel_symbol_from_mlir(_KERNEL_MLIR) == "radiance_kernel"
+
+
+def test_is_mlir_artifact_detects_llvm_dialect():
+    assert muon.is_mlir_artifact(_KERNEL_MLIR)
+    assert not muon.is_mlir_artifact("#include <x>\nvoid radiance_kernel(){}")
+
+
+def test_reference_mlir_emitter_grades_on_cyclotron(tmp_path):
+    """The reference MLIR emitter (muon_codegen_mlir) emits an LLVM-dialect matmul loop nest that compiles
+    fork-free and grades correct on cyclotron for a 16x16 gemm — the reference the agentic arms must match."""
+    import numpy as np
+    from merlin.runtime.backends.muon_codegen_mlir import emit_kernel_mlir
+    rng = np.random.default_rng(0)
+    m = k = n = 16
+    a = rng.standard_normal((m, k)).astype(np.float32)
+    w = rng.standard_normal((k, n)).astype(np.float32)
+    ref = (a @ w).astype(np.float32)
+    cb = {
+        "target": "radiance",
+        "tensors": {"W": {"shape": [k, n], "dtype": "f32", "role": "weight"},
+                    "A0": {"shape": [m, k], "dtype": "f32", "role": "input"},
+                    "acc0": {"shape": [m, n], "dtype": "f32"},
+                    "Y0": {"shape": [m, n], "dtype": "f32"}},
+        "commands": [{"opcode": "MATMUL", "operands": {"dst": "acc0", "lhs": "A0", "rhs": "W"}},
+                     {"opcode": "COMMIT", "operands": {"dst": "Y0", "src": "acc0"}}],
+        "canonical_inputs": {"W": {"values": [float(x) for x in w.flatten()]},
+                             "A0": {"values": [float(x) for x in a.flatten()]}},
+    }
+    mlir = emit_kernel_mlir(cb, target="radiance")
+    assert "llvm.func @radiance_kernel" in mlir
+    elf = muon.compile_mlir_forkfree(mlir, cb, tmp_path, target="radiance")
+    console, cycles, _ = muon.run_elf(elf, "cyclotron", timeout=300)
+    outputs, _raw = muon.parse_output(console, cycles)
+    got = np.array(next(iter(outputs.values())), dtype=np.float32)
+    assert got.shape == (m, n) and float(np.max(np.abs(got - ref))) <= 0.03125, console

@@ -36,3 +36,20 @@ def test_self_contained_package_passes():
 def test_unparseable_source_is_not_a_false_positive():
     # a syntax error is the build gate's job, not integrity's — do not flag it as an import
     assert _py_imports_merlin("def (:\n  from merlin import x\n") is None
+
+
+def test_public_input_dialect_is_exempt():
+    # the one allowed merlin import: the PUBLIC input dialect (using the interface, not the answer). The
+    # shipped oot_starterkit/dialect.py does exactly this and tells agents to.
+    assert _py_imports_merlin("from merlin.xdsl_dialects import interface\n") is None
+    assert _py_imports_merlin("from merlin.xdsl_dialects.interface import ModuleOp\n") is None
+    assert _py_imports_merlin("import merlin.xdsl_dialects.interface as iface\n") is None
+
+
+def test_other_xdsl_dialects_and_answer_surfaces_stay_forbidden():
+    # a sibling that could carry the reference lowering is NOT exempt; nor is the whole-package import
+    assert _py_imports_merlin("from merlin.xdsl_dialects import lowering\n") == "merlin.xdsl_dialects"
+    assert _py_imports_merlin("from merlin.xdsl_dialects import interface, lowering\n") == "merlin.xdsl_dialects"
+    assert _py_imports_merlin("import merlin.xdsl_dialects\n") == "merlin.xdsl_dialects"
+    assert _py_imports_merlin("import merlin.xdsl_dialects.lowering\n") == "merlin.xdsl_dialects.lowering"
+    assert _py_imports_merlin("from merlin.runtime import reference\n") == "merlin.runtime"

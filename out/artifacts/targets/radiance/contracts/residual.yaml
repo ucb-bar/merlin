@@ -89,6 +89,11 @@ name: radiance
 # capsule_runner's manifest-derived RunnerConfig reproduce the former hand-forked muon config.
 runner:
   dtype: f32
+  # 4th artifact = an LLVM-dialect MLIR kernel LOWERING (the thesis path: the agent emits a compiler
+  # lowering, not a hand kernel), which the muon oracle compiles FORK-FREE (stock LLVM rv32 + the RTL-derived
+  # Muon re-encode, no clang-muon) via compile_mlir_forkfree. Overrides the external_backend kernel.cpp
+  # default; the prompt/grounding and the oracle both key on the .mlir suffix so they never disagree.
+  fourth_output_name: lowered.llvm.mlir
   tier_sim: {L2: cyclotron, L3: vcs}
   sim_via: cyclotron
   force_match_policy: {compare: float, atol: 1.0e-3}

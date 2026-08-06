@@ -41,111 +41,68 @@ _ENDPOINT_DESC = {
 }
 
 
-def _is_simt_cpp(manifest) -> bool:
-    """True when the target's 4th artifact is a SIMT C++ kernel (``kernel.cpp``, compiled by the SIMT clang
-    fork against the device runtime) rather than a self-hosted-ISA ``.word``/``.insn`` ``kernel.S``.
+def _is_simt_mlir(manifest) -> bool:
+    """True when the target's 4th artifact is an LLVM-dialect MLIR module (``lowered.llvm.mlir``) that the
+    oracle compiles FORK-FREE (stock LLVM rv32 + the target's RTL-derived Muon re-encode, no vendor fork) —
+    the thesis path where the agent emits a COMPILER LOWERING, not a hand kernel.
 
     DERIVED, no target literal: resolve the 4th-output filename EXACTLY as the runner does
     (:func:`runner_config.runner_config_from_manifest`) — the contract's explicit ``runner.fourth_output_name``
-    if present, else the endpoint-kind default (``external_backend`` → ``kernel.cpp``). So a SIMT core that
-    declares nothing rides the C++ default, while a self-hosted-ISA core (atlas) that overrides to
-    ``kernel.S`` reads back as non-C++. This keeps the PROMPT's emit form in lockstep with what the ORACLE
-    actually compiles — the two must never disagree (the radiance ".S told, .cpp compiled" bug)."""
+    if present, else the endpoint-kind default — and key on the ``.mlir`` suffix, so the PROMPT's emit form
+    stays in lockstep with what the ORACLE actually compiles (they must never disagree)."""
     if getattr(manifest, "endpoint_kind", None) != "external_backend":
         return False
     from .runner_config import ENDPOINT_ARTIFACT
     fourth = getattr(manifest, "fourth_output_name", None) or ENDPOINT_ARTIFACT.get(manifest.endpoint_kind, "")
-    return str(fourth or "").endswith(".cpp")
+    return str(fourth or "").endswith(".mlir")
 
 
-def _simt_cpp_emit_framing() -> str:
-    """The 4th-artifact one-liner for a SIMT-C++ core: a compiled C++ kernel that prints its results — NOT
-    a .word/.insn assembler stream (the SIMT core runs compiled C++, not a self-hosted word ISA)."""
-    return ("a `kernel.cpp` SIMT C++ kernel that COMPUTES the operation and PRINTS its result tensors via "
-            "the runtime's `mu_out_f32`/`mu_out_i32` console helpers, compiled by the SIMT clang fork "
-            "(rv32, c++20) against the shipped device runtime and run on the cosim — NOT assembler text, "
-            "NOT `.word`/`.insn`, NOT an MLIR module")
+def _simt_mlir_emit_framing() -> str:
+    """The 4th-artifact one-liner for a SIMT core graded on the MLIR thesis path: an LLVM-dialect MLIR module
+    (a compiler LOWERING the agent's xDSL passes build), compiled fork-free — NOT C/C++ source, NOT a
+    ``.word``/``.insn`` self-hosted stream."""
+    return ("an LLVM-dialect MLIR module (`builtin.module` with `llvm.func @<kernel>`) — a COMPILER LOWERING "
+            "your xDSL passes produce — which the runner compiles FORK-FREE (stock LLVM rv32 + the target's "
+            "RTL-derived Muon re-encode, no vendor fork) and runs on the cosim; NOT C/C++ source, NOT "
+            "`.word`/`.insn` assembler, NOT a self-hosted kernel")
 
 
-def _simt_cpp_grounding() -> str:
-    """The SIMT-C++ kernel contract (replaces the self-hosted-ISA .word grounding for a kernel.cpp target):
-    prepend the runtime console header, embed the command-buffer inputs, launch warps with the runtime's
-    ``mu_schedule`` scheduler, compute grid-strided, PRINT the result from the print-hart, halt.
-
-    Ships the EXACT device console API (from :data:`merlin.runtime.backends.muon.MUON_CONSOLE`) AND a
-    kernel skeleton whose structure — includes, ``__mu_num_warps``, the ``body(void*, tid, nthreads,
-    threadblock_id)`` warp callback, the ``mu_schedule(body, &args, NUM_WARPS)`` launch, the
-    ``mu_barrier(0, BLOCK_NUM_WARPS)`` between dependent stages, and the print-hart-guarded
-    ``mu_out_f32``/``mu_done`` epilogue — matches the reference emitter
-    (:func:`merlin.runtime.backends.muon_codegen.emit_kernel_cpp`), so an agent following it compiles
-    against the shipped runtime instead of inventing an API. Derived from the runtime, no target literal."""
-    try:
-        from merlin.runtime.backends.muon import MUON_CONSOLE
-    except Exception:  # noqa: BLE001
-        MUON_CONSOLE = ""
-    skeleton = """// (1) prepend MUON_CONSOLE verbatim (mu_out_f32 / mu_out_i32 / mu_metric / mu_done + print-hart guard)
-#include <mu_intrinsics.h>
-#include <mu_schedule.h>
-#include <stdint.h>
-
-#define NUM_WARPS 4
-#define BLOCK_NUM_WARPS MU_BLOCK_NUM_WARPS(NUM_WARPS)
-extern "C" uint32_t __mu_num_warps = NUM_WARPS;   // the runtime reads the warp count from this symbol
-
-// (2) command-buffer inputs baked as row-major static arrays; outputs as static scratch:
-static const float t_A[/*M*K*/] = { /* ... */ };
-static const float t_B[/*K*N*/] = { /* ... */ };
-static float t_OUT[/*M*N*/];
-
-struct KArgs { uint32_t pad; };
-static KArgs k_args = {0};
-
-// (3) the warp-callback body: mu_schedule runs it on every (tid, nthreads) in the block. Grid-stride the
-//     output; mu_barrier(0, BLOCK_NUM_WARPS) between DEPENDENT matmuls (a later matmul reading an earlier
-//     result). threadblock_id!=0 may no-op (reference: one block computes the whole output).
-static inline void body(void* /*arg*/, uint32_t tid, uint32_t nthreads, uint32_t threadblock_id) {
-  if (threadblock_id != 0) return;
-  for (uint32_t idx = tid; idx < /*M*N*/0u; idx += nthreads) {
-    uint32_t r = idx / /*N*/1u, c = idx % /*N*/1u;
-    float acc = 0.0f;
-    for (uint32_t kk = 0; kk < /*K*/0u; kk++) acc += t_A[r * /*K*/1u + kk] * t_B[kk * /*N*/1u + c];
-    t_OUT[idx] = acc;                 // fp32 epilogues (relu: acc = acc<0?0:acc; bias_add: acc += bias[c];)
-  }
-  mu_barrier(0, BLOCK_NUM_WARPS);
-}
-
-int main() {
-  mu_schedule(body, &k_args, NUM_WARPS);   // launch the warps
-  if (mu_is_print_hart()) {                // (4) PRINT from ONE hart, else the two cores' bytes interleave
-    mu_out_f32("<the interface's OUTPUT tensor name>", /*rows*/0, /*cols*/0, t_OUT);
-    mu_done();                             // a kernel that computes but never prints OUT/DONE scores 0
-  }
-  return 0;
-}"""
-    body = (
-        "**Your 4th artifact is a SIMT C++ kernel (`submission/kernel.cpp`) — the SIMT core runs COMPILED "
-        "C++, not a self-hosted word ISA.** `emit_target_artifact` reads `command_buffer.json` (the "
-        "interface's input tensors + the declared output) and writes ONE C++ translation unit the SIMT "
-        "clang fork compiles against the shipped device runtime (`mu_intrinsics.h` / `mu_schedule.h` / the "
-        "console header). Follow the runtime's kernel structure EXACTLY (below) — do NOT invent an API:\n"
-        "1. PREPEND the console header VERBATIM (`mu_out_f32`/`mu_out_i32`/`mu_metric`/`mu_done` + the "
-        "`mu_is_print_hart()` guard). Do NOT redefine these.\n"
-        "2. Bake each command-buffer input as a row-major `static const float[]`; outputs as `static "
-        "float[]` scratch.\n"
-        "3. Put the compute in the `body(void*, uint32_t tid, uint32_t nthreads, uint32_t threadblock_id)` "
-        "warp callback, launched by `mu_schedule(body, &k_args, NUM_WARPS)` — a grid-stride loop "
-        "(`for (idx = tid; idx < M*N; idx += nthreads)`), with `mu_barrier(0, BLOCK_NUM_WARPS)` between "
-        "DEPENDENT matmuls. Declare `extern \"C\" uint32_t __mu_num_warps = NUM_WARPS;`.\n"
-        "4. In `main`, after `mu_schedule`, PRINT from `if (mu_is_print_hart())`: `mu_out_f32(\"<out-name>\""
-        ", rows, cols, out)` (or `mu_out_i32` for an integer dtype) then `mu_done()`. The grader reads the "
-        "`OUT <name> <rows> <cols> <values...>` + `DONE` protocol from stdout — computing without printing "
-        "scores 0.\n"
-        "5. Use ONLY the device intrinsics + the console header; NO libc / printf / `<math.h>`. Plain loops.\n"
-        "\nThe kernel skeleton to fill in (structure is mandatory; the reference backend emits this shape):\n"
-        "```cpp\n" + skeleton + "\n```\n")
-    if MUON_CONSOLE:
-        body += "\nThe console header to prepend verbatim (step 1):\n```cpp\n" + MUON_CONSOLE.strip() + "\n```\n"
-    return body + "\n"
+def _simt_mlir_grounding(target: str) -> str:
+    """The LLVM-dialect MLIR kernel contract for a SIMT core on the fork-free thesis path (replaces the .word
+    self-hosted grounding). The agent emits ONLY the kernel FUNCTION as verified LLVM-dialect IR: the runner
+    OWNS the harness (embeds the cb operands, calls the kernel, prints OUT/DONE) and the SIMT runtime OWNS the
+    warps/barriers, so the kernel is plain scalar compute over pointer operands. Mirrors the gemmini
+    LLVM-dialect contract (the SAME shared ``llvmlower``→stock-LLVM front), minus the RoCC ``.insn`` — the
+    reference emitter (:func:`merlin.runtime.backends.muon_codegen_mlir.emit_kernel_mlir`) emits this shape."""
+    sym = f"{target}_kernel"
+    skeleton = (
+        "module {\n"
+        f"  llvm.func @{sym}(%W: !llvm.ptr, %L: !llvm.ptr, %O: !llvm.ptr) {{\n"
+        "    // O = L @ W  (row-major; M, K, N come from the interface). Emit the loads\n"
+        "    // (llvm.getelementptr + llvm.load), the multiply-accumulate (llvm.fmul / llvm.fadd), and the\n"
+        "    // stores (llvm.store) — or lower scf/arith loops to this. Your xDSL passes BUILD this IR.\n"
+        "    llvm.return\n"
+        "  }\n"
+        "}\n")
+    return (
+        f"**Your 4th artifact is an LLVM-dialect MLIR module (`submission/lowered.llvm.mlir`) defining "
+        f"`llvm.func @{sym}` — a COMPILER LOWERING, not a hand kernel.** The runner compiles it FORK-FREE via "
+        "the SHARED `llvmlower` front (MLIR → LLVM IR → STOCK clang rv32 object), then re-encodes it to the "
+        "target's own ISA and runs it on the cosim. Contract:\n"
+        f"1. Emit ONE `builtin.module` containing `llvm.func @{sym}(...)`. Every argument is `!llvm.ptr`, in "
+        "the ABI order **[weight] ++ [lhs in command order] ++ [outputs in command order]** (the generic "
+        "kernel_abi); pointees are row-major f32.\n"
+        "2. The function COMPUTES the op (loads → multiply-accumulate → stores into the output pointers) and "
+        "`llvm.return`s. It is plain scalar compute over the pointer operands — the SIMT warps / barriers / "
+        "scheduling are the RUNTIME's (the fork-free BSP spawns warps around your kernel), so you do NOT write "
+        "`mu_schedule`, barriers, or thread-id logic.\n"
+        "3. Emit NO prints, NO `.insn`/`.word`, NO DRAM base map, NO halt — the runner owns the harness (it "
+        "embeds the operands, calls your kernel, and prints the `OUT`/`DONE` protocol) and the BSP owns "
+        "boot/halt. A kernel that writes its output pointers and returns is complete.\n"
+        "4. BUILD the module with your xDSL pass pipeline (typed IR, `verify()`-checked) — NEVER by string "
+        "assembly and NEVER with regex; this is checked on your submission.\n"
+        "\nThe module skeleton (structure is mandatory; the reference backend emits this shape):\n"
+        "```mlir\n" + skeleton + "```\n\n")
 
 
 def _isa_spec_block(te) -> str:
@@ -411,10 +368,11 @@ def prompt_slots(te, manifest) -> dict:
         _iw = isa_model_for_target(target).inst_width or 32
     except Exception:  # noqa: BLE001 — no derivable model -> keep the 32-bit default phrasing
         pass
-    # A SIMT-C++ external target (kernel.cpp) emits a COMPILED C++ kernel that prints its results, not a
-    # self-hosted .word/.insn stream. Its "how to emit" grounding is the device console API, and the
-    # .word-ISA contracts (DRAM base map + halt-op) do not apply (the runtime prints via mu_out/mu_done).
-    _cpp = _is_simt_cpp(manifest)
+    # A SIMT external target graded on the MLIR thesis path (lowered.llvm.mlir) emits an LLVM-dialect MLIR
+    # kernel LOWERING compiled fork-free, not a self-hosted .word/.insn stream. Its grounding is the
+    # LLVM-dialect kernel contract, and the .word-ISA contracts (DRAM base map + halt-op) do not apply — the
+    # runner owns the harness (embed/call/print) and the BSP owns boot/halt.
+    _mlir = _is_simt_mlir(manifest)
     return {
         "target": target,
         "tool_stem": f"{target}-opt",                 # not "gemmini-opt"
@@ -424,12 +382,12 @@ def prompt_slots(te, manifest) -> dict:
         "emit_symbol_note": ("" if manifest.endpoint_kind == "command_buffer"
                              else f"; the emitted module defines `{target}_kernel`"),
         "endpoint_kind": manifest.endpoint_kind,
-        "endpoint_desc": ("emit a compiled SIMT C++ kernel that prints its result tensors" if _cpp
+        "endpoint_desc": ("emit an LLVM-dialect MLIR kernel lowering (compiled fork-free)" if _mlir
                           else _ENDPOINT_DESC.get(manifest.endpoint_kind, _ENDPOINT_DESC["inline_asm_insn"])),
         # The grading model the runner will actually apply — float-tolerance vs exact-integer — classified
         # from the corpus goldens (never a per-target branch), so the agent is not told the wrong contract.
         "grading_model": _GRADE_FLOAT if _corpus_uses_independent_float_goldens(te) else _GRADE_INTEGER,
-        "emit_framing": (_simt_cpp_emit_framing() if _cpp
+        "emit_framing": (_simt_mlir_emit_framing() if _mlir
                          else _emit_framing(bundle, manifest.endpoint_kind, inst_width=_iw)),  # endpoint+width derived
         "isa_facts": render_fact_bundle_for(target, bundle),  # KIND-routed provenance-tagged ISA brief (agent info)
         "corpus_rel": te.corpus_rel(),                # the primary corpus (isa/), repo-root-relative
@@ -438,16 +396,16 @@ def prompt_slots(te, manifest) -> dict:
         "prior_backend_deny": list(te.prior_backends),
         "isa_headers": list(te.isa_headers),
         "hwbringup_set": te.hwbringup_set,
-        # SIMT-C++ target: ground the agent in the device console API + kernel structure (compiled C++),
-        # NOT the self-hosted-ISA .word spec. Otherwise: name the shipped real ISA files (derive, don't invent).
-        "isa_spec": _simt_cpp_grounding() if _cpp else _isa_spec_block(te),
+        # SIMT-MLIR target: ground the agent in the LLVM-dialect kernel contract (a compiler lowering compiled
+        # fork-free), NOT the self-hosted-ISA .word spec. Otherwise: name the shipped real ISA files.
+        "isa_spec": _simt_mlir_grounding(target) if _mlir else _isa_spec_block(te),
         # DRAM address contract (self-hosted-ISA external_backend only): declare every tensor + base so the
         # emitted .word kernel and the program oracle agree on operand/result addresses (the atlas 0/11
-        # output-base bug). A SIMT-C++ kernel prints via the console API, so there is no DRAM base map.
-        "dram_contract": "" if _cpp else _dram_contract(manifest),
+        # output-base bug). A SIMT-MLIR kernel takes pointer operands from the runner harness — no DRAM map.
+        "dram_contract": "" if _mlir else _dram_contract(manifest),
         # program-termination contract (self-hosted-ISA only): the emitted .word kernel must reach the ISA's
-        # halt instruction. A SIMT-C++ kernel terminates via `mu_done()` (folded into the console grounding).
-        "termination_contract": "" if _cpp else _termination_contract(te, manifest),
+        # halt instruction. A SIMT-MLIR kernel just `llvm.return`s; the BSP owns boot/halt.
+        "termination_contract": "" if _mlir else _termination_contract(te, manifest),
     }
 
 
@@ -649,7 +607,7 @@ def _is_assisted_arm(arm: str) -> bool:
     return "merlin_assisted" in arm or "rtlchecks" in arm
 
 
-def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str, simt_cpp: bool = False) -> str:
+def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str, simt_mlir: bool = False) -> str:
     """The per-arm MANDATORY development workflow — a compulsory checklist (not an optional aid) matching
     the experiment ladder: it names ONLY the tools the arm actually grants, so raw_baseline gets just the
     build + self-check floor, arm-2 the C++ generators, arm-3 the xDSL/CCA + own-artifact lint, and arm-4
@@ -673,7 +631,7 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str,
     has_cca = _has("kernels/cca") or _has("action_catalog")
     has_rtl = _has("targetgen/rtl/") or _has("rtl_facts")
     has_cpp = _has("mlir_scaffold") or _has("llvm_plan") or _has("target_repo")
-    art = ("submission/kernel.cpp" if simt_cpp
+    art = ("submission/lowered.llvm.mlir" if simt_mlir
            else "submission/kernel.S" if endpoint_kind == "external_backend"
            else "your emitted submission/*.mlir")
     L = ["## MANDATORY development workflow (do ALL of these BEFORE the final status line — not optional)",
@@ -704,21 +662,21 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str,
                      f"+ `python action_catalog.py escalation-ladder <axis> {target}` (runnable CLIs, like "
                      "`isa_tools.py`) and build every leverable axis they list.")
             n += 1
-        if endpoint_kind == "external_backend" and not simt_cpp:
+        if endpoint_kind == "external_backend" and not simt_mlir:
             L.append(f"{n}. Assemble every instruction word with `python isa_tools.py asm ops.txt` — it packs "
                      "the exact bits this target's own encoder uses and REFUSES to emit a wrong word. NEVER "
                      "hand-pack `.word` hex: a word that is opcode-legal but decodes to a DIFFERENT op moves "
                      "no data (your DMA/load silently no-ops) and scores 0 even though `lint` passes. Confirm "
                      "with `disasm` that each word decodes back to the op you intended.")
             n += 1
-        if simt_cpp:
-            # A SIMT-C++ target has no self-hosted word ISA to assemble/lint; the analogous mandate is that
-            # the emitted C++ compiles AND prints its output via the console API (a computed-but-silent kernel
-            # scores 0), so make the emit contract the checklist item instead of asm/lint.
-            L.append(f"{n}. Emit `{art}` per the SIMT-C++ kernel contract above: prepend the device console "
-                     "header VERBATIM, embed the command-buffer inputs, compute thread-strided, and PRINT the "
-                     "output tensor with `mu_out_f32`/`mu_out_i32` then `mu_done()`. A kernel that computes "
-                     "correctly but never prints its output scores 0 — the grader reads OUT/DONE from stdout.")
+        if simt_mlir:
+            # A SIMT-MLIR target emits an LLVM-dialect kernel LOWERING (compiled fork-free), not a self-hosted
+            # word stream to assemble/lint. The mandate is that your xDSL passes BUILD the `llvm.func @<kernel>`
+            # module (verified IR) that the shared llvmlower front compiles — the runner owns the harness.
+            L.append(f"{n}. Emit `{art}` per the LLVM-dialect MLIR contract above: your xDSL pass pipeline BUILDS "
+                     f"the `builtin.module` with `llvm.func @{target}_kernel(...)` (pointer operands in "
+                     "[weight]++[lhs]++[out] order) that COMPUTES the op and `llvm.return`s — no prints, no "
+                     "`.insn`/`.word`, no `mu_schedule`. Verify the module parses/`verify()`s before self_check.")
             n += 1
         else:
             L.append(f"{n}. Before every self_check, run `python isa_tools.py lint` and `disasm` on {art} and "
@@ -753,16 +711,17 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
     # ISA dev tools: assisted arms only. A self-hosted-ISA (external_backend) target gets the .word/kernel.S
     # toolset; a RoCC/MLIR (inline_asm_insn) target gets the llvm.inline_asm variant; any other endpoint gets
     # nothing (empty slot renders nothing).
-    # A SIMT-C++ external target compiles C++ (no self-hosted-ISA words to assemble/disassemble/lint), so the
-    # .word toolset does not apply — its emit grounding is the console API in isa_spec instead.
-    _cpp = _is_simt_cpp(manifest)
+    # A SIMT-MLIR external target emits an LLVM-dialect kernel lowering compiled fork-free (no self-hosted-ISA
+    # words to assemble/disassemble/lint), so the .word toolset does not apply — its grounding is the
+    # LLVM-dialect kernel contract in isa_spec instead.
+    _mlir = _is_simt_mlir(manifest)
     isa_dev_tools = ""
-    if _is_assisted_arm(arm) and not _cpp:
+    if _is_assisted_arm(arm) and not _mlir:
         if s["endpoint_kind"] == "external_backend":
             isa_dev_tools = _ISA_DEVTOOLS
         elif s["endpoint_kind"] == "inline_asm_insn":
             isa_dev_tools = _ROCC_DEVTOOLS
-    enforced_workflow = _enforced_workflow(arm, s["endpoint_kind"], granted_tools, s["target"], simt_cpp=_cpp)
+    enforced_workflow = _enforced_workflow(arm, s["endpoint_kind"], granted_tools, s["target"], simt_mlir=_mlir)
     return _TEMPLATE.format(target=s["target"], scope_label=scope, corpus_families=families,
                             tool_stem=s["tool_stem"], kernel_symbol=s["kernel_symbol"],
                             endpoint_desc=s["endpoint_desc"], emit_framing=s["emit_framing"],

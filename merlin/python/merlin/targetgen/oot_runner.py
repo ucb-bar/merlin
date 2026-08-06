@@ -55,11 +55,23 @@ _FORBIDDEN = (
 _SRC_SUFFIXES = (".py", ".cpp", ".cc", ".h", ".hpp", ".td", ".sh")
 
 
+# The one merlin module a submission MAY import: the PUBLIC input-dialect grammar. The benchmark's input
+# format is the fixed public contract ("Reading the contract bundle — grammar, schemas" is fair game), and
+# the shipped oot_starterkit tells agents to parse the input via this typed dialect rather than regex-scrape
+# it. Importing it is "using the interface", not reading the ANSWER — so it is exempt while every other
+# merlin import (the reference/simulator/lowering/oracle that COMPUTES the expected result) stays forbidden.
+_INPUT_DIALECT_EXEMPT = "merlin.xdsl_dialects.interface"
+
+
+def _is_input_dialect(mod: str) -> bool:
+    return mod == _INPUT_DIALECT_EXEMPT or mod.startswith(_INPUT_DIALECT_EXEMPT + ".")
+
+
 def _py_imports_merlin(text: str) -> str | None:
-    """Return the offending module name iff ``text`` (Python source) actually imports the ``merlin``
-    harness package, else None. AST-based: docstrings, comments, and unrelated names like
-    ``merlin_iface`` never match. Unparseable source returns None — a syntax error is the build gate's
-    job, not integrity's."""
+    """Return the offending module name iff ``text`` (Python source) actually imports a NON-EXEMPT ``merlin``
+    harness module, else None. AST-based: docstrings, comments, and unrelated names like ``merlin_iface``
+    never match. The public input dialect (:data:`_INPUT_DIALECT_EXEMPT`) is allowed (using the interface,
+    not reading the answer). Unparseable source returns None — a syntax error is the build gate's job."""
     import ast
     try:
         tree = ast.parse(text)
@@ -68,12 +80,22 @@ def _py_imports_merlin(text: str) -> str | None:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for a in node.names:
-                if a.name == "merlin" or a.name.startswith("merlin."):
+                if (a.name == "merlin" or a.name.startswith("merlin.")) and not _is_input_dialect(a.name):
                     return a.name
         elif isinstance(node, ast.ImportFrom):
+            if node.level != 0:
+                continue
             mod = node.module or ""
-            if (mod == "merlin" or mod.startswith("merlin.")) and node.level == 0:
-                return mod
+            if not (mod == "merlin" or mod.startswith("merlin.")):
+                continue
+            if _is_input_dialect(mod):
+                continue
+            # `from merlin.xdsl_dialects import interface` resolves each imported name to its FQN; allow only
+            # when EVERY name is the exempt input dialect, else flag the module (e.g. a `lowering` sibling).
+            fqns = [f"{mod}.{a.name}" for a in node.names]
+            if fqns and all(_is_input_dialect(f) for f in fqns):
+                continue
+            return mod
     return None
 
 

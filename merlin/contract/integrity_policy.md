@@ -9,7 +9,12 @@ by the structure of the contract (subprocess + file boundary).
 1. **No harness imports.** A package's tool sources must not import or load the Merlin runtime
    reference/simulator or any Merlin internal that computes the expected answer. Forbidden
    substrings in package sources (Python or C++): `merlin.runtime.reference`,
-   `merlin.runtime.simulator`, `reference_outputs`, `import merlin`, `from merlin`.
+   `merlin.runtime.simulator`, `reference_outputs`; and (Python, AST-checked) any `import merlin` /
+   `from merlin …` — **except the one public input dialect `merlin.xdsl_dialects.interface`**, which a
+   package MAY import to parse the input structurally (the assisted arms are meant to *use the
+   interface*, not regex-scrape it; the input GRAMMAR is the fixed public contract, not the answer).
+   Every other `merlin.xdsl_dialects.*` module (e.g. `lowering`) stays forbidden, as does the whole
+   `merlin.xdsl_dialects` package import.
    → `FailureCategory.FORBIDDEN_PATTERN`
 2. **No reading the golden outputs.** The package must not read `expected_command_buffer_*.json`
    beyond `g0` (the one published example) or any `runs/**` directory. It computes the command
