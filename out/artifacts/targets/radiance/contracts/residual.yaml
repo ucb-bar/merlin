@@ -96,8 +96,11 @@ runner:
   fourth_output_name: lowered.llvm.mlir
   # L2 = cyclotron (the RTL-derived perf+functional model): runs the emitted kernel and checks its output
   # against the independent golden — the REQUIRED functional execution gate (capsules require L2). L3 =
-  # verilator (RadianceMuonConfig RTL sim): the cycle-accurate RTL cert, replacing the WIP VCS difftest;
-  # optional-when-available (capsules mark verilator: optional).
+  # verilator (RadianceTapeoutSimConfig RTL sim): the cycle-accurate RTL cert, replacing the WIP VCS
+  # difftest. It fuses the emitted ELF into the rv64 SoC carrier and runs it to the RTL finished-execution
+  # marker for a COMPLETION + cycle-accurate perf cert (the harness $finish races the UART flush, so
+  # correctness stays the required L2 functional gate's job); optional-when-available (capsules mark
+  # verilator: optional) — it lights up when the chipyard sim + rv64 SoC-fuse toolchain are present.
   tier_sim: {L2: cyclotron, L3: verilator}
   sim_via: cyclotron
   force_match_policy: {compare: float, atol: 1.0e-3}

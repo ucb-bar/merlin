@@ -50,6 +50,9 @@ DEFAULT_CHIPYARD = "/path/to/chipyard"
 DEFAULT_RADIANCE_KERNELS = "/path/to/radiance-kernels"
 DEFAULT_CONFIG = "/path/to/autocomp/scripts/muon/config_muon.toml"
 VCS_CONFIG = "RadianceMuonConfig"
+# The Verilator RTL cert runs the RadianceTapeoutSim harness (the one the radiance kernels were
+# evaluated on); it is the sim actually built in chipyard, not the WIP VCS RadianceMuonConfig.
+VERILATOR_CONFIG = "RadianceTapeoutSimConfig"
 
 # Muon SIMT FP peak (RadianceMuonConfig, config_muon.toml): 2 cores x 16 lanes x 2 flop/FMA = 64
 # flop/cycle; at 500 MHz that is 32 GFLOP/s. Reported conservatively as a denominator for utilization.
@@ -60,6 +63,7 @@ FP_PEAK_GFLOPS = FP_PEAK_FLOPS_PER_CYCLE * CLOCK_HZ / 1e9  # 32.0
 ORACLE = {
     "cyclotron": {"kind": "cyclotron_perf_model", "derived_from_rtl": False},
     "vcs": {"kind": "rtl_vcs_muon_difftest", "derived_from_rtl": True},
+    "verilator": {"kind": "rtl_verilator_muon", "derived_from_rtl": True},
 }
 
 
@@ -174,13 +178,86 @@ def vcs_path() -> Path:
     return chipyard_root() / "sims/vcs" / f"simv-chipyard.harness-{VCS_CONFIG}"
 
 
+def radiance_chipyard_root() -> Path:
+    """The chipyard checkout that hosts the radiance sims + cyclotron. Cyclotron and the Verilator RTL
+    sims live in the SAME chipyard, which may differ from ``MERLIN_CHIPYARD`` (that env can point at a
+    sibling checkout used for other targets). Resolve it from the cyclotron binary's ancestry when
+    ``MERLIN_MUON_CYCLOTRON`` is set (the nearest ancestor holding both ``sims/`` and ``generators/``),
+    else fall back to ``chipyard_root()``."""
+    val = _env("MERLIN_MUON_CYCLOTRON")
+    if val:
+        for anc in Path(val).resolve().parents:
+            if (anc / "sims").is_dir() and (anc / "generators").is_dir():
+                return anc
+    return chipyard_root()
+
+
 def verilator_path() -> Path:
-    """The RadianceMuonConfig Verilator RTL sim (the RTL cert oracle — an open-source cycle-accurate sim,
-    replacing the VCS difftest). ``MERLIN_MUON_VERILATOR`` overrides the default chipyard build location."""
+    """The Verilator RTL sim used as the RTL cert oracle: the ``RadianceTapeoutSimConfig`` harness (the
+    open-source cycle-accurate sim the radiance kernels are evaluated on), which lives in the same
+    chipyard as cyclotron. ``MERLIN_MUON_VERILATOR`` overrides the full path; ``MERLIN_MUON_VERILATOR_CONFIG``
+    overrides just the harness config name."""
     val = _env("MERLIN_MUON_VERILATOR")
     if val:
         return Path(val)
-    return chipyard_root() / "sims/verilator" / f"simulator-chipyard.harness-{VCS_CONFIG}"
+    config = _env("MERLIN_MUON_VERILATOR_CONFIG", VERILATOR_CONFIG)
+    return radiance_chipyard_root() / "sims/verilator" / f"simulator-chipyard.harness-{config}"
+
+
+def verilator_dramsim_ini() -> Path:
+    """The testchipip dramsim2_ini dir the RTL harness needs (``+dramsim_ini_dir=``).
+    ``MERLIN_MUON_DRAMSIM_INI`` overrides."""
+    val = _env("MERLIN_MUON_DRAMSIM_INI")
+    if val:
+        return Path(val)
+    return radiance_chipyard_root() / "generators/testchipip/src/main/resources/dramsim2_ini"
+
+
+def soc_fuse_dir() -> Path:
+    """The radiance-kernels ``soc/`` helper dir (``fuse_rv32_into_rv64.sh`` + ``start.S`` + ``main.c``)
+    used to wrap a bare rv32 Muon ELF into the rv64 SoC carrier the RTL harness loads."""
+    return radiance_kernels_root() / "soc"
+
+
+def rv64_cross_prefix() -> str | None:
+    """Toolchain prefix (``…/riscv64-unknown-elf``) for the rv64 SoC-carrier fuse. ``MERLIN_MUON_RV64_CROSS``
+    overrides; else the chipyard ``riscv-tools`` bin if present; else a bare prefix if it is on PATH.
+    Returns None when no rv64 cross-toolchain is found (the caller fails closed)."""
+    import shutil
+    val = _env("MERLIN_MUON_RV64_CROSS")
+    if val:
+        return val
+    cand = radiance_chipyard_root() / ".conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc"
+    if cand.is_file():
+        return str(cand.parent / "riscv64-unknown-elf")
+    return "riscv64-unknown-elf" if shutil.which("riscv64-unknown-elf-gcc") else None
+
+
+def fuse_soc_elf(muon_elf: Path, work: Path) -> Path:
+    """Fuse a bare rv32 Muon ELF into the rv64 'SoC' carrier ELF the Verilator RTL harness loads
+    (radiance-kernels ``soc/fuse_rv32_into_rv64.sh``): the muon PT_LOADs are mirrored at +0x1_0000_0000
+    inside a spinning rv64 image, which cyclotron's ``copy_elf`` auto-detects ("CPU-fused ELF") and
+    relocates back to run on the cores. Returns the fused ``kernel.soc.elf``. Fails closed
+    (``MuonUnavailable``) when the rv64 cross-toolchain or the ``soc/`` helper is absent."""
+    cross = rv64_cross_prefix()
+    fuse_dir = soc_fuse_dir()
+    script, start_s, main_c = (fuse_dir / "fuse_rv32_into_rv64.sh",
+                               fuse_dir / "start.S", fuse_dir / "main.c")
+    if cross is None:
+        raise MuonUnavailable("rv64 SoC-fuse cross-toolchain (riscv64-unknown-elf-*) not found "
+                              "(set MERLIN_MUON_RV64_CROSS)")
+    if not (script.is_file() and start_s.is_file() and main_c.is_file()):
+        raise MuonUnavailable(f"radiance soc/ fuse helper not found under {fuse_dir}")
+    out = work / "kernel.soc.elf"
+    env = dict(os.environ)
+    env.update(CROSS64=cross, RV32_ELF=str(muon_elf), OUT=str(out),
+               RV64_START=str(start_s), RV64_MAIN=str(main_c))
+    # the fuse script writes start.o/main.o into CWD -> run inside the per-run workdir
+    proc = subprocess.run(["bash", str(script)], capture_output=True, text=True,
+                          cwd=str(work), env=env)
+    if proc.returncode != 0 or not out.is_file():
+        raise MuonError(f"soc fuse failed (rc {proc.returncode}):\n{(proc.stderr or proc.stdout)[-1500:]}")
+    return out
 
 
 def available(simulator: str = "cyclotron") -> bool:
@@ -196,7 +273,12 @@ def available(simulator: str = "cyclotron") -> bool:
     if simulator == "vcs":
         return base and vcs_path().is_file()
     if simulator == "verilator":
-        return base and verilator_path().is_file()
+        # The Verilator RTL cert grades a fork-free ELF, so it does NOT need clang-muon (`base`); it
+        # needs the sim, the testchipip dramsim ini, and the rv64 SoC-fuse toolchain + helper.
+        return (verilator_path().is_file()
+                and verilator_dramsim_ini().is_dir()
+                and rv64_cross_prefix() is not None
+                and (soc_fuse_dir() / "fuse_rv32_into_rv64.sh").is_file())
     raise MuonError(f"unknown simulator {simulator!r}")
 
 
@@ -681,23 +763,58 @@ def _run_vcs(elf: Path, timeout: int) -> tuple[str, int | None]:
     return console, cycles
 
 
-def _run_verilator(elf: Path, timeout: int) -> tuple[str, int | None]:
-    """Run the ELF on the RadianceMuonConfig Verilator RTL sim (the open-source cycle-accurate RTL cert).
+def _cycles_from_rtl_report(console: str) -> int | None:
+    """Cycle count from the RTL sim's Muon performance report (a ``Cycles: <N>`` line), parsed
+    structurally by locating the marker and reading the next integer token — no regex. Returns the
+    first core's cycle count (the report repeats per core)."""
+    marker = "Cycles:"
+    idx = console.find(marker)
+    if idx == -1:
+        return None
+    tail = console[idx + len(marker):].strip().split(maxsplit=1)
+    return int(tail[0]) if tail and tail[0].isdigit() else None
 
-    Chipyard verilator harnesses take the ELF as ``+binary=<elf>`` and print the same OUT/METRIC/DONE
-    console + a ``finished after <N> cycles`` line. Honest-unavailable (``MuonUnavailable``) on any
-    load/launch failure — it never reports a pass it cannot stand behind."""
-    cmd = [str(verilator_path()), f"+binary={elf}", "+permissive-off"]
+
+def _run_verilator(elf: Path, timeout: int) -> tuple[str, int | None]:
+    """Run the emitted Muon ELF on the ``RadianceTapeoutSimConfig`` Verilator RTL sim (the open-source
+    cycle-accurate RTL cert the radiance kernels are evaluated on).
+
+    The harness loads a fused rv64 'SoC' image (see :func:`fuse_soc_elf`) via the ``+loadmem`` backdoor
+    (bypassing the TSI serial-load path, whose sub-word write trips a testchipip diplomatic monitor);
+    cyclotron's ``copy_elf`` relocates the muon sections and drives the cores. The run needs an
+    UNLIMITED stack (Verilator's deep ``eval_initial`` recursion overflows the default 8 MB and SIGSEGVs
+    before any output) and the testchipip dramsim ini. Completion is the RTL ``Muon [...] finished
+    execution.`` marker; the console also carries the kernel's OUT/DONE lines (our runner-owned harness
+    prints them over UART) for the functional grade. Honest-unavailable (``MuonUnavailable``) on any
+    build/load/launch failure or if the run never reaches the finished-execution marker — it never
+    reports a pass it cannot stand behind."""
+    import resource
+    work = elf.parent
+    soc = fuse_soc_elf(elf, work)
+    sqlite = work / "muon_rtl_trace.sqlite"
+    cmd = [str(verilator_path()), "+permissive", "+dramsim",
+           f"+dramsim_ini_dir={verilator_dramsim_ini()}",
+           "+max-cycles=10000000", "+ntb_random_seed_automatic", "+verbose",
+           f"+trace-db={sqlite}", f"+loadmem={soc}", "+permissive-off", str(soc)]
+
+    def _unlimited_stack() -> None:
+        try:
+            resource.setrlimit(resource.RLIMIT_STACK,
+                               (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+        except (ValueError, OSError):
+            pass
+
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=str(elf.parent))
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                              cwd=str(verilator_path().parent), preexec_fn=_unlimited_stack)
     except subprocess.TimeoutExpired as e:
         raise MuonUnavailable(f"verilator RTL sim timed out after {timeout}s") from e
     console = proc.stdout + ("\n" + proc.stderr if proc.stderr else "")
-    cycles = _cycles_from_console(console)
-    if proc.returncode != 0 or cycles is None:
-        raise MuonUnavailable(f"verilator RTL sim did not complete (rc={proc.returncode}). "
-                              f"tail:\n{console[-400:]}")
-    return console, cycles
+    if "finished execution" not in console:
+        raise MuonUnavailable(
+            f"verilator RTL sim did not reach the finished-execution marker (rc={proc.returncode}). "
+            f"tail:\n{console[-600:]}")
+    return console, _cycles_from_rtl_report(console)
 
 
 def run_elf(elf: str | Path, simulator: str = "cyclotron",
@@ -779,7 +896,8 @@ def _metrics(raw: dict[str, int], simulator: str, summary: dict | None) -> dict[
     metrics = {name: int(raw.get(name, 0)) for name in COMMON_METRIC_NAMES}
     metrics["cycles"] = int(raw.get("cycles", 0))
     metrics["cycle_source"] = ("cyclotron_timing" if simulator == "cyclotron"
-                               else "rtl_vcs" if simulator == "vcs" else "unknown")
+                               else "rtl_vcs" if simulator == "vcs"
+                               else "rtl_verilator" if simulator == "verilator" else "unknown")
     metrics["memory_model"] = "perf_model" if simulator == "cyclotron" else "rtl"
     if summary is not None:
         metrics["summary"] = summary

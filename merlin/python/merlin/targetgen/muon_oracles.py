@@ -78,8 +78,20 @@ def _adapter(simulator: str) -> Callable:
         t1 = time.perf_counter()
         console, cycles, summary = muon.run_elf(elf, simulator=simulator, timeout=timeout)
         t2 = time.perf_counter()
-        outputs, raw = muon.parse_output(console, cycles)
-        return {
+        completion_only = False
+        try:
+            outputs, raw = muon.parse_output(console, cycles)
+        except muon.MuonError:
+            # The Verilator RTL harness runs the kernel to completion (``run_elf`` only returns here
+            # once it reached the RTL "finished execution" marker) but does not surface the kernel's
+            # UART console — its ``$finish`` races the print flush, so there are no OUT/DONE lines to
+            # numeric-grade. It still certifies RTL COMPLETION + cycle-accurate cycles; CORRECTNESS is
+            # the REQUIRED functional tier's (cyclotron L2) job. Any other engine (cyclotron) MUST
+            # produce console output, so its absence there is a real error — reraise.
+            if simulator != "verilator":
+                raise
+            outputs, completion_only = {}, True
+        result = {
             "outputs": outputs,
             "cycles": cycles,
             "oracle": dict(muon.ORACLE[simulator]),
@@ -90,6 +102,9 @@ def _adapter(simulator: str) -> Callable:
             "pct_fp_peak": muon.pct_fp_peak(flops, cycles),
             "summary": summary,
         }
+        if completion_only:
+            result["completion_only"] = True
+        return result
     return run
 
 
@@ -107,8 +122,11 @@ def vcs_muon_adapter() -> Callable:
 
 
 def verilator_muon_adapter() -> Callable:
-    """Certification oracle: the RadianceMuonConfig Verilator RTL sim (open-source cycle-accurate), replacing
-    the WIP VCS difftest. Fails closed (``MuonUnavailable``) when the sim binary is not built, so an
+    """Certification oracle: the RadianceTapeoutSimConfig Verilator RTL sim (open-source cycle-accurate,
+    the harness the radiance kernels are evaluated on), replacing the WIP VCS difftest. It fuses the
+    emitted ELF into the rv64 SoC carrier, loads it via the ``+loadmem`` backdoor, and runs to the RTL
+    ``finished execution`` marker (see :func:`..runtime.backends.muon._run_verilator`). Fails closed
+    (``MuonUnavailable``) when the sim / dramsim ini / rv64 SoC-fuse toolchain is absent, so an
     unavailable RTL cert is honest (the tier is optional-when-available), never a fabricated pass."""
     return _adapter("verilator")
 

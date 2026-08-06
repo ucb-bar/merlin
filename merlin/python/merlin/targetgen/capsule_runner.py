@@ -832,6 +832,35 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _acct = (_tm.get("build_s") or 0.0) + (_tm.get("sim_active_s") or 0.0)
                 _tm["oracle_wait_s"] = round(max(0.0, _adapter_wall - _acct), 3)
             _tm["adapter_wall_s"] = round(_adapter_wall, 3)
+            if res.get("completion_only"):
+                # An RTL cert that ran the emitted kernel to completion but cannot surface its outputs
+                # for an independent numeric check (e.g. the Muon Verilator harness $finish-races the
+                # UART flush). It certifies RTL COMPLETION + cycle-accurate cycles; CORRECTNESS is the
+                # mandatory functional tier's job. It is NEVER allowed to stand in for a mandatory tier
+                # (a required tier must verify output) — there it degrades to honest-unavailable.
+                _sim_name = cfg.tier_sim.get(tier) or tier
+                if mand:
+                    tiers[tier] = TierResult(
+                        tier, "unavailable", mand,
+                        reason="RTL cert ran to completion but cannot surface outputs for a mandatory "
+                               "correctness check (use the functional tier as the required gate)",
+                        cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers, timing=_tm)
+                    continue
+                _cg = _cp = None
+                if perf_extractor is not None:
+                    _cperf = perf_extractor(cb, res) or {}
+                    _cg, _cp = _cperf.get("gflops"), _cperf.get("pct_fp_peak")
+                if res.get("console") is not None:
+                    (paths.artifacts_dir / f"{_sim_name}_console.log").write_text(
+                        res["console"], encoding="utf-8")
+                tiers[tier] = TierResult(
+                    tier, "pass", mand,
+                    reason="RTL completion + cycle-accurate perf cert (correctness gated by the "
+                           "required functional tier)",
+                    cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers,
+                    cycle_accurate=tier in cfg.rtl_tiers, evidence=f"{_sim_name}_console.log",
+                    timing=_tm, gflops=_cg, pct_fp_peak=_cp)
+                continue
             if independent_float:
                 # Float grade: the RTL program-oracle output vs the INDEPENDENT golden.yaml (tolerance_float).
                 # There is no integer reference/simulate to cross-check against — this comparison IS the

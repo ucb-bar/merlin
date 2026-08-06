@@ -77,6 +77,23 @@ def test_mlir_forkfree_grades_on_cyclotron(tmp_path):
     assert outputs.get("OUT") == [[19.0, 22.0], [43.0, 50.0]], console
 
 
+@pytest.mark.skipif(not muon.available("verilator"),
+                    reason="RadianceTapeoutSim Verilator RTL sim / rv64 SoC-fuse toolchain not available")
+def test_mlir_forkfree_certs_on_verilator_rtl(tmp_path):
+    """The RTL cert (L3): the SAME fork-free ELF is fused into the rv64 SoC carrier and run to completion
+    on the RadianceTapeoutSimConfig Verilator RTL sim. It is a COMPLETION + cycle-accurate perf cert (the
+    harness $finish races the UART flush, so console outputs do not surface for grading — the verilator
+    adapter reports ``completion_only`` and correctness stays the required cyclotron L2 gate's job)."""
+    from merlin.targetgen import muon_oracles
+    cb = dict(_CB, target="radiance")
+    res = muon_oracles.verilator_muon_adapter()(cb, _KERNEL_MLIR, tmp_path, 600)
+    assert res.get("completion_only") is True, res
+    assert res.get("cycles") and res["cycles"] > 0, res
+    assert res["toolchain"] == "fork-free", res
+    assert res["oracle"]["derived_from_rtl"] is True, res
+    assert "finished execution" in res["console"], res["console"][-800:]
+
+
 def test_kernel_symbol_parsed_structurally():
     assert muon._kernel_symbol_from_mlir(_KERNEL_MLIR) == "radiance_kernel"
 
