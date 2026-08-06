@@ -199,6 +199,56 @@ def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
             emit({"type": "user", "message": {"content": tool_results}})
 
 
+def _parse_run_stream(stdout: str, mid: str, rnd: int, emit) -> int:
+    """Reconstruct the transcript from opencode's ``run --format json`` STDOUT stream (always captured),
+    instead of a post-hoc ``opencode export`` (fragile: a wrong sandbox isolates the session data dir, so
+    the export is blind and yields 0 messages — the empty-transcript bug). Each stream line is an event with
+    a ``part``: a ``text`` part is an assistant text block; a ``tool`` part is a tool_use (+ its result from
+    ``state.output``); ``step-finish`` parts carry token usage. Emits claude-compatible events (assistant +
+    user/tool_result) so parse_transcript / audit_transcript / conformance consume them like every driver.
+    Returns the number of tool calls seen."""
+    tok = {"input": 0, "output": 0, "cread": 0, "cwrite": 0}
+    n_tools = 0
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        part = e.get("part") or {}
+        pt = part.get("type")
+        if pt == "text" and part.get("text"):
+            emit({"type": "assistant", "message": {"id": f"opencode_{rnd}_{part.get('id','')}", "model": mid,
+                  "usage": {"input_tokens": 0, "output_tokens": 0}, "content": [{"type": "text", "text": part["text"]}]}})
+        elif pt == "tool":
+            st = part.get("state") or {}
+            cid = part.get("callID") or part.get("id")
+            emit({"type": "assistant", "message": {"id": f"opencode_{rnd}_{cid}", "model": mid,
+                  "usage": {"input_tokens": 0, "output_tokens": 0},
+                  "content": [{"type": "tool_use", "id": cid, "name": part.get("tool", "tool"),
+                               "input": st.get("input", {}) if isinstance(st, dict) else {}}]}})
+            n_tools += 1
+            out = st.get("output") if isinstance(st, dict) else None
+            if out is not None:
+                emit({"type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": cid,
+                     "content": out if isinstance(out, str) else json.dumps(out)}]}})
+        elif pt == "step-finish":
+            t = part.get("tokens") or {}
+            c = t.get("cache") or {}
+            tok["input"] += t.get("input", 0) or 0
+            tok["output"] += t.get("output", 0) or 0
+            tok["cread"] += c.get("read", 0) or 0
+            tok["cwrite"] += c.get("write", 0) or 0
+    # one usage-bearing assistant event so token/cost accounting sees the round's totals
+    emit({"type": "assistant", "message": {"id": f"opencode_{rnd}_usage", "model": mid, "content": [],
+          "usage": {"input_tokens": tok["input"], "output_tokens": tok["output"],
+                    "cache_read_input_tokens": tok["cread"], "cache_creation_input_tokens": tok["cwrite"]}}})
+    return n_tools
+
+
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
               **_ignored) -> tuple[int, Path]:
@@ -280,12 +330,17 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
             pass
         return (code or 1), tpath
 
-    ecode, eout, _estderr = _capture([opencode_bin, "export", sid], env, max(60, timeout // 4), str(ws))
-    try:
-        export = json.loads(eout) if ecode == 0 else {}
-    except json.JSONDecodeError:
-        export = {}
-    _export_to_transcript(export, mid, rnd, emit)
+    # PRIMARY: reconstruct from the run's own --format json STDOUT stream (always captured; robust to the
+    # sandbox/data-dir isolation that leaves `opencode export` blind). Fall back to `export` only if the
+    # stream yielded no tool activity (e.g. a future format change).
+    n_tools = _parse_run_stream(stdout, mid, rnd, emit)
+    if n_tools == 0:
+        ecode, eout, _estderr = _capture([opencode_bin, "export", sid], env, max(60, timeout // 4), str(ws))
+        try:
+            export = json.loads(eout) if ecode == 0 else {}
+        except json.JSONDecodeError:
+            export = {}
+        _export_to_transcript(export, mid, rnd, emit)
 
     if run_err:
         emit({"type": "result", "subtype": "error", "is_error": True, "result": run_err})
