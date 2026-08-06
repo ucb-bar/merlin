@@ -113,9 +113,19 @@ def test_generators():
                          ("gen_numeric_facts", "numeric_facts.py")]:
             # These RTL-facts generators require an explicit --target (the gemmini default was retired
             # in the target-generalization work); pass the active target so they run for any target.
+            # Run the generator against the SAME merlin this gate loaded in-process (the one _common
+            # bootstrapped onto sys.path), not whatever the bare venv resolves — otherwise, in a git
+            # worktree whose .venv points at the main checkout, the subprocess silently tests the main
+            # tree's stale merlin while the in-process oracle checks test the worktree's (the shadowing
+            # trap). Propagate its path so the gate's verdict reflects the code that will actually run.
+            import os as _os
+            import merlin as _merlin
+            _mp = str(Path(_merlin.__file__).resolve().parents[1])
+            _env = dict(_os.environ, PYTHONPATH=_os.pathsep.join(
+                [_mp, _os.environ.get("PYTHONPATH", "")]).rstrip(_os.pathsep))
             r = subprocess.run([PY, "-m", f"merlin.targetgen.rtl.{mod}",
                                 "--target", TARGET, "--out", str(td / out)],
-                               cwd=str(REPO), capture_output=True, text=True)
+                               cwd=str(REPO), capture_output=True, text=True, env=_env)  # noqa: F821
             # gen_isa_module / gen_rtl_digest emit a RoCC command-ISA artifact; on a SIMT / self-hosted
             # target they honestly report "n/a: ..." (return 0, no file) instead of crashing — that is a
             # PASS (the tool applies correctly to its endpoint), same as a RoCC target writing the file.
