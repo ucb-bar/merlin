@@ -493,6 +493,81 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     return elf
 
 
+def _kernel_symbol_from_mlir(mlir_text: str) -> str:
+    """The kernel function name from an LLVM-dialect MLIR module, parsed STRUCTURALLY (no regex): the
+    identifier after the first ``llvm.func @`` up to its ``(``. Fail closed if absent."""
+    marker = "llvm.func @"
+    if marker not in mlir_text:
+        raise MuonError("emitted MLIR has no `llvm.func @<name>` kernel definition")
+    name = mlir_text.split(marker, 1)[1].split("(", 1)[0].strip()
+    if not name:
+        raise MuonError("could not parse the kernel symbol from the emitted MLIR")
+    return name
+
+
+def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
+                          *, target: str = "radiance", num_warps: int = 1) -> Path:
+    """FORK-FREE build from the agent's LLVM-dialect MLIR 4th artifact (the thesis path — the agent emits a
+    COMPILER lowering, not a hand C++ kernel). Pipeline: ``lower_to_llvm_ir`` (the shared MLIR→LLVM-IR front
+    gemmini uses) → STOCK clang rv32 → ``kernel.o``; a runner-owned EXTERN-kernel harness ``main.o`` embeds
+    the operands and calls the kernel (cross-object ``R_RISCV_CALL``); both objects are transcoded to the
+    target's fixed-format words (reloc-preserving) and the fork-free linker resolves the call against the
+    from-source BSP. No clang-muon anywhere. Returns the ELF path."""
+    from ...llvmlower.pipeline import lower_to_llvm_ir
+    from ...targetgen.isa_model import isa_model_from_encoding
+    from ...targetgen.isa_transcode import derive_march
+    from ...targetgen.rtl import mlc_bridge
+    from ...targetgen.contract.toolchain import mlir_bin
+    from . import muon_bsp, muon_link, muon_harness
+
+    work = Path(workdir)
+    work.mkdir(parents=True, exist_ok=True)
+    clang = mlir_bin("clang")
+    if not clang.is_file():
+        raise MuonUnavailable(f"stock LLVM tool absent: {clang} (set MERLIN_MLIR_INSTALL)")
+    fact = mlc_bridge.isa_encoding_for(target)
+    if not fact:
+        raise MuonUnavailable(f"no derived ISA encoding fact for target {target!r}")
+    model = isa_model_from_encoding(target, fact)
+    triple, mabi = forkfree_compile_triple(model)
+    march = derive_march(model)
+    cflags = [f"--target={triple}", f"-march={march}", f"-mabi={mabi}", "-mno-relax", "-mcmodel=medany",
+              "-O2", "-ffreestanding", "-fno-pic", "-fno-jump-tables"]
+
+    # 1. agent MLIR -> LLVM IR (.ll) via the shared llvmlower front -> STOCK clang rv32 -> kernel.o
+    kernel_symbol = _kernel_symbol_from_mlir(lowered_mlir_text)
+    ll = lower_to_llvm_ir(lowered_mlir_text, workdir=work)
+    (work / "kernel.ll").write_text(ll, encoding="utf-8")
+    kobj_rv = work / "kernel.o"
+    cc = subprocess.run([str(clang), *cflags, "-c", str(work / "kernel.ll"), "-o", str(kobj_rv)],
+                        capture_output=True, text=True)
+    if cc.returncode != 0:
+        raise MuonError(f"stock rv32 compile of the lowered MLIR failed:\n{cc.stderr[-2000:]}")
+
+    # 2. runner-owned EXTERN-kernel harness main (operands from the cb) -> STOCK clang rv32 -> main.o
+    main_c = muon_harness.external_main_from_cb(cb, kernel_symbol=kernel_symbol, model=model)
+    if main_c is None:
+        raise MuonError("could not derive harness operands from the command buffer (no canonical_inputs)")
+    (work / "main.c").write_text(main_c, encoding="utf-8")
+    mobj_rv = work / "main.o"
+    mc = subprocess.run([str(clang), *cflags, "-c", str(work / "main.c"), "-o", str(mobj_rv)],
+                        capture_output=True, text=True)
+    if mc.returncode != 0:
+        raise MuonError(f"stock rv32 compile of the harness main failed:\n{mc.stderr[-2000:]}")
+
+    # 3. reloc-preserving transcode of BOTH objects (the main->kernel call is a cross-object relocation)
+    kobj, mobj = work / "kernel_muon.o", work / "main_muon.o"
+    muon_bsp.transcode_boot_object(kobj_rv, kobj, isa_model=model)
+    muon_bsp.transcode_boot_object(mobj_rv, mobj, isa_model=model)
+
+    # 4. fork-free link: from-source BSP + harness main + MLIR kernel
+    bsp_objs = build_forkfree_bsp(work, target=target, num_warps=num_warps)
+    elf = work / "kernel.radiance.elf"
+    muon_link.link_fork_free([*[str(o) for o in bsp_objs], str(mobj), str(kobj)],
+                             str(lib_dir() / "linker/mu_link.ld"), str(elf), target=target)
+    return elf
+
+
 def compile_for_oracle(kernel_src: str, workdir: str | Path, *, target: str = "radiance") -> tuple[Path, str]:
     """Compile an emitted kernel for the grading oracle, PREFERRING the fork-free thesis path and recording
     which toolchain actually produced the graded ELF. Returns ``(elf, toolchain)`` where ``toolchain`` is

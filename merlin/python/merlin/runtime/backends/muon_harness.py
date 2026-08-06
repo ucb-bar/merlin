@@ -134,18 +134,13 @@ def _shape2d(shape: list) -> tuple[int, int]:
     return rows, dims[-1]
 
 
-def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
-    """Build the self-contained harness program for a capsule directly from its COMMAND BUFFER, or return
-    None when the artifact is already a full program (has ``main``) — the caller then compiles it directly.
-
-    Derives the kernel ABI order from the cb the runner already validated: each matmul/gemm command names
-    its ``weight``/``rhs``, ``lhs`` and ``out``/``dst`` operands, so the argument order is
-    ``[weight] ++ [lhs in command order] ++ [outputs in command order]`` (the generic kernel_abi). Operand
-    VALUES come from ``cb['canonical_inputs']`` (the runner attaches the golden's decoded operands there);
-    shapes from ``cb['tensors']``. Returns None (fail-safe to direct compile) if the operands are not
-    available, so this never silently grades an un-fed kernel."""
-    if "int main" in kernel_fn_src:
-        return None
+def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
+    """Derive the kernel's ``(in_args, out_args)`` from a capsule's COMMAND BUFFER, in the generic
+    ``kernel_abi`` order ``[weight] ++ [lhs in command order] ++ [outputs in command order]``. Input VALUES
+    come from ``cb['canonical_inputs']`` (the runner attaches the golden's decoded operands there); shapes
+    from ``cb['tensors']``. Returns None (fail-safe) when the operands/shapes are not fully available, so a
+    caller never silently harnesses an un-fed kernel. Shared by the inline-source path (:func:`program_from_cb`)
+    and the object-kernel path (:func:`external_main_from_cb`)."""
     tensors = cb.get("tensors") or {}
     values = cb.get("canonical_inputs") or {}
     if not values:
@@ -169,7 +164,7 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
                 seen.add(nm)
                 bucket.append(nm)
     if not (lhses and outs):
-        return None                                   # not a shape we can harness -> compile as-is
+        return None                                   # not a shape we can harness
 
     def _arg(name: str, with_values: bool) -> TensorArg | None:
         shp = (tensors.get(name) or {}).get("shape")
@@ -185,5 +180,62 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
     out_args = [_arg(n, False) for n in outs]
     if any(a is None for a in in_args + out_args):
         return None                                   # a missing operand/shape -> fail safe, do not guess
+    return in_args, out_args
+
+
+def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorArg],
+                               *, kernel_symbol: str, model) -> str:
+    """Harness ``main`` for an OBJECT kernel (an MLIR-lowered ``kernel.o``): declares ``kernel_symbol``
+    EXTERN (not inlined), embeds every input, calls it, prints ``OUT <name> <r> <c> ...`` + ``DONE``. Unlike
+    :func:`build_program` (which inlines a *source* kernel to stay relocation-free), the extern call leaves a
+    cross-object ``R_RISCV_CALL`` that the fork-free reloc-preserving transcode + linker resolve. Inputs are
+    stack-embedded (``_emit_fill``) so ``main`` itself carries ONLY the kernel-call relocation."""
+    ptrs = ", ".join(["const void*"] * len(in_args) + ["void*"] * len(out_args)) or "void"
+    body: list[str] = [_render_helpers(model).strip(), "",
+                       f"extern void {kernel_symbol}({ptrs});", "",
+                       "int main(void){", "  if(_hid()!=0)return 0;"]
+    call_ptrs: list[str] = []
+    for a in in_args:
+        arr = f"_in_{a.name}"
+        body += _emit_fill(arr, a)
+        call_ptrs.append(f"(const void*){arr}")
+    for o in out_args:
+        arr = f"_out_{o.name}"
+        body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")
+        call_ptrs.append(f"(void*){arr}")
+    body.append(f"  {kernel_symbol}({', '.join(call_ptrs)});")
+    for o in out_args:
+        arr = f"_out_{o.name}"
+        body.append(f'  _ps("OUT {o.name} {o.rows} {o.cols}");')
+        if o.dtype == "f32":
+            body.append(f"  for(int i=0;i<{o.rows * o.cols};i++){{_pc(' ');_pf(_u2f({arr}[i]));}}")
+        else:
+            body.append(f"  for(int i=0;i<{o.rows * o.cols};i++){{_pc(' ');_pu({arr}[i]);}}")
+        body.append("  _pc('\\n');")
+    body += ['  _ps("DONE\\n");', "  return 0;", "}"]
+    return "\n".join(body) + "\n"
+
+
+def external_main_from_cb(cb: dict, *, kernel_symbol: str, model) -> str | None:
+    """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the
+    EXTERN-kernel harness ``main`` (to be compiled to ``main.o`` and fork-free-linked against the MLIR
+    ``kernel.o``). None when the operands aren't available (fail-safe)."""
+    derived = args_from_cb(cb)
+    if derived is None:
+        return None
+    in_args, out_args = derived
+    return build_external_kernel_main(in_args, out_args, kernel_symbol=kernel_symbol, model=model)
+
+
+def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
+    """Build the self-contained harness program for a capsule directly from its COMMAND BUFFER, or return
+    None when the artifact is already a full program (has ``main``) — the caller then compiles it directly.
+    Inlines the *source* kernel (:func:`build_program`); operand order from :func:`args_from_cb`."""
+    if "int main" in kernel_fn_src:
+        return None
+    derived = args_from_cb(cb)
+    if derived is None:
+        return None
+    in_args, out_args = derived
     return build_program(kernel_fn_src, in_args, out_args, kernel_symbol=_kernel_symbol(kernel_fn_src),
                          model=model)
