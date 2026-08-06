@@ -23,6 +23,24 @@ from . import isa_taxonomy as IT
 Finding = dict
 
 
+def _ambiguous_findings(recs: list[Finding]) -> list[Finding]:
+    """A word that matches MORE THAN ONE decode signature is an overlapping/ambiguous encoding: the
+    disassembler cannot say which instruction it is, so the hardware decoder's choice cannot be trusted
+    either. The derived assembler never emits one — only a hand-packed word can — so surface it as an error
+    (the tool-level complement to authoring via ``isa_tools asm``). Purely decode-derived: no golden, no op
+    name literal."""
+    out: list[Finding] = []
+    for r in recs:
+        amb = r.get("ambiguous")
+        if amb:
+            names = ", ".join(str(a) for a in amb)
+            out.append({"rule": "ambiguous_decode", "severity": "error", "index": r["index"],
+                        "detail": f"word {r['word']} matches {len(amb)} instruction signatures ({names}) — "
+                                  "an overlapping/ambiguous encoding the decoder cannot resolve to one op; "
+                                  "assemble it with the derived encoder instead of hand-packing the word"})
+    return out
+
+
 def _lint_fixed(model: IsaModel, words: list[int]) -> list[Finding]:
     """Lint a FIXED-FORMAT kernel (one field layout selected by an opcode field — the mlc isa_encoding
     derivation). Two static, false-positive-free checks: an undecodable opcode, and a memory instruction
@@ -37,6 +55,7 @@ def _lint_fixed(model: IsaModel, words: list[int]) -> list[Finding]:
             findings.append({"rule": "illegal_opcode", "severity": "error", "index": r["index"],
                              "detail": f"word {r['word']} has an opcode this ISA does not define — an "
                                        "invented or mis-encoded instruction (use the derived encoder)"})
+    findings.extend(_ambiguous_findings(real))
     if words and not real:
         findings.append({"rule": "no_recognized_instructions", "severity": "error",
                          "detail": "no emitted word decodes to a defined instruction — the kernel is empty "
@@ -90,6 +109,10 @@ def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype:
     #    share one coarse semantic class (e.g. both "nullary"), so a class-name match would falsely accept a
     #    fence; the signature separates them by their own opcode.
     real = [r for r in recs if not r.get("illegal")]
+
+    # 1b) ambiguous decode — a word matching more than one signature (the disassembler cannot resolve it).
+    findings.extend(_ambiguous_findings(real))
+
     if model.halt_signatures:
         def _is_halt(w: int) -> bool:
             return any((w & m) == v for m, v in model.halt_signatures)

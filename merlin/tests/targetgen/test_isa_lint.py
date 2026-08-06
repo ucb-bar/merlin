@@ -91,6 +91,36 @@ def test_barrier_sharing_halt_class_is_not_termination():
     assert "no_halt" not in _rules(L.lint(m, ok))
 
 
+def _model_ambiguous() -> IsaModel:
+    """Two ops sharing the same fixed opcode bits but different field layouts, so ONE word matches BOTH
+    decode signatures — the overlapping/ambiguous encoding a hand-packed word can hit (the derived assembler
+    never emits one). This is the atlas DMA.CONFIG case (disasm tagged it ambiguous, but lint used to pass)."""
+    a_f = {"rd": [7, 8, 9, 10, 11]}
+    b_f = {"rs1": [15, 16, 17, 18, 19]}
+    a_mask, a_val = _sig(0x2B, a_f)
+    b_mask, b_val = _sig(0x2B, b_f)
+    by = {
+        "OpA": {"class": "OpA", "role": "matmul", "fixed_mask": a_mask, "fixed_value": a_val, "fields": a_f},
+        "OpB": {"class": "OpB", "role": "memory", "fixed_mask": b_mask, "fixed_value": b_val, "fields": b_f},
+    }
+    return IsaModel(target="fakeamb", by_mnemonic=by, roles={"matmul": ["OpA"], "memory": ["OpB"]})
+
+
+def test_ambiguous_decode_is_flagged():
+    m = _model_ambiguous()
+    f = L.lint(m, [0x2B])                                     # 0x2B matches BOTH OpA and OpB signatures
+    amb = [x for x in f if x["rule"] == "ambiguous_decode"]
+    assert amb and amb[0]["severity"] == "error"             # an ambiguous encoding is an error, not clean
+    assert "OpA" in amb[0]["detail"] and "OpB" in amb[0]["detail"]
+
+
+def test_unambiguous_word_has_no_ambiguous_finding():
+    # a word that matches exactly one signature must NOT be flagged ambiguous (no false positive)
+    m = _model2()
+    words = A.assemble_text(m, "Load rd=1, imm=0\nMatMul rd=1, rs1=1\nHalt\n")
+    assert "ambiguous_decode" not in _rules(L.lint(m, words, op="matmul"))
+
+
 def test_halt_unknown_is_info_not_a_false_error():
     m = _model(halt=())                                       # halt set not derived
     f = L.lint(m, A.assemble_text(m, "MatMul rd=1, rs1=1\n"))
