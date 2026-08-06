@@ -106,6 +106,13 @@ def vcs_muon_adapter() -> Callable:
     return _adapter("vcs")
 
 
+def verilator_muon_adapter() -> Callable:
+    """Certification oracle: the RadianceMuonConfig Verilator RTL sim (open-source cycle-accurate), replacing
+    the WIP VCS difftest. Fails closed (``MuonUnavailable``) when the sim binary is not built, so an
+    unavailable RTL cert is honest (the tier is optional-when-available), never a fabricated pass."""
+    return _adapter("verilator")
+
+
 def _shape2d(shape) -> tuple[int, int]:
     dims = [int(d) for d in (shape or []) if int(d) > 0] or [1]
     if len(dims) == 1:
@@ -167,4 +174,4 @@ def default_adapters() -> dict[str, Callable]:
     """Tier -> adapter for the Muon runner. L2 = cyclotron (perf), L3 = VCS-RTL cert. The RTL-arc readback
     oracle (``arc_readback_adapter``) is the sim-independent, multi-warp-capable grade a real new target has
     (its RTL-compiled model); selected by the harness when a run needs memory-readback rather than console."""
-    return {"L2": cyclotron_adapter(), "L3": vcs_muon_adapter()}
+    return {"L2": cyclotron_adapter(), "L3": verilator_muon_adapter()}

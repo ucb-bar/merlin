@@ -174,6 +174,15 @@ def vcs_path() -> Path:
     return chipyard_root() / "sims/vcs" / f"simv-chipyard.harness-{VCS_CONFIG}"
 
 
+def verilator_path() -> Path:
+    """The RadianceMuonConfig Verilator RTL sim (the RTL cert oracle — an open-source cycle-accurate sim,
+    replacing the VCS difftest). ``MERLIN_MUON_VERILATOR`` overrides the default chipyard build location."""
+    val = _env("MERLIN_MUON_VERILATOR")
+    if val:
+        return Path(val)
+    return chipyard_root() / "sims/verilator" / f"simulator-chipyard.harness-{VCS_CONFIG}"
+
+
 def available(simulator: str = "cyclotron") -> bool:
     """True when clang-muon + the runtime + the requested simulator are all present."""
     lib = lib_dir()
@@ -186,6 +195,8 @@ def available(simulator: str = "cyclotron") -> bool:
         return base and cyclotron_path().is_file() and config_path().is_file()
     if simulator == "vcs":
         return base and vcs_path().is_file()
+    if simulator == "verilator":
+        return base and verilator_path().is_file()
     raise MuonError(f"unknown simulator {simulator!r}")
 
 
@@ -670,6 +681,25 @@ def _run_vcs(elf: Path, timeout: int) -> tuple[str, int | None]:
     return console, cycles
 
 
+def _run_verilator(elf: Path, timeout: int) -> tuple[str, int | None]:
+    """Run the ELF on the RadianceMuonConfig Verilator RTL sim (the open-source cycle-accurate RTL cert).
+
+    Chipyard verilator harnesses take the ELF as ``+binary=<elf>`` and print the same OUT/METRIC/DONE
+    console + a ``finished after <N> cycles`` line. Honest-unavailable (``MuonUnavailable``) on any
+    load/launch failure — it never reports a pass it cannot stand behind."""
+    cmd = [str(verilator_path()), f"+binary={elf}", "+permissive-off"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=str(elf.parent))
+    except subprocess.TimeoutExpired as e:
+        raise MuonUnavailable(f"verilator RTL sim timed out after {timeout}s") from e
+    console = proc.stdout + ("\n" + proc.stderr if proc.stderr else "")
+    cycles = _cycles_from_console(console)
+    if proc.returncode != 0 or cycles is None:
+        raise MuonUnavailable(f"verilator RTL sim did not complete (rc={proc.returncode}). "
+                              f"tail:\n{console[-400:]}")
+    return console, cycles
+
+
 def run_elf(elf: str | Path, simulator: str = "cyclotron",
             timeout: int = 600) -> tuple[str, int | None, dict | None]:
     """Run the ELF on the chosen oracle; return (console, cycles, summary_json|None)."""
@@ -678,6 +708,9 @@ def run_elf(elf: str | Path, simulator: str = "cyclotron",
         return _run_cyclotron(elf, timeout)
     if simulator == "vcs":
         console, cycles = _run_vcs(elf, timeout)
+        return console, cycles, None
+    if simulator == "verilator":
+        console, cycles = _run_verilator(elf, timeout)
         return console, cycles, None
     raise MuonError(f"unknown simulator {simulator!r}")
 

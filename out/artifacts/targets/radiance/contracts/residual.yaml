@@ -94,7 +94,11 @@ runner:
   # Muon re-encode, no clang-muon) via compile_mlir_forkfree. Overrides the external_backend kernel.cpp
   # default; the prompt/grounding and the oracle both key on the .mlir suffix so they never disagree.
   fourth_output_name: lowered.llvm.mlir
-  tier_sim: {L2: cyclotron, L3: vcs}
+  # L2 = cyclotron (the RTL-derived perf+functional model): runs the emitted kernel and checks its output
+  # against the independent golden — the REQUIRED functional execution gate (capsules require L2). L3 =
+  # verilator (RadianceMuonConfig RTL sim): the cycle-accurate RTL cert, replacing the WIP VCS difftest;
+  # optional-when-available (capsules mark verilator: optional).
+  tier_sim: {L2: cyclotron, L3: verilator}
   sim_via: cyclotron
   force_match_policy: {compare: float, atol: 1.0e-3}
 plugin:
