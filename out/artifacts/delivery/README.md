@@ -58,9 +58,15 @@ binary you need when something goes wrong is the one you do not have. Both build
 To tell any two packages apart from the binaries themselves:
 
 ```bash
-riscv64-unknown-elf-nm <elf> | grep -c uart_sifive_data_0   # 1 = the chip's own UART (gemmelos: send)
-riscv64-unknown-elf-readelf -S <elf> | grep -c '\.htif'     # gemmelos: 0 = send, 1 = superseded
+riscv64-unknown-elf-nm <elf> | grep -c tohost        # gemmelos: 0 = send, 1 = superseded
+riscv64-unknown-elf-nm <elf> | grep -c uart_sifive   # gemmelos: non-zero = the chip's own UART
 ```
+
+**Not** `readelf -S | grep .htif`. Zephyr allocates an empty `NOBITS` `.htif` section for its reboot
+path regardless of which console is selected, so the current gemmelos images carry one too — an earlier
+version of this file said `0 = send, 1 = superseded` and would have pointed at the wrong package. The
+`tohost` symbol is the honest discriminator: an HTIF image spins on that word, a UART image has no
+reference to it.
 
 On Kodiak a `.htif` section is **expected and required** — that board's DTS selects `&htif`, its
 defconfig disables the SiFive UART port, and `pyuartsi --fesvr` serves `tohost`/`fromhost` for the whole

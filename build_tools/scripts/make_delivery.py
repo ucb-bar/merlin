@@ -975,9 +975,14 @@ until then (a printf to it would hang the core)."*
 These images speak your UART instead, and you can verify that without running them:
 
 ```bash
-riscv64-unknown-elf-readelf -S <THIS.elf> | grep -c '\\.htif'   # the console is not HTIF
-riscv64-unknown-elf-nm      <THIS.elf> | grep -c tohost        # nothing waits on a host
+riscv64-unknown-elf-nm <THIS.elf> | grep -c tohost        # 0 -> nothing waits on a host
+riscv64-unknown-elf-nm <THIS.elf> | grep -c uart_sifive   # non-zero -> your UART driver is linked
 ```
+
+Do **not** test this with `readelf -S | grep .htif`: Zephyr allocates an empty (`NOBITS`) `.htif`
+section for its reboot path whether or not HTIF is the console, so that section is present in these
+images too and counting it proves nothing. The absence of a `tohost` SYMBOL is the real evidence --
+that is the word an HTIF image spins on.
 
 **The compiled model is unchanged** — same lowering, same schedule, same weights. Only the output
 channel was wrong.
