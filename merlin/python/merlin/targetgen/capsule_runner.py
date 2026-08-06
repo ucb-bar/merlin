@@ -758,7 +758,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # TOOL_CRASH, so the unavailable->incomplete / not_gradeable_no_oracle path never fires for atlas.
         # Catch BOTH so unavailability is honest for every endpoint.
         from .program_oracle import OracleUnavailable as _POUnavailable
-        _ORACLE_UNAVAILABLE = (OracleUnavailable, _POUnavailable)
+        # The muon (SIMT/cyclotron/VCS) adapters raise their OWN MuonUnavailable — a THIRD unrelated class.
+        # The VCS RTL difftest is honest-unavailable (WIP upstream: the DPI ELF path is not wired for arbitrary
+        # corpus kernels), so it raises MuonUnavailable; without catching it here that honest unavailability
+        # falls through to the generic handler and is mislabeled a TOOL_CRASH (an agent FAIL) instead of
+        # firing the unavailable -> not_gradeable_no_oracle path — the same bug the program-oracle catch above
+        # fixed for atlas. Catch it too so an unavailable RTL oracle is honest for the SIMT endpoint as well.
+        from ..runtime.backends.muon import MuonUnavailable as _MuonUnavailable
+        _ORACLE_UNAVAILABLE = (OracleUnavailable, _POUnavailable, _MuonUnavailable)
         for tier in sorted(set(cfg.oracle_tiers) | set(adapters or {})):
             mand = tier in required
             adapter = (adapters or {}).get(tier)
