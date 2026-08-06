@@ -39,7 +39,8 @@ def _model() -> IsaModel:
                      "fields": mm_f},
           "Halt": {"class": "Halt", "role": "scalar", "fixed_mask": hl_mask, "fixed_value": hl_val,
                    "fields": {}}}
-    return IsaModel(target="fake", by_mnemonic=by, roles={"matmul": ["MatMul"]}, halt_mnemonics=("Halt",))
+    return IsaModel(target="fake", by_mnemonic=by, roles={"matmul": ["MatMul"]}, halt_mnemonics=("Halt",),
+                    halt_signatures=((hl_mask, hl_val),))   # termination detection is by DERIVED signature
 
 
 @pytest.fixture()
