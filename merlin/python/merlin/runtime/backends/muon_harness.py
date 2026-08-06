@@ -145,19 +145,31 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     on operand order + shapes. Returns None (fail-safe) on an unsupported shape (chained matmuls / no matmul).
     Shared by the inline-source path (:func:`program_from_cb`) and the object-kernel path
     (:func:`external_main_from_cb`)."""
-    from .muon_codegen import _plan
     from ..commandbuffer import materialize_inputs
-    resident_source, matmul_for, commits = _plan(cb)
-    if len(commits) != 1:
+    # Tolerant single-matmul plan (do NOT reuse the strict muon_codegen._plan, which assumes ``dst`` on every
+    # matmul): resolve RES_PACK residents, the one matmul (accepting ``dst``/``out`` and ``rhs``/``weight``),
+    # and the output NAME — the COMMIT dst that sources the matmul when present, else the matmul's own dst.
+    resident_source: dict[str, str] = {}
+    matmuls: list[tuple[str, str, str]] = []      # (dst, lhs, rhs)
+    commits: list[tuple[str, str]] = []           # (out, src)
+    for cmd in cb.get("commands", []):
+        op = (cmd.get("opcode") or "").upper()
+        o = cmd.get("operands", {})
+        if op == "RES_PACK":
+            if o.get("dst") and o.get("src"):
+                resident_source[o["dst"]] = o["src"]
+        elif "MATMUL" in op or "GEMM" in op:
+            dst, lhs, rhs = o.get("dst") or o.get("out"), o.get("lhs"), o.get("rhs") or o.get("weight")
+            if dst and lhs and rhs:
+                matmuls.append((dst, lhs, rhs))
+        elif op == "COMMIT":
+            if o.get("dst") and o.get("src"):
+                commits.append((o["dst"], o["src"]))
+    if len(matmuls) != 1:
         return None
-    ops = commits[0].get("operands", {})
-    mm = matmul_for.get(ops.get("src"))
-    if mm is None:
-        return None
-    mops = mm.get("operands", {})
-    lhs = mops.get("lhs")
-    rhs = resident_source.get(mops.get("rhs"), mops.get("rhs"))
-    out = ops.get("dst")
+    mdst, lhs, rhs = matmuls[0]
+    rhs = resident_source.get(rhs, rhs)
+    out = next((cout for cout, csrc in commits if csrc == mdst), mdst)
     if not (lhs and rhs and out):
         return None
     env = materialize_inputs(cb)
