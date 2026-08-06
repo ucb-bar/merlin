@@ -586,8 +586,15 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str)
                      f"+ `python action_catalog.py escalation-ladder <axis> {target}` (runnable CLIs, like "
                      "`isa_tools.py`) and build every leverable axis they list.")
             n += 1
+        if endpoint_kind == "external_backend":
+            L.append(f"{n}. Assemble every instruction word with `python isa_tools.py asm ops.txt` — it packs "
+                     "the exact bits this target's own encoder uses and REFUSES to emit a wrong word. NEVER "
+                     "hand-pack `.word` hex: a word that is opcode-legal but decodes to a DIFFERENT op moves "
+                     "no data (your DMA/load silently no-ops) and scores 0 even though `lint` passes. Confirm "
+                     "with `disasm` that each word decodes back to the op you intended.")
+            n += 1
         L.append(f"{n}. Before every self_check, run `python isa_tools.py lint` and `disasm` on {art} and "
-                 "confirm every instruction decodes and the kernel halts.")
+                 "confirm every instruction decodes (nothing UNKNOWN or ambiguous) and the kernel halts.")
         n += 1
     if has_rtl:                                                 # arm-4 only (the CIRCT / RTL-facts arm)
         L.append(f"{n}. RTL-checks arm: DERIVE the ISA / mesh / datapath from the granted RTL-extracted facts "
