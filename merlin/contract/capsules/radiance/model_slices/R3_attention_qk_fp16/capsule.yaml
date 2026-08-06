@@ -1,0 +1,41 @@
+name: R3_attention_qk_fp16
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: attention Q @ K^T scores, fp16 -> fp32 (TinyLlama/Gemma-2 attn tile)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: Q
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: f16
+- name: K
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: f16
+operation:
+  op: attention_qk
+  attributes:
+    q: Q
+    k: K
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional
