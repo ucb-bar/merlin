@@ -720,8 +720,18 @@ def main(argv=None) -> int:
         ent = {"bitstream": "alveo_u250_firesim_dual_saturn_v256d128", "vlen": 256, "runs": keep}
         if 1 in by and 2 in by and by[1]["cycles"] and by[2]["cycles"]:
             ent["speedup_1_to_2_harts"] = round(by[1]["cycles"] / by[2]["cycles"], 3)
+            # Prefer an explicitly recorded verdict over inferring one from stored outputs: a results
+            # file that keeps only a PREFIX of the output vector would compare equal on that prefix and
+            # publish "bit-identical" for a run that is not. Measured on the dual-Saturn bitstream,
+            # deepjscc's 2-hart run is NOT identical to its 1-hart run (w8a8_cos 0.9999972,
+            # reproduced twice), while spectformer's is exact -- so this is a real distinction and not
+            # a formality.
+            explicit = [r.get("harts_bit_identical") for r in rows
+                        if r.get("harts_bit_identical") is not None]
             outs = {r["harts"]: r.get("outputs") for r in rows if r.get("outputs")}
-            if 1 in outs and 2 in outs:
+            if explicit:
+                ent["harts_bit_identical"] = bool(explicit[0])
+            elif 1 in outs and 2 in outs:
                 ent["harts_bit_identical"] = outs[1] == outs[2]
         firesim_evidence[model] = ent
     if firesim_evidence:
@@ -1037,6 +1047,22 @@ only, and the table says so.
             for r in e["runs"]:
                 rows_fs.append(f"| {model} | {r['harts']} | {r['cycles']:,} | {r['tier_ok']} | "
                                f"{r['w8a8_max_rel']} |")
+        # Say plainly where the multicore split is NOT an exact work division. Measured on this
+        # bitstream, deepjscc's 2-hart run differs from its 1-hart run (reproducibly -- two runs,
+        # identical numbers) while spectformer's does not, and spike at the same VLEN shows no
+        # difference for either. Publishing a blanket "bit-identical" would be false for one of the
+        # two models, and it is exactly the property we ask the board owners to check themselves.
+        not_ident = sorted(m for m, e in fs.items()
+                           if e.get("harts_bit_identical") is False)
+        caveat = ("" if not not_ident else
+                  "> **Where the split is not exact:** on this RTL the 2-hart run of "
+                  + ", ".join(f"`{m}`" for m in not_ident)
+                  + " is *not* bit-identical to its 1-hart run — it still passes the W8A8 gate, but\n"
+                    "> with a small per-element difference, reproduced exactly across two runs (so it\n"
+                    "> is deterministic, not a race). The same binaries ARE bit-identical under spike\n"
+                    "> at the same vector length, so this is something about the vector hardware, not\n"
+                    "> about the compiled code. Open on our side. If you see the same on your chip,\n"
+                    "> that is informative rather than alarming; tell us and we will chase it.")
         extra = []
         for model, e in sorted(fs.items()):
             if e.get("speedup_1_to_2_harts"):
@@ -1055,11 +1081,12 @@ cycle-accurate. Bitstream `%s`, **vLen=256**:
 
 %s
 
-Two things this establishes for you: the arithmetic is bit-exact against the W8A8 reference on real
-hardware (`per-element error 0.0`, not just a good cosine), and the multicore split is a pure work
-division rather than an approximation. It is *not* a claim about your chip's clock or memory system —
-different SoC, different frequency.
-""" % (list(fs.values())[0]["bitstream"], "\n".join(rows_fs), "\n".join(extra) or ""))
+%s
+
+This is *not* a claim about your chip's clock or memory system — different SoC, different frequency.
+What it does establish is that the arithmetic holds up on real hardware rather than only in a
+functional simulator, and it is where a multicore split gets its first honest test.
+""" % (list(fs.values())[0]["bitstream"], "\n".join(rows_fs), "\n".join(extra) or "", caveat))
     else:
         firesim_doc = ""
     simulated = any(b.get("spike_cycles") is not None for b in manifest["binaries"])
