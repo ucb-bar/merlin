@@ -136,50 +136,61 @@ def _shape2d(shape: list) -> tuple[int, int]:
 
 def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     """Derive the kernel's ``(in_args, out_args)`` from a capsule's COMMAND BUFFER, in the generic
-    ``kernel_abi`` order ``[weight] ++ [lhs in command order] ++ [outputs in command order]``. Input VALUES
-    come from ``cb['canonical_inputs']`` (the runner attaches the golden's decoded operands there); shapes
-    from ``cb['tensors']``. Returns None (fail-safe) when the operands/shapes are not fully available, so a
-    caller never silently harnesses an un-fed kernel. Shared by the inline-source path (:func:`program_from_cb`)
-    and the object-kernel path (:func:`external_main_from_cb`)."""
-    tensors = cb.get("tensors") or {}
-    values = cb.get("canonical_inputs") or {}
-    if not values:
-        return None                                   # no operands attached -> let the caller compile as-is
-
-    def _pick(operands: dict, *keys: str) -> str | None:
-        for k in keys:
-            if operands.get(k):
-                return operands[k]
+    ``kernel_abi`` order ``[weight] ++ [lhs] ++ [output]``. Input VALUES come from the SAME deterministic
+    materialization the reference backend and the golden use (:func:`commandbuffer.materialize_inputs`) — NOT
+    a ``canonical_inputs`` side table (which the emitted cb does not carry) — so the harnessed operands match
+    the golden bit-for-bit; the output NAME is the COMMIT's dst (e.g. ``Y0``) so the printed ``OUT <name>``
+    matches the graded tensor; the output SHAPE is the matmul's ``(M, N)`` (outputs are produced, not leaf
+    tensors). Uses the same plan as :func:`muon_codegen_mlir.emit_kernel_mlir`, so harness and kernel agree
+    on operand order + shapes. Returns None (fail-safe) on an unsupported shape (chained matmuls / no matmul).
+    Shared by the inline-source path (:func:`program_from_cb`) and the object-kernel path
+    (:func:`external_main_from_cb`)."""
+    from .muon_codegen import _plan
+    from ..commandbuffer import materialize_inputs
+    resident_source, matmul_for, commits = _plan(cb)
+    if len(commits) != 1:
+        return None
+    ops = commits[0].get("operands", {})
+    mm = matmul_for.get(ops.get("src"))
+    if mm is None:
+        return None
+    mops = mm.get("operands", {})
+    lhs = mops.get("lhs")
+    rhs = resident_source.get(mops.get("rhs"), mops.get("rhs"))
+    out = ops.get("dst")
+    if not (lhs and rhs and out):
+        return None
+    env = materialize_inputs(cb)
+    if lhs not in env or rhs not in env:
+        return None
+    lt, rt = env[lhs], env[rhs]
+    if len(lt.shape) != 2 or len(rt.shape) != 2:
+        return None
+    m, k = lt.shape[0], lt.shape[1]
+    k2, n = rt.shape[0], rt.shape[1]
+    if k != k2:
         return None
 
-    weights, lhses, outs, seen = [], [], [], set()
-    for cmd in cb.get("commands", []):
-        op = (cmd.get("opcode") or "").upper()
-        if "MATMUL" not in op and "GEMM" not in op:
-            continue
-        o = cmd.get("operands", {})
-        for role, bucket in ((("weight", "rhs"), weights), (("lhs",), lhses), (("out", "dst"), outs)):
-            nm = _pick(o, *role)
-            if nm and nm not in seen:
-                seen.add(nm)
-                bucket.append(nm)
-    if not (lhses and outs):
-        return None                                   # not a shape we can harness
+    # Operand VALUES: the golden's decoded operands the runner attaches at grade time
+    # (``cb['canonical_inputs']`` — so the kernel runs on the SAME operands the independent golden used),
+    # else the deterministic materialization (which the golden also uses when no canonical raws exist). SHAPES
+    # come from the leaf tensors; the output is produced (not a leaf), so its shape is the matmul (M, N).
+    canon = cb.get("canonical_inputs") or {}
 
-    def _arg(name: str, with_values: bool) -> TensorArg | None:
-        shp = (tensors.get(name) or {}).get("shape")
-        r, c = _shape2d(shp)
-        if with_values:
-            v = (values.get(name) or {}).get("values")
-            if v is None or len(v) != r * c:
-                return None
-            return TensorArg(name, r, c, [float(x) for x in v], "f32")
-        return TensorArg(name, r, c, [0.0] * (r * c), "f32")
+    def _flat(name: str, t) -> list[float] | None:
+        c = canon.get(name)
+        if isinstance(c, dict):
+            c = c.get("values")
+        if c is not None:
+            return [float(x) for x in c]
+        return [float(v) for row in t.to_list() for v in row]
 
-    in_args = [_arg(n, True) for n in (weights + lhses)]
-    out_args = [_arg(n, False) for n in outs]
-    if any(a is None for a in in_args + out_args):
-        return None                                   # a missing operand/shape -> fail safe, do not guess
+    lv, rv = _flat(lhs, lt), _flat(rhs, rt)
+    if lv is None or rv is None or len(lv) != m * k or len(rv) != k2 * n:
+        return None
+    # ABI order: [weight] ++ [lhs] ++ [output]. weight = the (resident-resolved) rhs operand.
+    in_args = [TensorArg(rhs, k2, n, rv, "f32"), TensorArg(lhs, m, k, lv, "f32")]
+    out_args = [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
     return in_args, out_args
 
 

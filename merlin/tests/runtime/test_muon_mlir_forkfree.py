@@ -61,8 +61,10 @@ _KERNEL_MLIR = """module {
 """
 
 _CB = {
-    "commands": [{"opcode": "MATMUL", "operands": {"lhs": "A", "rhs": "B", "out": "OUT"}}],
-    "tensors": {"A": {"shape": [2, 2]}, "B": {"shape": [2, 2]}, "OUT": {"shape": [2, 2]}},
+    "commands": [{"opcode": "MATMUL", "operands": {"dst": "acc", "lhs": "A", "rhs": "B"}},
+                 {"opcode": "COMMIT", "operands": {"dst": "OUT", "src": "acc"}}],
+    "tensors": {"A": {"shape": [2, 2], "dtype": "f32", "role": "input"},
+                "B": {"shape": [2, 2], "dtype": "f32", "role": "weight"}},
     "canonical_inputs": {"A": {"values": [1, 2, 3, 4]}, "B": {"values": [5, 6, 7, 8]}},
 }
 

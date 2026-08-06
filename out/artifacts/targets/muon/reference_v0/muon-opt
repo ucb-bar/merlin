@@ -75,9 +75,11 @@ def main(argv: list[str]) -> int:
 
     cb = _load_cb(input_mlir)
 
-    if "--emit-simt-cpp" in flags:
-        from merlin.runtime.backends.muon_codegen import emit_kernel_cpp
-        sys.stdout.write(emit_kernel_cpp(cb))
+    if "--emit-target-artifact" in flags or "--emit-simt-cpp" in flags:
+        # Thesis path: emit an LLVM-dialect MLIR kernel LOWERING (compiled fork-free by the oracle), not a
+        # C++ kernel. (The legacy --emit-simt-cpp flag is accepted for back-compat but now also emits MLIR.)
+        from merlin.runtime.backends.muon_codegen_mlir import emit_kernel_mlir
+        sys.stdout.write(emit_kernel_mlir(cb))
         return 0
     if emit_cb_path is not None:
         schemas.validate_command_buffer(cb)          # fail-closed before writing
