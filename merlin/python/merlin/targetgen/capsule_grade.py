@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from . import capsule_runner as CR
@@ -24,13 +25,28 @@ from . import coverage_report as CV
 from .oot_runner import CertFailure, build_package, integrity_scan, load_package
 
 
+def default_grade_workers(n_capsules: int | None = None) -> int:
+    """How many per-capsule oracle instances (verilator/VCS/cyclotron) to fan out in parallel — the
+    per-capsule sim runs are independent, so grading N capsules serially wastes wall-clock. Derived from
+    the host (leave 2 cores headroom, cap at 16), never more than the number of capsules; overridable via
+    ``MERLIN_GRADE_WORKERS``. Applies to every arm's grade (the shared suite grader)."""
+    env = os.environ.get("MERLIN_GRADE_WORKERS")
+    if env and env.isdigit() and int(env) > 0:
+        w = int(env)
+    else:
+        w = max(1, min((os.cpu_count() or 4) - 2, 16))
+    return max(1, min(w, n_capsules)) if n_capsules else w
+
+
 def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str | Path,
           labels: set[str] | None = None, contract: str | Path | None = None,
           oracle_adapters: dict | None = None, timeout: int = 900,
-          max_workers: int = 1, target: str, no_oracle: bool = False) -> dict:
+          max_workers: int = 0, target: str, no_oracle: bool = False) -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
-    ``max_workers > 1`` fans the per-capsule oracle runs out in parallel (verilator/VCS instances).
+    ``max_workers`` fans the per-capsule oracle runs out in parallel (verilator/VCS/cyclotron instances);
+    ``<= 0`` (the default) derives a host-scaled count via :func:`default_grade_workers` so grading a
+    multi-capsule suite never serializes the RTL sims. Any positive value is honored as an explicit cap.
 
     ``no_oracle`` marks an EXPLICIT structure-only smoke (typically paired with ``oracle_adapters={}``):
     a capsule that clears the structural tiers but whose mandatory numeric tier was deliberately not run
@@ -66,11 +82,12 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         return score
 
     caps = CR.discover_capsules(capsules_root, labels=labels, contract=contract)
+    workers = max_workers if max_workers and max_workers > 0 else default_grade_workers(len(caps))
     import time as _time
     _suite_t0 = _time.perf_counter()
     results = CR.run_suite(caps, pkg_dir, runs_root=runs_root, contract=contract,
                            oracle_adapters=oracle_adapters, timeout=timeout,
-                           max_workers=max_workers, target=target, no_oracle=no_oracle)
+                           max_workers=workers, target=target, no_oracle=no_oracle)
     _suite_wall = _time.perf_counter() - _suite_t0
 
     # collect decoded traces for coverage — read from the TARGET's own suite dir (run_capsule writes
@@ -167,7 +184,7 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         "sim_active_s": round(_agg["sim_active_s"], 3),
         "active_total_s": round(_active, 3),
         "oracle_wait_s": round(_agg["oracle_wait_s"], 3),
-        "max_workers": max_workers,
+        "max_workers": workers,
         "parallel_speedup": round(_active / _suite_wall, 2) if _suite_wall > 0 else None,
     }
 
@@ -191,7 +208,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-oracle", action="store_true", help="L0/L1/trace only (skip spike/verilator)")
     ap.add_argument("--score", default=None)
     ap.add_argument("--timeout", type=int, default=900)
-    ap.add_argument("--workers", type=int, default=1, help="parallel oracle instances (verilator/VCS)")
+    ap.add_argument("--workers", type=int, default=0,
+                    help="parallel oracle instances (verilator/VCS/cyclotron); 0 = host-scaled default")
     a = ap.parse_args(argv)
 
     labels = {"hidden"} if a.hidden else set(a.labels.split(","))
