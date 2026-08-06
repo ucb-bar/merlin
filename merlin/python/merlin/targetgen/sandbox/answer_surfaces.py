@@ -38,6 +38,13 @@ ORACLE_MODULES: tuple[str, ...] = (
     "merlin/python/merlin/runtime/reference.py",     # the numerical reference oracle
     "merlin/python/merlin/runtime/simulator.py",     # the functional simulator oracle
     "merlin/python/merlin/runtime/backends",         # the callable oracle backends (a route to the oracle)
+    # The per-target oracle adapters (L2/L3/L4 routing) + the RTL-model bridge they call. Reading these
+    # hands the agent the DRAM ABI (base/layout/stacking) and readback convention it is supposed to DERIVE
+    # from the public contract + RTL facts — the arm-4 answer_access leak this registry must close.
+    "merlin/python/merlin/targetgen/program_oracle.py",   # external_backend program oracle (atlas L2/L3/L4)
+    "merlin/python/merlin/targetgen/muon_oracles.py",     # SIMT/Muon oracle adapters (radiance)
+    "merlin/python/merlin/targetgen/heavy_oracles.py",    # heavy (cycle-accurate) oracle adapters
+    "merlin/python/merlin/targetgen/rtl/mlc_bridge.py",   # mlc arc cosim + DRAM readback (the oracle bridge)
 )
 GRADER_MODULES: tuple[str, ...] = (
     "merlin/python/merlin/targetgen/rocc_decode.py",     # raw command-trace decoder (grader internal)
@@ -45,6 +52,7 @@ GRADER_MODULES: tuple[str, ...] = (
     "merlin/python/merlin/targetgen/capsule_grade.py",   # the grader
     "merlin/python/merlin/targetgen/capsule_golden.py",  # golden generation
     "merlin/python/merlin/targetgen/capsule_runner.py",  # the tier runner
+    "merlin/python/merlin/targetgen/capsule_dram.py",    # the DRAM preload/layout (input/output ABI the oracle expects)
     "merlin/python/merlin/targetgen/oot_runner.py",       # the OOT build+grade driver
     "merlin/python/merlin/targetgen/coverage_report.py",  # coverage grading
 )
