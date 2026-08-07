@@ -33,6 +33,7 @@ import json
 import shutil
 import sys
 import tempfile
+import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -895,6 +896,16 @@ def main(argv=None) -> int:
     (dest / "elf_audit.json").write_text(json.dumps(audits, indent=2) + "\n")
     (dest / "grade.py").write_text(GRADE_PY)
     (dest / "grade.py").chmod(0o755)
+    # Count what did NOT get a gate, and say so at package level. Every row already carried its own
+    # `gate_ok`, but "problems: []" beside a table of "not simulated" reads as a clean package to
+    # anybody who checks the summary rather than all sixteen rows -- and a whole package can end up
+    # ungated (the PLL variant did) without a single line of the output admitting it.
+    ungated = [b["elf"] for b in binaries if not b.get("gate_ok")]
+    if ungated:
+        problems.append(
+            f"{len(ungated)} of {len(binaries)} binaries carry NO simulation gate "
+            f"({', '.join(sorted(ungated)[:3])}{', …' if len(ungated) > 3 else ''}). They were built "
+            f"and ELF-audited only; nothing here certifies that they compute the right answer.")
     manifest = {
         "board": {"name": brd.name, "dram_bytes": brd.dram_bytes, "harts": brd.harts,
                   "vlen": brd.vlen, "console": brd.console, "notes": brd.notes},
@@ -931,12 +942,29 @@ def main(argv=None) -> int:
         for f in sorted(dest.iterdir()):
             manifest_writer.add_artifact(f.name)
         manifest_writer.write_manifest()
+    # Zip HERE, from the tree we just pruned. Zipping was a separate step by hand, so the archive was
+    # free to disagree with the directory -- and it did: the stale whisper image the prune above
+    # deletes was still sitting inside an already-built zip, i.e. removed from the package but still
+    # in the thing we would actually have sent. The archive is the deliverable, so the packager owns
+    # it, and it can only ever contain what the manifest lists.
+    zip_path = zip_package(dest)
+    print(f"[make_delivery] zipped -> {zip_path} ({zip_path.stat().st_size / 2**20:.0f} MB)")
     print(f"[make_delivery] {len(binaries)} binaries -> {dest}")
     if problems:
         print("[make_delivery] PROBLEMS (recorded in manifest.json, not hidden):", file=sys.stderr)
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
     return 0 if binaries and not problems else 1
+
+
+def zip_package(dest: Path) -> Path:
+    """Archive a package directory as ``<dest>.zip``, replacing any existing archive."""
+    zip_path = dest.parent / f"{dest.name}.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+        for f in sorted(dest.iterdir()):
+            if f.is_file():
+                z.write(f, f"{dest.name}/{f.name}")
+    return zip_path
 
 
 def _git_sha() -> str:
