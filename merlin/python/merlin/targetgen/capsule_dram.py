@@ -25,16 +25,31 @@ _DTYPE_BYTES: dict[str, int] = {
     "i16": 2, "int16": 2, "f16": 2, "float16": 2, "bf16": 2, "bfloat16": 2, "torch.bfloat16": 2,
     "i32": 4, "int32": 4, "torch.int32": 4, "f32": 4, "float32": 4,
     "i64": 8, "int64": 8, "f64": 8, "float64": 8,
+    # microscaling (MX) block-float: the ELEMENT is whole-byte (its shared scale is stored per block,
+    # separately) — an 8-bit mx element is 1 byte in the tensor's DRAM footprint.
+    "mxfp8": 1, "mxint8": 1,
 }
 
 DEFAULT_BASE = 0x1000      # start above a small guard region (never address 0)
 DEFAULT_ALIGN = 64         # 64-byte alignment is safe for any vector/tile datapath
 
 
+def _canonical_dtype(dtype: str) -> str:
+    """Fold equivalent width spellings to the table's canonical token so a byte-width lookup never crashes
+    on a synonym: capsule specs write ``fp16``/``fp32`` where MLIR interfaces write ``f16``/``f32`` for the
+    SAME width. Only the bare ``fp<N>`` family folds to ``f<N>`` (``fp8_e4m3``, ``bf16``, ``mx*`` keep their
+    own explicit tokens). A DRAM layout must be robust to the spelling, not fail-closed on a synonym."""
+    key = str(dtype).strip()
+    if key.startswith("fp") and key[2:].isdigit():   # fp16 -> f16, fp32 -> f32, fp64 -> f64
+        return "f" + key[2:]
+    return key
+
+
 def dtype_bytes(dtype: str) -> int:
-    """Bytes per element for a capsule/interface dtype token. Raises on an unknown dtype (fail-closed —
-    a silent wrong size would mis-place every following tensor)."""
-    key = str(dtype)
+    """Bytes per element for a capsule/interface dtype token. Raises on a genuinely unknown dtype
+    (fail-closed — a silent wrong size would mis-place every following tensor); spelling synonyms
+    (``fp16`` vs ``f16``) are folded first so they never trip that guard."""
+    key = _canonical_dtype(dtype)
     if key not in _DTYPE_BYTES:
         raise KeyError(f"capsule_dram: unknown dtype {dtype!r}; add it to _DTYPE_BYTES")
     return _DTYPE_BYTES[key]
