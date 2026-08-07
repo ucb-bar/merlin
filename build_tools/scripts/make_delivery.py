@@ -582,11 +582,22 @@ def main(argv=None) -> int:
                          "carrying the build hash. For a board we cannot attach to, this is what "
                          "makes ONE returned console log a diagnosis instead of a new question.")
     ap.add_argument("--out", default=None, help="destination dir (default: an out/artifacts product)")
+    ap.add_argument("--refresh", action="store_true",
+                    help="do not build anything: recompute --out's manifest summary, re-render its "
+                         "README from it, and rebuild its zip. For bringing an already-built package "
+                         "up to date with a packager that has since learned to state something new, "
+                         "without paying hours of simulation to regenerate identical bytes.")
     ap.add_argument("--sdk-dir", default=None,
                     help="the target's own SDK checkout. REQUIRED for a board whose console is its "
                          "own UART: the UART address and the clock rates its baud divisor depends on "
                          "are derived from that SDK's headers rather than hardcoded here.")
     a = ap.parse_args(argv)
+
+    if a.refresh:
+        if not a.out:
+            print("[make_delivery] --refresh needs --out <an existing package dir>", file=sys.stderr)
+            return 2
+        return refresh_package(Path(a.out))
 
     overrides = {}
     if a.dram_mb:
@@ -896,16 +907,7 @@ def main(argv=None) -> int:
     (dest / "elf_audit.json").write_text(json.dumps(audits, indent=2) + "\n")
     (dest / "grade.py").write_text(GRADE_PY)
     (dest / "grade.py").chmod(0o755)
-    # Count what did NOT get a gate, and say so at package level. Every row already carried its own
-    # `gate_ok`, but "problems: []" beside a table of "not simulated" reads as a clean package to
-    # anybody who checks the summary rather than all sixteen rows -- and a whole package can end up
-    # ungated (the PLL variant did) without a single line of the output admitting it.
-    ungated = [b["elf"] for b in binaries if not b.get("gate_ok")]
-    if ungated:
-        problems.append(
-            f"{len(ungated)} of {len(binaries)} binaries carry NO simulation gate "
-            f"({', '.join(sorted(ungated)[:3])}{', …' if len(ungated) > 3 else ''}). They were built "
-            f"and ELF-audited only; nothing here certifies that they compute the right answer.")
+    problems += [p for p in (_ungated_problem(binaries),) if p]
     manifest = {
         "board": {"name": brd.name, "dram_bytes": brd.dram_bytes, "harts": brd.harts,
                   "vlen": brd.vlen, "console": brd.console, "notes": brd.notes},
@@ -955,6 +957,67 @@ def main(argv=None) -> int:
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
     return 0 if binaries and not problems else 1
+
+
+UNGATED_PREFIX = "UNGATED:"
+
+
+def _ungated_problem(binaries: list[dict]) -> str | None:
+    """A package-level problem line for binaries that carry no simulation gate, or None.
+
+    Every row already carries its own ``gate_ok``, but ``"problems": []`` printed beside a table of
+    "not simulated" reads as a clean package to anybody who checks the summary rather than all
+    sixteen rows -- and a whole package can come out ungated (the PLL variant did) without a single
+    line of the output admitting it.
+
+    The two ways to be ungated are NOT the same failure and must not be reported as one. An image
+    that never ran is unverified in every respect. An image that ran to completion but has no W8A8
+    reference to compare against produced real numbers we simply cannot grade -- reporting it as
+    "built only" understates what we know, which is its own kind of dishonesty."""
+    unrun = sorted(b["elf"] for b in binaries
+                   if not b.get("gate_ok") and b.get("spike_cycles") is None)
+    ungraded = sorted(b["elf"] for b in binaries
+                      if not b.get("gate_ok") and b.get("spike_cycles") is not None)
+    if not (unrun or ungraded):
+        return None
+
+    def _shown(xs):
+        return ", ".join(xs[:3]) + (", …" if len(xs) > 3 else "")
+
+    parts = []
+    if unrun:
+        parts.append(f"{len(unrun)} of {len(binaries)} were never simulated ({_shown(unrun)}) — "
+                     f"built and ELF-audited only, so nothing here certifies that they compute the "
+                     f"right answer")
+    if ungraded:
+        parts.append(f"{len(ungraded)} of {len(binaries)} ran to completion but could not be "
+                     f"tier-graded ({_shown(ungraded)}) — the model ships no W8A8 reference, so "
+                     f"their output was compared only against the weight-only golden")
+    return f"{UNGATED_PREFIX} " + "; ".join(parts) + "."
+
+
+def refresh_package(dest: Path) -> int:
+    """Recompute a built package's derived fields, README and zip WITHOUT rebuilding its binaries.
+
+    The binaries and their gate results are the expensive, immutable part of a delivery; the manifest
+    summary, the README rendered from it, and the archive are pure functions of them. When the
+    packager learns to state something it did not state before, the packages already on disk should
+    be able to say it too, rather than either shipping the old wording or paying hours of simulation
+    to regenerate bytes that would come out identical."""
+    man = json.loads((dest / "manifest.json").read_text())
+    brd = boards.board(man["board"]["name"], dram_bytes=man["board"]["dram_bytes"],
+                       harts=man["board"]["harts"], vlen=man["board"]["vlen"])
+    man["problems"] = [p for p in man.get("problems", []) if not p.startswith(UNGATED_PREFIX)]
+    man["problems"] += [p for p in (_ungated_problem(man["binaries"]),) if p]
+    (dest / "manifest.json").write_text(json.dumps(man, indent=2) + "\n")
+    (dest / "README.md").write_text(_readme(brd, man, debug=any(b.get("debug")
+                                                                for b in man["binaries"])))
+    z = zip_package(dest)
+    print(f"[make_delivery] refreshed {dest.name}: {len(man['problems'])} problem(s), "
+          f"zipped {z.stat().st_size / 2**20:.0f} MB")
+    for p in man["problems"]:
+        print(f"  - {p}")
+    return 0
 
 
 def zip_package(dest: Path) -> Path:
