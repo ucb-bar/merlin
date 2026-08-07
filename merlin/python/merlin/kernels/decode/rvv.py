@@ -40,6 +40,20 @@ class VInsn:
 @dataclass
 class InsnStream:
     insns: list[VInsn] = field(default_factory=list)
+    # addr -> enclosing section header, built once on first use. Without it every span resolution is
+    # a full scan of the stream, and the callers ask per span: on a linked whole-model ELF (192k
+    # instructions, 2138 back-edges) that turned an instant `loop_spans()` into 16 s.
+    _section_at: dict[int, str] | None = field(default=None, repr=False, compare=False)
+
+    def _section_index(self) -> dict[int, str]:
+        if self._section_at is None:
+            # First occurrence wins, matching a linear scan that stops at the first match -- the two
+            # differ only where one address appears twice, which a linked image does not do.
+            idx: dict[int, str] = {}
+            for i in self.insns:
+                idx.setdefault(i.raw.addr, i.raw.section)
+            self._section_at = idx
+        return self._section_at
 
     def vector_histogram(self) -> dict[str, int]:
         return dict(Counter(i.raw.mnemonic for i in self.insns if i.is_vector))
@@ -170,13 +184,13 @@ class InsnStream:
         high end (falling back to the first instruction in range). ``""`` when the disassembly
         carries no symbol headers, which makes every function filter below a no-op."""
         lo, hi = span
-        first = ""
-        for i in self.insns:
-            if i.raw.addr == hi:
+        idx = self._section_index()
+        if hi in idx:
+            return idx[hi]
+        for i in self.insns:                    # span not anchored on an instruction: fall back
+            if lo <= i.raw.addr <= hi:
                 return i.raw.section
-            if not first and lo <= i.raw.addr <= hi:
-                first = i.raw.section
-        return first
+        return ""
 
     def insns_in(self, span: tuple[int, int]) -> list["VInsn"]:
         """The instructions of ``span``, confined to the function the span belongs to.
