@@ -587,6 +587,11 @@ def main(argv=None) -> int:
                          "README from it, and rebuild its zip. For bringing an already-built package "
                          "up to date with a packager that has since learned to state something new, "
                          "without paying hours of simulation to regenerate identical bytes.")
+    ap.add_argument("--twin-of", default=None,
+                    help="with --refresh: another package whose binaries WERE gated. For each image "
+                         "here, if a same-model/same-hart image there runs an identical instruction "
+                         "sequence, record that gate as twin evidence. For a variant we cannot "
+                         "simulate (a clock bring-up) but whose model code is unchanged.")
     ap.add_argument("--sdk-dir", default=None,
                     help="the target's own SDK checkout. REQUIRED for a board whose console is its "
                          "own UART: the UART address and the clock rates its baud divisor depends on "
@@ -597,7 +602,7 @@ def main(argv=None) -> int:
         if not a.out:
             print("[make_delivery] --refresh needs --out <an existing package dir>", file=sys.stderr)
             return 2
-        return refresh_package(Path(a.out))
+        return refresh_package(Path(a.out), twin=Path(a.twin_of) if a.twin_of else None)
 
     overrides = {}
     if a.dram_mb:
@@ -974,11 +979,16 @@ def _ungated_problem(binaries: list[dict]) -> str | None:
     that never ran is unverified in every respect. An image that ran to completion but has no W8A8
     reference to compare against produced real numbers we simply cannot grade -- reporting it as
     "built only" understates what we know, which is its own kind of dishonesty."""
-    unrun = sorted(b["elf"] for b in binaries
+    # An image carrying twin evidence is not unverified: a gated sibling was shown to run the same
+    # instruction sequence, so the sibling's gate covers its arithmetic. Reported separately below.
+    total = len(binaries)
+    twinned = [b for b in binaries if not b.get("gate_ok") and b.get("twin_gate")]
+    rest = [b for b in binaries if not b.get("twin_gate")]
+    unrun = sorted(b["elf"] for b in rest
                    if not b.get("gate_ok") and b.get("spike_cycles") is None)
-    ungraded = sorted(b["elf"] for b in binaries
+    ungraded = sorted(b["elf"] for b in rest
                       if not b.get("gate_ok") and b.get("spike_cycles") is not None)
-    if not (unrun or ungraded):
+    if not (unrun or ungraded or twinned):
         return None
 
     def _shown(xs):
@@ -986,17 +996,23 @@ def _ungated_problem(binaries: list[dict]) -> str | None:
 
     parts = []
     if unrun:
-        parts.append(f"{len(unrun)} of {len(binaries)} were never simulated ({_shown(unrun)}) — "
-                     f"built and ELF-audited only, so nothing here certifies that they compute the "
-                     f"right answer")
+        parts.append(f"{len(unrun)} of {total} were never simulated ({_shown(unrun)}) — built and "
+                     f"ELF-audited only, so nothing here certifies that they compute the right "
+                     f"answer")
     if ungraded:
-        parts.append(f"{len(ungraded)} of {len(binaries)} ran to completion but could not be "
-                     f"tier-graded ({_shown(ungraded)}) — the model ships no W8A8 reference, so "
-                     f"their output was compared only against the weight-only golden")
+        parts.append(f"{len(ungraded)} of {total} ran to completion but could not be tier-graded "
+                     f"({_shown(ungraded)}) — the model ships no W8A8 reference, so their output "
+                     f"was compared only against the weight-only golden")
+    if twinned:
+        pkg = twinned[0]["twin_gate"]["package"]
+        parts.append(f"{len(twinned)} of {total} were not simulated here, but each runs an "
+                     f"instruction-for-instruction identical model to a gated binary in `{pkg}` "
+                     f"(same program, different addresses), so that gate covers their arithmetic — "
+                     f"what it does not cover is the part that differs between the two builds")
     return f"{UNGATED_PREFIX} " + "; ".join(parts) + "."
 
 
-def refresh_package(dest: Path) -> int:
+def refresh_package(dest: Path, twin: Path | None = None) -> int:
     """Recompute a built package's derived fields, README and zip WITHOUT rebuilding its binaries.
 
     The binaries and their gate results are the expensive, immutable part of a delivery; the manifest
@@ -1004,6 +1020,8 @@ def refresh_package(dest: Path) -> int:
     packager learns to state something it did not state before, the packages already on disk should
     be able to say it too, rather than either shipping the old wording or paying hours of simulation
     to regenerate bytes that would come out identical."""
+    if twin is not None:
+        attach_twin_evidence(dest, twin)
     man = json.loads((dest / "manifest.json").read_text())
     brd = boards.board(man["board"]["name"], dram_bytes=man["board"]["dram_bytes"],
                        harts=man["board"]["harts"], vlen=man["board"]["vlen"])
@@ -1017,6 +1035,91 @@ def refresh_package(dest: Path) -> int:
           f"zipped {z.stat().st_size / 2**20:.0f} MB")
     for p in man["problems"]:
         print(f"  - {p}")
+    return 0
+
+
+def _model_mnemonics(elf: Path) -> list[str] | None:
+    """The mnemonic sequence of the model's own code in ``elf``, or None if it cannot be read.
+
+    Scoped to ``[forward, main)`` -- the compiled model plus the runtime it calls, ending where
+    board bring-up begins. Mnemonics ONLY: two builds that differ solely in where things landed have
+    the same instructions with different immediates, and that is exactly the difference we want to
+    look through."""
+    from merlin.kernels.decode import objdump as OD
+    import subprocess
+    try:
+        out = subprocess.run([OD.nm_bin(), str(elf)], capture_output=True, text=True,
+                             timeout=300, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    syms = {f[2]: int(f[0], 16) for f in (ln.split() for ln in out.splitlines())
+            if len(f) == 3 and f[1] in ("t", "T")}
+    if "forward" not in syms or "main" not in syms or syms["main"] <= syms["forward"]:
+        return None
+    try:
+        dis = subprocess.run([OD.objdump_bin(), "-d", "--triple=riscv64", "-M", "no-aliases",
+                              f"--start-address={syms['forward']}", f"--stop-address={syms['main']}",
+                              str(elf)], capture_output=True, text=True, timeout=900,
+                             check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    ms: list[str] = []
+    for line in dis.splitlines():
+        head, sep, rest = line.partition(":")
+        if not sep or not head.strip()[:1].isalnum():
+            continue
+        parts = rest.split("\t")
+        if len(parts) >= 2 and parts[1].strip():
+            ms.append(parts[1].strip())
+    return ms or None
+
+
+def attach_twin_evidence(dest: Path, twin: Path) -> int:
+    """Record, per binary, whether a GATED image in ``twin`` runs the same program.
+
+    A board variant we cannot simulate is not therefore unknown. The 500 MHz gemmelos set differs
+    from the gated 50 MHz set only in that it programs the PLL before the model starts; the linker
+    then shifts every later address, so the two ELFs share almost no bytes and a checksum says
+    nothing. The instruction SEQUENCE does: identical mnemonics over ``[forward, main)`` means the
+    same program at different addresses, so the sibling's gate covers this image's arithmetic.
+
+    What it does NOT cover is the part that differs -- the clock bring-up itself -- and the recorded
+    note says so. Anything less than an exact match is recorded as a mismatch, never smoothed over.
+    """
+    man = json.loads((dest / "manifest.json").read_text())
+    tman = json.loads((twin / "manifest.json").read_text())
+    by_key = {(b["model"], b["harts"], bool(b.get("debug")), b.get("backend", "rvv")): b
+              for b in tman["binaries"]}
+    matched = 0
+    for b in man["binaries"]:
+        key = (b["model"], b["harts"], bool(b.get("debug")), b.get("backend", "rvv"))
+        sib = by_key.get(key)
+        b.pop("twin_gate", None)
+        if sib is None or not sib.get("gate_ok"):
+            continue
+        mine, theirs = _model_mnemonics(dest / b["elf"]), _model_mnemonics(twin / sib["elf"])
+        if mine is None or theirs is None:
+            print(f"  {b['elf']}: could not read model code — no twin evidence recorded")
+            continue
+        if mine != theirs:
+            print(f"  {b['elf']}: model code DIFFERS from {sib['elf']} "
+                  f"({len(mine)} vs {len(theirs)} insns) — no twin evidence recorded")
+            continue
+        b["twin_gate"] = {"package": twin.name, "elf": sib["elf"],
+                          "build_hash": sib.get("build_hash", ""), "tier_ok": sib.get("tier_ok"),
+                          "cos": sib.get("cos"), "insns": len(mine)}
+        matched += 1
+    man["twin_evidence"] = {
+        "package": twin.name, "matched": matched, "of": len(man["binaries"]),
+        "method": "identical instruction sequence over [forward, main) — same program, different "
+                  "addresses",
+        "covers": "the model's arithmetic, via the twin's gate",
+        "does_not_cover": "whatever differs between the two builds (for a clock variant, the "
+                          "bring-up itself)",
+    }
+    (dest / "manifest.json").write_text(json.dumps(man, indent=2) + "\n")
+    print(f"[make_delivery] twin evidence: {matched}/{len(man['binaries'])} match a gated image "
+          f"in {twin.name}")
     return 0
 
 
