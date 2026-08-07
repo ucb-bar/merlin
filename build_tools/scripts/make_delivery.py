@@ -1258,6 +1258,15 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
     baremetal = brd.flow == boards.FLOW_BAREMETAL
     image = ("bare-metal ELF (our own crt/linker script — your SDK has no RTOS)" if baremetal
              else "Zephyr image")
+    # Put the package's own shortcomings in the README, not only in manifest.json. The per-row verdict
+    # already says "not simulated", but nobody reads sixteen rows before starting a run, and the one
+    # thing a recipient must not have to discover on the bench is which of these we never checked.
+    # `UNGATED:` is a marker for the manifest (it is how --refresh finds and replaces the line); it is
+    # not prose, so it does not belong in the sentence a person reads.
+    problems_doc = ("" if not manifest.get("problems") else
+                    "\n### What we did NOT verify in this package\n\n"
+                    + "\n".join(f"- {p.removeprefix(UNGATED_PREFIX).strip()}"
+                                for p in manifest["problems"]) + "\n")
     hart_counts = sorted({b["harts"] for b in manifest["binaries"]})
     rows = "\n".join(
         f"| `{b['elf']}` | {b['model']} | {b['harts']} | "
@@ -1507,7 +1516,7 @@ warns if the log's `build_hash` is not one of ours.
 
 What that does *not* cover: your clock, your DRAM timing, your vector unit's actual VLEN, and anything
 about wall-clock performance. spike is functional — it proves correctness, never speed.
-
+{problems_doc}
 Merlin commit `{manifest['merlin_commit']}`.
 """
 
