@@ -475,6 +475,36 @@ def _match_by_policy(a: dict, b: dict, policy: dict | None) -> bool:
     return True
 
 
+def _absent_outputs(nrep: dict) -> list[str]:
+    """Outputs the kernel DECLARED (present in the interface/golden) but never wrote — or wrote at the
+    wrong length — extracted from :func:`capsule_golden.compare`'s ``per_output``. These structural
+    failures are the ones that read as ``mismatch_count > 0`` while ``max_abs_error == 0`` and
+    ``first_mismatch is None`` (there is no value to diff — the bytes were never produced), a
+    self-contradictory signal unless the missing output is named. Reveals no golden VALUE: only the
+    identity of a declared output, which the agent already holds in the interface it was handed."""
+    po = nrep.get("per_output") or {}
+    return [nm for nm, d in po.items()
+            if isinstance(d, dict) and d.get("status") == "fail"
+            and str(d.get("reason", "")).startswith(("missing", "length"))]
+
+
+def _absent_output_detail(nrep: dict, sim_name: str, expected: dict, observed: dict) -> str | None:
+    """A precise failure detail when the kernel dropped a declared output, else None. Turns the baffling
+    "1024 mismatches, 0 error" into "you never wrote Y1" — the exact class of silent no-op the generic
+    hint tells the agent to hunt for. Target-agnostic; no answer key crosses this boundary."""
+    absent = _absent_outputs(nrep)
+    if not absent:
+        return None
+    n_decl = len(expected)
+    n_written = sum(1 for k in expected if k in (observed or {}))
+    return (f"on {sim_name}, your emitted artifact never wrote output(s) {', '.join(absent)} — "
+            f"declared in the interface (a commit op) but ABSENT from the observed DRAM readback "
+            f"(your kernel produced {n_written} of {n_decl} declared outputs). This is a DROPPED or "
+            f"mis-addressed store, NOT a value error (max_abs_error is 0 because those bytes were never "
+            f"produced). Decode your OWN emitted artifact and confirm every declared output gets a store "
+            f"to its base address.")
+
+
 def _default_config(target: str, suite: str, dtype: str):
     """The implicit gemmini/systolic RunnerConfig — the exact constants run_capsule used before it took a
     config, so a call with config=None is byte-identical to the pre-collapse behavior."""
@@ -687,7 +717,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             nrep = CG.compare(gold, ref, capsule["numeric_policy"], golden_source=gsource)
             numeric = {"status": nrep["status"], "policy": nrep["policy"],
                        "max_abs_diff": nrep["max_abs_error"], "max_rel_error": nrep["max_rel_error"],
-                       "mismatch_count": nrep["mismatch_count"], "first_mismatch": nrep["first_mismatch"]}
+                       "mismatch_count": nrep["mismatch_count"], "first_mismatch": nrep["first_mismatch"],
+                       # same DROPPED-store surfacing as the float path (see _absent_outputs): a missing
+                       # declared output is reported distinctly, never as a phantom 0-magnitude mismatch.
+                       "per_output": nrep.get("per_output", {}),
+                       "missing_outputs": _absent_outputs(nrep)}
             CG.write_numeric_report(paths.generated / "numeric_report.yaml", nrep)
             tiers["L0"] = TierResult("L0", "pass" if nrep["status"] == "pass" else "fail",
                                      mandatory="L0" in required or True,
@@ -695,9 +729,10 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                              else "your command buffer does not compute the declared operation"),
                                      evidence="numeric_report.yaml")
             if nrep["status"] != "pass":
+                _absent_cb = _absent_output_detail(nrep, "command_buffer", gold, ref)
                 raise CertFailure("numeric_golden", _cat("FUNCTIONAL_MISMATCH"),
-                                  "your command buffer does not compute the declared operation "
-                                  f"(first divergence at index {(nrep['first_mismatch'] or {}).get('index')})")
+                                  _absent_cb or ("your command buffer does not compute the declared operation "
+                                  f"(first divergence at index {(nrep['first_mismatch'] or {}).get('index')})"))
 
             l1_ok = _match_by_policy(ref, sim, policy)
             tiers["L1"] = TierResult("L1", "pass" if l1_ok else "fail", mandatory=True,
@@ -876,7 +911,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                "golden_source": gsource, "max_abs_diff": onrep["max_abs_error"],
                                "max_rel_error": onrep["max_rel_error"],
                                "mismatch_count": onrep["mismatch_count"],
-                               "first_mismatch": onrep["first_mismatch"]}
+                               "first_mismatch": onrep["first_mismatch"],
+                               # carry the per-output breakdown + the DROPPED-store list through to
+                               # capsule_result.json so the agent (and the self-check, which reads this
+                               # dict) sees WHICH output failed and WHY — a missing store otherwise reads
+                               # as mismatch_count>0 with max_abs_error==0, a self-contradictory signal.
+                               "per_output": onrep.get("per_output", {}),
+                               "missing_outputs": _absent_outputs(onrep)}
                     CG.write_numeric_report(paths.generated / "numeric_report.yaml", onrep)
             else:
                 okt = _match_by_policy(res["outputs"], gold, policy) \
@@ -897,7 +938,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # declared operation. There is no answer key handed to the agent — the reference is the op's
             # own definition, which the agent can reproduce from the declared inputs. The appended
             # _encoding_divergence_hint adds that the cheap tiers agreed, so the defect is in the encoding.
-            _mismatch_reason = (
+            # A DROPPED declared output (kernel never wrote it) gets a precise, distinct detail so the
+            # agent isn't left with the baffling "N mismatches, 0 error" of a store that never fired.
+            _absent_detail = (_absent_output_detail(onrep, sim_name, gold, res["outputs"])
+                              if independent_float else None)
+            _mismatch_reason = _absent_detail or (
                 f"on {sim_name}, your emitted artifact does not compute the declared operation within tolerance"
                 if independent_float
                 else f"on {sim_name}, your emitted artifact does not compute the declared operation")
