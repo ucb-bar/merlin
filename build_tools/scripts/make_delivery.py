@@ -358,6 +358,16 @@ STATUS = {
                     "takes the image from 127 MB to 71 MB. It is still by far the largest thing here "
                     "and still the longest-running; check the upload column against your link speed "
                     "before starting, and send the console log whatever it says.",
+    "whisper_tiny_375pos": "VERIFIED, on a SHORTER AUDIO WINDOW — w8a8_cos = 0.99999994 on spike at "
+                           "every hart count. Read the suffix before you compare this against "
+                           "anything: it encodes 375 positions (7.5 s of audio) instead of Whisper's "
+                           "fixed 1500 (30 s). That is not a tuning choice. Encoder self-attention "
+                           "materializes a [heads, pos, pos] tensor, so the peak is quadratic in the "
+                           "window: at the full 1500 it needs 2184 MB live, which is larger than the "
+                           "DRAM on either of your boards, and it died with no message at all. At "
+                           "375 the peak is 319 MB and it runs to completion. The weights are the "
+                           "pretrained ones, with the position table truncated to the shorter "
+                           "window; every other model here is full-size and unmodified.",
 }
 
 
@@ -912,7 +922,7 @@ def main(argv=None) -> int:
     (dest / "elf_audit.json").write_text(json.dumps(audits, indent=2) + "\n")
     (dest / "grade.py").write_text(GRADE_PY)
     (dest / "grade.py").chmod(0o755)
-    problems += [p for p in (_ungated_problem(binaries),) if p]
+    problems += _derived_problems(binaries)
     manifest = {
         "board": {"name": brd.name, "dram_bytes": brd.dram_bytes, "harts": brd.harts,
                   "vlen": brd.vlen, "console": brd.console, "notes": brd.notes},
@@ -965,6 +975,32 @@ def main(argv=None) -> int:
 
 
 UNGATED_PREFIX = "UNGATED:"
+NO_STATUS_PREFIX = "NO STATUS:"
+# Problems the packager DERIVES from the finished binaries, rather than observing while it builds.
+# `--refresh` recomputes exactly these and leaves everything else in the manifest alone.
+DERIVED_PREFIXES = (UNGATED_PREFIX, NO_STATUS_PREFIX)
+
+
+def _strip_marker(problem: str) -> str:
+    """Drop the derived-problem marker for prose. It exists so ``--refresh`` can find and replace the
+    line in the manifest; it is not part of the sentence a person reads."""
+    for pre in DERIVED_PREFIXES:
+        if problem.startswith(pre):
+            return problem[len(pre):].strip()
+    return problem
+
+
+def _derived_problems(binaries: list[dict]) -> list[str]:
+    """Problem lines that are a pure function of the finished binaries."""
+    out = [p for p in (_ungated_problem(binaries),) if p]
+    # A shipped model with no STATUS entry renders as "no status recorded" in the README -- which is
+    # how `whisper_tiny_375pos` went out carrying nothing at all, when its reduced audio window is
+    # precisely the thing a reader has to be told. Silence about a model is a packaging defect.
+    unstated = sorted({b["model"] for b in binaries} - set(STATUS))
+    if unstated:
+        out.append(f"{NO_STATUS_PREFIX} no status text for {', '.join(unstated)} — the README will "
+                   f"say 'no status recorded' for {'them' if len(unstated) > 1 else 'it'}")
+    return out
 
 
 def _ungated_problem(binaries: list[dict]) -> str | None:
@@ -1025,8 +1061,9 @@ def refresh_package(dest: Path, twin: Path | None = None) -> int:
     man = json.loads((dest / "manifest.json").read_text())
     brd = boards.board(man["board"]["name"], dram_bytes=man["board"]["dram_bytes"],
                        harts=man["board"]["harts"], vlen=man["board"]["vlen"])
-    man["problems"] = [p for p in man.get("problems", []) if not p.startswith(UNGATED_PREFIX)]
-    man["problems"] += [p for p in (_ungated_problem(man["binaries"]),) if p]
+    man["problems"] = [p for p in man.get("problems", [])
+                       if not p.startswith(DERIVED_PREFIXES)]
+    man["problems"] += _derived_problems(man["binaries"])
     (dest / "manifest.json").write_text(json.dumps(man, indent=2) + "\n")
     (dest / "README.md").write_text(_readme(brd, man, debug=any(b.get("debug")
                                                                 for b in man["binaries"])))
@@ -1368,8 +1405,7 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
     # not prose, so it does not belong in the sentence a person reads.
     problems_doc = ("" if not manifest.get("problems") else
                     "\n### What we did NOT verify in this package\n\n"
-                    + "\n".join(f"- {p.removeprefix(UNGATED_PREFIX).strip()}"
-                                for p in manifest["problems"]) + "\n")
+                    + "\n".join(f"- {_strip_marker(p)}" for p in manifest["problems"]) + "\n")
     hart_counts = sorted({b["harts"] for b in manifest["binaries"]})
     rows = "\n".join(
         f"| `{b['elf']}` | {b['model']} | {b['harts']} | "
