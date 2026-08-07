@@ -113,5 +113,68 @@ runtime:
   default_backend: simulator
 runtime_promises:
 - metrics
+# The MX-Gemmini accelerator's MMIO command ABI — the surface RTL discovery cannot ground (it is a
+# memory-mapped RoCC command stream the Muon SIMT core pushes, not the core's own instruction decode).
+# HEADER-DERIVED, human-reviewed, kept as the SINGLE source of truth for the mxfp8 kernel emitter +
+# harness so NO base/opcode/funct/field-shift is a literal in library code. Transcribed verbatim from the
+# target's own shipped sources:
+#   radiance-kernels/lib/include/mxgemmini_mmio.h  (GEMMINI_CTRL/offsets/SF_MEM, ROCC_INSTRUCTION_RS1_RS2,
+#                                                   loop_matmul_skips, config-ex/bounds field packing)
+#   gemmini-rocc-tests/include/gemmini.h           (k_<NAME> funct codes; config_ex/loop_ws RS1/RS2 fields)
+#   chipyard/generators/radiance/cyclotron/src/muon/mxgemmini/mod.rs  (the co-model's decode: funct = inst>>25,
+#                                                   LOOP_WS requires rs2 bit9=0x200, MX_LOAD_SCALES/LUT no-op,
+#                                                   MX_READ_SMEM off=rs2[31:0] byte-offset / num=rs2[63:32])
+mx_mmio:
+  ctrl_base: 0x84000
+  reg_offsets: {inst: 0x00, ready: 0x08, rs1: 0x10, rs2: 0x18, busy: 0x20, occupancy: 0x28}
+  # INST word = opcode | fixed_bits | (funct<<funct_shift); fixed_bits = (3<<12)|(1<<15)|(2<<20) = the RoCC
+  # xd/xs1/xs2/rd fields the driver macro hardcodes (mxgemmini_mmio.h ROCC_INSTRUCTION_RS1_RS2).
+  inst_word: {opcode: 0x7b, fixed_bits: 0x102000, funct_shift: 25}
+  funct:
+    CONFIG: 0
+    FLUSH: 7
+    LOOP_WS: 8
+    LOOP_WS_CONFIG_BOUNDS: 9
+    LOOP_WS_CONFIG_ADDRS_AB: 10
+    LOOP_WS_CONFIG_STRIDES_AB: 12
+    LOOP_WS_CONFIG_SPAD_AB: 24
+    LOOP_WS_CONFIG_SPAD_C: 25
+    MXQUANT_CONFIG_MVOUT: 26
+    MX_LOAD_SCALES: 27
+    MX_READ_SMEM: 28
+    MX_LOAD_LUT: 29
+  # Scale-factor SRAM (SIMT-staged: the co-model treats funct MX_LOAD_SCALES as a no-op, so a Muon kernel
+  # writes the E8M0 codes here directly). Odd K-tiles use the +buffer_offset double-buffer half.
+  sf_mem: {base: 0x88000, size: 0x2000, buffer_offset: 0x800, a: 0x8a000, b: 0x88000}
+  gpu_dram_offset: 0x100000000     # RAD_HOST_GPU_DRAM_BASE — accelerator DMA reads gpu_dram(addr)=addr-offset
+  dim: 16                          # systolic tile dim (PE tile = dim x dim)
+  group: 32                        # MX block-scale K-group size (one E8M0 scale per 32-elt K group)
+  # config_ex (funct CONFIG, rs1[1:0]==0): field shifts into RS1 + the format codes. fmt: fp8=0 in, bf16=3 out.
+  config_ex:
+    subtype: 0
+    dataflow_shift: 2
+    sys_act_shift: 3
+    uselut_shift: 5
+    set_only_strides_shift: 7
+    a_transpose_shift: 8
+    b_transpose_shift: 9
+    act_fmt_shift: 10
+    wgt_fmt_shift: 12
+    out_fmt_shift: 14
+    a_stride_shift: 16
+    acc_scale_shift: 32
+    dataflow_ws: 1
+    fmt: {fp8: 0, fp6: 1, fp4: 2, full_bf16: 3}
+  bounds:                          # LOOP_WS_CONFIG_BOUNDS field shifts (PE-tile loop counts + pads)
+    rs1: {pad_i_shift: 0, pad_j_shift: 16, pad_k_shift: 32}
+    rs2: {i_shift: 0, j_shift: 16, k_shift: 32}
+  loop_ws:                         # LOOP_WS trigger. rs2 MUST set mx_spad_marker (bit9); skips select the phase.
+    rs1: {ex_accumulate_shift: 0, full_c_shift: 1, low_d_shift: 2, act_shift: 8, b_spad_id_shift: 16, a_spad_id_shift: 18}
+    rs2: {a_transpose_shift: 0, b_transpose_shift: 1, is_resadd_shift: 2, skips_shift: 3, mx_spad_marker: 0x200, c_spad_shift: 32}
+    skip_bits: {lda: 0, ldb: 1, ldd: 2, ex: 3, stc: 4}     # loop_matmul_skips then <<skips_shift into rs2
+  mxquant_config_mvout:            # funct 26: tile counts + per-K-tile SF double-buffer selects
+    rs1: {dram_mask_bits: 33, i_shift: 33, j_shift: 42, k_shift: 51, act_sel_shift: 60, wgt_sel_shift: 61}
+    rs2: {gran_mask: 0xffff}
+  read_smem: {rs2_off_mask: 0xffffffff, rs2_num_shift: 32}  # funct 28: rs1=dst dram, rs2=(num_bf16<<32)|smem_byte_off
 status: prototype
 version: '0.1'

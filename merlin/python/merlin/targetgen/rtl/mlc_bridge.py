@@ -165,6 +165,22 @@ def isa_encoding_for(target: str) -> dict | None:
         return None
 
 
+def mx_mmio_for(target: str) -> dict | None:
+    """The target's MX-Gemmini accelerator MMIO command ABI (``{ctrl_base, reg_offsets, inst_word, funct,
+    sf_mem, gpu_dram_offset, dim, group, config_ex, bounds, loop_ws, mxquant_config_mvout, read_smem}``) —
+    the memory-mapped RoCC command surface a Muon SIMT kernel pushes to drive the block-scaled matmul PE.
+    This is an ABI the RTL decoder cannot ground (like gemmini's ``encoding`` residual), so it is declared,
+    header-derived + human-reviewed, in the target's ``contracts/residual.yaml`` under ``mx_mmio``. Returns
+    the parsed fact, or None when the target ships no MX MMIO contract — an honest fallback the emitter/harness
+    degrade on (the mxfp8 op is unsupported), never a guessed base/opcode."""
+    try:
+        from ..capability_manifests import _load_residual
+        fact = (_load_residual(target) or {}).get("mx_mmio")
+        return fact if isinstance(fact, dict) and fact.get("ctrl_base") is not None else None
+    except Exception:  # noqa: BLE001 — no residual / unreadable ⇒ honest None
+        return None
+
+
 def opu_artifact_paths(target: str) -> dict | None:
     """Resolved ``{hw, man, so}`` artifact paths for a SPATIAL/OPU target via mlc's per-target
     fingerprint map — which knows the two-level ``runs/circt-arc/<family>/<config>/outputs`` layout the
