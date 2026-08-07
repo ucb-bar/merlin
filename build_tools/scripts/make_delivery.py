@@ -363,10 +363,20 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
     # The SAME package, features and int8 datapath the Zephyr path uses. Not optional: lowering the raw
     # bundle here scored cos 0.925 on deepjscc, which the prepared path gets bit-exact.
     pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
+    # Size the arena to THIS model, the way the Zephyr path already does. spike_model defaults to a
+    # fixed 256 MB, which silently decides which models can run: whisper needs 319 MB live at its
+    # encoder attention and died here as `*** FAILED *** (tohost = 2055)` -- no message, no named
+    # allocation, because the bare-metal path has no RTOS and so does not carry the malloc guard the
+    # Zephyr images do. A board with 1 GB of DRAM had 700 MB spare at the time.
+    from merlin.common.ir_lock import IR_LOCK
+    from merlin.common.mlir_query import activation_peak_bytes
+    with IR_LOCK:
+        peak = activation_peak_bytes(bundle / "model.mlir")
+    arena_mb = max(256, ((int(peak or 0) + 128 * 1024 * 1024) + 2**20 - 1) // 2**20)
     b = spike_model.build(bundle, work, inputs_npz=bundle / "inputs.npz",
                           dram_base=brd.dram_base, dram_bytes=brd.dram_bytes,
                           int8_compute=True, features=frozenset([PEROP_BLOCK_NAME]),
-                          rvv_schedule=pkg.schedule_text,
+                          rvv_schedule=pkg.schedule_text, arena_mb=arena_mb,
                           cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=brd.vlen)
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
@@ -387,7 +397,7 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
         ship = spike_model.build(bundle, work / "board", inputs_npz=bundle / "inputs.npz",
                                  dram_base=brd.dram_base, dram_bytes=brd.dram_bytes,
                                  int8_compute=True, features=frozenset([PEROP_BLOCK_NAME]),
-                                 rvv_schedule=pkg.schedule_text,
+                                 rvv_schedule=pkg.schedule_text, arena_mb=arena_mb,
                                  cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=brd.vlen,
                                  console=brd.console, sdk_dir=sdk_dir, sdk_chip=brd.sdk_chip,
                                  chip_freq_hz=brd.chip_freq_hz)
@@ -485,24 +495,44 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
-    res = zm.build_and_run(
-        bundle, work, board="spike_riscv64",          # run on spike; the ELF for the board is separate
-        backend=backend, rvv_hart=0, harts=max(2, harts), int8_compute=True, n_harts=harts,
-        features=frozenset([PEROP_BLOCK_NAME]), references=refs, timeout=timeout, **tune)
+    cpus = max(2, harts, brd.harts if not vec else 2)
+
     def board(dbg: bool):
         return zm.build_app(
             bundle, work / f"board_h{harts}{'_dbg' if dbg else ''}", board=brd.name,
             backend=backend, rvv_hart=0,
-            cpus=max(2, harts, brd.harts if not vec else 2), int8_compute=True,
+            cpus=cpus, int8_compute=True,
             features=frozenset([PEROP_BLOCK_NAME]), n_harts=harts, sdk_dir=sdk_dir,
             debug=dbg, **tune)
 
-    # Both variants come out of ONE simulation. They are the same model, the same lowering and the same
-    # references; the debug build only adds instrumentation, so gating it separately would burn hours of
-    # spike to re-establish an answer we already have. Shipping them together is the point: the plain
-    # image is what you run for a number, and the instrumented one is what you run when that goes wrong,
-    # without a second round trip to us to ask for it.
-    return res, board(False), (board(True) if debug else None)
+    ship = board(False)
+    if brd.console == CONSOLE_HTIF:
+        # Gate the ELF WE SHIP, not a stand-in for it. spike can service an HTIF console, so for such a
+        # board there is no reason to simulate a `spike_riscv64` twin: that twin has a different Kconfig
+        # and device tree, so it carries a different build_hash than the shipped image, the recipient's
+        # own grade.py flags the package as inconsistent, and -- worse -- the gate never exercises the
+        # board configuration. On Kodiak the board Kconfig is precisely where the bug was
+        # (CONFIG_RISCV_ISA_EXT_V / CONFIG_FPU_SHARING), so the twin tested the arithmetic and skipped
+        # the thing that had broken.
+        #
+        # `-pN` is the image's CPU COUNT, not its hart count: a 1-hart model image is still built with
+        # MP_MAX_NUM_CPUS=2, and under `-p1` Zephyr waits forever for a CPU that never arrives and hangs
+        # before printing anything. That failure is indistinguishable from a slow model.
+        res = zm.run_on_spike(ship["elf"], harts=cpus, mem_bytes=ship["ram_bytes"],
+                              timeout=timeout, vlen=vlen if vec else None)
+        res.update(zm._gate(res["prefix"], refs))
+        res["backend"] = backend
+    else:
+        # A board whose console is its own UART cannot be simulated here at all -- spike has no such
+        # peripheral -- so the gate runs on an HTIF twin built from the same IR, and the package says so.
+        res = zm.build_and_run(
+            bundle, work, board="spike_riscv64",
+            backend=backend, rvv_hart=0, harts=max(2, harts), int8_compute=True, n_harts=harts,
+            features=frozenset([PEROP_BLOCK_NAME]), references=refs, timeout=timeout, **tune)
+
+    # The debug twin is NOT re-simulated: same model, same lowering, same references, instrumentation
+    # only, and re-gating it would burn hours of spike to re-establish an answer we already have.
+    return res, ship, (board(True) if debug else None)
 
 
 def main(argv=None) -> int:
@@ -1181,15 +1211,28 @@ only, and the table says so.
         not_ident = sorted(m for m, e in fs.items()
                            if e.get("harts_bit_identical") is False)
         caveat = ("" if not not_ident else
-                  "> **Where the split is not exact:** on this RTL the 2-hart run of "
+                  "> **Read this before you trust a 2-hart number.** On that FPGA the 2-hart run of "
                   + ", ".join(f"`{m}`" for m in not_ident)
-                  + " was *not* bit-identical to its 1-hart run — it still passed the W8A8 gate, but\n"
-                    "> with a small per-element difference. The same models ARE bit-identical under\n"
-                    "> spike at the board's own vector length, and instrumented builds of them did not\n"
-                    "> reproduce the difference on this same bitstream. Whether that points at the\n"
-                    "> vector hardware or at a timing-dependent race in our 2-hart path we do not yet\n"
-                    "> know, and we would rather say so than guess: it is open and being re-measured.\n"
-                    "> If your `h1` and `h2` outputs differ, that is the datum we need — please send it.")
+                  + "\n> is *not* bit-identical to its 1-hart run, and misses the W8A8 gate. We chased it to a\n"
+                    "> conclusion, and the conclusion is not about the compiled code:\n"
+                    ">\n"
+                    "> | test | result |\n"
+                    "> |---|---|\n"
+                    "> | the same binary run twice on that FPGA | bit-identical, same cycle count — not a race |\n"
+                    "> | **those exact binaries on spike at the same vector length** | `h1` ≡ `h2`, both `cos 1.0` |\n"
+                    "> | those binaries on the FPGA | `h1` exact, `h2` deviates |\n"
+                    ">\n"
+                    "> So the arithmetic we generate is right, and something in that SoC's 2-hart vector\n"
+                    "> path is not. It is also schedule-sensitive: it moved from one model to another when\n"
+                    "> the compiler changed, in both directions. That is a different chip from yours, so it\n"
+                    "> says nothing directly about your silicon — but it does say something about our\n"
+                    "> evidence, and you should know it:\n"
+                    ">\n"
+                    "> **A spike gate cannot certify multicore numerics on real hardware.** Every image in\n"
+                    "> this package passes one, and the binary above passes one too. So the single most\n"
+                    "> useful thing you can do is run `h1` and `h2` of the same model and diff their `OUT`\n"
+                    "> lines. Identical is the expected answer and confirms the whole path. Different is a\n"
+                    "> real finding on your chip, whatever it costs us to hear — please send both logs.")
         extra = []
         for model, e in sorted(fs.items()):
             if e.get("speedup_1_to_2_harts"):
