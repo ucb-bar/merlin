@@ -146,6 +146,56 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     Shared by the inline-source path (:func:`program_from_cb`) and the object-kernel path
     (:func:`external_main_from_cb`)."""
     from ..commandbuffer import materialize_inputs
+
+    def _vals(canon: dict, name: str, t) -> list[float]:
+        """Operand VALUES: the golden's decoded operands the runner attached (``cb['canonical_inputs']``,
+        so the kernel runs on the SAME operands the independent golden used), else the deterministic
+        materialization. Flat, row-major, as f32."""
+        c = canon.get(name)
+        if isinstance(c, dict):
+            c = c.get("values")
+        if c is not None:
+            return [float(x) for x in c]
+        return [float(v) for row in t.to_list() for v in row]
+
+    # --- non-matmul SIMT ops (attention scores Q@K^T, row rmsnorm) --------------------------------------
+    # These have no matmul/commit; derive operands directly from the op command + leaf shapes, in the generic
+    # kernel_abi order ([weight] ++ [inputs in command order] ++ [output]) that emit_kernel_mlir mirrors. The
+    # output is produced (not a leaf) so its shape comes from the inputs (attention: (Qrows, Krows); rmsnorm:
+    # X's shape). Values come from the golden's canonical decoded operands (matched bit-for-bit).
+    canon0 = cb.get("canonical_inputs") or {}
+    env0 = materialize_inputs(cb)
+    for cmd in cb.get("commands", []):
+        op = (cmd.get("opcode") or "").upper()
+        o = cmd.get("operands", {})
+        if op == "ATTENTION_QK":
+            q, k, out = o.get("q"), o.get("k"), o.get("dst")
+            if not (q and k and out) or q not in env0 or k not in env0:
+                return None
+            qt, kt = env0[q], env0[k]
+            if len(qt.shape) != 2 or len(kt.shape) != 2 or qt.shape[1] != kt.shape[1]:
+                return None
+            m, d = qt.shape[0], qt.shape[1]
+            n = kt.shape[0]
+            in_args = [TensorArg(q, m, d, _vals(canon0, q, qt), "f32"),
+                       TensorArg(k, n, d, _vals(canon0, k, kt), "f32")]
+            out_args = [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
+            return in_args, out_args
+        if op == "RMSNORM":
+            x, g, out = o.get("src"), o.get("gamma"), o.get("dst")
+            if not (x and g and out) or x not in env0 or g not in env0:
+                return None
+            xt, gt = env0[x], env0[g]
+            if len(xt.shape) != 2:
+                return None
+            r, c = xt.shape[0], xt.shape[1]
+            gr, gc = _shape2d(list(gt.shape))
+            # weight-first ABI: [gamma] ++ [src] ++ [out]
+            in_args = [TensorArg(g, gr, gc, _vals(canon0, g, gt), "f32"),
+                       TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
+            out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
+            return in_args, out_args
+
     # Tolerant single-matmul plan (do NOT reuse the strict muon_codegen._plan, which assumes ``dst`` on every
     # matmul): resolve RES_PACK residents, the one matmul (accepting ``dst``/``out`` and ``rhs``/``weight``),
     # and the output NAME — the COMMIT dst that sources the matmul when present, else the matmul's own dst.

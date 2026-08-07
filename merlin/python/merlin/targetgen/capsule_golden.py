@@ -104,6 +104,12 @@ def canonical_input_raws(capsule: dict, capsule_dir: str | Path | None = None) -
     ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
     out: dict[str, bytes] = {}
     for name, spec in ins.items():
+        # An ``inputs`` entry is a per-tensor spec dict; a block-scaled datapath (mxfp8) also records
+        # NON-tensor provenance under the same map (E8M0 block-scale code arrays as lists, a scale_example
+        # dict without raw bytes). Only real tensor specs carry raw device bytes — skip the rest, never
+        # ``.get`` on a non-dict (that raised ``AttributeError: 'list' object has no attribute 'get'``).
+        if not isinstance(spec, dict):
+            continue
         raws = spec.get("fp8_raw_hex") or spec.get("raw_hex")
         if raws:
             out[name] = bytes(int(x, 16) & 0xFF for x in raws)
@@ -123,6 +129,8 @@ def canonical_input_values(capsule: dict, capsule_dir: str | Path | None = None)
     ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
     out: dict[str, dict] = {}
     for name, spec in ins.items():
+        if not isinstance(spec, dict):   # skip non-tensor provenance (mxfp8 block-scale code arrays, examples)
+            continue
         decoded = spec.get("decoded")
         if decoded is not None:
             out[name] = {"shape": list(spec.get("shape") or []), "values": list(decoded)}
