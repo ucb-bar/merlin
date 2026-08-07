@@ -1722,6 +1722,11 @@ def build_and_run(model_dir: str | Path, work: str | Path, *, board: str = "spik
                   cflags_override=cflags_override, features=features, vlen=vlen)
     result: dict[str, Any] = {"elf": str(b["elf"]), "app_dir": str(b["app_dir"]),
                               "ram_bytes": b["ram_bytes"], "n_harts": n_harts, "iters": iters,
+                              # WHICH image produced this run. A caller that gates here and ships a
+                              # differently-configured build (a board whose console spike cannot
+                              # service) needs to be able to say so, rather than leave the recipient
+                              # to discover that the console beside their ELF names another binary.
+                              "build_hash": b.get("build_hash", ""),
                               # the vector length the build AND the run agreed on (None = spike's
                               # default 128); recorded so a result cannot be read as another VLEN's
                               "vlen": vlen}

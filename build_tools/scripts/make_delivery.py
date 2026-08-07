@@ -308,9 +308,20 @@ def main():
     res = grade(prefix, refs)
     print(f"model      : {model}")
     print(f"build_hash : {metrics.get('build_hash', '(absent — old binary or truncated log)')}")
-    known = {b["build_hash"] for b in man["binaries"] if b["model"] == model}
+    rows = [b for b in man["binaries"] if b["model"] == model]
+    known = {b["build_hash"] for b in rows}
+    # A board whose console is its own UART cannot be simulated here, so its expected_console comes
+    # from an HTIF twin of the same lowering, carrying a different build_hash. That is documented, not
+    # a defect -- but an unexplained "not in this package" on the very first thing someone runs reads
+    # like a broken delivery, so name the twin instead of crying wolf.
+    twins = {b["gate_build_hash"] for b in rows if b.get("gate_build_hash")}
     if metrics.get("build_hash") and metrics["build_hash"] not in known:
-        print(f"  WARNING: that build_hash is not in this package (expected one of {sorted(known)})")
+        if metrics["build_hash"] in twins:
+            print("  (this is the simulated HTIF twin's hash — expected for an expected_console.txt "
+                  "on a board whose own console spike cannot service; see the README)")
+        else:
+            print(f"  WARNING: that build_hash is not in this package "
+                  f"(expected one of {sorted(known)})")
     print(f"cycles     : {metrics.get('cycles')}")
     print(f"elements   : {len(prefix)}")
     for tier, m in res["tiers"].items():
@@ -726,6 +737,14 @@ def main(argv=None) -> int:
                 "model": model, "elf": elf_name, "harts": harts, "dtype": a.dtype,
                 "backend": backend,
                 "build_hash": board_build.get("build_hash", ""),
+                # The image the GATE ran on, when that is not the image we ship. For a board whose
+                # console is its own UART, spike has no such peripheral, so the gate runs on an HTIF
+                # twin built from the same IR -- and the expected_console beside the ELF therefore
+                # names the twin. Recording it here is what lets grade.py tell "this console came
+                # from the documented twin" apart from "this package is inconsistent".
+                **({"gate_build_hash": res["build_hash"]}
+                   if res.get("build_hash") and res["build_hash"] != board_build.get("build_hash")
+                   else {}),
                 "ram_bytes": board_build["ram_bytes"],
                 "spike_cycles": res["metrics"].get("cycles"),
                 "spike_vlen": res.get("vlen"), "gate_ok": bool(res.get("ok")),
@@ -890,6 +909,24 @@ def main(argv=None) -> int:
     }
     (dest / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     (dest / "README.md").write_text(_readme(brd, manifest, debug=a.debug))
+    # Remove binaries the manifest does not list. Rebuilding into an existing directory used to leave
+    # the previous run's images behind: renaming a model left a 124 MB `whisper_tiny_int8_h1` sitting
+    # next to the `whisper_tiny_375pos` that replaced it, unlisted, ungated, and zipped into the
+    # delivery. An unlisted binary is the worst thing in a package -- it looks as official as the rest
+    # and nothing we say about the package covers it, so somebody spends bench time on a build we
+    # already know is broken.
+    keep = {b["elf"] for b in binaries} | {
+        f"{b['model']}_h{b['harts']}{'' if b.get('backend', 'rvv') == 'rvv' else '_' + b['backend']}"
+        f".{suffix}" for b in binaries for suffix in ("expected_console.txt", "op_table.json")}
+    keep |= {"vlen_probe.elf", "manifest.json", "README.md", "grade.py", "elf_audit.json",
+             "firesim_evidence.json"}
+    keep |= {f"{model}.golden.npy" for model in models} | {f"{model}.golden_w8a8.npy"
+                                                           for model in models}
+    for f in sorted(dest.iterdir()):
+        if f.is_file() and f.name not in keep:
+            print(f"  pruned stale {f.name} ({f.stat().st_size / 2**20:.1f} MB) — not in this "
+                  f"manifest", flush=True)
+            f.unlink()
     if manifest_writer is not None:
         for f in sorted(dest.iterdir()):
             manifest_writer.add_artifact(f.name)
