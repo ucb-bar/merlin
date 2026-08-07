@@ -21,7 +21,9 @@ import json
 import sys
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parents[3]
@@ -72,6 +74,43 @@ def _endpoint_and_target() -> tuple[str | None, str | None]:
         te = load_target_experiment(_C.EXP / "target_experiment.yaml")
         _ENDPOINT = (CR._endpoint_of(te.target)[0], te.target)
     return _ENDPOINT
+
+
+# The endpoint kind whose canonical artifact is ``llvm.inline_asm`` MLIR rather than a ``.word``
+# kernel — those requests need rocc_asm/rocc_decode, not the IsaModel tools.
+ROCC_ENDPOINT = "inline_asm_insn"
+
+
+def is_rocc_endpoint(endpoint: str | None) -> bool:
+    return endpoint == ROCC_ENDPOINT
+
+
+@dataclass(frozen=True)
+class BrokerCtx:
+    """Everything :func:`_handle` needs from the run, passed IN rather than reached for.
+
+    The endpoint, the derived ISA model, and the assembler are all properties of the run's
+    descriptor, and resolving them from module state made the request routing untestable without
+    reaching into that state — a caller could not say "route this as a fixed-format target" and had
+    to arrange the ambient environment to say it instead. ``model``/``assemble`` stay CALLABLES so
+    that deriving the model (which needs the target model venv) is still deferred until a request
+    actually reaches the IsaModel arm; a RoCC target never pays for it."""
+    endpoint: str | None
+    target: str | None
+    model: "Callable[[], Any]" = _model
+    assemble: "Callable[[str], list[int]]" = _assemble
+
+
+_CTX: "BrokerCtx | None" = None
+
+
+def broker_ctx() -> BrokerCtx:
+    """The ambient run's context, resolved once from its descriptor."""
+    global _CTX
+    if _CTX is None:
+        endpoint, target = _endpoint_and_target()
+        _CTX = BrokerCtx(endpoint=endpoint, target=target)
+    return _CTX
 
 
 def _rocc_handle(req: dict, target: str) -> dict:
@@ -143,12 +182,12 @@ def _rocc_debug(req: dict, target: str) -> dict:
     return out
 
 
-def _handle(req: dict) -> dict:
-    endpoint, target = _endpoint_and_target()
-    if endpoint == "inline_asm_insn":
-        return _rocc_handle(req, target)
+def _handle(req: dict, ctx: BrokerCtx | None = None) -> dict:
+    ctx = ctx or broker_ctx()
+    if is_rocc_endpoint(ctx.endpoint):
+        return _rocc_handle(req, ctx.target)
     from merlin.targetgen import isa_asm, isa_disasm, isa_lint
-    model = _model()
+    model = ctx.model()
     if model.is_empty():
         return {"error": "no derived ISA model for this target (it ships no ISA definition)"}
     cmd = req.get("cmd")
@@ -163,7 +202,7 @@ def _handle(req: dict) -> dict:
 
     if cmd in ("disasm", "lint"):
         try:
-            words = _assemble(req.get("kernel_s", ""))
+            words = ctx.assemble(req.get("kernel_s", ""))
         except Exception as e:  # noqa: BLE001 — assembly failure is the agent's kernel error, reported as-is
             return {"error": f"kernel.S did not assemble: {str(e)[-300:]}",
                     "hint": "stock llvm-mc assembles ONLY raw `.word`/`.insn` directives — it cannot "
