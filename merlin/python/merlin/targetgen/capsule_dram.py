@@ -28,6 +28,8 @@ _DTYPE_BYTES: dict[str, int] = {
     # microscaling (MX) block-float: the ELEMENT is whole-byte (its shared scale is stored per block,
     # separately) — an 8-bit mx element is 1 byte in the tensor's DRAM footprint.
     "mxfp8": 1, "mxint8": 1,
+    # the E8M0 shared block-scale code is itself a whole byte (one exponent per K-group).
+    "e8m0": 1, "f8E8M0FNU": 1,
 }
 
 DEFAULT_BASE = 0x1000      # start above a small guard region (never address 0)

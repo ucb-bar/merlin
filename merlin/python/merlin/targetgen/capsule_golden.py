@@ -137,6 +137,31 @@ def canonical_input_values(capsule: dict, capsule_dir: str | Path | None = None)
     return out
 
 
+def mx_scale_codes(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, list[int]]:
+    """The E8M0 per-block scale codes a microscaling (mxfp8) golden used, keyed by their provenance name
+    (e.g. ``SA_e8m0_codes`` / ``SB_e8m0_codes``) — read from ``golden.yaml`` ``oracle_provenance.inputs``,
+    where they sit alongside the tensor operands as a list (NOT a per-tensor dict). Each is flattened to a
+    row-major list of int codes (one exponent per K group). Empty for a non-block-scaled capsule. The block
+    scale is a device operand the accelerator kernel stages into its scale SRAM, separate from the fp8
+    element bytes — the two together reproduce the block-scaled matmul the golden records."""
+    gy = _load_golden_yaml(capsule_dir)
+    if not gy:
+        return {}
+    ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
+    out: dict[str, list[int]] = {}
+    for name, spec in ins.items():
+        if not isinstance(spec, list):   # scale-code arrays are lists; tensor specs are dicts (skipped here)
+            continue
+        flat: list[int] = []
+        for row in spec:
+            if isinstance(row, list):
+                flat.extend(int(x) & 0xFF for x in row)
+            else:
+                flat.append(int(row) & 0xFF)
+        out[name] = flat
+    return out
+
+
 def golden_source(capsule: dict, capsule_dir: str | Path | None = None) -> str:
     """The golden's PROVENANCE: ``merlin_tensor_int`` when it is (re)computed on the integer
     :class:`~merlin.runtime.tensor.Tensor` engine, or the INDEPENDENT source declared in the capsule's
