@@ -396,11 +396,15 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
                 f"the gated image and the shipped image disagree on build_hash "
                 f"({b.get('build_hash')} vs {ship.get('build_hash')}) -- they are not the same "
                 "computation, so the gate does not cover what is being shipped")
+    # Third element is the instrumented twin, and there isn't one: the debug harness is Zephyr's
+    # (printk, k_uptime_get, the fatal hook overriding a kernel symbol) and this path has no RTOS.
+    # Returned as None rather than omitted so the shape matches the Zephyr path -- returning a
+    # 2-tuple here is what made the packager die on unpacking after every image had already built.
     return res, {"elf": ship["elf"], "ram_bytes": ship["mem_bytes"],
                  "build_hash": ship.get("build_hash", ""),
                  "console": ship.get("console", CONSOLE_HTIF),
                  "chip_freq_hz": ship.get("chip_freq_hz"),
-                 "console_provenance": ship.get("console_provenance", {})}
+                 "console_provenance": ship.get("console_provenance", {})}, None
 
 
 def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
@@ -927,18 +931,38 @@ def _verdict(b: dict) -> str:
 KODIAK_VSTATE_DOC = """\
 ## Why every multi-hart image failed last time, and what changed
 
-Your table was the diagnosis: **every `h1` PASSED and every `h2`/`h3` FAILED**, deterministically, with
-no fault printed. That shape is specific. Here is the chain, and all of it is our bug.
+Your table was the shape of the diagnosis: **every `h1` PASSED and every `h2`/`h3` FAILED**,
+deterministically. Your trap logs are the proof, and they are worth more than the table — thank you
+for them. All of this is our bug.
 
-Our generated config did not set `CONFIG_RISCV_ISA_EXT_V`, so Zephyr never put `mstatus.VS` into a
-thread's initial mstatus and never saved or restored vector state across a context switch. The single
-worker image survives that because it enables VS by hand and then never context-switches again. A
-multi-hart image calls `merlin_omp_init`, which creates and joins a probe thread per hart and then
-creates the pool — so the **master** switches out and comes back with VS = Off, and takes an
-illegal-instruction trap on its own share of the first parallel region. And because we also set
-`CONFIG_FPU_SHARING=y`, that trap was routed into the FP retry path and spun silently instead of
-reporting. The stall watchdog could not tell you either: the master runs the watchdog, and the master
-was the thread that was stuck.
+`mcause: 2` is an illegal instruction, and `mtval` is the instruction that took it. Both of yours
+decode to the same thing:
+
+```
+mtval 0xcd827057   (deepjscc h2, mepc 0x8001d794)
+mtval 0xcd817057   (whisper  h2, mepc 0x80079cf8)
+   opcode[6:0]   = 0x57   OP-V  — a vector instruction
+   funct3[14:12] = 111    OPCFG — the vsetvli family
+   bits[31:30]   = 11            vsetivli
+```
+
+`vsetivli` is the instruction that *begins* every RVV block. Two different models, two different PCs,
+the identical instruction — that is not an unsupported opcode or a bad encoding, it is a vector unit
+that was **off** when the code reached its first vector instruction.
+
+Here is why it was off. Our generated config did not set `CONFIG_RISCV_ISA_EXT_V`, so Zephyr never put
+`mstatus.VS` into a thread's initial mstatus and never saved or restored vector state across a context
+switch. The single-worker image survives that because it enables VS by hand and then never
+context-switches again. A multi-hart image calls `merlin_omp_init`, which creates and joins a probe
+thread per hart and then creates the pool — so the **master** switches out and comes back with
+VS = Off, and traps on its own share of the first parallel region. Your `mepc` values land exactly
+there.
+
+What then made it unreadable was ours too: the fault was reported, and the run never **ended**. HTIF
+kept polling to no exit, so from outside a trap and a hang looked the same. Zephyr's default handler
+halts the faulting CPU and stops; it never terminates in the console protocol. Every image here now
+prints `FAIL fatal reason= hart= mcause= mepc= mtval= vs= build_hash=` followed by `DONE`, so a
+crashed run is a finished, attributable, gradeable run instead of a log that just stops.
 
 The reason we had those two settings was a stale note in our own board descriptor, which described the
 Zephyr your **`kodiak` branch** pins (submodule `5a06eb0d`). We build against the `dev` pin
@@ -948,16 +972,42 @@ RISCV_V_KERNEL_ONLY"* — there, `v.c` compiles under `CONFIG_RISCV_ISA_EXT_V` i
 
 What these images use instead is **your own working sample's configuration** —
 `samples/q8_gemm_minmax/prj.conf` on the `kodiak` branch, the one with a checked-in `ref-out`:
-`CONFIG_RISCV_ISA_EXT_V=y`, `CONFIG_RISCV_VECTOR_MAX_LEN=512`, `CONFIG_FPU_SHARING=n`. (That file is
-also the only place in your repo the real VLEN is written down, which is where our 512 comes from.)
+`CONFIG_RISCV_ISA_EXT_V=y`, `CONFIG_RISCV_VECTOR_MAX_LEN=512`, `CONFIG_FPU_SHARING=n`.
 Belt and braces, the OpenMP shim now re-arms `mstatus.VS` at every parallel-region entry including the
 master's, so the image is correct even where Zephyr is not managing it.
 
-**We could not reproduce this in any simulator**, and that is worth saying plainly rather than
+Your probe run settled the vector length independently, so it is no longer taken on trust from a
+config file: `vlenb 64` is **VLEN = 512 bits**, and your `vlmax_e8 64` / `vlmax_e32 16` are exactly
+what 512 predicts. Everything here is built for that.
+
+**We could not reproduce the trap in any simulator**, and that is worth saying plainly rather than
 implying the fix is tested: neither spike nor the Saturn RTL on FireSim enforces `mstatus.VS`, so both
-ran the broken image perfectly. Every image here does now report what it found — look for
+ran the broken image perfectly. Your two `mtval` values are the only direct evidence that exists, which
+is why they mattered so much. Every image here now reports the state itself — look for
 `METRIC hart<N>_mstatus_vs`. A `2` or `3` means Zephyr is managing vector state; a `0` would mean we
 are back where we started.
+
+### The other failure mode in your logs, which we have NOT explained
+
+Three runs — `deepjscc h3 scalar`, `spectformer h2`, `whisper h3 scalar` — produced **no Zephyr banner
+at all** before the log ended. That is not the vector-state bug: those images had not reached any of
+our code yet, so the fix above does not address them and we are not going to pretend otherwise.
+
+The explanation we find most likely is that the capture ended before the upload did. `pyuartsi` sends
+the loadable sections over the serial link, and at the **57600** baud in your `run_experiments.py` that
+is minutes to tens of minutes before the first instruction executes — the estimate for each image is in
+the table above. If your harness timeout is shorter than that, the log ends exactly the way yours did:
+ELF loaded, hart kicked, silence, EOF.
+
+Two things would confirm or kill that theory in one round:
+
+1. **Raise the baud.** 921600 is 16× faster and `pyuartsi` only transmits `SHT_PROGBITS`, not the
+   zero-fill, so nothing else has to change.
+2. **Run `vlen_probe.elf` and the `_debug` twin of one of the three.** The probe is 10 KB and uploads
+   instantly; if it banners and the big image does not, the difference is transport, not the image.
+
+If the banner is still missing with a generous timeout at a high baud, tell us — that is a different
+bug and we would want the log.
 
 """
 
@@ -1118,22 +1168,28 @@ only, and the table says so.
             for r in e["runs"]:
                 rows_fs.append(f"| {model} | {r['harts']} | {r['cycles']:,} | {r['tier_ok']} | "
                                f"{r['w8a8_max_rel']} |")
-        # Say plainly where the multicore split is NOT an exact work division. Measured on this
-        # bitstream, deepjscc's 2-hart run differs from its 1-hart run (reproducibly -- two runs,
-        # identical numbers) while spectformer's does not, and spike at the same VLEN shows no
-        # difference for either. Publishing a blanket "bit-identical" would be false for one of the
-        # two models, and it is exactly the property we ask the board owners to check themselves.
+        # Say plainly where the multicore split is NOT an exact work division. Publishing a blanket
+        # "bit-identical" would be false for one of the models, and it is exactly the property we ask
+        # the board owners to check themselves.
+        #
+        # State the OBSERVATION, not a cause. An earlier version of this text concluded the deviation
+        # was "deterministic, not a race" and therefore "the vector hardware, not the compiled code".
+        # Two runs agreeing does not establish that -- a race with a stable interleaving reproduces
+        # just as well -- and instrumented builds of the same models later came back bit-identical on
+        # the same bitstream, which is what a timing-sensitive race looks like when you perturb the
+        # timing. Shipping an inference dressed as a finding is worse than shipping an open question.
         not_ident = sorted(m for m, e in fs.items()
                            if e.get("harts_bit_identical") is False)
         caveat = ("" if not not_ident else
                   "> **Where the split is not exact:** on this RTL the 2-hart run of "
                   + ", ".join(f"`{m}`" for m in not_ident)
-                  + " is *not* bit-identical to its 1-hart run — it still passes the W8A8 gate, but\n"
-                    "> with a small per-element difference, reproduced exactly across two runs (so it\n"
-                    "> is deterministic, not a race). The same binaries ARE bit-identical under spike\n"
-                    "> at the same vector length, so this is something about the vector hardware, not\n"
-                    "> about the compiled code. Open on our side. If you see the same on your chip,\n"
-                    "> that is informative rather than alarming; tell us and we will chase it.")
+                  + " was *not* bit-identical to its 1-hart run — it still passed the W8A8 gate, but\n"
+                    "> with a small per-element difference. The same models ARE bit-identical under\n"
+                    "> spike at the board's own vector length, and instrumented builds of them did not\n"
+                    "> reproduce the difference on this same bitstream. Whether that points at the\n"
+                    "> vector hardware or at a timing-dependent race in our 2-hart path we do not yet\n"
+                    "> know, and we would rather say so than guess: it is open and being re-measured.\n"
+                    "> If your `h1` and `h2` outputs differ, that is the datum we need — please send it.")
         extra = []
         for model, e in sorted(fs.items()):
             if e.get("speedup_1_to_2_harts"):
@@ -1144,7 +1200,11 @@ only, and the table says so.
 ## What the same code did on real RTL (not a simulator)
 
 These models also ran on **FireSim**, executing the Saturn RTL on an FPGA — our own SoC, whole model,
-cycle-accurate. Bitstream `%s`, **vLen=256**:
+cycle-accurate. Bitstream `%s`, **vLen=256**.
+
+These are *separate images*, not the ELFs in this package: a FireSim build targets that SoC at its own
+vector length, so it cannot be the same binary as one built for your chip. What carries over is the
+model, the lowering and the schedule — the compiled arithmetic — not the image.
 
 | model | harts | cycles | gate | per-element error |
 |---|---:|---:|---|---:|

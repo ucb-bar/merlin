@@ -65,6 +65,13 @@ def _dealloc_passes() -> list[str]:
     return ["ownership-based-buffer-deallocation",
             "buffer-deallocation-simplification",
             "bufferization-lower-deallocations"]
+    # NOT here: `func.func(optimize-allocation-liveness)`. It looked like the obvious next lever --
+    # sink each dealloc to just after its last user and the peak drops -- but measured on the two
+    # models that bracket the range it moved nothing: whisper_tiny stayed at 2184.1 MB and deepjscc at
+    # 48.1 MB, byte for byte, while still perturbing the IR. Ownership-based deallocation is already
+    # placing the frees tightly enough that there is no slack to reclaim. A pass with no measured
+    # effect is not free -- it is another thing that can break a build -- so it stays out until some
+    # model demonstrates a delta.
 
 
 _UPSTREAM_PASSES = [
