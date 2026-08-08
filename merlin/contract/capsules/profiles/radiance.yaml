@@ -70,6 +70,23 @@ capsules:
    source: pytorch, M: 16, K: 32, N: 16, lhs: A0, weight: W, out: Y0,
    source_role: pytorch_model_slice,
    source_reference: 'PyTorch bf16 GEMM, K=32 (K-accumulate)', label: public, modes: {k_accumulate: true}}
+# Fused ops (source: pytorch) whose interface is the m2m linalg module directly (positional args) — the
+# agent compiles standard-dialect linalg. Exercise the SIMT elementwise/reduction datapath end to end.
+- {cat: model_slices, name: RP4_softmax_fp32_pt, kind: model_slice, op: softmax, operand_dtype: f32,
+   source: pytorch, M: 16, K: 16, out: Y0,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch row softmax fp32', label: public, modes: {}}
+- {cat: model_slices, name: RP5_layernorm_fp32_pt, kind: model_slice, op: layernorm, operand_dtype: f32,
+   source: pytorch, M: 16, K: 16, eps: 1.0e-05, out: Y0,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch LayerNorm fp32 (weight+bias)', label: public,
+   modes: {}}
+- {cat: model_slices, name: RP6_geglu_bf16_pt, kind: model_slice, op: geglu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, N: 32, out: Y0,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch GeGLU/SwiGLU bf16 (silu-gate)',
+   label: public, modes: {}}
+- {cat: model_slices, name: RP7_attn_full_fp16_pt, kind: model_slice, op: attention_full, operand_dtype: fp16,
+   source: pytorch, M: 16, K: 64, N: 16, Dv: 64, causal: true, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'PyTorch causal flash-style attention fp16 (Q@K^T,softmax,@V)', label: public, modes: {}}
 # Hidden holdout set (label: hidden) — parity with atlas/gemmini. These are UNSEEN SIMT GEMM shapes graded
 # only at run end; their goldens are masked from the agent by the sandbox, so an agent that hardcodes a
 # public answer cannot generalize to them. For an external_backend/SIMT target the executing cyclotron
@@ -97,3 +114,7 @@ capsules:
    source: pytorch, M_tiles: 1, K_tiles: 1, q: Q, k: K, out: Y0,
    source_role: pytorch_model_slice,
    source_reference: hidden PyTorch Q@K^T fp32 (unseen shape), label: hidden, modes: {}}
+- {cat: hidden, name: RPH2_softmax_fp16_hidden, kind: model_slice, op: softmax, operand_dtype: fp16,
+   source: pytorch, M: 24, K: 24, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: hidden PyTorch softmax fp16 (unseen 24x24), label: hidden, modes: {}}
