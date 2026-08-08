@@ -93,3 +93,9 @@ capsules:
    operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'small_llama fp8 — whole-model capstone', label: public,
    gate: {after_op_pass_fraction: 0.8}}
+# Second whole-model capstone (GATED): lstmnetvit fp8 — the broader-layer-type model (conv patch-embed,
+# spatial-reduction attention, depthwise MixFFN, PixelShuffle+upsample, LSTM head) beyond small_llama.
+- {cat: model, name: M1_lstmnetvit_mx, kind: model, op: model, model: lstmnetvit,
+   operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'lstmnetvit fp8 — vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)',
+   label: public, gate: {after_op_pass_fraction: 0.8}}

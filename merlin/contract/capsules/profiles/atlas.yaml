@@ -95,3 +95,9 @@ capsules:
 - {cat: model_slices, name: AF8_rope_bf16_pt, kind: model_slice, op: rope, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch RoPE bf16 (atlas smolvla_rope_frequency)', label: public, modes: {}}
+# --- Second whole-model capstone (GATED): lstmnetvit fp8 — broader layer types (conv patch-embed,
+# spatial-reduction attention, depthwise MixFFN, PixelShuffle+upsample, LSTM head) beyond small_llama.
+- {cat: model, name: M1_lstmnetvit_atlas, kind: model, op: model, model: lstmnetvit,
+   operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'lstmnetvit fp8 — vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)',
+   label: public, gate: {after_op_pass_fraction: 0.8}}

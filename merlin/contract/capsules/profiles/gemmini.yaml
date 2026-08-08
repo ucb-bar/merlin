@@ -375,3 +375,9 @@ capsules:
 - {cat: hidden, name: GH0_softmax_bf16_hidden, kind: model_slice, op: softmax, operand_dtype: bf16,
    source: pytorch, M: 24, K: 24, out: Y0, source_role: pytorch_model_slice,
    source_reference: hidden PyTorch softmax bf16 (unseen 24x24), label: hidden, modes: {}}
+# --- Second whole-model capstone (GATED): lstmnetvit int8 — broader layer types (conv patch-embed,
+# spatial-reduction attention, depthwise MixFFN, PixelShuffle+upsample, LSTM head) beyond small_llama.
+- {cat: model, name: M1_lstmnetvit_gemmini, kind: model, op: model, model: lstmnetvit,
+   operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'lstmnetvit int8 — vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)',
+   label: public, gate: {after_op_pass_fraction: 0.8}}

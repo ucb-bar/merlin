@@ -133,3 +133,10 @@ capsules:
    out: Y0, source_role: pytorch_model_slice,
    source_reference: 'small_llama — tiny full LLaMA (embed/RMSNorm/RoPE/attn+softmax/SwiGLU/lm_head)',
    label: public, gate: {after_op_pass_fraction: 0.8}}
+# Second whole-model capstone (GATED): lstmnetvit — the broader-layer-type model (SegFormer-style
+# patch-embed convs, spatial-reduction self-attention, depthwise MixFFN, PixelShuffle + bilinear
+# upsample, 3-layer LSTM head) that small_llama does not cover. fp32 (radiance SIMT float lanes).
+- {cat: model, name: M1_lstmnetvit_fp32, kind: model, op: model, model: lstmnetvit, operand_dtype: f32,
+   out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'lstmnetvit — vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)',
+   label: public, gate: {after_op_pass_fraction: 0.8}}
