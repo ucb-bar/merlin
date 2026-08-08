@@ -483,14 +483,14 @@ def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
         # and that property is checked, not assumed: `forward` audits at 0 vector instructions with
         # this on, and `_audit` below fails the package if any appear.
         b = zm.build_app(bundle, work, board=brd.name, backend=backend, rvv_hart=0,
-                         cpus=max(harts, brd.harts), n_harts=harts, int8_compute=True,
+                         cpus=zm.image_cpus(brd, harts), n_harts=harts, int8_compute=True,
                          features=frozenset([PEROP_BLOCK_NAME]),
                          sdk_dir=sdk_dir, debug=debug)
         return {"elf": b["elf"], "ram_bytes": b["ram_bytes"],
                 "build_hash": b.get("build_hash", ""), "backend": backend,
                 "op_profile_table": b.get("op_profile_table")}
     b = zm.build_app(bundle, work, board=brd.name, backend="rvv", rvv_hart=0,
-                     cpus=max(harts, brd.harts), n_harts=harts, int8_compute=True,
+                     cpus=zm.image_cpus(brd, harts), n_harts=harts, int8_compute=True,
                      rvv_schedule=pkg.schedule_text,
                      cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
                      features=frozenset([PEROP_BLOCK_NAME]), vlen=brd.vlen, sdk_dir=sdk_dir,
@@ -518,7 +518,7 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
-    cpus = max(2, harts, brd.harts if not vec else 2)
+    cpus = zm.image_cpus(brd, harts)
 
     def board(dbg: bool):
         return zm.build_app(
@@ -550,7 +550,10 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
         # peripheral -- so the gate runs on an HTIF twin built from the same IR, and the package says so.
         res = zm.build_and_run(
             bundle, work, board="spike_riscv64",
-            backend=backend, rvv_hart=0, harts=max(2, harts), int8_compute=True, n_harts=harts,
+            # The twin must declare the SAME CPU count as the shipped image: its whole job is to certify
+            # that ELF's arithmetic, and MP_MAX_NUM_CPUS changes the code (per-CPU structs, idle threads,
+            # the SMP bring-up). `cpus`, not a second formula.
+            backend=backend, rvv_hart=0, harts=cpus, int8_compute=True, n_harts=harts,
             features=frozenset([PEROP_BLOCK_NAME]), references=refs, timeout=timeout, **tune)
 
     # The debug twin is NOT re-simulated: same model, same lowering, same references, instrumentation

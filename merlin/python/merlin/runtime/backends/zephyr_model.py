@@ -870,6 +870,26 @@ def _debug_conf() -> str:
     return "\n".join(out) + "\n"
 
 
+def image_cpus(brd, harts: int, rvv_hart: int = 0) -> int:
+    """``CONFIG_MP_MAX_NUM_CPUS`` for an image that fans out over ``harts``.
+
+    One rule, in one place, because there were two. The packager computed this differently on its gated
+    path (``max(2, harts, 2)``) and on its build-only path (``max(harts, brd.harts)``), so the same model
+    at the same hart count got a different CPU count depending on whether it was going to be simulated --
+    and on a 3-hart board the ungated build of a ONE-hart image declared three CPUs.
+
+    That is not a cosmetic difference. ``z_smp_init()`` starts CPUs 1..MP_MAX_NUM_CPUS-1, and
+    ``arch_cpu_start`` spins on ``riscv_cpu_boot_flag`` with **no timeout**, so a CPU the image does not
+    need is a hang with nothing printed past the boot banner if that hart does not answer.
+
+    Hence: enough CPUs for every hart the image fans out to plus the master's, never more than the board
+    has. The floor of 2 is kept so an image that is gated today is byte-identical tomorrow; the clamp is
+    the new part, and it is the half that prevents the hang.
+    """
+    need = max(2, int(harts), int(rvv_hart) + 1)
+    return min(need, int(brd.harts)) if getattr(brd, "harts", None) else need
+
+
 def _prj_conf(cpus: int, backend: str, brd=None, console_facts=None, debug: bool = False) -> str:
     """Generated app config. ``brd`` is a :class:`runtime.boards.Board`; None keeps the
     historical chipyard/HTIF defaults so existing callers are byte-identical.
