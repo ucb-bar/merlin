@@ -217,12 +217,15 @@ if HAS_XDSL:
 
         ``tensors`` is the command buffer's resource table (leaf tensor name ->
         "shape:dtype"), carried here so the emit stage is a pure function of the module.
+        ``outputs`` names the committed tensors the function returns (the model's result
+        tensors) so the engine surfaces exactly those, not every intermediate commit.
         """
         name = "runtime.command_buffer.create"
         dev = operand_def(DeviceType)
         target = prop_def(StringAttr)
         mode = opt_prop_def(SubmitModeAttr)
         tensors = opt_prop_def(DictionaryAttr)
+        outputs = opt_prop_def(ArrayAttr)
         cb = result_def(CommandBufferType)
 
         def verify_(self) -> None:

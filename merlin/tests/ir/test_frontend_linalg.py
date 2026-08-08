@@ -122,14 +122,18 @@ def test_dse_records_resident_variants():
     assert schemas.validate(payload, "dse_result") == []
 
 
-def test_no_reuse_stays_marginal():
+def test_no_reuse_is_not_exploitable():
     from merlin.frontends import facts as ff
     from merlin.frontends import linalg_mlir as fl
 
     inv = fl.matmul_inventory(fl.parse_mlir_text(SYNTHETIC), {0: {"weight": "w"}})
     rec = inv[0]
     out = ff.record_dse(rec, ff.drive_pipeline(rec, reuse=1, target="saturn").command_buffer)
-    assert out["regime"] == "marginal"
+    # A single-use weight is still placed on the mesh (every matmul weight is packed, so a
+    # resident-storage target can run it), so residency here is measured as pure pack overhead
+    # with no reuse to amortize it — the DSE flags it not-exploitable ("irrelevant"), the
+    # honest guidance NOT to keep a use-once weight resident.
+    assert out["regime"] == "irrelevant"
 
 
 @pytest.mark.skipif(not SMOLVLA_MLIR.is_file(), reason="smolVLA artifact not present")

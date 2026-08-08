@@ -13,4 +13,4 @@ from .interface_lowering import LoweringError
 from .outline import OutlineError, OutlineResult, outline_dispatches
 from .passes import CATALOG, DialectPlaneResult, catalog, run_dialect_plane
 from .schedule_dispatch import Schedule, partition_dispatches
-from .pipeline import LoweringResult, execute, lower_repeated_rhs_matmul
+from .pipeline import LoweringResult, execute, lower_module, lower_repeated_rhs_matmul

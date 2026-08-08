@@ -53,22 +53,21 @@ class LoweringResult:
                 self.interface_module, self.target_module, self.runtime_module]
 
 
-def lower_repeated_rhs_matmul(
-    reuse: int = 4,
-    m: int = 64,
-    k: int = 128,
-    n: int = 64,
+def lower_module(
+    input_module: Any,
     target: str = "toy_npu",
     target_contract: dict[str, Any] | None = None,
     dialect_plan: dict[str, Any] | None = None,
     backend: str | None = None,
     target_package: Any | None = None,
 ) -> LoweringResult:
-    """Lower the MVP workload end to end; verify every intermediate module.
+    """Lower a PROVIDED linalg module end to end; verify every intermediate module.
 
-    ``target_package`` (a merlin.targetgen.registry.TargetPackage) lowers through an ISOLATED,
-    dynamically-loaded target dialect instead of a built-in reference target — no core edits,
-    plug-and-play. Built-in reference targets (toy_npu, saturn) still work via ``target``.
+    This is the whole-model / section compiler entry: ``input_module`` may hold a single matmul,
+    the MVP repeated-RHS workload, a chained multi-layer model, or a sliced section — the staged
+    descent is the same. ``target_package`` (a merlin.targetgen.registry.TargetPackage) lowers
+    through an ISOLATED, dynamically-loaded target dialect (no core edits, plug-and-play); built-in
+    reference targets (toy_npu, saturn) still work via ``target``.
     """
     if not HAS_XDSL:
         raise LoweringError("xDSL is required for the lowering pipeline")
@@ -85,7 +84,6 @@ def lower_repeated_rhs_matmul(
         name = tc["name"]
     from merlin.targetgen.target_registry import backend_for
     backend = backend or backend_for(name)
-    input_module = build_input_module(reuse=reuse, m=m, k=k, n=n)
     input_module.verify()
     contract_module = lower_to_contract(input_module, tc)
     contract_module.verify()
@@ -108,6 +106,24 @@ def lower_repeated_rhs_matmul(
         runtime_module=runtime_module,
         command_buffer=cb,
     )
+
+
+def lower_repeated_rhs_matmul(
+    reuse: int = 4,
+    m: int = 64,
+    k: int = 128,
+    n: int = 64,
+    target: str = "toy_npu",
+    target_contract: dict[str, Any] | None = None,
+    dialect_plan: dict[str, Any] | None = None,
+    backend: str | None = None,
+    target_package: Any | None = None,
+) -> LoweringResult:
+    """Lower the MVP repeated-RHS workload — a thin wrapper over :func:`lower_module`."""
+    return lower_module(
+        build_input_module(reuse=reuse, m=m, k=k, n=n),
+        target=target, target_contract=target_contract, dialect_plan=dialect_plan,
+        backend=backend, target_package=target_package)
 
 
 def execute(result: LoweringResult, inputs: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -38,6 +38,10 @@ def _dtype_str(t) -> str:
     elem = t.element_type
     if isinstance(elem, IntegerType):
         return "i%d" % elem.width.data
+    # Float element types carry their own mnemonic (f16/f32/f64/bf16) for a float-model layer.
+    tok = str(elem)
+    if tok in ("f16", "f32", "f64", "bf16"):
+        return tok
     raise LoweringError("unsupported element type %s" % elem)
 
 
@@ -72,7 +76,9 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         """Merlin opcode for a target op (reference + generated dialects share field names)."""
         return opcode_map.get(op.name)
 
-    # Deterministic tensor names. Pack sources are weights; other args activations.
+    # Deterministic names, assigned in ONE pre-pass so every value (incl. committed outputs)
+    # is named before the create op is built. Pack sources are weights; other args activations;
+    # accumulators acc%d; committed tensors Y%d.
     pack_srcs = [op.src for op in src_block.ops if kind(op) == "RES_PACK"]
     names: dict = {}
     tensors: dict[str, str] = {}
@@ -87,9 +93,30 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         if isinstance(arg.type, TensorType):
             names[arg] = "A%d" % n_a
             n_a += 1
+    n_acc = n_y = 0
+    for op in src_block.ops:
+        k = kind(op)
+        if k == "RES_PACK":
+            names[op.res] = names[op.src] + "_res"
+        elif k in ("MATMUL_RESIDENT", "MATMUL"):
+            names[op.acc] = "acc%d" % n_acc
+            n_acc += 1
+        elif k == "COMMIT":
+            names[op.out] = "Y%d" % n_y
+            n_y += 1
     for arg in src_block.args:
         if arg in names:
             tensors[names[arg]] = _shape_str(arg.type)
+    # The function's RETURN values are the model's output tensors — declare them (with shape)
+    # and name them explicitly so the engine surfaces exactly these, not every commit.
+    ret_ops = [o for o in src_block.ops if o.name == "func.return"]
+    output_names: list[str] = []
+    for operand in (ret_ops[0].operands if ret_ops else []):
+        nm = names.get(operand)
+        if nm is None:
+            raise LoweringError("return operand has no runtime name")
+        tensors[nm] = _shape_str(operand.type)
+        output_names.append(nm)
 
     blk = Block()
     dev = r.DeviceGetOp(result_types=[r.DeviceType()], properties={
@@ -100,32 +127,23 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         "target": StringAttr(target),
         "mode": r.SubmitModeAttr(r.SubmitMode.BATCHED),
         "tensors": DictionaryAttr({k: StringAttr(v) for k, v in sorted(tensors.items())}),
+        "outputs": ArrayAttr([StringAttr(n) for n in output_names]),
     })
     ops = [dev, cb]
 
-    n_acc = 0
-    n_y = 0
     for op in src_block.ops:
         opcode = kind(op)
         if opcode == "RES_PACK":
-            handle = names[op.src] + "_res"
-            names[op.res] = handle
-            args = {"src": names[op.src], "dst": handle}
+            args = {"src": names[op.src], "dst": names[op.res]}
             attrs = {"layout": op.layout}
         elif opcode in ("MATMUL_RESIDENT", "MATMUL"):
-            acc = "acc%d" % n_acc
-            n_acc += 1
-            names[op.acc] = acc
-            args = {"lhs": names[op.lhs], "rhs": names[op.rhs], "dst": acc}
+            args = {"lhs": names[op.lhs], "rhs": names[op.rhs], "dst": names[op.acc]}
             attrs = {}
             # Honest opcode: only a pack-produced RHS is a resident matmul.
             if not names[op.rhs].endswith("_res"):
                 opcode = "MATMUL"
         elif opcode == "COMMIT":
-            y = "Y%d" % n_y
-            n_y += 1
-            names[op.out] = y
-            args = {"src": names[op.acc], "dst": y}
+            args = {"src": names[op.acc], "dst": names[op.out]}
             if op.bias is not None:
                 args["bias"] = op.bias.data
             attrs = {"epilogue": op.epilogue}

@@ -154,6 +154,11 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
         if spec.get("role") == "output" and name in env and name not in outputs:
             outputs[name] = env[name].to_list()
 
+    # Surface EXACTLY the declared model outputs when the buffer names them (a chained layer's
+    # committed output is an intermediate, not a result).
+    declared = cb.get("outputs")
+    if declared:
+        outputs = {k: v for k, v in outputs.items() if k in set(declared)}
     return {"outputs": outputs, "metrics": metrics.as_dict(), "trace": trace}
 
 

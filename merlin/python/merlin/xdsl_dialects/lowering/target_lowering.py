@@ -117,8 +117,7 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
     value_map = dict(zip(src_block.args, blk.args))
 
     ops = []
-    outs = []
-    out_types = []
+    ret_op = None
     for op in src_block.ops:
         if isinstance(op, i.ResidentPackOp):
             new = spec.pack_op(
@@ -140,15 +139,21 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
             new = spec.commit_op(operands=[value_map[op.acc]],
                                  result_types=[op.out.type], properties=props)
             value_map[op.out] = new.out
-            outs.append(new.out)
-            out_types.append(op.out.type)
         elif isinstance(op, i.ResidentEvictOp):
             new = spec.evict_op(operands=[value_map[op.handle]])
         elif op.name == "func.return":
+            ret_op = op
             continue
         else:
             raise LoweringError(f"no {target} lowering for {op.name}")
         ops.append(new)
+    # Return exactly what the interface function returned — NOT every commit (a chained
+    # layer's committed output is an intermediate, not a result).
+    outs, out_types = [], []
+    if ret_op is not None:
+        for operand in ret_op.operands:
+            outs.append(value_map[operand])
+            out_types.append(value_map[operand].type)
     ops.append(ReturnOp(*outs))
     blk.add_ops(ops)
     new_fn = FuncOp(fn.sym_name.data, FunctionType.from_lists(arg_types, out_types),

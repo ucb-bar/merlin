@@ -57,6 +57,9 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
         if attrs.get("output_dtype", "i8") == "i8":
             t = t.to_i8()
         outputs[ops["dst"]] = t.to_list()
+        # Register the committed tensor so a CHAINED consumer (the next layer's matmul lhs, a
+        # vector op) resolves it — a whole model's intermediate activations flow through env.
+        env[ops["dst"]] = t
 
     # Vector-family ops: recompute directly (no residency optimization to bypass, so the
     # reference is the same elementwise math — the meaningful gate for this family is
@@ -83,6 +86,11 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
         if spec.get("role") == "output" and name in env and name not in outputs:
             outputs[name] = env[name].to_list()
 
+    # When the buffer declares its model outputs, surface EXACTLY those — a chained layer's
+    # committed output is an intermediate, not a result.
+    declared = cb.get("outputs")
+    if declared:
+        outputs = {k: v for k, v in outputs.items() if k in set(declared)}
     return outputs
 
 

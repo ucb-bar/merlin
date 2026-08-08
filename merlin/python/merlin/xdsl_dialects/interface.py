@@ -25,8 +25,10 @@ TYPES = ["resident_tensor", "streaming_tile", "accumulator", "committed_tensor",
 # engine's COMMIT semantics (merlin/python/merlin/runtime/simulator.py).
 KNOWN_EPILOGUE = {"bias", "bias_add", "requant", "relu"}
 
-# Output dtypes `interface.commit` can produce (engine: to_i8() or raw i32).
-KNOWN_OUTPUT_DTYPES = {"i8", "i32"}
+# Output dtypes `interface.commit` can produce: integer commits (engine to_i8()/raw i32) and
+# float commits (whole-model layers that stay in float — the accumulator element type is carried
+# through unchanged). Kept as data, not a per-target assumption.
+KNOWN_OUTPUT_DTYPES = {"i8", "i32", "f16", "f32", "f64", "bf16"}
 
 if HAS_XDSL:
     from xdsl.ir import (Attribute, Dialect, EnumAttribute, ParametrizedAttribute,
@@ -263,6 +265,12 @@ if HAS_XDSL:
                             raise VerifyException(
                                 "interface.commit output_dtype %s does not match result "
                                 "element type %s" % (dtype, elem))
+                    elif str(elem) != dtype:
+                        # float commit: the token must name the accumulator's float element
+                        # type (f16/f32/f64/bf16) — no cast, so they must agree.
+                        raise VerifyException(
+                            "interface.commit output_dtype %s does not match result "
+                            "element type %s" % (dtype, elem))
 
     @irdl_op_definition
     class AsyncCopyOp(IRDLOperation):
