@@ -8,14 +8,45 @@ the pairing is that nobody has to come back to us for the other half.
 
 | zip | for | contents |
 |---|---|---|
-| `merlin-int8-rvv-kodiak.zip` | **Kevin** (zephyr-chipyard-sw @ `kodiak`) | deepjscc + spectformer at 1 and 2 harts RVV, plus 3-hart scalar, each in plain and `_debug` form, plus `vlen_probe.elf`. HTIF console over TSI/FESVR, `zvl512b`. |
-| `merlin-int8-rvv-gemmelos-bearly25-zephyr.zip` | **Nicolas** (gemmelos-bringup) | deepjscc + spectformer + lstmnetvit at 1 and 2 harts, plain and `_debug`, plus `vlen_probe.elf`. UART0 @115200, 50 MHz reset clock. **Run this one first.** |
+| `merlin-int8-rvv-kodiak.zip` | **Kevin** (zephyr-chipyard-sw @ `kodiak`) | deepjscc + spectformer + whisper at 1 and 2 harts RVV, plus **2- and 3-hart scalar**, each in plain and `_debug` form, plus `vlen_probe.elf`. HTIF console over TSI/FESVR, `zvl512b`. |
+| `merlin-int8-rvv-gemmelos-bearly25-zephyr.zip` | **Nicolas** (gemmelos-bringup) | deepjscc + spectformer + lstmnetvit + whisper at 1 and 2 harts, plain and `_debug`, plus `vlen_probe.elf`. UART0 @115200, 50 MHz reset clock, `zvl256b`. **Run this one first.** |
 | `merlin-int8-rvv-gemmelos-bearly25-zephyr-500mhz.zip` | **Nicolas** (gemmelos-bringup) | The same images with the chip's PLL raised to 500 MHz before the console divisor is applied. Identical computation; only the clock differs. Run it *after* the 50 MHz set works. |
 | `merlin-int8-rvv-gemmelos-bearly25-baremetal.zip` | **Nicolas** (gemmelos-bringup) | Single hart, no RTOS, built against our own `crt.S`. The closest match to their own SDK. |
 
 ### What changed in this round, and why it matters
 
-Two board-specific bugs, each found in the boards' own repositories rather than guessed:
+**gemmelos: we had the chip's vector width wrong, and it corrupted the kernel.** The whisper debug image
+came back with `mcause=5, mtval=0` inside `z_check_stack_sentinel`, loading from address 0. The cause was
+ours: the descriptor said VLEN 128 while the chip's own probe reports `vlenb 32` (VLEN 256). Zephyr sizes
+its per-thread vector save area as a fixed `vreg[32][VLEN/8]` from *our* number, but fills it with a
+length read from the hardware — so every context switch wrote 512 bytes past `z_idle_threads[1]` into
+`z_main_thread`, zeroing its name and its stack bookkeeping. A thread that has never run a vector
+instruction has a zeroed register file, so the overrun wrote zeros, and the next timer tick dereferenced
+one. **No simulation can catch this class of bug**, because a simulator is handed the width we declared;
+configured and actual agree there by construction. All gemmelos binaries are rebuilt at 256, the emitted
+save area is now floored so an under-declaration cannot overrun, and the packager refuses to build when a
+returned probe log disagrees with the descriptor. Note the plain images had the same corruption
+*silently* — `STACK_SENTINEL` is a debug-only feature, and it is the only reason this was a diagnosable
+fault instead of another unexplained hang.
+
+**The probe was unreadable on a multi-hart chip.** `crt.S` runs `main` on every hart by design, but
+nothing serialised the console, so the returned log was interleaved characters — which is how a garbled
+`vlenb` line hid the problem above. Harts now print one contiguous block each, lowest first, ending in a
+single `DONE`.
+
+**Kodiak `h3`: still unexplained, and the package now contains the binary that settles it.** Every
+h3 configuration gates `w8a8` on spike at 3 harts, so nothing we can run reproduces it. The confound is
+that every h3 image is also the *scalar* one, so "h3 fails" has never distinguished the third hart from
+the scalar multicore path. There is now a **2-hart scalar** image. Run `deepjscc_int8_h2_scalar_debug`:
+if it passes and `h3_scalar` fails, the third core is the problem; if both fail, the scalar multicore
+route is. One log, one answer.
+
+Also unified: `CONFIG_MP_MAX_NUM_CPUS` was computed by two different formulas depending on whether an
+image was going to be simulated, so on this 3-hart board an ungated *one*-hart build declared three CPUs
+— and a CPU the image does not need is an unbounded spin in `arch_cpu_start`, i.e. a hang with nothing
+past the banner. One rule now, clamped to the board's hart count.
+
+Two earlier board-specific bugs, each found in the boards' own repositories rather than guessed:
 
 - **Kodiak: every multi-hart image hung and every single-hart one passed.** The config set no
   `CONFIG_RISCV_ISA_EXT_V`, so no thread's `mstatus` carried VS and vector state was not saved across a

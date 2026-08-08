@@ -35,6 +35,7 @@ import sys
 import tempfile
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from difflib import SequenceMatcher
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
@@ -482,14 +483,14 @@ def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
         # and that property is checked, not assumed: `forward` audits at 0 vector instructions with
         # this on, and `_audit` below fails the package if any appear.
         b = zm.build_app(bundle, work, board=brd.name, backend=backend, rvv_hart=0,
-                         cpus=max(harts, brd.harts), n_harts=harts, int8_compute=True,
+                         cpus=zm.image_cpus(brd, harts), n_harts=harts, int8_compute=True,
                          features=frozenset([PEROP_BLOCK_NAME]),
                          sdk_dir=sdk_dir, debug=debug)
         return {"elf": b["elf"], "ram_bytes": b["ram_bytes"],
                 "build_hash": b.get("build_hash", ""), "backend": backend,
                 "op_profile_table": b.get("op_profile_table")}
     b = zm.build_app(bundle, work, board=brd.name, backend="rvv", rvv_hart=0,
-                     cpus=max(harts, brd.harts), n_harts=harts, int8_compute=True,
+                     cpus=zm.image_cpus(brd, harts), n_harts=harts, int8_compute=True,
                      rvv_schedule=pkg.schedule_text,
                      cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
                      features=frozenset([PEROP_BLOCK_NAME]), vlen=brd.vlen, sdk_dir=sdk_dir,
@@ -517,7 +518,7 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
-    cpus = max(2, harts, brd.harts if not vec else 2)
+    cpus = zm.image_cpus(brd, harts)
 
     def board(dbg: bool):
         return zm.build_app(
@@ -549,7 +550,10 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
         # peripheral -- so the gate runs on an HTIF twin built from the same IR, and the package says so.
         res = zm.build_and_run(
             bundle, work, board="spike_riscv64",
-            backend=backend, rvv_hart=0, harts=max(2, harts), int8_compute=True, n_harts=harts,
+            # The twin must declare the SAME CPU count as the shipped image: its whole job is to certify
+            # that ELF's arithmetic, and MP_MAX_NUM_CPUS changes the code (per-CPU structs, idle threads,
+            # the SMP bring-up). `cpus`, not a second formula.
+            backend=backend, rvv_hart=0, harts=cpus, int8_compute=True, n_harts=harts,
             features=frozenset([PEROP_BLOCK_NAME]), references=refs, timeout=timeout, **tune)
 
     # The debug twin is NOT re-simulated: same model, same lowering, same references, instrumentation
@@ -1091,10 +1095,19 @@ def _ungated_problem(binaries: list[dict]) -> str | None:
                      f"was compared only against the weight-only golden")
     if twinned:
         pkg = twinned[0]["twin_gate"]["package"]
-        parts.append(f"{len(twinned)} of {total} were not simulated here, but each runs an "
-                     f"instruction-for-instruction identical model to a gated binary in `{pkg}` "
-                     f"(same program, different addresses), so that gate covers their arithmetic — "
-                     f"what it does not cover is the part that differs between the two builds")
+        # Say how many needed the relaxation tolerance rather than claiming an exact match for all of
+        # them: "instruction-for-instruction identical" is true of most and overstates the rest.
+        relaxed = [b for b in twinned if b["twin_gate"].get("relaxed_insns")]
+        how = "instruction for instruction"
+        if relaxed:
+            worst = max(b["twin_gate"]["relaxed_insns"] for b in relaxed)
+            how = (f"instruction for instruction — exactly so for {len(twinned) - len(relaxed)} of them, "
+                   f"and for the other {len(relaxed)} apart from at most {worst} PC-relative address "
+                   f"materialisation(s) the linker collapsed because the layout moved")
+        parts.append(f"{len(twinned)} of {total} were not simulated here, but each runs the same model "
+                     f"as a gated binary in `{pkg}` (same program, different addresses), matching it "
+                     f"{how}; that gate therefore covers their arithmetic, and what it does not cover "
+                     f"is the part that differs between the two builds")
     return f"{UNGATED_PREFIX} " + "; ".join(parts) + "."
 
 
@@ -1114,6 +1127,12 @@ def refresh_package(dest: Path, twin: Path | None = None) -> int:
     man["problems"] = [p for p in man.get("problems", [])
                        if not p.startswith(DERIVED_PREFIXES)]
     man["problems"] += _derived_problems(man["binaries"])
+    # Both are pure functions of the descriptor, so a package built before the packager recorded them
+    # can state them without rebuilding a byte. `silicon` is NOT filled here: it needs a returned probe
+    # log, and inventing an absent measurement is the one thing this field exists to prevent.
+    if isinstance(man.get("vector_probe"), dict):
+        man["vector_probe"]["declared_vlen"] = brd.vlen
+        man["vector_probe"]["vector_save_area_bits"] = zm._vector_max_len_bits(brd)
     (dest / "manifest.json").write_text(json.dumps(man, indent=2) + "\n")
     (dest / "README.md").write_text(_readme(brd, man, debug=any(b.get("debug")
                                                                 for b in man["binaries"])))
@@ -1161,6 +1180,43 @@ def _model_mnemonics(elf: Path) -> list[str] | None:
     return ms or None
 
 
+#: Mnemonics the linker may add or drop between two builds of the SAME program purely because the
+#: addresses moved. `auipc` materialises a PC-relative address; when a shifted layout brings a symbol
+#: within reach of a shorter form, the pair collapses and the `auipc` disappears (or appears). Measured
+#: between the 50 MHz and 500 MHz gemmelos sets: `spectformer_h1` differs by exactly three deleted
+#: `auipc`, `whisper_h2` by one inserted `auipc`, both in the last 0.2 % of the stream, with every other
+#: instruction identical (sequence ratio 0.999997).
+RELAXABLE_MNEMONICS = frozenset({"auipc"})
+
+
+def twin_equivalence(mine: list[str], theirs: list[str]) -> tuple[bool, int]:
+    """``(same_program, n_relaxed)`` for two mnemonic streams.
+
+    Exact equality is the honest default, but it UNDER-reports: the twin comparison exists to say
+    whether a variant we cannot simulate runs the same computation, and a build whose only difference is
+    that the linker collapsed a few address materialisations does. Reporting those five images as
+    unverified told the chip's owner less than we actually knew.
+
+    So the tolerance is narrow and stated: every differing region must be a pure INSERT or DELETE whose
+    entire content is in `RELAXABLE_MNEMONICS`. A `replace` region, or an insert/delete containing
+    anything else, is a real difference and the caller records a mismatch. That distinction is the whole
+    value of the check -- widen it and it stops meaning anything.
+    """
+    if mine == theirs:
+        return True, 0
+    relaxed = 0
+    for op, i1, i2, j1, j2 in SequenceMatcher(a=mine, b=theirs, autojunk=False).get_opcodes():
+        if op == "equal":
+            continue
+        if op == "insert" and set(theirs[j1:j2]) <= RELAXABLE_MNEMONICS:
+            relaxed += j2 - j1
+        elif op == "delete" and set(mine[i1:i2]) <= RELAXABLE_MNEMONICS:
+            relaxed += i2 - i1
+        else:
+            return False, 0
+    return True, relaxed
+
+
 def attach_twin_evidence(dest: Path, twin: Path) -> int:
     """Record, per binary, whether a GATED image in ``twin`` runs the same program.
 
@@ -1188,18 +1244,28 @@ def attach_twin_evidence(dest: Path, twin: Path) -> int:
         if mine is None or theirs is None:
             print(f"  {b['elf']}: could not read model code — no twin evidence recorded")
             continue
-        if mine != theirs:
+        same, relaxed = twin_equivalence(mine, theirs)
+        if not same:
             print(f"  {b['elf']}: model code DIFFERS from {sib['elf']} "
                   f"({len(mine)} vs {len(theirs)} insns) — no twin evidence recorded")
             continue
         b["twin_gate"] = {"package": twin.name, "elf": sib["elf"],
                           "build_hash": sib.get("build_hash", ""), "tier_ok": sib.get("tier_ok"),
-                          "cos": sib.get("cos"), "insns": len(mine)}
+                          "cos": sib.get("cos"), "insns": len(mine),
+                          # 0 = byte-for-byte the same instruction sequence. Nonzero = the same
+                          # sequence apart from N address materialisations the linker collapsed
+                          # because the layout moved; stated rather than hidden inside "match".
+                          "relaxed_insns": relaxed}
+        if relaxed:
+            print(f"  {b['elf']}: same program as {sib['elf']}, modulo {relaxed} relaxed "
+                  f"address materialisation(s)")
         matched += 1
     man["twin_evidence"] = {
         "package": twin.name, "matched": matched, "of": len(man["binaries"]),
         "method": "identical instruction sequence over [forward, main) — same program, different "
-                  "addresses",
+                  "addresses. Tolerates ONLY inserted/deleted address materialisations (auipc) that "
+                  "the linker collapses when the layout moves; each binary's `relaxed_insns` says how "
+                  "many, and 0 means byte-for-byte identical. Any other difference is a mismatch.",
         "covers": "the model's arithmetic, via the twin's gate",
         "does_not_cover": "whatever differs between the two builds (for a clock variant, the "
                           "bring-up itself)",
@@ -1605,6 +1671,12 @@ functional simulator, and it is where a multicore split gets its first honest te
   binaries is their memory map and link, which is what the ELF audit checks. That is why there is no
   `expected_console.txt` for them: we would rather ship no reference than one we did not produce.""")
     probe = manifest.get("vector_probe")
+    # The width the model code was COMPILED for, and the width Zephyr's per-thread vector save area was
+    # SIZED for. They are usually equal but not the same fact, and the probe guidance below has to name
+    # each in the right place: a narrower unit than the first violates the -march minimum, a wider unit
+    # than the second overruns the save area into the next thread struct.
+    _built_vlen = brd.vlen or 128
+    _save_bits = zm._vector_max_len_bits(brd)
     probe_doc = ("""\
 Load `vlen_probe.elf` the same way as any other binary below. It reads the chip's own CSRs and prints:
 
@@ -1620,14 +1692,31 @@ DONE
 
 **Please send this back before anything else.** Your board files declare no vector width anywhere
 (`riscv,isa = "rv64gc"`, and the samples' `CONFIG_RISCV_VECTOR_MAX_LEN` sizes Zephyr's save area, so it
-only bounds the real width from above), so we built the model images for %d-bit vectors as our best
-inference. If `vlenb` says otherwise, the model binaries are still CORRECT — fixed-width vector code
-runs at a lower LMUL on a wider unit — but they leave performance on the table, and we would rebuild.
-It costs seconds and saves a multi-megabyte upload spent on the wrong assumption.
+only bounds the real width from above), so these images are built for **%d-bit** vectors and Zephyr's
+per-thread vector save area is sized for **%d** bits.
+
+Any answer other than exactly %d means tell us and let us rebuild — and an earlier round of this
+package was wrong about why, so both directions are spelled out:
+
+- `vlenb * 8` **greater than %d** — stop, and do not read a crash as a compiler bug. The per-thread
+  vector save area is a fixed array sized from the number above, but Zephyr fills it with a length read
+  from *your* hardware, so a wider unit writes past it into the adjacent kernel thread structure on
+  every context switch. Not theoretical: a package built for 128-bit vectors against a chip reporting
+  `vlenb 32` zeroed the main thread's stack bookkeeping, and the next timer tick died loading from
+  address 0. No simulation can catch it, because a simulator is handed the width we declared.
+- `vlenb * 8` **less than %d** — also stop. The model code is compiled with a minimum vector length of
+  %d (`zvl%db`), which the compiler is entitled to rely on when it selects vector widths, so these
+  binaries are simply not valid for a narrower unit. Cheap for us to rebuild once we know the number.
 
 If `mstatus_vs` comes back 0, stop there and tell us: vector state is off, and every vector
 instruction in the model images would trap. The probe deliberately stops before reading `vlenb` in
-that case rather than taking the trap.""" % (brd.vlen or 128)
+that case rather than taking the trap.
+
+The probe prints one block per hart, lowest first, and ends with a single `DONE`. If the blocks come
+back interleaved character-by-character, that is an older probe — tell us and we will resend.""" % (
+    # Two distinct numbers, and which one bounds which direction is the whole point: the -march minimum
+    # is what a NARROWER unit violates, and the save-area width is what a WIDER one overruns.
+    _built_vlen, _save_bits, _built_vlen, _save_bits, _built_vlen, _built_vlen, _built_vlen)
                  if probe else "*(not included in this package)*")
     identity_line = ("- Confirmed 1-hart and %d-hart outputs are bit-identical." % max(hart_counts)
                      if len(hart_counts) > 1 else

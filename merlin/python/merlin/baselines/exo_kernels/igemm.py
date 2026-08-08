@@ -92,16 +92,16 @@ def _make_uref(U: int):
     def igemm_nt_ref(M: size, N: size, K: size, Y: i32[M, N] @ DRAM, X: ui16[M, K] @ DRAM,
                      Wt: ui16[K, N] @ DRAM):
         # pragma: no cover
-        assert N % {BW} == 0
+        assert N % BW == 0
         for m in seq(0, M):
-            for nb in seq(0, N / {BW}):
-                for nu in seq(0, {U}):
+            for nb in seq(0, N / BW):
+                for nu in seq(0, U):
                     for ni in seq(0, 16):
-                        Y[m, ni + 16 * ({U} * nb + nu)] = 0.0
+                        Y[m, ni + 16 * (U * nb + nu)] = 0.0
                 for k in seq(0, K):
-                    for nu in seq(0, {U}):
+                    for nu in seq(0, U):
                         for ni in seq(0, 16):
-                            Y[m, ni + 16 * ({U} * nb + nu)] += X[m, k] * Wt[k, ni + 16 * ({U} * nb + nu)]
+                            Y[m, ni + 16 * (U * nb + nu)] += X[m, k] * Wt[k, ni + 16 * (U * nb + nu)]
 
     return igemm_nt_ref
 

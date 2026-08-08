@@ -485,3 +485,27 @@ def test_a_scalar_image_is_not_confined_to_vector_harts():
 
     src = inspect.getsource(zm._cmakelists)
     assert "MERLIN_OMP_VECTOR_POOL={1 if backend == 'rvv' else 0}" in src
+
+
+def test_the_cpu_count_is_one_rule_bounded_by_the_board():
+    """`CONFIG_MP_MAX_NUM_CPUS` had two formulas in the packager, and they disagreed.
+
+    The gated path used `max(2, harts, 2)` and the build-only path `max(harts, brd.harts)`, so on a
+    3-hart board the ungated build of a ONE-hart image declared three CPUs. That is a hang, not an
+    inefficiency: `z_smp_init()` starts CPUs 1..N-1 and `arch_cpu_start` spins on `riscv_cpu_boot_flag`
+    with no timeout, so a CPU the image does not need stops the boot dead if that hart does not answer --
+    with nothing printed past the banner, which is exactly how Kodiak's h3 images read.
+    """
+    three = boards.board("chipyard_kodiak")
+    assert three.harts == 3
+    # Never more CPUs than the image fans out to -- this is the case the two formulas disagreed on.
+    assert zm.image_cpus(three, 1) == 2
+    assert zm.image_cpus(three, 2) == 2
+    assert zm.image_cpus(three, 3) == 3
+    # ... and never more than the board has, however many are asked for.
+    two = boards.board("gemmelos_bearly25_zephyr")
+    assert two.harts == 2
+    assert zm.image_cpus(two, 1) == 2
+    assert zm.image_cpus(two, 3) == 2, "clamped: declaring a hart the chip lacks is an unbounded spin"
+    # A vector hart index beyond the fan-out still needs a CPU of its own.
+    assert zm.image_cpus(three, 1, rvv_hart=2) == 3
