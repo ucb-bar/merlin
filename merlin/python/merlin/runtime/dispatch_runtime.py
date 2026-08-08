@@ -377,7 +377,7 @@ def _compile_kernel_so(args: tuple) -> str:
 def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             entry: str = "forward", cache_dir: str | Path | None = None,
             tap=None, qinner: dict | None = None,
-            kernel_backend: str | None = None) -> list[np.ndarray]:
+            kernel_backend: str | None = None, mesh_target: str | None = None) -> list[np.ndarray]:
     """Run the outlined model on bound arguments; return the driver's result arrays.
 
     ``cache_dir`` persists compiled kernel ``.so``s keyed by kernel-body hash, so repeated
@@ -427,6 +427,27 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             if route is not None:
                 xnn_routes[sym] = route
         execute.last_xnn_routed = len(xnn_routes)
+
+    # --- mesh routing: run each matmul kernel on the target accelerator MESH (real activations) ----------
+    # Same structural classifier picks the plain matmul kernels; each is executed on the target's mesh
+    # oracle via operand injection (run_matmul_on_mesh) with the LIVE activation/weight arrays, and the
+    # mesh output threads forward — so the whole model runs with its matmul layers on the RTL systolic
+    # array. f32 operands are quantized to int8 at the boundary (the mesh is an int8 datapath; the drop is
+    # expected quantization error, covered by the whole-model quant tolerance).
+    mesh_routes: dict[str, dict] = {}
+    if kernel_backend == "mesh":
+        if not mesh_target:
+            raise DispatchRuntimeError("kernel_backend='mesh' requires mesh_target=<target>")
+        from .backends import xnnpack_host          # classify_matmul_kernel is a pure structural classifier
+        kfns = {op.sym_name.data: op for op in module.walk()
+                if op.name == "func.func" and "$kernel_" in op.sym_name.data}
+        for sym, kfn in kfns.items():
+            route = xnnpack_host.classify_matmul_kernel(kfn)
+            if route is not None:
+                mesh_routes[sym] = route
+        execute.last_mesh_routed = len(mesh_routes)
+        execute.mesh_ran = 0
+        execute.mesh_fell_back = 0
 
     def kernel_model(symbol: str):
         if symbol in compiled:
@@ -527,6 +548,30 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             if tap is not None:
                 tap(op, [out])
             return
+        mroute = mesh_routes.get(symbol)
+        if mroute is not None:                       # run this matmul LAYER on the target mesh (real data)
+            from ..compile_cli import run_matmul_on_mesh
+
+            a = np.ascontiguousarray(env[id(op.operands[mroute["a"]])], np.float64)
+            b = np.ascontiguousarray(env[id(op.operands[mroute["b"]])], np.float64)
+            mesh_out = None
+            if a.ndim == 2 and b.ndim == 2 and a.shape[1] == b.shape[0]:   # a plain 2-D contraction
+                # per-tensor symmetric int8 quantization at the mesh boundary (int8 systolic datapath)
+                sa = float(np.abs(a).max()) / 127.0 or 1.0
+                sb = float(np.abs(b).max()) / 127.0 or 1.0
+                qa = np.clip(np.rint(a / sa), -127, 127).astype(np.int64).tolist()
+                qb = np.clip(np.rint(b / sb), -127, 127).astype(np.int64).tolist()
+                mesh_out = run_matmul_on_mesh(mesh_target, qa, qb, operand_dtype="int8", accum_dtype="i32")
+                if mesh_out is not None:
+                    out = (np.array(mesh_out, np.float64) * (sa * sb)).reshape(outs[0][0]).astype(outs[0][1])
+                    env[id(op.results[0])] = out
+                    execute.mesh_ran = getattr(execute, "mesh_ran", 0) + 1
+                    if tap is not None:
+                        tap(op, [out])
+                    return
+            # a layer the mesh could not run at this shape (non-2D or cert-fail) falls back to the host
+            # kernel and is NOT counted as mesh-executed — honest accounting, never a faked mesh result.
+            execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
         model = kernel_model(symbol)
         args, keep = [], []
         for o in op.operands:
@@ -654,7 +699,7 @@ def _propagate_quant_inner(module) -> int:
 def run_model(model_dir: str | Path, workdir: str | Path,
               cache_dir: str | Path | None = None, tap=None,
               int8_compute: bool = False,
-              kernel_backend: str | None = None) -> dict[str, Any]:
+              kernel_backend: str | None = None, mesh_target: str | None = None) -> dict[str, Any]:
     """Outline + bind + execute a captured model; gate against ``golden.npy``.
 
     Returns ``{output, golden, cos, rel, ok, n_kernels, n_unique_kernels}``.
@@ -707,7 +752,7 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     if kernel_backend is None and _os.environ.get("MERLIN_XNNPACK_HOST") == "1":
         kernel_backend = "xnnpack"
     results = execute(outlined, args, Path(workdir), cache_dir=cache_dir, tap=tap,
-                      qinner=qinner, kernel_backend=kernel_backend)
+                      qinner=qinner, kernel_backend=kernel_backend, mesh_target=mesh_target)
     # widen bf16 (stored as uint16 bit patterns) to f32 for the golden comparison
     raw = results[0]
     out = (bf16_to_f32(raw) if _elem_str(out_types[0]) == "bf16"
