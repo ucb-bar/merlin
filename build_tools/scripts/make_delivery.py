@@ -1671,6 +1671,12 @@ functional simulator, and it is where a multicore split gets its first honest te
   binaries is their memory map and link, which is what the ELF audit checks. That is why there is no
   `expected_console.txt` for them: we would rather ship no reference than one we did not produce.""")
     probe = manifest.get("vector_probe")
+    # The width the model code was COMPILED for, and the width Zephyr's per-thread vector save area was
+    # SIZED for. They are usually equal but not the same fact, and the probe guidance below has to name
+    # each in the right place: a narrower unit than the first violates the -march minimum, a wider unit
+    # than the second overruns the save area into the next thread struct.
+    _built_vlen = brd.vlen or 128
+    _save_bits = zm._vector_max_len_bits(brd)
     probe_doc = ("""\
 Load `vlen_probe.elf` the same way as any other binary below. It reads the chip's own CSRs and prints:
 
@@ -1686,14 +1692,31 @@ DONE
 
 **Please send this back before anything else.** Your board files declare no vector width anywhere
 (`riscv,isa = "rv64gc"`, and the samples' `CONFIG_RISCV_VECTOR_MAX_LEN` sizes Zephyr's save area, so it
-only bounds the real width from above), so we built the model images for %d-bit vectors as our best
-inference. If `vlenb` says otherwise, the model binaries are still CORRECT — fixed-width vector code
-runs at a lower LMUL on a wider unit — but they leave performance on the table, and we would rebuild.
-It costs seconds and saves a multi-megabyte upload spent on the wrong assumption.
+only bounds the real width from above), so these images are built for **%d-bit** vectors and Zephyr's
+per-thread vector save area is sized for **%d** bits.
+
+Any answer other than exactly %d means tell us and let us rebuild — and an earlier round of this
+package was wrong about why, so both directions are spelled out:
+
+- `vlenb * 8` **greater than %d** — stop, and do not read a crash as a compiler bug. The per-thread
+  vector save area is a fixed array sized from the number above, but Zephyr fills it with a length read
+  from *your* hardware, so a wider unit writes past it into the adjacent kernel thread structure on
+  every context switch. Not theoretical: a package built for 128-bit vectors against a chip reporting
+  `vlenb 32` zeroed the main thread's stack bookkeeping, and the next timer tick died loading from
+  address 0. No simulation can catch it, because a simulator is handed the width we declared.
+- `vlenb * 8` **less than %d** — also stop. The model code is compiled with a minimum vector length of
+  %d (`zvl%db`), which the compiler is entitled to rely on when it selects vector widths, so these
+  binaries are simply not valid for a narrower unit. Cheap for us to rebuild once we know the number.
 
 If `mstatus_vs` comes back 0, stop there and tell us: vector state is off, and every vector
 instruction in the model images would trap. The probe deliberately stops before reading `vlenb` in
-that case rather than taking the trap.""" % (brd.vlen or 128)
+that case rather than taking the trap.
+
+The probe prints one block per hart, lowest first, and ends with a single `DONE`. If the blocks come
+back interleaved character-by-character, that is an older probe — tell us and we will resend.""" % (
+    # Two distinct numbers, and which one bounds which direction is the whole point: the -march minimum
+    # is what a NARROWER unit violates, and the save-area width is what a WIDER one overruns.
+    _built_vlen, _save_bits, _built_vlen, _save_bits, _built_vlen, _built_vlen, _built_vlen)
                  if probe else "*(not included in this package)*")
     identity_line = ("- Confirmed 1-hart and %d-hart outputs are bit-identical." % max(hart_counts)
                      if len(hart_counts) > 1 else
