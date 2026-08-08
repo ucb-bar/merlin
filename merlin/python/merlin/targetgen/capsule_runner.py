@@ -580,6 +580,55 @@ def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: b
     return (concrete + hint) if concrete else hint
 
 
+def _grade_model_capsule(capsule: dict, *, timeout: int) -> dict:
+    """Grade a whole-model (kind == "model") capsule end to end: compile the captured model through the
+    merlin whole-model flow (``merlin-compile --target rvv``, the composable RVV/scalar path) and gate its
+    output against the model's golden. ``MERLIN_MODEL_GRADE_RUN`` selects ``host`` (default; the x86
+    dispatch runtime, no board) or ``spike`` (a real RISC-V sim). Honestly reports ``incomplete`` when the
+    whole-model toolchain (m2m venv / clang-23) is absent — never a silent pass."""
+    import os
+    attrs = (capsule.get("operation") or {}).get("attributes") or {}
+    model, dtype = attrs.get("model"), attrs.get("compile_dtype", "fp32")
+    run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN", "host")
+    result: dict = {"capsule": capsule["name"], "kind": "model", "label": capsule.get("label"),
+                    "operation": {"op": "model", "model": model, "dtype": dtype, "run": run_where},
+                    "contract_version": CONTRACT_VERSION}
+    if not model:
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "RUNNER_CRASH",
+                               "detail": "model capsule missing operation.attributes.model"})
+        return result
+    try:
+        from ..compile_cli import compile_rvv
+        out = compile_rvv(model, dtype, run=run_where, verify=True, package=None,
+                          auto_capture=True, timeout=timeout)
+    except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": f"whole-model compile/run unavailable: {str(e)[:300]}"})
+        return result
+    except Exception as e:  # noqa: BLE001
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": f"whole-model grade error: {type(e).__name__}: {str(e)[:300]}"})
+        return result
+    st, gate = out.get("status"), (out.get("verify") or {}).get("gate_ok")
+    engine = f"merlin-compile rvv --run {run_where} --verify"
+    if st == "verified" and gate:
+        result.update(status="pass", numeric={"status": "pass", "engine": engine, "gate": out.get("verify")})
+    elif st == "not_run":
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": out.get("reason", "whole-model run toolchain unavailable")})
+    else:
+        result.update(status="fail",
+                      numeric={"status": "fail", "engine": engine, "gate": out.get("verify"),
+                               "model_status": st},
+                      failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
+                               "detail": f"the whole model did not verify (status={st}, gate_ok={gate})"})
+    return result
+
+
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
@@ -622,6 +671,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
 
     paths = make_run_paths(runs_root, run_id, suite=cfg.suite, target=cfg.target,
                            dtype=cfg.dtype, benchmark=name)
+
+    # Whole-model capsule: graded end to end by compiling the captured model through the merlin
+    # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
+    # same capsule_result.json shape so downstream reporting is uniform.
+    if capsule.get("kind") == "model":
+        result = _grade_model_capsule(capsule, timeout=timeout)
+        (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        return result
 
     tiers: dict[str, TierResult] = {}
     trace_check_res = {"status": "skipped", "violations": []}

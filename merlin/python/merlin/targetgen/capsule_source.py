@@ -133,6 +133,34 @@ class Model(nn.Module):
 def get_model_and_inputs():
     return Model(), (_r({M}, {K}), _r({K}, {N}), _r({K}, {N}))
 ''',
+    "gelu": '''
+class Model(nn.Module):
+    def forward(self, x):
+        return torch.nn.functional.gelu(x, approximate="tanh")
+def get_model_and_inputs():
+    return Model(), (_r({M}, {K}),)
+''',
+    "silu": '''
+class Model(nn.Module):
+    def forward(self, x):
+        return torch.nn.functional.silu(x)
+def get_model_and_inputs():
+    return Model(), (_r({M}, {K}),)
+''',
+    "add": '''
+class Model(nn.Module):
+    def forward(self, a, b):
+        return a + b
+def get_model_and_inputs():
+    return Model(), (_r({M}, {K}), _r({M}, {K}))
+''',
+    "reduce_sum": '''
+class Model(nn.Module):
+    def forward(self, x):
+        return x.sum(-1, keepdim=True)
+def get_model_and_inputs():
+    return Model(), (_r({M}, {K}),)
+''',
     "rope": '''
 def _rope(x, half):
     freq = 1.0 / (10000 ** (torch.arange(0, half, dtype=torch.float32) / half))
@@ -269,6 +297,7 @@ _OP_INPUT_NAMES = {
 _FUSED_OP_INPUT_NAMES = {
     "attention_full": ["Q", "K", "V"], "softmax": ["X"],
     "layernorm": ["X", "W", "B"], "geglu": ["X", "WG", "WU"], "rope": ["X"],
+    "gelu": ["X"], "silu": ["X"], "add": ["A", "B"], "reduce_sum": ["X"],
 }
 
 
@@ -427,6 +456,15 @@ def _all_integral(nested) -> bool:
     return all(float(v) == int(v) for v in _flatten(nested))
 
 
+# canonical operand token -> the `merlin-compile --target rvv --dtype` token the whole-model grader uses.
+_COMPILE_DTYPE = {"int8": "int8", "i8": "int8", "fp8_e4m3": "fp8", "fp8": "fp8",
+                  "f32": "fp32", "fp32": "fp32", "fp16": "fp16", "bf16": "fp32"}
+
+
+def compile_dtype(token: str) -> str:
+    return _COMPILE_DTYPE.get(token, "fp32")
+
+
 def resolve_model_loader(entry: dict, m2m_dir: str | Path | None = None) -> Path:
     """A model capsule entry names either a workload (``model: small_llama``) or an explicit ``loader``."""
     root = Path(m2m_dir) if m2m_dir else _m2m_dir()
@@ -475,6 +513,7 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         "inputs": inputs,
         "operation": {"op": "model", "attributes": {
             "model": entry.get("model", ""), "dtype": idt, "out": out_name,
+            "compile_dtype": compile_dtype(binding.operand_dtype),
             "arg_order": in_names + [out_name], "weights": "capsule.weights.safetensors"}},
         # the whole-model golden is the host torch-eager float output, so it is graded with tolerance even
         # on an integer-datapath target (whose op capsules grade exact_int).

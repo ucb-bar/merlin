@@ -364,6 +364,13 @@ capsules:
    operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'small_llama int8 — whole-model capstone (embed/RMSNorm/RoPE/attn/SwiGLU/lm_head)',
    label: public, gate: {after_op_pass_fraction: 0.8}}
+# --- Elementwise/activation ops mined from gemmini-rocc-tests (resadd residual, igelu activation).
+- {cat: model_slices, name: GF4_add_bf16_pt, kind: model_slice, op: add, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch residual add bf16 (gemmini-rocc-tests resadd)', label: public, modes: {}}
+- {cat: model_slices, name: GF5_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch GELU-tanh bf16 (gemmini-rocc-tests igelu)', label: public, modes: {}}
 # --- Hidden fused holdout.
 - {cat: hidden, name: GH0_softmax_bf16_hidden, kind: model_slice, op: softmax, operand_dtype: bf16,
    source: pytorch, M: 24, K: 24, out: Y0, source_role: pytorch_model_slice,

@@ -87,6 +87,12 @@ capsules:
    source: pytorch, M: 16, K: 64, N: 16, Dv: 64, causal: true, out: Y0,
    source_role: pytorch_model_slice,
    source_reference: 'PyTorch causal flash-style attention fp16 (Q@K^T,softmax,@V)', label: public, modes: {}}
+- {cat: model_slices, name: RP8_rope_bf16_pt, kind: model_slice, op: rope, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch RoPE bf16 (radiance-kernels rope_qkv_fused)', label: public, modes: {}}
+- {cat: model_slices, name: RP9_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch GELU-tanh bf16 (radiance-kernels geglu gelu-tanh)', label: public, modes: {}}
 # Hidden holdout set (label: hidden) — parity with atlas/gemmini. These are UNSEEN SIMT GEMM shapes graded
 # only at run end; their goldens are masked from the agent by the sandbox, so an agent that hardcodes a
 # public answer cannot generalize to them. For an external_backend/SIMT target the executing cyclotron

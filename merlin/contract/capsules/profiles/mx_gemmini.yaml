@@ -81,6 +81,13 @@ capsules:
    operand_dtype: bf16, source: pytorch, M: 16, K: 64, N: 16, Dv: 64, causal: true, out: Y0,
    source_role: pytorch_model_slice,
    source_reference: 'PyTorch causal flash attention bf16 (flash_attention_mx_gqa)', label: public, modes: {}}
+- {cat: model_slices, name: MF3_silu_bf16_pt, kind: model_slice, op: silu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch SiLU bf16 (radiance-kernels simt_quant activation gate)', label: public,
+   modes: {}}
+- {cat: model_slices, name: MF4_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch GELU-tanh bf16 (radiance-kernels geglu)', label: public, modes: {}}
 # --- Whole-model capstone (GATED): small_llama in fp8 (the MX target's low-precision weight path).
 - {cat: model, name: M0_small_llama_mx, kind: model, op: model, model: small_llama,
    operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
