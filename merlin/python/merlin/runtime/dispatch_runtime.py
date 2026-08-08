@@ -374,6 +374,34 @@ def _compile_kernel_so(args: tuple) -> str:
     return so_path
 
 
+def _classify_mesh_matmul(kfn) -> dict | None:
+    """Like xnnpack's classify_matmul_kernel but for the MESH route: a plain 2-D ``linalg.matmul`` whose two
+    ``ins`` are kernel block args, element type f32 OR i8 (the int8 systolic datapath). Returns
+    ``{"a", "b", "in_dtype"}`` (so the route knows to quantize an f32 layer at the mesh boundary but pass an
+    already-int8 layer through untouched), else None."""
+    from xdsl.dialects.builtin import TensorType
+    block = kfn.body.blocks[0]
+    arg_ids = {id(a): i for i, a in enumerate(block.args)}
+    ret = next((o for o in block.ops if o.name == "func.return"), None)
+    if ret is None or len(ret.operands) != 1:
+        return None
+    mm = getattr(ret.operands[0], "owner", None)
+    if mm is None or getattr(mm, "name", None) != "linalg.matmul" or len(mm.operands) < 3:
+        return None
+    a_val, b_val = mm.operands[0], mm.operands[1]
+
+    def _et(v):
+        t = v.type
+        return str(t.element_type) if isinstance(t, TensorType) and len(t.get_shape()) == 2 else None
+
+    ea, eb = _et(a_val), _et(b_val)
+    if ea is None or ea != eb or ea not in ("f32", "i8"):
+        return None
+    if id(a_val) not in arg_ids or id(b_val) not in arg_ids:
+        return None                                          # an operand is computed inside the kernel
+    return {"a": arg_ids[id(a_val)], "b": arg_ids[id(b_val)], "in_dtype": ea}
+
+
 def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             entry: str = "forward", cache_dir: str | Path | None = None,
             tap=None, qinner: dict | None = None,
@@ -438,11 +466,10 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
     if kernel_backend == "mesh":
         if not mesh_target:
             raise DispatchRuntimeError("kernel_backend='mesh' requires mesh_target=<target>")
-        from .backends import xnnpack_host          # classify_matmul_kernel is a pure structural classifier
         kfns = {op.sym_name.data: op for op in module.walk()
                 if op.name == "func.func" and "$kernel_" in op.sym_name.data}
         for sym, kfn in kfns.items():
-            route = xnnpack_host.classify_matmul_kernel(kfn)
+            route = _classify_mesh_matmul(kfn)               # f32 OR i8 2-D matmul (mesh route)
             if route is not None:
                 mesh_routes[sym] = route
         execute.last_mesh_routed = len(mesh_routes)
@@ -552,22 +579,26 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         if mroute is not None:                       # run this matmul LAYER on the target mesh (real data)
             from ..compile_cli import run_matmul_on_mesh
 
-            a = np.ascontiguousarray(env[id(op.operands[mroute["a"]])], np.float64)
-            b = np.ascontiguousarray(env[id(op.operands[mroute["b"]])], np.float64)
+            a = np.ascontiguousarray(env[id(op.operands[mroute["a"]])])
+            b = np.ascontiguousarray(env[id(op.operands[mroute["b"]])])
             mesh_out = None
             if a.ndim == 2 and b.ndim == 2 and a.shape[1] == b.shape[0]:   # a plain 2-D contraction
-                # per-tensor symmetric int8 quantization at the mesh boundary (int8 systolic datapath)
-                sa = float(np.abs(a).max()) / 127.0 or 1.0
-                sb = float(np.abs(b).max()) / 127.0 or 1.0
-                qa = np.clip(np.rint(a / sa), -127, 127).astype(np.int64).tolist()
-                qb = np.clip(np.rint(b / sb), -127, 127).astype(np.int64).tolist()
+                if mroute["in_dtype"] == "i8":       # already int8 — pass through, NO boundary quant
+                    qa, qb, scale = a.astype(np.int64).tolist(), b.astype(np.int64).tolist(), 1.0
+                else:                                # f32 -> per-tensor symmetric int8 at the mesh boundary
+                    af, bf = a.astype(np.float64), b.astype(np.float64)
+                    sa = float(np.abs(af).max()) / 127.0 or 1.0
+                    sb = float(np.abs(bf).max()) / 127.0 or 1.0
+                    qa = np.clip(np.rint(af / sa), -127, 127).astype(np.int64).tolist()
+                    qb = np.clip(np.rint(bf / sb), -127, 127).astype(np.int64).tolist()
+                    scale = sa * sb
                 mesh_out = run_matmul_on_mesh(mesh_target, qa, qb, operand_dtype="int8", accum_dtype="i32")
                 if mesh_out is not None:
-                    out = (np.array(mesh_out, np.float64) * (sa * sb)).reshape(outs[0][0]).astype(outs[0][1])
-                    env[id(op.results[0])] = out
+                    om = np.array(mesh_out, np.float64) * scale
+                    env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])
                     execute.mesh_ran = getattr(execute, "mesh_ran", 0) + 1
                     if tap is not None:
-                        tap(op, [out])
+                        tap(op, [env[id(op.results[0])]])
                     return
             # a layer the mesh could not run at this shape (non-2D or cert-fail) falls back to the host
             # kernel and is NOT counted as mesh-executed — honest accounting, never a faked mesh result.
