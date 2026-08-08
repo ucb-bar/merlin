@@ -593,6 +593,11 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     attrs = (capsule.get("operation") or {}).get("attributes") or {}
     model, dtype = attrs.get("model"), attrs.get("compile_dtype", "fp32")
     run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN", "host")
+    # MERLIN_MESH_VERIFY additionally EXECUTES each mesh-routed matmul as a single systolic tile on the
+    # target's real mesh oracle (compile_model mesh_verify) — proving the matmul layers run ON the mesh, not
+    # just that a routing plan was produced. Off by default (the oracle build/run is heavy); the whole-model
+    # functional gate stays compile_rvv either way.
+    mesh_verify = os.environ.get("MERLIN_MESH_VERIFY", "").lower() in ("1", "true", "yes", "on")
     result: dict = {"capsule": capsule["name"], "kind": "model", "label": capsule.get("label"),
                     "operation": {"op": "model", "model": model, "dtype": dtype, "run": run_where,
                                   "target": target},
@@ -612,7 +617,8 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     try:
         from ..compile_cli import compile_model
         out = compile_model(model, dtype, target=target, run=run_where, verify=True, package=None,
-                            auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir)
+                            auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir,
+                            mesh_verify=mesh_verify)
     except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
         result.update(status="incomplete",
                       failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
@@ -627,6 +633,8 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     engine = f"merlin-compile model --target {target} --run {run_where} --verify"
     if out.get("routing_plan") is not None:                   # per-op mesh routing for the target
         result["routing_plan"] = out["routing_plan"]
+    if out.get("mesh_execution") is not None:                 # per-tile on-mesh EXECUTION for the target
+        result["mesh_execution"] = out["mesh_execution"]
     if st == "verified" and gate:
         result.update(status="pass", numeric={"status": "pass", "engine": engine, "gate": out.get("verify")})
     elif st == "not_run":

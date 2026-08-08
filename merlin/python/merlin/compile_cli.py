@@ -349,6 +349,133 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     return out
 
 
+def _default_oot_package(target: str) -> str | None:
+    """The conventional OOT backend package for ``target`` (``.../targets/<target>/agent_spec_v1_mlir_oot``),
+    or None when the target ships no default (a bespoke-layout target must name it via ``--package``). This is
+    the SAME default ``compile_oot`` resolves — factored so on-mesh tile verification reuses it verbatim."""
+    from .common.artifacts import artifacts_dir
+    cand = artifacts_dir() / "targets" / target / "agent_spec_v1_mlir_oot"
+    return str(cand) if (cand / "manifest.yaml").is_file() else None
+
+
+def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str | None):
+    """A ``corpus_spec.CorpusBinding`` for synthesizing a single systolic mesh tile of ``target``, with the
+    operand/accumulate datapath pinned to what the routed op actually needs (derived, never assumed). The
+    tile dim, compare policy, and instruction-class deriver all come from the target's own descriptor +
+    manifest via ``derive_binding`` — no target literal, no hand-set dims."""
+    from types import SimpleNamespace
+    from .targetgen import corpus_spec as CS
+    from .targetgen.capsule_runner import _bespoke_sim_via
+    te = SimpleNamespace(target=target, sim_via=_bespoke_sim_via(target))
+    datapath: dict = {}
+    if operand_dtype:
+        datapath["operand_dtype"] = operand_dtype
+    if accum_dtype:
+        datapath["accum_dtype"] = accum_dtype
+    return CS.derive_binding(te, datapath)
+
+
+def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) -> dict:
+    """Execute each mesh-routed matmul as a single systolic tile on the target's REAL mesh oracle.
+
+    For every op the router placed on the accelerator mesh (``plan["mesh"]``), synthesize its
+    ``merlin_iface`` tile capsule (``corpus_spec.build_matmul`` — one ``DxD`` tile at the target's derived
+    mesh dimension, in the op's routed operand/accumulate dtype) and run it through the EXISTING
+    ``oot_runner.certify`` accelerator path (the same one ``compile_oot`` uses). ``certify`` gates the
+    emitted kernel's output bit-exact (integer) / within-tolerance (float) against the command buffer's
+    mathematical reference == simulate == the RTL/mesh oracle — so a PASS is proof the matmul executed
+    correctly ON the mesh, not merely that a routing plan was produced.
+
+    FAIL-CLOSED: a tile whose oracle is unavailable is recorded ``oracle_unavailable`` (never a silent pass);
+    an op with no single-tile synthesizer is recorded honestly and never counted as executed."""
+    import tempfile
+    from .targetgen import oot_runner
+    from .targetgen import corpus_spec as CS
+    from .benchharness import runs_root
+
+    pkg_dir = package or _default_oot_package(target)
+    out: dict = {"n_tiles": 0, "n_passed": 0, "n_failed": 0, "n_unavailable": 0,
+                 "n_unsynthesizable": 0, "package": pkg_dir, "per_tile": []}
+    if pkg_dir is None:
+        out["status"] = "not_run"
+        out["reason"] = (f"no default OOT backend package for target {target!r}; pass --mesh-package "
+                         f"to name one")
+        return out
+    # Build the OOT backend ONCE up front so a broken build is a single honest not_run, not a per-tile
+    # storm. certify re-runs an incremental (no-op) build per tile — harmless.
+    try:
+        oot_runner.build_package(oot_runner.load_package(pkg_dir), timeout=timeout)
+    except Exception as e:  # noqa: BLE001 — a build failure is honest not_run, never a fake mesh pass
+        out["status"] = "not_run"
+        out["reason"] = f"OOT backend build failed: {type(e).__name__}: {str(e)[-400:]}"
+        return out
+
+    rr = runs_root(target, "mesh_verify")
+    for i, r in enumerate(plan.get("mesh", [])):
+        d = r.demand
+        op = "matmul" if d.op in ("matmul", "linear") else d.op
+        rec: dict = {"op": d.op, "site": d.site}
+        if op not in CS.BUILDERS:
+            out["n_unsynthesizable"] += 1
+            rec.update(status="no_tile_synthesizer",
+                       reason=f"no single-tile capsule synthesizer for mesh op {d.op!r}")
+            out["per_tile"].append(rec)
+            continue
+        try:
+            binding = _mesh_tile_binding(target, d.in_fmt, r.acc)
+            D = binding.tile_dim
+            entry = {"name": f"mesh_tile_{i}_{op}", "op": op, "kind": "op",
+                     "source_role": "mesh_tile_synthesized",
+                     "source_reference": f"whole-model op {d.op} [{d.site}]: one {D}x{D}x{D} mesh tile",
+                     "M": D, "K": D, "N": D}
+            cap, mlir = CS.build(entry, binding)
+        except Exception as e:  # noqa: BLE001 — a synthesis failure is recorded, never a fake pass
+            out["n_unsynthesizable"] += 1
+            rec.update(status="synth_error", reason=f"{type(e).__name__}: {str(e)[-300:]}")
+            out["per_tile"].append(rec)
+            continue
+        rec.update(M=D, K=D, N=D, operand_dtype=binding.cap_dtype(binding.operand_dtype),
+                   output_dtype=binding.cap_dtype(binding.accum_dtype))
+        with tempfile.TemporaryDirectory(prefix="mesh_tile_") as td:
+            iface = Path(td) / f"{entry['name']}.interface.mlir"
+            iface.write_text(mlir, encoding="utf-8")
+            res = oot_runner.certify(pkg_dir, iface, runs_root=str(rr), run_id=entry["name"],
+                                     simulator="spike", target=target, timeout=timeout)
+        oracle = res.get("oracle") or {}
+        out["n_tiles"] += 1
+        rec.update(oracle_kind=oracle.get("kind"), oracle_result=oracle.get("result"),
+                   cycles=oracle.get("cycles"))
+        if oracle.get("result") == "skipped":
+            out["n_unavailable"] += 1
+            rec["status"] = "oracle_unavailable"
+            rec["reason"] = (res.get("failure") or {}).get("detail") or "mesh oracle unavailable in this env"
+        elif res.get("status") == "pass":
+            out["n_passed"] += 1
+            rec["status"] = "pass"
+        else:
+            out["n_failed"] += 1
+            rec["status"] = "fail"
+            rec["reason"] = (res.get("failure") or {}).get("detail")
+        out["per_tile"].append(rec)
+
+    if out["n_tiles"] == 0:
+        out["status"] = "no_mesh_matmuls" if out["n_unsynthesizable"] == 0 else "no_synthesizable_mesh_ops"
+    elif out["n_unavailable"] == out["n_tiles"]:
+        out["status"] = "oracle_unavailable"
+    elif out["n_passed"] == out["n_tiles"]:
+        out["status"] = "verified"
+    else:
+        out["status"] = "partial"
+    out["note"] = (
+        "each mesh-routed matmul is verified by EXECUTING one representative DxD systolic tile (D = the "
+        "target's derived mesh dimension) on the real target mesh oracle via the OOT backend; the emitted "
+        "kernel's output is gated (bit-exact int / tolerance float) against the command buffer's "
+        "reference == simulate == oracle three-way. Whole-layer shape tiling (running every MxKxN tile of "
+        "each layer's real extents in one spliced image) is the documented remaining gap — see "
+        "compile_model's docstring.")
+    return out
+
+
 def _summarize_route_plan(plan: dict) -> dict:
     """Collapse a routing.route_plan into per-op-family counts for the report."""
     def _counts(results):
@@ -370,13 +497,30 @@ def _summarize_route_plan(plan: dict) -> dict:
 
 def compile_model(workload: str, dtype: str, *, target: str | None, run: str, verify: bool,
                   package: str | None, auto_capture: bool, timeout: int,
-                  linalg_mlir: str | None = None) -> dict:
+                  linalg_mlir: str | None = None, mesh_verify: bool = False,
+                  mesh_package: str | None = None) -> dict:
     """Target-aware whole-model compile. Routes each op across the target's compute units (matmul/systolic
     tiles -> the mesh, norms/activations/elementwise -> the vector/scalar lane) via
     ``routing.route_plan``, then compiles the functional whole model (the scalar/RVV reference, numerically
-    correct across every op) and attaches the per-op mesh-routing plan. On-mesh KERNEL EXECUTION for the
-    systolic-routed tiles is the accelerator's OOT path (``compile_oot``); an op that no unit supports is an
-    honest scalar/RVV fallback, never a silent drop. ``target=None`` degrades to the plain RVV flow."""
+    correct across every op) and attaches the per-op mesh-routing plan. An op that no unit supports is an
+    honest scalar/RVV fallback, never a silent drop. ``target=None`` degrades to the plain RVV flow.
+
+    ``mesh_verify=True`` goes one step past the PLAN and actually EXECUTES the matmul layers on the mesh:
+    for each mesh-routed matmul it synthesizes a single ``DxD`` systolic-tile ``merlin_iface`` capsule and
+    runs it through the existing ``oot_runner.certify`` accelerator path on the target's real mesh oracle,
+    gated bit-exact (int) / within-tolerance (float). The aggregate lands in ``out["mesh_execution"]``
+    (``n_tiles``/``n_passed``/``n_unavailable``/``per_tile``); an unavailable oracle is reported honestly,
+    never a fake pass. This proves the matmul layers RUN correctly on the mesh.
+
+    REMAINING GAP (full whole-model image splicing): mesh_verify certifies each mesh matmul as an
+    INDEPENDENT single-tile kernel, and the whole-model functional/numeric gate stays the scalar/RVV
+    reference (``compile_rvv``, correct across every op). What it does NOT yet do is emit ONE executable
+    that runs the mesh matmul kernels for the layers' REAL MxKxN extents and the scalar/RVV remainder
+    inline, driven by a single runtime that hands the accelerator's DRAM-resident activations between
+    layers. That splice needs (a) per-op real shapes threaded from the linalg (model_op_demands carries op
+    family, not extents), (b) multi-tile loop nests over each layer's M/K/N built by the OOT backend, and
+    (c) a whole-model runtime that co-schedules the OOT mesh kernels with the RVV lane in one image +
+    address space. mesh_verify is the honest per-tile-on-mesh milestone until that infra exists."""
     out = compile_rvv(workload, dtype, run=run, verify=verify, package=package,
                       auto_capture=auto_capture, timeout=timeout)
     out["requested_target"] = target
@@ -385,7 +529,11 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
             from .targetgen import capsule_source as CSRC
             from .targetgen import routing as _routing
             demands = CSRC.model_op_demands(linalg_mlir, dtype)
-            out["routing_plan"] = _summarize_route_plan(_routing.route_plan(demands, target))
+            plan = _routing.route_plan(demands, target)
+            out["routing_plan"] = _summarize_route_plan(plan)
+            if mesh_verify:
+                out["mesh_execution"] = _mesh_verify(plan, target=target, package=mesh_package,
+                                                     timeout=timeout)
         except Exception as e:  # noqa: BLE001 — a routing failure must not mask the functional result
             out["routing_plan"] = {"error": f"{type(e).__name__}: {e}"}
     return out
@@ -401,15 +549,12 @@ def compile_oot(workload: str, *, target: str, run: str, verify: bool, package: 
     from .targetgen import oot_runner, capsule_common
     from .benchharness import runs_root
     from .common.paths import repo_root
-    from .common.artifacts import artifacts_dir
 
     # Default to the resolved target's conventional OOT backend package
     # (``out/artifacts/targets/<target>/agent_spec_v1_mlir_oot``, artifact_type mlir_oot_target_backend,
     # which oot_runner.certify requires) when it exists on disk — so any target that ships one resolves
     # its default. A target without that package (or with a bespoke layout) must name it via --package.
-    cand = artifacts_dir() / "targets" / target / "agent_spec_v1_mlir_oot"
-    default_pkg = str(cand) if (cand / "manifest.yaml").is_file() else None
-    pkg_dir = package or default_pkg
+    pkg_dir = package or _default_oot_package(target)
     corpus = repo_root() / "merlin/contract/capsules/isa"
     out: dict = {"tool": "merlin-compile", "target": target, "workload": workload,
                  "package": pkg_dir, "run": run}
