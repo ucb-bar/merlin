@@ -59,6 +59,51 @@ def _float_binding(operand_dtype="f32"):
         classes_for=lambda **_: [])
 
 
+# --- Phase 2: derive-and-verify the mapped-op interface FROM the captured linalg (structural, no regex) ---
+_MATMUL_ENTRY = {"name": "X_matmul", "kind": "isa", "cat": "isa", "op": "matmul",
+                 "M": 16, "K": 16, "N": 16, "lhs": "A0", "weight": "W", "out": "Y0",
+                 "source_role": "handauthored_compiler_test", "source_reference": "t"}
+_MATMUL_LINALG = (
+    "builtin.module {\n"
+    "  func.func @forward(%0: tensor<16x16xf32>, %1: tensor<16x16xf32>) -> tensor<16x16xf32> {\n"
+    '    %2 = linalg.matmul {prov.op = "matmul", prov.family = "contraction"} '
+    "ins(%0, %1 : tensor<16x16xf32>, tensor<16x16xf32>) outs(%0 : tensor<16x16xf32>) -> tensor<16x16xf32>\n"
+    "    return %2 : tensor<16x16xf32>\n  }\n}\n")
+
+
+def test_linalg_summary_is_structural():
+    """The structural reader recovers prov tags + @forward operand/result tensor types (no regex)."""
+    s = CSrc.linalg_summary(_MATMUL_LINALG)
+    assert s["prov_ops"] == ["matmul"] and s["prov_families"] == ["contraction"]
+    assert s["inputs"] == [([16, 16], "f32"), ([16, 16], "f32")]
+    assert s["output"] == ([16, 16], "f32")
+
+
+def test_linalg_to_iface_matches_handwritten_builder():
+    """A matching linalg yields the SAME interface the merlin_iface builder emits (byte-identical to the
+    handwritten form) — the interface is verified against the lowering, not merely assumed."""
+    from merlin.targetgen import corpus_spec as CS
+    b = _float_binding()
+    _, want = CS.build(_MATMUL_ENTRY, b)
+    _, got = CSrc.linalg_to_iface(_MATMUL_LINALG, _MATMUL_ENTRY, b)
+    assert got == want
+
+
+def test_linalg_to_iface_fails_closed_on_missing_op():
+    """A lowering that does NOT contain the claimed op family is rejected (never emit an unsupported iface)."""
+    bad = _MATMUL_LINALG.replace('prov.family = "contraction"', 'prov.family = "normalization"') \
+                        .replace('prov.op = "matmul"', 'prov.op = "rmsnorm"')
+    with pytest.raises(CSrc.M2MUnavailable):
+        CSrc.linalg_to_iface(bad, _MATMUL_ENTRY, _float_binding())
+
+
+def test_linalg_to_iface_fails_closed_on_shape_mismatch():
+    """Right op family, wrong operand shapes -> fail closed (interface/lowering shape mismatch)."""
+    bad = _MATMUL_LINALG.replace("tensor<16x16xf32>", "tensor<8x8xf32>")
+    with pytest.raises(CSrc.M2MUnavailable):
+        CSrc.linalg_to_iface(bad, _MATMUL_ENTRY, _float_binding())
+
+
 @_needs_m2m
 @pytest.mark.parametrize("entry,dtype", [
     ({"name": "PM0_matmul", "kind": "model_slice", "cat": "model_slices",

@@ -506,15 +506,85 @@ def _fused_capsule_yaml(entry: dict, binding, art, names: list[str]) -> dict:
     }
 
 
+# mapped op -> the linalg `prov.family` the captured lowering MUST carry for a merlin_iface interface to be
+# a faithful lowering of it. Used to derive-and-verify (not assume) the interface from the linalg.
+_OP_FAMILY = {"matmul": "contraction", "linear": "contraction",
+              "attention_qk": "contraction", "rmsnorm": "normalization"}
+
+
+def _tensor_types(s: str) -> list[tuple[list[int], str]]:
+    """Structurally tokenize the ``tensor<...>`` types in a fragment (str.split, NO regex): each becomes
+    ``([dims], dtype)``. Dynamic/non-integer dims are skipped (a shaped op capsule is always static)."""
+    out: list[tuple[list[int], str]] = []
+    for chunk in s.split("tensor<")[1:]:
+        body = chunk.split(">", 1)[0]                         # e.g. "16x16xf32"
+        parts = body.split("x")
+        if len(parts) < 2:
+            continue
+        *dims, dt = parts
+        try:
+            out.append(([int(d) for d in dims], dt))
+        except ValueError:
+            continue                                          # a dim that isn't an int -> not a static shape
+    return out
+
+
+def linalg_summary(linalg_mlir: str) -> dict:
+    """Read a linalg-on-tensors module STRUCTURALLY (str tokenizer, NO regex): the ``@forward`` signature's
+    operand + result tensor types and the set of ``prov.op`` / ``prov.family`` tags m2m stamps on each region.
+    This is the structural view used to verify a mapped op's interface against its actual lowering."""
+    prov_ops = [c.split('"', 1)[0] for c in linalg_mlir.split('prov.op = "')[1:]]
+    prov_families = [c.split('"', 1)[0] for c in linalg_mlir.split('prov.family = "')[1:]]
+    inputs: list[tuple[list[int], str]] = []
+    output = None
+    head = linalg_mlir.split("func.func @forward(", 1)
+    if len(head) > 1:
+        sig = head[1].split("{", 1)[0]                        # the signature line, before the body brace
+        argpart, _, rest = sig.partition(") ->")
+        inputs = _tensor_types(argpart)
+        outs = _tensor_types(rest)
+        output = outs[0] if outs else None
+    return {"prov_ops": prov_ops, "prov_families": prov_families, "inputs": inputs, "output": output}
+
+
+def linalg_to_iface(linalg_mlir: str, entry: dict, binding):
+    """Derive-and-verify a mapped op's ``merlin_iface`` interface from the CAPTURED linalg rather than
+    assuming the PyTorch capture matches the profile entry. Structurally confirm the lowering actually
+    contains the op family the interface claims AND that its operand shapes are the ones the builder
+    declares; fail closed (``M2MUnavailable``) on any mismatch — never emit an interface the lowering does
+    not support. Returns ``(cap, mlir)`` from the merlin_iface builder (byte-identical to the handwritten
+    form when they agree)."""
+    from merlin.targetgen import corpus_spec as CS
+    op = entry.get("op", "matmul")
+    summ = linalg_summary(linalg_mlir)
+    fam = _OP_FAMILY.get(op)
+    if fam is not None and fam not in summ["prov_families"] and op not in summ["prov_ops"]:
+        raise M2MUnavailable(
+            f"captured linalg for {entry['name']!r} lacks the {op!r} op (prov.op={summ['prov_ops']}, "
+            f"prov.family={summ['prov_families']}) — refusing to emit a merlin_iface interface the lowering "
+            f"does not support")
+    cap, mlir = CS.build(entry, binding)
+    # every operand shape the builder declares must appear among the captured linalg's operand shapes.
+    lin_shapes = [tuple(sh) for sh, _ in summ["inputs"]]
+    for inp in cap.get("inputs", []):
+        want = tuple(inp["shape"])
+        if lin_shapes and want not in lin_shapes:
+            raise M2MUnavailable(
+                f"interface operand {inp['name']!r} shape {want} for {entry['name']!r} not found in the "
+                f"captured linalg operands {lin_shapes} — interface/lowering shape mismatch")
+    return cap, mlir
+
+
 def write_pytorch_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSource | None" = None):
     """Materialize a full capsule dir from a PyTorch-defined op. For a merlin_iface-mapped op (matmul/
-    linear/attention_qk/rmsnorm) the agent-facing interface + expected coverage come from the existing
-    ``corpus_spec`` builder. For a FUSED op (attention_full/softmax/layernorm/geglu/rope) the interface IS
-    the m2m linalg module (the agent compiles standard-dialect linalg), fed positionally. In BOTH cases the
+    linear/attention_qk/rmsnorm) the agent-facing interface + expected coverage are DERIVED-AND-VERIFIED
+    from the captured linalg (``linalg_to_iface``: the lowering must actually contain the op + shapes) via
+    the existing ``corpus_spec`` builder. For a FUSED op (attention_full/softmax/layernorm/geglu/rope) the
+    interface IS the m2m linalg module (the agent compiles standard-dialect linalg), fed positionally. In
+    BOTH cases the
     golden + canonical inputs come from the host torch-eager run and the pytorch loader + linalg are written
     as visible grounding. Unknown ops fail closed."""
     import yaml
-    from merlin.targetgen import corpus_spec as CS
 
     op = entry.get("op", "matmul")
     if op not in _OP_INPUT_NAMES and op not in _FUSED_OP_INPUT_NAMES:
@@ -529,7 +599,7 @@ def write_pytorch_capsule(entry: dict, binding, out_root, *, source: "PytorchRef
 
     if op in _OP_INPUT_NAMES:                                   # merlin_iface interface
         names = _OP_INPUT_NAMES[op]
-        cap, mlir = CS.build(entry, binding)
+        cap, mlir = linalg_to_iface(art.linalg_mlir, entry, binding)   # derive-and-verify from the lowering
         cap["source_role"] = "pytorch_model_slice"
         cap["pytorch_ref"] = {"op": op, "dtype": binding.cap_dtype(binding.operand_dtype),
                               "loader": "capsule.pytorch.py"}
