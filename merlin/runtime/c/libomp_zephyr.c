@@ -102,6 +102,23 @@ struct omp_worker {
 #define MERLIN_OMP_STALL_REPORT_MS 5000
 #endif
 
+/* Confine the pool to harts that actually have a vector unit, discovered at startup by asking each
+ * hart (see omp_hart_has_vector). On for a VECTOR image; a scalar image sets this 0 because it may
+ * legitimately use every hart -- that is the only way to reach a core without a vector unit, and on a
+ * chip with more cores than vector units it is the difference between using the machine and using
+ * part of it. Defaulted here so a caller that predates the flag still builds. */
+#ifndef MERLIN_OMP_VECTOR_POOL
+#define MERLIN_OMP_VECTOR_POOL 1
+#endif
+
+/* Harts the DISCOVERY pass may examine. Deliberately NOT MERLIN_OMP_MAX_THREADS: that is sized to the
+ * threads this image asked for, and bounding the probe by it would only ever look at the first N harts
+ * -- reintroducing the "the vector harts are 0..n-1" assumption the probe exists to remove. A 2-thread
+ * image on a 3-core chip must still be able to discover that the vector units are on harts 0 and 2. */
+#ifndef MERLIN_OMP_MAX_HARTS
+#define MERLIN_OMP_MAX_HARTS 8
+#endif
+
 K_THREAD_STACK_ARRAY_DEFINE(merlin_omp_stacks, MERLIN_OMP_MAX_THREADS,
 			    MERLIN_OMP_WORKER_STACK);
 
@@ -221,6 +238,44 @@ static inline void omp_enable_vector(void)
 	__asm__ volatile("csrw mstatus, %0" ::"r"(mstatus));
 }
 
+/* Does the hart executing this call have a vector unit? Asked of the HARDWARE, not of a build
+ * parameter or a device tree.
+ *
+ * Why it can be asked at all: `mstatus.VS` is WARL -- on a hart that implements V it is writable, and
+ * on one that does not it is hardwired to zero. So enabling it and reading it back distinguishes the
+ * two, and does so WITHOUT TRAPPING. That matters: the obvious probe (execute a vector instruction and
+ * see if it faults) needs a recoverable trap handler per hart, and an unrecovered fault on a board we
+ * cannot attach to is the very failure mode being diagnosed.
+ *
+ * `misa` bit 21 ('V') is the other half. Some cores tie misa to zero, so a 0 there is "not reported",
+ * not "absent" -- it can confirm but must not veto. Requiring both would silently drop a working
+ * vector hart on any core with a zeroed misa.
+ *
+ * This is the fact whose ABSENCE caused a shipped image to hang: a 3-core chip with vector units on
+ * only 2 of its harts fanned a vector kernel out over all 3, and the worker on the scalar hart trapped
+ * and never reached the barrier. The device tree could not have told us -- it lists identical cpu@N
+ * nodes -- and a build-time list means someone has to know and tell us. The hart itself knows.
+ */
+static bool omp_hart_has_vector(void)
+{
+	unsigned long ms, misa = 0;
+
+	omp_enable_vector();
+	__asm__ volatile("csrr %0, mstatus" : "=r"(ms));
+	if (((ms >> 9) & 3) == 0) {
+		return false;           /* VS refused the write -> no vector state on this hart */
+	}
+	/* VS is live, so vlenb is legal to read here; a zero width would mean something stranger than
+	 * "no vectors" and is not something to fan a kernel out over either. */
+	__asm__ volatile("csrr %0, misa" : "=r"(misa));
+	if (((misa >> 21) & 1) == 0 && misa != 0) {
+		return false;           /* misa is readable AND says no V */
+	}
+	unsigned long vlenb = 0;
+	__asm__ volatile("csrr %0, vlenb" : "=r"(vlenb));
+	return vlenb != 0;
+}
+
 /* Invoke an outlined region. Takes fn/argc/args explicitly rather than reading the globals,
  * because a SERIALIZED NESTED region must run from a caller-local argument array: the globals
  * still describe the outer region that the other harts are executing right now, and
@@ -229,6 +284,24 @@ static void omp_call_micro(void *fn, int argc, void **a, int32_t gtid)
 {
 	int32_t tid = gtid;
 	int32_t bound = 0;
+
+	/* RE-ARM VECTOR STATE, on EVERY region entry and for EVERY team member including the master.
+	 *
+	 * Enabling mstatus.VS once per thread is not enough. VS lives in the thread's saved mstatus, and
+	 * a Zephyr built WITHOUT CONFIG_RISCV_ISA_EXT_V never puts it there -- so a context switch
+	 * restores VS = Off and the next vector instruction traps. The master is the one this bites: it
+	 * enables VS in the generated harness, then merlin_omp_init creates and joins a probe thread per
+	 * hart and creates the pool, and every one of those is a switch. It comes back with VS off and
+	 * takes the trap on its own slice of the first parallel region -- which, on a build with
+	 * FPU_SHARING=y, is mis-routed into the FP retry path and hangs with nothing printed. That is
+	 * exactly the shape of the Kodiak report: single-hart passed, every multi-hart image failed
+	 * silently, and the stall watchdog could not say so because the master runs the watchdog.
+	 *
+	 * The board config is fixed separately (Zephyr now manages V state there). This stays because it
+	 * is two CSR accesses per region against a whole-image hang, and because it is correct on any
+	 * tree, including one whose Kconfig cannot express V at all.
+	 */
+	omp_enable_vector();
 
 	switch (argc) {
 	case 0:
@@ -301,6 +374,110 @@ int merlin_omp_num_threads(void)
 	return omp_nthreads;
 }
 
+void merlin_omp_report_stacks(void)
+{
+	for (int i = 1; i < omp_nthreads; i++) {
+		size_t unused = 0;
+
+		if (k_thread_stack_space_get(&omp_workers[i].thread, &unused) == 0) {
+			printk("STACK omp%d size=%u unused=%u used=%u\n", i,
+			       (unsigned)MERLIN_OMP_WORKER_STACK, (unsigned)unused,
+			       (unsigned)(MERLIN_OMP_WORKER_STACK - unused));
+		}
+	}
+}
+
+/* Which harts a vector kernel may run on, DISCOVERED by asking each hart itself.
+ *
+ * A probe has to execute ON the hart it is asking about, so each gets a short-lived thread pinned to
+ * it. Cost is one thread create/join per hart at startup, once, against the alternative of a build
+ * parameter someone has to know: on a heterogeneous SoC (more cores brought up than vector units
+ * attached) a wrong guess is a DEADLOCK -- the worker on a scalar hart traps and never reaches the
+ * barrier -- and nothing readable states the mapping.
+ *
+ * A hart that fails to run the probe at all is treated as unusable, which is the same conservative
+ * answer the liveness check below gives: better a smaller pool than a hung image.
+ */
+static K_THREAD_STACK_ARRAY_DEFINE(merlin_probe_stacks, MERLIN_OMP_MAX_HARTS, 1024);
+static struct k_thread merlin_probe_threads[MERLIN_OMP_MAX_HARTS];
+static volatile int8_t omp_vec_of_hart[MERLIN_OMP_MAX_HARTS];     /* -1 unknown, 0 no, 1 yes */
+static volatile uint32_t omp_vlenb_of_hart[MERLIN_OMP_MAX_HARTS];
+/* mstatus.VS as the thread found it, BEFORE omp_enable_vector() ran. This is the fact that
+ * distinguishes "Zephyr is managing vector state for us" (2/3, Initial or Clean) from "every thread
+ * starts with it off and only our own CSR write saves us" (0) -- and a 0 here on a hart that
+ * nonetheless reports a vlenb is the precise signature of the Kodiak multi-hart hang. */
+static volatile uint8_t omp_vs_on_entry[MERLIN_OMP_MAX_HARTS];
+
+static void omp_probe_entry(void *p0, void *p1, void *p2)
+{
+	int cpu = (int)(intptr_t)p0;
+	ARG_UNUSED(p1);
+	ARG_UNUSED(p2);
+
+	unsigned long ms0;
+
+	__asm__ volatile("csrr %0, mstatus" : "=r"(ms0));
+	omp_vs_on_entry[cpu] = (uint8_t)((ms0 >> 9) & 3);
+
+	bool has_v = omp_hart_has_vector();
+	unsigned long vlenb = 0;
+
+	if (has_v) {
+		__asm__ volatile("csrr %0, vlenb" : "=r"(vlenb));
+	}
+	omp_vlenb_of_hart[cpu] = (uint32_t)vlenb;
+	/* Published LAST, and after a fence, so a reader that sees the capability also sees the width. */
+	__asm__ volatile("fence rw, rw" ::: "memory");
+	omp_vec_of_hart[cpu] = has_v ? 1 : 0;
+}
+
+static void omp_discover_vector_harts(int cpus)
+{
+	for (int i = 0; i < MERLIN_OMP_MAX_HARTS; i++) {
+		omp_vec_of_hart[i] = -1;
+		omp_vlenb_of_hart[i] = 0;
+		omp_vs_on_entry[i] = 0xFF;              /* never probed */
+	}
+	for (int cpu = 0; cpu < cpus && cpu < MERLIN_OMP_MAX_HARTS; cpu++) {
+		if (cpu == omp_master_cpu) {
+			/* We are already running here; probe in place rather than schedule onto self. */
+			omp_probe_entry((void *)(intptr_t)cpu, NULL, NULL);
+			continue;
+		}
+		k_tid_t t = k_thread_create(&merlin_probe_threads[cpu], merlin_probe_stacks[cpu],
+					    1024, omp_probe_entry, (void *)(intptr_t)cpu, NULL, NULL,
+					    K_PRIO_COOP(0), 0, K_FOREVER);
+		if (k_thread_cpu_pin(t, cpu) != 0) {
+			omp_vec_of_hart[cpu] = 0;
+			continue;
+		}
+		k_thread_start(t);
+		/* Bounded join: a hart that never runs must not stall startup. */
+		if (k_thread_join(t, K_MSEC(2000)) != 0) {
+			k_thread_abort(t);
+			omp_vec_of_hart[cpu] = 0;
+		}
+	}
+	/* Report the discovered topology on the console. A log mailed back from a board we cannot
+	 * reach then STATES which harts have vector units and how wide they are, instead of leaving
+	 * it to be inferred -- which is how the wrong assumption survived in the first place. */
+	printk("METRIC vector_harts");
+	for (int cpu = 0; cpu < cpus && cpu < MERLIN_OMP_MAX_HARTS; cpu++) {
+		if (omp_vec_of_hart[cpu] == 1) {
+			printk(" %d", cpu);
+		}
+	}
+	printk("\n");
+	for (int cpu = 0; cpu < cpus && cpu < MERLIN_OMP_MAX_HARTS; cpu++) {
+		printk("METRIC hart%d_vlen_bits %u\n", cpu, omp_vlenb_of_hart[cpu] * 8u);
+	}
+	/* Whether the RTOS handed each thread live vector state, or we had to switch it on ourselves.
+	 * 255 = that hart was never probed. */
+	for (int cpu = 0; cpu < cpus && cpu < MERLIN_OMP_MAX_HARTS; cpu++) {
+		printk("METRIC hart%d_mstatus_vs %u\n", cpu, (unsigned)omp_vs_on_entry[cpu]);
+	}
+}
+
 int merlin_omp_init(int n_threads)
 {
 	int cpus = arch_num_cpus();
@@ -323,6 +500,30 @@ int merlin_omp_init(int n_threads)
 
 	omp_master_cpu = (int)arch_curr_cpu()->id;
 	k_mutex_init(&omp_critical);
+
+	/* Ask the hardware which harts can run vector code, then keep the pool inside that set.
+	 * Runtime discovery rather than a build parameter: the same binary is then correct on a
+	 * homogeneous chip, on one whose vector units are on a non-contiguous pair, and on one nobody
+	 * has characterised for us -- and it cannot deadlock by fanning out onto a scalar hart.
+	 *
+	 * Only for a VECTOR image. A scalar one may use every hart, which is the point of having it. */
+#if MERLIN_OMP_VECTOR_POOL
+	omp_discover_vector_harts(cpus);
+	if (omp_vec_of_hart[omp_master_cpu] != 1) {
+		/* The master runs the model's serial regions and thread 0 of every parallel one, so a
+		 * master without vectors is not a pool problem -- it is the wrong hart for this image. */
+		printk("merlin_omp: WARNING master hart %d reports no vector unit\n", omp_master_cpu);
+	}
+	int usable = 0;
+	for (int cpu = 0; cpu < cpus && cpu < MERLIN_OMP_MAX_HARTS; cpu++) {
+		usable += (omp_vec_of_hart[cpu] == 1);
+	}
+	if (usable > 0 && n_threads > usable) {
+		printk("merlin_omp: %d thread(s) requested but %d hart(s) have vector units; "
+		       "running %d\n", n_threads, usable, usable);
+		n_threads = usable;
+	}
+#endif
 	omp_nthreads = n_threads;
 	for (int i = 0; i < MERLIN_OMP_MAX_THREADS; i++) {
 		omp_gtid_of_hart[i] = 0;
@@ -340,6 +541,61 @@ int merlin_omp_init(int n_threads)
 		 * walk them skipping the master's so the mapping stays 1:1 even when the master
 		 * is not on hart 0 (the FireSim vector-tile case pins it to hart 1). */
 		int cpu = (i <= omp_master_cpu) ? (i - 1) : i;
+#if MERLIN_OMP_VECTOR_POOL
+		/* Walk the harts the PROBE found, skipping the master's. This supersedes both the
+		 * 0..n-1 assumption and any build-time list: the set came from the hardware a moment
+		 * ago, so a non-contiguous pair (units on harts 0 and 2, say) needs nobody to tell us. */
+		{
+			int k = 0;
+			cpu = -1;
+			for (int j = 0; j < cpus && j < MERLIN_OMP_MAX_HARTS; j++) {
+				if (omp_vec_of_hart[j] != 1 || j == omp_master_cpu) {
+					continue;
+				}
+				if (++k == i) {
+					cpu = j;
+					break;
+				}
+			}
+			if (cpu < 0) {
+				printk("merlin_omp: only %d vector hart(s) usable, running %d thread(s)\n",
+				       k + 1, i);
+				omp_nthreads = i;
+				break;
+			}
+		}
+#elif defined(MERLIN_OMP_HART_IDS)
+		/* HETEROGENEOUS SoC: the harts that may run this pool are listed explicitly, because
+		 * "hart 0..n-1" is an assumption and a wrong one is a DEADLOCK, not a slowdown -- a
+		 * worker placed on a hart without a vector unit traps on its first vector instruction
+		 * and never reaches the barrier its peers are waiting on. Nothing readable says which
+		 * harts are vector-capable: the device tree lists identical cpu@N nodes. So the set is
+		 * a build parameter (Board.vector_hart_ids), and this walks it skipping the master's. */
+		{
+			static const int hart_ids[] = MERLIN_OMP_HART_IDS;
+			const int n_ids = (int)(sizeof(hart_ids) / sizeof(hart_ids[0]));
+			int k = 0;
+			cpu = -1;
+			for (int j = 0; j < n_ids; j++) {
+				if (hart_ids[j] == omp_master_cpu) {
+					continue;       /* the master already owns this one */
+				}
+				if (++k == i) {
+					cpu = hart_ids[j];
+					break;
+				}
+			}
+			if (cpu < 0) {
+				/* More threads requested than usable harts. Shrink rather than pin a
+				 * second worker onto a hart already running one, which would serialize
+				 * silently and report a speed-up that never happened. */
+				printk("merlin_omp: only %d usable hart(s), running %d thread(s)\n",
+				       k + 1, i);
+				omp_nthreads = i;
+				break;
+			}
+		}
+#endif
 
 		atomic_set(&w->done, 0);
 		w->gtid = cpu;

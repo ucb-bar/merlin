@@ -26,12 +26,61 @@ from pathlib import Path
 
 from .toolchain import m2m_python
 
-UPSTREAM_PIPELINE = ",".join([
+
+def _dealloc_passes() -> list[str]:
+    """Free the buffers ``one-shot-bufferize`` allocates.
+
+    Bufferization turns every ``tensor.empty`` into a ``memref.alloc``; it does NOT insert the
+    matching frees — that is a separate pass, and it was missing from all three pipelines here. The
+    lowered whole-model ``forward`` therefore called ``malloc`` once per intermediate and ``free``
+    never, so a model's heap demand was the SUM of every temporary it ever materialized rather than
+    the peak that is live at once. Measured on whisper_tiny: 678 ``@malloc`` calls, 0 ``@free``.
+
+    Small models absorbed it (deepjscc and spectformer fit their cumulative total in the region we
+    size for them, which is why they pass). whisper does not: its encoder attention materializes
+    6x1500x1500 tensors, i.e. 54 MB apiece, and the run dies partway through the first attention
+    block when a 54 MB ``malloc`` returns NULL and the generated code stores through it — observed
+    on FireSim as ``mcause=7 Store/AMO access fault`` at op 337 with the destination register zero.
+    No region size fixes that on a 512 MB board; the allocations had to stop leaking.
+
+    These are upstream's own deallocation passes — ownership-based deallocation, then the
+    simplification and lowering passes that turn ``bufferization.dealloc`` into ``memref.dealloc`` —
+    inserted immediately after bufferization as its documentation prescribes.
+
+    Upstream's composite ``buffer-deallocation-pipeline`` is NOT usable here: it interleaves
+    ``canonicalize``, and at this point in the RVV pipeline the module still holds ``vector.mask``
+    regions that have not been through ``lower-vector-mask``. Canonicalization sinks a constant into
+    one of those regions, which then fails its own verifier (``'vector.mask' op expects only one
+    operation to mask``) — whisper_tiny hits it, deepjscc does not. So the three passes are named
+    individually and the cleanup is left to the ``canonicalize``/``cse`` the pipeline already runs at
+    the end, after the vector ops have been lowered.
+
+    ``MERLIN_NO_DEALLOC`` restores the previous behavior for an A/B — it exists because this changes
+    generated code for every model, and the honest way to defend "numerics unchanged" is to be able
+    to rebuild both.
+    """
+    import os
+    if os.environ.get("MERLIN_NO_DEALLOC"):
+        return []
+    return ["ownership-based-buffer-deallocation",
+            "buffer-deallocation-simplification",
+            "bufferization-lower-deallocations"]
+    # NOT here: `func.func(optimize-allocation-liveness)`. It looked like the obvious next lever --
+    # sink each dealloc to just after its last user and the peak drops -- but measured on the two
+    # models that bracket the range it moved nothing: whisper_tiny stayed at 2184.1 MB and deepjscc at
+    # 48.1 MB, byte for byte, while still perturbing the IR. Ownership-based deallocation is already
+    # placing the frees tightly enough that there is no slack to reclaim. A pass with no measured
+    # effect is not free -- it is another thing that can break a build -- so it stays out until some
+    # model demonstrates a delta.
+
+
+_UPSTREAM_PASSES = [
     "canonicalize", "cse",
     "func.func(linalg-fuse-elementwise-ops)",
     "func.func(linalg-generalize-named-ops)",
     "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
     "buffer-results-to-out-params{modify-public-functions hoist-static-allocs}",
+    "__DEALLOC__",
     "func.func(buffer-hoisting,buffer-loop-hoisting)",
     "func.func(convert-linalg-to-loops)",
     "convert-scf-to-cf",
@@ -49,7 +98,25 @@ UPSTREAM_PIPELINE = ",".join([
     "convert-cf-to-llvm",
     "reconcile-unrealized-casts",
     "canonicalize", "cse", "symbol-dce",
-])
+]
+
+
+def _splice(passes: list[str]) -> str:
+    """Join a pass list, expanding the ``__DEALLOC__`` marker in place.
+
+    The marker names *where* deallocation belongs in each pipeline (immediately after
+    bufferization) so the position is visible in the pass list itself rather than computed by an
+    index that drifts when the list is edited."""
+    out: list[str] = []
+    for p in passes:
+        out.extend(_dealloc_passes() if p == "__DEALLOC__" else [p])
+    return ",".join(out)
+
+
+def _upstream_pipeline() -> str:
+    """The scalar whole-module pipeline. A function, not a constant, so ``MERLIN_NO_DEALLOC``
+    is read per build rather than frozen at import."""
+    return _splice(_UPSTREAM_PASSES)
 
 
 def _parallel_pipeline() -> str:
@@ -66,12 +133,13 @@ def _parallel_pipeline() -> str:
     This is the K1 big-model path: the diffusion-transformer / large VLAs that run on the
     *scalar* fallback (no fixed-width vectorize) otherwise execute on one core and time out.
     Gated — never on the default flow (``UPSTREAM_PIPELINE`` is untouched)."""
-    return ",".join([
+    return _splice([
         "canonicalize", "cse",
         "func.func(linalg-fuse-elementwise-ops)",
         "func.func(linalg-generalize-named-ops)",
         "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
         "buffer-results-to-out-params{modify-public-functions}",  # heap intermediates (K1)
+        "__DEALLOC__",
         "func.func(buffer-hoisting,buffer-loop-hoisting)",
         # parallel iterator dims -> scf.parallel; reduction dims stay scf.for (sequential).
         "func.func(convert-linalg-to-parallel-loops)",
@@ -256,6 +324,14 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
         "func.func(lower-vector-multi-reduction)",
         "func.func(lower-vector-mask)",
         "convert-vector-to-scf",
+        # Deallocation goes HERE, not straight after bufferization as in the scalar pipelines.
+        # `ownership-based-buffer-deallocation` materializes an i1 ownership constant next to each
+        # buffer use, and it walks into `vector.mask` regions -- which accept exactly one masked
+        # operation, so the extra constant makes the region fail its own verifier. Running after
+        # `lower-vector-mask` (and `convert-vector-to-scf`, which is where the masks actually go
+        # away) leaves no such region to walk into. Still before the scf -> cf / openmp conversions,
+        # because ownership analysis wants structured control flow.
+        "__DEALLOC__",
         # Multicore: the outer `scf.forall` becomes `scf.parallel`, and the non-vectorized
         # fallback ops lower to parallel loops too (instead of serial `scf.for`) so the
         # elementwise/norm tail scales with the harts as well. `convert-scf-to-openmp` then
@@ -287,7 +363,7 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
     if features:                       # default-off impr-fork hooks; empty -> byte-identical
         from .impr_features import apply_pipeline
         passes = apply_pipeline(passes, features)
-    return ",".join(passes)
+    return _splice(passes)
 
 
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
@@ -455,7 +531,7 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
         elif parallel:
             pipeline = _parallel_pipeline()   # multicore (OpenMP) scalar path — K1 big models
         else:
-            pipeline = UPSTREAM_PIPELINE
+            pipeline = _upstream_pipeline()
     src = work / "model.mlir"
     out = work / "model.ll"
     runner = work / "run_lowering.py"

@@ -27,7 +27,8 @@ from .backends.spike_model import DRAM_BASE, RVV_CFLAGS, _harness_dir, _run
 
 def build(work: str | Path, *, dram_base: int = DRAM_BASE, dram_bytes: int | None = None,
           vlen: int | None = None, console: str = "htif", sdk_dir: str | Path | None = None,
-          sdk_chip: str | None = None, chip_freq_hz: int | None = None) -> Path:
+          sdk_chip: str | None = None, chip_freq_hz: int | None = None,
+          mtime_hz: int | None = None) -> Path:
     """Link the probe ELF into ``work`` and return its path.
 
     ``vlen`` only affects the ``-march`` the probe itself is built with; the number it REPORTS comes
@@ -61,8 +62,21 @@ def build(work: str | Path, *, dram_base: int = DRAM_BASE, dram_bytes: int | Non
     elif console != CONSOLE_HTIF:
         raise RuntimeError(f"unknown console kind {console!r}")
 
+    # Facts the probe cannot read out of a CSR, so they are passed in and CHECKED against the hardware
+    # rather than reported back to us as our own assumptions. The region is the one the model images
+    # are linked for -- the probe writes and reads across it, which is how a board whose real DRAM is
+    # smaller than we were told announces itself in seconds instead of as a silent boot failure minutes
+    # into a model upload. The mtime rate is the SDK's own MTIME_FREQ, used as the reference against
+    # which mcycle gives a MEASURED core frequency (the number that says whether a PLL took effect).
+    probe_defs: list[str] = []
+    if dram_bytes:
+        probe_defs += [f"-DMERLIN_REGION_BASE={hex(dram_base)}ULL",
+                       f"-DMERLIN_REGION_BYTES={hex(int(dram_bytes))}ULL"]
+    if mtime_hz:
+        probe_defs.append(f"-DMERLIN_MTIME_HZ={int(mtime_hz)}u")
+
     objs = []
-    for obj, src, extra in (("probe_main.o", h / "vlen_probe.c", []),
+    for obj, src, extra in (("probe_main.o", h / "vlen_probe.c", probe_defs),
                             ("crt.o", h / "crt.S", []),
                             ("console.o", console_src, console_defs),
                             ("libc_min.o", h / "libc_min.c", [])):
@@ -122,6 +136,41 @@ def parse(console: str) -> dict[str, Any]:
         out["vlen_bits"] = None
         out["consistent"] = False
     return out
+
+
+#: Verdicts from :func:`verify_declared`. Three, not two, because "we could not measure it" is a
+#: different thing from "it matches" and must not be allowed to read as one.
+PROBE_AGREES = "agrees"
+PROBE_DISAGREES = "disagrees"
+PROBE_UNMEASURED = "unmeasured"
+
+
+def verify_declared(declared_vlen: int | None, console: str) -> dict[str, Any]:
+    """Compare a descriptor's VLEN against a probe console returned from the silicon.
+
+    This exists because under-declaring VLEN is not a performance bug. Zephyr's per-thread vector save
+    area is a fixed ``vreg[32][CONFIG_RISCV_VECTOR_MAX_LEN/8]`` while the code filling it takes its
+    length from the hardware, so a descriptor below the truth overruns the thread struct on every
+    context switch -- and no simulator run can catch it, because the simulator is handed the VLEN we
+    declared. The only thing that can catch it is the part itself. A `vlen=128` descriptor against
+    silicon reporting `vlenb 32` corrupted `z_main_thread` and cost a delivery round.
+
+    ``PROBE_UNMEASURED`` is a real and expected outcome, not a parse failure to paper over: the probe
+    prints from every hart that reaches it, so a multi-hart chip returns interleaved characters that no
+    parser can honestly split. Reporting that as "unmeasured" keeps a garbled log from being read as
+    agreement, which is the direction that matters.
+    """
+    got = parse(console)
+    measured = got.get("vlen_bits")
+    consistent = bool(got.get("consistent"))
+    if not isinstance(measured, int) or not consistent:
+        verdict = PROBE_UNMEASURED
+    elif declared_vlen is None or int(declared_vlen) != measured:
+        verdict = PROBE_DISAGREES
+    else:
+        verdict = PROBE_AGREES
+    return {"verdict": verdict, "declared": declared_vlen, "measured": measured,
+            "consistent": consistent, "complete": bool(got.get("complete")), "probe": got}
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -158,3 +158,44 @@ def test_batch_matmul_blocks_are_unaffected_by_the_hart_count():
 
     assert (pb.block_table([S()], nr_cap=16, harts=1)
             == pb.block_table([S()], nr_cap=16, harts=3))
+
+
+def test_the_block_cap_follows_the_boards_vector_length():
+    """A fixed ELEMENT COUNT does not scale with the vector unit: a wider machine spends it as a
+    smaller LMUL rather than as more work per instruction.
+
+    Measured on the same model built two ways, with the cap fixed at 16:
+
+        VLEN=128:  e16,m2  / e8,m1  / e16,m1     -- 16 elements across one or two whole registers
+        VLEN=512:  e16,mf2 / e8,mf4 / e16,mf4    -- the same 16 elements in HALF or a QUARTER of one
+
+    i.e. the 512-bit machine issued the same count of vector instructions doing the same 16 elements
+    each as the 128-bit one; three quarters of its datapath went unused. With the cap scaled to 32 the
+    dominant ops became e32,m2 and e16,m1 (whole registers) and the total vector-op count fell 1202 ->
+    1122, and the result stayed bit-exact on spike at VLEN=512 (tier_ok=w8a8, cos 1.0, max_rel 0.0).
+    """
+    from merlin.runtime.backends.zephyr_model import (_PEROP_NR_CAP, _PEROP_NR_CAP_REF_VLEN,
+                                                      perop_nr_cap)
+
+    # Scales UP only, so nothing already measured moves as a side effect: the champion was tuned at
+    # the reference width and keeps its value there and below.
+    assert perop_nr_cap(_PEROP_NR_CAP_REF_VLEN) == _PEROP_NR_CAP
+    assert perop_nr_cap(128) == _PEROP_NR_CAP
+    assert perop_nr_cap(None) == _PEROP_NR_CAP, "an unknown VLEN must not widen the block"
+    # A wider unit gets a proportionally wider tile.
+    assert perop_nr_cap(512) == 2 * _PEROP_NR_CAP
+    assert perop_nr_cap(1024) == 4 * _PEROP_NR_CAP
+
+
+def test_the_vector_length_reaches_the_block_table():
+    """The cap is only useful if the value threads through; a parameter accepted and dropped is the
+    failure mode that shipped a wrong block table once already."""
+    import inspect
+
+    from merlin.runtime.backends import zephyr_model as zm
+
+    prep = inspect.getsource(zm.prepare_for_lowering)
+    assert "nr_cap=perop_nr_cap(vlen)" in prep, "the cap must be derived from the board's vlen"
+    assert "vlen: int | None" in prep, "prepare_for_lowering must accept it"
+    build = inspect.getsource(zm.build_app)
+    assert "vlen=vlen" in build, "build_app must pass it down"

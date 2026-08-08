@@ -60,32 +60,74 @@ def test_overrides_win_so_a_delivery_can_state_what_it_built_for():
 
 
 def test_the_config_follows_the_board():
-    """cpus, the vector save-area width and FPU_SHARING all come from the descriptor."""
+    """cpus, the vector save-area width and FPU_SHARING all come from the descriptor.
+
+    The save-area width comes from it FLOORED at the tree's default -- this board states no VLEN, so its
+    property falls back to the V minimum and the emitted config is raised to the safe width. See
+    `test_the_vector_save_area_is_never_declared_smaller_than_the_tree_default`.
+    """
     b = boards.board("spike_riscv64")
     conf = zm._prj_conf(b.harts, "rvv", b)
     assert f"CONFIG_MP_MAX_NUM_CPUS={b.harts}" in conf
-    assert f"CONFIG_RISCV_VECTOR_MAX_LEN={b.vector_max_len}" in conf
+    assert f"CONFIG_RISCV_VECTOR_MAX_LEN={zm._vector_max_len_bits(b)}" in conf
+    assert zm._vector_max_len_bits(b) >= b.vector_max_len
     # y mis-routes V-illegal-instruction traps into the FP path and retries forever: a silent hang.
     assert "CONFIG_FPU_SHARING=n" in conf
 
 
-def test_kodiaks_config_reflects_what_its_zephyr_can_actually_build():
-    """Two settings Kodiak forces, both learned by failing to link, both recorded in the descriptor.
+def test_kodiak_lets_zephyr_manage_vector_state():
+    """Kodiak's vector config, and the reasoning that had to be corrected twice to arrive at it.
 
-    FPU_SHARING must be y: its Zephyr's isr.S calls z_riscv_vstate_save/_restore whenever V is on with
-    eager switching, and those live in fpu.c/fpu.S which only compile under FPU_SHARING -- with n the
-    image does not link. And Zephyr-level V must be OFF: that tree has no RISCV_V_KERNEL_ONLY, so
-    enabling V puts `v` in the GLOBAL march and SDK 0.17.0 has no matching libgcc multilib (the link
-    falls back to a 32-bit one: "ELFCLASS32 incompatible with ELFCLASS64"). Vectors still work because
-    reset.S enables mstatus.VS under CONFIG_FPU, and our model.o carries `v` itself.
+    The descriptor used to say `fpu_sharing=True, zephyr_vector_ext=False`, on this argument: that
+    tree's isr.S calls z_riscv_vstate_save/_restore whenever V is on with eager switching, those live
+    in fpu.c/fpu.S, and fpu.c only compiles under FPU_SHARING -- so V without FPU_SHARING would not
+    link; and enabling V at all would put `v` in the global -march, for which SDK 0.17.0 has no libgcc
+    multilib ("ELFCLASS32 incompatible with ELFCLASS64").
+
+    Both halves were true of the Zephyr the `kodiak` BRANCH pins (submodule 5a06eb0d) and false of the
+    tree we build against. ZEPHYR_BASE is the `dev` pin (852bb170), two commits later, which contains
+    "riscv: decouple V/F save-restore + add RISCV_V_KERNEL_ONLY (Saturn fork)". There,
+    arch/riscv/core/CMakeLists.txt compiles v.c under CONFIG_RISCV_ISA_EXT_V *independently of*
+    FPU_SHARING and says so in a comment, and RISCV_V_KERNEL_ONLY keeps `v` out of the global -march.
+    Verified by building: z_riscv_vstate_save/_restore link with FPU_SHARING=n.
+
+    What the stale pair cost: with no CONFIG_RISCV_ISA_EXT_V, no thread's mstatus carries VS (a
+    thread's initial mstatus is MSTATUS_DEF_RESTORE = MPP|MPIE, and VS is OR'd in only under that
+    symbol), so the OpenMP master lost vector state the moment pool creation context-switched it out,
+    and FPU_SHARING=y then mis-routed the resulting illegal-instruction trap into the FP retry path --
+    a hang with nothing printed. On the chip: every single-hart image PASSED and every multi-hart image
+    FAILED. Neither spike nor the Saturn RTL enforces mstatus.VS, which is why no simulation caught it.
+
+    The settings asserted below are the ones the chip's OWN known-working RVV+SMP sample uses
+    (origin/kodiak:samples/q8_gemm_minmax/prj.conf, which ships a ref-out): ISA_EXT_V on,
+    VECTOR_MAX_LEN 512, FPU_SHARING off.
     """
     b = boards.board("chipyard_kodiak")
-    assert b.fpu_sharing is True and b.zephyr_vector_ext is False
+    assert b.fpu_sharing is False and b.zephyr_vector_ext is True
     conf = zm._prj_conf(b.harts, "rvv", b)
     assert "CONFIG_MP_MAX_NUM_CPUS=3" in conf
-    assert "CONFIG_FPU_SHARING=y" in conf
-    assert "CONFIG_RISCV_ISA_EXT_V=y" not in conf
-    assert "CONFIG_FPU=y" in conf, "mstatus.VS comes from CONFIG_FPU on this tree"
+    assert "CONFIG_FPU_SHARING=n" in conf
+    assert "CONFIG_RISCV_ISA_EXT_V=y" in conf, "Zephyr must manage per-thread vector state"
+    assert "CONFIG_RISCV_VECTOR_MAX_LEN=512" in conf, "the chip's own sample states 512"
+    assert "CONFIG_RISCV_V_KERNEL_ONLY=y" in conf, "keeps `v` out of the global -march"
+
+
+def test_a_stale_vector_ext_flag_is_refused_rather_than_built():
+    """Denying Zephyr vector state on a tree that supports it is always a stale descriptor now.
+
+    It is not a harmless conservative choice: it is the exact configuration that shipped a Kodiak
+    package where every multi-hart image hung silently. The flag exists for trees that CANNOT express
+    V without polluting the global -march; on a tree that can, the build must stop rather than quietly
+    produce the image again.
+    """
+    import dataclasses
+    import pytest
+
+    b = dataclasses.replace(boards.board("chipyard_kodiak"), zephyr_vector_ext=False)
+    if not zm._kconfig_has("RISCV_V_KERNEL_ONLY"):
+        pytest.skip("this Zephyr tree genuinely cannot express V without the global -march")
+    with pytest.raises(RuntimeError, match="zephyr_vector_ext"):
+        zm._prj_conf(b.harts, "rvv", b)
 
 
 def test_a_vector_capable_tree_still_gets_the_full_vector_config():
@@ -93,6 +135,36 @@ def test_a_vector_capable_tree_still_gets_the_full_vector_config():
     conf = zm._prj_conf(b.harts, "rvv", b)
     assert "CONFIG_RISCV_ISA_EXT_V=y" in conf
     assert f"CONFIG_RISCV_VECTOR_MAX_LEN={b.vector_max_len}" in conf
+
+
+def test_the_vector_save_area_is_never_declared_smaller_than_the_tree_default():
+    """Under-declaring the save area corrupts kernel memory; over-declaring only costs RAM.
+
+    `vreg[32][CONFIG_RISCV_VECTOR_MAX_LEN/8]` is a fixed buffer, but `z_riscv_vstate_save` fills it via
+    `vsetvli x0, e8, m8` + four `vse8.v` -- a length taken from the HARDWARE, never compared to the
+    buffer. A descriptor under-stating VLEN therefore writes `32 * (vlenb_hw - MAX_LEN/8)` bytes past the
+    thread struct on every switch, into whatever the linker put next. On a chip whose own probe reports
+    `vlenb 32`, a `vlen=128` descriptor overran `z_idle_threads[1]` into `z_main_thread` and zeroed its
+    `stack_info.start`; the next tick loaded from address 0. A spike gate cannot catch it, because spike
+    is given the VLEN we declared -- configured and actual agree there by construction.
+
+    So the emitted value is floored at the tree's own default for the symbol. This is a guard, not a
+    substitute for a correct descriptor: it bounds the damage of one being wrong to wasted memory.
+    """
+    floor = zm._kconfig_default_int("RISCV_VECTOR_MAX_LEN")
+    if not floor:
+        pytest.skip("this Zephyr tree states no single numeric default for RISCV_VECTOR_MAX_LEN")
+
+    understated = boards.board("some_new_tapeout", vlen=128)
+    assert understated.vector_max_len == 128, "the descriptor still reports what it was told"
+    assert zm._vector_max_len_bits(understated) == floor, "but the emitted config is floored"
+    conf = zm._prj_conf(understated.harts, "rvv", understated)
+    assert f"CONFIG_RISCV_VECTOR_MAX_LEN={floor}" in conf
+
+    # The floor must not CLAMP a board that legitimately has wider registers -- that would recreate the
+    # overrun on the one class of board where it is guaranteed to happen.
+    wide = boards.board("some_new_tapeout", vlen=1024)
+    assert zm._vector_max_len_bits(wide) == 1024
 
 
 def test_htif_console_options_are_set_only_for_an_htif_board():
@@ -180,7 +252,11 @@ def test_a_board_declares_how_it_is_built():
         b = boards.board(name)
         assert b.flow == boards.FLOW_BAREMETAL
         assert b.dram_bytes == 1024 * 1024 * 1024, "the silicon has 1 GB (its .ld declares 256 MB)"
-        assert b.vlen == 128, "stated by its own OPE kernel; their spike runs use 256"
+        # bearly25's VLEN is MEASURED, not read off its sources: its own OPE kernel says 128 while their
+        # spike runs use 256, and `vlen_probe.elf` on the silicon settles it at `vlenb 32` (VLEN 256).
+        # dsp25 has had no such probe run, so it keeps the conservative minimum until one does -- with
+        # the floor in `_vector_max_len_bits` bounding what that costs.
+        assert b.vlen == (256 if name == "gemmelos_bearly25" else 128)
 
 
 def test_the_baremetal_layout_is_packed_inside_the_boards_dram():
@@ -280,3 +356,132 @@ def test_mlir_parsing_is_serialized_at_the_only_place_a_parser_is_built():
     # If a second Parser construction ever appears, it bypasses the lock and this must fail.
     src = Path(inspect.getfile(linalg_mlir)).read_text()
     assert src.count("Parser(") == 1, "every parse must go through the serialized entry point"
+
+
+def test_the_generated_worker_enables_vector_state_before_running_the_model():
+    """A freshly created Zephyr thread starts with mstatus.VS = Off.
+
+    The RISC-V port builds a thread's initial mstatus from MSTATUS_DEF_RESTORE (MPP | MPIE only); VS is
+    added just under CONFIG_RISCV_ISA_EXT_V, which these images do not set. reset.S enables VS for the
+    BOOT context, but switching into the worker restores mstatus from the thread's own frame and VS
+    goes back to Off -- and with VS Off every vector instruction and vector CSR read traps.
+
+    Measured on a tapeout that enforces VS: the image died with mcause=2 on `csrr a0, vlenb` in the
+    prologue of forward() (LLVM sizing a VLEN-scaled stack frame), before computing anything, having
+    printed only its banner. spike and the Saturn RTL do NOT enforce VS, so every simulated run passed
+    -- which is exactly why this needs a source-level test rather than a run.
+
+    `libomp_zephyr.c::omp_enable_vector()` already did this per OpenMP worker; a single-hart image has
+    no pool, so nothing enabled it at all.
+    """
+    for n_harts in (1, 2, 3):
+        src = zm._main_c(0, n_harts=n_harts)
+        assert "csrw mstatus" in src, f"n_harts={n_harts}: worker never enables vector state"
+        # 0x600 = mstatus.VS bits[10:9], 0x6000 = mstatus.FS bits[14:13].
+        assert "0x00000600UL | 0x00006000UL" in src
+        # Ordering is the whole point: after the banner is fine, before the model is mandatory.
+        assert src.index("csrw mstatus") < src.index("merlin_run("), \
+            f"n_harts={n_harts}: vector state enabled after the model already ran"
+
+
+def test_kodiak_records_the_vector_width_its_owner_confirmed():
+    """VLEN=512, confirmed by the chip's owner. Nothing in that board's repo states it: the DTS says
+    `riscv,isa = "rv64gc"` with no `v`, and the samples' CONFIG_RISCV_VECTOR_MAX_LEN only sizes a save
+    area, so it bounds the truth from above at best. Building for 128 on a 512-bit unit is the
+    documented K1 trap -- a lower LMUL leaving most of the datapath idle."""
+    assert boards.board("chipyard_kodiak").vlen == 512
+
+
+def test_scalar_multicore_is_supported_so_a_non_vector_hart_is_reachable():
+    """A heterogeneous SoC may bring up more cores than it attaches vector units to, and a scalar
+    image is the ONLY way to use the extra ones. This used to be refused outright on the grounds that
+    the multicore lowering layers its forall under the RVV schedule -- true, but the scalar path has
+    its own OpenMP route (convert-linalg-to-parallel-loops + convert-scf-to-openmp), so it only needed
+    routing to. Measured on a 3-hart scalar image: 272 fork_call sites, zero vector instructions."""
+    import inspect
+
+    src = inspect.getsource(zm.build_app)
+    assert "requires backend='rvv'" not in src, "scalar multicore must not be refused"
+    # The two backends reach multicore by different routes; both must be wired.
+    assert 'parallel=(backend != "rvv" and n_harts > 1)' in src
+    assert 'parallel_harts=(n_harts if n_harts > 1' in src
+
+
+def test_an_rvv_image_is_refused_past_the_vector_harts():
+    """Building too far does not fail cleanly: the worker on a scalar hart traps on its first vector
+    instruction and never reaches the barrier, so the image hangs with nothing printed. Measured on a
+    3-core/2-vector-core chip: the 1-hart images passed and every 3-hart image timed out."""
+    import inspect
+
+    src = inspect.getsource(zm.build_app)
+    assert "n_harts > brd.n_vector_harts" in src
+    assert "deadlock" in src, "the error must name the failure mode, not just the limit"
+
+
+def test_which_harts_have_vectors_is_stated_not_assumed():
+    """A count alone means 0..N-1. On a chip whose vector units sit on harts 0 and 2 that assumption
+    deadlocks exactly like building too many harts does, and nothing readable states the mapping --
+    the device tree lists identical cpu@N nodes."""
+    kodiak = boards.board("chipyard_kodiak")
+    assert kodiak.harts == 3 and kodiak.n_vector_harts == 2
+    assert kodiak.hart_ids_for("rvv") == (0, 1)
+    # A scalar image may use every hart; that is the point of having one.
+    assert kodiak.hart_ids_for("scalar") == (0, 1, 2)
+    # Non-contiguous sets are expressible.
+    odd = boards.board("x", harts=3, vector_hart_ids=(0, 2))
+    assert odd.hart_ids_for("rvv") == (0, 2) and odd.n_vector_harts == 2
+    # A homogeneous board keeps the default so its image stays byte-identical.
+    assert boards.board("spike_riscv64").hart_ids_for("rvv") == tuple(range(8))
+
+
+def test_the_hart_list_reaches_the_openmp_shim():
+    """Pinning is where a wrong hart set becomes a deadlock, so the shim must WALK the list rather
+    than count -- and shrink the pool rather than put two workers on one hart, which would serialize
+    silently and report a speed-up that never happened."""
+    from merlin.common.paths import merlin_dir
+
+    import inspect
+
+    src = (merlin_dir() / "runtime/c/libomp_zephyr.c").read_text()
+    assert "MERLIN_OMP_HART_IDS" in src
+    assert "omp_nthreads = i;" in src, "the shim must shrink the pool, not double-pin"
+    assert "MERLIN_OMP_HART_IDS" in inspect.getsource(zm._cmakelists), \
+        "the build must actually emit the list"
+
+
+def test_vector_capable_harts_are_discovered_at_runtime_not_assumed():
+    """The image asks the HARDWARE which harts can run vector code, at startup.
+
+    `mstatus.VS` is WARL: writable on a hart that implements V, hardwired to zero on one that does
+    not. So enabling it and reading it back distinguishes them WITHOUT trapping -- which matters,
+    because the obvious probe (run a vector instruction and see if it faults) needs a recoverable
+    trap handler per hart, and an unrecovered fault on a board we cannot attach to is the exact
+    failure being diagnosed.
+
+    This supersedes both the "vector harts are 0..n-1" assumption and the build-time list: a 3-core
+    chip with vector units on 2 harts needs nobody to tell us which 2. Verified on spike at VLEN=512:
+    the image printed `METRIC vector_harts 0 1 2` plus a per-hart width and still gated w8a8/cos 1.0.
+    """
+    from merlin.common.paths import merlin_dir
+
+    src = (merlin_dir() / "runtime/c/libomp_zephyr.c").read_text()
+    assert "omp_hart_has_vector" in src
+    # The non-trapping WARL test, and misa used only to CONFIRM (a core may tie misa to zero, so a
+    # zero there must not veto a hart that VS proved has vector state).
+    assert "csrw mstatus" in src and "misa != 0" in src
+    # vlenb is read only once VS is known live, since reading it with VS=Off traps.
+    assert src.index("csrw mstatus") < src.index("csrr %0, vlenb")
+    # The probe must not be bounded by the requested thread count -- that would only ever look at
+    # the first N harts, reintroducing the assumption it exists to remove.
+    assert "MERLIN_OMP_MAX_HARTS" in src
+    assert "cpu < MERLIN_OMP_MAX_THREADS" not in src
+
+
+def test_a_scalar_image_is_not_confined_to_vector_harts():
+    """A scalar image may use every hart -- that is the only way to reach a core with no vector unit,
+    and on a chip with more cores than vector units it is the difference between using the machine
+    and using part of it."""
+    import inspect
+
+    src = inspect.getsource(zm._cmakelists)
+    assert "MERLIN_OMP_VECTOR_POOL={1 if backend == 'rvv' else 0}" in src

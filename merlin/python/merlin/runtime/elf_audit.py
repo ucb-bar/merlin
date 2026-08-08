@@ -30,9 +30,35 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-#: Observed UART-TSI throughput, bytes/second. 921600 baud 8N1 ≈ 92 KB/s of payload; the loader sends
-#: MemSiz, so this converts an image's memory footprint into minutes on someone's bench.
+#: Fallback UART-TSI throughput, bytes/second, for a caller with no board descriptor. 921600 baud 8N1
+#: carries 10 bits per byte ≈ 92 KB/s. Prefer `Board.loader_bytes_per_s`, which derives this from the
+#: baud the board's own loader command uses — a fixed constant here was wrong by 16x for Kodiak.
 UART_BYTES_PER_S = 92_000
+
+
+def _bytes_per_s(brd) -> float:
+    return float(getattr(brd, "loader_bytes_per_s", None) or UART_BYTES_PER_S)
+
+
+def upload_bytes(brd, segments: list[Segment],
+                 sections: dict[str, tuple[int, int, str]]) -> tuple[int, str]:
+    """Bytes this board's loader actually puts on the wire, and a one-line statement of why.
+
+    The two loaders in use disagree by an order of magnitude on the same ELF:
+
+    * ``uart_tsi`` writes every PT_LOAD's **MemSiz**, zero-filling past ``filesz`` — so an arena that
+      claims the rest of DRAM is transmitted, as zeros, before the program starts;
+    * ``pyuartsi`` walks the SECTION table and writes only ``SHT_PROGBITS`` with ``sh_addr > 0``,
+      skipping ``SHT_NOBITS`` entirely.
+
+    Guessing one model for both is what put a "4 min" figure next to an image that takes an hour.
+    """
+    from .boards import LOADER_PYUARTSI
+    if getattr(brd, "loader", None) == LOADER_PYUARTSI:
+        total = sum(size for (addr, size, kind) in sections.values()
+                    if kind == "PROGBITS" and addr > 0)
+        return total, "PROGBITS sections with addr>0 (pyuartsi skips NOBITS)"
+    return sum(s.memsz for s in segments), "PT_LOAD MemSiz incl. zero-fill (uart_tsi/fesvr)"
 
 
 class ElfAuditError(RuntimeError):
@@ -58,7 +84,8 @@ class AuditReport:
     board: str
     entry: int
     segments: list[Segment] = field(default_factory=list)
-    sections: dict[str, tuple[int, int]] = field(default_factory=dict)   # name -> (addr, size)
+    #: name -> (addr, size, kind); `kind` is the ELF section type (PROGBITS/NOBITS/...)
+    sections: dict[str, tuple[int, int, str]] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     facts: dict[str, Any] = field(default_factory=dict)
@@ -73,7 +100,8 @@ class AuditReport:
                 "facts": dict(self.facts),
                 "segments": [{"kind": s.kind, "vaddr": hex(s.vaddr), "filesz": s.filesz,
                               "memsz": s.memsz, "flags": s.flags} for s in self.segments],
-                "sections": {k: {"addr": hex(a), "size": n} for k, (a, n) in self.sections.items()}}
+                "sections": {k: {"addr": hex(a), "size": n, "kind": t}
+                             for k, (a, n, t) in self.sections.items()}}
 
     def render(self) -> str:
         lines = [f"ELF audit: {Path(self.elf).name}  board={self.board}  "
@@ -107,7 +135,7 @@ def _run(cmd: list[str]) -> str:
     return proc.stdout
 
 
-def read_elf(elf: str | Path) -> tuple[int, list[Segment], dict[str, tuple[int, int]]]:
+def read_elf(elf: str | Path) -> tuple[int, list[Segment], dict[str, tuple[int, int, str]]]:
     """``(entry, segments, sections)`` from the ELF headers.
 
     Parsed from ``readelf -lSh`` text with ``str.split`` — no regex (repo rule) and no extra dependency.
@@ -118,7 +146,7 @@ def read_elf(elf: str | Path) -> tuple[int, list[Segment], dict[str, tuple[int, 
     out = _run([readelf, "-h", "-l", "-S", "-W", str(elf)])
     entry = 0
     segments: list[Segment] = []
-    sections: dict[str, tuple[int, int]] = {}
+    sections: dict[str, tuple[int, int, str]] = {}
     for line in out.splitlines():
         s = line.strip()
         if s.startswith("Entry point address:"):
@@ -137,7 +165,9 @@ def read_elf(elf: str | Path) -> tuple[int, list[Segment], dict[str, tuple[int, 
             if len(rest) >= 5:
                 name = rest[0]
                 try:
-                    sections[name] = (int(rest[2], 16), int(rest[4], 16))
+                    # (addr, size, kind). The kind matters: a section-loading loader skips NOBITS,
+                    # so what it actually transmits is not what a segment view suggests.
+                    sections[name] = (int(rest[2], 16), int(rest[4], 16), rest[1])
                 except ValueError:
                     continue
     if not segments:
@@ -176,7 +206,12 @@ def audit(elf: str | Path, brd, *, expect_htif: bool | None = None,
     rep.facts["load_segments"] = len(segments)
     rep.facts["image_memsz_mb"] = round(total_mem / 2**20, 2)
     rep.facts["image_filesz_mb"] = round(total_file / 2**20, 2)
-    rep.facts["upload_estimate_s"] = round(total_mem / UART_BYTES_PER_S, 1)
+    up_bytes, up_note = upload_bytes(brd, segments, sections)
+    rep.facts["upload_bytes"] = up_bytes
+    rep.facts["upload_loader"] = getattr(brd, "loader", "uart_tsi")
+    rep.facts["upload_baud"] = getattr(brd, "loader_baud", 921_600)
+    rep.facts["upload_basis"] = up_note
+    rep.facts["upload_estimate_s"] = round(up_bytes / _bytes_per_s(brd), 1)
     rep.facts["dram_used_pct"] = round(100.0 * total_mem / max(1, brd.dram_bytes), 1)
     if total_mem > brd.dram_bytes:
         rep.problems.append(
@@ -190,8 +225,10 @@ def audit(elf: str | Path, brd, *, expect_htif: bool | None = None,
                 f"{brd.dram_bytes / 2**20:.0f} MB")
     if rep.facts["upload_estimate_s"] > 120:
         rep.warnings.append(
-            f"upload takes ~{rep.facts['upload_estimate_s'] / 60:.0f} min over a UART loader "
-            f"(it transmits MemSiz, not file size) — say so in the delivery README")
+            f"upload takes ~{rep.facts['upload_estimate_s'] / 60:.0f} min: "
+            f"{up_bytes / 2**20:.1f} MB via {rep.facts['upload_loader']} at "
+            f"{rep.facts['upload_baud']} baud ({up_note}) — say so in the delivery README, with the "
+            "baud, so the reader can rescale if they run a faster link")
 
     # Entry point: the loader resumes at a fixed address; an entry elsewhere runs nothing.
     if not (lo <= entry < hi):

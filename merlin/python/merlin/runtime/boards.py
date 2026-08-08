@@ -14,7 +14,10 @@ them has a failure mode if it is wrong rather than a performance cost:
 * ``dram_bytes`` — the region the image is linked for. Larger than the chip has = a boot that dies
   before ``main``; smaller than the model needs = an allocation failure mid-inference.
 * ``vlen`` — sizes the per-thread vector save area AND (via ``march_with_vlen``) what the compiler
-  assumes. A mismatch is the documented K1 trap: fixed-width vectors land at a different LMUL.
+  assumes. Over-declaring costs memory and a different LMUL (the documented K1 trap). UNDER-declaring
+  corrupts kernel memory: the save area is a fixed ``vreg[32][vlen/8]`` but Zephyr fills it with a
+  hardware-derived length, so a too-small ``vlen`` overruns the thread struct on every context switch.
+  See ``backends.zephyr_model._vector_max_len_bits``.
 * ``harts`` — how many the SoC actually has. Zephyr's SMP boot hangs waiting for harts that do not
   exist, with no fault printed.
 * ``fpu_sharing`` — ``y`` mis-routes V-illegal-instruction traps into the FP path, which retries
@@ -34,6 +37,20 @@ CONSOLE_UART = "uart"
 FLOW_ZEPHYR = "zephyr"
 FLOW_BAREMETAL = "baremetal"
 
+#: How the operator loads an image, which decides how many bytes cross the serial link.
+#:
+#: * `uart_tsi` (the C fesvr tool, used by gemmelos) walks PT_LOAD and writes **MemSiz**, zero-filling
+#:   the part past `filesz`. An image whose `.bss`/arena claims the rest of DRAM therefore pays for
+#:   hundreds of megabytes of zeros before it starts.
+#: * `pyuartsi` (the Python loader on the Kodiak branch) walks the SECTION table and writes only
+#:   `SHT_PROGBITS` sections with `sh_addr > 0`. `SHT_NOBITS` is skipped entirely, so it sends far less
+#:   than MemSiz -- roughly `filesz`.
+#:
+#: Estimating both with one formula is how the shipped README came to quote "4 min" for an image that
+#: takes an hour on the baud its own loader line specifies.
+LOADER_UART_TSI = "uart_tsi"
+LOADER_PYUARTSI = "pyuartsi"
+
 
 @dataclass(frozen=True)
 class Board:
@@ -42,6 +59,23 @@ class Board:
     name: str                     # this descriptor's identity (appears in filenames, manifests)
     dram_bytes: int               # usable DRAM at `dram_base` (the REAL chip's, not the DTS default)
     harts: int                    # harts the SoC has
+    #: How many of those harts can execute VECTOR code, when that differs from `harts`. A
+    #: heterogeneous SoC is normal -- a chip may bring up three cores and attach a vector unit to only
+    #: two of them -- and the difference is invisible in every place you would look for it: the device
+    #: tree lists identical `cpu@N` nodes, and `arch_num_cpus()` counts all of them. Fanning an RVV
+    #: model out over a hart with no vector unit does not fail cleanly: that worker takes an illegal
+    #: instruction, never reaches the barrier its peers are waiting on, and the image hangs until
+    #: whoever is running it gives up on a timeout. Measured on a 3-core tapeout where 2 cores have V:
+    #: the 1-hart images passed and every 3-hart image timed out.
+    #: None means "all of them"; with only a count, the vector-capable harts are taken to be
+    #: 0..vector_harts-1 -- see `vector_hart_ids` when that is not true.
+    vector_harts: int | None = None
+    #: WHICH harts are vector-capable, when they are not the first `vector_harts` of them. A count
+    #: alone silently assumes 0..N-1, and on a chip whose vector units sit on (say) harts 0 and 2 that
+    #: assumption deadlocks exactly like building too many harts does -- a worker lands on a scalar
+    #: hart, traps, and never reaches the barrier. Nothing readable states the mapping (the device tree
+    #: lists identical cpu@N nodes), so it is a fact someone has to tell us. None = the count's default.
+    vector_hart_ids: tuple[int, ...] | None = None
     vlen: int | None = None       # hardware vector length in bits; None = unknown, assume the V minimum
     console: str = CONSOLE_HTIF
     dram_base: int = 0x80000000
@@ -49,13 +83,19 @@ class Board:
     fpu_sharing: bool = False
     #: Set CONFIG_RISCV_ISA_EXT_V in the Zephyr config? Not "does the board have vectors" — our
     #: model.o always carries `v` from its own -march. This is only about whether ZEPHYR's kernel is
-    #: compiled with V, and on some trees it cannot be: without RISCV_V_KERNEL_ONLY (absent from the
-    #: Zephyr the Kodiak branch pins) setting it puts `v` in the GLOBAL march, and SDK 0.17.0 has no
-    #: rv64imafdcv/lp64d libgcc multilib -- the link falls back to a 32-bit one and dies with
-    #: "ELFCLASS32 incompatible with ELFCLASS64". Turning it off is safe because `mstatus.VS` is
-    #: enabled at boot by reset.S under CONFIG_FPU (which these boards set), not under
-    #: RISCV_ISA_EXT_V; what is lost is Zephyr saving vector state across a context switch, which
-    #: this image does not need (one pinned cooperative worker per hart, no preemption mid-kernel).
+    #: compiled with V, and on a tree WITHOUT RISCV_V_KERNEL_ONLY it cannot be: setting it puts `v` in
+    #: the GLOBAL march, and SDK 0.17.0 has no rv64imafdcv/lp64d libgcc multilib -- the link falls back
+    #: to a 32-bit one and dies with "ELFCLASS32 incompatible with ELFCLASS64". `_prj_conf` therefore
+    #: gates on the TREE's capability as well as this flag.
+    #:
+    #: Turning it off is NOT free, and the cost is not what the earlier note here claimed. reset.S does
+    #: enable `mstatus.VS`, but only for the BOOT context: a Zephyr thread's initial mstatus comes from
+    #: MSTATUS_DEF_RESTORE, which carries VS only under RISCV_ISA_EXT_V. So with this off, every thread
+    #: starts with VS = Off, and any context switch puts it back to Off -- on silicon that enforces VS
+    #: (Kodiak does; spike and Saturn do not) the next vector instruction traps. That is the Kodiak
+    #: multi-hart hang: the single-worker image survives because it never switches again after poking
+    #: VS by hand, and the multi-hart image dies because creating the OpenMP pool switches the master
+    #: out and back. Leave this ON wherever the tree allows it.
     zephyr_vector_ext: bool = True
     #: Kernel tick rate to force, or None to accept the board's own. This is about OUR image, not
     #: about the board: it runs a single-shot inference on one pinned COOP worker per hart, with no
@@ -86,9 +126,23 @@ class Board:
     #: returned `METRIC cycles` should be divided by, which is why the image prints it.
     chip_freq_hz: int | None = None
     flow: str = FLOW_ZEPHYR
+    #: How this board's operator gets the image onto the chip. This decides HOW MANY BYTES cross the
+    #: wire, which is not a detail: the two loaders in use here disagree by a factor of ten on the same
+    #: ELF, and both were reported as "FAIL" when the real answer was "the upload had not finished".
+    #: See `upload_bytes` for what each one actually sends.
+    loader: str = LOADER_UART_TSI
+    #: Baud of the LOADER link (not of the runtime console, which can differ). Bytes/second is derived
+    #: from it rather than pinned, because a constant here silently survives a change of loader command.
+    loader_baud: int = 921_600
     #: bytes to reserve for code+stack before the weights blob in a baremetal layout
     code_reserve: int = 64 * 1024 * 1024
     notes: str = ""
+
+    @property
+    def loader_bytes_per_s(self) -> float:
+        """Payload throughput of the loader link. 8N1 framing is 10 bits on the wire per byte, which
+        matches the 92 KB/s measured at 921600 baud, so derive it instead of carrying a constant."""
+        return self.loader_baud / 10.0
 
     @property
     def build_board(self) -> str:
@@ -96,9 +150,34 @@ class Board:
         return self.zephyr_board or self.name
 
     @property
+    def n_vector_harts(self) -> int:
+        """Harts that can execute vector code. Defaults to all of them."""
+        if self.vector_hart_ids is not None:
+            return len(self.vector_hart_ids)
+        return int(self.vector_harts if self.vector_harts is not None else self.harts)
+
+    def hart_ids_for(self, backend: str) -> tuple[int, ...]:
+        """The harts an image for ``backend`` may run on.
+
+        A vector image is restricted to the vector-capable harts; a scalar one may use every hart,
+        which is the only way to reach a core that has no vector unit.
+        """
+        if backend != "rvv":
+            return tuple(range(self.harts))
+        if self.vector_hart_ids is not None:
+            return tuple(self.vector_hart_ids)
+        return tuple(range(self.n_vector_harts))
+
+    @property
     def vector_max_len(self) -> int:
-        """Bits to size the per-thread vector save area. 32 registers of this width per thread, so an
-        over-large value is paid by every thread; the V minimum is 128."""
+        """Bits to size the per-thread vector save area. 32 registers of this width per thread.
+
+        The two directions are NOT symmetric. Over-large is paid in RAM by every thread. Too small is a
+        buffer overrun on every context switch, because the code that fills the area takes its length
+        from the hardware and never compares it to the area it was given -- so the consumer
+        (`zephyr_model._vector_max_len_bits`) floors this at the Zephyr tree's own default rather than
+        emitting it as-is. The V minimum is 128.
+        """
         return int(self.vlen or 128)
 
 
@@ -131,33 +210,57 @@ BOARDS: dict[str, Board] = {
         notes="FireSim alveo_u250_firesim_dual_saturn_v256d128: 2 Shuttle tiles each with a Saturn "
               "unit at vLen=256/dLen=128, 25 MHz fpga_frequency (~24.9 MHz effective measured), "
               "16 GB target DRAM."),
+    # VLEN=512 is CONFIRMED by the chip's owner (2026-08-05), which retires the earlier inference: the
+    # DTS says `riscv,isa = "rv64gc"` with no `v` at all, and the samples' CONFIG_RISCV_VECTOR_MAX_LEN
+    # only sizes Zephyr's save area, so nothing in the repo stated the real width. Building for 128 on
+    # a 512-bit unit is the documented K1 trap (a fixed-width kernel lands at a lower LMUL and leaves
+    # three quarters of the datapath idle), so the fact matters even though our vector code is scalable.
     "chipyard_kodiak": Board(
-        name="chipyard_kodiak", dram_bytes=512 * 1024 * 1024, harts=3, vlen=None,
+        name="chipyard_kodiak", dram_bytes=512 * 1024 * 1024, harts=3, vector_harts=2, vlen=512,
         console=CONSOLE_HTIF,
-        # FPU_SHARING=y here is REQUIRED, not preferred, and it is why the board's own defconfig sets
-        # it. The Zephyr this board pins calls `z_riscv_vstate_save`/`_restore` from isr.S whenever
-        # RISCV_ISA_EXT_V=y and ISA_EXT_V_LAZY=n, and those symbols live in fpu.c/fpu.S, which are only
-        # compiled under FPU_SHARING. With our usual FPU_SHARING=n the image does not LINK
-        # ("undefined reference to z_riscv_vstate_save"). The newer Zephyr on the `dev` branch
-        # restructured that guard and added RISCV_V_KERNEL_ONLY, which is why merlin's default config
-        # works there and not here. Trade-off accepted knowingly: y gives eager vector save/restore
-        # (what we want for correctness across any preemption) but is the setting that mis-routed
-        # V-illegal-instruction traps on a FireSim Saturn tile. This image runs ONE pinned cooperative
-        # worker per hart, so it should never preempt mid-kernel.
-        fpu_sharing=True, zephyr_vector_ext=False, tick_hz=100,
+        # These two flags used to read `fpu_sharing=True, zephyr_vector_ext=False`, on the reasoning
+        # that this board's Zephyr lacks RISCV_V_KERNEL_ONLY and routes isr.S's
+        # `z_riscv_vstate_save`/`_restore` through fpu.c/fpu.S, which only compile under FPU_SHARING --
+        # so V without FPU_SHARING would not link. That was true of the submodule the `kodiak` BRANCH
+        # pins (5a06eb0d) and false of the tree we actually build: ZEPHYR_BASE resolves to the `dev`
+        # pin (852bb170), two commits later, which includes "riscv: decouple V/F save-restore + add
+        # RISCV_V_KERNEL_ONLY (Saturn fork)". There, arch/riscv/core/CMakeLists.txt compiles v.c under
+        # CONFIG_RISCV_ISA_EXT_V *independently of* CONFIG_FPU_SHARING, and says so in a comment.
+        #
+        # Carrying the stale pair cost a delivery round. Without RISCV_ISA_EXT_V no thread's mstatus
+        # carries VS, so the OpenMP master loses vector state the moment pool creation switches it out;
+        # with FPU_SHARING=y the resulting V illegal-instruction trap is mis-routed into the FP retry
+        # path and the image hangs with no fault printed. Single-hart passed, every multi-hart image
+        # failed. The chip's own known-working RVV+SMP sample (origin/kodiak:samples/q8_gemm_minmax,
+        # which ships a ref-out) uses RISCV_ISA_EXT_V=y, RISCV_VECTOR_MAX_LEN=512, FPU_SHARING=n --
+        # the settings below, and the only place in that repo the real VLEN is written down.
+        fpu_sharing=False, zephyr_vector_ext=True, tick_hz=100,
+        # The loader line this board's own scripts/run_experiments.py uses. pyuartsi sends PROGBITS
+        # sections, not MemSiz, and 57600 is 16x slower than the 921600 our old fixed 92 KB/s assumed --
+        # two errors in opposite directions that between them made every upload estimate we shipped
+        # wrong, including the one that had whisper looking like a hang rather than an unfinished load.
+        loader=LOADER_PYUARTSI, loader_baud=57_600,
         notes="Kodiak tapeout. DTS says ram0=256MB and MP_MAX_NUM_CPUS=2; the chip has 512MB and 3 "
-              "working cores. Its Zephyr lacks RISCV_V_KERNEL_ONLY and requires FPU_SHARING=y "
-              "alongside V with eager switching."),
+              "working cores, 2 of them vector. Vector config matches the chip's own q8_gemm_minmax "
+              "sample: Zephyr-managed V state, no FPU_SHARING."),
     # gemmelos: NOT a Zephyr target. github.com/Rakanic/gemmelos-bringup is a fork of
     # ucb-bar/Baremetal-IDE -- a bare-metal CMake SDK with no RTOS (grep -ri zephyr returns nothing) --
     # covering two chips selected by -DCHIP=. Facts below come from its platform/<chip>/*.ld and
     # chip_config.h. Its default linker script declares 256 MB of DRAM; the silicon has 1 GB, which is
-    # what we build for. VLEN=128 is stated by its own OPE kernel ("VLEN=128/LMUL=4 gives VLMAX=16");
-    # their spike runs use 256, so the two are not interchangeable. Console is UART0 @115200 8N2 for
+    # what we build for.
+    #
+    # VLEN=256, and this was WRONG here (128) until the chip itself answered. Its own OPE kernel says
+    # "VLEN=128/LMUL=4 gives VLMAX=16" while their spike runs use 256, so the tree was ambiguous and 128
+    # was the cautious-looking pick. `vlen_probe.elf` on the silicon reports `vlenb 32`, `vlmax_e8 32`,
+    # `vlmax_e32 8` -- three mutually consistent readings of the hardware CSR, i.e. VLEN=256. A comment
+    # in a vendor kernel is not a fact about the part; a `csrr vlenb` on the part is. Under-declaring it
+    # is not merely slow: see `zephyr_model._vector_max_len_bits` for the kernel-memory corruption it
+    # caused, and note that no simulator gate can catch it, because spike is given the VLEN we declare.
+    # Console is UART0 @115200 8N2 for
     # PLATFORM=CHIP builds and HTIF for PLATFORM=SIMS; our bare-metal harness speaks HTIF, which is what
     # the uart_tsi/FESVR link carries.
     "gemmelos_bearly25": Board(
-        name="gemmelos_bearly25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
+        name="gemmelos_bearly25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=256,
         console=CONSOLE_UART, sdk_chip="bearly25", chip_freq_hz=500_000_000,
         flow=FLOW_BAREMETAL,
         notes="Bearly ML 25 via Baremetal-IDE (-DCHIP=bearly25). 2 harts, hart 1 idles in wfi until "
@@ -175,7 +278,7 @@ BOARDS: dict[str, Board] = {
     # guessing high would be a silent SMP-boot hang, so this is a fact worth having been told.
     "gemmelos_bearly25_zephyr": Board(
         name="gemmelos_bearly25_zephyr", zephyr_board="chipyard_riscv64",
-        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
+        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=256,
         console=CONSOLE_UART, sdk_chip="bearly25",
         flow=FLOW_ZEPHYR, tick_hz=100,
         notes="Bearly ML 25 via the GENERIC chipyard Zephyr board (their SDK has no Zephyr port). "
@@ -183,9 +286,31 @@ BOARDS: dict[str, Board] = {
               "256 MB in their .ld). 2 harts (confirmed by the chip's owner). Console is the chip's "
               "own UART: that board's defconfig selects UART_HTIF, which needs a host servicing "
               "tohost and hangs on silicon, and the generic chipyard DT already describes this SoC's "
-              "UART at the address the SDK headers give. No PLL programming on this path -- the RTOS "
-              "brings its console up before our code runs, so the chip stays on its 50 MHz reset "
-              "clock and the baud divisor matches it; cycle counts are unaffected."),
+              "UART at the address the SDK headers give. No PLL programming on this path -- the chip "
+              "stays on its 50 MHz reset clock and the baud divisor matches it; cycle counts are "
+              "unaffected. See gemmelos_bearly25_zephyr_500mhz for the variant that raises it."),
+    # The same board, with the chip's PLL raised to the frequency the vendor's own demos run at.
+    #
+    # Split into a second descriptor rather than made the default, deliberately. The upside is large --
+    # 10x, on the one thing the chip's owner actually wants to do, and their own whisper demo decodes in
+    # about fifteen seconds at this clock while ours had no reason to be at a tenth of it. The downside
+    # is that programming a PLL wrong does not fail quietly into "no output": it garbles the console,
+    # which reads as a corrupt program. So the 50 MHz set stays the one to run first, and this ships
+    # beside it. If both come back, we learn the clock AND the correctness in one round trip; if only
+    # the slow one does, we have still moved forward.
+    #
+    # The sequence itself is derived, not written: runtime.sdk_facts parses the PLL base, register
+    # offsets, clock-selector map and reset clock out of the chip's own headers, and
+    # runtime/c/merlin_socinit_zephyr.c replays their bmark-lib `init_test` order against it.
+    "gemmelos_bearly25_zephyr_500mhz": Board(
+        name="gemmelos_bearly25_zephyr_500mhz", zephyr_board="chipyard_riscv64",
+        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=256,
+        console=CONSOLE_UART, sdk_chip="bearly25", chip_freq_hz=500_000_000,
+        flow=FLOW_ZEPHYR, tick_hz=100,
+        notes="Bearly ML 25 through the generic chipyard Zephyr port, with the PLL raised to 500 MHz "
+              "before the console driver's divisor is applied (SYS_INIT at "
+              "CONFIG_SERIAL_INIT_PRIORITY+1, so the driver cannot overwrite it). Identical "
+              "computation to gemmelos_bearly25_zephyr; only the clock differs."),
     "gemmelos_dsp25": Board(
         name="gemmelos_dsp25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
         console=CONSOLE_UART, sdk_chip="dsp25", chip_freq_hz=500_000_000,

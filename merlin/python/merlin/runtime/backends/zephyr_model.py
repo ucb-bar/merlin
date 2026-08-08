@@ -33,6 +33,7 @@ from __future__ import annotations
 import os
 import struct
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 from merlin.common.paths import runtime_dir
 from typing import Any
@@ -181,7 +182,41 @@ _VEC_RANK_LANES = 8
 #: cap); KC is carried through to the v3 recipe, which tiles K by 1 and does not use it. MR is
 #: NOT capped here -- perop_blocks.DEFAULT_MR pins it at 1 for a measured instruction-selection
 #: reason (the vfmacc.vf scalar-A form).
+#:
+#: 16 is the champion's value, measured on a VLEN=256 board. It is an ELEMENT COUNT, so it does not
+#: scale with the vector length -- and a fixed element count on a wider unit is spent as a smaller
+#: LMUL, not as more work. Measured on the same model built two ways:
+#:
+#:   VLEN=128:  e16,m2  / e8,m1  / e16,m1     -- 16 elements across one or two whole registers
+#:   VLEN=512:  e16,mf2 / e8,mf4 / e16,mf4    -- the same 16 elements in HALF or a QUARTER of one
+#:
+#: i.e. the 512-bit machine issued the same number of vector instructions doing the same 16 elements
+#: each as the 128-bit one. Three quarters of the datapath went unused.
 _PEROP_NR_CAP = 16
+
+#: The VLEN the champion cap above was measured at. Used only as the ratio's denominator, so this
+#: board's tuned value is reproduced exactly rather than re-derived.
+_PEROP_NR_CAP_REF_VLEN = 256
+
+
+def perop_nr_cap(vlen: int | None) -> int:
+    """The N-tile cap for a board with this vector length.
+
+    Scales the measured cap with the vector length so a wider unit gets a wider tile (the same LMUL)
+    instead of the same tile at a smaller LMUL. Deliberately **scales up only**: at or below the
+    reference width the champion's value is returned unchanged, so no already-validated configuration
+    moves as a side effect of this function existing.
+
+    What is verified is the EMITTED CODE -- that the wider cap turns fractional-LMUL ops into whole-
+    register ones. Whether that is faster on a given chip is a cycle question we cannot answer without
+    that chip: a wider tile also raises register pressure, and past some width it spills. So this
+    changes what a wide-VLEN board is offered, and the cycle claim belongs to whoever runs it.
+    """
+    if not vlen or vlen <= _PEROP_NR_CAP_REF_VLEN:
+        return _PEROP_NR_CAP
+    return _PEROP_NR_CAP * (int(vlen) // _PEROP_NR_CAP_REF_VLEN)
+
+
 _PEROP_KC = 16
 
 DEFAULT_RAM_BYTES = 256 * 1024 * 1024   # spike/chipyard `ram0` default (0x10000000)
@@ -317,7 +352,8 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
 
 def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = False,
                          features: "frozenset[str] | None" = None,
-                         blocking: bool = True, harts: int = 1) -> tuple[Path, frozenset[str]]:
+                         blocking: bool = True, harts: int = 1,
+                         vlen: int | None = None) -> tuple[Path, frozenset[str]]:
     """``(prepared_mlir, concrete_features)`` — everything that must happen to a captured module
     before ``lower_model_file``, shared by every whole-model backend.
 
@@ -348,7 +384,10 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     from ...llvmlower.impr_features import PEROP_BLOCK_NAME, ensure_perop_block
     if PEROP_BLOCK_NAME in features:
         from ...kernels.shapes import contraction_shapes as _cshapes
-        table = _pb.block_table(_cshapes(prepared), nr_cap=_PEROP_NR_CAP, harts=harts)
+        # The N-tile cap follows the board's vector length: a fixed element count on a wider unit
+        # is spent as a smaller LMUL rather than as more work per instruction (measured: the same
+        # model emitted e8,m1 at VLEN=128 and e8,mf4 -- a quarter of a register -- at VLEN=512).
+        table = _pb.block_table(_cshapes(prepared), nr_cap=perop_nr_cap(vlen), harts=harts)
         if table:
             prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
             features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}
@@ -359,10 +398,138 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
 
 # ---- generated Zephyr-app sources --------------------------------------------------
 
+#: Seconds between `ALIVE` lines in a debug image. Slow enough to be free on a 115200-baud console at
+#: 50 MHz, fast enough that nobody has to decide whether to keep waiting.
+DEBUG_HEARTBEAT_S = 5
+
+
+class _DebugHarness:
+    """The C fragments a debug image adds to the generated harness, or empty strings for a delivery
+    image. Grouped in one object so `_main_c`'s f-string stays readable and so the OFF case is
+    provably inert (every field is "")."""
+
+    __slots__ = ("decls", "boot", "post_init", "pre_run", "post_run", "stacks")
+
+    def __init__(self, decls="", boot="", post_init="", pre_run="", post_run="", stacks=""):
+        self.decls, self.boot, self.post_init = decls, boot, post_init
+        self.pre_run, self.post_run, self.stacks = pre_run, post_run, stacks
+
+
+def _debug_harness(debug: bool, dram_base: int, region_bytes: int, n_harts: int) -> _DebugHarness:
+    """Instrumentation for an image that will be run by someone we cannot talk to mid-run.
+
+    Four things, each earned by a specific failure we could not diagnose from what came back:
+
+    * ``STAGE`` lines — the gemmelos report was "banner, build_hash, nothing". Between `build_hash` and
+      the first result there is a vector-state write, a pool spin-up and an unbounded stretch of
+      compute, and nothing distinguished them. Now each announces itself with a timestamp.
+    * an ``ALIVE`` heartbeat naming the current op — separates "slow" from "hung", which on a 50 MHz
+      core running a model whose vendor equivalent takes 15 s is the entire question. It reads the op
+      index the profiler publishes, so it also says WHERE.
+    * a ``MEM`` probe — we build gemmelos images for 1 GB on the owner's word while their own linker
+      script declares 256 MB. Writing and reading back a pattern across the linked region answers that
+      from inside the run that depends on it, instead of by correspondence.
+    * ``STACK`` high-water marks — `MERLIN_WORKER_STACK` is 8 MB and each pool hart adds another, which
+      for a small model is ~96% of everything a `uart_tsi` loader transmits. It was chosen deliberately
+      and must not be shrunk on a hunch; this measures it so it can be shrunk on evidence.
+
+    The fatal-error hook is separate (`_fatal_c`): it has to be a distinct translation unit because it
+    overrides a weak kernel symbol.
+    """
+    if not debug:
+        return _DebugHarness()
+    end = dram_base + region_bytes
+    return _DebugHarness(
+        decls=f"""
+/* ---- debug instrumentation (MERLIN_DEBUG) ------------------------------------------ */
+#define MERLIN_REGION_BASE  {hex(dram_base)}ULL
+#define MERLIN_REGION_END   {hex(end)}ULL
+
+/* Published by the op profiler when it is linked in; a weak definition keeps this compiling when it
+ * is not, in which case the heartbeat still reports elapsed time and just has no op to name. */
+__attribute__((weak)) volatile int32_t merlin_prof_last_id = -1;
+
+/* Weak no-op so a single-hart image, which links no OpenMP shim at all, still compiles. The shim's
+ * strong definition wins whenever there is a pool to report on. */
+__attribute__((weak)) void merlin_omp_report_stacks(void) {{ }}
+/* Same reason: the per-op table only exists when the IR was instrumented. */
+__attribute__((weak)) void merlin_prof_dump(void) {{ }}
+
+static volatile int merlin_dbg_running;
+
+static void merlin_stage(const char *name)
+{{
+  printk("STAGE %s hart=%d t=%lld\\n", name, arch_curr_cpu()->id,
+         (long long)k_uptime_get());
+}}
+
+/* Does the linked region actually EXIST? A region larger than the chip's DRAM boots into nothing, and
+ * the symptom is silence -- the same silence as a hang. Probe a handful of points rather than the whole
+ * span: a walk of hundreds of MB would itself take minutes on a slow core. Each write is read back
+ * through a volatile pointer so the compiler cannot fold it away. */
+static void merlin_probe_memory(void)
+{{
+  const unsigned long long span = MERLIN_REGION_END - MERLIN_REGION_BASE;
+  /* Skip the first slice: that is where this very code and its data live. */
+  for (int i = 1; i <= 4; i++) {{
+    unsigned long long off = (span / 4ULL) * (unsigned long long)i;
+    if (off >= span) {{
+      off = span - 4096ULL;
+    }}
+    volatile uint64_t *p = (volatile uint64_t *)(uintptr_t)(MERLIN_REGION_BASE + off);
+    uint64_t want = 0xA5A5A5A500000000ULL | (uint64_t)i;
+    uint64_t got;
+    *p = want;
+    __asm__ volatile("fence rw, rw" ::: "memory");
+    got = *p;
+    printk("MEM %llx %s\\n", (unsigned long long)(uintptr_t)p, got == want ? "ok" : "FAIL");
+  }}
+}}
+
+/* The ALIVE heartbeat is NOT here. It lives in merlin_op_prof.c, printed from the model's own thread
+ * between two top-level ops, because the two obvious places both fail on this hardware: a k_timer
+ * expiry prints from interrupt context, which corrupts the non-reentrant HTIF console (observed as
+ * `bad syscall #1243416269594910946`), and a low-priority thread is never scheduled because the model
+ * runs on a pinned COOPERATIVE worker that does not yield. See the comment there. */
+
+/* How much of each stack was actually touched. MERLIN_WORKER_STACK is 8 MB and every pool hart adds
+ * another; for a small model that is the overwhelming majority of everything a MemSiz-transmitting
+ * loader puts on the wire. The size was chosen deliberately and must not be cut on a hunch -- so
+ * measure it, on the real model, and cut it on the number. */
+static void merlin_report_stacks(void)
+{{
+  size_t unused = 0;
+
+  if (k_thread_stack_space_get(&merlin_worker_thread, &unused) == 0) {{
+    printk("STACK worker size=%u unused=%u used=%u\\n",
+           (unsigned)MERLIN_WORKER_STACK, (unsigned)unused,
+           (unsigned)(MERLIN_WORKER_STACK - unused));
+  }}
+  merlin_omp_report_stacks();
+}}
+""",
+        stacks="",
+        boot="""  merlin_stage("boot");
+""",
+        post_init="""  merlin_stage("init_done");
+  merlin_probe_memory();
+  merlin_stage("mem_probed");
+  merlin_dbg_running = 1;
+""",
+        pre_run="""  merlin_stage("warmup_done");
+""",
+        post_run="""  merlin_dbg_running = 0;
+  merlin_stage("compute_done");
+  merlin_report_stacks();
+  merlin_prof_dump();
+""")
+
+
 def _main_c(rvv_hart: int, dump_cap: int = 4096, weights_base: int | None = None,
             n_harts: int = 1, iters: int = 1, warmup: int = 0,
             omp_threads: int | None = None, build_hash: str = "",
-            console: str = "htif") -> str:
+            console: str = "htif", debug: bool = False,
+            dram_base: int = 0x80000000, region_bytes: int = 0) -> str:
     """Generate the Zephyr worker main: one COOP thread pinned to ``rvv_hart`` calls
     ``merlin_run`` and dumps the output with the same OUT/ARGMAX/METRIC/DONE protocol the
     bare-metal harness uses (so the host parser is shared).
@@ -393,6 +560,12 @@ def _main_c(rvv_hart: int, dump_cap: int = 4096, weights_base: int | None = None
     omp_init = (f'  int nth = merlin_omp_init({nth});\n'
                 f'  printk("METRIC omp_threads %d\\n", nth);\n'
                 if n_harts > 1 else "")
+    # DEBUG BUILD. Everything below is off by default and costs nothing in a delivery image; it exists
+    # because the two boards we ship to are ones we cannot attach to, and both of the last two rounds
+    # came back as "it printed three lines and stopped". Three lines is not a diagnosis. With these on,
+    # a single returned console log names the stage it reached, the hart it was on, the op index it was
+    # inside, and the fault that stopped it -- so one round trip replaces a guess.
+    dbg = _debug_harness(debug, dram_base, region_bytes, n_harts)
     return f"""/* Generated by merlin.runtime.backends.zephyr_model — do not edit. */
 #include <stdint.h>
 #include <string.h>
@@ -426,13 +599,13 @@ static merlin_descriptor_t DESCS[MERLIN_N_ARGS];
 K_THREAD_STACK_DEFINE(merlin_worker_stack, MERLIN_WORKER_STACK);
 static struct k_thread merlin_worker_thread;
 static struct k_sem merlin_done;
-
+{dbg.stacks}
 static inline uint64_t rd_mcycle(void) {{
   uint64_t c;
   __asm__ volatile("csrr %0, mcycle" : "=r"(c));
   return c;
 }}
-
+{dbg.decls}
 static void merlin_worker(void *a, void *b, void *c) {{
   (void)a; (void)b; (void)c;
   printk("=== merlin_zephyr hart=%d ===\\n", arch_curr_cpu()->id);
@@ -441,7 +614,38 @@ static void merlin_worker(void *a, void *b, void *c) {{
    * stale log and a fresh one are indistinguishable. This is the sha256 prefix of the lowered model
    * object plus the weights blob, i.e. of exactly what computes the answer. */
   printk("METRIC build_hash %s\\n", MERLIN_BUILD_HASH);
-{omp_init}
+{dbg.boot}
+  /* ENABLE VECTOR STATE FOR THIS THREAD, before any vector instruction runs.
+   *
+   * A freshly created Zephyr thread starts with mstatus.VS = Off: the RISC-V port builds a thread's
+   * initial mstatus from MSTATUS_DEF_RESTORE (MPP | MPIE), and the VS bit is only OR'd in under
+   * CONFIG_RISCV_ISA_EXT_V, which these images do not set (it puts `v` in the GLOBAL -march, and no
+   * matching libgcc multilib exists). reset.S does enable VS, but only for the BOOT context -- a
+   * context switch into this thread restores mstatus from the thread's own frame and VS goes back to
+   * Off. With VS = Off every vector instruction AND every vector CSR read traps.
+   *
+   * That trap is not hypothetical: the lowered model's entry function begins with `csrr a0, vlenb`
+   * (LLVM sizing a VLEN-scaled stack frame for scalable vectors), so the image dies in the prologue
+   * of forward() with mcause=2 before computing anything. It was reported from a tapeout that
+   * enforces VS; spike and the Saturn RTL do not enforce it, which is why every simulated run passed.
+   *
+   * `libomp_zephyr.c::omp_enable_vector()` already does this for each OpenMP worker, for exactly this
+   * reason -- but a single-hart image has no pool, so nothing enabled it. Setting FS too keeps the FP
+   * state live. Harmless when the state is already dirty. */
+  {{
+    unsigned long ms;
+    __asm__ volatile("csrr %0, mstatus" : "=r"(ms));
+    /* Report VS AS FOUND, before we touch it. A 0 here says the RTOS is not managing vector state
+     * for this thread, so it is off again after every context switch and only the write below is
+     * holding the image up -- the precise signature of the multi-hart hang, visible in a log from a
+     * board we cannot attach to. The multicore path prints the same fact per hart, under its own key:
+     * two different values must never share one METRIC name, or whichever is parsed last wins. */
+    printk("METRIC worker_hart %d\\n", arch_curr_cpu()->id);
+    printk("METRIC worker_mstatus_vs %u\\n", (unsigned)((ms >> 9) & 3));
+    ms |= 0x00000600UL | 0x00006000UL;      /* mstatus.VS | mstatus.FS */
+    __asm__ volatile("csrw mstatus, %0" ::"r"(ms));
+  }}
+{omp_init}{dbg.post_init}
   /* SUSTAINED INFERENCE: warmup runs settle caches/branch predictors and (on multicore)
    * the pool; only the MERLIN_ITERS runs after them are reported. Every iteration reuses
    * the same arena and output buffer, so a steady-state drift in iter_cycles is real
@@ -450,7 +654,7 @@ static void merlin_worker(void *a, void *b, void *c) {{
     merlin_run(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_WEIGHTS_BASE,
                MERLIN_INPUT_PTR, OUT, DESCS);
   }}
-  uint64_t c0 = rd_mcycle();
+{dbg.pre_run}  uint64_t c0 = rd_mcycle();
   for (int it = 0; it < MERLIN_ITERS; it++) {{
     uint64_t i0 = rd_mcycle();
     merlin_run(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_WEIGHTS_BASE,
@@ -459,7 +663,7 @@ static void merlin_worker(void *a, void *b, void *c) {{
     printk("METRIC iter_cycles %d %llu\\n", it, (unsigned long long)(i1 - i0));
   }}
   uint64_t c1 = rd_mcycle();
-
+{dbg.post_run}
   int k = MERLIN_OUT_ELEMS < MERLIN_DUMP_CAP ? MERLIN_OUT_ELEMS : MERLIN_DUMP_CAP;
   printk("OUT %d", k);
   for (int i = 0; i < k; i++) {{
@@ -548,19 +752,125 @@ def _kconfig_has(symbol: str) -> bool:
     cannot build for the other. Probing the tree is the difference between targeting a board and
     assuming its Zephyr matches ours.
     """
-    base = _zephyr_base() / "arch" / "riscv"
-    needle = f"config {symbol}"
+    return symbol in _kconfig_symbols()
+
+
+@lru_cache(maxsize=1)
+def _kconfig_symbols() -> frozenset[str]:
+    """Every ``config <NAME>`` this tree declares, across the subsystems we configure from.
+
+    Scoped to specific roots rather than the whole tree: a full rglob walks tens of thousands of files
+    for an answer we need on every build. The roots are the ones merlin actually sets symbols in --
+    `arch/` for the ISA and vector options, `kernel/` and `subsys/debug/` for the diagnostic ones a
+    debug image turns on. A symbol outside them reads as absent, which is the safe direction: we
+    comment it out rather than emit it, and an unknown symbol is a HARD build failure ("attempt to
+    assign the value 'y' to the undefined symbol"), never a warning.
+    """
+    base = _zephyr_base()
+    roots = [base / "arch", base / "kernel", base / "subsys" / "debug"]
+    found: set[str] = set()
     try:
-        for f in list(base.rglob("Kconfig*")) + [_zephyr_base() / "arch" / "Kconfig"]:
-            if f.is_file() and any(line.strip() == needle for line in
-                                   f.read_text(errors="replace").splitlines()):
-                return True
+        for root in roots:
+            if not root.is_dir():
+                continue
+            for f in root.rglob("Kconfig*"):
+                if not f.is_file():
+                    continue
+                for line in f.read_text(errors="replace").splitlines():
+                    s = line.strip()
+                    # `config NAME` and `menuconfig NAME` both declare a settable symbol.
+                    head, _, name = s.partition(" ")
+                    if head in ("config", "menuconfig") and name and " " not in name:
+                        found.add(name)
     except Exception:                                            # noqa: BLE001
-        return False
-    return False
+        return frozenset(found)
+    return frozenset(found)
 
 
-def _prj_conf(cpus: int, backend: str, brd=None, console_facts=None) -> str:
+@lru_cache(maxsize=None)
+def _kconfig_default_int(symbol: str) -> int | None:
+    """The tree's own ``default <int>`` for an ``int``-typed Kconfig symbol, or None.
+
+    Read from the tree rather than written here because it is the tree that decides what is safe: see
+    `_vector_max_len_bits` for why the default is a FLOOR and not just a fallback.
+    """
+    base = _zephyr_base()
+    roots = [base / "arch", base / "kernel", base / "subsys" / "debug"]
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for f in root.rglob("Kconfig*"):
+            if not f.is_file():
+                continue
+            in_sym = False
+            for line in f.read_text(errors="replace").splitlines():
+                s = line.strip()
+                head, _, name = s.partition(" ")
+                if head in ("config", "menuconfig"):
+                    in_sym = name == symbol
+                    continue
+                if not in_sym:
+                    continue
+                key, _, val = s.partition(" ")
+                if key == "default":
+                    val = val.strip()
+                    if val.isdigit():
+                        return int(val)
+                    return None                  # a conditional/symbolic default: no single number
+    return None
+
+
+def _vector_max_len_bits(brd) -> int:
+    """Bits to declare for the per-thread vector save area, floored at the tree's own default.
+
+    `CONFIG_RISCV_VECTOR_MAX_LEN` sizes a FIXED buffer -- `vreg[32][MAX_LEN/8]` in
+    `arch/riscv/thread.h` -- but the code that fills it takes its length from the HARDWARE:
+    `z_riscv_vstate_save` does `vsetvli %0, x0, e8, m8` and then four `vse8.v`, i.e. it stores
+    32 x vlenb bytes with no clamp and no check against the buffer it was given. So the two numbers are
+    not symmetric. Declaring MORE than the silicon has costs RAM per thread and nothing else.
+    Declaring LESS is an unchecked buffer overrun on every context switch, of
+    `32 * (vlenb_hw - MAX_LEN/8)` bytes, into whatever the linker put after that thread struct.
+
+    That is not hypothetical: a descriptor saying `vlen=128` against silicon whose own probe reports
+    `vlenb 32` (VLEN 256) overran `z_idle_threads[1]` by 512 bytes into the adjacent `z_main_thread`,
+    zeroing its name and `stack_info.start` -- a thread that has never executed a vector instruction
+    has a zeroed register file, so the overrun writes zeros. The first tick after `z_smp_init()` then
+    loaded from address 0. No simulator gate can see it, because a spike run is given the VLEN we
+    declared: configured and actual agree by construction and the overrun cannot happen there.
+
+    So: take the board's declared VLEN, but never emit below the tree's own default for the symbol.
+    A wrong-but-larger declaration wastes memory; a wrong-but-smaller one corrupts the kernel.
+    """
+    want = int(brd.vector_max_len)
+    floor = _kconfig_default_int("RISCV_VECTOR_MAX_LEN")
+    return max(want, floor) if floor else want
+
+
+def _debug_conf() -> str:
+    """Kconfig a DEBUG image adds. Every symbol here exists in the pinned tree and was checked before
+    being emitted -- an unknown symbol aborts the build, and a debug image that will not build is worse
+    than no debug image.
+
+    `EXCEPTION_DEBUG` is already `y` by default (it only needs PRINTK), so the register dump is not
+    what these buy. What they buy is: a stack overflow reported as a stack overflow instead of as
+    corruption somewhere else entirely (`STACK_SENTINEL`), the high-water measurement that tells us
+    whether the 8 MB worker stack is 8 MB of evidence or 8 MB of caution (`INIT_STACKS` +
+    `THREAD_STACK_INFO`), assertions that fire instead of being compiled away (`ASSERT`), and a thread
+    NAME in the fault line so "which of the pool workers" is answerable (`THREAD_NAME`).
+    """
+    want = [("EXCEPTION_DEBUG", "y"), ("ASSERT", "y"), ("THREAD_NAME", "y"),
+            ("THREAD_STACK_INFO", "y"), ("INIT_STACKS", "y"), ("THREAD_MONITOR", "y"),
+            ("STACK_SENTINEL", "y")]
+    out = ["\n# DEBUG image: diagnosis over size. Not shipped in a delivery build."]
+    for sym, val in want:
+        if _kconfig_has(sym):
+            out.append(f"CONFIG_{sym}={val}")
+        else:
+            out.append(f"# CONFIG_{sym} not defined by this Zephyr tree")
+    return "\n".join(out) + "\n"
+
+
+def _prj_conf(cpus: int, backend: str, brd=None, console_facts=None, debug: bool = False) -> str:
     """Generated app config. ``brd`` is a :class:`runtime.boards.Board`; None keeps the
     historical chipyard/HTIF defaults so existing callers are byte-identical.
 
@@ -632,7 +942,7 @@ CONFIG_RTC_CLOCK_DIVIDER_VALUE={divider}
     # note this also compiles out fpu.c/fpu.S, i.e. no FP/vector state is saved across a context
     # switch, which is safe for the single pinned cooperative worker this image runs.
     fpu_sharing = "y" if brd.fpu_sharing else "n"
-    vector_max_len = brd.vector_max_len
+    vector_max_len = _vector_max_len_bits(brd)
     common = f"""# Generated by merlin.runtime.backends.zephyr_model (backend={backend}, board={brd.name}).
 CONFIG_PRINTK=y
 CONFIG_STDOUT_CONSOLE=y
@@ -663,7 +973,7 @@ CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=-1
 
 CONFIG_MAIN_STACK_SIZE=32768
 CONFIG_HEAP_MEM_POOL_SIZE=65536
-{tick_conf}"""
+{tick_conf}{_debug_conf() if debug else ""}"""
     if backend == "scalar":
         return common  # no vector config at all — the model object is rv64gc.
     # rvv: eager per-thread V save/restore + keep global -march scalar so the
@@ -678,7 +988,20 @@ CONFIG_HEAP_MEM_POOL_SIZE=65536
     # matching libgcc multilib exists (the link falls back to a 32-bit one). So require both the board's
     # permission and the tree's capability -- otherwise pointing ZEPHYR_BASE at a tree that lacks the
     # symbol breaks every board, including spike_riscv64.
-    if not (brd.zephyr_vector_ext and _kconfig_has("RISCV_V_KERNEL_ONLY")):
+    tree_can = _kconfig_has("RISCV_V_KERNEL_ONLY")
+    if tree_can and not brd.zephyr_vector_ext:
+        # The only reason to deny Zephyr vector state is that the TREE cannot express it. When the tree
+        # can and a descriptor still says no, the descriptor is stale -- and the failure it produces is
+        # the worst kind: threads whose mstatus never carries VS, so the image works on one hart and
+        # hangs (silently, with FPU_SHARING=y) the moment a context switch costs the master its vector
+        # state. That shipped once on Kodiak. Fail closed rather than rebuild it.
+        raise RuntimeError(
+            f"board {brd.name} sets zephyr_vector_ext=False, but this Zephyr tree "
+            f"({_zephyr_base()}) defines RISCV_V_KERNEL_ONLY -- V can be enabled without putting `v` "
+            "in the global -march. The flag exists for trees that CANNOT do this; on a tree that can, "
+            "leaving it off denies every thread its vector state and hangs any multi-hart image on "
+            "silicon that enforces mstatus.VS. Set zephyr_vector_ext=True.")
+    if not (brd.zephyr_vector_ext and tree_can):
         # Zephyr's kernel stays scalar (see Board.zephyr_vector_ext); the model object still carries V
         # from its own -march, and mstatus.VS is enabled at boot by reset.S under CONFIG_FPU.
         return common + ("\n# CONFIG_RISCV_ISA_EXT_V intentionally NOT set: this Zephyr has no\n"
@@ -696,7 +1019,10 @@ CONFIG_HEAP_MEM_POOL_SIZE=65536
 
 def _cmakelists(model_archive: Path, rt: Path, abi: Path, cgen: Path,
                 weights_section_ld: Path | None = None, omp: bool = False,
-                n_harts: int = 1) -> str:
+                n_harts: int = 1, hart_ids: "tuple[int, ...] | None" = None,
+                backend: str = "rvv", debug: bool = False,
+                build_hash: str = "", console_facts=None,
+                chip_freq_hz: int | None = None, op_profile: bool = False) -> str:
     # In external-weights mode, a linker snippet places the renamed .merlin_weights
     # section into the WEIGHTS DT memory-region (its own high address). main.c addresses
     # the blob by literal (not its symbol), so --gc-sections would drop the whole
@@ -717,6 +1043,41 @@ def _cmakelists(model_archive: Path, rt: Path, abi: Path, cgen: Path,
     if omp:
         omp_debug += (f"target_compile_definitions(app PRIVATE "
                       f"MERLIN_OMP_MAX_THREADS={max(int(n_harts), 1)})\n")
+        # Whether the pool must stay on vector-capable harts. For a VECTOR image the shim DISCOVERS
+        # which those are at startup (each hart probes its own mstatus.VS writability, which is
+        # hardwired to zero without a vector unit) -- so a heterogeneous SoC needs nobody to tell us
+        # which harts they are, and the image cannot deadlock by fanning out onto a scalar hart. A
+        # SCALAR image sets 0: it may use every hart, which is the point of building one.
+        omp_debug += (f"target_compile_definitions(app PRIVATE "
+                      f"MERLIN_OMP_VECTOR_POOL={1 if backend == 'rvv' else 0})\n")
+        # A descriptor may still PIN the set (`vector_hart_ids`), which the runtime probe overrides
+        # when it is on. Kept for a chip whose probe cannot be trusted, and as documentation.
+        if hart_ids is not None:
+            ids = ", ".join(str(int(h)) for h in hart_ids)
+            omp_debug += (f"target_compile_definitions(app PRIVATE "
+                          f'"MERLIN_OMP_HART_IDS={{{ids}}}")\n')
+    # A DEBUG image also carries the fatal-error hook. It has to be its own translation unit (it
+    # overrides a weak kernel symbol) and it needs the build identity as a macro, so that a fault line
+    # names the binary without depending on a banner thousands of lines earlier in the capture.
+    dbg_src = f"  {rt}/merlin_fatal_zephyr.c\n" if debug else ""
+    if debug and op_profile:
+        dbg_src += f"  {rt}/merlin_op_prof.c\n"
+        omp_debug += ("target_compile_definitions(app PRIVATE MERLIN_PROF_ZEPHYR=1)\n"
+                      f"target_compile_definitions(app PRIVATE "
+                      f"MERLIN_PROF_HEARTBEAT_MS={DEBUG_HEARTBEAT_S * 1000})\n")
+    # The build identity is a macro in EVERY image, not just debug ones: the allocation guard below
+    # is always linked, and a `FAIL alloc` line has to name the binary it came from.
+    omp_debug += (f'target_compile_definitions(app PRIVATE '
+                  f'"MERLIN_BUILD_HASH=\\"{build_hash}\\"")\n')
+    # PLL BRING-UP, only when the descriptor asks for a clock the chip is not already on. Without it
+    # the image runs at the reset clock, which on the SoC this was written for is a tenth of what the
+    # vendor's own demos use. The macros are the SAME derived set the bare-metal console uses -- one
+    # derivation, two consumers, so the two paths cannot disagree about where this chip's PLL is.
+    if chip_freq_hz and console_facts is not None:
+        dbg_src += f"  {rt}/merlin_socinit_zephyr.c\n"
+        for flag in console_facts.macros(chip_freq_hz=chip_freq_hz):
+            omp_debug += (f"target_compile_definitions(app PRIVATE "
+                          f"{flag[2:] if flag.startswith('-D') else flag})\n")
     return f"""# Generated by merlin.runtime.backends.zephyr_model.
 cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{{ZEPHYR_BASE}})
@@ -727,8 +1088,12 @@ target_sources(app PRIVATE
   {cgen}/model_call.c
   {rt}/merlin_model.c
   {abi}/mlir_runtime.c
-{"  " + str(rt) + "/libomp_zephyr.c" + chr(10) if omp else ""})
+  {rt}/merlin_alloc_guard_zephyr.c
+{dbg_src}{"  " + str(rt) + "/libomp_zephyr.c" + chr(10) if omp else ""})
 target_include_directories(app PRIVATE {rt} {cgen})
+# Route the lowered model's allocations through the guard, so a heap that runs out reports the size
+# it could not satisfy instead of storing through a null pointer. See merlin_alloc_guard_zephyr.c.
+zephyr_link_libraries(-Wl,--wrap=malloc)
 {omp_debug}
 {ext}
 # The lowered model object + weights blob, pre-built (clang rv64gcv / ld -r -b binary),
@@ -752,7 +1117,7 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
               features: "frozenset[str] | None" = None,
               n_harts: int = 1, iters: int = 1, warmup: int = 0,
               omp_threads: int | None = None, vlen: int | None = None,
-              sdk_dir: str | Path | None = None) -> dict:
+              sdk_dir: str | Path | None = None, debug: bool = False) -> dict:
     """Lower the model, generate the Zephyr app, and build ``zephyr.elf``.
 
     ``backend``: ``"rvv"`` (vector tile / Saturn) or ``"scalar"`` (scalar tile). The
@@ -782,11 +1147,10 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     if not available():
         raise ZephyrModelError("Zephyr/spike toolchain unavailable (see env in module doc)")
-    if n_harts > 1 and backend != "rvv":
-        # The multicore lowering layers its forall UNDER the RVV transform schedule; the
-        # scalar backend has no such schedule, so this would silently build a serial image.
-        raise ZephyrModelError(
-            f"n_harts={n_harts} requires backend='rvv' (got {backend!r})")
+    # NOTE scalar multicore IS supported (see the lowering call below): the scalar path cannot use the
+    # forall-under-the-RVV-schedule route, so it parallelizes at the linalg loop level instead. This is
+    # the ONLY way to use a hart that has no vector unit -- a heterogeneous SoC may bring up more cores
+    # than it attaches vector units to, and those extra cores are otherwise unreachable.
     if iters < 1:
         raise ZephyrModelError(f"iters must be >= 1, got {iters}")
     # A VLEN the build assumes must match the one it will run on -- see march_with_vlen.
@@ -808,19 +1172,65 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     brd = _board_desc(board, **({"vlen": vlen} if vlen is not None else {}))
     if vlen is None and brd.vlen is not None:
         vlen = brd.vlen                       # build for the board's real vector length by default
+    # A vector model may only fan out over harts that HAVE a vector unit. A heterogeneous SoC is normal
+    # -- three cores brought up, a vector unit on two of them -- and the difference is invisible in the
+    # device tree, which lists identical cpu@N nodes. Fanning out too far does not fail cleanly: the
+    # worker on the scalar hart takes an illegal instruction, never reaches the barrier its peers wait
+    # on, and the image hangs until the operator times out. Measured on a 3-core tapeout with 2
+    # vector cores: the 1-hart images passed and every 3-hart image timed out at 10 minutes.
+    # The harts this image may actually run on. A vector image is confined to the vector-capable ones;
+    # a scalar image may use every hart, which is the only way to reach a core with no vector unit.
+    # Emitted into the OpenMP shim only when it differs from the 0..n-1 default, so an ordinary
+    # homogeneous board's image is byte-identical to before.
+    _usable = brd.hart_ids_for(backend)
+    hart_ids = _usable if _usable != tuple(range(n_harts)) else None
+    if backend == "rvv" and n_harts > brd.n_vector_harts:
+        raise ZephyrModelError(
+            f"{brd.name}: refusing an RVV image over {n_harts} harts -- only {brd.n_vector_harts} of "
+            f"its {brd.harts} harts can execute vector code. The extra worker would trap on its first "
+            f"vector instruction and deadlock the barrier (a timeout, with no fault printed). Build "
+            f"{brd.n_vector_harts} harts or fewer, or use backend='scalar' to use every hart.")
     # Parse + lower under IR_LOCK: xDSL's parser is not thread-safe, and a delivery builds several
     # images in one process. See common.ir_lock -- the symptom is a bogus ParseError on valid IR.
     from ...common.ir_lock import IR_LOCK
+    prof_table: list[dict] | None = None
     with IR_LOCK:
         prepared, features = prepare_for_lowering(model_dir / "model.mlir", work,
                                                  int8_compute=int8_compute, features=features,
-                                                 blocking=(backend == "rvv"), harts=n_harts)
+                                                 blocking=True, harts=n_harts,
+                                                 vlen=vlen)
+        # A DEBUG image interleaves a mark between the top-level ops of @forward. Two things come out
+        # of it: a per-op cost table at the end of a successful run, and -- the reason it is here at
+        # all -- a continuously published "which op are we in", which the heartbeat prints while the
+        # model is still running. Without it a stalled image can only say that it stalled; with it, it
+        # says where. The table is written next to the image so a returned PROF line resolves to a name.
+        if debug:
+            from ...llvmlower import op_profile as _op_profile
+            try:
+                text, prof_table = _op_profile.instrument(Path(prepared).read_text())
+                prepared = Path(work) / "model_prof.mlir"
+                Path(prepared).write_text(text)
+                _op_profile.write_table(prof_table, Path(work) / "op_profile_table.json")
+            except _op_profile.OpProfileError as exc:
+                # Losing per-op detail must not cost us the rest of the diagnostics.
+                print(f"[zephyr_model] op profiling unavailable ({exc}); "
+                      "debug image keeps STAGE/ALIVE/MEM but ALIVE cannot name an op")
+                prof_table = None
     # For the rvv backend, bake native RVV (fixed-width vector ops on the matmuls) into the
     # IR rather than leaving it to clang's auto-vectorizer — see llvmlower.pipeline.
+        # Multicore reaches the two backends by DIFFERENT routes, because they parallelize at
+        # different levels. The rvv path layers an explicit outer `scf.forall` UNDER the package's
+        # transform schedule (`parallel_harts`), so the inner tiling and the emitted vfmacc/vwmacc are
+        # untouched. The scalar path has no such schedule to sit under; it parallelizes at the linalg
+        # loop level instead (`parallel=True` -> convert-linalg-to-parallel-loops + convert-scf-to-
+        # openmp), which is the same pipeline the K1 big models use. Both emit `__kmpc_*` satisfied by
+        # the Zephyr OpenMP shim, so the worker side is identical.
         res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
                                vectorize=(backend == "rvv"), transform_schedule=rvv_schedule,
                                features=features,
-                               parallel_harts=(n_harts if n_harts > 1 else None))
+                               parallel=(backend != "rvv" and n_harts > 1),
+                               parallel_harts=(n_harts if n_harts > 1
+                                               and backend == "rvv" else None))
     _run([clang, "--target=riscv64-unknown-elf", *cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 
@@ -832,14 +1242,16 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     _run([ld, "-r", "-b", "binary", "-o", work / "weights_blob.o", "weights.bin"], cwd=cgen)
     weights_size = (cgen / "weights.bin").stat().st_size
 
-    # Build identity: the sha256 prefix of the lowered model object plus the weights blob -- exactly
-    # what computes the answer. main.c prints it, so a console log someone mails back from their own
-    # board can be tied to a specific binary instead of being unattributable.
+    # Build identity, part one: the lowered model object plus the weights blob -- what computes the
+    # answer. The app configuration is folded in further down, once it exists, because the compute is
+    # only half of what makes two images behave differently. Hashing the model alone was a real defect:
+    # the Kodiak vector-state fix changed the Kconfig and the DT overlay and nothing else, so the fixed
+    # and the hanging image reported the SAME build_hash, and the one thing the protocol exists to
+    # answer -- "which binary produced this log?" -- could not be answered.
     import hashlib as _hashlib
     _h = _hashlib.sha256()
     _h.update((work / "model.o").read_bytes())
     _h.update((cgen / "weights.bin").read_bytes())
-    build_hash = _h.hexdigest()[:16]
 
     # External-weights mode for blobs that would overflow medany linked into .data: rename
     # the blob's section so Zephyr's default linker won't pull it into the image .data; a
@@ -881,10 +1293,6 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     app = work / "app"
     (app / "src").mkdir(parents=True, exist_ok=True)
     (app / "boards").mkdir(parents=True, exist_ok=True)
-    (app / "src" / "main.c").write_text(
-        _main_c(rvv_hart, weights_base=weights_base, n_harts=n_harts,
-                iters=iters, warmup=warmup, omp_threads=omp_threads,
-                build_hash=build_hash, console=brd.console))
     # A multicore image needs every hart it fans out to, plus the master's.
     cpus = max(cpus, n_harts, rvv_hart + 1)
     # Console facts, when the board has a console of its own to bring up. Derived here (not in
@@ -901,7 +1309,8 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
                 "sdk_chip: the UART address and its clock rates are derived from the target SDK's "
                 "own headers, never hardcoded or defaulted")
         console_facts = derive_uart_console(sdk_dir, brd.sdk_chip)
-    (app / "prj.conf").write_text(_prj_conf(cpus, backend, brd, console_facts))
+    prj_conf_text = _prj_conf(cpus, backend, brd, console_facts, debug=debug)
+    (app / "prj.conf").write_text(prj_conf_text)
     rt = runtime_dir() / "c"
     abi = runtime_dir() / "abi"
     weights_section_ld = None
@@ -913,9 +1322,14 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
             "\tKEEP(*(.merlin_weights))\n"
             "\tKEEP(*(.merlin_weights.*))\n"
             "} GROUP_LINK_IN(WEIGHTS)\n")
-    (app / "CMakeLists.txt").write_text(
-        _cmakelists(archive, rt, abi, cgen, weights_section_ld, omp=(n_harts > 1),
-                    n_harts=n_harts))
+    def _cmake(bh: str) -> str:
+        return _cmakelists(archive, rt, abi, cgen, weights_section_ld, omp=(n_harts > 1),
+                           n_harts=n_harts, hart_ids=hart_ids, backend=backend,
+                           debug=debug, build_hash=bh, console_facts=console_facts,
+                           chip_freq_hz=brd.chip_freq_hz, op_profile=prof_table is not None)
+
+    # Written below, once the identity it embeds is known.
+    cmakelists_text = _cmake("")
     # Board overlay. External mode: ram0 = 1 GB (code + arena) and a separate WEIGHTS
     # memory-region holding the blob at EXT_WEIGHTS_BASE. Otherwise: grow ram0 only when
     # the model needs > the stock 256 MB (small models keep the default that boots reliably
@@ -964,6 +1378,29 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
         if cpu_overlay:
             overlay += ("\n" if overlay else "") + cpu_overlay
 
+    # Build identity, part two: the app configuration. Two images with identical compute but a
+    # different Kconfig, device tree or link are different images -- they take different code paths on
+    # the silicon, and one can hang where the other passes. Folding these in is what makes
+    # `METRIC build_hash` answer "which binary produced this log?" rather than "which model did it
+    # compute?". `brd.build_board` is in there too, since the same app text against a different board
+    # port is a different image again.
+    def _harness(bh: str) -> str:
+        return _main_c(rvv_hart, weights_base=weights_base, n_harts=n_harts,
+                       iters=iters, warmup=warmup, omp_threads=omp_threads,
+                       build_hash=bh, console=brd.console, debug=debug,
+                       dram_base=brd.dram_base, region_bytes=ram_bytes)
+
+    _h.update(prj_conf_text.encode())
+    _h.update(cmakelists_text.encode())
+    _h.update(overlay.encode())
+    _h.update(brd.build_board.encode())
+    # The harness itself, hashed with an EMPTY identity so the hash is not an input to itself. This is
+    # what makes iters/warmup/rvv_hart/console part of the identity too.
+    _h.update(_harness("").encode())
+    build_hash = _h.hexdigest()[:16]
+    (app / "src" / "main.c").write_text(_harness(build_hash))
+    (app / "CMakeLists.txt").write_text(_cmake(build_hash))
+
     # 5. configure + build.
     build_dir = work / "build"
     env = _tool_env()
@@ -983,8 +1420,16 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     elf = build_dir / "zephyr" / "zephyr.elf"
     if not elf.is_file():
         raise ZephyrModelError(f"build produced no elf at {elf}")
-    return {"elf": elf, "app_dir": app, "build_dir": build_dir, "backend": backend,
-            "ram_bytes": ram_bytes, "build_hash": build_hash, **info}
+    out = {"elf": elf, "app_dir": app, "build_dir": build_dir, "backend": backend,
+           "ram_bytes": ram_bytes, "build_hash": build_hash, **info}
+    # The per-op table has to travel WITH the image. A debug run emits a thousand `PROF <id> ...` lines
+    # and an `ALIVE ... op=<id>` naming where it stopped, and every one of those ids is meaningless
+    # without the mapping from id to op name, family and shape. Shipping the trace without the table is
+    # shipping a log nobody can read.
+    if prof_table is not None:
+        out["op_profile_table"] = Path(work) / "op_profile_table.json"
+        out["op_profile_ops"] = len(prof_table)
+    return out
 
 
 #: Base ISA string for a whole-model RVV spike run. VLEN is NOT part of it — see `spike_isa`.
@@ -1101,10 +1546,17 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
                 # Most metrics are counters, but not all: `build_hash` is a hex identity string. A
                 # parser that assumes int() crashes on the first non-numeric metric and takes the whole
                 # run with it, so keep the raw string when it is not a number.
-                try:
-                    metrics[parts[1]] = int(parts[2])
-                except ValueError:
-                    metrics[parts[1]] = parts[2]
+                #
+                # And some carry a LIST: `METRIC vector_harts 0 1 2` names every vector-capable hart.
+                # Reading only the first token reported it as `0`, which says "zero vector harts" --
+                # precisely the opposite of what a chip with three of them was reporting.
+                if len(parts) > 3:
+                    metrics[parts[1]] = " ".join(parts[2:])
+                else:
+                    try:
+                        metrics[parts[1]] = int(parts[2])
+                    except ValueError:
+                        metrics[parts[1]] = parts[2]
         elif l.startswith("ARGMAX "):
             p = l.split()
             argmax = np.array([int(x) for x in p[2:2 + int(p[1])]], dtype=np.int64)
@@ -1329,6 +1781,11 @@ def build_and_run(model_dir: str | Path, work: str | Path, *, board: str = "spik
                   cflags_override=cflags_override, features=features, vlen=vlen)
     result: dict[str, Any] = {"elf": str(b["elf"]), "app_dir": str(b["app_dir"]),
                               "ram_bytes": b["ram_bytes"], "n_harts": n_harts, "iters": iters,
+                              # WHICH image produced this run. A caller that gates here and ships a
+                              # differently-configured build (a board whose console spike cannot
+                              # service) needs to be able to say so, rather than leave the recipient
+                              # to discover that the console beside their ELF names another binary.
+                              "build_hash": b.get("build_hash", ""),
                               # the vector length the build AND the run agreed on (None = spike's
                               # default 128); recorded so a result cannot be read as another VLEN's
                               "vlen": vlen}

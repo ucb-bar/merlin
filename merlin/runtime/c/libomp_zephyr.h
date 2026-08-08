@@ -63,4 +63,13 @@ int merlin_omp_init(int n_threads);
 /* Threads the pool will actually fan out to (0 before merlin_omp_init). */
 int merlin_omp_num_threads(void);
 
+/* Print one `STACK omp<N> size=.. unused=.. used=..` line per pool worker.
+ *
+ * The stack size above is 8 MB per worker on the strength of ONE measurement (small_llama), and it
+ * dominates the MemSiz that a `uart_tsi`-style loader transmits -- for a small model it is over 90% of
+ * the upload. Both halves of that trade deserve numbers rather than a story, and the only place the
+ * number exists is a run of the real model. Debug images call this after inference; it is a no-op
+ * (weakly defined in the generated harness) in an image with no pool. */
+void merlin_omp_report_stacks(void);
+
 #endif /* MERLIN_LIBOMP_ZEPHYR_H */

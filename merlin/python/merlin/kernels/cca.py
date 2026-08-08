@@ -373,7 +373,10 @@ def _lift_envelope(stream, *, undefined_symbols=None) -> "EnvelopeFacet":
     from loop structure, and is the axis that stays trustworthy on a whole-model fork.
     """
     if stream.spans_reliable():
-        spans = stream.loop_spans()
+        # kernel_loop_spans(), not loop_spans(): a compiler-emitted support helper (MLIR's
+        # dealloc_helper) contributes loops that are not model compute, and counting their calls as
+        # per-tile overhead would attribute the deallocator's work to the kernel's tile epilogue.
+        spans = stream.kernel_loop_spans()
         inner = stream.innermost_loop()
         outer = [sp for sp in spans if sp != inner] or spans
         calls_in_loop = 0
