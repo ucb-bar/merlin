@@ -95,6 +95,13 @@ capsules:
 - {cat: model_slices, name: AF8_rope_bf16_pt, kind: model_slice, op: rope, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch RoPE bf16 (atlas smolvla_rope_frequency)', label: public, modes: {}}
+# --- Spec-sourced capsule: PROGRAM (MXU command sequence) + golden from the specir verification spec, via
+# emit_atlas_program; the spec's fp8->bf16 refmodel is the reference (SA C-model corroborated 1024/1024).
+- {cat: isa, name: AS0_matmul_spec, kind: isa, op: matmul, source: spec,
+   spec_ref: 'atlas-npu:op.matmul_mxu0', M: 32, K: 32, N: 32, lhs: A0, weight: W, out: Y0,
+   source_role: spec_derived,
+   source_reference: 'specir spec-sourced fp8->bf16 MXU matmul (program + refmodel golden + coverage)',
+   label: public}
 # --- Both MXU mesh types (atlas has two systolic meshes: mxu0/mxu1) as distinct fp8 matmul tiles, plus a
 # k-chain and fused matmul+bias mined from atlas-npu/baremetal (smolvla_matmul_mxu*, k_chain, fused_matmul_bias).
 - {cat: isa, name: AT7_matmul_mxu0, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,

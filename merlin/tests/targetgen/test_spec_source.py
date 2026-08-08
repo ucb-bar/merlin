@@ -28,11 +28,11 @@ def test_spec_capture_gemmini_program_and_golden():
     int matmul over the SAME deterministic operands (self-consistent, no live oracle needed)."""
     art = _SPEC.capture("gemmini:op.matmul", workload=(16, 16, 16), tile_dim=16)
     assert art.gen == "gemmini" and art.command_buffer["target"] == "gemmini"
-    assert set(art.operands) == {"W", "A0"} and "Y0" in art.golden
+    assert set(art.operands) == {"lhs", "weight"} and "out" in art.golden and art.compare == "exact_int"
     assert art.instructions and art.opcode_backing  # RoCC issue sequence + spec-RoCC backing present
-    A0 = np.array(art.operands["A0"], dtype=np.int64)
-    W = np.array(art.operands["W"], dtype=np.int64)
-    assert np.array_equal(np.array(art.golden["Y0"], dtype=np.int64), A0 @ W)
+    A0 = np.array(art.operands["lhs"], dtype=np.int64)
+    W = np.array(art.operands["weight"], dtype=np.int64)
+    assert np.array_equal(np.array(art.golden["out"], dtype=np.int64), A0 @ W)
 
 
 @_needs_spec
@@ -42,8 +42,25 @@ def test_spec_capture_fails_closed_unknown_gen():
 
 
 @_needs_spec
-def test_spec_capture_fails_closed_without_emitter():
-    """A gen with no command-buffer emitter (radiance is not modeled by the merlin cb path) fails closed
-    rather than fabricating a program."""
+@pytest.mark.parametrize("spec_ref,workload,td,contraction", [
+    ("atlas-npu:op.matmul_mxu0", (32, 32, 32), 32, True),   # fp8 MXU command sequence
+    ("radiance:op.matmul", (16, 16, 16), 16, True),          # SIMT warp schedule
+])
+def test_spec_capture_float_families(spec_ref, workload, td, contraction):
+    """Atlas (MXU) and radiance (SIMT warp) programs: decoded role-keyed operands + a float golden that
+    equals a matmul over those operands (self-consistent, no live oracle needed)."""
+    art = _SPEC.capture(spec_ref, workload=workload, tile_dim=td)
+    assert art.compare == "tolerance_float"
+    assert set(art.operands) == {"lhs", "weight"} and "out" in art.golden
+    A = np.array(art.operands["lhs"], dtype=np.float64)
+    W = np.array(art.operands["weight"], dtype=np.float64)
+    G = np.array(art.golden["out"], dtype=np.float64)
+    rel = np.abs(G - A @ W).max() / (np.abs(A @ W).max() + 1e-9)
+    assert rel < 0.25          # golden reproduces the spec matmul over the decoded operands
+
+
+@_needs_spec
+def test_spec_capture_fails_closed_no_program():
+    """A gen no emitter authors a matmul program for (a vector unit) fails closed, never a faked program."""
     with pytest.raises(CSrc.SpecProgramUnavailable):
-        _SPEC.capture("radiance:op.matmul")
+        _SPEC.capture("saturn:op.matmul")

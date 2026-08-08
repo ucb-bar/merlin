@@ -46,6 +46,12 @@ capsules:
    source_role: handauthored_compiler_test,
    source_reference: 'contained MX PE tile (mxfp8 e4m3, E8M0 block scale, bf16 accumulate) via simt_cluster.mx_pe',
    label: public, modes: {}}
+# Spec-sourced capsule: PROGRAM (SIMT warp schedule) + bit-exact IEEE golden from the specir verification
+# spec, via emit_radiance_program (matmul composed from the declared warp_fma leaf).
+- {cat: isa, name: RS0_matmul_spec, kind: isa, op: matmul, source: spec, spec_ref: 'radiance:op.matmul',
+   operand_dtype: f32, M: 16, K: 16, N: 16, lhs: A0, weight: W, out: Y0, source_role: spec_derived,
+   source_reference: 'specir spec-sourced SIMT warp matmul (warp schedule + bit-exact IEEE golden + coverage)',
+   label: public}
 # PyTorch-sourced float capsules (source: pytorch) — the PREFERRED, frontend-faithful path: each op is
 # defined in PyTorch and lowered to linalg-on-tensors via model2MLIR (torchAO for quantized dtypes), with
 # the host torch-eager result as the golden. They ship the pytorch loader + the lowered linalg as visible

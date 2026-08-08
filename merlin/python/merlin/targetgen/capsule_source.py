@@ -773,19 +773,22 @@ class SpecProgramUnavailable(RuntimeError):
 
 @dataclass
 class SpecArtifacts:
-    """A spec-derived capsule source: the spec's own command-buffer PROGRAM, the deterministic operands +
-    the bit-exact golden the spec's refmodel computes over them, the RoCC issue sequence, and the
-    ``coverage_goal`` / ``test_intent`` the spec declares for the op. All from ``specir`` — INDEPENDENT of
-    the target RTL (the spec is the reference)."""
+    """A spec-derived capsule source: the spec's own PROGRAM (RoCC command buffer for a systolic RoCC gen,
+    an MXU command sequence / SIMT warp schedule for the others), the deterministic operands + the golden
+    the spec's refmodel computes over them, the issue/command sequence, and the ``coverage_goal`` /
+    ``test_intent`` the spec declares. All from ``specir`` — INDEPENDENT of the target RTL (the spec is the
+    reference). Operands are keyed by ROLE (``lhs`` / ``weight``) so they map onto the merlin_iface interface
+    input names regardless of the gen's own tensor names; the golden is keyed ``out``."""
     gen: str
     op: str
-    command_buffer: dict
-    operands: dict            # tensor name -> rows of int (deterministic, materialized by specir)
-    golden: dict              # output tensor name -> rows of int (bit-exact, spec refmodel)
-    instructions: list        # RoCC instructions in issue order
+    command_buffer: dict      # the spec-emitted program (cb / mxu sequence / warp schedule) — ships as grounding
+    operands: dict            # role ("lhs"/"weight") -> rows of values (int for RoCC, float for fp8/simt)
+    golden: dict              # {"out": rows} — the spec refmodel result (bit-exact int, or decoded float)
+    instructions: list        # RoCC instructions / MXU commands in issue order
     coverage_goal: list       # [{node, kind, text, oracle, tolerance, covers}]
-    opcode_backing: dict      # merlin opcode -> [authored RoCC commands backing it]
+    opcode_backing: dict      # merlin opcode -> [authored RoCC commands backing it] (RoCC gens only)
     workload: tuple
+    compare: str = "exact_int"   # "exact_int" for a RoCC int datapath, "tolerance_float" for fp8/simt
 
 
 def _parse_spec_ref(spec_ref: str) -> tuple[str, str]:
@@ -816,11 +819,48 @@ def _coverage_goals(module, op: str) -> list[dict]:
     return goals
 
 
+def _role_of(meta: dict) -> str:
+    """Normalize a program tensor's declared role to ``lhs`` / ``weight`` (the merlin_iface interface roles)."""
+    return "weight" if str(meta.get("role", "")).startswith("weight") else "lhs"
+
+
+def _cb_role_operands(cb: dict, operands: dict) -> dict:
+    """RoCC path: map the command buffer's named operands (deterministic int rows) onto lhs/weight roles."""
+    tmeta = cb.get("tensors", {})
+    return {_role_of(tmeta.get(name, {})): rows for name, rows in operands.items()}
+
+
+def _decode_program_tensors(program: dict) -> dict:
+    """Decode a float program's OPERAND tensor BITS to values via specir's codec, keyed by lhs/weight role.
+    Only the input operands ship as raw bits; the output tensor (role accumulator/out) has no bits — it IS
+    the golden (already decoded) — so it is skipped here."""
+    from specir.oracle.dtypes import decode_float, float_format
+    out: dict = {}
+    for meta in program.get("tensors", {}).values():
+        role = str(meta.get("role", ""))
+        if "bits" not in meta or role.startswith(("accum", "out", "result")):
+            continue                                          # the output tensor, not an operand
+        fmt = float_format(meta["dtype"])
+        out[_role_of(meta)] = [[decode_float(b, fmt) for b in row] for row in meta["bits"]]
+    return out
+
+
+def _float_program_artifacts(gen: str, op: str, program: dict, cov: list, workload) -> "SpecArtifacts":
+    """Normalize an fp8/simt program (atlas MXU sequence / radiance warp schedule) into SpecArtifacts:
+    role-keyed decoded operands + the already-decoded golden + the program as grounding (float compare)."""
+    return SpecArtifacts(
+        gen=gen, op=op, command_buffer=program, operands=_decode_program_tensors(program),
+        golden={"out": program["golden"]["out"]["values"]},
+        instructions=program.get("commands", []) if isinstance(program.get("commands"), list) else [],
+        coverage_goal=cov, opcode_backing={}, workload=tuple(workload), compare="tolerance_float")
+
+
 class SpecRefSource:
-    """Capture a capsule from a ``specir`` verification spec: the spec's command-buffer PROGRAM + the
-    bit-exact golden its refmodel computes + the declared coverage. ``specir`` imports in-process (pure
-    xDSL). Program emission is available for the RoCC/command-buffer families (e.g. gemmini); a gen without
-    an emitter fails closed with :class:`SpecProgramUnavailable` (never a faked program)."""
+    """Capture a capsule from a ``specir`` verification spec: the spec's own PROGRAM + the golden its refmodel
+    computes + the declared coverage. ``specir`` imports in-process (pure xDSL). Program emitters exist for
+    the RoCC/command-buffer family (systolic int, e.g. gemmini), the atlas MXU family (fp8->bf16), and the
+    radiance SIMT-warp family; the emitters are tried in turn and the one that produces a program wins. A
+    gen no emitter supports fails closed with :class:`SpecProgramUnavailable` (never a faked program)."""
 
     def __init__(self, root: str | None = None):
         self.root = root or _specir_root()
@@ -845,27 +885,38 @@ class SpecRefSource:
         if entry is None:
             raise SpecProgramUnavailable(f"gen {gen!r} not registered in the specir manifest")
         spec_path = Path(_SPEC_ROOT) / entry["spec"]
+        gen_dir = spec_path.parent
         module = parse_spec_file(spec_path)
+        cov = _coverage_goals(module, op)
+
+        # (1) RoCC command-buffer program (systolic int datapath, e.g. gemmini) — bit-exact int golden.
         from specir.interface.rocc_lower import RoccLoweringError
-        cb, prov = emit_command_buffer(module, gen, op, spec_path.parent, workload=tuple(workload))
-        if cb is None:
-            raise SpecProgramUnavailable(
-                f"specir has no command-buffer program emitter for {gen}:{op} — this family exposes golden "
-                f"+ coverage only (a per-target emitter is the remaining specir extension)")
-        # lower the buffer to a concrete RoCC program + bit-exact golden. A gen without a RoCC ABI (no
-        # port.rocc_cmd — e.g. a SIMT/systolic-cosim family) cannot be lowered: fail closed rather than
-        # ship a mislabeled program (the per-target emitter is the remaining specir extension).
-        try:
-            prog = lower_buffer(module, cb, dim=tile_dim)
-        except RoccLoweringError as e:
-            raise SpecProgramUnavailable(
-                f"specir cannot lower a command-buffer program for {gen}:{op} ({e}); this family exposes "
-                f"golden + coverage only") from e
-        return SpecArtifacts(gen=gen, op=op, command_buffer=cb, operands=dict(prog.operands),
-                             golden=dict(prog.golden), instructions=list(prog.instructions),
-                             coverage_goal=_coverage_goals(module, op),
-                             opcode_backing=prov.get("opcode_backed_by_spec_rocc", {}),
-                             workload=tuple(workload))
+        cb, prov = emit_command_buffer(module, gen, op, gen_dir, workload=tuple(workload))
+        if cb is not None:
+            try:
+                p = lower_buffer(module, cb, dim=tile_dim)
+                return SpecArtifacts(gen=gen, op=op, command_buffer=cb, operands=_cb_role_operands(cb, dict(p.operands)),
+                                     golden={"out": next(iter(p.golden.values()))} if len(p.golden) == 1
+                                     else {"out": p.golden.get("Y0") or next(iter(p.golden.values()))},
+                                     instructions=list(p.instructions), coverage_goal=cov,
+                                     opcode_backing=prov.get("opcode_backed_by_spec_rocc", {}),
+                                     workload=tuple(workload), compare="exact_int")
+            except RoccLoweringError:
+                pass          # not a RoCC gen — fall through to the fp8/simt emitters
+
+        # (2) atlas MXU program (fp8 -> bf16); (3) radiance SIMT-warp program. Each returns None for a gen
+        # it does not author — try both, use the one that produces a program, else fail closed.
+        from specir.interface.emit_atlas_program import emit_atlas_program
+        from specir.interface.emit_radiance_program import emit_radiance_program
+        aprog, _ = emit_atlas_program(module, op, gen_dir, workload=tuple(workload))
+        if aprog is not None:
+            return _float_program_artifacts(gen, op, aprog, cov, workload)
+        rprog, _ = emit_radiance_program(module, op, gen_dir, workload=tuple(workload))
+        if rprog is not None:
+            return _float_program_artifacts(gen, op, rprog, cov, workload)
+        raise SpecProgramUnavailable(
+            f"no specir program emitter (RoCC command-buffer / MXU command-sequence / SIMT-warp) produced "
+            f"a program for {gen}:{op} — this op/gen is golden+coverage only")
 
 
 def write_spec_capsule(entry: dict, binding, out_root, *, source: "SpecRefSource | None" = None):
@@ -889,18 +940,21 @@ def write_spec_capsule(entry: dict, binding, out_root, *, source: "SpecRefSource
     out_name = entry.get("out", "Y0")
     d = Path(out_root) / entry["cat"] / entry["name"]
     d.mkdir(parents=True, exist_ok=True)
-    prov_inputs = {name: {"shape": _shape_of(rows), "decoded": rows}
-                   for name, rows in art.operands.items()}
+    # map the spec's role-keyed operands onto the interface's input names (lhs -> the activation input,
+    # weight -> the resident weight) so the grader feeds the exact values the golden was computed over.
+    role_to_name = {"lhs": entry.get("lhs", "A0"), "weight": entry.get("weight", "W")}
+    prov_inputs = {role_to_name.get(role, role): {"shape": _shape_of(rows), "decoded": rows}
+                   for role, rows in art.operands.items()}
     golden = {
         "golden_source": f"specir_program_{art.gen}",
         "oracle_provenance": {
-            "engine": "specir emit_command_buffer + rocc_lower.Program (bit-exact spec refmodel)",
-            "spec_ref": entry["spec_ref"], "workload": list(art.workload),
+            "engine": "specir spec program + refmodel golden (INDEPENDENT of the target RTL; the spec is "
+                      "the reference)",
+            "spec_ref": entry["spec_ref"], "workload": list(art.workload), "compare": art.compare,
             "coverage_goal": art.coverage_goal, "opcode_backed_by_spec_rocc": art.opcode_backing,
-            "command_buffer": "capsule.command_buffer.json",
-            "note": "INDEPENDENT of the target RTL; specir's spec + refmodel are the reference.",
+            "program": "capsule.command_buffer.json",
             "inputs": prov_inputs},
-        "outputs": {out_name: art.golden.get(out_name)},
+        "outputs": {out_name: art.golden.get("out")},
     }
     (d / "capsule.interface.mlir").write_text(mlir, encoding="utf-8")
     (d / "capsule.command_buffer.json").write_text(json.dumps(art.command_buffer, indent=1), encoding="utf-8")
