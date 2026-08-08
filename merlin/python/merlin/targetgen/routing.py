@@ -82,6 +82,32 @@ def route_target(demands: list[OpDemand], target_name: str) -> list[RouteResult]
     return route(demands, units)
 
 
+# compute-unit kinds that ARE the accelerator (execute on-mesh); everything else runs on the scalar/vector
+# lane. A demand that routes to none of a target's units is not a failure for a whole model — it means that
+# op (a norm/activation/elementwise) runs on the scalar/RVV lane, not the mesh.
+_MESH_KINDS = {"systolic", "spatial", "simt"}
+
+
+def route_plan(demands: list[OpDemand], target_name: str) -> dict:
+    """Split a whole model's ops across a target: which run on the accelerator MESH (systolic/spatial/simt
+    unit), which on an in-contract vector/scalar unit, and which fall back to the scalar/RVV lane (no
+    accelerator unit — an honest, expected outcome for norms/activations on a matmul-only mesh)."""
+    from merlin.targetgen import target_registry as tr
+
+    units = _cu.compute_units(tr.load_contract(target_name))
+    kind = {u.name: u.kind for u in units}
+    results = route(demands, units)
+    mesh, fallback, scalar_rvv = [], [], []
+    for r in results:
+        if r.unit and kind.get(r.unit) in _MESH_KINDS:
+            mesh.append(r)
+        elif r.unit:
+            fallback.append(r)
+        else:
+            scalar_rvv.append(r)
+    return {"mesh": mesh, "fallback": fallback, "scalar_rvv": scalar_rvv, "results": results}
+
+
 def gaps(results: list[RouteResult]) -> list[RouteResult]:
     return [r for r in results if r.gap is not None]
 

@@ -547,6 +547,25 @@ def linalg_summary(linalg_mlir: str) -> dict:
     return {"prov_ops": prov_ops, "prov_families": prov_families, "inputs": inputs, "output": output}
 
 
+def model_op_demands(linalg_mlir: str, in_fmt: str, weight_fmt: str | None = None) -> list:
+    """Per-op routing demands from a captured model's linalg (structural prov.op/prov.family read, NO regex).
+    A contraction op (matmul/conv — ``prov.family == "contraction"``) carries a weight format; normalization
+    / elementwise / reduction ops are unary. Feeds ``routing.route_target`` so a whole model can be split
+    across a target's compute units (matmul tiles -> the systolic mesh, the rest -> vector/scalar lanes)."""
+    from merlin.targetgen.routing import OpDemand
+    summ = linalg_summary(linalg_mlir)
+    ops, fams = summ["prov_ops"], summ["prov_families"]
+    wf = weight_fmt or in_fmt
+    demands: list = []
+    for i, op in enumerate(ops):
+        fam = fams[i] if i < len(fams) else ""
+        if op == "fill":                                     # linalg.fill init — not a routable compute op
+            continue
+        demands.append(OpDemand(op=op, in_fmt=in_fmt,
+                                weight_fmt=(wf if fam == "contraction" else None), site=op))
+    return demands
+
+
 def linalg_to_iface(linalg_mlir: str, entry: dict, binding):
     """Derive-and-verify a mapped op's ``merlin_iface`` interface from the CAPTURED linalg rather than
     assuming the PyTorch capture matches the profile entry. Structurally confirm the lowering actually

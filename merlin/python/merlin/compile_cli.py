@@ -349,6 +349,48 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     return out
 
 
+def _summarize_route_plan(plan: dict) -> dict:
+    """Collapse a routing.route_plan into per-op-family counts for the report."""
+    def _counts(results):
+        c: dict[str, int] = {}
+        for r in results:
+            c[r.demand.op] = c.get(r.demand.op, 0) + 1
+        return c
+    return {
+        "on_mesh": _counts(plan["mesh"]),
+        "in_contract_vector_scalar": _counts(plan["fallback"]),
+        "scalar_rvv_lane": _counts(plan["scalar_rvv"]),
+        "n_mesh_ops": len(plan["mesh"]),
+        "n_scalar_ops": len(plan["fallback"]) + len(plan["scalar_rvv"]),
+        "note": "mesh ops execute on the target's systolic/spatial/simt unit (accelerator OOT path); the "
+                "rest run on the vector/scalar (RVV) lane. The functional gate below is the scalar/RVV "
+                "whole-model reference (numerically correct across ALL ops).",
+    }
+
+
+def compile_model(workload: str, dtype: str, *, target: str | None, run: str, verify: bool,
+                  package: str | None, auto_capture: bool, timeout: int,
+                  linalg_mlir: str | None = None) -> dict:
+    """Target-aware whole-model compile. Routes each op across the target's compute units (matmul/systolic
+    tiles -> the mesh, norms/activations/elementwise -> the vector/scalar lane) via
+    ``routing.route_plan``, then compiles the functional whole model (the scalar/RVV reference, numerically
+    correct across every op) and attaches the per-op mesh-routing plan. On-mesh KERNEL EXECUTION for the
+    systolic-routed tiles is the accelerator's OOT path (``compile_oot``); an op that no unit supports is an
+    honest scalar/RVV fallback, never a silent drop. ``target=None`` degrades to the plain RVV flow."""
+    out = compile_rvv(workload, dtype, run=run, verify=verify, package=package,
+                      auto_capture=auto_capture, timeout=timeout)
+    out["requested_target"] = target
+    if target and linalg_mlir:
+        try:
+            from .targetgen import capsule_source as CSRC
+            from .targetgen import routing as _routing
+            demands = CSRC.model_op_demands(linalg_mlir, dtype)
+            out["routing_plan"] = _summarize_route_plan(_routing.route_plan(demands, target))
+        except Exception as e:  # noqa: BLE001 — a routing failure must not mask the functional result
+            out["routing_plan"] = {"error": f"{type(e).__name__}: {e}"}
+    return out
+
+
 def compile_oot(workload: str, *, target: str, run: str, verify: bool, package: str | None,
                 timeout: int) -> dict:
     """OOT target: build the backend package and run a capsule through it, three-way gated.

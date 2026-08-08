@@ -580,28 +580,39 @@ def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: b
     return (concrete + hint) if concrete else hint
 
 
-def _grade_model_capsule(capsule: dict, *, timeout: int) -> dict:
-    """Grade a whole-model (kind == "model") capsule end to end: compile the captured model through the
-    merlin whole-model flow (``merlin-compile --target rvv``, the composable RVV/scalar path) and gate its
-    output against the model's golden. ``MERLIN_MODEL_GRADE_RUN`` selects ``host`` (default; the x86
-    dispatch runtime, no board) or ``spike`` (a real RISC-V sim). Honestly reports ``incomplete`` when the
-    whole-model toolchain (m2m venv / clang-23) is absent — never a silent pass."""
+def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int) -> dict:
+    """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
+    (``compile_model``): route each op across the target's compute units (matmul/systolic -> the mesh, the
+    rest -> the vector/scalar lane), compile the functional whole model (the scalar/RVV reference,
+    numerically correct across every op), and gate its output vs the model's golden — attaching the per-op
+    mesh-routing plan for the target. ``MERLIN_MODEL_GRADE_RUN`` selects ``host`` (default; x86 dispatch
+    runtime) or ``spike``. Honestly reports ``incomplete`` when the whole-model toolchain (m2m venv /
+    clang-23) is absent — never a silent pass."""
     import os
+    from pathlib import Path as _P
     attrs = (capsule.get("operation") or {}).get("attributes") or {}
     model, dtype = attrs.get("model"), attrs.get("compile_dtype", "fp32")
     run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN", "host")
     result: dict = {"capsule": capsule["name"], "kind": "model", "label": capsule.get("label"),
-                    "operation": {"op": "model", "model": model, "dtype": dtype, "run": run_where},
+                    "operation": {"op": "model", "model": model, "dtype": dtype, "run": run_where,
+                                  "target": target},
                     "contract_version": CONTRACT_VERSION}
     if not model:
         result.update(status="incomplete",
                       failure={"plane": "model", "category": "RUNNER_CRASH",
                                "detail": "model capsule missing operation.attributes.model"})
         return result
+    # the captured linalg (visible grounding) drives the per-op mesh routing when present
+    linalg_mlir = None
+    cdir = capsule.get("__dir__")
+    if cdir:
+        lp = _P(cdir) / "capsule.linalg.mlir"
+        if lp.is_file():
+            linalg_mlir = lp.read_text(encoding="utf-8")
     try:
-        from ..compile_cli import compile_rvv
-        out = compile_rvv(model, dtype, run=run_where, verify=True, package=None,
-                          auto_capture=True, timeout=timeout)
+        from ..compile_cli import compile_model
+        out = compile_model(model, dtype, target=target, run=run_where, verify=True, package=None,
+                            auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir)
     except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
         result.update(status="incomplete",
                       failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
@@ -613,7 +624,9 @@ def _grade_model_capsule(capsule: dict, *, timeout: int) -> dict:
                                "detail": f"whole-model grade error: {type(e).__name__}: {str(e)[:300]}"})
         return result
     st, gate = out.get("status"), (out.get("verify") or {}).get("gate_ok")
-    engine = f"merlin-compile rvv --run {run_where} --verify"
+    engine = f"merlin-compile model --target {target} --run {run_where} --verify"
+    if out.get("routing_plan") is not None:                   # per-op mesh routing for the target
+        result["routing_plan"] = out["routing_plan"]
     if st == "verified" and gate:
         result.update(status="pass", numeric={"status": "pass", "engine": engine, "gate": out.get("verify")})
     elif st == "not_run":
@@ -676,7 +689,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
     # same capsule_result.json shape so downstream reporting is uniform.
     if capsule.get("kind") == "model":
-        result = _grade_model_capsule(capsule, timeout=timeout)
+        result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout)
         (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         return result
 
