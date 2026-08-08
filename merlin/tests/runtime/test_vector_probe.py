@@ -133,3 +133,34 @@ def test_the_probe_passes_the_console_choice_through_to_the_link():
     src = inspect.getsource(vector_probe.build)
     assert "console_uart.c" in src
     assert "sdk_chip" in src and "derive_uart_console" in src
+
+
+def test_a_probe_log_from_the_silicon_can_contradict_the_descriptor():
+    """The one check that can catch an under-declared VLEN.
+
+    Under-declaring is not a performance bug: Zephyr's per-thread save area is a fixed
+    `vreg[32][CONFIG_RISCV_VECTOR_MAX_LEN/8]` while `z_riscv_vstate_save` fills it with a length taken
+    from the hardware, so a descriptor below the truth overruns the thread struct on every context
+    switch. Every simulator gate is blind to it -- spike is handed the VLEN we declared, so configured
+    and actual agree there by construction. Only the part can disagree.
+    """
+    log = ("PROBE hartid 0\nPROBE mstatus_vs 1\nPROBE vlenb 32\nPROBE vlen_bits 256\n"
+           "PROBE vlmax_e8 32\nPROBE vlmax_e32 8\nDONE\n")
+    assert vector_probe.verify_declared(256, log)["verdict"] == vector_probe.PROBE_AGREES
+    bad = vector_probe.verify_declared(128, log)
+    assert bad["verdict"] == vector_probe.PROBE_DISAGREES and bad["measured"] == 256
+    # An undeclared VLEN is a disagreement too: the fallback is the V minimum, which is a guess.
+    assert vector_probe.verify_declared(None, log)["verdict"] == vector_probe.PROBE_DISAGREES
+
+
+def test_an_unreadable_probe_log_is_unmeasured_not_agreement():
+    """The probe prints from every hart that reaches it, so a multi-hart chip returns interleaved
+    characters. That is what a real returned log looked like. It must not read as a pass -- a garbled
+    log silently confirming the declaration is how the bug survives a second round."""
+    garbled = "PRPORBOE E htid 1\nPBEBEisa_a_bitit\nOBE Estatat_v_v1\nDONE\n"
+    got = vector_probe.verify_declared(128, garbled)
+    assert got["verdict"] == vector_probe.PROBE_UNMEASURED
+    assert got["measured"] is None
+    # Truncated but well-formed is also unmeasured: no vlenb line means nothing was measured.
+    short = "PROBE hartid 0\nPROBE mstatus_vs 0\nPROBE vector_state off\nDONE\n"
+    assert vector_probe.verify_declared(256, short)["verdict"] == vector_probe.PROBE_UNMEASURED

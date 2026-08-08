@@ -602,6 +602,13 @@ def main(argv=None) -> int:
                          "here, if a same-model/same-hart image there runs an identical instruction "
                          "sequence, record that gate as twin evidence. For a variant we cannot "
                          "simulate (a clock bring-up) but whose model code is unchanged.")
+    ap.add_argument("--probe-console", default=None,
+                    help="a vlen_probe console log returned FROM THE SILICON. The descriptor's VLEN is "
+                         "checked against it and a disagreement refuses the build. This is the only "
+                         "check that can catch an under-declared VLEN: it corrupts kernel memory (the "
+                         "vector save area is sized from the config but filled with a hardware length) "
+                         "and a spike gate is structurally blind to it, because spike is handed the "
+                         "VLEN we declared.")
     ap.add_argument("--sdk-dir", default=None,
                     help="the target's own SDK checkout. REQUIRED for a board whose console is its "
                          "own UART: the UART address and the clock rates its baud divisor depends on "
@@ -645,6 +652,43 @@ def main(argv=None) -> int:
               f"<the target's SDK checkout> so its facts can be derived", file=sys.stderr)
         return 2
 
+    # The board's own answer about its vector width, when someone has run the probe on it. Checked
+    # BEFORE the build, because the thing it catches is not detectable afterwards by anything we own:
+    # a descriptor below the hardware's VLEN overruns Zephyr's fixed per-thread vector save area on
+    # every context switch, and every simulator gate agrees with the descriptor by construction.
+    probe_check, probe_problems = None, []
+    if a.probe_console:
+        from merlin.runtime import vector_probe
+        probe_check = vector_probe.verify_declared(brd.vlen,
+                                                  Path(a.probe_console).read_text(errors="replace"))
+        v, measured = probe_check["verdict"], probe_check["measured"]
+        if v == vector_probe.PROBE_DISAGREES:
+            print(f"[make_delivery] refusing: {brd.name} declares vlen={brd.vlen} but the probe log "
+                  f"{a.probe_console} measured {measured} on the silicon. Fix the descriptor -- "
+                  f"under-declaring VLEN corrupts kernel thread structs, and no gate here can see it.",
+                  file=sys.stderr)
+            return 2
+        if v == vector_probe.PROBE_UNMEASURED:
+            # NOT a pass. The probe prints from every hart, so a multi-hart chip returns interleaved
+            # characters; saying so is the difference between "checked" and "looked like it was".
+            probe_problems.append(f"NO STATUS: {a.probe_console} did not yield a usable VLEN reading "
+                                  f"(complete={probe_check['complete']}, "
+                                  f"consistent={probe_check['consistent']}), so vlen={brd.vlen} is "
+                                  f"still declared rather than measured")
+        else:
+            print(f"[make_delivery] probe agrees: vlen={measured} measured on the silicon", flush=True)
+
+    # Say so when the descriptor's VLEN was below what the Zephyr tree treats as the default width, so
+    # the emitted save area had to be raised. That is not an error -- a board may genuinely have narrow
+    # registers -- but it is exactly the shape of the bug that cost a round, so the package states it
+    # rather than letting a floored value look like a measured one.
+    if zm._vector_max_len_bits(brd) != brd.vector_max_len:
+        probe_problems.append(
+            f"NO STATUS: {brd.name} declares vlen={brd.vlen}, below this Zephyr tree's default vector "
+            f"width; the save area was raised to {zm._vector_max_len_bits(brd)} bits so an "
+            f"under-declaration cannot overrun a thread struct. Run vlen_probe.elf and pass the log to "
+            f"--probe-console to replace the declaration with a measurement.")
+
     if a.out:
         dest = Path(a.out)
         dest.mkdir(parents=True, exist_ok=True)
@@ -656,7 +700,7 @@ def main(argv=None) -> int:
     print(f"[make_delivery] board={brd.name} dram={brd.dram_bytes // 2**20}MB harts={brd.harts} "
           f"vlen={brd.vlen or 'unknown(assume 128)'} -> {dest}", flush=True)
 
-    binaries, audits, problems = [], {}, []
+    binaries, audits, problems = [], {}, list(probe_problems)
     todo = []                                     # (model, bundle, harts) -- one image each
     for model in models:
         bundle = repo_root() / f"out/artifacts/recaptures/{model}_{a.dtype}_full"
@@ -905,7 +949,13 @@ def main(argv=None) -> int:
         probe_report = {"elf": "vlen_probe.elf", "bytes": (dest / "vlen_probe.elf").stat().st_size,
                         "console": brd.console,
                         "spike_selfcheck_console": CONSOLE_HTIF,
-                        "spike_selfcheck": {str(k): v for k, v in checks.items()}}
+                        "spike_selfcheck": {str(k): v for k, v in checks.items()},
+                        # What the SILICON said, when a returned log was passed in, versus what the
+                        # descriptor claims. The self-check above proves the probe reports correctly;
+                        # only this says the descriptor is right about the part.
+                        "silicon": probe_check,
+                        "declared_vlen": brd.vlen,
+                        "vector_save_area_bits": zm._vector_max_len_bits(brd)}
         bad = [v for v, r in checks.items()
                if not (r.get("complete") and r.get("consistent") and r.get("vlen_bits") == v)]
         if bad:

@@ -138,6 +138,41 @@ def parse(console: str) -> dict[str, Any]:
     return out
 
 
+#: Verdicts from :func:`verify_declared`. Three, not two, because "we could not measure it" is a
+#: different thing from "it matches" and must not be allowed to read as one.
+PROBE_AGREES = "agrees"
+PROBE_DISAGREES = "disagrees"
+PROBE_UNMEASURED = "unmeasured"
+
+
+def verify_declared(declared_vlen: int | None, console: str) -> dict[str, Any]:
+    """Compare a descriptor's VLEN against a probe console returned from the silicon.
+
+    This exists because under-declaring VLEN is not a performance bug. Zephyr's per-thread vector save
+    area is a fixed ``vreg[32][CONFIG_RISCV_VECTOR_MAX_LEN/8]`` while the code filling it takes its
+    length from the hardware, so a descriptor below the truth overruns the thread struct on every
+    context switch -- and no simulator run can catch it, because the simulator is handed the VLEN we
+    declared. The only thing that can catch it is the part itself. A `vlen=128` descriptor against
+    silicon reporting `vlenb 32` corrupted `z_main_thread` and cost a delivery round.
+
+    ``PROBE_UNMEASURED`` is a real and expected outcome, not a parse failure to paper over: the probe
+    prints from every hart that reaches it, so a multi-hart chip returns interleaved characters that no
+    parser can honestly split. Reporting that as "unmeasured" keeps a garbled log from being read as
+    agreement, which is the direction that matters.
+    """
+    got = parse(console)
+    measured = got.get("vlen_bits")
+    consistent = bool(got.get("consistent"))
+    if not isinstance(measured, int) or not consistent:
+        verdict = PROBE_UNMEASURED
+    elif declared_vlen is None or int(declared_vlen) != measured:
+        verdict = PROBE_DISAGREES
+    else:
+        verdict = PROBE_AGREES
+    return {"verdict": verdict, "declared": declared_vlen, "measured": measured,
+            "consistent": consistent, "complete": bool(got.get("complete")), "probe": got}
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
     import json
