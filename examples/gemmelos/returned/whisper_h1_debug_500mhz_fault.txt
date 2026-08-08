@@ -1,0 +1,35 @@
+PRPORBOE E htid 1
+P
+OBE Eisa_axt_tits 3414129
+9
+PBEBEisa_a_bitit P
+OBE Estatat_v_v1
+PROROBElenb 32
+PRPBE v vn_b_bs s 6
+PROBE vlmam_e8 32
+PRORO v max_e32 8
+E
+IT 2 50
+0
+*** Booting Zephyr OS build 852bb170cc56 ***
+
+ mcause: 5, Load access fault
+  mtval: 0
+     a0: 0000000083b3ca00    t0: 0000000080053520
+     a1: 0000000000000000    t1: 000000008004bcf4
+     a2: 0000000000000000    t2: 0000000000000000
+     a3: 0000000000000000    t3: 0000000000000000
+     a4: 0000000000000000    t4: aaaaaaaaaaaaaaaa
+     a5: fffffffff0f0f0f0    t5: aaaaaaaaaaaaaaaa
+     a6: 0000000000000000    t6: aaaaaaaaaaaaaaaa
+     a7: fffffffffffffff0
+     sp: 000000008439c950
+     ra: 000000008004d55c
+   mepc: 000000008004d570
+mstatus: 0000000a00003c00
+
+call trace:
+
+FAIL fatal reason=0(cpu_exception) hart=0 thread= mcause=5 mepc=0x8004d570 mtval=0x0 vs=2 fs=1 build_hash=9f0afbc703640bcb
+=== MODELBLASTER_WALL_CYCLES === 0
+DONE
