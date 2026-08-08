@@ -79,12 +79,10 @@ def get_model_and_inputs():
 ''',
     "linear": '''
 class Model(nn.Module):
-    def __init__(self):
-        super().__init__(); self.fc = nn.Linear({K}, {N}, bias={bias})
-    def forward(self, a):
-        return self.fc(a)
+    def forward(self, a, w):
+        return a @ w
 def get_model_and_inputs():
-    return Model(), (_r({M}, {K}),)
+    return Model(), (_r({M}, {K}), _r({K}, {N}))
 ''',
     "attention_qk": '''
 class Model(nn.Module):
@@ -108,13 +106,11 @@ def get_model_and_inputs():
 ''',
     "rmsnorm": '''
 class Model(nn.Module):
-    def __init__(self):
-        super().__init__(); self.g = nn.Parameter(_r({K}) * 0.5 + 1.0); self.eps = {eps}
-    def forward(self, x):
+    def forward(self, x, g):
         v = x.pow(2).mean(-1, keepdim=True)
-        return x * torch.rsqrt(v + self.eps) * self.g
+        return x * torch.rsqrt(v + {eps}) * g
 def get_model_and_inputs():
-    return Model(), (_r({M}, {K}),)
+    return Model(), (_r({M}, {K}), _r(1, {K}) * 0.5 + 1.0)
 ''',
     "softmax": '''
 class Model(nn.Module):
@@ -125,22 +121,17 @@ def get_model_and_inputs():
 ''',
     "layernorm": '''
 class Model(nn.Module):
-    def __init__(self):
-        super().__init__(); self.ln = nn.LayerNorm({K}, eps={eps})
-    def forward(self, x):
-        return self.ln(x)
+    def forward(self, x, w, b):
+        return torch.nn.functional.layer_norm(x, ({K},), w, b, {eps})
 def get_model_and_inputs():
-    return Model(), (_r({M}, {K}),)
+    return Model(), (_r({M}, {K}), _r({K}) * 0.5 + 1.0, _r({K}) * 0.1)
 ''',
     "geglu": '''
 class Model(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.gate = nn.Linear({K}, {N}, bias=False); self.up = nn.Linear({K}, {N}, bias=False)
-    def forward(self, x):
-        return torch.nn.functional.silu(self.gate(x)) * self.up(x)
+    def forward(self, x, wg, wu):
+        return torch.nn.functional.silu(x @ wg) * (x @ wu)
 def get_model_and_inputs():
-    return Model(), (_r({M}, {K}),)
+    return Model(), (_r({M}, {K}), _r({K}, {N}), _r({K}, {N}))
 ''',
     "rope": '''
 def _rope(x, half):
@@ -246,6 +237,112 @@ class PytorchRefSource:
             golden=json.loads((tmp / "golden.json").read_text()),
             weights_path=meta.get("weights", str(tmp / "weights.safetensors")),
             meta=meta)
+
+
+# ------------------------------------------------------------------------------------------------
+# writer: a full capsule dir from a PyTorch source (interface via the existing merlin_iface builders,
+# golden via host torch-eager). Only ops that map to a merlin_iface builder are written here; other
+# fused ops present the linalg directly (a later step) or fall back to a direct-MLIR engine.
+# ------------------------------------------------------------------------------------------------
+# loader positional-input index -> the capsule input NAME the harness feeds (must match the merlin_iface
+# builder's declared input names). matmul/linear loader=(a,w); attention_qk=(q,k); rmsnorm=(x,g).
+_OP_INPUT_NAMES = {
+    "matmul": ["A0", "W"], "linear": ["A0", "W"],
+    "attention_qk": ["Q", "K"], "rmsnorm": ["X", "G"],
+}
+
+
+def _entry_seed(name: str) -> int:
+    return sum((i + 1) * ord(c) for i, c in enumerate(name)) or 1
+
+
+def _shape_of(nested) -> list[int]:
+    s = []
+    x = nested
+    while isinstance(x, list):
+        s.append(len(x))
+        x = x[0] if x else None
+    return s
+
+
+def _flatten(nested) -> list:
+    out: list = []
+    stack = [nested]
+    if not (isinstance(nested, list) and nested and isinstance(nested[0], list)):
+        return list(nested)
+    for row in nested:
+        out.extend(_flatten(row) if isinstance(row[0], list) else row)
+    return out
+
+
+def _capture_spec(entry: dict, binding) -> dict:
+    """Build the PytorchRefSource capture spec (op + shapes + dtype + seed) from an abstract entry."""
+    dim = binding.tile_dim
+    op = entry.get("op", "matmul")
+    M = entry.get("M", entry.get("M_tiles", 1) * dim)
+    K = entry.get("K", entry.get("K_tiles", 1) * dim)
+    N = entry.get("N", entry.get("N_tiles", 1) * dim)
+    if op == "attention_qk":
+        N = M                                    # Q@K^T scores are [M,M]; K rows == M (matches the builder)
+    spec = {"op": op, "dtype": binding.operand_dtype, "seed": _entry_seed(entry["name"]),
+            "M": M, "K": K, "N": N}
+    if op == "rmsnorm":
+        spec["eps"] = entry.get("eps", 1.0 / 65536.0)
+    return spec
+
+
+def write_pytorch_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSource | None" = None):
+    """Materialize a full capsule dir from a PyTorch-defined op: the agent-facing interface + expected
+    coverage come from the existing ``corpus_spec`` merlin_iface builder; the golden + canonical inputs
+    come from the host torch-eager run; the pytorch loader + linalg are written as visible grounding.
+    Only the merlin_iface-mapped ops are handled here (fail closed otherwise)."""
+    import yaml
+    from merlin.targetgen import corpus_spec as CS
+
+    op = entry.get("op", "matmul")
+    if op not in _OP_INPUT_NAMES:
+        raise ValueError(f"write_pytorch_capsule: op {op!r} has no merlin_iface interface builder "
+                         f"(mapped: {sorted(_OP_INPUT_NAMES)}); use a direct-MLIR engine or add a builder")
+    src = source or PytorchRefSource()
+    spec = _capture_spec(entry, binding)
+    art = src.capture(spec)
+
+    cap, mlir = CS.build(entry, binding)
+    cap["source_role"] = "pytorch_model_slice"
+    cap["pytorch_ref"] = {"op": op, "dtype": binding.cap_dtype(binding.operand_dtype),
+                          "loader": "capsule.pytorch.py"}
+    cap["linalg_mlir"] = "capsule.linalg.mlir"
+
+    names = _OP_INPUT_NAMES[op]
+    if len(art.inputs) < len(names):
+        raise M2MUnavailable(f"op {op!r} produced {len(art.inputs)} inputs, expected {len(names)}")
+    prov = {nm: {"shape": _shape_of(art.inputs[i]), "decoded": _flatten(art.inputs[i])}
+            for i, nm in enumerate(names)}
+    out_name = entry.get("out", "Y0")
+    golden = {
+        "golden_source": "host_torch_eager",
+        "oracle_provenance": {
+            "engine": "model2MLIR fx_importer linalg-on-tensors + host torch-eager (frontend-faithful; "
+                      "torchAO weight-only for int8/fp8)",
+            "operand_dtype": binding.cap_dtype(binding.operand_dtype),
+            "output_dtype": binding.cap_dtype(binding.accum_dtype),
+            "note": "INDEPENDENT of the target RTL; the PyTorch frontend + host eval are the reference.",
+            "grade_policy": {"compare": binding.compare, "atol": binding.atol, "rtol": binding.rtol},
+            "pytorch_source": "capsule.pytorch.py", "linalg_mlir": "capsule.linalg.mlir",
+            "path_taken": art.meta.get("path_taken"), "inputs": prov},
+        "outputs": {out_name: art.golden},
+    }
+
+    d = Path(out_root) / entry["cat"] / entry["name"]
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
+    (d / "capsule.interface.mlir").write_text(mlir, encoding="utf-8")
+    (d / "expected_instruction_coverage.yaml").write_text(
+        yaml.safe_dump(cap["expected"], sort_keys=False), encoding="utf-8")
+    (d / "capsule.pytorch.py").write_text(art.pytorch_src, encoding="utf-8")
+    (d / "capsule.linalg.mlir").write_text(art.linalg_mlir, encoding="utf-8")
+    (d / "golden.yaml").write_text(yaml.safe_dump(golden, sort_keys=False), encoding="utf-8")
+    return d
 
 
 # ------------------------------------------------------------------------------------------------

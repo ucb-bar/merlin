@@ -49,3 +49,51 @@ def test_pytorch_capture_is_clean_with_golden(spec):
     assert len(art.golden) == spec["M"]
     # the pytorch source is agent-visible context and must round-trip to the same op
     assert "get_model_and_inputs" in art.pytorch_src
+
+
+def _float_binding(operand_dtype="f32"):
+    from merlin.targetgen import corpus_spec as CS
+    return CS.CorpusBinding(
+        target="t", tile_dim=16, operand_dtype=operand_dtype, accum_dtype="f32", integer=False,
+        tiers=["L0", "L1", "L3"], compare="tolerance_float", atol=0.03125, rtol=0.015625,
+        classes_for=lambda **_: [])
+
+
+@_needs_m2m
+@pytest.mark.parametrize("entry,dtype", [
+    ({"name": "PM0_matmul", "kind": "model_slice", "cat": "model_slices",
+      "source_role": "handauthored_compiler_test", "source_reference": "pytorch matmul",
+      "op": "matmul", "M": 16, "K": 16, "N": 16}, "f32"),
+    ({"name": "PR0_rmsnorm", "kind": "model_slice", "cat": "model_slices",
+      "source_role": "handauthored_compiler_test", "source_reference": "pytorch rmsnorm",
+      "op": "rmsnorm", "M": 16, "K": 16}, "bf16"),
+])
+def test_write_pytorch_capsule_is_schema_valid(entry, dtype, tmp_path):
+    """A PyTorch op is materialized into a complete, schema-valid capsule dir: the merlin_iface interface
+    (what the agent compiles) plus the pytorch loader + linalg (visible grounding) plus a host-eager
+    golden whose recorded input shapes match the interface, plus expected coverage."""
+    import yaml
+    from merlin.targetgen import capsule_common as CC
+
+    d = CSrc.write_pytorch_capsule(entry, _float_binding(dtype), tmp_path)
+    cap = CC.load_capsule(d)                       # raises on schema violation
+    assert cap["source_role"] == "pytorch_model_slice"
+    for f in ("capsule.interface.mlir", "capsule.pytorch.py", "capsule.linalg.mlir", "golden.yaml"):
+        assert (d / f).exists(), f
+    g = yaml.safe_load((d / "golden.yaml").read_text())
+    assert g["golden_source"] == "host_torch_eager"
+    prov = g["oracle_provenance"]["inputs"]
+    # every declared capsule input has a recorded golden operand of the same shape
+    for inp in cap["inputs"]:
+        assert inp["name"] in prov and prov[inp["name"]]["shape"] == inp["shape"]
+    out = g["outputs"][entry.get("out", "Y0")]
+    assert isinstance(out, list) and isinstance(out[0], list)
+
+
+def test_write_pytorch_capsule_rejects_unmapped_op(tmp_path):
+    """An op with no merlin_iface builder must fail closed here (it belongs to the direct-MLIR path)."""
+    entry = {"name": "PX", "kind": "model_slice", "cat": "model_slices",
+             "source_role": "handauthored_compiler_test", "source_reference": "x", "op": "softmax",
+             "M": 16, "K": 16}
+    with pytest.raises(ValueError):
+        CSrc.write_pytorch_capsule(entry, _float_binding(), tmp_path)
