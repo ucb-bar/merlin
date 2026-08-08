@@ -35,6 +35,7 @@ import sys
 import tempfile
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from difflib import SequenceMatcher
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
@@ -1091,10 +1092,19 @@ def _ungated_problem(binaries: list[dict]) -> str | None:
                      f"was compared only against the weight-only golden")
     if twinned:
         pkg = twinned[0]["twin_gate"]["package"]
-        parts.append(f"{len(twinned)} of {total} were not simulated here, but each runs an "
-                     f"instruction-for-instruction identical model to a gated binary in `{pkg}` "
-                     f"(same program, different addresses), so that gate covers their arithmetic — "
-                     f"what it does not cover is the part that differs between the two builds")
+        # Say how many needed the relaxation tolerance rather than claiming an exact match for all of
+        # them: "instruction-for-instruction identical" is true of most and overstates the rest.
+        relaxed = [b for b in twinned if b["twin_gate"].get("relaxed_insns")]
+        how = "instruction for instruction"
+        if relaxed:
+            worst = max(b["twin_gate"]["relaxed_insns"] for b in relaxed)
+            how = (f"instruction for instruction — exactly so for {len(twinned) - len(relaxed)} of them, "
+                   f"and for the other {len(relaxed)} apart from at most {worst} PC-relative address "
+                   f"materialisation(s) the linker collapsed because the layout moved")
+        parts.append(f"{len(twinned)} of {total} were not simulated here, but each runs the same model "
+                     f"as a gated binary in `{pkg}` (same program, different addresses), matching it "
+                     f"{how}; that gate therefore covers their arithmetic, and what it does not cover "
+                     f"is the part that differs between the two builds")
     return f"{UNGATED_PREFIX} " + "; ".join(parts) + "."
 
 
@@ -1114,6 +1124,12 @@ def refresh_package(dest: Path, twin: Path | None = None) -> int:
     man["problems"] = [p for p in man.get("problems", [])
                        if not p.startswith(DERIVED_PREFIXES)]
     man["problems"] += _derived_problems(man["binaries"])
+    # Both are pure functions of the descriptor, so a package built before the packager recorded them
+    # can state them without rebuilding a byte. `silicon` is NOT filled here: it needs a returned probe
+    # log, and inventing an absent measurement is the one thing this field exists to prevent.
+    if isinstance(man.get("vector_probe"), dict):
+        man["vector_probe"]["declared_vlen"] = brd.vlen
+        man["vector_probe"]["vector_save_area_bits"] = zm._vector_max_len_bits(brd)
     (dest / "manifest.json").write_text(json.dumps(man, indent=2) + "\n")
     (dest / "README.md").write_text(_readme(brd, man, debug=any(b.get("debug")
                                                                 for b in man["binaries"])))
@@ -1161,6 +1177,43 @@ def _model_mnemonics(elf: Path) -> list[str] | None:
     return ms or None
 
 
+#: Mnemonics the linker may add or drop between two builds of the SAME program purely because the
+#: addresses moved. `auipc` materialises a PC-relative address; when a shifted layout brings a symbol
+#: within reach of a shorter form, the pair collapses and the `auipc` disappears (or appears). Measured
+#: between the 50 MHz and 500 MHz gemmelos sets: `spectformer_h1` differs by exactly three deleted
+#: `auipc`, `whisper_h2` by one inserted `auipc`, both in the last 0.2 % of the stream, with every other
+#: instruction identical (sequence ratio 0.999997).
+RELAXABLE_MNEMONICS = frozenset({"auipc"})
+
+
+def twin_equivalence(mine: list[str], theirs: list[str]) -> tuple[bool, int]:
+    """``(same_program, n_relaxed)`` for two mnemonic streams.
+
+    Exact equality is the honest default, but it UNDER-reports: the twin comparison exists to say
+    whether a variant we cannot simulate runs the same computation, and a build whose only difference is
+    that the linker collapsed a few address materialisations does. Reporting those five images as
+    unverified told the chip's owner less than we actually knew.
+
+    So the tolerance is narrow and stated: every differing region must be a pure INSERT or DELETE whose
+    entire content is in `RELAXABLE_MNEMONICS`. A `replace` region, or an insert/delete containing
+    anything else, is a real difference and the caller records a mismatch. That distinction is the whole
+    value of the check -- widen it and it stops meaning anything.
+    """
+    if mine == theirs:
+        return True, 0
+    relaxed = 0
+    for op, i1, i2, j1, j2 in SequenceMatcher(a=mine, b=theirs, autojunk=False).get_opcodes():
+        if op == "equal":
+            continue
+        if op == "insert" and set(theirs[j1:j2]) <= RELAXABLE_MNEMONICS:
+            relaxed += j2 - j1
+        elif op == "delete" and set(mine[i1:i2]) <= RELAXABLE_MNEMONICS:
+            relaxed += i2 - i1
+        else:
+            return False, 0
+    return True, relaxed
+
+
 def attach_twin_evidence(dest: Path, twin: Path) -> int:
     """Record, per binary, whether a GATED image in ``twin`` runs the same program.
 
@@ -1188,18 +1241,28 @@ def attach_twin_evidence(dest: Path, twin: Path) -> int:
         if mine is None or theirs is None:
             print(f"  {b['elf']}: could not read model code — no twin evidence recorded")
             continue
-        if mine != theirs:
+        same, relaxed = twin_equivalence(mine, theirs)
+        if not same:
             print(f"  {b['elf']}: model code DIFFERS from {sib['elf']} "
                   f"({len(mine)} vs {len(theirs)} insns) — no twin evidence recorded")
             continue
         b["twin_gate"] = {"package": twin.name, "elf": sib["elf"],
                           "build_hash": sib.get("build_hash", ""), "tier_ok": sib.get("tier_ok"),
-                          "cos": sib.get("cos"), "insns": len(mine)}
+                          "cos": sib.get("cos"), "insns": len(mine),
+                          # 0 = byte-for-byte the same instruction sequence. Nonzero = the same
+                          # sequence apart from N address materialisations the linker collapsed
+                          # because the layout moved; stated rather than hidden inside "match".
+                          "relaxed_insns": relaxed}
+        if relaxed:
+            print(f"  {b['elf']}: same program as {sib['elf']}, modulo {relaxed} relaxed "
+                  f"address materialisation(s)")
         matched += 1
     man["twin_evidence"] = {
         "package": twin.name, "matched": matched, "of": len(man["binaries"]),
         "method": "identical instruction sequence over [forward, main) — same program, different "
-                  "addresses",
+                  "addresses. Tolerates ONLY inserted/deleted address materialisations (auipc) that "
+                  "the linker collapses when the layout moves; each binary's `relaxed_insns` says how "
+                  "many, and 0 means byte-for-byte identical. Any other difference is a mismatch.",
         "covers": "the model's arithmetic, via the twin's gate",
         "does_not_cover": "whatever differs between the two builds (for a clock variant, the "
                           "bring-up itself)",
