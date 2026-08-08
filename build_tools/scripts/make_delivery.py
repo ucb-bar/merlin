@@ -224,7 +224,19 @@ def diagnose(text):
     if fatal:
         out.append(f"  FAULT      : {fatal}")
     stage = last("STAGE ")
-    out.append(f"  last STAGE : {stage if stage else '(none — not a debug image)'}")
+    # NOT "not a debug image": a debug image that faults before its first milestone prints no STAGE
+    # either, and that is exactly what a boot-time fault looks like. Saying which of the two it is
+    # requires the FAIL line, so say that instead of guessing -- a returned log with `FAIL` and no
+    # `STAGE` is the most informative shape there is, and calling it "not a debug image" throws the
+    # information away.
+    if stage:
+        out.append(f"  last STAGE : {stage}")
+    elif fatal:
+        out.append("  last STAGE : (none) — it faulted BEFORE the first milestone, i.e. during boot "
+                   "and before any model code ran")
+    else:
+        out.append("  last STAGE : (none) — either a plain (non-debug) image, or it produced no "
+                   "output at all; the _debug twin distinguishes those")
     alive = last("ALIVE ")
     if alive:
         out.append(f"  last ALIVE : {alive}")
@@ -1133,6 +1145,12 @@ def refresh_package(dest: Path, twin: Path | None = None) -> int:
     if isinstance(man.get("vector_probe"), dict):
         man["vector_probe"]["declared_vlen"] = brd.vlen
         man["vector_probe"]["vector_save_area_bits"] = zm._vector_max_len_bits(brd)
+    # The grader is a vendored copy of a template, i.e. a pure function of the packager -- so a package
+    # built before it learned to say something should get the newer wording too, for the same reason the
+    # README is re-rendered. It scores against the references already in the directory, so rewriting it
+    # cannot change any verdict; it changes only how an incomplete log is explained.
+    (dest / "grade.py").write_text(GRADE_PY)
+    (dest / "grade.py").chmod(0o755)
     (dest / "manifest.json").write_text(json.dumps(man, indent=2) + "\n")
     (dest / "README.md").write_text(_readme(brd, man, debug=any(b.get("debug")
                                                                 for b in man["binaries"])))
