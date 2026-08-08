@@ -410,6 +410,10 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
         out["reason"] = f"OOT backend build failed: {type(e).__name__}: {str(e)[-400:]}"
         return out
 
+    # Real RTL oracle by default (verilator); MERLIN_MESH_SIM can select spike (functional bootstrap) or
+    # verilator (cycle-accurate RTL). The whole point of on-hardware validation is the RTL, not the ISS.
+    import os
+    sim = os.environ.get("MERLIN_MESH_SIM", "verilator")
     rr = runs_root(target, "mesh_verify")
     for i, r in enumerate(plan.get("mesh", [])):
         d = r.demand
@@ -424,23 +428,28 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
         try:
             binding = _mesh_tile_binding(target, d.in_fmt, r.acc)
             D = binding.tile_dim
+            # compile the matmul LAYER at its REAL extent when the router carried one (rounded up to the
+            # mesh dim — the backend tiles it into DxD tiles); else a single DxD tile.
+            def _rup(x):
+                return D if not x else ((int(x) + D - 1) // D) * D
+            M, K, N = (_rup(d.m), _rup(d.k), _rup(d.n)) if (d.m and d.k and d.n) else (D, D, D)
             entry = {"name": f"mesh_tile_{i}_{op}", "op": op, "kind": "op",
                      "source_role": "mesh_tile_synthesized",
-                     "source_reference": f"whole-model op {d.op} [{d.site}]: one {D}x{D}x{D} mesh tile",
-                     "M": D, "K": D, "N": D}
+                     "source_reference": f"whole-model op {d.op} [{d.site}]: {M}x{K}x{N} on the mesh",
+                     "M": M, "K": K, "N": N}
             cap, mlir = CS.build(entry, binding)
         except Exception as e:  # noqa: BLE001 — a synthesis failure is recorded, never a fake pass
             out["n_unsynthesizable"] += 1
             rec.update(status="synth_error", reason=f"{type(e).__name__}: {str(e)[-300:]}")
             out["per_tile"].append(rec)
             continue
-        rec.update(M=D, K=D, N=D, operand_dtype=binding.cap_dtype(binding.operand_dtype),
-                   output_dtype=binding.cap_dtype(binding.accum_dtype))
+        rec.update(M=M, K=K, N=N, operand_dtype=binding.cap_dtype(binding.operand_dtype),
+                   output_dtype=binding.cap_dtype(binding.accum_dtype), sim=sim)
         with tempfile.TemporaryDirectory(prefix="mesh_tile_") as td:
             iface = Path(td) / f"{entry['name']}.interface.mlir"
             iface.write_text(mlir, encoding="utf-8")
             res = oot_runner.certify(pkg_dir, iface, runs_root=str(rr), run_id=entry["name"],
-                                     simulator="spike", target=target, timeout=timeout)
+                                     simulator=sim, target=target, timeout=timeout)
         oracle = res.get("oracle") or {}
         out["n_tiles"] += 1
         rec.update(oracle_kind=oracle.get("kind"), oracle_result=oracle.get("result"),
@@ -467,12 +476,13 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
     else:
         out["status"] = "partial"
     out["note"] = (
-        "each mesh-routed matmul is verified by EXECUTING one representative DxD systolic tile (D = the "
-        "target's derived mesh dimension) on the real target mesh oracle via the OOT backend; the emitted "
-        "kernel's output is gated (bit-exact int / tolerance float) against the command buffer's "
-        "reference == simulate == oracle three-way. Whole-layer shape tiling (running every MxKxN tile of "
-        "each layer's real extents in one spliced image) is the documented remaining gap — see "
-        "compile_model's docstring.")
+        "each mesh-routed matmul LAYER is verified by EXECUTING it at its real M x K x N extent (read from "
+        "the linalg; the OOT backend tiles it into DxD mesh tiles) on the target mesh oracle "
+        f"(simulator={sim}); the emitted kernel's output is gated (bit-exact int / tolerance float) against "
+        "the command buffer's reference == simulate == oracle three-way. The remaining gap is the single "
+        "SPLICED image (all layers' mesh kernels + the scalar/RVV remainder co-scheduled in one binary with "
+        "activations handed between layers) — see compile_model's docstring; here each layer is certified "
+        "independently at its true shape.")
     return out
 
 

@@ -26,6 +26,9 @@ class OpDemand:
     in_fmt: str
     weight_fmt: str | None = None   # None for unary/elementwise ops
     site: str = ""                  # optional label (weight name / op id) for reporting
+    m: int | None = None            # the op's real extents when known (a contraction's M x K x N), so a
+    k: int | None = None            # whole-model matmul LAYER is compiled at its true shape (the backend
+    n: int | None = None            # tiles it into DxD mesh tiles) rather than a single fixed tile
 
 
 @dataclass(frozen=True)

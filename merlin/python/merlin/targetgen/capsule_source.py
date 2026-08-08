@@ -547,22 +547,48 @@ def linalg_summary(linalg_mlir: str) -> dict:
     return {"prov_ops": prov_ops, "prov_families": prov_families, "inputs": inputs, "output": output}
 
 
+def _matmul_extents(linalg_mlir: str) -> list[tuple[int, int, int]]:
+    """The (M, K, N) extent of each ``linalg.matmul`` in text order, read structurally (str tokenizer, NO
+    regex): a matmul's ``ins`` operands are ``tensor<MxK...>, tensor<KxN...>``. Used to compile each
+    whole-model matmul LAYER at its real shape instead of a fixed tile. Best-effort — a matmul whose ins
+    types can't be read is skipped (its demand falls back to the mesh tile dim)."""
+    extents: list[tuple[int, int, int]] = []
+    for seg in linalg_mlir.split("linalg.matmul")[1:]:
+        head = seg.split("outs", 1)[0]                       # the ins(...) clause precedes outs(...)
+        ts = _tensor_types(head)
+        if len(ts) >= 2 and len(ts[0][0]) >= 2 and len(ts[1][0]) >= 2:
+            (m, k), (_k2, n) = ts[0][0][:2], ts[1][0][:2]
+            extents.append((m, k, n))
+        else:
+            extents.append((0, 0, 0))                        # unreadable — sentinel, demand falls back
+    return extents
+
+
 def model_op_demands(linalg_mlir: str, in_fmt: str, weight_fmt: str | None = None) -> list:
     """Per-op routing demands from a captured model's linalg (structural prov.op/prov.family read, NO regex).
-    A contraction op (matmul/conv — ``prov.family == "contraction"``) carries a weight format; normalization
-    / elementwise / reduction ops are unary. Feeds ``routing.route_target`` so a whole model can be split
-    across a target's compute units (matmul tiles -> the systolic mesh, the rest -> vector/scalar lanes)."""
+    A contraction op (matmul/conv — ``prov.family == "contraction"``) carries a weight format AND its real
+    (M, K, N) extents (so a whole-model matmul layer compiles at its true shape); normalization / elementwise
+    / reduction ops are unary. Feeds ``routing.route_target`` so a whole model can be split across a target's
+    compute units (matmul tiles -> the systolic mesh, the rest -> vector/scalar lanes)."""
     from merlin.targetgen.routing import OpDemand
     summ = linalg_summary(linalg_mlir)
     ops, fams = summ["prov_ops"], summ["prov_families"]
+    extents = _matmul_extents(linalg_mlir)
     wf = weight_fmt or in_fmt
     demands: list = []
+    mm = 0
     for i, op in enumerate(ops):
         fam = fams[i] if i < len(fams) else ""
         if op == "fill":                                     # linalg.fill init — not a routable compute op
             continue
+        m = k = n = None
+        if op == "matmul" and mm < len(extents) and all(extents[mm]):
+            m, k, n = extents[mm]
+        if fam == "contraction" and op == "matmul":
+            mm += 1
         demands.append(OpDemand(op=op, in_fmt=in_fmt,
-                                weight_fmt=(wf if fam == "contraction" else None), site=op))
+                                weight_fmt=(wf if fam == "contraction" else None), site=op,
+                                m=m, k=k, n=n))
     return demands
 
 

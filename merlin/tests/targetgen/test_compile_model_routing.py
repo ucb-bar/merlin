@@ -132,6 +132,31 @@ def test_mesh_verify_no_default_package_is_not_run(monkeypatch):
 
 
 @pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
+def test_mesh_verify_compiles_layer_at_real_extent(monkeypatch):
+    """A mesh matmul carrying real (M,K,N) extents is synthesized at that shape (rounded up to the mesh
+    dim), not a fixed tile — so a whole-model matmul LAYER runs at its true shape."""
+    import merlin.compile_cli as CC
+    from merlin.targetgen import oot_runner
+    seen = {}
+
+    def fake_certify(pkg_dir, iface, **kw):
+        seen["mlir"] = iface.read_text(encoding="utf-8")
+        return {"status": "pass", "oracle": {"kind": "verilator_gemmini", "result": "pass", "cycles": 512}}
+
+    monkeypatch.setattr(oot_runner, "build_package", lambda pkg, timeout=1800: None)
+    monkeypatch.setattr(oot_runner, "load_package", lambda p, contract=None: object())
+    monkeypatch.setattr(oot_runner, "certify", fake_certify)
+    # a layer with K=64 (> mesh dim) forces multi-tile; N=32 rectangular
+    plan = {"mesh": [R.RouteResult(R.OpDemand("matmul", "int8", "int8", "layer", m=16, k=64, n=32),
+                                   "systolic_mesh", None, None)]}
+    res = CC._mesh_verify(plan, target="gemmini", package="/pkg", timeout=60)
+    assert res["status"] == "verified" and res["n_passed"] == 1
+    t = res["per_tile"][0]
+    assert (t["M"], t["K"], t["N"]) == (16, 64, 32)          # real extent, rounded to the mesh dim
+    assert "16x64" in seen["mlir"]                            # the interface carries the true layer shape
+
+
+@pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
 def test_mesh_verify_unsynthesizable_op_is_honest(monkeypatch):
     """A mesh op with no single-tile synthesizer is recorded, never counted as executed or passed."""
     import merlin.compile_cli as CC
