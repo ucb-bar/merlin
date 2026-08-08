@@ -44,6 +44,53 @@ The last row is the honest limit, and it is why the packaging half of this repo 
 board owner needs — both builds of every image, the references, a numpy-only grader, the expected console
 — goes in one zip, because a round trip costs days.
 
+## Set up a machine from scratch
+
+`./run.sh preflight` names whichever of these is missing, with the variable that fixes it. Nothing here
+is optional folklore — each one is read by the library at a specific point, and the default for each is
+either a checkout path or a hard failure.
+
+```bash
+# 1. the repo and its interpreter (see the root README / docs/guides/getting_started.md)
+uv sync --all-extras            # creates .venv with merlin editable; plain `python` is not on PATH
+                                # without uv: pip install -e '.[dev,xdsl]'
+
+# 2. spike + a riscv64 bare-metal toolchain. Any build works; point at each binary directly:
+export MERLIN_SPIKE=/path/to/spike
+export MERLIN_RISCV_GCC=/path/to/riscv64-unknown-elf-gcc
+#    or, if you have a chipyard checkout whose .conda-env carries riscv-tools, just:
+export MERLIN_CHIPYARD=/path/to/chipyard
+
+# 3. cmake + ninja. Taken from $MERLIN_CHIPYARD/.conda-env/bin when that exists (pinned, for
+#    reproducibility), otherwise from PATH. Nothing to set if you have them the normal way.
+
+# 4. Zephyr — a WEST WORKSPACE, not a bare clone. The bare clone has no zephyr_ws/zephyr in it:
+git clone -b dev https://github.com/ucb-bar/zephyr-chipyard-sw.git
+cd zephyr-chipyard-sw && west init -l . && west update       # populates zephyr_ws/
+export ZEPHYR_BASE=$PWD/zephyr_ws/zephyr
+
+# 5. the Zephyr SDK (0.17.0 is what this is exercised against)
+export ZEPHYR_SDK_INSTALL_DIR=/path/to/zephyr-sdk-0.17.0
+
+# 6. only for the gemmelos example — that chip's own SDK checkout
+export GEMMELOS_SDK=/path/to/gemmelos-bringup
+```
+
+Each of `MERLIN_*`, `ZEPHYR_BASE` and `ZEPHYR_SDK_INSTALL_DIR` is also read from a repo-root `.env`, so a
+configured checkout resolves without exporting anything per shell.
+
+For the whole-repo version of this check — every experiment capability, not just these two examples —
+`build_tools/scripts/check_repro_env.py` asks each capability's own availability guard and reports which
+variable to set.
+
+Two honest caveats about a from-scratch machine:
+
+- Steps 4 and 5 are the ones people get stuck on, and neither is ours: a Zephyr *west workspace* plus a
+  matching SDK. If `preflight` says the tree and SDK are fine but `build` still fails, the build's own
+  error is the authority, not this list.
+- `_sdk_dir()`'s built-in default is a path on one developer's machine. If you have not set
+  `ZEPHYR_SDK_INSTALL_DIR`, `preflight` may show a Zephyr SDK that only exists here. Set it explicitly.
+
 ## Inputs, and how to get each one
 
 Nothing here is a binary blob you have to be given. Everything is either in this repo, clonable, or
