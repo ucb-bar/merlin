@@ -506,10 +506,10 @@ def _fused_capsule_yaml(entry: dict, binding, art, names: list[str]) -> dict:
     }
 
 
-# mapped op -> the linalg `prov.family` the captured lowering MUST carry for a merlin_iface interface to be
-# a faithful lowering of it. Used to derive-and-verify (not assume) the interface from the linalg.
-_OP_FAMILY = {"matmul": "contraction", "linear": "contraction",
-              "attention_qk": "contraction", "rmsnorm": "normalization"}
+# mapped op -> a defining ``prov.op`` marker the captured lowering MUST carry for a merlin_iface interface
+# to be a faithful lowering of it (matmul-family lowers to a linalg.matmul; rmsnorm decomposes to a
+# reciprocal-sqrt over the mean-square). Used to derive-and-verify (not assume) the interface from the linalg.
+_OP_MARKER = {"matmul": "matmul", "linear": "matmul", "attention_qk": "matmul", "rmsnorm": "rsqrt"}
 
 
 def _tensor_types(s: str) -> list[tuple[list[int], str]]:
@@ -576,11 +576,11 @@ def linalg_to_iface(linalg_mlir: str, entry: dict, binding):
     from merlin.targetgen import corpus_spec as CS
     op = entry.get("op", "matmul")
     summ = linalg_summary(linalg_mlir)
-    fam = _OP_FAMILY.get(op)
-    if fam is not None and fam not in summ["prov_families"] and op not in summ["prov_ops"]:
+    marker = _OP_MARKER.get(op)
+    if marker is not None and marker not in summ["prov_ops"] and op not in summ["prov_ops"]:
         raise M2MUnavailable(
-            f"captured linalg for {entry['name']!r} lacks the {op!r} op (prov.op={summ['prov_ops']}, "
-            f"prov.family={summ['prov_families']}) — refusing to emit a merlin_iface interface the lowering "
+            f"captured linalg for {entry['name']!r} lacks the {op!r} marker op {marker!r} "
+            f"(prov.op={summ['prov_ops']}) — refusing to emit a merlin_iface interface the lowering "
             f"does not support")
     cap, mlir = CS.build(entry, binding)
     # every operand shape the builder declares must appear among the captured linalg's operand shapes.
