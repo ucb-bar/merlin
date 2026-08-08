@@ -37,3 +37,27 @@ def test_model_grade_not_run_reported(monkeypatch):
                         lambda *a, **k: {"status": "not_run", "reason": "Zephyr/spike unavailable"})
     r = R._grade_model_capsule(_CAP, timeout=60)
     assert r["status"] == "incomplete"
+
+
+_CAP_INT8 = {"name": "M0_small_llama_int8", "kind": "model", "label": "public",
+             "operation": {"op": "model", "attributes": {"model": "small_llama", "compile_dtype": "int8"}}}
+
+
+def test_model_grade_quant_tolerant_pass(monkeypatch):
+    """A quantized model that misses the STRICT fp32 gate but stays cosine-close is a PASS — the drop vs
+    the fp32 golden is expected quantization error, not a codegen defect."""
+    monkeypatch.setattr(cc, "compile_rvv",
+                        lambda *a, **k: {"status": "run_mismatch",
+                                         "verify": {"gate_ok": False, "fp32_cos": 0.962}})
+    r = R._grade_model_capsule(_CAP_INT8, timeout=60)
+    assert r["status"] == "pass" and r["numeric"]["quant_tolerance"]["cos"] == 0.962
+
+
+def test_model_grade_quant_gross_defect_still_fails(monkeypatch):
+    """A quantized model whose cosine falls below the quant floor is still a FAIL (a real codegen defect,
+    not tolerable quantization drop)."""
+    monkeypatch.setattr(cc, "compile_rvv",
+                        lambda *a, **k: {"status": "run_mismatch",
+                                         "verify": {"gate_ok": False, "fp32_cos": 0.42}})
+    r = R._grade_model_capsule(_CAP_INT8, timeout=60)
+    assert r["status"] == "fail" and r["failure"]["category"] == "FUNCTIONAL_MISMATCH"

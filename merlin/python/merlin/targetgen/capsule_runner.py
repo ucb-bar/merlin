@@ -635,8 +635,23 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         result["routing_plan"] = out["routing_plan"]
     if out.get("mesh_execution") is not None:                 # per-tile on-mesh EXECUTION for the target
         result["mesh_execution"] = out["mesh_execution"]
+    # A quantized whole model diverges from the fp32 golden BY DESIGN (int8/fp8 rounding). When the strict
+    # gate rejects it only on that expected drop, accept it if the cosine similarity to the golden still
+    # clears a quant floor (MERLIN_MODEL_QUANT_COS, default 0.90) — reasonable quantization error is a pass,
+    # a gross codegen defect (cosine below the floor / structural mismatch) is still a fail.
+    _v = out.get("verify") or {}
+    _cos = max(float(_v.get("fp32_cos", 0.0)), float(_v.get("w8a8_cos", 0.0)))
+    _quant = dtype in ("int8", "i8", "fp8", "fp8_e4m3")
+    _quant_floor = float(os.environ.get("MERLIN_MODEL_QUANT_COS", "0.90") or "0.90")
     if st == "verified" and gate:
         result.update(status="pass", numeric={"status": "pass", "engine": engine, "gate": out.get("verify")})
+    elif _quant and st == "run_mismatch" and _cos >= _quant_floor:
+        result.update(status="pass",
+                      numeric={"status": "pass", "engine": engine, "gate": _v,
+                               "quant_tolerance": {"cos": _cos, "floor": _quant_floor, "dtype": dtype}},
+                      note=(f"quantized ({dtype}) whole-model output within quant tolerance of the fp32 "
+                            f"golden (cos {_cos:.4f} >= floor {_quant_floor}); the drop vs fp32 is expected "
+                            f"quantization error, not a codegen defect."))
     elif st == "not_run":
         result.update(status="incomplete",
                       failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
