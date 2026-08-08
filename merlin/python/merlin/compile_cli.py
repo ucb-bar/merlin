@@ -486,6 +486,43 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
     return out
 
 
+def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | None = None,
+                       accum_dtype: str | None = None, simulator: str | None = None,
+                       package: str | None = None, timeout: int = 900) -> list | None:
+    """Execute ``A @ W`` on the target's mesh oracle with the REAL operand values INJECTED (not
+    materialized-from-name), and return the mesh's output tensor (nested list) — or ``None`` if the mesh
+    oracle is unavailable. ``A`` / ``W`` are nested lists (the layer's real activations / weights). This is
+    the per-layer primitive of a whole-model on-mesh run: the model's actual data flows through the RTL
+    systolic array, and the (three-way-gated) output threads to the next layer. Fail-closed: an unavailable
+    oracle or a failed cert returns ``None`` (never a fabricated result)."""
+    import os
+    import tempfile
+    from .benchharness import runs_root
+    from .targetgen import corpus_spec as CS
+    from .targetgen import oot_runner
+
+    sim = simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")
+    pkg = package or _default_oot_package(target)
+    if pkg is None:
+        return None
+    M, K, N = len(A), len(A[0]), len(W[0])
+    binding = _mesh_tile_binding(target, operand_dtype, accum_dtype)
+    entry = {"name": "mesh_layer", "op": "matmul", "kind": "op",
+             "source_role": "mesh_layer_real_operands",
+             "source_reference": f"whole-model matmul layer {M}x{K}x{N} on the mesh with real operands",
+             "M": M, "K": K, "N": N, "lhs": "A0", "weight": "W", "out": "Y0"}
+    _, mlir = CS.build(entry, binding)
+    with tempfile.TemporaryDirectory(prefix="mesh_layer_") as td:
+        iface = Path(td) / "mesh_layer.interface.mlir"
+        iface.write_text(mlir, encoding="utf-8")
+        res = oot_runner.certify(pkg, iface, runs_root=str(runs_root(target, "mesh_run")),
+                                 run_id="mesh_layer", simulator=sim, target=target, timeout=timeout,
+                                 inputs={"A0": A, "W": W})
+    if res.get("status") != "pass":
+        return None
+    return (res.get("oracle_outputs") or {}).get("Y0")
+
+
 def _summarize_route_plan(plan: dict) -> dict:
     """Collapse a routing.route_plan into per-op-family counts for the report."""
     def _counts(results):

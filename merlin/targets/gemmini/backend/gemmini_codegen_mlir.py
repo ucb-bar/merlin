@@ -230,11 +230,14 @@ def rocc_instruction_count(obj: str | Path) -> int:
                if ".insn" in ln and len(ln.split()) > 1 and ln.split()[1].endswith("7b"))
 
 
-def _harness_c(cb: dict) -> str:
-    """Thin C harness: embed padded leaf data, call the MLIR kernel, print outputs (cropped)."""
+def _harness_c(cb: dict, inputs: dict | None = None) -> str:
+    """Thin C harness: embed padded leaf data, call the MLIR kernel, print outputs (cropped).
+
+    ``inputs`` (name -> nested-list) INJECTS explicit operand values so the device runs the model's real
+    activations/weights; absent, each leaf is materialized deterministically from its name (reproducible)."""
     weight, jobs, k, n = _parse_full(cb)
     kp, np_ = _ceil_dim(k), _ceil_dim(n)
-    leaves = materialize_inputs(cb)
+    leaves = materialize_inputs(cb, inputs)
     lhss = [j[0] for j in jobs]
     outs = [(j[1], j[3], j[4]) for j in jobs]   # (out_name, m, out_dtype)
 

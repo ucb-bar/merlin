@@ -35,8 +35,10 @@ def _is_movement_cb(cb: dict[str, Any]) -> bool:
                     and c.get("attributes", {}).get("combine") == "identity" for c in cmds))
 
 
-def _movement_harness_c(cb: dict[str, Any]) -> str:
-    """Harness for a pure-movement kernel gemmini_kernel(src*, dst*): embed src, print dst."""
+def _movement_harness_c(cb: dict[str, Any], inputs: dict | None = None) -> str:
+    """Harness for a pure-movement kernel gemmini_kernel(src*, dst*): embed src, print dst.
+
+    ``inputs`` (name -> nested-list) injects explicit operand values; absent, the leaf is deterministic."""
     from merlin.runtime.backends import base as _bk
     _gcg = _bk.get_backend("gemmini").gemmini_codegen  # target-ok: reference RoCC-compile path reaches gemmini codegen internals
     _ceil_dim, _pad_rowmajor = _gcg._ceil_dim, _gcg._pad_rowmajor
@@ -46,7 +48,7 @@ def _movement_harness_c(cb: dict[str, Any]) -> str:
     src, dst = mv["operands"]["lhs"], mv["operands"]["dst"]
     m, n = cb["tensors"][src]["shape"]
     mp, np_ = _ceil_dim(m), _ceil_dim(n)
-    leaves = materialize_inputs(cb)
+    leaves = materialize_inputs(cb, inputs)
     sp = _pad_rowmajor(list(leaves[src].data), m, n, mp, np_)
     decls = [f"static const elem_t T_{src}[{mp * np_}] row_align(1) = "
              f"{{{','.join(str(int(v)) for v in sp)}}};",
@@ -68,12 +70,14 @@ def _movement_harness_c(cb: dict[str, Any]) -> str:
             '  printf("DONE\\n");\n  return 0;\n}\n')
 
 
-def link_elf(cb: dict[str, Any], obj: Path, workdir: Path) -> Path:
-    """Build the runner-owned harness from ``cb`` and link it with the package object -> ELF."""
+def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, inputs: dict | None = None) -> Path:
+    """Build the runner-owned harness from ``cb`` and link it with the package object -> ELF.
+
+    ``inputs`` (name -> nested-list) injects the real operand values into the embedded harness data."""
     from merlin.runtime.backends import base as _bk
     gem = _bk.get_backend("gemmini")  # target-ok: reference RoCC-compile path reaches gemmini codegen internals
     _harness_c = gem.gemmini_codegen_mlir._harness_c
-    harness = _movement_harness_c(cb) if _is_movement_cb(cb) else _harness_c(cb)
+    harness = _movement_harness_c(cb, inputs) if _is_movement_cb(cb) else _harness_c(cb, inputs)
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
     rt, common = gem.rocc_tests_dir(), gem._common_dir()
     # Linker load address DERIVED from the RTL memory map (platform DRAM base), reusing the curated
@@ -98,15 +102,17 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path) -> Path:
 
 
 def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
-                           workdir: str | Path | None = None) -> Path:
-    """Full package-lowered-MLIR -> rv64 ELF (object + runner harness + link)."""
+                           workdir: str | Path | None = None, inputs: dict | None = None) -> Path:
+    """Full package-lowered-MLIR -> rv64 ELF (object + runner harness + link). ``inputs`` injects the real
+    operand values into the harness (else deterministic-from-name)."""
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_compile_"))
     obj = llvm_mlir_to_object(lowered_mlir_text, work)
-    return link_elf(cb, obj, work)
+    return link_elf(cb, obj, work, inputs)
 
 
 def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
-                  workdir: str | Path | None = None, timeout: int = 600) -> dict[str, Any]:
+                  workdir: str | Path | None = None, timeout: int = 600,
+                  inputs: dict | None = None) -> dict[str, Any]:
     """Compile the package's lowered MLIR + run on ``simulator``; return outputs/metrics/console.
 
     ``timing`` splits the work: ``build_s`` (ELF compile/link) and ``sim_active_s`` (the simulator
@@ -118,7 +124,7 @@ def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
     gem = _bk.get_backend("gemmini")  # target-ok: reference RoCC-compile path reaches gemmini codegen internals
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_run_"))
     _t0 = time.perf_counter()
-    elf = compile_lowered_to_elf(cb, lowered_mlir_text, work)
+    elf = compile_lowered_to_elf(cb, lowered_mlir_text, work, inputs)
     _t1 = time.perf_counter()
     console = gem.run_elf(elf, simulator=simulator, timeout=timeout)
     _t2 = time.perf_counter()

@@ -157,6 +157,37 @@ def test_mesh_verify_compiles_layer_at_real_extent(monkeypatch):
 
 
 @pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
+def test_run_matmul_on_mesh_injects_real_operands(monkeypatch):
+    """run_matmul_on_mesh builds the matmul interface at the operands' real shape and INJECTS A/W as the
+    certify inputs (not name-materialized), returning the mesh's actual output. A stubbed oracle lets us
+    assert the injection wiring without a live sim."""
+    import merlin.compile_cli as CC
+    from merlin.targetgen import oot_runner
+    seen = {}
+
+    def fake_certify(pkg, iface, **kw):
+        seen["inputs"] = kw.get("inputs")
+        seen["mlir"] = iface.read_text(encoding="utf-8")
+        return {"status": "pass", "oracle_outputs": {"Y0": [[42, 0], [0, 42]]}}
+
+    monkeypatch.setattr(CC, "_default_oot_package", lambda t: "/pkg")
+    monkeypatch.setattr(oot_runner, "certify", fake_certify)
+    A = [[1, 2], [3, 4]]
+    W = [[5, 6], [7, 8]]
+    out = CC.run_matmul_on_mesh("gemmini", A, W, operand_dtype="int8", accum_dtype="i32")
+    assert out == [[42, 0], [0, 42]]                          # the mesh output is returned
+    assert seen["inputs"] == {"A0": A, "W": W}                # REAL operands injected, keyed to the iface
+    assert "16x16" not in seen["mlir"] and "2x2" in seen["mlir"]   # built at the operands' real shape
+
+
+def test_run_matmul_on_mesh_none_without_package(monkeypatch):
+    """No OOT backend package -> None (never a fabricated result)."""
+    import merlin.compile_cli as CC
+    monkeypatch.setattr(CC, "_default_oot_package", lambda t: None)
+    assert CC.run_matmul_on_mesh("gemmini", [[1]], [[1]]) is None
+
+
+@pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
 def test_mesh_verify_unsynthesizable_op_is_honest(monkeypatch):
     """A mesh op with no single-tile synthesizer is recorded, never counted as executed or passed."""
     import merlin.compile_cli as CC

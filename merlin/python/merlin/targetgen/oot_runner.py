@@ -358,7 +358,8 @@ def _package_target(package_dir: str | Path, default: str = DEFAULT_TARGET) -> s
 
 def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: str | Path,
             run_id: str, simulator: str = "spike", contract: str | Path | None = None,
-            seed: int = 0, timeout: int = 600, target: str | None = None) -> dict[str, Any]:
+            seed: int = 0, timeout: int = 600, target: str | None = None,
+            inputs: dict | None = None) -> dict[str, Any]:
     """Run the K-ladder for one (package, interface input) and record an aet run dir.
 
     Returns the results dict (also written as results.yaml). Never raises for a package/gate
@@ -390,6 +391,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     semantic = {"reference_outputs_vs_simulate": "skipped"}
     oracle = {"kind": "none", "derived_from_rtl": False, "cycle_accurate": False,
               "result": "skipped", "cycles": None}
+    oracle_outputs: dict | None = None      # the mesh's actual output values (for in-process callers)
     artifacts_recorded: dict[str, bool] = {}
     failure: dict[str, Any] | None = None
     status = "pass"
@@ -450,9 +452,9 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
                               f"command_buffer.json invalid: {e}") from e
         entry["emit_command_buffer"] = "pass"
 
-        # K5 (L0): reference == simulate, always
-        ref = reference_outputs(cb)
-        sim = simulate(cb)["outputs"]
+        # K5 (L0): reference == simulate, always — over the SAME (optionally injected) operands
+        ref = reference_outputs(cb, inputs)
+        sim = simulate(cb, inputs)["outputs"]
         if not outputs_match(ref, sim):
             raise CertFailure("command_buffer_semantics", FailureCategory.FUNCTIONAL_MISMATCH,
                               "reference_outputs(cb) != simulate(cb): the emitted command buffer "
@@ -483,11 +485,12 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         if gem.available(simulator):
             try:
                 res = oot_compile.run_on_oracle(cb, p.stdout, simulator=simulator,
-                                                workdir=paths.generated, timeout=timeout)
+                                                workdir=paths.generated, timeout=timeout, inputs=inputs)
             except Exception as e:
                 raise CertFailure("oracle_rtl", FailureCategory.TOOL_CRASH,
                                   f"oracle {simulator} invocation failed: {str(e)[-800:]}") from e
             ok = outputs_match(res["outputs"], ref) and outputs_match(res["outputs"], sim)
+            oracle_outputs = res["outputs"]      # what the mesh actually produced (bit-exact == ref when ok)
             oracle = {"kind": res["oracle"].get("kind"),
                       "derived_from_rtl": res["oracle"].get("derived_from_rtl", False),
                       "cycle_accurate": simulator == "verilator" and ok,
@@ -528,6 +531,9 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         schemas.validate(results, "result", contract=contract)
     except schemas.ContractViolation as e:  # pragma: no cover - shape bug
         sys.stderr.write(f"WARNING: results.yaml self-validation failed: {e}\n")
+    # expose the mesh's actual outputs to in-process callers (NOT persisted to results.yaml / validated),
+    # so a whole-model executor can thread a matmul layer's real on-mesh result to the next layer.
+    results["oracle_outputs"] = oracle_outputs
     return results
 
 
