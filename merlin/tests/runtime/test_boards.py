@@ -60,11 +60,17 @@ def test_overrides_win_so_a_delivery_can_state_what_it_built_for():
 
 
 def test_the_config_follows_the_board():
-    """cpus, the vector save-area width and FPU_SHARING all come from the descriptor."""
+    """cpus, the vector save-area width and FPU_SHARING all come from the descriptor.
+
+    The save-area width comes from it FLOORED at the tree's default -- this board states no VLEN, so its
+    property falls back to the V minimum and the emitted config is raised to the safe width. See
+    `test_the_vector_save_area_is_never_declared_smaller_than_the_tree_default`.
+    """
     b = boards.board("spike_riscv64")
     conf = zm._prj_conf(b.harts, "rvv", b)
     assert f"CONFIG_MP_MAX_NUM_CPUS={b.harts}" in conf
-    assert f"CONFIG_RISCV_VECTOR_MAX_LEN={b.vector_max_len}" in conf
+    assert f"CONFIG_RISCV_VECTOR_MAX_LEN={zm._vector_max_len_bits(b)}" in conf
+    assert zm._vector_max_len_bits(b) >= b.vector_max_len
     # y mis-routes V-illegal-instruction traps into the FP path and retries forever: a silent hang.
     assert "CONFIG_FPU_SHARING=n" in conf
 
@@ -129,6 +135,36 @@ def test_a_vector_capable_tree_still_gets_the_full_vector_config():
     conf = zm._prj_conf(b.harts, "rvv", b)
     assert "CONFIG_RISCV_ISA_EXT_V=y" in conf
     assert f"CONFIG_RISCV_VECTOR_MAX_LEN={b.vector_max_len}" in conf
+
+
+def test_the_vector_save_area_is_never_declared_smaller_than_the_tree_default():
+    """Under-declaring the save area corrupts kernel memory; over-declaring only costs RAM.
+
+    `vreg[32][CONFIG_RISCV_VECTOR_MAX_LEN/8]` is a fixed buffer, but `z_riscv_vstate_save` fills it via
+    `vsetvli x0, e8, m8` + four `vse8.v` -- a length taken from the HARDWARE, never compared to the
+    buffer. A descriptor under-stating VLEN therefore writes `32 * (vlenb_hw - MAX_LEN/8)` bytes past the
+    thread struct on every switch, into whatever the linker put next. On a chip whose own probe reports
+    `vlenb 32`, a `vlen=128` descriptor overran `z_idle_threads[1]` into `z_main_thread` and zeroed its
+    `stack_info.start`; the next tick loaded from address 0. A spike gate cannot catch it, because spike
+    is given the VLEN we declared -- configured and actual agree there by construction.
+
+    So the emitted value is floored at the tree's own default for the symbol. This is a guard, not a
+    substitute for a correct descriptor: it bounds the damage of one being wrong to wasted memory.
+    """
+    floor = zm._kconfig_default_int("RISCV_VECTOR_MAX_LEN")
+    if not floor:
+        pytest.skip("this Zephyr tree states no single numeric default for RISCV_VECTOR_MAX_LEN")
+
+    understated = boards.board("some_new_tapeout", vlen=128)
+    assert understated.vector_max_len == 128, "the descriptor still reports what it was told"
+    assert zm._vector_max_len_bits(understated) == floor, "but the emitted config is floored"
+    conf = zm._prj_conf(understated.harts, "rvv", understated)
+    assert f"CONFIG_RISCV_VECTOR_MAX_LEN={floor}" in conf
+
+    # The floor must not CLAMP a board that legitimately has wider registers -- that would recreate the
+    # overrun on the one class of board where it is guaranteed to happen.
+    wide = boards.board("some_new_tapeout", vlen=1024)
+    assert zm._vector_max_len_bits(wide) == 1024
 
 
 def test_htif_console_options_are_set_only_for_an_htif_board():
@@ -216,7 +252,11 @@ def test_a_board_declares_how_it_is_built():
         b = boards.board(name)
         assert b.flow == boards.FLOW_BAREMETAL
         assert b.dram_bytes == 1024 * 1024 * 1024, "the silicon has 1 GB (its .ld declares 256 MB)"
-        assert b.vlen == 128, "stated by its own OPE kernel; their spike runs use 256"
+        # bearly25's VLEN is MEASURED, not read off its sources: its own OPE kernel says 128 while their
+        # spike runs use 256, and `vlen_probe.elf` on the silicon settles it at `vlenb 32` (VLEN 256).
+        # dsp25 has had no such probe run, so it keeps the conservative minimum until one does -- with
+        # the floor in `_vector_max_len_bits` bounding what that costs.
+        assert b.vlen == (256 if name == "gemmelos_bearly25" else 128)
 
 
 def test_the_baremetal_layout_is_packed_inside_the_boards_dram():

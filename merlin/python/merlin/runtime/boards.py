@@ -14,7 +14,10 @@ them has a failure mode if it is wrong rather than a performance cost:
 * ``dram_bytes`` — the region the image is linked for. Larger than the chip has = a boot that dies
   before ``main``; smaller than the model needs = an allocation failure mid-inference.
 * ``vlen`` — sizes the per-thread vector save area AND (via ``march_with_vlen``) what the compiler
-  assumes. A mismatch is the documented K1 trap: fixed-width vectors land at a different LMUL.
+  assumes. Over-declaring costs memory and a different LMUL (the documented K1 trap). UNDER-declaring
+  corrupts kernel memory: the save area is a fixed ``vreg[32][vlen/8]`` but Zephyr fills it with a
+  hardware-derived length, so a too-small ``vlen`` overruns the thread struct on every context switch.
+  See ``backends.zephyr_model._vector_max_len_bits``.
 * ``harts`` — how many the SoC actually has. Zephyr's SMP boot hangs waiting for harts that do not
   exist, with no fault printed.
 * ``fpu_sharing`` — ``y`` mis-routes V-illegal-instruction traps into the FP path, which retries
@@ -167,8 +170,14 @@ class Board:
 
     @property
     def vector_max_len(self) -> int:
-        """Bits to size the per-thread vector save area. 32 registers of this width per thread, so an
-        over-large value is paid by every thread; the V minimum is 128."""
+        """Bits to size the per-thread vector save area. 32 registers of this width per thread.
+
+        The two directions are NOT symmetric. Over-large is paid in RAM by every thread. Too small is a
+        buffer overrun on every context switch, because the code that fills the area takes its length
+        from the hardware and never compares it to the area it was given -- so the consumer
+        (`zephyr_model._vector_max_len_bits`) floors this at the Zephyr tree's own default rather than
+        emitting it as-is. The V minimum is 128.
+        """
         return int(self.vlen or 128)
 
 
@@ -238,12 +247,20 @@ BOARDS: dict[str, Board] = {
     # ucb-bar/Baremetal-IDE -- a bare-metal CMake SDK with no RTOS (grep -ri zephyr returns nothing) --
     # covering two chips selected by -DCHIP=. Facts below come from its platform/<chip>/*.ld and
     # chip_config.h. Its default linker script declares 256 MB of DRAM; the silicon has 1 GB, which is
-    # what we build for. VLEN=128 is stated by its own OPE kernel ("VLEN=128/LMUL=4 gives VLMAX=16");
-    # their spike runs use 256, so the two are not interchangeable. Console is UART0 @115200 8N2 for
+    # what we build for.
+    #
+    # VLEN=256, and this was WRONG here (128) until the chip itself answered. Its own OPE kernel says
+    # "VLEN=128/LMUL=4 gives VLMAX=16" while their spike runs use 256, so the tree was ambiguous and 128
+    # was the cautious-looking pick. `vlen_probe.elf` on the silicon reports `vlenb 32`, `vlmax_e8 32`,
+    # `vlmax_e32 8` -- three mutually consistent readings of the hardware CSR, i.e. VLEN=256. A comment
+    # in a vendor kernel is not a fact about the part; a `csrr vlenb` on the part is. Under-declaring it
+    # is not merely slow: see `zephyr_model._vector_max_len_bits` for the kernel-memory corruption it
+    # caused, and note that no simulator gate can catch it, because spike is given the VLEN we declare.
+    # Console is UART0 @115200 8N2 for
     # PLATFORM=CHIP builds and HTIF for PLATFORM=SIMS; our bare-metal harness speaks HTIF, which is what
     # the uart_tsi/FESVR link carries.
     "gemmelos_bearly25": Board(
-        name="gemmelos_bearly25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
+        name="gemmelos_bearly25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=256,
         console=CONSOLE_UART, sdk_chip="bearly25", chip_freq_hz=500_000_000,
         flow=FLOW_BAREMETAL,
         notes="Bearly ML 25 via Baremetal-IDE (-DCHIP=bearly25). 2 harts, hart 1 idles in wfi until "
@@ -261,7 +278,7 @@ BOARDS: dict[str, Board] = {
     # guessing high would be a silent SMP-boot hang, so this is a fact worth having been told.
     "gemmelos_bearly25_zephyr": Board(
         name="gemmelos_bearly25_zephyr", zephyr_board="chipyard_riscv64",
-        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
+        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=256,
         console=CONSOLE_UART, sdk_chip="bearly25",
         flow=FLOW_ZEPHYR, tick_hz=100,
         notes="Bearly ML 25 via the GENERIC chipyard Zephyr board (their SDK has no Zephyr port). "
@@ -287,7 +304,7 @@ BOARDS: dict[str, Board] = {
     # runtime/c/merlin_socinit_zephyr.c replays their bmark-lib `init_test` order against it.
     "gemmelos_bearly25_zephyr_500mhz": Board(
         name="gemmelos_bearly25_zephyr_500mhz", zephyr_board="chipyard_riscv64",
-        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
+        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=256,
         console=CONSOLE_UART, sdk_chip="bearly25", chip_freq_hz=500_000_000,
         flow=FLOW_ZEPHYR, tick_hz=100,
         notes="Bearly ML 25 through the generic chipyard Zephyr port, with the PLL raised to 500 MHz "
