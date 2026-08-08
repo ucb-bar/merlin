@@ -42,6 +42,60 @@ static void kv(const char *k, long v)
 	htif_putc('\n');
 }
 
+/* crt.S calls main() on EVERY hart, by design -- mstatus.VS and vlenb are per-hart facts and a
+ * heterogeneous chip is exactly what this probe exists to reveal. But nothing serialised the shared
+ * console, so on a multi-hart part the harts printed over each other and a real returned log came back
+ * as interleaved characters. That is not cosmetic: it wasted the one round trip we get, and it hid an
+ * under-declared VLEN behind a garbled `vlenb` line. It also raced `probe_memory`, where two harts
+ * writing one address can make good DRAM report FAIL. So the harts take turns, lowest first.
+ *
+ * A TICKET rather than a lock, because the order matters as much as the exclusion -- a reader should
+ * see hart 0 first -- and because a ticket needs no atomics: each hart only ever writes its own
+ * successor's value. `probe_turn` is static and uninitialised, so it lives in .bss, which crt.S clears
+ * before releasing any hart through `boot_ready`.
+ *
+ * Both waits are BOUNDED, and both fail toward printing rather than toward silence: a chip whose hart
+ * ids are not contiguous (0 and 2, no 1) would otherwise leave the later hart waiting forever for a
+ * turn that never comes, and a probe that prints nothing is indistinguishable from one that never
+ * booted. The limits are order-of-magnitude, against the slowest case that matters: one hart's block is
+ * a few hundred characters, i.e. tens of ms at 115200 baud, so ~1e6 cycles on a 50 MHz core.
+ */
+static volatile unsigned long probe_turn;
+
+#define PROBE_TURN_SPINS  200000000UL   /* ~16 s at 50 MHz: "that hart is never coming" */
+#define PROBE_QUIET_SPINS   5000000UL   /* ~0.4 s: long enough for one more hart's block */
+
+static void probe_await_turn(unsigned long hartid)
+{
+	for (unsigned long spins = 0; probe_turn != hartid && spins < PROBE_TURN_SPINS; spins++) {
+	}
+}
+
+/* Only the boot hart terminates the log, and only once the ticket has stopped advancing: htif_exit
+ * signals the host and then spins forever, so a hart calling it mid-run would cut the other harts'
+ * output off. Non-boot harts return instead, and crt.S parks them. */
+static void probe_finish(unsigned long hartid)
+{
+	unsigned long last, quiet;
+
+	__asm__ volatile("fence rw, rw" ::: "memory");   /* our lines are out before the next hart starts */
+	if (probe_turn == hartid) {
+		probe_turn = hartid + 1;
+	}
+	if (hartid != 0) {
+		return;
+	}
+	last = probe_turn;
+	for (quiet = 0; quiet < PROBE_QUIET_SPINS; quiet++) {
+		if (probe_turn != last) {
+			last = probe_turn;
+			quiet = 0;
+		}
+	}
+	htif_puts("DONE\n");
+	htif_exit(0);
+}
+
 /* How fast is this core REALLY running?
  *
  * Not a curiosity. One of the two boards this ships to was left on its 50 MHz reset clock because our
@@ -121,11 +175,13 @@ int main(void)
 {
 	uint64_t hartid = 0, misa = 0, mstatus = 0, vlenb = 0, vl8 = 0, vl32 = 0;
 
-	/* Console first, or there is nothing to read the answers on. On real silicon this programs the
-	 * UART's clocks and baud divisor; printing before it hangs the core. */
-	console_init();
-
+	/* Our turn first, then the console. On real silicon `console_init` programs the UART's clocks and
+	 * baud divisor -- shared state -- and printing before it hangs the core, so it has to happen after
+	 * the ticket and before the first `kv`. Re-running it on a later hart rewrites the same derived
+	 * values, which is why every hart may safely call it rather than trusting hart 0 to have gone first. */
 	__asm__ volatile("csrr %0, mhartid" : "=r"(hartid));
+	probe_await_turn((unsigned long)hartid);
+	console_init();
 	kv("hartid", (long)hartid);
 
 	/* misa bit 21 ('V' is letter 22, i.e. bit index 21) tells us whether the hardware claims the
@@ -146,8 +202,7 @@ int main(void)
 		/* Reading vlenb with VS==Off traps, and a trap on someone else's bench looks like a hang.
 		 * Stop here instead, having already reported the reason. */
 		htif_puts("PROBE vector_state off - vlenb not read (would trap)\n");
-		htif_puts("DONE\n");
-		htif_exit(0);
+		probe_finish((unsigned long)hartid);
 		return 0;
 	}
 
@@ -165,7 +220,6 @@ int main(void)
 	probe_clock();
 	probe_memory();
 
-	htif_puts("DONE\n");
-	htif_exit(0);
+	probe_finish((unsigned long)hartid);
 	return 0;
 }
