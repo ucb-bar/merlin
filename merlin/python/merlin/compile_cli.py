@@ -200,8 +200,12 @@ def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
 
 def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: str | None,
                 auto_capture: bool, timeout: int, harts: int = 1, iters: int = 1,
-                warmup: int = 0) -> dict:
-    """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden)."""
+                warmup: int = 0, kernel_backend: str | None = None,
+                mesh_target: str | None = None) -> dict:
+    """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
+
+    ``kernel_backend='mesh'`` + ``mesh_target`` runs the model's matmul LAYERS on that target's
+    accelerator mesh (host dispatch runtime, each matmul injected onto the mesh oracle)."""
     import numpy as np
     from .rvvgen import k1
     from .rvvgen.registry import load_rvv_package
@@ -248,7 +252,13 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     if run == "host":
         from .runtime.dispatch_runtime import run_model
 
-        res = run_model(bundle, work, int8_compute=pkg.is_int8)
+        res = run_model(bundle, work, int8_compute=pkg.is_int8,
+                        kernel_backend=kernel_backend, mesh_target=mesh_target)
+        if kernel_backend == "mesh":
+            from .runtime import dispatch_runtime as _dr
+            out["mesh_execution"] = {"target": mesh_target,
+                                     "matmul_layers_on_mesh": getattr(_dr.execute, "mesh_ran", None),
+                                     "matmul_layers_host_fallback": getattr(_dr.execute, "mesh_fell_back", None)}
         out["status"] = "ran"
         out["n_kernels"] = res.get("n_kernels")
         if refs:
@@ -568,8 +578,15 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
     family, not extents), (b) multi-tile loop nests over each layer's M/K/N built by the OOT backend, and
     (c) a whole-model runtime that co-schedules the OOT mesh kernels with the RVV lane in one image +
     address space. mesh_verify is the honest per-tile-on-mesh milestone until that infra exists."""
-    out = compile_rvv(workload, dtype, run=run, verify=verify, package=package,
-                      auto_capture=auto_capture, timeout=timeout)
+    # run=="mesh": execute the model's matmul layers on the target accelerator mesh (host dispatch runtime
+    # with mesh routing); otherwise the plain RVV/scalar reference (host/spike/...).
+    if run == "mesh":
+        out = compile_rvv(workload, dtype, run="host", verify=verify, package=package,
+                          auto_capture=auto_capture, timeout=timeout,
+                          kernel_backend="mesh", mesh_target=target)
+    else:
+        out = compile_rvv(workload, dtype, run=run, verify=verify, package=package,
+                          auto_capture=auto_capture, timeout=timeout)
     out["requested_target"] = target
     if target and linalg_mlir:
         try:
