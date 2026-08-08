@@ -983,7 +983,10 @@ def write_spec_capsule(entry: dict, binding, out_root, *, source: "SpecRefSource
         "outputs": {out_name: art.golden.get("out")},
     }
     (d / "capsule.interface.mlir").write_text(mlir, encoding="utf-8")
-    (d / "capsule.command_buffer.json").write_text(json.dumps(art.command_buffer, indent=1), encoding="utf-8")
+    # the program ships as VISIBLE grounding — strip any embedded golden (the MXU/SIMT programs carry the
+    # output values under "golden"; the answer lives ONLY in the masked golden.yaml, never in a visible file)
+    program = {k: v for k, v in art.command_buffer.items() if k != "golden"}
+    (d / "capsule.command_buffer.json").write_text(json.dumps(program, indent=1), encoding="utf-8")
     (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
     (d / "expected_instruction_coverage.yaml").write_text(
         yaml.safe_dump(cap["expected"], sort_keys=False), encoding="utf-8")
