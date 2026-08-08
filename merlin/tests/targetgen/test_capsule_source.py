@@ -123,6 +123,17 @@ def test_generate_corpus_pytorch_route_fails_closed_on_int(tmp_path):
         GC._write_capsule(entry, ib, tmp_path)
 
 
+def test_generate_corpus_pytorch_skips_when_m2m_absent(tmp_path, monkeypatch):
+    """A pytorch entry is additive: when the m2m venv is absent it is skipped (returns None), not fatal —
+    so a checkout without torch still regenerates the direct-MLIR corpus."""
+    monkeypatch.setenv("MERLIN_M2M_PYTHON", str(tmp_path / "no_such_python"))
+    GC = _load_generate_corpus()
+    entry = {"name": "WSKIP", "kind": "model_slice", "cat": "model_slices", "source": "pytorch",
+             "source_role": "pytorch_model_slice", "source_reference": "x", "op": "matmul",
+             "M": 16, "K": 16, "N": 16}
+    assert GC._write_capsule(entry, _float_binding(), tmp_path) is None
+
+
 @_needs_m2m
 def test_generate_corpus_routes_pytorch_source(tmp_path):
     """A profile entry with ``source: pytorch`` on a float dtype routes to the host-eager PyTorch source."""

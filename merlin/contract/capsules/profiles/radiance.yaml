@@ -46,6 +46,30 @@ capsules:
    source_role: handauthored_compiler_test,
    source_reference: 'contained MX PE tile (mxfp8 e4m3, E8M0 block scale, bf16 accumulate) via simt_cluster.mx_pe',
    label: public, modes: {}}
+# PyTorch-sourced float capsules (source: pytorch) — the PREFERRED, frontend-faithful path: each op is
+# defined in PyTorch and lowered to linalg-on-tensors via model2MLIR (torchAO for quantized dtypes), with
+# the host torch-eager result as the golden. They ship the pytorch loader + the lowered linalg as visible
+# grounding (capsule.pytorch.py / capsule.linalg.mlir) alongside the merlin_iface interface the agent
+# compiles. Restricted to the SIMT float regime (fp32/fp16/bf16); the MX tile (R5) stays the direct-MLIR
+# mx engine. Requires the m2m venv at generation time (additive: skipped with a warning if absent).
+- {cat: model_slices, name: RP0_linear_fp32_pt, kind: model_slice, op: linear, operand_dtype: f32,
+   source: pytorch, M: 16, K: 16, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'PyTorch fp32 projection X@W (frontend-faithful linear)', label: public, modes: {}}
+- {cat: model_slices, name: RP1_attn_qk_bf16_pt, kind: model_slice, op: attention_qk, operand_dtype: bf16,
+   source: pytorch, M_tiles: 1, K_tiles: 2, q: Q, k: K, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'PyTorch Q@K^T attention scores, bf16 (TinyLlama/Gemma-2 attn tile)',
+   label: public, modes: {}}
+- {cat: model_slices, name: RP2_rmsnorm_fp16_pt, kind: model_slice, op: rmsnorm, operand_dtype: fp16,
+   source: pytorch, M: 16, K: 16, src: X, gamma: G, out: Y0, eps: 1.0e-05,
+   source_role: pytorch_model_slice,
+   source_reference: 'PyTorch row RMSNorm fp16: x * rsqrt(mean(x^2)+eps) * gamma', label: public,
+   modes: {rmsnorm: true}}
+- {cat: isa, name: RP3_matmul_bf16_k32_pt, kind: isa, op: matmul, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 32, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'PyTorch bf16 GEMM, K=32 (K-accumulate)', label: public, modes: {k_accumulate: true}}
 # Hidden holdout set (label: hidden) — parity with atlas/gemmini. These are UNSEEN SIMT GEMM shapes graded
 # only at run end; their goldens are masked from the agent by the sandbox, so an agent that hardcodes a
 # public answer cannot generalize to them. For an external_backend/SIMT target the executing cyclotron
@@ -64,3 +88,12 @@ capsules:
    M: 16, K: 16, N: 32, lhs: A0, weight: W, out: Y0,
    source_role: handauthored_compiler_test,
    source_reference: hidden SIMT fp32 GEMM (unseen N=32 shape), label: hidden, modes: {}}
+# PyTorch-sourced hidden holdouts (source: pytorch) — unseen shapes/ops for the frontend-faithful path.
+- {cat: hidden, name: RPH0_rmsnorm_fp16_hidden, kind: model_slice, op: rmsnorm, operand_dtype: fp16,
+   source: pytorch, M: 24, K: 32, src: X, gamma: G, out: Y0, eps: 1.0e-05,
+   source_role: pytorch_model_slice,
+   source_reference: hidden PyTorch RMSNorm fp16 (unseen 24x32 shape), label: hidden, modes: {rmsnorm: true}}
+- {cat: hidden, name: RPH1_attn_qk_f32_hidden, kind: model_slice, op: attention_qk, operand_dtype: f32,
+   source: pytorch, M_tiles: 1, K_tiles: 1, q: Q, k: K, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: hidden PyTorch Q@K^T fp32 (unseen shape), label: hidden, modes: {}}

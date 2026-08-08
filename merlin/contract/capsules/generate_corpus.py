@@ -399,7 +399,14 @@ def _write_capsule(entry, binding, out_root):
                              f"(got regime {regime!r} for {eb.operand_dtype!r}); author int/MX capsules "
                              f"via the direct-MLIR engine")
         from merlin.targetgen import capsule_source as CSRC
-        return CSRC.write_pytorch_capsule(entry, eb, out_root)
+        src = CSRC.PytorchRefSource()
+        if not src.available():
+            # A pytorch capsule needs the m2m venv (torch) at generation time. It is additive: skip it
+            # (loudly) rather than sink the whole target, so a checkout without the venv still regenerates
+            # the direct-MLIR corpus. A capture that STARTS but fails (opaque/crash) still raises.
+            print(f"  [skip] {entry['name']}: pytorch source needs the m2m venv (set MERLIN_M2M_PYTHON)")
+            return None
+        return CSRC.write_pytorch_capsule(entry, eb, out_root, source=src)
     cap, mlir = CS.build(entry, eb)
     d = Path(out_root) / entry["cat"] / entry["name"]
     d.mkdir(parents=True, exist_ok=True)
@@ -480,7 +487,7 @@ def generate_target(target: str) -> list[Path]:
     profile = yaml.safe_load((PROFILES / f"{target}.yaml").read_text())
     binding = CS.derive_binding(te, profile.get("datapath", {}))
     out_root = Path(te.capsule_corpus).parent                 # target's corpus root, derived (no move)
-    written = [_write_capsule(e, binding, out_root) for e in profile["capsules"]]
+    written = [w for w in (_write_capsule(e, binding, out_root) for e in profile["capsules"]) if w]
     return written
 
 
