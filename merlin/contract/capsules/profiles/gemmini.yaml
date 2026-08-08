@@ -338,3 +338,33 @@ capsules:
     relu: false
     acc_scale: false
   cat: model_slices
+# --- Fused ops mined from gemmini-rocc-tests (tiled_matmul_ws_{layernorm,softmax,igelu}, attn_fp8_*).
+# These norm/activation/attention algorithms run in bf16 (the non-accelerator lanes compose with the int8
+# matmul mesh), so they are PyTorch-sourced (source: pytorch) with the m2m linalg as the interface.
+- {cat: model_slices, name: GF0_rmsnorm_bf16_pt, kind: model_slice, op: rmsnorm, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch RMSNorm bf16 (gemmini-rocc-tests tiled_matmul_ws_layernorm family)',
+   label: public, modes: {}}
+- {cat: model_slices, name: GF1_softmax_bf16_pt, kind: model_slice, op: softmax, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch softmax bf16 (tiled_matmul_ws_softmax family)', label: public, modes: {}}
+- {cat: model_slices, name: GF2_attn_full_bf16_pt, kind: model_slice, op: attention_full,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 64, N: 16, Dv: 64, causal: true, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'PyTorch causal attention bf16 (attn_fp8_full family)', label: public, modes: {}}
+- {cat: model_slices, name: GF3_geglu_bf16_pt, kind: model_slice, op: geglu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, N: 32, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch GeGLU bf16 (tiled_matmul_ws_igelu family)', label: public, modes: {}}
+# --- More int8 matmul-family (direct-MLIR int engine): Q@K^T attention scores.
+- {cat: model_slices, name: C7_attention_qk_i8, kind: model_slice, op: attention_qk, M_tiles: 1,
+   K_tiles: 2, q: Q, k: K, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'int8 Q@K^T attention scores (bareMetalC attention)', label: public, modes: {}}
+# --- Whole-model capstone (GATED): small_llama in int8 (torchAO int8_weight_only) end to end.
+- {cat: model, name: M0_small_llama_gemmini, kind: model, op: model, model: small_llama,
+   operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama int8 — whole-model capstone (embed/RMSNorm/RoPE/attn/SwiGLU/lm_head)',
+   label: public, gate: {after_op_pass_fraction: 0.8}}
+# --- Hidden fused holdout.
+- {cat: hidden, name: GH0_softmax_bf16_hidden, kind: model_slice, op: softmax, operand_dtype: bf16,
+   source: pytorch, M: 24, K: 24, out: Y0, source_role: pytorch_model_slice,
+   source_reference: hidden PyTorch softmax bf16 (unseen 24x24), label: hidden, modes: {}}

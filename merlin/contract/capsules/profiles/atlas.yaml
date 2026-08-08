@@ -49,3 +49,30 @@ capsules:
 - {cat: hidden, name: HT2_k_accum_hidden, kind: isa, op: matmul, M_tiles: 1, K_tiles: 2, N_tiles: 1,
    lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
    source_reference: hidden K=64 accumulate, label: hidden, modes: {k_accumulate: true}}
+# --- Fused ops mined from atlas-npu/baremetal (smolvla_rms_norm, fused_silu_gate, softmax,
+# fused_attention): the VPU/norm/activation algorithms run in bf16 alongside the fp8 MXU matmuls, so they
+# are PyTorch-sourced (the m2m linalg is the interface the atlas backend compiles).
+- {cat: model_slices, name: AF0_rmsnorm_bf16_pt, kind: model_slice, op: rmsnorm, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch RMSNorm bf16 (atlas smolvla_rms_norm)', label: public, modes: {}}
+- {cat: model_slices, name: AF1_geglu_bf16_pt, kind: model_slice, op: geglu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, N: 32, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch SiLU-gate/GeGLU bf16 (atlas smolvla_fused_silu_gate)', label: public,
+   modes: {}}
+- {cat: model_slices, name: AF2_softmax_bf16_pt, kind: model_slice, op: softmax, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch softmax bf16 (atlas smolvla_softmax)', label: public, modes: {}}
+- {cat: model_slices, name: AF3_attn_full_bf16_pt, kind: model_slice, op: attention_full,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 64, N: 16, Dv: 64, causal: true, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'PyTorch causal attention bf16 (atlas smolvla_fused_attention)', label: public,
+   modes: {}}
+# --- Whole-model capstone (GATED): small_llama in fp8 (atlas MXU inputs are fp8 e4m3).
+- {cat: model, name: M0_small_llama_atlas, kind: model, op: model, model: small_llama,
+   operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama fp8 — whole-model capstone', label: public,
+   gate: {after_op_pass_fraction: 0.8}}
+# --- Hidden fused holdout.
+- {cat: hidden, name: AHF0_rmsnorm_bf16_hidden, kind: model_slice, op: rmsnorm, operand_dtype: bf16,
+   source: pytorch, M: 24, K: 32, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
+   source_reference: hidden PyTorch RMSNorm bf16 (unseen 24x32), label: hidden, modes: {}}

@@ -69,3 +69,20 @@ capsules:
    M: 32, K: 32, N: 64, lhs: A0, weight: W, out: Y0,
    source_role: handauthored_compiler_test,
    source_reference: hidden mxfp6 GEMM (unseen N=64 tile), label: hidden, modes: {}}
+# --- Fused ops from the radiance-kernels MX set (rmsnorm_qkv_fused, flash_attention_mx, simt_quant): the
+# norm/attention algorithms run in bf16 alongside the MX matmul tiles, so they are PyTorch-sourced.
+- {cat: model_slices, name: MF0_rmsnorm_bf16_pt, kind: model_slice, op: rmsnorm, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch RMSNorm bf16 (radiance-kernels rmsnorm_qkv_fused)', label: public, modes: {}}
+- {cat: model_slices, name: MF1_softmax_bf16_pt, kind: model_slice, op: softmax, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch softmax bf16 (flash_attention_mx online softmax)', label: public, modes: {}}
+- {cat: model_slices, name: MF2_attn_full_bf16_pt, kind: model_slice, op: attention_full,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 64, N: 16, Dv: 64, causal: true, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'PyTorch causal flash attention bf16 (flash_attention_mx_gqa)', label: public, modes: {}}
+# --- Whole-model capstone (GATED): small_llama in fp8 (the MX target's low-precision weight path).
+- {cat: model, name: M0_small_llama_mx, kind: model, op: model, model: small_llama,
+   operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama fp8 — whole-model capstone', label: public,
+   gate: {after_op_pass_fraction: 0.8}}

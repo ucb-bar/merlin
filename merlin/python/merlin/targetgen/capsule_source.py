@@ -276,6 +276,18 @@ def _entry_seed(name: str) -> int:
     return sum((i + 1) * ord(c) for i, c in enumerate(name)) or 1
 
 
+# Float tolerance for a host-eager golden. A target whose native datapath is integer (e.g. gemmini,
+# exact_int) carries no atol/rtol, but a float (bf16/fp16) op still needs one — fall back to a sane
+# default so a fused op on an integer-datapath target is gradeable.
+_DEF_ATOL, _DEF_RTOL = 0.03125, 0.02
+
+
+def _tol(binding) -> tuple[float, float]:
+    atol = binding.atol if binding.atol is not None else _DEF_ATOL
+    rtol = binding.rtol if binding.rtol is not None else _DEF_RTOL
+    return atol, rtol
+
+
 def _shape_of(nested) -> list[int]:
     s = []
     x = nested
@@ -325,7 +337,7 @@ def _host_eager_golden(art, names, out_name, binding, *, interface: str, arg_ord
             "operand_dtype": binding.cap_dtype(binding.operand_dtype),
             "output_dtype": binding.cap_dtype(binding.accum_dtype),
             "note": "INDEPENDENT of the target RTL; the PyTorch frontend + host eval are the reference.",
-            "grade_policy": {"compare": binding.compare, "atol": binding.atol, "rtol": binding.rtol},
+            "grade_policy": {"compare": binding.compare, "atol": _tol(binding)[0], "rtol": _tol(binding)[1]},
             "interface": interface, "arg_order": list(arg_order),
             "pytorch_source": "capsule.pytorch.py", "linalg_mlir": "capsule.linalg.mlir",
             "path_taken": art.meta.get("path_taken"), "inputs": prov},
@@ -348,8 +360,7 @@ def _fused_capsule_yaml(entry: dict, binding, art, names: list[str]) -> dict:
         "operation": {"op": entry["op"], "attributes": {"out": out_name, "arg_order": names,
                                                         "causal": bool(entry.get("causal", False))}},
         "numeric_policy": {"compare": binding.compare, "dtype": idt,
-                           **({"atol": binding.atol} if binding.atol is not None else {}),
-                           **({"rtol": binding.rtol} if binding.rtol is not None else {})},
+                           "atol": _tol(binding)[0], "rtol": _tol(binding)[1]},
         "expected": {"instruction_classes": [], "modes": dict(entry.get("modes", {}))},
         "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
         "pytorch_ref": {"op": entry["op"], "dtype": idt, "loader": "capsule.pytorch.py"},
@@ -465,9 +476,10 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         "operation": {"op": "model", "attributes": {
             "model": entry.get("model", ""), "dtype": idt, "out": out_name,
             "arg_order": in_names + [out_name], "weights": "capsule.weights.safetensors"}},
-        "numeric_policy": {"compare": binding.compare, "dtype": "f32",
-                           **({"atol": binding.atol} if binding.atol is not None else {}),
-                           **({"rtol": binding.rtol} if binding.rtol is not None else {})},
+        # the whole-model golden is the host torch-eager float output, so it is graded with tolerance even
+        # on an integer-datapath target (whose op capsules grade exact_int).
+        "numeric_policy": {"compare": "tolerance_float", "dtype": "f32",
+                           "atol": _tol(binding)[0], "rtol": _tol(binding)[1]},
         "expected": {"instruction_classes": []},
         "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
         "gate": gate,
@@ -481,7 +493,7 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         "oracle_provenance": {
             "engine": "model2MLIR whole-model linalg-on-tensors + host torch-eager",
             "model": entry.get("model", ""), "output_dtype": "f32",
-            "grade_policy": {"compare": binding.compare, "atol": binding.atol, "rtol": binding.rtol},
+            "grade_policy": {"compare": binding.compare, "atol": _tol(binding)[0], "rtol": _tol(binding)[1]},
             "interface": "linalg_positional", "arg_order": in_names + [out_name],
             "pytorch_source": "capsule.pytorch.py", "linalg_mlir": "capsule.interface.mlir",
             "inputs": prov},
