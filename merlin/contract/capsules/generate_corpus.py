@@ -417,6 +417,20 @@ def _write_capsule(entry, binding, out_root):
             print(f"  [skip] {entry['name']}: pytorch source needs the m2m venv (set MERLIN_M2M_PYTHON)")
             return None
         return CSRC.write_pytorch_capsule(entry, eb, out_root, source=src)
+    # Spec source: a capsule whose PROGRAM + bit-exact golden come from the specir verification spec itself
+    # (``spec_ref: '<gen>:op.<name>'``). Additive: a gen without a specir program emitter (or no specir) is
+    # skipped loudly rather than sinking the target.
+    if entry.get("source") == "spec" or entry.get("spec_ref"):
+        from merlin.targetgen import capsule_source as CSRC
+        src = CSRC.SpecRefSource()
+        if not src.available():
+            print(f"  [skip] {entry['name']}: spec source needs specir (set SPECIR_ROOT)")
+            return None
+        try:
+            return CSRC.write_spec_capsule(entry, eb, out_root, source=src)
+        except CSRC.SpecProgramUnavailable as e:
+            print(f"  [skip] {entry['name']}: {e}")
+            return None
     cap, mlir = CS.build(entry, eb)
     d = Path(out_root) / entry["cat"] / entry["name"]
     d.mkdir(parents=True, exist_ok=True)

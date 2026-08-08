@@ -10,7 +10,7 @@
     "kind": {"type": "string", "enum": ["isa", "layer", "model_slice", "model"]},
     "source_role": {
       "type": "string",
-      "enum": ["behavioral_specimen", "pytorch_model_slice", "handauthored_compiler_test", "uplifted_from_bareMetalC"]
+      "enum": ["behavioral_specimen", "pytorch_model_slice", "handauthored_compiler_test", "uplifted_from_bareMetalC", "spec_derived"]
     },
     "source_reference": {"type": "string", "description": "bareMetalC path / torch module slice / ISA section / local spec id"},
     "label": {"type": "string", "enum": ["public", "dev", "hidden"]},

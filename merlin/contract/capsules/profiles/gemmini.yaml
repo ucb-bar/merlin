@@ -371,6 +371,12 @@ capsules:
 - {cat: model_slices, name: GF5_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch GELU-tanh bf16 (gemmini-rocc-tests igelu)', label: public, modes: {}}
+# --- Spec-sourced capsule: the PROGRAM + bit-exact golden come from the specir verification spec itself
+# (spec_ref), not a handauthored template — the spec's command buffer + coverage_goal ship as grounding.
+- {cat: isa, name: GS0_matmul_spec, kind: isa, op: matmul, source: spec, spec_ref: 'gemmini:op.matmul',
+   M: 16, K: 16, N: 16, lhs: A0, weight: W, out: Y0, source_role: spec_derived,
+   source_reference: 'specir spec-sourced int8 matmul (program + bit-exact refmodel golden + coverage)',
+   label: public}
 # --- Conv family: native int8 conv2d (direct-MLIR merlin_iface.conv2d, mined from bareMetalC/conv.c) +
 # the vector-lane conv/pool ops (bf16 pytorch: depthwise MixFFN, pooling, global average).
 - {cat: layers, name: GC0_conv2d_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8, kh: 3, kw: 3,
