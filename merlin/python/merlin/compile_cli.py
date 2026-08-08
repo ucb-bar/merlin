@@ -500,21 +500,20 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
                        accum_dtype: str | None = None, simulator: str | None = None,
                        package: str | None = None, timeout: int = 900) -> list | None:
     """Execute ``A @ W`` on the target's mesh oracle with the REAL operand values INJECTED (not
-    materialized-from-name), and return the mesh's output tensor (nested list) — or ``None`` if the mesh
-    oracle is unavailable. ``A`` / ``W`` are nested lists (the layer's real activations / weights). This is
-    the per-layer primitive of a whole-model on-mesh run: the model's actual data flows through the RTL
-    systolic array, and the (three-way-gated) output threads to the next layer. Fail-closed: an unavailable
-    oracle or a failed cert returns ``None`` (never a fabricated result)."""
-    import os
-    import tempfile
-    from .benchharness import runs_root
-    from .targetgen import corpus_spec as CS
-    from .targetgen import oot_runner
+    materialized-from-name), and return the mesh's output tensor (nested list) — or ``None`` when this
+    target has no reachable mesh path. ``A`` / ``W`` are the layer's real activations / weights.
 
-    sim = simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")
-    pkg = package or _default_oot_package(target)
-    if pkg is None:
-        return None
+    TARGET-AGNOSTIC: it dispatches on the target's DERIVED ``endpoint_kind`` (from the contract, never a
+    literal) to that target's OWN oracle — a systolic/RoCC target (``inline_asm_insn``) through its generated
+    OOT-package cert path, a self-hosted-ISA target (``external_backend``) through the program oracle whose
+    RTL cosim mlc DERIVES from the target. The per-target kernel + harness come from the GENERATED package;
+    this tool only builds the merlin_iface interface, injects the operands, and reads the output back.
+    Fail-closed (``None``) on an unavailable oracle or an endpoint with no mesh path (never a fabricated
+    result)."""
+    from .targetgen import corpus_spec as CS
+    from .targetgen.capsule_runner import _endpoint_of
+
+    endpoint, model_ext = _endpoint_of(target)
     M, K, N = len(A), len(A[0]), len(W[0])
     binding = _mesh_tile_binding(target, operand_dtype, accum_dtype)
     entry = {"name": "mesh_layer", "op": "matmul", "kind": "op",
@@ -522,6 +521,26 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
              "source_reference": f"whole-model matmul layer {M}x{K}x{N} on the mesh with real operands",
              "M": M, "K": K, "N": N, "lhs": "A0", "weight": "W", "out": "Y0"}
     _, mlir = CS.build(entry, binding)
+
+    if endpoint in (None, "inline_asm_insn", "upstream_target"):
+        return _matmul_via_oot_cert(target, mlir, A, W, simulator=simulator, package=package, timeout=timeout)
+    if endpoint == "external_backend":
+        return _matmul_via_program_oracle(target, mlir, A, W, model_ext=model_ext,
+                                          package=package, timeout=timeout)
+    return None                                  # no mesh-execution path derived for this endpoint kind
+
+
+def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout) -> list | None:
+    """Systolic/RoCC path: certify the matmul through the target's generated OOT package on its ELF/mesh
+    oracle, with the real operands injected (``inputs`` -> the package harness's ``materialize_inputs``)."""
+    import os
+    import tempfile
+    from .benchharness import runs_root
+    from .targetgen import oot_runner
+    sim = simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")
+    pkg = package or _default_oot_package(target)
+    if pkg is None:
+        return None
     with tempfile.TemporaryDirectory(prefix="mesh_layer_") as td:
         iface = Path(td) / "mesh_layer.interface.mlir"
         iface.write_text(mlir, encoding="utf-8")
@@ -531,6 +550,20 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
     if res.get("status") != "pass":
         return None
     return (res.get("oracle_outputs") or {}).get("Y0")
+
+
+def _matmul_via_program_oracle(target, mlir, A, W, *, model_ext, package, timeout) -> list | None:
+    """Self-hosted-ISA (external_backend) path: emit the target's kernel from the interface through its
+    generated OOT package (target-agnostic ``run_entrypoints``), inject the real operands onto the command
+    buffer's leaf tensors, and run on the target's mlc-DERIVED arc cosim via the generic program oracle.
+    Returns the output or ``None`` (fail-closed). The kernel/codegen is the GENERATED package's; the operand
+    injection + oracle dispatch are target-agnostic. Requires ``model_ext`` (the operand-layout model)."""
+    if not model_ext:
+        return None
+    from .targetgen import mesh_program_run
+    return mesh_program_run.matmul_on_program_oracle(
+        target, mlir, A, W, model_ext=model_ext, package=package or _default_oot_package(target),
+        timeout=timeout)
 
 
 def _summarize_route_plan(plan: dict) -> dict:
