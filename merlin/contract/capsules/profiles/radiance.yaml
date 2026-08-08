@@ -118,3 +118,12 @@ capsules:
    source: pytorch, M: 24, K: 24, out: Y0,
    source_role: pytorch_model_slice,
    source_reference: hidden PyTorch softmax fp16 (unseen 24x24), label: hidden, modes: {}}
+# Whole-model capsule (kind: model) — a small representative transformer lowered end to end via model2MLIR,
+# graded vs its host torch-eager output. GATED: only scheduled once >= 80% of the op capsules pass, so the
+# whole model is the capstone test that the compiler produces a WORKING network (right layers lowered,
+# quantization correct) — not a per-round cost. small_llama covers embedding/RMSNorm/RoPE/attention+softmax/
+# SwiGLU/lm_head at tiny dims. fp32 here (radiance SIMT); an MX config would use its own precision.
+- {cat: model, name: M0_small_llama_fp32, kind: model, op: model, model: small_llama, operand_dtype: f32,
+   out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama — tiny full LLaMA (embed/RMSNorm/RoPE/attn+softmax/SwiGLU/lm_head)',
+   label: public, gate: {after_op_pass_fraction: 0.8}}

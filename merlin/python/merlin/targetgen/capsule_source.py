@@ -202,6 +202,7 @@ class PytorchRefSource:
         return self.python.exists() and (self.m2m_dir / "m2m" / "__init__.py").exists()
 
     def capture(self, spec: dict, *, workdir: str | Path | None = None) -> CapsuleArtifacts:
+        """Capture a generated op loader (matmul/attention/... rendered from ``spec``)."""
         if not self.available():
             raise M2MUnavailable(
                 f"m2m venv python {self.python} or repo {self.m2m_dir} missing; set MERLIN_M2M_PYTHON / "
@@ -210,32 +211,44 @@ class PytorchRefSource:
         loader_src = build_loader_src(spec)
         tmp = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="capsule_m2m_"))
         tmp.mkdir(parents=True, exist_ok=True)
-        loader_py = tmp / "loader.py"
-        loader_py.write_text(loader_src, encoding="utf-8")
-        worker = Path(__file__).with_name("_m2m_capture_worker.py")
+        (tmp / "loader.py").write_text(loader_src, encoding="utf-8")
+        return self._run(tmp / "loader.py", spec["op"], dtype, workdir=tmp, src=loader_src)
 
+    def capture_loader(self, loader_py: str | Path, dtype: str, *,
+                       workdir: str | Path | None = None) -> CapsuleArtifacts:
+        """Capture an EXISTING loader file (a whole-model workload) rather than a generated op loader.
+        Same worker path; ``op`` is ``model`` and ``pytorch_src`` is the loader's own source."""
+        loader_py = Path(loader_py)
+        if not self.available():
+            raise M2MUnavailable(f"m2m venv python {self.python} or repo {self.m2m_dir} missing")
+        if not loader_py.is_file():
+            raise M2MUnavailable(f"model loader not found: {loader_py}")
+        tmp = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="capsule_model_"))
+        tmp.mkdir(parents=True, exist_ok=True)
+        return self._run(loader_py, "model", dtype, workdir=tmp, src=loader_py.read_text())
+
+    def _run(self, loader_py: Path, op: str, dtype: str, *, workdir: Path, src: str) -> CapsuleArtifacts:
+        worker = Path(__file__).with_name("_m2m_capture_worker.py")
         env = dict(os.environ)
         env["MERLIN_M2M_DIR"] = str(self.m2m_dir)
         cmd = [str(self.python), str(worker), "--loader", str(loader_py),
-               "--dtype", dtype, "--out", str(tmp), "--m2m-dir", str(self.m2m_dir)]
+               "--dtype", dtype, "--out", str(workdir), "--m2m-dir", str(self.m2m_dir)]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout, env=env)
-        meta_p = tmp / "meta.json"
+        meta_p = workdir / "meta.json"
         if proc.returncode != 0 or not meta_p.exists():
-            raise M2MUnavailable(
-                f"m2m capture failed (rc={proc.returncode}) for op {spec.get('op')!r}/{dtype}:\n"
-                f"{proc.stderr[-1500:]}")
+            raise M2MUnavailable(f"m2m capture failed (rc={proc.returncode}) for op {op!r}/{dtype}:\n"
+                                 f"{proc.stderr[-1500:]}")
         meta = json.loads(meta_p.read_text())
         if not meta.get("ok") or meta.get("opaque", -1) != 0:
             raise M2MUnavailable(
-                f"m2m capture produced a non-clean program for op {spec.get('op')!r}/{dtype} "
+                f"m2m capture produced a non-clean program for op {op!r}/{dtype} "
                 f"(ok={meta.get('ok')}, opaque={meta.get('opaque')}); a capsule input must be 0-opaque")
         return CapsuleArtifacts(
-            op=spec["op"], dtype=dtype,
-            pytorch_src=loader_src,
-            linalg_mlir=(tmp / "linalg.mlir").read_text(encoding="utf-8"),
-            inputs=json.loads((tmp / "inputs.json").read_text()),
-            golden=json.loads((tmp / "golden.json").read_text()),
-            weights_path=meta.get("weights", str(tmp / "weights.safetensors")),
+            op=op, dtype=dtype, pytorch_src=src,
+            linalg_mlir=(workdir / "linalg.mlir").read_text(encoding="utf-8"),
+            inputs=json.loads((workdir / "inputs.json").read_text()),
+            golden=json.loads((workdir / "golden.json").read_text()),
+            weights_path=meta.get("weights", str(workdir / "weights.safetensors")),
             meta=meta)
 
 
@@ -392,6 +405,102 @@ def write_pytorch_capsule(entry: dict, binding, out_root, *, source: "PytorchRef
     (d / "capsule.linalg.mlir").write_text(art.linalg_mlir, encoding="utf-8")
     (d / "golden.yaml").write_text(yaml.safe_dump(golden, sort_keys=False), encoding="utf-8")
     return d
+
+
+# ------------------------------------------------------------------------------------------------
+# whole-model capsule (WholeModelSource): a small representative network (e.g. small_llama) lowered end
+# to end via model2MLIR, graded vs its host torch-eager output — GATED so it runs only once the op suite
+# has proven itself (>= a pass fraction). The interface is the whole linalg module (positional).
+# ------------------------------------------------------------------------------------------------
+def _all_integral(nested) -> bool:
+    return all(float(v) == int(v) for v in _flatten(nested))
+
+
+def resolve_model_loader(entry: dict, m2m_dir: str | Path | None = None) -> Path:
+    """A model capsule entry names either a workload (``model: small_llama``) or an explicit ``loader``."""
+    root = Path(m2m_dir) if m2m_dir else _m2m_dir()
+    if entry.get("loader"):
+        p = Path(entry["loader"])
+        return p if p.is_absolute() else (root / p)
+    name = entry.get("model")
+    if not name:
+        raise ValueError("model capsule entry needs 'model' (workload name) or 'loader' (path)")
+    return root / "workloads" / name / "loader.py"
+
+
+def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSource | None" = None):
+    """Materialize a whole-model capsule: the model is lowered end-to-end via model2MLIR (the linalg IS
+    the interface), weights are externalized alongside, and the golden is the host torch-eager output.
+    A ``gate`` (default ``after_op_pass_fraction: 0.8``) defers scheduling until the op suite passes."""
+    import shutil
+
+    import yaml
+    src = source or PytorchRefSource()
+    dtype = entry.get("operand_dtype") or binding.operand_dtype
+    loader = resolve_model_loader(entry, src.m2m_dir)
+    art = src.capture_loader(loader, dtype)
+
+    d = Path(out_root) / entry["cat"] / entry["name"]
+    d.mkdir(parents=True, exist_ok=True)
+    in_names = [f"I{i}" for i in range(len(art.inputs))]
+    idt = binding.cap_dtype(binding.operand_dtype)
+    inputs = [{"name": nm, "role": "input", "shape": _shape_of(art.inputs[i]),
+               "dtype": ("i64" if _all_integral(art.inputs[i]) else idt)}
+              for i, nm in enumerate(in_names)]
+    out_name = entry.get("out", "Y0")
+    gate = entry.get("gate") or {"after_op_pass_fraction": 0.8}
+
+    # self-contained weights: copy in + rewrite the linalg's absolute prov.weights_file to a relative name
+    linalg = art.linalg_mlir
+    wsrc = Path(art.weights_path)
+    if wsrc.is_file():
+        shutil.copyfile(wsrc, d / "capsule.weights.safetensors")
+        linalg = linalg.replace(str(wsrc), "capsule.weights.safetensors")
+
+    cap = {
+        "name": entry["name"], "kind": "model", "source_role": "pytorch_model_slice",
+        "source_reference": entry.get("source_reference", f"whole model {entry.get('model', '')}"),
+        "label": entry.get("label", "public"), "interface_mlir": "capsule.interface.mlir",
+        "inputs": inputs,
+        "operation": {"op": "model", "attributes": {
+            "model": entry.get("model", ""), "dtype": idt, "out": out_name,
+            "arg_order": in_names + [out_name], "weights": "capsule.weights.safetensors"}},
+        "numeric_policy": {"compare": binding.compare, "dtype": "f32",
+                           **({"atol": binding.atol} if binding.atol is not None else {}),
+                           **({"rtol": binding.rtol} if binding.rtol is not None else {})},
+        "expected": {"instruction_classes": []},
+        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+        "gate": gate,
+        "pytorch_ref": {"op": "model", "dtype": idt, "loader": "capsule.pytorch.py"},
+        "linalg_mlir": "capsule.interface.mlir",
+    }
+    prov = {nm: {"shape": _shape_of(art.inputs[i]), "decoded": _flatten(art.inputs[i])}
+            for i, nm in enumerate(in_names)}
+    golden = {
+        "golden_source": "host_torch_eager",
+        "oracle_provenance": {
+            "engine": "model2MLIR whole-model linalg-on-tensors + host torch-eager",
+            "model": entry.get("model", ""), "output_dtype": "f32",
+            "grade_policy": {"compare": binding.compare, "atol": binding.atol, "rtol": binding.rtol},
+            "interface": "linalg_positional", "arg_order": in_names + [out_name],
+            "pytorch_source": "capsule.pytorch.py", "linalg_mlir": "capsule.interface.mlir",
+            "inputs": prov},
+        "outputs": {out_name: art.golden},
+    }
+    (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
+    (d / "capsule.interface.mlir").write_text(linalg, encoding="utf-8")
+    (d / "expected_instruction_coverage.yaml").write_text(
+        yaml.safe_dump(cap["expected"], sort_keys=False), encoding="utf-8")
+    (d / "capsule.pytorch.py").write_text(art.pytorch_src, encoding="utf-8")
+    (d / "golden.yaml").write_text(yaml.safe_dump(golden, sort_keys=False), encoding="utf-8")
+    return d
+
+
+def model_gate_satisfied(cap: dict, op_pass_fraction: float) -> bool:
+    """True when a (model) capsule may be scheduled: its ``gate.after_op_pass_fraction`` is met, or absent.
+    ``op_pass_fraction`` is the fraction of graded OP-level capsules that passed (0..1)."""
+    thr = (cap.get("gate") or {}).get("after_op_pass_fraction")
+    return thr is None or op_pass_fraction >= float(thr)
 
 
 # ------------------------------------------------------------------------------------------------

@@ -7,7 +7,7 @@
   "required": ["name", "kind", "source_role", "label", "operation", "numeric_policy", "expected", "required_oracle_tiers"],
   "properties": {
     "name": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"},
-    "kind": {"type": "string", "enum": ["isa", "layer", "model_slice"]},
+    "kind": {"type": "string", "enum": ["isa", "layer", "model_slice", "model"]},
     "source_role": {
       "type": "string",
       "enum": ["behavioral_specimen", "pytorch_model_slice", "handauthored_compiler_test", "uplifted_from_bareMetalC"]
@@ -24,7 +24,7 @@
           "name": {"type": "string"},
           "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]},
           "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
-          "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "fp16", "f32", "bf16", "fp8_e4m3", "fp8_e5m2", "mxfp8", "mxfp6", "mxfp4", "fp6_e3m2", "fp4_e2m1", "e8m0"]},
+          "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "i64", "fp16", "f32", "bf16", "fp8_e4m3", "fp8_e5m2", "mxfp8", "mxfp6", "mxfp4", "fp6_e3m2", "fp4_e2m1", "e8m0"]},
           "layout": {"type": "string"}
         },
         "additionalProperties": false
@@ -34,7 +34,7 @@
       "type": "object",
       "required": ["op"],
       "properties": {
-        "op": {"type": "string", "enum": ["matmul", "linear", "conv2d", "movement", "attention_qk", "attention_pv", "resident_reuse", "rmsnorm", "attention_full", "softmax", "layernorm", "geglu", "rope"]},
+        "op": {"type": "string", "enum": ["matmul", "linear", "conv2d", "movement", "attention_qk", "attention_pv", "resident_reuse", "rmsnorm", "attention_full", "softmax", "layernorm", "geglu", "rope", "model"]},
         "attributes": {"type": "object", "additionalProperties": true}
       },
       "additionalProperties": false
@@ -89,7 +89,13 @@
       "items": {"type": "string", "enum": ["L0", "L1", "L2", "L3", "L4", "L5"]}
     },
     "vcs": {"type": "string", "enum": ["required", "optional", "unavailable"]},
-    "firesim": {"type": "string", "enum": ["required", "optional", "unavailable"]}
+    "firesim": {"type": "string", "enum": ["required", "optional", "unavailable"]},
+    "gate": {
+      "type": "object",
+      "description": "Scheduling gate: a whole-model capsule is only run once the op-level suite has proven itself. `after_op_pass_fraction` is the minimum fraction of graded op capsules that must PASS before this capsule is scheduled.",
+      "properties": {"after_op_pass_fraction": {"type": "number", "minimum": 0, "maximum": 1}},
+      "additionalProperties": false
+    }
   },
   "additionalProperties": true
 }

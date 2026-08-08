@@ -144,6 +144,35 @@ def test_args_from_cb_linalg_positional():
     assert out_args[0].name == "Y0" and (out_args[0].rows, out_args[0].cols) == (4, 4)
 
 
+def test_model_gate_satisfied():
+    """The whole-model capsule's schedule gate: unlocked at/above the pass fraction, locked below, and a
+    capsule with no gate is always schedulable."""
+    cap = {"gate": {"after_op_pass_fraction": 0.8}}
+    assert CSrc.model_gate_satisfied(cap, 0.8) and CSrc.model_gate_satisfied(cap, 0.95)
+    assert not CSrc.model_gate_satisfied(cap, 0.5)
+    assert CSrc.model_gate_satisfied({}, 0.0)
+
+
+@_needs_m2m
+def test_write_model_capsule_small_llama(tmp_path):
+    """A whole-model capsule lowers small_llama end-to-end (0-opaque), externalizes weights alongside the
+    linalg interface, records a host-eager golden, and carries the schedule gate. Schema-valid kind=model."""
+    import yaml
+    from merlin.targetgen import capsule_common as CC
+    entry = {"name": "M0_small_llama_fp32", "cat": "model", "model": "small_llama", "operand_dtype": "f32",
+             "source_reference": "tiny full LLaMA", "label": "public", "gate": {"after_op_pass_fraction": 0.8}}
+    d = CSrc.write_model_capsule(entry, _float_binding(), tmp_path)
+    cap = CC.load_capsule(d)
+    assert cap["kind"] == "model" and cap["operation"]["op"] == "model"
+    assert cap["gate"]["after_op_pass_fraction"] == 0.8
+    assert (d / "capsule.weights.safetensors").exists()
+    iface = (d / "capsule.interface.mlir").read_text()
+    assert "linalg." in iface and "capsule.weights.safetensors" in iface   # weights path made relative
+    g = yaml.safe_load((d / "golden.yaml").read_text())
+    out = list(g["outputs"].values())[0]
+    assert isinstance(out, list) and isinstance(out[0], list) and isinstance(out[0][0], list)  # rank-3 logits
+
+
 def _load_generate_corpus():
     import importlib.util
     from merlin.common.paths import repo_root

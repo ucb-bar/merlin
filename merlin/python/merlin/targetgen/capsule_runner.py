@@ -1101,11 +1101,36 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
                            pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype,
                            config=config, perf_extractor=perf_extractor, no_oracle=no_oracle)
 
-    if max_workers <= 1:
-        return [_one(cap) for cap in capsules]
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        return list(ex.map(_one, capsules))  # order preserved by ex.map
+    def _run_all(caps: list[dict]) -> list[dict]:
+        if max_workers <= 1:
+            return [_one(c) for c in caps]
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            return list(ex.map(_one, caps))
+
+    # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op
+    # suite proves itself (its ``gate.after_op_pass_fraction`` of the graded op capsules passed). Grade the
+    # op capsules first; if no model capsule is present this is exactly the original single-pass behavior.
+    from .capsule_source import model_gate_satisfied
+    op_caps = [c for c in capsules if c.get("kind") != "model"]
+    model_caps = [c for c in capsules if c.get("kind") == "model"]
+    op_results = _run_all(op_caps)
+    if not model_caps:
+        return op_results
+    graded = [r for r in op_results if r.get("status") in ("pass", "fail")]
+    frac = (sum(1 for r in graded if r.get("status") == "pass") / len(graded)) if graded else 0.0
+    model_results = []
+    for c in model_caps:
+        if model_gate_satisfied(c, frac):
+            model_results.append(_one(c))
+        else:
+            thr = (c.get("gate") or {}).get("after_op_pass_fraction")
+            model_results.append({
+                "capsule": c["name"], "kind": "model", "label": c.get("label"), "status": "gated",
+                "failure": {"plane": "gate", "category": "GATED",
+                            "detail": f"whole-model capsule deferred: op pass fraction {frac:.2f} "
+                                      f"< gate {thr}"}})
+    return op_results + model_results
 
 
 def main(argv: list[str] | None = None) -> int:

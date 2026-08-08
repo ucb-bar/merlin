@@ -388,6 +388,16 @@ def _entry_regime(entry, binding):
 # ------------------------------------------------------------------------------------------------
 def _write_capsule(entry, binding, out_root):
     regime, eb = _entry_regime(entry, binding)
+    # Whole-model capsule: a small representative network lowered end-to-end via model2MLIR, graded vs its
+    # host torch-eager output, GATED so it runs only after the op suite proves itself. Additive: skipped
+    # (loudly) when the m2m venv is absent.
+    if entry.get("kind") == "model" or entry.get("op") == "model":
+        from merlin.targetgen import capsule_source as CSRC
+        src = CSRC.PytorchRefSource()
+        if not src.available():
+            print(f"  [skip] {entry['name']}: model capsule needs the m2m venv (set MERLIN_M2M_PYTHON)")
+            return None
+        return CSRC.write_model_capsule(entry, eb, out_root, source=src)
     # PREFERRED source: a capsule defined in PyTorch (frontend-faithful), lowered to linalg via model2MLIR
     # with a host torch-eager golden. Opt in per entry (``source: pytorch``). Restricted to the float
     # regime: a host-eager float reference is graded with tolerance, matching the merlin_iface float
