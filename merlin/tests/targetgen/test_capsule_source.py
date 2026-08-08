@@ -173,6 +173,40 @@ def test_write_model_capsule_small_llama(tmp_path):
     assert isinstance(out, list) and isinstance(out[0], list) and isinstance(out[0][0], list)  # rank-3 logits
 
 
+@_needs_m2m
+@pytest.mark.parametrize("entry,dtype,op", [
+    ({"name": "XM_matmul", "kind": "isa", "cat": "isa", "source_role": "pytorch_model_slice",
+      "source_reference": "m", "op": "matmul", "M": 16, "K": 16, "N": 16}, "f32", "matmul"),
+    ({"name": "XA_attn", "kind": "model_slice", "cat": "model_slices", "source_role": "pytorch_model_slice",
+      "source_reference": "a", "op": "attention_qk", "M": 16, "K": 16, "N": 16}, "f32", "attention_qk"),
+    ({"name": "XR_rms", "kind": "model_slice", "cat": "model_slices", "source_role": "pytorch_model_slice",
+      "source_reference": "r", "op": "rmsnorm", "M": 16, "K": 16, "eps": 1e-5}, "f32", "rmsnorm"),
+])
+def test_pytorch_golden_matches_reference_math(entry, dtype, op, tmp_path):
+    """Regression vs the trusted reference math the original hand-written MLIR capsules encode: the host
+    torch-eager golden must equal a plain numpy reference recomputed on the capsule's OWN recorded inputs.
+    Proves the PyTorch source did not change the operation's semantics."""
+    import numpy as np
+    import yaml
+    d = CSrc.write_pytorch_capsule(entry, _float_binding(dtype), tmp_path)
+    g = yaml.safe_load((d / "golden.yaml").read_text())
+    prov = g["oracle_provenance"]["inputs"]
+
+    def arr(name):
+        return np.array(prov[name]["decoded"], dtype=np.float64).reshape(prov[name]["shape"])
+
+    got = np.array(list(g["outputs"].values())[0], dtype=np.float64)
+    if op == "matmul":
+        ref = arr("A0").astype(np.float32) @ arr("W").astype(np.float32)
+    elif op == "attention_qk":
+        ref = arr("Q").astype(np.float32) @ arr("K").astype(np.float32).T
+    else:  # rmsnorm
+        x, gm = arr("X").astype(np.float32), arr("G").astype(np.float32).reshape(-1)
+        ms = (x * x).mean(-1, keepdims=True)
+        ref = x * (1.0 / np.sqrt(ms + np.float32(entry["eps"]))) * gm
+    np.testing.assert_allclose(got, ref, rtol=1e-3, atol=1e-3)
+
+
 def _load_generate_corpus():
     import importlib.util
     from merlin.common.paths import repo_root

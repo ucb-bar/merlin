@@ -55,3 +55,17 @@ capsules:
    source_role: handauthored_compiler_test,
    source_reference: 'single sub-byte fp6 e3m2 PE tile (32x32), LUT-indexed nibbles, E8M0 block scale',
    label: public, modes: {}}
+# Hidden holdout set — unseen block-scaled shapes across all three MX widths, graded only at run end (mesh
+# constraints preserved: M,N mult of the PE tile, K mult of the 32-element scale group). Parity w/ atlas.
+- {cat: hidden, name: MH0_mxfp8_hidden, kind: isa, op: matmul, operand_dtype: mxfp8,
+   M: 16, K: 32, N: 32, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: hidden mxfp8 GEMM (unseen N=32 tile), label: hidden, modes: {}}
+- {cat: hidden, name: MH1_mxfp4_hidden, kind: isa, op: matmul, operand_dtype: mxfp4,
+   M: 32, K: 64, N: 32, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: hidden mxfp4 GEMM (unseen K=64 accumulate), label: hidden, modes: {k_accumulate: true}}
+- {cat: hidden, name: MH2_mxfp6_hidden, kind: isa, op: matmul, operand_dtype: mxfp6,
+   M: 32, K: 32, N: 64, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: hidden mxfp6 GEMM (unseen N=64 tile), label: hidden, modes: {}}
