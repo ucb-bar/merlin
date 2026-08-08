@@ -95,6 +95,29 @@ capsules:
 - {cat: model_slices, name: AF8_rope_bf16_pt, kind: model_slice, op: rope, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch RoPE bf16 (atlas smolvla_rope_frequency)', label: public, modes: {}}
+# --- Both MXU mesh types (atlas has two systolic meshes: mxu0/mxu1) as distinct fp8 matmul tiles, plus a
+# k-chain and fused matmul+bias mined from atlas-npu/baremetal (smolvla_matmul_mxu*, k_chain, fused_matmul_bias).
+- {cat: isa, name: AT7_matmul_mxu0, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, semantic: matmul_mxu0, source_role: handauthored_compiler_test,
+   source_reference: 'fp8 matmul on MXU mesh 0 (smolvla_matmul_mxu0)', label: public, modes: {}}
+- {cat: isa, name: AT8_matmul_mxu1, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, semantic: matmul_mxu1, source_role: handauthored_compiler_test,
+   source_reference: 'fp8 matmul on MXU mesh 1 (smolvla_matmul_mxu1)', label: public, modes: {}}
+- {cat: model_slices, name: AF9_fused_matmul_bias_bf16_pt, kind: model_slice, op: fused_matmul_bias,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: fused_matmul_bias,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch linear+bias bf16 (atlas fused_matmul_bias)',
+   label: public, modes: {}}
+- {cat: model_slices, name: AF10_bias_add_bf16_pt, kind: model_slice, op: bias_add, operand_dtype: bf16,
+   source: pytorch, M: 16, N: 16, out: Y0, comparison_group: bias_add, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch bias add bf16 (atlas bias_add)', label: public, modes: {}}
+- {cat: model_slices, name: AF11_k_chain_bf16_pt, kind: model_slice, op: k_chain, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: k_chain,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch chained matmul bf16 (atlas k_chain)',
+   label: public, modes: {}}
+- {cat: model_slices, name: AF12_gemv_batched_bf16_pt, kind: model_slice, op: gemv_batched,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, B: 2, out: Y0, comparison_group: gemv_batched,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch batched GEMV bf16 (atlas gemv_batched)',
+   label: public, modes: {}}
 # --- Second whole-model capstone (GATED): lstmnetvit fp8 — broader layer types (conv patch-embed,
 # spatial-reduction attention, depthwise MixFFN, PixelShuffle+upsample, LSTM head) beyond small_llama.
 - {cat: model, name: M1_lstmnetvit_atlas, kind: model, op: model, model: lstmnetvit,

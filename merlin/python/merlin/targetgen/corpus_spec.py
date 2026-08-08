@@ -387,11 +387,63 @@ def build_rmsnorm(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     return cap, "\n".join(L) + "\n"
 
 
+def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """An im2col conv2d capsule (op == conv2d): NHWC IFM + pre-im2col'd weight [KH*KW*Ci, Cout] -> a resident
+    matmul over conv windows, output [Ho*Wo, Cout]. Reuses the runtime's canonical conv geometry so the golden
+    (capsule_golden conv2d branch) and the harness agree. Native operand dtype (e.g. gemmini int8)."""
+    from merlin.runtime.commandbuffer import conv_out_dims
+    ifm, weight, out = entry.get("ifm", "IFM"), entry.get("weight", "W"), entry.get("out", "Y0")
+    ci = entry.get("ci", entry.get("Cin", 4))
+    cout = entry.get("N", entry.get("Cout", binding.tile_dim))
+    H, W = entry.get("Himg", 8), entry.get("Wimg", 8)
+    kh, kw = entry.get("kh", 3), entry.get("kw", 3)
+    stride = list(entry.get("stride", [1, 1]))
+    padding = list(entry.get("padding", [0, 0, 0, 0]))
+    dilation = list(entry.get("dilation", [1, 1]))
+    Ho, Wo = conv_out_dims(H, W, kh, kw, stride, padding, dilation)
+    Kdim = kh * kw * ci
+    epilogue = list(entry.get("epilogue", []))
+    output_dtype = _resolve_output_dtype(binding, epilogue)
+    idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(output_dtype)
+    midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(output_dtype)
+    attrs = {"ifm": ifm, "weight": weight, "out": out, "ci": ci, "kh": kh, "kw": kw,
+             "stride": stride, "padding": padding, "dilation": dilation, "layout": "nhwc",
+             "epilogue": epilogue, "output_dtype": odt, "semantic": "conv2d_im2col"}
+    cap = {
+        "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
+        "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
+        "interface_mlir": "capsule.interface.mlir",
+        "inputs": [{"name": weight, "role": "weight", "shape": [Kdim, cout], "dtype": idt},
+                   {"name": ifm, "role": "input", "shape": [1, H, W, ci], "dtype": idt}],
+        "operation": {"op": "conv2d", "attributes": attrs},
+        "numeric_policy": _numeric_policy(binding, output_dtype, entry.get("acc_scale")),
+        "expected": {"instruction_classes": binding.classes_for(op="conv2d", output_dtype=odt,
+                                                                epilogue=epilogue, movement=False),
+                     "modes": dict(entry["modes"]) if "modes" in entry
+                     else {"conv2d": True, "k_accumulate": True}},
+        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+    }
+    epi = ", ".join(f'"{e}"' for e in epilogue)
+    L = _iface_prelude(binding.target, entry.get("comment", ""))
+    L += [
+        f'  %{ifm} = merlin_iface.tensor {{name = "{ifm}", role = "input"}} : tensor<1x{H}x{W}x{ci}x{midt}>',
+        f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{Kdim}x{cout}x{midt}>',
+        f'  %{weight}_res = merlin_iface.resident_pack %{weight} {{layout = "packed_conv_rhs"}} '
+        f': (tensor<{Kdim}x{cout}x{midt}>) -> !merlin_iface.resident',
+        f'  %{out} = merlin_iface.conv2d %{ifm}, %{weight}_res {{kernel = [{kh}, {kw}, {ci}, {cout}], '
+        f'stride = [{stride[0]}, {stride[1]}], padding = [{padding[0]}, {padding[1]}, {padding[2]}, {padding[3]}], '
+        f'dilation = [{dilation[0]}, {dilation[1]}], name = "{out}", epilogue = [{epi}], '
+        f'output_dtype = "{odt}", layout = "nhwc"}} '
+        f': (tensor<1x{H}x{W}x{ci}x{midt}>, !merlin_iface.resident) -> tensor<{Ho * Wo}x{cout}x{modt}>',
+        f'  merlin_iface.evict %{weight}_res : (!merlin_iface.resident) -> ()', "}"]
+    return cap, "\n".join(L) + "\n"
+
+
 # op -> builder, for the driver to dispatch on the entry's declared op.
 BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
     "matmul": build_matmul, "linear": build_matmul,
     "resident_reuse": build_resident_reuse, "movement": build_movement,
-    "attention_qk": build_attention_qk, "rmsnorm": build_rmsnorm,
+    "attention_qk": build_attention_qk, "rmsnorm": build_rmsnorm, "conv2d": build_conv2d,
 }
 
 

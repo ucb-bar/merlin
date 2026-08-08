@@ -93,6 +93,38 @@ capsules:
 - {cat: model_slices, name: RP9_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch GELU-tanh bf16 (radiance-kernels geglu gelu-tanh)', label: public, modes: {}}
+# --- Transformer/ViT-family composite ops (radiance-kernels: gemv_batched, logit_softcap, embed_scale,
+# gemma_4norm, patch_embed, bias/matmul-bias, chained P@V). All SIMT float, host-eager golden.
+- {cat: model_slices, name: RP10_gemv_batched_fp16_pt, kind: model_slice, op: gemv_batched,
+   operand_dtype: fp16, source: pytorch, M: 16, K: 16, B: 2, out: Y0, comparison_group: gemv_batched,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch batched GEMV fp16 (decode-time attn)',
+   label: public, modes: {}}
+- {cat: model_slices, name: RP11_logit_softcap_fp32_pt, kind: model_slice, op: logit_softcap,
+   operand_dtype: f32, source: pytorch, M: 16, K: 16, cap: 50.0, out: Y0, comparison_group: logit_softcap,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch Gemma-2 logit soft-cap fp32', label: public,
+   modes: {}}
+- {cat: model_slices, name: RP12_embed_scale_fp32_pt, kind: model_slice, op: embed_scale,
+   operand_dtype: f32, source: pytorch, M: 16, K: 16, out: Y0, comparison_group: embed_scale,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch embedding scale x*sqrt(d) fp32',
+   label: public, modes: {}}
+- {cat: model_slices, name: RP13_gemma_4norm_bf16_pt, kind: model_slice, op: gemma_4norm,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, eps: 1.0e-05, out: Y0, comparison_group: gemma_4norm,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch Gemma-2 chained RMSNorm bf16', label: public,
+   modes: {}}
+- {cat: model_slices, name: RP14_patch_embed_bf16_pt, kind: model_slice, op: patch_embed,
+   operand_dtype: bf16, source: pytorch, Cin: 3, Himg: 8, Wimg: 8, P: 2, N: 16, out: Y0,
+   comparison_group: patch_embed, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch ViT patch-embed conv bf16', label: public, modes: {}}
+- {cat: model_slices, name: RP15_fused_matmul_bias_bf16_pt, kind: model_slice, op: fused_matmul_bias,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: fused_matmul_bias,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch linear+bias bf16', label: public, modes: {}}
+- {cat: model_slices, name: RP16_bias_add_fp32_pt, kind: model_slice, op: bias_add, operand_dtype: f32,
+   source: pytorch, M: 16, N: 16, out: Y0, comparison_group: bias_add, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch bias add fp32', label: public, modes: {}}
+- {cat: model_slices, name: RP17_k_chain_fp16_pt, kind: model_slice, op: k_chain, operand_dtype: fp16,
+   source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: k_chain,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch chained matmul (A@W1)@W2 fp16 (attn P@V)',
+   label: public, modes: {}}
 # Hidden holdout set (label: hidden) — parity with atlas/gemmini. These are UNSEEN SIMT GEMM shapes graded
 # only at run end; their goldens are masked from the agent by the sandbox, so an agent that hardcodes a
 # public answer cannot generalize to them. For an external_backend/SIMT target the executing cyclotron
@@ -124,6 +156,9 @@ capsules:
    source: pytorch, M: 24, K: 24, out: Y0,
    source_role: pytorch_model_slice,
    source_reference: hidden PyTorch softmax fp16 (unseen 24x24), label: hidden, modes: {}}
+- {cat: hidden, name: RPH3_gemma_4norm_bf16_hidden, kind: model_slice, op: gemma_4norm, operand_dtype: bf16,
+   source: pytorch, M: 24, K: 32, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
+   source_reference: hidden PyTorch Gemma-2 chained RMSNorm bf16 (unseen 24x32), label: hidden, modes: {}}
 # Whole-model capsule (kind: model) — a small representative transformer lowered end to end via model2MLIR,
 # graded vs its host torch-eager output. GATED: only scheduled once >= 80% of the op capsules pass, so the
 # whole model is the capstone test that the compiler produces a WORKING network (right layers lowered,

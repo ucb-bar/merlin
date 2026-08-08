@@ -88,6 +88,17 @@ capsules:
 - {cat: model_slices, name: MF4_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch GELU-tanh bf16 (radiance-kernels geglu)', label: public, modes: {}}
+# --- Transformer composite ops (bf16 vector-lane; cross-target comparison parity with radiance/atlas).
+- {cat: model_slices, name: MF5_gemv_batched_bf16_pt, kind: model_slice, op: gemv_batched,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, B: 2, out: Y0, comparison_group: gemv_batched,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch batched GEMV bf16', label: public, modes: {}}
+- {cat: model_slices, name: MF6_gemma_4norm_bf16_pt, kind: model_slice, op: gemma_4norm,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, eps: 1.0e-05, out: Y0, comparison_group: gemma_4norm,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch Gemma-2 chained RMSNorm bf16', label: public,
+   modes: {}}
+- {cat: model_slices, name: MF7_fused_matmul_bias_bf16_pt, kind: model_slice, op: fused_matmul_bias,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: fused_matmul_bias,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch linear+bias bf16', label: public, modes: {}}
 # --- Whole-model capstone (GATED): small_llama in fp8 (the MX target's low-precision weight path).
 - {cat: model, name: M0_small_llama_mx, kind: model, op: model, model: small_llama,
    operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,

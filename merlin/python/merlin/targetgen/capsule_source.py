@@ -175,6 +175,98 @@ class Model(nn.Module):
 def get_model_and_inputs():
     return Model(), (_r({M}, {K}),)
 ''',
+    # --- elementwise / composite ops from real model graphs (all FUNCTIONAL, operands as inputs) ---
+    "bias_add": '''
+class Model(nn.Module):
+    def forward(self, x, b):
+        return x + b
+def get_model_and_inputs():
+    return Model(), (_r({M}, {N}), _r({N}))
+''',
+    "fused_matmul_bias": '''
+class Model(nn.Module):
+    def forward(self, x, w, b):
+        return x @ w + b
+def get_model_and_inputs():
+    return Model(), (_r({M}, {K}), _r({K}, {N}), _r({N}))
+''',
+    "k_chain": '''
+class Model(nn.Module):
+    def forward(self, a, w1, w2):
+        return (a @ w1) @ w2
+def get_model_and_inputs():
+    return Model(), (_r({M}, {K}), _r({K}, {N}), _r({N}, {N}))
+''',
+    "logit_softcap": '''
+class Model(nn.Module):
+    def forward(self, x):
+        c = {cap}
+        return c * torch.tanh(x / c)
+def get_model_and_inputs():
+    return Model(), (_r({M}, {K}),)
+''',
+    "embed_scale": '''
+class Model(nn.Module):
+    def forward(self, x):
+        return x * ({K} ** 0.5)
+def get_model_and_inputs():
+    return Model(), (_r({M}, {K}),)
+''',
+    "gemma_4norm": '''
+def _rms(x, g, eps):
+    v = x.pow(2).mean(-1, keepdim=True)
+    return x * torch.rsqrt(v + eps) * g
+class Model(nn.Module):
+    def forward(self, x, g1, g2):
+        return _rms(_rms(x, g1, {eps}), g2, {eps})
+def get_model_and_inputs():
+    return Model(), (_r({M}, {K}), _r(1, {K}) * 0.5 + 1.0, _r(1, {K}) * 0.5 + 1.0)
+''',
+    "gemv_batched": '''
+class Model(nn.Module):
+    def forward(self, a, v):
+        return torch.bmm(a, v)
+def get_model_and_inputs():
+    return Model(), (_r({B}, {M}, {K}), _r({B}, {K}, 1))
+''',
+    "patch_embed": '''
+class Model(nn.Module):
+    def forward(self, x, w):
+        return torch.nn.functional.conv2d(x, w, stride={P})
+def get_model_and_inputs():
+    return Model(), (_r(1, {Cin}, {Himg}, {Wimg}), _r({N}, {Cin}, {P}, {P}))
+''',
+    # --- conv/pool family that runs on the vector lanes (fused, host-eager golden) ---
+    "depthwise_conv2d": '''
+class Model(nn.Module):
+    def forward(self, x, w):
+        return torch.nn.functional.conv2d(x, w, stride=1, padding={P} // 2, groups={Cin})
+def get_model_and_inputs():
+    return Model(), (_r(1, {Cin}, {Himg}, {Wimg}), _r({Cin}, 1, {P}, {P}))
+''',
+    # pooling decomposed into reshape+reduce so it lowers to pure linalg (torch-mlir leaves the fused
+    # aten pool ops opaque); kernel == stride == P, exact same numerics as F.{max,avg}_pool2d.
+    "maxpool2d": '''
+class Model(nn.Module):
+    def forward(self, x):
+        return x.reshape(1, {Cin}, {Himg} // {P}, {P}, {Wimg} // {P}, {P}).amax((3, 5))
+def get_model_and_inputs():
+    return Model(), (_r(1, {Cin}, {Himg}, {Wimg}),)
+''',
+    "avgpool2d": '''
+class Model(nn.Module):
+    def forward(self, x):
+        return x.reshape(1, {Cin}, {Himg} // {P}, {P}, {Wimg} // {P}, {P}).mean((3, 5))
+def get_model_and_inputs():
+    return Model(), (_r(1, {Cin}, {Himg}, {Wimg}),)
+''',
+    "global_average": '''
+class Model(nn.Module):
+    def forward(self, x):
+        return x.mean((-2, -1))
+def get_model_and_inputs():
+    return Model(), (_r(1, {Cin}, {Himg}, {Wimg}),)
+''',
 }
 
 
@@ -194,6 +286,10 @@ def build_loader_src(spec: dict) -> str:
         "M": spec.get("M", 16), "K": spec.get("K", 16), "N": spec.get("N", 16),
         "Dv": spec.get("Dv", spec.get("K", 16)), "eps": spec.get("eps", 1e-5),
         "causal": bool(spec.get("causal", False)), "bias": bool(spec.get("bias", False)),
+        # extra shape/scalar fields for the composite ops (batch, soft-cap, conv geometry)
+        "B": spec.get("B", 2), "cap": spec.get("cap", 50.0),
+        "Cin": spec.get("Cin", 1), "Himg": spec.get("Himg", 8), "Wimg": spec.get("Wimg", 8),
+        "P": spec.get("P", 2),
     }
     return _PREAMBLE.format(**fields) + _OP_BODIES[op].format(**fields)
 
@@ -204,7 +300,11 @@ def build_loader_src(spec: dict) -> str:
 @dataclass
 class CapsuleArtifacts:
     """Everything a grounded capsule needs. ``pytorch_src`` + ``linalg_mlir`` are agent-VISIBLE (realistic
-    lowering context); ``golden`` + ``weights_path`` are the masked answer surfaces."""
+    lowering context). The masked answer surface is ``golden`` (the host-eager OUTPUT, written to
+    ``golden.yaml`` and hidden by the sandbox's ``golden.*`` glob). ``weights_path`` is NOT an answer: for a
+    whole-model capsule the externalized weights are a legitimate compile INPUT the linalg references, so they
+    ship VISIBLE alongside the interface. Only ``kind == model`` capsules ever carry a ``.safetensors`` (op
+    capsules write none), so a weight file can never leak an op's answer."""
     op: str
     dtype: str
     pytorch_src: str
@@ -298,6 +398,11 @@ _FUSED_OP_INPUT_NAMES = {
     "attention_full": ["Q", "K", "V"], "softmax": ["X"],
     "layernorm": ["X", "W", "B"], "geglu": ["X", "WG", "WU"], "rope": ["X"],
     "gelu": ["X"], "silu": ["X"], "add": ["A", "B"], "reduce_sum": ["X"],
+    # composite ops from real model graphs (linalg-as-interface, positional args)
+    "bias_add": ["X", "B"], "fused_matmul_bias": ["X", "W", "B"], "k_chain": ["A0", "W", "W2"],
+    "logit_softcap": ["X"], "embed_scale": ["X"], "gemma_4norm": ["X", "G1", "G2"],
+    "gemv_batched": ["A0", "V"], "patch_embed": ["X", "W"],
+    "depthwise_conv2d": ["X", "W"], "maxpool2d": ["X"], "avgpool2d": ["X"], "global_average": ["X"],
 }
 
 
@@ -347,8 +452,12 @@ def _capture_spec(entry: dict, binding) -> dict:
         N = M                                    # Q@K^T scores are [M,M]; K rows == M (matches the builder)
     spec = {"op": op, "dtype": binding.operand_dtype, "seed": _entry_seed(entry["name"]),
             "M": M, "K": K, "N": N}
-    if op == "rmsnorm":
+    if op in ("rmsnorm", "gemma_4norm", "layernorm"):
         spec["eps"] = entry.get("eps", 1.0 / 65536.0)
+    # optional per-op fields (batch / soft-cap / conv geometry) pass through verbatim when present
+    for f in ("B", "cap", "Cin", "Himg", "Wimg", "P", "Dv", "causal"):
+        if f in entry:
+            spec[f] = entry[f]
     return spec
 
 
@@ -484,6 +593,13 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
     import shutil
 
     import yaml
+    # only a whole-model capsule may ship externalized weights (a compile INPUT); guard so an op capsule
+    # can never route here and leak a weight-derived answer (see CapsuleArtifacts). A model capsule is
+    # identified by kind/op/cat == "model"; op capsules never carry any of those.
+    if "model" not in (entry.get("kind"), entry.get("op"), entry.get("cat")):
+        raise ValueError(f"write_model_capsule requires a model capsule (kind/op/cat == 'model'); got "
+                         f"kind={entry.get('kind')!r} op={entry.get('op')!r} cat={entry.get('cat')!r} "
+                         f"— weights ship only for whole-model capsules")
     src = source or PytorchRefSource()
     dtype = entry.get("operand_dtype") or binding.operand_dtype
     loader = resolve_model_loader(entry, src.m2m_dir)

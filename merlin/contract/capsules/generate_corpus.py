@@ -501,14 +501,51 @@ def generate_target(target: str) -> list[Path]:
     return written
 
 
+def build_comparison_manifest(targets: list[str]) -> dict:
+    """Group capsules that exercise the SAME op across targets into comparison sets, so a shared op (e.g.
+    rmsnorm/gelu/gemv_batched) can be compared across each target's own precision (MXFP8 on mx vs FP8-E4M3
+    on atlas vs fp16 on radiance). Keyed by ``comparison_group`` when the profile declares one, else by op."""
+    groups: dict[str, list[dict]] = {}
+    for t in targets:
+        prof = yaml.safe_load((PROFILES / f"{t}.yaml").read_text())
+        for e in prof["capsules"]:
+            if e.get("kind") == "model" or e.get("op") == "model":
+                continue
+            key = e.get("comparison_group") or e.get("op", "unknown")
+            groups.setdefault(key, []).append(
+                {"target": t, "name": e["name"],
+                 "dtype": e.get("operand_dtype", prof.get("datapath", {}).get("operand_dtype", "")),
+                 "label": e.get("label", "public")})
+    # a comparison set is only interesting when >1 target covers the op
+    cross = {k: v for k, v in sorted(groups.items()) if len({m["target"] for m in v}) > 1}
+    return {"comparison_sets": cross,
+            "note": "each set is one op exercised across multiple targets in each target's own precision; "
+                    "same inner op name across targets makes target-vs-target numerics directly comparable"}
+
+
+def write_comparison_manifest(targets: list[str]) -> Path:
+    from merlin.common.paths import artifacts_dir
+    manifest = build_comparison_manifest(targets)
+    out = Path(artifacts_dir()) / "compare" / "capsule_comparison_manifest.yaml"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(yaml.safe_dump(manifest, sort_keys=True), encoding="utf-8")
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Unified descriptor-driven capsule-corpus generator.")
     ap.add_argument("--target", default=None, help="one target (default: every target with a profile)")
+    ap.add_argument("--comparison-manifest", action="store_true",
+                    help="also emit the cross-target op-comparison manifest under out/artifacts/compare/")
     a = ap.parse_args(argv)
     targets = [a.target] if a.target else sorted(p.stem for p in PROFILES.glob("*.yaml"))
     for t in targets:
         written = generate_target(t)
         print(f"{t}: wrote {len(written)} capsules -> {written[0].parent.parent if written else '(none)'}")
+    if a.comparison_manifest or not a.target:
+        allt = sorted(p.stem for p in PROFILES.glob("*.yaml"))
+        m = write_comparison_manifest(allt)
+        print(f"comparison manifest: {m} ({len(build_comparison_manifest(allt)['comparison_sets'])} sets)")
     return 0
 
 
