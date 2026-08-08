@@ -90,13 +90,58 @@ def test_write_pytorch_capsule_is_schema_valid(entry, dtype, tmp_path):
     assert isinstance(out, list) and isinstance(out[0], list)
 
 
-def test_write_pytorch_capsule_rejects_unmapped_op(tmp_path):
-    """An op with no merlin_iface builder must fail closed here (it belongs to the direct-MLIR path)."""
+def test_write_pytorch_capsule_rejects_unknown_op(tmp_path):
+    """An op with neither a merlin_iface builder nor a fused template must fail closed."""
     entry = {"name": "PX", "kind": "model_slice", "cat": "model_slices",
-             "source_role": "handauthored_compiler_test", "source_reference": "x", "op": "softmax",
+             "source_role": "handauthored_compiler_test", "source_reference": "x", "op": "not_an_op",
              "M": 16, "K": 16}
     with pytest.raises(ValueError):
         CSrc.write_pytorch_capsule(entry, _float_binding(), tmp_path)
+
+
+@_needs_m2m
+@pytest.mark.parametrize("entry", [
+    {"name": "FS0_softmax", "kind": "model_slice", "cat": "model_slices",
+     "source_role": "pytorch_model_slice", "source_reference": "softmax", "op": "softmax", "M": 16, "K": 16},
+    {"name": "FL0_layernorm", "kind": "model_slice", "cat": "model_slices",
+     "source_role": "pytorch_model_slice", "source_reference": "layernorm", "op": "layernorm",
+     "M": 16, "K": 16},
+    {"name": "FA0_attn_full", "kind": "model_slice", "cat": "model_slices",
+     "source_role": "pytorch_model_slice", "source_reference": "attn", "op": "attention_full",
+     "M": 16, "K": 64, "N": 16, "Dv": 64, "causal": True},
+])
+def test_write_fused_pytorch_capsule_linalg_interface(entry, tmp_path):
+    """A FUSED op (softmax/layernorm/geglu/rope/attention_full) ships the linalg module AS the interface
+    (positional), schema-valid, with a host-eager golden and an arg_order the harness can feed."""
+    import yaml
+    from merlin.targetgen import capsule_common as CC
+    d = CSrc.write_pytorch_capsule(entry, _float_binding(), tmp_path)
+    cap = CC.load_capsule(d)
+    assert cap["operation"]["op"] == entry["op"]
+    iface = (d / "capsule.interface.mlir").read_text()
+    assert "func.func" in iface and "linalg." in iface       # the interface IS standard-dialect linalg
+    g = yaml.safe_load((d / "golden.yaml").read_text())
+    assert g["oracle_provenance"]["interface"] == "linalg_positional"
+    order = g["oracle_provenance"]["arg_order"]
+    assert order[-1] == entry.get("out", "Y0") and len(order) >= 2
+
+
+def test_args_from_cb_linalg_positional():
+    """The positional-input harness path feeds a linalg-interface capsule's inputs in arg_order (incl.
+    a rank-1 operand), producing the output last — no merlin_iface commands needed."""
+    from merlin.runtime.backends import muon_harness as MH
+    cb = {
+        "target": "t", "interface": "linalg_positional", "arg_order": ["X", "W", "B", "Y0"],
+        "tensors": {"X": {"role": "input", "shape": [4, 4]}, "W": {"role": "input", "shape": [4]},
+                    "B": {"role": "input", "shape": [4]}, "Y0": {"role": "output", "shape": [4, 4]}},
+        "canonical_inputs": {"X": {"values": [float(i) for i in range(16)]},
+                             "W": {"values": [1.0, 1.0, 1.0, 1.0]}, "B": {"values": [0.0, 0.0, 0.0, 0.0]}},
+    }
+    in_args, out_args = MH.args_from_cb(cb)
+    assert [a.name for a in in_args] == ["X", "W", "B"]
+    assert (in_args[1].rows, in_args[1].cols) == (1, 4)      # rank-1 flattened
+    assert len(in_args[0].values) == 16
+    assert out_args[0].name == "Y0" and (out_args[0].rows, out_args[0].cols) == (4, 4)
 
 
 def _load_generate_corpus():

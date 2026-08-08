@@ -251,6 +251,13 @@ _OP_INPUT_NAMES = {
     "attention_qk": ["Q", "K"], "rmsnorm": ["X", "G"],
 }
 
+# FUSED ops have no merlin_iface builder: their interface is the m2m linalg module DIRECTLY (the agent
+# compiles the linalg), fed positionally. loader input order defines the func-arg order the harness passes.
+_FUSED_OP_INPUT_NAMES = {
+    "attention_full": ["Q", "K", "V"], "softmax": ["X"],
+    "layernorm": ["X", "W", "B"], "geglu": ["X", "WG", "WU"], "rope": ["X"],
+}
+
 
 def _entry_seed(name: str) -> int:
     return sum((i + 1) * ord(c) for i, c in enumerate(name)) or 1
@@ -291,35 +298,13 @@ def _capture_spec(entry: dict, binding) -> dict:
     return spec
 
 
-def write_pytorch_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSource | None" = None):
-    """Materialize a full capsule dir from a PyTorch-defined op: the agent-facing interface + expected
-    coverage come from the existing ``corpus_spec`` merlin_iface builder; the golden + canonical inputs
-    come from the host torch-eager run; the pytorch loader + linalg are written as visible grounding.
-    Only the merlin_iface-mapped ops are handled here (fail closed otherwise)."""
-    import yaml
-    from merlin.targetgen import corpus_spec as CS
-
-    op = entry.get("op", "matmul")
-    if op not in _OP_INPUT_NAMES:
-        raise ValueError(f"write_pytorch_capsule: op {op!r} has no merlin_iface interface builder "
-                         f"(mapped: {sorted(_OP_INPUT_NAMES)}); use a direct-MLIR engine or add a builder")
-    src = source or PytorchRefSource()
-    spec = _capture_spec(entry, binding)
-    art = src.capture(spec)
-
-    cap, mlir = CS.build(entry, binding)
-    cap["source_role"] = "pytorch_model_slice"
-    cap["pytorch_ref"] = {"op": op, "dtype": binding.cap_dtype(binding.operand_dtype),
-                          "loader": "capsule.pytorch.py"}
-    cap["linalg_mlir"] = "capsule.linalg.mlir"
-
-    names = _OP_INPUT_NAMES[op]
+def _host_eager_golden(art, names, out_name, binding, *, interface: str, arg_order):
+    """The host torch-eager golden.yaml payload shared by the mapped and fused paths."""
     if len(art.inputs) < len(names):
-        raise M2MUnavailable(f"op {op!r} produced {len(art.inputs)} inputs, expected {len(names)}")
+        raise M2MUnavailable(f"op {art.op!r} produced {len(art.inputs)} inputs, expected {len(names)}")
     prov = {nm: {"shape": _shape_of(art.inputs[i]), "decoded": _flatten(art.inputs[i])}
             for i, nm in enumerate(names)}
-    out_name = entry.get("out", "Y0")
-    golden = {
+    return {
         "golden_source": "host_torch_eager",
         "oracle_provenance": {
             "engine": "model2MLIR fx_importer linalg-on-tensors + host torch-eager (frontend-faithful; "
@@ -328,15 +313,79 @@ def write_pytorch_capsule(entry: dict, binding, out_root, *, source: "PytorchRef
             "output_dtype": binding.cap_dtype(binding.accum_dtype),
             "note": "INDEPENDENT of the target RTL; the PyTorch frontend + host eval are the reference.",
             "grade_policy": {"compare": binding.compare, "atol": binding.atol, "rtol": binding.rtol},
+            "interface": interface, "arg_order": list(arg_order),
             "pytorch_source": "capsule.pytorch.py", "linalg_mlir": "capsule.linalg.mlir",
             "path_taken": art.meta.get("path_taken"), "inputs": prov},
         "outputs": {out_name: art.golden},
     }
 
+
+def _fused_capsule_yaml(entry: dict, binding, art, names: list[str]) -> dict:
+    """A schema-valid capsule.yaml for a FUSED op whose interface is the linalg module directly (positional
+    args). No merlin_iface builder / instruction classes — the agent compiles the standard-dialect linalg."""
+    idt = binding.cap_dtype(binding.operand_dtype)
+    out_name = entry.get("out", "Y0")
+    inputs = [{"name": nm, "role": "input", "shape": _shape_of(art.inputs[i]), "dtype": idt}
+              for i, nm in enumerate(names)]
+    return {
+        "name": entry["name"], "kind": entry.get("kind", "model_slice"),
+        "source_role": "pytorch_model_slice", "source_reference": entry.get("source_reference", ""),
+        "label": entry.get("label", "public"), "interface_mlir": "capsule.interface.mlir",
+        "inputs": inputs,
+        "operation": {"op": entry["op"], "attributes": {"out": out_name, "arg_order": names,
+                                                        "causal": bool(entry.get("causal", False))}},
+        "numeric_policy": {"compare": binding.compare, "dtype": idt,
+                           **({"atol": binding.atol} if binding.atol is not None else {}),
+                           **({"rtol": binding.rtol} if binding.rtol is not None else {})},
+        "expected": {"instruction_classes": [], "modes": dict(entry.get("modes", {}))},
+        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+        "pytorch_ref": {"op": entry["op"], "dtype": idt, "loader": "capsule.pytorch.py"},
+        "linalg_mlir": "capsule.interface.mlir",
+    }
+
+
+def write_pytorch_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSource | None" = None):
+    """Materialize a full capsule dir from a PyTorch-defined op. For a merlin_iface-mapped op (matmul/
+    linear/attention_qk/rmsnorm) the agent-facing interface + expected coverage come from the existing
+    ``corpus_spec`` builder. For a FUSED op (attention_full/softmax/layernorm/geglu/rope) the interface IS
+    the m2m linalg module (the agent compiles standard-dialect linalg), fed positionally. In BOTH cases the
+    golden + canonical inputs come from the host torch-eager run and the pytorch loader + linalg are written
+    as visible grounding. Unknown ops fail closed."""
+    import yaml
+    from merlin.targetgen import corpus_spec as CS
+
+    op = entry.get("op", "matmul")
+    if op not in _OP_INPUT_NAMES and op not in _FUSED_OP_INPUT_NAMES:
+        raise ValueError(f"write_pytorch_capsule: unknown op {op!r} "
+                         f"(mapped {sorted(_OP_INPUT_NAMES)}; fused {sorted(_FUSED_OP_INPUT_NAMES)})")
+    src = source or PytorchRefSource()
+    spec = _capture_spec(entry, binding)
+    art = src.capture(spec)
+    out_name = entry.get("out", "Y0")
     d = Path(out_root) / entry["cat"] / entry["name"]
     d.mkdir(parents=True, exist_ok=True)
+
+    if op in _OP_INPUT_NAMES:                                   # merlin_iface interface
+        names = _OP_INPUT_NAMES[op]
+        cap, mlir = CS.build(entry, binding)
+        cap["source_role"] = "pytorch_model_slice"
+        cap["pytorch_ref"] = {"op": op, "dtype": binding.cap_dtype(binding.operand_dtype),
+                              "loader": "capsule.pytorch.py"}
+        cap["linalg_mlir"] = "capsule.linalg.mlir"
+        golden = _host_eager_golden(art, names, out_name, binding, interface="merlin_iface", arg_order=names)
+        (d / "capsule.interface.mlir").write_text(mlir, encoding="utf-8")
+    elif op in _FUSED_OP_INPUT_NAMES:                           # linalg interface (positional)
+        names = _FUSED_OP_INPUT_NAMES[op]
+        cap = _fused_capsule_yaml(entry, binding, art, names)
+        golden = _host_eager_golden(art, names, out_name, binding,
+                                    interface="linalg_positional", arg_order=names + [out_name])
+        # the linalg module IS the interface the agent compiles
+        (d / "capsule.interface.mlir").write_text(art.linalg_mlir, encoding="utf-8")
+    else:
+        raise ValueError(f"write_pytorch_capsule: unknown op {op!r} "
+                         f"(mapped {sorted(_OP_INPUT_NAMES)}; fused {sorted(_FUSED_OP_INPUT_NAMES)})")
+
     (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
-    (d / "capsule.interface.mlir").write_text(mlir, encoding="utf-8")
     (d / "expected_instruction_coverage.yaml").write_text(
         yaml.safe_dump(cap["expected"], sort_keys=False), encoding="utf-8")
     (d / "capsule.pytorch.py").write_text(art.pytorch_src, encoding="utf-8")

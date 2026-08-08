@@ -158,6 +158,38 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
             return [float(x) for x in c]
         return [float(v) for row in t.to_list() for v in row]
 
+    # --- linalg-interface fused op (softmax/layernorm/geglu/rope/attention_full) ----------------------
+    # A capsule whose interface is the m2m linalg module directly (the agent compiles standard-dialect
+    # linalg) is fed POSITIONALLY: ``cb['arg_order']`` is ``[in0, in1, ..., out]`` (the func-arg order), each
+    # input's values come from the golden's canonical operands, and the output is produced. Operands may be
+    # rank-1 (e.g. layernorm weight/bias) — flattened to (1, n).
+    if cb.get("interface") == "linalg_positional":
+        order = list(cb.get("arg_order") or [])
+        tensors = cb.get("tensors") or {}
+        canon = cb.get("canonical_inputs") or {}
+        if len(order) < 2:
+            return None
+        ins, out = order[:-1], order[-1]
+
+        def _rc(shp):
+            if not shp:
+                return None
+            return (1, int(shp[0])) if len(shp) == 1 else (int(shp[0]), int(shp[1]))
+
+        in_args = []
+        for nm in ins:
+            c = canon.get(nm)
+            if isinstance(c, dict):
+                c = c.get("values")
+            rc = _rc((tensors.get(nm) or {}).get("shape"))
+            if c is None or rc is None:
+                return None
+            in_args.append(TensorArg(nm, rc[0], rc[1], [float(x) for x in c], "f32"))
+        orc = _rc((tensors.get(out) or {}).get("shape"))
+        if orc is None:
+            return None
+        return in_args, [TensorArg(out, orc[0], orc[1], [0.0] * (orc[0] * orc[1]), "f32")]
+
     # --- non-matmul SIMT ops (attention scores Q@K^T, row rmsnorm) --------------------------------------
     # These have no matmul/commit; derive operands directly from the op command + leaf shapes, in the generic
     # kernel_abi order ([weight] ++ [inputs in command order] ++ [output]) that emit_kernel_mlir mirrors. The
