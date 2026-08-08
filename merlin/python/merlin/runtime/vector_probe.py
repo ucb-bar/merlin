@@ -198,7 +198,12 @@ def main(argv: list[str] | None = None) -> int:
         shutil.copy2(elf, a.out)
         print(f"copied to {a.out}")
     if a.run:
-        console = run_on_spike(elf, vlen=a.spike_vlen, dram_base=brd.dram_base)
+        # `-m` must match the region the probe was BUILT for. The probe writes and reads back across
+        # that region on purpose (it is how a returned log answers "is the DRAM really this big"), so a
+        # simulator given less memory than the board faults at ITS edge and the probe looks broken:
+        # `mem_mb` stops partway and no DONE is printed. Same reason the delivery packager passes it.
+        console = run_on_spike(elf, vlen=a.spike_vlen, dram_base=brd.dram_base,
+                               mem_bytes=brd.dram_bytes)
         rep = parse(console)
         print(json.dumps(rep, indent=2))
         return 0 if rep.get("complete") else 1

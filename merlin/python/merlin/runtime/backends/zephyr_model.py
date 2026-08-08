@@ -131,6 +131,23 @@ def _conda_bin() -> Path:
     return Path(_env("MERLIN_CHIPYARD", "/path/to/chipyard")) / ".conda-env" / "bin"
 
 
+def build_tool(name: str) -> Path | None:
+    """Locate a host build tool (``cmake``, ``ninja``), or None.
+
+    Prefer the chipyard conda env, because that is the version this flow is exercised against and
+    pinning it keeps a machine with three cmakes reproducible. But fall back to PATH: these are ordinary
+    host tools, not part of the RISC-V toolchain, and requiring them to live inside a *chipyard* checkout
+    made the Zephyr path unbuildable on any machine that has cmake and ninja the normal way -- with no
+    env var to say so, and an `available()` that reported the Zephyr tree as the problem.
+    """
+    pinned = _conda_bin() / name
+    if pinned.is_file():
+        return pinned
+    from shutil import which
+    found = which(name)
+    return Path(found) if found else None
+
+
 def _tool_env() -> dict:
     env = dict(os.environ)
     env["ZEPHYR_BASE"] = str(_zephyr_base())
@@ -142,11 +159,10 @@ def _tool_env() -> dict:
 
 def available() -> bool:
     """True when the Zephyr build + spike toolchain are present."""
-    cmake = _conda_bin() / "cmake"
-    ninja = _conda_bin() / "ninja"
     try:
-        return (_zephyr_base().is_dir() and _sdk_dir().is_dir() and cmake.is_file()
-                and ninja.is_file() and _spike.available())
+        return (_zephyr_base().is_dir() and _sdk_dir().is_dir()
+                and build_tool("cmake") is not None and build_tool("ninja") is not None
+                and _spike.available())
     except Exception:  # noqa: BLE001
         return False
 
@@ -1434,9 +1450,9 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
         overlay_file = app / "merlin.overlay"
         overlay_file.write_text(overlay)
         extra.append(f"-DEXTRA_DTC_OVERLAY_FILE={overlay_file}")
-    _run([_conda_bin() / "cmake", "-B", build_dir, "-G", "Ninja",
+    _run([build_tool("cmake") or "cmake", "-B", build_dir, "-G", "Ninja",
           f"-DBOARD={brd.build_board}", *extra, "-S", app], env=env)
-    _run([_conda_bin() / "ninja", "-C", build_dir], env=env)
+    _run([build_tool("ninja") or "ninja", "-C", build_dir], env=env)
     elf = build_dir / "zephyr" / "zephyr.elf"
     if not elf.is_file():
         raise ZephyrModelError(f"build produced no elf at {elf}")
