@@ -97,3 +97,41 @@ def test_write_pytorch_capsule_rejects_unmapped_op(tmp_path):
              "M": 16, "K": 16}
     with pytest.raises(ValueError):
         CSrc.write_pytorch_capsule(entry, _float_binding(), tmp_path)
+
+
+def _load_generate_corpus():
+    import importlib.util
+    from merlin.common.paths import repo_root
+    p = repo_root() / "merlin" / "contract" / "capsules" / "generate_corpus.py"
+    spec = importlib.util.spec_from_file_location("generate_corpus_under_test", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_generate_corpus_pytorch_route_fails_closed_on_int(tmp_path):
+    """The generator's ``source: pytorch`` branch is float-only; an int dtype must fail closed (no m2m
+    needed — it raises before any capture)."""
+    import dataclasses
+    GC = _load_generate_corpus()
+    ib = dataclasses.replace(_float_binding(), operand_dtype="int8", accum_dtype="i32",
+                             integer=True, compare="exact_int")
+    entry = {"name": "WBAD", "kind": "isa", "cat": "isa", "source": "pytorch",
+             "source_role": "handauthored_compiler_test", "source_reference": "x", "op": "matmul",
+             "M": 16, "K": 16, "N": 16, "modes": {}}
+    with pytest.raises(ValueError):
+        GC._write_capsule(entry, ib, tmp_path)
+
+
+@_needs_m2m
+def test_generate_corpus_routes_pytorch_source(tmp_path):
+    """A profile entry with ``source: pytorch`` on a float dtype routes to the host-eager PyTorch source."""
+    import yaml
+    GC = _load_generate_corpus()
+    entry = {"name": "WM0_matmul_f32", "kind": "model_slice", "cat": "model_slices", "source": "pytorch",
+             "source_role": "handauthored_compiler_test", "source_reference": "pytorch matmul",
+             "op": "matmul", "M": 16, "K": 16, "N": 16}
+    d = GC._write_capsule(entry, _float_binding(), tmp_path)
+    g = yaml.safe_load((d / "golden.yaml").read_text())
+    assert g["golden_source"] == "host_torch_eager"
+    assert (d / "capsule.linalg.mlir").exists()

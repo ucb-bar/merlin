@@ -388,6 +388,18 @@ def _entry_regime(entry, binding):
 # ------------------------------------------------------------------------------------------------
 def _write_capsule(entry, binding, out_root):
     regime, eb = _entry_regime(entry, binding)
+    # PREFERRED source: a capsule defined in PyTorch (frontend-faithful), lowered to linalg via model2MLIR
+    # with a host torch-eager golden. Opt in per entry (``source: pytorch``). Restricted to the float
+    # regime: a host-eager float reference is graded with tolerance, matching the merlin_iface float
+    # interface; int/MX datapaths keep the direct-MLIR engines below (the endorsed fallback for the
+    # dtypes torch/torchAO does not faithfully model, e.g. int8xint8 systolic or block-scaled MX).
+    if entry.get("source") == "pytorch" or entry.get("pytorch_ref"):
+        if regime != "simt":
+            raise ValueError(f"pytorch source for capsule {entry['name']!r} needs a float dtype "
+                             f"(got regime {regime!r} for {eb.operand_dtype!r}); author int/MX capsules "
+                             f"via the direct-MLIR engine")
+        from merlin.targetgen import capsule_source as CSRC
+        return CSRC.write_pytorch_capsule(entry, eb, out_root)
     cap, mlir = CS.build(entry, eb)
     d = Path(out_root) / entry["cat"] / entry["name"]
     d.mkdir(parents=True, exist_ok=True)
