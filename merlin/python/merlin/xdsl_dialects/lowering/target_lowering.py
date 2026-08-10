@@ -127,10 +127,24 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
     ret_op = None
     for op in src_block.ops:
         if isinstance(op, i.ResidentPackOp):
-            new = spec.pack_op(
-                operands=[value_map[op.src]],
-                result_types=[spec.resident_type(op.src.type)],
-                properties={"layout": StringAttr(op.layout.data.value)})
+            props = {"layout": StringAttr(op.layout.data.value)}
+            scale = value_map[op.scale] if op.scale is not None else None
+            if op.dequant_axis is not None:
+                props["dequant_axis"] = op.dequant_axis
+            # A target's pack op may or may not carry the optional dequant-scale operand (generated
+            # dialects predating it have only `src`). Match its arity; a dequant pack against a
+            # scale-less pack op is an honest LoweringError, not a silent drop.
+            pack_operands = [n for n, _ in spec.pack_op.get_irdl_definition().operands]
+            if "scale" in pack_operands:
+                operands = [value_map[op.src], scale]
+            elif scale is not None:
+                raise LoweringError(f"target {spec.name!r} pack op has no dequant scale operand")
+            else:
+                operands = [value_map[op.src]]
+            # Mirror the interface resident element type (f32 for a dequant pack, else the src type).
+            new = spec.pack_op(operands=operands,
+                               result_types=[spec.resident_type(op.res.type.element)],
+                               properties=props)
             value_map[op.res] = new.res
         elif isinstance(op, i.MatmulOp):
             new = spec.matmul_op(

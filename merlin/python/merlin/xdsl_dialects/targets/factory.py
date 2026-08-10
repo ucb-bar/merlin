@@ -21,7 +21,7 @@ from typing import Any
 
 from xdsl.ir import Attribute, Dialect, ParametrizedAttribute, TypeAttribute
 from xdsl.irdl import (IRDLOperation, irdl_attr_definition, irdl_op_definition,
-                       operand_def, opt_prop_def, prop_def, result_def)
+                       operand_def, opt_operand_def, opt_prop_def, prop_def, result_def)
 from xdsl.utils.exceptions import VerifyException
 from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, StringAttr
 
@@ -90,7 +90,8 @@ def build_dialect(target: str, *, plan: dict[str, Any] | None = None,
 
     pack_op = _op(f"{dname}_{pack_n}", {
         "name": f"{dname}.{pack_n}", "src": operand_def(),
-        "layout": prop_def(StringAttr), "res": result_def(resident_type)})
+        "scale": opt_operand_def(), "layout": prop_def(StringAttr),
+        "dequant_axis": opt_prop_def(IntegerAttr), "res": result_def(resident_type)})
 
     mm_ns = {"name": f"{dname}.{mm_n}", "lhs": operand_def(),
              "rhs": operand_def(resident_type) if matmul_rhs_typed else operand_def(),

@@ -41,8 +41,8 @@ if HAS_XDSL:
     from xdsl.ir import (Attribute, Dialect, EnumAttribute, ParametrizedAttribute,
                          SpacedOpaqueSyntaxAttribute, TypeAttribute)
     from xdsl.irdl import (IRDLOperation, irdl_attr_definition, irdl_op_definition,
-                           operand_def, opt_prop_def, prop_def, region_def, result_def,
-                           traits_def)
+                           operand_def, opt_operand_def, opt_prop_def, prop_def, region_def,
+                           result_def, traits_def)
     from xdsl.traits import NoTerminator
     from xdsl.utils.exceptions import VerifyException
     from xdsl.utils.str_enum import StrEnum
@@ -155,9 +155,13 @@ if HAS_XDSL:
         """
         name = "interface.resident_pack"
         src = operand_def()
+        # int8 weight-only: an optional per-channel scale operand + axis dequantizes the i8 source to
+        # a float resident weight at pack time (model2MLIR's dequantize_per_channel idiom).
+        scale = opt_operand_def()
         layout = prop_def(LayoutAttr)
         lifetime = opt_prop_def(LifetimeAttr)
         visibility = opt_prop_def(VisibilityAttr)
+        dequant_axis = opt_prop_def(IntegerAttr)
         res = result_def(ResidentTensorType)
 
         def verify_(self) -> None:
@@ -424,7 +428,7 @@ if HAS_XDSL:
         blk = Block(arg_types=arg_types)
         a_args, w = list(blk.args[:-1]), blk.args[-1]
         ops = []
-        pack = ResidentPackOp(operands=[w], result_types=[res_t], properties={
+        pack = ResidentPackOp(operands=[w, None], result_types=[res_t], properties={
             "layout": LayoutAttr(Layout.PACKED_RHS),
             "lifetime": LifetimeAttr(Lifetime.REGION),
             "visibility": VisibilityAttr(Visibility.SOFTWARE_VISIBLE)})

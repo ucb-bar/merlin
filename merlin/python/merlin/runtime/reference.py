@@ -17,14 +17,19 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
     """Recompute committed outputs from leaf inputs via a naive (non-resident) path."""
     env: dict[str, Tensor] = materialize_inputs(cb, inputs)
     resident_source: dict[str, str] = {}
+    resident_dequant: dict[str, tuple[str, str, int]] = {}   # pack dst -> (i8 src, scale, axis)
     matmul_for: dict[str, dict] = {}
     commits: list[dict] = []
 
     for cmd in cb.get("commands", []):
         op = cmd["opcode"]
         ops = cmd.get("operands", {})
+        attrs = cmd.get("attributes", {})
         if op == "RES_PACK":
             resident_source[ops["dst"]] = ops["src"]
+            if "scale" in ops:
+                resident_dequant[ops["dst"]] = (ops["src"], ops["scale"],
+                                                int(attrs.get("dequant_axis", 1)))
         elif op in ("MATMUL_RESIDENT", "MATMUL"):
             matmul_for[ops["dst"]] = cmd
         elif op == "COMMIT":
@@ -39,8 +44,12 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
         mm = matmul_for[ops["src"]]
         mops = mm.get("operands", {})
         lhs = env[mops["lhs"]]
-        rhs_name = resident_source.get(mops["rhs"], mops["rhs"])  # resolve through the pack
-        rhs = env[rhs_name]
+        if mops["rhs"] in resident_dequant:                     # int8 weight-only dequant pack
+            src_name, scale_name, axis = resident_dequant[mops["rhs"]]
+            rhs = env[src_name].dequant_per_channel(env[scale_name], axis)
+        else:
+            rhs_name = resident_source.get(mops["rhs"], mops["rhs"])  # resolve through the pack
+            rhs = env[rhs_name]
         t = lhs.matmul(rhs)
         shift = int(attrs.get("requant_shift", default_shift))
         for stage in attrs.get("epilogue", []):

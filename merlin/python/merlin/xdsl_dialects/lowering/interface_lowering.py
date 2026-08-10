@@ -20,6 +20,67 @@ class LoweringError(RuntimeError):
 # linalg elementwise op name -> interface.vector_map combine token (two real tensor operands).
 _ELEMENTWISE_COMBINE = {"linalg.add": "add", "linalg.mul": "mul"}
 
+_VIEW_OPS = ("tensor.expand_shape", "tensor.collapse_shape", "tensor.cast", "linalg.copy",
+             "linalg.transpose")
+
+
+def _resolved_name(op) -> str | None:
+    """Op name, resolving model2MLIR's ``quant_ext`` ops (parsed as ``builtin.unregistered``).
+    Total: a block argument's owner is a Block (no ``name``) -> None."""
+    name = getattr(op, "name", None)
+    if name == "builtin.unregistered":
+        on = getattr(op, "op_name", None)
+        return on.data if on is not None else name
+    return name
+
+
+def _view_input(owner):
+    """The single tensor input of a view/layout op (operands[0], or inputs[0] for transpose)."""
+    if _resolved_name(owner) == "linalg.transpose":
+        return owner.inputs[0]
+    return owner.operands[0]
+
+
+def _map_through_views(value, value_map):
+    """Follow view/layout ops from ``value`` to a value present in ``value_map`` (a materialized
+    block arg / earlier result); return the mapped new value, or None."""
+    cur = value
+    for _ in range(16):
+        if cur in value_map:
+            return value_map[cur]
+        owner = getattr(cur, "owner", None)
+        if _resolved_name(owner) in _VIEW_OPS:
+            cur = _view_input(owner)
+            continue
+        return None
+    return None
+
+
+def _dequant_source(rhs, value_map):
+    """If a matmul RHS is fed by ``quant_ext.dequantize_per_channel`` (the int8 weight-only idiom),
+    resolve it to (weight_value, scale_value, axis) in the NEW block's values — else None. The
+    weight and scale are traced through any view/layout ops back to materialized function args."""
+    cur = rhs
+    for _ in range(8):
+        owner = getattr(cur, "owner", None)
+        nm = _resolved_name(owner)
+        if nm in _VIEW_OPS:
+            cur = _view_input(owner)
+            continue
+        if nm is not None and nm.startswith("quant_ext.dequantize"):
+            w = _map_through_views(owner.operands[0], value_map)
+            scale = (_map_through_views(owner.operands[1], value_map)
+                     if len(owner.operands) > 1 else None)
+            if w is None or scale is None:
+                return None
+            axis = 1
+            axis_attr = (getattr(owner, "properties", {}) or {}).get("axis")
+            if axis_attr is not None:
+                axis = int(axis_attr.value.data)
+            return w, scale, axis
+        return None
+    return None
+
 
 def _is_zero_fill(value) -> bool:
     """True when ``value`` is a ``linalg.fill`` of a zero constant — i.e. the second operand of a
@@ -67,8 +128,8 @@ def lower_to_interface(module):
     if not HAS_XDSL:
         return module
     from xdsl.ir import Block, Region
-    from xdsl.dialects.builtin import (ArrayAttr, FunctionType, ModuleOp, StringAttr,
-                                       TensorType)
+    from xdsl.dialects.builtin import (ArrayAttr, FunctionType, IntegerAttr, ModuleOp,
+                                       StringAttr, TensorType)
     from xdsl.dialects.func import FuncOp, ReturnOp
 
     from .. import contract as c
@@ -114,7 +175,7 @@ def lower_to_interface(module):
         if vis is not None:
             props["visibility"] = i.VisibilityAttr(vis)
         pack = i.ResidentPackOp(
-            operands=[w],
+            operands=[w, None],
             result_types=[i.ResidentTensorType(w.type, StringAttr("packed_rhs"))],
             properties=props)
         packs[old_w] = pack
@@ -137,8 +198,26 @@ def lower_to_interface(module):
                 raise LoweringError("matmul lhs is not a materialized value")
             lhs = value_map[old_lhs]
             acc_type = i.AccumulatorType(op.results[0].type)
+            dq = None if (old_rhs in packs or old_rhs in value_map) \
+                else _dequant_source(old_rhs, value_map)
             if old_rhs in packs:
                 rhs = packs[old_rhs].res
+            elif dq is not None:
+                # int8 weight-only: pack the i8 weight and dequantize it per channel at pack time
+                # (a float resident weight the target matmul consumes normally). The dequantize op
+                # and its scale are consumed here — the target sees one resident_pack.
+                w_val, scale_val, axis = dq
+                pk = inline_packs.get(w_val)
+                if pk is None:
+                    pk = i.ResidentPackOp(
+                        operands=[w_val, scale_val],
+                        result_types=[i.ResidentTensorType(old_rhs.type, StringAttr("packed_rhs"))],
+                        properties={"layout": i.LayoutAttr(i.Layout.PACKED_RHS),
+                                    "lifetime": i.LifetimeAttr(i.Lifetime.REGION),
+                                    "dequant_axis": IntegerAttr(axis, 64)})
+                    ops.append(pk)
+                    inline_packs[w_val] = pk
+                rhs = pk.res
             elif old_rhs in value_map:
                 # Every matmul weight is placed resident on the mesh — the reuse>=2 gate only
                 # decides whether it is HOISTED/kept across dispatches (the `packs` set), not
@@ -148,7 +227,7 @@ def lower_to_interface(module):
                 pk = inline_packs.get(base)
                 if pk is None:
                     pk = i.ResidentPackOp(
-                        operands=[base],
+                        operands=[base, None],
                         result_types=[i.ResidentTensorType(base.type, StringAttr("packed_rhs"))],
                         properties={"layout": i.LayoutAttr(i.Layout.PACKED_RHS),
                                     "lifetime": i.LifetimeAttr(i.Lifetime.REGION)})
@@ -180,7 +259,10 @@ def lower_to_interface(module):
         # payload op is one this stage does not yet lower to an interface form — fail closed so the
         # boundary is visible, never silently dropped (that would miscompile a whole model).
         if (op.dialect_name() in (c.DIALECT_NAME, s.DIALECT_NAME)
-                or op.name in ("arith.constant", "tensor.empty", "linalg.fill")):
+                or op.name in ("arith.constant", "tensor.empty", "linalg.fill", "tensor.splat")
+                or _resolved_name(op).startswith("quant_ext.dequantize")):
+            # A dequantize feeding a matmul RHS is consumed by that matmul's dequant-pack above; a
+            # dead one is harmless to drop. Its scale/weight args flow through as pack operands.
             continue
         raise LoweringError(f"interface lowering does not yet handle payload op '{op.name}'")
 

@@ -79,7 +79,7 @@ def test_resident_pack_layout_must_match_result_type():
     Wt = TensorType(i8, [8, 8])
     w = Block(arg_types=[Wt]).args[0]
     op = i.ResidentPackOp(
-        operands=[w],
+        operands=[w, None],
         result_types=[i.ResidentTensorType(Wt, StringAttr("canonical"))],
         properties={"layout": i.LayoutAttr(i.Layout.PACKED_RHS)})
     with pytest.raises(VerifyException, match="does not match result type"):
@@ -121,7 +121,7 @@ def test_use_after_evict_is_flagged():
     blk = Block(arg_types=[At, Wt])
     a, w = blk.args
     pack = i.ResidentPackOp(
-        operands=[w],
+        operands=[w, None],
         result_types=[i.ResidentTensorType(Wt, StringAttr("packed_rhs"))],
         properties={"layout": i.LayoutAttr(i.Layout.PACKED_RHS)})
     ev = i.ResidentEvictOp(operands=[pack.res])

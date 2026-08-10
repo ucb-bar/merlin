@@ -46,7 +46,9 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
         if op == "RES_PACK":
             src, dst = ops["src"], ops["dst"]
             t = env[src]
-            env[dst] = t                      # packed copy has identical values
+            if "scale" in ops:                # int8 weight-only: dequantize per channel at pack time
+                t = t.dequant_per_channel(env[ops["scale"]], int(attrs.get("dequant_axis", 1)))
+            env[dst] = t                      # packed copy (identical values, or dequantized weight)
             resident[dst] = src
             metrics.pack_count += 1
             metrics.bytes_moved += t.nbytes
