@@ -40,6 +40,12 @@ and the raised-clock set ships beside it.
 
 ## 2. `build`, `package` — and the twin that makes a gate possible
 
+Before either stage runs you need **`clang-23`** and — for any multi-hart image — **`mlir-translate`**,
+from an LLVM/MLIR 23 build that is not in a fresh clone. Build it per
+[`docs/guides/llvm_toolchain.md`](../../docs/guides/llvm_toolchain.md), or point `MERLIN_CLANG` /
+`MERLIN_MLIR_TRANSLATE` at an LLVM 23 you already have; `./run.sh preflight` reports both. This is
+independent of `GEMMELOS_SDK` — the SDK supplies chip facts, LLVM supplies the compiler.
+
 A UART console cannot be simulated: spike has no such peripheral. So the gate builds an **HTIF twin** from
 the same IR with the same `build_hash`, runs *that*, and ships its console as `expected_console.txt` with
 the twin relationship stated in the package. The packager refuses to ship the pair if the hashes disagree.

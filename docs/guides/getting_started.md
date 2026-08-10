@@ -155,11 +155,13 @@ mlc` is a normal import. `MERLIN_MLC_DIR` still locates mlc's **non-Python asset
 mlc-derived RTL facts report honest-unavailable rather than crashing.
 
 **LLVM / MLIR 23 + clang-23.** The whole-model path needs a standalone LLVM/MLIR-23 install
-(`mlir-translate`) and `clang-23`. Point `MERLIN_MLIR_INSTALL` / `MERLIN_MLIR_TRANSLATE` and
-`MERLIN_CLANG` at them, or set `MERLIN_IREE_BIN` at the IREE-Merlin build that ships clang-23. In-repo
-there is a prebuilt `third_party/llvm-install/` and the `third_party/llvm-project` submodule (the LLVM
-monorepo — the dominant clone cost, init only if you build it yourself:
-`git submodule update --init --depth 1 third_party/llvm-project`).
+(`mlir-translate`) and `clang-23`. The repo builds its own at `third_party/llvm-install/`, which
+`llvmlower.toolchain` defaults to — but that path is **gitignored, so a fresh clone does not have it**;
+build it with [Building the pinned LLVM/MLIR toolchain](llvm_toolchain.md) (`third_party/llvm-project` is
+the submodule it builds from, and the dominant clone cost:
+`git submodule update --init --depth 1 third_party/llvm-project`). To use an LLVM 23 you already have
+instead, point `MERLIN_MLIR_INSTALL` / `MERLIN_MLIR_TRANSLATE` / `MERLIN_CLANG` at it (or
+`MERLIN_IREE_BIN` at the IREE-Merlin build that ships clang-23).
 
 **spike + RISC-V toolchain (chipyard).** The rv64gcv RVV oracle and the RISC-V cross toolchain come
 from a [chipyard](https://github.com/ucb-bar/chipyard) checkout (`spike`,
