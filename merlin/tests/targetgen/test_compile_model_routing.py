@@ -6,6 +6,9 @@ data-driven decision (an op no unit supports is a scalar/RVV fallback, never a s
 Target-agnostic: the target is a parameter; this edge names one as data under test."""
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import pytest
 
 from merlin.targetgen import capsule_source as CSrc
@@ -55,6 +58,23 @@ def test_summarize_route_plan_shape():
     s = _summarize_route_plan(plan)
     assert s["on_mesh"] == {"matmul": 1} and s["scalar_rvv_lane"] == {"softmax": 1}
     assert s["n_mesh_ops"] == 1 and s["n_scalar_ops"] == 1
+
+
+def test_summarize_route_plan_surfaces_matmul_extents():
+    """The summary reports each mesh matmul's REAL M x K x N extent (threaded from the linalg), and a
+    unary mesh op with no extents contributes none — so the plan carries true layer shapes, not just
+    the op family."""
+    from merlin.compile_cli import _summarize_route_plan
+    plan = {"mesh": [R.RouteResult(R.OpDemand("matmul", "int8", "int8", "l0", m=8, k=2048, n=2048),
+                                   "systolic_mesh", None, None),
+                     R.RouteResult(R.OpDemand("matmul", "int8", "int8", "l1", m=8, k=2048, n=256),
+                                   "systolic_mesh", None, None)],
+            "fallback": [],
+            "scalar_rvv": [R.RouteResult(R.OpDemand("softmax", "int8", None), None, None, "gap")]}
+    s = _summarize_route_plan(plan)
+    ext = s["mesh_matmul_extents"]
+    assert [(e["m"], e["k"], e["n"]) for e in ext] == [(8, 2048, 2048), (8, 2048, 256)]
+    assert [e["site"] for e in ext] == ["l0", "l1"]
 
 
 # --------------------------------------------------------------------------- on-mesh tile execution
@@ -200,3 +220,60 @@ def test_mesh_verify_unsynthesizable_op_is_honest(monkeypatch):
     res = CC._mesh_verify(plan, target="gemmini", package="/pkg", timeout=60)
     assert res["n_tiles"] == 0 and res["n_unsynthesizable"] == 1
     assert res["per_tile"][0]["status"] == "no_tile_synthesizer"
+
+
+# --------------------------------------------------------------------------- real whole-model routing
+# End-to-end over a REAL model2MLIR whole-model int8 linalg: the per-op demands must carry each matmul
+# LAYER's true (M,K,N) extents (not just the op family), and routing them onto the target mesh must
+# preserve those extents so a whole-model matmul layer is compiled at its real shape. Gated on the m2m
+# checkout being resolvable (mirrors merlin/tests/ir/test_whole_model_compilability.py).
+def _tiny_llama_int8():
+    for var in ("MERLIN_M2M_DIR", "MERLIN_MODEL2MLIR"):
+        base = os.environ.get(var)
+        if base:
+            p = Path(base) / "workloads" / "tiny_llama" / "tiny_llama_int8.mlir"
+            if p.is_file():
+                return p
+    return None
+
+
+@pytest.mark.skipif(_tiny_llama_int8() is None,
+                    reason="model2MLIR checkout not resolvable (set MERLIN_M2M_DIR)")
+def test_real_tiny_llama_demands_carry_matmul_extents():
+    """model_op_demands over the real int8 tiny_llama linalg attaches each of the 15 matmul layers' real
+    2D (M,K,N) extents, threaded structurally from the linalg.matmul ins-operand tensor shapes."""
+    linalg = _tiny_llama_int8().read_text(encoding="utf-8")
+    dem = CSrc.model_op_demands(linalg, "int8")
+    mm = [d for d in dem if d.op == "matmul"]
+    assert len(mm) == 15                                       # the int8 linear backbone
+    for d in mm:
+        assert d.m and d.k and d.n                             # real extents, not None/0
+        assert d.weight_fmt == "int8"                          # contraction -> weighted
+    # the leading layers' real shapes (attention/mlp projections of an 8-token, 2048-dim model)
+    assert (mm[0].m, mm[0].k, mm[0].n) == (8, 2048, 2048)
+    assert (mm[1].m, mm[1].k, mm[1].n) == (8, 2048, 256)
+
+
+@pytest.mark.skipif(_tiny_llama_int8() is None,
+                    reason="model2MLIR checkout not resolvable (set MERLIN_M2M_DIR)")
+@pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
+def test_real_tiny_llama_routes_matmuls_onto_mesh_with_extents():
+    """Routing the real tiny_llama demands onto the target: all 15 matmul layers land on the systolic
+    mesh and each mesh entry preserves its real (M,K,N) extent; the route summary reports them so the
+    plan carries true layer shapes instead of only the op family."""
+    from merlin.compile_cli import _summarize_route_plan
+    linalg = _tiny_llama_int8().read_text(encoding="utf-8")
+    dem = CSrc.model_op_demands(linalg, "int8")
+    plan = R.route_plan(dem, "gemmini")
+
+    mesh_mm = [r for r in plan["mesh"] if r.demand.op == "matmul"]
+    assert len(mesh_mm) == 15
+    extents = [(r.demand.m, r.demand.k, r.demand.n) for r in mesh_mm]
+    assert all(m and k and n for (m, k, n) in extents)         # every mesh matmul carries real extents
+    assert extents[0] == (8, 2048, 2048) and extents[1] == (8, 2048, 256)
+
+    summary = _summarize_route_plan(plan)
+    assert summary["on_mesh"].get("matmul") == 15
+    summ_ext = [(e["m"], e["k"], e["n"]) for e in summary["mesh_matmul_extents"]
+                if e["op"] == "matmul"]
+    assert summ_ext == extents                                 # the summary reports every layer's shape

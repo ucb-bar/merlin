@@ -567,21 +567,36 @@ def _matmul_via_program_oracle(target, mlir, A, W, *, model_ext, package, timeou
 
 
 def _summarize_route_plan(plan: dict) -> dict:
-    """Collapse a routing.route_plan into per-op-family counts for the report."""
+    """Collapse a routing.route_plan into per-op-family counts for the report, plus the REAL per-matmul
+    extents each mesh contraction carries (threaded from the linalg by ``model_op_demands``) so the plan
+    reports each layer's true M x K x N rather than only the op family. A mesh matmul whose extents could
+    not be read from the linalg (``m``/``k``/``n`` None) is surfaced with None extents, never dropped."""
     def _counts(results):
         c: dict[str, int] = {}
         for r in results:
             c[r.demand.op] = c.get(r.demand.op, 0) + 1
         return c
+
+    def _extents(results):
+        out = []
+        for r in results:
+            d = r.demand
+            if d.m is None and d.k is None and d.n is None:
+                continue                                     # not a contraction / no extents attached
+            out.append({"op": d.op, "site": d.site, "m": d.m, "k": d.k, "n": d.n})
+        return out
+
     return {
         "on_mesh": _counts(plan["mesh"]),
         "in_contract_vector_scalar": _counts(plan["fallback"]),
         "scalar_rvv_lane": _counts(plan["scalar_rvv"]),
         "n_mesh_ops": len(plan["mesh"]),
         "n_scalar_ops": len(plan["fallback"]) + len(plan["scalar_rvv"]),
+        "mesh_matmul_extents": _extents(plan["mesh"]),
         "note": "mesh ops execute on the target's systolic/spatial/simt unit (accelerator OOT path); the "
-                "rest run on the vector/scalar (RVV) lane. The functional gate below is the scalar/RVV "
-                "whole-model reference (numerically correct across ALL ops).",
+                "rest run on the vector/scalar (RVV) lane. Each mesh matmul carries its real MxKxN extent "
+                "(mesh_matmul_extents) so a whole-model layer is compiled at its true shape. The functional "
+                "gate below is the scalar/RVV whole-model reference (numerically correct across ALL ops).",
     }
 
 
