@@ -35,9 +35,14 @@ def _load_isa() -> dict:
     # DIM (systolic mesh dimension) is a CIRCT-extracted FACT, not a hand-declared manifest field.
     mesh = next((a for a in facts.get("arrays", []) if a.get("name") == "mesh"), {})
     dim = mesh.get("rows", 16)
+    # On-chip operand-store depth (scratchpad rows) is a CIRCT-extracted memory FACT — it bounds how
+    # much of an operand can be kept resident (see the capacity-fit residency in emit_kernel_mlir).
+    # Fail-closed: absent -> None (no capacity-fit residency, the per-tile schedule stands).
+    sp = next((mem for mem in facts.get("memories", []) if mem.get("name") == "scratchpad"), {})
     return {"DIM": dim, "ADDR_LEN": enc["addr_len"], "F1": rb["f1"], "C_ACC": rb["c_acc"],
             "ACC_ACCUM": rb["acc_accum"], "ACC_I8": rb["acc_i8"], "K": code_of,
-            "CUSTOM_OPCODE": fd["custom_opcode"], "FUNCT3": fd["funct3"]}
+            "CUSTOM_OPCODE": fd["custom_opcode"], "FUNCT3": fd["funct3"],
+            "SCRATCHPAD_ROWS": sp.get("depth")}
 
 
 _isa = _load_isa()
@@ -56,6 +61,7 @@ K_PRELOAD = _isa["K"]["PRELOAD"]
 K_FLUSH = _isa["K"]["FLUSH"]
 CUSTOM_OPCODE = _isa["CUSTOM_OPCODE"]   # RoCC custom-3 (0x7b)
 FUNCT3 = _isa["FUNCT3"]                 # 0x3
+SCRATCHPAD_ROWS = _isa["SCRATCHPAD_ROWS"]   # on-chip operand-store depth (rows); None if underived
 
 # config_ex (WS, no activation, shift 0, identity scales, strides 1) and config_ld RS1 (block
 # stride defaults to DIM + pixel_repeats 1 — the RTL LoadController asserts block_stride>=rows).
@@ -184,6 +190,15 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
     # config_ld for activations (stride = kp bytes).
     config_ld(kp)
 
+    # Operand stationarity (capacity-fit): the resident weight already lives in the first Kt*Nt
+    # scratchpad tiles; the activation row-panel A[mi, 0:Kt] adds Kt tiles. When both fit the
+    # on-chip operand store (scratchpad depth, an RTL-derived fact) we mvin each row-panel ONCE and
+    # REUSE its Kt activation tiles across the whole N sweep — the old schedule re-moved every
+    # activation tile for every output column (Mt*Nt*Kt mvins), re-fetching the same DRAM tile Nt
+    # times. Panel residency cuts that to Mt*Kt mvins. Fail-safe: when the panel would not fit (or
+    # the depth is underived) we keep the per-(mi,nj) single-slot schedule, byte-identical to before.
+    panel_resident = SCRATCHPAD_ROWS is not None and (Kt * Nt + Kt) * DIM <= SCRATCHPAD_ROWS
+
     for (lhs, out, epi, m, out_dtype, scale) in jobs:
         mp = _ceil_dim(m)
         Mt = mp // DIM
@@ -195,13 +210,22 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
         # config_st: RS1=(acc_act<<2)|CONFIG_ST ; RS2=(acc_scale_bits<<32)|out_row_stride_bytes
         rocc(K_CONFIG, konst((acc_act << 2) | 2), konst((scale_bits << 32) | (np_ * elt)))
         for mi in range(Mt):
-            for nj in range(Nt):
+            if panel_resident:
+                # Row-panel mvin: the Kt activation tiles of row mi, into Kt distinct slots, ONCE.
                 for kt in range(Kt):
                     a_off = ((mi * DIM) * kp + kt * DIM)
-                    rocc(K_MVIN, addr(lhs, a_off), konst(_pack(a_slot)))
+                    rocc(K_MVIN, addr(lhs, a_off), konst(_pack(a_slot + kt * DIM)))
+            for nj in range(Nt):
+                for kt in range(Kt):
+                    if panel_resident:
+                        a_addr = a_slot + kt * DIM              # reuse the resident panel tile
+                    else:
+                        a_off = ((mi * DIM) * kp + kt * DIM)    # legacy: re-mvin per output column
+                        rocc(K_MVIN, addr(lhs, a_off), konst(_pack(a_slot)))
+                        a_addr = a_slot
                     cad = C_ACC if kt == 0 else (C_ACC | ACC_ACCUM)   # accumulator is always i32
                     rocc(K_PRELOAD, konst(_pack((kt * Nt + nj) * DIM)), konst(_pack(cad)))
-                    rocc(K_COMPUTE_PRELOADED, konst(_pack(a_slot)), konst(_pack(GARBAGE)))
+                    rocc(K_COMPUTE_PRELOADED, konst(_pack(a_addr)), konst(_pack(GARBAGE)))
                 c_off = ((mi * DIM) * np_ + nj * DIM) * elt
                 rocc(K_MVOUT, addr(out, c_off), konst(_pack(read_base)))
 
