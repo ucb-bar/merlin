@@ -368,6 +368,49 @@ def _default_oot_package(target: str) -> str | None:
     return str(cand) if (cand / "manifest.yaml").is_file() else None
 
 
+def _dtype_bytes(tok: str | None) -> int:
+    """Byte width of an operand dtype token (i8/i16/i32/f16/f32/…). Defaults to 1 (int8-class)."""
+    if not tok:
+        return 1
+    digits = "".join(ch for ch in str(tok) if ch.isdigit())
+    return max(1, int(digits) // 8) if digits else 1
+
+
+def _scratchpad_capacity_elems(target: str, dtype_bytes: int) -> int | None:
+    """On-chip operand-store capacity (in elements of ``dtype_bytes``) DERIVED from the target's RTL
+    memory facts (the ``scratchpad`` memory's byte size); None when facts don't declare it (fail-open —
+    the caller then keeps the untiled extent). Never a hardcoded capacity."""
+    try:
+        from .targetgen.rtl import facts as _facts
+        mems = (_facts.load_facts(target).get("facts") or {}).get("memories") or []
+    except Exception:  # noqa: BLE001 — no facts bundle → capacity unknown, caller falls back
+        return None
+    sp = next((m for m in mems if m.get("name") == "scratchpad"), None)
+    nbytes = sp.get("bytes") if sp else None
+    return int(nbytes) // max(1, dtype_bytes) if nbytes else None
+
+
+def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int) -> tuple[int, int, int, int]:
+    """Shrink a matmul (M,K,N) to the largest D-aligned tile whose on-chip working set — the weight
+    tile K·N plus the activation tile M·K — fits ``cap_elems``, and return (mt,kt,nt,n_tiles) where
+    n_tiles is how many such tiles cover the layer. Keeps M whole (the row dim streams); halves the
+    larger of K/N (never below D) until the tile fits. Pure arithmetic, target-agnostic."""
+    def _fits(mt, kt, nt):
+        return kt * nt + mt * kt <= cap_elems
+
+    mt, kt, nt = M, K, N
+    while not _fits(mt, kt, nt) and (kt > D or nt > D):
+        if nt >= kt and nt > D:
+            nt = max(D, (nt // 2 // D) * D or D)
+        elif kt > D:
+            kt = max(D, (kt // 2 // D) * D or D)
+        else:
+            nt = max(D, (nt // 2 // D) * D or D)
+    import math
+    n_tiles = math.ceil(M / mt) * math.ceil(K / kt) * math.ceil(N / nt)
+    return mt, kt, nt, n_tiles
+
+
 def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str | None):
     """A ``corpus_spec.CorpusBinding`` for synthesizing a single systolic mesh tile of ``target``, with the
     operand/accumulate datapath pinned to what the routed op actually needs (derived, never assumed). The
@@ -443,17 +486,29 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
             def _rup(x):
                 return D if not x else ((int(x) + D - 1) // D) * D
             M, K, N = (_rup(d.m), _rup(d.k), _rup(d.n)) if (d.m and d.k and d.n) else (D, D, D)
+            # A whole layer's weight tile (K·N) + activation (M·K) may exceed the on-chip operand store;
+            # shrink to the largest capacity-fit tile (derived from the target's scratchpad memory fact)
+            # and record how many such tiles cover the layer. The certified tile is the layer's real
+            # repeating unit — a fit tile that passes proves the layer runs on the mesh once tiled. When
+            # the capacity fact is absent we keep the untiled extent (prior behavior).
+            layer_extent = f"{M}x{K}x{N}"
+            n_subtiles = 1
+            sp_cap = _scratchpad_capacity_elems(target, _dtype_bytes(binding.operand_dtype))
+            if sp_cap and (K * N + M * K) > sp_cap:
+                M, K, N, n_subtiles = _capacity_fit_tile(M, K, N, D, sp_cap)
             entry = {"name": f"mesh_tile_{i}_{op}", "op": op, "kind": "op",
                      "source_role": "mesh_tile_synthesized",
-                     "source_reference": f"whole-model op {d.op} [{d.site}]: {M}x{K}x{N} on the mesh",
+                     "source_reference": f"whole-model op {d.op} [{d.site}]: layer {layer_extent} on the "
+                                         f"mesh as {n_subtiles} capacity-fit {M}x{K}x{N} tile(s)",
                      "M": M, "K": K, "N": N}
-            cap, mlir = CS.build(entry, binding)
+            capsule, mlir = CS.build(entry, binding)
         except Exception as e:  # noqa: BLE001 — a synthesis failure is recorded, never a fake pass
             out["n_unsynthesizable"] += 1
             rec.update(status="synth_error", reason=f"{type(e).__name__}: {str(e)[-300:]}")
             out["per_tile"].append(rec)
             continue
-        rec.update(M=M, K=K, N=N, operand_dtype=binding.cap_dtype(binding.operand_dtype),
+        rec.update(M=M, K=K, N=N, layer_extent=layer_extent, n_subtiles=n_subtiles,
+                   operand_dtype=binding.cap_dtype(binding.operand_dtype),
                    output_dtype=binding.cap_dtype(binding.accum_dtype), sim=sim)
         with tempfile.TemporaryDirectory(prefix="mesh_tile_") as td:
             iface = Path(td) / f"{entry['name']}.interface.mlir"
@@ -486,13 +541,14 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
     else:
         out["status"] = "partial"
     out["note"] = (
-        "each mesh-routed matmul LAYER is verified by EXECUTING it at its real M x K x N extent (read from "
-        "the linalg; the OOT backend tiles it into DxD mesh tiles) on the target mesh oracle "
-        f"(simulator={sim}); the emitted kernel's output is gated (bit-exact int / tolerance float) against "
-        "the command buffer's reference == simulate == oracle three-way. The remaining gap is the single "
-        "SPLICED image (all layers' mesh kernels + the scalar/RVV remainder co-scheduled in one binary with "
-        "activations handed between layers) — see compile_model's docstring; here each layer is certified "
-        "independently at its true shape.")
+        "each mesh-routed matmul LAYER is verified by EXECUTING its capacity-fit tile on the target mesh "
+        f"oracle (simulator={sim}): the tile is the largest D-aligned unit whose weight+activation working "
+        "set fits the target's DERIVED scratchpad capacity (n_subtiles = how many tile it into the layer); "
+        "the emitted kernel's output is gated (bit-exact int / tolerance float) against the command buffer's "
+        "reference == simulate == oracle three-way. A fit tile that certifies proves the layer runs on the "
+        "mesh once tiled. The remaining gap is the single SPLICED image (all layers' mesh kernels + the "
+        "scalar/RVV remainder co-scheduled in one binary with activations handed between layers) — see "
+        "compile_model's docstring.")
     return out
 
 

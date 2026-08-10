@@ -277,3 +277,47 @@ def test_real_tiny_llama_routes_matmuls_onto_mesh_with_extents():
     summ_ext = [(e["m"], e["k"], e["n"]) for e in summary["mesh_matmul_extents"]
                 if e["op"] == "matmul"]
     assert summ_ext == extents                                 # the summary reports every layer's shape
+
+
+# -- capacity-fit mesh tiling: a whole layer's weight+activation working set may exceed the target's
+# on-chip scratchpad, so a mesh matmul is tiled to the largest capacity-fit unit (derived from the RTL
+# memory fact) and n_subtiles reports how many tile the layer. Pure-arithmetic tests run everywhere;
+# the fact-derivation test skips when the target's fact bundle is unavailable. --
+
+def test_dtype_bytes():
+    from merlin.compile_cli import _dtype_bytes
+    assert _dtype_bytes("i8") == 1
+    assert _dtype_bytes("i32") == 4
+    assert _dtype_bytes("f16") == 2
+    assert _dtype_bytes("f32") == 4
+    assert _dtype_bytes(None) == 1
+
+
+def test_capacity_fit_tile_shrinks_to_fit():
+    from merlin.compile_cli import _capacity_fit_tile
+    cap = 262144  # gemmini int8 scratchpad elements
+    # A tile that already fits is returned whole, one subtile.
+    assert _capacity_fit_tile(16, 256, 256, 16, cap) == (16, 256, 256, 1)
+    # The real tiny_llama layer (rounded to the mesh dim) overflows and is tiled; every returned tile
+    # fits the capacity and the count covers the layer.
+    mt, kt, nt, n = _capacity_fit_tile(16, 2048, 2048, 16, cap)
+    assert kt * nt + mt * kt <= cap
+    assert mt % 16 == 0 and kt % 16 == 0 and nt % 16 == 0
+    import math
+    assert n == math.ceil(2048 / kt) * math.ceil(2048 / nt) * math.ceil(16 / mt)
+    assert n > 1
+
+
+def test_scratchpad_capacity_is_derived_not_hardcoded():
+    """The on-chip capacity comes from the target's RTL memory fact; skip when facts are unavailable."""
+    from merlin.compile_cli import _scratchpad_capacity_elems
+    try:
+        from merlin.targetgen.rtl import facts as _facts
+        mems = (_facts.load_facts("gemmini").get("facts") or {}).get("memories") or []
+    except Exception:
+        pytest.skip("gemmini fact bundle unavailable")
+    sp = next((m for m in mems if m.get("name") == "scratchpad"), None)
+    if not (sp and sp.get("bytes")):
+        pytest.skip("no scratchpad memory fact for gemmini")
+    assert _scratchpad_capacity_elems("gemmini", 1) == int(sp["bytes"])
+    assert _scratchpad_capacity_elems("gemmini", 4) == int(sp["bytes"]) // 4
