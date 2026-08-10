@@ -91,13 +91,10 @@ def route_target(demands: list[OpDemand], target_name: str) -> list[RouteResult]
 _MESH_KINDS = {"systolic", "spatial", "simt"}
 
 
-def route_plan(demands: list[OpDemand], target_name: str) -> dict:
-    """Split a whole model's ops across a target: which run on the accelerator MESH (systolic/spatial/simt
-    unit), which on an in-contract vector/scalar unit, and which fall back to the scalar/RVV lane (no
-    accelerator unit — an honest, expected outcome for norms/activations on a matmul-only mesh)."""
-    from merlin.targetgen import target_registry as tr
-
-    units = _cu.compute_units(tr.load_contract(target_name))
+def route_plan_on(demands: list[OpDemand], units: list[_cu.ComputeUnit]) -> dict:
+    """Split a whole model's ops across a set of already-loaded ``units`` (the target-agnostic core of
+    :func:`route_plan`). ``results`` preserves the input op ORDER — the whole-model splice walks it to
+    co-schedule each op on its lane while handing activations between steps."""
     kind = {u.name: u.kind for u in units}
     results = route(demands, units)
     mesh, fallback, scalar_rvv = [], [], []
@@ -109,6 +106,16 @@ def route_plan(demands: list[OpDemand], target_name: str) -> dict:
         else:
             scalar_rvv.append(r)
     return {"mesh": mesh, "fallback": fallback, "scalar_rvv": scalar_rvv, "results": results}
+
+
+def route_plan(demands: list[OpDemand], target_name: str) -> dict:
+    """Split a whole model's ops across a target: which run on the accelerator MESH (systolic/spatial/simt
+    unit), which on an in-contract vector/scalar unit, and which fall back to the scalar/RVV lane (no
+    accelerator unit — an honest, expected outcome for norms/activations on a matmul-only mesh)."""
+    from merlin.targetgen import target_registry as tr
+
+    units = _cu.compute_units(tr.load_contract(target_name))
+    return route_plan_on(demands, units)
 
 
 def gaps(results: list[RouteResult]) -> list[RouteResult]:
