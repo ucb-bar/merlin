@@ -1,0 +1,49 @@
+name: MF5_gemv_batched_bf16_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: PyTorch batched GEMV bf16
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A0
+  role: input
+  shape:
+  - 2
+  - 16
+  - 16
+  dtype: bf16
+- name: V
+  role: input
+  shape:
+  - 2
+  - 16
+  - 1
+  dtype: bf16
+operation:
+  op: gemv_batched
+  attributes:
+    out: Y0
+    arg_order:
+    - A0
+    - V
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.03125
+  rtol: 0.03125
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+pytorch_ref:
+  op: gemv_batched
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir

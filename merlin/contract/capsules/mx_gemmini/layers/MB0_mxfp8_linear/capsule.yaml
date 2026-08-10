@@ -1,0 +1,44 @@
+name: MB0_mxfp8_linear
+kind: layer
+source_role: pytorch_model_slice
+source_reference: nn.Linear mxfp8 x mxfp8 -> bf16 (block-scaled)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 32
+  dtype: mxfp8
+- name: X
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: mxfp8
+operation:
+  op: linear
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: bf16
+    semantic: quantized_linear
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.03125
+  rtol: 0.03125
+expected:
+  instruction_classes: []
+  modes:
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

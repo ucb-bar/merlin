@@ -264,8 +264,16 @@ def _mx_golden(entry, binding):
             idx = {int(v): i for i, v in enumerate(lut)}
             A_nib = np.vectorize(lambda c: idx[int(c)])(A_codes).astype(np.uint8)
             B_nib = np.vectorize(lambda c: idx[int(c)])(B_codes).astype(np.uint8)
-            lutA = lut.reshape(1, 16)
-            lutB = lut.reshape(1, 16)
+            # mx_ref indexes the LUT as ``L[(row_or_col >> G) * 16 + nib]`` — ONE 16-entry block per
+            # ``1<<G`` rows (A) / cols (B). Supply exactly that many blocks (a single global palette shared
+            # by all groups is replicated: every block is identical, so ``(g)*16 + nib`` always resolves to
+            # lut[nib]). Prior code shipped a lone block, so any fp6 capsule with M or N > 1<<G (e.g. N=64)
+            # indexed past it and crashed.
+            grp = 1 << G
+            nblk_A = (A_codes.shape[0] + grp - 1) // grp      # blocks along A rows (M)
+            nblk_B = (B_codes.shape[1] + grp - 1) // grp      # blocks along B cols (N)
+            lutA = np.tile(lut.reshape(1, 16), (nblk_A, 1))
+            lutB = np.tile(lut.reshape(1, 16), (nblk_B, 1))
         else:
             A_nib, B_nib = A_codes, B_codes               # fp4 nibble == code
         Ab = ((A_nib[1::2, :] << 4) | (A_nib[0::2, :] & 0xF)).astype(np.uint8)     # pack along M
