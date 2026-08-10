@@ -10,7 +10,7 @@ from __future__ import annotations
 from .._common import HAS_XDSL
 
 DIALECT_NAME = "toynpu"
-OPS = ["res_pack", "matmul", "commit", "evict"]
+OPS = ["res_pack", "matmul", "commit", "evict", "vector_map", "vector_reduce"]
 TYPES = ["resident_tensor", "accumulator"]
 
 if HAS_XDSL:
@@ -22,6 +22,8 @@ if HAS_XDSL:
     MatmulOp = _BUILT.matmul_op
     CommitOp = _BUILT.commit_op
     EvictOp = _BUILT.evict_op
+    VectorMapOp = _BUILT.vector_map_op
+    VectorReduceOp = _BUILT.vector_reduce_op
     ResidentTensorType = _BUILT.resident_type
     AccumulatorType = _BUILT.accumulator_type
     TOYNPU_DIALECT = _BUILT.dialect

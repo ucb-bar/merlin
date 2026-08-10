@@ -61,6 +61,9 @@ if HAS_XDSL:
         evict_op: type
         resident_type: type
         accumulator_type: type
+        # Optional non-matmul vector-lane ops — None when the target lowers neither.
+        vector_map_op: type | None = None
+        vector_reduce_op: type | None = None
 
     def _specs() -> dict[str, "TargetSpec"]:
         # Built-in REFERENCE targets only. Generated targets (e.g. gemmini) are NOT hardcoded
@@ -72,10 +75,14 @@ if HAS_XDSL:
         return {
             "toy_npu": TargetSpec("toy_npu", toy, toy.ResPackOp, toy.MatmulOp,
                                   toy.CommitOp, toy.EvictOp, toy.ResidentTensorType,
-                                  toy.AccumulatorType),
+                                  toy.AccumulatorType,
+                                  vector_map_op=getattr(toy, "VectorMapOp", None),
+                                  vector_reduce_op=getattr(toy, "VectorReduceOp", None)),
             "saturn": TargetSpec("saturn", sat, sat.PackOp, sat.MatmulOp,
                                  sat.CommitOp, sat.ReleaseOp, sat.PackedTensorType,
-                                 sat.AccumulatorType),
+                                 sat.AccumulatorType,
+                                 vector_map_op=getattr(sat, "VectorMapOp", None),
+                                 vector_reduce_op=getattr(sat, "VectorReduceOp", None)),
         }
 
 
@@ -141,6 +148,22 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
             value_map[op.out] = new.out
         elif isinstance(op, i.ResidentEvictOp):
             new = spec.evict_op(operands=[value_map[op.handle]])
+        elif isinstance(op, i.VectorMapOp):
+            if spec.vector_map_op is None:
+                raise LoweringError(f"target {spec.name!r} does not lower interface.vector_map")
+            props = {"combine": op.combine}
+            if op.activation is not None:
+                props["activation"] = op.activation
+            new = spec.vector_map_op(operands=[value_map[op.lhs], value_map[op.rhs]],
+                                     result_types=[op.out.type], properties=props)
+            value_map[op.out] = new.out
+        elif isinstance(op, i.VectorReduceOp):
+            if spec.vector_reduce_op is None:
+                raise LoweringError(f"target {spec.name!r} does not lower interface.vector_reduce")
+            new = spec.vector_reduce_op(operands=[value_map[op.src]],
+                                        result_types=[op.out.type],
+                                        properties={"reduce": op.reduce})
+            value_map[op.out] = new.out
         elif op.name == "func.return":
             ret_op = op
             continue

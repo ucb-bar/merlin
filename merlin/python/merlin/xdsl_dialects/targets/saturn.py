@@ -11,7 +11,7 @@ from __future__ import annotations
 from .._common import HAS_XDSL
 
 DIALECT_NAME = "saturn"
-OPS = ["pack", "matmul", "commit", "release"]
+OPS = ["pack", "matmul", "commit", "release", "vector_map", "vector_reduce"]
 TYPES = ["packed_tensor", "accumulator"]
 
 if HAS_XDSL:
@@ -23,6 +23,8 @@ if HAS_XDSL:
     MatmulOp = _BUILT.matmul_op
     CommitOp = _BUILT.commit_op
     ReleaseOp = _BUILT.evict_op
+    VectorMapOp = _BUILT.vector_map_op
+    VectorReduceOp = _BUILT.vector_reduce_op
     PackedTensorType = _BUILT.resident_type
     AccumulatorType = _BUILT.accumulator_type
     SATURN_DIALECT = _BUILT.dialect

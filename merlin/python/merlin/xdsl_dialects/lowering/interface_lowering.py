@@ -17,6 +17,51 @@ class LoweringError(RuntimeError):
     pass
 
 
+# linalg elementwise op name -> interface.vector_map combine token (two real tensor operands).
+_ELEMENTWISE_COMBINE = {"linalg.add": "add", "linalg.mul": "mul"}
+
+
+def _is_zero_fill(value) -> bool:
+    """True when ``value`` is a ``linalg.fill`` of a zero constant — i.e. the second operand of a
+    ``linalg.max`` that makes it a relu (max(x, 0)). Derived structurally from the IR, no regex."""
+    owner = getattr(value, "owner", None)
+    # A block argument's owner is a Block (no ``name``) — getattr keeps the check total.
+    if getattr(owner, "name", None) != "linalg.fill":
+        return False
+    scalar = owner.inputs[0]
+    c = getattr(scalar, "owner", None)
+    if getattr(c, "name", None) != "arith.constant":
+        return False
+    attr = getattr(c, "value", None)
+    inner = getattr(attr, "value", None)
+    data = getattr(inner, "data", None)
+    return data is not None and float(data) == 0.0
+
+
+def _lower_vector_map(op, value_map, i):
+    """Lower a linalg elementwise/activation op to a single interface.vector_map.
+
+    ``linalg.add``/``linalg.mul`` -> a two-operand combine; ``linalg.max`` against a zero fill ->
+    an identity copy with a relu activation (the standard relu idiom max(x, 0)). Any other shape
+    fails closed — the engine's vector path models exactly this vocabulary."""
+    from xdsl.dialects.builtin import ArrayAttr, StringAttr
+
+    name = op.name
+    if name in _ELEMENTWISE_COMBINE:
+        lhs, rhs = value_map[op.inputs[0]], value_map[op.inputs[1]]
+        props = {"combine": StringAttr(_ELEMENTWISE_COMBINE[name])}
+    elif name == "linalg.max" and _is_zero_fill(op.inputs[1]):
+        a = value_map[op.inputs[0]]
+        lhs = rhs = a                       # identity copy of lhs; rhs is unused by the engine
+        props = {"combine": StringAttr("identity"),
+                 "activation": ArrayAttr([StringAttr("relu")])}
+    else:
+        raise LoweringError(
+            f"interface lowering does not model vector op '{name}' "
+            "(only elementwise add/mul and relu = max(x, 0) map to the engine's vector path)")
+    return i.VectorMapOp(operands=[lhs, rhs], result_types=[op.results[0].type], properties=props)
+
+
 def lower_to_interface(module):
     """Build a fresh interface-level module from the scheduled module."""
     if not HAS_XDSL:
@@ -122,12 +167,20 @@ def lower_to_interface(module):
             ops += [imm, commit]
             value_map[op.results[0]] = commit.out
             continue
-        # Contract/schedule decoration and matmul-init scaffolding (the zero-point constant,
-        # the empty accumulator init) are consumed. Any other payload op is one this stage does
-        # not yet lower to an interface form — fail closed so the boundary is visible, never
-        # silently dropped (that would miscompile a whole model down to its matmuls alone).
+        # Non-matmul payload: elementwise combine / activation ops run on the target's vector lanes
+        # (interface.vector_map). These are the residual adds, gating multiplies, and activations of
+        # a whole model — threaded through the same value_map so they chain with the matmuls.
+        if op.name in _ELEMENTWISE_COMBINE or op.name == "linalg.max":
+            vmap = _lower_vector_map(op, value_map, i)
+            ops.append(vmap)
+            value_map[op.results[0]] = vmap.out
+            continue
+        # Contract/schedule decoration and op-init scaffolding (the zero-point constant, the empty
+        # init tensors, the linalg.fill that materializes a relu's zero) are consumed. Any other
+        # payload op is one this stage does not yet lower to an interface form — fail closed so the
+        # boundary is visible, never silently dropped (that would miscompile a whole model).
         if (op.dialect_name() in (c.DIALECT_NAME, s.DIALECT_NAME)
-                or op.name in ("arith.constant", "tensor.empty")):
+                or op.name in ("arith.constant", "tensor.empty", "linalg.fill")):
             continue
         raise LoweringError(f"interface lowering does not yet handle payload op '{op.name}'")
 

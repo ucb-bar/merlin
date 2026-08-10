@@ -19,10 +19,14 @@ TARGET_OPCODES = {
     "toynpu.matmul": "MATMUL_RESIDENT",
     "toynpu.commit": "COMMIT",
     "toynpu.evict": "EVICT",
+    "toynpu.vector_map": "VECTOR_MAP",
+    "toynpu.vector_reduce": "VREDUCE",
     "saturn.pack": "RES_PACK",
     "saturn.matmul": "MATMUL_RESIDENT",
     "saturn.commit": "COMMIT",
     "saturn.release": "EVICT",
+    "saturn.vector_map": "VECTOR_MAP",
+    "saturn.vector_reduce": "VREDUCE",
 }
 # Generated targets (e.g. gemmini) supply their own target-op -> opcode map from their isolated
 # package (merlin.targetgen.registry); it is merged in via the ``opcodes`` arg of
@@ -93,7 +97,7 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         if isinstance(arg.type, TensorType):
             names[arg] = "A%d" % n_a
             n_a += 1
-    n_acc = n_y = 0
+    n_acc = n_y = n_v = 0
     for op in src_block.ops:
         k = kind(op)
         if k == "RES_PACK":
@@ -104,6 +108,9 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         elif k == "COMMIT":
             names[op.out] = "Y%d" % n_y
             n_y += 1
+        elif k in ("VECTOR_MAP", "VREDUCE"):
+            names[op.out] = "V%d" % n_v
+            n_v += 1
     for arg in src_block.args:
         if arg in names:
             tensors[names[arg]] = _shape_str(arg.type)
@@ -154,6 +161,14 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         elif opcode == "EVICT":
             args = {"handle": names[op.handle]}
             attrs = {}
+        elif opcode == "VECTOR_MAP":
+            args = {"lhs": names[op.lhs], "rhs": names[op.rhs], "dst": names[op.out]}
+            attrs = {"combine": op.combine}
+            if op.activation is not None:
+                attrs["activation"] = op.activation
+        elif opcode == "VREDUCE":
+            args = {"src": names[op.src], "dst": names[op.out]}
+            attrs = {"op": op.reduce}
         elif op.name == "func.return":
             continue
         else:

@@ -16,8 +16,10 @@ pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed
 def test_build_dialect_shape():
     from merlin.xdsl_dialects.targets.factory import build_dialect
 
-    for target, dname, ops in (("toy_npu", "toynpu", {"res_pack", "matmul", "commit", "evict"}),
-                               ("saturn", "saturn", {"pack", "matmul", "commit", "release"})):
+    vec = {"vector_map", "vector_reduce"}
+    for target, dname, ops in (
+            ("toy_npu", "toynpu", {"res_pack", "matmul", "commit", "evict"} | vec),
+            ("saturn", "saturn", {"pack", "matmul", "commit", "release"} | vec)):
         b = build_dialect(target, matmul_rhs_typed=(target == "toy_npu"),
                           matmul_vl_policy=(target == "saturn"))
         assert b.dialect.name == dname
@@ -35,10 +37,12 @@ def test_reference_modules_use_the_factory():
 
     assert toynpu.get_dialect().name == "toynpu"
     assert {o.name for o in toynpu.get_dialect().operations} == {
-        "toynpu.res_pack", "toynpu.matmul", "toynpu.commit", "toynpu.evict"}
+        "toynpu.res_pack", "toynpu.matmul", "toynpu.commit", "toynpu.evict",
+        "toynpu.vector_map", "toynpu.vector_reduce"}
     assert saturn.get_dialect().name == "saturn"
     assert {o.name for o in saturn.get_dialect().operations} == {
-        "saturn.pack", "saturn.matmul", "saturn.commit", "saturn.release"}
+        "saturn.pack", "saturn.matmul", "saturn.commit", "saturn.release",
+        "saturn.vector_map", "saturn.vector_reduce"}
 
 
 def test_factory_lowering_matches_per_target():
