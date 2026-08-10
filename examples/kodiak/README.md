@@ -31,6 +31,13 @@ report the width of the machine it runs on, not the width it was compiled for.
 
 ## 2. `build` — one model, three ways, each gated
 
+Two tools have to exist before this stage does anything: **`clang-23`**, which compiles every RISC-V
+object, and **`mlir-translate`**, which lowers the OpenMP IR — so it is needed for `h2` and `h3_scalar`
+but not `h1`. Both come from an LLVM/MLIR 23 build that a fresh clone does **not** have;
+[`docs/guides/llvm_toolchain.md`](../../docs/guides/llvm_toolchain.md) is the recipe, including a
+two-target build if this example is all you want it for. `./run.sh preflight` names them if they are
+missing. The RISC-V linker and `objcopy` come from chipyard's riscv-tools and the Zephyr SDK instead.
+
 The interesting part of Kodiak is that one chip needs three different images:
 
 | image | why |

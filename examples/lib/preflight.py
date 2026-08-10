@@ -39,6 +39,23 @@ def _components():
         rows.append((f"merlin importable ({type(exc).__name__})", False,
                      "see README: uv sync --all-extras", Path("-")))
         return rows
+    # The compiler half. `zephyr_model.available()` deliberately reports only on the Zephyr build
+    # environment, so a machine with cmake/ninja/SDK but no clang-23 passes that guard and then fails at
+    # the first object. Itemise it here: clang-23 compiles every RISC-V object, mlir-translate lowers the
+    # OpenMP IR every MULTI-hart image needs, and the lowering runner itself executes inside model2MLIR's
+    # venv. See docs/guides/llvm_toolchain.md -- third_party/llvm-install is gitignored, so a fresh clone
+    # has to build it.
+    try:
+        from merlin.llvmlower import toolchain as tc
+        rows.append(("clang-23", tc.clang().is_file(), "MERLIN_CLANG "
+                     "(see docs/guides/llvm_toolchain.md)", tc.clang()))
+        rows.append(("mlir-translate", tc.mlir_translate().is_file(), "MERLIN_MLIR_TRANSLATE "
+                     "(see docs/guides/llvm_toolchain.md)", tc.mlir_translate()))
+        rows.append(("m2m venv", tc.m2m_python().is_file(), "MERLIN_M2M_DIR / MERLIN_M2M_VENV",
+                     tc.m2m_python()))
+    except Exception as exc:                                          # noqa: BLE001
+        rows.append((f"llvm toolchain ({type(exc).__name__}: {exc})", False, "-", Path("-")))
+
     try:
         from merlin.runtime.backends import zephyr_model as zm
         for tool in ("cmake", "ninja"):
@@ -50,6 +67,17 @@ def _components():
     except Exception as exc:                                          # noqa: BLE001
         rows.append((f"zephyr backend ({type(exc).__name__}: {exc})", False, "-", Path("-")))
     return rows
+
+
+def _llvm_ok() -> bool:
+    """Can this machine compile at all? `toolchain.available()` is the library's own guard (clang + the
+    m2m venv the lowering runner executes in); mlir-translate is additionally required by any multi-hart
+    image, and every example builds one."""
+    try:
+        from merlin.llvmlower import toolchain as tc
+        return bool(tc.available()) and tc.mlir_translate().is_file()
+    except Exception:                                                 # noqa: BLE001
+        return False
 
 
 def _rows(board: str, sdk_dir: str | None):
@@ -68,7 +96,9 @@ def _rows(board: str, sdk_dir: str | None):
         zeph = bool(zm.available())
     except Exception:                                                 # noqa: BLE001
         zeph = False
-    out.append(("build", zeph, "the above, plus cmake/ninja, a Zephyr tree and the Zephyr SDK"))
+    zeph = zeph and _llvm_ok()
+    out.append(("build", zeph, "the above, plus clang-23/mlir-translate, cmake/ninja, a Zephyr tree "
+                               "and the Zephyr SDK"))
 
     # A UART-console board additionally needs its own SDK: the UART address and the clock rates its baud
     # divisor depends on are derived from that SDK's headers, never hardcoded. Asking for it here rather
@@ -114,9 +144,10 @@ def main(argv=None) -> int:
     missing = [c for c in comps if not c[1]]
     if missing or a.require in ("build", "package"):
         print("\nhost prerequisites:")
+        cw = max(len(c[0]) for c in comps)     # so a long label ('mlir-translate') keeps the column
         for label, present, envvar, path in comps:
             mark = "ok " if present else "no "
-            print(f"  [{mark}] {label:<12} {path}")
+            print(f"  [{mark}] {label:<{cw}} {path}")
             if not present:
                 print(f"         set {envvar}")
     if needs_sdk and not sdk_ok:
