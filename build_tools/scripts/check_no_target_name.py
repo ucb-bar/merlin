@@ -54,7 +54,7 @@ INLINE_MARKER = "# target-ok:"
 # (the onboarding example), and ``rvv`` is a generic ISA class, not a target. Read from the sibling
 # data file so the set has a single source of truth shared with the audit.
 TARGET_NAMES = frozenset({
-    "gemmini", "mx_gemmini", "atlas", "radiance", "saturn", "muon", "npu_model",
+    "gemmini", "mx_gemmini", "atlas", "radiance", "saturn", "muon", "npu_model",  # target-ok: the set this gate hunts
 })
 
 

@@ -1,0 +1,208 @@
+# Every place the target-agnostic core is welded to a specific target — declared, costed, countable.
+#
+# WHY THIS FILE EXISTS. The repo's cardinal rule is "derive, never hardcode": library code must not bake
+# in facts about one piece of hardware. The gates that enforce it kept their exemptions in flat
+# allowlists and announced them on a PASSING line ("36 allowlisted entries"), which reads as "nothing to
+# see" when it means 36 places the rule is suspended. An overfit that passes a gate quietly stops being
+# work anyone can see. This file makes each one say what it costs and what would remove it.
+#
+# THE COUNT MAY ONLY FALL. `check_overfit_register.py` re-measures the live tree on every run: a coupled
+# module that is not declared here FAILS the gate (new debt must be declared, not absorbed), and a
+# declared module that no longer couples is reported as ready to delete. So the register cannot drift
+# from reality in either direction, which is the failure mode of every hand-maintained debt list.
+#
+# TRIAGE IS PART OF THE SCHEMA, ON PURPOSE. An entry is `status: triaged` only when someone has actually
+# read the code and can state why the fact is not derivable, what it blocks, and what would remove it.
+# Everything else is `status: untriaged` and must say when and how it surfaced. Without that distinction
+# a required-fields schema just pressures people into inventing plausible rationales, and a fabricated
+# `removal_condition` is worse than an honest "nobody has looked at this yet" — it reads as rigour.
+#
+# Required fields: id, kind, status, items, owner.
+#   `status: triaged`   also requires why, blocks, removal_condition.
+#   `status: untriaged` also requires surfaced_by, surfaced_on.
+#
+# kinds:
+#   target_name        a target-name string literal in code that should resolve the target at runtime
+#   target_coupling    a module with no target in its name that depends on a specific target
+#   runtime_concession a limit taken at run time because a general path does not work on some hardware
+#   dead_seam          a declared extension point that nothing consumes
+#
+# NOT YET MIGRATED. Two sibling ratchets still hold their own entries and are counted here without being
+# restated, because inventing rationales for them would violate the paragraph above:
+#   build_tools/scripts/regex_allowlist.txt      (23 entries)
+#   build_tools/scripts/provenance_ratchet.txt   (28 entries)
+# Prose ledger of the same debt, task-numbered: docs/design/target_agnostic_core.md (T1–T12).
+version: 1
+
+entries:
+
+  # ---------------------------------------------------------------- oracle + runner dispatch
+  - id: oracle-and-runner-dispatch-names-reference-targets
+    kind: target_coupling
+    status: triaged
+    owner: targetgen
+    items:
+      - merlin/python/merlin/targetgen/capsule_runner.py
+      - merlin/python/merlin/targetgen/heavy_oracles.py
+      - merlin/python/merlin/targetgen/oot_runner.py
+      - merlin/python/merlin/targetgen/baremetalc_corroborate.py
+      - merlin/python/merlin/targetgen/agent/kernel_slot.py
+      - merlin/python/merlin/targetgen/agent/vector_kernel_slot.py
+      - merlin/python/merlin/targetgen/rtl/mlc_bridge.py
+    why: >-
+      The inputs to oracle selection are already declarative — endpoint_kind and sim_via come from the
+      capability manifest and the contract — but the DISPATCH on them is a hardcoded if-chain that
+      imports a reference target's module directly (`sim_via == "cyclotron"` -> muon_oracles,
+      `sim_via == "chipyard"` -> the gemmini backend). There is no registry to route through: nothing
+      like `register_oracle_engine(sim_via, factory)`, `register_suite(name, build_fn)` or
+      `register_fact_extractor(kind, fn)` exists. `runtime/backends/base.py` is the only seam in the repo
+      that is complete end to end, and these predate it.
+    blocks: >-
+      Evicting any reference accelerator backend, and adding a new target's oracle without editing core.
+      A package can already supply a runtime backend via plugin.backend; it cannot supply an oracle, a
+      conformance suite, or an RTL fact extractor.
+    removal_condition: >-
+      Registries exist for oracle engines, suites and fact extractors, modelled on
+      runtime/backends/base.py (register + file-path discovery via a plugin.<key> contract entry), and
+      these modules route through them instead of importing a target.
+
+  # ---------------------------------------------------------------- the harness ABI weld
+  - id: contract-compile-welded-to-one-harness-abi
+    kind: target_coupling
+    status: triaged
+    owner: targetgen
+    items:
+      - merlin/python/merlin/targetgen/contract/compile.py
+    why: >-
+      The generic package-contract link path imports gemmini codegen helpers and the gemmini backend, and
+      emits a harness that calls a literal `gemmini_kernel()` and `gemmini_fence()`, includes
+      `gemmini_testutils.h`, and prints a `cycle_window_gemmini_region` metric. None of that is derived:
+      the kernel symbol, the harness includes and the metric name are properties of one vendor's test
+      harness that the generic path hardcodes.
+    blocks: >-
+      Any target whose harness ABI differs cannot use the contract-compile path at all — which is most of
+      them, since this is a RoCC test-harness convention. It also sits underneath the `chipyard` oracle
+      route, so it blocks that eviction too.
+    removal_condition: >-
+      The kernel symbol, harness includes and metric name are read from the target's contract, and the
+      module imports no target-named module.
+
+  # ---------------------------------------------------------------- cost model / calibration
+  - id: cost-model-and-calibration-bound-to-an-instance
+    kind: target_coupling
+    status: triaged
+    owner: targetgen
+    items:
+      - merlin/python/merlin/cost_model/calibrate.py
+      - merlin/python/merlin/dse/calibrate_npu.py
+      - merlin/python/merlin/targetgen/oracle_helpers/npu_emit.py
+    why: >-
+      `cost_model/gemmini.py` is already a clean split — an EVENTS tuple, a byte ratio, a coefficient
+      artifact and one `predict` override over `cost_model/linear.LinearCostModel` — but nothing in core
+      RESOLVES a target to a cost model, so the only way to reach it is to import it by name. The npu
+      calibration modules import a model package the same way.
+    blocks: >-
+      Evicting cost_model/gemmini.py and its coefficient artifact into the target's own package, and
+      supplying a cost model for any new target without editing core.
+    removal_condition: >-
+      A cost-model seam exists (a contract key naming the class, or EVENTS + coefficients read from the
+      package) and these callers resolve through it.
+
+  # ---------------------------------------------------------------- reference-target dialect lookup
+  - id: reference-target-dialect-table-in-core
+    kind: target_coupling
+    status: triaged
+    owner: ir
+    items:
+      - merlin/python/merlin/xdsl_dialects/lowering/target_lowering.py
+    why: >-
+      Core still holds an in-tree lookup of reference-target dialect specs. The generic machinery to avoid
+      it already exists — `xdsl_dialects/targets/factory.build_dialect(target, plan=...)` synthesises the
+      IRDL classes from dialect_plan.yaml data, and `lower_to_target(..., spec=...)` lets a caller pass a
+      package's spec — but the built-in table remains as the fallback.
+    blocks: >-
+      A package-declared dialect being the only path. Closing this needs plugin.dialect_module to be
+      consumed (see the dead-seam entry), since that is how a package would name its dialect at all.
+    removal_condition: >-
+      plugin.dialect_module is loaded by the registry and the in-tree reference table is deleted.
+
+  # ---------------------------------------------------------------- declared seams nothing consumes
+  - id: plugin-keys-consumed-by-nothing
+    kind: dead_seam
+    status: triaged
+    owner: targetgen
+    items:
+      - merlin/python/merlin/targetgen/target_registry.py
+    why: >-
+      Three shipped contracts declare `plugin.dialect_module` and `plugin.lowering_entrypoint`, and
+      nothing anywhere reads either key. They are asserted in tests and otherwise inert. This went
+      unnoticed because the `plugin` block has no schema, so an unrecognised key is silently ignored —
+      the same reason a typo in one would also be silent.
+    blocks: >-
+      A package supplying its own dialect or lowering entrypoint, which is the prerequisite for the
+      reference-target dialect table above. Also makes every contract that declares them misleading:
+      the seam looks present and is not.
+    removal_condition: >-
+      Either the loaders are implemented and a test proves a package-declared dialect is used, or the keys
+      are removed from the shipped contracts. Plus a `plugin` schema under merlin/contract/schemas/ so an
+      unknown key is reported rather than ignored.
+
+  # ---------------------------------------------------------------- run-time concession
+  - id: simt-spawn-width-capped-below-declared-hardware
+    kind: runtime_concession
+    status: triaged
+    owner: targetgen
+    items:
+      - out/artifacts/targets/radiance/hand_v0/backend.py
+    why: >-
+      The target's contract correctly declares 8 warp slots (its RTL config sets
+      `WithSIMTConfig(numWarps = 8)`), but 8 does not produce correct results on the arc oracle we grade
+      against, while 4 does: measured with three unrelated kernel bodies, at 8 warps every case returned
+      the manager warp's element as zero with the rest correct. The mechanism is deliberately NOT asserted
+      — the same oracle also drops stores that little execution follows, which would explain the identical
+      table with no spawn defect at all.
+    blocks: >-
+      Using half the declared machine, and any performance number from this path being read as the
+      hardware's capability rather than the oracle's.
+    removal_condition: >-
+      The oracle's store-visibility behaviour is resolved and 8 warps grades correctly, at which point the
+      cap and this entry are deleted together. It is reported per run (`warps_used` vs `warps_declared`)
+      so a capped run cannot be mistaken for a full-width one in the meantime.
+
+  # ---------------------------------------------------------------- surfaced, not yet reviewed
+  - id: coupling-surfaced-by-the-scan-and-not-yet-triaged
+    kind: target_coupling
+    status: untriaged
+    owner: targetgen
+    surfaced_by: build_tools/scripts/check_no_target_name.py --coupling
+    surfaced_on: 2026-08-11
+    items:
+      - merlin/python/merlin/compile_cli.py
+      - merlin/python/merlin/kernels/bench_ceiling.py
+      - merlin/python/merlin/kernels/build_asm.py
+      - merlin/python/merlin/kernels/ceiling_drivers/multishape_compare.py
+      - merlin/python/merlin/kernels/framework_contracts/__init__.py
+      - merlin/python/merlin/kernels/ingest/exo.py
+      - merlin/python/merlin/kernels/markers.py
+      - merlin/python/merlin/kernels/plots.py
+      - merlin/python/merlin/runtime/backends/base.py
+      - merlin/python/merlin/runtime/backends/zephyr_model.py
+      - merlin/python/merlin/runtime/boards.py
+      - merlin/python/merlin/targetgen/corpora.py
+      - merlin/python/merlin/targetgen/rocc_asm.py
+      - merlin/python/merlin/targetgen/rtl/circt_introspect.py
+      - merlin/python/merlin/targetgen/rtl/gen_isa_module.py
+      - merlin/python/merlin/targetgen/rtl/gen_rtl_digest.py
+      - merlin/python/merlin/targetgen/rtl/introspect.py
+      - merlin/python/merlin/targetgen/rtl/spatial_introspect.py
+      - merlin/python/merlin/targetgen/rtl_checks.py
+      - build_tools/scripts/check_repro_env.py
+      - build_tools/scripts/firesim_sweep.py
+      - build_tools/scripts/make_delivery.py
+    note: >-
+      Each of these names a reference target somewhere that is not a docstring — help text, a report
+      string, a board table, a default. Some are certainly documentation-grade and harmless; others (a
+      board table keyed by name, a fallback default) may well be operative. NOBODY HAS CHECKED, and that
+      is what this entry records. Triage means reading each one and either moving it to a triaged entry
+      with a real removal condition, or fixing it and deleting it from this list — not relabelling it
+      benign because it looks like prose.

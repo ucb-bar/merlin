@@ -30,6 +30,23 @@ The agnostic machinery already exists — `target_registry.resolve()` + discover
 and the `runtime/backends/base.py` registry. Each task below routes a residue of hardcoded literals
 through those seams.
 
+**The machine-readable ledger is `merlin/contract/overfit_register.yaml`.** This document is the prose
+narrative; the register is the enforced source of truth, checked by
+`build_tools/scripts/check_overfit_register.py` on every commit. Two things it does that a prose ledger
+cannot:
+
+* it **re-measures the live tree** and fails when a module depends on a specific target without being
+  declared, so new coupling has to be a decision with an owner and a removal condition rather than
+  something absorbed silently;
+* it distinguishes `status: triaged` (someone read the code and can say what the weld costs and what
+  would remove it) from `status: untriaged` (a tool surfaced it and nobody has looked). Without that
+  distinction a required-fields schema simply pressures people into inventing rationales, and a
+  fabricated removal condition reads as rigour.
+
+The task numbers below (T1–T12) track the *literal* residue. The register additionally tracks the
+**coupling** residue that the name gate could not see until it learned to look at imports: 34 modules,
+26 hard imports, of which 9 sat in four modules no allowlist knew about.
+
 ## Task ledger
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done (committed on this branch).

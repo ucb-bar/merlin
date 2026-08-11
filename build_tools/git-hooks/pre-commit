@@ -18,6 +18,11 @@ echo "[pre-commit] no-regex (staged)…"
 echo "[pre-commit] no-target-name (staged)…"
 "$PY" build_tools/scripts/check_no_target_name.py --staged
 
+# Whole-tree, not --staged: the register's claim is about the tree as a whole, and a commit that couples a
+# module to a target without declaring it must fail even when the coupling arrives from another file.
+echo "[pre-commit] overfit register (tree)…"
+"$PY" build_tools/scripts/check_overfit_register.py
+
 echo "[pre-commit] no-answer-keys (tracked)…"
 "$PY" build_tools/scripts/check_no_answer_keys.py
 
