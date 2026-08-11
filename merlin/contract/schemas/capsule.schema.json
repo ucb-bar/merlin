@@ -34,7 +34,7 @@
       "type": "object",
       "required": ["op"],
       "properties": {
-        "op": {"type": "string", "enum": ["matmul", "linear", "conv2d", "depthwise_conv2d", "maxpool2d", "avgpool2d", "global_average", "movement", "attention_qk", "attention_pv", "resident_reuse", "rmsnorm", "attention_full", "softmax", "layernorm", "geglu", "rope", "gelu", "silu", "add", "reduce_sum", "bias_add", "fused_matmul_bias", "k_chain", "logit_softcap", "embed_scale", "gemma_4norm", "gemv_batched", "patch_embed", "requant", "model"]},
+        "op": {"type": "string", "enum": ["matmul", "linear", "conv2d", "depthwise_conv2d", "maxpool2d", "avgpool2d", "global_average", "movement", "attention_qk", "attention_pv", "attention_mx", "resident_reuse", "rmsnorm", "rmsnorm_qkv", "attention_full", "softmax", "layernorm", "geglu", "rope", "rope_qkv", "gelu", "silu", "add", "reduce_sum", "bias_add", "fused_matmul_bias", "k_chain", "logit_softcap", "embed_scale", "gemma_4norm", "gemv_batched", "patch_embed", "requant", "model"]},
         "attributes": {"type": "object", "additionalProperties": true}
       },
       "additionalProperties": false
@@ -76,7 +76,8 @@
             "conv2d": {"type": "boolean"},
             "movement": {"type": "boolean"},
             "padded_edge": {"type": "boolean"},
-            "rmsnorm": {"type": "boolean"}
+            "rmsnorm": {"type": "boolean"},
+            "rope": {"type": "boolean"}
           },
           "additionalProperties": false
         }
