@@ -7,6 +7,10 @@ last_verified: 2026-08-10
 related: [lowering_pipeline, core_dialects, target_agnostic_core, target_resolution]
 code_refs:
   - merlin/python/merlin/triton/__init__.py
+  - merlin/python/merlin/triton/source.py
+  - merlin/python/merlin/triton/addressing.py
+  - merlin/python/merlin/triton/bridge.py
+  - merlin/python/merlin/triton/spec.py
   - merlin/python/merlin/compile_core.py
   - merlin/python/merlin/xdsl_dialects/lowering/pipeline.py
   - merlin/python/merlin/xdsl_dialects/lowering/contract_facts.py
@@ -211,6 +215,36 @@ useful pair: one exercises the grid normalization path and the other the contrac
 
 One hard floor fell out of this: `tl.dot` rejects anything below **M ≥ 16, N ≥ 16, K ≥ 32**, so the
 smallest legal "one tile" is 16×32×16. That is what the accelerator proofs use.
+
+## How pointers become tensors
+
+The bridge's hard half is undoing what Triton's frontend did: recovering "multiply these two
+matrices" from "one program instance computes these addresses and loads through them". It rests on
+two observations.
+
+*Addresses are affine.* Every index-space value in TTIR is `constant + Σ cᵍ·program_id[g] +
+Σ kᵈ·iota[d]`, built by `tt.make_range` / `tt.splat` / `tt.expand_dims` / `tt.broadcast` /
+`arith.{addi,muli}`. `addressing.Affine` is exactly that form; anything that does not fit — a product
+of two varying indices, a bitwise index computation — is refused rather than approximated.
+
+*The grid is enumerated, not lowered.* Every program instance's accesses are collected, and if they
+tile a declared argument exactly — each element once, **in order** — then the whole launch is
+equivalent to naming that argument as a tensor and the grid has vanished without any parallelism
+decision being taken. Full-but-reordered coverage (a transposed tile) is reported as its own case
+rather than accepted, because it covers perfectly and means something different.
+
+Doing that check *concretely* is what makes masks impossible to ignore. A masked tail is precisely
+what stops `ceil(N/BLOCK)` instances from running past the end, so dropping a mask turns exact
+coverage into over-coverage and the check fails. The pair
+`vector_add_unmasked` **accepted** at n=1024 and **refused** at n=1000 is the regression test for
+that: same kernel, same grid arithmetic, only the declared extent differs — and it is exactly the bug
+that hides whenever the block size happens to divide the tensor.
+
+Two consequences worth stating. A runtime scalar used as a mask bound must be given a compile-time
+value in the spec's `assumptions`, because a bound that cannot be checked is not assumed. And a
+contraction under a multi-program grid is refused even when coverage is perfect: a batched matmul
+covers every argument exactly once, and folding its grid away would turn a stack of small products
+into one large one.
 
 ## Grid / SPMD normalization, and why the two accelerators differ
 

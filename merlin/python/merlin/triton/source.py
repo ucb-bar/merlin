@@ -121,3 +121,116 @@ def walk_ops(ttir: TTIRModule) -> list[Any]:
     out: list[Any] = []
     ttir.module.walk(lambda op: out.append(op))
     return out
+
+
+def entry_block_args(ttir: TTIRModule) -> list[Any]:
+    """The kernel function's parameters, in declaration order.
+
+    Triton's region API exposes no way down to a block, but every op knows its own block, so the
+    entry block is reached through the first op of the body. Ordered parameters matter because they
+    are what binds TTIR back to the caller-declared :class:`~merlin.triton.spec.TritonKernelSpec`.
+    """
+    for op in walk_ops(ttir):
+        if op.get_name() in ("builtin.module", "tt.func"):
+            continue
+        block = op.get_block()
+        return [block.get_argument(i) for i in range(block.get_num_arguments())]
+    raise TritonFrontendError(f"kernel {ttir.kernel_name!r} has an empty body")
+
+
+def tensor_shape(type_text: str) -> tuple[int, ...]:
+    """``tensor<16x32xi8>`` -> ``(16, 32)``; a scalar type -> ``()``.
+
+    MLIR type syntax, split structurally. The in-memory type API exposes only ``is_integer`` and
+    ``is_fp16``, so shapes have to come from the printed form.
+    """
+    text = str(type_text)
+    if not text.startswith("tensor<") or not text.endswith(">"):
+        return ()
+    dims = text[len("tensor<"):-1].split("x")[:-1]
+    try:
+        return tuple(int(d) for d in dims)
+    except ValueError:
+        raise TritonFrontendError(f"non-static tensor type {text!r}") from None
+
+
+def pointee_dtype(type_text: str) -> str | None:
+    """``!tt.ptr<f32>`` -> ``"f32"``; anything that is not a pointer type -> ``None``."""
+    text = str(type_text)
+    head, sep, rest = text.partition("<")
+    if head != "!tt.ptr" or not sep or not rest.endswith(">"):
+        return None
+    return rest[:-1]
+
+
+def _parse_splat_literal(attr_text: str, type_text: str) -> int | float | bool:
+    """One MLIR constant attribute in its printed form -> a Python value.
+
+    Handles the scalar and the *splat* elements form (``dense<0>``); a non-splat ``dense<[...]>`` is
+    refused, because a per-element table is not a constant the addressing analysis can reason about.
+    """
+    body = attr_text.strip()
+    if body.startswith("dense<") and body.endswith(">"):
+        body = body[len("dense<"):-1].strip()
+        if body.startswith("["):
+            raise TritonFrontendError(f"non-splat constant {attr_text!r} is not supported")
+    if body in ("true", "false"):
+        return body == "true"
+    if "." in body or "e" in body or "E" in body:
+        if "x" not in type_text and "i" not in type_text.rsplit(">", 1)[-1]:
+            return float(body)
+        try:
+            return int(body)
+        except ValueError:
+            return float(body)
+    return int(body)
+
+
+def constant_table(ttir: TTIRModule) -> dict[int, int | float | bool]:
+    """SSA id -> Python value for every ``arith.constant`` in the module.
+
+    Triton's in-memory op API exposes ``get_int_attr`` but nothing that reads a *dense* attribute,
+    so a splat constant such as ``dense<32> : tensor<16x1xi32>`` — which is how a folded tile stride
+    reaches the IR — is invisible to the walk. Its value is therefore taken from the printed module,
+    which is the only other rendering of the same IR.
+
+    Correlating the two by position would be a guess, so it is *verified* instead: the printed
+    constants and the walked constants must agree in count, in result type, and — for every constant
+    the walk can read directly — in value. If they ever diverge, this raises rather than returning a
+    table that silently pairs the wrong values.
+    """
+    walked = [op for op in walk_ops(ttir) if op.get_name() == "arith.constant"]
+    printed: list[tuple[str, str]] = []
+    for raw in ttir.text.splitlines():
+        name, sep, rhs = raw.strip().partition(" = ")
+        if not sep or not rhs.startswith("arith.constant "):
+            continue
+        # `dense<0> : tensor<4xi32>` carries its type; `true` does not, because MLIR prints a
+        # boolean constant bare. An absent type is recorded as None rather than mis-split.
+        remainder = rhs[len("arith.constant "):]
+        attr_text, sep, type_text = remainder.rpartition(" : ")
+        printed.append((attr_text, type_text) if sep else (remainder, None))
+
+    if len(printed) != len(walked):
+        raise TritonFrontendError(
+            f"{len(walked)} arith.constant op(s) in the walked IR but {len(printed)} in the printed "
+            "IR — the two renderings disagree, so constants cannot be read reliably")
+
+    table: dict[int, int | float | bool] = {}
+    for op, (attr_text, type_text) in zip(walked, printed):
+        result = op.get_result(0)
+        if type_text is not None and str(result.get_type()) != type_text.strip():
+            raise TritonFrontendError(
+                f"constant type mismatch between walked ({result.get_type()}) and printed "
+                f"({type_text.strip()}) IR — the two renderings are not in the same order")
+        value = _parse_splat_literal(attr_text, type_text)
+        direct = op.get_int_attr("value")
+        # A one-bit `true` reads back as -1 through the integer accessor (all bits set), so booleans
+        # are compared on truth rather than on the two's-complement value.
+        if isinstance(value, bool) and direct is not None:
+            direct = direct != 0
+        if direct is not None and direct != value:
+            raise TritonFrontendError(
+                f"constant value mismatch: walked IR says {direct}, printed IR says {value}")
+        table[result.id()] = value
+    return table

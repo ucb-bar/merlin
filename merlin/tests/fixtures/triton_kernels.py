@@ -56,6 +56,49 @@ if HAS_TRITON:
         tl.store(c_ptr + offs_m[:, None] * BN + offs_n[None, :], tl.dot(a, b, out_dtype=tl.int32))
 
     @triton.jit
+    def batched_matmul(a_ptr, b_ptr, c_ptr, BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr):
+        """One independent matmul per program, over disjoint slices.
+
+        Every pointer IS covered exactly once by the launch, so the addressing analysis is happy —
+        and whole-tensor normalization would still be wrong, because a stack of small products is
+        not one big product. This is what makes the contraction-under-a-grid guard load-bearing
+        rather than theoretical.
+        """
+        pid = tl.program_id(axis=0)
+        offs_m = tl.arange(0, BM)
+        offs_n = tl.arange(0, BN)
+        offs_k = tl.arange(0, BK)
+        a = tl.load(a_ptr + pid * BM * BK + offs_m[:, None] * BK + offs_k[None, :])
+        b = tl.load(b_ptr + pid * BK * BN + offs_k[:, None] * BN + offs_n[None, :])
+        acc = tl.dot(a, b, out_dtype=tl.float32)
+        tl.store(c_ptr + pid * BM * BN + offs_m[:, None] * BN + offs_n[None, :], acc)
+
+    @triton.jit
+    def vector_add_unmasked(x_ptr, y_ptr, out_ptr, BLOCK_SIZE: tl.constexpr):
+        """The same add with the bounds check removed — correct only when BLOCK divides the extent.
+
+        Kept as a fixture because it is the sharpest test of the coverage analysis: it must be
+        ACCEPTED when the block tiles the tensor exactly and REFUSED when it would run past the end.
+        A bridge that ignored masks would accept both.
+        """
+        offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        tl.store(out_ptr + offsets, tl.load(x_ptr + offsets) + tl.load(y_ptr + offsets))
+
+    @triton.jit
+    def transposed_store(x_ptr, out_ptr, BM: tl.constexpr, BN: tl.constexpr):
+        """Reads row-major, writes column-major: full coverage, wrong order."""
+        offs_m = tl.arange(0, BM)
+        offs_n = tl.arange(0, BN)
+        x = tl.load(x_ptr + offs_m[:, None] * BN + offs_n[None, :])
+        tl.store(out_ptr + offs_m[:, None] + offs_n[None, :] * BM, x)
+
+    @triton.jit
+    def atomic_add_kernel(x_ptr, out_ptr, BLOCK_SIZE: tl.constexpr):
+        """An op the bridge has no translation for — it must say so rather than approximate."""
+        offsets = tl.arange(0, BLOCK_SIZE)
+        tl.atomic_add(out_ptr + offsets, tl.load(x_ptr + offsets))
+
+    @triton.jit
     def matmul_one_tile_f32(a_ptr, b_ptr, c_ptr, BM: tl.constexpr, BN: tl.constexpr,
                             BK: tl.constexpr):
         """The f32 twin of :func:`matmul_one_tile`, for targets whose unit is float, not integer."""
@@ -67,6 +110,7 @@ if HAS_TRITON:
         tl.store(c_ptr + offs_m[:, None] * BN + offs_n[None, :], tl.dot(a, b, out_dtype=tl.float32))
 else:  # pragma: no cover - exercised only where the optional extra is absent
     vector_add = matmul_one_tile = matmul_one_tile_f32 = None
+    vector_add_unmasked = transposed_store = atomic_add_kernel = batched_matmul = None
 
 
 def vector_add_spec(n: int = VECTOR_ADD_N, block: int = VECTOR_ADD_BLOCK) -> TritonKernelSpec:
@@ -81,6 +125,62 @@ def vector_add_spec(n: int = VECTOR_ADD_N, block: int = VECTOR_ADD_BLOCK) -> Tri
         ),
         grid=GridSpec(dims_fn=lambda ce, rt: (-(-rt["n_elements"] // ce["BLOCK_SIZE"]),)),
         constexprs={"BLOCK_SIZE": block},
+        # The extent reaches the kernel as a runtime scalar, so the bridge cannot see that it equals
+        # the declared shape unless the caller says so. Declaring it is what lets the masked tail be
+        # checked instead of assumed.
+        assumptions={"n_elements": n},
+    )
+
+
+def vector_add_unmasked_spec(n: int, block: int = VECTOR_ADD_BLOCK) -> TritonKernelSpec:
+    """Spec for :func:`vector_add_unmasked` — legal only when ``block`` divides ``n``."""
+    return TritonKernelSpec(
+        function=vector_add_unmasked,
+        args=(
+            KernelArg("x_ptr", "pointer", "fp32", shape=(n,), effect="read"),
+            KernelArg("y_ptr", "pointer", "fp32", shape=(n,), effect="read"),
+            KernelArg("out_ptr", "pointer", "fp32", shape=(n,), effect="write"),
+        ),
+        grid=GridSpec(dims=(-(-n // block),)),
+        constexprs={"BLOCK_SIZE": block},
+    )
+
+
+def batched_matmul_spec(batch: int = 2) -> TritonKernelSpec:
+    """Spec for :func:`batched_matmul`: ``batch`` independent TILE_M x TILE_K x TILE_N products."""
+    return TritonKernelSpec(
+        function=batched_matmul,
+        args=(
+            KernelArg("a_ptr", "pointer", "fp32", shape=(batch * TILE_M, TILE_K), effect="read"),
+            KernelArg("b_ptr", "pointer", "fp32", shape=(batch * TILE_K, TILE_N), effect="read"),
+            KernelArg("c_ptr", "pointer", "fp32", shape=(batch * TILE_M, TILE_N), effect="write"),
+        ),
+        grid=GridSpec(dims=(batch,)),
+        constexprs={"BM": TILE_M, "BN": TILE_N, "BK": TILE_K},
+    )
+
+
+def transposed_store_spec(m: int = 8, n: int = 4) -> TritonKernelSpec:
+    return TritonKernelSpec(
+        function=transposed_store,
+        args=(
+            KernelArg("x_ptr", "pointer", "fp32", shape=(m, n), effect="read"),
+            KernelArg("out_ptr", "pointer", "fp32", shape=(n, m), effect="write"),
+        ),
+        grid=GridSpec(dims=(1,)),
+        constexprs={"BM": m, "BN": n},
+    )
+
+
+def atomic_add_spec(n: int = 64) -> TritonKernelSpec:
+    return TritonKernelSpec(
+        function=atomic_add_kernel,
+        args=(
+            KernelArg("x_ptr", "pointer", "fp32", shape=(n,), effect="read"),
+            KernelArg("out_ptr", "pointer", "fp32", shape=(n,), effect="readwrite"),
+        ),
+        grid=GridSpec(dims=(1,)),
+        constexprs={"BLOCK_SIZE": n},
     )
 
 
