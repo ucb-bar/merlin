@@ -303,3 +303,51 @@ class TestAScreeningRunIsNotACertification:
     def test_the_flag_is_visible_in_the_serialised_report(self):
         _, rep = self._screened()
         assert all(r["in_image_checked"] is False for r in rep.to_dict()["results"])
+
+
+class TestOperandPanelsMustBeAligned:
+    """The constraint that made a correct kernel look non-deterministic."""
+
+    def test_the_alignment_is_derived_from_the_datapath_width(self, tmp_path):
+        cfg = tmp_path / "c.scala"
+        cfg.write_text("class C extends Config(\n  new a.WithShuttleVectorUnit(256, 128, P) ++\n"
+                       "  new Base)\n", encoding="utf-8")
+        mixin = tmp_path / "m.scala"
+        mixin.write_text("class WithShuttleVectorUnit(\n  vLen: Int = 128,\n  dLen: Int = 64) "
+                         "extends Config((s, h, u) => { })\n", encoding="utf-8")
+        # dLen bits / 8 = bytes per vector-load beat.
+        assert C.operand_alignment_for_config("C", config_scala=cfg, mixin_scala=[mixin]) == 16
+
+    def test_a_narrower_datapath_needs_less(self, tmp_path):
+        cfg = tmp_path / "c.scala"
+        cfg.write_text("class C extends Config(new a.WithShuttleVectorUnit(128, 64, P) ++ new Base)",
+                       encoding="utf-8")
+        mixin = tmp_path / "m.scala"
+        mixin.write_text("class WithShuttleVectorUnit(\n  vLen: Int = 128,\n  dLen: Int = 64) "
+                         "extends Config((s, h, u) => { })\n", encoding="utf-8")
+        assert C.operand_alignment_for_config("C", config_scala=cfg, mixin_scala=[mixin]) == 8
+
+    def test_an_ungroundable_datapath_width_raises(self, tmp_path):
+        # An under-aligned panel returns WRONG DATA rather than failing, so guessing is not an option.
+        cfg = tmp_path / "c.scala"
+        cfg.write_text("class C extends Config(new Whatever(1) ++ new Base)", encoding="utf-8")
+        with pytest.raises(ValueError, match="operand alignment"):
+            C.operand_alignment_for_config("C", config_scala=cfg, mixin_scala=[])
+
+    def test_every_operand_array_carries_the_alignment(self):
+        cases, _ = _cases(16)
+        src = C.emit_image_c(cases, operand_align=16)
+        # One attribute per embedded operand array (at_, b_, and any bias_).
+        n_arrays = 2 * len(cases) + sum(1 for c in cases if c.bias)
+        assert src.count("__attribute__((aligned(16)))") == n_arrays
+
+    def test_the_alignment_is_absent_unless_asked_for(self):
+        # It has to be derived and passed in; defaulting to a number would be the guess this avoids.
+        cases, _ = _cases(16)
+        assert "aligned" not in C.emit_image_c(cases)
+
+    def test_the_answer_key_property_survives_alignment(self):
+        # The attribute must not accidentally introduce an int32 array that is not a bias.
+        cases, _ = _cases(16)
+        src = C.emit_image_c(cases, operand_align=16)
+        assert src.count("static const int32_t") == sum(1 for c in cases if c.bias)

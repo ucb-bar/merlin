@@ -39,8 +39,8 @@ from . import opu_corpus
 from .opu_kernel import KernelSpec, emit_microkernel, emit_reference_c
 
 __all__ = ["CaseResult", "CertReport", "IMAGE_MAIN", "REPORT_VERSION", "build_image", "certify",
-           "emit_image_c", "expected_digests", "fnv1a64", "logical_tile_edge", "parse_console",
-           "tile_edge_for_config", "verdict"]
+           "emit_image_c", "expected_digests", "fnv1a64", "logical_tile_edge",
+           "operand_alignment_for_config", "parse_console", "tile_edge_for_config", "verdict"]
 
 #: Bumped when the report's shape changes, so an old artifact is never read as a new one.
 REPORT_VERSION = 1
@@ -82,6 +82,34 @@ def logical_tile_edge(vlen_bits: int, *, sew_bits: int = _OPERAND_SEW_BITS, lmul
     if vlen_bits <= 0 or sew_bits <= 0 or lmul <= 0:
         raise ValueError(f"vlen={vlen_bits} sew={sew_bits} lmul={lmul} must all be positive")
     return (vlen_bits * lmul) // sew_bits
+
+
+def operand_alignment_for_config(config: str, *, config_scala: "str | Path",
+                                 mixin_scala: Sequence["str | Path"]) -> int:
+    """Byte alignment the unit's operand panels require, derived from the datapath width.
+
+    The vector load moves ``dLen`` bits per beat, so a panel that does not start on a ``dLen / 8`` byte
+    boundary has its beats split across boundaries. MEASURED on this unit's RTL, that is not merely slower:
+    the SECOND beat of an operand load comes back wrong, so a contraction whose operand base was 8 bytes
+    off a 16-byte boundary produced correct values in columns 0..15 and garbage from column 16 on. Because
+    the address depends on whatever else the image contains, the same shape with the same data passed or
+    failed depending on which other cases were compiled beside it -- which is what made this look like
+    non-determinism rather than an alignment rule.
+
+    This is a constraint on the unit's CALLERS, so a packing pass that produces operand panels has to
+    honour it, and the alignment is part of what packing costs.
+    """
+    cfg_text = Path(config_scala).read_text(encoding="utf-8")
+    mixin_text = "\n".join(Path(p).read_text(encoding="utf-8") for p in mixin_scala)
+    from ..targetgen.rtl import opu_isa
+    params = opu_isa.vector_unit_params(cfg_text, config, mixin_text=mixin_text)
+    for key in ("dLen", "dlen", "DLen"):
+        if key in params:
+            return max(1, int(params[key]) // 8)
+    raise ValueError(
+        f"could not derive a datapath width for {config!r} from {config_scala} (bound: {params}); "
+        "refusing to guess an operand alignment, because an under-aligned panel returns wrong data "
+        "rather than failing")
 
 
 def tile_edge_for_config(config: str, *, config_scala: "str | Path", mixin_scala: Sequence["str | Path"],
@@ -133,12 +161,15 @@ def expected_digests(cases: Sequence[opu_corpus.Case]) -> dict[str, dict[str, An
 # ---------------------------------------------------------------------------------------------
 
 
-def _c_array(name: str, values: np.ndarray, ctype: str, per_line: int = 24) -> str:
+def _c_array(name: str, values: np.ndarray, ctype: str, per_line: int = 24,
+             align: int | None = None) -> str:
     flat = np.asarray(values).reshape(-1)
     body = []
     for start in range(0, flat.size, per_line):
         body.append("  " + ", ".join(str(int(v)) for v in flat[start:start + per_line]) + ",")
-    return f"static const {ctype} {name}[{flat.size}] = {{\n" + "\n".join(body) + "\n};\n"
+    attr = f" __attribute__((aligned({int(align)})))" if align else ""
+    return (f"static const {ctype} {name}[{flat.size}]{attr} = {{\n"
+            + "\n".join(body) + "\n};\n")
 
 
 def _ident(name: str) -> str:
@@ -146,7 +177,7 @@ def _ident(name: str) -> str:
 
 
 def emit_image_c(cases: Sequence[opu_corpus.Case], *, kernel_func: str = "opu_gemm_i8",
-                 ref_func: str = "opu_gemm_i8_ref") -> str:
+                 ref_func: str = "opu_gemm_i8_ref", operand_align: int | None = None) -> str:
     """The C source of the corpus image: operands as data, both implementations called, results framed.
 
     The operands are embedded rather than generated on the device because the corpus draws them from
@@ -162,11 +193,11 @@ def emit_image_c(cases: Sequence[opu_corpus.Case], *, kernel_func: str = "opu_ge
     for case in cases:
         lhs, rhs, bias = case.operands()
         tag = _ident(case.name)
-        blocks.append(_c_array(f"at_{tag}", lhs, "int8_t"))
-        blocks.append(_c_array(f"b_{tag}", rhs, "int8_t"))
+        blocks.append(_c_array(f"at_{tag}", lhs, "int8_t", align=operand_align))
+        blocks.append(_c_array(f"b_{tag}", rhs, "int8_t", align=operand_align))
         bias_expr = "0"
         if bias is not None:
-            blocks.append(_c_array(f"bias_{tag}", bias, "int32_t"))
+            blocks.append(_c_array(f"bias_{tag}", bias, "int32_t", align=operand_align))
             bias_expr = f"bias_{tag}"
         max_out = max(max_out, int(case.m) * int(case.n))
         table.append(f'  {{ "{case.name}", at_{tag}, b_{tag}, {bias_expr}, '
@@ -279,6 +310,28 @@ int main(long hart)
     }}
 #endif
 
+#ifdef OPU_DUMP_MISMATCHES
+    /* Debug aid: print the first few disagreeing elements as (index, device, reference). A count and a
+     * digest say THAT a case is wrong; localising the cause needs the values -- zero means the tile was
+     * never written, a plausible-but-wrong sum means the arithmetic ran on the wrong operands. */
+    {{
+      long shown = 0;
+      for (size_t i = 0; i < elems && shown < (OPU_DUMP_MISMATCHES); ++i) {{
+        if (c_dev[i] != c_ref[i]) {{
+          htif_puts("DIFF ");
+          htif_puts(c->name);
+          htif_putc(' ');
+          htif_putd((long)i);
+          htif_putc(' ');
+          htif_putd((long)c_dev[i]);
+          htif_putc(' ');
+          htif_putd((long)c_ref[i]);
+          htif_putc('\\n');
+          ++shown;
+        }}
+      }}
+    }}
+#endif
     htif_puts("{_CASE_LINE} ");
     htif_puts(c->name);
     htif_putc(' ');
@@ -314,7 +367,8 @@ _HARNESS_FILES = ("crt.S", "htif.c", "libc_min.c")
 
 def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec: KernelSpec,
                 workdir: "str | Path", *, derivation_ok: bool = True, scalar_tile: int | None = None,
-                screen_only: bool = False, extra_cflags: Sequence[str] = ()) -> Path:
+                screen_only: bool = False, operand_align: int | None = None,
+                dump_mismatches: int = 0, extra_cflags: Sequence[str] = ()) -> Path:
     """Compile the corpus image and return the ELF.
 
     ``scalar_tile`` selects the pre-flight build: the unit is replaced by a scalar stand-in and the tile
@@ -329,7 +383,8 @@ def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], 
     kernel_c.write_text(emit_microkernel(encodings, spec, derivation_ok=derivation_ok)
                         + "\n" + emit_reference_c(), encoding="utf-8")
     main_c = work / IMAGE_MAIN
-    main_c.write_text(emit_image_c(cases, kernel_func=spec.func_name), encoding="utf-8")
+    main_c.write_text(emit_image_c(cases, kernel_func=spec.func_name,
+                                   operand_align=operand_align), encoding="utf-8")
 
     harness = spike_backend.harness_dir()
     stem = "opu_corpus_scalar" if scalar_tile is not None else "opu_corpus"
@@ -347,6 +402,7 @@ def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], 
         *(["-DOPU_SCALAR_TILE", f"-DOPU_TILE_EDGE={int(scalar_tile)}"] if scalar_tile is not None
           else []),
         *(["-DOPU_SCREEN_ONLY"] if screen_only else []),
+        *([f"-DOPU_DUMP_MISMATCHES={int(dump_mismatches)}"] if dump_mismatches > 0 else []),
         *extra_cflags,
         "-o", str(elf),
     ]
@@ -480,7 +536,8 @@ class CertReport:
 def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec: KernelSpec,
             workdir: "str | Path", *, config: str, tile_edge: int, run,
             deferred: Sequence[tuple[opu_corpus.Case, str]] = (), derivation_ok: bool = True,
-            scalar_tile: int | None = None, screen_only: bool = False) -> CertReport:
+            scalar_tile: int | None = None, screen_only: bool = False,
+            operand_align: int | None = None) -> CertReport:
     """Build the image, check it actually uses the unit, run it, and judge the console.
 
     ``run`` is a callable taking the ELF path and returning console text, so the substrate is the
@@ -492,7 +549,8 @@ def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec
     the most comfortable way for this whole exercise to be wrong.
     """
     elf = build_image(cases, encodings, spec, workdir, derivation_ok=derivation_ok,
-                      scalar_tile=scalar_tile, screen_only=screen_only)
+                      scalar_tile=scalar_tile, screen_only=screen_only,
+                      operand_align=operand_align)
     from .decode import opu as opu_audit
     audit = opu_audit.audit_object(elf, encodings)
     wanted = (spec.accumulate, spec.broadcast, spec.readout)
