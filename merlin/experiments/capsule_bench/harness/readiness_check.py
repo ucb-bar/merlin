@@ -66,6 +66,21 @@ def test_starter_kit():
     else:
         _ok("parse_interface on a real capsule", False, "no interface.mlir found in corpus")
 
+    # FULL-corpus discovery — enumerate EVERY capsule the grader will load (the target's own corpus +
+    # its sibling categories). This is the abc7 guard: if any capsule fails schema/interface validation,
+    # discover_capsules RAISES and the whole graded round aborts having graded ZERO capsules. The gate
+    # must catch that here (per-target, from the descriptor) rather than report GO while the corpus is
+    # undiscoverable. Runs the SAME loader the grader uses; no target literal (roots come from the descriptor).
+    try:
+        from merlin.targetgen.capsule_common import discover_capsules
+        roots = [REPO / _TE.corpus_rel()] + [REPO / s for s in _TE.corpus_siblings()]
+        total = sum(len(discover_capsules(r)) for r in roots if r.is_dir())
+        _ok("full corpus discovers (every capsule loads + validates)", total > 0,
+            f"{total} capsules across {sum(1 for r in roots if r.is_dir())} categories")
+    except Exception as e:
+        _ok("full corpus discovers (every capsule loads + validates)", False,
+            f"{type(e).__name__}: {str(e)[:160]}")
+
     # cmdbuf builder: schema-valid when populated, rejects empty
     try:
         b = CommandBufferBuilder(TARGET, backend="x", abi_version="0.1")
