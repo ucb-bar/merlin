@@ -14,6 +14,10 @@ structure* (not asserted uniformly); abstractions whose enabling structure the f
 attention-lowered capture erased (packed low-bit, scale, KV) are ``blocked`` / ``unavailable`` at
 the levels that need it, with the missing evidence named; the boundary_pressure_score is defined as
 **evidence breadth**, never performance, priority, or benefit.
+
+The field and status vocabulary used throughout this module (``sources``, ``region_roles``,
+``support``, ``cp_axis``, ``erased``/``kv``, ``metadata``, ``knobs``, ``risk``, ``levels``, and the
+level/status values) is defined in ``docs/reference/dse_boundary_vocabulary.md``.
 """
 from __future__ import annotations
 
