@@ -255,3 +255,51 @@ class TestTheCorpusSelectionFeedsTheImage:
         src = C.emit_image_c(cases)
         want = max(int(c.m) * int(c.n) for c in cases)
         assert f"c_dev[{want}]" in src and f"c_ref[{want}]" in src
+
+
+class TestAScreeningRunIsNotACertification:
+    """The in-image reference costs more on RTL than the kernel it checks, so it can be skipped -- and a
+    run that skipped it must not be able to report a pass."""
+
+    def _screened(self, *, digest_ok: bool = True):
+        cases, _ = _cases(16)
+        exp = C.expected_digests(cases)
+        lines = ["TILE 16"]
+        for c in cases:
+            d = exp[c.name]["digest"] + (0 if digest_ok else 1)
+            # -1 is the image's "not computed" sentinel for the in-image comparison.
+            lines.append(f"CASE {c.name} {c.m} {c.n} {c.k} -1 -1 {d & ((1 << 64) - 1):#018x}")
+        lines.append("DONE")
+        return cases, C.verdict("\n".join(lines), cases, config="T", tile_edge=16, uses_unit=True)
+
+    def test_a_skipped_reference_is_recorded_as_not_checked(self):
+        _, rep = self._screened()
+        assert all(not r.in_image_checked for r in rep.results)
+        assert all(not r.in_image_agrees for r in rep.results), (
+            "a check that did not run must never read as agreement")
+
+    def test_it_is_not_certified_even_when_every_digest_matches(self):
+        # The digest is the external oracle and it passed, but nothing in the image cross-checked which
+        # buffer was hashed. Calling that certified is the vacuous pass this whole harness exists against.
+        _, rep = self._screened(digest_ok=True)
+        assert all(r.digest_agrees for r in rep.results)
+        assert not rep.certified and not any(r.certified for r in rep.results)
+
+    def test_the_reason_is_stated_per_case(self):
+        _, rep = self._screened()
+        assert all("screened, not certified" in r.note for r in rep.results)
+
+    def test_a_screening_run_still_catches_a_wrong_result(self):
+        # Weaker is not useless: the host digest is what makes it worth running at all.
+        _, rep = self._screened(digest_ok=False)
+        assert all(not r.digest_agrees for r in rep.results)
+
+    def test_a_full_run_is_marked_checked(self):
+        cases, _ = _cases(16)
+        exp = C.expected_digests(cases)
+        rep = C.verdict(_console(cases, exp, tile=16), cases, config="T", tile_edge=16, uses_unit=True)
+        assert all(r.in_image_checked for r in rep.results) and rep.certified
+
+    def test_the_flag_is_visible_in_the_serialised_report(self):
+        _, rep = self._screened()
+        assert all(r["in_image_checked"] is False for r in rep.to_dict()["results"])

@@ -259,10 +259,17 @@ int main(long hart)
     }}
 
     {kernel_func}(c_dev, c->at, c->b, c->bias, c->m, c->n, c->k);
-    {ref_func}(c_ref, c->at, c->b, c->bias, c->m, c->n, c->k);
 
-    long mismatches = 0;
+    /* -1 means NOT COMPUTED, and the host must not read it as agreement. The in-image reference is a
+     * scalar triple loop, so on cycle-accurate RTL it costs far more than the kernel it is checking;
+     * OPU_SCREEN_ONLY skips it to make a re-run cheap. That weakens the run to a SCREENING one -- the
+     * host-side digest still catches a wrong result, but nothing in the image cross-checks which buffer
+     * was hashed -- so the verdict refuses to certify it. */
+    long mismatches = -1;
     long first_bad = -1;
+#ifndef OPU_SCREEN_ONLY
+    {ref_func}(c_ref, c->at, c->b, c->bias, c->m, c->n, c->k);
+    mismatches = 0;
     for (size_t i = 0; i < elems; ++i) {{
       if (c_dev[i] != c_ref[i]) {{
         if (first_bad < 0)
@@ -270,6 +277,7 @@ int main(long hart)
         ++mismatches;
       }}
     }}
+#endif
 
     htif_puts("{_CASE_LINE} ");
     htif_puts(c->name);
@@ -306,7 +314,7 @@ _HARNESS_FILES = ("crt.S", "htif.c", "libc_min.c")
 
 def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec: KernelSpec,
                 workdir: "str | Path", *, derivation_ok: bool = True, scalar_tile: int | None = None,
-                extra_cflags: Sequence[str] = ()) -> Path:
+                screen_only: bool = False, extra_cflags: Sequence[str] = ()) -> Path:
     """Compile the corpus image and return the ELF.
 
     ``scalar_tile`` selects the pre-flight build: the unit is replaced by a scalar stand-in and the tile
@@ -324,7 +332,8 @@ def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], 
     main_c.write_text(emit_image_c(cases, kernel_func=spec.func_name), encoding="utf-8")
 
     harness = spike_backend.harness_dir()
-    elf = work / ("opu_corpus_scalar.elf" if scalar_tile is not None else "opu_corpus.elf")
+    stem = "opu_corpus_scalar" if scalar_tile is not None else "opu_corpus"
+    elf = work / f"{stem}{'_screen' if screen_only else ''}.elf"
     cmd = [
         str(spike_backend.gcc_path()),
         "-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany",
@@ -337,6 +346,7 @@ def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], 
         str(kernel_c), str(main_c),
         *(["-DOPU_SCALAR_TILE", f"-DOPU_TILE_EDGE={int(scalar_tile)}"] if scalar_tile is not None
           else []),
+        *(["-DOPU_SCREEN_ONLY"] if screen_only else []),
         *extra_cflags,
         "-o", str(elf),
     ]
@@ -406,11 +416,17 @@ class CaseResult:
     digest_agrees: bool            # device kernel == numpy, carried by hash
     mismatches: int = 0
     first_bad: int = -1
+    #: False when the image skipped its own reference (a screening build). A case whose in-image
+    #: cross-check never ran is NOT certified, however well its digest matched: nothing then confirms
+    #: which buffer was hashed, and reporting agreement for a check that did not execute is the exact
+    #: shape of a vacuous pass.
+    in_image_checked: bool = True
     note: str = ""
 
     @property
     def certified(self) -> bool:
-        return self.ran and self.in_image_agrees and self.digest_agrees
+        return (self.ran and self.in_image_checked and self.in_image_agrees
+                and self.digest_agrees)
 
 
 @dataclass(frozen=True)
@@ -448,6 +464,7 @@ class CertReport:
                 {"name": r.name, "m": r.m, "n": r.n, "k": r.k, "ran": r.ran,
                  "in_image_agrees": r.in_image_agrees, "digest_agrees": r.digest_agrees,
                  "mismatches": r.mismatches, "first_bad": r.first_bad,
+                 "in_image_checked": r.in_image_checked,
                  "certified": r.certified, "note": r.note}
                 for r in self.results],
             "deferred": [{"name": n, "reason": why} for n, why in self.deferred],
@@ -463,7 +480,7 @@ class CertReport:
 def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec: KernelSpec,
             workdir: "str | Path", *, config: str, tile_edge: int, run,
             deferred: Sequence[tuple[opu_corpus.Case, str]] = (), derivation_ok: bool = True,
-            scalar_tile: int | None = None) -> CertReport:
+            scalar_tile: int | None = None, screen_only: bool = False) -> CertReport:
     """Build the image, check it actually uses the unit, run it, and judge the console.
 
     ``run`` is a callable taking the ELF path and returning console text, so the substrate is the
@@ -475,7 +492,7 @@ def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec
     the most comfortable way for this whole exercise to be wrong.
     """
     elf = build_image(cases, encodings, spec, workdir, derivation_ok=derivation_ok,
-                      scalar_tile=scalar_tile)
+                      scalar_tile=scalar_tile, screen_only=screen_only)
     from .decode import opu as opu_audit
     audit = opu_audit.audit_object(elf, encodings)
     wanted = (spec.accumulate, spec.broadcast, spec.readout)
@@ -530,13 +547,20 @@ def verdict(console: str, cases: Sequence[opu_corpus.Case], *, config: str, tile
                                       note="no CASE line for this case in the console"))
             continue
         shape_ok = (got["m"], got["n"], got["k"]) == (exp["m"], exp["n"], exp["k"])
-        note = "" if shape_ok else (f"the image ran m={got['m']} n={got['n']} k={got['k']}, not the "
-                                    f"shape this case names")
+        notes = []
+        if not shape_ok:
+            notes.append(f"the image ran m={got['m']} n={got['n']} k={got['k']}, not the shape this "
+                         "case names")
+        checked = int(got["mismatches"]) >= 0
+        if not checked:
+            notes.append("the image skipped its own reference (screening build), so nothing in it "
+                         "cross-checked the device result; this case is screened, not certified")
         results.append(CaseResult(
             name=case.name, m=int(case.m), n=int(case.n), k=int(case.k), ran=True,
-            in_image_agrees=(got["mismatches"] == 0),
+            in_image_agrees=(checked and int(got["mismatches"]) == 0),
             digest_agrees=(got["digest"] == exp["digest"] and shape_ok),
-            mismatches=int(got["mismatches"]), first_bad=int(got["first_bad"]), note=note))
+            mismatches=int(got["mismatches"]), first_bad=int(got["first_bad"]),
+            in_image_checked=checked, note="; ".join(notes)))
 
     return CertReport(config=config, tile_edge=int(tile_edge), results=tuple(results),
                       deferred=tuple((c.name, why) for c, why in deferred),
