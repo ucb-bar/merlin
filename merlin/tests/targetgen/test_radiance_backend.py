@@ -142,8 +142,9 @@ def test_every_command_partitions_work_the_same_way(backend):
     """The regression that matters: identical per-warp ownership is what makes no barrier safe.
 
     Striding a flat index by warp id gives each warp elements from every row, so the commit would read
-    accumulator entries another warp is still writing — a race that can pass by luck. No barrier op is
-    derived for this target, so the emitter must not emit a schedule that would need one.
+    accumulator entries another warp is still writing — a race that can pass by luck. Neither a barrier nor
+    a usable fence is available on this target (a fence transcodes but nothing after it executes on the
+    oracle), so the emitter cannot repair such a schedule after the fact; it must not emit one.
     """
     source = backend.emit_kernel(_matmul_cb()).source
     assert "i += MU_NUM_WARPS" not in source, \
@@ -226,11 +227,16 @@ def test_completion_is_asserted_before_any_output_is_graded(backend):
 # ------------------------------------------------------------------ the hardware grade
 @pytest.mark.slow
 @pytest.mark.xfail(strict=True, reason=(
-    "blocked in core, not in this backend. The contraction itself IS bit-exact on RTL (read back "
-    "acc0 = [192,192,64,64,...], matching the reference exactly), but the whole-kernel protocol is not "
-    "reachable yet: isa_transcode rejects MISC_MEM, so the fork-free path cannot build a kernel that "
-    "fences, and without a fence the emitter cannot guarantee its final stores are in the image the "
-    "model recovers. strict=True so this fails loudly the moment the transcoder gains MISC_MEM."))
+    "the emitted kernel does not reach its completion sentinel, so its output is deliberately not graded. "
+    "What IS established on RTL: the contraction is bit-exact (acc0 read back as [192,192,64,64,...], "
+    "matching the reference exactly) with the operands correctly in device memory — the arithmetic and the "
+    "operand plumbing are right. What blocks the whole-kernel grade is the ORACLE's visibility of a "
+    "kernel's final stores: measured, a store is unreliably recovered when little or no execution follows "
+    "it, and a `fence` (the standard remedy, and what this hardware's own runtime uses) transcodes but "
+    "stops execution dead — nothing after one runs. Both are outside this backend; see "
+    "docs/design/target_kernel_anatomy.md. Not worked around by padding the tail with filler stores until "
+    "the real one becomes visible: that would pass by exploiting the race that makes the grade "
+    "meaningless. strict=True so this fails loudly the moment it starts passing."))
 def test_the_command_buffer_executes_bit_exact_on_the_targets_own_rtl(backend, tmp_path):
     """The result the missing slot existed to make possible.
 

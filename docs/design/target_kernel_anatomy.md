@@ -96,27 +96,52 @@ preference. The 512 KiB value is retained under its true name, `smem_aperture_by
 Nothing had consumed the wrong number yet, because the slot that would have tiled against it did not
 exist. It would have over-allocated the scratchpad by 4× the first time it did.
 
-## The blocker: the fork-free path cannot build a kernel that fences
+## The blocker: the oracle cannot reliably witness a kernel's final stores
 
-`isa_transcode` rejects MISC_MEM — `opcode 0x0f is not handled by the base-ISA transcoder`. It fails
-closed rather than mis-encoding, which is the right behaviour, but the consequence is sharp: **the
-fork-free path cannot currently build any kernel containing a `fence`**, and this hardware's own
-runtime fences at every synchronisation point (`mu_fence()` is literally `asm volatile("fence")`).
+The first diagnosis was that `isa_transcode` rejected MISC_MEM, so no fork-free kernel could contain a
+`fence` — and since this hardware's own runtime fences at every synchronisation point (`mu_fence()` is
+literally `asm volatile("fence")`), that looked like the whole story. The transcoder now re-maps
+MISC_MEM (a two-line change: a standard RISC-V opcode value joining the existing I-type set, still
+gated by each target's derived opcode table). It was necessary and it was not sufficient.
 
-That matters for the readback. A store still in flight when the model stops is not in the image the
-recovery returns, and the measurements are consistent with exactly that: a kernel whose only store sat
-in the worker body came back empty, while the same store with another store after it landed. Without a
-fence the emitter cannot order its final stores against program end, so the whole-kernel grade is not
-reachable — through no fault of the emission.
+Measured on the arc oracle, one kernel shape, varying only what follows the store:
+
+| kernel | result |
+|---|---|
+| body store, then a tail store, no fence | **both land** |
+| body store + `fence`, then tail store + `fence` | tail store **lost** |
+| body store + `fence`, no tail | even the store **before** the fence lost |
+| body store alone, no fence, no tail | **lost** |
+
+Two things are visible there, and neither belongs to the emitter: **a store is unreliably recovered
+when little or no execution follows it**, and **nothing after a fence executes at all**. Whether the
+fixed-format encoding of MISC_MEM's ordering bits is not what this decoder expects, or the model does
+not implement the instruction, is not decidable from the compiler side.
 
 What *is* established on RTL: the contraction is bit-exact. Reading the accumulator back gave
 `[192, 192, 64, 64, 192, 192, 64, 64]`, matching the independent integer reference exactly, with the
-operands correctly in device memory. The arithmetic and the operand plumbing are right; the
-whole-kernel completion protocol is what the missing fence blocks.
+operands correctly in device memory. The arithmetic and the operand plumbing are right. What is not
+reachable is proof that the kernel *finished* — which is a statement about the oracle, not the kernel.
 
-The end-to-end test is therefore a **strict expected failure** rather than a skip. A skip would say
-"the oracle is unavailable", which is false and would quietly stay false forever; a strict xfail says
-"this is blocked on a named core gap" and fails loudly the moment the transcoder gains MISC_MEM.
+The obvious workaround is refused: padding the tail with filler stores until the real one happens to
+become visible would make the grade pass by exploiting the very race that makes the grade meaningless.
+
+The end-to-end test is therefore a **strict expected failure** rather than a skip. A skip would claim
+"the oracle is unavailable", which is false — the oracle runs, and grades the accumulator correctly.
+A strict xfail states a named boundary and fails loudly the moment it moves.
+
+### A note on mechanism, and on two of my own wrong diagnoses
+
+This section previously asserted that the SIMT scaffold *loses the spawning warp's tile at full width*,
+on the strength of three bodies all returning element 0 as zero at 8 warps and all being exact at 4.
+That measurement stands. The mechanism does not: element 0 belongs to the manager warp, which is
+precisely the warp whose store is followed by almost no execution — so the same table is explained by
+the visibility behaviour above, with no spawn defect at all. Two candidate causes fit the evidence and
+separating them is work on the model.
+
+Recorded because it is the more useful lesson: two successive mechanisms were inferred from correct
+measurements and both were wrong. The measurements are reported as measurements, the boundary is named,
+and the guess is left out of the places a reader would trust it.
 
 ## What the SIMT arm claims
 
@@ -224,13 +249,14 @@ In dependency order, each item unblocking the next:
 5. **Evict the in-core systolic emitter** onto `plugin.backend`, so no accelerator has an in-core
    emitter. This touches a certified path and needs a re-certification run.
 
-Three core defects found by this work, none of them this package's to fix, in the order they block
-things:
+Found by this work, none of it this package's to fix, in the order it blocks things:
 
-0. **`isa_transcode` cannot encode MISC_MEM**, so no fork-free kernel can fence. This is the blocker
-   for the end-to-end grade and should come first.
-1. **`render_simt_runtime` loses the spawning warp's tile at the full declared warp width** (measured
-   with three unrelated bodies). Capped here, visibly, as a workaround.
-2. **Its worker entry omits the `tmc(-1)`** the vendor's own worker begins with, so spawned warps run
-   with a single active thread. Harmless for warp-level work; it must be fixed before lane-level
-   mapping means anything.
+0. **`isa_transcode` could not encode MISC_MEM** — *fixed*, so a fence now builds for any target whose
+   derived decoder declares that opcode.
+1. **The oracle does not reliably recover a kernel's final stores, and a fence stops execution.** This
+   is now the blocker for the end-to-end grade, it is a model-side problem, and it should come first.
+2. **Full width (8 warps) does not produce correct results where 4 does** — measured with three
+   unrelated bodies. Capped in the package, visibly, with the mechanism left open (see above).
+3. **`render_simt_runtime`'s worker entry omits the `tmc(-1)`** the vendor's own worker begins with, so
+   spawned warps run with a single active thread. Harmless for warp-level work; must be fixed before
+   lane-level mapping means anything.

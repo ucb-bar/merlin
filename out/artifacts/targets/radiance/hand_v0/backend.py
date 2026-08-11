@@ -102,18 +102,23 @@ RESERVED = frozenset({"main", "s", "m", "n", "i", "k", "wid", "a_row", "MU_NUM_W
 
 #: The most warps this backend will spawn, regardless of how many the hardware declares.
 #:
-#: NOT a hardware fact and not a preference — a measured property of the SIMT scaffold, recorded here
-#: because ignoring it silently corrupts results. The contract (correctly, per the RTL config's
-#: ``WithSIMTConfig(numWarps = 8)``) declares 8 warp slots, but spawning the full slot count loses the
-#: SPAWNING warp's own tile: the scaffold has warp 0 issue the spawn and then compute its own share
-#: inline, and at ``num_warps == 8`` that share never lands. Measured on the RTL-arc model with three
-#: different bodies (a constant store, a 32-bit load, an 8-bit load): at 8 warps every case returned
-#: element 0 — warp 0's element — as zero with elements 1..7 correct; at 4 warps all three were exact.
+#: NOT a hardware fact and not a preference. The contract correctly declares 8 warp slots (the RTL config
+#: sets ``WithSIMTConfig(numWarps = 8)``), but 8 does not produce correct results on the oracle we grade
+#: against, so this caps what is spawned and says so in every result.
 #:
-#: The cap is therefore a workaround for a defect in ``muon.render_simt_runtime`` (or in how it
-#: interprets the spawn count), whose only other caller passes 4 and so never saw it. It is applied
-#: visibly: :func:`run_command_buffer` reports ``warps_declared`` alongside ``warps_used`` so a capped
-#: run cannot be mistaken for one that used the whole machine.
+#: What was MEASURED, on the RTL-arc model with three unrelated bodies (a constant store, a 32-bit load,
+#: an 8-bit load): at 8 warps every case returned element 0 as zero with elements 1..7 correct; at 4 warps
+#: all three were exact. Element 0 is the manager warp's, and the manager is the one warp whose store is
+#: followed by almost no execution.
+#:
+#: The MECHANISM is deliberately not asserted. It was first read as the scaffold losing the spawning
+#: warp's tile, but later measurements showed this oracle also drops stores that little or no execution
+#: follows — which would explain the same table without any spawn defect at all. Two candidate causes fit
+#: the evidence and separating them needs work on the model, not on this package. Naming a mechanism here
+#: would put a guess in the one place a reader would trust it.
+#:
+#: Applied visibly: :func:`run_command_buffer` reports ``warps_declared`` alongside ``warps_used``, so a
+#: capped run cannot be mistaken for one that used the whole machine.
 ORACLE_SPAWN_WARPS = 4
 
 #: Written by warp 0 only after every other warp has parked, so it means "the whole kernel finished",
@@ -407,25 +412,32 @@ def emit_kernel(cb: dict[str, Any], *, num_warps: int | None = None) -> EmittedK
         raise EmitError("command buffer commits no output; there would be nothing to grade")
 
     model = muon._model_for(TARGET)
-    # Order this warp's stores before it parks. The target's own runtime fences at every synchronisation
-    # point (`mu_fence()` is plain `asm volatile("fence")`) for the reason that matters here: a store
-    # still in flight when the model stops is not in the image the readback recovers, so without this the
-    # emitter cannot distinguish "the result was computed" from "the result happened to be visible".
-    # `fence` is base-ISA MISC_MEM, and the transcoder now re-maps it for any target whose derived
-    # decoder declares that opcode — a target whose decoder does not is refused rather than mis-encoded.
-    body.append('  __asm__ volatile("fence" ::: "memory");')
-
+    # NO FENCE IS EMITTED — a MEASURED decision now, not the missing capability it used to be.
+    #
+    # These stores ought to be ordered before the warp parks, and the target's own runtime does exactly
+    # that (`mu_fence()` is plain `asm volatile("fence")`). The transcoder can re-map MISC_MEM now, so one
+    # BUILDS. It also makes things worse. Measured on the arc oracle, same kernel shape each time:
+    #
+    #   body store + tail store, no fence      -> both land
+    #   body store + fence, tail store + fence -> tail store lost
+    #   body store + fence, no tail            -> even the store BEFORE the fence is lost
+    #   body store alone, no fence, no tail    -> lost
+    #
+    # Two things are visible in that table and neither is this emitter's: a store is unreliably visible
+    # when little or no execution follows it, and nothing after a fence executes at all. Whether the
+    # fixed-format encoding of MISC_MEM's ordering bits is not what this decoder expects, or the model
+    # simply does not implement the instruction, is not decidable from here.
+    #
+    # So the fence is left out. The alternative — padding the tail with filler stores until the real one
+    # happens to become visible — would make the grade pass by exploiting the very race that makes the
+    # grade meaningless, which is worse than an honest expected failure.
     globals_.append(f"volatile int32_t {SENTINEL}[{ARC_READBACK_LINE_BYTES // 4}];")
     # The scaffold already opens with <stdint.h>, so the globals need no include of their own. The
     # manager tail runs on warp 0 after it has waited for every other warp to park, which is the only
     # point in the program where "all the work is done" is true.
-    source = muon.render_simt_runtime(
-        model, num_warps=warps, worker_body="\n".join(body),
-        # The sentinel is the last write the program makes, so it needs the same ordering guarantee as
-        # the results: a sentinel that lands while an output store is still in flight would certify a
-        # buffer that is not yet there.
-        manager_tail=f'{SENTINEL}[0] = 1; __asm__ volatile("fence" ::: "memory");',
-        globals="\n".join(globals_))
+    source = muon.render_simt_runtime(model, num_warps=warps, worker_body="\n".join(body),
+                                      manager_tail=f"{SENTINEL}[0] = 1;",
+                                      globals="\n".join(globals_))
     return EmittedKernel(source=source, results=tuple(results), num_warps=warps,
                          warps_declared=declared)
 
