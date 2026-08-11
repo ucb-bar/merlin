@@ -127,11 +127,14 @@ class TestResidencyIsReadFromTheStream:
     def test_the_emitted_kernel_is_resident(self, resident_stream):
         got = CM.stream_facts(resident_stream, _TABLE, accumulate="ACC", readout="READOUT")
         assert got.accumulator_resident is True
-        # ONE static accumulate: the reduction is a loop, so it is emitted once and executed k times.
-        # Expecting several here is what the linear "between first and last accumulate" rule assumed,
-        # and why that rule could never judge a real looping kernel.
-        assert got.accumulates == 1 and got.readouts >= 1
+        # THREE static accumulates: the loop is unrolled by two so the left-operand register rotates
+        # (KernelSpec.row_vreg_alt), plus the peeled odd step. Still far fewer than k, which is the point
+        # -- the reduction is a loop, so expecting one accumulate per step is what the linear
+        # "between first and last accumulate" rule assumed and why it could never judge a looping kernel.
+        assert got.accumulates == 3 and got.readouts >= 1
         assert got.reduction_is_loop is True
+        # One accumulator bank regardless of how many operand registers rotate.
+        assert got.matrix_registers_used == 1
 
     def test_the_non_resident_variant_is_caught(self, non_resident_stream):
         # If this passed as resident, the check would be vacuous for every kernel.

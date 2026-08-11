@@ -69,21 +69,63 @@ def _device_reduction_loop(src: str) -> str:
     the stand-in rather than about the code the device runs.
     """
     device = src[src.index("#else"):src.index("#endif")]
-    return device[device.index("for (size_t kk"):device.index("Readout is row-serial")]
+    # Anchored on the emitted comments rather than on the loop's own syntax: the loop is unrolled and the
+    # left-operand register rotated (see KernelSpec.row_vreg_alt), so a slice keyed to `for (size_t kk`
+    # silently stopped matching and these assertions began raising instead of checking anything.
+    return device[device.index("One fused block per reduction step"):
+                  device.index("Readout is row-serial")]
+
+
+#: Matched WITH the opening paren and quote so the phrase "asm volatile" in the surrounding comment is
+#: not counted as a block — it is, and that made the single-buffered form look like it emitted two.
+_ASM = 'asm volatile("'
+
+
+def _fused_blocks(loop: str) -> list[str]:
+    """Each ``asm volatile`` fused block in the reduction, sliced up to its operand list."""
+    out = []
+    rest = loop
+    while _ASM in rest:
+        rest = rest[rest.index(_ASM):]
+        body = rest[:rest.index("::")] if "::" in rest else rest
+        out.append(body)
+        rest = rest[len(_ASM):]
+    return out
 
 
 class TestGeneratedSource:
-    def test_the_operand_setup_and_accumulate_are_one_asm_block(self):
-        loop = _device_reduction_loop(emit_microkernel(_TABLE, _SPEC))
-        assert loop.count("asm volatile") == 1, "the sequence must not be split into separate blocks"
-        block = loop[loop.index("asm volatile"):]
+    def test_every_fused_block_keeps_the_whole_sequence_in_one_asm_block(self):
+        # The rotated loop emits several fused blocks (one per register in the rotation, plus the peeled
+        # odd step). EVERY one must carry the whole configure/zero/load/configure/load/accumulate
+        # sequence: a block that split it would let the vector-length insertion pass reinterpret a length,
+        # which is the historical failure.
+        blocks = _fused_blocks(_device_reduction_loop(emit_microkernel(_TABLE, _SPEC)))
+        assert len(blocks) >= 1
+        for i, block in enumerate(blocks):
+            for piece in ("vmv.v.i", "tu, ma", "vle8.v", ".insn r"):
+                assert piece in block, f"block {i} is missing {piece}"
+
+    def test_the_single_buffered_form_emits_exactly_one_block(self):
+        # The opt-out still has to hold the property, so the check is about the sequence and not about
+        # how many times it appears.
+        spec = KernelSpec(accumulate="ACC", broadcast="BCAST", readout="READOUT", row_vreg_alt=None)
+        blocks = _fused_blocks(_device_reduction_loop(emit_microkernel(_TABLE, spec)))
+        assert len(blocks) == 1
         for piece in ("vmv.v.i", "tu, ma", "vle8.v", ".insn r"):
-            assert piece in block[:block.index('::')], piece
+            assert piece in blocks[0], piece
+
+    def test_the_rotation_uses_a_different_register_per_step(self):
+        # The point of the rotation: the write following an accumulate must not target the register that
+        # accumulate is still reading. If both blocks used one register it would rotate nothing.
+        blocks = _fused_blocks(_device_reduction_loop(emit_microkernel(_TABLE, _SPEC)))
+        rows = {f"v{n}" for n in (_SPEC.row_vreg, _SPEC.row_vreg_alt) if n is not None}
+        used = {r for r in rows for b in blocks if f"vmv.v.i {r}," in b}
+        assert used == rows, f"expected both left-operand registers to appear, got {used}"
 
     def test_the_row_load_is_tail_undisturbed_and_the_column_load_is_not(self):
-        loop = _device_reduction_loop(emit_microkernel(_TABLE, _SPEC))
-        assert "tu, ma" in loop, "zeroed row lanes only survive a tail-undisturbed load"
-        assert "ta, ma" in loop
+        for block in _fused_blocks(_device_reduction_loop(emit_microkernel(_TABLE, _SPEC))):
+            assert "tu, ma" in block, "zeroed row lanes only survive a tail-undisturbed load"
+            assert "ta, ma" in block
 
     def test_the_scalar_stand_in_is_compile_time_selected_and_not_in_the_device_path(self):
         # It exists only so the tiling loop can be validated on a host; it must not be reachable in a
