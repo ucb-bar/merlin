@@ -9,10 +9,14 @@ pointers carry no shape, its grid lives at the call site, and which buffers it w
 inside the body. Every one of those has to be stated, and stating them wrong is a miscompile rather
 than an error, which is why nothing here is inferred from the source.
 
-    merlin-compile-kernel examples/triton/vector_add.py:vector_add --target saturn \\
+    merlin-compile-kernel examples/triton/vector_add.py:vector_add --target <TARGET> \\
         --arg 'x_ptr=*fp32:1025:read' --arg 'y_ptr=*fp32:1025:read' \\
         --arg 'out_ptr=*fp32:1025:write' --arg 'n_elements=i32' \\
         --assume n_elements=1025 --constexpr BLOCK_SIZE=256 --grid 5 --emit ttir,core-mlir
+
+``<TARGET>`` is a placeholder on purpose: naming a real one here would be a target literal inside
+the frontend, which is the thing this package is not allowed to contain. Runnable invocations live
+in ``examples/triton/`` and ``docs/guides/triton_kernels.md``.
 """
 from __future__ import annotations
 
