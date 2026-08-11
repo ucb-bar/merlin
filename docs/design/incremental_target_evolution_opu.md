@@ -462,10 +462,19 @@ un-instrumented control.
 
 ## 9. Open, and deliberately unresolved here
 
-- **`VOPACC` operand order.** Merlin-IREE's `iree_uk_mmt4d_opu_full_loop` emits `rs1`=RHS / `rs2`=LHS,
-  while its own comment, `bme.h` and Saturn's `opu-gemm` all use `rs1`=LHS. Shape-safe (hence silent)
-  whenever the tile is square, which is exactly the case that was validated. One asymmetric 16×16 RTL
-  run settles it; the answer belongs in §1.1.
+- ~~**`VOPACC` operand order.**~~ **Resolved from source; `rs1` = LHS.** Three independent readings
+  agree and no RTL run was needed to decide it. The RTL computes `md[i][j] += vs1[i] * vs2[j]`, so
+  `vs1` indexes rows (M) and is the LHS. `bme.h` declares `#define VOPACC(md, vs2, vs1)` and expands to
+  `.insn r 0x57, 0x2, 0x51, md, vs1, vs2` — i.e. the macro's *argument* order is `(md, vs2, vs1)` while
+  the *encoding* puts `vs1` in the `rs1` field. Saturn's own `benchmarks/opu-gemm/kernel.h` then calls
+  `VOPACC(m1, v4, v5)` having loaded `v5` from `at[k*M]` (the transposed LHS) and `v4` from `b[k*N]`
+  (the RHS) — so the third macro argument, and therefore the `rs1` field, carries the LHS.
+  Merlin-IREE's `iree_uk_mmt4d_opu_full_loop`, which emits `rs1`=RHS / `rs2`=LHS, is **wrong**; it went
+  unnoticed because a square tile makes the swap shape-safe, and square is the case that was validated.
+  An asymmetric run on OPU RTL remains worth doing, but now as a confirmation of a settled fact rather
+  than as the thing that decides it. The same kernel also confirms two properties the plan requires of
+  our microkernel: the M-lane and N-lane loads carry **separate `vl`** (`ml` for `at[k*M]`, `vl` for
+  `b[k*N]`), and bias init is `vle32.v` + `OPMVINBCAST`.
 - **`derived_levers` for the OPU.** `rtl_backend.derived_levers:48-60` derives `spatial.dataflow` and
   `spatial.accumulator_resident` from discovered RTL, but `spatial_introspect.py:13-17` warns that
   `discover_mesh_dim` **mis-derives DIM=4** from the OPU's cluster×cell hierarchy. What it actually
