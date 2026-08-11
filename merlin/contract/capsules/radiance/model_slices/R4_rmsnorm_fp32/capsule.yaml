@@ -1,0 +1,43 @@
+name: R4_rmsnorm_fp32
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: 'row RMSNorm (PR#1 SIMT op): x * rsqrt(mean(x^2)+eps) * gamma'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: f32
+- name: G
+  role: weight
+  shape:
+  - 1
+  - 16
+  dtype: f32
+operation:
+  op: rmsnorm
+  attributes:
+    src: X
+    gamma: G
+    out: Y0
+    eps: 1.0e-05
+    semantic: rmsnorm
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes:
+    rmsnorm: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+verilator: optional
+firesim: optional
