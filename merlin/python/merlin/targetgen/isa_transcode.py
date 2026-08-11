@@ -36,13 +36,21 @@ from .isa_model import IsaModel
 # are compared against the TARGET's own derived opcode_table before use, never assumed of the target).
 _LOAD, _OP_IMM, _STORE, _OP = 0x03, 0x13, 0x23, 0x33
 _LUI, _AUIPC, _JAL, _JALR, _SYSTEM = 0x37, 0x17, 0x6F, 0x67, 0x73
+# MISC_MEM: `fence` (and `fence.i`). Its I-type immediate carries the ordering bits {fm,pred,succ}
+# rather than an address, but the transcoder re-maps FIELDS, not meanings, so it needs no special
+# handling — the immediate lands in the immediate field like every other I-type form. Without this a
+# target cannot be sent a fence at all, and a kernel that cannot order its stores cannot be trusted to
+# have finished them: this is the difference between "the readback happened to see the result" and
+# "the result was there". Every target whose decoder defines MISC_MEM gains it; one whose decoder does
+# not is still refused by `encode`, which checks the DERIVED opcode table.
+_MISC_MEM = 0x0F
 _OP_FP = 0x53                        # zfinx FP is register-register (GPRs)
 _FMA = {0x43, 0x47, 0x4B, 0x4F}      # MADD / MSUB / NMSUB / NMADD — fused multiply-add (4 source regs)
 # CUSTOM0..3 (the SIMT-control / accelerator opcodes: tmc, wspawn, split, join, barrier, ...) are
 # register-register `.insn r` forms — opcode + f3 + f7 select the operation, rd/rs1/rs2 are GPRs. Standard
 # RISC-V custom-opcode values; the target's own table is still what the packer uses (compared as data).
 _CUSTOM = {0x0B, 0x2B, 0x5B, 0x7B}
-_ITYPE = {_LOAD, _OP_IMM, _JALR, _SYSTEM}
+_ITYPE = {_LOAD, _OP_IMM, _JALR, _SYSTEM, _MISC_MEM}
 _STYPE = {_STORE}
 _BTYPE = {0x63}          # BRANCH
 _JTYPE = {_JAL}
