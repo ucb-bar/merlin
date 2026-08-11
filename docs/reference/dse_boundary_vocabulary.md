@@ -30,6 +30,88 @@ same list:
 
 Everything below describes the **boundary catalog**.
 
+## What "an abstraction" means here
+
+An entry is a **named unit of responsibility** the workload evidence says *someone* must own — a
+thing that would show up as an object, handle, descriptor, or instruction in some layer's interface.
+It is not itself an optimization: the optimization is implied by *where you decide to put it*. The
+same `resident_weight_object` is a compiler decision, a HAL object, a command-buffer handle, or a
+hardwired buffer depending on the level chosen, and the catalog's job is to keep all of those
+readable side by side.
+
+## The 27 abstractions
+
+"Sits at" gives the levels marked `strong_candidate` (see the level table further down). Entries
+marked ⛔ are `blocked`/`unavailable` today — see "What is blocked today".
+
+### Resident state and data objects — *what stays put, and for how long*
+
+| Abstraction | What it is | Sits at |
+|---|---|---|
+| `resident_weight_object` | Weights held in local memory across the whole K-loop instead of re-fetched per step, with an explicit declared lifetime (the compiler already proved they are loop-invariant). | runtime · command |
+| `resident_packed_weight_object` ⛔ | The same, but for weights kept in *packed low-bit* form while resident, carrying a handle to their scales. | — |
+| `packed_lowbit_tensor` ⛔ | The sub-byte tensor itself as a first-class object: storage dtype, packing layout, quant group size, scale handle. | — |
+| `scale_object` ⛔ | The quantization scales / zero-points as their own object, separate from the tensor, with a declared granularity (per-tensor / per-channel / per-group). | — |
+| `loop_carried_state_handle` | State that is *updated every* K iteration and read by the next one (the denoiser's evolving action estimate) — the thing that makes the loop sequential. Distinct from resident weights, which never change. | command · microcode |
+| `prefix_kv_object` ⛔ | The prefix KV state produced once by the backbone and consumed repeatedly afterwards. | — |
+| `kv_cache_object` ⛔ | The growing per-token KV cache of an autoregressive decode. | — |
+
+### Command and control-flow objects — *who drives the loop*
+
+| Abstraction | What it is | Sits at |
+|---|---|---|
+| `bounded_loop_command` | A single submitted command meaning "run this region K times", carrying trip count, body handle, and which state is loop-carried vs invariant — instead of the host issuing K separate dispatches. | command · microcode |
+| `region_level_dispatch` | Submitting a whole *region* (a subgraph) as one unit with a dependency list, rather than one dispatch per operator. The granularity knob for host↔device chatter. | command · microcode |
+| `persistent_command_buffer` | A command stream **recorded once and replayed** across replans, instead of re-encoded every replan. Requires the dependency graph to be static at submit time. | command · microcode |
+| `decode_loop_controller` | The autoregressive equivalent of `bounded_loop_command`: a device-side controller owning the token loop, its trip bound, and the KV update. | command · microcode |
+
+### Asynchrony and rate decoupling — *who waits for whom*
+
+These four all come from `pipeline_envelope` and hang off the `async_chunk_overlap` proof axis. They
+are about **overlap and coordination, not compute**, which is why they are strong at the runtime/HAL
+and command levels and never candidates at the datapath.
+
+| Abstraction | What it is | Sits at |
+|---|---|---|
+| `event_token` | A handle representing "this work has finished", with a producer and a consumer — the synchronization primitive that lets a submitter stop blocking. The other three are built on it. Knob: `event_depth` (how many may be in flight). | runtime · command |
+| `async_queue` | A submission channel with a depth, so work can be enqueued and the submitter returns immediately instead of blocking per operation. Generic: it applies to every workload. Knob: `queue_depth`. | runtime · command |
+| `producer_consumer_queue` | An `async_queue` specialization for two stages running at **different rates** — hence `support: control_loop`. The VLA case: the model produces action chunks while a control loop consumes them at a fixed control rate. Its `pc_queue_depth` knob is the *slack* between those rates, so it only means something where a real rate split exists. | runtime · command |
+| `double_buffered_action_chunk` | Two (or more) chunk buffers so the *next* action chunk is computed while the current one is still being consumed at the control rate. Knob: `buffer_count`. | runtime · command |
+
+### Data movement — *how bytes get there*
+
+| Abstraction | What it is | Sits at |
+|---|---|---|
+| `dma_engine` | Explicit asynchronous bulk transfer under software's control, as opposed to a demand-fetch cache. Its `risk` is the point: a cache would rediscover reuse the compiler can already express. | runtime · command |
+| `multi_stream_dma_descriptor` | Independent, separately-described streams for weights / activations / outputs, so one descriptor batches what would otherwise be per-tile software-issued transfers. | runtime · command |
+| `prefetch_descriptor` | A declared "fetch this, this far ahead, triggered by that" object — lookahead as data rather than as a hardware guess. | runtime · command · microcode |
+
+### Compute units — *what the datapath is shaped like*
+
+All three have `cp_axis: None`: no compiler proof gates them, they are hardware-sizing questions.
+
+| Abstraction | What it is | Sits at |
+|---|---|---|
+| `matrix_engine` | A tiled MAC array for squareish GEMM, parameterized by tile shape and accumulator dtype. Risk: it over-serves the skinny/GEMV decode shapes. | isa · datapath |
+| `skinny_gemm_or_gemv_engine` | A lane-oriented unit for GEMV / tall-skinny / wide-skinny shapes. The mirror-image risk: it under-serves large dense GEMM. Whether one unit can cover both is a genuine open question this pairing exists to expose. | isa · datapath |
+| `epilogue_requant_unit` | Hardware for the post-matmul tail — bias, activation, requantization — so the accumulator output is finished without a separate pass over memory. | isa · datapath |
+
+### Reduction and accumulators — *how partial results combine*
+
+| Abstraction | What it is | Sits at |
+|---|---|---|
+| `partial_sum_object` | A partial result of a K-split reduction as a named object (wide dtype, shard count, tile) so the split stays visible to the compiler instead of being hidden inside the unit. | isa · microcode · datapath |
+| `accumulator_merge` | The combining step itself — a reduction tree with a radix and an accumulator width. | isa · microcode · datapath |
+| `accumulator_commit` | The act of narrowing the wide accumulator to the output dtype and writing it out; a knob because *where* it happens (in the epilogue or as a separate pass) is a design choice. | isa · datapath |
+
+### Numerical fusion primitives — *what one instruction covers*
+
+| Abstraction | What it is | Sits at |
+|---|---|---|
+| `fused_requant_epilogue` | Folding requantization into the matmul's epilogue rather than a separate pass. The bias slot is proven; the requant *numerics* are unmeasured. | no single strong level — `possible` at every level except runtime |
+| `fused_dequant_matmul` | Unpacking/dequantizing weights *on the load path* into a higher-precision compute, so packed weights never materialize. | ⛔ |
+| `native_lowbit_matmul` | A datapath that multiplies the packed low-bit values directly, accumulating wide — no dequantization at all. The end state the previous two approximate. | ⛔ |
+
 ## Per-abstraction fields
 
 Each catalog entry is
