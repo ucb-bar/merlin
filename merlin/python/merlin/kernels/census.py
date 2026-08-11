@@ -111,6 +111,28 @@ class Census:
         return tuple(r for r in self.rows if r.legality is not None
                      and r.legality.verdict == verdict)
 
+    def measured_share(self, rows: "Sequence[CensusRow] | None" = None) -> float | None:
+        """Share of measured whole-model time covered by ``rows``, counting each tick bucket ONCE.
+
+        Per-row ``pct_model`` values must not be summed. Several contractions can join the same
+        provenance bucket — an attention layer's two contractions carry one fqn — so adding their
+        percentages counts that bucket twice: measured on whisper, summing the 91 rows gives 106.23% of a
+        model that is by definition 100%. Deduplicating by ``(key, role)`` gives 96.01%.
+
+        The result is an UPPER BOUND on the contractions themselves, because a bucket that covers a
+        contraction also covers whatever else shares its key — the quantize prologue and requant
+        epilogue the int8 rewrite attributes to the same layer.
+        """
+        if self.model_ticks in (None, 0):
+            return None
+        pool = self.rows if rows is None else rows
+        buckets = {(r.key, r.role): (r.ticks or 0) for r in pool}
+        return sum(buckets.values()) / float(self.model_ticks)
+
+    @property
+    def distinct_tick_buckets(self) -> int:
+        return len({(r.key, r.role) for r in self.rows if r.ticks is not None})
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -384,6 +406,18 @@ def to_markdown(censuses: Sequence[Census], *, top: int = 20) -> str:
                 f"{verdicts[LEGAL]} legal, {verdicts[ILLEGAL]} illegal, {verdicts[UNKNOWN]} unknown",
                 f"- whole-model ticks: {c.model_ticks if c.model_ticks is not None else 'not measured'}",
                 ""]
+        overall = c.measured_share()
+        if overall is not None:
+            out += [f"- measured share of whole-model time, each tick bucket counted once "
+                    f"({c.distinct_tick_buckets} buckets for {len(c.rows)} rows) — an **upper bound**, "
+                    f"since a bucket also covers whatever shares its provenance key:", ""]
+            for label, verdict in (("all contractions", None), ("legal", LEGAL), ("illegal", ILLEGAL),
+                                   ("unknown", UNKNOWN)):
+                rows = c.rows if verdict is None else c.by_verdict(verdict)
+                if rows:
+                    out.append(f"  - {label}: {c.measured_share(rows) * 100:.2f}%")
+            out += ["", "The per-row `% model` column below must NOT be summed: rows sharing a bucket "
+                    "would be counted more than once.", ""]
         if c.notes:
             out += ["Notes:", ""] + [f"- {n}" for n in c.notes] + [""]
         if not c.rows:
@@ -409,6 +443,37 @@ def to_markdown(censuses: Sequence[Census], *, top: int = 20) -> str:
 # ---------------------------------------------------------------------------------------------
 
 
+def load_profile(path: "str | Path") -> tuple[list[dict[str, Any]], dict[int, tuple[int, int]]]:
+    """``(op_table, {id: (ticks, hits)})`` from a board per-op profile summary.
+
+    The summary's ``op_table`` already carries the measured ticks merged onto each op record, so the two
+    halves the census wants are one file. A record missing ``ticks`` is skipped rather than counted as
+    zero — an op the board never reported is unmeasured, and calling that "free" would understate the
+    model and inflate every other row's share of it.
+    """
+    doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    table = list(doc.get("op_table") or [])
+    ticks: dict[int, tuple[int, int]] = {}
+    for rec in table:
+        if rec.get("ticks") is None:
+            continue
+        ticks[int(rec["id"])] = (int(rec["ticks"]), int(rec.get("hits") or 1))
+    return table, ticks
+
+
+def _profile_for(spec: str, bundle_name: str) -> "Path | None":
+    """The profile file for one model: ``spec`` itself when it is a file, else ``<spec>/<name>*.json``."""
+    if not spec:
+        return None
+    p = Path(spec)
+    if p.is_file():
+        return p
+    if p.is_dir():
+        cands = sorted((p / bundle_name).glob("*.json")) or sorted(p.glob(f"{bundle_name}*.json"))
+        return cands[0] if cands else None
+    return None
+
+
 def _resolve_bundle(name: str, dtype: str) -> tuple[Path | None, str]:
     """The recapture dir for a model name, trying the name verbatim before the dtype conventions."""
     from ..common.artifacts import recaptures_dir
@@ -430,6 +495,10 @@ def main(argv: "Sequence[str] | None" = None) -> int:
     ap.add_argument("--top", type=int, default=20, help="rows per model in the markdown table")
     ap.add_argument("--no-prepare", action="store_true",
                     help="read the raw capture (element types will PRECEDE the quant rewrite)")
+    ap.add_argument("--profile", default="",
+                    help="a k1_op_profile.py summary JSON (or a dir of them named <model>.json) whose "
+                         "op_table supplies measured ticks. Without it the ranking is by arithmetic, "
+                         "which the output labels as NOT a cost measurement.")
     a = ap.parse_args(argv)
 
     from ..common.artifacts import new_product
@@ -446,8 +515,13 @@ def main(argv: "Sequence[str] | None" = None) -> int:
                                    notes=("bundle not found",)))
             continue
         work = None if a.no_prepare else Path(prod.path) / "prepared" / resolved
+        prof_path = _profile_for(a.profile, resolved)
+        table, ticks = load_profile(prof_path) if prof_path else (None, None)
         got = census_bundle(bundle, model=resolved, target=a.target or None,
-                            int8_compute=(a.dtype == "int8"), work_dir=work)
+                            int8_compute=(a.dtype == "int8"), work_dir=work,
+                            prof_table=table, prof_ticks=ticks)
+        if a.profile and prof_path is None:
+            print(f"  no profile found for {resolved} under {a.profile}")
         censuses.append(got)
         n_legal = len(got.by_verdict(LEGAL))
         print(f"{resolved}: {len(got.rows)} contractions at stage={got.stage}, "

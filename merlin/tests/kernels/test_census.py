@@ -229,3 +229,51 @@ class TestBundle:
         got = cs.census_bundle(bundle)
         assert got.stage == "capture"
         assert any("precede the quant rewrite" in n for n in got.notes)
+
+
+class TestMeasuredShare:
+    """Per-row percentages are not additive, and a summary that adds them exceeds 100%."""
+
+    _TABLE = [{"id": 0, "fqn": "layer", "mlir_op": "linalg.batch_matmul"},
+              {"id": 1, "fqn": "other", "mlir_op": "linalg.generic"}]
+    _TICKS = {0: (600, 1), 1: (400, 1)}
+
+    _TWO_IN_ONE_LAYER = """
+    module {
+      func.func @forward(%a: tensor<8x64xi8>, %b: tensor<64x32xi8>) -> tensor<8x32xi32> {
+        %e = tensor.empty() : tensor<8x32xi32>
+        %0 = linalg.matmul {prov.fqn = "layer"} ins(%a, %b : tensor<8x64xi8>, tensor<64x32xi8>)
+             outs(%e : tensor<8x32xi32>) -> tensor<8x32xi32>
+        %1 = linalg.matmul {prov.fqn = "layer"} ins(%a, %b : tensor<8x64xi8>, tensor<64x32xi8>)
+             outs(%e : tensor<8x32xi32>) -> tensor<8x32xi32>
+        return %1 : tensor<8x32xi32>
+      }
+    }
+    """
+
+    def _census(self):
+        return cs.census(self._TWO_IN_ONE_LAYER, model="m",
+                         prof_table=self._TABLE, prof_ticks=self._TICKS)
+
+    def test_two_contractions_in_one_layer_each_report_the_whole_bucket(self):
+        got = self._census()
+        assert len(got.rows) == 2
+        assert [r.ticks for r in got.rows] == [600, 600]
+        assert all(r.pct_model == pytest.approx(0.6) for r in got.rows)
+
+    def test_summing_the_rows_would_exceed_the_whole_model(self):
+        got = self._census()
+        assert sum(r.pct_model for r in got.rows) > 1.0, "the hazard this aggregate exists for"
+
+    def test_the_aggregate_counts_each_bucket_once(self):
+        got = self._census()
+        assert got.measured_share() == pytest.approx(0.6)
+        assert got.distinct_tick_buckets == 1
+
+    def test_the_aggregate_is_none_without_a_profile(self):
+        assert cs.census(self._TWO_IN_ONE_LAYER, model="m").measured_share() is None
+
+    def test_the_summary_warns_against_summing_the_column(self):
+        md = cs.to_markdown([self._census()])
+        assert "must NOT be summed" in md
+        assert "upper bound" in md

@@ -460,12 +460,39 @@ is the correct fail-closed reading of that contract and also a large hole in cov
 to say which it computes. Spectformer additionally presents 48 contractions from `fft_rfft2`/`fft_irfft2`
 (a DFT expressed as a contraction), a shape family none of the OPU expert kernels resemble.
 
-**Still not measured: the ranking itself.** The plan requires ranking by measured cycle contribution.
-The join is implemented and tested, but no per-op board profile exists for these three models, so the
-committed census ranks by arithmetic and says so in its own notes (`ranked_by: work`, with a note that
-this is *not* a cost measurement). The oracle that closes it is a K1 run of
-`build_tools/scripts/k1_op_profile.py` against the int8 champion, perturbation-gated against an
-un-instrumented control.
+**The measured ranking disagrees with the arithmetic one, which is why it was worth measuring.** A K1
+per-op profile of `whisper_tiny_375pos` int8 against the certified champion gates clean (cos 0.9999999,
+profiler coverage 0.999, 5124 marks) and its perturbation against an un-instrumented control is 0.445% —
+inside the 1.9% board noise floor, so the breakdown is usable. Joined into the census:
+
+| | rows | share of measured whole-model time (upper bound) |
+| --- | --- | --- |
+| all contractions | 91 | 96.01% |
+| legal on a `matmul`-only int8 unit | 67 | 85.79% |
+| illegal (all `batch_matmul`) | 24 | 10.22% |
+
+The heaviest contraction by measured cost — `384×375 / K=1152`, 16.17% of the model on its own — ranks
+**9th of 91** by arithmetic; the ops above it on work are each under 5.6% of measured time. A FLOP-ranked
+census would have put the single most expensive contraction in the model ninth, which is exactly the
+substitution the plan forbids.
+
+Two reporting hazards this surfaced, both now handled in the tool rather than in prose:
+
+- **Per-row shares are not additive.** Several contractions can join one provenance bucket — an attention
+  layer's two contractions carry one `prov.fqn` — so summing the 91 rows gives **106.23%** of a model that
+  is by definition 100%. The census reports a deduplicated aggregate (79 buckets for 91 rows) and prints
+  the warning next to the column.
+- **Every share here is an upper bound**, because a bucket that covers a contraction also covers whatever
+  else shares its key: the quantize prologue and requant epilogue the int8 rewrite attributes to the same
+  layer. That is why "contractions are 96% of the model" must be read as a ceiling, not a measurement of
+  the contractions alone. Separating them needs a `prov.role` on the prologue too, which is a Phase 4
+  question because that is where the packing/quantize cost term is priced.
+
+**Still not measured:** deepjscc and spectformer. deepjscc W8A8 does not gate on the board (cos 0.9176,
+`rel 0.889`) against its own `golden_w8a8.npy`, and this is not golden selection — the weight-only and
+W8A8 goldens agree with each other at 0.99995, so the board output diverges from both. It is a
+pre-existing defect on one of the three driving workloads, recorded as `not_run` rather than worked
+around, and it has to be resolved before any whole-model claim rests on that model.
 
 ## 9. Open, and deliberately unresolved here
 
