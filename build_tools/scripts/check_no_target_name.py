@@ -180,11 +180,99 @@ def _allowed(relstr: str, exact: set[str], prefixes: list[str]) -> bool:
     return relstr in exact or any(relstr.startswith(p) for p in prefixes)
 
 
+# --- the coupling scan: what the literal check above cannot see ------------------------------------
+# The check above inspects string-literal Constants only, and matches a target name as a WHOLE
+# identifier. Both choices are deliberate and both hide real coupling:
+#
+#   * a whole-identifier match cannot see `gemmini_kernel`, `gemmini_fence`, `saturn_vec` or
+#     `cycle_window_gemmini_region` -- vendor SYMBOL names, which are how one target's ABI leaks into
+#     shared code;
+#   * inspecting only literals cannot see `from ..runtime.backends import gemmini as gem`, which is how
+#     a generic module acquires a hard dependency on one target. That is a bigger problem than a string,
+#     and it was completely invisible.
+#
+# So this is a SECOND, separate check rather than a change to the first: the whole-identifier rule
+# encodes a real intent (`mx_gemmini` must be its own entry, not a match for `gemmini`) and stays.
+#
+# A file whose OWN PATH names a target is that target's own module and is skipped -- self-reference is
+# legitimate, and those files are already tracked as eviction candidates. What this reports is code with
+# no target in its name that nonetheless depends on one: the inverted dependencies.
+def _mentions(text: str, name: str) -> bool:
+    """Case-insensitive substring test. Deliberately looser than ``_contains_identifier``."""
+    return name in text.lower()
+
+
+def _is_target_owned(relstr: str) -> bool:
+    """True when the path itself names a target, i.e. the file is legitimately about that target."""
+    return any(_mentions(relstr, name) for name in TARGET_NAMES)
+
+
+def _scan_coupling(path: Path) -> list[tuple[int, str, str, str]]:
+    """``(lineno, target, kind, snippet)`` for target coupling in a file that is not about a target."""
+    src = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        tree = ast.parse(src, filename=str(path))
+    except SyntaxError:
+        return []
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if isinstance(body, list) and body and isinstance(body[0], ast.Expr) \
+                and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
+            docstrings.add(id(body[0].value))
+
+    hits: list[tuple[int, str, str, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            parts = [node.module or ""] if isinstance(node, ast.ImportFrom) else []
+            parts += [a.name for a in node.names]
+            for part in parts:
+                for name in TARGET_NAMES:
+                    if _mentions(part, name):
+                        hits.append((node.lineno, name, "import", part))
+                        break
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                and id(node) not in docstrings:
+            for name in TARGET_NAMES:
+                # only what the whole-identifier check MISSES -- otherwise every literal is double-reported
+                if _mentions(node.value, name) and not _contains_identifier(node.value, name):
+                    hits.append((node.lineno, name, "symbol", node.value.strip()[:60]))
+                    break
+    lines = src.splitlines()
+    return [h for h in sorted(set(hits))
+            if INLINE_MARKER not in (lines[h[0] - 1] if 0 < h[0] <= len(lines) else "")]
+
+
+def coupling_inventory(staged: bool = False) -> list[str]:
+    """Every generic in-scope module that depends on a specific target, as reportable lines."""
+    out: list[str] = []
+    for rel in _iter_targets(staged):
+        relstr = rel.as_posix()
+        if _is_target_owned(relstr):
+            continue
+        for lineno, name, kind, snippet in _scan_coupling(ROOT / rel):
+            out.append(f"{relstr}:{lineno}: [{kind}] generic module depends on {name!r} — {snippet!r}")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     staged = "--staged" in argv
     stop_hook = "--stop-hook" in argv
     exact, prefixes = _load_allowlist()
+
+    if "--coupling" in argv:
+        # The full inventory, for populating the overfit register. Advisory by design: this debt predates
+        # the check and printing it is the point, so it exits 0 and lets the caller decide.
+        found = coupling_inventory(staged)
+        if not found:
+            print("[  ok] target-coupling: no generic module depends on a specific target.")
+            return 0
+        print(f"[DEBT] target-coupling: {len(found)} dependency(ies) on a specific target in modules "
+              "whose own name claims to be generic:")
+        for line in found:
+            print(f"  - {line}")
+        return 0
 
     violations: list[str] = []
     for rel in _iter_targets(staged):
@@ -212,7 +300,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {v}")
         return 1
     n_allow = len(exact) + len(prefixes)
-    print(f"[  ok] no-target-name: {n_allow} allowlisted entr(y/ies); no stray target name in scope.")
+    # Report the exemptions as DEBT, not as part of a pass. An allowlist announced on an "ok" line reads
+    # as "nothing to see"; it is 36 places where the core is welded to a specific target.
+    n_coupling = len(coupling_inventory(staged))
+    print(f"[  ok] no-target-name: no stray target-name literal in scope.")
+    print(f"[DEBT] {n_allow} allowlisted file(s) still name a target, and {n_coupling} dependency(ies) on "
+          f"a specific target sit in modules whose own name claims to be generic (--coupling to list). "
+          f"Both counts may only fall.")
     return 0
 
 
