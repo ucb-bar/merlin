@@ -21,6 +21,28 @@ attention/batched generics); anything else is left for the f32 fallback (``lower
 from __future__ import annotations
 
 
+def _carry_prov(src, **roles) -> None:
+    """Copy ``src``'s ``prov.*`` onto every op the rewrite split it into, each tagged with its role.
+
+    The rewrite replaces one captured contraction with an integer contraction PLUS a requant
+    epilogue. Both are that same source op, so both must keep its identity. Carrying it only to the
+    epilogue — which is what this pass did — left the contraction with no ``prov.fqn`` at all, and
+    since a profile's join key falls back to the MLIR op name, every contraction in an int8 model
+    collapsed into a single ``linalg.generic`` bucket: measured on deepjscc, 20 of 20 contractions lost
+    their key while the 383 untouched elementwise regions kept theirs.
+
+    ``prov.role`` then distinguishes the pieces that share the key, so a consumer joining on
+    ``prov.fqn`` can still separate the contraction's own cost from its epilogue's instead of reporting
+    the sum as an upper bound on either. Without it, restoring the key would trade one imprecision for
+    another. Nothing downstream reads ``prov.*`` for codegen, so this changes identity only.
+    """
+    from xdsl.dialects.builtin import StringAttr
+    prov = {k: v for k, v in src.attributes.items() if k.startswith("prov.")}
+    for role, dst in roles.items():
+        dst.attributes.update(prov)
+        dst.attributes["prov.role"] = StringAttr(role)
+
+
 def _is_dequant(op) -> bool:
     # ``op`` may be a Block (a block-argument owner) — guard with getattr.
     name = getattr(op, "op_name", None)
@@ -202,9 +224,7 @@ def lower_contraction_int8(module) -> int:
                               indexing_maps=ArrayAttr(sc_maps + [amap(P, d_par)]),
                               iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * P),
                               result_types=(out_t,))
-        for k, v in op.attributes.items():
-            if k.startswith("prov."):
-                requant.attributes[k] = v
+        _carry_prov(op, contraction=i8mm, requant=requant)
 
         for new in pre + [acc_e, zi, acc_f, i8mm, out_e, requant]:
             block.insert_op_before(new, op)
@@ -390,9 +410,7 @@ def lower_conv_int8(module) -> int:
                                                        amap(P, [d_par[wpos]]), amap(P, d_par)]),
                               iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * P),
                               result_types=(out_t,))
-        for k, v in op.attributes.items():
-            if k.startswith("prov."):
-                requant.attributes[k] = v
+        _carry_prov(op, contraction=i8cv, requant=requant)
 
         for new in pre + [acc_e, zi, acc_f, i8cv, out_e, requant]:
             block.insert_op_before(new, op)

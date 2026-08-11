@@ -59,7 +59,11 @@ MARK_SYM = "merlin_prof_mark"
 #: in another frontend (ExecuTorch/GGUF/ONNX) — see :mod:`merlin.baselines.contract` /
 #: ``baselines/_et_export.py``. Captures that predate fqn-tagging still carry ``prov.region_id``,
 #: which the driver uses as the fallback join key; ``join_key()`` encodes that preference.
-_PROV_KEYS = ("prov.op", "prov.family", "prov.region_id", "prov.aten", "prov.module", "prov.fqn")
+#: ``prov.role`` is stamped by a rewrite that SPLIT one captured op into several (the int8 datapath
+#: emits a contraction plus a requant epilogue from one matmul, and both carry the source op's fqn);
+#: without it the two pieces are indistinguishable under a single join key.
+_PROV_KEYS = ("prov.op", "prov.family", "prov.region_id", "prov.aten", "prov.module", "prov.fqn",
+              "prov.role")
 
 
 class OpProfileError(RuntimeError):
