@@ -263,8 +263,11 @@ systolic array packs an operand into a feed, a SIMT cluster stages it into share
 Radiance's `must_map_to_warps` obligation makes `radiance.matmul` *require* a warp width that
 `gemmini.matmul` has no property for at all.
 
-Nothing in the package is typed in. The scratchpad capacity is `1 << SMEM_LOG_SIZE` read from
-Radiance's own kernel headers; the warp width comes from its committed manifest; and the
+Nothing in the package is typed in. The scratchpad capacity is derived from the RTL config the
+hardware is elaborated from — originally `1 << SMEM_LOG_SIZE` from Radiance's own kernel headers,
+which turned out to be the shared-memory *address window* rather than a capacity and so overstated it
+4×; see `target_kernel_anatomy` for the correction and the two facts it split into. The warp width
+comes from its committed manifest; and the
 abstraction-surface features the staged pipeline checks (`resident_packed_tensor`,
 `accumulator_commit`, `command_buffer`, `metrics`) are each derived from a specific contract fact,
 because a feature string with no justifying fact is a fabricated capability that every later check
@@ -274,6 +277,13 @@ That needed one general seam in core: a `TargetSpec` may carry properties its ow
 which the rebuild loop merges without interpreting. Core therefore never learns that any target maps
 to warps — the package derives it and fails closed on a contract demanding the mapping without
 declaring a width.
+
+**Where the Radiance arm stopped has since moved.** At the time of writing it ended at the command
+buffer, because nothing turned a command buffer into the per-warp tile body its scaffold runs. That
+slot is now filled by a backend inside the package itself (`plugin.backend`, zero core edits), and the
+same command buffer executes bit-exact on Radiance's RTL-derived arc model. The claim is scoped
+carefully — the base integer ISA across warps, not the tensor core, and not a certification of this
+package's hand-authored dialect. See `target_kernel_anatomy`.
 
 **The grid claim (M5b) follows from it.** The bridge normalizes the SPMD grid away entirely — no loop,
 no lanes, no warps — so the parallelism decision is still unmade when Merlin takes over. From one
