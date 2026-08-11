@@ -1,0 +1,302 @@
+"""Which external hardware revision a result belongs to — declared, verified, and recorded.
+
+A result attributed to the wrong hardware is worse than no result. This session produced one: a
+microkernel was certified against the only saturn revision containing the outer-product unit, while the
+revision named for the tapeout does not contain that unit at all. Both are "saturn-vectors", both had been
+checked out in the same tree, and nothing recorded which one the numbers belonged to.
+
+Three operations, deliberately separate:
+
+* :func:`pin` — read the DECLARED revision from ``merlin/contract/hardware_pins.yaml``. Tracked and
+  reviewed, so changing what a result is measured against is a diff someone sees.
+* :func:`observe` — read what is ACTUALLY in a checkout: commit, branch, remote, dirtiness. No
+  interpretation, no comparison; just the facts as found.
+* :func:`verify` — compare the two and say precisely how they differ.
+
+**Verification is by content, not by name.** A pin lists ``requires_paths`` whose presence is what the
+work actually needs, and may list ``forbids_paths`` whose ABSENCE is the point. That is what catches the
+failure above: a checkout can be the right repository, on a plausible branch, and still be missing the
+unit. Comparing a SHA would also have caught it, but only if someone had written the SHA down — whereas a
+missing file is detectable without knowing what the revision was supposed to be.
+
+**Nothing here mutates a checkout.** It verifies and records. On a shared host other people are working in
+those trees, and a tool that quietly moves someone's HEAD to satisfy a pin would be a worse failure than
+the one it prevents.
+
+**Drift is reported, never averaged away.** :func:`verify` returns every disagreement it finds;
+:func:`require` raises on any of them. A caller that wants to proceed anyway has to say so explicitly and
+the recorded provenance keeps the drift, so a result produced against an unexpected revision is
+identifiable afterwards rather than indistinguishable.
+"""
+from __future__ import annotations
+
+import hashlib
+import subprocess
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+__all__ = ["Observation", "Pin", "PinsError", "Verification", "load_pins", "observe", "pin",
+           "pins_path", "record", "require", "source_digest", "verify"]
+
+#: Recorded where a fact could not be read. Never compares equal to a real value, and callers must not
+#: treat it as "unchanged" — see :mod:`merlin.targetgen.artifact_dag` for the same convention.
+UNKNOWN = "UNKNOWN"
+
+
+class PinsError(RuntimeError):
+    """A pin is missing, malformed, or the checkout disagrees with it."""
+
+
+def pins_path() -> Path:
+    from .paths import merlin_dir
+    return Path(merlin_dir()) / "contract" / "hardware_pins.yaml"
+
+
+@dataclass(frozen=True)
+class Pin:
+    """One declared external revision."""
+
+    name: str
+    commit: str
+    repo_canonical: str = ""
+    branch: str | None = None
+    root_env: str = ""
+    path: str = ""
+    requires_paths: tuple[str, ...] = ()
+    forbids_paths: tuple[str, ...] = ()
+    description: str = ""
+    notes: str = ""
+    used_by: tuple[str, ...] = ()
+    repo_observed_note: str = ""
+
+    def checkout(self) -> Path | None:
+        """Where this pin's sources should be, or None when the root env var is unset."""
+        from .paths import env as _env
+        root = _env(self.root_env) if self.root_env else None
+        if not root:
+            return None
+        return Path(root) / self.path if self.path else Path(root)
+
+
+@dataclass(frozen=True)
+class Observation:
+    """What a checkout actually contains. Facts only."""
+
+    path: str
+    commit: str = UNKNOWN
+    branch: str = UNKNOWN
+    remote: str = UNKNOWN
+    dirty_files: int = -1                 # -1 = could not be determined
+    present: bool = False
+
+    @property
+    def dirty(self) -> bool | None:
+        return None if self.dirty_files < 0 else self.dirty_files > 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"path": self.path, "commit": self.commit, "branch": self.branch,
+                "remote": self.remote, "dirty_files": self.dirty_files, "present": self.present}
+
+
+@dataclass(frozen=True)
+class Verification:
+    """How a checkout differs from its pin. ``ok`` only when nothing differs."""
+
+    pin: str
+    observed: Observation
+    drift: tuple[str, ...] = ()
+    missing_paths: tuple[str, ...] = ()
+    forbidden_present: tuple[str, ...] = ()
+
+    @property
+    def ok(self) -> bool:
+        return not (self.drift or self.missing_paths or self.forbidden_present)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"pin": self.pin, "ok": self.ok, "observed": self.observed.to_dict(),
+                "drift": list(self.drift), "missing_paths": list(self.missing_paths),
+                "forbidden_present": list(self.forbidden_present)}
+
+
+def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
+    """Every declared pin. Raises on a malformed file rather than returning a partial registry."""
+    import yaml
+
+    p = Path(path) if path is not None else pins_path()
+    if not p.is_file():
+        raise PinsError(f"no pin registry at {p}; hardware provenance cannot be verified without one")
+    raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    entries = raw.get("pins") or {}
+    if not isinstance(entries, dict):
+        raise PinsError(f"{p}: 'pins' must be a mapping of name -> declaration")
+    out: dict[str, Pin] = {}
+    for name, body in entries.items():
+        if not isinstance(body, dict) or body.get("commit") in (None, ""):
+            raise PinsError(f"{p}: pin {name!r} has no commit; a pin without a revision pins nothing")
+        commit = body["commit"]
+        if not isinstance(commit, str):
+            # An all-digit sha is valid hex and YAML reads it as a NUMBER, dropping leading zeros -- so a
+            # pin would silently verify against a different revision than the one written down.
+            raise PinsError(f"{p}: pin {name!r} commit must be quoted; YAML read {commit!r} as "
+                            f"{type(commit).__name__}, which loses leading zeros")
+        if len(commit) != 40 or any(c not in "0123456789abcdefABCDEF" for c in commit):
+            raise PinsError(f"{p}: pin {name!r} commit {commit!r} is not a full 40-character hex sha; an "
+                            "abbreviated revision can become ambiguous as history grows")
+        out[name] = Pin(
+            name=str(name), commit=commit,
+            repo_canonical=str(body.get("repo_canonical") or ""),
+            branch=(None if body.get("branch") in (None, "") else str(body["branch"])),
+            root_env=str(body.get("root_env") or ""), path=str(body.get("path") or ""),
+            requires_paths=tuple(body.get("requires_paths") or ()),
+            forbids_paths=tuple(body.get("forbids_paths") or ()),
+            description=str(body.get("description") or ""), notes=str(body.get("notes") or ""),
+            used_by=tuple(body.get("used_by") or ()),
+            repo_observed_note=str(body.get("repo_observed_note") or ""))
+    return out
+
+
+def pin(name: str, path: "str | Path | None" = None) -> Pin:
+    pins = load_pins(path)
+    if name not in pins:
+        raise PinsError(f"no pin named {name!r}; declared: {sorted(pins)}")
+    return pins[name]
+
+
+def _git(repo: Path, *args: str) -> str | None:
+    try:
+        got = subprocess.run(("git", "-C", str(repo)) + args, capture_output=True, text=True,
+                             timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return got.stdout.strip() if got.returncode == 0 else None
+
+
+def observe(checkout: "str | Path") -> Observation:
+    """Read a checkout's actual revision. Absent or non-git paths come back with UNKNOWN, not guesses."""
+    p = Path(checkout)
+    if not p.is_dir():
+        return Observation(path=str(p), present=False)
+    commit = _git(p, "rev-parse", "HEAD")
+    branch = _git(p, "rev-parse", "--abbrev-ref", "HEAD")
+    remote = _git(p, "remote", "get-url", "origin")
+    status = _git(p, "status", "--porcelain")
+    return Observation(
+        path=str(p), present=True,
+        commit=commit or UNKNOWN,
+        branch=branch or UNKNOWN,
+        remote=remote or UNKNOWN,
+        dirty_files=(len([l for l in status.splitlines() if l.strip()]) if status is not None else -1))
+
+
+def verify(name: str, *, checkout: "str | Path | None" = None,
+           path: "str | Path | None" = None) -> Verification:
+    """Compare a checkout against its pin and report every disagreement.
+
+    A dirty tree is reported as drift. It matters here more than usual: the sources are *read* to derive
+    instruction encodings, so an uncommitted edit changes what gets emitted while leaving the commit
+    looking correct.
+    """
+    p = pin(name, path)
+    target = Path(checkout) if checkout is not None else p.checkout()
+    if target is None:
+        return Verification(pin=name, observed=Observation(path=UNKNOWN),
+                            drift=(f"${p.root_env} is unset, so {name!r} cannot be located",))
+    got = observe(target)
+    drift: list[str] = []
+    if not got.present:
+        drift.append(f"no checkout at {got.path}")
+    else:
+        if got.commit == UNKNOWN:
+            drift.append(f"{got.path} is not a readable git checkout, so its revision is UNKNOWN")
+        elif got.commit != p.commit:
+            drift.append(f"commit is {got.commit[:12]} but the pin declares {p.commit[:12]}")
+        if p.branch and got.branch not in (UNKNOWN, p.branch):
+            drift.append(f"branch is {got.branch!r} but the pin declares {p.branch!r}")
+        if got.dirty:
+            drift.append(f"{got.dirty_files} uncommitted change(s): the declared revision does not "
+                         "describe what would be read")
+        if (p.repo_canonical and got.remote not in (UNKNOWN, "")
+                and got.remote != p.repo_canonical and not p.repo_observed_note):
+            drift.append(f"origin is {got.remote} but the pin declares {p.repo_canonical}")
+
+    missing = tuple(rel for rel in p.requires_paths
+                    if got.present and not (Path(got.path) / rel).exists())
+    forbidden = tuple(rel for rel in p.forbids_paths
+                      if got.present and (Path(got.path) / rel).exists())
+    return Verification(pin=name, observed=got, drift=tuple(drift), missing_paths=missing,
+                        forbidden_present=forbidden)
+
+
+def require(name: str, *, checkout: "str | Path | None" = None,
+            path: "str | Path | None" = None) -> Verification:
+    """:func:`verify`, raising on any disagreement. Use before producing anything that claims a result."""
+    got = verify(name, checkout=checkout, path=path)
+    if not got.ok:
+        parts = list(got.drift)
+        if got.missing_paths:
+            parts.append(f"missing required path(s) {list(got.missing_paths)} — this checkout does not "
+                         "contain what the work needs")
+        if got.forbidden_present:
+            parts.append(f"path(s) {list(got.forbidden_present)} are present but the pin declares them "
+                         "absent, so this is not the revision it claims to be")
+        raise PinsError(f"pin {name!r} does not match its checkout:\n  - " + "\n  - ".join(parts))
+    return got
+
+
+def source_digest(paths: Sequence["str | Path"]) -> str:
+    """One digest over the exact bytes of the sources a derivation read.
+
+    The commit says which revision was checked out; this says what was actually *read*, which differs
+    whenever the tree is dirty. Recording both means a result produced from a modified source is
+    identifiable instead of looking pinned.
+    """
+    h = hashlib.sha256()
+    for item in sorted(str(p) for p in paths):
+        h.update(item.encode("utf-8"))
+        try:
+            h.update(Path(item).read_bytes())
+        except OSError:
+            h.update(b"<unreadable>")
+    return h.hexdigest()
+
+
+def file_digest(path: "str | Path") -> str:
+    """sha256 of one file, or UNKNOWN. Used to identify a prebuilt simulator binary."""
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return UNKNOWN
+
+
+def record(*, pins: Mapping[str, Verification] | None = None,
+           sources: Sequence["str | Path"] = (),
+           artifacts: Mapping[str, "str | Path"] | None = None,
+           extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The provenance block to embed in a manifest, run record or report.
+
+    ``artifacts`` names binaries whose identity matters (a prebuilt simulator, a toolchain) and records a
+    content digest for each, because a path alone does not say which build ran.
+    """
+    from .paths import repo_root
+
+    merlin_commit = _git(Path(repo_root()), "rev-parse", "HEAD") or UNKNOWN
+    merlin_dirty = _git(Path(repo_root()), "status", "--porcelain")
+    out: dict[str, Any] = {
+        "merlin": {
+            "commit": merlin_commit,
+            "dirty_files": (len([l for l in merlin_dirty.splitlines() if l.strip()])
+                            if merlin_dirty is not None else -1),
+        },
+        "hardware_pins": {k: v.to_dict() for k, v in (pins or {}).items()},
+        "all_pins_ok": all(v.ok for v in (pins or {}).values()) if pins else None,
+    }
+    if sources:
+        out["source_digest"] = source_digest(sources)
+        out["sources"] = sorted(str(p) for p in sources)
+    if artifacts:
+        out["artifact_digests"] = {k: file_digest(v) for k, v in artifacts.items()}
+    if extra:
+        out.update(dict(extra))
+    return out

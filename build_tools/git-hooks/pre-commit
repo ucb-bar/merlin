@@ -21,6 +21,9 @@ echo "[pre-commit] no-target-name (staged)…"
 echo "[pre-commit] no-answer-keys (tracked)…"
 "$PY" build_tools/scripts/check_no_answer_keys.py
 
+echo "[pre-commit] hardware provenance (staged)…"
+"$PY" build_tools/scripts/check_provenance.py --staged
+
 echo "[pre-commit] docs freshness…"
 "$PY" build_tools/scripts/check_docs.py
 

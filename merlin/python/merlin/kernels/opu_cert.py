@@ -40,7 +40,7 @@ from .opu_kernel import KernelSpec, emit_microkernel, emit_reference_c
 
 __all__ = ["CaseResult", "CertReport", "IMAGE_MAIN", "REPORT_VERSION", "build_image", "certify",
            "emit_image_c", "expected_digests", "fnv1a64", "logical_tile_edge",
-           "operand_alignment_for_config", "parse_console", "tile_edge_for_config", "verdict"]
+           "operand_alignment_for_config", "parse_console", "provenance_stamp", "tile_edge_for_config", "verdict"]
 
 #: Bumped when the report's shape changes, so an old artifact is never read as a new one.
 REPORT_VERSION = 1
@@ -58,6 +58,7 @@ IMAGE_MAIN = "opu_corpus_main.c"
 _TILE_LINE = "TILE"
 _CASE_LINE = "CASE"
 _DONE_LINE = "DONE"
+_PROV_LINE = "PROV"
 
 #: Element width the kernel runs its operands at. Not a target fact -- it is what an int8 kernel *is*,
 #: and it is the SEW the emitted kernel configures.
@@ -177,7 +178,8 @@ def _ident(name: str) -> str:
 
 
 def emit_image_c(cases: Sequence[opu_corpus.Case], *, kernel_func: str = "opu_gemm_i8",
-                 ref_func: str = "opu_gemm_i8_ref", operand_align: int | None = None) -> str:
+                 ref_func: str = "opu_gemm_i8_ref", operand_align: int | None = None,
+                 provenance_stamp: str | None = None) -> str:
     """The C source of the corpus image: operands as data, both implementations called, results framed.
 
     The operands are embedded rather than generated on the device because the corpus draws them from
@@ -213,7 +215,7 @@ def emit_image_c(cases: Sequence[opu_corpus.Case], *, kernel_func: str = "opu_ge
 #include <stdint.h>
 #include <stddef.h>
 #include "htif.h"
-
+{('#define PROV_STAMP "' + provenance_stamp + '"' + chr(10)) if provenance_stamp else ""}
 void {kernel_func}(int32_t *, const int8_t *, const int8_t *, const int32_t *, size_t, size_t, size_t);
 void {ref_func}(int32_t *, const int8_t *, const int8_t *, const int32_t *, size_t, size_t, size_t);
 
@@ -267,6 +269,10 @@ int main(long hart)
 
   console_init();
 
+  /* The image declares what it was generated from, and prints it, so a binary found on disk carries its
+   * own provenance and the host can confirm that the image which RAN is the one it built. A path and a
+   * timestamp do not establish that; a stamp compared against the expected one does. */
+
   /* Ask the hardware for its own tile edge and report it, so the host can check that the corpus it
    * selected matches the geometry that actually ran. Reporting only; the kernel establishes its own
    * vector length inside each fused block and does not inherit this one. */
@@ -276,7 +282,7 @@ int main(long hart)
 #else
   asm volatile("vsetvli %0, zero, e8, m1, ta, ma" : "=r"(tile));
 #endif
-  htif_puts("{_TILE_LINE} ");
+{('  htif_puts("' + _PROV_LINE + ' " PROV_STAMP "\\n");' + chr(10)) if provenance_stamp else ""}  htif_puts("{_TILE_LINE} ");
   htif_putd((long)tile);
   htif_putc('\\n');
 
@@ -356,6 +362,23 @@ int main(long hart)
 """
 
 
+def provenance_stamp(provenance: Mapping[str, Any]) -> str:
+    """A short, printable identity for what an image was generated from.
+
+    Deliberately compact: it travels through a bare-metal console one character at a time. It carries the
+    pinned revision, the digest of the sources actually read, and our own commit -- enough to tell a stale
+    binary from a fresh one, which is the question a path and a timestamp cannot answer.
+    """
+    pins = provenance.get("hardware_pins") or {}
+    parts = []
+    for name in sorted(pins):
+        got = (pins[name].get("observed") or {}).get("commit", "UNKNOWN")
+        parts.append(f"{name}={got[:12]}")
+    src = str(provenance.get("source_digest") or "UNKNOWN")[:12]
+    mine = str((provenance.get("merlin") or {}).get("commit") or "UNKNOWN")[:12]
+    return " ".join([*parts, f"src={src}", f"merlin={mine}"])
+
+
 # ---------------------------------------------------------------------------------------------
 # Build
 # ---------------------------------------------------------------------------------------------
@@ -368,7 +391,8 @@ _HARNESS_FILES = ("crt.S", "htif.c", "libc_min.c")
 def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec: KernelSpec,
                 workdir: "str | Path", *, derivation_ok: bool = True, scalar_tile: int | None = None,
                 screen_only: bool = False, operand_align: int | None = None,
-                dump_mismatches: int = 0, extra_cflags: Sequence[str] = ()) -> Path:
+                dump_mismatches: int = 0, provenance_stamp: str | None = None,
+                extra_cflags: Sequence[str] = ()) -> Path:
     """Compile the corpus image and return the ELF.
 
     ``scalar_tile`` selects the pre-flight build: the unit is replaced by a scalar stand-in and the tile
@@ -384,7 +408,8 @@ def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], 
                         + "\n" + emit_reference_c(), encoding="utf-8")
     main_c = work / IMAGE_MAIN
     main_c.write_text(emit_image_c(cases, kernel_func=spec.func_name,
-                                   operand_align=operand_align), encoding="utf-8")
+                                   operand_align=operand_align,
+                                   provenance_stamp=provenance_stamp), encoding="utf-8")
 
     harness = spike_backend.harness_dir()
     stem = "opu_corpus_scalar" if scalar_tile is not None else "opu_corpus"
@@ -425,6 +450,7 @@ def parse_console(text: str) -> dict[str, Any]:
     """
     tile: int | None = None
     done = False
+    stamp: str | None = None
     cases: dict[str, dict[str, Any]] = {}
     malformed: list[str] = []
     for raw in text.splitlines():
@@ -449,9 +475,12 @@ def parse_console(text: str) -> dict[str, Any]:
                 }
             except ValueError:
                 malformed.append(line)
+        elif line.startswith(f"{_PROV_LINE} "):
+            stamp = line.split(None, 1)[1].strip()
         elif line == _DONE_LINE:
             done = True
-    return {"tile": tile, "done": done, "cases": cases, "malformed": tuple(malformed)}
+    return {"tile": tile, "done": done, "cases": cases, "stamp": stamp,
+            "malformed": tuple(malformed)}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -496,6 +525,9 @@ class CertReport:
     uses_unit: bool | None = None
     unit_instruction_counts: dict[str, int] = field(default_factory=dict)
     tile_edge_reported: int | None = None
+    #: Which external hardware revision this result belongs to (merlin.common.provenance.record). A
+    #: certification without it is a number nobody can attribute to a device later.
+    provenance: dict[str, Any] = field(default_factory=dict)
     gaps: tuple[str, ...] = ()
     version: int = REPORT_VERSION
 
@@ -510,6 +542,7 @@ class CertReport:
             "config": self.config,
             "tile_edge": self.tile_edge,
             "tile_edge_reported": self.tile_edge_reported,
+            "provenance": dict(self.provenance),
             "certified": self.certified,
             "uses_unit": self.uses_unit,
             "unit_instruction_counts": dict(self.unit_instruction_counts),
@@ -537,7 +570,8 @@ def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec
             workdir: "str | Path", *, config: str, tile_edge: int, run,
             deferred: Sequence[tuple[opu_corpus.Case, str]] = (), derivation_ok: bool = True,
             scalar_tile: int | None = None, screen_only: bool = False,
-            operand_align: int | None = None) -> CertReport:
+            operand_align: int | None = None,
+            provenance: Mapping[str, Any] | None = None) -> CertReport:
     """Build the image, check it actually uses the unit, run it, and judge the console.
 
     ``run`` is a callable taking the ELF path and returning console text, so the substrate is the
@@ -548,9 +582,10 @@ def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec
     instructions would compute correct answers on the host core and pass every numerical check, which is
     the most comfortable way for this whole exercise to be wrong.
     """
+    stamp = provenance_stamp(provenance) if provenance else None
     elf = build_image(cases, encodings, spec, workdir, derivation_ok=derivation_ok,
                       scalar_tile=scalar_tile, screen_only=screen_only,
-                      operand_align=operand_align)
+                      operand_align=operand_align, provenance_stamp=stamp)
     from .decode import opu as opu_audit
     audit = opu_audit.audit_object(elf, encodings)
     wanted = (spec.accumulate, spec.broadcast, spec.readout)
@@ -558,7 +593,8 @@ def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec
     uses_unit = all(counts[name] > 0 for name in (spec.accumulate, spec.readout))
 
     report = verdict(run(elf), cases, config=config, tile_edge=tile_edge, deferred=deferred,
-                     uses_unit=uses_unit, unit_counts=counts)
+                     uses_unit=uses_unit, unit_counts=counts, provenance=provenance,
+                     expected_stamp=stamp)
     if scalar_tile is not None:
         # The pre-flight must NOT use the unit; if it does, the stand-in was not selected and this run
         # says nothing about the tiling loop it was built to exercise.
@@ -569,6 +605,7 @@ def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec
                             deferred=report.deferred, uses_unit=uses_unit,
                             unit_instruction_counts=counts,
                             tile_edge_reported=report.tile_edge_reported,
+                            provenance=report.provenance,
                             gaps=tuple(g for g in report.gaps
                                        if not g.startswith("the image contains none")) + extra)
     return report
@@ -577,7 +614,9 @@ def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec
 def verdict(console: str, cases: Sequence[opu_corpus.Case], *, config: str, tile_edge: int,
             deferred: Sequence[tuple[opu_corpus.Case, str]] = (),
             uses_unit: bool | None = None,
-            unit_counts: Mapping[str, int] | None = None) -> CertReport:
+            unit_counts: Mapping[str, int] | None = None,
+            provenance: Mapping[str, Any] | None = None,
+            expected_stamp: str | None = None) -> CertReport:
     """Judge a console against host-derived truth. Absent and malformed cases are gaps, not passes."""
     parsed = parse_console(console)
     expected = expected_digests(cases)
@@ -594,6 +633,28 @@ def verdict(console: str, cases: Sequence[opu_corpus.Case], *, config: str, tile
     if uses_unit is False:
         gaps.append("the image contains none of the unit's instructions, so whatever it computed, it "
                     "did not use the unit")
+    if expected_stamp is not None:
+        got_stamp = parsed.get("stamp")
+        if got_stamp is None:
+            gaps.append("the image reported no provenance stamp, so the result cannot be attributed to a "
+                        "hardware revision")
+        elif got_stamp != expected_stamp:
+            gaps.append(f"the image reported provenance {got_stamp!r} but this build expects "
+                        f"{expected_stamp!r}; a stale binary ran")
+    prov = dict(provenance or {})
+    for name, entry in (prov.get("hardware_pins") or {}).items():
+        # Material drift only. A dirty tree elsewhere in the checkout is recorded but not a gap, because
+        # `source_digest` already pins the bytes that were actually read; a wrong revision or missing
+        # hardware is a different matter and cannot be reconciled after the fact.
+        if entry.get("missing_paths"):
+            gaps.append(f"pin {name!r} is missing {entry['missing_paths']}: this checkout does not "
+                        "contain the hardware this result claims to be about")
+        if entry.get("forbidden_present"):
+            gaps.append(f"pin {name!r} declares {entry['forbidden_present']} absent but they are "
+                        "present, so this is not the revision it claims to be")
+        for d in entry.get("drift", ()):
+            if d.startswith("commit is") or d.startswith("no checkout"):
+                gaps.append(f"pin {name!r}: {d}")
 
     results: list[CaseResult] = []
     for case in cases:
@@ -624,4 +685,4 @@ def verdict(console: str, cases: Sequence[opu_corpus.Case], *, config: str, tile
                       deferred=tuple((c.name, why) for c, why in deferred),
                       uses_unit=uses_unit, unit_instruction_counts=dict(unit_counts or {}),
                       tile_edge_reported=None if reported is None else int(reported),
-                      gaps=tuple(gaps))
+                      provenance=prov, gaps=tuple(gaps))

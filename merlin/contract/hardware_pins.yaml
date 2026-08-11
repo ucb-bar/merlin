@@ -1,0 +1,73 @@
+# Pinned external hardware sources — which RTL revision each piece of work is against.
+#
+# WHY THIS FILE EXISTS. A session certified a microkernel against the only saturn revision that
+# contains the outer-product unit, while the revision named for the tapeout does not contain that unit
+# at all. Both are "saturn-vectors", both were checked out at some point in the same tree, and nothing
+# anywhere recorded which one a result belonged to. A result attributed to the wrong hardware is worse
+# than no result, so the revision is now declared here, verified before use, and recorded into whatever
+# the run produces.
+#
+# THE SHA IS THE TRUTH. `branch` is informational: branches move, and the same branch name on a fork and
+# on upstream are different histories. `repo_canonical` is where the work is *supposed* to live;
+# `repo_observed_note` records where it actually is when those differ, because a personal fork hosting
+# the branch everything depends on is a fact worth writing down rather than rediscovering.
+#
+# VERIFY BY CONTENT, NOT BY NAME. `requires_paths` lists files whose PRESENCE is what the work actually
+# needs. That is what catches the failure above: a checkout can be the right repo, on a plausible
+# branch, and still be missing the unit entirely. Checking a path is cheap and does not care how the
+# revision was spelled.
+#
+# Consumed by `merlin.common.provenance`; gated by `build_tools/scripts/check_provenance.py`.
+version: 1
+
+pins:
+
+  saturn_opu_int8:
+    description: >-
+      The saturn revision that carries the OuterProductUnit (the int8 outer-product matrix extension).
+      This is the ONLY revision the OPU work can be built or certified against, because the unit does
+      not exist anywhere earlier.
+    repo_canonical: https://github.com/ucb-bar/saturn-vectors.git
+    repo_observed_note: >-
+      The opu-int8 branch lives on the fork https://github.com/miles-rusch-berkeley/saturn-vectors.git,
+      not on ucb-bar. Recorded rather than silently tolerated: anyone reproducing this needs the fork.
+    commit: ea373800169ce7bbb9ca27ececf74101a7caf9d5
+    branch: opu-int8
+    root_env: MERLIN_CHIPYARD
+    path: generators/saturn
+    requires_paths:
+      - src/main/scala/backend/OuterProductSequencer.scala
+      - src/main/scala/exu/OuterProductUnit.scala
+      - src/main/scala/common/Consts.scala
+      - src/main/scala/common/Parameters.scala
+      - benchmarks/common/bme.h
+    used_by:
+      - OPU microkernel emission and encoding derivation (kernels/opu_kernel, targetgen/rtl/opu_isa)
+      - OPU L3 numerical certification (kernels/opu_cert)
+    notes: >-
+      128 commits ahead of saturn_tapeout, which it descends from. Carries a sequencer hazard bug the L3
+      corpus found: the accumulate's LHS read-intent (rvs1_mask) is cleared every iteration while the RHS
+      is gated on row_idx_tail, so a younger write to the left operand is not blocked for the final
+      subtile. Our kernel works around it by rotating the left-operand register; see
+      docs/design/incremental_target_evolution_opu.md 8c.2.
+
+  saturn_tapeout:
+    description: >-
+      The saturn revision this tapeout uses. It does NOT contain the outer-product unit; no
+      OuterProductUnit, no OuterProductSequencer, no opuInsns.
+    repo_canonical: https://github.com/ucb-bar/saturn-vectors.git
+    commit: 249340a6ec64a2cb7dc6dbe7fd90e2fad2497bfa
+    branch: null                      # reachable from master and several opu-* branches; not pinned to one
+    root_env: MERLIN_CHIPYARD
+    path: generators/saturn
+    requires_paths:
+      - src/main/scala/common/Consts.scala
+      - src/main/scala/common/Parameters.scala
+    forbids_paths:                    # asserting the ABSENCE is the point of this pin
+      - src/main/scala/backend/OuterProductSequencer.scala
+      - src/main/scala/exu/OuterProductUnit.scala
+    used_by: []
+    notes: >-
+      Recorded so that nothing claims an OPU result against it. Any OPU work targeting this tapeout
+      requires the unit to be brought onto this base first, at which point the hazard above must be
+      re-checked rather than assumed to carry over.

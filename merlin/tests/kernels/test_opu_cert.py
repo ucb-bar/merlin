@@ -351,3 +351,85 @@ class TestOperandPanelsMustBeAligned:
         cases, _ = _cases(16)
         src = C.emit_image_c(cases, operand_align=16)
         assert src.count("static const int32_t") == sum(1 for c in cases if c.bias)
+
+
+class TestTheResultIsAttributableToAHardwareRevision:
+    """A certification whose hardware revision nobody recorded is a number that cannot be attributed."""
+
+    def _prov(self, **kw):
+        base = {"merlin": {"commit": "m" * 40, "dirty_files": 0},
+                "source_digest": "s" * 64,
+                "hardware_pins": {"unit": {"pin": "unit", "ok": True, "drift": [],
+                                           "missing_paths": [], "forbidden_present": [],
+                                           "observed": {"commit": "e" * 40}}},
+                "all_pins_ok": True}
+        base.update(kw)
+        return base
+
+    def _judge(self, prov, *, stamp=None, console_stamp=None):
+        cases, _ = _cases(16)
+        exp = C.expected_digests(cases)
+        body = _console(cases, exp, tile=16)
+        if console_stamp is not None:
+            body = f"PROV {console_stamp}\n" + body
+        return C.verdict(body, cases, config="T", tile_edge=16, uses_unit=True,
+                         provenance=prov, expected_stamp=stamp)
+
+    def test_the_provenance_is_carried_into_the_report(self):
+        rep = self._judge(self._prov())
+        assert rep.certified
+        assert rep.to_dict()["provenance"]["hardware_pins"]["unit"]["ok"] is True
+
+    def test_a_missing_required_path_blocks_certification(self):
+        # The checkout does not contain the hardware the result claims to be about.
+        prov = self._prov(hardware_pins={"unit": {"ok": False, "drift": [],
+                                                  "missing_paths": ["src/TheUnit.scala"],
+                                                  "forbidden_present": [], "observed": {}}})
+        rep = self._judge(prov)
+        assert not rep.certified and any("does not" in g and "contain" in g for g in rep.gaps)
+
+    def test_a_forbidden_path_blocks_certification(self):
+        # This is the tapeout case: the revision claims not to have the unit, but it does.
+        prov = self._prov(hardware_pins={"unit": {"ok": False, "drift": [],
+                                                  "missing_paths": [],
+                                                  "forbidden_present": ["src/TheUnit.scala"],
+                                                  "observed": {}}})
+        rep = self._judge(prov)
+        assert not rep.certified and any("not the revision it claims" in g for g in rep.gaps)
+
+    def test_a_wrong_commit_blocks_certification(self):
+        prov = self._prov(hardware_pins={"unit": {"ok": False, "drift": ["commit is abc but the pin "
+                                                                        "declares def"],
+                                                  "missing_paths": [], "forbidden_present": [],
+                                                  "observed": {}}})
+        rep = self._judge(prov)
+        assert not rep.certified and any("commit is" in g for g in rep.gaps)
+
+    def test_a_dirty_tree_is_recorded_but_does_not_block(self):
+        # source_digest already pins the bytes that were read, so an unrelated edit elsewhere in the
+        # checkout is recorded rather than treated as disqualifying.
+        prov = self._prov(hardware_pins={"unit": {"ok": False,
+                                                  "drift": ["8 uncommitted change(s): ..."],
+                                                  "missing_paths": [], "forbidden_present": [],
+                                                  "observed": {}}})
+        rep = self._judge(prov)
+        assert rep.certified
+        assert rep.to_dict()["provenance"]["hardware_pins"]["unit"]["drift"]
+
+    def test_a_stale_binary_is_caught_by_its_own_stamp(self):
+        # The image prints what it was generated from; if that disagrees with this build, an old ELF ran.
+        rep = self._judge(self._prov(), stamp="unit=aaaa src=bbbb", console_stamp="unit=zzzz src=yyyy")
+        assert not rep.certified and any("stale binary ran" in g for g in rep.gaps)
+
+    def test_a_matching_stamp_certifies(self):
+        rep = self._judge(self._prov(), stamp="unit=aaaa src=bbbb", console_stamp="unit=aaaa src=bbbb")
+        assert rep.certified
+
+    def test_an_image_with_no_stamp_cannot_be_attributed(self):
+        rep = self._judge(self._prov(), stamp="unit=aaaa src=bbbb", console_stamp=None)
+        assert not rep.certified and any("no provenance stamp" in g for g in rep.gaps)
+
+    def test_the_stamp_is_compact_and_names_the_revision(self):
+        got = C.provenance_stamp(self._prov())
+        assert "unit=" + "e" * 12 in got and "src=" + "s" * 12 in got
+        assert len(got) < 200, "it travels through a bare-metal console one character at a time"
