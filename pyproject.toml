@@ -41,6 +41,13 @@ kernels-plots = ["matplotlib"]
 # MERLIN_AET_SINK=1, so default runs never require it. Resolved from the local sibling checkout via
 # [tool.uv.sources] below (not on PyPI), the same out-of-band model as the other in-tree tooling.
 telemetry = ["aet"]
+# Triton kernel frontend (merlin.triton): a STOCK, UNMODIFIED triton wheel used read-only to turn a
+# @triton.jit function into TTIR. No GPU is needed — only the AST->TTIR frontend runs, never
+# triton.compile()'s backend stage chain. EXACT-pinned because triton's compiler-internal API
+# (ASTSource/make_ir) is not a stable public surface and moves between minor releases; the same
+# version is asserted by merlin.triton.toolchain.PINNED_TRITON (test_triton_toolchain keeps the two
+# in agreement, so there is one place to bump and no second lock file to drift).
+triton = ["triton==3.7.1"]
 
 [project.scripts]
 kernel-index = "merlin.kernels.cli_index:main"
