@@ -29,6 +29,51 @@ def test_kernel_is_mlir_inline_asm_not_c():
     assert "#include" not in text and "gemmini_mvin" not in text  # not C / not libgemmini macros
 
 
+def _two_weight_cb(D=16):
+    """A command buffer with TWO DIFFERENT resident weights (two independent matmuls) — the shape a
+    single-resident-weight kernel could not host. Emits as ONE co-scheduled kernel."""
+    t = lambda r: {"shape": [D, D], "dtype": "i8", "role": r}   # noqa: E731
+    return {
+        "abi_version": "0.1", "target": "gemmini", "backend": "simulator",
+        "tensors": {"W": t("weight"), "W1": t("weight"), "A0": t("input"), "A1": t("input")},
+        "commands": [
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}, "attributes": {"epilogue": [], "output_dtype": "i32"}},
+            {"opcode": "EVICT", "operands": {"handle": "W_res"}},
+            {"opcode": "RES_PACK", "operands": {"src": "W1", "dst": "W1_res"}, "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A1", "rhs": "W1_res", "dst": "acc1"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc1", "dst": "Y1"}, "attributes": {"epilogue": [], "output_dtype": "i32"}},
+            {"opcode": "EVICT", "operands": {"handle": "W1_res"}},
+        ],
+        "outputs": ["Y0", "Y1"], "metrics_requested": ["cycles"],
+    }
+
+
+@pytest.mark.filterwarnings("ignore")
+def test_multi_weight_lowers_to_one_kernel():
+    """Two DIFFERENT resident weights lower to a SINGLE kernel (both weights + both activations + both
+    outputs as pointer args, in weights++lhss++outs order) — the multi-weight fusion a single-resident
+    kernel rejected. Fast (emit only, no toolchain)."""
+    cb = _two_weight_cb()
+    text, args = gm.emit_kernel_mlir(cb)
+    assert args == ["W", "W1", "A0", "A1", "Y0", "Y1"]     # weights ++ lhss ++ outs
+    assert text.count("llvm.func @gemmini_kernel") == 1     # ONE co-scheduled kernel
+    # both weights are mvin'd and both outputs mvout in the one kernel (2x the single-weight rocc body).
+    assert ".insn r 0x7b" in text
+
+
+@pytest.mark.skipif(not gem.available("spike"), reason="spike-gemmini unavailable")
+def test_multi_weight_fused_kernel_spike_bitexact(tmp_path):
+    """The two-different-weight kernel runs as ONE co-scheduled binary on spike-gemmini and is bit-exact
+    vs the reference — a whole multi-layer model's mesh matmuls in a single kernel + address space."""
+    cb = _two_weight_cb()
+    res = gm.run_on_spike(cb, workdir=tmp_path, simulator="spike", timeout=400)
+    assert res["correct"] is True
+    assert res["outputs"] == reference_outputs(cb) == simulate(cb)["outputs"]
+    assert set(res["outputs"]) == {"Y0", "Y1"} and res["path"] == "mlir_inline_asm_rocc"
+
+
 def test_requant_rejected_on_mlir_path():
     """The MLIR-faithful path explicitly refuses requant (not bit-exact; documented)."""
     CodegenError = gem.gemmini_codegen.CodegenError

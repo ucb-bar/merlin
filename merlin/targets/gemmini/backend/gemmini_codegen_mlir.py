@@ -79,28 +79,40 @@ def _f32_bits(scale: float) -> int:
     return struct.unpack("<I", struct.pack("<f", float(scale)))[0]
 
 
-def _parse_full(cb: dict):
-    """Parse the cb for the MLIR-faithful path (decoupled from the C-path _parse, which is
-    full-i32-only). Returns (weight, jobs, k, n) with jobs = (lhs, out, epi, m, out_dtype, scale).
+def _parse_groups(cb: dict):
+    """Parse the cb into resident-weight GROUPS for the MLIR-faithful path (decoupled from the C-path
+    _parse, which is full-i32-only). Returns ``[(weight, k, n, jobs)]`` in resident-pack (command) order,
+    each with ``jobs = [(lhs, out, epi, m, out_dtype, scale)]`` — the matmuls that reuse THAT weight.
 
-    Supports relu + acc_scale epilogues and i8/i32 readout. Integer requant(shift) is host-side
-    (round-half-up) — NOT a Gemmini readout — so it is rejected here in favour of acc_scale."""
+    Supports MULTIPLE resident weights (a real multi-layer model): the emitter processes the groups
+    sequentially — mvin one weight, run its matmuls, mvout — reusing the scratchpad for the next group, so
+    a whole model is ONE co-scheduled kernel rather than one kernel per layer. relu + acc_scale epilogues
+    and i8/i32 readout; integer requant(shift) is host-side (round-half-up) — NOT a Gemmini readout — so it
+    is rejected here in favour of acc_scale."""
     cmds = cb.get("commands", [])
     packs = [c for c in cmds if c["opcode"] == "RES_PACK"]
     matmuls = [c for c in cmds if c["opcode"] in ("MATMUL_RESIDENT", "MATMUL")]
     commits = [c for c in cmds if c["opcode"] == "COMMIT"]
     if not packs or not matmuls or len(matmuls) != len(commits):
-        raise CodegenError(f"expected RES_PACK + matmuls==commits>=1, got "
+        raise CodegenError(f"expected RES_PACK(s) + matmuls==commits>=1, got "
                            f"{len(packs)}/{len(matmuls)}/{len(commits)}")
-    weight, res = packs[0]["operands"]["src"], packs[0]["operands"]["dst"]
     tensors = cb.get("tensors", {})
-    k, n = tensors[weight]["shape"]
     acc_to_commit = {c["operands"]["src"]: c for c in commits}
-    jobs = []
+    res_to_weight = {p["operands"]["dst"]: p["operands"]["src"] for p in packs}
+    jobs_by_res: dict = {}                      # res id -> [job, ...]
+    order: list = []                            # res ids in resident-pack (first-use) order
+    for p in packs:
+        res = p["operands"]["dst"]
+        if res not in jobs_by_res:
+            jobs_by_res[res] = []
+            order.append(res)
     for mm in matmuls:
         ops = mm["operands"]
-        if ops["rhs"] != res:
-            raise CodegenError("every matmul must reuse the single resident weight")
+        res = ops["rhs"]
+        if res not in jobs_by_res:
+            raise CodegenError(f"matmul rhs {res!r} reuses no resident weight (have {list(jobs_by_res)})")
+        weight = res_to_weight[res]
+        k, _n = tensors[weight]["shape"]
         lhs = ops["lhs"]
         m, k2 = tensors[lhs]["shape"]
         if k2 != k:
@@ -119,24 +131,28 @@ def _parse_full(cb: dict):
                 raise CodegenError(f"unsupported epilogue stage {s!r} (have: relu, acc_scale)")
         out_dtype = attrs.get("output_dtype", "i32")
         scale = float(attrs.get("acc_scale", 1.0))
-        jobs.append((lhs, commit["operands"]["dst"], epi, m, out_dtype, scale))
-    return weight, jobs, k, n
+        jobs_by_res[res].append((lhs, commit["operands"]["dst"], epi, m, out_dtype, scale))
+    groups = []
+    for res in order:
+        weight = res_to_weight[res]
+        k, n = tensors[weight]["shape"]
+        groups.append((weight, k, n, jobs_by_res[res]))
+    return groups
 
 
 def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
     """Return (mlir_text, arg_order) for the command buffer.
 
-    arg_order is the func's pointer-arg order: [weight] + [matmul activations] + [outputs].
-    Handles full-i32 readout AND Gemmini's scaled/clamped i8 readout (float acc_scale).
+    arg_order is the func's pointer-arg order: [weights] + [matmul activations] + [outputs].
+    Handles full-i32 readout AND Gemmini's scaled/clamped i8 readout (float acc_scale), and MULTIPLE
+    resident weights — each weight group is mvin'd, matmul'd, and mvout in turn, reusing the scratchpad,
+    so a whole multi-layer model lowers to ONE co-scheduled kernel.
     """
-    weight, jobs, k, n = _parse_full(cb)       # jobs: (lhs, out, epi, m, out_dtype, scale)
-    kp, np_ = _ceil_dim(k), _ceil_dim(n)
-    Kt, Nt = kp // DIM, np_ // DIM
-    a_slot = Kt * Nt * DIM                      # A tile slot, after the resident W tiles
-
-    lhss = [j[0] for j in jobs]
-    outs = [j[1] for j in jobs]
-    args = [weight] + lhss + outs
+    groups = _parse_groups(cb)                  # [(weight, k, n, jobs)], jobs: (lhs,out,epi,m,odt,scale)
+    weights = [g[0] for g in groups]
+    lhss = [j[0] for g in groups for j in g[3]]
+    outs = [j[1] for g in groups for j in g[3]]
+    args = weights + lhss + outs
     arg_decl = ", ".join(f"%a{i}: !llvm.ptr" for i in range(len(args)))
 
     body: list[str] = []
@@ -179,55 +195,63 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
     rocc(K_FLUSH, konst(0), konst(0))
     rocc(K_CONFIG, konst(CFG_EX_RS1), konst(CFG_EX_RS2))
 
-    # Resident weight: mvin all Kt x Nt tiles once (config_ld stride = np_ bytes, elem_t=1B).
-    config_ld(np_)
-    for kt in range(Kt):
-        for nj in range(Nt):
-            w_row = (kt * Nt + nj) * DIM
-            off = (kt * DIM) * np_ + nj * DIM
-            rocc(K_MVIN, addr(weight, off), konst(_pack(w_row)))
+    # Each resident-weight GROUP is emitted in turn: mvin the weight, run its matmuls, mvout — then the
+    # next group reuses the scratchpad. A single-weight model is one group (byte-identical to before); a
+    # multi-layer model is several groups in ONE kernel, its layers co-scheduled in one address space.
+    for (weight, k, n, jobs) in groups:
+        kp, np_ = _ceil_dim(k), _ceil_dim(n)
+        Kt, Nt = kp // DIM, np_ // DIM
+        a_slot = Kt * Nt * DIM                  # A tile slot, after this group's resident W tiles
 
-    # config_ld for activations (stride = kp bytes).
-    config_ld(kp)
-
-    # Operand stationarity (capacity-fit): the resident weight already lives in the first Kt*Nt
-    # scratchpad tiles; the activation row-panel A[mi, 0:Kt] adds Kt tiles. When both fit the
-    # on-chip operand store (scratchpad depth, an RTL-derived fact) we mvin each row-panel ONCE and
-    # REUSE its Kt activation tiles across the whole N sweep — the old schedule re-moved every
-    # activation tile for every output column (Mt*Nt*Kt mvins), re-fetching the same DRAM tile Nt
-    # times. Panel residency cuts that to Mt*Kt mvins. Fail-safe: when the panel would not fit (or
-    # the depth is underived) we keep the per-(mi,nj) single-slot schedule, byte-identical to before.
-    panel_resident = SCRATCHPAD_ROWS is not None and (Kt * Nt + Kt) * DIM <= SCRATCHPAD_ROWS
-
-    for (lhs, out, epi, m, out_dtype, scale) in jobs:
-        mp = _ceil_dim(m)
-        Mt = mp // DIM
-        i8_out = out_dtype == "i8"              # i8 readout = Gemmini float acc_scale + clamp
-        acc_act = 1 if "relu" in epi else 0     # config_st acc_act (RELU=1)
-        scale_bits = _f32_bits(scale) if i8_out else F1
-        elt = 1 if i8_out else 4               # output element bytes
-        read_base = ACC_I8 if i8_out else C_ACC  # i8 readout drops the full_C bit -> scale applies
-        # config_st: RS1=(acc_act<<2)|CONFIG_ST ; RS2=(acc_scale_bits<<32)|out_row_stride_bytes
-        rocc(K_CONFIG, konst((acc_act << 2) | 2), konst((scale_bits << 32) | (np_ * elt)))
-        for mi in range(Mt):
-            if panel_resident:
-                # Row-panel mvin: the Kt activation tiles of row mi, into Kt distinct slots, ONCE.
-                for kt in range(Kt):
-                    a_off = ((mi * DIM) * kp + kt * DIM)
-                    rocc(K_MVIN, addr(lhs, a_off), konst(_pack(a_slot + kt * DIM)))
+        # Resident weight: mvin all Kt x Nt tiles once (config_ld stride = np_ bytes, elem_t=1B).
+        config_ld(np_)
+        for kt in range(Kt):
             for nj in range(Nt):
-                for kt in range(Kt):
-                    if panel_resident:
-                        a_addr = a_slot + kt * DIM              # reuse the resident panel tile
-                    else:
-                        a_off = ((mi * DIM) * kp + kt * DIM)    # legacy: re-mvin per output column
-                        rocc(K_MVIN, addr(lhs, a_off), konst(_pack(a_slot)))
-                        a_addr = a_slot
-                    cad = C_ACC if kt == 0 else (C_ACC | ACC_ACCUM)   # accumulator is always i32
-                    rocc(K_PRELOAD, konst(_pack((kt * Nt + nj) * DIM)), konst(_pack(cad)))
-                    rocc(K_COMPUTE_PRELOADED, konst(_pack(a_addr)), konst(_pack(GARBAGE)))
-                c_off = ((mi * DIM) * np_ + nj * DIM) * elt
-                rocc(K_MVOUT, addr(out, c_off), konst(_pack(read_base)))
+                w_row = (kt * Nt + nj) * DIM
+                off = (kt * DIM) * np_ + nj * DIM
+                rocc(K_MVIN, addr(weight, off), konst(_pack(w_row)))
+
+        # config_ld for activations (stride = kp bytes).
+        config_ld(kp)
+
+        # Operand stationarity (capacity-fit): the resident weight already lives in the first Kt*Nt
+        # scratchpad tiles; the activation row-panel A[mi, 0:Kt] adds Kt tiles. When both fit the
+        # on-chip operand store (scratchpad depth, an RTL-derived fact) we mvin each row-panel ONCE and
+        # REUSE its Kt activation tiles across the whole N sweep — the old schedule re-moved every
+        # activation tile for every output column (Mt*Nt*Kt mvins), re-fetching the same DRAM tile Nt
+        # times. Panel residency cuts that to Mt*Kt mvins. Fail-safe: when the panel would not fit (or
+        # the depth is underived) we keep the per-(mi,nj) single-slot schedule, byte-identical to before.
+        panel_resident = SCRATCHPAD_ROWS is not None and (Kt * Nt + Kt) * DIM <= SCRATCHPAD_ROWS
+
+        for (lhs, out, epi, m, out_dtype, scale) in jobs:
+            mp = _ceil_dim(m)
+            Mt = mp // DIM
+            i8_out = out_dtype == "i8"              # i8 readout = Gemmini float acc_scale + clamp
+            acc_act = 1 if "relu" in epi else 0     # config_st acc_act (RELU=1)
+            scale_bits = _f32_bits(scale) if i8_out else F1
+            elt = 1 if i8_out else 4               # output element bytes
+            read_base = ACC_I8 if i8_out else C_ACC  # i8 readout drops the full_C bit -> scale applies
+            # config_st: RS1=(acc_act<<2)|CONFIG_ST ; RS2=(acc_scale_bits<<32)|out_row_stride_bytes
+            rocc(K_CONFIG, konst((acc_act << 2) | 2), konst((scale_bits << 32) | (np_ * elt)))
+            for mi in range(Mt):
+                if panel_resident:
+                    # Row-panel mvin: the Kt activation tiles of row mi, into Kt distinct slots, ONCE.
+                    for kt in range(Kt):
+                        a_off = ((mi * DIM) * kp + kt * DIM)
+                        rocc(K_MVIN, addr(lhs, a_off), konst(_pack(a_slot + kt * DIM)))
+                for nj in range(Nt):
+                    for kt in range(Kt):
+                        if panel_resident:
+                            a_addr = a_slot + kt * DIM              # reuse the resident panel tile
+                        else:
+                            a_off = ((mi * DIM) * kp + kt * DIM)    # legacy: re-mvin per output column
+                            rocc(K_MVIN, addr(lhs, a_off), konst(_pack(a_slot)))
+                            a_addr = a_slot
+                        cad = C_ACC if kt == 0 else (C_ACC | ACC_ACCUM)   # accumulator is always i32
+                        rocc(K_PRELOAD, konst(_pack((kt * Nt + nj) * DIM)), konst(_pack(cad)))
+                        rocc(K_COMPUTE_PRELOADED, konst(_pack(a_addr)), konst(_pack(GARBAGE)))
+                    c_off = ((mi * DIM) * np_ + nj * DIM) * elt
+                    rocc(K_MVOUT, addr(out, c_off), konst(_pack(read_base)))
 
     body.append('    llvm.inline_asm has_side_effects "fence", "" : () -> ()')
     text = ("module {\n  llvm.func @gemmini_kernel(" + arg_decl + ") {\n"
@@ -259,22 +283,26 @@ def _harness_c(cb: dict, inputs: dict | None = None) -> str:
 
     ``inputs`` (name -> nested-list) INJECTS explicit operand values so the device runs the model's real
     activations/weights; absent, each leaf is materialized deterministically from its name (reproducible)."""
-    weight, jobs, k, n = _parse_full(cb)
-    kp, np_ = _ceil_dim(k), _ceil_dim(n)
+    groups = _parse_groups(cb)                  # [(weight, k, n, jobs)]
     leaves = materialize_inputs(cb, inputs)
-    lhss = [j[0] for j in jobs]
-    outs = [(j[1], j[3], j[4]) for j in jobs]   # (out_name, m, out_dtype)
+    weights = [g[0] for g in groups]
+    lhss = [j[0] for g in groups for j in g[3]]
+    # (out_name, m, n, out_dtype) — n rides along so the printed column count is the group's own n.
+    outs = [(j[1], j[3], g[2], j[4]) for g in groups for j in g[3]]
 
     decls = []
-    wpad = _pad_rowmajor(list(leaves[weight].data), k, n, kp, np_)
-    decls.append(f"static const elem_t T_{weight}[{kp * np_}] row_align(1) = "
-                 f"{{{','.join(str(int(v)) for v in wpad)}}};")
-    for lhs, _, _, m, _, _ in jobs:
-        mp = _ceil_dim(m)
-        ap = _pad_rowmajor(list(leaves[lhs].data), m, k, mp, kp)
-        decls.append(f"static const elem_t T_{lhs}[{mp * kp}] row_align(1) = "
-                     f"{{{','.join(str(int(v)) for v in ap)}}};")
-    for out, m, out_dtype in outs:
+    for weight, k, n, jobs in groups:
+        kp, np_ = _ceil_dim(k), _ceil_dim(n)
+        wpad = _pad_rowmajor(list(leaves[weight].data), k, n, kp, np_)
+        decls.append(f"static const elem_t T_{weight}[{kp * np_}] row_align(1) = "
+                     f"{{{','.join(str(int(v)) for v in wpad)}}};")
+        for lhs, _, _, m, _, _ in jobs:
+            mp = _ceil_dim(m)
+            ap = _pad_rowmajor(list(leaves[lhs].data), m, k, mp, kp)
+            decls.append(f"static const elem_t T_{lhs}[{mp * kp}] row_align(1) = "
+                         f"{{{','.join(str(int(v)) for v in ap)}}};")
+    for out, m, n, out_dtype in outs:
+        np_ = _ceil_dim(n)
         mp = _ceil_dim(m)
         if out_dtype == "i8":               # scaled/clamped i8 readout buffer (elem_t)
             decls.append(f"static elem_t T_{out}[{mp * np_}] row_align(1);")
@@ -287,13 +315,14 @@ def _harness_c(cb: dict, inputs: dict | None = None) -> str:
             # 4-byte readout halved every row (Y[i][j] read C[i][2j]) and zeroed the bottom half.
             decls.append(f"static int32_t T_{out}[{mp * np_}] row_align_acc(1);")
 
-    args = [weight] + lhss + [o for o, _, _ in outs]
+    args = weights + lhss + [o[0] for o in outs]   # must mirror emit_kernel_mlir: weights + lhss + outs
     call = ", ".join(f"(void*)T_{a}" for a in args)
     prints = []
-    for out, m, _ in outs:
+    for out, m, n, _ in outs:
+        npo = _ceil_dim(n)                          # this output's own padded column stride
         prints.append(f'  printf("OUT {out} {m} {n}");')
         prints.append(f"  for (long i = 0; i < {m}; i++) for (long j = 0; j < {n}; j++)"
-                      f" printf(\" %d\", (int)T_{out}[i * {np_} + j]);")
+                      f" printf(\" %d\", (int)T_{out}[i * {npo} + j]);")
         prints.append('  printf("\\n");')
     # Print METRIC cycles BEFORE the (possibly huge) OUT tensor dump: large-output kernels flood the UART
     # and the per-ELF FireSim capture truncates mid-dump, losing a trailing METRIC line. Emitting the tiny
