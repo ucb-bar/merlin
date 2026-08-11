@@ -10,14 +10,13 @@ The forbidden target names are DISCOVERED from the target registry (``all_target
 listed here: registering a new target must extend this gate with zero edits, exactly like
 ``build_tools/scripts/check_no_target_name.py``.
 
-INV-3 (no TargetGen/schema edits) is anchored to **the commit that introduced
-merlin/python/merlin/triton/**, not to the merge base with main: this long-lived branch already
-carried unrelated TargetGen work before the Triton frontend existed, so a merge-base comparison
-would report other people's changes. Anchoring to the package's own birth commit expresses the
-actual invariant — *the Triton work* must not modify TargetGen — and needs no baseline file to
-keep up to date. On a shared working tree a concurrent agent's TargetGen commit lands after that
-anchor too and will also trip this; the failure message says so, because "someone changed
-TargetGen while the Triton frontend was being built" is worth surfacing either way.
+INV-3 (no TargetGen/schema edits) is checked by ATTRIBUTION rather than by a time window. The
+invariant is "*the Triton work* does not modify TargetGen", so the test asks whether any single
+commit touches both the Triton frontend and the protected surface — never "did anything change
+since date X". A window would be wrong twice over on this repo: this long-lived branch carried
+unrelated TargetGen work before the frontend existed, and the tree is developed by several agents
+at once, so a concurrent agent's TargetGen commit would report as a Triton violation. Attribution
+has no baseline to keep up to date and stays correct however the tree is shared.
 """
 from __future__ import annotations
 
@@ -37,6 +36,13 @@ PROTECTED = (
     "merlin/python/merlin/targetgen",
     "merlin/schemas/target_contract.schema.yaml",
     "merlin/schemas/dialect_plan.schema.yaml",
+)
+
+# What counts as "the Triton work" for attribution: the frontend package and its tests/examples.
+TRITON_PATHS = (
+    "merlin/python/merlin/triton",
+    "merlin/tests/fixtures/triton_kernels.py",
+    "examples/triton",
 )
 
 # Imports that would smuggle a target-specific decision into the frontend. `targetgen.target_registry`
@@ -141,18 +147,36 @@ def test_no_regex_in_the_frontend():
         f"regex line-matcher silently drops valid-but-differently-spelled input: {sorted(set(offenders))}")
 
 
-def test_targetgen_and_schemas_untouched_since_the_frontend_landed():
-    """INV-3: no TargetGen or schema edit is needed to make a target Triton-programmable."""
+def test_no_triton_change_also_touches_targetgen_or_the_schemas():
+    """INV-3: no TargetGen or schema edit is needed to make a target Triton-programmable.
+
+    Attribution, not a time window: a commit that changes the Triton frontend must not also change
+    the protected surface, and the uncommitted working tree must not straddle both either. A
+    concurrent agent's unrelated TargetGen commit is therefore correctly ignored.
+    """
     if not (REPO / ".git").exists():
         pytest.skip("not a git checkout")
     anchor = _git("log", "--diff-filter=A", "--format=%H", "--",
                   "merlin/python/merlin/triton/__init__.py").splitlines()
     if not anchor:
-        pytest.skip("merlin.triton not committed yet — no baseline to compare against")
-    changed = [ln for ln in _git("diff", "--name-only", f"{anchor[-1]}..HEAD",
-                                 "--", *PROTECTED).splitlines() if ln]
-    assert not changed, (
-        "TargetGen/schema files changed since merlin.triton landed (INV-3). If this is the Triton "
-        "work, the fix belongs in Merlin's shared lowering instead. If a concurrent agent on this "
-        "shared tree changed TargetGen, confirm that and re-anchor deliberately. Files: "
-        f"{changed}")
+        pytest.skip("merlin.triton not committed yet — nothing to attribute")
+
+    straddling = {}
+    for sha in _git("log", "--format=%H", f"{anchor[-1]}^..HEAD", "--", *TRITON_PATHS).splitlines():
+        if not sha:
+            continue
+        touched = [ln for ln in _git("show", "--format=", "--name-only", sha,
+                                     "--", *PROTECTED).splitlines() if ln]
+        if touched:
+            straddling[sha[:8]] = sorted(touched)
+
+    # Uncommitted work counts as one prospective commit: staged + unstaged, tracked files only.
+    pending_triton = [ln for ln in _git("diff", "HEAD", "--name-only", "--", *TRITON_PATHS).splitlines() if ln]
+    pending_protected = [ln for ln in _git("diff", "HEAD", "--name-only", "--", *PROTECTED).splitlines() if ln]
+    if pending_triton and pending_protected:
+        straddling["<working tree>"] = sorted(pending_protected)
+
+    assert not straddling, (
+        "a change to the Triton frontend also changes TargetGen/schemas (INV-3) — making a target "
+        "Triton-programmable must cost zero TargetGen edits, so the fix belongs in Merlin's shared "
+        f"lowering instead: {straddling}")

@@ -115,12 +115,19 @@ Therefore the bridge's real job is **pointer → tensor re-raising**: its output
 tensor-typed function arguments feeding the matmul directly, which is exactly the shape model2MLIR
 already emits. Op-by-op TTIR translation is the easy part.
 
-`triton-shared` also states in its README, verbatim: *"This repository is no longer maintained."* It
-is not pip-installable — it builds as a `third_party` codegen backend inside a **source build of
-Triton at a pinned commit**. So it is evaluated on the record (build cost, output dialect inventory,
-whether it runs against an unmodified Triton) rather than assumed, and the default is to own a small
-Python/xDSL bridge that never patches Triton. `Cambricon/triton-linalg` is the maintained C++
-alternative, noted in the same evaluation.
+**Evaluation, on the record.** `triton-shared`'s README states verbatim: *"This repository is no
+longer maintained. It remains available for reference."* There is no pip install path; it builds as
+an out-of-tree `third_party` codegen backend inside a **source build of Triton pinned to the commit
+in `triton-hash.txt`** (`TRITON_PLUGIN_DIRS`, binaries under
+`triton/build/<cmake>/third_party/triton_shared`). So it cannot run against an unmodified Triton
+wheel, and adopting it means owning a pinned Triton source build — the "custom version we maintain"
+that was ruled out. Its `--triton-to-linalg` output spans linalg-on-tensors **plus memref, affine and
+bufferization**, which is precisely the shape finding 1 shows no Merlin ingest can consume.
+
+Verdict: **not adopted.** The bridge is owned in-tree in Python/xDSL and never patches Triton.
+`Cambricon/triton-linalg` is the maintained C++ alternative and is rejected for the same two reasons
+(source build, post-bufferization output); it stays noted in case the bridge ever needs a reference
+implementation to compare against.
 
 ### 2. `lower_to_interface` silently drops non-matmul payload — a false-PASS generator
 
@@ -166,6 +173,44 @@ hand-written `linalg.add` does, identically. So this is a *Merlin interface-abst
 Triton gap*: the fix is an `interface.elementwise` that every frontend benefits from, never a Triton
 special case. It is scheduled as the last milestone and is the only one permitted to touch core
 dialect surface, and then only with that equivalence demonstrated first.
+
+## How TTIR is obtained, and how it is read
+
+Triton's public entry point is `triton.compile()`, which demands a `GPUTarget`, builds a backend and
+runs the whole stage chain down to a GPU binary. `merlin.triton.source` instead calls the AST → TTIR
+step directly (`ASTSource.make_ir`), which needs no device and stops exactly at the wanted boundary.
+That is a compiler internal with no stability promise, so the dependency is confined to that one
+module, the wheel is exact-pinned (`triton==3.7.1`, mirrored by `toolchain.PINNED_TRITON`), and
+`probe()` also detects a *stripped* install (a dist-info without `triton/_C/libtriton`), which
+otherwise reports a plausible version and fails deep inside `make_ir`.
+
+A `GPUTarget` still has to be supplied because the frontend's signature demands one. It selects which
+backend provides the codegen callbacks, not what the IR means — and
+`test_ttir_is_independent_of_the_nominal_backend` holds that to account by re-emitting under a second
+backend and requiring byte-identical text.
+
+**Ingestion resolved.** None of the three planned rungs (generic-form print / a minimal xDSL `tt`
+dialect / a hand-written tokenizer) is needed. Triton's `ir.module` exposes `walk()` over live ops
+with a structural API — `get_name`, `get_operand`, `get_result`, `get_num_regions`, typed attribute
+accessors — and values expose `get_type()` and an SSA `id`. So the bridge reads **structure and types
+from the IR itself**, with no MLIR text parsing anywhere, which is both stronger than a tokenizer and
+the only option consistent with the repo's no-regex mandate. `str_nodebug()` supplies loc-free
+deterministic text, used only for hashing and for on-disk inspection (INV-10).
+
+Measured op inventory for the two reference kernels (Triton 3.7.1), which is the full set the bridge
+must cover for M2:
+
+| kernel | `tt.*` | other |
+| --- | --- | --- |
+| vector add | `addptr func get_program_id load make_range return splat store` | `arith.{addf,addi,andi,cmpi,constant,extsi,muli}` |
+| one-tile matmul | `addptr broadcast dot expand_dims func load make_range return splat store` | `arith.{andi,cmpi,constant,extsi,muli}` |
+
+No `ttg.*`, no `gpu.*`, no layout attributes in either. The two op sets differ by exactly
+`get_program_id` (grid) versus `dot`/`expand_dims`/`broadcast` (tiling), which is what makes them a
+useful pair: one exercises the grid normalization path and the other the contraction path.
+
+One hard floor fell out of this: `tl.dot` rejects anything below **M ≥ 16, N ≥ 16, K ≥ 32**, so the
+smallest legal "one tile" is 16×32×16. That is what the accelerator proofs use.
 
 ## Grid / SPMD normalization, and why the two accelerators differ
 
