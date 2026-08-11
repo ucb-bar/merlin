@@ -12,6 +12,10 @@ import pytest
 
 from merlin.kernels import opu_corpus as OC
 
+#: A representative logical tile edge (the vLen=256 configuration) for tests about corpus CONTENT rather
+#: than about tile-relative resolution itself.
+_TILE = 32
+
 
 class TestReference:
     def test_contracts_two_k_major_operands(self):
@@ -64,7 +68,7 @@ class TestOverflowIsUnreachable:
         # the "retired hazard" framing would be wrong and this fails.
         worst = 0
         for case in OC.load_corpus():
-            lhs, rhs, bias = case.operands()
+            lhs, rhs, bias = case.resolved(_TILE).operands()
             wide = lhs.astype(np.int64).T @ rhs.astype(np.int64)
             if bias is not None:
                 wide = wide + bias[None, :]
@@ -73,7 +77,7 @@ class TestOverflowIsUnreachable:
         assert worst * 100 < 2**31 - 1, f"corpus worst magnitude {worst} is within 100x of the limit"
 
     def test_the_longest_corpus_reduction_is_far_below_the_bound(self):
-        longest = max(c.k for c in OC.load_corpus())
+        longest = max(c.resolved(_TILE).k for c in OC.load_corpus())
         assert longest < OC.ACC_OVERFLOW_UNREACHABLE_ABOVE_K / 100
 
 
@@ -85,7 +89,7 @@ class TestCorpusContents:
 
     def test_both_asymmetric_orientations_are_present(self):
         # An operand swap in the accumulate is shape-safe on a square tile, which is how one hid.
-        cases = {c.name: c for c in OC.load_corpus()}
+        cases = {c.name: c.resolved(_TILE) for c in OC.load_corpus()}
         assert cases["asymmetric_m_gt_n"].m > cases["asymmetric_m_gt_n"].n
         assert cases["asymmetric_n_gt_m"].n > cases["asymmetric_n_gt_m"].m
 
@@ -94,7 +98,7 @@ class TestCorpusContents:
             assert len(case.why) > 20, f"{case.name} has no reason it may not be deleted"
 
     def test_every_case_has_positive_extents(self):
-        for c in OC.load_corpus():
+        for c in (c.resolved(_TILE) for c in OC.load_corpus()):
             assert c.m > 0 and c.n > 0 and c.k > 0, c.name
 
     def test_case_names_are_unique(self):
@@ -103,12 +107,12 @@ class TestCorpusContents:
 
     def test_a_bias_case_exists_including_one_with_a_single_output_row(self):
         # The hardware initialises bias by broadcasting it across ALL rows, whether or not they are read.
-        biased = [c for c in OC.load_corpus() if c.bias]
+        biased = [c.resolved(_TILE) for c in OC.load_corpus() if c.bias]
         assert biased
         assert any(c.m == 1 for c in biased)
 
     def test_the_reduction_extent_is_swept_including_one(self):
-        ks = {c.k for c in OC.load_corpus()}
+        ks = {c.resolved(_TILE).k for c in OC.load_corpus()}
         assert 1 in ks and 2 in ks and 3 in ks
         assert max(ks) > 100, "a long reduction must be covered too"
 
@@ -124,19 +128,88 @@ class TestFrozenOnDisk:
         assert written == OC.load_corpus()
 
     def test_operands_are_deterministic_from_the_seed(self):
-        case = OC.load_corpus()[0]
+        case = OC.load_corpus()[0].resolved(_TILE)
         first, second = case.operands()[0], case.operands()[0]
         assert (first == second).all(), "a failing case must be reproducible"
 
     def test_two_cases_do_not_share_operand_data(self):
-        cases = {c.name: c for c in OC.load_corpus()}
+        cases = {c.name: c.resolved(_TILE) for c in OC.load_corpus()}
         a = cases["m_16"].operands()[0]
         b = cases["n_16"].operands()[0]
         assert a.shape != b.shape or not (a == b).all()
 
     def test_the_lhs_is_generated_k_major(self):
         # Handing back an M-major LHS would hide the transpose/packing cost the routing decision prices.
-        case = next(c for c in OC.load_corpus() if c.name == "asymmetric_m_gt_n")
+        case = next(c for c in OC.load_corpus() if c.name == "asymmetric_m_gt_n").resolved(_TILE)
         lhs, rhs, _ = case.operands()
         assert lhs.shape == (case.k, case.m)
         assert rhs.shape == (case.k, case.n)
+
+
+class TestTileRelativeExtents:
+    """The companion extent must scale with the target, or the corpus silently means something else.
+
+    Holding it at a literal 64 tied the corpus to one configuration: at a 32x32 tile that put 18 of 31
+    cases -- including every named narrow-extent regression -- outside a single tile.
+    """
+
+    def test_resolves_tile_and_a_divided_tile(self):
+        assert OC.resolve_extent("tile", 32) == 32
+        assert OC.resolve_extent("tile/2", 32) == 16
+        assert OC.resolve_extent("tile/4", 32) == 8
+
+    def test_an_integer_extent_passes_through_unscaled(self):
+        # The swept values name specific awkward numbers and mean nothing rescaled.
+        assert OC.resolve_extent(17, 32) == 17 and OC.resolve_extent(17, 16) == 17
+
+    def test_a_division_never_yields_zero(self):
+        assert OC.resolve_extent("tile/8", 4) == 1
+
+    def test_an_unsupported_expression_raises_rather_than_defaulting(self):
+        for bad in ("tiles", "2*tile", "tile/x", "tile/0", ""):
+            with pytest.raises(ValueError):
+                OC.resolve_extent(bad, 32)
+
+    def test_generating_operands_before_resolving_is_refused(self):
+        # Silently treating "tile" as a shape would test a different case than the name claims.
+        case = next(c for c in OC.load_corpus() if not isinstance(c.n, int))
+        with pytest.raises(ValueError, match="tile-relative"):
+            case.operands()
+
+    def test_the_companion_extent_scales_with_the_tile(self):
+        m_sweep = next(c for c in OC.load_corpus() if c.name == "m_17")
+        assert m_sweep.resolved(32).n == 32
+        assert m_sweep.resolved(16).n == 16
+
+
+class TestSelectionForATarget:
+    def test_every_case_fits_a_32_tile(self):
+        runnable, skipped = OC.select(32)
+        assert len(runnable) == len(OC.load_corpus()) and skipped == ()
+
+    def test_cases_beyond_a_smaller_tile_are_skipped_with_a_reason_not_dropped(self):
+        # A report that omitted them would read as full coverage of the corpus, which is the shape of
+        # the failure this corpus exists to prevent.
+        runnable, skipped = OC.select(16)
+        assert skipped, "swept extents above 16 cannot run on a single 16x16 tile"
+        assert len(runnable) + len(skipped) == len(OC.load_corpus())
+        for case, reason in skipped:
+            assert "tiles M and N" in reason and str(case.m) in reason or str(case.n) in reason
+
+    def test_the_named_narrow_regressions_run_on_every_tile_size(self):
+        # These are the cases that matter most; a configuration where they were skipped would be
+        # certifying the easy half.
+        for tile in (16, 32):
+            names = {c.name for c in OC.select(tile)[0]}
+            assert {"narrow_m_1", "narrow_n_1", "narrow_both_1"} <= names, tile
+
+    def test_selected_cases_are_fully_resolved_and_can_generate_operands(self):
+        for case in OC.select(16)[0]:
+            assert isinstance(case.m, int) and isinstance(case.n, int) and isinstance(case.k, int)
+            case.operands()
+
+    def test_a_skipped_case_is_reported_with_its_resolved_extents(self):
+        _, skipped = OC.select(16)
+        for case, _reason in skipped:
+            assert isinstance(case.m, int) and isinstance(case.n, int)
+            assert case.m > 16 or case.n > 16

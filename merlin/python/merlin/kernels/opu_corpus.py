@@ -37,7 +37,8 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["Case", "CORPUS_PATH", "load_corpus", "reference", "write_corpus"]
+__all__ = ["Case", "CORPUS_PATH", "load_corpus", "reference", "resolve_extent", "select",
+           "write_corpus"]
 
 #: int32 wrap boundary. Not a target fact — the accumulator width is derived from the hardware and passed
 #: in; this is the modulus for the width the corpus is written at.
@@ -53,21 +54,74 @@ def corpus_path() -> Path:
 CORPUS_PATH = "merlin/tests/data/opu_shapes/corpus.json"
 
 
+#: Extents may be written as an expression over ``tile`` — the target's derived logical tile edge —
+#: instead of as a number. The swept extents (1, 2, 3, 7, 15, 16, 17, …) are deliberately absolute: they
+#: name specific awkward values and mean nothing rescaled. But the COMPANION extent, held constant while
+#: the other is swept, means "a full tile", and writing it as a literal silently ties the corpus to one
+#: configuration: at ``vLen=256`` the tile edge is 32, so a literal 64 puts 18 of 31 cases — including
+#: every named narrow-extent regression — outside a single tile, and at ``vLen=128`` it is worse.
+#: Resolved structurally (``tile``, ``tile/2``, ``tile/4``), never by evaluating a string as code.
+_TILE = "tile"
+
+
+def resolve_extent(extent: "int | str", tile: int) -> int:
+    """A concrete extent from a number or a ``tile``-relative expression.
+
+    Supports ``tile`` and ``tile/<divisor>``. Anything else raises rather than falling back to a default,
+    because a silently mis-resolved extent produces a corpus that tests a different shape than it claims.
+    """
+    if isinstance(extent, int):
+        return extent
+    text = str(extent).strip()
+    head, sep, divisor = text.partition("/")
+    if head.strip() != _TILE:
+        raise ValueError(f"unsupported extent expression {extent!r}; expected an int, 'tile', "
+                         f"or 'tile/<divisor>'")
+    if not sep:
+        return int(tile)
+    try:
+        d = int(divisor)
+    except ValueError as exc:
+        raise ValueError(f"unsupported divisor in {extent!r}") from exc
+    if d < 1:
+        raise ValueError(f"divisor must be >= 1 in {extent!r}")
+    return max(1, int(tile) // d)
+
+
 @dataclass(frozen=True)
 class Case:
-    """One shape the microkernel must be exactly right on, with why it is in the corpus."""
+    """One shape the microkernel must be exactly right on, with why it is in the corpus.
+
+    ``m`` / ``n`` / ``k`` are each an int or a ``tile``-relative expression; call :meth:`resolved` with
+    the target's derived tile edge to get numbers.
+    """
 
     name: str
-    m: int
-    n: int
-    k: int
+    m: "int | str"
+    n: "int | str"
+    k: "int | str"
     why: str
     bias: bool = False
     seed: int = 0
-    #: Amplitude of the generated operands. The overflow case needs full-range int8 and a long
-    #: reduction; most cases do not, and a corpus where every case overflows would not distinguish a
-    #: wrapping bug from a plain arithmetic one.
+    #: Amplitude of the generated operands. The full-range case needs the largest magnitudes the datapath
+    #: can be handed; most cases do not, and a corpus where every case ran at full range would not
+    #: distinguish a magnitude bug from a plain arithmetic one.
     amplitude: int = 8
+
+    def resolved(self, tile: int) -> "Case":
+        """This case with every extent resolved against ``tile``."""
+        return Case(name=self.name, m=resolve_extent(self.m, tile), n=resolve_extent(self.n, tile),
+                    k=resolve_extent(self.k, tile), why=self.why, bias=self.bias, seed=self.seed,
+                    amplitude=self.amplitude)
+
+    def fits_tile(self, tile: int) -> bool:
+        """Whether both parallel extents fit one tile, i.e. whether a single-tile kernel can run it.
+
+        A case that does not fit is not a failure and must not be reported as one — it needs a kernel
+        that tiles, and until there is one it is honestly ``not_run`` for that target.
+        """
+        got = self.resolved(tile)
+        return int(got.m) <= int(tile) and int(got.n) <= int(tile)
 
     def operands(self) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
         """``(lhs, rhs, bias)`` — deterministic from ``seed`` so a failure is reproducible.
@@ -76,6 +130,11 @@ class Case:
         both operands: the expert kernel indexes ``at[k*M + i]`` and ``b[k*N + j]``. Handing back an
         M-major LHS here would hide the transpose/packing cost that the routing decision has to price.
         """
+        if not all(isinstance(e, int) for e in (self.m, self.n, self.k)):
+            raise ValueError(f"case {self.name!r} still has a tile-relative extent "
+                             f"(m={self.m!r}, n={self.n!r}, k={self.k!r}); call .resolved(tile) first — "
+                             "generating operands from an unresolved extent would silently test a "
+                             "different shape than the case names")
         rng = np.random.default_rng(self.seed)
         lo, hi = -self.amplitude, self.amplitude
         lhs = rng.integers(lo, hi + 1, size=(self.k, self.m), dtype=np.int8)   # K-major
@@ -112,35 +171,38 @@ def _wrap(values: np.ndarray, bits: int) -> np.ndarray:
     return wrapped.astype(np.int32 if bits == 32 else np.int64)
 
 
-#: The frozen cases. Each `why` is the reason it may not be deleted.
+#: The frozen cases. Each `why` is the reason it may not be deleted. The companion extent is `tile`
+#: rather than a number, so the same corpus is meaningful on every configuration of the unit.
 _CASES: tuple[Case, ...] = (
     # --- the historical failure, by name -------------------------------------------------------
-    Case("narrow_m_1", 1, 64, 64, "M=1 vecmat: the prior integration packed this to a single row and "
-         "its operand load read past the end of the panel", seed=1),
-    Case("narrow_n_1", 64, 1, 64, "N=1 matvec: the mirror case, where the column operand is one lane",
-         seed=2),
+    Case("narrow_m_1", 1, _TILE, 64, "M=1 vecmat: the prior integration packed this to a single row "
+         "and its operand load read past the end of the panel", seed=1),
+    Case("narrow_n_1", _TILE, 1, 64, "N=1 matvec: the mirror case, where the column operand is one "
+         "lane", seed=2),
     Case("narrow_both_1", 1, 1, 64, "both parallel extents 1: a rank-1 accumulate reduced to a dot "
          "product, where every length in play is 1", seed=3),
     # --- parallel extents around the tile -----------------------------------------------------
-    *(Case(f"m_{m}", m, 64, 64, "M swept below, at and just over a plausible tile edge, and odd",
+    *(Case(f"m_{m}", m, _TILE, 64, "M swept below, at and just over a plausible tile edge, and odd",
            seed=10 + m) for m in (2, 3, 7, 15, 16, 17, 31, 32)),
-    *(Case(f"n_{n}", 64, n, 64, "N swept below, at and just over a plausible tile edge, and odd",
+    *(Case(f"n_{n}", _TILE, n, 64, "N swept below, at and just over a plausible tile edge, and odd",
            seed=40 + n) for n in (2, 3, 7, 15, 16, 17, 31, 32)),
     # --- reduction extent ---------------------------------------------------------------------
-    *(Case(f"k_{k}", 16, 16, k, "K tiny / odd / exact / one over / long: the reduction tail is "
-           "harmless only if it is actually handled", seed=80 + k) for k in (1, 2, 3, 15, 16, 17, 255)),
+    *(Case(f"k_{k}", "tile/2", "tile/2", k, "K tiny / odd / exact / one over / long: the reduction "
+           "tail is harmless only if it is actually handled", seed=80 + k)
+      for k in (1, 2, 3, 15, 16, 17, 255)),
     # --- non-square and asymmetric ------------------------------------------------------------
-    Case("asymmetric_m_gt_n", 32, 8, 24, "M != N, so an operand swap in the accumulate is NOT "
-         "shape-safe: this is the case that would have caught the reversed operand order", seed=200),
-    Case("asymmetric_n_gt_m", 8, 32, 24, "the other asymmetry, so a swap fails in both directions",
-         seed=201),
+    Case("asymmetric_m_gt_n", _TILE, "tile/4", 24, "M != N, so an operand swap in the accumulate is "
+         "NOT shape-safe: this is the case that would have caught the reversed operand order",
+         seed=200),
+    Case("asymmetric_n_gt_m", "tile/4", _TILE, 24, "the other asymmetry, so a swap fails in both "
+         "directions", seed=201),
     # --- epilogue -----------------------------------------------------------------------------
-    Case("bias", 16, 16, 32, "bias initialised into the accumulator by broadcast rather than added "
-         "afterwards, which is the hardware's own init path", bias=True, seed=300),
-    Case("bias_narrow_m", 1, 16, 32, "bias broadcast with a single output row: the init writes all "
-         "rows whether or not they are read", bias=True, seed=301),
+    Case("bias", "tile/2", "tile/2", 32, "bias initialised into the accumulator by broadcast rather "
+         "than added afterwards, which is the hardware's own init path", bias=True, seed=300),
+    Case("bias_narrow_m", 1, "tile/2", 32, "bias broadcast with a single output row: the init writes "
+         "all rows whether or not they are read", bias=True, seed=301),
     # --- accumulator behaviour ----------------------------------------------------------------
-    Case("full_range_int8", 16, 16, 255, "full-range int8 operands over a long reduction: the largest "
+    Case("full_range_int8", "tile/2", "tile/2", 255, "full-range int8 operands over a long reduction: the largest "
          "magnitudes the datapath can be handed. It does NOT overflow, and cannot -- see "
          "ACC_OVERFLOW_UNREACHABLE_ABOVE_K, which is why no corpus case tests the missing saturation",
          seed=400, amplitude=127),
@@ -165,6 +227,27 @@ def load_corpus(path: "str | Path | None" = None) -> tuple[Case, ...]:
         return _CASES
     raw = json.loads(p.read_text(encoding="utf-8"))
     return tuple(Case(**c) for c in raw["cases"])
+
+
+def select(tile: int, *, path: "str | Path | None" = None
+           ) -> tuple[tuple[Case, ...], tuple[tuple[Case, str], ...]]:
+    """``(runnable, [(skipped, reason)])`` for a target whose logical tile edge is ``tile``.
+
+    Every case is resolved against ``tile`` first, then split by whether a SINGLE-TILE kernel can run it.
+    A case that does not fit is returned with its reason rather than dropped: a certification report that
+    silently omitted the shapes the kernel cannot yet reach would read as full coverage of the corpus,
+    which is the precise shape of the failure this corpus exists to prevent.
+    """
+    runnable: list[Case] = []
+    skipped: list[tuple[Case, str]] = []
+    for case in load_corpus(path):
+        got = case.resolved(tile)
+        if case.fits_tile(tile):
+            runnable.append(got)
+        else:
+            skipped.append((got, f"m={got.m} n={got.n} exceeds the {tile}x{tile} tile; needs a kernel "
+                                 f"that tiles M and N"))
+    return tuple(runnable), tuple(skipped)
 
 
 def corpus_is_frozen(path: "str | Path | None" = None) -> bool:
