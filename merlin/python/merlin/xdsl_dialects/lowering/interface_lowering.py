@@ -17,14 +17,81 @@ class LoweringError(RuntimeError):
     pass
 
 
+def _support_ops(block, payload: set) -> set:
+    """Ops in ``block`` whose results feed ONLY the payload — safely consumed by materialization.
+
+    For the matmul payload these are the accumulator inits (``tensor.empty``) and the quantized
+    matmul's zero-point constants: the rebuilt body re-creates their effect, so dropping the
+    original op loses nothing. Computed as a fixpoint rather than a hardcoded op-name list, so it
+    stays correct for any frontend's spelling of "value that exists only to feed the contraction".
+
+    An op with NO results can never qualify: it is kept out because a result-less op is how a side
+    effect is spelled (a store, a copy), and silently dropping one changes what the program does.
+    """
+    support: set = set()
+    changed = True
+    while changed:
+        changed = False
+        for op in block.ops:
+            if op in support or op in payload or not op.results:
+                continue
+            if all(use.operation in payload or use.operation in support
+                   for res in op.results for use in res.uses):
+                support.add(op)
+                changed = True
+    return support
+
+
+def _check_payload_complete(fn, src_block, payload: list) -> None:
+    """Fail closed if materialization would silently drop part of the computation.
+
+    :func:`lower_to_interface` REBUILDS the function body from scratch as pack / matmul / commit /
+    evict + return. Anything it does not recognize simply never gets emitted — and because every
+    stage after it verifies the *rebuilt* module, a dropped masked store, epilogue or grid loop
+    produces a module that verifies at all six stages, emits a command buffer, and computes
+    something other than what was asked for. Nothing downstream can notice.
+
+    That is a false-PASS generator, and it matters most for exactly the payloads a kernel frontend
+    submits, so the drop is turned into an error naming what would have been lost.
+    """
+    from .. import contract as c
+    from .. import schedule as s
+
+    decoration = {c.DIALECT_NAME, s.DIALECT_NAME}
+    terminator = src_block.last_op
+    support = _support_ops(src_block, set(payload))
+
+    dropped = [op.name for op in src_block.ops
+               if op not in support and op not in payload and op is not terminator
+               and op.dialect_name() not in decoration]
+    if dropped:
+        raise LoweringError(
+            "interface materialization would silently drop " f"{len(dropped)} op(s) of the payload: "
+            + ", ".join(sorted(set(dropped)))
+            + ". The staged pipeline rebuilds the function body as resident_pack/matmul/commit/evict, "
+              "so it can only carry matmul-family computation; anything else (masked store, "
+              "elementwise epilogue, grid loop) has to be expressed as an interface op before it can "
+              "descend. Failing here instead of compiling a different program.")
+
+    # An epilogue would be caught above, but a payload whose RESULTS are not the matmul results is a
+    # second way to lose computation (the rebuilt return carries commits of the matmuls, in order).
+    if terminator is not None:
+        returned = list(terminator.operands)
+        expected = [mm.results[0] for mm in payload]
+        if returned != expected:
+            raise LoweringError(
+                f"function @{fn.sym_name.data} returns {len(returned)} value(s) that are not exactly "
+                f"the {len(expected)} matmul result(s), in order — interface materialization returns "
+                "the commits of the matmuls it found, so the difference would be dropped.")
+
+
 def lower_to_interface(module):
     """Build a fresh interface-level module from the scheduled module."""
     if not HAS_XDSL:
         return module
-    from xdsl.ir import Block, Region
-    from xdsl.dialects.builtin import (ArrayAttr, FunctionType, ModuleOp, StringAttr,
-                                       TensorType)
+    from xdsl.dialects.builtin import ArrayAttr, FunctionType, ModuleOp, StringAttr, TensorType
     from xdsl.dialects.func import FuncOp, ReturnOp
+    from xdsl.ir import Block, Region
 
     from .. import interface as i
     from .. import schedule as s
@@ -40,11 +107,21 @@ def lower_to_interface(module):
     fns = [op for op in module.walk() if op.name == "func.func"]
     if not fns:
         raise LoweringError("no func.func in module")
+    if len(fns) > 1:
+        # Only fns[0] is materialized, so the rest would vanish without a word.
+        raise LoweringError(
+            f"{len(fns)} func.func in module ({', '.join(f.sym_name.data for f in fns)}) — interface "
+            "materialization rebuilds a single function; submit one kernel per module")
     fn = fns[0]
+    if len(fn.body.blocks) != 1:
+        raise LoweringError(
+            f"@{fn.sym_name.data} has {len(fn.body.blocks)} blocks — only the entry block is "
+            "materialized, so control flow must be resolved before this stage")
     src_block = fn.body.blocks[0]
     matmuls = find_matmuls(module)
     if not matmuls:
         raise LoweringError("no matmul payload to materialize")
+    _check_payload_complete(fn, src_block, matmuls)
 
     arg_types = [a.type for a in src_block.args]
     blk = Block(arg_types=arg_types)

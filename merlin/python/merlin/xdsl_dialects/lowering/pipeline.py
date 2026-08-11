@@ -12,7 +12,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from pathlib import Path
 from merlin.common.paths import repo_root
 
 from .._common import HAS_XDSL
@@ -53,18 +52,32 @@ class LoweringResult:
                 self.interface_module, self.target_module, self.runtime_module]
 
 
-def lower_repeated_rhs_matmul(
-    reuse: int = 4,
-    m: int = 64,
-    k: int = 128,
-    n: int = 64,
+def lower_module(
+    input_module: Any,
+    *,
     target: str = "toy_npu",
     target_contract: dict[str, Any] | None = None,
     dialect_plan: dict[str, Any] | None = None,
     backend: str | None = None,
     target_package: Any | None = None,
 ) -> LoweringResult:
-    """Lower the MVP workload end to end; verify every intermediate module.
+    """Lower an ARBITRARY generic-MLIR module end to end; verify every intermediate module.
+
+    This is the pipeline's real entry point: the payload is a parameter, so any frontend that can
+    produce clean linalg-on-tensors (model2MLIR, a Triton kernel bridge, a hand-authored module)
+    descends the same contract -> schedule -> interface -> target -> runtime path. It used to be
+    welded to one synthetic workload builder, which meant "compile this kernel" had no way in.
+
+    What the incoming module must look like — the pipeline fails closed rather than silently
+    reinterpreting a module it does not understand:
+
+    * one ``func.func`` with a single block (a second function or block would be dropped);
+    * matmul-family payload (``linalg.matmul`` / ``linalg.quantized_matmul``) whose operands are
+      the function's own block arguments, NOT values produced by memref/bufferization boundary ops
+      — residency inference traces to a block argument, and interface materialization maps operands
+      through the function arguments;
+    * every other op in the block either feeding that payload or being contract/schedule
+      decoration (see :func:`interface_lowering.lower_to_interface`'s completeness check).
 
     ``target_package`` (a merlin.targetgen.registry.TargetPackage) lowers through an ISOLATED,
     dynamically-loaded target dialect instead of a built-in reference target — no core edits,
@@ -85,7 +98,6 @@ def lower_repeated_rhs_matmul(
         name = tc["name"]
     from merlin.targetgen.target_registry import backend_for
     backend = backend or backend_for(name)
-    input_module = build_input_module(reuse=reuse, m=m, k=k, n=n)
     input_module.verify()
     contract_module = lower_to_contract(input_module, tc)
     contract_module.verify()
@@ -107,6 +119,32 @@ def lower_repeated_rhs_matmul(
         target_module=target_module,
         runtime_module=runtime_module,
         command_buffer=cb,
+    )
+
+
+def lower_repeated_rhs_matmul(
+    reuse: int = 4,
+    m: int = 64,
+    k: int = 128,
+    n: int = 64,
+    target: str = "toy_npu",
+    target_contract: dict[str, Any] | None = None,
+    dialect_plan: dict[str, Any] | None = None,
+    backend: str | None = None,
+    target_package: Any | None = None,
+) -> LoweringResult:
+    """Lower the MVP workload (``for i: Y_i = A_i @ W``) end to end.
+
+    A thin wrapper over :func:`lower_module` — it only builds the payload. Kept because it is the
+    reference workload every staged-pipeline test is written against.
+    """
+    return lower_module(
+        build_input_module(reuse=reuse, m=m, k=k, n=n),
+        target=target,
+        target_contract=target_contract,
+        dialect_plan=dialect_plan,
+        backend=backend,
+        target_package=target_package,
     )
 
 

@@ -7,6 +7,7 @@ last_verified: 2026-08-10
 related: [lowering_pipeline, core_dialects, target_agnostic_core, target_resolution]
 code_refs:
   - merlin/python/merlin/triton/__init__.py
+  - merlin/python/merlin/compile_core.py
   - merlin/python/merlin/xdsl_dialects/lowering/pipeline.py
   - merlin/python/merlin/xdsl_dialects/lowering/contract_facts.py
   - merlin/python/merlin/xdsl_dialects/lowering/interface_lowering.py
@@ -139,7 +140,17 @@ and then `lower_to_interface` raises `no matmul payload`; those must go through
 
 The router that chooses between them belongs in **core**, keyed off the resolved target contract and
 dialect-plan coverage via `targetgen.target_registry` — never in `merlin.triton`, which would
-violate INV-2.
+violate INV-2. It is now `merlin.compile_core.choose_route` / `compile_core_mlir`, and it routes on
+the *intersection* of what a target's dialect plan declares with what the interface layer can
+actually build (`STAGED_MATERIALIZABLE`), because a plan may legitimately declare coverage for an op
+`interface` has no way to materialize — which is exactly finding 4. Coverage is read from two
+committed plan spellings (`from: interface.matmul` and `op: matmul`) structurally.
+
+One consequence worth stating: an unreadable dialect plan **fails closed**. Reading it as "this
+target accelerates nothing" would silently demote an accelerator to the generic path and still
+report success — and it is the common case rather than an exotic one, since a target whose plan
+lives in its out-of-tree package has no in-tree plan to read and must be passed as
+`target_package=`.
 
 ### 4. The `interface` dialect has no elementwise op, and Radiance is where that bites
 
