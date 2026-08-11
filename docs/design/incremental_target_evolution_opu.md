@@ -521,28 +521,37 @@ policy so zeroed lanes past a short panel survive. The unfused variant — the s
 compiled in the tests and shown to be rejected by each of those checks, so the regression cannot pass
 vacuously.
 
-**What blocks certification is a geometry mismatch I introduced, not the hardware.** The corpus sweeps
-one extent while holding the other at a literal 64. On `OPUV256D128ShuttleConfig` the logical tile is
-`(vLen/8)² = 32×32` (physically `16×16` in `(vLen/dLen)² = 4` subtiles), and the maximum operand lanes at
-`e8,m1` is `VLEN/8 = 32`. So **18 of 31 cases exceed one tile**, including the named narrow-M/N
-regressions — precisely the cases that matter most. Two things are wrong and both need fixing before the
-Verilator run means anything:
+**Two geometry defects were found on our side and both are fixed.** The kernel was single-tile, and the
+corpus held its companion extent at a literal 64 — a hardcoded target fact inside the acceptance surface
+itself. On `OPUV256D128ShuttleConfig` the logical tile is `(vLen/8)² = 32×32` (physically `16×16` in
+`(vLen/dLen)² = 4` subtiles) and the maximum operand lanes at `e8,m1` is `VLEN/8 = 32`, so that literal
+put **18 of 31 cases outside a single tile**, including every named narrow-extent regression.
 
-1. **The emitted kernel is single-tile.** Saturn's own `i8_mm_bme_sq` tiles M and N by `mlmax`; ours does
-   one tile and therefore cannot run a real contraction. The golden delta has to tile, and the tail
-   handling at the tile boundary is exactly where the narrow-extent hazard lives — so a single-tile
-   kernel certified on shapes that happen to fit would be certifying the easy half.
-2. **The companion extent 64 is a literal I chose**, which is the cardinal rule being bent in the corpus
-   itself. It should be derived from the target's tile geometry (already available from
-   `rtl/spatial_introspect.py`'s fact bundle) so the same corpus stays meaningful on
-   `OPUV128D64ShuttleConfig`, where the tile is `16×16` and even more cases would overflow.
+- The kernel now **tiles M and N**, reading the tile edge from the hardware at run time (a `vsetvli` with
+  an unbounded request returns the maximum lane count). Tails go through the *same* tile routine with a
+  shorter length, so there is no separate tail path that could be right in the full case and wrong at the
+  edge — which matters because the tile boundary is exactly where the narrow-extent hazard lives.
+- The corpus's companion extent is now an expression over the target's derived tile edge, resolved
+  structurally. Swept extents stay absolute, since they name specific awkward values and mean nothing
+  rescaled. `select(tile)` splits the corpus into what a single-tile pass can run and what it cannot,
+  returning the remainder **with reasons rather than dropping it** — a report that omitted the shapes out
+  of reach would read as full coverage. At a 32-edge all 31 cases run; at 16, 25 run and 6 are deferred.
+  The narrow regressions run at both.
 
-Everything needed for the run itself is present: the baremetal harness (`merlin/runtime/baremetal/spike/`
-— `crt.S`, `htif.c`, `link.ld`, `libc_min.c`), the four prebuilt OPU sims, and
-`zephyr_model.run_on_verilator(elf, config=…)` which already takes the config as a parameter. At
-~10⁴ cycles/s a 31-case corpus of tile-sized GEMMs is seconds of simulation, which is why the corpus was
-kept small. So the remaining work is the tiling loop and the derived companion extent — not simulator
-capacity, and not a missing oracle.
+**The tiling logic is verified numerically without any RTL.** A compile-time switch swaps the tile body
+for a scalar stand-in while leaving the tiling loop untouched, so the tail bounds, pointer arithmetic and
+bias column offset are checked on a host with no such hardware. There is **one copy** of that loop, so
+what the host validates is the code the device build runs rather than a re-implementation. All 31 cases
+are **exactly equal** to the reference at tile edges 4, 8, 16 and 32 — every tail alignment, including
+edges no available part has. The stand-in is asserted to contain no device instruction, so a device build
+cannot quietly compute correct answers without using the unit.
+
+**What remains for certification is the image, not the logic.** Everything needed is present: the
+baremetal harness (`merlin/runtime/baremetal/spike/` — `crt.S`, `htif.c`, `link.ld`, `libc_min.c`), the
+four prebuilt OPU sims, and `zephyr_model.run_on_verilator(elf, config=…)` which already takes the config
+as a parameter. At ~10⁴ cycles/s a 31-case corpus of tile-sized GEMMs is seconds of simulation, which is
+why the corpus was kept small. So the open item is a bare-metal image that runs the corpus and compares
+in place — not simulator capacity, not a missing oracle, and no longer the kernel's shape.
 
 ## 9. Open, and deliberately unresolved here
 
