@@ -34,10 +34,16 @@ from pathlib import Path
 from typing import Any
 
 __all__ = ["Encoding", "IsaDerivation", "bit_literal_defs", "chisel_enum_ordinals", "crosscheck",
-           "derive", "insn_r_macros", "instruction_props", "unit_instruction_forms"]
+           "derive", "insn_r_macros", "instruction_props", "scala_call_args", "scala_param_names",
+           "unit_instruction_forms", "vector_unit_params"]
 
 #: A ``ChiselEnum`` placeholder — a reserved slot that consumes an ordinal without naming it.
 _PLACEHOLDER = "_"
+
+#: How a vector-unit mixin is recognised in a config body. Chipyard's naming convention
+#: (``WithShuttleVectorUnit`` / ``WithRocketVectorUnit``) is the only thing shared between the host-core
+#: flavours, so matching the suffix reads both without naming either.
+_VECTOR_UNIT_MIXIN_SUFFIX = "VectorUnit"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -66,6 +72,124 @@ def _block_after(text: str, header: str) -> str | None:
             if depth == 0:
                 return text[j + 1:k]
     return None
+
+
+def _balanced_after(text: str, header: str, opener: str = "{", closer: str = "}") -> str | None:
+    """The delimiter-balanced span following ``header``. ``_block_after`` is the brace case of this.
+
+    Scala configs are *parenthesised* (``extends Config( … )``) while its enums and traits are braced, so
+    both delimiters are needed to read the same file.
+    """
+    i = text.find(header)
+    if i < 0:
+        return None
+    j = text.find(opener, i)
+    if j < 0:
+        return None
+    depth = 0
+    for k in range(j, len(text)):
+        if text[k] == opener:
+            depth += 1
+        elif text[k] == closer:
+            depth -= 1
+            if depth == 0:
+                return text[j + 1:k]
+    return None
+
+
+def _split_top_level(text: str, sep: str = ",") -> list[str]:
+    """Split on ``sep`` at nesting depth zero, so ``VectorParams(a, b)`` stays one argument."""
+    out: list[str] = []
+    cur: list[str] = []
+    depth = 0
+    for ch in text:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        if ch == sep and depth == 0:
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    out.append("".join(cur))
+    return [s.strip() for s in out if s.strip()]
+
+
+def scala_call_args(text: str, callee: str) -> list[str] | None:
+    """The positional argument tokens of the first call to ``callee``, or None when it is absent.
+
+    ``callee`` matches on the SIMPLE name, so a fully-qualified call site
+    (``new saturn.shuttle.WithShuttleVectorUnit(…)``) is found by the class name alone — the package
+    prefix is a spelling choice at the call site, not part of the fact being read.
+    """
+    body = _balanced_after(_strip_comments(text), callee, "(", ")")
+    if body is None:
+        return None
+    return _split_top_level(body)
+
+
+def scala_param_names(text: str, decl: str) -> list[str]:
+    """The declared parameter names of ``decl`` (e.g. ``class WithShuttleVectorUnit``), in order.
+
+    This is what makes a positional call site readable without assuming an argument order. Guessing that
+    order is a real hazard here: ``(vLen, dLen)`` and ``(dLen, vLen)`` are both plausible, both parse, and
+    swapping them yields a tile edge that is wrong by exactly a factor of two — which would silently
+    certify a corpus against the wrong geometry rather than fail.
+    """
+    body = _balanced_after(_strip_comments(text), decl, "(", ")")
+    if body is None:
+        return []
+    names = []
+    for arg in _split_top_level(body):
+        name, sep, _ = arg.partition(":")
+        name = name.strip()
+        if sep and name.isidentifier():
+            names.append(name)
+    return names
+
+
+def vector_unit_params(config_text: str, config_class: str, *,
+                       mixin_text: str | None = None) -> dict[str, int]:
+    """``{param_name: value}`` for the vector-unit mixin a config instantiates.
+
+    The mixin is DISCOVERED rather than named: whichever call in the config's body has a simple name
+    ending in ``VectorUnit`` is the one read, so a shuttle config and a rocket config are handled by the
+    same code. Its positional integer arguments are then bound to the names in the mixin's own
+    declaration (``mixin_text``), which is why ``vLen`` comes back under that name instead of as
+    "argument 0".
+
+    Returns only what it could ground. An empty result means the caller must record UNKNOWN and stop --
+    every consumer of this needs a number that is *right*, and a defaulted vector length produces a
+    plausible, wrong tile edge.
+    """
+    body = _balanced_after(_strip_comments(config_text), f"class {config_class} extends Config(",
+                           "(", ")")
+    if body is None:
+        return {}
+    callee = None
+    for mixin in _split_top_level(body, "+"):
+        head = mixin.strip().removeprefix("new ").strip().split("(", 1)[0]
+        simple = head.strip().rsplit(".", 1)[-1]      # drop any package qualification
+        if simple.endswith(_VECTOR_UNIT_MIXIN_SUFFIX):
+            callee = simple
+            break
+    if callee is None:
+        return {}
+    args = scala_call_args(body, callee)
+    if not args:
+        return {}
+    names = scala_param_names(mixin_text, f"class {callee}") if mixin_text else []
+    out: dict[str, int] = {}
+    for i, arg in enumerate(args):
+        token = arg.removesuffix(".U").strip()
+        try:
+            value = int(token, 0)
+        except ValueError:
+            continue                      # a params object or an Option, not a scalar we can bind
+        if i < len(names):
+            out[names[i]] = value
+    return out
 
 
 def _strip_comments(text: str) -> str:

@@ -183,8 +183,10 @@ class TestAgainstTheRealDerivation:
 
     @pytest.fixture
     def derived(self):
-        import os
-        root = os.environ.get("MERLIN_CHIPYARD")
+        # paths.env, not os.environ: the checkout lives in the gitignored `.env`, and reading only the
+        # process environment made this skip even where the hardware was present.
+        from merlin.common.paths import env as _env
+        root = _env("MERLIN_CHIPYARD")
         if not root:
             pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
         s = Path(root) / "generators/saturn"

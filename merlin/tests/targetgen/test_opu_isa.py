@@ -10,10 +10,9 @@ declaration shapes a real file only sometimes contains.
 """
 from __future__ import annotations
 
-import os
-
 import pytest
 
+from merlin.common.paths import env as _env
 from merlin.targetgen.rtl import opu_isa as OI
 
 _CONSTS = """
@@ -245,7 +244,9 @@ class TestInsnRMacros:
         assert OI.insn_r_macros('#define m0 "x0"\n#define FOO(a) bar(a)\n') == {}
 
 
-@pytest.mark.skipif(not os.environ.get("MERLIN_CHIPYARD"),
+# Resolved via paths.env, not os.environ: the checkout is configured in the gitignored `.env`, so
+# reading only the process environment made these skip in every clone that had the hardware.
+@pytest.mark.skipif(not _env("MERLIN_CHIPYARD"),
                     reason="needs the hardware checkout ($MERLIN_CHIPYARD)")
 class TestAgainstTheRealHardware:
     """The same derivation against the actual RTL, so a drift upstream is caught here rather than in a
@@ -253,7 +254,7 @@ class TestAgainstTheRealHardware:
 
     def _real(self):
         from pathlib import Path
-        s = Path(os.environ["MERLIN_CHIPYARD"]) / "generators/saturn"
+        s = Path(_env("MERLIN_CHIPYARD")) / "generators/saturn"
         if not s.is_dir():
             pytest.skip(f"no saturn generator under {s}")
         d = OI.derive(consts=s / "src/main/scala/common/Consts.scala",
@@ -287,3 +288,94 @@ class TestAgainstTheRealHardware:
         # The unit occupies the reserved EVEN slots; an odd one would be an existing vector op.
         _, d = self._real()
         assert all(e.funct6 % 2 == 0 for e in d.encodings.values())
+
+
+#: A config and the mixin it instantiates. The mixin's parameter ORDER is the fact under test: the two
+#: integers are interchangeable at the call site, so the reader must learn which is which from the
+#: declaration rather than assume a convention.
+_CONFIGS = """
+package chipyard
+class OPUV256D128ShuttleConfig extends Config(
+  new saturn.shuttle.WithShuttleVectorUnit(256, 128, VectorParams.opuParams) ++
+  new chipyard.config.WithSystemBusWidth(128) ++
+  new chipyard.config.AbstractConfig)
+
+class OPUV512D256RocketConfig extends Config(
+  new saturn.rocket.WithRocketVectorUnit(512, 256, VectorParams.opuParams) ++
+  new chipyard.config.AbstractConfig)
+
+class NoVectorConfig extends Config(
+  new chipyard.config.AbstractConfig)
+"""
+
+_MIXINS = """
+class WithShuttleVectorUnit(
+  vLen: Int = 128,
+  dLen: Int = 64,
+  params: VectorParams = VectorParams(),
+  cores: Option[Seq[Int]] = None) extends Config((site, here, up) => { })
+
+class WithRocketVectorUnit(
+  vLen: Int = 128,
+  dLen: Int = 64,
+  params: VectorParams = VectorParams()) extends Config((site, here, up) => { })
+"""
+
+
+class TestVectorUnitParams:
+    """The vector length decides the tile edge, which decides which shapes a corpus even covers."""
+
+    def test_the_declared_parameter_names_bind_the_positional_arguments(self):
+        got = OI.vector_unit_params(_CONFIGS, "OPUV256D128ShuttleConfig", mixin_text=_MIXINS)
+        assert got == {"vLen": 256, "dLen": 128}
+
+    def test_the_order_comes_from_the_mixin_not_from_a_convention(self):
+        # Swap the declaration and the same call site must bind the other way round. If this passed
+        # unchanged, the reader would be assuming an order -- and (vLen, dLen) reversed is a tile edge
+        # wrong by exactly 2x, which silently certifies a corpus against the wrong geometry.
+        swapped = _MIXINS.replace("  vLen: Int = 128,\n  dLen: Int = 64,",
+                                  "  dLen: Int = 64,\n  vLen: Int = 128,", 1)
+        got = OI.vector_unit_params(_CONFIGS, "OPUV256D128ShuttleConfig", mixin_text=swapped)
+        assert got == {"dLen": 256, "vLen": 128}
+
+    def test_the_host_core_flavour_is_discovered_rather_than_named(self):
+        # Shuttle and Rocket name different mixins; one reader handles both.
+        got = OI.vector_unit_params(_CONFIGS, "OPUV512D256RocketConfig", mixin_text=_MIXINS)
+        assert got == {"vLen": 512, "dLen": 256}
+
+    def test_a_package_qualified_call_site_is_still_read(self):
+        assert OI.vector_unit_params(_CONFIGS, "OPUV256D128ShuttleConfig",
+                                     mixin_text=_MIXINS)["vLen"] == 256
+
+    def test_a_config_with_no_vector_unit_grounds_nothing(self):
+        assert OI.vector_unit_params(_CONFIGS, "NoVectorConfig", mixin_text=_MIXINS) == {}
+
+    def test_an_absent_config_grounds_nothing(self):
+        assert OI.vector_unit_params(_CONFIGS, "NoSuchConfig", mixin_text=_MIXINS) == {}
+
+    def test_without_the_mixin_declaration_nothing_is_bound(self):
+        # Fail closed: the integers are there, but nothing says which is the vector length.
+        assert OI.vector_unit_params(_CONFIGS, "OPUV256D128ShuttleConfig") == {}
+
+    def test_a_commented_out_mixin_is_not_read(self):
+        text = _CONFIGS.replace("  new saturn.shuttle.WithShuttleVectorUnit(256, 128",
+                                "  // new saturn.shuttle.WithShuttleVectorUnit(256, 128", 1)
+        assert OI.vector_unit_params(text, "OPUV256D128ShuttleConfig", mixin_text=_MIXINS) == {}
+
+    def test_a_nested_argument_does_not_split_the_argument_list(self):
+        text = _CONFIGS.replace("VectorParams.opuParams", "VectorParams(a = 1, b = 2)")
+        assert OI.vector_unit_params(text, "OPUV256D128ShuttleConfig",
+                                     mixin_text=_MIXINS) == {"vLen": 256, "dLen": 128}
+
+
+class TestScalaReaders:
+    def test_parameter_names_are_read_in_declaration_order(self):
+        assert OI.scala_param_names(_MIXINS, "class WithRocketVectorUnit") == [
+            "vLen", "dLen", "params"]
+
+    def test_call_arguments_keep_nested_calls_intact(self):
+        args = OI.scala_call_args("f(1, g(2, 3), 4)", "f")
+        assert args == ["1", "g(2, 3)", "4"]
+
+    def test_an_absent_callee_reads_as_absent_not_empty(self):
+        assert OI.scala_call_args("f(1)", "nope") is None
