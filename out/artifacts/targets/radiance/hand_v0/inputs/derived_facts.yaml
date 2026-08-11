@@ -1,0 +1,20 @@
+abstraction_features:
+- simt
+- cvfpu
+- tensor_core
+- microscaling
+- resident_packed_tensor
+- accumulator_commit
+- command_buffer
+- metrics
+generator: radiance-derive-facts-v1
+lanes_per_warp: 16
+provenance:
+  features:
+    accumulator_commit: compute_units[].accumulate declares an accumulator dtype
+    command_buffer: 'runtime.default_backend: simulator'
+    metrics: 'runtime_promises: metrics'
+    resident_packed_tensor: 'memory_model.resident: true'
+  lanes_per_warp: capabilities.simt.lanes_per_warp from the committed manifest
+  resident_storage_bytes: 1 << SMEM_LOG_SIZE from VX_config.h (kernel headers)
+resident_storage_bytes: 524288

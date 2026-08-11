@@ -1,0 +1,37 @@
+# Isolated target-package manifest (one generation round).
+target: radiance
+run_id: hand_v0
+family: simt_tensor
+dialect_format: xdsl_prototype
+status: prototype                # NOT RTL-certified: see the oracle note below
+
+authoring:
+  mode: hand_curated
+  generated_by_agent: false
+  generated_from_rtl_facts: false
+  author: human
+reproducibility:
+  certified_execution_reproducible: false
+  target_generation_reproducible: false
+
+# Facts this package is CONSTRAINED by, derived from Radiance's own sources by derive_facts.py.
+# They did not author the dialect; they bound it. Re-derive with:
+#   python out/artifacts/targets/radiance/hand_v0/derive_facts.py
+inputs:
+  derived_facts: inputs/derived_facts.yaml
+  source: >-
+    capabilities.simt.lanes_per_warp from the committed radiance capability manifest;
+    resident_storage_bytes from 1 << SMEM_LOG_SIZE in the Radiance kernel headers
+outputs:
+  dialect_module: dialect.py
+  lowering: lowering.yaml
+validation:
+  package_loads_isolated: true
+  descends_from_linalg: true       # merlin/tests/targetgen/test_triton_radiance.py
+  certification: none
+notes: >-
+  Scope is HONEST and narrow: this package establishes that a matmul descends from
+  linalg-on-tensors to a SIMT target dialect and emits a command buffer whose outputs match an
+  independent reference. It is NOT an RTL certification -- Radiance's own contract is
+  status: prototype with requires_human_review: true, and the cyclotron/Verilator oracles need the
+  SIMT emitter that is not present on this branch. Claims stop at the command-buffer tier.

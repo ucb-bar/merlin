@@ -51,7 +51,16 @@ if HAS_XDSL:
 
     @dataclass(frozen=True)
     class TargetSpec:
-        """The op/type classes a reference target contributes to the rebuild loop."""
+        """The op/type classes a reference target contributes to the rebuild loop.
+
+        ``op_properties`` lets a target dialect require facts that only its own contract can
+        supply. The two in-tree reference targets need none, but a SIMT target does: Radiance
+        carries ``compiler_obligations: [must_map_to_warps]`` and
+        ``capabilities.simt.lanes_per_warp``, and an obligation with nowhere to be recorded is not
+        an obligation. The rebuild loop merges whatever the package declared and never interprets
+        it, so core stays target-blind: it is the package that reads its contract and fails closed
+        when the fact is missing.
+        """
 
         name: str
         dialect_module: Any
@@ -61,6 +70,11 @@ if HAS_XDSL:
         evict_op: type
         resident_type: type
         accumulator_type: type
+        op_properties: dict[str, dict[str, Any]] | None = None
+
+        def extra(self, kind: str) -> dict[str, Any]:
+            """Contract-derived properties this target requires on the ``kind`` op ('matmul', …)."""
+            return dict((self.op_properties or {}).get(kind, {}))
 
     def _specs() -> dict[str, "TargetSpec"]:
         # Built-in REFERENCE targets only. Generated targets (e.g. gemmini) are NOT hardcoded
@@ -121,15 +135,18 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
     out_types = []
     for op in src_block.ops:
         if isinstance(op, i.ResidentPackOp):
+            props = {"layout": StringAttr(op.layout.data.value)}
+            props.update(spec.extra("pack"))
             new = spec.pack_op(
                 operands=[value_map[op.src]],
                 result_types=[spec.resident_type(op.src.type)],
-                properties={"layout": StringAttr(op.layout.data.value)})
+                properties=props)
             value_map[op.res] = new.res
         elif isinstance(op, i.MatmulOp):
             new = spec.matmul_op(
                 operands=[value_map[op.lhs], value_map[op.rhs]],
-                result_types=[spec.accumulator_type(op.acc.type.element)])
+                result_types=[spec.accumulator_type(op.acc.type.element)],
+                properties=spec.extra("matmul"))
             value_map[op.acc] = new.acc
         elif isinstance(op, i.CommitOp):
             props = {"epilogue": op.epilogue}
@@ -137,13 +154,15 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
                 val = getattr(op, key)
                 if val is not None:
                     props[key] = val
+            props.update(spec.extra("commit"))
             new = spec.commit_op(operands=[value_map[op.acc]],
                                  result_types=[op.out.type], properties=props)
             value_map[op.out] = new.out
             outs.append(new.out)
             out_types.append(op.out.type)
         elif isinstance(op, i.ResidentEvictOp):
-            new = spec.evict_op(operands=[value_map[op.handle]])
+            new = spec.evict_op(operands=[value_map[op.handle]],
+                                properties=spec.extra("evict"))
         elif op.name == "func.return":
             continue
         else:
