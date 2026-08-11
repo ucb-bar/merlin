@@ -714,11 +714,64 @@ digest numpy disagrees with, a missing case, a geometry the corpus was not selec
 line — and require it to say so. A harness that only reports correctly for a working kernel is worthless,
 because every interesting failure here is one that looks like a pass.
 
-**Status: the device run on `OPUV256D128ShuttleConfig` is in progress at the time of writing.** The image
-builds, passes the opcode audit, and is executing on the Verilator sim; the run is dominated by the
-in-image scalar reference (~10⁶ cycles at ~10³–10⁴ cycles/s), so it is tens of minutes rather than the
-seconds estimated when the corpus was sized against the device path alone. The L3 row stays `not_run`
-until that verdict is recorded — an in-flight run is not a pass.
+### 8c.2 The L3 result: 30/31, and what the 31st found
+
+**`OPUV256D128ShuttleConfig`, 31 cases, derived tile edge 32 confirmed against the hardware's own
+report: 30 certified, 1 failing.** `uses_unit: true`, no gaps. The L3 row stays **`not_run`**, because a
+corpus with a known-wrong case does not certify a kernel.
+
+Three defects were found and fixed on the way, each invisible to everything that ran before it:
+
+| defect | how it failed | caught by |
+| --- | --- | --- |
+| readout/init under `e32`/`m1` | **hung the core** — no trap, no retire | first device run |
+| accumulator init at the operand vtype | wrote a quarter-row; rest kept old contents | corpus, order-dependently |
+| compressed branches not branches (shared code) | mis-scoped every loop query, incl. RVV residency | added fixture |
+
+The vtype rule that came out of it: **each instruction runs under the vtype of the data IT moves, with
+LMUL sized so `vl` spans a tile row.** Both neighbouring mistakes are silent in different ways, which is
+why it is now a static check (`cca_matrix.vtype_violations`) with a test that compiles the exact
+pre-fix code and requires rejection.
+
+#### The 31st case, and how three wrong diagnoses were avoided in the end
+
+`asymmetric_n_gt_m` (M=8, N=32, K=24) returns wrong values in columns ≥ 16 — the second physical column
+subtile (`dLen/8 = 16`). It **passes in isolation and in every subset up to 16 cases, and fails in the
+full corpus at exactly 112 mismatches** across structurally different images.
+
+Four hypotheses were proposed and each refuted by a targeted experiment: a shape rule (`M < N` — refuted
+by a 4×4 M×N grid, all pass), the under-initialised broadcast (refuted: fixing it left 112 unchanged),
+operand alignment (refuted: a derived `align=16B` left 112 unchanged, and no consistent rule fits — the
+passing image was 16-but-not-32-aligned), and buffer size (refuted: appending a large case *after* the
+target changed the buffers and it still passed).
+
+What settled it was **reading the values instead of the pass/fail bit**. The image now dumps the first N
+disagreements as `(index, device, reference)`, and the deltas decompose exactly:
+
+```
+delta[0, col] = 6 * rhs[15, col]   for every examined column, including col 22 where rhs[15,22] = 0
+```
+
+i.e. **reduction step k = 15's contribution is missing from the second column subtile**, and nothing
+else is wrong. The values are plausible sums, not a constant — which is what rules out the uninitialised
+story that had been the leading explanation. `kernels/opu_forensics.py` does this decomposition, and its
+tests synthesise each failure mode rather than only checking the case it was written against.
+
+**Leading explanation, stated as such.** The emitted kernel's instruction sequence is identical for every
+`k` and every case, so a software cause would have to be non-uniform in a way the emitted code
+demonstrably is not; and the trigger needs ~24 preceding contractions, which is accumulated state rather
+than anything about this shape. That points at the sequencer dropping a subtile operation under specific
+pipeline state — an RTL or prebuilt-sim issue. It is **not confirmed**: the OPU config source in that
+checkout is a `.bak`, so the sim binary cannot be rebuilt there to test a fix, and confirming it needs
+waveforms.
+
+**The methodological lesson is the reusable part.** Three of the four refuted hypotheses were inferred
+from pass/fail bits across images; all three were wrong, and two were stated as causes before being
+isolated. The signal that should have been weighted from the start was the **stable 112** — a mismatch
+count that reproduces exactly across different binaries is deterministic, and it was twice explained as
+garbage. Getting the actual values cost one build.
+
+
 
 ## 9. Open, and deliberately unresolved here
 
