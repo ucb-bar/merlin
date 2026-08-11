@@ -100,9 +100,16 @@ Consequences the compiler has to respect:
   `dLen/8` for the `vLen = dLen = 128` configuration they were written against — it is **not** a
   property of the OPU. Merlin reads `tile.rows`/`tile.cols`/`mrf_depth` from
   `targetgen/rtl/spatial_introspect.py`'s fact bundle.
-- **No saturation.** `OuterProductUnit.scala` carries `// TODO: Need to check for overflow and
-  saturate to accumulator width`, so int32 accumulation **wraps**. Any numerical reference must wrap
-  too; a saturating reference would disagree with correct hardware.
+- **No saturation — and the hazard is unreachable, so it is retired.** `OuterProductUnit.scala` carries
+  `// TODO: Need to check for overflow and saturate to accumulator width`, so where int32 accumulation
+  overflows it **wraps**, and any numerical reference must wrap too. But the bound is arithmetic:
+  int8 × int8 into int32 cannot exceed the accumulator below `K = (2³¹−1)/127² ≈ 133,144`, and the
+  longest reduction in the workload census is three orders of magnitude below that (whisper's largest is
+  1152). So on the int8 datapath the missing saturation cannot be provoked by any contraction a model
+  produces. `kernels/opu_corpus.reference` still wraps — the reference must match the hardware wherever
+  the hardware is defined — but the corpus deliberately contains **no** wrap case, because writing one
+  would require a `K` no model emits, and a case that claims to exercise wrapping while staying inside
+  the range is worse than none. The wrap is unit-tested directly on synthetic wide values.
 - **Bias init is one instruction.** `vle32.v v0, (bias)` then `OPMVINBCAST` broadcasts a bias row
   across the tile. Zero-init is the same instruction after `vmv.v.i v0, 0`.
 - **Operand layout is forced, not chosen.** Saturn's own `benchmarks/opu-gemm/kernel.h` indexes
