@@ -17,6 +17,10 @@ code_refs:
   - merlin/python/merlin/kernels/cca.py
   - merlin/python/merlin/kernels/cca_contract.py
   - merlin/python/merlin/rvvgen/registry.py
+  - merlin/python/merlin/kernels/census.py
+  - merlin/python/merlin/kernels/shapes.py
+  - merlin/python/merlin/llvmlower/passes_quant_int.py
+  - merlin/python/merlin/llvmlower/op_profile.py
 ---
 
 # Incremental target evolution — RVV + Saturn OPU as the driving delta
@@ -107,6 +111,25 @@ Consequences the compiler has to respect:
 - **Readout is row-serial** and row 0 is the slowest (`scalar_row_latency = (yDim+1) -
   scalar_cluster_row_idx`), so extraction cost scales with rows, which is what makes an
   accumulator-resident epilogue worth representing.
+
+#### 1.1a Every field in that table is reachable structurally, from four files
+
+The table above is not transcribed from prose — the derivation chain was walked and each link confirmed,
+which is what Phase 2's `opu_isa.py` implements (and cross-checks against `bme.h`, agreement being the
+evidence). No regex is required at any step; every link is a tokenizer over Scala declarations.
+
+| field | source | how it is read |
+| --- | --- | --- |
+| opcode `0x57` | `common/Consts.scala`, `trait HasVectorConsts` | `def opcVector = "b1010111".U` |
+| funct3 | same trait | `def OPMVV = "b010".U(3.W)` → 2; `def OPMVX = "b110".U(3.W)` → 6 |
+| funct6 | `common/Consts.scala`, `object OPMFunct6 extends ChiselEnum` | a `ChiselEnum`'s value IS its ordinal, so funct6 = the count of `Value` slots declared before the name, counting `val a, b = Value` as two and a placeholder `val _ = Value` as one. Walking it yields `opmacc = 40`, `opmvin = 42`, `opmvinbcast = 44`, `opmvout = 46` — and shows the odd neighbours they sit between (`madd` 41, `nmsub` 43, `macc` 45, `nmsac` 47) |
+| which ops exist, and each one's VV/VX form | `common/Parameters.scala`, `def opuInsns` | `OPMACC.VV`, `OPMVIN.VX`, `OPMVINBCAST.VX`, `OPMVOUT.VX` — so `VOPACC` is OPMVV (funct3 2) and the other three are OPMVX (funct3 6), which is the split the table shows |
+| operand roles | `insns/Instructions.scala` | `object OPMACC extends OPMInstruction { val props = Seq(F6(OPMFunct6.opmacc), ReadsVS1.Y, ReadsVS2.Y, WritesVD.N) }`. `ReadsVS1`/`ReadsVS2`/`WritesVD` are the roles; note `OPMVOUT` is the only one with `WritesVD.Y`, which is why it is the only readout, and the three `.VX` forms gain their scalar operand from `OPMVXInstruction` not adding `ReadsVS1.Y` |
+
+The `ChiselEnum`-ordinal step is the one worth guarding: it makes funct6 a function of *declaration
+order in a file*, so an upstream edit that inserts a `Value` silently shifts every later opcode. That is
+precisely why the derivation must be re-run per RTL revision rather than cached as a constant, and why
+disagreement with `bme.h` must fail closed instead of picking a side.
 
 ### 1.2 There is no `+xopu`, and no LLVM fork
 
@@ -395,6 +418,47 @@ Three unrelated things are called "outer product" here, and one is called "OPU" 
 
 Any new code or prose must disambiguate, and reviewers should treat an unqualified "outer product" in
 a diff as a defect.
+
+## 8b. What the workload census established
+
+The census (`merlin/python/merlin/kernels/census.py`, one row per contraction joining extents ×
+element types × measured ticks × contract legality) was run on the three driving models. Four results
+change how later phases are built.
+
+**The IR stage decides the element types, and therefore every legality verdict.** An `int8` bundle's
+`model.mlir` is f32 — the W8A8 rewrite is a pipeline pass, so the capture carries quantized *weights*
+and an f32 graph. Measured on deepjscc: all 20 contractions read `(f32, f32, f32)` from the capture and
+`(i8, i8, i32)` from the prepared module. A census of the capture therefore reports an int8-only unit as
+legal for **nothing at all** — the wrong answer, produced by observing the wrong stage. Every legality
+claim in this programme must name the stage it was made at.
+
+**The int8 rewrite used to destroy the join key on exactly the ops that matter.** The pass replaces one
+captured contraction with an integer contraction plus a requant epilogue, and carried `prov.*` to the
+epilogue only. Since a profile's join key falls back to the MLIR op name, all 20 deepjscc contractions
+collapsed into one `linalg.generic` bucket while the 383 untouched elementwise regions kept their keys —
+so no per-layer cost attribution was possible for the ops that dominate the arithmetic. Both pieces now
+carry the source provenance plus a `prov.role` that separates a contraction's own cost from its
+epilogue's. Without that, restoring the key would have traded one imprecision for another.
+
+**Narrow-M/N is a correctness hazard, not a throughput lever.** Contractions with a unit parallel extent
+are numerous and arithmetically negligible: whisper has 49 of 91 rows with `min(M, N) == 1`, together
+0.77% of contraction work; deepjscc has 8 of 20, 0.03%. So `M = 1` earns its named regression test
+because it is where the prior integration read 15 bytes past a panel — not because routing it to the OPU
+would win anything. Phase 4's cost model should expect to *decline* these, and the frozen corpus must
+still cover them exactly.
+
+**`batch_matmul` is a first-class routing question, not an edge case.** It is 24 of 91 rows in whisper
+and 16 of 106 in spectformer. A unit whose contract declares only `matmul` gaps every one of them, which
+is the correct fail-closed reading of that contract and also a large hole in coverage — the contract has
+to say which it computes. Spectformer additionally presents 48 contractions from `fft_rfft2`/`fft_irfft2`
+(a DFT expressed as a contraction), a shape family none of the OPU expert kernels resemble.
+
+**Still not measured: the ranking itself.** The plan requires ranking by measured cycle contribution.
+The join is implemented and tested, but no per-op board profile exists for these three models, so the
+committed census ranks by arithmetic and says so in its own notes (`ranked_by: work`, with a note that
+this is *not* a cost measurement). The oracle that closes it is a K1 run of
+`build_tools/scripts/k1_op_profile.py` against the int8 champion, perturbation-gated against an
+un-instrumented control.
 
 ## 9. Open, and deliberately unresolved here
 
