@@ -407,24 +407,25 @@ def emit_kernel(cb: dict[str, Any], *, num_warps: int | None = None) -> EmittedK
         raise EmitError("command buffer commits no output; there would be nothing to grade")
 
     model = muon._model_for(TARGET)
-    # NO FENCE IS EMITTED, and that is a known hole rather than a decision.
-    #
-    # This warp's stores ought to be ordered before it parks — the target's own runtime calls
-    # `mu_fence()` at every synchronisation point, which is plain `asm volatile("fence")`. Emitting one
-    # here fails the build: `isa_transcode` rejects MISC_MEM (`opcode 0x0f is not handled by the base-ISA
-    # transcoder`). It fails closed rather than mis-encoding, which is right, but it means the fork-free
-    # path cannot currently build any kernel that fences — i.e. any kernel this hardware's own authors
-    # would call correctly synchronised. Extending the transcoder is a core change and is tracked in
-    # docs/design/target_kernel_anatomy.md; until then this emitter cannot guarantee its last stores are
-    # visible when the model stops, which is why the end-to-end grade is an expected failure and not a
-    # skipped test pretending the path is merely unavailable.
+    # Order this warp's stores before it parks. The target's own runtime fences at every synchronisation
+    # point (`mu_fence()` is plain `asm volatile("fence")`) for the reason that matters here: a store
+    # still in flight when the model stops is not in the image the readback recovers, so without this the
+    # emitter cannot distinguish "the result was computed" from "the result happened to be visible".
+    # `fence` is base-ISA MISC_MEM, and the transcoder now re-maps it for any target whose derived
+    # decoder declares that opcode — a target whose decoder does not is refused rather than mis-encoded.
+    body.append('  __asm__ volatile("fence" ::: "memory");')
+
     globals_.append(f"volatile int32_t {SENTINEL}[{ARC_READBACK_LINE_BYTES // 4}];")
     # The scaffold already opens with <stdint.h>, so the globals need no include of their own. The
     # manager tail runs on warp 0 after it has waited for every other warp to park, which is the only
     # point in the program where "all the work is done" is true.
-    source = muon.render_simt_runtime(model, num_warps=warps, worker_body="\n".join(body),
-                                      manager_tail=f"{SENTINEL}[0] = 1;",
-                                      globals="\n".join(globals_))
+    source = muon.render_simt_runtime(
+        model, num_warps=warps, worker_body="\n".join(body),
+        # The sentinel is the last write the program makes, so it needs the same ordering guarantee as
+        # the results: a sentinel that lands while an output store is still in flight would certify a
+        # buffer that is not yet there.
+        manager_tail=f'{SENTINEL}[0] = 1; __asm__ volatile("fence" ::: "memory");',
+        globals="\n".join(globals_))
     return EmittedKernel(source=source, results=tuple(results), num_warps=warps,
                          warps_declared=declared)
 
@@ -467,6 +468,40 @@ def _symbol_address(elf: Path, symbol: str) -> int:
             return int(fields[0], 16)
     raise EmitError(f"symbol {symbol!r} not found in {elf} — the output buffer was optimized away "
                     "or renamed, so there is nothing to read back")
+
+
+#: The pin declaring the oracle model this backend grades against. Named here because this package is
+#: what chose that oracle; the pin registry holds the revision.
+ORACLE_PIN = "muon_arc_model"
+
+
+def oracle_provenance() -> dict[str, Any]:
+    """Which oracle build this backend is about to grade against, verified and digested.
+
+    A result attributed to the wrong device is worse than no result, and the arc model is a *built*
+    artifact whose path says nothing about which build it is — so the model binary is digested, not just
+    located. ``$MERLIN_MLC_DIR`` is normally unset and the checkout is found by an implicit default, so the
+    path is resolved the way the code resolves it and handed to ``verify`` explicitly; verifying the env
+    var instead would report drift for a checkout that is present and correct.
+
+    Distinguishes MATERIAL drift (wrong revision, a required path absent) from a merely dirty tree. Both
+    are recorded; only the former means the run cannot be attributed to the hardware it claims.
+    """
+    from merlin.common import provenance as PROV
+    from merlin.targetgen.rtl import mlc_bridge
+
+    checkout = mlc_bridge.mlc_dir()
+    verification = PROV.verify(ORACLE_PIN, checkout=checkout)
+    model_so = (Path(checkout) / "runs" / "circt-arc" / mlc_bridge._arc_target(TARGET)
+                / "native_run" / "libmuon_model.so") if checkout else None
+    record = PROV.record(
+        pins={ORACLE_PIN: verification},
+        artifacts={"arc_model": model_so} if model_so and model_so.is_file() else None)
+    material = [*verification.missing_paths, *verification.forbidden_present,
+                *(d for d in verification.drift if "uncommitted" not in d)]
+    record["attributable"] = not material
+    record["gaps"] = material
+    return record
 
 
 def _read_back(elf: Path, symbol: str, n_bytes: int, max_cycles: int, timeout: int) -> bytes:
@@ -528,6 +563,9 @@ def run_command_buffer(cb: dict[str, Any], **kw: Any) -> dict[str, Any]:
     cycles = int(kw.get("max_cycles") or ARC_MAX_CYCLES)
     timeout = int(kw.get("timeout") or 900)
 
+    # Captured BEFORE the run, so what is recorded is the oracle that actually executed it.
+    provenance = oracle_provenance()
+
     # Completion FIRST: a partially written output buffer must never be compared to the reference.
     done = struct.unpack("<i", _read_back(elf, SENTINEL, 4, cycles, timeout))[0]
     if done != 1:
@@ -553,6 +591,11 @@ def run_command_buffer(cb: dict[str, Any], **kw: Any) -> dict[str, Any]:
         "expected": expected,
         "correct": outputs_match(outputs, expected),
         "oracle": {"kind": "rtl_arc_muon_cosim", "derived_from_rtl": True},
+        # Which hardware build this verdict belongs to. `correct` says the numbers matched; `provenance`
+        # says what they matched ON. A run whose provenance is not attributable must not be read as a
+        # certification, however green `correct` is.
+        "provenance": provenance,
+        "attributable": provenance.get("attributable"),
         "elf": str(elf),
         # Both numbers, always: a run that used half the declared machine must not read as a run that
         # used all of it. See ORACLE_SPAWN_WARPS for why they differ.

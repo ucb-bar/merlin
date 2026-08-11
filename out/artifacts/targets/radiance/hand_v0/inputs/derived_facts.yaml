@@ -8,6 +8,47 @@ abstraction_features:
 - command_buffer
 - metrics
 generator: radiance-derive-facts-v2
+hardware_provenance:
+  all_pins_ok: false
+  hardware_pins:
+    radiance_kernels:
+      drift:
+      - '45 uncommitted change(s): the declared revision does not describe what would
+        be read'
+      forbidden_present: []
+      missing_paths: []
+      observed:
+        branch: main
+        commit: 56aad6e1620c452bd131c948f72352dab0754d6e
+        dirty_files: 45
+        path: /scratch2/agustin/radiance-kernels
+        present: true
+        remote: https://github.com/ucb-bar/radiance-kernels.git
+      ok: false
+      pin: radiance_kernels
+    radiance_muon_rtl:
+      drift:
+      - '18 uncommitted change(s): the declared revision does not describe what would
+        be read'
+      forbidden_present: []
+      missing_paths: []
+      observed:
+        branch: graphics
+        commit: 6a9b4cd95081100dc932e422cc52777bc9a98b2d
+        dirty_files: 18
+        path: /scratch2/agustin/chipyard/generators/radiance
+        present: true
+        remote: https://github.com/ucb-bar/chipyard.git
+      ok: false
+      pin: radiance_muon_rtl
+  merlin:
+    commit: 087ff1f74453be54800849550fd2f90d066127ff
+    dirty_files: 33
+  source_digest: 2d13f75b8e0971a35bfdec002bfa60965da71648745354f8be36abcac045aefd
+  sources:
+  - /scratch2/agustin/chipyard/generators/radiance/chipyard/RadianceConfigs.scala
+  - /scratch2/agustin/radiance-kernels/lib/include/VX_config.h
+  - /scratch2/agustin/radiance-kernels/lib/include/mu_intrinsics.h
 lanes_per_warp: 16
 provenance:
   features:

@@ -71,3 +71,86 @@ pins:
       Recorded so that nothing claims an OPU result against it. Any OPU work targeting this tapeout
       requires the unit to be brought onto this base first, at which point the hazard above must be
       re-checked rather than assumed to carry over.
+
+  radiance_muon_rtl:
+    description: >-
+      The chipyard revision the SIMT (Muon) RTL configuration is elaborated from. Both the scratchpad
+      geometry the compiler tiles against and the warp/lane counts the emitter maps onto are read out of
+      this tree's Scala, so a different revision can silently change either.
+    repo_canonical: https://github.com/ucb-bar/chipyard.git
+    commit: "6a9b4cd95081100dc932e422cc52777bc9a98b2d"
+    branch: graphics
+    root_env: MERLIN_CHIPYARD
+    path: generators/radiance
+    requires_paths:
+      - chipyard/RadianceConfigs.scala
+      - src/main/scala/radiance/subsystem/Configs.scala
+      - src/main/scala/radiance/virgo/VirgoSharedMemComponents.scala
+    used_by:
+      - SIMT scratchpad capacity + SIMT geometry derivation (targets/radiance/hand_v0/derive_facts.py)
+    notes: >-
+      This checkout carries uncommitted changes, so its commit alone does not describe what a derivation
+      reads — which is why every consumer also records a source_digest over the exact files it read. At the
+      revision above those files (RadianceConfigs.scala, subsystem/Configs.scala) are clean and the edits
+      are elsewhere in the tree, but that is a fact to record per run, not to assume. `generators/radiance`
+      is a plain directory in this worktree rather than an initialised submodule, so it carries no
+      independent revision of its own.
+
+  radiance_kernels:
+    description: >-
+      The SIMT target's own kernel corpus and runtime headers. It is the second, independent witness to
+      the scratchpad capacity (MU_SMEM_SIZE_BYTES) and the source of the boot/spawn conventions the
+      emitted scaffold has to agree with.
+    repo_canonical: https://github.com/ucb-bar/radiance-kernels.git
+    commit: "56aad6e1620c452bd131c948f72352dab0754d6e"
+    branch: main
+    root_env: MERLIN_RADIANCE_KERNELS
+    path: ""
+    requires_paths:
+      - lib/include/VX_config.h
+      - lib/include/mu_intrinsics.h
+      - lib/src/mu_start.S
+      - lib/src/mu_schedule.cpp
+    used_by:
+      - SIMT aperture-vs-capacity cross-check (targets/radiance/hand_v0/derive_facts.py)
+    notes: >-
+      TWO CHECKOUTS OF THIS REPO EXIST ON THIS HOST AND ONLY ONE IS READ. $MERLIN_RADIANCE_KERNELS resolves
+      to the revision above (branch `main`); a second clone sits elsewhere on a different branch. The pin
+      was first written from the one that is NOT read, and verification caught it — which is the whole
+      reason this file exists. The facts happened to agree in both, but that was luck: always pin the tree
+      the code resolves, not the one that is convenient to read.
+      VX_config.h's SMEM_LOG_SIZE is the shared-memory ADDRESS WINDOW, not the capacity — the same header
+      derives IO_BASE_ADDR from it. The capacity comes from the RTL config in `radiance_muon_rtl`; this
+      checkout's MU_SMEM_SIZE_BYTES is used only to corroborate it, and a disagreement is refused rather
+      than resolved by preference.
+
+  muon_arc_model:
+    description: >-
+      The ModeLIR (mlc) checkout supplying the RTL-derived arc cosim model used as the SIMT oracle. Every
+      bit-exactness claim about SIMT execution is a claim about the model built here, so the model's own
+      identity is part of the result.
+    repo_canonical: git@github.com:copparihollmann/ModeLIR.git
+    repo_observed_note: >-
+      No upstream is known for this repository; the personal remote above is its only recorded home.
+      Written down rather than left implicit, so nobody reproducing this looks for one that does not exist.
+    commit: "0c64b766e731f64b2cf3d1e69bdeccd83947b68c"
+    branch: feature/discover-datapaths
+    root_env: MERLIN_MLC_DIR
+    path: ""
+    requires_paths:
+      - mlc/backends/cosim_muon.py
+      - runs/circt-arc/muon/native_run/libmuon_model.so
+      - runs/circt-arc/muon/outputs/muon_core_state.json
+    used_by:
+      - SIMT command-buffer execution grade (targets/radiance/hand_v0/backend.py)
+    notes: >-
+      The two `runs/` entries are BUILT products, not sources, and they are what makes the oracle usable at
+      all — hence their presence is required rather than merely expected. This checkout carries a
+      substantial number of uncommitted changes, so a consumer must record a digest of the model binary it
+      actually loaded; the commit identifies the recipe, not the artifact.
+      LOCATING IT: $MERLIN_MLC_DIR is normally UNSET, and `mlc_bridge.mlc_dir()` then falls back to a
+      sibling-checkout default. A pin cannot verify a path found by an implicit default, so a consumer must
+      resolve the path the way the code does and hand it over explicitly —
+      `provenance.verify("muon_arc_model", checkout=mlc_bridge.mlc_dir())`. Verifying the declared env var
+      instead would report drift for a checkout that is present and correct, which is worse than useless:
+      it trains people to ignore the check.

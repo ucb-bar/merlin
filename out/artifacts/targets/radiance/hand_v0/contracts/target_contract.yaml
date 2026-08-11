@@ -82,6 +82,12 @@ derived_from:
       resident_packed_tensor: 'memory_model.resident: true'
     plugin.backend: this package's own command-buffer backend
   generator: radiance-derive-facts-v2
+  hardware:
+    all_pins_ok: false
+    pins:
+    - radiance_kernels
+    - radiance_muon_rtl
+    source_digest: 2d13f75b8e0971a35bfdec002bfa60965da71648745354f8be36abcac045aefd
   source: artifacts/targets/radiance_oot/contracts/target_contract.yaml
 family: simt_tensor
 features:

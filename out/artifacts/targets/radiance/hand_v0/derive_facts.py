@@ -248,6 +248,7 @@ def main() -> int:
     import yaml
 
     _bootstrap_import_path()
+    from merlin.common import provenance as PROV
     from merlin.runtime.backends import muon
     from merlin.targetgen import capability_manifests as cm
     from merlin.targetgen.rtl.muon_introspect import VCS_CONFIG
@@ -291,8 +292,31 @@ def main() -> int:
     base = yaml.safe_load(base_path.read_text(encoding="utf-8"))
     features, feature_provenance = abstraction_features(base)
 
+    # Which hardware revisions these facts belong to. `verify` rather than `require`: the checkouts are
+    # shared with other people and other sessions, so drift (typically an uncommitted edit elsewhere in the
+    # tree) is RECORDED rather than allowed to block, and never "fixed" by moving someone else's HEAD. The
+    # digest is what actually identifies the derivation — it covers the exact bytes of the files read, so a
+    # dirty tree stops being indistinguishable from a clean one.
+    read_sources = [scala_path, header_path]
+    if intrinsics_path.is_file():
+        read_sources.append(intrinsics_path)
+    pins = {
+        "radiance_muon_rtl": PROV.verify("radiance_muon_rtl"),
+        "radiance_kernels": PROV.verify("radiance_kernels"),
+    }
+    hardware_provenance = PROV.record(pins=pins, sources=read_sources)
+    for name, ver in pins.items():
+        if not ver.ok:
+            print(f"note: pin {name} drifts from its declared revision; recorded, not silently accepted:",
+                  file=sys.stderr)
+            for item in (*ver.drift, *ver.missing_paths, *ver.forbidden_present):
+                print(f"  - {item}", file=sys.stderr)
+
     facts = {
         "generator": "radiance-derive-facts-v2",
+        # Distinct from `provenance` below: that says WHY each fact is what it is, this says WHICH
+        # hardware revision and which exact source bytes it came from.
+        "hardware_provenance": hardware_provenance,
         "resident_storage_bytes": int(smem["capacity_bytes"]),
         "smem_aperture_bytes": int(aperture),
         "smem_banks": int(smem["banks"]),
@@ -334,6 +358,11 @@ def main() -> int:
         "source": str(base_path.relative_to(HERE.parents[2].parent))
         if str(base_path).startswith(str(HERE.parents[2].parent)) else base_path.name,
         "generator": facts["generator"],
+        # Compact pointer to the full block in inputs/derived_facts.yaml, so a reader of the contract can
+        # tell at a glance whether these numbers came from verified hardware.
+        "hardware": {"source_digest": hardware_provenance.get("source_digest"),
+                     "all_pins_ok": hardware_provenance.get("all_pins_ok"),
+                     "pins": sorted(pins)},
         "added": {
             "capabilities.resident_storage_bytes": facts["provenance"]["resident_storage_bytes"],
             "capabilities.smem_aperture_bytes": facts["provenance"]["smem_aperture_bytes"],
