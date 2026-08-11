@@ -1,4 +1,4 @@
-builtin.module attributes {prov.weights_file = "/tmp/capsule_m2m_s8f3q6zv/weights.safetensors", prov.level = "linalg-on-tensors"} {
+builtin.module attributes {prov.level = "linalg-on-tensors"} {
   func.func @forward(%0: tensor<16x16xbf16>) -> tensor<16x16xbf16> {
     %1 = tensor.empty() : tensor<16x16xbf16>
     %2 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%0 : tensor<16x16xbf16>) outs(%1 : tensor<16x16xbf16>) attrs =  {prov.region_id = "gelu_0", prov._pattern_hint = "gelu", prov.op = "gelu", prov.family = "elementwise", prov.aten = "aten.gelu.default", prov.orig_dtype = "bfloat16"} {

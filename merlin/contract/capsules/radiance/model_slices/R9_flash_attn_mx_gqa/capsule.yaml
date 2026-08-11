@@ -1,0 +1,50 @@
+name: R9_flash_attn_mx_gqa
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: "MX flash attention, GQA shape (wider KV: Skv=64, Dv=32) \u2014\
+  \ grouped-query attention tile"
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: Q
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: mxfp8
+- name: K
+  role: input
+  shape:
+  - 64
+  - 32
+  dtype: mxfp8
+- name: V
+  role: input
+  shape:
+  - 64
+  - 32
+  dtype: mxfp8
+operation:
+  op: attention_mx
+  attributes:
+    q: Q
+    k: K
+    v: V
+    out: Y0
+    scale: 0.17677669529663687
+    block_scale: e8m0
+    output_dtype: bf16
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional

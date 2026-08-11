@@ -1,4 +1,4 @@
-builtin.module attributes {prov.weights_file = "/tmp/capsule_m2m_somvrbvk/weights.safetensors", prov.level = "linalg-on-tensors"} {
+builtin.module attributes {prov.level = "linalg-on-tensors"} {
   func.func @forward(%0: tensor<16x32xbf16>, %1: tensor<16x32xbf16>) -> tensor<16x16xbf16> {
     %2 = tensor.empty() : tensor<32x16xbf16>
     %3 = linalg.transpose ins(%1:tensor<16x32xbf16>) outs(%2:tensor<32x16xbf16>) permutation = [1, 0]

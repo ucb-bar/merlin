@@ -1,4 +1,4 @@
-builtin.module attributes {prov.weights_file = "/tmp/capsule_m2m_vhclx6cf/weights.safetensors", prov.level = "linalg-on-tensors"} {
+builtin.module attributes {prov.level = "linalg-on-tensors"} {
   func.func @forward(%0: tensor<16x16xf32>, %1: tensor<16xf32>, %2: tensor<16xf32>) -> tensor<16x16xf32> {
     %3 = arith.constant {prov.region_id = "layer_norm_0", prov.family = "normalization", prov._pattern_hint = "layer_norm", prov.op = "layer_norm", prov.aten = "aten.native_layer_norm.default", prov.orig_dtype = "float32"} 0.000000e+00 : f32
     %4 = tensor.splat %3 {prov.region_id = "layer_norm_0", prov.family = "normalization", prov._pattern_hint = "layer_norm", prov.op = "layer_norm", prov.aten = "aten.native_layer_norm.default", prov.orig_dtype = "float32"} : tensor<16xf32>

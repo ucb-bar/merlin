@@ -1,0 +1,43 @@
+name: RF1_rope_qkv_bf16
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: 'fused QKV+RoPE: Y = rope(X@Wqkv) bf16 (radiance-kernels rope_qkv_fused)'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: bf16
+- name: Wqkv
+  role: weight
+  shape:
+  - 16
+  - 32
+  dtype: bf16
+operation:
+  op: rope_qkv
+  attributes:
+    src: X
+    weight: Wqkv
+    out: Y0
+    rope_theta: 10000.0
+    semantic: rope_qkv
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes:
+    rope: true
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional

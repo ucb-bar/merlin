@@ -1,0 +1,46 @@
+name: R11_gemv_batched_mx
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: "batched MX matmul (mxfp8, E8M0), 2x [16x32]@[32x16] \u2014 decode-time\
+  \ gemv_batched"
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 2
+  - 32
+  - 16
+  dtype: mxfp8
+- name: A0
+  role: input
+  shape:
+  - 2
+  - 16
+  - 32
+  dtype: mxfp8
+operation:
+  op: gemv_batched
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    batch: 2
+    block_scale: e8m0
+    semantic: gemv_batched
+    output_dtype: bf16
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional

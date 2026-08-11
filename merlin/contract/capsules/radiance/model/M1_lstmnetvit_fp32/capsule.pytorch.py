@@ -18,7 +18,7 @@ Weights are random init: vitfly publishes its trained models as a password-prote
 exactness, not flight accuracy. Set VITFLY_CKPT once that tarball is unpacked.
 
 Env:
-    VITFLY_DIR   upstream checkout (default: /scratch/agustin/projects/vitfly)
+    VITFLY_DIR   upstream checkout (default: <path>)
     VITFLY_CKPT  optional trained LSTMNetVIT state_dict
 
 Upstream: https://github.com/anish-bhattacharya/vitfly  (models/model.py)
@@ -33,7 +33,7 @@ from pathlib import Path
 import torch
 from torch import nn
 
-_UPSTREAM = Path(os.environ.get("VITFLY_DIR", "/scratch/agustin/projects/vitfly")) / "models"
+_UPSTREAM = Path(os.environ.get("VITFLY_DIR", "<path>")) / "models"
 
 
 def _fold_spectral_norm(net: nn.Module) -> int:

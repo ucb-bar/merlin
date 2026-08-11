@@ -40,6 +40,76 @@ PROFILES = HERE / "profiles"
 
 
 # ------------------------------------------------------------------------------------------------
+# deterministic local-path scrub (tracked-file hygiene — no /tmp, /scratch, /home paths ever ship).
+# The m2m capture externalizes weights to a NON-deterministic temp dir and stamps its ABSOLUTE path into
+# the captured linalg's ``prov.weights_file`` module attribute; the whole-model writer relativizes it but
+# the fused/mapped op writer (in capsule_source, outside this file's edit boundary) does not — so we scrub
+# the written capsule dir HERE, at the one place this generator owns. Op capsules ship NO weights file
+# (their operands come from golden.yaml provenance), so the attribute is non-load-bearing and is STRIPPED;
+# an already-relative value (the whole-model ``capsule.weights.safetensors``) is left untouched. Captured
+# whole-model loader SOURCES (capsule.pytorch.py) may also carry upstream local-path env-defaults / docstring
+# examples — those local-path tokens are redacted. Deterministic (temp-dir name never survives) + idempotent;
+# structural string ops only (no regex).
+# ------------------------------------------------------------------------------------------------
+_LOCAL_ROOTS = ("/tmp", "/scratch", "/home")
+_PATH_TERMINATORS = set("\"'") | set(" \t\r\n),]}>")
+
+
+def _strip_weights_attr(text: str) -> str:
+    """Strip an ABSOLUTE ``prov.weights_file = "<abs>"`` module attribute (with its separating comma); leave
+    an already-relative value alone. There is exactly one per captured-linalg module."""
+    key = 'prov.weights_file = "'
+    i = text.find(key)
+    if i == -1:
+        return text
+    j = text.find('"', i + len(key))
+    if j == -1:
+        return text
+    if "/" not in text[i + len(key):j]:          # already relative (e.g. capsule.weights.safetensors)
+        return text
+    start, end = i, j + 1
+    if text[end:end + 2] == ", ":                # attribute is first: drop trailing ", "
+        end += 2
+    elif text[start - 2:start] == ", ":          # attribute is later: drop leading ", "
+        start -= 2
+    return text[:start] + text[end:]
+
+
+def _redact_local_paths(text: str) -> str:
+    """Replace any absolute local-filesystem path token (``/tmp*`` / ``/scratch*`` / ``/home*``, consumed up
+    to the next quote / whitespace / bracket) with the stable placeholder ``<path>``. Idempotent (the
+    placeholder contains no local root)."""
+    for root in _LOCAL_ROOTS:
+        while True:
+            i = text.find(root)
+            if i == -1:
+                break
+            j = i + len(root)
+            while j < len(text) and text[j] not in _PATH_TERMINATORS:
+                j += 1
+            text = text[:i] + "<path>" + text[j:]
+    return text
+
+
+def _scrub_capsule_dir(d) -> None:
+    """Scrub every tracked-shippable text file in a written capsule dir of non-deterministic / local paths:
+    strip the absolute ``prov.weights_file`` from ``*.mlir`` and redact local-path tokens from ``*.mlir`` +
+    ``*.py``. Only rewrites a file when its content actually changes (keeps regenerations byte-stable)."""
+    if d is None:
+        return
+    for p in sorted(Path(d).iterdir()):
+        if p.suffix not in (".mlir", ".py") or not p.is_file():
+            continue
+        text = p.read_text(encoding="utf-8")
+        scrubbed = text
+        if p.suffix == ".mlir":
+            scrubbed = _strip_weights_attr(scrubbed)
+        scrubbed = _redact_local_paths(scrubbed)
+        if scrubbed != text:
+            p.write_text(scrubbed, encoding="utf-8")
+
+
+# ------------------------------------------------------------------------------------------------
 # float golden engine (generation-time only; needs the external specir refmodel)
 # ------------------------------------------------------------------------------------------------
 def _specir():
@@ -301,6 +371,222 @@ def _mx_golden(entry, binding):
     return {out: y}, prov
 
 
+# ------------------------------------------------------------------------------------------------
+# MX FUSED FLASH-ATTENTION golden — COMPOSED from the SAME validated mx_ref engine used above:
+#   S = mx_matmul(Q, K^T)   (block-scaled E8M0, bf16)  -> scaled by 1/sqrt(head) [+ optional soft-cap]
+#   P = bf16 row-softmax(S)                             (numpy, bf16-rounded)
+#   O = mx_matmul(P_requant, V)  (block-scaled E8M0, bf16)
+# The intermediate P is requantized to mxfp8 exactly as the MX PE does before the second GEMM: a per-row
+# E8M0 scale brings the row to O(1) mantissas (the mx_ref accumulator carries only 4-bit column exponents,
+# so the DECODED codes must stay small and the E8M0 scale carry the magnitude — same convention as the
+# synthesized Q/K/V operands), then each element rounds to the nearest fp8 code. NOTHING is fabricated: both
+# matmuls are the mlc mx_ref hardware datapath; only the softmax + the standard MX requant of P are numpy.
+# mxfp8 only (fp8 codes are one byte each); the fp6/fp4 nibble-LUT packing across three matmul stages is a
+# separate, larger extension (see the report), so an fp6/fp4 attention entry fails closed here.
+# ------------------------------------------------------------------------------------------------
+def _mx_fp8_decode_table(mx) -> list:
+    """code (0..255) -> decoded fp8_e4m3 value, for the nearest-code requant search."""
+    return [float(mx.fp8_e4m3_decode(c)) for c in range(256)]
+
+
+def _mx_requant_rows(P, mx, decode_tbl, *, group: int, target: float = 2.0):
+    """Requantize a float matrix ``P[M,K]`` to (fp8 codes ``[M,K]``, E8M0 scale codes ``[K/group, M]``)
+    exactly as the MX PE does before a GEMM: ONE shared power-of-two E8M0 scale per (K-group, row) — the
+    same (group, lane) granularity ``mx_matmul`` indexes SA with — chosen so that block's max maps to
+    ~``target`` (keeping DECODED mantissas O(1) for the mx_ref accumulator), then nearest-fp8 rounding of
+    each scaled element. The block scale is applied back by mx_matmul via the E8M0 code (2**(code-127)).
+    The nearest search stays in the |v|<=4 fp8 window the operand synthesizer uses, so no code overflows
+    the 4-bit column accumulator."""
+    import math
+    import numpy as np
+    M, K = P.shape
+    G = K // group
+    safe = [(c, v) for c, v in enumerate(decode_tbl) if v == v and abs(v) <= 4.0]
+    codes = np.zeros((M, K), dtype=np.uint8)
+    scodes = np.zeros((G, M), dtype=np.uint8)
+    for m in range(M):
+        for g in range(G):
+            blk = P[m, g * group:(g + 1) * group]
+            mabs = float(np.max(np.abs(blk)))
+            e = 0 if mabs == 0.0 else int(round(math.log2(mabs / target)))
+            scodes[g, m] = max(0, min(254, e + 127))
+            s = 2.0 ** (int(scodes[g, m]) - 127)
+            for j in range(group):
+                t = float(blk[j]) / s
+                best_c, best_d = safe[0][0], float("inf")
+                for c, v in safe:
+                    d = abs(v - t)
+                    if d < best_d:
+                        best_d, best_c = d, c
+                codes[m, g * group + j] = best_c
+    return codes, scodes
+
+
+def _mx_attention_golden(entry, binding):
+    """Fused MX flash-attention golden (bf16 output) + provenance, composed from mx_ref (QK & PV) + a numpy
+    bf16 row-softmax. mxfp8 only. Shapes (tiles*dim or explicit): M queries, H head dim (K of QK; %32),
+    Skv keys (%32), Dv value dim (%16). Optional Gemma-2 logit soft-cap via ``softcap``."""
+    import math
+
+    import numpy as np
+
+    from merlin.runtime.fp8_formats import canonical_float, e8m0_decode
+    from merlin.targetgen import corpus_operands as CO
+    mx = _mx_ref()
+    tok = canonical_float(binding.operand_dtype)
+    if tok != "fp8_e4m3":
+        raise ValueError(f"MX attention supports mxfp8 only (got operand dtype {binding.operand_dtype!r} "
+                         f"-> {tok!r}); fp6/fp4 nibble-LUT attention is a separate extension")
+    dim = binding.tile_dim
+    M = entry.get("M", entry.get("M_tiles", 1) * dim)
+    H = entry.get("H", entry.get("head_dim", 2 * dim))         # QK contraction (head dim), must be %32
+    Skv = entry.get("Skv", entry.get("keys", 2 * dim))         # key positions, must be %32
+    Dv = entry.get("Dv", dim)                                  # value dim, must be %16
+    if H % mx.GROUP or Skv % mx.GROUP or M % mx.DIM or Dv % mx.DIM:
+        raise ValueError(f"MX attention dims must satisfy H%{mx.GROUP}=Skv%{mx.GROUP}=0 and "
+                         f"M%{mx.DIM}=Dv%{mx.DIM}=0 (got M={M} H={H} Skv={Skv} Dv={Dv})")
+    att_scale = float(entry.get("scale", 1.0 / math.sqrt(H)))
+    softcap = entry.get("softcap")                             # Gemma-2 logit soft-cap (None to disable)
+    codes = _mx_value_codes(mx, tok)
+    dec_tbl = _mx_fp8_decode_table(mx)
+    q, k, v, out = entry.get("q", "Q"), entry.get("k", "K"), entry.get("v", "V"), entry.get("out", "Y0")
+
+    def synth(name, shape):
+        vals = CO.operand_values(shape, tok, _salt(entry["name"], name), mag_cap=4.0)
+        prob = CO.rigor_findings(vals, shape)
+        if prob:
+            raise AssertionError(f"non-rigorous MX attention operand {name}{shape}: {prob}")
+        return np.array(vals, dtype=np.float64).reshape(shape)
+
+    def enc(A):
+        return np.vectorize(lambda x: codes[float(np.float32(x))])(A).astype(np.uint8)
+
+    def bf16_round(a):
+        u = np.asarray(a, dtype=np.float32).view(np.uint32)
+        return ((u >> 16) << 16).view(np.float32).astype(np.float64)
+
+    Q = synth(q, (M, H))
+    K = synth(k, (Skv, H))
+    V = synth(v, (Skv, Dv))
+    Kt = np.ascontiguousarray(K.T)                             # device consumes K pre-transposed (K^T)
+
+    # rigor-gated E8M0 block-scale streams (one exponent per K-group per lane).
+    def scales(name, shape):
+        sc = np.array(CO.e8m0_scale_codes(shape, _salt(entry["name"], name)), dtype=np.uint8)
+        prob = CO.scale_rigor_findings(sc.tolist())
+        if prob:
+            raise AssertionError(f"non-rigorous E8M0 stream {name}{shape}: {prob}")
+        return sc
+
+    # stage 1: S = mx_matmul(Q[M,H], K^T[H,Skv]) -> bf16 scores [M, Skv]
+    SA_q = scales("SA_q", (H // mx.GROUP, M))
+    SB_k = scales("SB_k", (H // mx.GROUP, Skv))
+    Sbits = np.asarray(mx.mx_matmul(enc(Q), enc(Kt), SA_q, SB_k, M, Skv, H, fmt=mx.FMT_FP8))
+    S = np.array([[float(mx.bf16_to_f32(int(Sbits[i, j]))) for j in range(Skv)] for i in range(M)])
+    S = bf16_round(S * att_scale)
+    if softcap is not None:
+        cap = float(softcap)
+        S = bf16_round(cap * np.tanh(S / cap))
+
+    # stage 2: bf16 row-softmax (numerically stable: subtract row max) -> P [M, Skv]
+    P = np.zeros((M, Skv), dtype=np.float64)
+    for m in range(M):
+        r = bf16_round(S[m] - float(np.max(S[m])))
+        e = bf16_round(np.exp(r))
+        P[m] = bf16_round(e / float(np.sum(e)))
+
+    # stage 3: requant P to mxfp8 (per-row E8M0), then O = mx_matmul(P[M,Skv], V[Skv,Dv]) -> bf16 [M, Dv]
+    P_codes, SA_p = _mx_requant_rows(P, mx, dec_tbl, group=mx.GROUP)   # SA_p shape [Skv/32, M]
+    SB_v = scales("SB_v", (Skv // mx.GROUP, Dv))
+    Obits = np.asarray(mx.mx_matmul(P_codes, enc(V), SA_p, SB_v, M, Dv, Skv, fmt=mx.FMT_FP8))
+    O = [[float(mx.bf16_to_f32(int(Obits[i, j]))) for j in range(Dv)] for i in range(M)]
+
+    prov = {
+        q: {"shape": [M, H], "decoded": Q.reshape(-1).tolist()},
+        k: {"shape": [Skv, H], "decoded": K.reshape(-1).tolist()},
+        v: {"shape": [Skv, Dv], "decoded": V.reshape(-1).tolist()},
+        "SA_q_e8m0_codes": SA_q.tolist(), "SB_k_e8m0_codes": SB_k.tolist(),
+        "SB_v_e8m0_codes": SB_v.tolist(),
+        "scale_example": {"SA_q[0][0]": int(SA_q[0, 0]), "as_scale": e8m0_decode(int(SA_q[0, 0]))},
+        # RAW device operand bytes exactly as mx_ref consumed them, so a bit-exact grade re-runs the two MX
+        # GEMMs + the pinned softmax/requant over THESE codes (the decoded floats lose precision in YAML).
+        "attention_codes": {
+            "q": q, "k": k, "v": v, "fmt": tok, "M": M, "H": H, "Skv": Skv, "Dv": Dv,
+            "att_scale": att_scale, "softcap": (None if softcap is None else float(softcap)),
+            "Q_bytes": enc(Q).reshape(-1).tolist(), "Kt_bytes": enc(Kt).reshape(-1).tolist(),
+            "V_bytes": enc(V).reshape(-1).tolist(),
+            "SA_q": SA_q.reshape(-1).tolist(), "SB_k": SB_k.reshape(-1).tolist(),
+            "SB_v": SB_v.reshape(-1).tolist(),
+            # the requantized P intermediate (derived from the softmax) — carried so the PV GEMM is
+            # reproducible bit-for-bit; it is NOT an input operand (P is computed from Q,K).
+            "P_bytes": P_codes.reshape(-1).tolist(), "SA_p": SA_p.reshape(-1).tolist(),
+        },
+    }
+    return {out: O}, prov
+
+
+def _mx_gemv_batched_golden(entry, binding):
+    """Batched MX matmul golden (radiance-kernels decode-time gemv_batched, MX regime): ``B`` independent
+    MX GEMMs ``A_b[M,H] @ W_b[H,N]`` on the block-scaled mx_pe, stacked row-major into ``[B*M, N]`` bf16.
+    (The MX PE tiles N by ``DIM``=16, so N must be a multiple of 16 — a literal N=1 gemv is not expressible
+    on the mx_ref datapath; this is the faithful batched analog.) mxfp8 only; golden from mlc mx_ref."""
+    import numpy as np
+
+    from merlin.runtime.fp8_formats import canonical_float, e8m0_decode
+    from merlin.targetgen import corpus_operands as CO
+    mx = _mx_ref()
+    tok = canonical_float(binding.operand_dtype)
+    if tok != "fp8_e4m3":
+        raise ValueError(f"MX gemv_batched supports mxfp8 only (got {binding.operand_dtype!r} -> {tok!r})")
+    dim = binding.tile_dim
+    B = int(entry.get("B", 2))
+    M = entry.get("M", entry.get("M_tiles", 1) * dim)
+    H = entry.get("H", entry.get("K", 2 * dim))               # contraction dim, %32
+    N = entry.get("N", dim)                                    # %16
+    if H % mx.GROUP or M % mx.DIM or N % mx.DIM:
+        raise ValueError(f"MX gemv_batched dims: H%{mx.GROUP}=0, M%{mx.DIM}=N%{mx.DIM}=0 "
+                         f"(got B={B} M={M} H={H} N={N})")
+    codes = _mx_value_codes(mx, tok)
+    lhs, weight, out = entry.get("lhs", "A0"), entry.get("weight", "W"), entry.get("out", "Y0")
+
+    def synth(name, shape):
+        vals = CO.operand_values(shape, tok, _salt(entry["name"], name), mag_cap=4.0)
+        prob = CO.rigor_findings(vals, shape)
+        if prob:
+            raise AssertionError(f"non-rigorous MX gemv operand {name}{shape}: {prob}")
+        return np.array(vals, dtype=np.float64).reshape(shape)
+
+    def enc(A):
+        return np.vectorize(lambda x: codes[float(np.float32(x))])(A).astype(np.uint8)
+
+    rows_out: list = []
+    A_dec, W_dec, batches = [], [], []
+    for b in range(B):
+        A = synth(f"{lhs}{b}", (M, H))
+        W = synth(f"{weight}{b}", (H, N))
+        SA = np.array(CO.e8m0_scale_codes((H // mx.GROUP, M), _salt(entry["name"], f"SA{b}")), dtype=np.uint8)
+        SB = np.array(CO.e8m0_scale_codes((H // mx.GROUP, N), _salt(entry["name"], f"SB{b}")), dtype=np.uint8)
+        for nm, sc in ((f"SA{b}", SA), (f"SB{b}", SB)):
+            prob = CO.scale_rigor_findings(sc.tolist())
+            if prob:
+                raise AssertionError(f"non-rigorous E8M0 stream {nm}{sc.shape}: {prob}")
+        C = np.asarray(mx.mx_matmul(enc(A), enc(W), SA, SB, M, N, H, fmt=mx.FMT_FP8))
+        rows_out.extend([[float(mx.bf16_to_f32(int(C[i, j]))) for j in range(N)] for i in range(M)])
+        A_dec.append(A.reshape(-1).tolist())
+        W_dec.append(W.reshape(-1).tolist())
+        batches.append({"A_bytes": enc(A).reshape(-1).tolist(), "W_bytes": enc(W).reshape(-1).tolist(),
+                        "SA": SA.reshape(-1).tolist(), "SB": SB.reshape(-1).tolist()})
+    prov = {
+        lhs: {"shape": [B, M, H], "decoded": A_dec},
+        weight: {"shape": [B, H, N], "decoded": W_dec},
+        "batched_codes": {"lhs": lhs, "weight": weight, "fmt": tok, "B": B, "M": M, "H": H, "N": N,
+                          "stacked_out_shape": [B * M, N], "batches": batches},
+        "scale_example": {"SA0[0][0]": batches[0]["SA"][0],
+                          "as_scale": e8m0_decode(int(batches[0]["SA"][0]))},
+    }
+    return {out: rows_out}, prov
+
+
 def _simt_golden(entry, binding):
     """SIMT (CVFPU) golden in ordinary IEEE float — fp32 accumulate, format-rounded operands. Covers the
     matmul / attention / rmsnorm shapes; independent of any accelerator model (the SIMT cores do plain IEEE
@@ -373,6 +659,52 @@ def _simt_golden(entry, binding):
                 y[m, k] = float(np.float32(np.float32(row[k] * rms) * np.float32(gamma[k])))
         prov[entry.get("src", "X")] = {"shape": [M, K], "decoded": X.reshape(-1).tolist()}
         prov[entry.get("gamma", "G")] = {"shape": [1, K], "decoded": gamma.tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(y)
+    elif op == "rmsnorm_qkv":
+        # fused pre-norm QKV projection: H = rmsnorm(X, gamma); Y = H @ Wqkv. Both stages IEEE fp32-accum.
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("K_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        eps = float(entry.get("eps", 1.0 / 65536.0))
+        X = synth(entry.get("src", "X"), (M, K))
+        gamma = synth(entry.get("gamma", "G"), (1, K))[0]
+        Wqkv = synth(entry.get("weight", "Wqkv"), (K, N))
+        Hn = np.empty((M, K), dtype=np.float64)
+        for m in range(M):
+            row = X[m].astype(np.float32)
+            ss = np.float32(0.0)
+            for k in range(K):
+                ss = np.float32(ss + np.float32(row[k] * row[k]))
+            rms = np.float32(1.0) / np.float32(np.sqrt(np.float32(np.float32(ss / np.float32(K)) + np.float32(eps))))
+            for k in range(K):
+                Hn[m, k] = float(np.float32(np.float32(row[k] * rms) * np.float32(gamma[k])))
+        y = (Hn.astype(np.float32) @ Wqkv.astype(np.float32)).astype(np.float64)
+        prov[entry.get("src", "X")] = {"shape": [M, K], "decoded": X.reshape(-1).tolist()}
+        prov[entry.get("gamma", "G")] = {"shape": [1, K], "decoded": gamma.tolist()}
+        prov[entry.get("weight", "Wqkv")] = {"shape": [K, N], "decoded": Wqkv.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(y)
+    elif op == "rope_qkv":
+        # fused QKV projection + RoPE: H = X @ Wqkv; Y = rope(H). GPT-NeoX/Llama rotation (theta=10000),
+        # position = row index, identical convention to the pytorch RP8 rope (capsule_source._rope).
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("K_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        X = synth(entry.get("src", "X"), (M, K))
+        Wqkv = synth(entry.get("weight", "Wqkv"), (K, N))
+        H = (X.astype(np.float32) @ Wqkv.astype(np.float32)).astype(np.float64)
+        half = N // 2
+        theta = float(entry.get("rope_theta", 10000.0))
+        freq = 1.0 / (theta ** (np.arange(0, half, dtype=np.float64) / half))
+        pos = np.arange(M, dtype=np.float64)
+        ang = pos[:, None] * freq[None, :]
+        cos = np.concatenate([np.cos(ang), np.cos(ang)], axis=1)
+        sin = np.concatenate([np.sin(ang), np.sin(ang)], axis=1)
+        x1, x2 = H[:, :half], H[:, half:]
+        rot = np.concatenate([-x2, x1], axis=1)
+        y = (H.astype(np.float32) * cos.astype(np.float32)
+             + rot.astype(np.float32) * sin.astype(np.float32)).astype(np.float64)
+        prov[entry.get("src", "X")] = {"shape": [M, K], "decoded": X.reshape(-1).tolist()}
+        prov[entry.get("weight", "Wqkv")] = {"shape": [K, N], "decoded": Wqkv.reshape(-1).tolist()}
         outputs[entry.get("out", "Y0")] = rnd_out(y)
     else:
         raise ValueError(f"no SIMT golden for op {op!r}")
@@ -475,14 +807,29 @@ def _write_capsule(entry, binding, out_root):
                 "inputs": prov},
             "outputs": outputs}, sort_keys=False), encoding="utf-8")
     elif regime == "mx":
-        outputs, prov = _mx_golden(entry, eb)
+        # matmul/linear -> the single MX GEMM golden; attention_mx -> the fused flash-attention composition
+        # (two MX GEMMs + a bf16 softmax), both over the SAME validated mx_ref engine.
+        if entry.get("op") == "attention_mx":
+            outputs, prov = _mx_attention_golden(entry, eb)
+            engine = ("mlc.validate.mx_ref.mx_matmul x2 (QK & PV, transcribed from radiance-kernels "
+                      "lib/golden/mx_golden.cpp) + numpy bf16 row-softmax; P requantized to mxfp8 per-row")
+            datapath = ("O = mx_matmul(softmax(mx_matmul(Q,K^T)/sqrt(H) [+softcap]), V); E8M0 per 32-elt "
+                        "K group; bf16 accumulate + bf16 softmax")
+        elif entry.get("op") == "gemv_batched":
+            outputs, prov = _mx_gemv_batched_golden(entry, eb)
+            engine = ("mlc.validate.mx_ref.mx_matmul x B (independent batched MX GEMMs stacked row-major)")
+            datapath = ("B x [M,H]@[H,N] on the mx_pe; one E8M0 scale per 32-elt K group; bf16 accumulate")
+        else:
+            outputs, prov = _mx_golden(entry, eb)
+            engine = ("mlc.validate.mx_ref.mx_matmul (transcribed from radiance-kernels "
+                      "lib/golden/{mx_fp_math.h,mx_golden.cpp}; mirrors the RTL, bit-exact vs spike)")
+            datapath = ("16-deep systolic per-column acc schedule (ACC_E/ACC_M); one E8M0 scale per "
+                        "32-elt K group; bf16 accumulate")
         (d / "golden.yaml").write_text(yaml.safe_dump({
             "golden_source": "mlc_mx_ref_hardware_semantics",
             "oracle_provenance": {
-                "engine": "mlc.validate.mx_ref.mx_matmul (transcribed from radiance-kernels "
-                          "lib/golden/{mx_fp_math.h,mx_golden.cpp}; mirrors the RTL, bit-exact vs spike)",
-                "datapath": "16-deep systolic per-column acc schedule (ACC_E/ACC_M); one E8M0 scale per "
-                            "32-elt K group; bf16 accumulate",
+                "engine": engine,
+                "datapath": datapath,
                 "operand_dtype": eb.cap_dtype(eb.operand_dtype), "block_scale": "e8m0", "output_dtype": "bf16",
                 "note": "NOT specir (specir is atlas fp8); MX is a distinct block-scaled datapath.",
                 "grade_policy": {"compare": eb.compare, "atol": eb.atol, "rtol": eb.rtol},
@@ -531,6 +878,8 @@ def generate_target(target: str) -> list[Path]:
     binding = CS.derive_binding(te, profile.get("datapath", {}))
     out_root = Path(te.capsule_corpus).parent                 # target's corpus root, derived (no move)
     written = [w for w in (_write_capsule(e, binding, out_root) for e in profile["capsules"]) if w]
+    for d in written:                                         # tracked-file hygiene: no local paths ship
+        _scrub_capsule_dir(d)
     return written
 
 
