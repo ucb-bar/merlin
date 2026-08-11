@@ -223,12 +223,40 @@ class _Bridge:
                 self.env[param.id()] = (Affine(const=int(value)) if value is not None
                                         else UnresolvedScalar(arg.name))
 
+    def _live_ops(self, ops: list) -> set[int]:
+        """Ops whose results are transitively needed — backward liveness to a fixpoint.
+
+        One-level deadness is not enough. Triton guards every arithmetic expression with an overflow
+        check (widen to i64, compare against the i32 limits, and), and the chain is only dead
+        *transitively*: the widening feeds the add, the add feeds the compares, and nothing consumes
+        the conjunction. Checking a single level leaves the widening looking live, and the bridge then
+        has to interpret an i64 shadow of the real computation — which for a data value it cannot do.
+
+        Roots are the ops that must happen: anything with no results (that is how a side effect is
+        spelled — a store) plus the terminator.
+        """
+        producer: dict[int, Any] = {}
+        for op in ops:
+            for index in range(op.get_num_results()):
+                producer[op.get_result(index).id()] = op
+
+        live: set[int] = set()
+        frontier = [op for op in ops
+                    if op.get_num_results() == 0 and op.get_name() not in ("builtin.module",)]
+        while frontier:
+            op = frontier.pop()
+            if id(op) in live:
+                continue
+            live.add(id(op))
+            for index in range(op.get_num_operands()):
+                source_op = producer.get(op.get_operand(index).id())
+                if source_op is not None and id(source_op) not in live:
+                    frontier.append(source_op)
+        return live
+
     def _interpret(self) -> None:
         ops = source.walk_ops(self.ttir)
-        used: set[int] = set()
-        for op in ops:
-            for i in range(op.get_num_operands()):
-                used.add(op.get_operand(i).id())
+        live = self._live_ops(ops)
 
         for op in ops:
             name = op.get_name()
@@ -236,8 +264,7 @@ class _Bridge:
                 continue
             self.report.saw(name)
             results = [op.get_result(i) for i in range(op.get_num_results())]
-            if results and all(r.id() not in used for r in results) and name in _PURE:
-                # Triton emits a range check per index expression whose result nothing consumes.
+            if id(op) not in live and name in _PURE:
                 self.report.discarded(name)
                 continue
             self._translate(op, name, results)

@@ -66,12 +66,17 @@ def emit_command_buffer(module) -> dict[str, Any]:
         commands.append(cmd)
 
     weights = {c["operands"]["src"] for c in commands if c["opcode"] == "RES_PACK"}
+    # Vector-family destinations are the only tensor-table entries that are RESULTS. Both engines
+    # collect them by role, so mislabelling one as an input silently yields no output for it.
+    produced = {c["operands"]["dst"] for c in commands
+                if c["opcode"] in ("VECTOR_MAP", "VREDUCE") and "dst" in c["operands"]}
     tensors: dict[str, Any] = {}
     table = create.tensors.data if create.tensors is not None else {}
     for name, spec in table.items():
         shape, dtype = _parse_shape(spec.data)
-        role = "weight" if name in weights else ("bias" if name in bias_names
-                                                 else "input")
+        role = ("output" if name in produced
+                else "weight" if name in weights
+                else "bias" if name in bias_names else "input")
         tensors[name] = {"shape": shape, "dtype": dtype, "role": role}
 
     metrics_requested: list[str] = []

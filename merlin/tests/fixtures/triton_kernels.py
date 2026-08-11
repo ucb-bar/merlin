@@ -106,6 +106,18 @@ if HAS_TRITON:
         tl.store(out_ptr + offsets, tl.load(x_ptr + offsets) + tl.load(y_ptr + offsets))
 
     @triton.jit
+    def vector_add_i32(x_ptr, y_ptr, out_ptr, BLOCK_SIZE: tl.constexpr):
+        """An integer elementwise add, for the staged accelerator path.
+
+        The command-buffer ABI is integer (i8/i32), so the float twin cannot descend through it —
+        that is a separate, larger gap in the runtime tier, not an elementwise gap. Unmasked and
+        exactly tiled, because the accelerator arm is testing the interface materialization, not the
+        addressing analysis that the fp32 sizes sweep already covers.
+        """
+        offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        tl.store(out_ptr + offsets, tl.load(x_ptr + offsets) + tl.load(y_ptr + offsets))
+
+    @triton.jit
     def transposed_store(x_ptr, out_ptr, BM: tl.constexpr, BN: tl.constexpr):
         """Reads row-major, writes column-major: full coverage, wrong order."""
         offs_m = tl.arange(0, BM)
@@ -132,7 +144,7 @@ if HAS_TRITON:
 else:  # pragma: no cover - exercised only where the optional extra is absent
     vector_add = matmul_one_tile = matmul_one_tile_f32 = None
     vector_add_unmasked = transposed_store = atomic_add_kernel = batched_matmul = None
-    repeated_rhs_matmul = None
+    repeated_rhs_matmul = vector_add_i32 = None
 
 
 def vector_add_spec(n: int = VECTOR_ADD_N, block: int = VECTOR_ADD_BLOCK) -> TritonKernelSpec:
@@ -200,6 +212,20 @@ def batched_matmul_spec(batch: int = 2) -> TritonKernelSpec:
         ),
         grid=GridSpec(dims=(batch,)),
         constexprs={"BM": TILE_M, "BN": TILE_N, "BK": TILE_K},
+    )
+
+
+def vector_add_i32_spec(n: int = 256, block: int = 256) -> TritonKernelSpec:
+    """Spec for :func:`vector_add_i32`; ``block`` must divide ``n`` (the kernel carries no mask)."""
+    return TritonKernelSpec(
+        function=vector_add_i32,
+        args=(
+            KernelArg("x_ptr", "pointer", "i32", shape=(n,), effect="read"),
+            KernelArg("y_ptr", "pointer", "i32", shape=(n,), effect="read"),
+            KernelArg("out_ptr", "pointer", "i32", shape=(n,), effect="write"),
+        ),
+        grid=GridSpec(dims=(-(-n // block),)),
+        constexprs={"BLOCK_SIZE": block},
     )
 
 

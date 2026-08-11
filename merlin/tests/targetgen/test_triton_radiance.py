@@ -210,3 +210,33 @@ def test_the_two_command_buffers_differ_only_in_the_target_name(arms):
 
     assert normalized(arms["radiance"].command_buffer) == normalized(
         arms["gemmini"].command_buffer)
+
+
+def test_the_elementwise_arm_reaches_radiances_vector_lanes():
+    """Radiance declares an accelerated elementwise unit, and can now actually be handed one.
+
+    This is what the interface.elementwise work was for: the capability was declared in Radiance's
+    own contract long before anything could reach it. Gemmini's plan does not declare it, so the same
+    kernel still routes to the generic path there — coverage stays per target.
+    """
+    from merlin import compile_core
+    from merlin.runtime import reference_outputs, simulate
+
+    spec = K.vector_add_i32_spec()
+    bridged = to_linalg(source.make_ttir(spec), spec)
+
+    radiance = compile_core.compile_core_mlir(
+        bridged.module, target_package=_package(RADIANCE_PACKAGE))
+    assert radiance.route.kind == "staged"
+    for module in radiance.staged.modules():
+        module.verify()
+    assert "radiance.elementwise" in text(radiance.staged.target_module)
+    # The warp obligation applies to every dispatch, not only to contractions.
+    assert "lanes_per_warp = 16" in text(radiance.staged.target_module)
+    cb = radiance.staged.command_buffer
+    assert [c["opcode"] for c in cb["commands"]] == ["VECTOR_MAP"]
+    assert simulate(cb)["outputs"] == reference_outputs(cb)
+
+    gemmini_route = compile_core.choose_route(
+        bridged.module, target_package=_package(GEMMINI_PACKAGE))
+    assert gemmini_route.kind == "llvm", "coverage stopped being read per target"

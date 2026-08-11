@@ -71,6 +71,8 @@ if HAS_XDSL:
         resident_type: type
         accumulator_type: type
         op_properties: dict[str, dict[str, Any]] | None = None
+        # Optional: only targets whose dialect plan covers interface.elementwise supply one.
+        elementwise_op: type | None = None
 
         def extra(self, kind: str) -> dict[str, Any]:
             """Contract-derived properties this target requires on the ``kind`` op ('matmul', …)."""
@@ -157,6 +159,28 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
             props.update(spec.extra("commit"))
             new = spec.commit_op(operands=[value_map[op.acc]],
                                  result_types=[op.out.type], properties=props)
+            value_map[op.out] = new.out
+            outs.append(new.out)
+            out_types.append(op.out.type)
+        elif isinstance(op, i.ElementwiseOp):
+            if "interface.elementwise" not in table:
+                raise LoweringError(
+                    f"target {target!r}'s dialect plan does not lower interface.elementwise, so this "
+                    "payload cannot descend to it. Coverage is read from the plan, never assumed "
+                    "from the dialect happening to have the op.")
+            if spec.elementwise_op is None:
+                raise LoweringError(
+                    f"target {target!r} has no elementwise op, so interface.elementwise cannot be "
+                    "lowered. A dialect plan that maps interface.elementwise must come with a "
+                    "target op for it (SPEC_OPS['elementwise']) — a declared capability the dialect "
+                    "cannot express is the gap this check exists to surface.")
+            props = {"combine": op.combine}
+            if op.activation is not None:
+                props["activation"] = op.activation
+            props.update(spec.extra("elementwise"))
+            new = spec.elementwise_op(
+                operands=[value_map[op.lhs], value_map[op.rhs]],
+                result_types=[op.out.type], properties=props)
             value_map[op.out] = new.out
             outs.append(new.out)
             out_types.append(op.out.type)

@@ -85,7 +85,7 @@ These are asserted by `merlin/tests/infra/test_triton_target_independence.py`, n
 ```
 INV-1  zero Triton-specific LLM calls / prompts per target
 INV-2  zero target-specific code or target-name literals in merlin.triton
-INV-3  zero TargetGen / schema modifications through Milestone 4
+INV-3  no schema is widened for this frontend (TargetGen: target-blind changes only)
 INV-4  TTGIR is never a Merlin boundary
 INV-5  no direct TTIR → gemmini/saturn/<any> lowering
 INV-6  linalg-on-tensors is the single convergence point
@@ -95,8 +95,12 @@ INV-9  standalone and model-replacement paths share one bridge
 INV-10 source → TTIR → core MLIR is reproducible and inspectable on disk
 ```
 
-INV-3 is scoped to Milestones 0–4 deliberately: see finding 4 below, where a *general* Merlin gap is
-expected to require a core dialect addition, justified by evidence rather than by convenience.
+INV-3 was originally "zero TargetGen / schema modifications", scoped to Milestones 0–4 because
+finding 4 predicted a *general* Merlin gap would need a core dialect addition. It did (M5 added
+`interface.elementwise` and a target-spec seam), so the invariant is now stated in the form that
+survives: the two schemas must never be widened by a commit touching the frontend — that is the
+concrete carve-out failure mode — while TargetGen *code* may change provided it stays target-blind,
+which `check_no_target_name.py` enforces repo-wide.
 
 ## Four findings from the existing code
 
@@ -163,58 +167,18 @@ report success — and it is the common case rather than an exotic one, since a 
 lives in its out-of-tree package has no in-tree plan to read and must be passed as
 `target_package=`.
 
-### 4. The `interface` dialect has no elementwise op, and Radiance is where that bites
+### 4. The `interface` dialect had no elementwise op, and Radiance is where that bit
 
 Radiance's committed dialect plan declares both `radiance.matmul` and `radiance.elementwise`, and its
-contract lists `capabilities.ops: [matmul, elementwise]`. But `interface.py` registers only
+contract lists `capabilities.ops: [matmul, elementwise]`. But `interface.py` registered only
 ResidentPack / ResidentEvict / Matmul / AccumulatorCreate / Accumulate / Commit / AsyncCopy / Await /
-Fifo\* / CommandRegion — there is no `interface.elementwise` — and `lower_to_interface` materializes
-matmuls only. A Triton vector add therefore cannot reach `radiance.elementwise` through the staged
-pipeline today.
+Fifo\* / CommandRegion — no `interface.elementwise` — and `lower_to_interface` materialized matmuls
+only. A Triton vector add therefore could not reach `radiance.elementwise` through the staged pipeline.
 
 The decision criterion is whether an equivalent **non-Triton** program hits the same wall. A
-hand-written `linalg.add` does, identically. So this is a *Merlin interface-abstraction gap, not a
-Triton gap*: the fix is an `interface.elementwise` that every frontend benefits from, never a Triton
-special case. It is scheduled as the last milestone and is the only one permitted to touch core
-dialect surface, and then only with that equivalence demonstrated first.
-
-## How TTIR is obtained, and how it is read
-
-Triton's public entry point is `triton.compile()`, which demands a `GPUTarget`, builds a backend and
-runs the whole stage chain down to a GPU binary. `merlin.triton.source` instead calls the AST → TTIR
-step directly (`ASTSource.make_ir`), which needs no device and stops exactly at the wanted boundary.
-That is a compiler internal with no stability promise, so the dependency is confined to that one
-module, the wheel is exact-pinned (`triton==3.7.1`, mirrored by `toolchain.PINNED_TRITON`), and
-`probe()` also detects a *stripped* install (a dist-info without `triton/_C/libtriton`), which
-otherwise reports a plausible version and fails deep inside `make_ir`.
-
-A `GPUTarget` still has to be supplied because the frontend's signature demands one. It selects which
-backend provides the codegen callbacks, not what the IR means — and
-`test_ttir_is_independent_of_the_nominal_backend` holds that to account by re-emitting under a second
-backend and requiring byte-identical text.
-
-**Ingestion resolved.** None of the three planned rungs (generic-form print / a minimal xDSL `tt`
-dialect / a hand-written tokenizer) is needed. Triton's `ir.module` exposes `walk()` over live ops
-with a structural API — `get_name`, `get_operand`, `get_result`, `get_num_regions`, typed attribute
-accessors — and values expose `get_type()` and an SSA `id`. So the bridge reads **structure and types
-from the IR itself**, with no MLIR text parsing anywhere, which is both stronger than a tokenizer and
-the only option consistent with the repo's no-regex mandate. `str_nodebug()` supplies loc-free
-deterministic text, used only for hashing and for on-disk inspection (INV-10).
-
-Measured op inventory for the two reference kernels (Triton 3.7.1), which is the full set the bridge
-must cover for M2:
-
-| kernel | `tt.*` | other |
-| --- | --- | --- |
-| vector add | `addptr func get_program_id load make_range return splat store` | `arith.{addf,addi,andi,cmpi,constant,extsi,muli}` |
-| one-tile matmul | `addptr broadcast dot expand_dims func load make_range return splat store` | `arith.{andi,cmpi,constant,extsi,muli}` |
-
-No `ttg.*`, no `gpu.*`, no layout attributes in either. The two op sets differ by exactly
-`get_program_id` (grid) versus `dot`/`expand_dims`/`broadcast` (tiling), which is what makes them a
-useful pair: one exercises the grid normalization path and the other the contraction path.
-
-One hard floor fell out of this: `tl.dot` rejects anything below **M ≥ 16, N ≥ 16, K ≥ 32**, so the
-smallest legal "one tile" is 16×32×16. That is what the accelerator proofs use.
+hand-written `linalg.add` did, identically. So this was a *Merlin interface-abstraction gap, not a
+Triton gap*, and the fix is an `interface.elementwise` every frontend benefits from rather than a
+Triton special case. **Closed in M5b** — see the results section for what was and was not included.
 
 ## How pointers become tensors
 
@@ -290,35 +254,69 @@ Measured on this branch:
 | convergence | Triton vs hand-authored linalg: byte-identical interface, target, runtime and command buffer — no canonicalization, on gemmini *and* saturn |
 | portability | identical TTIR and core MLIR across every stageable target; each lowers to its own dialect |
 
-**Radiance (M5a) is blocked, for reasons unrelated to Triton.** The kernel reaches Radiance's own
-contract and is refused honestly at the residency capacity proof — its contract declares no
-`resident_storage_bytes` and no RTL facts are extracted for it, so Merlin cannot prove the weight
-fits and will not make it resident. Removing residency (a single matmul) then stops one stage later:
-there is no Radiance target-dialect package. `radiance_oot` is contracts-only, TargetGen synthesizes
-a deliberately *empty* xDSL dialect for it ("the dialect plan declared no concrete ops/types yet"),
-the `muon/reference_v0` experiment-ABI package calls a module that a later refactor deleted, and the
-current fork-free SIMT emitter (`muon_codegen_mlir`) lives on a branch that is not an ancestor of
-this one. So the third accelerator arm — and with it the grid→warps claim (M5b) — needs that
-infrastructure landed first; none of it is frontend work.
+**Radiance (M5a) is done.** It needed a target-dialect package, which did not exist — `radiance_oot`
+is contracts-only and TargetGen synthesizes a deliberately *empty* xDSL dialect for it. One was
+authored at `out/artifacts/targets/radiance/hand_v0`, and the byte-identical kernel now descends to
+`radiance.stage` / `radiance.matmul` / `radiance.commit` / `radiance.release` with the command buffer
+gated against an independent integer reference. It is deliberately **not** a renamed Gemmini: a
+systolic array packs an operand into a feed, a SIMT cluster stages it into shared scratchpad, and
+Radiance's `must_map_to_warps` obligation makes `radiance.matmul` *require* a warp width that
+`gemmini.matmul` has no property for at all.
 
-What survived from M5 is the finding it was meant to produce, recorded in
-`merlin/tests/ir/test_interface_elementwise_gap.py`: a target may declare an accelerated
-`elementwise` op that Merlin cannot reach, because `interface.py` registers no `interface.elementwise`
-and `lower_to_interface` materializes matmuls only. A hand-authored `linalg.add` is routed to the
-generic path identically to the Triton one, which settles it as a **Merlin interface-abstraction gap,
-not a Triton gap**. Closing it means an interface op, a materialization path, a target-lowering rule,
-a runtime and command-buffer opcode, and matching simulator and reference semantics — all running
-through the RTL-certified Gemmini path, and unverifiable end to end on the target that motivates it
-until Radiance lands. Evidence is recorded; the change is not made.
+Nothing in the package is typed in. The scratchpad capacity is `1 << SMEM_LOG_SIZE` read from
+Radiance's own kernel headers; the warp width comes from its committed manifest; and the
+abstraction-surface features the staged pipeline checks (`resident_packed_tensor`,
+`accumulator_commit`, `command_buffer`, `metrics`) are each derived from a specific contract fact,
+because a feature string with no justifying fact is a fabricated capability that every later check
+believes. `derive_facts.py` records the provenance per fact.
 
-### A fail-open found on the way
+That needed one general seam in core: a `TargetSpec` may carry properties its own contract supplies,
+which the rebuild loop merges without interpreting. Core therefore never learns that any target maps
+to warps — the package derives it and fails closed on a contract demanding the mapping without
+declaring a width.
+
+**The grid claim (M5b) follows from it.** The bridge normalizes the SPMD grid away entirely — no loop,
+no lanes, no warps — so the parallelism decision is still unmade when Merlin takes over. From one
+identical module Gemmini emits no warp mapping and Radiance emits `lanes_per_warp = 16`. Had the
+frontend chosen threads, Gemmini would break; had it chosen a sequential loop, Radiance could never
+reach warps. Target #3 cost **0** frontend lines.
+
+**`interface.elementwise` (M5b) is closed**, on the evidence that decided where it belonged: a
+hand-authored `linalg.add` was routed to the generic path identically to the Triton one, making it a
+Merlin abstraction gap rather than a Triton gap. The op now exists, `lower_to_interface` materializes
+an elementwise payload, and an integer Triton vector add descends to `radiance.elementwise` and a
+`VECTOR_MAP` command whose output matches an independent reference. The runtime tier already
+implemented `VECTOR_MAP`; only the compiler path was missing, exactly as the finding said.
+
+Four boundaries were held rather than papered over:
+
+- **Coverage stays per target.** Gemmini, saturn and toy_npu declare no elementwise coverage, so the
+  same kernel still routes to LLVM there. The route is the intersection of what a plan declares with
+  what the interface layer can build.
+- **`linalg.sub` is not expressible.** The runtime implements add and mul; lowering a subtract as an
+  add would be a miscompile.
+- **A fused matmul-plus-elementwise payload is refused.** Materializing it means deciding whether the
+  combine folds into the commit epilogue or becomes its own dispatch — a scheduling question with a
+  measurable answer, not one to guess at in a rebuild loop.
+- **Float elementwise still cannot descend.** The command-buffer ABI is integer; that is a runtime-tier
+  gap, not an elementwise one, and it is not claimed as fixed.
+
+### Two fail-opens found on the way
 
 `load_curated_contract` returned the *default* contract whenever a target had no in-tree contract
 file. Asking for any out-of-tree or misspelled target therefore lowered the whole module for
-`toy_npu` — and produced a module that verified at all six stages, simulated correctly, and emitted
-a command buffer naming a target nobody asked for. It now resolves through the registry and raises
-otherwise. This is the same shape as the routing fail-open closed in M3, and the same shape as the
-mask-dropping the bridge is built to prevent: a wrong answer that passes every check.
+`toy_npu` — and produced a module that verified at all six stages, simulated correctly, and emitted a
+command buffer naming a target nobody asked for. It now resolves through the registry and raises
+otherwise.
+
+The bridge's dead-code detection was only one level deep. Triton guards every arithmetic expression
+with an overflow check (widen to i64, compare, and), and that chain is dead only *transitively*: a
+single level leaves the widening looking live, and the bridge then has to interpret an i64 shadow of
+the real computation — which for a data value it cannot. It now computes backward liveness to a
+fixpoint from the side-effecting ops.
+
+Both are the same shape as the mask-dropping the bridge exists to prevent: a wrong answer that passes
+every check.
 
 ## What is explicitly not being built yet
 

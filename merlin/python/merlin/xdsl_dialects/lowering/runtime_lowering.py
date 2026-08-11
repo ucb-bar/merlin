@@ -90,6 +90,16 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
     for arg in src_block.args:
         if arg in names:
             tensors[names[arg]] = _shape_str(arg.type)
+    # Vector-family destinations are RESULTS, not arguments, so they have to be named and declared
+    # here — the tensor table is frozen into the command-buffer-create op below, before the command
+    # loop runs, and a destination added later would never reach it. Both engines find vector results
+    # by scanning the table, so the omission produced a buffer that ran and returned nothing.
+    n_declared_results = 0
+    for op in src_block.ops:
+        if kind(op) == "VECTOR_MAP":
+            names[op.out] = f"Y{n_declared_results}"
+            tensors[names[op.out]] = _shape_str(op.out.type)
+            n_declared_results += 1
 
     blk = Block()
     dev = r.DeviceGetOp(result_types=[r.DeviceType()], properties={
@@ -104,7 +114,10 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
     ops = [dev, cb]
 
     n_acc = 0
-    n_y = 0
+    # Continue the Y numbering past anything the pre-pass already claimed, so commits and vector
+    # results can never be handed the same name. They cannot co-occur today (a mixed payload is
+    # refused at the interface stage), and a silent collision is not the way to find out that changed.
+    n_y = n_declared_results
     for op in src_block.ops:
         opcode = kind(op)
         if opcode == "RES_PACK":
@@ -133,6 +146,13 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
                 attrs["requant_shift"] = op.requant_shift
             if op.output_dtype is not None:
                 attrs["output_dtype"] = op.output_dtype
+        elif opcode == "VECTOR_MAP":
+            # The destination was named and declared in the pre-pass above (the tensor table is
+            # already frozen into the create op by this point).
+            args = {"lhs": names[op.lhs], "rhs": names[op.rhs], "dst": names[op.out]}
+            attrs = {"combine": op.combine}
+            if op.activation is not None:
+                attrs["activation"] = op.activation
         elif opcode == "EVICT":
             args = {"handle": names[op.handle]}
             attrs = {}

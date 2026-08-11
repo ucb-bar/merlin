@@ -264,14 +264,21 @@ def test_matmul_payload_routes_to_the_staged_path():
     assert route.kind == "staged" and route.payload == ("matmul",)
 
 
-def test_generic_payload_routes_to_llvm_even_on_an_accelerator_target():
-    """Routing is by payload: a target that accelerates matmul still compiles a vector add generically."""
+def test_an_uncovered_payload_routes_to_llvm_even_on_an_accelerator_target():
+    """Routing is by payload AND by what the target's plan covers, not by the target's class.
+
+    The vector add is classified `elementwise` — the interface layer can materialize that shape in
+    general — and it still routes to LLVM here, because this target's dialect plan does not declare
+    coverage for it. Those are two independent facts and the route needs both: a payload the pipeline
+    could build, on a target that never claimed to accelerate it.
+    """
     from merlin.compile_core import choose_route
 
     route = choose_route(_vector_add_module(), target=_reference_target())
-    assert route.kind == "llvm" and route.payload == ("generic",)
-    assert "matmul" in route.materializable    # the target DOES accelerate matmul...
-    assert "generic" not in route.materializable  # ...just not this payload
+    assert route.kind == "llvm" and route.payload == ("elementwise",)
+    assert "matmul" in route.materializable        # the target DOES accelerate matmul...
+    assert "elementwise" not in route.covered      # ...but never declared this payload
+    assert "elementwise" not in route.materializable
 
 
 def test_unreadable_dialect_plan_fails_closed():

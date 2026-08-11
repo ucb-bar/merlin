@@ -24,16 +24,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# The interface-level op classes the staged pipeline can actually MATERIALIZE today. This is a
-# property of `interface_lowering.lower_to_interface` (it rebuilds a body as
-# resident_pack/matmul/commit/evict), NOT of any target: a plan may legitimately declare coverage
-# for an op the interface layer cannot yet build — several generated plans declare `elementwise`,
-# for which there is no `interface.elementwise`. Routing on the intersection is what keeps such a
-# target from being handed a payload the staged path would silently drop.
-STAGED_MATERIALIZABLE: frozenset[str] = frozenset({"matmul"})
+# The interface-level op classes the staged pipeline can actually MATERIALIZE. This is a property of
+# `interface_lowering.lower_to_interface`, NOT of any target: a plan may legitimately declare
+# coverage for an op the interface layer cannot build, and routing on the INTERSECTION is what keeps
+# such a target from being handed a payload the staged path would silently drop. `elementwise` was
+# exactly that case until `interface.elementwise` existed — several generated plans declared it with
+# nothing able to lower it — which is why the intersection is computed rather than assumed.
+STAGED_MATERIALIZABLE: frozenset[str] = frozenset({"matmul", "elementwise"})
 
-# Payload op classes, keyed by the linalg op that expresses them. Matmul-family only, matching
-# `input_workload.find_matmuls`, which is what the contract/interface stages actually look for.
+# Payload op classes, keyed by the linalg op that expresses them, matching what the contract and
+# interface stages actually look for (`input_workload.find_matmuls` / `find_elementwise`).
 _MATMUL_OPS: frozenset[str] = frozenset({
     "linalg.matmul", "linalg.quantized_matmul", "linalg.batch_matmul",
 })
@@ -84,13 +84,20 @@ def payload_classes(module) -> tuple[str, ...]:
     (``unaccounted_ops``), so the routing decision and the guard that fires later cannot disagree —
     they did when each kept its own list, and a zeroed accumulator was enough to split them.
     """
+    from merlin.xdsl_dialects.lowering.input_workload import ELEMENTWISE_COMBINES
     from merlin.xdsl_dialects.lowering.interface_lowering import unaccounted_ops
 
     block = _entry_block(module)
     if block is None:
         return ()
-    payload = [op for op in block.ops if op.name in _MATMUL_OPS]
-    found: list[str] = ["matmul"] if payload else []
+    matmuls = [op for op in block.ops if op.name in _MATMUL_OPS]
+    elementwise = [op for op in block.ops if op.name in ELEMENTWISE_COMBINES]
+    payload = matmuls + elementwise
+    found: list[str] = []
+    if matmuls:
+        found.append("matmul")
+    if elementwise:
+        found.append("elementwise")
     if unaccounted_ops(block, payload):
         found.append("generic")
     return tuple(found)

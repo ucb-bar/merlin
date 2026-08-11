@@ -84,7 +84,8 @@ def load_target(package_dir: str | Path) -> TargetPackage:
         op_properties = derive(contract)
     spec = TargetSpec(mod.DIALECT_NAME, mod, ops["pack"], ops["matmul"], ops["commit"],
                       ops["evict"], ops["resident_type"], ops["accumulator_type"],
-                      op_properties=op_properties)
+                      op_properties=op_properties,
+                      elementwise_op=ops.get("elementwise"))
     return TargetPackage(
         name=mod.DIALECT_NAME, run_id=run_id, directory=d, dialect_module=mod, spec=spec,
         lowering_table=dict(low["interface_to_target"]),

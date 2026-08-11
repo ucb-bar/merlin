@@ -12,8 +12,8 @@ from __future__ import annotations
 from ._common import HAS_XDSL, Visibility
 
 DIALECT_NAME = "interface"
-OPS = ["resident_pack", "resident_evict", "matmul", "accumulator.create", "accumulate",
-       "commit", "async_copy", "await", "fifo.create", "fifo.push", "fifo.pop",
+OPS = ["resident_pack", "resident_evict", "matmul", "elementwise", "accumulator.create",
+       "accumulate", "commit", "async_copy", "await", "fifo.create", "fifo.push", "fifo.pop",
        "command.region"]
 TYPES = ["resident_tensor", "streaming_tile", "accumulator", "committed_tensor",
          "event", "fifo", "command"]
@@ -24,6 +24,14 @@ KNOWN_EPILOGUE = {"bias", "bias_add", "requant", "relu"}
 
 # Output dtypes `interface.commit` can produce (engine: to_i8() or raw i32).
 KNOWN_OUTPUT_DTYPES = {"i8", "i32"}
+
+# Combines and activations `interface.elementwise` accepts. These are exactly what the runtime's
+# VECTOR_MAP command implements (`runtime/simulator.py`, `runtime/reference.py`) — accepting more
+# here would let a module verify at the interface level and then fail, or worse compute nothing, at
+# the runtime tier. `linalg.sub` is therefore NOT expressible: the runtime has no subtract combine,
+# and lowering it as an add would be a miscompile.
+KNOWN_COMBINES = {"add", "mul"}
+KNOWN_ACTIVATIONS = {"relu"}
 
 if HAS_XDSL:
     from xdsl.ir import (Attribute, Dialect, EnumAttribute, ParametrizedAttribute,
@@ -197,6 +205,45 @@ if HAS_XDSL:
         acc = result_def(AccumulatorType)
 
     @irdl_op_definition
+    class ElementwiseOp(IRDLOperation):
+        """interface.elementwise — target-independent elementwise combine of two tensors.
+
+        The counterpart to :class:`MatmulOp` for the SIMD/vector family. It produces a tensor
+        directly rather than an accumulator, because an elementwise combine has no accumulation
+        phase to commit: there is nothing to hold open across dispatches, so a pack/commit/evict
+        shape would be ceremony describing hardware behaviour that does not happen.
+
+        This op is what several generated dialect plans were already declaring coverage for. Without
+        it a target could claim an accelerated elementwise unit that the compiler had no way to
+        reach, and the payload went silently down the generic path instead.
+        """
+        name = "interface.elementwise"
+        lhs = operand_def()
+        rhs = operand_def()
+        combine = prop_def(StringAttr)
+        activation = opt_prop_def(ArrayAttr)
+        visibility = opt_prop_def(VisibilityAttr)
+        out = result_def()
+
+        def verify_(self) -> None:
+            if self.combine.data not in KNOWN_COMBINES:
+                raise VerifyException(
+                    f"interface.elementwise combine {self.combine.data!r} not in "
+                    f"{sorted(KNOWN_COMBINES)} — the runtime's VECTOR_MAP implements no other")
+            for entry in (self.activation or ()):
+                stage = entry.data if isinstance(entry, StringAttr) else None
+                if stage not in KNOWN_ACTIVATIONS:
+                    raise VerifyException(
+                        f"interface.elementwise activation {stage!r} not in "
+                        f"{sorted(KNOWN_ACTIVATIONS)}")
+            types = [self.lhs.type, self.rhs.type, self.out.type]
+            shaped = [t for t in types if isinstance(t, TensorType)]
+            if len(shaped) == len(types) and len({tuple(t.get_shape()) for t in shaped}) != 1:
+                raise VerifyException(
+                    "interface.elementwise operands and result must have one shape, got "
+                    + ", ".join(str(tuple(t.get_shape())) for t in shaped))
+
+    @irdl_op_definition
     class AccumulateOp(IRDLOperation):
         """interface.accumulate — accumulates a matmul contribution into an accumulator."""
         name = "interface.accumulate"
@@ -334,9 +381,9 @@ if HAS_XDSL:
             if not self.sym_name.data:
                 raise VerifyException("interface.command.region must be named")
 
-    _OP_CLASSES = [ResidentPackOp, ResidentEvictOp, MatmulOp, AccumulatorCreateOp,
-                   AccumulateOp, CommitOp, AsyncCopyOp, AwaitOp, FifoCreateOp,
-                   FifoPushOp, FifoPopOp, CommandRegionOp]
+    _OP_CLASSES = [ResidentPackOp, ResidentEvictOp, MatmulOp, ElementwiseOp,
+                   AccumulatorCreateOp, AccumulateOp, CommitOp, AsyncCopyOp, AwaitOp,
+                   FifoCreateOp, FifoPushOp, FifoPopOp, CommandRegionOp]
     _ATTR_CLASSES = [ResidentTensorType, StreamingTileType, AccumulatorType,
                      CommittedTensorType, EventType, FifoType, CommandType,
                      MemoryStateAttr, VisibilityAttr, LayoutAttr, LifetimeAttr]

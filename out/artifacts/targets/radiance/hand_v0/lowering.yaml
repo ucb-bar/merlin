@@ -7,10 +7,12 @@
 interface_to_target:
   interface.resident_pack: radiance.stage
   interface.matmul: radiance.matmul
+  interface.elementwise: radiance.elementwise
   interface.commit: radiance.commit
   interface.resident_evict: radiance.release
 target_to_opcode:
   radiance.stage: RES_PACK
   radiance.matmul: MATMUL_RESIDENT
+  radiance.elementwise: VECTOR_MAP
   radiance.commit: COMMIT
   radiance.release: EVICT

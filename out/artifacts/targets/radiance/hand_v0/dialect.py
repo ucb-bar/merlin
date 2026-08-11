@@ -39,7 +39,7 @@ from xdsl.irdl import (
 from xdsl.utils.exceptions import VerifyException
 
 DIALECT_NAME = "radiance"
-OPS = ["stage", "matmul", "commit", "release"]
+OPS = ["stage", "matmul", "elementwise", "commit", "release"]
 TYPES = ["shared_tensor", "accumulator"]
 
 # Epilogue stages the SIMT cluster can fuse. `requant` is deliberately absent: the contract routes
@@ -49,6 +49,10 @@ KNOWN_EPILOGUE = {"bias", "bias_add", "relu"}
 
 # The scratchpad is banked; a staged tile is addressed per bank. Layouts the stage op accepts.
 KNOWN_LAYOUTS = {"packed_rhs", "shared_tile"}
+
+# Combines the vector lanes implement — the same set interface.elementwise accepts, so a
+# module that verifies at the interface tier cannot fail to lower here.
+KNOWN_COMBINES = {"add", "mul"}
 
 
 @irdl_attr_definition
@@ -109,6 +113,30 @@ class MatmulOp(IRDLOperation):
 
 
 @irdl_op_definition
+class ElementwiseOp(IRDLOperation):
+    """An elementwise combine on the cluster's vector lanes.
+
+    Radiance's contract lists ``elementwise`` in ``capabilities.ops`` and in the ``simt_cluster``
+    unit's own ``ops``, which is what earns this op. Like the matmul it records the warp width, for
+    the same reason: ``must_map_to_warps`` applies to every dispatch, not only to contractions.
+    """
+
+    name = "radiance.elementwise"
+    lhs = operand_def()
+    rhs = operand_def()
+    combine = prop_def(StringAttr)
+    activation = opt_prop_def(ArrayAttr)
+    lanes_per_warp = prop_def(IntegerAttr)
+    out = result_def()
+
+    def verify_(self) -> None:
+        if self.combine.data not in KNOWN_COMBINES:
+            raise VerifyException(
+                f"radiance.elementwise combine {self.combine.data!r} not in "
+                f"{sorted(KNOWN_COMBINES)}")
+
+
+@irdl_op_definition
 class CommitOp(IRDLOperation):
     """Write the accumulator back to global memory, optionally fusing an epilogue."""
 
@@ -141,11 +169,13 @@ class ReleaseOp(IRDLOperation):
     handle = operand_def(SharedTensorType)
 
 
-RADIANCE_DIALECT = Dialect(DIALECT_NAME, [StageOp, MatmulOp, CommitOp, ReleaseOp],
+RADIANCE_DIALECT = Dialect(DIALECT_NAME,
+                           [StageOp, MatmulOp, ElementwiseOp, CommitOp, ReleaseOp],
                            [SharedTensorType, AccumulatorType])
 
 # The registry builds a TargetSpec from this mapping (decoupled from the core's built-in table).
-SPEC_OPS = {"pack": StageOp, "matmul": MatmulOp, "commit": CommitOp, "evict": ReleaseOp,
+SPEC_OPS = {"pack": StageOp, "matmul": MatmulOp, "elementwise": ElementwiseOp,
+            "commit": CommitOp, "evict": ReleaseOp,
             "resident_type": SharedTensorType, "accumulator_type": AccumulatorType}
 
 
@@ -165,7 +195,8 @@ def op_properties(contract: dict[str, Any]) -> dict[str, dict[str, Any]]:
             "warp width would be a fabricated hardware fact")
     if lanes is None:
         raise ValueError("radiance contract declares no capabilities.simt.lanes_per_warp")
-    return {"matmul": {"lanes_per_warp": IntegerAttr(int(lanes), i64)},
+    warp = {"lanes_per_warp": IntegerAttr(int(lanes), i64)}
+    return {"matmul": dict(warp), "elementwise": dict(warp),
             "pack": {}, "commit": {}, "evict": {}}
 
 

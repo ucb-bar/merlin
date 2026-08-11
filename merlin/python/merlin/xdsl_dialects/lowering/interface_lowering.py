@@ -10,7 +10,7 @@ analyses (use-after-evict, place legality, discharged checks) run on the result.
 from __future__ import annotations
 
 from .._common import HAS_XDSL
-from .input_workload import find_matmuls, matmul_lhs_rhs
+from .input_workload import elementwise_operands, find_elementwise, find_matmuls, matmul_lhs_rhs
 
 
 class LoweringError(RuntimeError):
@@ -98,6 +98,63 @@ def _check_payload_complete(fn, src_block, payload: list) -> None:
                 "the commits of the matmuls it found, so the difference would be dropped.")
 
 
+def _lower_elementwise_to_interface(fn, src_block, elementwise: list):
+    """Materialize an elementwise payload as ``interface.elementwise`` ops.
+
+    Kept separate from the matmul path rather than folded into it. The matmul path is RTL-certified
+    on real hardware and its output is byte-compared against a second frontend; a refactor that
+    merged the two would put that at risk to save a few lines. The completeness guard is the same
+    one, so neither path can silently drop computation.
+    """
+    from xdsl.dialects.builtin import FunctionType, ModuleOp, StringAttr
+    from xdsl.dialects.func import FuncOp, ReturnOp
+    from xdsl.ir import Block, Region
+
+    from .. import interface as i
+
+    payload = [op for op, _ in elementwise]
+    dropped = [op.name for op in unaccounted_ops(src_block, payload)]
+    if dropped:
+        raise LoweringError(
+            f"interface materialization would silently drop {len(dropped)} op(s) of the elementwise "
+            f"payload: {', '.join(sorted(set(dropped)))}. Failing here instead of compiling a "
+            "different program.")
+
+    arg_types = [a.type for a in src_block.args]
+    blk = Block(arg_types=arg_types)
+    value_map = dict(zip(src_block.args, blk.args))
+
+    ops = []
+    for op, combine in elementwise:
+        lhs, rhs = elementwise_operands(op)
+        for operand in (lhs, rhs):
+            if operand not in value_map:
+                raise LoweringError(
+                    "elementwise operand is not a function argument — the interface layer maps "
+                    "operands through the function's own arguments, so a computed operand cannot "
+                    "be materialized (chain the kernel or re-raise it to an argument)")
+        new = i.ElementwiseOp(
+            operands=[value_map[lhs], value_map[rhs]],
+            result_types=[op.results[0].type],
+            properties={"combine": StringAttr(combine)})
+        value_map[op.results[0]] = new.out
+        ops.append(new)
+
+    terminator = src_block.last_op
+    returned = list(terminator.operands) if terminator is not None else []
+    expected = [op.results[0] for op, _ in elementwise]
+    if returned != expected:
+        raise LoweringError(
+            f"function @{fn.sym_name.data} returns {len(returned)} value(s) that are not exactly the "
+            f"{len(expected)} elementwise result(s), in order — the difference would be dropped.")
+
+    out_types = [v.type for v in expected]
+    ops.append(ReturnOp(*[value_map[v] for v in expected]))
+    blk.add_ops(ops)
+    new_fn = FuncOp(fn.sym_name.data, FunctionType.from_lists(arg_types, out_types), Region([blk]))
+    return ModuleOp([new_fn])
+
+
 def lower_to_interface(module):
     """Build a fresh interface-level module from the scheduled module."""
     if not HAS_XDSL:
@@ -132,8 +189,20 @@ def lower_to_interface(module):
             "materialized, so control flow must be resolved before this stage")
     src_block = fn.body.blocks[0]
     matmuls = find_matmuls(module)
-    if not matmuls:
-        raise LoweringError("no matmul payload to materialize")
+    elementwise = find_elementwise(module)
+    if not matmuls and not elementwise:
+        raise LoweringError("no matmul or elementwise payload to materialize")
+    if matmuls and elementwise:
+        # A fused shape (elementwise epilogue on a matmul) is a real workload, but materializing it
+        # means deciding whether the combine folds into the commit or stays a separate dispatch —
+        # a scheduling question with a measurable answer, not a detail to guess at here.
+        raise LoweringError(
+            f"mixed payload: {len(matmuls)} matmul(s) and {len(elementwise)} elementwise op(s). "
+            "Materializing both together needs a fusion decision (fold the combine into the commit "
+            "epilogue, or emit it as its own dispatch) that the schedule stage does not make yet; "
+            "split the kernel or wait for that decision to exist.")
+    if elementwise:
+        return _lower_elementwise_to_interface(fn, src_block, elementwise)
     _check_payload_complete(fn, src_block, matmuls)
 
     arg_types = [a.type for a in src_block.args]
