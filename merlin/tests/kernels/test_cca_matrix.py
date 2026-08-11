@@ -300,3 +300,63 @@ void two_banks(const int8_t *ap, const int8_t *bp, size_t ml, size_t nl, size_t 
         cca = CM.lift_matrix_unit(resident_stream, _TABLE, op="matmul", source="t",
                                   accumulate="ACC", readout="READOUT")
         assert cca.provenance["stream"]["matrix_registers_used"] == 1
+
+
+#: The kernel as it was BEFORE the vtype fix: the readout issued under the accumulator width at m1.
+#: MEASURED on the unit's RTL, this hangs the core. It is kept here so the static check that now forbids
+#: it is shown to reject the real defect rather than a hypothetical one.
+_UNDERPROVISIONED = f"""
+#include <stdint.h>
+#include <stddef.h>
+void underprovisioned(int32_t *c, size_t nl, size_t ml) {{
+  asm volatile("vsetvli zero, %[nl], e32, m1, ta, ma" :: [nl] "r"(nl));
+  for (size_t r = 0; r < ml; ++r) {{
+    asm volatile("{_TABLE['READOUT'].insn_r('x0', '%[r]', 'x1')}\\n\\t"
+                 "vse32.v v0, (%[cp])"
+                 :: [r] "r"(r), [cp] "r"(c + r) : "memory");
+  }}
+}}
+"""
+
+
+class TestTheVtypeMustSpanATileRow:
+    """The constraint the hardware enforces by hanging, checked statically instead."""
+
+    @pytest.mark.parametrize("sew,lmul,ok", [
+        (8, 1, True),      # the operand vtype: VLMAX == tile edge
+        (32, 1, False),    # what hung the RTL: VLMAX == tile/4
+        (32, 4, True),     # the accumulator vtype, correctly grouped
+        (32, 8, True),     # wider than needed is still safe
+        (16, 2, True),
+        (16, 1, False),
+    ])
+    def test_the_rule_is_vlen_independent(self, sew, lmul, ok):
+        # LMUL * operand_bits >= SEW. The VLEN cancels, which is what lets this be checked on an object.
+        assert CM.vtype_spans_tile_row(sew, lmul, operand_bits=8) is ok
+
+    def test_a_fractional_lmul_never_spans_a_row(self):
+        assert not CM.vtype_spans_tile_row(8, 0.5, operand_bits=8)
+
+    @pytest.mark.parametrize("bad", [(0, 1), (8, 0), (-8, 1)])
+    def test_nonsense_arguments_raise(self, bad):
+        with pytest.raises(ValueError):
+            CM.vtype_spans_tile_row(bad[0], bad[1], operand_bits=8)
+
+    def test_the_emitted_kernel_has_no_violation(self, resident_stream):
+        # The post-fix kernel: broadcast under e8/m1, readout under e32/m4.
+        assert CM.vtype_violations(resident_stream, _TABLE, operand_bits=8) == ()
+
+    def test_the_pre_fix_readout_is_rejected(self, tmp_path):
+        # If this passed, the check would not be protecting anything -- this is the exact code that hung.
+        got = CM.vtype_violations(_compile(_UNDERPROVISIONED, tmp_path), _TABLE, operand_bits=8)
+        assert got, "the under-provisioned readout must be reported"
+        assert all(v["sew"] == 32 and v["lmul"] == 1 for v in got)
+        assert any("short of a tile row" in v["why"] for v in got)
+
+    def test_an_unconfigured_instruction_is_reported_too(self, tmp_path):
+        src = f"""
+#include <stdint.h>
+void unconfigured(void) {{ asm volatile("{_TABLE['ACC'].insn_r('x1', 'x5', 'x4')}"); }}
+"""
+        got = CM.vtype_violations(_compile(src, tmp_path), _TABLE, operand_bits=8)
+        assert got and got[0]["sew"] is None and "inherited" in got[0]["why"]

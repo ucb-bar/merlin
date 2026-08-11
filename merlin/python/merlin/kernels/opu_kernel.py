@@ -57,6 +57,41 @@ class KernelSpec:
     col_vreg: int = 4              # holds the RHS column operand
     out_vreg: int = 0              # readout destination, and the broadcast source
     func_name: str = "opu_gemm_i8"
+    #: Operand and accumulator element widths in bits. Not target facts — they are what an int8 kernel
+    #: accumulating in int32 *is*, and the ratio between them is load-bearing (see :attr:`acc_lmul`).
+    operand_bits: int = 8
+    acc_bits: int = 32
+
+    @property
+    def acc_lmul(self) -> int:
+        """The register-group multiplier a full tile row of accumulator needs — a DERIVED ratio.
+
+        The tile edge is ``VLEN / operand_bits`` lanes, and each lane's accumulator is ``acc_bits`` wide,
+        so holding one row takes ``tile_edge * acc_bits / VLEN = acc_bits / operand_bits`` registers. The
+        ``VLEN`` cancels, which is why the same multiplier is right for every configuration of the unit
+        and why this is a ratio rather than a constant someone measured on one part.
+
+        Getting it wrong does not fail loudly. At ``LMUL = 1`` and ``VLEN = 256`` the readout's ``vsetvli``
+        clamps ``vl`` to ``256/32 = 8``, so a 32-wide tile row stores its first 8 elements and silently
+        drops the rest.
+        """
+        return max(1, int(self.acc_bits) // int(self.operand_bits))
+
+    def __post_init__(self) -> None:
+        # A vector register group of N registers must start at a multiple of N. The accumulator is read
+        # and written as such a group (`vle32.v`/`vse32.v` under the operand vtype have EMUL = acc_lmul),
+        # so a misaligned base is an illegal encoding rather than a slower one.
+        if int(self.out_vreg) % self.acc_lmul:
+            raise ValueError(
+                f"out_vreg={self.out_vreg} must be a multiple of {self.acc_lmul} (the accumulator is a "
+                f"{self.acc_lmul}-register group, and a group must be aligned to its size)")
+        span = range(int(self.out_vreg), int(self.out_vreg) + self.acc_lmul)
+        for name, reg in (("row_vreg", self.row_vreg), ("col_vreg", self.col_vreg)):
+            if int(reg) in span:
+                raise ValueError(
+                    f"{name}=v{reg} falls inside the accumulator group "
+                    f"v{self.out_vreg}..v{self.out_vreg + self.acc_lmul - 1}; the operand loads would "
+                    "overwrite the accumulator between the broadcast and the readout")
 
 
 def _x(n: int) -> str:
@@ -137,16 +172,30 @@ static void {spec.func_name}_tile(int32_t *c, const int8_t *at, const int8_t *b,
     }}
   return;
 #else
-  /* Initialise the accumulator: broadcast the bias row down every row of the tile, or zero. */
+  /* Initialise the accumulator: broadcast the bias row down every row of the tile, or zero.
+   *
+   * The broadcast is issued under the OPERAND vtype (e{spec.operand_bits}/m1), which is what the unit's
+   * own expert kernel does. This is not a style choice: MEASURED on the RTL, the same instruction under
+   * e{spec.acc_bits}/m1 HANGS the core -- no trap, no retire, the simulation spins forever -- because that
+   * vl cannot span a tile row. Under e{spec.acc_bits}/m{spec.acc_lmul} it completes, so either the operand
+   * vtype or the correctly-grouped accumulator vtype is safe, and only the under-provisioned one is not.
+   *
+   * The int32 data still moves with an explicit-width `vle32.v`, which takes its element width from the
+   * opcode rather than from vtype, so the load is unaffected by the surrounding e{spec.operand_bits}.
+   * Its EMUL is {spec.acc_lmul}, so it writes the whole accumulator group
+   * v{spec.out_vreg}..v{spec.out_vreg + spec.acc_lmul - 1} -- which is why the zero-init below has to
+   * cover the group and not just its first register. */
   if (bias) {{
-    asm volatile("vsetvli zero, %[nl], e32, m1, ta, ma\\n\\t"
+    asm volatile("vsetvli zero, %[nl], e{spec.operand_bits}, m1, ta, ma\\n\\t"
                  "vle32.v v{spec.out_vreg}, (%[bp])\\n\\t"
                  "{bcast.insn_r(md, _x(0), vo)}"
                  :: [nl] "r"(nl), [bp] "r"(bias)
                  : "memory");
   }} else {{
-    asm volatile("vsetvli zero, %[nl], e32, m1, ta, ma\\n\\t"
+    /* Zero the whole group at the accumulator vtype, then drop back to the operand vtype to broadcast. */
+    asm volatile("vsetvli zero, %[nl], e{spec.acc_bits}, m{spec.acc_lmul}, ta, ma\\n\\t"
                  "vmv.v.i v{spec.out_vreg}, 0\\n\\t"
+                 "vsetvli zero, %[nl], e{spec.operand_bits}, m1, ta, ma\\n\\t"
                  "{bcast.insn_r(md, _x(0), vo)}"
                  :: [nl] "r"(nl));
   }}
@@ -161,8 +210,17 @@ static void {spec.func_name}_tile(int32_t *c, const int8_t *at, const int8_t *b,
                  : "t0", "memory");
   }}
 
-  /* Readout is row-serial and it is the only way out of the accumulator. */
-  asm volatile("vsetvli zero, %[nl], e32, m1, ta, ma" :: [nl] "r"(nl));
+  /* Readout is row-serial and it is the only way out of the accumulator.
+   *
+   * LMUL here is {spec.acc_lmul} = acc_bits / operand_bits, DERIVED rather than chosen: one tile row is
+   * `VLEN / operand_bits` lanes of `acc_bits` each, so it needs that many registers and the VLEN cancels.
+   *
+   * An under-provisioned LMUL is FATAL, not merely lossy. MEASURED on the unit's RTL: at e{spec.acc_bits}
+   * with m1 the readout HANGS the core -- vl clamps to VLEN/acc_bits (8 at VLEN=256), which cannot cover a
+   * 32-lane tile row, and the unit stalls without trapping or retiring. The same vtype at m{spec.acc_lmul}
+   * completes, and so does the operand vtype e{spec.operand_bits}/m1. So the constraint is not "avoid the
+   * accumulator width" but "vl must be able to span a tile row". */
+  asm volatile("vsetvli zero, %[nl], e{spec.acc_bits}, m{spec.acc_lmul}, ta, ma" :: [nl] "r"(nl));
   for (size_t r = 0; r < ml; ++r) {{
     asm volatile("{out.insn_r(vo, '%[r]', md)}\\n\\t"
                  "vse32.v v{spec.out_vreg}, (%[cp])"

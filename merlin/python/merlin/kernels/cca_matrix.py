@@ -36,7 +36,8 @@ from typing import Any
 from .cca import CCA, ComputeFacet, SpatialFacet
 
 __all__ = ["CONTRACTION_FORM", "PROFITABLE_REGIMES", "MatrixStreamFacts", "lift_matrix_unit",
-           "register_routes", "stream_facts", "tile_occupancy"]
+           "register_routes", "stream_facts", "tile_occupancy", "vtype_spans_tile_row",
+           "vtype_violations"]
 
 #: Shape regimes (``bench_ceiling.shape_regime`` vocabulary) where filling the tile is plausible, and so
 #: where moving a contraction onto the unit can pay. The complement — ``vector`` and ``skinny`` — is the
@@ -159,6 +160,78 @@ def stream_facts(obj_path: Any, encodings: Mapping[str, Any], *, accumulate: str
                              readouts_per_accumulate=per,
                              matrix_registers_used=(len(acc_regs) if acc else None),
                              notes=tuple(notes))
+
+
+def vtype_spans_tile_row(sew: int, lmul: float, *, operand_bits: int) -> bool:
+    """Whether a vtype's ``vl`` can cover one full tile row — the constraint the unit actually enforces.
+
+    A tile row is ``VLEN / operand_bits`` lanes, and a vtype reaches ``VLMAX = VLEN * LMUL / SEW``, so the
+    requirement ``VLMAX >= tile_edge`` reduces to ``LMUL * operand_bits >= SEW``. **The VLEN cancels**,
+    which is what makes this checkable on an object file without knowing which part it will run on — and
+    is the same cancellation that makes the kernel's accumulator LMUL a ratio rather than a constant.
+
+    MEASURED on the unit's RTL, violating this does not degrade: an instruction issued under
+    ``e32``/``m1`` (VLMAX = 8 against a 32-lane tile) HANGS the core with no trap and no retire, while
+    ``e8``/``m1`` and ``e32``/``m4`` both complete. So this is a liveness property, not a precision one.
+    """
+    if sew <= 0 or lmul <= 0 or operand_bits <= 0:
+        raise ValueError(f"sew={sew} lmul={lmul} operand_bits={operand_bits} must be positive")
+    return float(lmul) * float(operand_bits) >= float(sew)
+
+
+def _vtype_of(raw: Any) -> "tuple[int, float] | None":
+    """``(sew, lmul)`` from a vector-configuration instruction's own operands, or None.
+
+    Read from the explicit ``e<width>`` / ``m<mul>`` tokens the ISA spells them with, never inferred from
+    the mnemonic. ``mf2``/``mf4``/``mf8`` are fractional multipliers.
+    """
+    sew: int | None = None
+    lmul: float | None = None
+    for token in (t.strip() for op in getattr(raw, "operands", ()) for t in str(op).split(",")):
+        if token.startswith("e") and token[1:].isdigit():
+            sew = int(token[1:])
+        elif token.startswith("mf") and token[2:].isdigit():
+            lmul = 1.0 / int(token[2:])
+        elif token.startswith("m") and token[1:].isdigit():
+            lmul = float(int(token[1:]))
+    return (sew, lmul) if (sew is not None and lmul is not None) else None
+
+
+def vtype_violations(obj_path: Any, encodings: Mapping[str, Any], *, operand_bits: int,
+                     config_prefix: str = "vset", triple: str = "riscv64") -> tuple[dict[str, Any], ...]:
+    """Every unit instruction in ``obj_path`` issued under a vtype whose ``vl`` cannot span a tile row.
+
+    Walks the decoded stream tracking the vtype the ISA's own configuration instructions establish, and
+    reports each unit instruction whose effective vtype fails :func:`vtype_spans_tile_row`. An instruction
+    with NO preceding configuration is reported too, with ``sew=None`` — it inherited a length from
+    whatever ran before, which is the same hazard one step removed.
+    """
+    from .decode import rvv as _rvv
+    from .decode.opu import decode_stream
+
+    stream = _rvv.decode(obj_path, triple=triple)
+    raws = [i.raw for i in stream.insns]
+    decoded = decode_stream(raws, encodings)
+    current: tuple[int, float] | None = None
+    out: list[dict[str, Any]] = []
+    for d in decoded:
+        raw = raws[d.index]
+        if raw.mnemonic.startswith(config_prefix):
+            got = _vtype_of(raw)
+            if got is not None:
+                current = got
+            continue
+        if not d.from_extension:
+            continue
+        if current is None:
+            out.append({"insn": d.identity, "addr": raw.addr, "sew": None, "lmul": None,
+                        "why": "no vector-configuration instruction precedes it; the length in effect "
+                               "was inherited"})
+        elif not vtype_spans_tile_row(current[0], current[1], operand_bits=operand_bits):
+            out.append({"insn": d.identity, "addr": raw.addr, "sew": current[0], "lmul": current[1],
+                        "why": f"e{current[0]}/m{current[1]:g} reaches VLEN*{current[1]:g}/{current[0]} "
+                               f"lanes, short of a tile row's VLEN/{operand_bits}"})
+    return tuple(out)
 
 
 def tile_occupancy(m: int, n: int, tile: int) -> float:
