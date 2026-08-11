@@ -24,7 +24,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Contracts](reference/contracts.md) — `current`, verified 2026-07-14 · owner: ir — see also: [core_dialects](reference/core_dialects.md)
 - [Core dialects](reference/core_dialects.md) — `current`, verified 2026-07-14 · owner: ir — see also: [dialects](reference/dialects.md), [contracts](reference/contracts.md), [lowering_pipeline](reference/lowering_pipeline.md)
 - [Dialects](reference/dialects.md) — `current`, verified 2026-07-14 · owner: ir — see also: [core_dialects](reference/core_dialects.md), [xdsl](reference/xdsl.md)
-- [DSE boundary-placement vocabulary](reference/dse_boundary_vocabulary.md) — `current`, verified 2026-08-10 · owner: dse — see also: [dse_guidance](guides/dse_guidance.md), [contracts](reference/contracts.md), [design_pressure](guides/design_pressure.md)
+- [DSE boundary-placement vocabulary](reference/dse_boundary_vocabulary.md) — `current`, verified 2026-08-11 · owner: dse — see also: [dse_guidance](guides/dse_guidance.md), [contracts](reference/contracts.md), [design_pressure](guides/design_pressure.md)
 - [Experiment ABI](reference/experiment_abi.md) — `current`, verified 2026-07-14 · owner: targetgen — see also: [targetgen](guides/targetgen.md), [adding_a_target](guides/adding_a_target.md)
 - [Generated target repositories](reference/generated_target_repos.md) — `current`, verified 2026-07-07 · owner: targetgen — see also: [targetgen](guides/targetgen.md), [adding_a_target](guides/adding_a_target.md)
 - [Lowering pipeline](reference/lowering_pipeline.md) — `current`, verified 2026-07-14 · owner: ir — see also: [core_dialects](reference/core_dialects.md), [llvm_integration](guides/llvm_integration.md)
