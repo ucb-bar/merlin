@@ -78,25 +78,30 @@ def payload_classes(module) -> tuple[str, ...]:
     Read from the entry function's own block rather than a full ``walk()``: named linalg ops carry a
     hidden body region (a ``linalg.yield``), and counting those made every matmul module look like
     it contained generic computation too.
+
+    What counts as "generic" is not a list of op names kept here. It is whatever interface
+    materialization would neither rebuild nor safely drop, asked of the interface layer itself
+    (``unaccounted_ops``), so the routing decision and the guard that fires later cannot disagree —
+    they did when each kept its own list, and a zeroed accumulator was enough to split them.
     """
-    names = {op.name for op in _entry_ops(module)}
-    found: list[str] = []
-    if names & _MATMUL_OPS:
-        found.append("matmul")
-    # Beyond the matmul payload, its accumulator inits and the terminator, anything else is generic
-    # computation the target dialect has no op for.
-    scaffolding = _MATMUL_OPS | {"func.return", "tensor.empty", "arith.constant"}
-    if names - scaffolding:
+    from merlin.xdsl_dialects.lowering.interface_lowering import unaccounted_ops
+
+    block = _entry_block(module)
+    if block is None:
+        return ()
+    payload = [op for op in block.ops if op.name in _MATMUL_OPS]
+    found: list[str] = ["matmul"] if payload else []
+    if unaccounted_ops(block, payload):
         found.append("generic")
     return tuple(found)
 
 
-def _entry_ops(module) -> list:
-    """Top-level ops of the entry function's block (the level the staged pipeline reasons at)."""
+def _entry_block(module):
+    """The entry function's block — the level the staged pipeline reasons at."""
     fns = [op for op in module.walk() if op.name == "func.func"]
     if not fns or not fns[0].body.blocks:
-        return [op for op in module.walk() if op.name not in ("builtin.module", "func.func")]
-    return list(fns[0].body.blocks[0].ops)
+        return None
+    return fns[0].body.blocks[0]
 
 
 def plan_interface_ops(plan: dict[str, Any] | None) -> tuple[str, ...]:

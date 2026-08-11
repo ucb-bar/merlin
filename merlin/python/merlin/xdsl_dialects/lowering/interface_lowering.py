@@ -17,7 +17,7 @@ class LoweringError(RuntimeError):
     pass
 
 
-def _support_ops(block, payload: set) -> set:
+def support_ops(block, payload: set) -> set:
     """Ops in ``block`` whose results feed ONLY the payload — safely consumed by materialization.
 
     For the matmul payload these are the accumulator inits (``tensor.empty``) and the quantized
@@ -42,6 +42,27 @@ def _support_ops(block, payload: set) -> set:
     return support
 
 
+def unaccounted_ops(block, payload) -> list:
+    """Ops in ``block`` that interface materialization would neither rebuild nor safely drop.
+
+    This is the single definition of "what the staged pipeline can carry", used both by the guard
+    below and by the router in :mod:`merlin.compile_core`. They were separate op-name lists once,
+    and drifted immediately: the router called a zeroing ``linalg.fill`` generic computation while
+    materialization correctly treated it as support, so a perfectly stageable matmul was routed to
+    the LLVM path. One computation cannot disagree with itself.
+    """
+    from .. import contract as c
+    from .. import schedule as s
+
+    decoration = {c.DIALECT_NAME, s.DIALECT_NAME}
+    payload = set(payload)
+    support = support_ops(block, payload)
+    terminator = block.last_op
+    return [op for op in block.ops
+            if op not in support and op not in payload and op is not terminator
+            and op.dialect_name() not in decoration]
+
+
 def _check_payload_complete(fn, src_block, payload: list) -> None:
     """Fail closed if materialization would silently drop part of the computation.
 
@@ -54,16 +75,7 @@ def _check_payload_complete(fn, src_block, payload: list) -> None:
     That is a false-PASS generator, and it matters most for exactly the payloads a kernel frontend
     submits, so the drop is turned into an error naming what would have been lost.
     """
-    from .. import contract as c
-    from .. import schedule as s
-
-    decoration = {c.DIALECT_NAME, s.DIALECT_NAME}
-    terminator = src_block.last_op
-    support = _support_ops(src_block, set(payload))
-
-    dropped = [op.name for op in src_block.ops
-               if op not in support and op not in payload and op is not terminator
-               and op.dialect_name() not in decoration]
+    dropped = [op.name for op in unaccounted_ops(src_block, payload)]
     if dropped:
         raise LoweringError(
             "interface materialization would silently drop " f"{len(dropped)} op(s) of the payload: "
@@ -75,6 +87,7 @@ def _check_payload_complete(fn, src_block, payload: list) -> None:
 
     # An epilogue would be caught above, but a payload whose RESULTS are not the matmul results is a
     # second way to lose computation (the rebuilt return carries commits of the matmuls, in order).
+    terminator = src_block.last_op
     if terminator is not None:
         returned = list(terminator.operands)
         expected = [mm.results[0] for mm in payload]

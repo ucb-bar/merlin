@@ -56,6 +56,27 @@ if HAS_TRITON:
         tl.store(c_ptr + offs_m[:, None] * BN + offs_n[None, :], tl.dot(a, b, out_dtype=tl.int32))
 
     @triton.jit
+    def repeated_rhs_matmul(a0_ptr, a1_ptr, w_ptr, c0_ptr, c1_ptr, BM: tl.constexpr,
+                            BN: tl.constexpr, BK: tl.constexpr):
+        """Two activations against one immutable weight — Merlin's own reference workload.
+
+        Written in Triton so that the accelerator arms compile the workload their target packages
+        are certified on: one shared right-hand side is what makes the weight worth making resident,
+        and a weight-stationary array's driver is built around exactly that. It is also the pair for
+        the convergence test, where the hand-authored `build_input_module(reuse=2)` must produce the
+        same interface, target and command buffer.
+        """
+        offs_m = tl.arange(0, BM)
+        offs_n = tl.arange(0, BN)
+        offs_k = tl.arange(0, BK)
+        w = tl.load(w_ptr + offs_k[:, None] * BN + offs_n[None, :])
+        a0 = tl.load(a0_ptr + offs_m[:, None] * BK + offs_k[None, :])
+        a1 = tl.load(a1_ptr + offs_m[:, None] * BK + offs_k[None, :])
+        out = offs_m[:, None] * BN + offs_n[None, :]
+        tl.store(c0_ptr + out, tl.dot(a0, w, out_dtype=tl.int32))
+        tl.store(c1_ptr + out, tl.dot(a1, w, out_dtype=tl.int32))
+
+    @triton.jit
     def batched_matmul(a_ptr, b_ptr, c_ptr, BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr):
         """One independent matmul per program, over disjoint slices.
 
@@ -111,6 +132,7 @@ if HAS_TRITON:
 else:  # pragma: no cover - exercised only where the optional extra is absent
     vector_add = matmul_one_tile = matmul_one_tile_f32 = None
     vector_add_unmasked = transposed_store = atomic_add_kernel = batched_matmul = None
+    repeated_rhs_matmul = None
 
 
 def vector_add_spec(n: int = VECTOR_ADD_N, block: int = VECTOR_ADD_BLOCK) -> TritonKernelSpec:
@@ -143,6 +165,27 @@ def vector_add_unmasked_spec(n: int, block: int = VECTOR_ADD_BLOCK) -> TritonKer
         ),
         grid=GridSpec(dims=(-(-n // block),)),
         constexprs={"BLOCK_SIZE": block},
+    )
+
+
+def repeated_rhs_matmul_spec(m: int = TILE_M, k: int = TILE_K, n: int = TILE_N,
+                            dtype: str = "i8", acc_dtype: str = "i32") -> TritonKernelSpec:
+    """Spec for :func:`repeated_rhs_matmul`.
+
+    Argument order matches `build_input_module(reuse=2)` exactly — activations, then the shared
+    weight, then the outputs — so the two frontends are comparable value by value.
+    """
+    return TritonKernelSpec(
+        function=repeated_rhs_matmul,
+        args=(
+            KernelArg("a0_ptr", "pointer", dtype, shape=(m, k), effect="read"),
+            KernelArg("a1_ptr", "pointer", dtype, shape=(m, k), effect="read"),
+            KernelArg("w_ptr", "pointer", dtype, shape=(k, n), effect="read"),
+            KernelArg("c0_ptr", "pointer", acc_dtype, shape=(m, n), effect="write"),
+            KernelArg("c1_ptr", "pointer", acc_dtype, shape=(m, n), effect="write"),
+        ),
+        grid=GridSpec(dims=(1,)),
+        constexprs={"BM": m, "BN": n, "BK": k},
     )
 
 
