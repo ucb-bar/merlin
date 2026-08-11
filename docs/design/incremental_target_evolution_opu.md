@@ -757,6 +757,11 @@ else is wrong. The values are plausible sums, not a constant — which is what r
 story that had been the leading explanation. `kernels/opu_forensics.py` does this decomposition, and its
 tests synthesise each failure mode rather than only checking the case it was written against.
 
+The trigger is **cumulative, not a specific predecessor**. Bisecting the corpus prefix: 2, 4, 8 and 16
+preceding cases all pass; 24 fails. The eight cases that separate 16 from 24 were then split in half and
+neither half reproduces it in a six-case image, so no individual case is responsible — it takes roughly
+two dozen preceding contractions.
+
 **Leading explanation, stated as such.** The emitted kernel's instruction sequence is identical for every
 `k` and every case, so a software cause would have to be non-uniform in a way the emitted code
 demonstrably is not; and the trigger needs ~24 preceding contractions, which is accumulated state rather
