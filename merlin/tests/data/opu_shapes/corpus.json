@@ -1,0 +1,315 @@
+{
+ "note": "Frozen acceptance corpus for the outer-product delta. Cases are removed only with a written reason; each `why` states what it is protecting. Comparison against kernels.opu_corpus.reference is EXACT integer equality -- the accumulator does not saturate, so the reference wraps.",
+ "cases": [
+  {
+   "name": "narrow_m_1",
+   "m": 1,
+   "n": 64,
+   "k": 64,
+   "why": "M=1 vecmat: the prior integration packed this to a single row and its operand load read past the end of the panel",
+   "bias": false,
+   "seed": 1,
+   "amplitude": 8
+  },
+  {
+   "name": "narrow_n_1",
+   "m": 64,
+   "n": 1,
+   "k": 64,
+   "why": "N=1 matvec: the mirror case, where the column operand is one lane",
+   "bias": false,
+   "seed": 2,
+   "amplitude": 8
+  },
+  {
+   "name": "narrow_both_1",
+   "m": 1,
+   "n": 1,
+   "k": 64,
+   "why": "both parallel extents 1: a rank-1 accumulate reduced to a dot product, where every length in play is 1",
+   "bias": false,
+   "seed": 3,
+   "amplitude": 8
+  },
+  {
+   "name": "m_2",
+   "m": 2,
+   "n": 64,
+   "k": 64,
+   "why": "M swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 12,
+   "amplitude": 8
+  },
+  {
+   "name": "m_3",
+   "m": 3,
+   "n": 64,
+   "k": 64,
+   "why": "M swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 13,
+   "amplitude": 8
+  },
+  {
+   "name": "m_7",
+   "m": 7,
+   "n": 64,
+   "k": 64,
+   "why": "M swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 17,
+   "amplitude": 8
+  },
+  {
+   "name": "m_15",
+   "m": 15,
+   "n": 64,
+   "k": 64,
+   "why": "M swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 25,
+   "amplitude": 8
+  },
+  {
+   "name": "m_16",
+   "m": 16,
+   "n": 64,
+   "k": 64,
+   "why": "M swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 26,
+   "amplitude": 8
+  },
+  {
+   "name": "m_17",
+   "m": 17,
+   "n": 64,
+   "k": 64,
+   "why": "M swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 27,
+   "amplitude": 8
+  },
+  {
+   "name": "m_31",
+   "m": 31,
+   "n": 64,
+   "k": 64,
+   "why": "M swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 41,
+   "amplitude": 8
+  },
+  {
+   "name": "m_32",
+   "m": 32,
+   "n": 64,
+   "k": 64,
+   "why": "M swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 42,
+   "amplitude": 8
+  },
+  {
+   "name": "n_2",
+   "m": 64,
+   "n": 2,
+   "k": 64,
+   "why": "N swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 42,
+   "amplitude": 8
+  },
+  {
+   "name": "n_3",
+   "m": 64,
+   "n": 3,
+   "k": 64,
+   "why": "N swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 43,
+   "amplitude": 8
+  },
+  {
+   "name": "n_7",
+   "m": 64,
+   "n": 7,
+   "k": 64,
+   "why": "N swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 47,
+   "amplitude": 8
+  },
+  {
+   "name": "n_15",
+   "m": 64,
+   "n": 15,
+   "k": 64,
+   "why": "N swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 55,
+   "amplitude": 8
+  },
+  {
+   "name": "n_16",
+   "m": 64,
+   "n": 16,
+   "k": 64,
+   "why": "N swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 56,
+   "amplitude": 8
+  },
+  {
+   "name": "n_17",
+   "m": 64,
+   "n": 17,
+   "k": 64,
+   "why": "N swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 57,
+   "amplitude": 8
+  },
+  {
+   "name": "n_31",
+   "m": 64,
+   "n": 31,
+   "k": 64,
+   "why": "N swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 71,
+   "amplitude": 8
+  },
+  {
+   "name": "n_32",
+   "m": 64,
+   "n": 32,
+   "k": 64,
+   "why": "N swept below, at and just over a plausible tile edge, and odd",
+   "bias": false,
+   "seed": 72,
+   "amplitude": 8
+  },
+  {
+   "name": "k_1",
+   "m": 16,
+   "n": 16,
+   "k": 1,
+   "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
+   "bias": false,
+   "seed": 81,
+   "amplitude": 8
+  },
+  {
+   "name": "k_2",
+   "m": 16,
+   "n": 16,
+   "k": 2,
+   "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
+   "bias": false,
+   "seed": 82,
+   "amplitude": 8
+  },
+  {
+   "name": "k_3",
+   "m": 16,
+   "n": 16,
+   "k": 3,
+   "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
+   "bias": false,
+   "seed": 83,
+   "amplitude": 8
+  },
+  {
+   "name": "k_15",
+   "m": 16,
+   "n": 16,
+   "k": 15,
+   "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
+   "bias": false,
+   "seed": 95,
+   "amplitude": 8
+  },
+  {
+   "name": "k_16",
+   "m": 16,
+   "n": 16,
+   "k": 16,
+   "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
+   "bias": false,
+   "seed": 96,
+   "amplitude": 8
+  },
+  {
+   "name": "k_17",
+   "m": 16,
+   "n": 16,
+   "k": 17,
+   "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
+   "bias": false,
+   "seed": 97,
+   "amplitude": 8
+  },
+  {
+   "name": "k_255",
+   "m": 16,
+   "n": 16,
+   "k": 255,
+   "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
+   "bias": false,
+   "seed": 335,
+   "amplitude": 8
+  },
+  {
+   "name": "asymmetric_m_gt_n",
+   "m": 32,
+   "n": 8,
+   "k": 24,
+   "why": "M != N, so an operand swap in the accumulate is NOT shape-safe: this is the case that would have caught the reversed operand order",
+   "bias": false,
+   "seed": 200,
+   "amplitude": 8
+  },
+  {
+   "name": "asymmetric_n_gt_m",
+   "m": 8,
+   "n": 32,
+   "k": 24,
+   "why": "the other asymmetry, so a swap fails in both directions",
+   "bias": false,
+   "seed": 201,
+   "amplitude": 8
+  },
+  {
+   "name": "bias",
+   "m": 16,
+   "n": 16,
+   "k": 32,
+   "why": "bias initialised into the accumulator by broadcast rather than added afterwards, which is the hardware's own init path",
+   "bias": true,
+   "seed": 300,
+   "amplitude": 8
+  },
+  {
+   "name": "bias_narrow_m",
+   "m": 1,
+   "n": 16,
+   "k": 32,
+   "why": "bias broadcast with a single output row: the init writes all rows whether or not they are read",
+   "bias": true,
+   "seed": 301,
+   "amplitude": 8
+  },
+  {
+   "name": "full_range_int8",
+   "m": 16,
+   "n": 16,
+   "k": 255,
+   "why": "full-range int8 operands over a long reduction: the largest magnitudes the datapath can be handed. It does NOT overflow, and cannot -- see ACC_OVERFLOW_UNREACHABLE_ABOVE_K, which is why no corpus case tests the missing saturation",
+   "bias": false,
+   "seed": 400,
+   "amplitude": 127
+  }
+ ]
+}
