@@ -3,7 +3,7 @@ title: "Design: incremental target evolution — RVV + Saturn OPU as the driving
 kind: design
 status: draft
 owner: targetgen
-last_verified: 2026-08-10
+last_verified: 2026-08-11
 related: [beam_cca_architecture, target_onboarding, lowering_pipeline, llvm_integration, reproducibility]
 code_refs:
   - merlin/python/merlin/targetgen/compute_units.py
@@ -21,6 +21,15 @@ code_refs:
   - merlin/python/merlin/kernels/shapes.py
   - merlin/python/merlin/llvmlower/passes_quant_int.py
   - merlin/python/merlin/llvmlower/op_profile.py
+  - merlin/python/merlin/kernels/opu_kernel.py
+  - merlin/python/merlin/kernels/opu_corpus.py
+  - merlin/python/merlin/kernels/opu_cert.py
+  - merlin/python/merlin/kernels/cca_matrix.py
+  - merlin/python/merlin/kernels/decode/opu.py
+  - merlin/python/merlin/kernels/decode/rvv.py
+  - merlin/python/merlin/targetgen/artifact_dag.py
+  - merlin/python/merlin/targetgen/persistent_equivalence.py
+  - merlin/python/merlin/targetgen/rtl/opu_isa.py
 ---
 
 # Incremental target evolution — RVV + Saturn OPU as the driving delta
@@ -226,6 +235,16 @@ Fix: exposure becomes a **per-compute-unit** axis (`ComputeUnit.exposure`), reso
 today. `spatial` keeps `encoding_required = False` and no `rocc_insn` trace gate — the OPU has no funct
 decode table in the RoCC sense; its encodings are derived per §1.1 and cross-checked.
 
+**Built (`compute_units.py`).** `resolve_exposure(unit, target_endpoint_kind=...)` implements that
+precedence, and a test asserts the family default is reached for every kind in `KINDS` — which is what
+makes the change inert for existing targets rather than merely intended to be. An undeclared exposure is
+rejected at parse time against `families.ENDPOINT_KINDS`.
+
+One subtlety worth recording, because getting it wrong is silent: **composition unions capability, not
+exposure.** `effective()` folds a contained unit's dtypes/ops/accumulate rules into its parent, and
+inheriting the child's `exposure` along with them would retarget the parent's codegen to whatever it
+happened to embed. The field is carried from the composing unit only.
+
 The general rule this generalises to, and the one to hold when the next target arrives: **do not let a
 hardware class imply a software exposure.** `if target == "saturn"` is not the failure mode to guard
 against here — the failure mode is a taxonomy that cannot express the machine.
@@ -243,16 +262,34 @@ overhead. So:
 
 ```python
 route_candidates(demands, units) -> list[RouteCandidates]   # every legal unit, honest gap when none
-select(candidates, context, cost_model) -> list[RouteResult] # separable, pluggable, ablatable
+select(candidates, cost_model) -> list[RouteResult]          # separable, pluggable, ablatable
 route(demands, units) -> list[RouteResult]                   # first-candidate wrapper: unchanged today
 ```
 
-Keeping `route()` as the wrapper preserves the four tests in `merlin/tests/targetgen/test_routing.py`
-and both existing consumers (`frontends/gguf_reader.py:134`, `frontends/adapters/gguf.py:54`).
+**Built (`routing.py`).** `route()` is now literally `select(route_candidates(...), first_candidate_cost)`,
+so "the refactor changed no behaviour" holds by construction rather than resting on whichever cases the
+tests happen to cover. The four tests in `test_routing.py` and both existing consumers
+(`frontends/gguf_reader.py:134`, `frontends/adapters/gguf.py:54`) are untouched.
 
-Cost models are swappable specifically so the ablation is real: `eager` (every legal contraction →
-OPU) exists as a deliberately bad baseline, and `measured` interpolates the Phase 2 microbenchmark
-corpus rather than inventing architectural constants.
+Cost models are swappable specifically so the ablation is real: `eager` (always prefer the widest
+datapath) is implemented as a deliberately bad baseline, and `MeasuredCost` reads a caller-supplied
+measurement table rather than inventing architectural constants.
+
+Three properties of `MeasuredCost` are load-bearing, and the first was a defect a test caught:
+
+- **Tile occupancy, not MACs.** Costing a tiled unit as `macs / peak_rate` credits it with the work it
+  *would* do at full occupancy, so a partly-filled tile looks as cheap as a full one and every narrow
+  shape looks good on the unit — including precisely the ones §8b found to be numerous and negligible. A
+  tile is the unit of work, so `M = 1` and `M = 32` cost the same. That is the whole reason a narrow
+  extent is expensive, and the earlier formulation could not express it.
+- **Declining is a third outcome.** An unmeasured unit that scored well would win on the strength of
+  having no data; one that scored badly would be ruled out for the same reason. So `None` means "no
+  data", and a demand whose only legal unit is unmeasured still routes and reports that it did so
+  unscored — dropping it would turn a missing measurement into a routing gap, i.e. into a capability the
+  target does not have.
+- **Layout is charged.** A unit that needs K-major operands pays a packing pass over `k*m`; leaving that
+  out is how a decision comes out in favour of a unit that then spends longer rearranging memory than
+  computing.
 
 ## 4. What is reused, and what ΔH invalidates
 
@@ -298,6 +335,28 @@ routes and the OPU tests, and it should invalidate **nothing** in the RVV schedu
 lowering, the board/runtime support or the elementwise path. `reuse_ratio = reused / relevant` is then
 a measured quantity. Line counts are never the result on their own.
 
+**Built (`targetgen/artifact_dag.py`, 21 nodes).** The value of writing it down is that the reuse claim
+becomes *falsifiable*: "the delta invalidates nothing in the parent's schedule" is the claim that **no
+path exists** from the changed node to that one, and `test_artifact_dag.py` looks for the path. The four
+parent nodes are declared roots; if a future edge reaches one, that test fails rather than the paragraph
+above quietly becoming untrue. The mirror test — that the delta *does* reach routing, lowering, codegen,
+CCA and certification — is there because a graph where it reached nothing would satisfy every
+"must not reach" test perfectly and mean nothing.
+
+Three things it refuses to fudge. The changed set is diffed from **content hashes**, not declared, since a
+hand-written changed set makes the number whatever its author wanted. A node whose sources cannot be read
+is `UNKNOWN` and counts as changed on both sides — two `UNKNOWN`s comparing equal would hand back free
+reuse for exactly the nodes nothing is known about. And the **denominator is a required argument**
+recorded in the result, because a ratio whose relevant set is chosen quietly can be made to say anything.
+
+**The measured ratio is 5/21 (0.238).** That is low, and the reason is worth stating plainly: every one of
+the five synthesized plans reads *all* of evidence, so touching hardware facts invalidates all of them.
+That is a fact about the **pipeline's granularity**, not about how invasive the delta is — a finer-grained
+evidence node set (per-concept rather than one node) would measure higher reuse for the same delta. The
+test asserts a *range* rather than a value, with a note that raising it by editing the graph would defeat
+the purpose. The honest reading: this pass measures reuse at the resolution the pipeline currently
+supports, and improving that resolution is a separate piece of work from the delta itself.
+
 ### 4.3 Where the OPU lowering attaches
 
 Ranked by how little existing machinery is disturbed:
@@ -316,6 +375,44 @@ in the affirmative: extract a row with `VMV_VR`, convert, scale, clamp, narrow a
 round-tripping int32 through memory** — i.e. accumulator-resident requantization. That maps onto
 `cca.ComputeFacet.accumulator_resident`, which already exists as the shared target-agnostic concept
 with a PASS → CODEGEN escalation ladder.
+
+### 4.4 The CCA lifter for this datapath (`kernels/cca_matrix.py`)
+
+Residency is the same cross-backend question, with different evidence. RVV loses it by spilling the
+accumulator inside the MAC loop; a unit whose accumulator is *architected state* has no register to spill,
+so the way to lose it is to **read the accumulator out inside the reduction** instead of once after it. The
+lifter reads that from the emitted stream and sets `accumulator_resident` on the *compute* facet as well as
+`spatial` — under `spatial` alone it would never diverge against a vector expert.
+
+Two methodological points, both of which cost a wrong first attempt:
+
+- **Residency must be scoped to the reduction loop, not to a span between accumulates.** A looping
+  reduction emits exactly *one* accumulate statically, so "is there a readout between the first and last
+  accumulate" is vacuous for every kernel that actually loops — it can only judge an unrolled one, and
+  would report residency for a per-step commit. The loop comes from resolved back-edges instead, and
+  when the displacements are unrelocated (an unlinked `.o`) the answer is UNKNOWN rather than a confident
+  wrong one.
+- **Identity comes from the derived table, never a mnemonic.** These instructions occupy reserved slots
+  and a disassembler prints them as unnamed words, so a mnemonic-matching lifter sees an empty stream and
+  pronounces every kernel clean. A test shifts every funct6 and requires the same stream to decode as
+  containing none of the unit's ops.
+
+The check is only worth having if it can fail, so a variant that reads out inside the loop is compiled in
+the tests and required to be caught. `tile_occupancy` exposes what a MAC count cannot: at `M = 1` on a
+32-edge tile the kernel is correct, busy, and using one row in thirty-two. Routes register through the
+existing `action_catalog` plugin seam, and the CODEGEN route names the regimes where filling the tile is
+plausible — so the narrow shapes of §8b stay out of the catalog instead of relying on a later filter.
+
+**A shared-code bug fell out of this.** `decode/rvv.py` matched branch mnemonics against a list holding
+only uncompressed forms, so `c.bnez`/`c.beqz`/`c.j` were not branches — and `rv64gcv` includes the C
+extension, so at `-O2` a tight loop's back-edge is routinely the compressed form. With the inner back-edge
+invisible, `loop_spans()` omitted the reduction loop, `_fma_loop` fell back to the enclosing loop, and a
+spill sitting legitimately *around* a reduction was attributed to it: **measured on the added fixture,
+`accumulator_resident` reads `False` before the fix and `True` after, for the same resident kernel.** Every
+other loop-scoped count (`calls_in_loop`, register block) was mis-scoped the same way, and
+`spans_reliable()` shared the defect, so it could vouch for a stream whose real back-edges it had not
+looked at. This means RVV residency figures recorded before this fix are suspect wherever the reduction's
+back-edge was compressed.
 
 ## 5. Verification ladder, and what this pass does *not* verify
 
@@ -409,6 +506,39 @@ Compile-time cost is a first-class reported result: the paper measures a **401×
 egg** with only 18.6% of runtime inside saturation. *"EqSat infrastructure retains both
 implementations; performance benefit is not yet established"* is an acceptable outcome and must remain
 sayable.
+
+### 7.1 Built, and what it does *not* show
+
+`targetgen/persistent_equivalence.py` builds one contraction's e-graph with every legal implementation as
+an alternative in an `equivalence.class`, attaches the `MeasuredCost` value to each as an `eqsat_cost`
+attribute, and runs the real `eqsat-add-costs` + `eqsat-extract` passes. The chosen unit is **read back
+out of the extracted IR**, not computed alongside it — computed alongside, this would be `routing.select`
+with extra steps and would demonstrate nothing about deciding from the graph.
+
+**H-EQ1 is `not_established`, and the code says so.** With one e-class and no rewrite rules, extraction is
+an argmin over the same costs eager selection reads, so it *cannot* decide differently; reporting a win
+here would be arithmetic dressed as a result. `agreement()` therefore reports agreement (identical
+decisions are the expected outcome) rather than a comparison of quality.
+
+What *is* demonstrated is the mechanism, and it is the precondition for H-EQ1 rather than evidence for it:
+
+- both implementations are present in the IR after construction (`alternatives_in`), and
+- `recost()` on an **already-built** graph changes which alternative is extracted.
+
+The second is the falsifiable form of "persistent". A graph that had quietly committed to a unit could not
+be moved by a later cost, and `recost` exists precisely because re-costing after the fact is what a
+downstream pass (epilogue fusion, layout discovery) would do.
+
+**H-EQ2 is `not_exercised`.** Saturation needs rewrite rules; none are applied, so there is nothing to
+re-saturate and no incremental-vs-scratch comparison to make. The paper is silent on incremental
+re-saturation, so it cannot be inherited as a result either. Both statuses are held as **data**
+(`HYPOTHESES`) and asserted unproven in `test_persistent_equivalence.py`, so promoting either requires
+editing a test — a better venue for that argument than a docstring.
+
+A candidate the cost model declines is retained as an alternative but left uncosted: dropping it would
+erase a capability the target has, and costing it would let it win for having no data. When every
+candidate is declined, extraction fails closed and the caller falls back to declaration order — the same
+fallback `select` uses, so the two stay comparable.
 
 ## 8. Naming hazards in this repo
 
@@ -546,12 +676,49 @@ are **exactly equal** to the reference at tile edges 4, 8, 16 and 32 — every t
 edges no available part has. The stand-in is asserted to contain no device instruction, so a device build
 cannot quietly compute correct answers without using the unit.
 
-**What remains for certification is the image, not the logic.** Everything needed is present: the
-baremetal harness (`merlin/runtime/baremetal/spike/` — `crt.S`, `htif.c`, `link.ld`, `libc_min.c`), the
-four prebuilt OPU sims, and `zephyr_model.run_on_verilator(elf, config=…)` which already takes the config
-as a parameter. At ~10⁴ cycles/s a 31-case corpus of tile-sized GEMMs is seconds of simulation, which is
-why the corpus was kept small. So the open item is a bare-metal image that runs the corpus and compares
-in place — not simulator capacity, not a missing oracle, and no longer the kernel's shape.
+### 8c.1 The certification image (`kernels/opu_cert.py`)
+
+**Three independent implementations, and the image carries no answer key.** A case is certified only when
+the device kernel agrees with an in-image scalar reference *and* a hash of its output matches one computed
+host-side by numpy. The in-image comparison is what localises a failure (it knows which element); the
+host-side digest is what makes the verdict trustworthy, because two agreeing implementations inside one
+image still look like a pass when both are wrong. **Nothing expected is embedded** — an image holding its
+own goldens can pass by copying them, and the console cannot tell the difference. A test asserts the only
+`int32` arrays in the generated image are declared biases.
+
+Operands *are* embedded, because the corpus draws them from numpy's generator and reproducing PCG64 in C
+is not on. That is the stronger choice anyway: the bytes the image computes on are provably the ones the
+host derived its expected digests from, rather than two generators that are supposed to agree.
+
+**The geometry is derived, then cross-checked against the running hardware.** `tile_edge_for_config` reads
+the vector length from the config's own Scala declaration, binding positional arguments to the names in
+the mixin's parameter list (`opu_isa.vector_unit_params`) rather than assuming an order — `(vLen, dLen)`
+reversed is a tile edge wrong by exactly 2×, which would silently certify a corpus against the wrong
+geometry instead of failing. Verified on all four `OPUV*` configs; a config whose vector length cannot be
+grounded raises. The image then reports the edge the hardware actually gives it, and a disagreement with
+the edge the corpus was selected for is a **hard failure**, not a warning.
+
+**Anti-cheat.** Between build and run, the image is audited for the unit's derived opcodes: a device image
+containing none of them would compute correct answers on the host core and pass every numerical check,
+which is the most comfortable way for this whole exercise to be wrong.
+
+**The scalar pre-flight passes 31/31 on spike.** Built with `OPU_SCALAR_TILE`, the same image runs the same
+corpus with the scalar stand-in, on a real RISC-V target, in seconds — so operand embedding, K-major
+layout, the tiling loop, the comparison and the digests are all confirmed to agree with numpy *before* any
+RTL is involved, and a failure on RTL is attributable to the datapath rather than to the harness. That
+build must contain none of the unit's instructions, which is checked, so it cannot be mistaken for a device
+run.
+
+The tests feed the verdict consoles that are wrong in specific ways — a shape the case does not name, a
+digest numpy disagrees with, a missing case, a geometry the corpus was not selected for, an unparseable
+line — and require it to say so. A harness that only reports correctly for a working kernel is worthless,
+because every interesting failure here is one that looks like a pass.
+
+**Status: the device run on `OPUV256D128ShuttleConfig` is in progress at the time of writing.** The image
+builds, passes the opcode audit, and is executing on the Verilator sim; the run is dominated by the
+in-image scalar reference (~10⁶ cycles at ~10³–10⁴ cycles/s), so it is tens of minutes rather than the
+seconds estimated when the corpus was sized against the device path alone. The L3 row stays `not_run`
+until that verdict is recorded — an in-flight run is not a pass.
 
 ## 9. Open, and deliberately unresolved here
 
