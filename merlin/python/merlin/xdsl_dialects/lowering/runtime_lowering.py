@@ -143,10 +143,14 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         if opcode == "RES_PACK":
             args = {"src": names[op.src], "dst": names[op.res]}
             attrs = {"layout": op.layout}
-            if op.scale is not None:                     # int8 weight-only dequant pack
-                args["scale"] = names[op.scale]
-                if op.dequant_axis is not None:
-                    attrs["dequant_axis"] = op.dequant_axis
+            # A generated target's pack op may not declare the optional dequant-scale operand/axis
+            # (only the factory-built resident packs do) — getattr keeps this total for both.
+            scale = getattr(op, "scale", None)
+            if scale is not None:                        # int8 weight-only dequant pack
+                args["scale"] = names[scale]
+                dq_axis = getattr(op, "dequant_axis", None)
+                if dq_axis is not None:
+                    attrs["dequant_axis"] = dq_axis
         elif opcode in ("MATMUL_RESIDENT", "MATMUL"):
             args = {"lhs": names[op.lhs], "rhs": names[op.rhs], "dst": names[op.acc]}
             attrs = {}
