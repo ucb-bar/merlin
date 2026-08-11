@@ -178,9 +178,12 @@ class TestTheHypothesesStayHonest:
 
     def test_compile_time_is_reported_per_extraction(self):
         got = PE.extract_choice(_demand(256, 256, 256), _BOTH, _model())
+        # Assert the invariant on the UNROUNDED values. to_dict() rounds each field independently, so
+        # comparing rounded parts against a rounded sum is a coin flip at the rounding boundary -- which
+        # is exactly how this test failed intermittently before.
+        assert got.total_seconds == pytest.approx(got.build_seconds + got.extract_seconds)
         d = got.to_dict()
-        assert d["build_seconds"] >= 0 and d["extract_seconds"] >= 0
-        assert d["total_seconds"] == pytest.approx(d["build_seconds"] + d["extract_seconds"], abs=1e-6)
+        assert d["build_seconds"] >= 0 and d["extract_seconds"] >= 0 and d["total_seconds"] >= 0
 
 
 def _hybrid_units():
