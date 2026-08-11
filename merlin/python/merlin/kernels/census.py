@@ -283,7 +283,8 @@ def _ticks_by_key(prof_table: Sequence[Mapping[str, Any]] | None,
 def census(src: "str | Path | Any", *, model: str, stage: str = "unspecified",
            target: str | None = None,
            prof_table: Sequence[Mapping[str, Any]] | None = None,
-           prof_ticks: Mapping[int, tuple[int, int]] | None = None) -> Census:
+           prof_ticks: Mapping[int, tuple[int, int]] | None = None,
+           profile_note: str = "") -> Census:
     """Census the contractions of one module.
 
     ``src`` is whatever :func:`kernels.shapes.observe_contractions` accepts. ``stage`` is a label for
@@ -298,6 +299,8 @@ def census(src: "str | Path | Any", *, model: str, stage: str = "unspecified",
     notes: tuple[str, ...] = (undecidable + "; legality is unknown for every row",) if undecidable \
         else (_unit_vocabulary(units),)
     by_key, model_ticks = _ticks_by_key(prof_table, prof_ticks)
+    if profile_note:
+        notes += (profile_note,)
     if prof_table and not prof_ticks:
         notes += ("an op table was supplied without board ticks: cost columns are unmeasured",)
 
@@ -344,7 +347,8 @@ def census(src: "str | Path | Any", *, model: str, stage: str = "unspecified",
 def census_bundle(bundle: "str | Path", *, model: str = "", target: str | None = None,
                   int8_compute: bool = False, work_dir: "str | Path | None" = None,
                   prof_table: Sequence[Mapping[str, Any]] | None = None,
-                  prof_ticks: Mapping[int, tuple[int, int]] | None = None) -> Census:
+                  prof_ticks: Mapping[int, tuple[int, int]] | None = None,
+                  profile_note: str = "") -> Census:
     """Census a recapture bundle through the SAME preparation the compiler applies.
 
     Reuses ``runtime.backends.zephyr_model.prepare_for_lowering`` (with ``blocking=False``, so no
@@ -376,7 +380,7 @@ def census_bundle(bundle: "str | Path", *, model: str = "", target: str | None =
                  "rewrite",)
 
     got = census(observed, model=model, stage=stage, target=target,
-                 prof_table=prof_table, prof_ticks=prof_ticks)
+                 prof_table=prof_table, prof_ticks=prof_ticks, profile_note=profile_note)
     return Census(model=got.model, stage=got.stage, source=str(observed), target=got.target,
                   rows=got.rows, total_work=got.total_work, model_ticks=got.model_ticks,
                   ranked_by=got.ranked_by, notes=got.notes + extra)
@@ -443,22 +447,52 @@ def to_markdown(censuses: Sequence[Census], *, top: int = 20) -> str:
 # ---------------------------------------------------------------------------------------------
 
 
-def load_profile(path: "str | Path") -> tuple[list[dict[str, Any]], dict[int, tuple[int, int]]]:
-    """``(op_table, {id: (ticks, hits)})`` from a board per-op profile summary.
+def profile_usability(doc: Mapping[str, Any]) -> tuple[bool, str]:
+    """``(usable, reason)`` for a board per-op profile, from the profile's OWN verdicts.
+
+    A per-op profiler adds a marker call per op, so it can move the wall it is measuring. The driver
+    therefore measures an un-instrumented control and refuses to stand behind a breakdown whose wall
+    moved by more than the board noise floor — and a breakdown the producer will not stand behind must
+    not become a census's measured ranking. Read from the profile rather than re-derived, so the census
+    cannot disagree with the tool that made the measurement.
+    """
+    if not doc.get("op_table"):
+        return False, "the profile carries no op_table"
+    prof = doc.get("profiled") or {}
+    if not prof.get("ok", True):
+        return False, f"the profiled run did not gate: {prof.get('blocker') or 'unstated'}"
+    pert = (doc.get("breakdown") or {}).get("perturbation") or {}
+    if pert and not pert.get("perturbation_ok", True):
+        return False, (f"instrumentation moved the wall by {pert.get('delta_pct')}%, over the "
+                       f"{pert.get('noise_floor_pct')}% board noise floor, so the producer does not "
+                       "stand behind this breakdown")
+    return True, ""
+
+
+def load_profile(path: "str | Path", *, require_usable: bool = True
+                 ) -> tuple[list[dict[str, Any]] | None, dict[int, tuple[int, int]] | None, str]:
+    """``(op_table, {id: (ticks, hits)}, reason)`` from a board per-op profile summary.
 
     The summary's ``op_table`` already carries the measured ticks merged onto each op record, so the two
     halves the census wants are one file. A record missing ``ticks`` is skipped rather than counted as
     zero — an op the board never reported is unmeasured, and calling that "free" would understate the
     model and inflate every other row's share of it.
+
+    With ``require_usable`` (the default) a profile that failed its own gates yields ``(None, None,
+    reason)``: the census then ranks by arithmetic and says why, instead of quoting cycle shares from a
+    measurement its producer rejected. ``reason`` is non-empty whenever something was declined.
     """
     doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    usable, why = profile_usability(doc)
+    if require_usable and not usable:
+        return None, None, why
     table = list(doc.get("op_table") or [])
     ticks: dict[int, tuple[int, int]] = {}
     for rec in table:
         if rec.get("ticks") is None:
             continue
         ticks[int(rec["id"])] = (int(rec["ticks"]), int(rec.get("hits") or 1))
-    return table, ticks
+    return table, ticks, ("" if usable else f"ACCEPTED AN UNUSABLE PROFILE: {why}")
 
 
 def _profile_for(spec: str, bundle_name: str) -> "Path | None":
@@ -495,6 +529,10 @@ def main(argv: "Sequence[str] | None" = None) -> int:
     ap.add_argument("--top", type=int, default=20, help="rows per model in the markdown table")
     ap.add_argument("--no-prepare", action="store_true",
                     help="read the raw capture (element types will PRECEDE the quant rewrite)")
+    ap.add_argument("--allow-unusable-profile", action="store_true",
+                    help="join a profile that failed its own gates (perturbation over the board noise "
+                         "floor, or an ungated run). The census then labels the ranking as resting on a "
+                         "measurement its producer rejected.")
     ap.add_argument("--profile", default="",
                     help="a k1_op_profile.py summary JSON (or a dir of them named <model>.json) whose "
                          "op_table supplies measured ticks. Without it the ranking is by arithmetic, "
@@ -516,12 +554,16 @@ def main(argv: "Sequence[str] | None" = None) -> int:
             continue
         work = None if a.no_prepare else Path(prod.path) / "prepared" / resolved
         prof_path = _profile_for(a.profile, resolved)
-        table, ticks = load_profile(prof_path) if prof_path else (None, None)
+        table, ticks, why = ((None, None, "") if prof_path is None
+                             else load_profile(prof_path, require_usable=not a.allow_unusable_profile))
         got = census_bundle(bundle, model=resolved, target=a.target or None,
                             int8_compute=(a.dtype == "int8"), work_dir=work,
-                            prof_table=table, prof_ticks=ticks)
+                            prof_table=table, prof_ticks=ticks,
+                            profile_note=(f"profile {Path(prof_path).name}: {why}" if why else ""))
         if a.profile and prof_path is None:
             print(f"  no profile found for {resolved} under {a.profile}")
+        if why:
+            print(f"  {why}")
         censuses.append(got)
         n_legal = len(got.by_verdict(LEGAL))
         print(f"{resolved}: {len(got.rows)} contractions at stage={got.stage}, "

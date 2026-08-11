@@ -488,11 +488,27 @@ Two reporting hazards this surfaced, both now handled in the tool rather than in
   the contractions alone. Separating them needs a `prov.role` on the prologue too, which is a Phase 4
   question because that is where the packing/quantize cost term is priced.
 
-**Still not measured:** deepjscc and spectformer. deepjscc W8A8 does not gate on the board (cos 0.9176,
-`rel 0.889`) against its own `golden_w8a8.npy`, and this is not golden selection — the weight-only and
-W8A8 goldens agree with each other at 0.99995, so the board output diverges from both. It is a
-pre-existing defect on one of the three driving workloads, recorded as `not_run` rather than worked
-around, and it has to be resolved before any whole-model claim rests on that model.
+**One of three models yields a usable measured ranking; the census declines the other two by name.**
+A profile is only joined when it passes its OWN gates, read from the profile rather than re-derived, so
+the census cannot disagree with the tool that made the measurement:
+
+| model | profile verdict | census ranking |
+| --- | --- | --- |
+| `whisper_tiny_375pos` | gated, perturbation 0.445% ≤ 1.9% floor | **ticks** (measured) |
+| `spectformer` | numerics exact (cos 1.0000000) but perturbation **2.152% > 1.9% floor** — the producer does not stand behind the breakdown | work, with the reason recorded |
+| `deepjscc` | did not gate: cos 0.9176, `rel 0.889` | work, with the reason recorded |
+
+Both refusals are informative rather than merely blocking:
+
+- **spectformer** is a *profiler* limit, not a compiler defect. Its numerics are exact; the per-op marker
+  calls simply cost more than the board noise floor on a 25 s model with 5645 marks. Closing it means
+  fewer marks (instrument only the contractions) or a longer run to shrink the relative overhead —
+  neither of which changes the compiler. Joining it anyway requires an explicit
+  `--allow-unusable-profile`, and the census then labels the ranking as resting on a rejected measurement.
+- **deepjscc** is a real divergence and is *not* golden selection: the weight-only and W8A8 goldens agree
+  with each other at 0.99995, so the board output disagrees with both. A pre-existing defect on one of the
+  three named driving workloads, recorded as `not_run` rather than worked around. It must be resolved
+  before any whole-model claim rests on that model.
 
 ## 9. Open, and deliberately unresolved here
 

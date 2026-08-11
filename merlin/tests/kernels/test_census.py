@@ -277,3 +277,62 @@ class TestMeasuredShare:
         md = cs.to_markdown([self._census()])
         assert "must NOT be summed" in md
         assert "upper bound" in md
+
+
+class TestProfileUsability:
+    """A breakdown the profiler will not stand behind must not become a measured ranking."""
+
+    _TABLE = [{"id": 0, "fqn": "enc.l0", "mlir_op": "linalg.matmul", "ticks": 700, "hits": 1}]
+
+    def _doc(self, *, gated=True, pert_ok=True, delta=0.4):
+        return {"profiled": {"ok": gated, "blocker": "" if gated else "gate failed: cos=0.9"},
+                "breakdown": {"perturbation": {"perturbation_ok": pert_ok, "delta_pct": delta,
+                                               "noise_floor_pct": 1.9}},
+                "op_table": self._TABLE}
+
+    def _write(self, tmp_path, doc):
+        import json as _json
+        p = tmp_path / "prof.json"
+        p.write_text(_json.dumps(doc), encoding="utf-8")
+        return p
+
+    def test_a_clean_profile_is_usable(self):
+        usable, why = cs.profile_usability(self._doc())
+        assert usable and why == ""
+
+    def test_perturbation_over_the_noise_floor_is_not_usable(self):
+        # The profiler adds a marker call per op, so it can move the wall it measures. Past the floor,
+        # the producer refuses to stand behind the breakdown and neither may the census.
+        usable, why = cs.profile_usability(self._doc(pert_ok=False, delta=2.152))
+        assert not usable
+        assert "2.152" in why and "noise floor" in why
+
+    def test_an_ungated_run_is_not_usable_and_carries_its_blocker(self):
+        usable, why = cs.profile_usability(self._doc(gated=False))
+        assert not usable and "cos=0.9" in why
+
+    def test_an_empty_op_table_is_not_usable(self):
+        usable, why = cs.profile_usability({"op_table": []})
+        assert not usable and "op_table" in why
+
+    def test_an_unusable_profile_is_declined_by_default(self, tmp_path):
+        table, ticks, why = cs.load_profile(self._write(tmp_path, self._doc(pert_ok=False)))
+        assert table is None and ticks is None and why
+
+    def test_it_can_be_joined_deliberately_and_is_then_labelled(self, tmp_path):
+        table, ticks, why = cs.load_profile(self._write(tmp_path, self._doc(pert_ok=False)),
+                                            require_usable=False)
+        assert table and ticks
+        assert why.startswith("ACCEPTED AN UNUSABLE PROFILE")
+
+    def test_declining_a_profile_leaves_the_census_ranked_by_arithmetic_with_the_reason(self):
+        got = cs.census(_MATMUL_I8, model="m", profile_note="profile prof.json: perturbation too high")
+        assert got.ranked_by == "work"
+        assert any("perturbation too high" in n for n in got.notes)
+
+    def test_an_op_the_board_never_reported_is_skipped_not_counted_as_free(self, tmp_path):
+        doc = self._doc()
+        doc["op_table"] = [*self._TABLE, {"id": 1, "fqn": "x", "mlir_op": "linalg.generic",
+                                          "ticks": None}]
+        _, ticks, _ = cs.load_profile(self._write(tmp_path, doc))
+        assert set(ticks) == {0}, "a missing measurement is unmeasured, not zero"
