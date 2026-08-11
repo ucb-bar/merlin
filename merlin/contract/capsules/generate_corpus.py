@@ -286,6 +286,17 @@ def _mx_golden(entry, binding):
         weight: {"shape": [K, N], "decoded": W.reshape(-1).tolist()},
         "SA_e8m0_codes": SA.tolist(), "SB_e8m0_codes": SB.tolist(),
         "scale_example": {"SA[0][0]": int(SA[0, 0]), "as_scale": e8m0_decode(int(SA[0, 0]))},
+        # RAW device operand bytes exactly as mx_ref consumed them (fp8: one byte/elt; fp4/fp6: packed) —
+        # the ``decoded`` floats above lose precision through YAML, so a bit-exact grade re-runs the MX
+        # datapath oracle over THESE codes, not the decoded values. fmt/dims/LUTs ride along so the grade
+        # is self-contained and reproduces the golden exactly.
+        "operand_codes": {
+            "lhs": lhs, "weight": weight, "fmt": tok, "M": M, "N": N, "K": K, "G": G,
+            "A_bytes": Ab.reshape(-1).tolist(), "A_shape": list(Ab.shape),
+            "B_bytes": Bb.reshape(-1).tolist(), "B_shape": list(Bb.shape),
+            "lutA": lutA.tolist() if lutA is not None else None,
+            "lutB": lutB.tolist() if lutB is not None else None,
+        },
     }
     return {out: y}, prov
 

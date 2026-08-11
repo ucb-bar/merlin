@@ -63,3 +63,41 @@ def test_oracle_is_a_real_block_scaled_datapath():
 def test_unknown_format_fails_closed():
     a, w, sa, sb = _operands()
     assert mx_oracle.mx_matmul(a, w, sa, sb, M, N, K, fmt="int8") is None
+
+
+def _load_generate_corpus():
+    """Import the corpus generator by repo-relative path (it lives outside the merlin package)."""
+    import importlib.util
+
+    from merlin.common.paths import repo_root
+    path = repo_root() / "merlin" / "contract" / "capsules" / "generate_corpus.py"
+    spec = importlib.util.spec_from_file_location("merlin_generate_corpus_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.mark.parametrize("tok,dims", [("mxfp8", (16, 32, 16)), ("mxfp4", (32, 32, 32)),
+                                      ("mxfp6", (16, 32, 16))])
+def test_generated_mx_capsule_grades_bit_exact(tok, dims):
+    """End to end: the corpus generator emits an MX matmul golden that CARRIES the raw operand codes, and
+    the datapath oracle re-runs those codes to reproduce the golden BIT-EXACT (max abs err 0). This is the
+    per-capsule numerical grade for MX — using raw codes, not the display-rounded ``decoded`` floats, so it
+    is exact rather than tolerance-bounded. Covers all three block-FP formats (fp8 byte, fp4 nibble-packed,
+    fp6 LUT-indexed)."""
+    from types import SimpleNamespace
+
+    from merlin.targetgen import corpus_spec as CS
+    from merlin.targetgen.capsule_runner import _bespoke_sim_via
+
+    gc = _load_generate_corpus()
+    m, k, n = dims
+    te = SimpleNamespace(target="mx_gemmini", sim_via=_bespoke_sim_via("mx_gemmini"))
+    binding = CS.derive_binding(te, {"operand_dtype": tok})
+    entry = {"name": f"MX_{tok}", "op": "matmul", "kind": "isa", "M": m, "K": k, "N": n,
+             "lhs": "A0", "weight": "W", "out": "Y0", "source_role": "t", "source_reference": "t"}
+    golden, prov = gc._mx_golden(entry, binding)
+    assert "operand_codes" in prov                          # generator stores the raw device codes
+    res = mx_oracle.grade_matmul(prov["operand_codes"], prov["SA_e8m0_codes"],
+                                 prov["SB_e8m0_codes"], golden["Y0"])
+    assert res["status"] == "pass" and res["exact"] is True and res["max_abs_err"] == 0.0
