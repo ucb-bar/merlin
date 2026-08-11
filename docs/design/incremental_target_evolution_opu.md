@@ -421,7 +421,7 @@ back-edge was compressed.
 | L0 | contract legality | capability contract |
 | L1 | compiles | clang-23 |
 | L2 | emitted-code audit | `kernels/decode/opu.py` (structural, derived opcodes) |
-| L3 | microkernel numerics, frozen shape corpus | **OPU Verilator RTL** |
+| L3 | microkernel numerics, frozen shape corpus | **OPU Verilator RTL — PASSED 31/31** (§8c.2) |
 | L4 | single-dispatch numerics incl. epilogue | **OPU Verilator RTL** |
 | L5 | whole-model numerics | **none in this pass** |
 | L6 | whole-model cycles | **none in this pass** |
@@ -714,69 +714,71 @@ digest numpy disagrees with, a missing case, a geometry the corpus was not selec
 line — and require it to say so. A harness that only reports correctly for a working kernel is worthless,
 because every interesting failure here is one that looks like a pass.
 
-### 8c.2 The L3 result: 30/31, and what the 31st found
+### 8c.2 The L3 result: 31/31, and the sequencer bug the 31st case found
 
-**`OPUV256D128ShuttleConfig`, 31 cases, derived tile edge 32 confirmed against the hardware's own
-report: 30 certified, 1 failing.** `uses_unit: true`, no gaps. The L3 row stays **`not_run`**, because a
-corpus with a known-wrong case does not certify a kernel.
+**`OPUV256D128ShuttleConfig`, 31/31 certified on the unit's RTL.** `uses_unit: true`, no gaps, derived
+tile edge 32 confirmed against the hardware's own report. Every case agrees with an in-image scalar
+reference AND with a numpy-computed digest; no expected value is embedded in the image.
 
-Three defects were found and fixed on the way, each invisible to everything that ran before it:
+Getting there found **four** defects, three ours and one in the unit's shipped RTL. All four are silent
+in different ways, which is the point of the corpus:
 
-| defect | how it failed | caught by |
+| defect | how it failed | where |
 | --- | --- | --- |
-| readout/init under `e32`/`m1` | **hung the core** — no trap, no retire | first device run |
-| accumulator init at the operand vtype | wrote a quarter-row; rest kept old contents | corpus, order-dependently |
-| compressed branches not branches (shared code) | mis-scoped every loop query, incl. RVV residency | added fixture |
+| accumulate/readout under `e32`/`m1` | **hung the core** — no trap, no retire | ours |
+| accumulator init at the operand vtype | wrote a quarter-row | ours |
+| compressed branches not treated as branches | mis-scoped every loop query incl. RVV residency | ours, shared code |
+| LHS read-hazard released one iteration early | **wrong arithmetic**, order-dependent | **the unit's RTL** |
 
-The vtype rule that came out of it: **each instruction runs under the vtype of the data IT moves, with
-LMUL sized so `vl` spans a tile row.** Both neighbouring mistakes are silent in different ways, which is
-why it is now a static check (`cca_matrix.vtype_violations`) with a test that compiles the exact
-pre-fix code and requires rejection.
+#### The RTL bug
 
-#### The 31st case, and how three wrong diagnoses were avoided in the end
+Read from the sources the sim binary was built from (saturn `ea37380` on `opu-int8`; the generated
+`OuterProductSequencer.sv` in the sim's own build tree carries `@[…OuterProductSequencer.scala:…]`
+annotations for these lines, so this is the elaborated design and not a divergent working tree):
 
-`asymmetric_n_gt_m` (M=8, N=32, K=24) returns wrong values in columns ≥ 16 — the second physical column
-subtile (`dLen/8 = 16`). It **passes in isolation and in every subset up to 16 cases, and fails in the
-full corpus at exactly 112 mismatches** across structurally different images.
-
-Four hypotheses were proposed and each refuted by a targeted experiment: a shape rule (`M < N` — refuted
-by a 4×4 M×N grid, all pass), the under-initialised broadcast (refuted: fixing it left 112 unchanged),
-operand alignment (refuted: a derived `align=16B` left 112 unchanged, and no consistent rule fits — the
-passing image was 16-but-not-32-aligned), and buffer size (refuted: appending a large case *after* the
-target changed the buffers and it still passed).
-
-What settled it was **reading the values instead of the pass/fail bit**. The image now dumps the first N
-disagreements as `(index, device, reference)`, and the deltas decompose exactly:
-
-```
-delta[0, col] = 6 * rhs[15, col]   for every examined column, including col 22 where rhs[15,22] = 0
+```scala
+when (io.iss.fire && !tail) {
+  when (!macc || row_idx_tail) { rvs2_mask := rvs2_mask & ~UIntToOH(io.rvs2.bits.eg) }  // RHS: gated
+  rvs1_mask := rvs1_mask & ~UIntToOH(io.rvs1.bits.eg)                                   // LHS: every iter
 ```
 
-i.e. **reduction step k = 15's contribution is missing from the second column subtile**, and nothing
-else is wrong. The values are plausible sums, not a constant — which is what rules out the uninitialised
-story that had been the leading explanation. `kernels/opu_forensics.py` does this decomposition, and its
-tests synthesise each failure mode rather than only checking the case it was written against.
+One `opmacc` iterates `(vLen/dLen)² = 4` subtiles. The LHS element group is `base + row_idx` and the RHS
+is `base + col_idx`, so the **two column iterations of a given row read the same LHS group** — and the
+first of them clears its intent bit. `rvs1_mask` feeds `seq_hazard.rintent`, which is exactly what a
+younger instruction's `war_hazard = vd_write_oh & io.older_reads` tests against, so for the remaining
+iteration the hardware no longer advertises the read and a write to that register is not blocked.
 
-The trigger is **cumulative, not a specific predecessor**. Bisecting the corpus prefix: 2, 4, 8 and 16
-preceding cases all pass; 24 fails. The eight cases that separate 16 from 24 were then split in half and
-neither half reproduces it in a six-case image, so no individual case is responsible — it takes roughly
-two dozen preceding contractions.
+**Prediction and observation coincide exactly.** With `M = 8` every output row lives in `row_idx = 0`, so
+the single vulnerable iteration is `(row = 0, col = 1)` — columns 16…31. That is precisely the region that
+came back wrong, short by exactly one reduction step's outer-product term, with columns 0…15 always
+bit-exact. `kernels/opu_forensics.py` decomposes the deltas and names the step.
 
-**Leading explanation, stated as such.** The emitted kernel's instruction sequence is identical for every
-`k` and every case, so a software cause would have to be non-uniform in a way the emitted code
-demonstrably is not; and the trigger needs ~24 preceding contractions, which is accumulated state rather
-than anything about this shape. That points at the sequencer dropping a subtile operation under specific
-pipeline state — an RTL or prebuilt-sim issue. It is **not confirmed**: the OPU config source in that
-checkout is a `.bak`, so the sim binary cannot be rebuilt there to test a fix, and confirming it needs
-waveforms.
+**Confirmed by A/B**, same 24-case reproducer, identical operands, alignment and arithmetic, differing
+only in which register consecutive reduction steps write: **120 mismatches → 0, 23/24 → 24/24**.
 
-**The methodological lesson is the reusable part.** Three of the four refuted hypotheses were inferred
-from pass/fail bits across images; all three were wrong, and two were stated as causes before being
-isolated. The signal that should have been weighted from the start was the **stable 112** — a mismatch
-count that reproduces exactly across different binaries is deterministic, and it was twice explained as
-garbage. Getting the actual values cost one build.
+Our mitigation (default ON) rotates the left-operand register across steps, so the write following an
+accumulate targets a register that accumulate is not reading. The upstream fix is to gate the `rvs1_mask`
+clear on the last iteration that reads the group, exactly as `rvs2_mask` already is.
 
+The same file also explains the hang: `col_idx_tail` compares against `(vLen/dLen) << (emul - eew)` with
+an **unsigned** subtraction, so `e32`/`m1` (`emul = 0, eew = 2`) underflows, the shift becomes enormous,
+the tail condition never matches and the sequencer iterates forever. The rule enforced by
+`cca_matrix.vtype_violations` — `lmul * operand_bits >= sew` — is precisely `emul >= eew`.
 
+#### What this cost, and the transferable lesson
+
+Four hypotheses were proposed and refuted before the RTL was read: a shape rule (`M < N`, refuted by a
+4×4 grid), the under-initialised broadcast (refuted — fixing it left the mismatch count unchanged),
+operand alignment (refuted — a derived 16 B alignment changed nothing), and buffer size (refuted by
+appending a large case *after* the target). Three were inferred from pass/fail bits across images; all
+three were wrong, and two were stated as causes before being isolated.
+
+Two things would have short-circuited all of it. **Reading the values instead of the verdict** — the
+image now dumps `(index, device, reference)`, and one build of that settled what three rounds of
+reasoning could not. And **reading the RTL**, which is ours: the mechanism, the exact failing columns and
+the fix all fell out of thirty lines of the sequencer. The stable mismatch count (identical across
+structurally different binaries) was the signal that something deterministic was wrong, and it was twice
+explained away as garbage.
 
 ## 9. Open, and deliberately unresolved here
 
