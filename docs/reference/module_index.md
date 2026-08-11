@@ -55,6 +55,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.targetgen.sandbox` | Shared, descriptor+manifest-driven agentic bwrap sandbox. |
 | `merlin.targetgen.synthesize` | Synthesize the five plan artifacts from collected evidence. |
 | `merlin.targetgen.validate` | Validation layer: check synthesized plans + the generated repo, render a report. |
+| `merlin.triton` | Triton as a target-independent KERNEL FRONTEND to Merlin (not a per-target backend). |
 | `merlin.validation` | Structural/artifact validation for generated target repos + contract plans. |
 | `merlin.xdsl_dialects` | merlin's core dialects in xDSL (the default prototyping plane). |
 | `merlin.xdsl_dialects.lowering` | Staged lowering across the core dialects. |
