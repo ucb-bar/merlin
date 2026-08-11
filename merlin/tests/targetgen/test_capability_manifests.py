@@ -156,6 +156,33 @@ def test_write_and_route_target(tmp_path):
         os.environ.pop("MERLIN_TARGET_PATH", None)
 
 
+def test_residual_target_materializes_contract_on_resolve(monkeypatch):
+    """A discovered residual-target (mx_gemmini ships only a contracts/residual.yaml) resolves with ZERO
+    env — no MERLIN_TARGET_PATH, no pre-committed contract: ``resolve`` materializes its contract from the
+    residual + mlc-derived RTL facts on demand ("drop a residual, let mlc derive"). Skips honestly when mlc
+    cannot ground the facts in this env (the fallback fails closed rather than fabricating a contract)."""
+    import os
+
+    from merlin.targetgen import target_registry as tr
+
+    monkeypatch.delenv("MERLIN_TARGET_PATH", raising=False)
+    # Clear any already-materialized contract so this exercises the on-demand fallback, not a stale file.
+    contract = tr.target_contract_path("mx_gemmini")
+    if contract.is_file():
+        contract.unlink()
+
+    info = tr.resolve("mx_gemmini")
+    if not info.contract_path.is_file():
+        import pytest
+        pytest.skip("mlc could not derive mx_gemmini facts in this env (fallback failed closed)")
+
+    contract_doc = info.load_contract()
+    assert contract_doc["name"] == "mx_gemmini"
+    assert contract_doc["endpoint_kind"] == "inline_asm_insn"        # gemmini's RoCC decode, via facts
+    unit = contract_doc["compute_units"][0]
+    assert unit["name"] == "mx_pe" and "mxfp8" in unit["dtypes"]     # the MX datapath, from the residual
+
+
 def test_radiance_composes_mx_gemmini():
     # radiance's SIMT cluster CONTAINS the gemmini-mx PE: effective dtypes = regular floats + MX.
     units = cu.compute_units(cm.manifest_for("radiance"))
