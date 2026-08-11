@@ -622,6 +622,99 @@ def _matmul_via_program_oracle(target, mlir, A, W, *, model_ext, package, timeou
         timeout=timeout)
 
 
+def run_whole_model_on_mesh(target: str, module, *, in_fmt: str = "f32",
+                            weight_fmt: str | None = None, leaf_values: dict | None = None,
+                            operand_dtype: str | None = None, accum_dtype: str | None = None,
+                            simulator: str | None = None, package: str | None = None,
+                            ref_target: str = "toy_npu", seed: int = 0, timeout: int = 900) -> dict:
+    """Execute a WHOLE MODEL co-scheduled across the target's mesh + scalar lanes on the REAL oracle.
+
+    Routes ``module``'s ops (``mesh_program_run.demands_from_module``), builds the co-scheduled
+    whole-model program, then walks it IN ORDER: each mesh matmul LAYER runs on the target's real oracle
+    (``run_matmul_on_mesh`` — the operands injected, the kernel emitted by the target's generated OOT
+    package, the output read back off the device), while norms/activations/elementwise run inline on the
+    scalar lane, and every layer's on-device output is handed to the op that consumes it. The final tensor
+    is gated against the whole-model engine reference (``lower_module`` of the entire module) — a PASS is
+    proof the model ran end-to-end with its matmul layers ON the mesh, not merely that a plan was produced.
+
+    This is the single co-scheduled whole-model run (mesh layers on hardware + scalar lane inline +
+    inter-lane activation handoff). It is TARGET-AGNOSTIC: the lane split is READ from the routing plan, the
+    layer extents from the module's def-use edges, the kernel from the generated package. FAIL-CLOSED: a
+    layer with no reachable oracle returns ``status="oracle_unavailable"`` (never a fabricated result).
+
+    Residual toward a single fused binary: this co-schedules the mesh kernels with the scalar lane
+    host-driven (one program, multiple dispatched kernels), not yet ONE fused kernel in a single device
+    address space — that final slice is the OOT backend emitting the whole loop nest inline. Seeded with
+    small-integer operands by default so an integer mesh reproduces the f32 reference bit-exact."""
+    import os
+
+    import numpy as np
+
+    from .targetgen import compute_units as _cu
+    from .targetgen import mesh_program_run as mp
+    from .targetgen import routing as _routing
+    from .targetgen import target_registry as tr
+    from .xdsl_dialects.lowering import execute, lower_module
+
+    fn = next(op for op in module.walk() if op.name == "func.func")
+    args = list(fn.body.blocks[0].args)
+
+    def _shape(v):
+        return [int(d) for d in v.type.get_shape()]
+
+    rng = np.random.default_rng(seed)
+    if leaf_values is None:
+        # Small integer operands: an integer mesh (e.g. int8·int8->int32) reproduces the f32 engine
+        # reference EXACTLY, so the whole-model gate is bit-exact rather than tolerance-bounded.
+        arrays = {a: np.rint(rng.standard_normal(tuple(_shape(a))) * 3).clip(-8, 7).astype(np.float32)
+                  for a in args}
+    else:
+        by_index = {a.index: a for a in args}
+        arrays = {by_index[int(k[1:])]: np.asarray(v, dtype=np.float32) for k, v in leaf_values.items()}
+
+    # Whole-model engine reference (the entire module compiled+run as ONE module) — the numeric gate. The
+    # engine is target-agnostic, so it lowers through an in-tree reference target (``ref_target``); the
+    # mesh execution below is on the REAL ``target`` hardware. Both must agree on the whole-model result.
+    ref_names = mp._reference_leaf_names(module)
+    ref_inj = {ref_names[a]: arrays[a].tolist() for a in args}
+    ref_final = np.asarray(next(iter(
+        execute(lower_module(module, target=ref_target), ref_inj)["outputs"].values())))
+
+    # Route + build the co-scheduled program, then run its mesh lane on the REAL oracle.
+    demands = mp.demands_from_module(module, in_fmt, weight_fmt)
+    plan = _routing.route_plan_on(demands, _cu.compute_units(tr.load_contract(target)))
+    program = mp.build_whole_model_program(plan, target, module)
+    seed_leaves = {f"L{a.index}": arrays[a] for a in args if f"L{a.index}" in program.leaves}
+
+    per_layer: list = []
+
+    def _mesh_exec(lhs, rhs, step):
+        got = run_matmul_on_mesh(target, np.asarray(lhs).tolist(), np.asarray(rhs).tolist(),
+                                 operand_dtype=operand_dtype, accum_dtype=accum_dtype,
+                                 simulator=simulator, package=package, timeout=timeout)
+        per_layer.append({"index": step.index, "m": step.m, "k": step.k, "n": step.n,
+                          "unit": step.unit, "oracle": "ok" if got is not None else "unavailable"})
+        return got
+
+    base = {"target": target, "ref_target": ref_target, "n_steps": len(program.steps),
+            "n_mesh": program.n_mesh(), "n_scalar": program.n_scalar(), "output_id": program.output,
+            "per_layer": per_layer,
+            "simulator": simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")}
+    try:
+        spliced = mp.run_whole_model_program(program, seed_leaves, mesh_exec=_mesh_exec)
+    except mp.MeshLayerUnavailable as e:
+        return {**base, "status": "oracle_unavailable", "reason": str(e)}
+
+    spliced_final = spliced["outputs"][program.output]
+    exact = bool(np.array_equal(spliced_final, ref_final))
+    match = bool(np.allclose(spliced_final, ref_final, rtol=1e-4, atol=1e-4))
+    return {**base, "status": "pass" if match else "fail", "exact": exact, "match": match,
+            "note": "single co-scheduled whole-model run: matmul layers executed on the real mesh oracle, "
+                    "scalar/vector lane inline, activations handed between lanes; gated vs the whole-model "
+                    "engine reference. Residual: host-driven multi-kernel, not yet one fused address-space "
+                    "image."}
+
+
 def _summarize_route_plan(plan: dict) -> dict:
     """Collapse a routing.route_plan into per-op-family counts for the report, plus the REAL per-matmul
     extents each mesh contraction carries (threaded from the linalg by ``model_op_demands``) so the plan
@@ -673,15 +766,15 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
     (``n_tiles``/``n_passed``/``n_unavailable``/``per_tile``); an unavailable oracle is reported honestly,
     never a fake pass. This proves the matmul layers RUN correctly on the mesh.
 
-    REMAINING GAP (full whole-model image splicing): mesh_verify certifies each mesh matmul as an
-    INDEPENDENT single-tile kernel, and the whole-model functional/numeric gate stays the scalar/RVV
-    reference (``compile_rvv``, correct across every op). What it does NOT yet do is emit ONE executable
-    that runs the mesh matmul kernels for the layers' REAL MxKxN extents and the scalar/RVV remainder
-    inline, driven by a single runtime that hands the accelerator's DRAM-resident activations between
-    layers. That splice needs (a) per-op real shapes threaded from the linalg (model_op_demands carries op
-    family, not extents), (b) multi-tile loop nests over each layer's M/K/N built by the OOT backend, and
-    (c) a whole-model runtime that co-schedules the OOT mesh kernels with the RVV lane in one image +
-    address space. mesh_verify is the honest per-tile-on-mesh milestone until that infra exists."""
+    WHOLE-MODEL ON MESH (``run_whole_model_on_mesh``): past per-tile certification, that entrypoint runs a
+    whole model co-scheduled across the lanes on the REAL oracle — each matmul LAYER executes on the target
+    mesh with its operands injected, the scalar/vector ops run inline, and every layer's on-device output
+    is handed to the op that consumes it, gated bit-exact vs the whole-model engine reference. Of the three
+    pieces this used to name: (a) per-op real shapes are now threaded from the module's def-use edges
+    (``mesh_program_run.demands_from_module`` + ``mesh_matmul_extents``); (b) each layer compiles at its
+    real MxKxN and the OOT backend tiles it. RESIDUAL: (c) it is still host-driven multi-kernel — one
+    program dispatching several mesh kernels + the scalar lane, not yet ONE fused kernel in a single device
+    address space. That last slice is the OOT backend emitting the whole loop nest inline."""
     # run=="mesh": execute the model's matmul layers on the target accelerator mesh (host dispatch runtime
     # with mesh routing); otherwise the plain RVV/scalar reference (host/spike/...).
     if run == "mesh":

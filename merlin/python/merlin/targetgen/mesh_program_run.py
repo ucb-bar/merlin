@@ -287,12 +287,19 @@ def _scalar_op(family: str, operands: list):
     raise ValueError(f"no scalar-lane executor for op family {family!r}")
 
 
-def run_whole_model_program(program: WholeModelProgram, leaf_values: dict):
+def run_whole_model_program(program: WholeModelProgram, leaf_values: dict, mesh_exec=None):
     """Execute the spliced program: seed the leaves, then walk the steps IN ORDER, dispatching each to its
     lane (mesh matmuls through the compiled engine path, scalar ops through the vector lane) and threading
     every step's output tensor into the steps that consume it. ``leaf_values`` maps leaf id -> array. Returns
     ``{"outputs": {output_id: array}, "env": {tensor id -> array}}`` — the whole-model result plus every
-    intermediate, so a caller can inspect the handoff."""
+    intermediate, so a caller can inspect the handoff.
+
+    ``mesh_exec`` overrides the mesh-lane executor: a callable ``(lhs_array, rhs_array, step) -> array`` (or
+    ``None`` to signal an unavailable oracle for that layer). When ``None`` (default) the mesh lane runs on the
+    engine (``_mesh_matmul_on_engine``) — the numerically-exact reference path. A real driver passes an
+    executor that dispatches each mesh matmul onto the target's REAL oracle (``run_matmul_on_mesh``), which
+    threads that layer's on-device output into the scalar lane. A mesh_exec returning ``None`` raises
+    ``MeshLayerUnavailable`` so the whole run fails closed (never fabricates the layer's output)."""
     import numpy as np
     env: dict = {}
     for lid, arr in leaf_values.items():
@@ -305,10 +312,24 @@ def run_whole_model_program(program: WholeModelProgram, leaf_values: dict):
         if step.lane == "mesh":
             if step.family != "matmul":
                 raise ValueError(f"mesh lane got a non-matmul op {step.op!r} at step {step.index}")
-            env[step.output] = _mesh_matmul_on_engine(operands[0], operands[1], program.target)
+            if mesh_exec is None:
+                env[step.output] = _mesh_matmul_on_engine(operands[0], operands[1], program.target)
+            else:
+                got = mesh_exec(operands[0], operands[1], step)
+                if got is None:                          # oracle could not run this layer — fail closed
+                    raise MeshLayerUnavailable(step.index, step.m, step.k, step.n)
+                env[step.output] = np.asarray(got, dtype=np.float32)
         else:
             env[step.output] = _scalar_op(step.family, operands)
     return {"outputs": {program.output: env[program.output]}, "env": env}
+
+
+class MeshLayerUnavailable(RuntimeError):
+    """A mesh matmul layer could not execute on the real oracle (fail closed — never fabricate the output)."""
+
+    def __init__(self, index: int, m, k, n):
+        self.index, self.m, self.k, self.n = index, m, k, n
+        super().__init__(f"mesh layer {index} ({m}x{k}x{n}) has no reachable oracle in this env")
 
 
 def _reference_leaf_names(module) -> dict:
