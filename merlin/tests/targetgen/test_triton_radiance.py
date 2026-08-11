@@ -70,7 +70,15 @@ def test_the_package_loads_in_isolation_and_derives_its_warp_width():
     assert package.name == "radiance"
     lanes = package.spec.extra("matmul")["lanes_per_warp"]
     assert lanes.value.data == 16
-    assert package.contract["capabilities"]["resident_storage_bytes"] == 1 << 19
+    capabilities = package.contract["capabilities"]
+    # This assertion used to read `1 << 19`, taken from the kernel headers' SMEM_LOG_SIZE. That is the
+    # shared-memory ADDRESS WINDOW, not the capacity — the same header derives IO_BASE_ADDR from it —
+    # so it overstated the scratchpad 4x. Capacity now comes from the RTL config the hardware is
+    # elaborated from, and the window is kept under its own name. See docs/design/target_kernel_anatomy.
+    assert capabilities["resident_storage_bytes"] == 128 * 1024
+    assert capabilities["smem_aperture_bytes"] == 1 << 19
+    assert capabilities["resident_storage_bytes"] < capabilities["smem_aperture_bytes"], \
+        "a capacity equal to its address window means the two facts have been conflated again"
 
 
 def test_an_incoherent_contract_is_refused_rather_than_defaulted():
