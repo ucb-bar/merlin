@@ -510,6 +510,40 @@ Both refusals are informative rather than merely blocking:
   three named driving workloads, recorded as `not_run` rather than worked around. It must be resolved
   before any whole-model claim rests on that model.
 
+## 8c. The golden delta, and the one thing blocking its RTL certification
+
+The emitter (`kernels/opu_kernel.py`) generates the microkernel with every `.insn` word taken from the
+derived table, refuses to emit at all if the derivation disagreed with its cross-check source, and has
+been verified **from the object at `-O2`** — not from its source, which is the layer the historical
+failure hid below. The configure/zero/configure/load/configure/load/accumulate sequence comes out
+contiguous, the two operand lengths use different registers, and the row load keeps its tail-undisturbed
+policy so zeroed lanes past a short panel survive. The unfused variant — the shape the failure had — is
+compiled in the tests and shown to be rejected by each of those checks, so the regression cannot pass
+vacuously.
+
+**What blocks certification is a geometry mismatch I introduced, not the hardware.** The corpus sweeps
+one extent while holding the other at a literal 64. On `OPUV256D128ShuttleConfig` the logical tile is
+`(vLen/8)² = 32×32` (physically `16×16` in `(vLen/dLen)² = 4` subtiles), and the maximum operand lanes at
+`e8,m1` is `VLEN/8 = 32`. So **18 of 31 cases exceed one tile**, including the named narrow-M/N
+regressions — precisely the cases that matter most. Two things are wrong and both need fixing before the
+Verilator run means anything:
+
+1. **The emitted kernel is single-tile.** Saturn's own `i8_mm_bme_sq` tiles M and N by `mlmax`; ours does
+   one tile and therefore cannot run a real contraction. The golden delta has to tile, and the tail
+   handling at the tile boundary is exactly where the narrow-extent hazard lives — so a single-tile
+   kernel certified on shapes that happen to fit would be certifying the easy half.
+2. **The companion extent 64 is a literal I chose**, which is the cardinal rule being bent in the corpus
+   itself. It should be derived from the target's tile geometry (already available from
+   `rtl/spatial_introspect.py`'s fact bundle) so the same corpus stays meaningful on
+   `OPUV128D64ShuttleConfig`, where the tile is `16×16` and even more cases would overflow.
+
+Everything needed for the run itself is present: the baremetal harness (`merlin/runtime/baremetal/spike/`
+— `crt.S`, `htif.c`, `link.ld`, `libc_min.c`), the four prebuilt OPU sims, and
+`zephyr_model.run_on_verilator(elf, config=…)` which already takes the config as a parameter. At
+~10⁴ cycles/s a 31-case corpus of tile-sized GEMMs is seconds of simulation, which is why the corpus was
+kept small. So the remaining work is the tiling loop and the derived companion extent — not simulator
+capacity, and not a missing oracle.
+
 ## 9. Open, and deliberately unresolved here
 
 - ~~**`VOPACC` operand order.**~~ **Resolved from source; `rs1` = LHS.** Three independent readings
