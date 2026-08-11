@@ -1,5 +1,6 @@
 merlin/contract/
 merlin/contract/capsules/radiance/isa/
+merlin/contract/capsules/radiance/model/
 merlin/contract/capsules/radiance/model_slices/
 experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/isa_include/isa_definition.py
 experiments/capsule_bench/targets/radiance/task/

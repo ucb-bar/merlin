@@ -9,6 +9,7 @@ the interface — you never author a compute kernel.
 ## Scope
 Make **every** public/dev capsule under the declared corpus pass. Families are discovered, not restated:
 - `merlin/contract/capsules/radiance/isa/`
+- `merlin/contract/capsules/radiance/model/`
 - `merlin/contract/capsules/radiance/model_slices/`
 Read each capsule's `capsule.yaml` + `capsule.interface.mlir` for its op/shapes/dtypes/epilogue, and the
 target-agnostic contracts (`command_buffer_abi.yaml`, `interface_grammar.md`, the command-buffer schema).
@@ -30,32 +31,10 @@ submission/
 - `parse`: `{tool} --verify-diagnostics {input_mlir}` — parse + verify the `merlin_iface` interface MLIR
 - `lower_interface_to_target`: `{tool} --convert-iface-to-radiance {input_mlir}` — emit radiance-dialect MLIR
 - `emit_command_buffer`: `{tool} --emit-command-buffer={output_json} {input_mlir}` — schema-valid `command_buffer.json`
-- `emit_target_artifact`: `{tool} --convert-iface-to-radiance --emit-target-artifact {input_mlir}` — emit a `kernel.S` of `.word`/`.insn` directives — the target's OWN encoded instructions (self-hosted ISA), assembled to IMEM words by STOCK LLVM (`llvm-mc`), then run on the target's cosim/RTL; no forked toolchain: a `kernel.S` of `.word`/`.insn` directives encoding the target's OWN instructions (compute each 32-bit encoding from the opcode/funct/field layout in the ISA definition shipped in your bundle; the bundled example kernel shows the required instruction sequence) that STOCK LLVM (`llvm-mc -triple=riscv64`) assembles into IMEM words — emit assembler text ONLY: NOT an MLIR module, NOT `llvm.inline_asm`, NOT the model's mnemonic assembler syntax (stock LLVM cannot assemble the target's custom mnemonics); the emitted module defines `radiance_kernel`
+- `emit_target_artifact`: `{tool} --convert-iface-to-radiance --emit-target-artifact {input_mlir}` — emit an LLVM-dialect MLIR kernel lowering (compiled fork-free): an LLVM-dialect MLIR module (`builtin.module` with `llvm.func @<kernel>`) — a COMPILER LOWERING your xDSL passes produce — which the runner compiles FORK-FREE (stock LLVM rv32 + the target's RTL-derived Muon re-encode, no vendor fork) and runs on the cosim; NOT C/C++ source, NOT `.word`/`.insn` assembler, NOT a self-hosted kernel; the emitted module defines `radiance_kernel`
 
 Declare these four commands in `manifest.yaml` exactly as the runner expects — see the OOT backend
 contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
-
-## DRAM address map (self-hosted ISA — your kernel and the oracle must agree)
-The program oracle runs your assembled kernel on the target's cosim: it PRELOADS each input tensor into
-DRAM and reads the OUTPUT tensor back from DRAM. So in `command_buffer.json` you MUST declare **every
-tensor your kernel touches** — inputs, weights, AND the output — each as `{{shape, dtype, role}}`, and
-give each a `base` (its DRAM byte address). Your kernel must load each input from, and store the output
-to, EXACTLY those `base` addresses — the oracle preloads inputs and captures the output there. The output
-tensor MUST appear (its result is read from its `base`); omit it and the grade cannot see your answer. All
-addresses must lie inside the DRAM region defined by your ISA memory map (the oracle relocates that region
-to the model's aperture, so an address below the DRAM base cannot be indexed). If you omit a `base` the
-harness assigns a canonical one inside that same DRAM region, but then your kernel must target that layout —
-declaring them yourself is the reliable path. Addresses are per-capsule; size them from each tensor's
-shape x dtype.
-
-## Program termination (REQUIRED — a non-halting kernel fails before numerics)
-The functional oracle runs your assembled kernel to a fixed instruction/cycle cap and then STOPS. Your
-emitted program MUST reach the target's terminating instruction — the one the ISA definition marks as
-asserting the machine's halt/done signal — on every control path (the shipped example kernel ends with
-it). If it never halts, the capsule fails at the functional tier (`did not halt within N instructions`)
-and the numeric comparison never runs: a numerically-correct kernel that does not terminate still scores
-0. Derive the terminator's exact encoding from the ISA definition (do not invent it), and emit it as the
-final instruction of your kernel.
 
 ## Plan before you build (FIRST round only)
 If `qa/verdict.json` does not exist yet, this is the first round: **before writing any code, write
@@ -84,7 +63,7 @@ and the brief are your only durable memory across rounds.
 ## Grading + your QA signal
 Per capsule the runner certifies the emitted artifact's program-oracle output against an INDEPENDENT float `golden` within the capsule's declared tolerance (its `grade_policy` atol/rtol) across the sim tier ladder; the integer `reference(cb) == simulate(cb)` self-consistency cross-checks do NOT apply to a float datapath and report `not_applicable` — derived from the corpus goldens, not restated:
 - `L2` → cyclotron
-- `L3` → vcs
+- `L3` → verilator
 and checks the required instruction coverage per capsule (it decodes your emitted artifact into an
 instruction trace). You cannot run the oracle; after each round a QA gate writes a redacted
 `qa/verdict.json` per capsule — `status`, `failure_plane`, `trace_violations`, `numeric_status`,
@@ -108,24 +87,23 @@ AFTER you converge on the fast functional tier, so tight, narrow loops cost you 
 - Do not read withheld goldens, hidden capsules, prior backends, or Merlin internals.
 
 ## Target ISA facts (derived — build your lowering on these)
-**Shipped radiance ISA — the source of truth for instruction encodings (derive, never invent):**
-The real radiance ISA is shipped read-only in your bundle. Derive EVERY instruction's
-exact encoding from these files. Do NOT invent opcodes, mnemonics, instruction classes, or a
-bit layout: a plausible-but-invented encoding assembles cleanly yet decodes to garbage on the
-target and scores 0 (this is the single most common failure on a self-hosted ISA).
-- `experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/isa_include/isa_definition.py`
-- `experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/` (also mounted as `radiance/`) — RTL + ISA headers + README + a WORKED
-  example kernel under `example_kernel/`. Translate the example's real instructions into
-  your emitted encoding using the exact field layout the ISA definition specifies; the
-  legal-opcode values in the ISA facts below are DECODE GATES, not the instruction
-  semantics — take semantics + field packing from these files, never from the value list.
+**Your 4th artifact is an LLVM-dialect MLIR module (`submission/lowered.llvm.mlir`) defining `llvm.func @radiance_kernel` — a COMPILER LOWERING, not a hand kernel.** The runner compiles it FORK-FREE via the SHARED `llvmlower` front (MLIR → LLVM IR → STOCK clang rv32 object), then re-encodes it to the target's own ISA and runs it on the cosim. Contract:
+1. Emit ONE `builtin.module` containing `llvm.func @radiance_kernel(...)`. Every argument is `!llvm.ptr`, in the ABI order **[weight] ++ [lhs in command order] ++ [outputs in command order]** (the generic kernel_abi); pointees are row-major f32.
+2. The function COMPUTES the op (loads → multiply-accumulate → stores into the output pointers) and `llvm.return`s. It is plain scalar compute over the pointer operands — the SIMT warps / barriers / scheduling are the RUNTIME's (the fork-free BSP spawns warps around your kernel), so you do NOT write `mu_schedule`, barriers, or thread-id logic.
+3. Emit NO prints, NO `.insn`/`.word`, NO DRAM base map, NO halt — the runner owns the harness (it embeds the operands, calls your kernel, and prints the `OUT`/`DONE` protocol) and the BSP owns boot/halt. A kernel that writes its output pointers and returns is complete.
+4. BUILD the module with your xDSL pass pipeline (typed IR, `verify()`-checked) — NEVER by string assembly and NEVER with regex; this is checked on your submission.
 
-**Derived 64-bit instruction encoding (from this target's RTL decoder — the exact
-layout the hardware decodes; emit words that match it):**
-- fields: pred[63:60], imm24[59:36], f7[58:52], rs3[43:36], rs2[35:28], rs1[27:20], csrimm[27:20], f3[19:17], rd[16:9], ext2[8:7], opcode[6:0]
-- opcodes: AUIPC, BRANCH, CUSTOM0, CUSTOM1, CUSTOM2, CUSTOM3, JAL, JALR, LOAD, LUI, MADD, MISC_MEM, MSUB, NM_ADD, NM_SUB, NU_COMPLETE, NU_INVOKE, NU_INVOKE_IMM, NU_PAYLOAD, OP, OP_FP, OP_IMM, STORE, SYSTEM
-- address spaces (field `ext2`): global=0, shared=1 — a memory op's space is set in that field; a plain load defaults to the first space, so a scratchpad access MUST set it.
-The `disasm`/`lint` tools decode your emitted words against exactly this layout — run them before every `self_check`.
+The module skeleton (structure is mandatory; the reference backend emits this shape):
+```mlir
+module {
+  llvm.func @radiance_kernel(%W: !llvm.ptr, %L: !llvm.ptr, %O: !llvm.ptr) {
+    // O = L @ W  (row-major; M, K, N come from the interface). Emit the loads
+    // (llvm.getelementptr + llvm.load), the multiply-accumulate (llvm.fmul / llvm.fadd), and the
+    // stores (llvm.store) — or lower scf/arith loops to this. Your xDSL passes BUILD this IR.
+    llvm.return
+  }
+}
+```
 
 # Target ISA facts: radiance
 _Derived by config_muon.toml [muon] geometry (cyclotron perf model we report against) + RadianceMuonConfig elaborated FIRRTL/module-hierarchy evidence + Radiance ISA docs. 5/4 fields grounded; ungrounded = unavailable, not guessed._
@@ -134,48 +112,36 @@ _Derived by config_muon.toml [muon] geometry (cyclotron perf model we report aga
 - **Mesh DIM**: unavailable
 - **On-chip capacity**: unavailable
 
-## ISA dev tools (assembler / disassembler / linter / debugger) — staged as `isa_tools.py`
-You have a derived toolset for this target's self-hosted ISA (oracle-free for asm/disasm/lint: they encode
-the syntax YOU choose and inspect YOUR OWN emitted words; they never reveal a golden). Use it to avoid the
-two most common raw-ISA mistakes — invented encodings and a program that never halts:
-- `python isa_tools.py asm ops.txt` — assemble a mnemonic listing (`MNEMONIC field=value, ...`, one per
-  line) into the correct `.word` lines for your `kernel.S`, packed into the exact bits this target's own
-  encoder uses. It REFUSES rather than emit a wrong word, so you never hand-pack a 32-bit instruction.
-- `python isa_tools.py disasm submission/kernel.S` — decode your assembled kernel back to
-  `{mnemonic, operands}`; a word that decodes to nothing is an invented/garbled encoding.
-- `python isa_tools.py lint submission/kernel.S --op <op>` — flag illegal opcodes, a missing terminator
-  (a kernel that never halts fails every capsule before numerics), and instruction-class coverage vs the op.
-Run these locally as often as you like; they need no oracle. **Run `lint` (and `disasm`) BEFORE every
-`self_check`** — they are instant and catch the encoding / halt / missing-compute-role mistakes that would
-otherwise waste a functional-sim run.
-
-When your kernel assembles and halts but the OUTPUT is wrong (e.g. all zeros), stop guessing and OBSERVE the
-data path with the lite debugger:
-- `python isa_tools.py debug submission/kernel.S --capsule <name> --run-to <N> --region BASE:NBYTES ...`
-  runs your kernel on the functional model up to instruction `N` (omit `--run-to` to run to halt), then
-  reports `pc`, the scalar registers, `halt_reason`, `instr_count`, and a hex dump of each DRAM `--region`
-  you name (`--region` repeats; `BASE` may be hex `0x..` or decimal, matching the addresses your kernel
-  uses). Watch a region fill — or stay zero — as your DMA/load/compute/store sequence advances: dump the
-  input tile right after your DMA.LOAD to confirm data actually landed, then the scratch/accumulator region
-  after the compute. `all_zero: true` right after a load means your load didn't write where you think.
-  Add `--state` for a VALUE-FREE populated-map of on-chip memory (staging SRAM / register-file / accumulator
-  banks) — one `populated: true/false` per bank, no values — so you can see exactly which stage's data
-  landed (did VLOAD reach SRAM? did the weight push populate a register bank? did the MXU write the
-  accumulator?) and pinpoint the stage that silently no-ops.
-  This is the fastest way to localize which stage silently no-ops. The OUTPUT region is withheld (that is
-  the answer) — debug the INPUT and scratch regions; correctness of the final output comes from `self_check`.
-
 ## Menu of OOT modification points (merlin_assisted — the machine-checkable lever set)
 The granted CCA spine is not just files to read: two answer-free calls ENUMERATE the full,
 target-specific set of compiler seams you may modify for `radiance`, so you build the right lever set
-instead of guessing from the file tree (neither imports the oracle or the grader):
-- `cca_contract.check_bijection("radiance")` — the *what-to-build* checklist: which lever axes this
-  target's ISA/RTL admits vs. which the compiler already routes (`orphan_fields` = leverable axes still
-  to wire; `orphan_routes` = routes with no backing lever). Build every leverable axis; add no phantom.
-- `action_catalog.escalation_ladder(axis, "radiance")` — for one axis, the full
+instead of guessing from the file tree (neither imports the oracle or the grader). Both are runnable
+CLIs exactly like `isa_tools.py` — run them from the workspace root:
+- `python cca_contract.py check-bijection radiance` — the *what-to-build* checklist: which lever axes
+  this target's ISA/RTL admits vs. which the compiler already routes (`orphan_fields` = leverable axes
+  still to wire; `orphan_routes` = routes with no backing lever). Build every leverable axis; add no
+  phantom. (API form, if you prefer: `from cca_contract import check_bijection; check_bijection("radiance")`.)
+- `python action_catalog.py escalation-ladder <axis> radiance` — for one axis, the full
   FLAG→KNOB→HEURISTIC→PASS→CODEGEN ladder weakest→strongest, each row naming the concrete OOT-relative
   seam file to edit and whether it is forkable today (the "which section, and the next stronger lever"
-  answer). The seams point at YOUR generated OOT package, not our in-tree reference.
+  answer). The seams point at YOUR generated OOT package, not our in-tree reference. (API form:
+  `from action_catalog import escalation_ladder; escalation_ladder("<axis>", "radiance")`.)
+
+## MANDATORY development workflow (do ALL of these BEFORE the final status line — not optional)
+1. Your compiler backend lives under `submission/`; compute is COMPILER-GENERATED (never a hand kernel).
+2. Base every ISA / mesh / datapath / encoding decision on the **Target ISA facts** above + the
+   capability contract under `merlin/contract/` — never guess or hardcode; derive any fact not given.
+3. After EVERY build, run `python3 agent_selfcheck.py --submission submission --capsules all` and
+   iterate until all required capsules pass — a submission you did not self-check is not acceptable.
+4. GRADEABLE-FLOOR FIRST (do this in your FIRST minutes, before deep encoder / ISA / parse work):
+   write `submission/manifest.yaml` declaring your entrypoints + a minimal CLI that ANSWERS all of
+   them (even trivially / with empty output) so `agent_selfcheck` can invoke your package and the
+   grader reaches the capsules. A round that ends WITHOUT a valid manifest scores 0 no matter how
+   much compiler you built — make the package structurally gradeable EARLY, THEN iterate on real
+   codegen. If you run low on time, a graded-but-imperfect package beats an ungradeable one.
+5. Author the backend as an **xDSL pass pipeline** (`xdsl_dialects/`, `targetgen/synthesize/`, `targetgen/generate/`) — structured IR passes, NOT ad-hoc string assembly, and with **NO regular expressions** (`import re` / regex text-matching is prohibited; parse the IR structurally). This is checked on your submission.
+6. Enumerate your lever set: run `python cca_contract.py check-bijection radiance` + `python action_catalog.py escalation-ladder <axis> radiance` (runnable CLIs, like `isa_tools.py`) and build every leverable axis they list.
+7. Emit `submission/lowered.llvm.mlir` per the LLVM-dialect MLIR contract above: your xDSL pass pipeline BUILDS the `builtin.module` with `llvm.func @radiance_kernel(...)` (pointer operands in [weight]++[lhs]++[out] order) that COMPUTES the op and `llvm.return`s — no prints, no `.insn`/`.word`, no `mu_schedule`. Verify the module parses/`verify()`s before self_check.
 
 ## Final status line (end of `submission/REPORT.md`) — write exactly one of:
 1. "Backend passes all required public/dev capsules and is ready for hidden grading."

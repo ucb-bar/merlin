@@ -12,6 +12,8 @@ allowed:
 - path: merlin/contract/capsules/radiance/isa/
   mode: ro
   note: capsule corpus
+- path: merlin/contract/capsules/radiance/model/
+  mode: ro
 - path: merlin/contract/capsules/radiance/model_slices/
   mode: ro
 - path: experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/isa_include/isa_definition.py
