@@ -1,0 +1,60 @@
+name: M1_lstmnetvit_fp32
+kind: model
+source_role: pytorch_model_slice
+source_reference: "lstmnetvit \u2014 vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)"
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: I0
+  role: input
+  shape:
+  - 1
+  - 1
+  - 60
+  - 90
+  dtype: f32
+- name: I1
+  role: input
+  shape:
+  - 1
+  - 1
+  dtype: f32
+- name: I2
+  role: input
+  shape:
+  - 1
+  - 4
+  dtype: i64
+operation:
+  op: model
+  attributes:
+    model: lstmnetvit
+    dtype: f32
+    out: Y0
+    compile_dtype: fp32
+    arg_order:
+    - I0
+    - I1
+    - I2
+    - Y0
+    weights: capsule.weights.safetensors
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional
+gate:
+  after_op_pass_fraction: 0.8
+pytorch_ref:
+  op: model
+  dtype: f32
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir

@@ -1,33 +1,37 @@
-name: R3_attention_qk_fp16
+name: RP14_patch_embed_bf16_pt
 kind: model_slice
 source_role: pytorch_model_slice
-source_reference: attention Q @ K^T scores, fp16 -> fp32 (TinyLlama/Gemma-2 attn tile)
+source_reference: PyTorch ViT patch-embed conv bf16
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
-- name: Q
+- name: X
+  role: input
+  shape:
+  - 1
+  - 3
+  - 8
+  - 8
+  dtype: bf16
+- name: W
   role: input
   shape:
   - 16
-  - 32
-  dtype: fp16
-- name: K
-  role: input
-  shape:
-  - 16
-  - 32
-  dtype: fp16
+  - 3
+  - 2
+  - 2
+  dtype: bf16
 operation:
-  op: attention_qk
+  op: patch_embed
   attributes:
-    q: Q
-    k: K
     out: Y0
-    epilogue: []
-    output_dtype: f32
+    arg_order:
+    - X
+    - W
+    causal: false
 numeric_policy:
   compare: tolerance_float
-  dtype: f32
+  dtype: bf16
   atol: 0.03125
   rtol: 0.015625
 expected:
@@ -39,3 +43,8 @@ required_oracle_tiers:
 - L3
 vcs: optional
 firesim: optional
+pytorch_ref:
+  op: patch_embed
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir

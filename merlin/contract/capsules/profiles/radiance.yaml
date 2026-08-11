@@ -46,6 +46,18 @@ capsules:
    source_role: handauthored_compiler_test,
    source_reference: 'contained MX PE tile (mxfp8 e4m3, E8M0 block scale, bf16 accumulate) via simt_cluster.mx_pe',
    label: public, modes: {}}
+# Lower-precision MX tiles closing the gemm_mxgemmini fp8/fp6/fp4 ladder (radiance-kernels PR#1 GEMM ladder).
+# Same contained mx_pe datapath as R5, block-scaled E8M0, bf16 accumulate; golden from mlc's mx_ref.
+- {cat: isa, name: R6_mx_tile_mxfp6, kind: isa, op: matmul, operand_dtype: mxfp6,
+   M: 16, K: 32, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'contained MX PE tile (mxfp6 e3m2, E8M0 block scale, bf16 accumulate) via simt_cluster.mx_pe (gemm_mxgemmini fp6 ladder)',
+   label: public, modes: {}}
+- {cat: isa, name: R7_mx_tile_mxfp4, kind: isa, op: matmul, operand_dtype: mxfp4,
+   M: 16, K: 32, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'contained MX PE tile (mxfp4 e2m1, E8M0 block scale, bf16 accumulate) via simt_cluster.mx_pe (gemm_mxgemmini fp4 ladder)',
+   label: public, modes: {}}
 # Spec-sourced capsule: PROGRAM (SIMT warp schedule) + bit-exact IEEE golden from the specir verification
 # spec, via emit_radiance_program (matmul composed from the declared warp_fma leaf).
 - {cat: isa, name: RS0_matmul_spec, kind: isa, op: matmul, source: spec, spec_ref: 'radiance:op.matmul',
@@ -131,6 +143,10 @@ capsules:
    source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: k_chain,
    source_role: pytorch_model_slice, source_reference: 'PyTorch chained matmul (A@W1)@W2 fp16 (attn P@V)',
    label: public, modes: {}}
+- {cat: model_slices, name: RP18_resadd_bf16_pt, kind: model_slice, op: add, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, comparison_group: resadd,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch residual add bf16 (radiance-kernels resadd)',
+   label: public, modes: {}}
 # Hidden holdout set (label: hidden) — parity with atlas/gemmini. These are UNSEEN SIMT GEMM shapes graded
 # only at run end; their goldens are masked from the agent by the sandbox, so an agent that hardcodes a
 # public answer cannot generalize to them. For an external_backend/SIMT target the executing cyclotron
@@ -149,6 +165,12 @@ capsules:
    M: 16, K: 16, N: 32, lhs: A0, weight: W, out: Y0,
    source_role: handauthored_compiler_test,
    source_reference: hidden SIMT fp32 GEMM (unseen N=32 shape), label: hidden, modes: {}}
+# MX-datapath holdout: an unseen-shape mxfp4 tile so the contained mx_pe path has a masked-golden anti-cheese
+# too (the public MX tiles R5-R7 are its only other exposure). Golden from mlc's mx_ref, masked by the sandbox.
+- {cat: hidden, name: RH3_mx_tile_mxfp4_hidden, kind: isa, op: matmul, operand_dtype: mxfp4,
+   M: 16, K: 64, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: hidden contained MX PE tile (mxfp4 e2m1, unseen K=64 shape), label: hidden, modes: {}}
 # PyTorch-sourced hidden holdouts (source: pytorch) — unseen shapes/ops for the frontend-faithful path.
 - {cat: hidden, name: RPH0_rmsnorm_fp16_hidden, kind: model_slice, op: rmsnorm, operand_dtype: fp16,
    source: pytorch, M: 24, K: 32, src: X, gamma: G, out: Y0, eps: 1.0e-05,

@@ -1,30 +1,30 @@
-name: R4_rmsnorm_fp32
-kind: model_slice
-source_role: pytorch_model_slice
-source_reference: 'row RMSNorm (PR#1 SIMT op): x * rsqrt(mean(x^2)+eps) * gamma'
+name: RS0_matmul_spec
+kind: isa
+source_role: spec_derived
+source_reference: specir spec-sourced SIMT warp matmul (warp schedule + bit-exact
+  IEEE golden + coverage)
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
-- name: X
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: f32
+- name: A0
   role: input
   shape:
   - 16
   - 16
   dtype: f32
-- name: G
-  role: weight
-  shape:
-  - 1
-  - 16
-  dtype: f32
 operation:
-  op: rmsnorm
+  op: matmul
   attributes:
-    src: X
-    gamma: G
+    lhs: A0
+    weight: W
     out: Y0
-    eps: 1.0e-05
-    semantic: rmsnorm
+    epilogue: []
     output_dtype: f32
 numeric_policy:
   compare: tolerance_float
@@ -34,10 +34,12 @@ numeric_policy:
 expected:
   instruction_classes: []
   modes:
-    rmsnorm: true
+    relu: false
+    acc_scale: false
 required_oracle_tiers:
 - L0
 - L1
 - L3
 vcs: optional
 firesim: optional
+spec_ref: radiance:op.matmul

@@ -1,0 +1,44 @@
+name: M0_small_llama_fp32
+kind: model
+source_role: pytorch_model_slice
+source_reference: "small_llama \u2014 tiny full LLaMA (embed/RMSNorm/RoPE/attn+softmax/SwiGLU/lm_head)"
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: I0
+  role: input
+  shape:
+  - 1
+  - 8
+  dtype: i64
+operation:
+  op: model
+  attributes:
+    model: small_llama
+    dtype: f32
+    out: Y0
+    compile_dtype: fp32
+    arg_order:
+    - I0
+    - Y0
+    weights: capsule.weights.safetensors
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional
+gate:
+  after_op_pass_fraction: 0.8
+pytorch_ref:
+  op: model
+  dtype: f32
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir

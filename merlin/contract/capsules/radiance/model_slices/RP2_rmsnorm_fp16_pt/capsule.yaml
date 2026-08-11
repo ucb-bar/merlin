@@ -1,7 +1,7 @@
-name: R4_rmsnorm_fp32
+name: RP2_rmsnorm_fp16_pt
 kind: model_slice
 source_role: pytorch_model_slice
-source_reference: 'row RMSNorm (PR#1 SIMT op): x * rsqrt(mean(x^2)+eps) * gamma'
+source_reference: 'PyTorch row RMSNorm fp16: x * rsqrt(mean(x^2)+eps) * gamma'
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -10,13 +10,13 @@ inputs:
   shape:
   - 16
   - 16
-  dtype: f32
+  dtype: fp16
 - name: G
   role: weight
   shape:
   - 1
   - 16
-  dtype: f32
+  dtype: fp16
 operation:
   op: rmsnorm
   attributes:
@@ -41,3 +41,8 @@ required_oracle_tiers:
 - L3
 vcs: optional
 firesim: optional
+pytorch_ref:
+  op: rmsnorm
+  dtype: fp16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.linalg.mlir

@@ -1,33 +1,40 @@
-name: R3_attention_qk_fp16
+name: RP17_k_chain_fp16_pt
 kind: model_slice
 source_role: pytorch_model_slice
-source_reference: attention Q @ K^T scores, fp16 -> fp32 (TinyLlama/Gemma-2 attn tile)
+source_reference: PyTorch chained matmul (A@W1)@W2 fp16 (attn P@V)
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
-- name: Q
+- name: A0
   role: input
   shape:
   - 16
-  - 32
+  - 16
   dtype: fp16
-- name: K
+- name: W
   role: input
   shape:
   - 16
-  - 32
+  - 16
+  dtype: fp16
+- name: W2
+  role: input
+  shape:
+  - 16
+  - 16
   dtype: fp16
 operation:
-  op: attention_qk
+  op: k_chain
   attributes:
-    q: Q
-    k: K
     out: Y0
-    epilogue: []
-    output_dtype: f32
+    arg_order:
+    - A0
+    - W
+    - W2
+    causal: false
 numeric_policy:
   compare: tolerance_float
-  dtype: f32
+  dtype: fp16
   atol: 0.03125
   rtol: 0.015625
 expected:
@@ -39,3 +46,8 @@ required_oracle_tiers:
 - L3
 vcs: optional
 firesim: optional
+pytorch_ref:
+  op: k_chain
+  dtype: fp16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir

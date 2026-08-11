@@ -36,6 +36,6 @@ expected:
 required_oracle_tiers:
 - L0
 - L1
-- L2
-verilator: optional
+- L3
+vcs: optional
 firesim: optional

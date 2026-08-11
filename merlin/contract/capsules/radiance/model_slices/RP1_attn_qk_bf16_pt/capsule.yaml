@@ -1,30 +1,29 @@
-name: R4_rmsnorm_fp32
+name: RP1_attn_qk_bf16_pt
 kind: model_slice
 source_role: pytorch_model_slice
-source_reference: 'row RMSNorm (PR#1 SIMT op): x * rsqrt(mean(x^2)+eps) * gamma'
+source_reference: PyTorch Q@K^T attention scores, bf16 (TinyLlama/Gemma-2 attn tile)
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
-- name: X
+- name: Q
   role: input
   shape:
   - 16
-  - 16
-  dtype: f32
-- name: G
-  role: weight
+  - 32
+  dtype: bf16
+- name: K
+  role: input
   shape:
-  - 1
   - 16
-  dtype: f32
+  - 32
+  dtype: bf16
 operation:
-  op: rmsnorm
+  op: attention_qk
   attributes:
-    src: X
-    gamma: G
+    q: Q
+    k: K
     out: Y0
-    eps: 1.0e-05
-    semantic: rmsnorm
+    epilogue: []
     output_dtype: f32
 numeric_policy:
   compare: tolerance_float
@@ -33,11 +32,15 @@ numeric_policy:
   rtol: 0.015625
 expected:
   instruction_classes: []
-  modes:
-    rmsnorm: true
+  modes: {}
 required_oracle_tiers:
 - L0
 - L1
 - L3
 vcs: optional
 firesim: optional
+pytorch_ref:
+  op: attention_qk
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.linalg.mlir

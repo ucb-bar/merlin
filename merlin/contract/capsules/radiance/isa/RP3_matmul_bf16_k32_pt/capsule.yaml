@@ -1,30 +1,29 @@
-name: R4_rmsnorm_fp32
-kind: model_slice
+name: RP3_matmul_bf16_k32_pt
+kind: isa
 source_role: pytorch_model_slice
-source_reference: 'row RMSNorm (PR#1 SIMT op): x * rsqrt(mean(x^2)+eps) * gamma'
+source_reference: PyTorch bf16 GEMM, K=32 (K-accumulate)
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
-- name: X
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: bf16
+- name: A0
   role: input
   shape:
   - 16
-  - 16
-  dtype: f32
-- name: G
-  role: weight
-  shape:
-  - 1
-  - 16
-  dtype: f32
+  - 32
+  dtype: bf16
 operation:
-  op: rmsnorm
+  op: matmul
   attributes:
-    src: X
-    gamma: G
+    lhs: A0
+    weight: W
     out: Y0
-    eps: 1.0e-05
-    semantic: rmsnorm
+    epilogue: []
     output_dtype: f32
 numeric_policy:
   compare: tolerance_float
@@ -34,10 +33,15 @@ numeric_policy:
 expected:
   instruction_classes: []
   modes:
-    rmsnorm: true
+    k_accumulate: true
 required_oracle_tiers:
 - L0
 - L1
 - L3
 vcs: optional
 firesim: optional
+pytorch_ref:
+  op: matmul
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.linalg.mlir

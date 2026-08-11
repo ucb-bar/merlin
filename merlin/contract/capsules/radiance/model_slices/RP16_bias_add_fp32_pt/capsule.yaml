@@ -1,7 +1,7 @@
-name: R4_rmsnorm_fp32
+name: RP16_bias_add_fp32_pt
 kind: model_slice
 source_role: pytorch_model_slice
-source_reference: 'row RMSNorm (PR#1 SIMT op): x * rsqrt(mean(x^2)+eps) * gamma'
+source_reference: PyTorch bias add fp32
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -11,21 +11,19 @@ inputs:
   - 16
   - 16
   dtype: f32
-- name: G
-  role: weight
+- name: B
+  role: input
   shape:
-  - 1
   - 16
   dtype: f32
 operation:
-  op: rmsnorm
+  op: bias_add
   attributes:
-    src: X
-    gamma: G
     out: Y0
-    eps: 1.0e-05
-    semantic: rmsnorm
-    output_dtype: f32
+    arg_order:
+    - X
+    - B
+    causal: false
 numeric_policy:
   compare: tolerance_float
   dtype: f32
@@ -33,11 +31,15 @@ numeric_policy:
   rtol: 0.015625
 expected:
   instruction_classes: []
-  modes:
-    rmsnorm: true
+  modes: {}
 required_oracle_tiers:
 - L0
 - L1
 - L3
 vcs: optional
 firesim: optional
+pytorch_ref:
+  op: bias_add
+  dtype: f32
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir

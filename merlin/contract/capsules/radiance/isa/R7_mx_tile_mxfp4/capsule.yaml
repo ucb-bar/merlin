@@ -1,7 +1,8 @@
-name: R1_gemm_fp16
+name: R7_mx_tile_mxfp4
 kind: isa
 source_role: handauthored_compiler_test
-source_reference: SIMT fp16 GEMM, K=32 (fp16 operands, fp32 accumulate)
+source_reference: contained MX PE tile (mxfp4 e2m1, E8M0 block scale, bf16 accumulate)
+  via simt_cluster.mx_pe (gemm_mxgemmini fp4 ladder)
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -10,13 +11,13 @@ inputs:
   shape:
   - 32
   - 16
-  dtype: fp16
+  dtype: mxfp4
 - name: A0
   role: input
   shape:
   - 16
   - 32
-  dtype: fp16
+  dtype: mxfp4
 operation:
   op: matmul
   attributes:
@@ -24,16 +25,15 @@ operation:
     weight: W
     out: Y0
     epilogue: []
-    output_dtype: f32
+    output_dtype: bf16
 numeric_policy:
   compare: tolerance_float
-  dtype: f32
+  dtype: bf16
   atol: 0.03125
   rtol: 0.015625
 expected:
   instruction_classes: []
-  modes:
-    k_accumulate: true
+  modes: {}
 required_oracle_tiers:
 - L0
 - L1
