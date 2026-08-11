@@ -174,28 +174,36 @@ static void {spec.func_name}_tile(int32_t *c, const int8_t *at, const int8_t *b,
 #else
   /* Initialise the accumulator: broadcast the bias row down every row of the tile, or zero.
    *
-   * The broadcast is issued under the OPERAND vtype (e{spec.operand_bits}/m1), which is what the unit's
-   * own expert kernel does. This is not a style choice: MEASURED on the RTL, the same instruction under
-   * e{spec.acc_bits}/m1 HANGS the core -- no trap, no retire, the simulation spins forever -- because that
-   * vl cannot span a tile row. Under e{spec.acc_bits}/m{spec.acc_lmul} it completes, so either the operand
-   * vtype or the correctly-grouped accumulator vtype is safe, and only the under-provisioned one is not.
+   * THE RULE, and it was learned the hard way twice: every instruction runs under the vtype of the data
+   * IT moves, with LMUL sized so `vl` spans a full tile row. The accumulate carries
+   * {spec.operand_bits}-bit operands and runs at e{spec.operand_bits}/m1; the broadcast and the readout
+   * carry {spec.acc_bits}-bit accumulator rows and run at e{spec.acc_bits}/m{spec.acc_lmul}.
    *
-   * The int32 data still moves with an explicit-width `vle32.v`, which takes its element width from the
-   * opcode rather than from vtype, so the load is unaffected by the surrounding e{spec.operand_bits}.
-   * Its EMUL is {spec.acc_lmul}, so it writes the whole accumulator group
-   * v{spec.out_vreg}..v{spec.out_vreg + spec.acc_lmul - 1} -- which is why the zero-init below has to
-   * cover the group and not just its first register. */
+   * Both failure modes were MEASURED on this unit's RTL, and neither announces itself:
+   *
+   *   - e{spec.acc_bits}/m1 HANGS the core. No trap, no retire, the simulation spins forever, because
+   *     that vl cannot span a tile row.
+   *   - e{spec.operand_bits}/m1 -- which is what this code used, and what the unit's own expert kernel
+   *     does -- SILENTLY UNDER-INITIALISES. One register at that vtype is
+   *     {spec.operand_bits} * tile_edge bits = tile_edge/{spec.acc_lmul} accumulator elements, so only
+   *     the first quarter-row of the tile is written and the rest keeps whatever the matrix register held.
+   *     The symptom is a wrong answer whose FIRST BAD COLUMN is exactly that boundary, and whose
+   *     mismatch count changes with unrelated contents of the same image -- a case passed or failed
+   *     depending on which OTHER cases were compiled beside it. The expert kernel gets away with it
+   *     because it is validated on square tiles, where its `vl` (the row count) happens to equal the
+   *     column count.
+   *
+   * At e{spec.acc_bits}/m{spec.acc_lmul} the `vle32.v` has EMUL = LMUL, so it fills the whole accumulator
+   * group v{spec.out_vreg}..v{spec.out_vreg + spec.acc_lmul - 1}, and `vmv.v.i` zeroes all of it. */
   if (bias) {{
-    asm volatile("vsetvli zero, %[nl], e{spec.operand_bits}, m1, ta, ma\\n\\t"
+    asm volatile("vsetvli zero, %[nl], e{spec.acc_bits}, m{spec.acc_lmul}, ta, ma\\n\\t"
                  "vle32.v v{spec.out_vreg}, (%[bp])\\n\\t"
                  "{bcast.insn_r(md, _x(0), vo)}"
                  :: [nl] "r"(nl), [bp] "r"(bias)
                  : "memory");
   }} else {{
-    /* Zero the whole group at the accumulator vtype, then drop back to the operand vtype to broadcast. */
     asm volatile("vsetvli zero, %[nl], e{spec.acc_bits}, m{spec.acc_lmul}, ta, ma\\n\\t"
                  "vmv.v.i v{spec.out_vreg}, 0\\n\\t"
-                 "vsetvli zero, %[nl], e{spec.operand_bits}, m1, ta, ma\\n\\t"
                  "{bcast.insn_r(md, _x(0), vo)}"
                  :: [nl] "r"(nl));
   }}

@@ -360,3 +360,56 @@ void unconfigured(void) {{ asm volatile("{_TABLE['ACC'].insn_r('x1', 'x5', 'x4')
 """
         got = CM.vtype_violations(_compile(src, tmp_path), _TABLE, operand_bits=8)
         assert got and got[0]["sew"] is None and "inherited" in got[0]["why"]
+
+
+#: The init as it was when the corpus caught it: the broadcast issued under the OPERAND vtype. It spans a
+#: tile row in LANES, so the span rule alone accepts it -- and on hardware it initialises only a quarter
+#: of the row and leaves the rest holding whatever the matrix register had.
+_OPERAND_VTYPE_INIT = f"""
+#include <stdint.h>
+#include <stddef.h>
+void operand_vtype_init(const int32_t *bias, size_t nl) {{
+  asm volatile("vsetvli zero, %[nl], e8, m1, ta, ma\\n\\t"
+               "vle32.v v0, (%[bp])\\n\\t"
+               "{_TABLE['BCAST'].insn_r('x1', 'x0', 'x0')}"
+               :: [nl] "r"(nl), [bp] "r"(bias) : "memory");
+}}
+"""
+
+
+class TestAccumulatorCarryingOpsNeedTheAccumulatorVtype:
+    """The span rule is necessary but not sufficient; this is the rule that was missing."""
+
+    def test_the_operand_vtype_init_is_rejected(self, tmp_path):
+        # This exact code passed every static check and every scalar test, and produced wrong answers on
+        # RTL whose mismatch count changed with unrelated contents of the same binary.
+        obj = _compile(_OPERAND_VTYPE_INIT, tmp_path)
+        assert CM.vtype_violations(obj, _TABLE, operand_bits=8) == (), (
+            "the span rule alone must accept it -- that is why a second rule is needed")
+        got = CM.vtype_violations(obj, _TABLE, operand_bits=8, acc_bits=32, acc_carrying=("BCAST",))
+        assert got and got[0]["insn"] == "BCAST"
+        assert "only part of one" in got[0]["why"]
+
+    def test_the_fixed_kernel_satisfies_both_rules(self, resident_stream):
+        assert CM.vtype_violations(resident_stream, _TABLE, operand_bits=8, acc_bits=32,
+                                   acc_carrying=("BCAST", "READOUT")) == ()
+
+    def test_the_accumulate_is_not_held_to_the_accumulator_vtype(self, resident_stream):
+        # It carries int8 operands, so e8/m1 is correct for it. Naming it here would be wrong.
+        got = CM.vtype_violations(resident_stream, _TABLE, operand_bits=8, acc_bits=32,
+                                  acc_carrying=("BCAST", "READOUT"))
+        assert not any(v["insn"] == "ACC" for v in got)
+
+    def test_a_wider_group_than_needed_is_accepted(self, tmp_path):
+        src = f"""
+#include <stdint.h>
+#include <stddef.h>
+void wide(size_t nl) {{
+  asm volatile("vsetvli zero, %[nl], e32, m8, ta, ma\\n\\t"
+               "{_TABLE['BCAST'].insn_r('x1', 'x0', 'x0')}"
+               :: [nl] "r"(nl));
+}}
+"""
+        got = CM.vtype_violations(_compile(src, tmp_path), _TABLE, operand_bits=8, acc_bits=32,
+                                  acc_carrying=("BCAST",))
+        assert got == ()

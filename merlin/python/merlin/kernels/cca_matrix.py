@@ -29,7 +29,7 @@ seam, so the core router stays backend-agnostic.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -198,13 +198,25 @@ def _vtype_of(raw: Any) -> "tuple[int, float] | None":
 
 
 def vtype_violations(obj_path: Any, encodings: Mapping[str, Any], *, operand_bits: int,
+                     acc_bits: int | None = None, acc_carrying: Sequence[str] = (),
                      config_prefix: str = "vset", triple: str = "riscv64") -> tuple[dict[str, Any], ...]:
-    """Every unit instruction in ``obj_path`` issued under a vtype whose ``vl`` cannot span a tile row.
+    """Every unit instruction issued under a vtype that does not match the data it moves.
 
-    Walks the decoded stream tracking the vtype the ISA's own configuration instructions establish, and
-    reports each unit instruction whose effective vtype fails :func:`vtype_spans_tile_row`. An instruction
-    with NO preceding configuration is reported too, with ``sew=None`` — it inherited a length from
-    whatever ran before, which is the same hazard one step removed.
+    Two rules, and the second exists because the first is necessary but NOT sufficient — a kernel that
+    satisfied only the span rule still produced wrong answers on hardware:
+
+    * **Every** unit instruction's ``vl`` must be able to span a tile row
+      (:func:`vtype_spans_tile_row`), or the unit stalls.
+    * An instruction named in ``acc_carrying`` moves ACCUMULATOR-width data (a broadcast into the
+      accumulator, a row readout out of it), so its vtype must describe ``acc_bits`` elements with LMUL
+      ``acc_bits / operand_bits``. Under the narrower operand vtype the instruction reads or writes only
+      ``1 / (acc_bits / operand_bits)`` of a row and leaves the rest of the tile untouched — MEASURED: a
+      silent wrong answer whose first bad column is exactly that boundary, and whose mismatch count moves
+      with unrelated contents of the same binary, so a case passed or failed depending on which other
+      cases were compiled beside it.
+
+    An instruction with NO preceding configuration is reported with ``sew=None`` — it inherited a length
+    from whatever ran before, which is the same hazard one step removed.
     """
     from .decode import rvv as _rvv
     from .decode.opu import decode_stream
@@ -212,6 +224,8 @@ def vtype_violations(obj_path: Any, encodings: Mapping[str, Any], *, operand_bit
     stream = _rvv.decode(obj_path, triple=triple)
     raws = [i.raw for i in stream.insns]
     decoded = decode_stream(raws, encodings)
+    acc_names = frozenset(acc_carrying)
+    want_lmul = (max(1, int(acc_bits) // int(operand_bits)) if acc_bits else None)
     current: tuple[int, float] | None = None
     out: list[dict[str, Any]] = []
     for d in decoded:
@@ -227,10 +241,18 @@ def vtype_violations(obj_path: Any, encodings: Mapping[str, Any], *, operand_bit
             out.append({"insn": d.identity, "addr": raw.addr, "sew": None, "lmul": None,
                         "why": "no vector-configuration instruction precedes it; the length in effect "
                                "was inherited"})
-        elif not vtype_spans_tile_row(current[0], current[1], operand_bits=operand_bits):
-            out.append({"insn": d.identity, "addr": raw.addr, "sew": current[0], "lmul": current[1],
-                        "why": f"e{current[0]}/m{current[1]:g} reaches VLEN*{current[1]:g}/{current[0]} "
-                               f"lanes, short of a tile row's VLEN/{operand_bits}"})
+            continue
+        sew, lmul = current
+        if not vtype_spans_tile_row(sew, lmul, operand_bits=operand_bits):
+            out.append({"insn": d.identity, "addr": raw.addr, "sew": sew, "lmul": lmul,
+                        "why": f"e{sew}/m{lmul:g} reaches VLEN*{lmul:g}/{sew} lanes, short of a tile "
+                               f"row's VLEN/{operand_bits}"})
+        elif d.identity in acc_names and acc_bits and (sew != int(acc_bits)
+                                                       or float(lmul) < float(want_lmul)):
+            out.append({"insn": d.identity, "addr": raw.addr, "sew": sew, "lmul": lmul,
+                        "why": f"moves {acc_bits}-bit accumulator data but is issued at e{sew}/"
+                               f"m{lmul:g}; it needs e{acc_bits}/m{want_lmul} to cover a full tile row, "
+                               f"and under a narrower vtype it silently touches only part of one"})
     return tuple(out)
 
 
