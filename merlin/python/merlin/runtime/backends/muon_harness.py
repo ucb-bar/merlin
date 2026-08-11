@@ -134,6 +134,35 @@ def _shape2d(shape: list) -> tuple[int, int]:
     return rows, dims[-1]
 
 
+def _decode_preload(tspec: dict | None) -> list[float] | None:
+    """Decode a command-buffer input tensor's INJECTED operand bytes into a flat, row-major float list —
+    the seam that lets a caller INJECT real operands (a whole-model mesh LAYER's activations/weights) onto
+    the command buffer instead of the deterministic, name-materialized ones the golden uses. The bytes live
+    in ``tspec['preload_b64']`` (base64), encoded for the tensor's DECLARED ``dtype`` by the injector (the
+    inverse of the shared operand encoder). Returns None when the tensor carries no injected operand (the
+    caller keeps materializing); RAISES on a present-but-undecodable dtype so the run fails closed rather
+    than silently grading the wrong (materialized) operands. Target-agnostic — dispatches on the dtype
+    token, never on a target."""
+    if not isinstance(tspec, dict) or not tspec.get("preload_b64"):
+        return None
+    import base64
+
+    import numpy as np
+    raw = base64.b64decode(tspec["preload_b64"])
+    dt = str(tspec.get("dtype", "f32"))
+    codec = {"i8": "<i1", "int8": "<i1", "u8": "<u1", "uint8": "<u1",
+             "i32": "<i4", "int32": "<i4", "f32": "<f4", "float32": "<f4"}.get(dt)
+    if codec is not None:
+        arr = np.frombuffer(raw, dtype=codec)
+    else:                                            # fp8 / bf16 / fp16 via the derived float codec
+        try:
+            from merlin.targetgen.rtl.fp8_codec import decode_bytes as _fp_decode
+            arr = np.asarray(_fp_decode(raw, dt))
+        except Exception as e:  # noqa: BLE001 — present operand we cannot decode: fail closed
+            raise ValueError(f"injected operand of dtype {dt!r} has no decoder") from e
+    return [float(x) for x in np.asarray(arr).reshape(-1)]
+
+
 def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     """Derive the kernel's ``(in_args, out_args)`` from a capsule's COMMAND BUFFER, in the generic
     ``kernel_abi`` order ``[weight] ++ [lhs] ++ [output]``. Input VALUES come from the SAME deterministic
@@ -147,10 +176,16 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     (:func:`external_main_from_cb`)."""
     from ..commandbuffer import materialize_inputs
 
+    all_tensors = cb.get("tensors") or {}
+
     def _vals(canon: dict, name: str, t) -> list[float]:
-        """Operand VALUES: the golden's decoded operands the runner attached (``cb['canonical_inputs']``,
-        so the kernel runs on the SAME operands the independent golden used), else the deterministic
-        materialization. Flat, row-major, as f32."""
+        """Operand VALUES, in precedence order: an INJECTED operand the caller preloaded onto the cb tensor
+        (``preload_b64`` — a real whole-model layer's activations/weights), then the golden's decoded
+        operands the runner attached (``cb['canonical_inputs']``, so the kernel runs on the SAME operands
+        the independent golden used), else the deterministic materialization. Flat, row-major, as f32."""
+        inj = _decode_preload(all_tensors.get(name))
+        if inj is not None:
+            return inj
         c = canon.get(name)
         if isinstance(c, dict):
             c = c.get("values")
@@ -178,9 +213,11 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
 
         in_args = []
         for nm in ins:
-            c = canon.get(nm)
-            if isinstance(c, dict):
-                c = c.get("values")
+            c = _decode_preload(tensors.get(nm))         # INJECTED operand takes precedence
+            if c is None:
+                c = canon.get(nm)
+                if isinstance(c, dict):
+                    c = c.get("values")
             rc = _rc((tensors.get(nm) or {}).get("shape"))
             if c is None or rc is None:
                 return None
@@ -272,6 +309,9 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     canon = cb.get("canonical_inputs") or {}
 
     def _flat(name: str, t) -> list[float] | None:
+        inj = _decode_preload(all_tensors.get(name))    # INJECTED operand takes precedence
+        if inj is not None:
+            return inj
         c = canon.get(name)
         if isinstance(c, dict):
             c = c.get("values")

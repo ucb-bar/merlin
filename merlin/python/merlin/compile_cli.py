@@ -360,12 +360,20 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
 
 
 def _default_oot_package(target: str) -> str | None:
-    """The conventional OOT backend package for ``target`` (``.../targets/<target>/agent_spec_v1_mlir_oot``),
-    or None when the target ships no default (a bespoke-layout target must name it via ``--package``). This is
-    the SAME default ``compile_oot`` resolves — factored so on-mesh tile verification reuses it verbatim."""
+    """The conventional OOT backend package for ``target``, or None when the target ships no default (a
+    bespoke-layout target must name it via ``--package``). Prefers the agent-submission package
+    (``.../targets/<target>/agent_spec_v1_mlir_oot`` — the SAME default ``compile_oot`` resolves, so on-mesh
+    tile verification reuses it verbatim) and falls back to a hand-curated REFERENCE backend package
+    (``.../reference_v0``) when a target ships one instead of an agent submission (e.g. a SIMT core whose
+    deterministic reference lowering is the package). Target-agnostic — both are directory conventions, not
+    target literals."""
     from .common.artifacts import artifacts_dir
-    cand = artifacts_dir() / "targets" / target / "agent_spec_v1_mlir_oot"
-    return str(cand) if (cand / "manifest.yaml").is_file() else None
+    base = artifacts_dir() / "targets" / target
+    for pkg_id in ("agent_spec_v1_mlir_oot", "reference_v0"):
+        cand = base / pkg_id
+        if (cand / "manifest.yaml").is_file():
+            return str(cand)
+    return None
 
 
 def _dtype_bytes(tok: str | None) -> int:
@@ -581,7 +589,7 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
     Fail-closed (``None``) on an unavailable oracle or an endpoint with no mesh path (never a fabricated
     result)."""
     from .targetgen import corpus_spec as CS
-    from .targetgen.capsule_runner import _endpoint_of
+    from .targetgen.capsule_runner import _bespoke_sim_via, _endpoint_of, _SIM_ORACLES
 
     endpoint, model_ext = _endpoint_of(target)
     M, K, N = len(A), len(A[0]), len(W[0])
@@ -599,6 +607,15 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
             entry["acc_scale"] = float(acc_scale)
     _, mlir = CS.build(entry, binding)
 
+    # DISPATCH ORDER is deliberate (mirrors capsule_runner.oracle_adapters): a target whose contract
+    # DECLARES an EXCLUSIVE bespoke sim (a self-hosted SIMT core graded on its own emitted kernel by its
+    # own oracle, e.g. a cyclotron/muon backend) is routed FIRST — its endpoint is ALSO external_backend,
+    # but the arc command-buffer program oracle grades the WRONG artifact for a SIMT kernel, so the bespoke
+    # executor must take precedence. Only when no exclusive sim is declared does the endpoint kind pick the
+    # path. Derived from the contract's sim_via + the _SIM_ORACLES registry — never a target-name branch.
+    so = _SIM_ORACLES.get(_bespoke_sim_via(target))
+    if so is not None and so.exclusive:
+        return _matmul_via_bespoke_sim(target, mlir, A, W, package=package, timeout=timeout)
     if endpoint in (None, "inline_asm_insn", "upstream_target"):
         return _matmul_via_oot_cert(target, mlir, A, W, simulator=simulator, package=package, timeout=timeout)
     if endpoint == "external_backend":
@@ -641,6 +658,76 @@ def _matmul_via_program_oracle(target, mlir, A, W, *, model_ext, package, timeou
     return mesh_program_run.matmul_on_program_oracle(
         target, mlir, A, W, model_ext=model_ext, package=package or _default_oot_package(target),
         timeout=timeout)
+
+
+def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | None:
+    """Exclusive bespoke-sim path: a self-hosted SIMT core (endpoint ``external_backend``) graded on the
+    kernel its OWN generated package emits, by its OWN declared bespoke oracle (e.g. cyclotron via the muon
+    backend) — NOT the arc command-buffer program oracle, which would grade the wrong artifact for a SIMT
+    kernel. Emits the matmul kernel from the target's generated OOT package via the SAME target-agnostic
+    entrypoint runner the grader uses (``capsule_common.run_entrypoints``), INJECTS the real ``A``/``W``
+    operands onto the command buffer's leaf tensors (``preload_b64``, decoded harness-side by
+    ``muon_harness``), runs on the target's DECLARED exclusive bespoke oracle, and reads the named output
+    tensor (``Y0``) back off the device. Target-agnostic: the sim engine + adapters come from the DERIVED
+    ``_SIM_ORACLES`` entry (contract ``sim_via``); the kernel/codegen is the generated package's. Fail-closed
+    (``None``) on a missing package, an unavailable oracle, or an entrypoint/oracle failure — never a
+    fabricated result."""
+    import base64
+    import tempfile
+
+    from .benchharness import runs_root
+    from .targetgen import capsule_common as CC
+    from .targetgen import capsule_runner as CR
+    from .targetgen import mesh_program_run as MP
+    from .targetgen.capsule_common import make_run_paths
+
+    pkg = package or _default_oot_package(target)
+    if pkg is None:
+        return None
+    so = CR._SIM_ORACLES.get(CR._bespoke_sim_via(target))
+    if so is None or not so.exclusive:
+        return None
+    ok, _reason = so.available(target)
+    if not ok:
+        return None
+    adapters = so.adapters(target)                    # {tier: adapter}
+    # The FUNCTIONAL tier (L2) carries the numeric grade for a SIMT core; fall back to any adapter present.
+    run = adapters.get("L2") or next(iter(adapters.values()), None)
+    if run is None:
+        return None
+
+    with tempfile.TemporaryDirectory(prefix="mesh_bsim_") as td:
+        tdp = Path(td)
+        cdir = tdp / "cap"
+        cdir.mkdir(parents=True, exist_ok=True)
+        (cdir / "capsule.interface.mlir").write_text(mlir, encoding="utf-8")
+        capsule = {"name": "mesh_layer", "kind": "op", "interface_mlir": "capsule.interface.mlir",
+                   "operation": {"op": "matmul", "attributes": {}}, "__dir__": str(cdir),
+                   "required_oracle_tiers": ["L2"]}
+        paths = make_run_paths(runs_root(target, "mesh_bsim"), "mesh_layer", suite="mesh",
+                               target=target, dtype="prog", benchmark="mesh_layer")
+        try:
+            _pkg, cb, kernel_text = CC.run_entrypoints(None, pkg, capsule, paths, contract=None,
+                                                       timeout=timeout, fourth_output_name="kernel.cpp")
+        except Exception:                             # noqa: BLE001 — package can't emit this kernel: honest None
+            return None
+        if cb is None or not kernel_text:
+            return None
+        # INJECT the real operands onto the cb's leaf tensors (encoded for each tensor's declared dtype);
+        # the muon harness decodes ``preload_b64`` and embeds THESE values instead of the materialized ones.
+        operands = {"A0": A, "W": W}
+        for tname, tspec in (cb.get("tensors") or {}).items():
+            if tspec.get("role") in ("input", "weight", "bias") and tname in operands:
+                raw = MP._encode_operand(operands[tname], tspec.get("dtype", "f32"))
+                if raw is None:
+                    return None
+                tspec["preload_b64"] = base64.b64encode(raw).decode()
+        try:
+            res = run(cb, kernel_text, tdp / "oracle", timeout)
+        except Exception:                             # noqa: BLE001 — oracle unavailable / run failure: fail closed
+            return None
+        outs = res.get("outputs") or {}
+        return outs.get("Y0") or next(iter(outs.values()), None)
 
 
 def run_whole_model_on_mesh(target: str, module, *, in_fmt: str = "f32",

@@ -38,6 +38,7 @@ _DTYPE = {
     "f16": ("fp16", "f16", 2, False),
     "bf16": ("bf16", "bf16", 2, False),
     "f32": ("f32", "f32", 4, False),
+    "fp32": ("f32", "f32", 4, False),      # alias: a contract may spell single precision "fp32"
 }
 
 
