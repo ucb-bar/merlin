@@ -31,6 +31,16 @@ class TargetProfile:
     def has_accumulator(self) -> bool:
         return bool(self.memory_map and self.memory_map.get("accum_mem"))
 
+    @property
+    def discovered_nothing(self) -> bool:
+        """True when NO field was grounded, i.e. discovery did not run rather than found bare hardware.
+
+        Every field is None exactly when mlc or the artifact was unavailable, and that is
+        indistinguishable, downstream, from a target whose RTL genuinely has no mesh and no accumulator.
+        :func:`lever_derivation_gaps` exists to keep the two apart.
+        """
+        return (self.legal_opcodes is None and self.memory_map is None and self.dim is None)
+
 
 def target_profile(target: str) -> TargetProfile:
     """Derive the target's profile from mlc discovery. Fields are None when mlc / the artifact is
@@ -57,6 +67,30 @@ def derived_levers(profile: TargetProfile) -> list[str]:
     if profile.has_accumulator:
         levers.append("spatial.accumulator_resident")
     return levers
+
+
+def lever_derivation_gaps(profile: TargetProfile) -> tuple[str, ...]:
+    """Why :func:`derived_levers` came back short, when the reason is "nothing was discovered".
+
+    An empty lever list has two very different causes and the list itself cannot tell them apart: the RTL
+    was read and has no mesh or accumulator memory, or nothing was read at all. MEASURED on the spatial
+    tensor tile: every field comes back None and ``derived_levers`` returns ``[]``, which reads as "this
+    accelerator exposes no structural levers" when what happened is that the discovery path produced
+    nothing. A caller acting on that would report a target with no levers rather than a missing
+    capability, so the silence is surfaced here instead of being inferred from an empty list.
+
+    (This is also why the matrix-unit CCA lifter derives residency from the emitted instruction stream
+    rather than from this profile: the stream is present whether or not RTL discovery is.)
+    """
+    if profile.discovered_nothing:
+        return (f"no RTL fact was grounded for {profile.target!r} (legal_opcodes, memory_map and dim are "
+                "all absent), so an empty lever list means UNKNOWN, not 'this hardware has no levers'",)
+    gaps: list[str] = []
+    if profile.dim is None:
+        gaps.append("mesh dimension not discovered, so no dataflow lever is claimed")
+    if not profile.has_accumulator:
+        gaps.append("no accumulator memory discovered, so no residency lever is claimed")
+    return tuple(gaps)
 
 
 # Each derived lever's action class + the SpatialFacet target value it drives towards. This is

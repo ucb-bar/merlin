@@ -735,13 +735,22 @@ until that verdict is recorded — an in-flight run is not a pass.
   than as the thing that decides it. The same kernel also confirms two properties the plan requires of
   our microkernel: the M-lane and N-lane loads carry **separate `vl`** (`ml` for `at[k*M]`, `vl` for
   `b[k*N]`), and bias init is `vle32.v` + `OPMVINBCAST`.
-- **`derived_levers` for the OPU.** `rtl_backend.derived_levers:48-60` derives `spatial.dataflow` and
-  `spatial.accumulator_resident` from discovered RTL, but `spatial_introspect.py:13-17` warns that
-  `discover_mesh_dim` **mis-derives DIM=4** from the OPU's cluster×cell hierarchy. What it actually
-  returns for the OPU must be checked before anything relies on it.
-- **No facet for accumulator-bank count.** The contract reports `mrf_depth`, and `spatial.pe_rows`/
-  `pe_cols` are `IDENTITY` (fixed geometry is not a lever). Whether MRF depth is a lever — 4 registers
-  allow a 2×2 sub-tiled 32×32 register block — is a Phase 5 question.
+- ~~**`derived_levers` for the OPU.**~~ **Checked, and the answer is not the feared one.** It does not
+  mis-derive `DIM=4`; it derives **nothing at all** — `legal_opcodes`, `memory_map` and `dim` all come
+  back `None`, so `derived_levers` returns `[]`. That is worse than a wrong number in one specific way:
+  an empty lever list is indistinguishable from "this accelerator has no structural levers", so a caller
+  would report a bare target rather than a missing capability. `lever_derivation_gaps` now surfaces the
+  silence (`discovered_nothing` → an explicit UNKNOWN), and a test pins the distinction between "read the
+  RTL, found no mesh" and "read nothing". This is also the reason the matrix-unit CCA lifter derives
+  residency from the emitted instruction stream rather than from this profile: the stream is there whether
+  or not RTL discovery is.
+- ~~**No facet for accumulator-bank count.**~~ **Answered: it is a lever, and the golden kernel does not
+  use it.** `MatrixStreamFacts.matrix_registers_used` counts the DISTINCT destination registers of the
+  accumulate instructions, so it reports what was emitted rather than what a schedule intended. The
+  emitted microkernel reads **1**, i.e. it occupies one accumulator bank and leaves the rest of the MRF
+  idle — a fact no MAC count or cycle total exposes. A test compiles a two-bank variant and requires the
+  facet to read 2, so the lever is visible rather than merely named. Whether using more banks *pays* is a
+  measurement, and it needs the L3 verdict first.
 - **fp8.** The contract's dtype list is `[int8]` for the real RTL; the fp8 sub-format is surfaced
   honestly as `unnamed_float_datapaths: ["float8"]` because the RTL does not name it, and `OPFMACC` is
   not in `opuInsns` on the `opu-int8` branch. int8 only, in this pass.

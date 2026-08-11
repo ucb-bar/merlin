@@ -65,6 +65,10 @@ class MatrixStreamFacts:
     #: Readouts per accumulate. A resident kernel drives this toward zero as the reduction lengthens; a
     #: per-step commit holds it near one however long the reduction is.
     readouts_per_accumulate: float | None = None
+    #: How many DISTINCT matrix registers the kernel accumulates into — the matrix-unit analogue of RVV's
+    #: register block. Read from the accumulate instructions' destination field, so it reflects what was
+    #: emitted rather than what the schedule intended. None when the unit was never driven.
+    matrix_registers_used: int | None = None
     notes: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -72,6 +76,7 @@ class MatrixStreamFacts:
                 "broadcasts": self.broadcasts, "accumulator_resident": self.accumulator_resident,
                 "reduction_is_loop": self.reduction_is_loop,
                 "readouts_per_accumulate": self.readouts_per_accumulate,
+                "matrix_registers_used": self.matrix_registers_used,
                 "notes": list(self.notes)}
 
 
@@ -107,6 +112,12 @@ def stream_facts(obj_path: Any, encodings: Mapping[str, Any], *, accumulate: str
     acc = [raws[d.index].addr for d in decoded if d.identity == accumulate]
     out = [raws[d.index].addr for d in decoded if d.identity == readout]
     bcast = [1 for d in decoded if broadcast and d.identity == broadcast]
+    # The accumulate's destination field names the matrix register it accumulates into. Counting the
+    # DISTINCT ones is how many accumulator banks the kernel actually occupies, which is the question
+    # "is MRF depth a lever?" reduces to: a kernel using one bank of four leaves three idle, and no MAC
+    # count or cycle total says so.
+    acc_regs = {d.fields.get("rd") for d in decoded if d.identity == accumulate}
+    acc_regs.discard(None)
 
     notes: list[str] = []
     resident: bool | None = None
@@ -145,7 +156,9 @@ def stream_facts(obj_path: Any, encodings: Mapping[str, Any], *, accumulate: str
     per = (len(out) / len(acc)) if acc else None
     return MatrixStreamFacts(accumulates=len(acc), readouts=len(out), broadcasts=len(bcast),
                              accumulator_resident=resident, reduction_is_loop=is_loop,
-                             readouts_per_accumulate=per, notes=tuple(notes))
+                             readouts_per_accumulate=per,
+                             matrix_registers_used=(len(acc_regs) if acc else None),
+                             notes=tuple(notes))
 
 
 def tile_occupancy(m: int, n: int, tile: int) -> float:

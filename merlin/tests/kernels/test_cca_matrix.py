@@ -259,3 +259,44 @@ class TestTheRoutes:
         assert set(CM.PROFITABLE_REGIMES) <= produced | {"square_large", "square_medium",
                                                          "rectangular"}
         assert produced & set(CM.PROFITABLE_REGIMES), "no sampled shape lands in a profitable regime"
+
+
+class TestMatrixRegisterOccupancy:
+    """Whether MRF depth is a lever reduces to: how many accumulator banks does the kernel occupy?"""
+
+    def test_the_emitted_kernel_occupies_one_bank(self):
+        # It accumulates into a single matrix register, so a unit with four leaves three idle. No MAC
+        # count or cycle total says that; the destination field does.
+        src = emit_microkernel(_TABLE, _SPEC)
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            got = CM.stream_facts(_compile(src, Path(d)), _TABLE, accumulate="ACC", readout="READOUT")
+        assert got.matrix_registers_used == 1
+
+    def test_a_kernel_using_two_banks_is_distinguished(self, tmp_path):
+        # A 1x2 register block over the matrix file: if this read 1, the facet could not see the lever.
+        two = f"""
+#include <stdint.h>
+#include <stddef.h>
+void two_banks(const int8_t *ap, const int8_t *bp, size_t ml, size_t nl, size_t k) {{
+  for (size_t kk = 0; kk < k; ++kk) {{
+    asm volatile("vsetvli zero, %[nl], e8, m1, ta, ma\\n\\t"
+                 "vle8.v v4, (%[bp])\\n\\t"
+                 "{_TABLE['ACC'].insn_r('x1', 'x5', 'x4')}\\n\\t"
+                 "{_TABLE['ACC'].insn_r('x2', 'x5', 'x4')}"
+                 :: [ml] "r"(ml), [nl] "r"(nl), [ap] "r"(ap), [bp] "r"(bp) : "memory");
+  }}
+}}
+"""
+        got = CM.stream_facts(_compile(two, tmp_path), _TABLE, accumulate="ACC", readout="READOUT")
+        assert got.matrix_registers_used == 2
+
+    def test_an_undriven_unit_reports_none_not_zero(self, tmp_path):
+        # Zero banks would read as a measurement; None says the question does not apply.
+        got = CM.stream_facts(_compile(_ABSENT, tmp_path), _TABLE, accumulate="ACC", readout="READOUT")
+        assert got.matrix_registers_used is None
+
+    def test_it_is_carried_in_the_lifted_provenance(self, resident_stream):
+        cca = CM.lift_matrix_unit(resident_stream, _TABLE, op="matmul", source="t",
+                                  accumulate="ACC", readout="READOUT")
+        assert cca.provenance["stream"]["matrix_registers_used"] == 1
