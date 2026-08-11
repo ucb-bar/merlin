@@ -7,6 +7,18 @@ Triton as a target-independent KERNEL FRONTEND to Merlin (not a per-target backe
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
+## Modules
+
+| module | job |
+| --- | --- |
+| `toolchain.py` | the exact Triton pin, and a probe that also catches a stripped install |
+| `spec.py` | the semantic ABI a kernel cannot state about itself (shapes, effects, grid, assumptions) |
+| `source.py` | `@triton.jit` → TTIR. The ONLY module that touches Triton internals |
+| `addressing.py` | pointer → tensor re-raising: affine addresses + grid normalization. The hard half |
+| `bridge.py` | TTIR → linalg-on-tensors: abstract interpretation + linalg emission |
+| `diagnostics.py` | `BridgeError` and the capability report (ops seen vs lowered vs discarded) |
+| `cli.py` | `merlin-compile-kernel`; orchestration only, no compilation logic |
+
 ## Hard rules for this package
 
 Design + the numbered invariants: `docs/design/triton_frontend.md`. Guarded by
