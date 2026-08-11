@@ -39,6 +39,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 
 ## Guides
 
+- ["Compiling Triton kernels with Merlin"](guides/triton_kernels.md) — `draft`, verified 2026-08-10 · owner: ir — see also: [triton_frontend](design/triton_frontend.md), [lowering_pipeline](reference/lowering_pipeline.md), [target_resolution](guides/target_resolution.md)
 - [Adding a target](guides/adding_a_target.md) — `current`, verified 2026-07-22 · owner: targetgen — see also: [getting_started](guides/getting_started.md), [targetgen](guides/targetgen.md), [generated_target_repos](reference/generated_target_repos.md)
 - [Building the pinned LLVM/MLIR toolchain (third_party/llvm-install)](guides/llvm_toolchain.md) — `current`, verified 2026-08-10 · owner: runtime — see also: [getting_started](guides/getting_started.md), [llvm_integration](guides/llvm_integration.md), [reproducibility](guides/reproducibility.md), [model2mlir](guides/model2mlir.md), [zephyr](guides/zephyr.md), [targetgen](guides/targetgen.md)
 - [Compilation strategies](guides/compilation_strategies.md) — `current`, verified 2026-07-07 · owner: dse — see also: [dse](guides/dse.md), [lowering_pipeline](reference/lowering_pipeline.md)
@@ -89,7 +90,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - **design_pressure** — [Design pressure](guides/design_pressure.md)
 - **dse** — [Compilation strategies](guides/compilation_strategies.md), [Design-space exploration](guides/dse.md), [DSE boundary-placement vocabulary](reference/dse_boundary_vocabulary.md), [DSE guidance](guides/dse_guidance.md), [Search policy](guides/search.md)
 - **frontends** — [model2MLIR frontend](guides/model2mlir.md)
-- **ir** — ["Design: Triton as a target-independent kernel frontend"](design/triton_frontend.md), [Contracts](reference/contracts.md), [Core dialects](reference/core_dialects.md), [Dialects](reference/dialects.md), [Lowering pipeline](reference/lowering_pipeline.md), [xDSL prototyping plane](reference/xdsl.md)
+- **ir** — ["Compiling Triton kernels with Merlin"](guides/triton_kernels.md), ["Design: Triton as a target-independent kernel frontend"](design/triton_frontend.md), [Contracts](reference/contracts.md), [Core dialects](reference/core_dialects.md), [Dialects](reference/dialects.md), [Lowering pipeline](reference/lowering_pipeline.md), [xDSL prototyping plane](reference/xdsl.md)
 - **kernels** — [Design note: integration adapters](design/integrations.md), [Integrations](guides/integrations.md), [Kernel abstraction mining](guides/kernel_mining.md), [RVV kernel-mining methodology](reference/rvv_kernel_mining_methodology.md)
 - **plotting** — [Plotting house style](reference/plot_style.md)
 - **runtime** — [Building the pinned LLVM/MLIR toolchain (third_party/llvm-install)](guides/llvm_toolchain.md), [FireSim — whole-model cycle truth on the FPGA](guides/firesim.md), [LLVM integration](guides/llvm_integration.md), [Runtime](reference/runtime.md), [RVV end-to-end — lower a model through model2MLIR and run it on the Merlin runtime](guides/rvv_e2e.md), [TinyLlama int8 on multicore RVV under Zephyr — end to end](guides/tinyllama_int8_rvv_zephyr.md), [Vision, audio and control workloads on Kodiak — multicore RVV under Zephyr](guides/vision_workloads_rvv_zephyr.md), [Zephyr runtime backend](guides/zephyr.md)

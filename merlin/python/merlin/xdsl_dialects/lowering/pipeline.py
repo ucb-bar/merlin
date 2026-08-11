@@ -25,14 +25,33 @@ from .target_lowering import lower_to_target
 
 
 def load_curated_contract(target: str) -> dict:
-    """The committed in-tree target contract for a reference target."""
+    """The target contract for ``target``: in-tree if it has one, else from the registry.
+
+    FAILS CLOSED on an unknown name. This used to fall back to the default contract whenever the
+    in-tree path was missing, which meant asking for *any* out-of-tree or misspelled target quietly
+    lowered the whole module for ``toy_npu`` instead — and produced a module that verified at every
+    stage, simulated correctly, and emitted a command buffer naming a target nobody asked for. A
+    wrong answer that passes every check is worse than an error, so the fallback is now reserved for
+    the one target the default contract actually describes.
+    """
     import yaml
 
     root = repo_root()
     path = root / f"merlin/targets/{target}/contracts/target_contract.yaml"
-    if not path.is_file():
+    if path.is_file():
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    if target == DEFAULT_TARGET_CONTRACT["name"]:
         return dict(DEFAULT_TARGET_CONTRACT)
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    from merlin.targetgen.target_registry import all_targets, resolve
+    try:
+        return resolve(target).load_contract()
+    except Exception as exc:  # noqa: BLE001 — any resolution failure is a hard stop
+        raise LoweringError(
+            f"no target contract for {target!r}: it has no in-tree contract at {path} and the "
+            f"registry could not resolve it ({type(exc).__name__}: {exc}). Known targets: "
+            f"{all_targets()}. An out-of-tree target is reached by pointing MERLIN_TARGET_PATH at "
+            f"its package, or by passing target_package=.") from exc
 
 
 @dataclass

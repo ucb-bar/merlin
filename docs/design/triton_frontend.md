@@ -278,6 +278,48 @@ candidates.
   internals is confined to one module (`source.py`) so that the rest of the package is insulated
   from Triton's fast-moving compiler API.
 
+## Results, and where the Radiance arm stopped
+
+Measured on this branch:
+
+| arm | result |
+| --- | --- |
+| host | vector add exact vs NumPy at 15 extents; int8 and fp32 matmul exact / within f32 tolerance |
+| RVV (spike) | bit-identical to host; `vsetvli` + `vfadd.vv` in the emitted object; **0** frontend lines |
+| Gemmini | full staged descent, three-way bit-exact on **Verilator RTL** (`derived_from_rtl: true`), 576 cycles |
+| convergence | Triton vs hand-authored linalg: byte-identical interface, target, runtime and command buffer — no canonicalization, on gemmini *and* saturn |
+| portability | identical TTIR and core MLIR across every stageable target; each lowers to its own dialect |
+
+**Radiance (M5a) is blocked, for reasons unrelated to Triton.** The kernel reaches Radiance's own
+contract and is refused honestly at the residency capacity proof — its contract declares no
+`resident_storage_bytes` and no RTL facts are extracted for it, so Merlin cannot prove the weight
+fits and will not make it resident. Removing residency (a single matmul) then stops one stage later:
+there is no Radiance target-dialect package. `radiance_oot` is contracts-only, TargetGen synthesizes
+a deliberately *empty* xDSL dialect for it ("the dialect plan declared no concrete ops/types yet"),
+the `muon/reference_v0` experiment-ABI package calls a module that a later refactor deleted, and the
+current fork-free SIMT emitter (`muon_codegen_mlir`) lives on a branch that is not an ancestor of
+this one. So the third accelerator arm — and with it the grid→warps claim (M5b) — needs that
+infrastructure landed first; none of it is frontend work.
+
+What survived from M5 is the finding it was meant to produce, recorded in
+`merlin/tests/ir/test_interface_elementwise_gap.py`: a target may declare an accelerated
+`elementwise` op that Merlin cannot reach, because `interface.py` registers no `interface.elementwise`
+and `lower_to_interface` materializes matmuls only. A hand-authored `linalg.add` is routed to the
+generic path identically to the Triton one, which settles it as a **Merlin interface-abstraction gap,
+not a Triton gap**. Closing it means an interface op, a materialization path, a target-lowering rule,
+a runtime and command-buffer opcode, and matching simulator and reference semantics — all running
+through the RTL-certified Gemmini path, and unverifiable end to end on the target that motivates it
+until Radiance lands. Evidence is recorded; the change is not made.
+
+### A fail-open found on the way
+
+`load_curated_contract` returned the *default* contract whenever a target had no in-tree contract
+file. Asking for any out-of-tree or misspelled target therefore lowered the whole module for
+`toy_npu` — and produced a module that verified at all six stages, simulated correctly, and emitted
+a command buffer naming a target nobody asked for. It now resolves through the registry and raises
+otherwise. This is the same shape as the routing fail-open closed in M3, and the same shape as the
+mask-dropping the bridge is built to prevent: a wrong answer that passes every check.
+
 ## What is explicitly not being built yet
 
 Tiled/multi-program GEMM, masked tails on the accelerator path, softmax, model kernel replacement,
