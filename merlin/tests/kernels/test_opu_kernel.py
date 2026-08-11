@@ -60,25 +60,44 @@ class TestRefusesToGuess:
         assert "0x55" in moved
 
 
+def _device_reduction_loop(src: str) -> str:
+    """The reduction loop of the DEVICE tile body.
+
+    The emitted file also contains a scalar tile body behind ``#ifdef OPU_SCALAR_TILE`` (the host build
+    that validates the tiling loop), and it has a reduction loop too — so a slice that merely searched for
+    the first ``for`` over the reduction would read the wrong branch and these assertions would be about
+    the stand-in rather than about the code the device runs.
+    """
+    device = src[src.index("#else"):src.index("#endif")]
+    return device[device.index("for (size_t kk"):device.index("Readout is row-serial")]
+
+
 class TestGeneratedSource:
     def test_the_operand_setup_and_accumulate_are_one_asm_block(self):
-        src = emit_microkernel(_TABLE, _SPEC)
-        loop = src[src.index("for (size_t kk"):src.index("Readout is row-serial")]
+        loop = _device_reduction_loop(emit_microkernel(_TABLE, _SPEC))
         assert loop.count("asm volatile") == 1, "the sequence must not be split into separate blocks"
         block = loop[loop.index("asm volatile"):]
         for piece in ("vmv.v.i", "tu, ma", "vle8.v", ".insn r"):
             assert piece in block[:block.index('::')], piece
 
     def test_the_row_load_is_tail_undisturbed_and_the_column_load_is_not(self):
-        src = emit_microkernel(_TABLE, _SPEC)
-        loop = src[src.index("for (size_t kk"):src.index("Readout is row-serial")]
+        loop = _device_reduction_loop(emit_microkernel(_TABLE, _SPEC))
         assert "tu, ma" in loop, "zeroed row lanes only survive a tail-undisturbed load"
         assert "ta, ma" in loop
 
+    def test_the_scalar_stand_in_is_compile_time_selected_and_not_in_the_device_path(self):
+        # It exists only so the tiling loop can be validated on a host; it must not be reachable in a
+        # device build, or the kernel could quietly compute correct answers without using the unit.
+        src = emit_microkernel(_TABLE, _SPEC)
+        assert "#ifdef OPU_SCALAR_TILE" in src
+        assert ".insn r" not in src[src.index("#ifdef OPU_SCALAR_TILE"):src.index("#else")]
+
     def test_the_reference_shares_the_kernels_signature(self):
-        args = "(int32_t *c, const int8_t *at, const int8_t *b, const int32_t *bias,"
-        assert args in emit_microkernel(_TABLE, _SPEC)
-        assert args in emit_reference_c()
+        # Same signature so a host or in-image comparison can call either through one declaration.
+        args = "(int32_t *c, const int8_t *at, const int8_t *b, const int32_t *bias,\n"
+        tail = "size_t m, size_t n, size_t k)"
+        for src in (emit_microkernel(_TABLE, _SPEC), emit_reference_c()):
+            assert args in src and tail in src
 
 
 def _compile(src: str, tmp_path: Path) -> Path:
@@ -242,3 +261,84 @@ class TestTheGuardActuallyGuards:
         # If they did, the inert-lever guard could not tell the fix from the bug.
         fused = _compile(emit_microkernel(_TABLE, _SPEC) + emit_reference_c(), tmp_path / "f")
         assert OA.audit_object(fused, _TABLE).digest != OA.audit(unfused, _TABLE).digest
+
+
+class TestTilingIsNumericallyExact:
+    """The tiling loop is checked numerically on the host, with no hardware involved.
+
+    A compile-time switch swaps the tile body for a scalar stand-in while leaving the tiling loop --
+    the tail bounds, the pointer arithmetic, the bias column offset -- untouched. There is ONE copy of
+    that loop, so this validates the same code the device build runs rather than a re-implementation.
+    Sweeping the tile edge exercises every tail alignment, including edges the available hardware does
+    not have.
+    """
+
+    @pytest.fixture(scope="class")
+    def source(self):
+        return emit_microkernel(_TABLE, _SPEC) + emit_reference_c()
+
+    def _host_lib(self, source, tmp_path, edge):
+        import ctypes
+        from merlin.llvmlower import toolchain
+        if not toolchain.available():
+            pytest.skip("needs the pinned clang")
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        c = tmp_path / "host.c"
+        c.write_text(source, encoding="utf-8")
+        so = tmp_path / f"host_{edge}.so"
+        p = subprocess.run([toolchain.clang(), "-O2", "-shared", "-fPIC", "-DOPU_SCALAR_TILE",
+                            f"-DOPU_TILE_EDGE={edge}", str(c), "-o", str(so)],
+                           capture_output=True, text=True)
+        if p.returncode != 0:
+            pytest.fail(f"host build failed:\n{p.stderr[-2000:]}")
+        lib = ctypes.CDLL(str(so))
+        fn = lib.opu_gemm_i8
+        fn.restype = None
+        fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_size_t] * 3
+        return fn
+
+    @pytest.mark.parametrize("edge", [4, 8, 16, 32])
+    def test_every_corpus_case_is_exact_at_this_tile_edge(self, source, tmp_path, edge):
+        import numpy as np
+
+        from merlin.kernels import opu_corpus as OC
+        fn = self._host_lib(source, tmp_path / f"e{edge}", edge)
+        runnable, _ = OC.select(32)
+        assert runnable, "the corpus must not be empty"
+        for case in runnable:
+            lhs, rhs, bias = case.operands()
+            out = np.zeros((case.m, case.n), dtype=np.int32)
+            fn(out.ctypes.data, lhs.ctypes.data, rhs.ctypes.data,
+               bias.ctypes.data if bias is not None else None, case.m, case.n, case.k)
+            # Exact integer equality: there is no rounding to tolerate, and an aggregate similarity
+            # gate has previously accepted a kernel over 1000% wrong per element.
+            assert (out == OC.reference(lhs, rhs, bias)).all(), f"{case.name} at tile edge {edge}"
+
+    def test_a_shape_larger_than_the_edge_really_is_being_tiled(self, source, tmp_path):
+        # Otherwise the sweep above would be passing because everything fit in one tile.
+        import numpy as np
+
+        from merlin.kernels import opu_corpus as OC
+        fn = self._host_lib(source, tmp_path / "e4", 4)
+        rng = np.random.default_rng(11)
+        m, n, k = 13, 19, 7          # both extents several tiles wide with a short tail on each
+        lhs = rng.integers(-8, 9, size=(k, m), dtype=np.int8)
+        rhs = rng.integers(-8, 9, size=(k, n), dtype=np.int8)
+        out = np.zeros((m, n), dtype=np.int32)
+        fn(out.ctypes.data, lhs.ctypes.data, rhs.ctypes.data, None, m, n, k)
+        assert (out == OC.reference(lhs, rhs)).all()
+
+    def test_the_bias_column_offset_is_right_for_every_column_tile(self, source, tmp_path):
+        # A bias pointer that was not advanced per column tile would be correct only in the first one.
+        import numpy as np
+
+        from merlin.kernels import opu_corpus as OC
+        fn = self._host_lib(source, tmp_path / "e4b", 4)
+        m, n, k = 6, 11, 3
+        lhs = np.zeros((k, m), dtype=np.int8)          # zero operands, so the output IS the bias
+        rhs = np.zeros((k, n), dtype=np.int8)
+        bias = np.arange(100, 100 + n, dtype=np.int32)
+        out = np.zeros((m, n), dtype=np.int32)
+        fn(out.ctypes.data, lhs.ctypes.data, rhs.ctypes.data, bias.ctypes.data, m, n, k)
+        assert (out == np.broadcast_to(bias, (m, n))).all(), out
+        assert (out == OC.reference(lhs, rhs, bias)).all()

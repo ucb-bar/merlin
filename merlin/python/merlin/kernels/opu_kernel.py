@@ -116,11 +116,27 @@ def emit_microkernel(encodings: Mapping[str, Any], spec: KernelSpec, *,
 #include <stdint.h>
 #include <stddef.h>
 
-/* One tile: C[0:ml, 0:nl] = sum_k A[k, 0:ml] * B[k, 0:nl], accumulating in int32.
- * `at` is K-major (K x M), `b` is K-major (K x N), `bias` is per output column or NULL. */
-void {spec.func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32_t *bias,
-                      size_t m, size_t n, size_t k, size_t ml, size_t nl)
+/* One TILE: C[i0:i0+ml, j0:j0+nl] += sum_k A[k, i0:i0+ml] * B[k, j0:j0+nl], in int32.
+ * `at` is K-major (K x M), `b` is K-major (K x N), `bias` is per output column or NULL.
+ * `ml`/`nl` must be <= the unit's tile edge; {spec.func_name} below tiles a full contraction into
+ * calls to this. */
+static void {spec.func_name}_tile(int32_t *c, const int8_t *at, const int8_t *b, const int32_t *bias,
+                                  size_t m, size_t n, size_t k, size_t ml, size_t nl)
 {{
+#ifdef OPU_SCALAR_TILE
+  /* A scalar stand-in for the unit, selected at COMPILE time. Its only purpose is to let the tiling
+   * loop below -- the tail bounds, the pointer arithmetic, the bias column offset -- be checked
+   * numerically on a host with no such hardware. There is one copy of that loop, so what the host
+   * validates is the same code the device build runs, not a re-implementation of it. */
+  for (size_t i = 0; i < ml; ++i)
+    for (size_t j = 0; j < nl; ++j) {{
+      int32_t sum = bias ? bias[j] : 0;
+      for (size_t kk = 0; kk < k; ++kk)
+        sum += (int32_t)at[kk * m + i] * (int32_t)b[kk * n + j];
+      c[i * n + j] = sum;
+    }}
+  return;
+#else
   /* Initialise the accumulator: broadcast the bias row down every row of the tile, or zero. */
   if (bias) {{
     asm volatile("vsetvli zero, %[nl], e32, m1, ta, ma\\n\\t"
@@ -153,6 +169,41 @@ void {spec.func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32
                  :: [r] "r"(r), [cp] "r"(c + r * n)
                  : "memory");
   }}
+#endif
+}}
+
+/* A full contraction: C[0:m, 0:n] = sum_k A[k, :] * B[k, :], tiled over M and N.
+ *
+ * The tile edge is READ FROM THE HARDWARE at run time rather than compiled in: `vsetvli` with an
+ * unbounded requested length returns the maximum lane count for the element width, which is the tile
+ * edge for this unit. Baking a constant here would tie the object to one configuration of the unit --
+ * the same mistake the acceptance corpus made by holding an extent at a literal -- and would be wrong
+ * silently, since a too-large tile reads past a panel and a too-small one just leaves the unit idle.
+ *
+ * Tails are the interesting part: the last row and column tile are short, and a short tile is exactly
+ * where the historical failure lived. They go through the SAME tile routine with a smaller length, so
+ * there is no separate tail path that could be right in the full case and wrong at the edge. */
+void {spec.func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32_t *bias,
+                      size_t m, size_t n, size_t k)
+{{
+#ifdef OPU_SCALAR_TILE
+  /* The host has no vector unit to ask, so the edge is supplied. Sweeping it is how the tail paths get
+   * exercised at every alignment rather than only at the one the device happens to have. */
+  const size_t tile = (size_t)OPU_TILE_EDGE;
+#else
+  size_t tile;
+  asm volatile("vsetvli %0, zero, e8, m1, ta, ma" : "=r"(tile));
+#endif
+  if (tile == 0) return;                      /* no vector unit: nothing this kernel can do */
+
+  for (size_t i = 0; i < m; i += tile) {{
+    const size_t ml = (m - i) < tile ? (m - i) : tile;
+    for (size_t j = 0; j < n; j += tile) {{
+      const size_t nl = (n - j) < tile ? (n - j) : tile;
+      {spec.func_name}_tile(c + i * n + j, at + i, b + j, bias ? bias + j : (const int32_t *)0,
+                            m, n, k, ml, nl);
+    }}
+  }}
 }}
 """
 
@@ -171,10 +222,10 @@ def emit_reference_c(func_name: str = "opu_gemm_i8_ref") -> str:
 #include <stddef.h>
 
 void {func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32_t *bias,
-                 size_t m, size_t n, size_t k, size_t ml, size_t nl)
+                 size_t m, size_t n, size_t k)
 {{
-  for (size_t i = 0; i < ml; ++i) {{
-    for (size_t j = 0; j < nl; ++j) {{
+  for (size_t i = 0; i < m; ++i) {{
+    for (size_t j = 0; j < n; ++j) {{
       int32_t sum = bias ? bias[j] : 0;              /* wraps, as the accumulator does */
       for (size_t kk = 0; kk < k; ++kk)
         sum += (int32_t)at[kk * m + i] * (int32_t)b[kk * n + j];
