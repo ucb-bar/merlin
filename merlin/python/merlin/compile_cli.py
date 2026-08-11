@@ -780,33 +780,44 @@ def run_whole_model_on_mesh(target: str, module, *, in_fmt: str = "f32",
         by_index = {a.index: a for a in args}
         arrays = {by_index[int(k[1:])]: np.asarray(v, dtype=np.float32) for k, v in leaf_values.items()}
 
-    # Whole-model engine reference (the entire module compiled+run as ONE module) — the numeric gate. The
-    # engine is target-agnostic, so it lowers through an in-tree reference target (``ref_target``); the
-    # mesh execution below is on the REAL ``target`` hardware. Both must agree on the whole-model result.
-    ref_names = mp._reference_leaf_names(module)
-    ref_inj = {ref_names[a]: arrays[a].tolist() for a in args}
-    ref_final = np.asarray(next(iter(
-        execute(lower_module(module, target=ref_target), ref_inj)["outputs"].values())))
-
     # Route + build the co-scheduled program, then run its mesh lane on the REAL oracle.
     demands = mp.demands_from_module(module, in_fmt, weight_fmt)
     plan = _routing.route_plan_on(demands, _cu.compute_units(tr.load_contract(target)))
     program = mp.build_whole_model_program(plan, target, module)
     seed_leaves = {f"L{a.index}": arrays[a] for a in args if f"L{a.index}" in program.leaves}
 
+    # Whole-model reference (the numeric gate). A module in the engine's op vocabulary lowers+runs as ONE
+    # module on the target-agnostic engine (through an in-tree ``ref_target``); a module carrying a
+    # transcendental / fused op the engine cannot evaluate (softmax/rmsnorm/rope/attention/…) is gated
+    # against a host-eager numpy recomputation of the whole model instead. Either way the mesh execution
+    # below runs the matmul layers on the REAL ``target`` hardware; both must agree on the whole-model result.
+    if mp._engine_can_lower(module):
+        ref_names = mp._reference_leaf_names(module)
+        ref_inj = {ref_names[a]: arrays[a].tolist() for a in args}
+        ref_final = np.asarray(next(iter(
+            execute(lower_module(module, target=ref_target), ref_inj)["outputs"].values())))
+        ref_kind = "engine"
+    else:
+        ref_final = mp._host_eager_final(program, seed_leaves)
+        ref_kind = "host_eager"
+
     per_layer: list = []
 
     def _mesh_exec(lhs, rhs, step):
-        got = run_matmul_on_mesh(target, np.asarray(lhs).tolist(), np.asarray(rhs).tolist(),
+        la, ra = np.asarray(lhs), np.asarray(rhs)
+        got = run_matmul_on_mesh(target, la.tolist(), ra.tolist(),
                                  operand_dtype=operand_dtype, accum_dtype=accum_dtype,
                                  simulator=simulator, package=package, timeout=timeout)
-        per_layer.append({"index": step.index, "m": step.m, "k": step.k, "n": step.n,
-                          "unit": step.unit, "oracle": "ok" if got is not None else "unavailable"})
+        # extents read from the actual operands (a fused op's matmul sub-ops carry the sub-op shapes, not
+        # the enclosing step's), so the per-layer log is honest for attention/geglu as well as plain matmuls.
+        per_layer.append({"index": step.index, "m": int(la.shape[0]), "k": int(la.shape[1]),
+                          "n": int(ra.shape[1]), "unit": step.unit,
+                          "oracle": "ok" if got is not None else "unavailable"})
         return got
 
-    base = {"target": target, "ref_target": ref_target, "n_steps": len(program.steps),
-            "n_mesh": program.n_mesh(), "n_scalar": program.n_scalar(), "output_id": program.output,
-            "per_layer": per_layer,
+    base = {"target": target, "ref_target": ref_target, "ref_kind": ref_kind,
+            "n_steps": len(program.steps), "n_mesh": program.n_mesh(),
+            "n_scalar": program.n_scalar(), "output_id": program.output, "per_layer": per_layer,
             "simulator": simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")}
     try:
         spliced = mp.run_whole_model_program(program, seed_leaves, mesh_exec=_mesh_exec)

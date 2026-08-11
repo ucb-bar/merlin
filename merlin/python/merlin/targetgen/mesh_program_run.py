@@ -102,6 +102,38 @@ def matmul_on_program_oracle(target: str, interface_mlir: str, A, W, *, model_ex
 # regex, no target literal).
 _ELEMENTWISE_FAMILY = {"linalg.add": "add", "linalg.mul": "mul"}
 
+# The op families the co-scheduled splice can execute end to end. A transformer's non-matmul ops are
+# carried in the linalg module as ``linalg.generic`` ops tagged with a ``library_call`` naming the family
+# (the live-module analog of the ``prov.op`` tags m2m stamps on captured models). The splice reads that
+# tag STRUCTURALLY (no regex, no target literal) and dispatches each family to a small numpy executor on
+# the scalar/vector lane. Two classes:
+#   * SCALAR — norms / activations / positional embeddings that run inline on the vector lane;
+#   * FUSED  — ops that DECOMPOSE into mesh matmuls + a scalar glue step (attention = Q@Kᵀ on the mesh,
+#     softmax on the scalar lane, @V on the mesh; geglu = two mesh matmuls + a gelu gate). Their matmul
+#     sub-ops still route to the MESH oracle; the splice threads the activation between the lanes.
+_SCALAR_LIB_FAMILIES = frozenset({"softmax", "rmsnorm", "layernorm", "rope", "silu", "gelu"})
+_FUSED_MESH_FAMILIES = frozenset({"attention", "attention_full", "attention_qk", "geglu"})
+
+# The op families the toy xDSL engine can lower + evaluate (its command-buffer vocabulary). A module built
+# only from these can be graded against the engine reference; a module carrying any transcendental/fused
+# family (softmax/rmsnorm/…, whose exp/rsqrt/div the engine cannot evaluate) is graded against a
+# host-eager numpy recomputation instead — see :func:`_engine_can_lower` / :func:`_host_eager_final`.
+_ENGINE_FAMILIES = frozenset({"matmul", "relu", "add", "mul"})
+
+# rmsnorm / layernorm numerical epsilon (a fixed, shared constant so the spliced lane and the host-eager
+# reference use the SAME arithmetic — the gate proves the splice, not a mismatched epsilon).
+_NORM_EPS = 1e-6
+
+
+def _library_call(op) -> str | None:
+    """The ``library_call`` tag on a ``linalg.generic`` (the op-family name), or ``None`` if untagged.
+    Structural read of the op's own property — no text matching."""
+    props = getattr(op, "properties", None)
+    if not props:
+        return None
+    lc = props.get("library_call")
+    return getattr(lc, "data", None)
+
 
 def _is_block_arg(value) -> bool:
     from xdsl.ir import Block
@@ -123,12 +155,17 @@ def _is_zero_fill(value) -> bool:
 
 def _op_family(op):
     """The splice op family for a linalg op, or ``None`` if it is not a routable compute op (an
-    ``EmptyOp``/``FillOp``/``ConstantOp`` init, or the terminator). Structural — matches on the op class."""
+    ``EmptyOp``/``FillOp``/``ConstantOp`` init, or the terminator). Structural — matches on the op class,
+    then on a ``linalg.generic``'s ``library_call`` tag (softmax/rmsnorm/rope/attention/…)."""
     from xdsl.dialects.linalg import ops as lo
     if isinstance(op, (lo.QuantizedMatmulOp, lo.MatmulOp)):
         return "matmul"
     if isinstance(op, lo.MaxOp) and _is_zero_fill(op.inputs[1]):
         return "relu"
+    if isinstance(op, lo.GenericOp):
+        # a tagged generic is a routable op even if its family is unknown here — return the tag so it is
+        # ROUTED (not silently dropped); its executor fails closed on an unsupported family.
+        return _library_call(op)
     return _ELEMENTWISE_FAMILY.get(getattr(op, "name", None))
 
 
@@ -273,18 +310,98 @@ def _mesh_matmul_on_engine(lhs, rhs, target: str):
     return np.asarray(next(iter(run["outputs"].values())))
 
 
-def _scalar_op(family: str, operands: list):
-    """Execute one op on the scalar/vector (RVV) lane, in the engine's working precision (f64) so the lane
-    handoff is numerically exact vs the single-module reference. relu = ``max(x, 0)``, add/mul elementwise."""
+def _erf(x):
+    """Elementwise error function in f64 (numpy has no ufunc for it); small tensors, exactness over speed."""
+    import math
+
     import numpy as np
-    ops = [np.asarray(o) for o in operands]
+    return np.vectorize(math.erf, otypes=[np.float64])(np.asarray(x, dtype=np.float64))
+
+
+def _rope(x, base: float = 10000.0):
+    """LLaMA-style rotary position embedding on a ``(seq, dim)`` activation (dim even): rotate each
+    (first-half, second-half) pair of channels by the position-dependent angle ``pos * base**(-2i/dim)``.
+    Target-agnostic — the standard rotary transform, computed in f64."""
+    import numpy as np
+    a = np.asarray(x, dtype=np.float64)
+    seq, dim = a.shape[-2], a.shape[-1]
+    half = dim // 2
+    inv = base ** (-2.0 * np.arange(half) / dim)          # (half,)
+    ang = np.outer(np.arange(seq), inv)                    # (seq, half)
+    cos = np.concatenate([np.cos(ang), np.cos(ang)], axis=-1)
+    sin = np.concatenate([np.sin(ang), np.sin(ang)], axis=-1)
+    rot = np.concatenate([-a[..., half:], a[..., :half]], axis=-1)
+    return a * cos + rot * sin
+
+
+def _scalar_op(family: str, operands: list):
+    """Execute one norm/activation/elementwise op on the scalar/vector (RVV) lane, in the engine's working
+    precision (f64) so the lane handoff is numerically exact vs the reference. Each op is a small numpy
+    implementation, derived generically from the op's math (no target special-casing):
+
+    * ``relu`` = max(x, 0); ``add``/``mul`` = elementwise;
+    * ``softmax`` = row (last-axis) softmax with the max-subtraction stability shift;
+    * ``rmsnorm`` = x · rsqrt(mean(x², last axis) + eps) · gamma;
+    * ``layernorm`` = (x − mean) / sqrt(var + eps) · gamma + beta;
+    * ``silu`` = x · sigmoid(x); ``gelu`` = 0.5·x·(1 + erf(x/√2)); ``rope`` = rotary embedding.
+    """
+    import numpy as np
+    ops = [np.asarray(o, dtype=np.float64) for o in operands]
+    x = ops[0]
     if family == "relu":
-        return np.maximum(ops[0], 0.0)
+        return np.maximum(x, 0.0)
     if family == "add":
         return ops[0] + ops[1]
     if family == "mul":
         return ops[0] * ops[1]
+    if family == "softmax":
+        z = x - x.max(axis=-1, keepdims=True)
+        e = np.exp(z)
+        return e / e.sum(axis=-1, keepdims=True)
+    if family == "rmsnorm":
+        gamma = ops[1] if len(ops) > 1 else 1.0
+        ms = np.mean(x * x, axis=-1, keepdims=True)
+        return x / np.sqrt(ms + _NORM_EPS) * gamma
+    if family == "layernorm":
+        gamma = ops[1] if len(ops) > 1 else 1.0
+        beta = ops[2] if len(ops) > 2 else 0.0
+        mu = x.mean(axis=-1, keepdims=True)
+        var = x.var(axis=-1, keepdims=True)
+        return (x - mu) / np.sqrt(var + _NORM_EPS) * gamma + beta
+    if family == "silu":
+        return x / (1.0 + np.exp(-x))
+    if family == "gelu":
+        return 0.5 * x * (1.0 + _erf(x / np.sqrt(2.0)))
+    if family == "rope":
+        return _rope(x)
     raise ValueError(f"no scalar-lane executor for op family {family!r}")
+
+
+def _fused_op(family: str, operands: list, mesh):
+    """Execute one FUSED op that DECOMPOSES into mesh matmuls + a scalar glue step. ``mesh(lhs, rhs)`` runs
+    a matmul on the mesh lane (the compiled engine path, or the real oracle when the splice injects one) so
+    the contraction sub-ops of attention/geglu stay on the accelerator; the softmax / gelu / gate run inline
+    on the scalar lane. Target-agnostic — the decomposition is the op's math, not a per-target route.
+
+    * ``attention``/``attention_full`` = softmax(Q·Kᵀ / √d) · V — Q·Kᵀ and P·V on the mesh, softmax scalar;
+    * ``attention_qk`` = Q·Kᵀ / √d — the pre-softmax scores (a mesh matmul with a transposed rhs);
+    * ``geglu`` = gelu(X·Wg) ⊙ (X·Wu) — two mesh matmuls, a gelu gate and an elementwise product.
+    """
+    import numpy as np
+    ops = [np.asarray(o, dtype=np.float64) for o in operands]
+    if family in ("attention", "attention_full"):
+        q, k, v = ops[0], ops[1], ops[2]
+        scores = np.asarray(mesh(q, k.T), dtype=np.float64) / np.sqrt(q.shape[-1])
+        probs = _scalar_op("softmax", [scores])
+        return np.asarray(mesh(probs, v), dtype=np.float64)
+    if family == "attention_qk":
+        q, k = ops[0], ops[1]
+        return np.asarray(mesh(q, k.T), dtype=np.float64) / np.sqrt(q.shape[-1])
+    if family == "geglu":
+        x, wg, wu = ops[0], ops[1], ops[2]
+        gate = _scalar_op("gelu", [np.asarray(mesh(x, wg), dtype=np.float64)])
+        return gate * np.asarray(mesh(x, wu), dtype=np.float64)
+    raise ValueError(f"no fused-op executor for op family {family!r}")
 
 
 def run_whole_model_program(program: WholeModelProgram, leaf_values: dict, mesh_exec=None):
@@ -307,18 +424,28 @@ def run_whole_model_program(program: WholeModelProgram, leaf_values: dict, mesh_
     missing = [lid for lid in program.leaves if lid not in env]
     if missing:
         raise ValueError(f"missing leaf inputs for {missing} (have {sorted(env)})")
+
+    def _run_mesh(lhs, rhs, step):
+        """One matmul on the mesh lane: the compiled engine path (``mesh_exec is None``), else the injected
+        oracle executor. A ``None`` from the oracle fails closed (never fabricates the layer's output)."""
+        if mesh_exec is None:
+            return _mesh_matmul_on_engine(lhs, rhs, program.target)
+        got = mesh_exec(lhs, rhs, step)
+        if got is None:                                  # oracle could not run this layer — fail closed
+            raise MeshLayerUnavailable(step.index, step.m, step.k, step.n)
+        return np.asarray(got, dtype=np.float32)
+
     for step in program.steps:
         operands = [env[i] for i in step.inputs]
         if step.lane == "mesh":
             if step.family != "matmul":
                 raise ValueError(f"mesh lane got a non-matmul op {step.op!r} at step {step.index}")
-            if mesh_exec is None:
-                env[step.output] = _mesh_matmul_on_engine(operands[0], operands[1], program.target)
-            else:
-                got = mesh_exec(operands[0], operands[1], step)
-                if got is None:                          # oracle could not run this layer — fail closed
-                    raise MeshLayerUnavailable(step.index, step.m, step.k, step.n)
-                env[step.output] = np.asarray(got, dtype=np.float32)
+            env[step.output] = _run_mesh(operands[0], operands[1], step)
+        elif step.family in _FUSED_MESH_FAMILIES:
+            # a fused op: its matmul sub-ops run on the MESH lane (through the same executor), its softmax /
+            # gelu / gate run inline on the scalar lane, threaded here by the splice.
+            env[step.output] = _fused_op(step.family, operands,
+                                         lambda lhs, rhs, _s=step: _run_mesh(lhs, rhs, _s))
         else:
             env[step.output] = _scalar_op(step.family, operands)
     return {"outputs": {program.output: env[program.output]}, "env": env}
@@ -356,8 +483,41 @@ def _reference_leaf_names(module) -> dict:
     return names
 
 
+def _engine_can_lower(module) -> bool:
+    """Can the toy xDSL engine lower + evaluate this whole module? True iff every compute op is in the
+    engine's command-buffer vocabulary (:data:`_ENGINE_FAMILIES`). A module carrying a transcendental /
+    fused family (softmax/rmsnorm/rope/attention/…) is NOT engine-gradeable — it must be graded against the
+    host-eager numpy reference (:func:`_host_eager_final`)."""
+    return all(info["family"] in _ENGINE_FAMILIES for info in _ordered_compute_ops(module))
+
+
+def _host_eager_final(program: "WholeModelProgram", leaf_values: dict):
+    """A host-eager (numpy, f64) recomputation of the WHOLE spliced program — the reference a module with
+    transcendental/fused ops is gated against (the toy engine cannot evaluate exp/rsqrt/div). Walks the
+    same steps in the same order, but computes EVERY op in numpy: matmuls as ``@`` in f64, scalar ops and
+    fused ops via the same executors the splice uses (so the only thing under test is that the spliced
+    on-mesh path reproduces this independent numpy whole-model result)."""
+    import numpy as np
+    env: dict = {lid: np.asarray(arr, dtype=np.float64) for lid, arr in leaf_values.items()}
+
+    def _np_mesh(lhs, rhs, _step=None):
+        return np.asarray(lhs, dtype=np.float64) @ np.asarray(rhs, dtype=np.float64)
+
+    for step in program.steps:
+        operands = [env[i] for i in step.inputs]
+        if step.family == "matmul":
+            env[step.output] = _np_mesh(operands[0], operands[1])
+        elif step.family in _FUSED_MESH_FAMILIES:
+            env[step.output] = _fused_op(step.family, operands, _np_mesh)
+        else:
+            env[step.output] = _scalar_op(step.family, operands)
+    return env[program.output]
+
+
 def verify_whole_model_program(module, target: str, in_fmt: str = "f32",
-                               weight_fmt: str | None = None, seed: int = 0, units=None) -> dict:
+                               weight_fmt: str | None = None, seed: int = 0, units=None,
+                               int_operands: bool = False, rtol: float = 1e-5,
+                               atol: float = 1e-5) -> dict:
     """End-to-end proof that the SPLICE orchestration is correct: route ``module``'s ops across ``target``'s
     compute units, build the co-scheduled whole-model program, run it per-op (mesh matmuls on the engine,
     scalar ops on the vector lane, activations handed between steps), and compare the final tensor to the
@@ -365,28 +525,35 @@ def verify_whole_model_program(module, target: str, in_fmt: str = "f32",
     so a correct splice reproduces the reference exactly. Returns a structured result (never asserts) with
     ``exact``/``match`` and the two finals so the caller can gate it.
 
-    Fully engine-verifiable and target-agnostic: the only target-specific input is the routing contract.
+    Fully verifiable and target-agnostic: the only target-specific input is the routing contract.
     ``units`` overrides the routing contract's compute units (so a caller can prove the splice against a
     format the target's own mesh does not accept, e.g. an f32 mesh) — the engine reference still lowers
-    through ``target``."""
+    through ``target``.
+
+    REFERENCE SELECTION: a module built only from the engine's op vocabulary (matmul/relu/add/mul) is gated
+    against the single-module ``lower_module`` engine result (both paths run matmuls on the same engine, so
+    a correct splice reproduces it EXACTLY). A module carrying a transcendental / fused op the engine cannot
+    evaluate (softmax/rmsnorm/rope/attention/…) is gated against a HOST-EAGER numpy recomputation of the
+    whole module instead (:func:`_host_eager_final`) — this is what makes softmax/rmsnorm/attention chains
+    gradeable. ``int_operands`` seeds small integers so an integer-exact whole model matches bit-for-bit."""
     import numpy as np
     from merlin.targetgen import routing as _routing
     from merlin.xdsl_dialects.lowering import execute, lower_module
 
-    # random leaf operands, keyed once and reused for BOTH paths (same arrays, two injections).
+    # leaf operands, keyed once and reused for BOTH paths (same arrays, two injections). Small integers
+    # (``int_operands``) keep matmuls exact so the whole model — even with softmax/rmsnorm downstream —
+    # matches its numpy reference bit-for-bit; otherwise standard-normal floats gated within tolerance.
     rng = np.random.default_rng(seed)
     fn = next(op for op in module.walk() if op.name == "func.func")
     args = list(fn.body.blocks[0].args)
-    arrays = {a: rng.standard_normal(tuple(_shape(a))).astype(np.float32) for a in args}
+    if int_operands:
+        arrays = {a: np.rint(rng.standard_normal(tuple(_shape(a))) * 3).clip(-8, 7).astype(np.float32)
+                  for a in args}
+    else:
+        arrays = {a: rng.standard_normal(tuple(_shape(a))).astype(np.float32) for a in args}
 
-    # single-module reference through the engine (the whole model compiled as ONE module).
-    ref_names = _reference_leaf_names(module)
-    ref_inj = {ref_names[a]: arrays[a].tolist() for a in args}
-    ref_res = lower_module(module, target=target)
-    ref_run = execute(ref_res, ref_inj)
-    ref_final = np.asarray(next(iter(ref_run["outputs"].values())))   # engine's native precision (f64)
-
-    # spliced per-op orchestration over the routing plan.
+    # spliced per-op orchestration over the routing plan (mesh matmuls on the engine, scalar/fused lane
+    # inline, activations handed between steps).
     demands = demands_from_module(module, in_fmt, weight_fmt)
     plan = _routing.route_plan_on(demands, units if units is not None else _cu_units(target))
     program = build_whole_model_program(plan, target, module)
@@ -394,13 +561,26 @@ def verify_whole_model_program(module, target: str, in_fmt: str = "f32",
     spliced = run_whole_model_program(program, leaf_values)
     spliced_final = spliced["outputs"][program.output]
 
+    if _engine_can_lower(module):
+        # single-module engine reference (the whole model compiled + run as ONE module).
+        ref_names = _reference_leaf_names(module)
+        ref_inj = {ref_names[a]: arrays[a].tolist() for a in args}
+        ref_run = execute(lower_module(module, target=target), ref_inj)
+        ref_final = np.asarray(next(iter(ref_run["outputs"].values())))
+        ref_kind, ref_correct = "engine", bool(ref_run.get("correct"))
+    else:
+        # host-eager numpy reference (the engine cannot evaluate this module's transcendental/fused ops).
+        ref_final = _host_eager_final(program, leaf_values)
+        ref_kind, ref_correct = "host_eager", None
+
     exact = bool(np.array_equal(spliced_final, ref_final))
-    match = bool(np.allclose(spliced_final, ref_final, rtol=1e-5, atol=1e-5))
+    match = bool(np.allclose(spliced_final, ref_final, rtol=rtol, atol=atol))
     return {
         "target": target,
         "exact": exact,
         "match": match,
-        "ref_correct": bool(ref_run.get("correct")),
+        "ref_kind": ref_kind,
+        "ref_correct": ref_correct,
         "n_steps": len(program.steps),
         "n_mesh": program.n_mesh(),
         "n_scalar": program.n_scalar(),
