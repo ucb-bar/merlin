@@ -106,6 +106,42 @@ def test_default_mesh_lane_still_runs_on_engine():
 # --------------------------------------------------------------------------- on real hardware (spike)
 
 
+def test_int8_chain_reference_is_deterministic_and_saturating():
+    """The host int8-chain reference (i32 matmul, round-half-even acc_scale, i8 saturate) is deterministic
+    and stays in i8 range — a no-oracle sanity check on the golden the on-mesh chain is gated against."""
+    from merlin import compile_cli
+
+    rng = np.random.default_rng(0)
+    A0 = np.rint(rng.standard_normal((4, 4)) * 4).clip(-8, 7).astype(int).tolist()
+    Ws = [np.rint(rng.standard_normal((4, 4)) * 4).clip(-8, 7).astype(int).tolist() for _ in range(3)]
+    r1 = compile_cli._int8_chain_reference(A0, Ws, 0.25)
+    r2 = compile_cli._int8_chain_reference(A0, Ws, 0.25)
+    assert np.array_equal(r1, r2)
+    assert r1.min() >= -128 and r1.max() <= 127        # requant kept every layer in i8 range
+
+
+@pytest.mark.slow
+def test_int8_chain_on_gemmini_mesh_bit_exact():
+    """A 3-layer int8 matmul CHAIN runs end-to-end on the real gemmini mesh with the per-layer acc_scale
+    requant handoff — each layer's i8 output feeds the next mesh layer — and matches the host int8-chain
+    reference bit-exact at EVERY layer. This is the inter-layer int8 handoff a real quantized model needs
+    (a single independent matmul does not exercise it). Skips honestly if the mesh oracle is unavailable."""
+    from merlin import compile_cli
+
+    rng = np.random.default_rng(7)
+    A0 = np.rint(rng.standard_normal((4, 4)) * 4).clip(-8, 7).astype(int).tolist()
+    Ws = [np.rint(rng.standard_normal((4, 4)) * 4).clip(-8, 7).astype(int).tolist() for _ in range(3)]
+
+    res = compile_cli.run_int8_chain_on_mesh("gemmini", A0, Ws, acc_scale=0.25,
+                                             operand_dtype="i8", accum_dtype="i32",
+                                             simulator="spike", timeout=900)
+    if res["status"] == "oracle_unavailable":
+        pytest.skip(res.get("reason", "mesh oracle unavailable"))
+    assert res["status"] == "pass", res
+    assert res["exact"] is True and res["n_layers"] == 3
+    assert all(layer["matches_ref"] for layer in res["per_layer"])
+
+
 @pytest.mark.slow
 def test_whole_model_matmuls_on_gemmini_mesh_bit_exact():
     """The whole model — two matmuls on the real gemmini mesh + a scalar relu and add inline — runs

@@ -411,11 +411,16 @@ def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int) -> tuple[
     return mt, kt, nt, n_tiles
 
 
-def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str | None):
+def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str | None,
+                       requant_output_dtype: str | None = None):
     """A ``corpus_spec.CorpusBinding`` for synthesizing a single systolic mesh tile of ``target``, with the
     operand/accumulate datapath pinned to what the routed op actually needs (derived, never assumed). The
     tile dim, compare policy, and instruction-class deriver all come from the target's own descriptor +
-    manifest via ``derive_binding`` — no target literal, no hand-set dims."""
+    manifest via ``derive_binding`` — no target literal, no hand-set dims.
+
+    ``requant_output_dtype`` (the narrow dtype an ``acc_scale`` epilogue requants the i32 accumulator to,
+    e.g. i8) is passed only when the caller needs a requant handoff — an int8 matmul chain commits each
+    layer's accumulator back to i8 so it can feed the next mesh layer."""
     from types import SimpleNamespace
     from .targetgen import corpus_spec as CS
     from .targetgen.capsule_runner import _bespoke_sim_via
@@ -425,6 +430,8 @@ def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str 
         datapath["operand_dtype"] = operand_dtype
     if accum_dtype:
         datapath["accum_dtype"] = accum_dtype
+    if requant_output_dtype:
+        datapath["requant_output_dtype"] = requant_output_dtype
     return CS.derive_binding(te, datapath)
 
 
@@ -554,10 +561,17 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
 
 def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | None = None,
                        accum_dtype: str | None = None, simulator: str | None = None,
-                       package: str | None = None, timeout: int = 900) -> list | None:
+                       package: str | None = None, epilogue: list | None = None,
+                       acc_scale: float | None = None, timeout: int = 900) -> list | None:
     """Execute ``A @ W`` on the target's mesh oracle with the REAL operand values INJECTED (not
     materialized-from-name), and return the mesh's output tensor (nested list) — or ``None`` when this
     target has no reachable mesh path. ``A`` / ``W`` are the layer's real activations / weights.
+
+    ``epilogue`` (e.g. ``["acc_scale"]``) applies the accumulator epilogue the layer commits with; an
+    ``acc_scale`` epilogue re-quantizes the i32 accumulator to the target's narrow requant dtype (the
+    target-declared ``requant_output_dtype``, e.g. i8 for an integer mesh) by the float ``acc_scale`` +
+    saturating cast, so the layer's output is a same-dtype activation that can feed the NEXT mesh layer —
+    this is what makes an int8 matmul CHAIN executable on the mesh end to end (the requant handoff).
 
     TARGET-AGNOSTIC: it dispatches on the target's DERIVED ``endpoint_kind`` (from the contract, never a
     literal) to that target's OWN oracle — a systolic/RoCC target (``inline_asm_insn``) through its generated
@@ -571,11 +585,18 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
 
     endpoint, model_ext = _endpoint_of(target)
     M, K, N = len(A), len(A[0]), len(W[0])
-    binding = _mesh_tile_binding(target, operand_dtype, accum_dtype)
+    # An acc_scale requant commits the accumulator back to the operand's narrow dtype so the layer's
+    # output can feed the next mesh layer (the int8 chain handoff); tell the binding that narrow dtype.
+    requant_out = (operand_dtype or "i8") if (epilogue and "acc_scale" in epilogue) else None
+    binding = _mesh_tile_binding(target, operand_dtype, accum_dtype, requant_output_dtype=requant_out)
     entry = {"name": "mesh_layer", "op": "matmul", "kind": "op",
              "source_role": "mesh_layer_real_operands",
              "source_reference": f"whole-model matmul layer {M}x{K}x{N} on the mesh with real operands",
              "M": M, "K": K, "N": N, "lhs": "A0", "weight": "W", "out": "Y0"}
+    if epilogue:
+        entry["epilogue"] = list(epilogue)
+        if acc_scale is not None:
+            entry["acc_scale"] = float(acc_scale)
     _, mlir = CS.build(entry, binding)
 
     if endpoint in (None, "inline_asm_insn", "upstream_target"):
@@ -713,6 +734,67 @@ def run_whole_model_on_mesh(target: str, module, *, in_fmt: str = "f32",
                     "scalar/vector lane inline, activations handed between lanes; gated vs the whole-model "
                     "engine reference. Residual: host-driven multi-kernel, not yet one fused address-space "
                     "image."}
+
+
+def _int8_chain_reference(A0, weights: list, acc_scale: float):
+    """Host int8 matmul-chain reference matching the mesh's per-layer requant EXACTLY: i32 accumulate,
+    gemmini-faithful ``acc_scale`` (round-half-even of the f32 product), saturating i8 cast; each layer's
+    i8 output is the next layer's activation. This is the golden the on-mesh chain is gated against."""
+    import numpy as np
+    x = np.asarray(A0, dtype=np.int64)
+    for w in weights:
+        acc = x @ np.asarray(w, dtype=np.int64)
+        x = np.clip(np.rint(acc.astype(np.float32) * np.float32(acc_scale)), -128, 127).astype(np.int64)
+    return x
+
+
+def run_int8_chain_on_mesh(target: str, A0: list, weights: list, *, acc_scale: float,
+                           operand_dtype: str = "i8", accum_dtype: str = "i32",
+                           simulator: str | None = None, package: str | None = None,
+                           timeout: int = 900) -> dict:
+    """Run an int8 matmul CHAIN on the target mesh with the per-layer REQUANT HANDOFF — the shape of a real
+    quantized model's linear stack. For each layer ``Y_l = requant_i8(A_l @ W_l)`` executes on the REAL
+    oracle (``run_matmul_on_mesh`` with an ``acc_scale`` epilogue that commits the i32 accumulator back to
+    i8), and ``Y_l`` becomes ``A_{l+1}`` — so the activation stays device-native i8 across the whole chain
+    rather than round-tripping through a wider host dtype. The final tensor (and every layer) is gated
+    bit-exact vs :func:`_int8_chain_reference`.
+
+    This closes the int8 inter-layer handoff that a single independent matmul does not exercise: a real
+    model is a CHAIN, and each mesh layer's output must be requantized to the operand dtype to feed the
+    next mesh layer. FAIL-CLOSED: a layer with no reachable oracle returns ``oracle_unavailable`` (never a
+    fabricated activation). TARGET-AGNOSTIC: the requant + narrow output dtype are the target's own
+    (``run_matmul_on_mesh``); this only threads activations layer to layer."""
+    import os
+
+    import numpy as np
+
+    a = np.asarray(A0, dtype=np.int64)           # device activation, threaded layer to layer
+    r = np.asarray(A0, dtype=np.int64)           # independent host reference, advanced in lockstep
+    per_layer: list = []
+    for i, w in enumerate(weights):
+        wl = np.asarray(w, dtype=np.int64)
+        # advance the reference prefix (i32 matmul, gemmini-faithful acc_scale requant, i8 saturate)
+        r = np.clip(np.rint((r @ wl).astype(np.float32) * np.float32(acc_scale)), -128, 127).astype(np.int64)
+        out = run_matmul_on_mesh(target, a.tolist(), wl.tolist(), operand_dtype=operand_dtype,
+                                 accum_dtype=accum_dtype, simulator=simulator, package=package,
+                                 epilogue=["acc_scale"], acc_scale=acc_scale, timeout=timeout)
+        if out is None:
+            return {"target": target, "status": "oracle_unavailable", "failed_layer": i,
+                    "n_layers": len(weights), "per_layer": per_layer,
+                    "reason": f"mesh layer {i} ({a.shape[0]}x{a.shape[1]}x{wl.shape[1]}) has no reachable "
+                              f"oracle in this env"}
+        a = np.asarray(out, dtype=np.int64)
+        per_layer.append({"layer": i, "m": int(a.shape[0]), "n": int(wl.shape[1]),
+                          "matches_ref": bool(np.array_equal(a, r))})
+
+    exact = bool(all(p["matches_ref"] for p in per_layer))
+    return {"target": target, "status": "pass" if exact else "fail", "exact": exact,
+            "n_layers": len(weights), "acc_scale": acc_scale, "per_layer": per_layer,
+            "final_shape": [int(d) for d in a.shape],
+            "simulator": simulator or os.environ.get("MERLIN_MESH_SIM", "verilator"),
+            "note": "int8 matmul chain on the real mesh oracle with the per-layer acc_scale requant handoff "
+                    "(each layer's i8 output feeds the next mesh layer); gated bit-exact vs the host int8 "
+                    "chain reference at EVERY layer."}
 
 
 def _summarize_route_plan(plan: dict) -> dict:
