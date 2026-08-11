@@ -376,33 +376,45 @@ def _mx_golden(entry, binding):
 #   S = mx_matmul(Q, K^T)   (block-scaled E8M0, bf16)  -> scaled by 1/sqrt(head) [+ optional soft-cap]
 #   P = bf16 row-softmax(S)                             (numpy, bf16-rounded)
 #   O = mx_matmul(P_requant, V)  (block-scaled E8M0, bf16)
-# The intermediate P is requantized to mxfp8 exactly as the MX PE does before the second GEMM: a per-row
-# E8M0 scale brings the row to O(1) mantissas (the mx_ref accumulator carries only 4-bit column exponents,
-# so the DECODED codes must stay small and the E8M0 scale carry the magnitude — same convention as the
-# synthesized Q/K/V operands), then each element rounds to the nearest fp8 code. NOTHING is fabricated: both
-# matmuls are the mlc mx_ref hardware datapath; only the softmax + the standard MX requant of P are numpy.
-# mxfp8 only (fp8 codes are one byte each); the fp6/fp4 nibble-LUT packing across three matmul stages is a
-# separate, larger extension (see the report), so an fp6/fp4 attention entry fails closed here.
+# The intermediate P is requantized to the MX code space exactly as the MX PE does before the second GEMM:
+# a per-(K-group,row) E8M0 scale brings each block to O(1) mantissas (the mx_ref accumulator carries only
+# 4-bit column exponents, so DECODED codes must stay small and the E8M0 scale carry the magnitude — same
+# convention as the synthesized Q/K/V operands), then each element rounds to the nearest representable value
+# in that format's palette. NOTHING is fabricated: both matmuls are the mlc mx_ref hardware datapath (same
+# codec as the R6/R7 fp6/fp4 tiles: fp8 = one byte/code, fp4 = e2m1 nibble, fp6 = e3m2 nibble + per-group
+# 16-entry LUT); only the softmax + the standard MX requant of P are numpy. Parameterized by operand format
+# (mxfp8 / mxfp6 / mxfp4).
 # ------------------------------------------------------------------------------------------------
-def _mx_fp8_decode_table(mx) -> list:
-    """code (0..255) -> decoded fp8_e4m3 value, for the nearest-code requant search."""
-    return [float(mx.fp8_e4m3_decode(c)) for c in range(256)]
+def _mx_safe_palette(mx, tok: str) -> list:
+    """The requant candidate values for ``tok``: exactly-representable decoded values in the |v|<=4 window
+    the operand synthesizer uses (so a requant code never overflows the 4-bit column accumulator). fp6 is
+    capped to the SAME 16-value pool the synthesizer draws from (``derive_palette(...,16)``), so the fused
+    PV union LUT (P-codes ∪ V-codes) stays within the 16-entry fp6 LUT."""
+    from merlin.targetgen import corpus_operands as CO
+    if tok == "fp6_e3m2":
+        return sorted(CO.derive_palette("fp6_e3m2", 16, mag_cap=4.0))
+    if tok == "fp8_e4m3":
+        vals = {float(mx.fp8_e4m3_decode(c)) for c in range(256)}
+    elif tok == "fp4_e2m1":
+        vals = {float(mx.fp4_e2m1_decode(c)) for c in range(16)}
+    else:
+        raise ValueError(f"no MX palette for {tok!r}")
+    return sorted(v for v in vals if v == v and abs(v) <= 4.0)
 
 
-def _mx_requant_rows(P, mx, decode_tbl, *, group: int, target: float = 2.0):
-    """Requantize a float matrix ``P[M,K]`` to (fp8 codes ``[M,K]``, E8M0 scale codes ``[K/group, M]``)
-    exactly as the MX PE does before a GEMM: ONE shared power-of-two E8M0 scale per (K-group, row) — the
-    same (group, lane) granularity ``mx_matmul`` indexes SA with — chosen so that block's max maps to
-    ~``target`` (keeping DECODED mantissas O(1) for the mx_ref accumulator), then nearest-fp8 rounding of
-    each scaled element. The block scale is applied back by mx_matmul via the E8M0 code (2**(code-127)).
-    The nearest search stays in the |v|<=4 fp8 window the operand synthesizer uses, so no code overflows
-    the 4-bit column accumulator."""
+def _mx_requant_blocks(P, palette, *, group: int, target: float = 2.0):
+    """Requantize float ``P[M,K]`` to (DECODED values ``[M,K]`` drawn from ``palette``, E8M0 scale codes
+    ``[K/group, M]``) as the MX PE does before a GEMM: one shared power-of-two E8M0 scale per (K-group, row)
+    — the (group, lane) granularity ``mx_matmul`` indexes SA with — chosen so the block max maps to
+    ~``target``, then nearest-palette rounding of each scaled element. Returns DECODED values (not codes) so
+    the caller re-encodes them through the SAME codec as the synth operands (fp8 byte / fp4 nibble / fp6
+    LUT). The block scale is applied back by mx_matmul via the E8M0 code (2**(code-127))."""
     import math
     import numpy as np
     M, K = P.shape
     G = K // group
-    safe = [(c, v) for c, v in enumerate(decode_tbl) if v == v and abs(v) <= 4.0]
-    codes = np.zeros((M, K), dtype=np.uint8)
+    pv = sorted(palette)
+    dec = np.zeros((M, K), dtype=np.float64)
     scodes = np.zeros((G, M), dtype=np.uint8)
     for m in range(M):
         for g in range(G):
@@ -413,19 +425,60 @@ def _mx_requant_rows(P, mx, decode_tbl, *, group: int, target: float = 2.0):
             s = 2.0 ** (int(scodes[g, m]) - 127)
             for j in range(group):
                 t = float(blk[j]) / s
-                best_c, best_d = safe[0][0], float("inf")
-                for c, v in safe:
-                    d = abs(v - t)
-                    if d < best_d:
-                        best_d, best_c = d, c
-                codes[m, g * group + j] = best_c
-    return codes, scodes
+                dec[m, g * group + j] = min(pv, key=lambda val: abs(val - t))
+    return dec, scodes
+
+
+def _mx_stage_matmul(mx, A_dec, B_dec, SA, SB, M, N, K, tok):
+    """ONE MX GEMM over DECODED operands + E8M0 scales at ``tok`` (mxfp8 / mxfp6 / mxfp4), using the SAME
+    codec as the R6/R7 tiles: fp8 = one code byte per element; fp4 = e2m1 nibble packed (A along rows, B
+    along cols); fp6 = e3m2 nibble packed indexing a per-group union 16-entry LUT (G=log2 rows/cols per LUT
+    block). Returns (C_float[M][N] bf16-decoded, packing-artifacts dict for provenance). A_dec/B_dec must be
+    exactly representable in ``tok`` (synth operands + palette-requantized P both are)."""
+    import numpy as np
+    codes = _mx_value_codes(mx, tok)
+
+    def enc(X):
+        return np.vectorize(lambda v: codes[float(np.float32(v))])(X).astype(np.uint8)
+
+    A_codes, B_codes = enc(A_dec), enc(B_dec)
+    lutA = lutB = None
+    if tok == "fp8_e4m3":
+        fmt, G = mx.FMT_FP8, 0
+        Ab, Bb = A_codes, B_codes
+    else:
+        if tok == "fp6_e3m2":
+            fmt, G = mx.FMT_FP6, 5
+            lut = np.array(sorted({int(c) for c in A_codes.reshape(-1)} |
+                                  {int(c) for c in B_codes.reshape(-1)}), dtype=np.uint8)
+            assert lut.size <= 16, f"fp6 LUT overflow ({lut.size} > 16) — requant/synth palette too wide"
+            lut = np.pad(lut, (0, 16 - lut.size))[:16]
+            idx = {int(v): i for i, v in enumerate(lut)}
+            A_nib = np.vectorize(lambda c: idx[int(c)])(A_codes).astype(np.uint8)
+            B_nib = np.vectorize(lambda c: idx[int(c)])(B_codes).astype(np.uint8)
+            grp = 1 << G
+            lutA = np.tile(lut.reshape(1, 16), ((A_codes.shape[0] + grp - 1) // grp, 1))
+            lutB = np.tile(lut.reshape(1, 16), ((B_codes.shape[1] + grp - 1) // grp, 1))
+        else:                                                    # fp4: nibble == code
+            fmt, G = mx.FMT_FP4, 0
+            A_nib, B_nib = A_codes, B_codes
+        Ab = ((A_nib[1::2, :] << 4) | (A_nib[0::2, :] & 0xF)).astype(np.uint8)     # pack along M (rows)
+        Bb = ((B_nib[:, 1::2] << 4) | (B_nib[:, 0::2] & 0xF)).astype(np.uint8)     # pack along N (cols)
+    C = np.asarray(mx.mx_matmul(Ab, Bb, SA, SB, M, N, K, fmt=fmt, lutA=lutA, lutB=lutB, G=G))
+    Cf = [[float(mx.bf16_to_f32(int(C[i, j]))) for j in range(N)] for i in range(M)]
+    art = {"A_bytes": Ab.reshape(-1).tolist(), "A_shape": list(Ab.shape),
+           "B_bytes": Bb.reshape(-1).tolist(), "B_shape": list(Bb.shape), "G": G,
+           "lutA": lutA.tolist() if lutA is not None else None,
+           "lutB": lutB.tolist() if lutB is not None else None}
+    return Cf, art
 
 
 def _mx_attention_golden(entry, binding):
-    """Fused MX flash-attention golden (bf16 output) + provenance, composed from mx_ref (QK & PV) + a numpy
-    bf16 row-softmax. mxfp8 only. Shapes (tiles*dim or explicit): M queries, H head dim (K of QK; %32),
-    Skv keys (%32), Dv value dim (%16). Optional Gemma-2 logit soft-cap via ``softcap``."""
+    """Fused MX flash-attention golden (bf16 output) + provenance, composed from mx_ref (QK & PV, at the
+    entry's operand format) + a numpy bf16 row-softmax + a per-(K-group,row) E8M0 requant of P. Shapes:
+    M queries, H head dim (K of QK), Skv keys, Dv value dim. fp8 tiles by DIM=16; fp6/fp4 tile by 32, so
+    for a sub-format M, Skv, Dv must all be multiples of 32 (a smaller tile yields a degenerate all-zero
+    GEMM). Optional Gemma-2 logit soft-cap via ``softcap``."""
     import math
 
     import numpy as np
@@ -433,33 +486,37 @@ def _mx_attention_golden(entry, binding):
     from merlin.runtime.fp8_formats import canonical_float, e8m0_decode
     from merlin.targetgen import corpus_operands as CO
     mx = _mx_ref()
-    tok = canonical_float(binding.operand_dtype)
-    if tok != "fp8_e4m3":
-        raise ValueError(f"MX attention supports mxfp8 only (got operand dtype {binding.operand_dtype!r} "
-                         f"-> {tok!r}); fp6/fp4 nibble-LUT attention is a separate extension")
+    tok = canonical_float(binding.operand_dtype)               # fp8_e4m3 / fp6_e3m2 / fp4_e2m1
+    if tok not in ("fp8_e4m3", "fp6_e3m2", "fp4_e2m1"):
+        raise ValueError(f"MX attention operand dtype {binding.operand_dtype!r} -> {tok!r} unsupported")
+    sub = (tok != "fp8_e4m3")
+    row_tile = 32 if sub else mx.DIM                           # mx_matmul TILE for this format
+    max_alpha = 16 if tok == "fp6_e3m2" else None              # fp6 draws from a 16-value LUT pool
     dim = binding.tile_dim
     M = entry.get("M", entry.get("M_tiles", 1) * dim)
-    H = entry.get("H", entry.get("head_dim", 2 * dim))         # QK contraction (head dim), must be %32
-    Skv = entry.get("Skv", entry.get("keys", 2 * dim))         # key positions, must be %32
-    Dv = entry.get("Dv", dim)                                  # value dim, must be %16
-    if H % mx.GROUP or Skv % mx.GROUP or M % mx.DIM or Dv % mx.DIM:
+    H = entry.get("H", entry.get("head_dim", 2 * dim))         # QK contraction (head dim), must be %GROUP
+    Skv = entry.get("Skv", entry.get("keys", 2 * dim))         # key positions
+    Dv = entry.get("Dv", dim)                                  # value dim
+    if H % mx.GROUP or Skv % mx.GROUP or M % row_tile or Dv % row_tile:
         raise ValueError(f"MX attention dims must satisfy H%{mx.GROUP}=Skv%{mx.GROUP}=0 and "
-                         f"M%{mx.DIM}=Dv%{mx.DIM}=0 (got M={M} H={H} Skv={Skv} Dv={Dv})")
+                         f"M%{row_tile}=Dv%{row_tile}=0 for {tok} (got M={M} H={H} Skv={Skv} Dv={Dv})")
     att_scale = float(entry.get("scale", 1.0 / math.sqrt(H)))
     softcap = entry.get("softcap")                             # Gemma-2 logit soft-cap (None to disable)
-    codes = _mx_value_codes(mx, tok)
-    dec_tbl = _mx_fp8_decode_table(mx)
     q, k, v, out = entry.get("q", "Q"), entry.get("k", "K"), entry.get("v", "V"), entry.get("out", "Y0")
 
     def synth(name, shape):
-        vals = CO.operand_values(shape, tok, _salt(entry["name"], name), mag_cap=4.0)
+        vals = CO.operand_values(shape, tok, _salt(entry["name"], name), max_alphabet=max_alpha, mag_cap=4.0)
         prob = CO.rigor_findings(vals, shape)
         if prob:
             raise AssertionError(f"non-rigorous MX attention operand {name}{shape}: {prob}")
         return np.array(vals, dtype=np.float64).reshape(shape)
 
-    def enc(A):
-        return np.vectorize(lambda x: codes[float(np.float32(x))])(A).astype(np.uint8)
+    def scales(name, shape):
+        sc = np.array(CO.e8m0_scale_codes(shape, _salt(entry["name"], name)), dtype=np.uint8)
+        prob = CO.scale_rigor_findings(sc.tolist())
+        if prob:
+            raise AssertionError(f"non-rigorous E8M0 stream {name}{shape}: {prob}")
+        return sc
 
     def bf16_round(a):
         u = np.asarray(a, dtype=np.float32).view(np.uint32)
@@ -470,20 +527,11 @@ def _mx_attention_golden(entry, binding):
     V = synth(v, (Skv, Dv))
     Kt = np.ascontiguousarray(K.T)                             # device consumes K pre-transposed (K^T)
 
-    # rigor-gated E8M0 block-scale streams (one exponent per K-group per lane).
-    def scales(name, shape):
-        sc = np.array(CO.e8m0_scale_codes(shape, _salt(entry["name"], name)), dtype=np.uint8)
-        prob = CO.scale_rigor_findings(sc.tolist())
-        if prob:
-            raise AssertionError(f"non-rigorous E8M0 stream {name}{shape}: {prob}")
-        return sc
-
     # stage 1: S = mx_matmul(Q[M,H], K^T[H,Skv]) -> bf16 scores [M, Skv]
     SA_q = scales("SA_q", (H // mx.GROUP, M))
     SB_k = scales("SB_k", (H // mx.GROUP, Skv))
-    Sbits = np.asarray(mx.mx_matmul(enc(Q), enc(Kt), SA_q, SB_k, M, Skv, H, fmt=mx.FMT_FP8))
-    S = np.array([[float(mx.bf16_to_f32(int(Sbits[i, j]))) for j in range(Skv)] for i in range(M)])
-    S = bf16_round(S * att_scale)
+    S_rows, qk_art = _mx_stage_matmul(mx, Q, Kt, SA_q, SB_k, M, Skv, H, tok)
+    S = bf16_round(np.array(S_rows) * att_scale)
     if softcap is not None:
         cap = float(softcap)
         S = bf16_round(cap * np.tanh(S / cap))
@@ -495,11 +543,11 @@ def _mx_attention_golden(entry, binding):
         e = bf16_round(np.exp(r))
         P[m] = bf16_round(e / float(np.sum(e)))
 
-    # stage 3: requant P to mxfp8 (per-row E8M0), then O = mx_matmul(P[M,Skv], V[Skv,Dv]) -> bf16 [M, Dv]
-    P_codes, SA_p = _mx_requant_rows(P, mx, dec_tbl, group=mx.GROUP)   # SA_p shape [Skv/32, M]
+    # stage 3: requant P into the format palette (per (K-group,row) E8M0), then O = mx_matmul(P, V)
+    palette = _mx_safe_palette(mx, tok)
+    P_dec, SA_p = _mx_requant_blocks(P, palette, group=mx.GROUP)      # SA_p shape [Skv/32, M]
     SB_v = scales("SB_v", (Skv // mx.GROUP, Dv))
-    Obits = np.asarray(mx.mx_matmul(P_codes, enc(V), SA_p, SB_v, M, Dv, Skv, fmt=mx.FMT_FP8))
-    O = [[float(mx.bf16_to_f32(int(Obits[i, j]))) for j in range(Dv)] for i in range(M)]
+    O_rows, pv_art = _mx_stage_matmul(mx, P_dec, V, SA_p, SB_v, M, Dv, Skv, tok)
 
     prov = {
         q: {"shape": [M, H], "decoded": Q.reshape(-1).tolist()},
@@ -508,21 +556,19 @@ def _mx_attention_golden(entry, binding):
         "SA_q_e8m0_codes": SA_q.tolist(), "SB_k_e8m0_codes": SB_k.tolist(),
         "SB_v_e8m0_codes": SB_v.tolist(),
         "scale_example": {"SA_q[0][0]": int(SA_q[0, 0]), "as_scale": e8m0_decode(int(SA_q[0, 0]))},
-        # RAW device operand bytes exactly as mx_ref consumed them, so a bit-exact grade re-runs the two MX
-        # GEMMs + the pinned softmax/requant over THESE codes (the decoded floats lose precision in YAML).
+        # RAW device operand bytes exactly as mx_ref consumed them (per stage, format-packed) + LUTs, so a
+        # bit-exact grade re-runs the two MX GEMMs + the pinned softmax/requant over THESE codes.
         "attention_codes": {
             "q": q, "k": k, "v": v, "fmt": tok, "M": M, "H": H, "Skv": Skv, "Dv": Dv,
             "att_scale": att_scale, "softcap": (None if softcap is None else float(softcap)),
-            "Q_bytes": enc(Q).reshape(-1).tolist(), "Kt_bytes": enc(Kt).reshape(-1).tolist(),
-            "V_bytes": enc(V).reshape(-1).tolist(),
             "SA_q": SA_q.reshape(-1).tolist(), "SB_k": SB_k.reshape(-1).tolist(),
-            "SB_v": SB_v.reshape(-1).tolist(),
-            # the requantized P intermediate (derived from the softmax) — carried so the PV GEMM is
-            # reproducible bit-for-bit; it is NOT an input operand (P is computed from Q,K).
-            "P_bytes": P_codes.reshape(-1).tolist(), "SA_p": SA_p.reshape(-1).tolist(),
+            "SB_v": SB_v.reshape(-1).tolist(), "SA_p": SA_p.reshape(-1).tolist(),
+            "qk_stage": qk_art, "pv_stage": pv_art,
+            # the requantized P intermediate DECODED values (derived from the softmax; NOT an input operand).
+            "P_decoded": P_dec.reshape(-1).tolist(),
         },
     }
-    return {out: O}, prov
+    return {out: O_rows}, prov
 
 
 def _mx_gemv_batched_golden(entry, binding):

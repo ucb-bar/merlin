@@ -1,30 +1,37 @@
-name: R7_mx_tile_mxfp4
-kind: isa
-source_role: handauthored_compiler_test
-source_reference: contained MX PE tile (mxfp4 e2m1, E8M0 block scale, bf16 accumulate)
-  via simt_cluster.mx_pe (gemm_mxgemmini fp4 ladder)
+name: R13_flash_attn_mx_fp4
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: 'MX flash attention, mxfp4 (e2m1 nibble, E8M0): softmax(Q@K^T/sqrt(H))@V'
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
-- name: W
-  role: weight
+- name: Q
+  role: input
   shape:
   - 32
   - 32
   dtype: mxfp4
-- name: A0
+- name: K
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: mxfp4
+- name: V
   role: input
   shape:
   - 32
   - 32
   dtype: mxfp4
 operation:
-  op: matmul
+  op: attention_mx
   attributes:
-    lhs: A0
-    weight: W
+    q: Q
+    k: K
+    v: V
     out: Y0
-    epilogue: []
+    scale: 0.17677669529663687
+    block_scale: e8m0
     output_dtype: bf16
 numeric_policy:
   compare: tolerance_float

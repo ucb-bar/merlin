@@ -48,13 +48,16 @@ capsules:
    label: public, modes: {}}
 # Lower-precision MX tiles closing the gemm_mxgemmini fp8/fp6/fp4 ladder (radiance-kernels PR#1 GEMM ladder).
 # Same contained mx_pe datapath as R5, block-scaled E8M0, bf16 accumulate; golden from mlc's mx_ref.
+# fp6/fp4 (sub-format) MX tiles: the mx_pe tiles fp6/fp4 by 32 (2 elements per byte -> a 32-wide logical
+# tile), so M and N MUST be multiples of 32 — a 16-wide tile yields a degenerate all-zero GEMM (no tile
+# iterations). K=32 (one E8M0 group). bf16 accumulate; golden from mlc mx_ref.
 - {cat: isa, name: R6_mx_tile_mxfp6, kind: isa, op: matmul, operand_dtype: mxfp6,
-   M: 16, K: 32, N: 16, lhs: A0, weight: W, out: Y0,
+   M: 32, K: 32, N: 32, lhs: A0, weight: W, out: Y0,
    source_role: handauthored_compiler_test,
    source_reference: 'contained MX PE tile (mxfp6 e3m2, E8M0 block scale, bf16 accumulate) via simt_cluster.mx_pe (gemm_mxgemmini fp6 ladder)',
    label: public, modes: {}}
 - {cat: isa, name: R7_mx_tile_mxfp4, kind: isa, op: matmul, operand_dtype: mxfp4,
-   M: 16, K: 32, N: 16, lhs: A0, weight: W, out: Y0,
+   M: 32, K: 32, N: 32, lhs: A0, weight: W, out: Y0,
    source_role: handauthored_compiler_test,
    source_reference: 'contained MX PE tile (mxfp4 e2m1, E8M0 block scale, bf16 accumulate) via simt_cluster.mx_pe (gemm_mxgemmini fp4 ladder)',
    label: public, modes: {}}
@@ -85,6 +88,20 @@ capsules:
    B: 2, M: 16, H: 32, N: 16, lhs: A0, weight: W, out: Y0,
    source_role: pytorch_model_slice,
    source_reference: 'batched MX matmul (mxfp8, E8M0), 2x [16x32]@[32x16] — decode-time gemv_batched',
+   label: public, modes: {}}
+# fp6/fp4 MX flash-attention — the SAME fused composition as R8 (mx_matmul QK -> bf16 softmax -> per-group
+# E8M0 requant of P -> mx_matmul PV) but at the fp6 (e3m2 nibble+LUT) / fp4 (e2m1 nibble) codec proven by
+# R6/R7. The sub-format mx_pe tiles by 32, so M, Skv, Dv are all multiples of 32 (a 16-wide tile is
+# degenerate). Golden from mlc mx_ref (QK & PV) + numpy bf16 softmax; no fabrication.
+- {cat: model_slices, name: R12_flash_attn_mx_fp6, kind: model_slice, op: attention_mx, operand_dtype: mxfp6,
+   M: 32, H: 32, Skv: 32, Dv: 32, q: Q, k: K, v: V, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'MX flash attention, mxfp6 (e3m2 nibble+LUT, E8M0): softmax(Q@K^T/sqrt(H))@V',
+   label: public, modes: {}}
+- {cat: model_slices, name: R13_flash_attn_mx_fp4, kind: model_slice, op: attention_mx, operand_dtype: mxfp4,
+   M: 32, H: 32, Skv: 32, Dv: 32, q: Q, k: K, v: V, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'MX flash attention, mxfp4 (e2m1 nibble, E8M0): softmax(Q@K^T/sqrt(H))@V',
    label: public, modes: {}}
 # Spec-sourced capsule: PROGRAM (SIMT warp schedule) + bit-exact IEEE golden from the specir verification
 # spec, via emit_radiance_program (matmul composed from the declared warp_fma leaf).
@@ -209,7 +226,7 @@ capsules:
 # MX-datapath holdout: an unseen-shape mxfp4 tile so the contained mx_pe path has a masked-golden anti-cheese
 # too (the public MX tiles R5-R7 are its only other exposure). Golden from mlc's mx_ref, masked by the sandbox.
 - {cat: hidden, name: RH3_mx_tile_mxfp4_hidden, kind: isa, op: matmul, operand_dtype: mxfp4,
-   M: 16, K: 64, N: 16, lhs: A0, weight: W, out: Y0,
+   M: 32, K: 64, N: 32, lhs: A0, weight: W, out: Y0,
    source_role: handauthored_compiler_test,
    source_reference: hidden contained MX PE tile (mxfp4 e2m1, unseen K=64 shape), label: hidden, modes: {}}
 # MX fused flash-attention holdout: an unseen-shape mxfp8 attention (larger M and head dim) so the fused
@@ -219,6 +236,12 @@ capsules:
    M: 32, H: 64, Skv: 32, Dv: 16, q: Q, k: K, v: V, out: Y0,
    source_role: pytorch_model_slice,
    source_reference: hidden MX flash attention (mxfp8, unseen M=32/H=64 shape), label: hidden, modes: {}}
+# fp4 MX flash-attention holdout (unseen shape: wider KV Skv=64, Dv=32) so the fp6/fp4 fused datapath has a
+# masked-golden anti-cheese too. Golden from mx_ref + bf16 softmax, masked by the sandbox.
+- {cat: hidden, name: RH5_flash_attn_mx_fp4_hidden, kind: model_slice, op: attention_mx, operand_dtype: mxfp4,
+   M: 32, H: 32, Skv: 64, Dv: 32, q: Q, k: K, v: V, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: hidden MX flash attention (mxfp4, unseen Skv=64/Dv=32 shape), label: hidden, modes: {}}
 # PyTorch-sourced hidden holdouts (source: pytorch) — unseen shapes/ops for the frontend-faithful path.
 - {cat: hidden, name: RPH0_rmsnorm_fp16_hidden, kind: model_slice, op: rmsnorm, operand_dtype: fp16,
    source: pytorch, M: 24, K: 32, src: X, gamma: G, out: Y0, eps: 1.0e-05,
