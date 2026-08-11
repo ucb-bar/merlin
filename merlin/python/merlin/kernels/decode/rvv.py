@@ -98,7 +98,7 @@ class InsnStream:
         ``escape_audit.EscapeSite.depth_reliable``: report UNKNOWN rather than a confident wrong 0.
         """
         for i in self.insns:
-            if not i.raw.mnemonic.startswith(_BRANCH):
+            if not _is_branch(i.raw.mnemonic):
                 continue
             tgt = _branch_target(i.raw)
             if tgt is not None and tgt == i.raw.addr:
@@ -248,6 +248,22 @@ _BRANCH = ("beq", "bne", "blt", "bge", "bltu", "bgeu", "beqz", "bnez", "bgez", "
            "bgtz", "bltz", "j", "jal")
 
 
+def _is_branch(mnemonic: str) -> bool:
+    """Whether a mnemonic is a branch/jump, COMPRESSED forms included.
+
+    The compressed encodings are the same operations under a ``c.`` prefix, and matching the prefix list
+    directly missed every one of them: ``c.bnez`` does not start with ``bnez``. That mattered a lot more
+    than it looks. ``rv64gcv`` includes the C extension, so at -O2 a loop's back-edge is routinely
+    ``c.bnez`` — which made ``loop_spans()`` omit the innermost loop, ``_fma_loop`` fall back to an
+    enclosing one (or to None), and every loop-scoped count, accumulator residency included, answer for
+    the wrong region while looking perfectly healthy.
+
+    Register-indirect forms (``c.jr``/``c.jalr``) resolve to no static target, so they are matched here
+    and then declined by :func:`_branch_target` — which is the correct outcome, not a special case.
+    """
+    return mnemonic.removeprefix("c.").startswith(_BRANCH)
+
+
 def _branch_target(insn: RawInsn) -> int | None:
     """Resolve a branch/jump's target byte-address from its operands, robustly.
 
@@ -256,7 +272,7 @@ def _branch_target(insn: RawInsn) -> int | None:
     failed on the annotated form (the last comma-split token is the whole ``0x1dc <forward+0x1dc>``),
     so ``has_loop`` reported False for any real disassembled loop. Here we scan the LAST operand for
     its first ``0x…`` token, so both spellings resolve. Non-branch / unresolved -> None."""
-    if not insn.mnemonic.startswith(_BRANCH) or not insn.operands:
+    if not _is_branch(insn.mnemonic) or not insn.operands:
         return None
     for tok in insn.operands[-1].split():
         try:
