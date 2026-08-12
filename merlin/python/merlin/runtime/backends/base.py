@@ -134,11 +134,14 @@ def _ensure_discovered() -> None:
 _oot_env_seen: str | None = None
 
 
-def _oot_backend_modules() -> list[tuple[str, Path]]:
-    """``(target-name, backend-file/dir)`` for every target whose contract's ``plugin`` block declares a
-    ``backend`` — OOT packages reachable via ``MERLIN_TARGET_PATH`` / the freshly-generated home, AND curated
-    in-tree reference targets (so a reference backend evicted into its own package dir is auto-loaded too).
-    Empty when targetgen is unavailable or nothing declares a backend — the core degrades honestly."""
+def _oot_plugin_modules(key: str = "backend") -> list[tuple[str, Path]]:
+    """``(target-name, module-file/dir)`` for every target whose contract's ``plugin`` block declares a
+    module under ``key`` (``backend`` for a runtime backend, ``sim_oracle`` for a bespoke-sim oracle) —
+    OOT packages reachable via ``MERLIN_TARGET_PATH`` / the freshly-generated home, AND curated in-tree
+    reference targets (so a reference module evicted into its own package dir is auto-loaded too). Empty
+    when targetgen is unavailable or nothing declares one — the core degrades honestly. This is the ONE
+    seam that lets a new target contribute a backend OR an oracle as data (a plugin path), never a core
+    edit to a registry literal."""
     try:
         from ...targetgen import target_registry
     except Exception:  # noqa: BLE001 — targetgen optional; no OOT discovery without it
@@ -162,28 +165,37 @@ def _oot_backend_modules() -> list[tuple[str, Path]]:
             plugin = info.plugin()
         except Exception:  # noqa: BLE001 — skip a package whose contract will not parse
             continue
-        rel = plugin.get("backend")
+        rel = plugin.get(key)
         root = plugin.get("path") or str(info.base)   # reference: base is the package root (no injected path)
         if not rel or not root:
             continue
         path = Path(root) / rel
-        # A backend is a single .py file OR a package directory (dir with __init__.py).
+        # A plugin module is a single .py file OR a package directory (dir with __init__.py).
         if path.is_file() or (path.is_dir() and (path / "__init__.py").is_file()):
             out.append((name, path))
     return out
 
 
-def _load_oot_backend(name: str, path: Path) -> None:
-    """Import an OOT backend by file path (under a stable synthetic module name) so its module-level
-    ``register(...)`` runs. Idempotent: a module already loaded is left as-is. The backend's
-    ``BackendInfo.module`` is its own ``__name__`` (this synthetic name), so ``get_backend`` re-resolves
-    it from ``sys.modules`` without the core knowing the package layout.
+def _oot_backend_modules() -> list[tuple[str, Path]]:
+    """Back-compat shim: the ``plugin.backend`` modules (see :func:`_oot_plugin_modules`)."""
+    return _oot_plugin_modules("backend")
+
+
+def _load_oot_backend(name: str, path: Path, *, ns: str = "merlin._oot_backends") -> None:
+    """Import an OOT plugin module by file path (under a stable synthetic module name) so its module-level
+    self-registration (``register(...)`` for a backend, ``register_sim_oracle(...)`` for an oracle) runs.
+    Idempotent: a module already loaded is left as-is. The backend's ``BackendInfo.module`` is its own
+    ``__name__`` (this synthetic name), so ``get_backend`` re-resolves it from ``sys.modules`` without the
+    core knowing the package layout.
 
     ``path`` is either a single ``.py`` file (loaded as a leaf module) or a package DIRECTORY (loaded
     as ``merlin._oot_backends.<name>`` with ``submodule_search_locations`` set to the dir, so the
     backend's own ``from .sibling import ...`` resolve). Either way the top-level name is the same, so
-    ``BackendInfo(module=__name__)`` in the file or the package ``__init__`` lands identically."""
-    modname = f"merlin._oot_backends.{name}"
+    ``BackendInfo(module=__name__)`` in the file or the package ``__init__`` lands identically.
+
+    ``ns`` is the synthetic top-level namespace, so a target's ``plugin.backend`` and its
+    ``plugin.sim_oracle`` (loaded via the same mechanism) get distinct module names and never collide."""
+    modname = f"{ns}.{name}"
     if modname in sys.modules:
         return
     if path.is_dir():

@@ -247,6 +247,29 @@ def register_sim_oracle(sim_via: str, *, adapters: Callable[[str], dict],
     _SIM_ORACLES[sim_via] = _SimOracle(adapters=adapters, available=available, exclusive=exclusive)
 
 
+_sim_oracle_env_seen: str | None = None
+
+
+def _ensure_sim_oracles_discovered() -> None:
+    """Load any bespoke-sim oracle a target contributes via its contract ``plugin.sim_oracle`` — a module
+    that calls :func:`register_sim_oracle` at import — through the SAME OOT/reference plugin discovery the
+    runtime backends use. This is what WIRES the registry: a new target adds its oracle as DATA (a plugin
+    path in its contract), never a core edit to the ``_SIM_ORACLES`` literal. Re-scans only when
+    ``MERLIN_TARGET_PATH`` changes; registration is idempotent, so repeated scans are harmless."""
+    global _sim_oracle_env_seen
+    import os
+    key = os.environ.get("MERLIN_TARGET_PATH", "")
+    if key == _sim_oracle_env_seen:
+        return
+    _sim_oracle_env_seen = key
+    try:
+        from ..runtime.backends import base as _bk
+        for name, path in _bk._oot_plugin_modules("sim_oracle"):
+            _bk._load_oot_backend(name, path, ns="merlin._oot_sim_oracles")
+    except Exception:  # noqa: BLE001 — discovery is best-effort; a broken plugin must not break routing
+        pass
+
+
 def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
     """The oracle adapters per tier for a target. The mlc ARC model is the DEFAULT RTL tier (works for
     ANY mlc target, no bespoke sim); a target that DECLARES a bespoke sim (``sim_via``) additionally gets
@@ -265,6 +288,7 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
     endpoint is ALSO ``external_backend`` (it emits a kernel, not ``.insn``), but its kernel ELF must be
     graded by its own sim — the arc-cosim program oracle grades the wrong artifact for it. So the sim
     engine is resolved first; only when no exclusive sim is declared does the endpoint select the oracle."""
+    _ensure_sim_oracles_discovered()                                # wire any target-contributed plugin.sim_oracle
     if sim_via is None:                                              # unspecified -> derive from contract
         sim_via = _bespoke_sim_via(target)
     so = _SIM_ORACLES.get(sim_via)
@@ -324,6 +348,7 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
     ``external_backend`` program-oracle default (a SIMT core's endpoint is also external_backend, but the
     arc command-buffer path grades the wrong artifact for it, so arc_available must NOT false-green it)."""
     from .rtl import mlc_bridge
+    _ensure_sim_oracles_discovered()                  # wire any target-contributed plugin.sim_oracle
     if sim_via is None:
         sim_via = _bespoke_sim_via(target)
     so = _SIM_ORACLES.get(sim_via)
