@@ -57,12 +57,23 @@ def check_canary_isolation() -> dict:
     probe = ("for p in " + " ".join(f'"{p}"' for p in abspaths) +
              '; do if [ -r "$p" ]; then echo "REACHABLE $p"; fi; done; '
              'grep -rlI CANARY . 2>/dev/null | head -3')
+    # Apply the SAME derived answer-mask pass the REAL run uses (run_baseline_qa_loop.bwrap_cmd ->
+    # apply_answer_masks(..., answer_surfaces(te))). The bare base_argv only binds the bundle's allowed
+    # paths deny-by-default; it does NOT re-mask an answer surface a broad legit bind re-exposes (the
+    # merlin_assisted bundle grants merlin/python/**, which re-exposes the runtime/oracle canary). Testing
+    # the base argv alone reported a false "not isolated" for the assisted bundle — the run masks it. So
+    # the probe must mirror the run's masked argv to be representative.
+    from merlin.targetgen.sandbox import bwrap as _BW
+    from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as _surfaces
+    from merlin.targetgen.target_experiment import load_target_experiment
+    _te_masks = _surfaces(load_target_experiment(C.EXP / "target_experiment.yaml")) \
+        if (C.EXP / "target_experiment.yaml").is_file() else []
     for arm in ("raw_baseline", "merlin_assisted"):
         bundle = RAE._load_bundle(arm)
         with tempfile.TemporaryDirectory(dir="/tmp") as td:
             ws = Path(td) / "workspace"
             RAE.assemble_workspace(bundle, ws)
-            argv = RAE.bwrap_argv(ws, bundle) + ["bash", "-c", probe]
+            argv = _BW.apply_answer_masks(RAE.bwrap_argv(ws, bundle), _te_masks) + ["bash", "-c", probe]
             r = subprocess.run(argv, capture_output=True, text=True, timeout=120)
             reachable = [ln for ln in r.stdout.splitlines() if ln.startswith("REACHABLE")]
             grep_hits = [ln for ln in r.stdout.splitlines() if "CANARY" in ln and not ln.startswith("REACHABLE")]
@@ -76,9 +87,33 @@ def check_canary_isolation() -> dict:
     return out
 
 
+def _reference_base_pkg() -> str:
+    """The target's known-good/reference backend package (repo-relative) to seed the integrity/contract
+    negative fixtures FROM — DERIVED, never a gemmini literal. Picks the first package dir under the
+    target's artifact home whose manifest marks it ``integrity_exempt`` (the reference backend is the one
+    package allowed to import Merlin internals), falling back to any package with a manifest. So radiance
+    seeds from ``reference_v0`` and gemmini from its own ``agent_spec_v1_mlir_oot`` with zero per-target
+    code — the same package-shape used everywhere else in the harness."""
+    import glob
+    manifests = sorted(glob.glob(str(C.REPO / _TGT / "*" / "manifest.yaml")))
+    exempt, any_pkg = [], []
+    for m in manifests:
+        rel = str(Path(m).parent.relative_to(C.REPO))
+        any_pkg.append(rel)
+        try:
+            if (yaml.safe_load(Path(m).read_text(encoding="utf-8")) or {}).get("integrity_exempt"):
+                exempt.append(rel)
+        except Exception:  # noqa: BLE001 — an unreadable manifest just isn't a candidate
+            continue
+    pool = exempt or any_pkg
+    if not pool:
+        raise SystemExit(f"preflight: no reference package under {_TGT!r} to seed negative fixtures")
+    return pool[0]
+
+
 def _mk_pkg_with(text_file: dict, base=None) -> Path:
     """Copy the known-good package and inject a file (for integrity/contract negative fixtures)."""
-    base = base or f"{_TGT}/agent_spec_v1_mlir_oot"
+    base = base or _reference_base_pkg()
     import shutil
     d = Path(tempfile.mkdtemp(dir="/tmp", prefix="negfix_"))
     shutil.copytree(C.REPO / base, d / "pkg", ignore=shutil.ignore_patterns("build", "__pycache__"))
@@ -87,7 +122,8 @@ def _mk_pkg_with(text_file: dict, base=None) -> Path:
         if content is None:
             p.unlink(missing_ok=True)
         else:
-            p.write_text(content)
+            p.parent.mkdir(parents=True, exist_ok=True)   # layout-agnostic: the injected path's subdir
+            p.write_text(content)                          # (e.g. mlir_oot/) need not pre-exist in the pkg
     return d / "pkg"
 
 
@@ -98,6 +134,15 @@ def check_negative_fixtures() -> dict:
     # --- end-to-end through capsule_grade (no-oracle; integrity/contract run first, fail fast) ---
     # (1) import-merlin injected -> integrity FORBIDDEN_PATTERN
     pkg = _mk_pkg_with({"mlir_oot/CANARY_import.py": "import merlin.runtime.reference\n"})
+    # The integrity scanner is SKIPPED for an ``integrity_exempt`` package (the reference backend is the
+    # one package allowed to import Merlin). This fixture is seeded from the target's reference package,
+    # which MAY be exempt (radiance's reference_v0 is) — so force it NON-exempt to actually exercise the
+    # scanner. Target-agnostic: the fixture tests the integrity GATE, not the reference's exemption.
+    _mf = pkg / "manifest.yaml"
+    if _mf.is_file():
+        _m = yaml.safe_load(_mf.read_text(encoding="utf-8")) or {}
+        _m["integrity_exempt"] = False
+        _mf.write_text(yaml.safe_dump(_m, sort_keys=False), encoding="utf-8")
     g = CGRADE.grade(str(pkg), capsules_root=str(C.REPO / "merlin/contract/capsules"),
                      runs_root=tempfile.mkdtemp(dir="/tmp"), labels={"public"}, contract=contract,
                      oracle_adapters={}, target=TARGET)
@@ -114,26 +159,38 @@ def check_negative_fixtures() -> dict:
                                    "fails_closed": g2["functional_pass"] == 0})
 
     # --- component: trace_check negatives (the gate the grader calls) ---
-    real = RD.decode_file(C.REPO / G0, target=TARGET)  # a valid g0 matmul trace
-    common = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST", "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
-    empty = {"source": "x", "abi": {"custom_opcode": "0x7b", "funct3": "0x3"},
-             "instructions": [{"index": 0, "class": "FENCE"}, {"index": 1, "class": "FENCE"}]}
-    cases = [
-        ("no_insn_C_compute_proxy", empty, {"instruction_classes": common}, "required class missing"),
-        ("required_LOOP_CONV_absent", real, {"instruction_classes": ["LOOP_CONV"]}, "LOOP_CONV missing"),
-        ("movement_mode_but_compute_present", real, {"instruction_classes": [], "modes": {"movement": True}}, "compute present"),
-        ("relu_required_but_absent", real, {"instruction_classes": [], "modes": {"relu": True}}, "no relu"),
-        ("k_accum_required_but_absent", real, {"instruction_classes": [], "modes": {"k_accumulate": True}}, "no accumulate"),
-        ("forbidden_compute_present", real, {"instruction_classes": [], "forbidden_classes": ["COMPUTE_PRELOADED"]}, "forbidden present"),
-    ]
-    for name, tr, exp, why in cases:
-        r = TCK.check(tr, exp)
-        res["trace"].append({"case": name, "status": r["status"], "fails_closed": r["status"] == "fail",
-                             "violations": r["violations"][:1]})
-    # wrong funct -> UNKNOWN class -> fail
-    bad = {"source": "x", "abi": {}, "instructions": [{"index": 0, "class": "UNKNOWN", "funct": 99}]}
-    r = TCK.check(bad, {"instruction_classes": common})
-    res["trace"].append({"case": "unknown_funct", "status": r["status"], "fails_closed": r["status"] == "fail"})
+    # These fixtures are a RoCC COMMAND-ISA trace (a gemmini g0 matmul + RoCC instruction classes). They
+    # only apply to a target that HAS a command trace; a SIMT/no-command-ISA target (e.g. radiance, whose
+    # runner declares no trace gate) has none to gate — detected by the absence of the target's g0 trace
+    # artifact — so we record it n/a rather than fabricate a gemmini trace for it. The trace GATE itself is
+    # target-agnostic; only these fixtures are RoCC-specific.
+    g0_path = C.REPO / G0
+    if not g0_path.is_file():
+        res["trace"].append({"case": "n/a_no_command_trace", "status": "n/a", "applicable": False,
+                             "fails_closed": True,
+                             "note": f"target {TARGET!r} has no RoCC command trace (no {G0}); RoCC "
+                                     f"trace-gate negatives do not apply to a SIMT/command-buffer target"})
+    else:
+        real = RD.decode_file(g0_path, target=TARGET)  # a valid g0 matmul trace
+        common = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST", "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
+        empty = {"source": "x", "abi": {"custom_opcode": "0x7b", "funct3": "0x3"},
+                 "instructions": [{"index": 0, "class": "FENCE"}, {"index": 1, "class": "FENCE"}]}
+        cases = [
+            ("no_insn_C_compute_proxy", empty, {"instruction_classes": common}, "required class missing"),
+            ("required_LOOP_CONV_absent", real, {"instruction_classes": ["LOOP_CONV"]}, "LOOP_CONV missing"),
+            ("movement_mode_but_compute_present", real, {"instruction_classes": [], "modes": {"movement": True}}, "compute present"),
+            ("relu_required_but_absent", real, {"instruction_classes": [], "modes": {"relu": True}}, "no relu"),
+            ("k_accum_required_but_absent", real, {"instruction_classes": [], "modes": {"k_accumulate": True}}, "no accumulate"),
+            ("forbidden_compute_present", real, {"instruction_classes": [], "forbidden_classes": ["COMPUTE_PRELOADED"]}, "forbidden present"),
+        ]
+        for name, tr, exp, why in cases:
+            r = TCK.check(tr, exp)
+            res["trace"].append({"case": name, "status": r["status"], "fails_closed": r["status"] == "fail",
+                                 "violations": r["violations"][:1]})
+        # wrong funct -> UNKNOWN class -> fail
+        bad = {"source": "x", "abi": {}, "instructions": [{"index": 0, "class": "UNKNOWN", "funct": 99}]}
+        r = TCK.check(bad, {"instruction_classes": common})
+        res["trace"].append({"case": "unknown_funct", "status": r["status"], "fails_closed": r["status"] == "fail"})
 
     # --- component: numeric mismatch fails even if shapes ok ---
     exp_out = {"Y0": [[1, 2], [3, 4]]}
@@ -250,6 +307,19 @@ def _program_oracle_smoke(*, sim_okay: bool, desc: Path) -> dict:
     endpoint_kind, model_ext = CR._endpoint_of(TARGET)
     if endpoint_kind != "external_backend":
         return {"ok": True, "reason": "n/a (not an external_backend program-oracle target)"}
+    # An EXCLUSIVE bespoke sim (a self-hosted SIMT core, e.g. cyclotron) grades the target on its OWN kernel
+    # ELF and takes precedence over the program-oracle path (mirrors capsule_runner.oracle_available's
+    # routing — the arc/program oracle grades the wrong artifact for a SIMT core). Its end-to-end
+    # correctness is already exercised by codegen_smoke (fork-free emit -> sim -> assert the result), so the
+    # program-oracle smoke does not apply here. Contract-routed, no target-name branch.
+    sim_via = ""
+    if desc.is_file():
+        from merlin.targetgen.target_experiment import load_target_experiment
+        sim_via = load_target_experiment(desc).sim_via
+    so = CR.sim_oracle_caps(sim_via)
+    if so is not None and so.exclusive:
+        return {"ok": True, "reason": (f"n/a (exclusive bespoke sim {sim_via!r} grades on its own kernel ELF; "
+                                       f"end-to-end correctness covered by codegen_smoke)")}
     if not sim_okay:
         return {"ok": True, "reason": "n/a (an earlier oracle/codegen check already blocks — fix that first)"}
     if desc.is_file():
