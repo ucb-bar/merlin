@@ -179,6 +179,10 @@ def main(argv=None):
     ap.add_argument("--max-rounds", type=int, default=12)
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
     ap.add_argument("--round-timeout", type=int, default=14400, help="per-round agent wall cap (s); large = effectively no timeout")
+    ap.add_argument("--max-spend-usd", type=float, default=0.0,
+                    help="batch DOLLAR ceiling across ALL arms (0=off). Each arm appends its per-round cost "
+                         "to a shared ledger and stops before its next round once the total crosses this "
+                         "(enforces the org spend ceiling in code, e.g. --max-spend-usd 300).")
     ap.add_argument("--skip-hidden", action="store_true")
     ap.add_argument("--experiment", choices=["full", "realistic"], default="full",
                     help="'realistic' (abc2): whole-repo + self-check tool + verilator barrier; baseline=C++")
@@ -272,6 +276,14 @@ def main(argv=None):
     env = dict(os.environ)
     if acct:
         env["CLAUDE_CONFIG_DIR"] = acct
+    if a.max_spend_usd and a.max_spend_usd > 0:
+        # Enforce the batch dollar ceiling in code: all arms share one spend ledger (keyed by tag) and stop
+        # before their next round once the running total crosses the cap. Bounded overshoot = one in-flight
+        # round per arm. Consumed by run_baseline_qa_loop._spend_over_cap.
+        env["MERLIN_MAX_SPEND_USD"] = str(a.max_spend_usd)
+        env["MERLIN_SPEND_LEDGER"] = str(C.RUNS / f"ab_batch_{a.tag}.spend_ledger.jsonl")
+        print(f"[cost-cap] batch ceiling ${a.max_spend_usd:.2f} across all arms; shared ledger "
+              f"{env['MERLIN_SPEND_LEDGER']} (each arm stops before its next round once crossed).")
     manifest = {"tag": a.tag, "mode": a.mode, "launched_at": datetime.now(timezone.utc).isoformat(),
                 "model": a.model, "effort": a.effort, "account_config_dir": acct or None, "runs": []}
 

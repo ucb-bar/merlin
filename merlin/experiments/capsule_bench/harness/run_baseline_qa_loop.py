@@ -90,6 +90,37 @@ def _l3_barrier_decision(l3_all_pass: bool, rnd: int, max_rounds: int) -> str:
     return "iterate"
 
 
+def _spend_over_cap(this_round_cost) -> tuple[bool, float, float]:
+    """Enforce the experiment's DOLLAR ceiling in code. Append this round's cost to a SHARED spend ledger
+    (all arm processes of the batch write to ``MERLIN_SPEND_LEDGER``) and return ``(over_cap, total, cap)``
+    against ``MERLIN_MAX_SPEND_USD``. Once the running total across EVERY arm crosses the cap, each arm stops
+    before its next round — a soft ceiling whose overshoot is bounded by one in-flight round per arm (a
+    round's true cost is only known once it completes). No cap / no ledger configured → never over. The cost
+    is the now-authoritative, subagent-inclusive figure from :func:`experiment_tokens.parse_transcript`."""
+    import os as _os
+    cap = float(_os.environ.get("MERLIN_MAX_SPEND_USD") or 0)
+    ledger = _os.environ.get("MERLIN_SPEND_LEDGER")
+    if cap <= 0 or not ledger:
+        return False, 0.0, 0.0
+    import fcntl
+    c = float(this_round_cost or 0)
+    p = Path(ledger)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    total = 0.0
+    with open(p, "a+", encoding="utf-8") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.write(json.dumps({"cost": c}) + "\n")
+        f.flush()
+        f.seek(0)
+        for line in f:
+            try:
+                total += float(json.loads(line).get("cost", 0) or 0)
+            except Exception:  # noqa: BLE001 — a malformed ledger line must not defeat the cap
+                continue
+        fcntl.flock(f, fcntl.LOCK_UN)
+    return total >= cap, total, cap
+
+
 def _verilator_per_capsule_timeout() -> int:
     """Per-capsule verilator timeout from the readiness-measured T_obs (generous 2x), min 900s. The
     readiness gate (readiness_check.test_oracles_endtoend) writes scripts/.oracle_timing.json; the
@@ -1255,6 +1286,7 @@ def main(argv: list[str] | None = None) -> int:
                            "rl_waits_used": rl_waits_used, "started_at": started_at},
             "last_updated": datetime.now(timezone.utc).isoformat()}, sort_keys=False))
 
+    cost_capped = False             # set if the batch dollar ceiling (MERLIN_MAX_SPEND_USD) is reached
     while rnd < a.max_rounds and not verdict.get("all_pass"):
         print(f"\n===== ROUND {rnd} =====")
         _rstart = time.time()
@@ -1363,6 +1395,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[round {rnd}] all_pass={verdict.get('all_pass')} "
               f"{verdict.get('n_passed')}/{verdict.get('n_capsules')} "
               f"answer_access_clean={audit['clean']}")
+        # Enforce the batch DOLLAR ceiling: once the shared spend ledger crosses MERLIN_MAX_SPEND_USD, stop
+        # before starting the next (paid) round. Uses the authoritative subagent-inclusive per-round cost.
+        _over, _spent, _cap = _spend_over_cap(rsum.get("estimated_cost_usd"))
+        if _over:
+            print(f"[round {rnd}] COST CAP: batch spend ${_spent:.2f} >= ${_cap:.2f} "
+                  f"(MERLIN_MAX_SPEND_USD) — stopping before the next round; zero further spend.")
+            cost_capped = True
+            rnd = rnd + 1
+            _checkpoint(rnd)
+            break
         rnd = rnd + 1
         _checkpoint(rnd)  # next_round advances only after a completed (non-rate-limited) round
         # Plateau early-stop: a stuck agent re-sends its (uncached) growing context every round for no
@@ -1548,6 +1590,7 @@ def main(argv: list[str] | None = None) -> int:
     _cy.write_text(yaml.safe_dump(_cd, sort_keys=False))
     (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(
         {"rounds": rounds_summary, "converged": verdict.get("all_pass", False),
+         "cost_capped": cost_capped,   # stopped by the batch dollar ceiling, not convergence/max_rounds
          "n_rounds": len(rounds_summary), "wall_seconds": wall, "finalize": finalize,
          "timing": timing}, sort_keys=False))
 
