@@ -238,3 +238,82 @@ class TestSelectionForATarget:
         for case, _reason in skipped:
             assert isinstance(case.m, int) and isinstance(case.n, int)
             assert case.m > 16 or case.n > 16
+
+
+class TestTheRequantEpilogue:
+    """The epilogue is the half of a dispatch the datapath certification does not reach.
+
+    Its one real hazard is a rounding disagreement between the C in the image and numpy here: an arithmetic
+    right shift of a negative value rounds toward negative infinity, so ``(x + half) >> s`` and
+    ``round(x / 2**s)`` differ on exact halves of negative numbers. A kernel whose accumulator is right and
+    whose epilogue rounds the other way gives a model that is subtly wrong everywhere.
+    """
+
+    def test_it_narrows_to_int8(self):
+        import numpy as np
+        acc = np.array([[0, 1000, -1000]], dtype=np.int64)
+        mult = np.array([1 << OC.REQUANT_SHIFT] * 3, dtype=np.int64)
+        got = OC.requantize(acc, mult)
+        assert got.dtype == np.int8
+
+    def test_it_clamps_both_ways(self):
+        import numpy as np
+        acc = np.array([[1 << 20, -(1 << 20)]], dtype=np.int64)
+        mult = np.array([1 << OC.REQUANT_SHIFT] * 2, dtype=np.int64)
+        got = OC.requantize(acc, mult)
+        assert got[0, 0] == 127 and got[0, 1] == -128
+
+    def test_a_unit_multiplier_is_the_identity_within_range(self):
+        import numpy as np
+        acc = np.array([[0, 5, -5, 100, -100]], dtype=np.int64)
+        mult = np.array([1 << OC.REQUANT_SHIFT] * 5, dtype=np.int64)
+        np.testing.assert_array_equal(OC.requantize(acc, mult), acc.astype(np.int8))
+
+    def test_rounding_is_half_up_on_the_shifted_value(self):
+        # THE case the C must match: exactly half an LSB, positive and negative. Half-up means +0.5 rounds
+        # away from zero and -0.5 rounds TOWARD zero, which is what add-then-arithmetic-shift does.
+        import numpy as np
+        half = 1 << (OC.REQUANT_SHIFT - 1)
+        acc = np.array([[half, -half]], dtype=np.int64)
+        mult = np.array([1, 1], dtype=np.int64)
+        got = OC.requantize(acc, mult)
+        assert got[0, 0] == 1, "positive half must round away from zero"
+        assert got[0, 1] == 0, "negative half must round toward zero (arithmetic shift after +half)"
+
+    def test_the_multiplier_is_per_column_and_indexed_by_column(self):
+        # A multiplier applied to the wrong axis is invisible when every column shares one value.
+        import numpy as np
+        # acc of 1 so the result is the multiplier scaled down -- with acc also at 1<<SHIFT the product
+        # saturates and every column reads 127, which is what a first attempt at this test did.
+        acc = np.ones((2, 3), dtype=np.int64)
+        mult = np.array([1 << OC.REQUANT_SHIFT, 2 << OC.REQUANT_SHIFT, 3 << OC.REQUANT_SHIFT],
+                        dtype=np.int64)
+        got = OC.requantize(acc, mult)
+        np.testing.assert_array_equal(got[0], np.array([1, 2, 3], dtype=np.int8))
+        np.testing.assert_array_equal(got[1], got[0])
+
+    def test_a_wrong_length_multiplier_is_refused(self):
+        import numpy as np
+        with pytest.raises(ValueError, match="one per output column"):
+            OC.requantize(np.zeros((2, 3), dtype=np.int64), np.array([1, 2], dtype=np.int64))
+
+    def test_resolve_carries_the_requant_flag(self):
+        # It is dropped the moment a case is resolved if `resolved` forgets it, and every case is resolved
+        # before it runs -- so the case would run without its epilogue and report a pass.
+        c = OC.Case("x", "tile/2", "tile/2", 8, "w", requant=True, seed=1)
+        assert c.resolved(32).requant is True
+
+    def test_the_corpus_carries_epilogue_cases_and_they_reach_the_clamp(self):
+        run, _ = OC.select(32)
+        rq = [c for c in run if c.requant]
+        assert len(rq) >= 5, f"only {len(rq)} epilogue case(s)"
+        import numpy as np
+        saturating = 0
+        for c in rq:
+            out = OC.requantize(OC.reference(*c.operands()[:2], c.operands()[2]), c.multiplier())
+            if ((out == -128) | (out == 127)).mean() > 0.5:
+                saturating += 1
+        assert saturating >= 1, "no epilogue case actually exercises the clamp"
+
+    def test_a_case_without_the_epilogue_has_no_multiplier(self):
+        assert OC.Case("x", 4, 4, 4, "w").resolved(16).multiplier() is None

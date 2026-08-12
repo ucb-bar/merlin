@@ -8,6 +8,7 @@
    "k": 64,
    "why": "M=1 vecmat: the prior integration packed this to a single row and its operand load read past the end of the panel",
    "bias": false,
+   "requant": false,
    "seed": 1,
    "amplitude": 8
   },
@@ -18,6 +19,7 @@
    "k": 64,
    "why": "N=1 matvec: the mirror case, where the column operand is one lane",
    "bias": false,
+   "requant": false,
    "seed": 2,
    "amplitude": 8
   },
@@ -28,6 +30,7 @@
    "k": 64,
    "why": "both parallel extents 1: a rank-1 accumulate reduced to a dot product, where every length in play is 1",
    "bias": false,
+   "requant": false,
    "seed": 3,
    "amplitude": 8
   },
@@ -38,6 +41,7 @@
    "k": 64,
    "why": "M swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 12,
    "amplitude": 8
   },
@@ -48,6 +52,7 @@
    "k": 64,
    "why": "M swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 13,
    "amplitude": 8
   },
@@ -58,6 +63,7 @@
    "k": 64,
    "why": "M swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 17,
    "amplitude": 8
   },
@@ -68,6 +74,7 @@
    "k": 64,
    "why": "M swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 25,
    "amplitude": 8
   },
@@ -78,6 +85,7 @@
    "k": 64,
    "why": "M swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 26,
    "amplitude": 8
   },
@@ -88,6 +96,7 @@
    "k": 64,
    "why": "M swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 27,
    "amplitude": 8
   },
@@ -98,6 +107,7 @@
    "k": 64,
    "why": "M swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 41,
    "amplitude": 8
   },
@@ -108,6 +118,7 @@
    "k": 64,
    "why": "M swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 42,
    "amplitude": 8
   },
@@ -118,6 +129,7 @@
    "k": 64,
    "why": "N swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 42,
    "amplitude": 8
   },
@@ -128,6 +140,7 @@
    "k": 64,
    "why": "N swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 43,
    "amplitude": 8
   },
@@ -138,6 +151,7 @@
    "k": 64,
    "why": "N swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 47,
    "amplitude": 8
   },
@@ -148,6 +162,7 @@
    "k": 64,
    "why": "N swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 55,
    "amplitude": 8
   },
@@ -158,6 +173,7 @@
    "k": 64,
    "why": "N swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 56,
    "amplitude": 8
   },
@@ -168,6 +184,7 @@
    "k": 64,
    "why": "N swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 57,
    "amplitude": 8
   },
@@ -178,6 +195,7 @@
    "k": 64,
    "why": "N swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 71,
    "amplitude": 8
   },
@@ -188,6 +206,7 @@
    "k": 64,
    "why": "N swept below, at and just over a plausible tile edge, and odd",
    "bias": false,
+   "requant": false,
    "seed": 72,
    "amplitude": 8
   },
@@ -198,6 +217,7 @@
    "k": 1,
    "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
    "bias": false,
+   "requant": false,
    "seed": 81,
    "amplitude": 8
   },
@@ -208,6 +228,7 @@
    "k": 2,
    "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
    "bias": false,
+   "requant": false,
    "seed": 82,
    "amplitude": 8
   },
@@ -218,6 +239,7 @@
    "k": 3,
    "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
    "bias": false,
+   "requant": false,
    "seed": 83,
    "amplitude": 8
   },
@@ -228,6 +250,7 @@
    "k": 15,
    "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
    "bias": false,
+   "requant": false,
    "seed": 95,
    "amplitude": 8
   },
@@ -238,6 +261,7 @@
    "k": 16,
    "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
    "bias": false,
+   "requant": false,
    "seed": 96,
    "amplitude": 8
   },
@@ -248,6 +272,7 @@
    "k": 17,
    "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
    "bias": false,
+   "requant": false,
    "seed": 97,
    "amplitude": 8
   },
@@ -258,6 +283,7 @@
    "k": 255,
    "why": "K tiny / odd / exact / one over / long: the reduction tail is harmless only if it is actually handled",
    "bias": false,
+   "requant": false,
    "seed": 335,
    "amplitude": 8
   },
@@ -268,6 +294,7 @@
    "k": 24,
    "why": "M != N, so an operand swap in the accumulate is NOT shape-safe: this is the case that would have caught the reversed operand order",
    "bias": false,
+   "requant": false,
    "seed": 200,
    "amplitude": 8
   },
@@ -278,6 +305,7 @@
    "k": 24,
    "why": "the other asymmetry, so a swap fails in both directions",
    "bias": false,
+   "requant": false,
    "seed": 201,
    "amplitude": 8
   },
@@ -288,6 +316,7 @@
    "k": 32,
    "why": "bias initialised into the accumulator by broadcast rather than added afterwards, which is the hardware's own init path",
    "bias": true,
+   "requant": false,
    "seed": 300,
    "amplitude": 8
   },
@@ -298,6 +327,7 @@
    "k": 32,
    "why": "bias broadcast with a single output row: the init writes all rows whether or not they are read",
    "bias": true,
+   "requant": false,
    "seed": 301,
    "amplitude": 8
   },
@@ -308,8 +338,75 @@
    "k": 255,
    "why": "full-range int8 operands over a long reduction: the largest magnitudes the datapath can be handed. It does NOT overflow, and cannot -- see ACC_OVERFLOW_UNREACHABLE_ABOVE_K, which is why no corpus case tests the missing saturation",
    "bias": false,
+   "requant": false,
    "seed": 400,
    "amplitude": 127
+  },
+  {
+   "name": "requant_square",
+   "m": "tile/2",
+   "n": "tile/2",
+   "k": 32,
+   "why": "the epilogue on a square tile: the base case for scale/round/clamp/narrow being bit-exact against numpy",
+   "bias": false,
+   "requant": true,
+   "seed": 600,
+   "amplitude": 8
+  },
+  {
+   "name": "requant_narrow_m",
+   "m": 1,
+   "n": "tile/2",
+   "k": 32,
+   "why": "epilogue with a single output row -- the readout writes one row and the narrowing must follow it, not the whole tile",
+   "bias": false,
+   "requant": true,
+   "seed": 601,
+   "amplitude": 8
+  },
+  {
+   "name": "requant_narrow_n",
+   "m": "tile/2",
+   "n": 1,
+   "k": 32,
+   "why": "epilogue on a single output column: a per-column multiplier indexed wrongly is invisible when there is more than one column to average over",
+   "bias": false,
+   "requant": true,
+   "seed": 602,
+   "amplitude": 8
+  },
+  {
+   "name": "requant_tail",
+   "m": 17,
+   "n": 33,
+   "k": 24,
+   "why": "epilogue across a short row tile AND a short column tile, so the narrowing is exercised where the tiling loop's bounds are ragged",
+   "bias": false,
+   "requant": true,
+   "seed": 603,
+   "amplitude": 8
+  },
+  {
+   "name": "requant_saturating",
+   "m": "tile/2",
+   "n": "tile/2",
+   "k": 255,
+   "why": "full-range operands over a long reduction, so the accumulator is large and the clamp actually fires -- the cases above mostly do not reach it, and a clamp that never runs is a clamp that is not tested",
+   "bias": false,
+   "requant": true,
+   "seed": 604,
+   "amplitude": 127
+  },
+  {
+   "name": "requant_with_bias",
+   "m": "tile/2",
+   "n": "tile/2",
+   "k": 32,
+   "why": "bias broadcast into the accumulator AND the epilogue applied after it: the two halves of the dispatch composed, which is the L4 rung",
+   "bias": true,
+   "requant": true,
+   "seed": 605,
+   "amplitude": 8
   },
   {
    "name": "workload_ffn_up",
@@ -318,6 +415,7 @@
    "k": 32,
    "why": "spectformer's FFN up-projection shape (12 of them in the model, the joint largest contributor): M=196 is not a multiple of any tile edge, so every tile column ends in a short row tile",
    "bias": false,
+   "requant": false,
    "seed": 500,
    "amplitude": 8
   },
@@ -328,6 +426,7 @@
    "k": 32,
    "why": "the FFN down-projection (12 of them): the same short M with a narrower N, so the tail lands at a different place in the tiling loop",
    "bias": false,
+   "requant": false,
    "seed": 501,
    "amplitude": 8
   },
@@ -338,6 +437,7 @@
    "k": 32,
    "why": "the fused QKV projection (8 of them): N=768 is a whole number of tiles at every edge, isolating the M tail from the N tail",
    "bias": false,
+   "requant": false,
    "seed": 502,
    "amplitude": 8
   },
@@ -348,6 +448,7 @@
    "k": 32,
    "why": "the patch-embedding contraction: the ONLY routed shape whose N is not a multiple of the operand alignment, so it is the case that would catch a right-operand row stride the datapath cannot fetch",
    "bias": false,
+   "requant": false,
    "seed": 503,
    "amplitude": 8
   },
@@ -358,6 +459,7 @@
    "k": 32,
    "why": "the classifier head: M=1 at a large N, i.e. a vecmat over many tile columns. The M=1 probes above use a single tile; this one runs the tiling loop with one live row throughout, which is where a row-index bug in the readout would show",
    "bias": false,
+   "requant": false,
    "seed": 504,
    "amplitude": 8
   }

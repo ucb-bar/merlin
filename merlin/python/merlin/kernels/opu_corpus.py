@@ -37,8 +37,8 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["Case", "CORPUS_PATH", "load_corpus", "reference", "resolve_extent", "select",
-           "write_corpus"]
+__all__ = ["Case", "CORPUS_PATH", "REQUANT_SHIFT", "load_corpus", "reference", "requantize",
+           "resolve_extent", "select", "write_corpus"]
 
 #: int32 wrap boundary. Not a target fact — the accumulator width is derived from the hardware and passed
 #: in; this is the modulus for the width the corpus is written at.
@@ -102,6 +102,9 @@ class Case:
     k: "int | str"
     why: str
     bias: bool = False
+    #: Apply the int8 requant epilogue and judge the NARROWED output instead of the int32 accumulator.
+    #: This is the L4 rung: a dispatch, not just a datapath.
+    requant: bool = False
     seed: int = 0
     #: Amplitude of the generated operands. The full-range case needs the largest magnitudes the datapath
     #: can be handed; most cases do not, and a corpus where every case ran at full range would not
@@ -110,9 +113,12 @@ class Case:
 
     def resolved(self, tile: int) -> "Case":
         """This case with every extent resolved against ``tile``."""
+        # EVERY field has to be carried. A new field forgotten here is dropped the moment a case is
+        # resolved, which is always -- so the case would run without the property it was added for and
+        # report a pass. `requant` was added after this method and is exactly that trap.
         return Case(name=self.name, m=resolve_extent(self.m, tile), n=resolve_extent(self.n, tile),
-                    k=resolve_extent(self.k, tile), why=self.why, bias=self.bias, seed=self.seed,
-                    amplitude=self.amplitude)
+                    k=resolve_extent(self.k, tile), why=self.why, bias=self.bias,
+                    requant=self.requant, seed=self.seed, amplitude=self.amplitude)
 
     def fits_tile(self, tile: int) -> bool:
         """Whether both parallel extents fit ONE tile, i.e. whether a single-tile kernel can run it.
@@ -124,6 +130,27 @@ class Case:
         """
         got = self.resolved(tile)
         return int(got.m) <= int(tile) and int(got.n) <= int(tile)
+
+    def multiplier(self) -> np.ndarray | None:
+        """Per-output-column requant multiplier, or None when this case has no epilogue.
+
+        Per COLUMN rather than one scalar because that is what a quantised model actually has (a scale per
+        output channel), and because a single multiplier would not catch an epilogue that applied the right
+        arithmetic to the wrong column.
+
+        Drawn from a stream OFFSET from the operand stream, so the multipliers are not correlated with the
+        data they scale -- a multiplier that happened to track its own column's magnitude could hide a
+        mis-indexed epilogue.
+        """
+        if not self.requant:
+            return None
+        if not isinstance(self.n, int):
+            raise ValueError(f"case {self.name!r} has an unresolved N; call .resolved(tile) first")
+        rng = np.random.default_rng(self.seed + 0x5EED)
+        # Around half of 1 << REQUANT_SHIFT, so a typical accumulator lands inside int8 after the shift and
+        # the clamp is exercised by the tails rather than by everything.
+        half = 1 << (REQUANT_SHIFT - 1)
+        return rng.integers(half // 4, half, size=(int(self.n),)).astype(np.int64)
 
     def operands(self) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
         """``(lhs, rhs, bias)`` — deterministic from ``seed`` so a failure is reproducible.
@@ -144,6 +171,35 @@ class Case:
         bias = (rng.integers(-1000, 1001, size=(self.n,)).astype(np.int32)
                 if self.bias else None)
         return lhs, rhs, bias
+
+
+#: Right shift the requant epilogue applies. Fixed rather than swept: what is under test is whether the
+#: readout, the multiply and the rounding are bit-exact on the unit, not which shift a model happens to use.
+#: 15 keeps a full-range int8 product times a per-column multiplier inside int32 before the shift.
+REQUANT_SHIFT = 15
+
+
+def requantize(acc: np.ndarray, multiplier: np.ndarray, *, shift: int = REQUANT_SHIFT) -> np.ndarray:
+    """The int8 epilogue: scale an int32 accumulator, round, clamp, narrow.
+
+    This is what makes a contraction usable in a quantised model, and it is the half of a dispatch the
+    datapath certification did not cover: everything before it stopped at the int32 readout. A kernel whose
+    accumulator is right and whose epilogue rounds the other way produces a model that is subtly wrong
+    everywhere rather than obviously wrong somewhere.
+
+    ROUNDING IS HALF-UP ON THE SHIFTED MAGNITUDE, applied by adding half an LSB before an arithmetic shift.
+    Stated because it is the one place a C implementation and a numpy one drift apart silently: an
+    arithmetic right shift of a negative value rounds toward negative infinity, so `(x + half) >> s` and
+    `round(x / 2**s)` disagree on exact halves of negative numbers. The C in the image does the same
+    addition and the same shift, so the two agree by construction rather than by luck.
+    """
+    a = np.asarray(acc, dtype=np.int64)
+    m = np.asarray(multiplier, dtype=np.int64)
+    if m.ndim != 1 or m.shape[0] != a.shape[-1]:
+        raise ValueError(f"multiplier must be one per output column; got {m.shape} for {a.shape}")
+    scaled = a * m[None, :]
+    scaled = (scaled + (1 << (int(shift) - 1))) >> int(shift)
+    return np.clip(scaled, -128, 127).astype(np.int8)
 
 
 def reference(lhs: np.ndarray, rhs: np.ndarray, bias: np.ndarray | None = None, *,
@@ -208,6 +264,27 @@ _CASES: tuple[Case, ...] = (
          "magnitudes the datapath can be handed. It does NOT overflow, and cannot -- see "
          "ACC_OVERFLOW_UNREACHABLE_ABOVE_K, which is why no corpus case tests the missing saturation",
          seed=400, amplitude=127),
+    # --- L4: the DISPATCH, not just the datapath ----------------------------------------------
+    # Every case above is judged on the int32 accumulator, which is where the readout stops. A quantised
+    # model does not stop there: it scales, rounds, clamps and narrows to int8, and a kernel whose
+    # accumulator is right while its epilogue rounds the other way produces a model that is subtly wrong
+    # everywhere rather than obviously wrong somewhere. These are judged on the NARROWED output.
+    Case("requant_square", "tile/2", "tile/2", 32, "the epilogue on a square tile: the base case for "
+         "scale/round/clamp/narrow being bit-exact against numpy", requant=True, seed=600),
+    Case("requant_narrow_m", 1, "tile/2", 32, "epilogue with a single output row -- the readout writes "
+         "one row and the narrowing must follow it, not the whole tile", requant=True, seed=601),
+    Case("requant_narrow_n", "tile/2", 1, 32, "epilogue on a single output column: a per-column "
+         "multiplier indexed wrongly is invisible when there is more than one column to average over",
+         requant=True, seed=602),
+    Case("requant_tail", 17, 33, 24, "epilogue across a short row tile AND a short column tile, so the "
+         "narrowing is exercised where the tiling loop's bounds are ragged", requant=True, seed=603),
+    Case("requant_saturating", "tile/2", "tile/2", 255, "full-range operands over a long reduction, so "
+         "the accumulator is large and the clamp actually fires -- the cases above mostly do not reach "
+         "it, and a clamp that never runs is a clamp that is not tested", requant=True, seed=604,
+         amplitude=127),
+    Case("requant_with_bias", "tile/2", "tile/2", 32, "bias broadcast into the accumulator AND the "
+         "epilogue applied after it: the two halves of the dispatch composed, which is the L4 rung",
+         bias=True, requant=True, seed=605),
     # --- the shapes a real workload actually asks for -----------------------------------------
     # Every case above is a PROBE: a swept extent, a degenerate edge, a named past failure. None of them
     # is a shape any model produces, so passing all of them says the kernel handles the awkward cases

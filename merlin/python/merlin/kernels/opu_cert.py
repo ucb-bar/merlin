@@ -161,18 +161,29 @@ def tile_edge_for_config(config: str, *,
 def expected_digests(cases: Sequence[opu_corpus.Case]) -> dict[str, dict[str, Any]]:
     """``{case: {digest, shape, ...}}`` — the numpy-computed truth each case is judged against.
 
-    The digest is over the int32 result in little-endian order, which is the byte order the image hashes
-    its own output buffer in. Nothing here is written into the image.
+    The digest is over the result in little-endian order, which is the byte order the image hashes its own
+    output buffer in. Nothing here is written into the image.
+
+    A case with the requant epilogue is judged on the NARROWED int8 output, not the int32 accumulator. That
+    is the point of the L4 rung: an accumulator that is right and an epilogue that rounds the other way
+    gives a model which is subtly wrong everywhere, and hashing the int32 would not see it.
     """
     out: dict[str, dict[str, Any]] = {}
     for case in cases:
         lhs, rhs, bias = case.operands()
         ref = opu_corpus.reference(lhs, rhs, bias)
-        payload = np.ascontiguousarray(ref, dtype="<i4").tobytes()
+        mult = case.multiplier()
+        if mult is not None:
+            narrowed = opu_corpus.requantize(ref, mult)
+            payload = np.ascontiguousarray(narrowed, dtype="<i1").tobytes()
+            elements = int(narrowed.size)
+        else:
+            payload = np.ascontiguousarray(ref, dtype="<i4").tobytes()
+            elements = int(ref.size)
         out[case.name] = {
             "digest": fnv1a64(payload),
             "m": int(case.m), "n": int(case.n), "k": int(case.k),
-            "bias": bool(case.bias), "elements": int(ref.size),
+            "bias": bool(case.bias), "requant": bool(case.requant), "elements": elements,
         }
     return out
 
@@ -212,6 +223,9 @@ def emit_image_c(cases: Sequence[opu_corpus.Case], *, kernel_func: str = "opu_ge
                          "reports DONE and would read as a pass")
     blocks, table = [], []
     max_out = 0
+    # Bound from the corpus rather than repeated here: the C epilogue and the numpy one must use the
+    # same shift, and two literals would eventually differ.
+    requant_shift = int(opu_corpus.REQUANT_SHIFT)
     for case in cases:
         lhs, rhs, bias = case.operands()
         tag = _ident(case.name)
@@ -221,8 +235,14 @@ def emit_image_c(cases: Sequence[opu_corpus.Case], *, kernel_func: str = "opu_ge
         if bias is not None:
             blocks.append(_c_array(f"bias_{tag}", bias, "int32_t", align=operand_align))
             bias_expr = f"bias_{tag}"
+        mult = case.multiplier()
+        mult_expr = "0"
+        if mult is not None:
+            blocks.append(_c_array(f"mult_{tag}", mult.astype(np.int32), "int32_t",
+                                   align=operand_align))
+            mult_expr = f"mult_{tag}"
         max_out = max(max_out, int(case.m) * int(case.n))
-        table.append(f'  {{ "{case.name}", at_{tag}, b_{tag}, {bias_expr}, '
+        table.append(f'  {{ "{case.name}", at_{tag}, b_{tag}, {bias_expr}, {mult_expr}, '
                      f'{int(case.m)}, {int(case.n)}, {int(case.k)} }},')
 
     return f"""\
@@ -245,6 +265,10 @@ struct opu_case {{
   const int8_t *at;
   const int8_t *b;
   const int32_t *bias;
+  /* Per-output-column requant multiplier, or NULL for a case with no epilogue. Per column because that is
+   * what a quantised model has, and because one scalar would not catch an epilogue applying the right
+   * arithmetic to the wrong column. */
+  const int32_t *mult;
   size_t m, n, k;
 }};
 
@@ -256,6 +280,31 @@ static const struct opu_case CASES[] = {{
 /* Sized to the largest case the host selected, so no case can overrun and none of this is dynamic. */
 static int32_t c_dev[{max_out}];
 static int32_t c_ref[{max_out}];
+/* Narrowed int8 outputs, for the cases that carry the requant epilogue. Separate buffers rather than
+ * narrowing in place: the in-image comparison still wants both int32 accumulators to localise a datapath
+ * failure, and only the epilogue's own output should be hashed. */
+static int8_t q_dev[{max_out}];
+static int8_t q_ref[{max_out}];
+
+/* The int8 epilogue: scale, round, clamp, narrow. Byte-for-byte the same arithmetic as
+ * kernels.opu_corpus.requantize -- half an LSB added before an ARITHMETIC right shift. That detail is the
+ * whole reason this is written out rather than approximated: an arithmetic shift of a negative value rounds
+ * toward negative infinity, so adding half first is what makes C and numpy agree on exact halves of
+ * negative numbers instead of differing on a handful of elements per tensor. */
+#define OPU_REQUANT_SHIFT {requant_shift}
+static void opu_requantize(int8_t *out, const int32_t *acc, const int32_t *mult, size_t m, size_t n)
+{{
+  for (size_t i = 0; i < m; ++i)
+    for (size_t j = 0; j < n; ++j) {{
+      int64_t v = (int64_t)acc[i * n + j] * (int64_t)mult[j];
+      v = (v + ((int64_t)1 << (OPU_REQUANT_SHIFT - 1))) >> OPU_REQUANT_SHIFT;
+      if (v > 127)
+        v = 127;
+      if (v < -128)
+        v = -128;
+      out[i * n + j] = (int8_t)v;
+    }}
+}}
 
 /* Mirrors kernels.opu_cert.fnv1a64 byte for byte. */
 static uint64_t fnv1a64(const void *p, size_t n)
@@ -383,7 +432,28 @@ int main(long hart)
     htif_putc(' ');
     htif_putd(first_bad);
     htif_putc(' ');
-    put_hex64(fnv1a64(c_dev, elems * sizeof(int32_t)));
+    /* THE EPILOGUE, applied to both implementations. The in-image comparison above already established
+     * that the accumulators agree; this establishes that the narrowing does too, and the hash below is
+     * over whichever result the case is judged on -- the narrowed int8 when there is an epilogue, the
+     * int32 accumulator when there is not. Hashing the accumulator for a requant case would certify the
+     * datapath while saying nothing about the dispatch. */
+    if (c->mult) {{
+      opu_requantize(q_dev, c_dev, c->mult, c->m, c->n);
+#ifndef OPU_SCREEN_ONLY
+      opu_requantize(q_ref, c_ref, c->mult, c->m, c->n);
+      for (size_t i = 0; i < elems; ++i)
+        if (q_dev[i] != q_ref[i]) {{
+          if (first_bad < 0)
+            first_bad = (long)i;
+          ++mismatches;
+        }}
+#endif
+    }}
+
+    if (c->mult)
+      put_hex64(fnv1a64(q_dev, elems * sizeof(int8_t)));
+    else
+      put_hex64(fnv1a64(c_dev, elems * sizeof(int32_t)));
     htif_putc('\\n');
 
     /* A SEPARATE line rather than another CASE field: a parser that does not know about cycles ignores an

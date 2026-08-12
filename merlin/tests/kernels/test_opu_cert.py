@@ -87,12 +87,15 @@ class TestTheTileEdge:
 class TestTheImageCarriesNoAnswerKey:
     """An image holding its expected results can pass by copying them, and the console cannot tell."""
 
-    def test_no_int32_array_other_than_a_bias_is_embedded(self):
+    def test_no_int32_array_other_than_a_declared_input_is_embedded(self):
+        # Results are int32, so every int32 constant array in the image has to be an INPUT the case
+        # declares -- a bias, or a requant multiplier. Widened when the epilogue arrived: a multiplier is an
+        # input like a bias, not an expected output, so it does not weaken the property. What must stay
+        # impossible is embedding a RESULT, which is what the digest tests below check.
         cases, _ = _cases(16)
         src = C.emit_image_c(cases)
-        n_bias = sum(1 for c in cases if c.bias)
-        # Results are int32. Every int32 constant array in the image must be a declared bias.
-        assert src.count("static const int32_t") == n_bias
+        declared = sum(1 for c in cases if c.bias) + sum(1 for c in cases if c.requant)
+        assert src.count("static const int32_t") == declared
 
     def test_no_expected_digest_appears_in_the_source(self):
         cases, _ = _cases(16)
@@ -361,8 +364,9 @@ class TestOperandPanelsMustBeAligned:
     def test_every_operand_array_carries_the_alignment(self):
         cases, _ = _cases(16)
         src = C.emit_image_c(cases, operand_align=16)
-        # One attribute per embedded operand array (at_, b_, and any bias_).
-        n_arrays = 2 * len(cases) + sum(1 for c in cases if c.bias)
+        # One attribute per embedded operand array (at_, b_, any bias_, any mult_).
+        n_arrays = (2 * len(cases) + sum(1 for c in cases if c.bias)
+                    + sum(1 for c in cases if c.requant))
         assert src.count("__attribute__((aligned(16)))") == n_arrays
 
     def test_the_alignment_is_absent_unless_asked_for(self):
@@ -371,10 +375,11 @@ class TestOperandPanelsMustBeAligned:
         assert "aligned" not in C.emit_image_c(cases)
 
     def test_the_answer_key_property_survives_alignment(self):
-        # The attribute must not accidentally introduce an int32 array that is not a bias.
+        # The attribute must not accidentally introduce an int32 array that is not a declared input.
         cases, _ = _cases(16)
         src = C.emit_image_c(cases, operand_align=16)
-        assert src.count("static const int32_t") == sum(1 for c in cases if c.bias)
+        declared = sum(1 for c in cases if c.bias) + sum(1 for c in cases if c.requant)
+        assert src.count("static const int32_t") == declared
 
 
 class TestTheResultIsAttributableToAHardwareRevision:
