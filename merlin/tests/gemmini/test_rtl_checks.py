@@ -50,7 +50,7 @@ FACTS = CI.build_facts(target="gemmini") if _HW_CACHE.is_file() else load_facts(
 @pytest.mark.skipif(not _HW_CACHE.is_file(), reason="cached HW MLIR not present")
 def test_circt_facts_reproduce_contract_and_decode_table():
     import yaml
-    from merlin.targetgen import rocc_decode
+    from merlin.targetgen.rocc import decode as rocc_decode
     rec = CI.build_facts(target="gemmini")
     contract = yaml.safe_load((CI._REPO / "merlin/targets/gemmini/contracts/target_contract.yaml")
                               .read_text())

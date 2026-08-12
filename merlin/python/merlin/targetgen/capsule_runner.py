@@ -33,7 +33,7 @@ import yaml
 from aet.core.run_paths import RunPaths
 
 from . import capsule_golden as CG
-from . import rocc_decode as RD
+from .rocc import decode as RD
 from . import trace_check as TCK
 from .contract import compile as oot_compile
 from .contract import schemas

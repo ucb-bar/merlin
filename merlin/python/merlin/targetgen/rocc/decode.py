@@ -1,4 +1,9 @@
-"""Decode a Gemmini RoCC instruction trace from a package's emitted ``lowered.llvm.mlir``.
+"""Decode a target's RoCC instruction trace from a package's emitted ``lowered.llvm.mlir``.
+
+``target`` is a REQUIRED parameter on every entrypoint and there is deliberately no default: the
+custom opcode, the funct3, and the funct-to-class table are all read from that target's RTL-derived
+facts. A decoder that guesses whose ISA it is reading will decode one accelerator's trace against
+another's table and report a clean, wrong result.
 
 This is a **runner-owned** decode: the backend-under-test emits custom-3 ``.insn r`` RoCC
 inline-asm; this module reads *what it actually emitted* and reconstructs a structured trace.
@@ -9,8 +14,9 @@ Merlin-assisted package.
 It is fail-closed: any inline-asm instruction form it does not understand is recorded as class
 ``UNKNOWN`` (never silently dropped), so ``trace_check`` can reject it.
 
-The bit layouts here mirror the encoders in the package's ``GemminiToLLVM.cpp`` (and the certified
-native path ``runtime/backends/gemmini_codegen_mlir.py``):
+The bit layouts below are the ones a reference target's encoders use (its ``GemminiToLLVM.cpp`` and the
+certified native path ``runtime/backends/gemmini_codegen_mlir.py``), shown as a worked example of the
+shape this decode reconstructs — the values themselves come from the target's facts, not from here:
 
     DIM=16; pack(addr)=(DIM<<48)|(DIM<<32)|(addr & 0xFFFFFFFF)
     CONFIG subtype = rs1 & 0x3   (EX=0, LD=1, ST=2)
@@ -35,8 +41,8 @@ MASK32 = 0xFFFFFFFF
 def _load_isa(target: str) -> dict:
     """Derive the RoCC ISA constants for ``target`` from its RTL facts + capability manifest. No target
     is baked in — the caller passes the target it is grading; the decoder holds no default."""
-    from .target_experiment import load_capability_manifest
-    from .rtl.facts import load_facts
+    from ..target_experiment import load_capability_manifest
+    from ..rtl.facts import load_facts
     m = load_capability_manifest(target)
     enc, rb = m.encoding, m.encoding["readout_bits"]
     facts = load_facts(target)["facts"]

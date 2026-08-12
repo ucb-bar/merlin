@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 from merlin.targetgen.target_experiment import load_capability_manifest, derived_readout_bits
-from merlin.targetgen import rocc_decode as RD
+from merlin.targetgen.rocc import decode as RD
 from merlin.targetgen.rtl import circt_introspect as CI
 from merlin.targetgen.rtl import mlc_bridge as MB
 

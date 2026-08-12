@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.targetgen import rocc_asm as A
-from merlin.targetgen import rocc_decode as RD
+from merlin.targetgen.rocc import asm as A
+from merlin.targetgen.rocc import decode as RD
 
 _MATMUL = [
     ("CONFIG_EX", 0x0, 0), ("CONFIG_LD", 0x1, 16),

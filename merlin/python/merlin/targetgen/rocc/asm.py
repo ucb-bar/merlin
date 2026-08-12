@@ -1,6 +1,6 @@
-"""Derived RoCC assembler for ``inline_asm_insn`` targets (e.g. gemmini).
+"""Derived RoCC assembler for ``inline_asm_insn`` targets.
 
-The companion of :mod:`rocc_decode`: given a short instruction listing, emit the CANONICAL LLVM-dialect
+The companion of :mod:`rocc.decode`: given a short instruction listing, emit the CANONICAL LLVM-dialect
 MLIR form of each RoCC ``.insn`` — an ``llvm.inline_asm`` op whose operands are SSA values produced by
 ``llvm.mlir.constant`` — using the target's RTL-derived ISA facts (``rocc_decode.isa_constants``). It is an
 AUTHORING AID, not the answer: it does NOT compute operand values (choosing the config word / spad
@@ -15,7 +15,7 @@ never emits a wrong instruction. Self-validating: every emitted program is fed b
 """
 from __future__ import annotations
 
-from . import rocc_decode as RD
+from . import decode as RD
 
 
 class AsmError(ValueError):

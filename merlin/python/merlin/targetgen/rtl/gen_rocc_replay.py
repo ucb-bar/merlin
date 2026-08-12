@@ -1,6 +1,6 @@
 """Build a RoCC replay spec for the arcilator @Gemmini harness from a capsule's decoded trace + golden.
 
-The decoded trace (`rocc_decode`) already carries raw rs1/rs2 per instruction as either a constant or an
+The decoded trace (`rocc.decode`) already carries raw rs1/rs2 per instruction as either a constant or an
 argbase+offset (a DRAM pointer the kernel was passed). Since the arc harness controls DRAM placement, we
 assign each tensor arg a base address, materialize its deterministic bytes, and emit the exact instruction
 stream (funct, resolved rs1/rs2) the kernel would issue — plus the golden output to check. The harness

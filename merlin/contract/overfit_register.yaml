@@ -135,6 +135,29 @@ entries:
       which was wrong — it points at a package's feasibility prototype, exposes no SPEC_OPS, and wiring it
       into the dialect loader would fail. The seam this needs already exists and is unrelated to it.
 
+  # ---------------------------------------------------------------- the missing harness-ABI key
+  - id: no-contract-key-for-the-harness-entry-symbol
+    kind: target_coupling
+    status: triaged
+    owner: targetgen
+    items:
+      - merlin/python/merlin/targetgen/rocc/asm.py
+    why: >-
+      `assemble_program` defaults `kernel_symbol` to one reference target's entry symbol. The reason it
+      is still a default rather than a required argument is worth stating precisely, because it looks
+      like laziness and is not: there is nowhere to read the value FROM. A target's contract does not
+      declare its harness ABI, so making the parameter required would only push the same literal out to
+      four call sites. This is the same missing key the contract-compile weld needs — that module
+      hardcodes the same entry symbol, plus a fence symbol, an include and a metric name.
+    blocks: >-
+      Nothing on its own (the emitted symbol is only a label in an authoring aid). It is recorded
+      because it is the cheap half of a key that, once it exists, unblocks the expensive half.
+    removal_condition: >-
+      The target contract carries a harness-ABI block (entry symbol, fence symbol, includes, metric
+      name); `assemble_program` reads the entry symbol from it and the parameter becomes an override
+      rather than a default. Do it WITH the contract-compile entry, not before: a key added for one
+      caller tends to be shaped for that caller and then not fit the one that matters.
+
   # ---------------------------------------------------------------- run-time concession
   - id: simt-spawn-width-capped-below-declared-hardware
     kind: runtime_concession
@@ -177,7 +200,6 @@ entries:
       - merlin/python/merlin/runtime/backends/zephyr_model.py
       - merlin/python/merlin/runtime/boards.py
       - merlin/python/merlin/targetgen/corpora.py
-      - merlin/python/merlin/targetgen/rocc_asm.py
       - merlin/python/merlin/targetgen/rtl/circt_introspect.py
       - merlin/python/merlin/targetgen/rtl/gen_isa_module.py
       - merlin/python/merlin/targetgen/rtl/gen_rtl_digest.py

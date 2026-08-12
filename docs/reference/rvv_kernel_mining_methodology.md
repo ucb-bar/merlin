@@ -616,7 +616,7 @@ Three design choices keep the methodology target-agnostic:
 
 1. **Asm is the common substrate.** `objdump.tokenize()` is ISA-agnostic; `decode(obj, isa)`
    dispatches per ISA. RVV is the first instantiation; the Gemmini RoCC decoder
-   (`targetgen/rocc_decode.py`) is the sibling precedent. A new target adds a decoder, not a rewrite.
+   (`targetgen/rocc/decode.py`) is the sibling precedent. A new target adds a decoder, not a rewrite.
 2. **The CCA facets are split by execution model, not by ISA.** `compute` is universal; `vector`,
    `spatial`, `dataflow` are populated only where they apply, and a composite model (NPU+RVV) is just
    N regions with different `backend` tags. Nothing in the comparator or action catalog is
@@ -652,7 +652,7 @@ artifact. And the iterative loop has twice corrected a *human* hypothesis with a
 | K-ladder certification | `rvvgen/runner.py` |
 | Ranking / sweep | `rvvgen/sweep.py` |
 | Evidence report / driver | `rvvgen/report.py`, `rvvgen/mine.py` |
-| Gemmini targetgen agent | `targetgen/agent/`, `targetgen/rocc_decode.py` |
+| Gemmini targetgen agent | `targetgen/agent/`, `targetgen/rocc/decode.py` |
 | Tests | `tests/test_decode_rvv.py`, `test_cca.py`, `test_action_catalog.py`, `test_impr_features.py`, `test_rvv_beam.py`, `test_tuning_agent.py`, `test_rvv_runner.py` |
 
 ---

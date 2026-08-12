@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from . import rocc_decode as RD
+from .rocc import decode as RD
 from . import rtl_checks as RC
 from .rtl.facts import load_facts
 
