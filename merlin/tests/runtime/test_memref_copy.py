@@ -228,3 +228,46 @@ class TestTheSimulatorMustAgreeWithTheBuildOnVectorLength:
         import inspect
         from merlin.runtime.backends import spike_model as SM
         assert 'vlen=b.get("vlen")' in inspect.getsource(SM.build_and_run)
+
+
+class TestAGarbledConsoleIsStillReadable:
+    """A failing image is exactly the one that emits stray bytes, so the log must survive them.
+
+    `subprocess.run(..., text=True)` raises UnicodeDecodeError on the first invalid byte and takes the whole
+    console with it — destroying the evidence precisely when it is needed. Observed on deepjscc: the run
+    surfaced a UnicodeDecodeError instead of its own store fault, and every OUT/METRIC/DONE line before the
+    garbage was lost with it.
+    """
+
+    def test_a_run_whose_console_has_invalid_utf8_still_reports_it(self, monkeypatch):
+        import subprocess as sp
+        from merlin.runtime.backends import spike_model as SM
+
+        class _Done:
+            returncode = 7
+            stdout = b"TILE 16\nMETRIC cycles 5\n\xfa\xfb garbage \xff\n"
+            stderr = b""
+
+        monkeypatch.setattr(SM.subprocess, "run", lambda *a, **k: _Done())
+        monkeypatch.setattr(SM._spike, "spike_path", lambda: "/bin/true")
+        with pytest.raises(SM.SpikeModelError) as exc:
+            SM.run("/nonexistent.elf", mem_bytes=1 << 20)
+        # The error must carry the console, not a decoding failure.
+        assert "OUT/DONE" in str(exc.value)
+        assert "METRIC cycles 5" in str(exc.value), "the readable lines must survive the garbage"
+
+    def test_a_clean_console_is_unaffected(self, monkeypatch):
+        import struct
+        from merlin.runtime.backends import spike_model as SM
+        bits = struct.unpack("<I", struct.pack("<f", 1.5))[0]
+
+        class _Done:
+            returncode = 0
+            stdout = f"OUT 1 {bits}\nMETRIC cycles 42\nDONE\n".encode()
+            stderr = b""
+
+        monkeypatch.setattr(SM.subprocess, "run", lambda *a, **k: _Done())
+        monkeypatch.setattr(SM._spike, "spike_path", lambda: "/bin/true")
+        got = SM.run("/nonexistent.elf", mem_bytes=1 << 20)
+        assert got["metrics"]["cycles"] == 42
+        assert abs(float(got["outputs"][0]) - 1.5) < 1e-6

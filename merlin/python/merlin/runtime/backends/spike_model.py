@@ -309,9 +309,13 @@ def run(elf: str | Path, harts: int = 1, mem_bytes: int = 1 << 30,
             isa = f"{isa}_{want}"
     cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}",
            f"-m{hex(DRAM_BASE)}:{hex(mem_bytes)}", str(elf)]
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
-                          timeout=timeout)
-    console = proc.stdout + proc.stderr
+    # Capture BYTES and decode leniently. `text=True` raises UnicodeDecodeError on the first invalid byte
+    # and takes the WHOLE console with it -- and an image that is failing is exactly the one that emits
+    # stray bytes, so the log was being destroyed precisely when it was needed. A replacement character in
+    # a garbled region is strictly better than losing every OUT/METRIC/DONE line that preceded it.
+    proc = subprocess.run([str(c) for c in cmd], capture_output=True, timeout=timeout)
+    console = (proc.stdout or b"").decode("utf-8", errors="replace") + \
+              (proc.stderr or b"").decode("utf-8", errors="replace")
     out_line = next((l for l in console.splitlines() if l.startswith("OUT ")), None)
     if out_line is None or "DONE" not in console:
         raise SpikeModelError(f"run did not produce OUT/DONE (rc={proc.returncode}):\n"
