@@ -3,7 +3,7 @@ title: "Design: incremental target evolution — RVV + Saturn OPU as the driving
 kind: design
 status: draft
 owner: targetgen
-last_verified: 2026-08-11
+last_verified: 2026-08-12
 related: [beam_cca_architecture, target_onboarding, lowering_pipeline, llvm_integration, reproducibility]
 code_refs:
   - merlin/python/merlin/targetgen/compute_units.py
@@ -29,6 +29,10 @@ code_refs:
   - merlin/python/merlin/kernels/decode/rvv.py
   - merlin/python/merlin/targetgen/artifact_dag.py
   - merlin/python/merlin/targetgen/persistent_equivalence.py
+  - merlin/python/merlin/targetgen/contraction_egraph.py
+  - merlin/python/merlin/llvmlower/passes_opu.py
+  - merlin/python/merlin/llvmlower/opu_shim.py
+  - merlin/python/merlin/common/provenance.py
   - merlin/python/merlin/targetgen/rtl/opu_isa.py
 ---
 
@@ -444,9 +448,61 @@ back-edge was compressed.
 | L1 | compiles | clang-23 |
 | L2 | emitted-code audit | `kernels/decode/opu.py` (structural, derived opcodes) |
 | L3 | microkernel numerics, frozen shape corpus | **OPU Verilator RTL — PASSED 31/31** (§8c.2) |
-| L4 | single-dispatch numerics incl. epilogue | **OPU Verilator RTL** |
-| L5 | whole-model numerics | **none in this pass** |
-| L6 | whole-model cycles | **none in this pass** |
+| L4 | single-dispatch numerics incl. epilogue | **OPU Verilator RTL — PASSED 6/6** (§5.2) |
+| L5 | whole-model numerics | **blocked — not by the unit** (§5.3) |
+| L6 | whole-model cycles | needs the bitstream of §5.1; L5 first |
+
+### 5.2 L4 passed, and it moved the corpus's centre of gravity
+
+Every case up to L3 was judged on the **int32 accumulator**, which is where the readout stops. A quantised
+model does not stop there — it scales, rounds, clamps and narrows to int8 — so a kernel whose accumulator is
+right and whose epilogue rounds the other way yields a model that is subtly wrong *everywhere* rather than
+obviously wrong somewhere. L3 therefore said less than it appeared to.
+
+Six cases now carry the epilogue and are judged on the **narrowed** output: a square tile, a single output
+row, a single output column (a per-column multiplier indexed wrongly is invisible with more than one column
+to average over), ragged tails in both directions, full-range operands over a long reduction so the clamp
+actually fires, and bias composed with the epilogue. Measured saturation across them spans 0% to 99.6%.
+
+**Result: 6/6 bit-exact on `OPUV128D64ShuttleConfig` RTL**, `uses_unit=True`, no gaps, provenance recorded
+against `saturn_opu_int8 @ ea373800`. Landed at
+`out/artifacts/measurements/baremetal_OPUV128D64ShuttleConfig/opu_microkernel/l4_requant_dispatch_v1_*`.
+
+The rounding is the one place a C implementation and a numpy one drift silently, so it is arranged rather
+than hoped: both add half an LSB and take an **arithmetic** right shift. An arithmetic shift of a negative
+value rounds toward negative infinity, so `(x + half) >> s` and `round(x / 2**s)` disagree on exact halves of
+negatives — a handful of elements per tensor, which is precisely the error size a cosine gate absorbs.
+
+#### The measured cost model, and a defect it exposed in the assumed one
+
+The same run yields cycles per case, which is what `routing.MeasuredCost` declines a unit for lacking.
+Throughput spans **14.3×** on shape alone (0.66 MACs/cycle at 8×1, 9.49 at 8×8 with K=255). Charging tile
+occupancy collapses that to **2.3×**, empirically validating the cost model's central premise.
+
+It also falsifies part of it. A tile-occupancy-only model — a full tile charged in *both* dimensions — fits
+with 49.5% worst error and systematically **over**-charges a narrow M. The kernel's readout is **row-serial**,
+so a one-row output performs one readout, not a tile's worth. Charging rows separately:
+
+    cycles = 90.2 + 5.78 × accumulates + 19.83 × row_readouts        worst error 14.1%
+
+The readout costs about **3.4× an accumulate**, which no MAC-count model can see, and it means a short-K,
+tall-M shape is readout-bound rather than compute-bound. Caveat recorded with the artifact: 6 measurements,
+3 parameters — the ranking is robust, the coefficients want the full 42-case corpus behind them.
+
+### 5.3 What blocks L5, and it is not the unit
+
+The whole-model rung is blocked by a defect in the shared bare-metal path that has nothing to do with the
+matrix unit: the unrouted control fails identically, and so does a second model (deepjscc). `memrefCopy` is
+handed a descriptor whose middle words hold **another copy's descriptor bytes** — proven by address
+arithmetic, the rank-4 destination at `0x80085b60` spanning 88 bytes while a rank-2 descriptor sits at
+`0x80085ba0`, which is word 8 of it. The stray pointer is then read as a stride and the store lands
+gigabytes outside any mapping.
+
+Seven hypotheses have been eliminated (rank mismatch, stride magnitude, wrapper-vs-descriptor rank, wrong
+descriptor values, mis-scoped allocas within one copy, two allocator rewrites, and self-copies). A separate
+finding came out of it and stands on its own: **12 of 23 copy sites are `memref.copy %x, %x`**, accounting
+for 602,112 of 602,113 runtime copies, and the existing default-OFF `erase_self_copy` removes them with a
+documented bit-exact 1.88× speedup. It does not fix this fault.
 
 RTL sims for `OPUV256D128ShuttleConfig`, `OPUV128D64ShuttleConfig`, `OPUMXV256D128ShuttleConfig` and
 `GemminiAndOPUShuttleConfig` are already built under `$MERLIN_CHIPYARD/sims/verilator`, and
@@ -595,6 +651,58 @@ A candidate the cost model declines is retained as an alternative but left uncos
 erase a capability the target has, and costing it would let it win for having no data. When every
 candidate is declined, extraction fails closed and the caller falls back to declaration order — the same
 fallback `select` uses, so the two stay comparable.
+
+## 7.2 The e-graph now decides over real IR, and a rule grows it
+
+§7.1 demonstrated the mechanism on synthetic ops: one `test.TestOp` per candidate carrying a unit name and a
+cost. That shows extraction reads a decision out of a graph; it cannot show the decision is one a compiler
+would act on, because nothing in that graph is an implementation and nothing can be emitted from the choice.
+
+`targetgen/contraction_egraph.py` builds the same e-class over the **actual** IR: the contraction's own
+`linalg.generic`, region and all, beside the `func.call` the rewrite emits. Both yield the same
+`tensor<MxNxi32>`, which is why the e-class is type-correct and why the extracted function *is* the compile
+path's answer — whichever alternative survives is the implementation that runs. Verified on all 90 of
+spectformer's routable contractions: each builds a verifying graph, and a decision takes ~0.4 ms.
+
+The winner is **read back** from the extracted IR rather than computed alongside it. Flipping only the costs
+flips which implementation survives, and a tie resolves to the vector path, because declaration order breaks
+it and the vector path is the control — a coin-flip must not move work onto a unit whose advantage is
+unproven. `egraph_selector` is exactly the `select` callable `passes_opu.rewrite_contractions_to_opu` takes,
+so the routing decision the compile path applies is the extraction's rather than a threshold that agrees.
+
+**Saturation runs.** Under `apply-eqsat-pdl` a `pdl.replace` *adds* to the matched value's e-class rather than
+replacing, so the rule "a rank-2 int8 contraction is also computable by the microkernel" **grows** the graph:
+measured on the real prepared model, one alternative becomes two with the second created by the compiled
+rewriter. That changes what a new capability costs — a rule, not a code change. `H-EQ2` moved from
+`not_exercised` to `not_established` accordingly: saturation running is not the incremental claim holding,
+because nothing re-saturates a parent graph against a delta.
+
+**The rule cannot carry legality, and the generated pattern says so.** PDL matches by op name and by operand
+and result types; it cannot express `(i8, i8, i32)`, or the iterator types, or "the accumulator init is a zero
+fill". A pattern on `linalg.generic` therefore matches *every* generic, so legality stays in
+`passes_opu.routable_contractions` and saturation runs only on a region already known legal. A test asserts
+the warning survives in the emitted text, because a rule that stops looking dangerous is the failure mode.
+
+**What still gates a good decision is a measurement, not machinery.** Extraction minimises exactly what it is
+given: a crude cost sent 89 of 90 contractions to the matrix unit *including* the 48 FFT-family shapes whose
+N is 8 or 14, because a generous rate swamps the occupancy penalty on a shape filling a thirtieth of a tile.
+`routing.MeasuredCost` declines a unit absent from its throughput table, so before §5.2 nothing routed at
+all — correctly. §5.2 supplies the first measured numbers, and also corrects the occupancy model they feed.
+
+## 7.3 Provenance covers built artifacts, not only checkouts
+
+A pin answers "which checkout was this read from". A bitstream, a compiled simulator and a packaged image have
+no answer: they are outputs with no commit of their own, so nothing in the registry could describe the thing a
+hardware verdict came from. `hardware_pins.yaml` now carries an `artifacts:` section keyed by content digest,
+with `built_from` naming pins rather than repeating their shas and `config` recording which elaborated
+configuration the bytes are.
+
+`verify_artifact` distinguishes three states and treats the third as a **gap**: absent; present with a digest
+that disagrees; and present with nothing declared to compare against. That last is the point — an artifact
+verifying against nothing certifies itself. So the bitstream of §5.1 is registered while its build runs,
+honestly, without becoming self-attesting, and `check_provenance --verify-pins` checks artifacts alongside
+pins. The 16-lane bitstream that already existed is digested and verifies; its `built_from` is deliberately
+**empty**, because nothing records which saturn revision produced it and inventing one would be worse.
 
 ## 8. Naming hazards in this repo
 
