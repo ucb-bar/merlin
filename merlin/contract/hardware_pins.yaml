@@ -154,3 +154,28 @@ pins:
       `provenance.verify("muon_arc_model", checkout=mlc_bridge.mlc_dir())`. Verifying the declared env var
       instead would report drift for a checkout that is present and correct, which is worse than useless:
       it trains people to ignore the check.
+
+  gemmini_rtl:
+    description: >-
+      The Gemmini generator revision a systolic result is measured against. The mesh dimension the
+      compiler tiles to, the scratchpad/accumulator capacities it must respect, and the RoCC funct
+      encodings the emitter packs are all read out of this tree, so a different revision can change a
+      verdict without changing anything in merlin. Pinned separately from the chipyard root because it
+      is a submodule with its own revision: the outer tree can move while this one does not, and vice
+      versa, so recording only one of the two leaves the result ambiguous.
+    repo_canonical: https://github.com/ucb-bar/gemmini
+    commit: "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca"
+    branch: HEAD
+    root_env: MERLIN_CHIPYARD
+    path: generators/gemmini
+    requires_paths:
+      - src/main/scala/gemmini/Configs.scala
+      - src/main/scala/gemmini/GemminiISA.scala
+      - src/main/scala/gemmini/Mesh.scala
+    used_by:
+      - RoCC encoding + mesh/capacity fact extraction (targetgen/rtl/introspect.py)
+      - run records for the systolic capsule suites (targetgen.provenance.toolchain_shas)
+    notes: >-
+      Detached HEAD is normal here — a submodule is checked out at the sha its superproject records,
+      not on a branch, so `branch` is informational and the sha is the fact. Shares a checkout root
+      with radiance_muon_rtl (the same chipyard tree), which is why both are verified by CONTENT.

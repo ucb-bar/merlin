@@ -136,3 +136,8 @@ harness_abi:
   includes:
     - include/gemmini_testutils.h
   cycle_window_metric: cycle_window_gemmini_region
+
+# Registry pins (merlin/contract/hardware_pins.yaml) this target's results depend on. Read by
+# merlin.targetgen.provenance.toolchain_shas so a run record says which hardware revision it belongs to.
+hardware_pins:
+  - gemmini_rtl

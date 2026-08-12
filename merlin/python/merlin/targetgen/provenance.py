@@ -34,6 +34,7 @@ from ..common.paths import env, repo_root
 
 __all__ = [
     "content_sha",
+    "declared_pins",
     "git_provenance",
     "parent_provenance",
     "repo_provenance",
@@ -41,6 +42,7 @@ __all__ = [
     "rtl_provenance",
     "simulator_provenance",
     "toolchain_provenance",
+    "toolchain_shas",
 ]
 
 _SHA_LEN = 12
@@ -276,3 +278,47 @@ def record(target: str, *, dtype_strategy: str | None = None,
     }
     rec["provenance_sha"] = content_sha(rec)
     return rec
+
+
+# --- which registry pins a target's results depend on ----------------------------------------------
+#: The target-contract key naming the `merlin/contract/hardware_pins.yaml` entries a target's results
+#: rest on. A target with no external RTL dependency legitimately declares none.
+PINS_CONTRACT_KEY = "hardware_pins"
+
+
+def declared_pins(target: str | None) -> tuple[str, ...]:
+    """Pin names ``target``'s contract declares. Empty when it declares none or cannot be resolved.
+
+    Deliberately not an error: a pure-simulation or host target has no external checkout to pin, and
+    refusing would block provenance recording for exactly the targets that need it least.
+    """
+    if not target:
+        return ()
+    try:
+        from .target_registry import resolve
+        contract = resolve(target).load_contract() or {}
+    except Exception:                       # noqa: BLE001 -- an unresolvable target has no declaration
+        return ()
+    return tuple(str(name) for name in (contract.get(PINS_CONTRACT_KEY) or ()))
+
+
+def toolchain_shas(target: str | None = None) -> dict[str, str]:
+    """``{name: sha}`` for merlin plus every hardware pin ``target`` declares.
+
+    Replaces a helper that named one target's checkouts directly (a chipyard root and a generator
+    subdirectory), which meant every OTHER target's run record carried merlin's sha and nothing else --
+    unattributable, and silently so. The shape is unchanged so existing run records stay comparable;
+    what changed is that the entries come from the target's own declaration.
+
+    A pin whose checkout is absent or unreadable is recorded as UNKNOWN rather than omitted: a missing
+    key reads as "this run had no such dependency" when it means "nobody could tell".
+    """
+    from ..common import provenance as PROV
+
+    shas = {"merlin": (git_provenance(repo_root()).get("head") or PROV.UNKNOWN)}
+    for name in declared_pins(target):
+        try:
+            shas[name] = PROV.verify(name).observed.commit or PROV.UNKNOWN
+        except Exception:                   # noqa: BLE001 -- unknown/unreadable pin is UNKNOWN, not absent
+            shas[name] = PROV.UNKNOWN
+    return shas
