@@ -248,6 +248,23 @@ def backends_of_class(target_class: TargetClass) -> list[str]:
     return sorted(n for n, b in _REGISTRY.items() if b.target_class == target_class)
 
 
+def name_of_module(module_name: str) -> str:
+    """The registered backend name for an already-imported backend module.
+
+    The reverse of :func:`get_backend`, and it exists for one specific situation: a caller that is
+    still welded to a particular backend (it imports the module directly) and needs that backend's
+    TARGET NAME to look something up — a contract, a manifest. Reading the identity of the module it
+    already holds is strictly better than writing the name again as a literal, because the literal
+    would be a second, independent place to update and the gates cannot tell it apart from a real
+    hardcoded target. When the weld is removed the call goes with it.
+    """
+    _ensure_discovered()
+    for info in _REGISTRY.values():
+        if info.module == module_name:
+            return info.name
+    raise KeyError(f"no registered backend for module {module_name!r}")
+
+
 def get_backend(name: str):
     """Lazily import + return the backend module for ``name`` (raises KeyError if unregistered)."""
     _ensure_discovered()

@@ -37,6 +37,16 @@ validation_notes: >-
   When present, `merlin.targetgen.rtl.introspect.validate_against_contract` cross-checks the units'
   dtypes/accumulators against the RTL-derived `datapaths`.
 
+  OPTIONAL `harness_abi` (how a runner-owned harness calls into this target's kernel; parsed by
+  `merlin.targetgen.contract.harness_abi`): `{entry_symbol (REQUIRED), fence_symbol, includes: [...],
+  cycle_window_metric, extern_decls: [...]}`. These are conventions of the target's own bare-metal test
+  environment, NOT RTL facts — nothing in a fact bundle says a kernel is called `foo_kernel` rather than
+  `bar_entry` — which is exactly why the target declares them and why the parser refuses rather than
+  substituting a default. A default here would produce a harness that compiles and then fails to link,
+  with the error pointing at the linker instead of at the missing declaration. Omit `cycle_window_metric`
+  when the target does not distinguish an accelerator region: an absent metric and one printed as 0 are
+  read identically by the runner's parser, so emitting a falsy one says nothing.
+
   OPTIONAL `plugin` (the package's extension points; recognised keys are declared once in
   `merlin.targetgen.plugins.PLUGIN_KEYS` and validated by `load_target`). A reference is a path
   relative to the package root, a dotted module, or `module:attribute`. Two rules matter more than the

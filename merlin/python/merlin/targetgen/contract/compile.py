@@ -35,10 +35,17 @@ def _is_movement_cb(cb: dict[str, Any]) -> bool:
                     and c.get("attributes", {}).get("combine") == "identity" for c in cmds))
 
 
-def _movement_harness_c(cb: dict[str, Any]) -> str:
-    """Harness for a pure-movement kernel gemmini_kernel(src*, dst*): embed src, print dst."""
+def _movement_harness_c(cb: dict[str, Any], *, target: str) -> str:
+    """Harness for a pure-movement kernel ``<entry>(src*, dst*)``: embed src, print dst.
+
+    The entry symbol, the fence, the includes and the cycle-window metric are read from ``target``'s
+    declared harness ABI rather than written here; see :mod:`.harness_abi` for why they cannot be
+    derived. ``target`` is required: a default would be one target's name, which is the weld this is
+    removing.
+    """
     from merlin.runtime.backends.gemmini_codegen import _ceil_dim, _pad_rowmajor
     from merlin.runtime.commandbuffer import materialize_inputs
+    from .harness_abi import for_target
     mv = next(c for c in cb["commands"]
               if c.get("opcode") == "VECTOR_MAP" and c["attributes"].get("combine") == "identity")
     src, dst = mv["operands"]["lhs"], mv["operands"]["dst"]
@@ -55,22 +62,30 @@ def _movement_harness_c(cb: dict[str, Any]) -> str:
     # Print METRIC cycles BEFORE the (possibly huge) OUT tensor dump: large-output kernels flood the
     # UART and the per-ELF capture truncates mid-dump, so a trailing METRIC line would be lost. Emitting
     # the (tiny) cycle metric first guarantees it is always captured; the OUT dump follows for correctness.
-    return ("#include <stdint.h>\n#include <stdio.h>\n#include \"include/gemmini_testutils.h\"\n"
-            "extern void gemmini_kernel();\n" + "\n".join(decls) + "\nint main() {\n"
+    abi = for_target(target)
+    window = abi.cycle_window_line()
+    return ("#include <stdint.h>\n#include <stdio.h>\n" + abi.declarations() + "\n"
+            + "\n".join(decls) + "\nint main() {\n"
             "  uint64_t c0 = read_cycles();\n"
-            f"  gemmini_kernel((void*)T_{src}, (void*)T_{dst});\n  gemmini_fence();\n"
+            + abi.call(f"(void*)T_{src}, (void*)T_{dst}") + "\n"
             "  uint64_t c1 = read_cycles();\n"
             '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));\n'
-            '  printf("METRIC cycle_window_gemmini_region 1\\n");\n'
+            + (window + "\n" if window else "")
             + "\n".join(prints) + "\n"
             '  printf("DONE\\n");\n  return 0;\n}\n')
 
 
 def link_elf(cb: dict[str, Any], obj: Path, workdir: Path) -> Path:
     """Build the runner-owned harness from ``cb`` and link it with the package object -> ELF."""
+    from merlin.runtime.backends import base as _backends
     from merlin.runtime.backends import gemmini as gem
     from merlin.runtime.backends.gemmini_codegen_mlir import _harness_c
-    harness = _movement_harness_c(cb) if _is_movement_cb(cb) else _harness_c(cb)
+    # The target whose harness ABI applies is the one THIS backend is registered as. Read from the
+    # registry rather than written as a literal: the backend import above is the weld (declared in
+    # merlin/contract/overfit_register.yaml), and one weld should not spawn a second, independently
+    # maintained copy of the target's name that the gates cannot distinguish from a real hardcode.
+    target = _backends.name_of_module(gem.__name__)
+    harness = _movement_harness_c(cb, target=target) if _is_movement_cb(cb) else _harness_c(cb)
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
     rt, common = gem.rocc_tests_dir(), gem._common_dir()
     # Linker load address DERIVED from the RTL memory map (platform DRAM base), reusing the curated

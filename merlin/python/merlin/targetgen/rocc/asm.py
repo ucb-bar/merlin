@@ -41,13 +41,21 @@ def _config_subtype_bits(isa: dict, name: str) -> int | None:
 
 
 def assemble_program(target: str, listing: list[tuple[str, int, int]], *,
-                     kernel_symbol: str = "gemmini_kernel") -> str:
+                     kernel_symbol: str | None = None) -> str:
     """Render a full LLVM-dialect MLIR module for ``listing`` (each item ``(class_name, rs1, rs2)``).
 
     ``class_name`` is a derived instruction class (e.g. ``MVIN``, ``PRELOAD``, ``COMPUTE_PRELOADED``,
     ``MVOUT``, ``FLUSH``, ``CONFIG_EX``/``CONFIG_LD``/``CONFIG_ST``) or ``FENCE``. ``rs1``/``rs2`` are the
     two i64 source operand VALUES the caller's compiler computed. The op takes no result register (rd=x0);
-    the RoCC funct3 and custom opcode are derived facts."""
+    the RoCC funct3 and custom opcode are derived facts.
+
+    ``kernel_symbol`` defaults to the one the TARGET declares in its contract's ``harness_abi`` block,
+    not to any particular target's spelling. It was a literal default here only because there was
+    nowhere to read it from; now that the block exists, an omitted argument resolves per target and an
+    explicit one overrides."""
+    if kernel_symbol is None:
+        from ..contract.harness_abi import for_target
+        kernel_symbol = for_target(target).entry_symbol
     isa = RD.isa_constants(target)
     opcode, func3 = isa["CUSTOM_OPCODE"], isa["FUNCT3"]
     if opcode is None:

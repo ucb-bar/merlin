@@ -126,3 +126,13 @@ notes: >-
   accumulator capacities and datapath dtypes are CIRCT-extracted facts (not declared here); consumers
   read them from the fact bundle. Spike-Gemmini is a functional bootstrap model (derived_from_rtl:
   false); only Verilator/FireSim count as RTL-certified.
+
+# How a runner-owned harness calls into this target's kernel. These are conventions of this target's
+# own bare-metal test environment, not RTL facts, so they cannot be derived and are declared here.
+# Consumed by merlin.targetgen.contract.harness_abi; previously hardcoded in the generic compile path.
+harness_abi:
+  entry_symbol: gemmini_kernel
+  fence_symbol: gemmini_fence
+  includes:
+    - include/gemmini_testutils.h
+  cycle_window_metric: cycle_window_gemmini_region
