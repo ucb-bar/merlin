@@ -69,7 +69,9 @@ def test_vector_dialect_cb_certifies_on_merlin_compiler():
             pytest.skip("merlin MLIR→LLVM toolchain unavailable")
     except Exception:
         pytest.skip("toolchain probe failed")
-    from merlin.runtime.backends import saturn_vec_mlir as vm
+    # saturn_vec was evicted to its own reference package; reach its MLIR submodule via the registry.
+    from merlin.runtime.backends import base as _base
+    vm = _base.get_backend("saturn_vec").saturn_vec_mlir
     vd = _load_dialect()  # load ONCE — two loads create distinct op classes (isinstance breaks)
     cb = vd.lower_to_command_buffer(vd.build_example(n=64))
     res = vm.run_host(cb)

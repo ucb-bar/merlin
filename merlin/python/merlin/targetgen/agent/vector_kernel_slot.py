@@ -14,7 +14,7 @@ from typing import Any
 
 from . import claude_cli
 from ..eval.saturn_vec_conformance import build   # target-ok: saturn reference vector-kernel agent flow; pending OV11 eviction
-from ...runtime.backends import saturn_vec        # target-ok: saturn reference vector backend; pending OV11 eviction
+from ...runtime.backends import base as _bk       # backend resolved via the class registry (saturn_vec evicted OOT)
 
 RVV_ISA = r"""
 RVV (rv64gcv) C intrinsics available after `#include <riscv_vector.h>` (LMUL=1, e32):
@@ -88,7 +88,8 @@ def _load(code: str, path: Path):
 
 def _certify(rung, gen, tmp):
     cb = build(rung)
-    res = saturn_vec.run_command_buffer(cb, workdir=tmp, timeout=180, driver_src=gen(cb))
+    res = _bk.get_backend("saturn_vec").run_command_buffer(cb, workdir=tmp, timeout=180,
+                                                           driver_src=gen(cb))
     return res
 
 

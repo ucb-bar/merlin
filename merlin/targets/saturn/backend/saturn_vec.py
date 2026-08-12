@@ -12,8 +12,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ..reference import outputs_match, reference_outputs
-from . import spike
+from merlin.runtime.reference import outputs_match, reference_outputs
+from merlin.runtime.backends import spike
 from .saturn_vec_codegen import generate_driver
 
 # Harness objects needed by the vector kernel (no matmul asm).

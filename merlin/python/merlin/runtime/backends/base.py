@@ -61,8 +61,8 @@ class BackendInfo:
 _REGISTRY: dict[str, BackendInfo] = {
     "spike":        BackendInfo("spike", TargetClass.CPU, BackendKind.KERNEL,
                                 "merlin.runtime.backends.spike"),
-    "saturn_vec":   BackendInfo("saturn_vec", TargetClass.CPU, BackendKind.KERNEL,
-                                "merlin.runtime.backends.saturn_vec"),
+    # NB: "saturn_vec" is NOT seeded here — it was evicted to its own reference package
+    # (merlin/targets/saturn/backend/) and self-registers via plugin discovery (see _ensure_oot_discovered).
     "spike_model":  BackendInfo("spike_model", TargetClass.CPU, BackendKind.WHOLE_MODEL,
                                 "merlin.runtime.backends.spike_model"),
     "zephyr_model": BackendInfo("zephyr_model", TargetClass.CPU, BackendKind.WHOLE_MODEL,

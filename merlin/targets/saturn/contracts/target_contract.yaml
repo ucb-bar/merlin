@@ -6,6 +6,12 @@
 # (chipyard generators/saturn) before drawing RTL-level conclusions.
 name: saturn
 version: 0.1
+# Runtime backend, evicted from the core runtime/backends/ into this package's backend/ dir (a package of
+# saturn_vec.py + saturn_vec_codegen.py + saturn_vec_mlir.py). base._oot_backend_modules loads a reference
+# target's plugin.backend (the reference package root is injected as the path), so importing the backend
+# self-registers "saturn_vec" with zero env — the core no longer seeds a saturn reference backend.
+plugin:
+  backend: backend
 features: [rvv, scalable_vl, multicore, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
 ops: [pack, matmul, commit, release]
 types: [packed_tensor, accumulator]

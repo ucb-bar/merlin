@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..commandbuffer import materialize_inputs
+from merlin.runtime.commandbuffer import materialize_inputs
 
 ID1 = "affine_map<(d0) -> (d0)>"
 RED1 = "affine_map<(d0) -> (0)>"
@@ -123,9 +123,9 @@ def run_host(cb: dict[str, Any], workdir: str | Path | None = None) -> dict[str,
     from pathlib import Path
     import numpy as np
 
-    from ...llvmlower.lower import lower_model
-    from ...llvmlower.abi import HostModel
-    from ..reference import outputs_match, reference_outputs
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.abi import HostModel
+    from merlin.runtime.reference import outputs_match, reference_outputs
 
     sh = _shapes(cb)
     text, inputs, out = emit_mlir(cb)
@@ -156,8 +156,8 @@ def lower_rvv(cb: dict[str, Any], workdir: str | Path | None = None) -> dict[str
     import tempfile
     from pathlib import Path
 
-    from ...llvmlower.lower import lower_model
-    from ...llvmlower.custom_isa import disassemble
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.custom_isa import disassemble
 
     text, _, _ = emit_mlir(cb)
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="vecrvv_"))
