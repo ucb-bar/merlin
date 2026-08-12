@@ -179,3 +179,50 @@ pins:
       Detached HEAD is normal here — a submodule is checked out at the sha its superproject records,
       not on a branch, so `branch` is informational and the sha is the fact. Shares a checkout root
       with radiance_muon_rtl (the same chipyard tree), which is why both are verified by CONTENT.
+
+# BUILT ARTIFACTS — identified by their CONTENTS, because they have no revision of their own.
+#
+# A pin answers "which checkout was this read from". An FPGA bitstream, a compiled simulator and a packaged
+# image have no answer to that: they are outputs. What identifies them is the bytes, plus the revisions they
+# were elaborated FROM — so `built_from` names pins above rather than repeating their shas, and `config`
+# records which elaborated configuration the bytes are.
+#
+# `digest` may be absent while a build is still running. That is honest, and `verify_artifact` reports it as
+# a GAP rather than a pass: an artifact that verifies against nothing is self-certifying, which is exactly
+# what this registry exists to prevent. Fill it in when the build lands.
+#
+# Consumed by `merlin.common.provenance.load_artifacts` / `verify_artifact`.
+artifacts:
+
+  firesim_opu_v256d128:
+    description: >-
+      FireSim bitstream for a single Shuttle core carrying the outer-product unit at vLen=256/dLen=128 —
+      a 32-lane int8 tile, matching the geometry the microkernel acceptance corpus is certified against.
+      Built because both pre-existing OPU bitstreams are 16-lane and one of them carries the unit on tile 1
+      only, so an image whose kernel runs on hart 0 finds no OPU there and takes an illegal instruction.
+    root_env: MERLIN_CHIPYARD
+    path: sims/firesim/deploy/results-build/PENDING/cl_xilinx_alveo_u250-firesim-FireSim-FireSimOPUV256D128ShuttleConfig-BaseXilinxAlveoU250Config/firesim.tar.gz
+    digest: ""                        # build in progress; an empty digest verifies as a GAP, not a pass
+    built_from:
+      - saturn_opu_int8
+    config: FireSimOPUV256D128ShuttleConfig
+    notes: >-
+      Synthesised at 25 MHz rather than the 30 the vLen=128 OPU closed at: one vLen=256 unit is a real area
+      step up, and a frequency that will not close wastes the whole synthesis instead of degrading it. The
+      results-build directory is timestamped by the builder, so `path` carries PENDING until the build
+      finishes and the real directory name is known.
+
+  firesim_opu_v128d64:
+    description: >-
+      The pre-existing 16-lane OPU bitstream: a single Shuttle core with the unit on it. Registered because
+      it is the one usable OPU bitstream that already exists — the other (shuttle_gemmini_opu) puts the unit
+      on tile 1 only.
+    root_env: MERLIN_CHIPYARD
+    path: sims/firesim/deploy/results-build/2026-03-20--01-24-38-alveo_u250_firesim-opu-v128-d64-shuttle/cl_xilinx_alveo_u250-firesim-FireSim-FireSimOPUV128D64ShuttleConfig-BaseXilinxAlveoU250Config/firesim.tar.gz
+    digest: "61565f4c9f3c045662a795ee6491356552c1a0945180e4612d5bde90069db8e0"
+    built_from: []                    # elaborated before the pin registry existed; unattributable, and said so
+    config: FireSimOPUV128D64ShuttleConfig
+    notes: >-
+      REPRODUCIBILITY CAVEAT: FireSimOPUV128D64ShuttleConfig no longer exists in the checkout's source, so
+      this bitstream can be USED but not REBUILT. `built_from` is empty rather than guessed — nothing records
+      which saturn revision it was elaborated from, and inventing one would be worse than admitting it.

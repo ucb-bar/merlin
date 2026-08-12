@@ -274,3 +274,87 @@ class TestWhatGetsRecorded:
     def test_the_record_is_json_serialisable(self):
         import json
         json.dumps(P.record(pins={}, sources=[]))
+
+
+class TestArtifactsAreIdentifiedByContent:
+    """A pin answers "which checkout was this read from". A built thing has no answer to that.
+
+    An FPGA bitstream, a compiled simulator and a packaged image have no commit of their own. What
+    identifies them is their bytes plus the revisions they were elaborated from — so those are separate
+    fields, and the check has to distinguish "absent", "present but different" and "present with nothing
+    declared to compare against". The last one is the interesting case: treating it as a pass is how an
+    artifact ends up certifying itself.
+    """
+
+    def _reg(self, tmp_path, body: str):
+        p = tmp_path / "pins.yaml"
+        p.write_text("version: 1\npins: {}\nartifacts:\n" + body, encoding="utf-8")
+        return p
+
+    def test_a_matching_digest_verifies(self, tmp_path):
+        blob = tmp_path / "firesim.tar.gz"
+        blob.write_bytes(b"a bitstream")
+        digest = P.file_digest(blob)
+        reg = self._reg(tmp_path, f'  bit:\n    path: "{blob}"\n    digest: "{digest}"\n')
+        got = P.verify_artifact("bit", path=reg)
+        assert got.ok and got.matches is True and got.gaps == ()
+
+    def test_a_changed_artifact_is_caught(self, tmp_path):
+        blob = tmp_path / "firesim.tar.gz"
+        blob.write_bytes(b"a bitstream")
+        digest = P.file_digest(blob)
+        blob.write_bytes(b"a DIFFERENT bitstream")
+        reg = self._reg(tmp_path, f'  bit:\n    path: "{blob}"\n    digest: "{digest}"\n')
+        got = P.verify_artifact("bit", path=reg)
+        assert not got.ok and got.matches is False
+        assert any("digest is" in g for g in got.gaps)
+
+    def test_an_absent_artifact_is_not_a_pass(self, tmp_path):
+        reg = self._reg(tmp_path, f'  bit:\n    path: "{tmp_path / "nope.tar.gz"}"\n    digest: "{"a"*64}"\n')
+        got = P.verify_artifact("bit", path=reg)
+        assert not got.ok and not got.present
+        assert any("no file at" in g for g in got.gaps)
+
+    def test_an_undeclared_digest_is_a_gap_not_agreement(self, tmp_path):
+        # THE case. An artifact registered before its build finishes is honest; one that verifies against
+        # nothing is self-certifying, which is what this registry exists to prevent.
+        blob = tmp_path / "firesim.tar.gz"
+        blob.write_bytes(b"whatever")
+        reg = self._reg(tmp_path, f'  bit:\n    path: "{blob}"\n')
+        got = P.verify_artifact("bit", path=reg)
+        assert got.present and got.matches is None and not got.ok
+        assert any("no digest declared" in g for g in got.gaps)
+        assert got.digest != P.UNKNOWN, "the digest found must still be reported"
+
+    def test_it_records_what_it_was_built_from(self, tmp_path):
+        # A bitstream's identity is its bytes AND the revisions it was elaborated from; naming the pins
+        # rather than repeating their shas keeps one source of truth for each.
+        blob = tmp_path / "b.tar.gz"
+        blob.write_bytes(b"x")
+        reg = self._reg(tmp_path, f'  bit:\n    path: "{blob}"\n    built_from: [saturn_opu_int8]\n'
+                                  f'    config: FireSimOPUV256D128ShuttleConfig\n')
+        got = P.load_artifacts(reg)["bit"]
+        assert got.built_from == ("saturn_opu_int8",)
+        assert got.config == "FireSimOPUV256D128ShuttleConfig"
+
+    def test_an_artifact_without_a_path_is_refused(self, tmp_path):
+        reg = self._reg(tmp_path, "  bit:\n    digest: \"" + "a" * 64 + "\"\n")
+        with pytest.raises(P.PinsError, match="no path"):
+            P.load_artifacts(reg)
+
+    def test_an_unquoted_digest_is_refused(self, tmp_path):
+        # The same trap the commit shas have: an all-digit digest is read by YAML as a number.
+        reg = self._reg(tmp_path, "  bit:\n    path: /x\n    digest: 12345678\n")
+        with pytest.raises(P.PinsError, match="quoted string"):
+            P.load_artifacts(reg)
+
+    def test_an_unknown_artifact_lists_what_exists(self, tmp_path):
+        blob = tmp_path / "b"; blob.write_bytes(b"x")
+        reg = self._reg(tmp_path, f'  bit:\n    path: "{blob}"\n')
+        with pytest.raises(P.PinsError, match="declared"):
+            P.verify_artifact("other", path=reg)
+
+    def test_the_shipped_registry_still_loads_with_no_artifacts_declared(self):
+        # Purely additive: the existing pin path must not care that the section is absent.
+        assert P.load_artifacts() == {} or all(a.path for a in P.load_artifacts().values())
+        assert P.load_pins(), "pins must still load"

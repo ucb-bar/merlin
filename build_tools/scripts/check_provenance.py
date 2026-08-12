@@ -161,6 +161,20 @@ def main(argv: list[str] | None = None) -> int:
 
     # 3. Optional live verification.
     if verify_pins:
+        # Built artifacts first: a bitstream or a prebuilt simulator has no revision of its own, so it is
+        # verified by CONTENT. An artifact present with no declared digest is reported as a gap rather than
+        # passing quietly -- one that verifies against nothing certifies itself.
+        try:
+            arts = P.load_artifacts()
+        except Exception as exc:                          # noqa: BLE001 — a malformed section is fatal
+            print(f"provenance: FAILED — artifact registry unusable: {exc}")
+            return 1
+        for name in sorted(arts):
+            got = P.verify_artifact(name)
+            if got.ok:
+                notes.append(f"artifact {name}: ok ({got.digest[:12]})")
+            else:
+                notes.append(f"artifact {name}: NOT VERIFIED — {'; '.join(got.gaps)}")
         for name in sorted(pins):
             got = P.verify(name)
             if got.ok:

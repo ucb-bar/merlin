@@ -37,8 +37,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["Observation", "Pin", "PinsError", "Verification", "load_pins", "observe", "pin",
-           "pins_path", "record", "require", "source_digest", "verify"]
+__all__ = ["Artifact", "ArtifactCheck", "Observation", "Pin", "PinsError", "Verification",
+           "load_artifacts", "load_pins", "observe", "pin", "pins_path", "record", "require",
+           "source_digest", "verify", "verify_artifact"]
 
 #: Recorded where a fact could not be read. Never compares equal to a real value, and callers must not
 #: treat it as "unchanged" — see :mod:`merlin.targetgen.artifact_dag` for the same convention.
@@ -135,6 +136,116 @@ class Verification:
         return {"pin": self.pin, "ok": self.ok, "observed": self.observed.to_dict(),
                 "drift": list(self.drift), "missing_paths": list(self.missing_paths),
                 "forbidden_present": list(self.forbidden_present), "notes": list(self.notes)}
+
+
+@dataclass(frozen=True)
+class Artifact:
+    """A BUILT thing whose identity is its contents, not a revision.
+
+    A pin answers "which checkout was this read from". That question has no answer for an FPGA bitstream, a
+    compiled simulator or a packaged image: they have no commit of their own. What identifies them is the
+    bytes, plus the revisions they were ELABORATED FROM — so those are separate fields, and `built_from`
+    names other pins rather than repeating their shas.
+
+    ``digest`` may be empty while a build is still running. That is honest and it is not the same as
+    verifying: :func:`verify_artifact` reports an undeclared digest as a gap, so an artifact can be
+    registered before it exists without silently becoming self-certifying.
+    """
+
+    name: str
+    path: str                              # absolute, or relative to root_env
+    description: str = ""
+    digest: str = ""                       # sha256 of the file; empty = not yet recorded
+    root_env: str = ""
+    built_from: tuple[str, ...] = ()       # pin names this was elaborated from
+    config: str = ""                       # the elaborated configuration, when there is one
+    notes: str = ""
+
+    def resolve(self) -> Path | None:
+        from .paths import env as _env
+        if not self.root_env:
+            return Path(self.path)
+        root = _env(self.root_env)
+        return None if not root else Path(root) / self.path
+
+
+@dataclass(frozen=True)
+class ArtifactCheck:
+    """Whether a built artifact is present and is the one that was declared."""
+
+    artifact: str
+    path: str
+    present: bool = False
+    digest: str = UNKNOWN
+    matches: bool | None = None            # None when nothing was declared to match against
+    gaps: tuple[str, ...] = ()
+
+    @property
+    def ok(self) -> bool:
+        return self.present and self.matches is True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"artifact": self.artifact, "path": self.path, "present": self.present,
+                "digest": self.digest, "matches": self.matches, "ok": self.ok,
+                "gaps": list(self.gaps)}
+
+
+def load_artifacts(path: "str | Path | None" = None) -> dict[str, Artifact]:
+    """Every declared built artifact. An empty mapping when the registry declares none."""
+    import yaml
+
+    p = Path(path) if path is not None else pins_path()
+    if not p.is_file():
+        raise PinsError(f"no pin registry at {p}")
+    raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    entries = raw.get("artifacts") or {}
+    if not isinstance(entries, dict):
+        raise PinsError(f"{p}: 'artifacts' must be a mapping of name -> declaration")
+    out: dict[str, Artifact] = {}
+    for name, body in entries.items():
+        if not isinstance(body, dict) or not body.get("path"):
+            raise PinsError(f"{p}: artifact {name!r} has no path; an artifact without one identifies "
+                            "nothing")
+        digest = body.get("digest") or ""
+        if digest and not isinstance(digest, str):
+            raise PinsError(f"{p}: artifact {name!r} digest must be a quoted string, got "
+                            f"{type(digest).__name__}")
+        out[str(name)] = Artifact(
+            name=str(name), path=str(body["path"]), description=str(body.get("description") or ""),
+            digest=str(digest), root_env=str(body.get("root_env") or ""),
+            built_from=tuple(str(b) for b in (body.get("built_from") or ())),
+            config=str(body.get("config") or ""), notes=str(body.get("notes") or ""))
+    return out
+
+
+def verify_artifact(name: str, *, path: "str | Path | None" = None) -> ArtifactCheck:
+    """Compare a built artifact against its declaration.
+
+    Reports rather than raises, and distinguishes the three states that matter: absent, present with a
+    digest that disagrees, and present with nothing declared to compare against. The last is a GAP, not a
+    pass -- an artifact that certifies itself is the failure this registry exists to prevent.
+    """
+    arts = load_artifacts(path)
+    if name not in arts:
+        raise PinsError(f"no artifact named {name!r}; declared: {sorted(arts)}")
+    a = arts[name]
+    target = a.resolve()
+    gaps: list[str] = []
+    if target is None:
+        return ArtifactCheck(artifact=name, path=UNKNOWN, gaps=(
+            f"${a.root_env} is unset, so {name!r} cannot be located",))
+    if not target.is_file():
+        return ArtifactCheck(artifact=name, path=str(target),
+                             gaps=(f"no file at {target}",))
+    got = file_digest(target)
+    if not a.digest:
+        gaps.append("no digest declared, so the file present cannot be confirmed to be the one meant")
+        return ArtifactCheck(artifact=name, path=str(target), present=True, digest=got,
+                             matches=None, gaps=tuple(gaps))
+    if got != a.digest:
+        gaps.append(f"digest is {got[:16]} but the registry declares {a.digest[:16]}")
+    return ArtifactCheck(artifact=name, path=str(target), present=True, digest=got,
+                         matches=(got == a.digest), gaps=tuple(gaps))
 
 
 def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
