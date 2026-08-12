@@ -334,7 +334,22 @@ def render_simt_runtime(model, *, num_warps: int, worker_body: str, manager_tail
 
     ``worker_body``/``manager_tail`` are the capsule's per-warp computation (target-agnostic C); ``globals`` are
     file-scope declarations (e.g. the output buffer) placed after the include; this function contributes ONLY
-    the derived control scaffold. Fail closed if the runtime ABI lacks the ops/CSRs."""
+    the derived control scaffold. Fail closed if the runtime ABI lacks the ops/CSRs.
+
+    **Work is strided across WARPS, not lanes, and the entry thread-mask op is deliberately absent.** The
+    vendor's own spawned-warp callback (``vx_spawn.c: spawn_tasks_*_cb``) opens with ``vx_tmc(-1)`` to
+    activate every thread and closes with ``vx_tmc_zero()``; this scaffold emits the exit but not the
+    entry. That is not an oversight, and adding the entry op on its own would not be an improvement:
+    the vendor pairs it with a stub that strides work by ``tid`` so each LANE takes a different task,
+    whereas ``worker_body`` here indexes by ``_wid()`` only. Activating all lanes without lane-strided
+    work would make every lane execute the same scalar body and write the same addresses with the same
+    values — redundant stores, not parallelism, on a path where store traffic is already the thing the
+    oracle reads back.
+
+    So the entry op belongs WITH lane-strided emission, as one change, and until then the SIMD width
+    inside a warp is left on the table. That limit is stated in docs/design/target_kernel_anatomy.md
+    under what this arm does not claim; it is repeated here because this is where someone comparing
+    against the vendor runtime would notice the missing call and be tempted to add it alone."""
     tmc, wsp = model.sfu_op("tmc"), model.sfu_op("wspawn")
     wid_csr, wmask_csr = model.special_csr("warp_id"), model.special_csr("warp_mask")
     # the derived .insn control ops (opcode+funct3 from the SFU dispatch); rs1=x0 for the guaranteed park.
