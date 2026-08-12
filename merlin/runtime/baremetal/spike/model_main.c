@@ -17,6 +17,7 @@
 
 void console_init(void);
 void htif_puts(const char *);
+unsigned long long merlin_memref_rank_mismatches(void);
 void htif_putd(long);
 void htif_putc(char);
 void htif_exit(int);
@@ -107,6 +108,14 @@ int main(int hart) {
   htif_putd((long)(uint64_t)MERLIN_CHIP_FREQ_HZ);
   htif_putc('\n');
 #endif
+  /* What the runtime REFUSED to do. memrefCopy declines a copy whose two descriptors disagree on rank,
+     because it cannot be performed and computing through it stores outside any mapping. A refusal is still
+     a wrong answer -- the copy did not happen -- so a run that hit one has to say so, or it grades badly
+     with no reason given. Reported unconditionally: zero is the common case, and a metric that appears only
+     when things break is one nobody knows to look for. */
+  htif_puts("METRIC memref_rank_mismatch ");
+  htif_putd((long)merlin_memref_rank_mismatches());
+  htif_putc('\n');
   htif_puts("DONE\n");
   htif_exit(0);
   return 0;
