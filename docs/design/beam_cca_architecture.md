@@ -66,7 +66,7 @@ facet list from the dataclass so a new facet is never silently skipped).
 maps to a real facet — a ratchet (`FIELD_REGISTRY` classifies each facet.field IDENTITY / LEVER /
 METRIC / BACKEND_STUB; `KNOWN_OPEN` allowlists the not-yet-closed gaps). This is what stops the CCA
 from growing a vocabulary the compiler can't act on, or a lever the search can't reach. Closing an
-orphan (e.g. `compute.reduction_form` this session) means: add the facet inferer, add a default-OFF
+orphan (e.g. `compute.reduction_form`) means: add the facet inferer, add a default-OFF
 feature that emits it, add the route, remove it from `KNOWN_OPEN`.
 
 ## How we analyze other frameworks / expert kernels

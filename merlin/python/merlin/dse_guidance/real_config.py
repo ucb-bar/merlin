@@ -104,8 +104,8 @@ class RealGeometry:
         return int(e * _DTYPE_BYTES[dtype]) if e is not None else None
 
 
-# Deployment geometry. pi05/smolvla extracted from the instantiated model config
-# (this session); openvla LM = published Llama-2-7B (the recapture reduces it to 2
+# Deployment geometry. pi05/smolvla extracted from the instantiated model config;
+# openvla LM = published Llama-2-7B (the recapture reduces it to 2
 # layers / hidden 128 — the deployment magnitude is the composition below).
 REAL_GEOMETRY: dict[str, RealGeometry] = {
     "pi05": RealGeometry(

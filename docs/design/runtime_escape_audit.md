@@ -111,7 +111,7 @@ bug. `build_tools/scripts/k1_escape_cost.py` runs it, holding out the largest si
 gated on `VERIFY PASS`.
 
 **Status: the fit has not yet been run on silicon.** Its build path is exercised, but every board
-attempt during this work sat on the host-wide `flock` behind another agent's session. So the escape
+attempt during this work blocked on the host-wide `flock` held by a concurrent job. So the escape
 matrix above is a *structural* result — read from emitted objects and linked ELFs — and carries no
 board timing of its own. In particular the most actionable item, whether `erase_self_copy` buys real
 int8 GEMM time now that we know it removes the int8 escape, is **open**: the emitted-code change is
