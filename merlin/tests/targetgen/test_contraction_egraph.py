@@ -267,3 +267,95 @@ class TestOnTheRealPreparedModel:
         assert max(seen.values()) > 1, "the model should contain repeated shapes"
         decided = CE.for_rewrite(lambda _op, _sh: True, candidates)
         assert all(decided(sh) for _op, sh in candidates)
+
+
+class TestSaturationGrowsTheGraph:
+    """A RULE derives the second alternative, instead of Python constructing it.
+
+    The difference matters for what a new target capability costs: with the alternative built by hand, adding
+    a second way to compute a contraction is a code change; with a rule, it is a rule. So these tests assert
+    the e-class GREW as a result of applying the pattern -- measured on the output IR, not assumed from what
+    the pass is supposed to do.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _needs_mlir_opt(self):
+        # The PDL to PDL-interp conversion shells out to mlir-opt. Skipping is honest; pretending would
+        # leave the mechanism untested while the suite looked green.
+        import shutil
+        from merlin.llvmlower import toolchain
+        if not toolchain.available():
+            pytest.skip("needs the pinned toolchain (mlir-opt ships beside clang)")
+        from pathlib import Path as _P
+        if not shutil.which(str(_P(toolchain.clang()).with_name("mlir-opt"))):
+            pytest.skip("no mlir-opt beside the pinned clang")
+
+    def test_the_pattern_names_the_callee_it_was_generated_for(self):
+        got = CE.contraction_to_call_pattern("merlin_opu_gemm_i8_3")
+        assert "@merlin_opu_gemm_i8_3" in got
+        assert "pdl.pattern" in got and "pdl.replace" in got
+
+    def test_the_pattern_is_generated_per_symbol_not_shipped_as_one_file(self):
+        # There is one monomorphic symbol per distinct signature, so a static pattern could only name one.
+        a = CE.contraction_to_call_pattern("merlin_opu_gemm_i8_0")
+        b = CE.contraction_to_call_pattern("merlin_opu_gemm_i8_1")
+        assert a != b
+
+    def test_applying_the_rule_grows_the_eclass(self):
+        _mod, (op, _sh) = _one_contraction()
+        module, grown, secs = CE.saturate_contraction(op, symbol=_SYM)
+        assert grown == 2, f"the e-class holds {grown} alternative(s); the rule added none"
+        assert secs > 0
+
+    def test_the_rule_adds_rather_than_replaces(self):
+        # Under eqsat a pdl.replace is an ADDITION to the e-class. If it replaced, the vector path would be
+        # gone and there would be nothing left to decide between.
+        _mod, (op, _sh) = _one_contraction()
+        module, _grown, _s = CE.saturate_contraction(op, symbol=_SYM)
+        got = _text(module)
+        assert "linalg.generic" in got, "the contraction must survive as an alternative"
+        assert f"func.call @{_SYM}" in got, "the rule's call must be present"
+
+    def test_the_source_module_is_left_intact(self):
+        mod, (op, _sh) = _one_contraction()
+        CE.saturate_contraction(op, symbol=_SYM)
+        assert len(PO.routable_contractions(mod)) == 1
+
+    def test_it_saturates_the_real_models_contractions(self):
+        from merlin.common.paths import artifacts_dir
+        from merlin.frontends.linalg_mlir import parse_mlir_file
+        p = (Path(artifacts_dir()) / "target-evolution/saturn_opu/v1/latest/prepared"
+             / "spectformer_int8_full/model.prepared.mlir")
+        if not p.is_file():
+            pytest.skip(f"no prepared module at {p}")
+        cands = PO.routable_contractions(parse_mlir_file(p))
+        # A sample rather than all 90: each saturation shells out to mlir-opt, and the property under test
+        # is that real IR saturates at all, which one of each distinct signature establishes.
+        seen: set[tuple] = set()
+        checked = 0
+        for op, sh in cands:
+            key = (sh.parallel[0], sh.parallel[1], sh.reduction[0])
+            if key in seen:
+                continue
+            seen.add(key)
+            _module, grown, _s = CE.saturate_contraction(op, symbol=_SYM)
+            assert grown == 2, (key, grown)
+            checked += 1
+        assert checked >= 5, f"only {checked} distinct signature(s) exercised"
+
+    def test_the_rule_cannot_express_legality_and_says_so(self):
+        # THE caveat. PDL matches by op name, operand and result types; it cannot say "(i8, i8, i32)",
+        # "parallel, parallel, reduction" or "the init is a zero fill". So the pattern matches EVERY
+        # linalg.generic, legality stays in routable_contractions, and saturation must only ever run on a
+        # region built from a contraction already known legal. If this text stops warning about it, someone
+        # has made the rule look safer than it is.
+        got = CE.contraction_to_call_pattern(_SYM)
+        assert "cannot express legality" in got
+        assert 'pdl.operation "linalg.generic"' in got
+
+    def test_a_missing_mlir_opt_is_an_actionable_error(self, monkeypatch):
+        import merlin.targetgen.contraction_egraph as mod
+        monkeypatch.setenv(mod._MLIR_OPT_ENV, "/nonexistent/mlir-opt")
+        monkeypatch.setattr("merlin.llvmlower.toolchain.available", lambda: False)
+        with pytest.raises(FileNotFoundError, match="mlir-opt"):
+            mod._resolve_mlir_opt()

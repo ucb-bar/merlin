@@ -154,9 +154,18 @@ class TestTheHypothesesStayHonest:
     def test_h_eq1_is_not_claimed_as_established(self):
         assert PE.hypothesis_status("H-EQ1") == "not_established"
 
-    def test_h_eq2_is_not_claimed_as_exercised(self):
-        # No rewrite rules are applied, so there is nothing to re-saturate.
-        assert PE.hypothesis_status("H-EQ2") == "not_exercised"
+    def test_h_eq2_is_not_claimed_as_established(self):
+        # It was "not_exercised" while no rewrite rules existed. Saturation now RUNS -- a PDL rule grows a
+        # real contraction's e-class from one alternative to two (contraction_egraph.saturate_contraction)
+        # -- so that wording became false and had to change. The CLAIM is still not established, because it
+        # is about INCREMENTAL re-saturation and nothing re-saturates a parent graph against a delta.
+        assert PE.hypothesis_status("H-EQ2") == "not_established"
+
+    def test_h_eq2_still_says_what_is_missing(self):
+        # A status change must not quietly drop the reason: the gap is the incremental comparison, and a
+        # reader has to be able to see that saturation running is not the same as the claim holding.
+        why = PE.HYPOTHESES["H-EQ2"]["why"]
+        assert "incremental" in why.lower()
 
     @pytest.mark.parametrize("name", ["H-EQ1", "H-EQ2"])
     def test_neither_hypothesis_reads_as_a_result(self, name):

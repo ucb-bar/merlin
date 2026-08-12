@@ -67,10 +67,15 @@ HYPOTHESES: dict[str, dict[str, Any]] = {
     },
     "H-EQ2": {
         "claim": "saturate(E_parent, delta) is equivalent to saturate(program, parent | delta)",
-        "status": "not_exercised",
-        "why": ("saturation requires rewrite rules; none are applied here, so there is nothing to "
-                "re-saturate and no incremental-vs-scratch comparison to make. The source paper is "
-                "silent on incremental re-saturation, so this cannot be inherited as a result either"),
+        "status": "not_established",
+        "why": ("SATURATION NOW RUNS. `contraction_egraph.saturate_contraction` applies a PDL rule "
+                "('a rank-2 int8 contraction is also computable by the microkernel') through "
+                "apply-eqsat-pdl, and the e-class grows from one alternative to two with the second "
+                "created by the rule — measured on the real prepared model, one per distinct signature. "
+                "So the earlier 'not_exercised' no longer holds. The CLAIM is still not established: it is "
+                "about INCREMENTAL re-saturation, and nothing here re-saturates a parent graph against a "
+                "delta, so there is no incremental-vs-scratch comparison. The source paper is silent on "
+                "incremental re-saturation, so it cannot be inherited either"),
     },
 }
 
