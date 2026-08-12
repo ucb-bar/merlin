@@ -197,11 +197,19 @@ def test_harness():
                        cwd=str(REPO), capture_output=True, text=True)
     out = r.stdout
     n_runs = out.count("run-id=")
-    has_nk = "nokernel" in out and "_nk_" in out
-    has_kern = "_hwbringup_v0" in out
-    _ok("launch_ab_batch dry-run = 18 runs, both conditions, fresh ids",
-        r.returncode == 0 and n_runs == 18 and has_nk and has_kern,
-        f"n_runs={n_runs}, nokernel={has_nk}, kernels={has_kern}")
+    # Expected matrix is DERIVED, not the hardcoded gemmini 18/nokernel: the A/B design arms × the
+    # target's OWN hw-bringup conditions (experiment_conditions() — {hwbringup_v0} for a no-nokernel
+    # target like radiance/atlas, {hwbringup_v0, hwbringup_nokernel_v0} for gemmini) × --repeats. So a
+    # target with a single-condition ladder gets a correct GO instead of a spurious NO-GO.
+    conds = C.experiment_conditions()
+    ab_arms = ("raw_baseline", "merlin_assisted", "merlin_assisted_rtlchecks")  # the A/B design arms
+    repeats = 3
+    expected_runs = len(ab_arms) * len(conds) * repeats
+    conds_present = all(c in out for c in conds)
+    _ok("launch_ab_batch dry-run = expected arm×condition×repeat matrix, fresh ids",
+        r.returncode == 0 and n_runs == expected_runs and conds_present,
+        f"n_runs={n_runs} (expected {expected_runs}={len(ab_arms)}arm×{len(conds)}cond×{repeats}), "
+        f"conditions={conds}, all_present={conds_present}")
     r2 = subprocess.run([PY, str(SCRIPTS / "agg_ab_results.py"), "--tag", "abc4"],
                         cwd=str(REPO), capture_output=True, text=True)
     _ok("agg_ab_results runs", r2.returncode == 0, (r2.stdout.strip().splitlines() or [""])[0][:70])
