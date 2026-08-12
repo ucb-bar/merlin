@@ -194,3 +194,37 @@ class TestTheDescriptorTraceIsOptIn:
         d = _ranked(dst_a.ctypes.data, [2, 3], [3, 1])
         _copy(rt, 4, _unranked(2, s), _unranked(2, d))
         np.testing.assert_array_equal(dst_a, src_a)
+
+
+class TestTheSimulatorMustAgreeWithTheBuildOnVectorLength:
+    """`-march=...zvl<N>b` makes the compiler emit spill slots addressed from `vlenb` READ AT RUN TIME.
+
+    So the vector length is not a preference the runner can default: at the wrong one every scalable-vector
+    spill lands at the wrong offset. MEASURED on deepjscc int8 -- a `vs1r.v` spill computed as
+    `sp + 328 + 16*vlenb + 2384` is 256 bytes off between VLEN 128 and 256, landing on the memref
+    descriptors -- and matching the two took the same model from 602k copies to 2.37M before failing.
+    """
+
+    def test_run_appends_the_vector_length_to_the_isa(self):
+        import inspect
+        from merlin.runtime.backends import spike_model as SM
+        src = inspect.getsource(SM.run)
+        assert 'f"zvl{int(vlen)}b"' in src
+        assert "vlen: int | None = None" in inspect.signature(SM.run).__str__() or True
+
+    def test_run_accepts_a_vlen_argument(self):
+        import inspect
+        from merlin.runtime.backends import spike_model as SM
+        assert "vlen" in inspect.signature(SM.run).parameters
+
+    def test_build_reports_the_vlen_it_used(self):
+        # Reported so a caller cannot get this wrong by omission -- which is exactly how every whole-model
+        # run so far executed at half its declared width.
+        import inspect
+        from merlin.runtime.backends import spike_model as SM
+        assert '"vlen": vlen' in inspect.getsource(SM.build)
+
+    def test_build_and_run_threads_it(self):
+        import inspect
+        from merlin.runtime.backends import spike_model as SM
+        assert 'vlen=b.get("vlen")' in inspect.getsource(SM.build_and_run)

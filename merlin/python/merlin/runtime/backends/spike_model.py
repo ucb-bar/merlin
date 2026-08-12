@@ -274,6 +274,9 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
           "-T", h / "model_link.ld", *objs, "-lm", "-o", elf])
     return {"elf": elf, "mem_bytes": lay["mem_bytes"], "build_hash": build_hash,
             "arena_base": lay["arena_base"], "weights_base": lay["weights_base"],
+            # Reported so `run` can be given it. A run at a different vector length than the build
+            # mis-places every scalable-vector spill slot; see run()'s docstring.
+            "vlen": vlen,
             "console": console, "chip_freq_hz": chip_freq_hz,
             "console_provenance": dict(console_facts.provenance) if console_facts else {},
             # The matrix build carries the hardware revision its instructions were derived from, so a
@@ -282,11 +285,28 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
 
 
 def run(elf: str | Path, harts: int = 1, mem_bytes: int = 1 << 30,
-        isa: str = "rv64gcv_zfh_zvfh", timeout: int = 3600) -> dict[str, Any]:
+        isa: str = "rv64gcv_zfh_zvfh", timeout: int = 3600,
+        vlen: int | None = None) -> dict[str, Any]:
     """Run the ELF on spike; parse the HTIF output. Returns {outputs, metrics, console}.
 
     ``mem_bytes`` must cover 0x80000000 .. weights_base + weights size (use the value
-    returned by :func:`build`)."""
+    returned by :func:`build`).
+
+    ``vlen`` MUST match the vector length the image was BUILT for, and this is not a preference.
+    ``-march=...zvl<N>b`` makes the compiler emit scalable-vector spill slots whose addresses are computed
+    from ``vlenb`` READ AT RUN TIME (`csrr a1, vlenb` then a shift and an add). If the simulator reports a
+    different ``vlenb``, every such slot lands at the wrong offset -- MEASURED on deepjscc int8: a
+    ``vs1r.v`` spill computed as ``sp + 328 + 16*vlenb + 2384`` is 256 bytes off between VLEN 128 and 256,
+    and at the wrong length it writes over the memref descriptors sitting nearby.
+    The bare ``rv64gcv`` in the default ISA string is VLEN=128, so an image built with ``vlen=256`` and run
+    without this argument was silently running at half the declared width; matching them took the same
+    model 602k copies further to 2.37M. Pass the ``vlen`` you passed to :func:`build`, or read it back from
+    that call's result.
+    """
+    if vlen is not None:
+        want = f"zvl{int(vlen)}b"
+        if want not in isa:
+            isa = f"{isa}_{want}"
     cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}",
            f"-m{hex(DRAM_BASE)}:{hex(mem_bytes)}", str(elf)]
     proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
@@ -329,7 +349,10 @@ def build_and_run(model_dir: str | Path, work: str | Path, *, harts: int = 1,
     plus ``rel``/``cos``/``ok`` vs the reference. spike memory is sized automatically."""
     b = build(model_dir, work, arena_mb=arena_mb)
     elf = b["elf"]
-    result = run(elf, harts=harts, mem_bytes=mem_bytes or b["mem_bytes"], timeout=timeout)
+    # The vlen the build used, threaded through so the two cannot disagree. A run at a different vector
+    # length mis-places every scalable-vector spill slot; see run()'s docstring.
+    result = run(elf, harts=harts, mem_bytes=mem_bytes or b["mem_bytes"], timeout=timeout,
+                 vlen=b.get("vlen"))
     if reference is not None:
         ref = np.asarray(reference, dtype=np.float32).ravel()
         pref = result["prefix"]
