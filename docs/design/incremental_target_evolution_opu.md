@@ -447,7 +447,7 @@ back-edge was compressed.
 | L0 | contract legality | capability contract |
 | L1 | compiles | clang-23 |
 | L2 | emitted-code audit | `kernels/decode/opu.py` (structural, derived opcodes) |
-| L3 | microkernel numerics, frozen shape corpus | **OPU Verilator RTL — PASSED 31/31** (§8c.2) |
+| L3 | microkernel numerics, frozen shape corpus | **OPU Verilator RTL — PASSED 31/31** (§8c.2), + 1 of 5 workload shapes (§5.2) |
 | L4 | single-dispatch numerics incl. epilogue | **OPU Verilator RTL — PASSED 6/6** (§5.2) |
 | L5 | whole-model numerics | **blocked — not by the unit** (§5.3) |
 | L6 | whole-model cycles | needs the bitstream of §5.1; L5 first |
@@ -497,17 +497,36 @@ two buffers and hashes the result with byte-wise `fnv1a64`. All three scale with
 unit. For `workload_ffn_up` (196×1024, 200,704 outputs) that is ~6.4M scalar MAC iterations and 800 KB hashed
 against the OPU kernel's ~204k cycles: **the measurement subject is under 4% of the runtime.**
 
-Measured on `OPUV256D128ShuttleConfig` Verilator: **~90 cycles/s**. The 31 small cases complete in 13 h; the
-five workload cases are **21.9× more work**, i.e. **~12 days**. That ratio makes the estimate assumption-free
-— ETA = elapsed × (remaining work ÷ done work), independent of any cycles-per-MAC guess. `screen_only` (drop
-the in-image reference) only reduces it to ~34 h, because the hashing and zeroing remain. The same corpus on
-**FireSim at 25 MHz is ~4 seconds**.
+The scale is now **measured, not inferred**. `workload_classifier` (1×1000, K=32) certifies in **501 s** of
+Verilator wall time for its 32,000 reference-loop MAC iterations — **63.9 iterations/s**. Against that
+calibration the remaining four workload cases (14.45M iterations) need **~63 h ≈ 2.6 days**, and
+`workload_ffn_up` alone needs **~28 h**. The same set on **FireSim at 25 MHz is ~4 seconds**. `screen_only`
+(drop the in-image reference) removes the dominant term but not the problem, because the hashing and zeroing
+are output-proportional too.
 
-So the split is not a preference, it is arithmetic: `workload_classifier` (1×1000, 1,000 outputs, ~46 min) is
-the only workload-scale case Verilator can certify, and the other four require the bitstream. A corollary for
-triaging any such run: the driver captures the image's stdout, so **an empty log is not a hang** — dividing
-`/proc/<pid>/io`'s `wchar` by the image's exact per-case `CASE`/`CYCLES` line length locates the running case
-index precisely, which is how the 13 h run was identified as sitting in case 31 of 36 rather than stuck.
+That calibration also corrects an earlier estimate of ~12 days, and the way it was wrong is worth keeping.
+The first estimate scaled 13 h of observed runtime by the ratio of remaining-to-done reference MACs, assuming
+the 13 h had bought the 31 small cases. It had not: the small cases account for only **~2.9 h**, so ~10 h had
+already gone into case 31 — the run was **36% through `workload_ffn_up`**, not finished with the cheap work.
+Taking "done" to mean "last thing printed" understated the denominator by 4.5×. The decision it drove was
+unchanged (2.6 days against 4 seconds), but a ratio is only assumption-free when *both* of its terms are
+measured.
+
+So the split is arithmetic rather than preference: `workload_classifier` is the only workload-scale case
+Verilator can certify, and the other four require the bitstream. A corollary for triaging any such run: the
+driver captures the image's stdout, so **an empty log is not a hang** — dividing `/proc/<pid>/io`'s `wchar` by
+the image's exact per-case `CASE`/`CYCLES` line length locates the running case index precisely, which is what
+identified case 31 of 36.
+
+**The result itself, and the cost model's first out-of-sample test.** `workload_classifier` is bit-exact
+against *both* the in-image scalar reference and the host digest (`mismatches=0`, `uses_unit=True`, 3×OPMACC /
+2×OPMVINBCAST / 1×OPMVOUT), at **7,683 cycles and 4.17 MACs/cycle** on `OPUV256D128ShuttleConfig`, landed at
+`out/artifacts/measurements/baremetal_OPUV256D128ShuttleConfig/opu_microkernel/workload_shape_classifier_v1_*`.
+The cost model of §5.2 was fitted on six small requant cases; applied to this shape it predicts
+90.2 + 5.78×1024 + 19.83×32 = **6,643 cycles** against 7,683 measured — **13.5% under**, in line with its
+stated 14.1% worst error and on a shape 30× larger than anything in its fitting set. Note it is the row-serial
+readout term that makes this work: M=1 charges 32 readouts (one per column tile), not a tile's worth, which is
+exactly the correction the tile-occupancy model lacked.
 
 ### 5.3 What blocks L5, and it is not the unit
 
