@@ -65,8 +65,17 @@ units:
     # Where the elaborated configurations are declared, and the mixin whose POSITIONAL arguments carry the
     # geometry. Binding by the mixin's own declared parameter names is what stops (vLen, dLen) being read
     # in the wrong order — a reversal that would give a plausible tile edge and a wrong alignment.
+    #
+    # TWO places, because a unit's configurations do not all live in one file. `config_scala` is the
+    # extension's OWN generator, which declares the standalone configs (one core, the unit, nothing else).
+    # `host_config_scala` is the integrating SoC's repo, which declares the heterogeneous ones that put the
+    # unit on one tile beside something else — and those are the configs real bitstreams tend to be built
+    # from, so leaving them out would mean the compiler could not target hardware that already exists.
     configs:
-      config_scala: chipyard/OPUConfigs.scala
+      config_scala:                     # relative to `path` (the unit's own checkout)
+        - chipyard/OPUConfigs.scala
+      host_config_scala:                # relative to `root_env` (the integrating SoC's root)
+        - generators/chipyard/src/main/scala/config/HeteroConfigs.scala
       mixin_scala:
         - src/main/scala/shuttle/Configs.scala
         - src/main/scala/rocket/Configs.scala

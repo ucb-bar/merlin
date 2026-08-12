@@ -306,6 +306,21 @@ class OPUV512D256RocketConfig extends Config(
 
 class NoVectorConfig extends Config(
   new chipyard.config.AbstractConfig)
+
+// A HETEROGENEOUS config, as an integrating SoC writes it: NAMED arguments, out of declaration order,
+// mixed with a non-scalar one. Real bitstreams are built from configs shaped like this.
+class GemminiAndOPUShuttleConfig extends Config(
+  new saturn.shuttle.WithShuttleVectorUnit(
+    dLen = 64,
+    vLen = 128,
+    params = saturn.common.VectorParams.opuParams,
+    cores = Some(Seq(1))) ++
+  new chipyard.config.AbstractConfig)
+
+// Named AFTER positional, which Scala allows and which must not shift the positional binding.
+class MixedFormConfig extends Config(
+  new saturn.shuttle.WithShuttleVectorUnit(512, dLen = 256, params = VectorParams.opuParams) ++
+  new chipyard.config.AbstractConfig)
 """
 
 _MIXINS = """
@@ -328,6 +343,18 @@ class TestVectorUnitParams:
     def test_the_declared_parameter_names_bind_the_positional_arguments(self):
         got = OI.vector_unit_params(_CONFIGS, "OPUV256D128ShuttleConfig", mixin_text=_MIXINS)
         assert got == {"vLen": 256, "dLen": 128}
+
+    def test_named_arguments_bind_by_their_own_name(self):
+        # An integrating SoC writes the mixin with named arguments, and reading only the positional form
+        # returned NOTHING -- so a config a real bitstream was built from looked ungroundable.
+        got = OI.vector_unit_params(_CONFIGS, "GemminiAndOPUShuttleConfig", mixin_text=_MIXINS)
+        assert got == {"vLen": 128, "dLen": 64}
+
+    def test_a_named_argument_does_not_consume_a_positional_slot(self):
+        # The trap: if `dLen = 256` were counted as position 1, the following `params` would bind to
+        # `cores` and any later integer would land under the wrong name -- a plausible, wrong geometry.
+        got = OI.vector_unit_params(_CONFIGS, "MixedFormConfig", mixin_text=_MIXINS)
+        assert got == {"vLen": 512, "dLen": 256}
 
     def test_the_order_comes_from_the_mixin_not_from_a_convention(self):
         # Swap the declaration and the same call site must bind the other way round. If this passed

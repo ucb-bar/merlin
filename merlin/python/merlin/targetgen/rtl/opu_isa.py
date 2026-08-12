@@ -159,6 +159,13 @@ def vector_unit_params(config_text: str, config_class: str, *,
     declaration (``mixin_text``), which is why ``vLen`` comes back under that name instead of as
     "argument 0".
 
+    NAMED arguments are bound by their own name, and they do not consume a positional slot. Scala allows
+    both forms and mixes them freely, and real configs use both: the extension's own generator writes
+    ``WithShuttleVectorUnit(256, 128, params)`` while an integrating SoC writes
+    ``WithShuttleVectorUnit(vLen = 128, dLen = 64, params = ..., cores = Some(Seq(1)))``. Reading only the
+    positional form returned nothing at all for the second, which is how a config that a real bitstream was
+    built from looked ungroundable.
+
     Returns only what it could ground. An empty result means the caller must record UNKNOWN and stop --
     every consumer of this needs a number that is *right*, and a defaulted vector length produces a
     plausible, wrong tile edge.
@@ -181,14 +188,22 @@ def vector_unit_params(config_text: str, config_class: str, *,
         return {}
     names = scala_param_names(mixin_text, f"class {callee}") if mixin_text else []
     out: dict[str, int] = {}
-    for i, arg in enumerate(args):
-        token = arg.removesuffix(".U").strip()
+    position = 0                          # only POSITIONAL arguments advance this
+    for arg in args:
+        name, sep, rhs = arg.partition("=")
+        if sep and name.strip().isidentifier():
+            # A named argument. `Some(Seq(1))` and the like fail the int parse below and are skipped, as
+            # they are for positional args -- what matters is that a named one never claims a slot.
+            key, token = name.strip(), rhs.strip()
+        else:
+            key = names[position] if position < len(names) else None
+            token, position = arg.strip(), position + 1
         try:
-            value = int(token, 0)
+            value = int(token.removesuffix(".U").strip(), 0)
         except ValueError:
             continue                      # a params object or an Option, not a scalar we can bind
-        if i < len(names):
-            out[names[i]] = value
+        if key:
+            out[key] = value
     return out
 
 

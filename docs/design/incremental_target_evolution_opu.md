@@ -454,6 +454,40 @@ RTL sims for `OPUV256D128ShuttleConfig`, `OPUV128D64ShuttleConfig`, `OPUMXV256D1
 RTL execution is a parameter away rather than new code. Caveat: in that checkout the OPU config source
 is a `.bak` file, so the binaries exist but are not currently rebuildable there.
 
+### 5.1 No bitstream needs building — one already carries the unit
+
+The plan for L6 assumed a new FireSim build for a wider OPU. It does not need one. **Two OPU bitstreams
+are already built and registered** in `config_hwdb.yaml`, and both tarballs are present on disk:
+
+| hwdb entry | config | geometry | built |
+| --- | --- | --- | --- |
+| `alveo_u250_firesim_shuttle_gemmini_opu` | `FireSimGemminiAndOPUShuttleConfig` → `GemminiAndOPUShuttleConfig` | vLen 128 / dLen 64 → **edge 16, align 8** | 2026-05-06, 57 MB |
+| `alveo_u250_firesim-opu-v128-d64-shuttle` | `FireSimOPUV128D64ShuttleConfig` | vLen 128 / dLen 64 → edge 16, align 8 | 2026-03-20, 112 MB |
+
+Targeting the first is now a config string, because every geometry fact is derived from that config's own
+declaration. Two things had to be fixed for that to be true, and both were real gaps rather than plumbing:
+
+- **A unit's configurations live in two repos.** The extension's own generator declares the standalone
+  configs (one core, the unit, nothing else); the *integrating SoC* declares the heterogeneous ones that put
+  the unit on one tile beside something else — and heterogeneous is what real bitstreams are built from. The
+  contract now names both sites (`config_scala` / `host_config_scala`), so the compiler can target hardware
+  that already exists instead of only hardware described by the generator.
+- **Named Scala arguments were invisible.** `vector_unit_params` bound only positional arguments, so
+  `WithShuttleVectorUnit(vLen = 128, dLen = 64, params = …, cores = Some(Seq(1)))` — exactly how the
+  integrating SoC writes it — returned *nothing at all*, and the config a shipped bitstream was elaborated
+  from looked ungroundable. Named arguments now bind by their own name and do not consume a positional slot;
+  the second half matters because counting one would shift every later argument onto the wrong name and
+  yield a plausible, wrong geometry.
+
+The consequence for the ladder: **L6 is gated on execution, not on synthesis.** The frozen corpus already
+covers edge 16 (the `tile`-relative cases resolve against it), so Phase C needs no new hardware either. The
+`FireSimOPUV128D64ShuttleConfig` entry is a reproducibility caveat rather than a blocker — that class no
+longer exists in the checkout's source, so its bitstream can be *used* but not *rebuilt*; prefer the
+`GemminiAndOPUShuttleConfig` one, whose config is still in `TargetConfigs.scala`.
+
+A **Kodiak-exact** bitstream is a separate question and still deferred (§9): Kodiak's config uses
+`genParams`, i.e. `useOpu = false`, so it has no OPU to target at all.
+
 **The honest bound.** Verilator is ~10⁴ cycles/s and deepjscc is ~4.6×10⁸ cycles, so L5 and L6 are not
 reachable with it, and (per §1.4) there is no functional simulator to stand in. Therefore:
 

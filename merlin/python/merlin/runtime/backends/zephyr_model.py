@@ -386,15 +386,14 @@ class MatrixRouting:
     select: "Callable[[Any], bool] | None" = None
 
     def tile_edge(self) -> int:
-        """The edge, read from this configuration's own declaration."""
-        from ...kernels import opu_cert
+        """The edge, read from this configuration's own declaration.
+
+        Through the contract's own accessor rather than re-resolving the paths here: this used to rebuild
+        them, which meant two places had to agree about where a unit's configs live -- and when the contract
+        grew a second declaration site they stopped agreeing.
+        """
         from ...llvmlower import opu_shim
-        contract = opu_shim.load_contract(self.unit)
-        return opu_cert.tile_edge_for_config(
-            self.config,
-            config_scala=contract.checkout() / str(contract.configs["config_scala"]),
-            mixin_scala=[contract.checkout() / str(m)
-                         for m in contract.configs.get("mixin_scala", ())])
+        return opu_shim.load_contract(self.unit).geometry(self.config)[0]
 
     def selector(self) -> "Callable[[Any], bool]":
         from ...llvmlower.passes_opu import tile_filling_selector

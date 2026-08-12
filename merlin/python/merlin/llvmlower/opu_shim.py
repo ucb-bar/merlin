@@ -338,6 +338,38 @@ class UnitContract:
             raise KeyError(f"{self.unit!r} declares no {name!r} source in {CONTRACT_PATH}")
         return self.checkout() / rel
 
+    def root(self) -> Path:
+        """The integrating SoC's root, which is where its own configs live."""
+        from ..common.paths import env as _env
+        got = _env(self.root_env)
+        if not got:
+            raise FileNotFoundError(f"${self.root_env} is unset, so {self.unit!r} cannot be located")
+        return Path(got)
+
+    def config_scala(self) -> list[Path]:
+        """Every file that may declare a named configuration of this unit.
+
+        Both the unit's own generator and the integrating SoC's repo, because a heterogeneous config -- the
+        unit on one tile beside something else -- is declared by the SoC, and those are the configs real
+        bitstreams tend to be built from. Missing files are dropped rather than raising: a contract may name
+        a config location that a given checkout does not have, and the failure that matters is "the named
+        config was not found in any of them", which the geometry derivation already reports.
+        """
+        out = [self.checkout() / str(p) for p in self.configs.get("config_scala", ())]
+        out += [self.root() / str(p) for p in self.configs.get("host_config_scala", ())]
+        return [p for p in out if p.is_file()]
+
+    def mixin_scala(self) -> list[Path]:
+        return [p for p in (self.checkout() / str(m)
+                            for m in self.configs.get("mixin_scala", ())) if p.is_file()]
+
+    def geometry(self, config: str) -> tuple[int, int]:
+        """``(tile_edge, operand_alignment_bytes)`` for a named configuration, derived from its own Scala."""
+        from ..kernels import opu_cert
+        cfgs, mixins = self.config_scala(), self.mixin_scala()
+        return (opu_cert.tile_edge_for_config(config, config_scala=cfgs, mixin_scala=mixins),
+                opu_cert.operand_alignment_for_config(config, config_scala=cfgs, mixin_scala=mixins))
+
     def spec(self, **overrides) -> KernelSpec:
         """The kernel spec for this unit, with the instruction roles taken from the contract."""
         roles = {k: self.kernel_roles[k] for k in ("accumulate", "broadcast", "readout")}
@@ -440,13 +472,15 @@ def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Pa
 
     # What revision is this a result about? Verified, never enforced by moving someone's checkout.
     from ..common import provenance as PROV
-    from ..kernels import opu_cert
     gaps: list[str] = []
     # `reads` is exactly the contract's declared sources plus the config declarations, so an uncommitted
     # edit to one of THOSE is drift while a stray build log elsewhere in the tree is a note. Passing the
     # precise set rather than letting it default to the pin's requires_paths is what makes the answer about
     # this build instead of about the checkout in general.
-    reads = [*contract.sources.values(), str(contract.configs["config_scala"]),
+    # Only the paths inside the PINNED checkout are checked against the pin: `host_config_scala` lives in
+    # the integrating SoC's repo, which this pin does not describe and cannot speak for.
+    reads = [*contract.sources.values(),
+             *(str(c) for c in contract.configs.get("config_scala", ())),
              *(str(m) for m in contract.configs.get("mixin_scala", ()))]
     verification = PROV.verify(contract.pin, checkout=contract.checkout(), reads=reads)
     if not verification.ok:
@@ -465,13 +499,7 @@ def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Pa
             "from an unresolved encoding, because a wrong field emits a neighbouring instruction rather "
             "than failing to assemble")
 
-    cfg = contract.configs
-    config_scala = contract.checkout() / str(cfg["config_scala"])
-    mixin_scala = [contract.checkout() / str(m) for m in cfg.get("mixin_scala", ())]
-    tile_edge = opu_cert.tile_edge_for_config(config, config_scala=config_scala,
-                                              mixin_scala=mixin_scala)
-    alignment = opu_cert.operand_alignment_for_config(config, config_scala=config_scala,
-                                                      mixin_scala=mixin_scala)
+    tile_edge, alignment = contract.geometry(config)
 
     unit_src = emit_translation_unit(derived.encodings, signatures, spec=contract.spec(),
                                      alignment_bytes=alignment, derivation_ok=derived.ok,

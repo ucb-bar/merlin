@@ -455,3 +455,51 @@ class TestBuildingAgainstTheRealCheckout:
         assert got.scalar_tile and got.tile_edge == 32
         # A report must never confuse the stand-in with the datapath.
         assert got.to_dict()["scalar_tile"] is True
+
+
+class TestConfigsLiveInMoreThanOnePlace:
+    """A unit's configurations are declared in two repos, and the second one is where bitstreams come from.
+
+    The extension's own generator declares the standalone configs; the integrating SoC declares the
+    heterogeneous ones that put the unit on one tile beside something else. Only reading the first meant the
+    compiler could not target hardware that already exists.
+    """
+
+    @pytest.fixture
+    def contract(self):
+        from merlin.common.paths import env as _env
+        from merlin.llvmlower.opu_shim import load_contract
+        if not _env("MERLIN_CHIPYARD"):
+            pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
+        return load_contract("saturn_opu")
+
+    def test_both_declaration_sites_are_searched(self, contract):
+        found = contract.config_scala()
+        assert len(found) >= 2, f"expected the unit's own and the host SoC's config files, got {found}"
+        assert all(p.is_file() for p in found)
+
+    def test_a_standalone_config_derives_its_geometry(self, contract):
+        assert contract.geometry("OPUV256D128ShuttleConfig") == (32, 16)
+
+    def test_a_heterogeneous_config_derives_its_geometry(self, contract):
+        # This is the config the already-built FireSim bitstream was elaborated from, so being unable to
+        # ground it meant being unable to target real hardware. vLen=128/dLen=64 -> edge 16, align 8.
+        assert contract.geometry("GemminiAndOPUShuttleConfig") == (16, 8)
+
+    def test_the_shim_builds_for_the_existing_bitstreams_geometry(self, contract, tmp_path):
+        from merlin.llvmlower import opu_shim as S, toolchain
+        if not toolchain.available():
+            pytest.skip("needs the pinned clang")
+        got = S.build_object({"merlin_opu_gemm_i8_0": (196, 1024, 256)}, tmp_path,
+                             unit="saturn_opu", config="GemminiAndOPUShuttleConfig",
+                             cc=toolchain.clang(),
+                             cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv",
+                                     "-mabi=lp64d", "-O2", "-Wall", "-Werror"])
+        assert (got.tile_edge, got.alignment_bytes) == (16, 8)
+        assert got.object_path.is_file()
+
+    def test_a_config_no_file_declares_is_refused_rather_than_defaulted(self, contract):
+        # A defaulted vector length gives a plausible tile edge and a certification that claims shapes it
+        # never ran.
+        with pytest.raises(ValueError, match="could not derive a vector length"):
+            contract.geometry("NoSuchOPUConfig")
