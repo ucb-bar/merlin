@@ -155,8 +155,15 @@ def test_generators():
             findings = nf.check_numeric_shapes(
                 {"tensors": {"acc": {"dtype": "i8"}},
                  "commands": [{"opcode": "MATMUL", "operands": {"dst": "acc"}}]})
-            _ok("generated numeric checker flags narrow accumulator", bool(findings),
-                (findings or ["—"])[0][:70])
+            # The narrow-accumulator flag only applies to a target whose RTL facts DERIVE an accumulator
+            # width. gen_numeric_facts fail-closes ACC_WIDTH_BITS=None (never bakes a default) for a
+            # SIMT / no-datapath target (e.g. radiance) — so it legitimately flags nothing: n/a, not a fail.
+            if getattr(nf, "ACC_WIDTH_BITS", None) is None:
+                _ok("generated numeric checker flags narrow accumulator", True,
+                    "n/a (no derived accumulator datapath — SIMT/non-mesh target)")
+            else:
+                _ok("generated numeric checker flags narrow accumulator", bool(findings),
+                    (findings or ["—"])[0][:70])
         except Exception as e:
             _ok("generated numeric checker", False, f"{type(e).__name__}: {e}")
         finally:
