@@ -242,7 +242,7 @@ def test_real_fp32_capsule_grades_forkfree_against_its_golden(tmp_path):
     import numpy as np
     from merlin.common.paths import repo_root
     from merlin.targetgen.rtl import mlc_bridge
-    from merlin.runtime.backends import muon_harness as MH
+    from merlin.runtime import selfcontained_c_harness as MH
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
         pytest.skip("stock LLVM / derived fact / cyclotron not all available")
     gfile = repo_root() / "merlin/contract/capsules/radiance/isa/R0_gemm_fp32/golden.yaml"

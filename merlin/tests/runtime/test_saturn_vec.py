@@ -45,7 +45,7 @@ def test_vector_cb_is_not_matmul_shaped():
 
 # --- RVV codegen + oracle ---
 from merlin.runtime.backends import saturn_vec  # noqa: E402
-from merlin.runtime.backends.saturn_vec_codegen import generate_driver  # noqa: E402
+from merlin.runtime.backends.rvv_vec_codegen import generate_driver  # noqa: E402
 
 
 def test_vector_codegen_emits_rvv():
@@ -70,7 +70,7 @@ def test_vector_spike_rv64gcv_cert(rung, tmp_path):
 # --- MLIR-FAITHFUL path: compute expressed in MLIR, lowered by merlin's compiler (no C kernel) ---
 def test_vector_mlir_emitter_is_linalg_not_c():
     """The merlin-faithful emitter produces MLIR (linalg), not C."""
-    from merlin.runtime.backends.saturn_vec_mlir import emit_mlir
+    from merlin.runtime.backends.rvv_vec_mlir import emit_mlir
     text, inputs, out = emit_mlir(build("VEC2"))
     assert "linalg.generic" in text and "func.func @forward" in text
     assert 'iterator_types = ["reduction"]' in text  # the reduce expressed in MLIR
@@ -97,7 +97,7 @@ except Exception:  # pragma: no cover
 @pytest.mark.parametrize("rung", sorted(RUNGS))
 def test_vector_mlir_host_cert(rung, tmp_path):
     """Vector compute lowered through merlin's real MLIR→LLVM compiler is bit-exact on host."""
-    from merlin.runtime.backends import saturn_vec_mlir as vm
+    from merlin.runtime.backends import rvv_vec_mlir as vm
     res = vm.run_host(build(rung), workdir=tmp_path)
     assert res["correct"] is True
     assert res["oracle"]["kind"] == "merlin_mlir_host"
@@ -108,7 +108,7 @@ def test_vector_mlir_host_cert(rung, tmp_path):
 @pytest.mark.parametrize("rung,expect", [("VEC0", "vadd.vv"), ("VEC2", "vredsum")])
 def test_vector_native_rvv_emitted(rung, expect, tmp_path):
     """The elementwise/reduction transform schedule emits REAL RVV (incl. vectorized reduction)."""
-    from merlin.runtime.backends import saturn_vec_mlir as vm
+    from merlin.runtime.backends import rvv_vec_mlir as vm
     r = vm.lower_rvv(build(rung), workdir=tmp_path)
     assert r["has_rvv"], f"no RVV vector ops in {rung}"
     assert "vsetivli" in r["rvv_ops"] or "vsetvli" in r["rvv_ops"]

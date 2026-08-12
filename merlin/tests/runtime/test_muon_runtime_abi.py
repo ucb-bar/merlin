@@ -12,7 +12,7 @@ import pytest
 
 from merlin.targetgen.isa_model import IsaModel
 from merlin.runtime.backends import muon
-from merlin.runtime.backends import muon_harness as mh
+from merlin.runtime import selfcontained_c_harness as mh
 
 
 def _model(runtime_abi: dict) -> IsaModel:

@@ -74,18 +74,24 @@ entries:
     items:
       - merlin/python/merlin/targetgen/contract/compile.py
     why: >-
-      The generic package-contract link path imports gemmini codegen helpers and the gemmini backend, and
-      emits a harness that calls a literal `gemmini_kernel()` and `gemmini_fence()`, includes
-      `gemmini_testutils.h`, and prints a `cycle_window_gemmini_region` metric. None of that is derived:
-      the kernel symbol, the harness includes and the metric name are properties of one vendor's test
-      harness that the generic path hardcodes.
+      WIDENED after reading link_elf end to end; the earlier text understated it. The harness weld is
+      real — the emitted C calls a literal `gemmini_kernel()` and `gemmini_fence()`, includes
+      `gemmini_testutils.h`, and prints a `cycle_window_gemmini_region` metric — but the BUILD is welded
+      too, and that is the larger half. `link_elf` takes its compiler (`gem.gcc_path()`), its include
+      roots (`gem.rocc_tests_dir()`, `gem._common_dir()`, plus three riscv-tests subdirs), its link
+      script, its `-march=rv64gc`, and a `common/*.c` + `common/*.S` glob from one vendor's backend, and
+      raises that backend's error type. So the generic contract path does not merely emit one target's
+      harness text: it runs one target's entire build recipe. Only the load address is derived.
     blocks: >-
-      Any target whose harness ABI differs cannot use the contract-compile path at all — which is most of
-      them, since this is a RoCC test-harness convention. It also sits underneath the `chipyard` oracle
-      route, so it blocks that eviction too.
+      Any target whose harness ABI OR toolchain recipe differs cannot use the contract-compile path at
+      all — which is most of them, since this is a RoCC test-harness convention. It also sits underneath
+      the `chipyard` oracle route, so it blocks that eviction too.
     removal_condition: >-
-      The kernel symbol, harness includes and metric name are read from the target's contract, and the
-      module imports no target-named module.
+      Two seams, not one. (a) The target's contract carries its harness ABI (kernel symbol, fence symbol,
+      includes, metric name) and the harness is rendered from it. (b) The build recipe (compiler, include
+      roots, march, link script, support-source globs) is read from the target's package rather than
+      imported from its backend. Then the module imports no target-named module. Sizing it honestly:
+      (a) alone does not unblock a second target, because (b) is what actually compiles.
 
   # ---------------------------------------------------------------- cost model / calibration
   - id: cost-model-and-calibration-bound-to-an-instance

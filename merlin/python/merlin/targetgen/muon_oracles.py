@@ -5,7 +5,7 @@ An adapter has the same shape the Gemmini ``capsule_runner`` uses --
 or it raises :class:`merlin.runtime.backends.muon.MuonUnavailable` to signal honest unavailability (never
 a silent pass). ``kernel_src`` is the artifact the Muon backend's ``lower_target_to_llvm`` entrypoint emits:
 per the generic ``kernel_abi`` it is a whole-computation kernel FUNCTION (``{target}_kernel(...)``), which
-the runner-owned self-contained-C harness (:mod:`..runtime.backends.muon_harness`) wraps so the FORK-FREE
+the runner-owned self-contained-C harness (:mod:`..runtime.selfcontained_c_harness`) wraps so the FORK-FREE
 driver builds it with a stock toolchain; a full-program artifact (one with ``main``) is compiled directly.
 The result records ``toolchain`` (``fork-free`` vs the eval-only ``clang-muon-fork``) so the experiment
 measures fork-free coverage.
@@ -65,7 +65,7 @@ def _adapter(simulator: str) -> Callable:
         # a full-program artifact (has main) is passed through. Then prefer the FORK-FREE thesis path (stock
         # LLVM + RTL-derived transcode) and record which toolchain produced the graded ELF, so the experiment
         # measures fork-free coverage and never hides a fork fallback (MERLIN_MUON_FORKFREE_ONLY fails closed).
-        from ..runtime.backends import muon_harness as _mh
+        from ..runtime import selfcontained_c_harness as _mh
         target = cb.get("target", "radiance")
         program = _mh.program_from_cb(cb, kernel_src, muon._model_for(target)) or kernel_src
         elf, toolchain = muon.compile_for_oracle(program, workdir, target=target)

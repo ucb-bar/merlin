@@ -14,7 +14,7 @@ from typing import Any
 
 from ..reference import outputs_match, reference_outputs
 from . import spike
-from .saturn_vec_codegen import generate_driver
+from .rvv_vec_codegen import generate_driver
 
 # Harness objects needed by the vector kernel (no matmul asm).
 HARNESS_FILES = ("crt.S", "htif.c", "libc_min.c")

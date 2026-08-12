@@ -3,7 +3,7 @@ title: "Design: drive the core to zero target-specific literals"
 kind: design
 status: draft
 owner: targetgen
-last_verified: 2026-07-29
+last_verified: 2026-08-11
 related: [target_resolution, capability_manifests, capsule_bench]
 code_refs:
   - merlin/python/merlin/targetgen/capability_manifests.py
@@ -43,7 +43,8 @@ cannot:
   distinction a required-fields schema simply pressures people into inventing rationales, and a
   fabricated removal condition reads as rigour.
 
-The task numbers below (T1–T12) track the *literal* residue. The register additionally tracks the
+The task numbers below (T1–T13) track the *literal* residue (T13 tracks its mirror image: a
+general capability filed under a target's name). The register additionally tracks the
 **coupling** residue that the name gate could not see until it learned to look at imports: 34 modules,
 26 hard imports, of which 9 sat in four modules no allowlist knew about.
 
@@ -100,8 +101,23 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done (committed on this 
   `write_all` docstring drift (`583d01ec`). Skipped (would regress): `generate/target_repo.py` `camel()`
   `{"toy_npu":"ToyNPU"}` is acronym casing, not overfit — removing it degrades generated class names.
   Pending: `chia_repeatability.py:132` (harness, coordinate with T3), unused-symbol pass (with T11).
+- [x] **T13 — Lift filename-only generic modules out of vendor homes.** The inverse of every other task
+  here: not a target fact hiding in generic code, but a GENERAL capability filed under one vendor's name,
+  which is invisible to the gates because a file named `<target>_<thing>.py` is skipped by the coupling
+  scan as self-reference and missed by the whole-identifier name check. DONE: the fixed-format link/boot
+  builders -> `targetgen/fixed_format/{link,boot}.py`, the self-contained-C harness ->
+  `runtime/selfcontained_c_harness.py`, the vector codegen/MLIR emitters ->
+  `runtime/backends/rvv_vec_{codegen,mlir}.py` (`rvv` is an ISA class, not a target). Each was already
+  parameterized by `target=` or an `IsaModel` and is proven against a SYNTHETIC model, not just a real
+  one — a lift proven only against a real target has been renamed, not generalized.
+  Two defects surfaced only because the move forced a read: `build_bsp` emitted a literal
+  `__mu_num_warps` (one BSP's symbol, in an otherwise fully derived builder — a second target would have
+  linked its own name against an unreferenced data word), and the vector codegen emitted Gemmini's
+  `cycle_window_gemmini_region`. To stop this recurring, `check_no_target_name.py --coupling` now also
+  reports modules named after a target whose code names none, as a question rather than a violation.
+  That list is currently EMPTY; a new entry means someone filed a general capability in a vendor home.
 
-Ordered by blast radius. T1/T2/T4/T5/T6/T8/T10/T12 are software-verifiable; T3/T7/T9/T11 touch
+Ordered by blast radius. T1/T2/T4/T5/T6/T8/T10/T12/T13 are software-verifiable; T3/T7/T9/T11 touch
 harness/hardware/reference paths and need coordination or hardware to certify.
 
 ## Progress (branch `chore/target-agnostic-core`)

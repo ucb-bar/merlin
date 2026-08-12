@@ -1,9 +1,9 @@
-"""Runner-owned self-contained-C harness for the fork-free SIMT path.
+"""Runner-owned self-contained-C harness for targets with no libc and no vendor toolchain.
 
 The generic ``kernel_abi`` contract has the submission package emit only a kernel FUNCTION and the runner
 own the harness that embeds the leaf tensors, calls the kernel, and prints the OUT/METRIC/DONE protocol.
-This module builds that harness as a **self-contained, relocation-free C program** so the fork-free driver
-(:func:`muon.compile_kernel_forkfree`) can build it with a stock toolchain — no vendor fork, no libc:
+This module builds that harness as a **self-contained, relocation-free C program** so a fork-free driver
+can build it with a stock toolchain — no vendor fork, no libc:
 
   * operands are materialized ELEMENT-WISE from their IEEE bit patterns (integer immediates -> no
     constant pool -> no relocations; an aggregate initializer would emit a PC-relative memcpy);

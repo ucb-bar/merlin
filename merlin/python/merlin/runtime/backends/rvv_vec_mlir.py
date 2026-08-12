@@ -1,7 +1,7 @@
 """Merlin-FAITHFUL vector codegen: command buffer -> MLIR (linalg/arith) -> merlin's real
 MLIR→LLVM compiler (lower_model). NO hand-written C kernel.
 
-This replaces the C-emitter (`saturn_vec_codegen.py`) with the merlin way: the vector ops are
+This replaces the C-emitter (`rvv_vec_codegen.py`) with the merlin way: the vector ops are
 expressed as `linalg.generic` (elementwise) and a reduction, and lowered through
 `merlin.llvmlower.lower_model`. We certify on the host target (x86 via ctypes) against the
 Merlin reference — proving the compiler path, not a kernel. (The same module lowers to a

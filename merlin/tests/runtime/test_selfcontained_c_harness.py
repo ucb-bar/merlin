@@ -1,4 +1,4 @@
-"""Hermetic tests for the runner-owned self-contained-C harness generator (muon_harness.build_program).
+"""Hermetic tests for the runner-owned self-contained-C harness generator (selfcontained_c_harness.build_program).
 
 No toolchain / simulator needed — these assert the generated C has the relocation-free shape the fork-free
 driver requires (element-wise volatile-stack operand fills, no aggregate initializers, an inlined kernel,
@@ -6,7 +6,7 @@ and the OUT/DONE protocol). The end-to-end cyclotron proof on a real capsule liv
 test_muon_forkfree suite."""
 from __future__ import annotations
 
-from merlin.runtime.backends.muon_harness import build_program, program_from_cb, TensorArg
+from merlin.runtime.selfcontained_c_harness import build_program, program_from_cb, TensorArg
 from merlin.targetgen.isa_model import IsaModel
 
 # a minimal derived-ABI model: the harness reads ONLY the hart-id CSR and the console-MMIO aperture from it
