@@ -24,7 +24,7 @@
           "name": {"type": "string"},
           "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]},
           "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
-          "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "i64", "fp16", "f32", "bf16", "fp8_e4m3", "fp8_e5m2", "mxfp8", "mxfp6", "mxfp4", "fp6_e3m2", "fp4_e2m1", "e8m0"]},
+          "dtype": {"type": "string", "minLength": 1, "description": "Operand dtype. NOT a hardcoded list: validity is enforced by the extensible quant_formats registry (merlin.common.quant_formats + the MERLIN_QUANT_FORMATS overlay) and the build-time corpus_spec dtype table, so a new target's numeric format is a data contribution, not a schema edit."},
           "layout": {"type": "string"}
         },
         "additionalProperties": false
@@ -44,7 +44,7 @@
       "required": ["compare", "dtype"],
       "properties": {
         "compare": {"type": "string", "enum": ["exact_int", "tolerance_float"]},
-        "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "fp16", "f32", "bf16", "fp8_e4m3", "fp8_e5m2", "mxfp8", "mxfp6", "mxfp4", "fp6_e3m2", "fp4_e2m1", "e8m0"]},
+        "dtype": {"type": "string", "minLength": 1, "description": "Numeric-policy dtype — same open vocabulary as an operand dtype (validated by the quant_formats registry, not a hardcoded list)."},
         "acc_scale": {"type": "number"},
         "requant_shift": {"type": "integer"},
         "rtol": {"type": "number"},

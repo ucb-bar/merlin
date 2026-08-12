@@ -210,6 +210,19 @@ def _primary_kind(units) -> str:
     return (primary[0] if primary else units[0]).kind
 
 
+def _derived_dtype_token(units) -> str:
+    """A run-identity dtype token DERIVED from the primary compute unit's first accumulate rule
+    (``<in>x<weight>_<acc>``). Replaces the former gemmini ``i8xi8_i32`` fail-open default so a target
+    that omits ``runner.dtype`` (e.g. an mx target) is labeled by its OWN datapath, never mislabeled as
+    gemmini int8. Falls back to ``"unknown"`` (fail-closed, surfaced in the run label) if no rule."""
+    for u in units:
+        if u.accumulate:
+            a = u.accumulate[0]
+            if a.inp and a.acc:
+                return f"{a.inp}x{a.weight or a.inp}_{a.acc}"
+    return "unknown"
+
+
 def load_capability_manifest(target: str) -> CapabilityManifest:
     """Load a target's capability manifest from its committed ``target_contract.yaml`` + fill the family
     defaults. Raises if the target has no contract or no compute_units (fail-closed: no fabricated kind)."""
@@ -234,7 +247,7 @@ def load_capability_manifest(target: str) -> CapabilityManifest:
     return CapabilityManifest(
         target=target, kind=kind, endpoint_kind=endpoint,
         suite=runner.get("suite") or f"{target}-capsule-bench",
-        dtype=runner.get("dtype") or "i8xi8_i32",
+        dtype=runner.get("dtype") or _derived_dtype_token(units),
         fourth_output_name=runner.get("fourth_output_name"),
         tier_sim=dict(runner.get("tier_sim") or {}),
         rtl_tiers=tuple(runner.get("rtl_tiers") or prof.default_rtl_tiers),

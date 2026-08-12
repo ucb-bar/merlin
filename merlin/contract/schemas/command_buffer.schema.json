@@ -16,7 +16,7 @@
         "required": ["shape", "dtype"],
         "properties": {
           "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
-          "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16", "fp8_e4m3", "fp8_e5m2"]},
+          "dtype": {"type": "string", "minLength": 1, "description": "Tensor dtype — open vocabulary validated by the quant_formats registry (formerly a narrower enum than capsule.schema, which made a microscaling target self-reject its own operands); not a hardcoded list."},
           "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]},
           "base": {"type": "integer", "minimum": 0,
                    "description": "DRAM byte address the kernel loads this input from / stores this output to. The program oracle preloads inputs and reads the output at these addresses, so they MUST match the emitted kernel's loads/stores. Optional: if omitted, the harness assigns a canonical layout (capsule_dram)."},
@@ -43,7 +43,7 @@
             "properties": {
               "layout": {"type": "string"},
               "epilogue": {"type": "array", "items": {"type": "string", "enum": ["bias_add", "bias", "requant", "acc_scale", "relu"]}},
-              "output_dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16", "fp8_e4m3", "fp8_e5m2"]},
+              "output_dtype": {"type": "string", "minLength": 1, "description": "Output dtype — open vocabulary validated by the quant_formats registry (same as the tensor dtype above)."},
               "acc_scale": {"type": "number"},
               "requant_shift": {"type": "integer"},
               "combine": {"type": "string"},
