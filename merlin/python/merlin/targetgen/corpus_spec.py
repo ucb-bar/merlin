@@ -75,7 +75,8 @@ class CorpusBinding:
 
 def _tile_dim(target: str, contract: dict) -> int:
     """Systolic tile/mesh dim: ``capabilities.mesh.rows`` if the manifest carries it, else the CIRCT
-    ``arrays[mesh].rows`` fact, else 16. No target literal — both sources are keyed on ``target``."""
+    ``arrays[mesh].rows`` fact. FAIL-CLOSED: a systolic target with no derivable mesh raises rather than
+    sizing tiles to a baked gemmini DIM=16. No target literal — both sources are keyed on ``target``."""
     mesh = ((contract.get("capabilities") or {}).get("mesh") or {})
     if mesh.get("rows"):
         return int(mesh["rows"])
@@ -85,9 +86,10 @@ def _tile_dim(target: str, contract: dict) -> int:
         m = next((a for a in arrays if a.get("name") == "mesh"), {})
         if m.get("rows"):
             return int(m["rows"])
-    except Exception:  # noqa: BLE001 — no facts for this target -> fall back to the mesh default
+    except Exception:  # noqa: BLE001 — no facts for this target -> fall through to the fail-closed raise
         pass
-    return 16
+    raise ValueError(f"{target}: systolic tile dim not derivable (no capabilities.mesh.rows and no "
+                     "facts.arrays[mesh]) — cannot size tiles; refusing a baked DIM=16 (fail closed)")
 
 
 def _accum_dtype(contract: dict, operand: str) -> str:

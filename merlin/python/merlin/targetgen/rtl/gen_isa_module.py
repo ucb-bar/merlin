@@ -64,7 +64,11 @@ def generate(facts: dict, encoding: dict | None = None) -> str:
     mesh = next((a for a in f.get("arrays", []) if a.get("name") == "mesh"), {})
     spad = next((m for m in f.get("memories", []) if m.get("name") == "scratchpad"), {})
     acc = next((m for m in f.get("memories", []) if m.get("name") == "accumulator"), {})
-    dim = mesh.get("rows", 16)
+    dim = mesh.get("rows")
+    if dim is None:
+        raise NotARoccTarget(
+            "target facts carry no mesh dimension (UNKNOWN) — refusing to emit an ISA module with a "
+            "guessed DIM (fail closed); the mesh must be RTL-derived into facts.arrays[mesh].")
 
     # config funct names (the "must precede use" set) + their dependent ops, derived from the table names
     config_functs = {c for c, n in names.items() if "CONFIG" in n}
@@ -165,6 +169,10 @@ def generate_header(facts: dict, encoding: dict, target: str) -> str:
             "custom slot / underived). Declare `encoding.rocc_custom_slot` or ground it from RTL; "
             "refusing to emit a C++ ISA header with a guessed opcode (fail closed).")
     mesh = next((a for a in f.get("arrays", []) if a.get("name") == "mesh"), {})
+    if mesh.get("rows") is None:
+        raise NotARoccTarget(
+            "target facts carry no mesh dimension (UNKNOWN) — refusing to emit a C++ ISA header with a "
+            "guessed DIM (fail closed); the mesh must be RTL-derived into facts.arrays[mesh].")
     rb = (encoding or {}).get("readout_bits") or {}
     code_of = {cls: code for code, cls in ((encoding or {}).get("semantic_class") or {}).items()}
     ns = f"{target}_isa"
@@ -173,9 +181,10 @@ def generate_header(facts: dict, encoding: dict, target: str) -> str:
            "#pragma once", f"namespace {ns} {{",
            f"  constexpr unsigned CUSTOM_OPCODE = {hex(fd['custom_opcode'])};",
            f"  constexpr unsigned FUNCT3 = {hex(fd['funct3'])};",
-           f"  constexpr int DIM = {mesh.get('rows', 16)};"]
+           f"  constexpr int DIM = {mesh['rows']};"]
     if encoding:
-        out.append(f"  constexpr unsigned ADDR_LEN = {encoding.get('addr_len', 32)};")
+        if encoding.get("addr_len") is not None:      # emit only when derived — no baked 32-bit default
+            out.append(f"  constexpr unsigned ADDR_LEN = {encoding['addr_len']};")
         for sym, key in (("F1", "f1"), ("C_ACC", "c_acc"), ("ACC_I8", "acc_i8"),
                          ("ACC_ACCUM", "acc_accum"), ("FULL_C_BIT", "full_c_bit")):
             if rb.get(key) is not None:

@@ -43,7 +43,7 @@ def _load_isa(target: str) -> dict:
     # DIM (systolic mesh dimension) is a CIRCT-extracted FACT (arrays[mesh]), not a manifest field —
     # same source the codegen emitter reads, so the decoder's DIM cannot drift from the encoder's.
     mesh = next((a for a in facts.get("arrays", []) if a.get("name") == "mesh"), {})
-    dim = mesh.get("rows", 16)
+    dim = mesh.get("rows")   # UNKNOWN (None) if the target declares no mesh — no baked gemmini DIM=16
     # The custom major opcode is a per-target FACT read from facts (funct_decode_table.custom_opcode),
     # NOT a baked literal: it is the RISC-V-standard encoding of the custom SLOT the target's RoCC is
     # wired to (SoC OpcodeSet), resolved by circt_introspect from the target's reviewed
