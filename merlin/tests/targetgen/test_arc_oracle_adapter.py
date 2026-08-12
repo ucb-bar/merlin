@@ -132,20 +132,32 @@ def _factory(adp) -> str:
     return adp.__qualname__.split(".")[0]
 
 
+def _closed_over(adapter) -> set[str]:
+    """The string values an adapter closure captures — its simulator AND its target.
+
+    A set, not a list: closure cells are ordered by free-variable name, so indexing them
+    made this test fail the moment the adapter took a second argument, for a reason that had
+    nothing to do with what it was checking. Both values matter — an adapter bound to the
+    wrong target would grade one accelerator against another's toolchain.
+    """
+    return {c.cell_contents for c in (adapter.__closure__ or ())
+            if isinstance(c.cell_contents, str)}
+
+
 def test_qa_loop_gate_is_fastest_tier_only_for_chipyard():
     # gemmini/chipyard: the per-round loop grades on spike (L2) ONLY; verilator (L3) is held back.
     loop = CR.qa_loop_adapters("gemmini", "chipyard")
     assert set(loop) == {"L2"}
     assert _factory(loop["L2"]) == "_spike_verilator_adapter"
-    assert loop["L2"].__closure__[0].cell_contents == "spike"
+    assert _closed_over(loop["L2"]) == {"spike", "gemmini"}
 
 
 def test_qa_checkpoint_is_full_ladder_for_chipyard():
     # gemmini/chipyard: the cycle-accurate checkpoint = spike (L2) + verilator (L3), same as before.
     ckpt = CR.qa_checkpoint_adapters("gemmini", "chipyard")
     assert set(ckpt) == {"L2", "L3"}
-    assert [c.cell_contents for c in ckpt["L2"].__closure__] == ["spike"]
-    assert [c.cell_contents for c in ckpt["L3"].__closure__] == ["verilator"]
+    assert _closed_over(ckpt["L2"]) == {"spike", "gemmini"}
+    assert _closed_over(ckpt["L3"]) == {"verilator", "gemmini"}
 
 
 def test_qa_adapters_are_cyclotron_for_a_simt_target():
