@@ -187,14 +187,39 @@ class TestSelectionForATarget:
         runnable, skipped = OC.select(32)
         assert len(runnable) == len(OC.load_corpus()) and skipped == ()
 
-    def test_cases_beyond_a_smaller_tile_are_skipped_with_a_reason_not_dropped(self):
+    def test_a_single_tile_kernel_defers_larger_extents_with_a_reason_not_dropped(self):
         # A report that omitted them would read as full coverage of the corpus, which is the shape of
-        # the failure this corpus exists to prevent.
-        runnable, skipped = OC.select(16)
+        # the failure this corpus exists to prevent. `tiles_mn=False` is what a kernel that cannot tile
+        # asks for; the emitter has tiled M and N since the microkernel gained the tiling loop.
+        runnable, skipped = OC.select(16, tiles_mn=False)
         assert skipped, "swept extents above 16 cannot run on a single 16x16 tile"
         assert len(runnable) + len(skipped) == len(OC.load_corpus())
         for case, reason in skipped:
             assert "tiles M and N" in reason and str(case.m) in reason or str(case.n) in reason
+
+    def test_a_tiling_kernel_runs_the_whole_corpus_at_a_smaller_tile(self):
+        # THE regression this guards: the deferral criterion was hardcoded to the single-tile kernel, so
+        # after the emitter gained M/N tiling every larger case was still reported as "needs a kernel that
+        # tiles M and N" -- a report claiming a limitation that had already been lifted, which is worse
+        # than claiming none because it looks like diligence.
+        runnable, skipped = OC.select(16)
+        assert skipped == (), [why for _c, why in skipped]
+        assert len(runnable) == len(OC.load_corpus())
+
+    def test_a_case_the_harness_cannot_hold_is_deferred_as_a_harness_limit(self):
+        # The reason must not read as a datapath limitation -- those are different claims and only one of
+        # them is about the hardware.
+        _runnable, skipped = OC.select(32, max_out_elems=4)
+        assert skipped
+        for _case, reason in skipped:
+            assert "harness limit" in reason
+
+    def test_the_reduction_length_is_never_a_reason_to_defer_in_practice(self):
+        # The accumulator cannot overflow below the derived bound, and no model produces a reduction above
+        # it, so no corpus case should be deferred for K.
+        for tile in (16, 32):
+            for _case, reason in OC.select(tile)[1]:
+                assert "accumulator-overflow" not in reason
 
     def test_the_named_narrow_regressions_run_on_every_tile_size(self):
         # These are the cases that matter most; a configuration where they were skipped would be

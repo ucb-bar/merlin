@@ -310,6 +310,56 @@
    "bias": false,
    "seed": 400,
    "amplitude": 127
+  },
+  {
+   "name": "workload_ffn_up",
+   "m": 196,
+   "n": 1024,
+   "k": 32,
+   "why": "spectformer's FFN up-projection shape (12 of them in the model, the joint largest contributor): M=196 is not a multiple of any tile edge, so every tile column ends in a short row tile",
+   "bias": false,
+   "seed": 500,
+   "amplitude": 8
+  },
+  {
+   "name": "workload_ffn_down",
+   "m": 196,
+   "n": 256,
+   "k": 32,
+   "why": "the FFN down-projection (12 of them): the same short M with a narrower N, so the tail lands at a different place in the tiling loop",
+   "bias": false,
+   "seed": 501,
+   "amplitude": 8
+  },
+  {
+   "name": "workload_attn_proj",
+   "m": 196,
+   "n": 768,
+   "k": 32,
+   "why": "the fused QKV projection (8 of them): N=768 is a whole number of tiles at every edge, isolating the M tail from the N tail",
+   "bias": false,
+   "seed": 502,
+   "amplitude": 8
+  },
+  {
+   "name": "workload_im2col",
+   "m": 256,
+   "n": 196,
+   "k": 32,
+   "why": "the patch-embedding contraction: the ONLY routed shape whose N is not a multiple of the operand alignment, so it is the case that would catch a right-operand row stride the datapath cannot fetch",
+   "bias": false,
+   "seed": 503,
+   "amplitude": 8
+  },
+  {
+   "name": "workload_classifier",
+   "m": 1,
+   "n": 1000,
+   "k": 32,
+   "why": "the classifier head: M=1 at a large N, i.e. a vecmat over many tile columns. The M=1 probes above use a single tile; this one runs the tiling loop with one live row throughout, which is where a row-index bug in the readout would show",
+   "bias": false,
+   "seed": 504,
+   "amplitude": 8
   }
  ]
 }

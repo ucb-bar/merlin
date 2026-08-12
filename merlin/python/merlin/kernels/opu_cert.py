@@ -85,7 +85,23 @@ def logical_tile_edge(vlen_bits: int, *, sew_bits: int = _OPERAND_SEW_BITS, lmul
     return (vlen_bits * lmul) // sew_bits
 
 
-def operand_alignment_for_config(config: str, *, config_scala: "str | Path",
+def _joined_text(paths: "str | Path | Sequence[str | Path]") -> str:
+    """The concatenated text of one or several Scala sources.
+
+    Several, because a unit's configurations do not all live in one file: the extension's own generator
+    declares the standalone ones, while an integrating SoC declares the heterogeneous ones that put the
+    unit on one tile beside something else. Both are legitimate places to look for a named config, and
+    which one a given config lives in is not something this can know -- so the caller names every place
+    and this searches all of them. Concatenating is sound because a lookup is by CLASS NAME, which is
+    unique across the files by Scala's own rules.
+    """
+    if isinstance(paths, (str, Path)):
+        paths = [paths]
+    return "\n".join(Path(p).read_text(encoding="utf-8") for p in paths)
+
+
+def operand_alignment_for_config(config: str, *,
+                                 config_scala: "str | Path | Sequence[str | Path]",
                                  mixin_scala: Sequence["str | Path"]) -> int:
     """Byte alignment the unit's operand panels require, derived from the datapath width.
 
@@ -100,7 +116,7 @@ def operand_alignment_for_config(config: str, *, config_scala: "str | Path",
     This is a constraint on the unit's CALLERS, so a packing pass that produces operand panels has to
     honour it, and the alignment is part of what packing costs.
     """
-    cfg_text = Path(config_scala).read_text(encoding="utf-8")
+    cfg_text = _joined_text(config_scala)
     mixin_text = "\n".join(Path(p).read_text(encoding="utf-8") for p in mixin_scala)
     from ..targetgen.rtl import opu_isa
     params = opu_isa.vector_unit_params(cfg_text, config, mixin_text=mixin_text)
@@ -113,7 +129,9 @@ def operand_alignment_for_config(config: str, *, config_scala: "str | Path",
         "rather than failing")
 
 
-def tile_edge_for_config(config: str, *, config_scala: "str | Path", mixin_scala: Sequence["str | Path"],
+def tile_edge_for_config(config: str, *,
+                         config_scala: "str | Path | Sequence[str | Path]",
+                         mixin_scala: Sequence["str | Path"],
                          sew_bits: int = _OPERAND_SEW_BITS) -> int:
     """The tile edge for a named hardware config, read from that config's own declaration.
 
@@ -121,7 +139,7 @@ def tile_edge_for_config(config: str, *, config_scala: "str | Path", mixin_scala
     a plausible tile edge, a corpus selected against the wrong geometry, and a certification report that
     claims shapes it never ran.
     """
-    cfg_text = Path(config_scala).read_text(encoding="utf-8")
+    cfg_text = _joined_text(config_scala)
     mixin_text = "\n".join(Path(p).read_text(encoding="utf-8") for p in mixin_scala)
     from ..targetgen.rtl import opu_isa
     params = opu_isa.vector_unit_params(cfg_text, config, mixin_text=mixin_text)

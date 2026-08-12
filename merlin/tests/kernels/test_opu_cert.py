@@ -239,11 +239,35 @@ class TestTheVerdict:
 
 
 class TestTheCorpusSelectionFeedsTheImage:
-    def test_every_selected_case_fits_the_tile_it_was_selected_for(self):
+    def test_every_selected_case_is_fully_resolved_and_positive(self):
+        # The old form of this test asserted every selected case fit ONE tile, which stopped being the
+        # relevant property when the emitter gained M/N tiling -- the workload-scale cases are hundreds of
+        # tiles wide by design. What must still hold is that nothing tile-relative reaches the image: an
+        # unresolved extent would generate operands for a different shape than the case names.
         for tile in (4, 8, 16, 32):
             runnable, _ = _cases(tile)
             assert runnable, f"tile {tile} selected nothing"
-            assert all(int(c.m) <= tile and int(c.n) <= tile for c in runnable)
+            for c in runnable:
+                assert all(isinstance(e, int) and e > 0 for e in (c.m, c.n, c.k)), (tile, c.name)
+
+    def test_the_image_buffers_hold_the_largest_selected_case(self):
+        # The image sizes its device and reference result buffers to the largest selected output. A case
+        # selected but too large would overrun them -- and the corpus now carries workload-scale shapes
+        # whose outputs are three orders of magnitude bigger than the probes'.
+        for tile in (16, 32):
+            runnable, _ = _cases(tile)
+            biggest = max(int(c.m) * int(c.n) for c in runnable)
+            src = C.emit_image_c(runnable)
+            assert f"c_dev[{biggest}]" in src and f"c_ref[{biggest}]" in src
+
+    def test_workload_scale_cases_are_selected_rather_than_deferred(self):
+        # THE regression: the deferral criterion was the single-tile kernel's, so every real workload shape
+        # was reported as "needs a kernel that tiles M and N" long after the emitter tiled.
+        for tile in (16, 32):
+            runnable, deferred = _cases(tile)
+            names = {c.name for c in runnable}
+            assert any(n.startswith("workload") for n in names), (tile, sorted(names))
+            assert not [c.name for c, _why in deferred if c.name.startswith("workload")]
 
     def test_the_named_regressions_are_in_reach_at_every_tile(self):
         for tile in (4, 8, 16, 32):

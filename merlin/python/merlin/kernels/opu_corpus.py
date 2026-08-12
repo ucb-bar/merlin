@@ -115,10 +115,12 @@ class Case:
                     amplitude=self.amplitude)
 
     def fits_tile(self, tile: int) -> bool:
-        """Whether both parallel extents fit one tile, i.e. whether a single-tile kernel can run it.
+        """Whether both parallel extents fit ONE tile, i.e. whether a single-tile kernel can run it.
 
-        A case that does not fit is not a failure and must not be reported as one — it needs a kernel
-        that tiles, and until there is one it is honestly ``not_run`` for that target.
+        Kept as a description of the shape, not as a run/defer decision — the emitter tiles M and N, so a
+        case that does not fit one tile is perfectly runnable. :func:`select` takes the kernel's tiling
+        ability as a parameter rather than reading it from here, because a predicate named after a shape is
+        exactly the kind of thing that keeps being consulted after the capability it stood for has changed.
         """
         got = self.resolved(tile)
         return int(got.m) <= int(tile) and int(got.n) <= int(tile)
@@ -206,6 +208,37 @@ _CASES: tuple[Case, ...] = (
          "magnitudes the datapath can be handed. It does NOT overflow, and cannot -- see "
          "ACC_OVERFLOW_UNREACHABLE_ABOVE_K, which is why no corpus case tests the missing saturation",
          seed=400, amplitude=127),
+    # --- the shapes a real workload actually asks for -----------------------------------------
+    # Every case above is a PROBE: a swept extent, a degenerate edge, a named past failure. None of them
+    # is a shape any model produces, so passing all of them says the kernel handles the awkward cases
+    # without saying it handles the work. These five are the distinct signatures the compile path mints
+    # for spectformer int8 (llvmlower/passes_opu on the prepared module), i.e. the contractions that
+    # actually get routed, carrying ~88% of the model's arithmetic between them.
+    #
+    # They are ABSOLUTE, not tile-relative, on purpose: a workload's extents are a fact about the
+    # workload and do not scale with the hardware. That means they exercise a genuinely different regime
+    # from everything above -- M and N far beyond one tile, so the tiling loop runs hundreds of tiles and
+    # its tail arithmetic is stressed at real magnitudes rather than at edge+1.
+    #
+    # K is reduced from the model's real reduction lengths to 32. That is a stated compromise, not an
+    # oversight: the in-image scalar reference is O(M*N*K) and on cycle-accurate RTL it, not the kernel,
+    # sets the run time -- at the model's K=256 one case alone is hours of Verilator. The tiling, the
+    # tails, the pack layout and the readout are all independent of K, and the K sweep above covers K
+    # itself (1, 2, 3, 15, 16, 17, 255) including the odd lengths the unrolled reduction peels. What
+    # these cases add is the PARALLEL geometry at workload scale.
+    Case("workload_ffn_up", 196, 1024, 32, "spectformer's FFN up-projection shape (12 of them in the "
+         "model, the joint largest contributor): M=196 is not a multiple of any tile edge, so every "
+         "tile column ends in a short row tile", seed=500),
+    Case("workload_ffn_down", 196, 256, 32, "the FFN down-projection (12 of them): the same short M "
+         "with a narrower N, so the tail lands at a different place in the tiling loop", seed=501),
+    Case("workload_attn_proj", 196, 768, 32, "the fused QKV projection (8 of them): N=768 is a whole "
+         "number of tiles at every edge, isolating the M tail from the N tail", seed=502),
+    Case("workload_im2col", 256, 196, 32, "the patch-embedding contraction: the ONLY routed shape whose "
+         "N is not a multiple of the operand alignment, so it is the case that would catch a "
+         "right-operand row stride the datapath cannot fetch", seed=503),
+    Case("workload_classifier", 1, 1000, 32, "the classifier head: M=1 at a large N, i.e. a vecmat over "
+         "many tile columns. The M=1 probes above use a single tile; this one runs the tiling loop with "
+         "one live row throughout, which is where a row-index bug in the readout would show", seed=504),
 )
 
 #: The reduction length at which int8 x int8 accumulation could first exceed a signed 32-bit
@@ -229,24 +262,48 @@ def load_corpus(path: "str | Path | None" = None) -> tuple[Case, ...]:
     return tuple(Case(**c) for c in raw["cases"])
 
 
-def select(tile: int, *, path: "str | Path | None" = None
+def select(tile: int, *, path: "str | Path | None" = None, tiles_mn: bool = True,
+           max_out_elems: int | None = None
            ) -> tuple[tuple[Case, ...], tuple[tuple[Case, str], ...]]:
     """``(runnable, [(skipped, reason)])`` for a target whose logical tile edge is ``tile``.
 
-    Every case is resolved against ``tile`` first, then split by whether a SINGLE-TILE kernel can run it.
-    A case that does not fit is returned with its reason rather than dropped: a certification report that
-    silently omitted the shapes the kernel cannot yet reach would read as full coverage of the corpus,
-    which is the precise shape of the failure this corpus exists to prevent.
+    Every case is resolved against ``tile`` first, then split by whether the kernel can actually run it. A
+    case that cannot is returned WITH ITS REASON rather than dropped: a report that silently omitted the
+    shapes out of reach would read as full coverage, which is the precise failure this corpus exists to
+    prevent.
+
+    **The deferral criterion is a property of the kernel, so it is a parameter.** It used to be hardcoded
+    as "both parallel extents fit one tile", which was true of the single-tile kernel and is no longer true
+    of anything: the emitter tiles M and N. Left as it was, every real workload shape would have been
+    deferred with the reason "needs a kernel that tiles M and N" — a report claiming a limitation that had
+    already been lifted, which is worse than claiming none, because it looks like diligence.
+    ``tiles_mn=False`` restores the old behaviour for a kernel that genuinely cannot tile.
+
+    ``max_out_elems`` defers cases whose output does not fit the image's result buffers. That is a real
+    limit of the harness rather than of the datapath, and it is stated as such in the reason.
+
+    ``K`` is never a reason to defer: the accumulator cannot overflow below
+    :data:`ACC_OVERFLOW_UNREACHABLE_ABOVE_K`, and a case above it would be testing a reduction length no
+    model produces.
     """
     runnable: list[Case] = []
     skipped: list[tuple[Case, str]] = []
     for case in load_corpus(path):
         got = case.resolved(tile)
-        if case.fits_tile(tile):
-            runnable.append(got)
+        m, n, k = int(got.m), int(got.n), int(got.k)
+        if not tiles_mn and (m > int(tile) or n > int(tile)):
+            skipped.append((got, f"m={m} n={n} exceeds the {tile}x{tile} tile; needs a kernel that "
+                                 f"tiles M and N"))
+        elif max_out_elems is not None and m * n > int(max_out_elems):
+            skipped.append((got, f"output is {m}x{n} = {m * n} int32 elements, over the image's "
+                                 f"{int(max_out_elems)}-element result buffers; a harness limit, not a "
+                                 f"datapath one"))
+        elif k > ACC_OVERFLOW_UNREACHABLE_ABOVE_K:
+            skipped.append((got, f"k={k} is at or above the accumulator-overflow bound "
+                                 f"{ACC_OVERFLOW_UNREACHABLE_ABOVE_K}, where the datapath's missing "
+                                 f"saturation becomes reachable; no model produces such a reduction"))
         else:
-            skipped.append((got, f"m={got.m} n={got.n} exceeds the {tile}x{tile} tile; needs a kernel "
-                                 f"that tiles M and N"))
+            runnable.append(got)
     return tuple(runnable), tuple(skipped)
 
 
