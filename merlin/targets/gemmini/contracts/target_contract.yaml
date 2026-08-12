@@ -37,6 +37,10 @@ runner:
 encoding:
   addr_len: 32             # RoCC accumulator/scratchpad address field width (bits). The lone irreducible
                            # anchor; header-cross-checkable (gemmini_params.h `#define ADDR_LEN 32`).
+  rocc_custom_slot: 3      # which RISC-V custom slot (0..3) this accelerator's RoCC is wired to (SoC
+                           # OpcodeSet.custom3). The major opcode (0x7b) is the RISC-V standard encoding
+                           # of THIS slot — derived by circt_introspect, not baked. Reviewed ABI fact the
+                           # accelerator's own decoder cannot ground (it sees only the funct7 fan-out).
   # readout_bits are NOT declared here: they are DERIVED from addr_len + the 3-flag-bit accumulator-address
   # convention + float32(1.0) by target_experiment.derived_readout_bits (grounded in gemmini.h's own
   # `1<<(ADDR_LEN-1)` / `3<<(ADDR_LEN-2)` / `full_C<<(ADDR_LEN-3)` address arithmetic). Byte-identical to

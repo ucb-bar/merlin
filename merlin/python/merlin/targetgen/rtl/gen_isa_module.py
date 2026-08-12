@@ -54,8 +54,13 @@ def generate(facts: dict, encoding: dict | None = None) -> str:
             "its own derived isa_tools model (isa_asm/isa_disasm) instead.")
     names = {int(k): v for k, v in fd["names"].items()}
     legal = sorted(fd["legal_funct"])
-    opcode = fd["custom_opcode"]
-    funct3 = fd["funct3"]
+    opcode = fd.get("custom_opcode")
+    funct3 = fd.get("funct3")
+    if opcode is None:
+        raise NotARoccTarget(
+            "target facts carry a funct_decode_table but no RoCC custom_opcode (UNKNOWN — the RISC-V "
+            "custom slot is undeclared and not RTL-derived). Declare `encoding.rocc_custom_slot` or "
+            "ground it from RTL; refusing to emit an ISA module with a guessed opcode (fail closed).")
     mesh = next((a for a in f.get("arrays", []) if a.get("name") == "mesh"), {})
     spad = next((m for m in f.get("memories", []) if m.get("name") == "scratchpad"), {})
     acc = next((m for m in f.get("memories", []) if m.get("name") == "accumulator"), {})
@@ -154,6 +159,11 @@ def generate_header(facts: dict, encoding: dict, target: str) -> str:
     (C++) leg of the former triplication with the same single source the Python module uses."""
     f = facts["facts"]
     fd = next(i for i in f["interfaces"] if i.get("name") == "funct_decode_table")
+    if fd.get("custom_opcode") is None:
+        raise NotARoccTarget(
+            "target facts carry a funct_decode_table but no RoCC custom_opcode (UNKNOWN — undeclared "
+            "custom slot / underived). Declare `encoding.rocc_custom_slot` or ground it from RTL; "
+            "refusing to emit a C++ ISA header with a guessed opcode (fail closed).")
     mesh = next((a for a in f.get("arrays", []) if a.get("name") == "mesh"), {})
     rb = (encoding or {}).get("readout_bits") or {}
     code_of = {cls: code for code, cls in ((encoding or {}).get("semantic_class") or {}).items()}
