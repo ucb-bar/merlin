@@ -68,3 +68,25 @@ def test_the_reference_target_declares_a_complete_recipe():
     assert r.compiler.name and r.include_roots and r.support_sources
     assert r.load_address > 0 and r.cflags
     assert issubclass(r.error_cls, Exception) and r.error_cls is not RuntimeError
+
+
+# ------------------------------------------------------------------ the renderer capability
+def test_a_backend_without_a_renderer_refuses_by_name():
+    with pytest.raises(NotImplementedError, match="spike"):
+        base.harness_renderer("spike")
+
+
+def test_the_renderer_chooses_the_form_from_the_command_buffer():
+    """Which harness applies is a property of the target's command vocabulary, so the backend decides.
+
+    The generic path used to make this choice itself, which required importing one target's codegen
+    module to do it — the last thing keeping a target's name in the generic contract-compile path.
+    """
+    render = base.harness_renderer("gemmini")
+    movement = {"tensors": {"s": {"shape": [2, 2], "dtype": "i8", "role": "input",
+                                  "data": [0.0, 1.0, 2.0, 3.0]},
+                            "d": {"shape": [2, 2], "dtype": "i8", "role": "output"}},
+                "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "s", "dst": "d"},
+                              "attributes": {"combine": "identity"}}]}
+    out = render(movement, target="gemmini")
+    assert "OUT d 2 2" in out and "int main()" in out

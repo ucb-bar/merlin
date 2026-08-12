@@ -299,6 +299,23 @@ def harness_build_recipe(target: str) -> HarnessBuildRecipe:
     return factory()
 
 
+def harness_renderer(target: str):
+    """``target``'s runner-owned harness renderer — ``render_harness(cb, *, target) -> str``.
+
+    Optional, like :func:`harness_build_recipe`, and separate from it on purpose: the BUILD is a
+    toolchain description a contract could plausibly carry, whereas the harness body pads to a
+    target's tile edge and lays out its accumulator readout. That is codegen, and putting it behind a
+    contract key would define a key no second target could implement.
+    """
+    backend = get_backend(target)
+    render = getattr(backend, "render_harness", None)
+    if render is None:
+        raise NotImplementedError(
+            f"backend for target {target!r} declares no render_harness; the runner cannot write a "
+            f"harness for it. Add one to the backend module if it should.")
+    return render
+
+
 def name_of_module(module_name: str) -> str:
     """The registered backend name for an already-imported backend module.
 

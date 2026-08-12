@@ -1,14 +1,16 @@
 """Runner-owned compile + execute of a *package-produced* lowered LLVM/RoCC MLIR.
 
-The contract splits responsibility: the package emits ``lowered.llvm.mlir`` (a module defining
-``llvm.func @gemmini_kernel`` with the kernel ABI in ``mlir_oot_backend_contract.yaml``); the
-runner owns the harness (which embeds the deterministic leaf tensors by name + output buffers and
-prints ``OUT/METRIC/DONE``), the link, and the oracle invocation. This path is uniform for Python
-and C++ packages — the only difference is who produced the MLIR.
+The contract splits responsibility: the package emits ``lowered.llvm.mlir`` (a module defining a
+kernel function under the entry symbol its contract declares, with the kernel ABI in
+``mlir_oot_backend_contract.yaml``); the runner owns the harness (which embeds the deterministic leaf
+tensors by name + output buffers and prints ``OUT/METRIC/DONE``), the link, and the oracle
+invocation. This path is uniform for Python and C++ packages — the only difference is who produced
+the MLIR.
 
-It deliberately reuses the proven low-level pieces from the certified MLIR-faithful path
-(``lower_to_llvm_ir`` + ``codegen.compile_ll`` + ``_harness_c`` + the gemmini backend link) rather
-than reimplementing them — but takes the lowered MLIR as input instead of re-deriving it.
+**This module names no target and imports none.** ``target`` is a required argument throughout, and
+everything target-specific is resolved through it: the harness ABI from the target's contract
+(:mod:`.harness_abi`), and the harness renderer, build recipe and oracle from its backend via
+:mod:`merlin.runtime.backends.base`. What remains here is orchestration — lower, render, link, run.
 """
 from __future__ import annotations
 
@@ -28,53 +30,6 @@ def llvm_mlir_to_object(lowered_mlir_text: str, workdir: Path) -> Path:
     return Path(codegen.compile_ll(workdir / "kernel.ll", workdir / "kernel.o", "riscv"))
 
 
-def _is_movement_cb(cb: dict[str, Any]) -> bool:
-    cmds = cb.get("commands", [])
-    return (not any(c.get("opcode") == "RES_PACK" for c in cmds)
-            and any(c.get("opcode") == "VECTOR_MAP"
-                    and c.get("attributes", {}).get("combine") == "identity" for c in cmds))
-
-
-def _movement_harness_c(cb: dict[str, Any], *, target: str) -> str:
-    """Harness for a pure-movement kernel ``<entry>(src*, dst*)``: embed src, print dst.
-
-    The entry symbol, the fence, the includes and the cycle-window metric are read from ``target``'s
-    declared harness ABI rather than written here; see :mod:`.harness_abi` for why they cannot be
-    derived. ``target`` is required: a default would be one target's name, which is the weld this is
-    removing.
-    """
-    from merlin.runtime.backends.gemmini_codegen import _ceil_dim, _pad_rowmajor
-    from merlin.runtime.commandbuffer import materialize_inputs
-    from .harness_abi import for_target
-    mv = next(c for c in cb["commands"]
-              if c.get("opcode") == "VECTOR_MAP" and c["attributes"].get("combine") == "identity")
-    src, dst = mv["operands"]["lhs"], mv["operands"]["dst"]
-    m, n = cb["tensors"][src]["shape"]
-    mp, np_ = _ceil_dim(m), _ceil_dim(n)
-    leaves = materialize_inputs(cb)
-    sp = _pad_rowmajor(list(leaves[src].data), m, n, mp, np_)
-    decls = [f"static const elem_t T_{src}[{mp * np_}] row_align(1) = "
-             f"{{{','.join(str(int(v)) for v in sp)}}};",
-             f"static elem_t T_{dst}[{mp * np_}] row_align(1);"]
-    prints = [f'  printf("OUT {dst} {m} {n}");',
-              f"  for (long i = 0; i < {m}; i++) for (long j = 0; j < {n}; j++)"
-              f" printf(\" %d\", (int)T_{dst}[i * {np_} + j]);", '  printf("\\n");']
-    # Print METRIC cycles BEFORE the (possibly huge) OUT tensor dump: large-output kernels flood the
-    # UART and the per-ELF capture truncates mid-dump, so a trailing METRIC line would be lost. Emitting
-    # the (tiny) cycle metric first guarantees it is always captured; the OUT dump follows for correctness.
-    abi = for_target(target)
-    window = abi.cycle_window_line()
-    return ("#include <stdint.h>\n#include <stdio.h>\n" + abi.declarations() + "\n"
-            + "\n".join(decls) + "\nint main() {\n"
-            "  uint64_t c0 = read_cycles();\n"
-            + abi.call(f"(void*)T_{src}, (void*)T_{dst}") + "\n"
-            "  uint64_t c1 = read_cycles();\n"
-            '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));\n'
-            + (window + "\n" if window else "")
-            + "\n".join(prints) + "\n"
-            '  printf("DONE\\n");\n  return 0;\n}\n')
-
-
 def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str) -> Path:
     """Build the runner-owned harness from ``cb`` and link it with the package object -> ELF.
 
@@ -84,12 +39,8 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str) -> Pa
     reintroduce one.
     """
     from merlin.runtime.backends import base as _backends
-    # REMAINING WELD: the non-movement harness renderer still comes from one target's codegen
-    # module. It embeds that target's tile padding and readout layout, so unlike the movement
-    # harness it is not a contract-shaped fact; see merlin/contract/overfit_register.yaml.
-    from merlin.runtime.backends.gemmini_codegen_mlir import _harness_c
     recipe = _backends.harness_build_recipe(target)
-    harness = (_movement_harness_c(cb, target=target) if _is_movement_cb(cb) else _harness_c(cb))
+    harness = _backends.harness_renderer(target)(cb, target=target)
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
     # Linker load address DERIVED from the RTL memory map (platform DRAM base), reusing the curated
     # script's proven section layout but replacing its BAKED origin — so the base is a HW fact, not a

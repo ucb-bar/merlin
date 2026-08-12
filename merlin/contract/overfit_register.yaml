@@ -66,36 +66,6 @@ entries:
       runtime/backends/base.py (register + file-path discovery via a plugin.<key> contract entry), and
       these modules route through them instead of importing a target.
 
-  # ---------------------------------------------------------------- the tiled-harness renderer
-  - id: contract-compile-renders-one-targets-tiled-harness
-    kind: target_coupling
-    status: triaged
-    owner: targetgen
-    items:
-      - merlin/python/merlin/targetgen/contract/compile.py
-    why: >-
-      NARROWED TWICE, and most of it is now closed. This path used to emit one target's harness text
-      (entry symbol, fence, include, metric) AND run that target's entire build (compiler, include
-      roots, march, link script, support-source globs, even the exception type). Both halves are now
-      declared by the target: the four harness facts in its contract's `harness_abi` block, and the
-      build in a `harness_build_recipe()` its backend supplies, resolved through the backend registry.
-      `target` is a required argument on link_elf / compile_lowered_to_elf / run_on_oracle precisely so
-      no default can reintroduce a target, and it is threaded from the three callers.
-      WHAT REMAINS is one import: the NON-movement harness renderer (`gemmini_codegen_mlir._harness_c`).
-      Unlike the movement harness it is not contract-shaped — it embeds that target's tile padding and
-      accumulator readout layout, i.e. real codegen, not four declarable strings. Calling it a missing
-      contract key would be wrong and would produce a key nothing else could implement.
-    blocks: >-
-      A second target whose tiled-matmul harness differs from this one's. A target with a movement-only
-      or scalar workload can already use this path end to end: it declares a harness ABI and a build
-      recipe and nothing here names it.
-    removal_condition: >-
-      The tiled harness renderer moves behind the same registry as the build recipe — either as a
-      further backend capability (`harness_renderer()`) or by moving into the target's package
-      alongside its codegen. Note the sizing was checked BOTH ways during this work: the harness-ABI
-      half alone unblocked nothing because the build refused to move, and the build half alone would
-      have left every tiled workload emitting one target's C. They had to land together, and did.
-
   # ---------------------------------------------------------------- cost model / calibration
   - id: cost-model-and-calibration-bound-to-an-instance
     kind: target_coupling

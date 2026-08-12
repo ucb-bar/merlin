@@ -293,3 +293,69 @@ def harness_build_recipe():
                 "-nostdlib", "-nostartfiles", "-static", "-DBAREMETAL=1"),
         error_cls=GemminiError,
     )
+
+
+# --- runner-owned harness rendering (the `harness_renderer` backend capability) ---------------------
+# Moved here from the GENERIC contract-compile path, which had to import this module to render a
+# harness at all. Both renderers are target-owned for the same underlying reason: they pad to this
+# accelerator's tile edge and lay out its accumulator readout. That is codegen, not four declarable
+# strings, so it belongs with the backend rather than behind a contract key no second target could
+# implement. What the CONTRACT still supplies is the harness ABI (entry symbol, fence, includes,
+# metric), read through `harness_abi.for_target` below.
+from .gemmini_codegen_mlir import _harness_c
+
+
+def _is_movement_cb(cb: dict) -> bool:
+    cmds = cb.get("commands", [])
+    return (not any(c.get("opcode") == "RES_PACK" for c in cmds)
+            and any(c.get("opcode") == "VECTOR_MAP"
+                    and c.get("attributes", {}).get("combine") == "identity" for c in cmds))
+
+
+def _movement_harness_c(cb: dict, *, target: str) -> str:
+    """Harness for a pure-movement kernel ``<entry>(src*, dst*)``: embed src, print dst.
+
+    The entry symbol, the fence, the includes and the cycle-window metric are read from ``target``'s
+    declared harness ABI rather than written here; see :mod:`.harness_abi` for why they cannot be
+    derived. ``target`` is required: a default would be one target's name, which is the weld this is
+    removing.
+    """
+    from .gemmini_codegen import _ceil_dim, _pad_rowmajor
+    from ..commandbuffer import materialize_inputs
+    from ...targetgen.contract.harness_abi import for_target
+    mv = next(c for c in cb["commands"]
+              if c.get("opcode") == "VECTOR_MAP" and c["attributes"].get("combine") == "identity")
+    src, dst = mv["operands"]["lhs"], mv["operands"]["dst"]
+    m, n = cb["tensors"][src]["shape"]
+    mp, np_ = _ceil_dim(m), _ceil_dim(n)
+    leaves = materialize_inputs(cb)
+    sp = _pad_rowmajor(list(leaves[src].data), m, n, mp, np_)
+    decls = [f"static const elem_t T_{src}[{mp * np_}] row_align(1) = "
+             f"{{{','.join(str(int(v)) for v in sp)}}};",
+             f"static elem_t T_{dst}[{mp * np_}] row_align(1);"]
+    prints = [f'  printf("OUT {dst} {m} {n}");',
+              f"  for (long i = 0; i < {m}; i++) for (long j = 0; j < {n}; j++)"
+              f" printf(\" %d\", (int)T_{dst}[i * {np_} + j]);", '  printf("\\n");']
+    # Print METRIC cycles BEFORE the (possibly huge) OUT tensor dump: large-output kernels flood the
+    # UART and the per-ELF capture truncates mid-dump, so a trailing METRIC line would be lost. Emitting
+    # the (tiny) cycle metric first guarantees it is always captured; the OUT dump follows for correctness.
+    abi = for_target(target)
+    window = abi.cycle_window_line()
+    return ("#include <stdint.h>\n#include <stdio.h>\n" + abi.declarations() + "\n"
+            + "\n".join(decls) + "\nint main() {\n"
+            "  uint64_t c0 = read_cycles();\n"
+            + abi.call(f"(void*)T_{src}, (void*)T_{dst}") + "\n"
+            "  uint64_t c1 = read_cycles();\n"
+            '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));\n'
+            + (window + "\n" if window else "")
+            + "\n".join(prints) + "\n"
+            '  printf("DONE\\n");\n  return 0;\n}\n')
+
+
+def render_harness(cb: dict, *, target: str) -> str:
+    """Render the runner-owned harness for ``cb`` — the `harness_renderer` capability.
+
+    Chooses between the pure-movement and tiled forms itself, because which one applies is a property
+    of this target's command vocabulary rather than something the generic path can decide.
+    """
+    return _movement_harness_c(cb, target=target) if _is_movement_cb(cb) else _harness_c(cb)
