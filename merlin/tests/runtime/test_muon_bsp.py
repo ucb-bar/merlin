@@ -10,7 +10,8 @@ from __future__ import annotations
 from merlin.targetgen.isa_model import isa_model_from_encoding
 from merlin.targetgen.isa_asm import assemble_fixed
 from merlin.targetgen.isa_transcode import FixedFormatTranscoder
-from merlin.runtime.backends import muon_bsp as MB
+from merlin.runtime.backends.base import get_backend
+MB = get_backend("muon").muon_bsp               # evicted SIMT backend, resolved via plugin discovery
 
 # A Muon-shaped fixed-format model that also defines the standard CUSTOM slots + AUIPC.
 FACT = {

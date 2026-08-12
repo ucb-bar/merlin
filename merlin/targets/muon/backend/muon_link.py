@@ -328,8 +328,8 @@ def link_fork_free(objs: list[str | Path], linker_script: str | Path, out_path: 
     already-built ``isa_model`` to avoid re-deriving it.
     """
     if isa_model is None:
-        from ...targetgen.isa_model import isa_model_from_encoding
-        from ...targetgen.rtl import mlc_bridge
+        from merlin.targetgen.isa_model import isa_model_from_encoding
+        from merlin.targetgen.rtl import mlc_bridge
         isa_model = isa_model_from_encoding(target, mlc_bridge.isa_encoding_for(target))
     linked = Path(out_path).with_suffix(".layout.elf")
     stock_layout_link(objs, linker_script, linked, linker=linker)

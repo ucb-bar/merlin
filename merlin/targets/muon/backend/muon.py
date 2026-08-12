@@ -36,10 +36,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ...common.paths import env as _env
-from ..metrics import COMMON_METRIC_NAMES
-from ..reference import outputs_match, reference_outputs
-from .base import BackendInfo, BackendKind, TargetClass, register
+from merlin.common.paths import env as _env
+from merlin.runtime.metrics import COMMON_METRIC_NAMES
+from merlin.runtime.reference import outputs_match, reference_outputs
+from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
 
 # Self-register this reference GPU/SIMT backend with the class registry (base._REGISTRY). Discovery in
 # base._ensure_discovered imports this module to run the call, so the core carries no name -> module
@@ -119,7 +119,7 @@ def cyclotron_root() -> Path:
 def _arc_cosim_assets(target: str) -> tuple[Path, Path, Path] | None:
     """(mlc_venv_python, model.so, state-manifest.json) for a target's RTL-arc cosim model, or None when the
     mlc checkout / compiled model is absent (fail closed — the caller degrades, never fabricates a result)."""
-    from ...targetgen.rtl import mlc_bridge
+    from merlin.targetgen.rtl import mlc_bridge
     d = mlc_bridge.mlc_dir()
     if d is None:
         return None
@@ -157,7 +157,7 @@ def run_elf_arc(elf: str | Path, *, target: str = "radiance", base: int, length:
     )
     drv = out.with_suffix(".driver.py")
     drv.write_text(driver, encoding="utf-8")
-    from ...targetgen.rtl import mlc_bridge
+    from merlin.targetgen.rtl import mlc_bridge
     proc = subprocess.run([str(py), str(drv), str(so), str(manifest), str(elf),
                            str(base), str(length), str(max_cycles), str(out)],
                           capture_output=True, text=True, timeout=timeout,
@@ -453,8 +453,8 @@ int main(void){{
 
 def _model_for(target: str):
     """The derived IsaModel for a target, or a MuonUnavailable when no encoding fact is present (fail closed)."""
-    from ...targetgen.isa_model import isa_model_from_encoding
-    from ...targetgen.rtl import mlc_bridge
+    from merlin.targetgen.isa_model import isa_model_from_encoding
+    from merlin.targetgen.rtl import mlc_bridge
     fact = mlc_bridge.isa_encoding_for(target)
     if not fact:
         raise MuonUnavailable(f"no derived ISA encoding fact for target {target!r}")
@@ -480,7 +480,7 @@ def build_forkfree_bsp(workdir: str | Path, *, target: str = "radiance", num_war
     (:func:`render_simt_preamble`), not a hardcoded preamble. Returns the object list
     :func:`compile_kernel_forkfree` links."""
     from . import muon_bsp
-    from ...targetgen.contract.toolchain import mlir_bin
+    from merlin.targetgen.contract.toolchain import mlir_bin
     lib = lib_dir()
     return muon_bsp.build_bsp(lib / "src/mu_start.S", lib / "tohost.S", Path(workdir) / "bsp",
                               target=target, clang=str(mlir_bin("clang")), mc=str(mlir_bin("llvm-mc")),
@@ -498,10 +498,10 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     R_RISCV relocation (a constant pool, a cross-section global, or a mu_schedule warp-callback pointer) is
     transcoded at the OBJECT level (reloc records preserved) and the fork-free linker resolves every
     relocation at the derived field positions. Returns the ELF path."""
-    from ...targetgen.isa_model import isa_model_from_encoding
-    from ...targetgen.isa_transcode import FixedFormatTranscoder, to_data_lines, emit_kernel_asm, derive_march
-    from ...targetgen.rtl import mlc_bridge
-    from ...targetgen.contract.toolchain import mlir_bin
+    from merlin.targetgen.isa_model import isa_model_from_encoding
+    from merlin.targetgen.isa_transcode import FixedFormatTranscoder, to_data_lines, emit_kernel_asm, derive_march
+    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.targetgen.contract.toolchain import mlir_bin
     from . import muon_link
 
     work = Path(workdir)
@@ -539,7 +539,7 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     # The emitted stream is self-checked with the SAME derived disassembler the agent tooling uses: every
     # word must decode to a defined opcode. This catches a transcoder regression at BUILD time (cheap)
     # instead of in a paid oracle run, and enforces the derived tooling on the emit path (fail closed).
-    from ...targetgen import isa_disasm as _disasm
+    from merlin.targetgen import isa_disasm as _disasm
 
     def _lint_words(words: list[int]) -> None:
         illegal = [i for i, d in enumerate(_disasm.disassemble(model, words)) if d.get("illegal")]
@@ -613,11 +613,11 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     the operands and calls the kernel (cross-object ``R_RISCV_CALL``); both objects are transcoded to the
     target's fixed-format words (reloc-preserving) and the fork-free linker resolves the call against the
     from-source BSP. No clang-muon anywhere. Returns the ELF path."""
-    from ...llvmlower.pipeline import lower_to_llvm_ir
-    from ...targetgen.isa_model import isa_model_from_encoding
-    from ...targetgen.isa_transcode import derive_march
-    from ...targetgen.rtl import mlc_bridge
-    from ...targetgen.contract.toolchain import mlir_bin
+    from merlin.llvmlower.pipeline import lower_to_llvm_ir
+    from merlin.targetgen.isa_model import isa_model_from_encoding
+    from merlin.targetgen.isa_transcode import derive_march
+    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.targetgen.contract.toolchain import mlir_bin
     from . import muon_bsp, muon_link, muon_harness
 
     work = Path(workdir)

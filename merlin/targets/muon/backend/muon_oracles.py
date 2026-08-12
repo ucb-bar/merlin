@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from ..runtime.backends import muon
+from . import muon
 
 
 def flops_from_cb(cb: dict[str, Any]) -> int | None:
@@ -65,7 +65,7 @@ def _adapter(simulator: str) -> Callable:
         # a full-program artifact (has main) is passed through. Then prefer the FORK-FREE thesis path (stock
         # LLVM + RTL-derived transcode) and record which toolchain produced the graded ELF, so the experiment
         # measures fork-free coverage and never hides a fork fallback (MERLIN_MUON_FORKFREE_ONLY fails closed).
-        from ..runtime.backends import muon_harness as _mh
+        from . import muon_harness as _mh
         target = cb.get("target", "radiance")
         if muon.is_mlir_artifact(kernel_src):
             # THESIS PATH: the agent emitted an LLVM-dialect MLIR kernel (a compiler lowering). Build it
@@ -144,7 +144,7 @@ def _shape2d(shape) -> tuple[int, int]:
 def _output_symbols(elf: str | Path) -> dict[str, int]:
     """Symbol -> address for the ELF's globals, read structurally from the object's symbol table (no regex)."""
     import subprocess
-    from .contract.toolchain import mlir_bin
+    from merlin.targetgen.contract.toolchain import mlir_bin
     st = subprocess.run([str(mlir_bin("llvm-objdump")), "-t", str(elf)], capture_output=True, text=True).stdout
     out: dict[str, int] = {}
     for ln in st.splitlines():

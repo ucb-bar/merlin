@@ -174,7 +174,8 @@ def test_write_fused_pytorch_capsule_linalg_interface(entry, tmp_path):
 def test_args_from_cb_linalg_positional():
     """The positional-input harness path feeds a linalg-interface capsule's inputs in arg_order (incl.
     a rank-1 operand), producing the output last — no merlin_iface commands needed."""
-    from merlin.runtime.backends import muon_harness as MH
+    from merlin.runtime.backends.base import get_backend
+    MH = get_backend("muon").muon_harness
     cb = {
         "target": "t", "interface": "linalg_positional", "arg_order": ["X", "W", "B", "Y0"],
         "tensors": {"X": {"role": "input", "shape": [4, 4]}, "W": {"role": "input", "shape": [4]},

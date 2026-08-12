@@ -1188,8 +1188,15 @@ def _resolve_simt_introspect(target: str):
     Serves by the ARC-target alias (not the merlin name): a composite SIMT target (e.g. radiance) whose
     RTL IS the introspect's config (RadianceCluster) resolves to that introspect via ``_arc_target``."""
     if not _SIMT_INTROSPECTS:
-        from . import muon_introspect          # reference registration (the one SIMT core shipped in-tree)
-        register_simt_introspect(muon_introspect)
+        # The reference Muon introspect was evicted to its own package (merlin/targets/muon/backend/);
+        # resolve it via the registry so mlc_bridge no longer imports it directly, while preserving the
+        # on-demand registration guarantee (this fires whenever the registry is empty, independent of
+        # discovery order — so SIMT introspection radiance relies on cannot silently go missing).
+        try:
+            from ...runtime.backends import base as _bk
+            register_simt_introspect(_bk.get_backend("muon").muon_introspect)
+        except Exception:  # noqa: BLE001 — no SIMT introspect available -> _simt_fact_bundle reports honestly
+            pass
     return _SIMT_INTROSPECTS.get(_arc_target(target))
 
 

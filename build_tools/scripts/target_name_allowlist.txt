@@ -15,26 +15,16 @@
 build_tools/scripts/check_no_target_name.py                   # defines the target-name set it hunts
 
 # ---------------------------------------------------------------- REFERENCE target implementations (OV11 #98 evicts these to a published package via MERLIN_TARGET_PATH)
-merlin/python/merlin/runtime/backends/muon.py                # muon runtime backend (reference target)
-merlin/python/merlin/runtime/backends/muon_bsp.py            # muon board-support glue (reference target)
-merlin/python/merlin/runtime/backends/muon_codegen.py        # muon codegen (reference target)
-merlin/python/merlin/runtime/backends/muon_codegen_mlir.py   # muon MLIR codegen (reference target)
-merlin/python/merlin/runtime/backends/muon_harness.py        # muon test harness (reference target)
-merlin/python/merlin/runtime/backends/muon_link.py           # muon linker glue (reference target)
 merlin/python/merlin/cost_model/gemmini.py                   # gemmini cost model (reference target)
 merlin/python/merlin/cost_model/calibrate.py                 # gemmini cost calibration (reference target)
 merlin/python/merlin/targetgen/eval/gemmini_dispatcher.py    # gemmini eval dispatcher (reference target)
 merlin/python/merlin/targetgen/eval/saturn_vec_conformance.py # saturn vector conformance (reference target)
-merlin/python/merlin/targetgen/rtl/gen_muon_digest.py        # muon RTL digest generator (reference target)
 merlin/python/merlin/dse/calibrate_npu.py                    # npu_model DSE calibration (reference target)
 merlin/python/merlin/targetgen/eval/gemmini_suite.py         # gemmini conformance suite (reference target)
 merlin/python/merlin/targetgen/eval/gemmini_conformance.py   # gemmini conformance battery (reference target)
 merlin/python/merlin/targetgen/eval/gemmini_contract_sweep.py # gemmini battery migration (reference target)
 merlin/python/merlin/targetgen/model_slice_export.py         # gemmini model-slice capsule export (reference target)
-merlin/python/merlin/targetgen/muon_capsule_runner.py        # muon capsule runner (reference target)
-merlin/python/merlin/targetgen/muon_oracles.py               # muon oracle set (reference target)
 merlin/python/merlin/targetgen/oracle_helpers/npu_emit.py    # npu_model oracle emitter (reference target)
-merlin/python/merlin/targetgen/rtl/muon_introspect.py        # muon RTL introspection (reference target)
 build_tools/scripts/setup_atlas.py                           # atlas external-repo setup script (reference target)
 build_tools/scripts/probe_gemmini_oracle.py                  # gemmini oracle probe script (reference target)
 
@@ -57,5 +47,5 @@ merlin/python/merlin/kernels/regions.py                      # "(gemmini etc.)" 
 merlin/python/merlin/targetgen/agent/kernel_slot.py          # gemmini named inside the C output-contract template text
 merlin/python/merlin/targetgen/capability_manifests.py       # "e.g. radiance-mlir" in a generated README string
 merlin/python/merlin/targetgen/publish.py                    # "dialect/lowering/contracts for gemmini" in a generated README string
-merlin/python/merlin/targetgen/rtl/mlc_bridge.py             # "muon RTL introspect" descriptive provenance fallback label
+merlin/python/merlin/targetgen/rtl/mlc_bridge.py             # get_backend("muon").muon_introspect — the SIMT-introspect fallback resolves the evicted muon reference backend via the registry
 merlin/python/merlin/xdsl_dialects/lowering/passes.py        # "(toynpu/saturn)" in a PassInfo description string

@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from .muon_codegen import _plan
-from ..commandbuffer import materialize_inputs
+from merlin.runtime.commandbuffer import materialize_inputs
 
 
 class MuonMlirCodegenError(RuntimeError):

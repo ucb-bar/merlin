@@ -137,7 +137,8 @@ def test_radiance_uses_the_simt_cyclotron_oracle_not_arc_mxu():
     assert not RB.derived_levers(prof)                    # nothing fabricated on the arc systolic leg
 
     # But radiance has a real oracle: the committed cyclotron adapter (fail-closed via MuonUnavailable).
-    from merlin.targetgen import muon_oracles
+    from merlin.runtime.backends.base import get_backend
+    muon_oracles = get_backend("muon").muon_oracles
     assert callable(muon_oracles.cyclotron_adapter())
     assert muon_oracles.default_adapters()                # radiance ships real L-tier oracle adapters
     assert _te("radiance").sim_via == "cyclotron"

@@ -16,11 +16,11 @@ from pathlib import Path
 from typing import Callable
 
 # re-exported for callers that used MR.discover_capsules / load_capsule / TierResult
-from .capsule_common import discover_capsules, load_capsule  # noqa: F401
-from .capsule_runner import TierResult, OracleUnavailable  # noqa: F401
+from merlin.targetgen.capsule_common import discover_capsules, load_capsule  # noqa: F401
+from merlin.targetgen.capsule_runner import TierResult, OracleUnavailable  # noqa: F401
 from .muon_oracles import default_adapters, flops_from_cb
-from .runner_config import RunnerConfig
-from ..runtime.backends.muon import MuonUnavailable, FP_PEAK_GFLOPS  # noqa: F401
+from merlin.targetgen.runner_config import RunnerConfig
+from .muon import MuonUnavailable, FP_PEAK_GFLOPS  # noqa: F401
 
 SUITE = "muon-perf-bench"
 TARGET = "muon"
@@ -64,7 +64,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
 
     ``target`` is accepted for signature-parity with the shared bench driver but is advisory: the Muon
     config (``_MUON_CONFIG.target``) is authoritative, so this runner never mis-targets."""
-    from . import capsule_runner as CR
+    from merlin.targetgen import capsule_runner as CR
     adapters = _wrap_adapters(oracle_adapters if oracle_adapters is not None else default_adapters())
     return CR.run_capsule(capsule, package_dir, runs_root=runs_root, run_id=run_id, contract=contract,
                           oracle_adapters=adapters, pkg=pkg, timeout=timeout,
@@ -75,7 +75,7 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
               contract: str | Path | None = None,
               oracle_adapters: dict[str, Callable] | None = None, timeout: int = 600,
               target: str | None = None) -> list[dict]:
-    from . import capsule_runner as CR
+    from merlin.targetgen import capsule_runner as CR
     adapters = _wrap_adapters(oracle_adapters if oracle_adapters is not None else default_adapters())
     return CR.run_suite(capsules, package_dir, runs_root=runs_root, contract=contract,
                         oracle_adapters=adapters, timeout=timeout,

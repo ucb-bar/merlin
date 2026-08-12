@@ -207,35 +207,15 @@ def _chipyard_available(target: str) -> tuple[bool, str]:
     return False, f"{target!r}: neither the chipyard spike sim nor the mlc arc oracle is available"
 
 
-def _cyclotron_adapters(target: str) -> dict[str, Callable]:
-    """A self-hosted SIMT target graded on its emitted kernel ELF by the bespoke cyclotron/VCS oracle
-    (``muon_oracles``) — NOT the arc command-buffer path, which grades the wrong artifact for a SIMT
-    kernel. The muon adapters fail closed (MuonUnavailable) when the MERLIN_MUON_* toolchain env is
-    unset, so an unwired target degrades honestly, never mis-grades."""
-    from . import muon_oracles as _MO
-    return _MO.default_adapters()
-
-
-def _cyclotron_available(target: str) -> tuple[bool, str]:
-    """cyclotron (SIMT): require the cyclotron oracle; the mlc arc command-buffer adapter grades the wrong
-    artifact for a SIMT kernel, so it is NOT a valid fallback (that was a false-green). Fail closed."""
-    try:
-        from ..runtime.backends import muon as _muon
-        if _muon.available("cyclotron"):
-            return True, f"{target!r}: cyclotron SIMT oracle available"
-    except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
-        pass
-    return False, (f"{target!r}: cyclotron SIMT oracle unavailable (set the MERLIN_MUON_* env); the mlc "
-                   "arc command-buffer adapter grades the wrong artifact for a SIMT target and is not "
-                   "a valid fallback")
-
-
 #: DECLARED bespoke-sim oracle registry, keyed by sim ENGINE (``sim_via``) — the seam that keeps oracle
-#: routing target-name-free (a new sim engine registers here; the dispatch below is untouched).
+#: routing target-name-free (a new sim engine registers here; the dispatch below is untouched). The
+#: ``cyclotron`` (self-hosted SIMT) oracle is NOT hardcoded here: it is DISCOVERED from the muon reference
+#: package's ``plugin.sim_oracle`` (merlin/targets/muon/sim_oracle.py), which calls
+#: :func:`register_sim_oracle` at import via :func:`_ensure_sim_oracles_discovered` — the same eviction as
+#: the muon runtime backend. Radiance grades on that discovered cyclotron oracle.
 _SIM_ORACLES: dict[str, _SimOracle] = {
     "chipyard": _SimOracle(lambda t: _sim_engine_adapters("chipyard", t), _chipyard_available,
                            exclusive=False, has_memmap=True, is_compile_based=True),
-    "cyclotron": _SimOracle(_cyclotron_adapters, _cyclotron_available, exclusive=True),
 }
 
 
@@ -411,7 +391,8 @@ def codegen_smoke(target: str) -> tuple[bool, str]:
     if _bespoke_sim_via(target) != "cyclotron":
         return True, "n/a (fixed-format ISA but no cyclotron reference sim declared for the fork-free smoke)"
     try:
-        from ..runtime.backends import muon as _muon
+        from ..runtime.backends import base as _bk
+        _muon = _bk.get_backend("muon")   # the evicted SIMT reference backend, resolved via discovery
     except Exception as e:  # noqa: BLE001
         return True, f"n/a (fork-free backend unimportable: {str(e)[-120:]})"
     if not _muon.available("cyclotron"):
@@ -930,8 +911,15 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # falls through to the generic handler and is mislabeled a TOOL_CRASH (an agent FAIL) instead of
         # firing the unavailable -> not_gradeable_no_oracle path — the same bug the program-oracle catch above
         # fixed for atlas. Catch it too so an unavailable RTL oracle is honest for the SIMT endpoint as well.
-        from ..runtime.backends.muon import MuonUnavailable as _MuonUnavailable
-        _ORACLE_UNAVAILABLE = (OracleUnavailable, _POUnavailable, _MuonUnavailable)
+        # The muon backend was evicted to its own reference package; resolve its MuonUnavailable via the
+        # registry (get_backend), and simply skip it if the SIMT backend is not present in this env — an
+        # absent backend cannot raise it, so there is nothing to catch.
+        try:
+            from ..runtime.backends import base as _bk
+            _muon_unavail = (_bk.get_backend("muon").MuonUnavailable,)
+        except Exception:  # noqa: BLE001 — SIMT backend absent -> no MuonUnavailable to catch
+            _muon_unavail = ()
+        _ORACLE_UNAVAILABLE = (OracleUnavailable, _POUnavailable) + _muon_unavail
         for tier in sorted(set(cfg.oracle_tiers) | set(adapters or {})):
             mand = tier in required
             adapter = (adapters or {}).get(tier)

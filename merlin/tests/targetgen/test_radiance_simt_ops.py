@@ -10,8 +10,9 @@ except as a kernel-symbol parameter).
 """
 from __future__ import annotations
 
-from merlin.runtime.backends import muon_codegen_mlir as MC
-from merlin.runtime.backends import muon_harness as MH
+from merlin.runtime.backends.base import get_backend
+MC = get_backend("muon").muon_codegen_mlir      # evicted SIMT backend, resolved via plugin discovery
+MH = get_backend("muon").muon_harness
 from merlin.targetgen import capsule_golden as CG
 
 

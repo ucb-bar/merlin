@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from .muon import MUON_CONSOLE
-from ..commandbuffer import materialize_inputs
+from merlin.runtime.commandbuffer import materialize_inputs
 
 
 class MuonCodegenError(RuntimeError):

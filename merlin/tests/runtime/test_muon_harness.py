@@ -6,7 +6,9 @@ and the OUT/DONE protocol). The end-to-end cyclotron proof on a real capsule liv
 test_muon_forkfree suite."""
 from __future__ import annotations
 
-from merlin.runtime.backends.muon_harness import build_program, program_from_cb, TensorArg
+from merlin.runtime.backends.base import get_backend
+_mh = get_backend("muon").muon_harness          # evicted SIMT backend, resolved via plugin discovery
+build_program, program_from_cb, TensorArg = _mh.build_program, _mh.program_from_cb, _mh.TensorArg
 from merlin.targetgen.isa_model import IsaModel
 
 # a minimal derived-ABI model: the harness reads ONLY the hart-id CSR and the console-MMIO aperture from it

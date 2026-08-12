@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.runtime.backends import muon_link as ML
+from merlin.runtime.backends.base import get_backend
+ML = get_backend("muon").muon_link              # evicted SIMT backend, resolved via plugin discovery
 
 # Fixed-format field layout for the SIMT target (derived from its RTL-derived IsaModel). Kept explicit
 # here so the packing math is tested hermetically; test_derived_layout_matches checks it still equals

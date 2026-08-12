@@ -11,8 +11,9 @@ from __future__ import annotations
 import pytest
 
 from merlin.targetgen.isa_model import IsaModel
-from merlin.runtime.backends import muon
-from merlin.runtime.backends import muon_harness as mh
+from merlin.runtime.backends.base import get_backend
+muon = get_backend("muon").muon                 # evicted SIMT backend, resolved via plugin discovery
+mh = get_backend("muon").muon_harness
 
 
 def _model(runtime_abi: dict) -> IsaModel:

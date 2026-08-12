@@ -36,9 +36,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from ...targetgen.isa_asm import assemble_fixed
-from ...targetgen import isa_transcode as _it
-from ...targetgen.isa_transcode import FixedFormatTranscoder, TranscodeError
+from merlin.targetgen.isa_asm import assemble_fixed
+from merlin.targetgen import isa_transcode as _it
+from merlin.targetgen.isa_transcode import FixedFormatTranscoder, TranscodeError
 
 _SHT_PROGBITS, _SHT_SYMTAB, _SHT_STRTAB, _SHT_RELA, _SHT_NOBITS = 1, 2, 3, 4, 8
 _SHF_ALLOC, _SHF_EXECINSTR = 0x2, 0x4
@@ -261,8 +261,8 @@ def build_boot_object(boot_asm: str | Path, out_obj: str | Path, *, target: str,
     the target's derived model (built from ``target`` if omitted).
     """
     if isa_model is None:
-        from ...targetgen.isa_model import isa_model_from_encoding
-        from ...targetgen.rtl import mlc_bridge
+        from merlin.targetgen.isa_model import isa_model_from_encoding
+        from merlin.targetgen.rtl import mlc_bridge
         isa_model = isa_model_from_encoding(target, mlc_bridge.isa_encoding_for(target))
     clang = str(clang)
     triple = "--target=riscv32"

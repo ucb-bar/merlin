@@ -7,7 +7,8 @@ so the reference kernel's params are ``(%W, %L, %O)`` and it computes ``O = L @ 
 """
 import pytest
 
-from merlin.runtime.backends import muon
+from merlin.runtime.backends.base import get_backend
+muon = get_backend("muon").muon                 # evicted SIMT backend, resolved via plugin discovery
 
 pytestmark = pytest.mark.skipif(not muon.available("cyclotron"),
                                 reason="cyclotron SIMT oracle / stock LLVM not available")
@@ -84,7 +85,7 @@ def test_mlir_forkfree_certs_on_verilator_rtl(tmp_path):
     on the RadianceTapeoutSimConfig Verilator RTL sim. It is a COMPLETION + cycle-accurate perf cert (the
     harness $finish races the UART flush, so console outputs do not surface for grading — the verilator
     adapter reports ``completion_only`` and correctness stays the required cyclotron L2 gate's job)."""
-    from merlin.targetgen import muon_oracles
+    muon_oracles = get_backend("muon").muon_oracles
     cb = dict(_CB, target="radiance")
     res = muon_oracles.verilator_muon_adapter()(cb, _KERNEL_MLIR, tmp_path, 600)
     assert res.get("completion_only") is True, res
@@ -107,7 +108,7 @@ def test_reference_mlir_emitter_grades_on_cyclotron(tmp_path):
     """The reference MLIR emitter (muon_codegen_mlir) emits an LLVM-dialect matmul loop nest that compiles
     fork-free and grades correct on cyclotron for a 16x16 gemm — the reference the agentic arms must match."""
     import numpy as np
-    from merlin.runtime.backends.muon_codegen_mlir import emit_kernel_mlir
+    emit_kernel_mlir = get_backend("muon").muon_codegen_mlir.emit_kernel_mlir
     rng = np.random.default_rng(0)
     m = k = n = 16
     a = rng.standard_normal((m, k)).astype(np.float32)

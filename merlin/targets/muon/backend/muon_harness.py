@@ -174,7 +174,7 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     on operand order + shapes. Returns None (fail-safe) on an unsupported shape (chained matmuls / no matmul).
     Shared by the inline-source path (:func:`program_from_cb`) and the object-kernel path
     (:func:`external_main_from_cb`)."""
-    from ..commandbuffer import materialize_inputs
+    from merlin.runtime.commandbuffer import materialize_inputs
 
     all_tensors = cb.get("tensors") or {}
 

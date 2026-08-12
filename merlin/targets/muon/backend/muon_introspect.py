@@ -104,7 +104,7 @@ def _isa_block() -> dict[str, Any]:
                   "sync": ["mu_barrier", "mu_fence_smem", "mu_fence"],
                   "simt": ["vx_thread_id", "vx_warp_id", "vx_core_id", "vx_split", "vx_join", "vx_tmc"]}
     try:
-        from . import mlc_bridge
+        from merlin.targetgen.rtl import mlc_bridge
         fact = mlc_bridge.isa_encoding_for("muon")
     except Exception:  # noqa: BLE001 — mlc/cache absent
         fact = None
@@ -190,7 +190,7 @@ def build_facts() -> dict[str, Any]:
 def default_facts_path() -> Path:
     # muon has no hand-curated merlin/targets/muon; the resolver routes it to artifacts/targets/muon
     # (or $MERLIN_RTL_FACTS). Muon uses a distinct filename (muon_facts.json) next to the pin.
-    from .facts import rtl_facts_path
+    from merlin.targetgen.rtl.facts import rtl_facts_path
     return rtl_facts_path("muon").with_name("muon_facts.json")
 
 
