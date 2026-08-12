@@ -145,11 +145,21 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
         origin = "example" if examples_dir in g.parents else "golden"
         out.append(AnswerSurface(f"{origin}:{g.relative_to(root)}", g, "file", origin))
 
+    # Mask EVERY hidden-capsule dir under the capsule tree, not only THIS target's declared one. The bundle
+    # grants the frozen ABI (``merlin/contract/``) broadly, which re-exposes the SHARED
+    # ``capsules/hidden`` set and any OTHER target's ``<t>/hidden`` — a radiance run could otherwise read
+    # the shared/atlas hidden capsules (a held-out answer surface; the ``CANARY_HIDDEN`` marker caught
+    # exactly this). Mirrors :func:`golden_files`' whole-tree sweep that masks cross-target/nested goldens.
+    hidden_dirs: set[Path] = set()
     hidden_rel = te.hidden_corpus()
     if hidden_rel:
-        hp = root / hidden_rel.rstrip("/")
+        hidden_dirs.add(root / hidden_rel.rstrip("/"))
+    caps_root = root / "merlin/contract/capsules"
+    if caps_root.is_dir():
+        hidden_dirs.update(d for d in caps_root.rglob("hidden") if d.is_dir())
+    for hp in sorted(hidden_dirs):
         if hp.is_dir():
-            out.append(AnswerSurface("hidden-capsules", hp, "dir", "hidden"))
+            out.append(AnswerSurface(f"hidden-capsules:{hp.relative_to(root)}", hp, "dir", "hidden"))
 
     tgt_root = artifacts_dir() / "targets" / te.target
     for name in te.prior_backends:
@@ -184,10 +194,17 @@ def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
     parallel hand-list to drift). ``answer`` = goldens/hidden/oracle-modules/prior-backends/grader-private;
     ``grader`` = grader-module stems; ``oracle_subpath`` = the oracle-callable helper subpaths."""
     answer: list[str] = ["golden.yaml", "expected_command_buffer"]
-    hidden_rel = te.hidden_corpus()
-    if hidden_rel:
-        # e.g. "capsules/hidden" — the trailing two path components identify the hidden set
-        answer.append("/".join(Path(hidden_rel.rstrip("/")).parts[-2:]))
+    # A token for EVERY hidden-capsule dir (this target's + the shared one + any other target's), matching
+    # the filesystem mask above — the trailing two path components identify each hidden set (e.g.
+    # "radiance/hidden", "capsules/hidden", "atlas/hidden"). A read of any is an answer surface.
+    _hidden_rels = []
+    if te.hidden_corpus():
+        _hidden_rels.append(te.hidden_corpus().rstrip("/"))
+    _caps = repo_root() / "merlin/contract/capsules"
+    if _caps.is_dir():
+        _hidden_rels += [d.relative_to(repo_root()).as_posix() for d in _caps.rglob("hidden") if d.is_dir()]
+    for _hr in _hidden_rels:
+        answer.append("/".join(Path(_hr).parts[-2:]))
     for rel in ORACLE_MODULES:
         # "merlin/runtime/reference" etc. — drop the merlin/python prefix + the .py suffix
         frag = rel[len("merlin/python/"):] if rel.startswith("merlin/python/") else rel
