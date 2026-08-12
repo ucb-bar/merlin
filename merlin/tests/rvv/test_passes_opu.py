@@ -110,6 +110,37 @@ class TestWhatItRefuses:
         assert PO.ROUTABLE_OP == "linalg.matmul"
         assert PO.INT8_DTYPES == ("i8", "i8", "i32")
 
+    def test_a_nonzero_init_is_not_routed(self):
+        # `linalg.matmul` computes C_init + A@B; the microkernel WRITES its output. Those agree only when
+        # C_init is zero, so routing this would silently drop the addend — a wrong answer, not a slow one.
+        mod = _module(_INT8_MM.replace("%z = arith.constant 0 : i32", "%z = arith.constant 7 : i32"))
+        assert PO.routable_contractions(mod) == []
+        assert PO.rewrite_contractions_to_opu(mod, select=_ALL).count == 0
+
+    def test_a_zero_fill_init_is_routed(self):
+        # The other side of the same condition, so the check above cannot pass by declining everything.
+        mod = _module(_INT8_MM)
+        assert len(PO.routable_contractions(mod)) == 1
+        assert PO.rewrite_contractions_to_opu(mod, select=_ALL).count == 1
+
+    def test_an_init_that_is_not_a_fill_at_all_is_declined(self):
+        # Fail closed: an init this cannot recognise might carry live values. Being wrong in this direction
+        # leaves a contraction on the vector path, which is merely slower.
+        mod = _module(_INT8_MM.replace(
+            "%f = linalg.fill ins(%z : i32) outs(%e : tensor<64x16xi32>) -> tensor<64x16xi32>",
+            "%f = tensor.empty() : tensor<64x16xi32>"))
+        assert PO.routable_contractions(mod) == []
+
+    def test_zero_initialised_rejects_a_block_argument_init(self):
+        # A contraction accumulating into a function argument has an init whose `owner` is a Block rather
+        # than an Operation; reaching for `.name` on it would raise instead of declining.
+        mod = _module(_INT8_MM.replace(
+            "func.func @forward(%a: tensor<64x32xi8>, %b: tensor<32x16xi8>) -> tensor<64x16xi32> {",
+            "func.func @forward(%a: tensor<64x32xi8>, %b: tensor<32x16xi8>, "
+            "%c: tensor<64x16xi32>) -> tensor<64x16xi32> {").replace(
+            "outs(%f : tensor<64x16xi32>) {", "outs(%c : tensor<64x16xi32>) {"))
+        assert PO.routable_contractions(mod) == []
+
 
 class TestWhatItEmits:
     def test_the_contraction_becomes_a_call_to_the_kernel(self):

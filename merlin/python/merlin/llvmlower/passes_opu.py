@@ -28,6 +28,13 @@ detail, and it is why this pass does not pretend the layouts already match.
 defensively copies the weight operand, which for a 12-block transformer is a large amount of pointless
 memcpy. The same attributes appear in the board backends for the same reason.
 
+**The init operand must be a zero fill, and that is a correctness condition rather than a convenience.**
+``linalg.matmul`` computes ``C_init + A @ B``; the microkernel OVERWRITES its output
+(``c[i*n+j] = bias ? bias[j] : 0`` plus the reduction). Those two agree exactly when — and only when —
+``C_init`` is zero. Every one of spectformer's 90 candidates is a ``linalg.fill`` of ``0 : i32``, so
+nothing is lost by requiring it; what is gained is that a model whose contractions accumulate onto a live
+init is DECLINED instead of silently computing ``A @ B`` and dropping the addend.
+
 **Selection is a parameter, never a policy.** ``select`` decides which contractions move; with no
 selector nothing is rewritten and the module is returned untouched. A pass that decided for itself would
 duplicate the routing decision that :mod:`merlin.targetgen.routing` and the e-graph exist to make.
@@ -39,7 +46,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 __all__ = ["OpuRewrite", "Routed", "SYMBOL_PREFIX", "patch_declaration_arg_attrs",
-           "rewrite_contractions_to_opu", "routable_contractions", "unpatched_declarations"]
+           "rewrite_contractions_to_opu", "routable_contractions", "unpatched_declarations",
+           "zero_initialised"]
 
 #: Symbol stem for the emitted callees. One numbered symbol per distinct type signature, because MLIR
 #: function types are monomorphic — the same reason the board backends number theirs.
@@ -99,12 +107,55 @@ class OpuRewrite:
                 "skipped": [{"what": w, "why": y} for w, y in self.skipped]}
 
 
+def zero_initialised(op) -> bool:
+    """Whether ``op``'s accumulator init is provably an all-zero fill.
+
+    The microkernel writes its output rather than adding to it, so routing a contraction whose init
+    carries live values would DROP that addend — a wrong answer, not a slow one. Answering "no" for
+    anything not recognised is the fail-closed direction: an unrecognised init might be zero, and a
+    contraction wrongly left on the vector path is merely slower.
+
+    Structural: the init operand's defining op must be ``linalg.fill`` of an ``arith.constant`` integer
+    zero. A block argument (whose ``owner`` is a ``Block``, not an ``Operation``) is not a fill and is
+    rejected by the same check.
+    """
+    from xdsl.ir import Operation
+
+    operands = list(getattr(op, "operands", ()))
+    if len(operands) < 3:
+        return False
+    fill = operands[2].owner
+    if not isinstance(fill, Operation) or getattr(fill, "name", "") != "linalg.fill":
+        return False
+    fill_operands = list(fill.operands)
+    if not fill_operands:
+        return False
+    const = fill_operands[0].owner
+    if not isinstance(const, Operation) or getattr(const, "name", "") != "arith.constant":
+        return False
+    return _int_attr_value(getattr(const, "value", None)) == 0
+
+
+def _int_attr_value(attr) -> int | None:
+    """The integer an ``IntegerAttr`` carries, or None when it is not one.
+
+    ``IntegerAttr`` nests its payload (``attr.value.data``); reaching through it explicitly rather than
+    parsing ``str(attr)`` means a float or index attribute returns None instead of being misread.
+    """
+    inner = getattr(attr, "value", None)
+    data = getattr(inner, "data", None)
+    return data if isinstance(data, int) else None
+
+
 def routable_contractions(module) -> list[tuple[Any, Any]]:
     """``[(op, shape)]`` for every contraction this path COULD take, with no decision made.
 
     Separated from the rewrite so a caller (a cost model, an e-graph, a report) can enumerate the
     candidate set without mutating anything — the same split
     :func:`routing.route_candidates` makes for the same reason.
+
+    "Could" means LEGAL, not profitable: rank-2 int8 ``matmul`` accumulating into a zero init. Whether a
+    legal contraction is worth moving is the ``select`` caller's decision.
     """
     from ..kernels.shapes import observe_contractions
 
@@ -115,6 +166,8 @@ def routable_contractions(module) -> list[tuple[Any, Any]]:
         if tuple(shape.dtypes) != INT8_DTYPES:
             continue
         if len(shape.parallel) != 2 or len(shape.reduction) != 1:
+            continue
+        if not zero_initialised(op):
             continue
         out.append((op, shape))
     return out
