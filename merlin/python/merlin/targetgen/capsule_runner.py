@@ -185,6 +185,8 @@ class _SimOracle:
     adapters: Callable[[str], dict]                 # target -> {tier: adapter}
     available: Callable[[str], tuple[bool, str]]    # target -> (ok, reason) pre-spend probe
     exclusive: bool                                 # replaces (True) vs augments (False) the arc default
+    has_memmap: bool = False                        # exposes an SoC memory map (DRAM base derivable from the build)
+    is_compile_based: bool = False                  # lowers the kernel via an oracle-side compile toolchain (smoke-testable)
 
 
 def _chipyard_available(target: str) -> tuple[bool, str]:
@@ -232,19 +234,30 @@ def _cyclotron_available(target: str) -> tuple[bool, str]:
 #: routing target-name-free (a new sim engine registers here; the dispatch below is untouched).
 _SIM_ORACLES: dict[str, _SimOracle] = {
     "chipyard": _SimOracle(lambda t: _sim_engine_adapters("chipyard", t), _chipyard_available,
-                           exclusive=False),
+                           exclusive=False, has_memmap=True, is_compile_based=True),
     "cyclotron": _SimOracle(_cyclotron_adapters, _cyclotron_available, exclusive=True),
 }
 
 
+def sim_oracle_caps(sim_via: str | None):
+    """The registered :class:`_SimOracle` for a sim engine (its capability flags), or None. The
+    contract-routed way for other layers (e.g. runtime_build) to ask 'does this sim expose a memory
+    map / a compile toolchain?' without branching on the engine NAME. Runs plugin discovery first so a
+    target-contributed engine is visible."""
+    _ensure_sim_oracles_discovered()
+    return _SIM_ORACLES.get(sim_via or "")
+
+
 def register_sim_oracle(sim_via: str, *, adapters: Callable[[str], dict],
-                        available: Callable[[str], tuple[bool, str]], exclusive: bool) -> None:
+                        available: Callable[[str], tuple[bool, str]], exclusive: bool,
+                        has_memmap: bool = False, is_compile_based: bool = False) -> None:
     """Register a bespoke-sim oracle under its ``sim_via`` engine name (idempotent) — the public seam a
     NEW simulator uses to plug into oracle routing without editing :func:`oracle_adapters` /
     :func:`oracle_available`. ``exclusive=True`` replaces the arc/program default (a self-hosted SIMT
     core graded on its own kernel ELF); ``exclusive=False`` layers additive tiers on top of the arc
     default (a chipyard-style sim). See :class:`_SimOracle`."""
-    _SIM_ORACLES[sim_via] = _SimOracle(adapters=adapters, available=available, exclusive=exclusive)
+    _SIM_ORACLES[sim_via] = _SimOracle(adapters=adapters, available=available, exclusive=exclusive,
+                                       has_memmap=has_memmap, is_compile_based=is_compile_based)
 
 
 _sim_oracle_env_seen: str | None = None

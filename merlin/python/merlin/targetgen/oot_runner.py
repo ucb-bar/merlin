@@ -43,6 +43,12 @@ SUITE = "gemmini-contract"  # target-ok: aet suite identity of the gemmini refer
 DEFAULT_TARGET = "unknown"  # fallback only when a package manifest declares no ``target`` field
 CONTRACT_VERSION = "0.1"
 
+# Cycle-accurate RTL SIMULATOR tools — a property of the simulator TOOL, not of any target. A tier
+# graded by one of these carries a cycle-accurate cert; a functional tier (spike / the arc coarse
+# model) does not. Extensible as data: a new cycle-accurate sim adds its tool name here. These are
+# simulator tool names, never target names, so no target is baked by keying on the set.
+_CYCLE_ACCURATE_SIMULATORS = frozenset({"verilator", "vcs"})
+
 # Reference/oracle-ACCESS markers forbidden in a non-exempt package's tool sources (integrity scan; see
 # merlin/contract/integrity_policy.md). These are specific dotted paths — matched as substrings across
 # ALL languages because they name the actual reference/oracle surface, not a common word.
@@ -493,7 +499,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
             oracle_outputs = res["outputs"]      # what the mesh actually produced (bit-exact == ref when ok)
             oracle = {"kind": res["oracle"].get("kind"),
                       "derived_from_rtl": res["oracle"].get("derived_from_rtl", False),
-                      "cycle_accurate": simulator == "verilator" and ok,
+                      "cycle_accurate": simulator in _CYCLE_ACCURATE_SIMULATORS and ok,
                       "result": "pass" if ok else "fail", "cycles": res.get("cycles")}
             if res.get("console") is not None:
                 cpath = paths.artifacts_dir / "console.log"
@@ -541,7 +547,7 @@ def _record(paths: RunPaths, run_id: str, rung: str, simulator: str, status: str
             cb: dict | None, shas: dict, oracle: dict, entry: dict, semantic: dict,
             artifacts_recorded: dict, failure: dict | None, seed: int, target: str) -> None:
     """Write the run_manifest + artifact records + FailureRecord (the attributable ledger)."""
-    cycle_accurate = simulator == "verilator" and oracle.get("result") == "pass"
+    cycle_accurate = simulator in _CYCLE_ACCURATE_SIMULATORS and oracle.get("result") == "pass"
     manifest = {
         "schema_version": "1.0", "project": "merlin", "suite": SUITE, "method": run_id,
         "seed": seed, "run_id": run_id, "target": target, "benchmark": rung,
