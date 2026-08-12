@@ -137,9 +137,14 @@ def main(argv=None):
         o["elem_bytes"] = elem_bytes
         o["stride_bytes"] = int(out_stride) if out_stride else int(cols) * elem_bytes
 
+    # The RoCC major opcode is the one the decoder recorded for THIS trace (derived from the target's
+    # facts, via rocc_decode's abi block) — NOT a baked custom-0 literal. Parse the hex; fail closed to
+    # None (a trace that never carried an opcode cannot be faithfully replayed against a guessed one).
+    abi_op = (trace.get("abi") or {}).get("custom_opcode")
+    rocc_opcode = int(abi_op, 16) if isinstance(abi_op, str) and abi_op else None
     spec = {"capsule": capsule.get("name"), "arg_addr": arg_addr,
             "placements": placements, "outputs": out_specs, "insns": insns,
-            "rocc_opcode": 0x0b}
+            "rocc_opcode": rocc_opcode}
     Path(a.out).write_text(json.dumps(spec, indent=1))
     print(f"wrote {a.out}: {len(insns)} insns, {len(placements)} input placements, "
           f"{len(out_specs)} outputs; arg_addr={arg_addr if len(inputs)+len(capsule.get('outputs') or [])<=3 else '...'}")
