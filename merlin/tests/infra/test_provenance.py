@@ -137,12 +137,62 @@ class TestVerificationCatchesTheRealMistake:
         got = P.verify("x", checkout=root, path=pins)
         assert any("branch is" in d for d in got.drift)
 
-    def test_a_dirty_tree_is_drift_because_the_sources_are_read(self, tmp_path):
+    def test_a_dirty_tree_with_nothing_declared_as_read_is_drift(self, tmp_path):
+        # Fail closed: with no read set there is no basis for calling the dirt harmless, so "does the
+        # declared revision describe what would be read" is UNKNOWN — and an UNKNOWN is drift, never
+        # agreement.
         root, sha = _repo(tmp_path)
         (root / "kept.txt").write_text("edited", encoding="utf-8")
         pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n")
         got = P.verify("x", checkout=root, path=pins)
-        assert any("uncommitted" in d for d in got.drift)
+        assert not got.ok and any("uncommitted" in d and "UNKNOWN" in d for d in got.drift)
+
+    def test_an_edit_to_a_source_that_is_read_is_drift(self, tmp_path):
+        # THE case a pin exists for: the commit still looks right, but the bytes a derivation consumes are
+        # not the ones that revision contains, so anything emitted from them is unattributable.
+        root, sha = _repo(tmp_path)
+        (root / "kept.txt").write_text("edited", encoding="utf-8")
+        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n    requires_paths: [kept.txt]\n")
+        got = P.verify("x", checkout=root, path=pins)
+        assert not got.ok
+        assert any("kept.txt" in d for d in got.drift)
+
+    def test_an_edit_to_something_never_read_is_a_note_not_drift(self, tmp_path):
+        # A checkout on a shared host is almost never pristine. Reporting a stray build log as drift makes
+        # the check fire on every build and teaches people to ignore it, which is worse than not checking —
+        # so it is recorded and does not clear `ok`.
+        root, sha = _repo(tmp_path)
+        (root / "stray.log").write_text("build noise", encoding="utf-8")
+        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n    requires_paths: [kept.txt]\n")
+        got = P.verify("x", checkout=root, path=pins)
+        assert got.ok, got.drift
+        assert any("none of them a source this reads" in n for n in got.notes)
+        assert got.observed.dirty is True, "the fact itself must not be lost"
+
+    def test_the_read_set_can_be_narrowed_by_the_caller(self, tmp_path):
+        # A build reads a specific set of files, which is usually narrower than everything the pin requires
+        # to be present. Answering about THIS build is what makes the verdict actionable.
+        root, sha = _repo(tmp_path)
+        (root / "a.txt").write_text("x", encoding="utf-8")     # the only dirty file
+        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n")
+        assert P.verify("x", checkout=root, path=pins, reads=["b.txt"]).ok
+        assert not P.verify("x", checkout=root, path=pins, reads=["a.txt"]).ok
+
+    def test_an_untracked_directory_covers_the_files_inside_it(self, tmp_path):
+        # git reports a newly-added directory as ONE entry with a trailing slash, so comparing only for
+        # equality would call an edited source inside it clean.
+        root, sha = _repo(tmp_path)
+        (root / "src").mkdir()
+        (root / "src" / "Consts.scala").write_text("// new", encoding="utf-8")
+        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n")
+        got = P.verify("x", checkout=root, path=pins, reads=["src/Consts.scala"])
+        assert not got.ok and any("src/Consts.scala" in d for d in got.drift)
+
+    def test_the_dirty_paths_are_recorded_not_just_counted(self, tmp_path):
+        root, _sha = _repo(tmp_path)
+        (root / "one.txt").write_text("1", encoding="utf-8")
+        got = P.observe(root)
+        assert "one.txt" in got.dirty_paths and got.dirty_files == len(got.dirty_paths)
 
     def test_a_different_origin_is_caught_unless_the_pin_explains_it(self, tmp_path):
         root, sha = _repo(tmp_path)

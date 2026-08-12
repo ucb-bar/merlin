@@ -41,13 +41,24 @@ duplicate the routing decision that :mod:`merlin.targetgen.routing` and the e-gr
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
-__all__ = ["OpuRewrite", "Routed", "SYMBOL_PREFIX", "patch_declaration_arg_attrs",
-           "rewrite_contractions_to_opu", "routable_contractions", "unpatched_declarations",
+__all__ = ["OpuRewrite", "Routed", "SIDECAR_NAME", "SYMBOL_PREFIX", "load_sidecar",
+           "patch_declaration_arg_attrs", "rewrite_contractions_to_opu", "rewrite_prepared_file",
+           "routable_contractions", "tile_filling_selector", "unpatched_declarations",
            "zero_initialised"]
+
+#: Where the rewrite records what it minted, beside the prepared module.
+#:
+#: A file rather than a return value because the two halves run in different PROCESSES: the lowering
+#: happens in a subprocess that re-imports these modules, which is the same reason
+#: ``impr_features._try_lazy_register`` exists. The build step needs the signatures to generate the C
+#: side, and passing them in memory silently produced an empty set there.
+SIDECAR_NAME = "opu_signatures.json"
 
 #: Symbol stem for the emitted callees. One numbered symbol per distinct type signature, because MLIR
 #: function types are monomorphic — the same reason the board backends number theirs.
@@ -315,6 +326,83 @@ def unpatched_declarations(text: str, rewrite: OpuRewrite) -> tuple[str, ...]:
         if "bufferization.access" not in line:
             missing.append(sym)
     return tuple(missing)
+
+
+def tile_filling_selector(tile_edge: int) -> Callable[[Any], bool]:
+    """Select contractions whose output is at least one whole tile in both parallel dimensions.
+
+    The unit computes a ``tile_edge x tile_edge`` outer product per accumulate whether or not the operands
+    fill it, so a contraction narrower than a tile in either direction pays for lanes it does not use;
+    :class:`routing.MeasuredCost` prices exactly that. This is the crude form of that decision, stated as
+    a threshold — it exists so the compile path can be exercised before the e-graph makes the call, and it
+    takes ``tile_edge`` as an argument because the edge is a derived hardware fact
+    (:func:`kernels.opu_cert.tile_edge_for_config`) and a threshold baked here would be wrong on every
+    other configuration of the unit.
+    """
+    edge = int(tile_edge)
+    if edge < 1:
+        raise ValueError(f"tile_edge={tile_edge} is not a lane count; it comes from the hardware's own "
+                         "vector length and a guessed one selects the wrong contractions")
+
+    def select(shape) -> bool:
+        return min(int(shape.parallel[0]), int(shape.parallel[1])) >= edge
+
+    return select
+
+
+def rewrite_prepared_file(prepared: "str | Path", work: "str | Path", *,
+                         select: Callable[[Any], bool] | None) -> OpuRewrite:
+    """Rewrite a prepared module ON DISK in place and record what it minted.
+
+    This is the seam a whole-model build uses: it reads the module the preparation passes produced,
+    routes the selected contractions, prints it back, repairs the declarations the printer drops, and
+    writes the sidecar the build's C side reads.
+
+    It REFUSES to write a module whose declarations lost their access attributes. That check is not
+    belt-and-braces: the attributes are dropped silently by the printer, the consequence is a defensive
+    copy of every routed weight, and a large amount of pointless memcpy in a shipped model is exactly the
+    kind of regression nothing would attribute back to here.
+    """
+    from ..frontends.linalg_mlir import parse_mlir_file
+    from ..xdsl_dialects._common import text as to_text
+
+    prepared, work = Path(prepared), Path(work)
+    module = parse_mlir_file(prepared)
+    rewrite = rewrite_contractions_to_opu(module, select=select)
+    if rewrite.count:
+        text = patch_declaration_arg_attrs(to_text(module), rewrite)
+        missing = unpatched_declarations(text, rewrite)
+        if missing:
+            raise RuntimeError(
+                f"declarations {list(missing)} carry no bufferization.access attributes, so "
+                "one-shot-bufferize would copy the weight operand of every contraction routed to them; "
+                "refusing to write the module")
+        prepared.write_text(text, encoding="utf-8")
+    work.mkdir(parents=True, exist_ok=True)
+    (work / SIDECAR_NAME).write_text(json.dumps(rewrite.to_dict(), indent=2), encoding="utf-8")
+    return rewrite
+
+
+def load_sidecar(work: "str | Path") -> dict[str, tuple[int, int, int]]:
+    """``{symbol: (m, n, k)}`` as recorded beside a prepared module, or ``{}`` when nothing was routed.
+
+    An absent sidecar means the rewrite never ran, which is the same thing as nothing routed as far as
+    the build is concerned — but a MALFORMED one is an error, because it means the rewrite ran and the
+    build would otherwise emit a translation unit missing the symbols the module calls.
+    """
+    path = Path(work) / SIDECAR_NAME
+    if not path.is_file():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    sigs = payload.get("signatures", {})
+    if not isinstance(sigs, dict):
+        raise ValueError(f"{path} records no usable `signatures` map")
+    out: dict[str, tuple[int, int, int]] = {}
+    for sym, extents in sigs.items():
+        if not isinstance(extents, (list, tuple)) or len(extents) != 3:
+            raise ValueError(f"{path}: signature {sym!r} is not an (m, n, k) triple: {extents!r}")
+        out[str(sym)] = (int(extents[0]), int(extents[1]), int(extents[2]))
+    return out
 
 
 def _signature_types(module, key: tuple[int, int, int]):

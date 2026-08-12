@@ -31,12 +31,21 @@ fallback that fires is a bug in the routing decision, and the counter is how it 
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+import subprocess
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from ..kernels.opu_kernel import KernelSpec, emit_microkernel
 
-__all__ = ["DEFAULT_SCRATCH_BYTES", "ShimUnit", "emit_translation_unit", "scratch_bytes_for"]
+__all__ = ["CONTRACT_PATH", "DEFAULT_SCRATCH_BYTES", "OpuBuild", "ShimUnit", "UnitContract",
+           "build_object", "derive_encodings", "emit_translation_unit", "load_contract",
+           "scratch_bytes_for"]
+
+#: Where a unit's derivation entry points are declared. Tracked and reviewed, so which sources the
+#: compiler reads is a diff someone sees rather than a literal buried in a call.
+CONTRACT_PATH = "merlin/contract/matrix_units.yaml"
 
 #: Fallback left-operand scratch size when no signature is known. Only reached by a caller that asks for a
 #: unit with no signatures, which cannot happen from the rewrite (it emits one signature per call site).
@@ -284,3 +293,207 @@ merlin_memref_2d_i32 merlin_opu_shim_gemm_i8(
 }}
 {entries}
 """
+
+
+# ==================================================================================================
+# Building the object: derive the facts, emit, compile.
+# ==================================================================================================
+
+
+@dataclass(frozen=True)
+class UnitContract:
+    """One matrix unit's derivation entry points, as declared in :data:`CONTRACT_PATH`.
+
+    Every field is an ADDRESS — a file to read or a declaration to look for — never a value. The values
+    are read out of those files at build time and a value that cannot be read fails closed.
+    """
+
+    unit: str
+    pin: str
+    root_env: str
+    path: str
+    sources: dict[str, str]
+    declarations: dict[str, Any]
+    configs: dict[str, Any]
+    kernel_roles: dict[str, str]
+
+    def checkout(self) -> Path:
+        """The directory the unit's sources live in, resolved the way the rest of the repo resolves it.
+
+        ``paths.env`` rather than ``os.environ``: the checkout is declared in the gitignored ``.env``, and
+        reading only the process environment made an earlier consumer of this silently skip on a host
+        where the hardware was present.
+        """
+        from ..common.paths import env as _env
+        root = _env(self.root_env)
+        if not root:
+            raise FileNotFoundError(
+                f"${self.root_env} is unset, so the sources for {self.unit!r} cannot be located and its "
+                "instruction encodings cannot be derived; refusing to emit a kernel from guessed words")
+        return Path(root) / self.path if self.path else Path(root)
+
+    def source(self, name: str) -> Path:
+        rel = self.sources.get(name)
+        if rel is None:
+            raise KeyError(f"{self.unit!r} declares no {name!r} source in {CONTRACT_PATH}")
+        return self.checkout() / rel
+
+    def spec(self, **overrides) -> KernelSpec:
+        """The kernel spec for this unit, with the instruction roles taken from the contract."""
+        roles = {k: self.kernel_roles[k] for k in ("accumulate", "broadcast", "readout")}
+        return KernelSpec(**roles, **overrides)
+
+
+def load_contract(unit: str, *, path: "str | Path | None" = None) -> UnitContract:
+    """Read one unit's block out of the contract file."""
+    import yaml
+
+    from ..common.paths import repo_root
+    p = Path(path) if path is not None else Path(repo_root()) / CONTRACT_PATH
+    payload = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    units = payload.get("units") or {}
+    if unit not in units:
+        raise KeyError(f"{p} declares no matrix unit {unit!r}; declared: {sorted(units)}")
+    block = units[unit]
+    missing = [k for k in ("pin", "root_env", "sources", "declarations", "configs", "kernel_roles")
+               if k not in block]
+    if missing:
+        raise ValueError(f"{p}: unit {unit!r} is missing {missing}")
+    return UnitContract(unit=unit, pin=str(block["pin"]), root_env=str(block["root_env"]),
+                        path=str(block.get("path", "")), sources=dict(block["sources"]),
+                        declarations=dict(block["declarations"]), configs=dict(block["configs"]),
+                        kernel_roles=dict(block["kernel_roles"]))
+
+
+def derive_encodings(contract: UnitContract):
+    """The unit's instruction encodings, derived from its RTL and cross-checked against its own header.
+
+    Returns the cross-checked :class:`targetgen.rtl.opu_isa.IsaDerivation`. Its ``ok`` is forwarded into
+    the emitter, which refuses to emit when the two sources disagree — the funct6 values are ChiselEnum
+    ORDINALS, i.e. a function of declaration order in an RTL file, so a stale cross-check header and a
+    moved slot are indistinguishable from one source alone.
+    """
+    from ..targetgen.rtl import opu_isa
+
+    d = contract.declarations
+    derived = opu_isa.derive(consts=contract.source("consts"),
+                             instructions=contract.source("instructions"),
+                             params=contract.source("params"),
+                             funct6_enum=str(d["funct6_enum"]),
+                             consts_container=str(d["consts_container"]),
+                             insn_seq=str(d["insn_seq"]),
+                             opcode_name=str(d["opcode_name"]),
+                             form_funct3={str(k): str(v) for k, v in d["form_funct3"].items()})
+    return opu_isa.crosscheck(derived, contract.source("crosscheck_header"),
+                              pairs={str(k): str(v) for k, v in d["crosscheck_pairs"].items()})
+
+
+@dataclass(frozen=True)
+class OpuBuild:
+    """What a build produced, and what it is a result ABOUT.
+
+    ``provenance`` is not optional bookkeeping: the encodings in this object came from one revision of one
+    checkout, and an object attributed to the wrong one is worse than no object because it links and runs.
+    """
+
+    object_path: Path
+    source_path: Path
+    signatures: dict[str, tuple[int, int, int]]
+    alignment_bytes: int
+    scratch_bytes: int
+    tile_edge: int | None = None
+    scalar_tile: bool = False
+    provenance: dict[str, Any] = field(default_factory=dict)
+    gaps: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"object": str(self.object_path), "source": str(self.source_path),
+                "signatures": {k: list(v) for k, v in self.signatures.items()},
+                "alignment_bytes": self.alignment_bytes, "scratch_bytes": self.scratch_bytes,
+                "tile_edge": self.tile_edge, "scalar_tile": self.scalar_tile,
+                "provenance": self.provenance, "gaps": list(self.gaps)}
+
+
+def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Path", *,
+                 unit: str, config: str, cc: "str | Path", cflags: Sequence[str],
+                 scalar_tile: bool = False,
+                 scratch_bytes: int | None = None,
+                 contract_path: "str | Path | None" = None) -> OpuBuild:
+    """Derive the unit's facts, emit the translation unit, compile it, and record what it came from.
+
+    ``unit`` names a block in :data:`CONTRACT_PATH` and is REQUIRED rather than defaulted: a default would
+    make this module quietly about one particular extension, which is the overfit the repo's cardinal rule
+    forbids. The caller knows which hardware it is building for; this does not.
+
+    ``config`` names the elaborated hardware configuration (e.g. an OPU Shuttle config); the tile edge and
+    the operand alignment are read out of ITS OWN declaration, so a build for a different configuration
+    gets different geometry without any code change.
+
+    ``scalar_tile`` compiles the tile body as the scalar stand-in instead of the unit's instructions. That
+    is what lets a whole model be graded on a host or a plain simulator: it validates the routing, the
+    pack, the descriptor ABI and the epilogue while proving nothing about the datapath, which is the
+    certification's job. The build records which of the two it is, so a report cannot confuse them.
+    """
+    work = Path(work)
+    work.mkdir(parents=True, exist_ok=True)
+    contract = load_contract(unit, path=contract_path)
+
+    # What revision is this a result about? Verified, never enforced by moving someone's checkout.
+    from ..common import provenance as PROV
+    from ..kernels import opu_cert
+    gaps: list[str] = []
+    # `reads` is exactly the contract's declared sources plus the config declarations, so an uncommitted
+    # edit to one of THOSE is drift while a stray build log elsewhere in the tree is a note. Passing the
+    # precise set rather than letting it default to the pin's requires_paths is what makes the answer about
+    # this build instead of about the checkout in general.
+    reads = [*contract.sources.values(), str(contract.configs["config_scala"]),
+             *(str(m) for m in contract.configs.get("mixin_scala", ()))]
+    verification = PROV.verify(contract.pin, checkout=contract.checkout(), reads=reads)
+    if not verification.ok:
+        gaps.append(f"pin {contract.pin} drifted: "
+                    + "; ".join([*verification.drift,
+                                 *([f"missing {list(verification.missing_paths)}"]
+                                   if verification.missing_paths else []),
+                                 *([f"forbidden present {list(verification.forbidden_present)}"]
+                                   if verification.forbidden_present else [])]))
+
+    derived = derive_encodings(contract)
+    if not derived.ok:
+        raise ValueError(
+            f"the encoding derivation for {unit!r} did not agree with its cross-check source "
+            f"({[c for c in derived.crosschecks if not c.get('agrees')]}); refusing to build an object "
+            "from an unresolved encoding, because a wrong field emits a neighbouring instruction rather "
+            "than failing to assemble")
+
+    cfg = contract.configs
+    config_scala = contract.checkout() / str(cfg["config_scala"])
+    mixin_scala = [contract.checkout() / str(m) for m in cfg.get("mixin_scala", ())]
+    tile_edge = opu_cert.tile_edge_for_config(config, config_scala=config_scala,
+                                              mixin_scala=mixin_scala)
+    alignment = opu_cert.operand_alignment_for_config(config, config_scala=config_scala,
+                                                      mixin_scala=mixin_scala)
+
+    unit_src = emit_translation_unit(derived.encodings, signatures, spec=contract.spec(),
+                                     alignment_bytes=alignment, derivation_ok=derived.ok,
+                                     scratch_bytes=scratch_bytes)
+    src = work / "merlin_opu_shim.c"
+    src.write_text(str(unit_src), encoding="utf-8")
+
+    cmd = [str(cc), *cflags, "-c", str(src), "-o", str(work / "merlin_opu_shim.o")]
+    if scalar_tile:
+        # The host/simulator build needs the edge supplied, since there is no unit to ask for it.
+        cmd[1:1] = ["-DOPU_SCALAR_TILE", f"-DOPU_TILE_EDGE={tile_edge}"]
+    got = subprocess.run(cmd, capture_output=True, text=True)
+    obj = work / "merlin_opu_shim.o"
+    if got.returncode != 0 or not obj.is_file():
+        raise RuntimeError(f"the emitted matrix-unit shim did not compile:\ncmd: {' '.join(cmd)}\n"
+                           f"{got.stderr[-3000:]}")
+
+    prov = PROV.record(pins={contract.pin: verification},
+                       sources=[contract.source(k) for k in sorted(contract.sources)],
+                       artifacts={"shim_object": obj, "shim_source": src})
+    return OpuBuild(object_path=obj, source_path=src,
+                    signatures={k: tuple(int(x) for x in v) for k, v in signatures.items()},
+                    alignment_bytes=alignment, scratch_bytes=unit_src.scratch_bytes,
+                    tile_edge=tile_edge, scalar_tile=scalar_tile, provenance=prov,
+                    gaps=tuple(gaps))

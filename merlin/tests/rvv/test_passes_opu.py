@@ -299,3 +299,54 @@ class TestOnTheRealPreparedModel:
         got = PO.rewrite_contractions_to_opu(mod, select=lambda s: min(s.parallel) >= 32)
         mnks = set(got.signatures.values())
         assert (196, 1024, 256) in mnks and (196, 256, 1024) in mnks
+
+
+class TestTheFileSeam:
+    """The whole-model build applies this to a module on disk and reads the signatures in another process.
+
+    Both halves are tested here because the failure mode is asymmetric: the rewrite half is visible in the
+    module it writes, while the sidecar half is only visible as a link error a long way downstream.
+    """
+
+    def test_it_routes_and_records(self, tmp_path):
+        prepared = tmp_path / "model.prepared.mlir"
+        prepared.write_text(_INT8_MM, encoding="utf-8")
+        got = PO.rewrite_prepared_file(prepared, tmp_path, select=_ALL)
+        assert got.count == 1
+        text = prepared.read_text()
+        assert "func.call @merlin_opu_gemm_i8_0" in text
+        assert 'bufferization.access = "read"' in text
+        assert PO.load_sidecar(tmp_path) == {"merlin_opu_gemm_i8_0": (64, 16, 32)}
+
+    def test_nothing_selected_leaves_the_module_byte_identical(self, tmp_path):
+        # The module is only rewritten when something moved, so an enabled-but-declining build cannot
+        # perturb the IR through a parse/print round trip.
+        prepared = tmp_path / "model.prepared.mlir"
+        prepared.write_text(_INT8_MM, encoding="utf-8")
+        before = prepared.read_bytes()
+        assert PO.rewrite_prepared_file(prepared, tmp_path, select=lambda _s: False).count == 0
+        assert prepared.read_bytes() == before
+        assert PO.load_sidecar(tmp_path) == {}
+
+    def test_an_absent_sidecar_reads_as_nothing_routed(self, tmp_path):
+        assert PO.load_sidecar(tmp_path) == {}
+
+    def test_a_malformed_sidecar_is_an_error_not_an_empty_set(self, tmp_path):
+        # Reading a broken sidecar as "nothing routed" would emit a translation unit missing the symbols
+        # the module calls, and the failure would surface as an unattributable link error.
+        (tmp_path / PO.SIDECAR_NAME).write_text('{"signatures": {"s": [1, 2]}}', encoding="utf-8")
+        with pytest.raises(ValueError, match="triple"):
+            PO.load_sidecar(tmp_path)
+
+
+class TestTheTileFillingSelector:
+    def test_it_takes_the_edge_as_a_parameter(self):
+        # A threshold baked in would be right on one configuration of the unit and wrong on every other.
+        class _S:
+            parallel, reduction = (16, 64), (32,)
+        assert PO.tile_filling_selector(16)(_S()) is True
+        assert PO.tile_filling_selector(32)(_S()) is False
+
+    def test_a_nonsense_edge_is_refused(self):
+        with pytest.raises(ValueError, match="lane count"):
+            PO.tile_filling_selector(0)

@@ -90,6 +90,10 @@ class Observation:
     remote: str = UNKNOWN
     dirty_files: int = -1                 # -1 = could not be determined
     present: bool = False
+    #: Repo-relative paths git reports as modified or untracked. Recorded, not just counted, because
+    #: whether a dirty tree matters depends entirely on WHICH files are dirty: an edited RTL source
+    #: changes what a derivation emits, while a stray build log in a benchmarks directory changes nothing.
+    dirty_paths: tuple[str, ...] = ()
 
     @property
     def dirty(self) -> bool | None:
@@ -97,18 +101,31 @@ class Observation:
 
     def to_dict(self) -> dict[str, Any]:
         return {"path": self.path, "commit": self.commit, "branch": self.branch,
-                "remote": self.remote, "dirty_files": self.dirty_files, "present": self.present}
+                "remote": self.remote, "dirty_files": self.dirty_files, "present": self.present,
+                "dirty_paths": list(self.dirty_paths)}
 
 
 @dataclass(frozen=True)
 class Verification:
-    """How a checkout differs from its pin. ``ok`` only when nothing differs."""
+    """How a checkout differs from its pin. ``ok`` only when nothing MATERIAL differs.
+
+    ``notes`` holds differences that are real but do not affect what was read — chiefly a dirty tree whose
+    dirty files are none of the ones this work consumes. They are recorded rather than dropped, and they do
+    not clear ``ok``.
+
+    That distinction is deliberate. A checkout on a shared host is almost never pristine, so reporting
+    every stray file as drift makes the check fire on every build and teaches people to ignore it — which
+    is worse than not checking, because a REAL drift then also gets ignored. The narrow question a pin
+    exists to answer is whether the declared revision describes the bytes that were read, and
+    :func:`source_digest` records those bytes regardless.
+    """
 
     pin: str
     observed: Observation
     drift: tuple[str, ...] = ()
     missing_paths: tuple[str, ...] = ()
     forbidden_present: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -117,7 +134,7 @@ class Verification:
     def to_dict(self) -> dict[str, Any]:
         return {"pin": self.pin, "ok": self.ok, "observed": self.observed.to_dict(),
                 "drift": list(self.drift), "missing_paths": list(self.missing_paths),
-                "forbidden_present": list(self.forbidden_present)}
+                "forbidden_present": list(self.forbidden_present), "notes": list(self.notes)}
 
 
 def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
@@ -182,21 +199,65 @@ def observe(checkout: "str | Path") -> Observation:
     branch = _git(p, "rev-parse", "--abbrev-ref", "HEAD")
     remote = _git(p, "remote", "get-url", "origin")
     status = _git(p, "status", "--porcelain")
+    lines = [l for l in (status or "").splitlines() if l.strip()] if status is not None else []
     return Observation(
         path=str(p), present=True,
         commit=commit or UNKNOWN,
         branch=branch or UNKNOWN,
         remote=remote or UNKNOWN,
-        dirty_files=(len([l for l in status.splitlines() if l.strip()]) if status is not None else -1))
+        dirty_files=(len(lines) if status is not None else -1),
+        dirty_paths=tuple(sorted(_porcelain_paths(lines))))
+
+
+def _porcelain_paths(lines: "Sequence[str]") -> set[str]:
+    """The paths out of ``git status --porcelain`` lines.
+
+    Split on the first whitespace run rather than at a fixed column. Porcelain v1 is ``XY <path>`` and the
+    obvious ``line[3:]`` reads the path directly — but :func:`_git` STRIPS its output, so the leading space
+    of a ``" M path"`` first line is already gone and the slice silently eats the path's first character
+    (observed: ``kept.txt`` recorded as ``ept.txt``, which then matched nothing and reported a modified
+    source as clean). Splitting cannot be wrong about where the path starts.
+
+    ``maxsplit=1`` keeps a path containing spaces intact; a rename is spelled ``orig -> new`` and the
+    destination is what matters, since that is the path the changed content now occupies.
+    """
+    out: set[str] = set()
+    for line in lines:
+        parts = line.split(maxsplit=1)
+        if len(parts) < 2:
+            continue
+        out.add(parts[1].split(" -> ")[-1].strip().strip('"'))
+    return out
+
+
+def _touches(dirty_paths: "Sequence[str]", reads: "Sequence[str]") -> tuple[str, ...]:
+    """Which of ``reads`` a dirty checkout actually affects.
+
+    A read path matches a dirty entry when they are equal or when the dirty entry is a DIRECTORY prefix of
+    it — git reports an untracked directory as a single entry with a trailing slash, so comparing only for
+    equality would miss every file inside a newly-added tree.
+    """
+    hit: set[str] = set()
+    for rel in reads:
+        norm = str(rel).lstrip("./")
+        for d in dirty_paths:
+            dn = str(d).lstrip("./")
+            if norm == dn or (dn.endswith("/") and norm.startswith(dn)):
+                hit.add(norm)
+    return tuple(sorted(hit))
 
 
 def verify(name: str, *, checkout: "str | Path | None" = None,
-           path: "str | Path | None" = None) -> Verification:
+           path: "str | Path | None" = None,
+           reads: "Sequence[str] | None" = None) -> Verification:
     """Compare a checkout against its pin and report every disagreement.
 
-    A dirty tree is reported as drift. It matters here more than usual: the sources are *read* to derive
-    instruction encodings, so an uncommitted edit changes what gets emitted while leaving the commit
-    looking correct.
+    ``reads`` is the set of repo-relative paths the caller will actually consume; it defaults to the pin's
+    ``requires_paths``. A dirty tree is drift only when it touches one of them — an uncommitted edit to a
+    source a derivation reads changes what gets emitted while leaving the commit looking correct, which is
+    the failure this exists to catch, whereas a stray build artifact elsewhere in the tree changes nothing
+    and reporting it as drift only teaches people to ignore the check. A dirty tree that touches nothing
+    read is still recorded, in ``notes``.
     """
     p = pin(name, path)
     target = Path(checkout) if checkout is not None else p.checkout()
@@ -204,7 +265,9 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
         return Verification(pin=name, observed=Observation(path=UNKNOWN),
                             drift=(f"${p.root_env} is unset, so {name!r} cannot be located",))
     got = observe(target)
+    read_set = tuple(reads) if reads is not None else p.requires_paths
     drift: list[str] = []
+    notes: list[str] = []
     if not got.present:
         drift.append(f"no checkout at {got.path}")
     else:
@@ -215,8 +278,19 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
         if p.branch and got.branch not in (UNKNOWN, p.branch):
             drift.append(f"branch is {got.branch!r} but the pin declares {p.branch!r}")
         if got.dirty:
-            drift.append(f"{got.dirty_files} uncommitted change(s): the declared revision does not "
-                         "describe what would be read")
+            touched = _touches(got.dirty_paths, read_set)
+            if touched:
+                drift.append(f"{len(touched)} of the source(s) this reads carry uncommitted changes "
+                             f"({list(touched)}), so the declared revision does not describe what would "
+                             "be read")
+            elif not read_set:
+                # Nothing declared as read, so there is nothing to intersect and no basis for calling the
+                # dirt harmless. Fail closed rather than silently downgrading an unknown to a note.
+                drift.append(f"{got.dirty_files} uncommitted change(s) and no read set to check them "
+                             "against, so whether the declared revision describes what would be read "
+                             "is UNKNOWN")
+            else:
+                notes.append(f"{got.dirty_files} uncommitted change(s), none of them a source this reads")
         if (p.repo_canonical and got.remote not in (UNKNOWN, "")
                 and got.remote != p.repo_canonical and not p.repo_observed_note):
             drift.append(f"origin is {got.remote} but the pin declares {p.repo_canonical}")
@@ -226,13 +300,14 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
     forbidden = tuple(rel for rel in p.forbids_paths
                       if got.present and (Path(got.path) / rel).exists())
     return Verification(pin=name, observed=got, drift=tuple(drift), missing_paths=missing,
-                        forbidden_present=forbidden)
+                        forbidden_present=forbidden, notes=tuple(notes))
 
 
 def require(name: str, *, checkout: "str | Path | None" = None,
-            path: "str | Path | None" = None) -> Verification:
+            path: "str | Path | None" = None,
+            reads: "Sequence[str] | None" = None) -> Verification:
     """:func:`verify`, raising on any disagreement. Use before producing anything that claims a result."""
-    got = verify(name, checkout=checkout, path=path)
+    got = verify(name, checkout=checkout, path=path, reads=reads)
     if not got.ok:
         parts = list(got.drift)
         if got.missing_paths:

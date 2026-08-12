@@ -2203,3 +2203,36 @@ register(ImprFeature(
     edit_schedule=vectorize_reduction_schedule,
     schedule_replace=True,
 ))
+
+
+# ---- matrix-unit routing ------------------------------------------------------------
+# Unlike every feature above, this one changes NEITHER the pipeline pass list NOR the transform
+# schedule. It is an IR-level rewrite: `passes_opu.rewrite_prepared_file` replaces selected int8
+# contractions with calls to the certified matrix microkernel, so those contractions leave the vector
+# path entirely and the schedule's `linalg.matmul` arms simply match fewer ops.
+#
+# It is registered here anyway, with both hooks None, because this registry is the one place a build
+# says which non-baseline compiler behaviour it wants -- `build_app` threads `compiler_features` through
+# to the prepare step, and a feature that lived outside the registry would need a second, parallel way
+# to be requested. Both hooks being None also means the byte-identity invariant is structural rather
+# than merely tested: there is no edit to apply.
+OPU_MATMUL_NAME = "opu_matmul"
+
+register(ImprFeature(
+    name=OPU_MATMUL_NAME,
+    action_class="PASS",
+    description=(
+        "Route int8 rank-2 contractions with a zero accumulator init to the certified outer-product "
+        "matrix microkernel, as calls to a generated translation unit that transposes the left operand "
+        "K-major and reads its extents from the memref descriptors. NOT a schedule or pipeline edit: "
+        "the rewrite happens on the prepared IR (llvmlower/passes_opu), which is why both hooks are "
+        "None. Selection is a separate decision -- which contractions move is answered by the cost "
+        "model / e-graph and passed in, so enabling this feature without a selector routes nothing. "
+        "Coverage on spectformer int8: 90 of 106 contractions are legal (the 16 batch_matmuls are "
+        "gapped by a matmul-only contract), and a tile-filling selector at edge 32 moves 41 of them, "
+        # target-ok: names the hardware_pins.yaml entry this feature requires at build time — a pin
+        # reference in prose, not a target this code routes on (selection is passed in, see above).
+        "which is the shapes carrying ~88% of the arithmetic. Requires the pinned saturn revision "
+        "carrying the unit (hardware_pins.yaml: saturn_opu_int8) at build time, because the "
+        "instruction encodings are derived from its RTL rather than written down. Default-off."),
+))

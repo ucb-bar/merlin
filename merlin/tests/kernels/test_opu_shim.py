@@ -351,3 +351,107 @@ class TestRefusesToGuess:
                                          for k, v in _TABLE.items()},
                                         {"s": (4, 4, 4)}, spec=_SPEC, alignment_bytes=_ALIGN)
         assert "0x51" in base and "0x51" not in shifted
+
+
+class TestTheUnitContract:
+    """The derivation's entry points are declared as DATA, so adding a second unit is not a code change.
+
+    These assert the contract is READ rather than that its current values are correct — the values are
+    addresses of facts, and whether they point at the right thing is settled by the derivation succeeding.
+    """
+
+    def test_the_shipped_contract_declares_the_unit(self):
+        from merlin.llvmlower.opu_shim import load_contract
+        got = load_contract("saturn_opu")
+        assert got.pin and got.root_env
+        for key in ("consts", "instructions", "params", "crosscheck_header"):
+            assert key in got.sources, f"the derivation reads {key} and the contract must say where"
+        for key in ("funct6_enum", "consts_container", "insn_seq", "opcode_name", "form_funct3",
+                    "crosscheck_pairs"):
+            assert key in got.declarations
+
+    def test_it_names_a_pin_that_exists(self):
+        # A contract pointing at an undeclared pin would build an object nothing could attribute.
+        from merlin.common import provenance as PROV
+        from merlin.llvmlower.opu_shim import load_contract
+        assert load_contract("saturn_opu").pin in PROV.load_pins()
+
+    def test_the_kernel_roles_produce_a_valid_spec(self):
+        from merlin.llvmlower.opu_shim import load_contract
+        spec = load_contract("saturn_opu").spec()
+        assert spec.accumulate and spec.broadcast and spec.readout
+        assert spec.row_vreg_alt is not None, "the RTL hazard workaround must stay on by default"
+
+    def test_an_unknown_unit_lists_what_exists(self):
+        from merlin.llvmlower.opu_shim import load_contract
+        with pytest.raises(KeyError, match="declared"):
+            load_contract("no_such_unit")
+
+    def test_a_contract_missing_a_required_block_is_refused(self, tmp_path):
+        p = tmp_path / "units.yaml"
+        p.write_text("version: 1\nunits:\n  u:\n    pin: x\n    root_env: E\n", encoding="utf-8")
+        from merlin.llvmlower.opu_shim import load_contract
+        with pytest.raises(ValueError, match="missing"):
+            load_contract("u", path=p)
+
+
+class TestBuildingAgainstTheRealCheckout:
+    """The whole build, end to end, from the pinned RTL — the only place the geometry is really derived."""
+
+    @pytest.fixture
+    def built(self, tmp_path):
+        from merlin.common.paths import env as _env
+        from merlin.llvmlower import opu_shim as S, toolchain
+        if not _env("MERLIN_CHIPYARD"):
+            pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
+        if not toolchain.available():
+            pytest.skip("needs the pinned clang")
+        try:
+            S.load_contract("saturn_opu").source("consts").read_text()
+        except OSError:
+            pytest.skip("the pinned checkout does not carry the unit's sources")
+        return S.build_object({"merlin_opu_gemm_i8_0": (196, 1024, 256)}, tmp_path,
+                              unit="saturn_opu", config="OPUV256D128ShuttleConfig", cc=toolchain.clang(),
+                              cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv",
+                                      "-mabi=lp64d", "-O2", "-Wall", "-Werror"])
+
+    def test_the_geometry_is_derived_from_the_named_config(self, built):
+        # VLEN=256 / dLen=128 -> a 32-lane tile edge at e8 and a 16-byte operand alignment. Both come from
+        # that config's own Scala declaration, which is why a second config needs no code change.
+        assert (built.tile_edge, built.alignment_bytes) == (32, 16)
+
+    def test_a_wider_config_derives_a_wider_tile_with_no_code_change(self, tmp_path):
+        from merlin.common.paths import env as _env
+        from merlin.llvmlower import opu_shim as S, toolchain
+        if not _env("MERLIN_CHIPYARD") or not toolchain.available():
+            pytest.skip("needs the hardware checkout and the pinned clang")
+        got = S.build_object({"merlin_opu_gemm_i8_0": (64, 64, 64)}, tmp_path / "wide",
+                             unit="saturn_opu", config="OPUV512D256ShuttleConfig", cc=toolchain.clang(),
+                             cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv",
+                                     "-mabi=lp64d", "-O2"])
+        assert (got.tile_edge, got.alignment_bytes) == (64, 32)
+
+    def test_it_records_which_revision_the_object_came_from(self, built):
+        # An object attributed to the wrong revision is worse than no object, because it links and runs.
+        pins = built.provenance["hardware_pins"]
+        assert "saturn_opu_int8" in pins
+        assert len(pins["saturn_opu_int8"]["observed"]["commit"]) == 40
+        assert built.provenance["source_digest"], "the bytes actually read must be recorded"
+
+    def test_a_clean_read_set_is_not_reported_as_drift(self, built):
+        # A shared checkout is never pristine. Reporting stray build output as drift would make this fire on
+        # every build, and a check that always fires is a check nobody reads.
+        assert built.gaps == (), built.gaps
+
+    def test_the_scalar_build_carries_the_derived_edge(self, tmp_path):
+        from merlin.common.paths import env as _env
+        from merlin.llvmlower import opu_shim as S, toolchain
+        if not _env("MERLIN_CHIPYARD") or not toolchain.available():
+            pytest.skip("needs the hardware checkout and the pinned clang")
+        got = S.build_object({"merlin_opu_gemm_i8_0": (64, 64, 64)}, tmp_path / "sc",
+                             unit="saturn_opu", config="OPUV256D128ShuttleConfig", cc=toolchain.clang(),
+                             cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv",
+                                     "-mabi=lp64d", "-O2"], scalar_tile=True)
+        assert got.scalar_tile and got.tile_edge == 32
+        # A report must never confuse the stand-in with the datapath.
+        assert got.to_dict()["scalar_tile"] is True
