@@ -153,3 +153,44 @@ class TestARankDisagreementIsRefusedNotComputed:
         _copy(rt, 4, _unranked(2, s), _unranked(2, d))
         np.testing.assert_array_equal(backing[:, :3], src)
         assert (backing[:, 3:] == 0).all(), "the copy wrote outside the destination's extents"
+
+
+class TestTheDescriptorTraceIsOptIn:
+    """The trace is what located a fault two rounds of guessing had not.
+
+    It prints what memrefCopy was actually HANDED -- rank, offset, sizes, strides -- instead of leaving it to
+    be inferred from a simulator's commit log. On deepjscc that immediately showed one rank-4 copy among
+    602,113 whose destination strides held two identical pointers.
+
+    It reaches the console through WEAK references so the same file still builds for the host, where they are
+    absent; and it is compile-time gated so a normal build is unaffected.
+    """
+
+    def test_the_default_build_has_no_trace(self, tmp_path):
+        from merlin.common.paths import runtime_dir
+        src = runtime_dir() / "abi" / "mlir_runtime.c"
+        so = tmp_path / "plain.so"
+        got = subprocess.run(["cc", "-O1", "-fPIC", "-shared", "-Wall", "-Werror", str(src),
+                              "-o", str(so), "-lm"], capture_output=True, text=True)
+        assert got.returncode == 0, got.stderr[-1500:]
+        syms = subprocess.run(["nm", "-D", str(so)], capture_output=True, text=True)
+        if syms.returncode == 0:
+            assert "trace_desc" not in syms.stdout
+
+    def test_the_traced_build_compiles_and_runs_without_a_console(self, tmp_path):
+        # In the host shared object htif_puts/htif_putd are absent, so the weak references are null and the
+        # trace is skipped. If that were wrong, every host copy would jump through a null pointer.
+        from merlin.common.paths import runtime_dir
+        src = runtime_dir() / "abi" / "mlir_runtime.c"
+        so = tmp_path / "traced.so"
+        got = subprocess.run(["cc", "-O1", "-fPIC", "-shared", "-Wall", "-Werror",
+                              "-DMERLIN_MEMREF_TRACE", str(src), "-o", str(so), "-lm"],
+                             capture_output=True, text=True)
+        assert got.returncode == 0, got.stderr[-1500:]
+        rt = ctypes.CDLL(str(so))
+        src_a = np.arange(6, dtype=np.int32).reshape(2, 3)
+        dst_a = np.zeros((2, 3), dtype=np.int32)
+        s = _ranked(src_a.ctypes.data, [2, 3], [3, 1])
+        d = _ranked(dst_a.ctypes.data, [2, 3], [3, 1])
+        _copy(rt, 4, _unranked(2, s), _unranked(2, d))
+        np.testing.assert_array_equal(dst_a, src_a)

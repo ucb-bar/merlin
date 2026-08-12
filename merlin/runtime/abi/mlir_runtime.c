@@ -103,6 +103,44 @@ long long g_merlin_memref_bad_src_rank = -1;
 long long g_merlin_memref_bad_dst_rank = -1;
 unsigned long long merlin_memref_rank_mismatches(void) { return g_merlin_memref_rank_mismatch; }
 
+/* OPT-IN DESCRIPTOR TRACE (-DMERLIN_MEMREF_TRACE), off by default so a normal build is byte-identical.
+ *
+ * This exists because the alternative is inferring descriptor contents from a spike commit trace, which is
+ * how two wrong hypotheses got as far as being implemented. Printing what memrefCopy was actually handed --
+ * rank, sizes, strides, bases -- answers directly which field holds a pointer.
+ *
+ * The console is reached through WEAK references: on a bare-metal image htif_puts/htif_putd resolve to the
+ * harness, and in the host shared object they are absent and the calls are skipped. That keeps one file
+ * building for both without a second copy or a build-system change. */
+#ifdef MERLIN_MEMREF_TRACE
+__attribute__((weak)) void htif_puts(const char *s);
+__attribute__((weak)) void htif_putd(long v);
+
+static void trace_desc(const char *tag, int64_t rank, void **desc) {
+  if (!htif_puts || !htif_putd)
+    return;
+  int64_t *rest = (int64_t *)(desc + 2);
+  htif_puts(tag);
+  htif_puts(" rank ");
+  htif_putd((long)rank);
+  htif_puts(" aligned ");
+  htif_putd((long)(uintptr_t)desc[1]);
+  htif_puts(" off ");
+  htif_putd((long)rest[0]);
+  htif_puts(" sizes");
+  for (int64_t i = 0; i < rank && i < 16; i++) {
+    htif_puts(" ");
+    htif_putd((long)rest[1 + i]);
+  }
+  htif_puts(" strides");
+  for (int64_t i = 0; i < rank && i < 16; i++) {
+    htif_puts(" ");
+    htif_putd((long)rest[1 + rank + i]);
+  }
+  htif_puts("\n");
+}
+#endif
+
 void memrefCopy(int64_t elem_size, merlin_unranked_memref_t *src_u,
                 merlin_unranked_memref_t *dst_u) {
   int64_t rank = src_u->rank;
@@ -117,6 +155,10 @@ void memrefCopy(int64_t elem_size, merlin_unranked_memref_t *src_u,
   }
   void **sdesc = (void **)src_u->descriptor;
   void **ddesc = (void **)dst_u->descriptor;
+#ifdef MERLIN_MEMREF_TRACE
+  trace_desc("MEMREF src", rank, sdesc);
+  trace_desc("MEMREF dst", d_rank, ddesc);
+#endif
   char *s_aligned = (char *)sdesc[1];
   char *d_aligned = (char *)ddesc[1];
   int64_t *s_rest = (int64_t *)(sdesc + 2); /* offset, sizes[rank], strides[rank] */
