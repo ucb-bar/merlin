@@ -58,6 +58,8 @@ IMAGE_MAIN = "opu_corpus_main.c"
 _TILE_LINE = "TILE"
 _CASE_LINE = "CASE"
 _DONE_LINE = "DONE"
+#: Per-case device-kernel cycle count. Its own line so an older reader ignores it.
+_CYCLES_LINE = "CYCLES"
 _PROV_LINE = "PROV"
 
 #: Element width the kernel runs its operands at. Not a target fact -- it is what an int8 kernel *is*,
@@ -313,7 +315,19 @@ int main(long hart)
       c_ref[i] = 0;
     }}
 
+    /* Cycles for the DEVICE kernel alone. This is what makes a certification run a MEASUREMENT run:
+     * `routing.MeasuredCost` declines a unit absent from its throughput table, so without a measured
+     * figure the router refuses to move any work onto the unit -- correctly, but permanently. Reading
+     * `mcycle` around the call is the cheapest honest way to produce that figure, on the same RTL and
+     * the same shapes the verdict is about.
+     *
+     * The in-image reference is deliberately OUTSIDE the bracket: it is a scalar triple loop costing far
+     * more than the kernel it checks, and including it would report a number about the harness. The
+     * buffer zeroing is outside too, for the same reason. */
+    uint64_t cyc0, cyc1;
+    __asm__ volatile("csrr %0, mcycle" : "=r"(cyc0));
     {kernel_func}(c_dev, c->at, c->b, c->bias, c->m, c->n, c->k);
+    __asm__ volatile("csrr %0, mcycle" : "=r"(cyc1));
 
     /* -1 means NOT COMPUTED, and the host must not read it as agreement. The in-image reference is a
      * scalar triple loop, so on cycle-accurate RTL it costs far more than the kernel it is checking;
@@ -370,6 +384,14 @@ int main(long hart)
     htif_putd(first_bad);
     htif_putc(' ');
     put_hex64(fnv1a64(c_dev, elems * sizeof(int32_t)));
+    htif_putc('\\n');
+
+    /* A SEPARATE line rather than another CASE field: a parser that does not know about cycles ignores an
+     * unknown line, while a widened CASE line would make every existing reader mis-split. */
+    htif_puts("{_CYCLES_LINE} ");
+    htif_puts(c->name);
+    htif_putc(' ');
+    htif_putd((long)(cyc1 - cyc0));
     htif_putc('\\n');
   }}
 
@@ -470,6 +492,7 @@ def parse_console(text: str) -> dict[str, Any]:
     done = False
     stamp: str | None = None
     cases: dict[str, dict[str, Any]] = {}
+    cycles: dict[str, int] = {}
     malformed: list[str] = []
     for raw in text.splitlines():
         line = raw.strip()
@@ -493,11 +516,20 @@ def parse_console(text: str) -> dict[str, Any]:
                 }
             except ValueError:
                 malformed.append(line)
+        elif line.startswith(f"{_CYCLES_LINE} "):
+            parts = line.split()
+            if len(parts) != 3:
+                malformed.append(line)
+                continue
+            try:
+                cycles[parts[1]] = int(parts[2])
+            except ValueError:
+                malformed.append(line)
         elif line.startswith(f"{_PROV_LINE} "):
             stamp = line.split(None, 1)[1].strip()
         elif line == _DONE_LINE:
             done = True
-    return {"tile": tile, "done": done, "cases": cases, "stamp": stamp,
+    return {"tile": tile, "done": done, "cases": cases, "cycles": cycles, "stamp": stamp,
             "malformed": tuple(malformed)}
 
 
@@ -524,12 +556,34 @@ class CaseResult:
     #: which buffer was hashed, and reporting agreement for a check that did not execute is the exact
     #: shape of a vacuous pass.
     in_image_checked: bool = True
+    #: Cycles the DEVICE kernel took, measured on the substrate that ran it. -1 when the image did not
+    #: report one (an older build). Not part of the verdict: a slow kernel is still a correct kernel, and
+    #: conflating the two is how a performance regression gets recorded as a numerical failure.
+    cycles: int = -1
     note: str = ""
 
     @property
     def certified(self) -> bool:
         return (self.ran and self.in_image_checked and self.in_image_agrees
                 and self.digest_agrees)
+
+    @property
+    def macs(self) -> int:
+        return int(self.m) * int(self.n) * int(self.k)
+
+    @property
+    def macs_per_cycle(self) -> float | None:
+        """Measured throughput for this shape, or None when no cycle count was reported.
+
+        This is the number ``routing.MeasuredCost`` declines a unit for lacking. It is per SHAPE rather
+        than per unit on purpose: a tiled unit's throughput is a function of how well the shape fills the
+        tile, so a single headline figure would flatter the narrow shapes and understate the wide ones --
+        which is precisely the error that made a crude cost model route 89 of 90 contractions onto the
+        matrix unit.
+        """
+        if self.cycles <= 0:
+            return None
+        return self.macs / float(self.cycles)
 
 
 @dataclass(frozen=True)
@@ -572,6 +626,7 @@ class CertReport:
                  "in_image_agrees": r.in_image_agrees, "digest_agrees": r.digest_agrees,
                  "mismatches": r.mismatches, "first_bad": r.first_bad,
                  "in_image_checked": r.in_image_checked,
+                 "cycles": r.cycles, "macs": r.macs, "macs_per_cycle": r.macs_per_cycle,
                  "certified": r.certified, "note": r.note}
                 for r in self.results],
             "deferred": [{"name": n, "reason": why} for n, why in self.deferred],
@@ -697,7 +752,11 @@ def verdict(console: str, cases: Sequence[opu_corpus.Case], *, config: str, tile
             in_image_agrees=(checked and int(got["mismatches"]) == 0),
             digest_agrees=(got["digest"] == exp["digest"] and shape_ok),
             mismatches=int(got["mismatches"]), first_bad=int(got["first_bad"]),
-            in_image_checked=checked, note="; ".join(notes)))
+            in_image_checked=checked,
+            # -1 when the image reported none, which an older build will not. Absent, not zero: a zero
+            # cycle count would compute an infinite throughput.
+            cycles=int(parsed.get("cycles", {}).get(case.name, -1)),
+            note="; ".join(notes)))
 
     return CertReport(config=config, tile_edge=int(tile_edge), results=tuple(results),
                       deferred=tuple((c.name, why) for c, why in deferred),

@@ -457,3 +457,73 @@ class TestTheResultIsAttributableToAHardwareRevision:
         got = C.provenance_stamp(self._prov())
         assert "unit=" + "e" * 12 in got and "src=" + "s" * 12 in got
         assert len(got) < 200, "it travels through a bare-metal console one character at a time"
+
+
+class TestTheRunAlsoMeasures:
+    """A certification run reports what the device kernel COST, not only whether it was right.
+
+    This exists because ``routing.MeasuredCost`` declines a unit absent from its throughput table, so
+    without a measured figure the router correctly -- but permanently -- refuses to move work onto the unit.
+    The certification already executes the real shapes on the real RTL, so it is the cheapest honest place
+    to produce that figure.
+    """
+
+    def test_the_image_times_the_device_kernel_and_nothing_else(self):
+        src = C.emit_image_c(_cases(16)[0])
+        before = src.index("csrr %0, mcycle")
+        call = src.index("opu_gemm_i8(c_dev", before)
+        after = src.index("csrr %0, mcycle", call)
+        # The reference must be OUTSIDE the bracket: it is a scalar triple loop costing far more than the
+        # kernel it checks, so including it would report a number about the harness.
+        assert "opu_gemm_i8_ref" not in src[before:after]
+        # And so must the buffer zeroing.
+        assert "c_dev[i] = 0" not in src[before:after]
+
+    def test_the_cycles_line_is_its_own_line(self):
+        # Widening the CASE line would make every existing reader mis-split it; an unknown line is ignored.
+        src = C.emit_image_c(_cases(16)[0])
+        assert 'htif_puts("CYCLES ")' in src
+
+    def test_the_parser_reads_the_measurement(self):
+        got = C.parse_console("TILE 16\nCASE a 4 4 4 0 -1 0x1\nCYCLES a 4242\nDONE\n")
+        assert got["cycles"] == {"a": 4242}
+        assert got["malformed"] == ()
+
+    def test_a_malformed_cycles_line_is_collected_not_dropped(self):
+        got = C.parse_console("TILE 16\nCYCLES only-a-name\nDONE\n")
+        assert got["cycles"] == {} and got["malformed"]
+
+    def test_throughput_is_derived_per_shape(self):
+        # Per shape, not per unit: a tiled unit's throughput depends on how well the shape fills the tile,
+        # so one headline figure would flatter the narrow shapes and understate the wide ones -- the exact
+        # error that made a crude cost model route nearly every contraction onto the matrix unit.
+        wide = C.CaseResult(name="w", m=32, n=32, k=32, ran=True, in_image_agrees=True,
+                            digest_agrees=True, cycles=1024)
+        narrow = C.CaseResult(name="n", m=32, n=1, k=32, ran=True, in_image_agrees=True,
+                              digest_agrees=True, cycles=1024)
+        assert wide.macs_per_cycle > narrow.macs_per_cycle
+        assert wide.macs == 32 * 32 * 32
+
+    def test_an_unreported_measurement_is_absent_rather_than_zero(self):
+        # A zero cycle count would compute an infinite throughput and a unit that looks infinitely fast
+        # would win every routing decision.
+        r = C.CaseResult(name="x", m=4, n=4, k=4, ran=True, in_image_agrees=True, digest_agrees=True)
+        assert r.cycles == -1 and r.macs_per_cycle is None
+
+    def test_the_measurement_never_changes_the_verdict(self):
+        # A slow kernel is still a correct kernel. Conflating the two is how a performance regression gets
+        # recorded as a numerical failure.
+        slow = C.CaseResult(name="x", m=4, n=4, k=4, ran=True, in_image_agrees=True,
+                            digest_agrees=True, cycles=10**9)
+        fast = C.CaseResult(name="x", m=4, n=4, k=4, ran=True, in_image_agrees=True,
+                            digest_agrees=True, cycles=1)
+        assert slow.certified and fast.certified
+
+    def test_the_report_carries_the_measurement(self):
+        cases = _cases(16)[0][:1]
+        console = (f"TILE 16\nCASE {cases[0].name} {cases[0].m} {cases[0].n} {cases[0].k} 0 -1 "
+                   f"{C.expected_digests(cases)[cases[0].name]['digest']:#x}\n"
+                   f"CYCLES {cases[0].name} 777\nDONE\n")
+        rep = C.verdict(console, cases, config="T", tile_edge=16, uses_unit=True)
+        row = rep.to_dict()["results"][0]
+        assert row["cycles"] == 777 and row["macs_per_cycle"] is not None
