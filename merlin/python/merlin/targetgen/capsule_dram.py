@@ -26,8 +26,10 @@ _DTYPE_BYTES: dict[str, int] = {
     "i32": 4, "int32": 4, "torch.int32": 4, "f32": 4, "float32": 4,
     "i64": 8, "int64": 8, "f64": 8, "float64": 8,
     # microscaling (MX) block-float: the ELEMENT is whole-byte (its shared scale is stored per block,
-    # separately) — an 8-bit mx element is 1 byte in the tensor's DRAM footprint.
-    "mxfp8": 1, "mxint8": 1,
+    # separately) — an mx element is 1 byte in the tensor's DRAM footprint regardless of its bit width
+    # (fp8/fp6/fp4 codes are stored one-per-byte here; see corpus_spec._DTYPE, the operand-gen authority).
+    "mxfp8": 1, "mxint8": 1, "mxfp6": 1, "mxfp4": 1,
+    "f6E3M2FN": 1, "f4E2M1FN": 1, "fp6_e3m2": 1, "fp4_e2m1": 1,
     # the E8M0 shared block-scale code is itself a whole byte (one exponent per K-group).
     "e8m0": 1, "f8E8M0FNU": 1,
 }
@@ -52,9 +54,21 @@ def dtype_bytes(dtype: str) -> int:
     (fail-closed — a silent wrong size would mis-place every following tensor); spelling synonyms
     (``fp16`` vs ``f16``) are folded first so they never trip that guard."""
     key = _canonical_dtype(dtype)
-    if key not in _DTYPE_BYTES:
-        raise KeyError(f"capsule_dram: unknown dtype {dtype!r}; add it to _DTYPE_BYTES")
-    return _DTYPE_BYTES[key]
+    if key in _DTYPE_BYTES:
+        return _DTYPE_BYTES[key]
+    # Fall back to the operand-generation authority (corpus_spec._DTYPE) so a dtype the corpus can produce
+    # is never a DRAM-layout KeyError just because this table drifted — one source of dtype widths, not two
+    # (the mxfp6/mxfp4 drift that crashed the runner on the MX-tile capsules was exactly this two-table gap).
+    try:
+        from merlin.targetgen.corpus_spec import dtype_info
+        for tok in (key, str(dtype).strip()):
+            try:
+                return dtype_info(tok)[2]
+            except KeyError:
+                continue
+    except Exception:  # noqa: BLE001 — corpus_spec unavailable -> fall through to the honest fail-closed error
+        pass
+    raise KeyError(f"capsule_dram: unknown dtype {dtype!r}; add it to _DTYPE_BYTES (or corpus_spec._DTYPE)")
 
 
 def tensor_nbytes(shape: list[int], dtype: str) -> int:

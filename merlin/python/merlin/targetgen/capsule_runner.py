@@ -24,6 +24,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as _dt
 import json
+import threading
 import traceback as _traceback
 from dataclasses import dataclass
 from pathlib import Path
@@ -241,6 +242,7 @@ def register_sim_oracle(sim_via: str, *, adapters: Callable[[str], dict],
 
 
 _sim_oracle_env_seen: str | None = None
+_sim_oracle_lock = threading.Lock()
 
 
 def _ensure_sim_oracles_discovered() -> None:
@@ -248,19 +250,29 @@ def _ensure_sim_oracles_discovered() -> None:
     that calls :func:`register_sim_oracle` at import — through the SAME OOT/reference plugin discovery the
     runtime backends use. This is what WIRES the registry: a new target adds its oracle as DATA (a plugin
     path in its contract), never a core edit to the ``_SIM_ORACLES`` literal. Re-scans only when
-    ``MERLIN_TARGET_PATH`` changes; registration is idempotent, so repeated scans are harmless."""
+    ``MERLIN_TARGET_PATH`` changes; registration is idempotent, so repeated scans are harmless.
+
+    THREAD-SAFE (double-checked locking): the ``_sim_oracle_env_seen`` marker is published only AFTER the
+    discovery loop has registered every plugin oracle, under a lock. A grade fans capsules across worker
+    threads that each call this; the old code set the marker BEFORE discovering, so a second thread could
+    observe "already scanned" and race past with e.g. cyclotron not yet registered — collapsing an
+    exclusive-sim target to the external_backend program-oracle path (the spurious 'no runner.model_ext'
+    crash). Under the lock the first caller finishes registering before any other proceeds."""
     global _sim_oracle_env_seen
     import os
     key = os.environ.get("MERLIN_TARGET_PATH", "")
-    if key == _sim_oracle_env_seen:
+    if key == _sim_oracle_env_seen:                 # fast path: already discovered for this env
         return
-    _sim_oracle_env_seen = key
-    try:
-        from ..runtime.backends import base as _bk
-        for name, path in _bk._oot_plugin_modules("sim_oracle"):
-            _bk._load_oot_backend(name, path, ns="merlin._oot_sim_oracles")
-    except Exception:  # noqa: BLE001 — discovery is best-effort; a broken plugin must not break routing
-        pass
+    with _sim_oracle_lock:
+        if key == _sim_oracle_env_seen:             # re-check under lock (another thread may have finished)
+            return
+        try:
+            from ..runtime.backends import base as _bk
+            for name, path in _bk._oot_plugin_modules("sim_oracle"):
+                _bk._load_oot_backend(name, path, ns="merlin._oot_sim_oracles")
+        except Exception:  # noqa: BLE001 — discovery is best-effort; a broken plugin must not break routing
+            pass
+        _sim_oracle_env_seen = key                  # publish ONLY after every plugin oracle is registered
 
 
 def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
@@ -684,6 +696,25 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     return result
 
 
+def _merge_match_policy(force: dict | None, capsule: dict | None) -> dict | None:
+    """Combine a target's ``force_match_policy`` with the capsule's declared ``numeric_policy`` so neither's
+    tolerance is silently discarded. The compare MODE comes from the force policy (a float/SIMT target
+    grades with tolerance even for an integer-policy capsule); ``atol``/``rtol`` take the LOOSER (max) of
+    the two present values — a capsule's bf16-appropriate tolerance is honoured, and the tight global
+    default still applies where the capsule declares none. Returns the other policy unchanged when one side
+    is absent."""
+    if not force:
+        return capsule
+    if not capsule:
+        return force
+    merged = dict(force)
+    for k in ("atol", "rtol"):
+        vals = [float(p[k]) for p in (force, capsule) if p.get(k) is not None]
+        if vals:
+            merged[k] = max(vals)
+    return merged
+
+
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
@@ -713,9 +744,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         raise ValueError("run_capsule requires a target (or a config carrying one); "
                          "no default target is assumed")
     cfg = config or _config_for_target(eff_target, suite, dtype)
-    # L1/oracle output equality uses the capsule's numeric_policy (integer -> exact), unless the config
-    # forces one (a float/SIMT target grades its oracle output with tolerance regardless of the capsule).
-    policy = cfg.force_match_policy or capsule.get("numeric_policy")
+    # L1/oracle output equality uses the capsule's numeric_policy (integer -> exact). A float/SIMT target
+    # ALSO declares a force_match_policy (a global float tolerance) so an integer-policy capsule is still
+    # graded with tolerance — but the global force must NOT DISCARD the capsule's OWN declared tolerance:
+    # a bf16 / low-precision capsule legitimately declares a looser atol/rtol than the global f32 default,
+    # and letting the tight global override it makes a CONFORMANT kernel unpassable (RP3). Merge: keep the
+    # force policy's compare MODE, take the LOOSER (max) atol/rtol per field.
+    policy = _merge_match_policy(cfg.force_match_policy, capsule.get("numeric_policy"))
     name = capsule["name"]
     run_id = run_id or f"{name}"
     # An unrouted grade (oracle_adapters=None) resolves to the TARGET'S OWN endpoint oracle from the

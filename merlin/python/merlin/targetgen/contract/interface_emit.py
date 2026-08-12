@@ -157,9 +157,6 @@ def _commit_out_shape(cb: dict[str, Any], acc_name: str) -> tuple[int, int]:
 
 # --------------------------------------------------------------------------- parse
 
-# dtype accepts integer (i8/i32, Gemmini) AND floating (f16/f32/bf16, Muon SIMT) element types.
-# Widened additively for the Muon target; i8/i32 matching is unchanged.
-_TENSOR_TY = re.compile(r"tensor<([0-9x]+)x(i\d+|f\d+|bf\d+)>")
 _RE_TENSOR = re.compile(r'%(\S+)\s*=\s*merlin_iface\.tensor\s*\{([^}]*)\}\s*:\s*(tensor<[^>]+>)')
 _RE_PACK = re.compile(r'%(\S+)\s*=\s*merlin_iface\.resident_pack\s*%(\S+)\s*\{([^}]*)\}')
 _RE_MATMUL = re.compile(r'%(\S+)\s*=\s*merlin_iface\.matmul\s*%(\S+),\s*%(\S+)\s*:')
@@ -217,11 +214,27 @@ def _parse_value(v: str) -> Any:
 
 
 def _shape_dtype(ttype: str) -> tuple[list[int], str]:
-    m = _TENSOR_TY.search(ttype)
-    if not m:
+    """Parse ``tensor<D0xD1x...xELEM>`` into (dims, element-dtype) STRUCTURALLY (no regex): split the
+    shape/elem list on ``x``; the trailing token is the element dtype, the leading tokens are integer dims.
+    Deriving the dtype instead of matching a fixed ``i\\d+|f\\d+|bf\\d+`` alternation is what lets it accept
+    the OCP MX float spellings (``f8E4M3FN`` / ``f6E3M2FN`` / ``f4E2M1FN``) the old narrow pattern silently
+    dropped — the exact "too-narrow regex mis-measures a conformant input" failure this repo forbids."""
+    s = ttype.strip()
+    lb, rb = s.find("<"), s.rfind(">")
+    if not s.startswith("tensor") or lb < 0 or rb <= lb:
         raise ValueError(f"unparseable tensor type {ttype!r}")
-    dims = [int(d) for d in m.group(1).split("x")]
-    return dims, m.group(2)
+    body = s[lb + 1:rb].split(",", 1)[0].strip()   # drop any trailing layout/encoding attribute
+    parts = body.split("x")
+    if len(parts) < 2:
+        raise ValueError(f"unparseable tensor type {ttype!r} (need at least one dim and an element type)")
+    *dim_toks, dtype = parts
+    try:
+        dims = [int(d) for d in dim_toks]
+    except ValueError as e:
+        raise ValueError(f"unparseable tensor type {ttype!r} (non-integer dim)") from e
+    if not dtype:
+        raise ValueError(f"unparseable tensor type {ttype!r} (empty element type)")
+    return dims, dtype
 
 
 def parse_interface_mlir(text: str) -> dict[str, Any]:

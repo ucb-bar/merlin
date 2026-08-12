@@ -190,8 +190,26 @@ def canonical_input_values(capsule: dict, capsule_dir: str | Path | None = None)
             continue
         decoded = spec.get("decoded")
         if decoded is not None:
-            out[name] = {"shape": list(spec.get("shape") or []), "values": list(decoded)}
+            # Normalize to the documented FLAT row-major list. Most goldens store ``decoded`` flat, but a
+            # specir golden stores it as a 2D nested list (rows) — leaving it nested makes every consumer
+            # (each does ``float(x)`` per element) crash on a row. Flatten so the contract holds regardless
+            # of the golden generator.
+            out[name] = {"shape": list(spec.get("shape") or []), "values": _flatten_row_major(decoded)}
     return out
+
+
+def _flatten_row_major(x: object) -> list:
+    """Flatten an arbitrarily-nested list to a single row-major list of scalars; a non-list passes through
+    as a 1-element list. Idempotent on an already-flat list."""
+    if not isinstance(x, (list, tuple)):
+        return [x]
+    flat: list = []
+    for e in x:
+        if isinstance(e, (list, tuple)):
+            flat.extend(_flatten_row_major(e))
+        else:
+            flat.append(e)
+    return flat
 
 
 def mx_scale_codes(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, list[int]]:
