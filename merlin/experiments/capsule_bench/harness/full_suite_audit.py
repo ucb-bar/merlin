@@ -83,11 +83,11 @@ def _adapters_for(tiers: list[str]) -> dict:
     if _sim_via() == "chipyard":
         ad = {}
         if "L2" in tiers:
-            ad["L2"] = CR._spike_verilator_adapter("spike")
+            ad["L2"] = CR._spike_verilator_adapter("spike", C.TARGET)
         if "L3" in tiers:
-            ad["L3"] = CR._spike_verilator_adapter("verilator")
+            ad["L3"] = CR._spike_verilator_adapter("verilator", C.TARGET)
         if "L4" in tiers and HO.vcs_available():
-            ad["L4"] = HO.vcs_adapter()
+            ad["L4"] = HO.vcs_adapter(C.TARGET)
         return ad
     full = CR.oracle_adapters(C.TARGET, _sim_via())
     sel = {t: a for t, a in full.items() if t in tiers}

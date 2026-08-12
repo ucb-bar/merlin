@@ -93,9 +93,9 @@ def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
     an arc target -> the RTL-derived arc cosim), where --sim is not applicable. Routing atlas here through
     the hardcoded spike/verilator adapters ran the gemmini/RVV lowering path and crashed (AW4)."""
     if sim_via == "chipyard":
-        ad = {"L2": CR._spike_verilator_adapter("spike")}
+        ad = {"L2": CR._spike_verilator_adapter("spike", target)}
         if sim in ("verilator", "vcs"):
-            ad["L3"] = CR._spike_verilator_adapter("verilator")
+            ad["L3"] = CR._spike_verilator_adapter("verilator", target)
         if sim == "vcs":
             try:
                 from merlin.targetgen import vcs_adapter as VA  # optional, config-gated
