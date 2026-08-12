@@ -102,7 +102,8 @@ class _TargetNameVisitor(ast.NodeVisitor):
 
     def __init__(self) -> None:
         self.docstrings: set[int] = set()      # id() of Constant nodes that are docstrings
-        self.hits: list[tuple[int, str, str]] = []
+        self.hits: list[tuple[int, str, str, int]] = []   # + end_lineno, so the marker may sit anywhere
+        #                                                   inside a multi-line implicit concatenation
 
     def _mark_docstring(self, node: ast.AST) -> None:
         body = getattr(node, "body", None)
@@ -130,13 +131,21 @@ class _TargetNameVisitor(ast.NodeVisitor):
         if isinstance(node.value, str) and id(node) not in self.docstrings:
             for name in TARGET_NAMES:
                 if _contains_identifier(node.value, name):
-                    self.hits.append((node.lineno, name, node.value.strip()[:60]))
+                    end = getattr(node, "end_lineno", None) or node.lineno
+                    self.hits.append((node.lineno, name, node.value.strip()[:60], end))
                     break
         self.generic_visit(node)
 
 
 def _scan_file(path: Path) -> list[tuple[int, str, str]]:
-    """Target-name literals in ``path`` not silenced by an inline ``# target-ok:`` marker."""
+    """Target-name literals in ``path`` not silenced by an inline ``# target-ok:`` marker.
+
+    The marker is honoured on ANY line of the offending constant, not only its first. Python reports an
+    implicitly concatenated string at the line the FIRST fragment starts on, which can be many lines
+    from the fragment that actually names a target -- so anchoring the marker there put the annotation
+    nowhere near the thing it explains, and a reader who placed it correctly (beside the mention) saw
+    the gate keep failing with no hint why.
+    """
     src = path.read_text(encoding="utf-8", errors="replace")
     try:
         tree = ast.parse(src, filename=str(path))
@@ -148,9 +157,9 @@ def _scan_file(path: Path) -> list[tuple[int, str, str]]:
         return []
     lines = src.splitlines()
     out = []
-    for lineno, name, snippet in sorted(set(v.hits)):
-        line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
-        if INLINE_MARKER not in line:
+    for lineno, name, snippet, end in sorted(set(v.hits)):
+        span = lines[max(lineno - 1, 0):min(end, len(lines))]
+        if not any(INLINE_MARKER in line for line in span):
             out.append((lineno, name, snippet))
     return out
 
@@ -243,6 +252,33 @@ def _scan_coupling(path: Path) -> list[tuple[int, str, str, str]]:
             if INLINE_MARKER not in (lines[h[0] - 1] if 0 < h[0] <= len(lines) else "")]
 
 
+def lift_candidates(staged: bool = False) -> list[str]:
+    """Modules NAMED after a target whose code does not actually mention one.
+
+    The third blind spot, and the one that hid the longest. A file called ``<target>_<thing>.py`` is
+    exempt from the whole-identifier name check (its path is allowlisted, or the name is not a bare
+    identifier) AND from the coupling scan (:func:`_is_target_owned` skips it as self-reference). Both
+    exemptions are right for a module that really is about one target — but nothing distinguishes those
+    from a fully general capability wearing the name of the first target that happened to exercise it,
+    which is what ``muon_link.py`` and ``muon_bsp.py`` turned out to be: derived ISA facts throughout,
+    ``target`` a parameter, and not one target reference outside a docstring.
+
+    Reported, never enforced. A hit is a QUESTION — "is this general?" — and the answer is sometimes no
+    (a module can be target-specific through its logic while naming nothing). What must not happen is
+    the question going unasked because two exemptions cancel out.
+    """
+    out: list[str] = []
+    for rel in _iter_targets(staged):
+        relstr = rel.as_posix()
+        if not _is_target_owned(relstr):
+            continue
+        path = ROOT / rel
+        if _scan_coupling(path) or _scan_file(path):
+            continue                      # names a target in its code: the filename is earned
+        out.append(f"{relstr}: named after a target, but its code names none — audit for a lift")
+    return out
+
+
 def coupling_inventory(staged: bool = False) -> list[str]:
     """Every generic in-scope module that depends on a specific target, as reportable lines."""
     out: list[str] = []
@@ -272,6 +308,12 @@ def main(argv: list[str] | None = None) -> int:
               "whose own name claims to be generic:")
         for line in found:
             print(f"  - {line}")
+        lifts = lift_candidates(staged)
+        if lifts:
+            print(f"\n[NOTE] {len(lifts)} module(s) named after a target name none in their code — the "
+                  "inverse case, where a general capability is filed as one vendor's plumbing:")
+            for line in lifts:
+                print(f"  - {line}")
         return 0
 
     violations: list[str] = []

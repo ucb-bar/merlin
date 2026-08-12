@@ -51,6 +51,11 @@ DEFAULT_RADIANCE_KERNELS = "/path/to/radiance-kernels"
 DEFAULT_CONFIG = "/path/to/autocomp/scripts/muon/config_muon.toml"
 VCS_CONFIG = "RadianceMuonConfig"
 
+# The weak data word this target's own BSP (mu_start.S) declares to carry the launch width; the BSP
+# build overrides it with the warp count. Its spelling belongs to that BSP, so it lives here with the
+# backend that owns the target rather than in the generic fixed-format builder, which cannot know it.
+OCCUPANCY_SYMBOL = "__mu_num_warps"
+
 # Muon SIMT FP peak (RadianceMuonConfig, config_muon.toml): 2 cores x 16 lanes x 2 flop/FMA = 64
 # flop/cycle; at 500 MHz that is 32 GFLOP/s. Reported conservatively as a denominator for utilization.
 FP_PEAK_FLOPS_PER_CYCLE = 64
@@ -386,19 +391,20 @@ def build_forkfree_bsp(workdir: str | Path, *, target: str = "radiance", num_war
     transient or committed binaries. The assembler shim is rendered from the target's derived ``runtime_abi``
     (:func:`render_simt_preamble`), not a hardcoded preamble. Returns the object list
     :func:`compile_kernel_forkfree` links."""
-    from . import muon_bsp
+    from ...targetgen.fixed_format import boot
     from ...targetgen.contract.toolchain import mlir_bin
     lib = lib_dir()
-    return muon_bsp.build_bsp(lib / "src/mu_start.S", lib / "tohost.S", Path(workdir) / "bsp",
-                              target=target, clang=str(mlir_bin("clang")), mc=str(mlir_bin("llvm-mc")),
-                              asm_preamble=render_simt_preamble(_model_for(target)), num_warps=num_warps)
+    return boot.build_bsp(lib / "src/mu_start.S", lib / "tohost.S", Path(workdir) / "bsp",
+                          target=target, clang=str(mlir_bin("clang")), mc=str(mlir_bin("llvm-mc")),
+                          asm_preamble=render_simt_preamble(_model_for(target)),
+                          occupancy=(OCCUPANCY_SYMBOL, num_warps))
 
 
 def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[str | Path] | None = None,
                             *, target: str = "radiance", march: str | None = None, num_warps: int = 1) -> Path:
     """FORK-FREE build of a self-contained kernel: STOCK clang compiles the kernel C to rv32, the derived
     transcoder re-maps it into the target's fixed-format words, STOCK llvm-mc assembles them, and the
-    fork-free linker (:func:`muon_link.link_fork_free`) links the vendored boot/runtime objects (``bsp_objs``
+    fork-free linker (:func:`~merlin.targetgen.fixed_format.link.link_fork_free`) links the vendored boot/runtime objects (``bsp_objs``
     — the crt0-like boot that uses the target's own SIMT instructions, a shipped runtime asset) + the kernel.
     No clang-muon in compile/assemble/link — every field position is DERIVED from the target's RTL encoding.
     A self-contained (relocation-free) kernel takes the flat .text re-map fast path; a kernel that carries an
@@ -409,7 +415,7 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     from ...targetgen.isa_transcode import FixedFormatTranscoder, to_data_lines, emit_kernel_asm, derive_march
     from ...targetgen.rtl import mlc_bridge
     from ...targetgen.contract.toolchain import mlir_bin
-    from . import muon_link
+    from ...targetgen.fixed_format import link as ff_link
 
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
@@ -475,8 +481,8 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
         # linker resolves every relocation at the DERIVED field positions. This admits a kernel with
         # internal calls (a mu_schedule warp callback), a constant pool, or .rodata — none of which a flat
         # .text re-map can carry. Same object mechanism the fork-free BSP already uses.
-        from . import muon_bsp
-        muon_bsp.transcode_boot_object(obj, kobj, isa_model=model)
+        from ...targetgen.fixed_format import boot
+        boot.transcode_boot_object(obj, kobj, isa_model=model)
         # lint the transcoded .text with the derived disassembler (fail closed on illegal), same as 2a.
         ktext = work / "kernel_muon.text.bin"
         subprocess.run([str(objcopy), "-O", "binary", "--only-section=.text", str(kobj), str(ktext)],
@@ -488,8 +494,8 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
     if bsp_objs is None:
         bsp_objs = build_forkfree_bsp(work, target=target, num_warps=num_warps)
     elf = work / "kernel.radiance.elf"
-    muon_link.link_fork_free([*[str(o) for o in bsp_objs], str(kobj)],
-                             str(lib_dir() / "linker/mu_link.ld"), str(elf), target=target)
+    ff_link.link_fork_free([*[str(o) for o in bsp_objs], str(kobj)],
+                           str(lib_dir() / "linker/mu_link.ld"), str(elf), target=target)
     return elf
 
 

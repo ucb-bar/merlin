@@ -1,8 +1,8 @@
-"""Fork-free build of the boot/BSP object (the crt0-like startup) for a fixed-format SIMT target.
+"""Fork-free build of the boot/BSP object (the crt0-like startup) for a fixed-format target.
 
 Context
 -------
-:mod:`merlin.runtime.backends.muon_link` closed the fork-free *link*: a stock ``ld.lld`` lays out the
+:mod:`merlin.targetgen.fixed_format.link` closed the fork-free *link*: a stock ``ld.lld`` lays out the
 device image and the relocations are re-applied at the target's derived field positions. The device
 *kernel* is already fork-free too — a stock rv32 compiler + :class:`~merlin.targetgen.isa_transcode.
 FixedFormatTranscoder` produce its fixed-format words. The one step that still leaned on a vendor
@@ -15,7 +15,7 @@ This module removes that last fork dependency. The boot source is assembled with
 assembler preamble), then its executable sections are transcoded into the target's fixed-format words —
 base ISA through the derived :class:`FixedFormatTranscoder`, the CUSTOM-slot ops through the derived
 :func:`~merlin.targetgen.isa_asm.assemble_fixed` encoder. The result is an ordinary relocatable object:
-its relocations are preserved (offsets scaled by the instruction-stride ratio) so ``muon_link`` resolves
+its relocations are preserved (offsets scaled by the instruction-stride ratio) so :mod:`.link` resolves
 them at link time exactly as it does for the fork-built boot. NO vendor-fork binary is invoked anywhere.
 
 Target-agnostic + fail-closed
@@ -36,9 +36,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from ...targetgen.isa_asm import assemble_fixed
-from ...targetgen import isa_transcode as _it
-from ...targetgen.isa_transcode import FixedFormatTranscoder, TranscodeError
+from ..isa_asm import assemble_fixed
+from .. import isa_transcode as _it
+from ..isa_transcode import FixedFormatTranscoder, TranscodeError
 
 _SHT_PROGBITS, _SHT_SYMTAB, _SHT_STRTAB, _SHT_RELA, _SHT_NOBITS = 1, 2, 3, 4, 8
 _SHF_ALLOC, _SHF_EXECINSTR = 0x2, 0x4
@@ -155,7 +155,7 @@ def transcode_boot_object(rv32_obj: str | Path, out_obj: str | Path, *, isa_mode
     Executable ``PROGBITS`` sections are re-mapped instruction-for-instruction (each word grows from
     4 bytes to ``inst_width/8``); symbol values into those sections and relocation offsets targeting
     them are scaled by the same ratio; relocation records (types, symbols, addends) and all other
-    sections are preserved verbatim so :mod:`muon_link` can resolve them. ``isa_model`` is the target's
+    sections are preserved verbatim so :mod:`.link` can resolve them. ``isa_model`` is the target's
     derived model. Returns a small summary (stride ratio, transcoded section names, CUSTOM slots seen).
     """
     d = bytearray(Path(rv32_obj).read_bytes())
@@ -261,8 +261,8 @@ def build_boot_object(boot_asm: str | Path, out_obj: str | Path, *, target: str,
     the target's derived model (built from ``target`` if omitted).
     """
     if isa_model is None:
-        from ...targetgen.isa_model import isa_model_from_encoding
-        from ...targetgen.rtl import mlc_bridge
+        from ..isa_model import isa_model_from_encoding
+        from ..rtl import mlc_bridge
         isa_model = isa_model_from_encoding(target, mlc_bridge.isa_encoding_for(target))
     clang = str(clang)
     triple = "--target=riscv32"
@@ -286,28 +286,47 @@ def build_boot_object(boot_asm: str | Path, out_obj: str | Path, *, target: str,
         return transcode_boot_object(rv32_obj, out_obj, isa_model=isa_model)
 
 
+def occupancy_shim(symbol: str, value: int) -> str:
+    """Assembler source for a data word overriding a weak symbol the target's BSP declares.
+
+    A plain ``.word`` in ``.data``: no relocation and no instruction, so a stock assembler emits it
+    directly and it links as-is with no transcode. ``symbol`` is the target BSP's own spelling — this
+    module has no way to know it and must not guess one.
+    """
+    if not symbol:
+        raise BootBuildError("occupancy shim needs the target BSP's symbol name; refusing to guess one")
+    return f".section .data\n.globl {symbol}\n.p2align 2\n{symbol}: .word {int(value)}\n"
+
+
 def build_bsp(boot_src: str | Path, tohost_src: str | Path, out_dir: str | Path, *, target: str,
-              clang: str | Path, mc: str | Path, asm_preamble: str = "", num_warps: int = 1,
-              isa_model=None) -> list[Path]:
-    """Reproducibly build the WHOLE fork-free BSP for a fixed-format SIMT target from its shipped sources —
+              clang: str | Path, mc: str | Path, asm_preamble: str = "",
+              occupancy: tuple[str, int] | None = None, isa_model=None) -> list[Path]:
+    """Reproducibly build the WHOLE fork-free BSP for a fixed-format target from its shipped sources —
     no transient or committed binaries. Returns the object list a linker consumes: the transcoded boot
-    object (via :func:`build_boot_object`) plus the data-only runtime shims. The occupancy shim
-    (``__mu_num_warps``) is generated from ``num_warps``; ``tohost_src`` is the sim-exit mailbox source.
-    Both shims are pure DATA (no instructions), so a stock assembler emits them directly — only the boot's
-    executable sections need transcoding. Everything is stock-toolchain only; ``target`` is a parameter."""
+    object (via :func:`build_boot_object`) plus the data-only runtime shims. ``tohost_src`` is the
+    sim-exit mailbox source. The shims are pure DATA (no instructions), so a stock assembler emits them
+    directly — only the boot's executable sections need transcoding. Everything is stock-toolchain only;
+    ``target`` is a parameter.
+
+    ``occupancy`` is ``(symbol, value)`` and generates a shim overriding a weak data word the target's
+    own BSP declares to carry its launch width (thread/warp/lane count). Both halves belong to the
+    target, not here: the SYMBOL NAME is that BSP's spelling, so a caller supplies it rather than this
+    module assuming one. It stayed hidden as a literal while this file was named after the first target
+    that used it — a generic builder emitting one vendor's symbol, which no second target could link.
+    """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     clang, mc = str(clang), str(mc)
     boot_o = out / "boot.forkfree.o"
     build_boot_object(boot_src, boot_o, target=target, clang=clang, asm_preamble=asm_preamble,
                       isa_model=isa_model)
-    # occupancy shim: override the BSP's weak __mu_num_warps (a plain data word — no relocation, no
-    # instruction, so it links as-is and needs no transcode).
-    murt_s = out / "murt.S"
-    murt_s.write_text(".section .data\n.globl __mu_num_warps\n.p2align 2\n"
-                      f"__mu_num_warps: .word {int(num_warps)}\n")
     objs = [boot_o]
-    for name, src in (("murt.o", murt_s), ("tohost.o", Path(tohost_src))):
+    shims = [("tohost.o", Path(tohost_src))]
+    if occupancy is not None:
+        occ_s = out / "occupancy.S"
+        occ_s.write_text(occupancy_shim(*occupancy))
+        shims.insert(0, ("occupancy.o", occ_s))
+    for name, src in shims:
         o = out / name
         r = subprocess.run([mc, "--triple=riscv32", "--filetype=obj", str(src), "-o", str(o)],
                            capture_output=True, text=True)

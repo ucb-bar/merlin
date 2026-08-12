@@ -188,3 +188,8 @@ entries:
       is what this entry records. Triage means reading each one and either moving it to a triaged entry
       with a real removal condition, or fixing it and deleting it from this list — not relabelling it
       benign because it looks like prose.
+      Worked example of the two-way check, from the day this list was written: the scan caught a new
+      `unit: str = "saturn_opu"` DEFAULT argument in llvmlower/opu_shim.py, it was declared here
+      untriaged (its owner, not this scan, states why a default exists), the owner removed it hours
+      later, and the gate then reported the entry as no longer coupling so it could be deleted. Neither
+      direction required anyone to remember: that is the property a hand-maintained debt list lacks.

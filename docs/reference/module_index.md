@@ -47,6 +47,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.targetgen.contract` | Experiment-ABI contract layer. |
 | `merlin.targetgen.eval` | Merlin evaluation/recording helpers (conformance batteries, aet suites). |
 | `merlin.targetgen.evidence` | Evidence layer: deterministically discover source files and detect concepts. |
+| `merlin.targetgen.fixed_format` | Building device images for targets whose ISA is a fixed-format re-encoding of a stock one. |
 | `merlin.targetgen.generate` | Generate the merlin-target-<name>/ repository skeleton and its artifacts. |
 | `merlin.targetgen.ingest` | Ingest layer: record TargetGen inputs as a SourceManifest. |
 | `merlin.targetgen.oot_starterkit` | OOT starter kit — hw-agnostic, answer-free framework plumbing for authoring an MLIR OOT backend. |

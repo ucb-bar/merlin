@@ -1,4 +1,5 @@
-"""Fork-free link relocation-patching for the fixed-format SIMT backend (:mod:`muon_link`).
+"""Fork-free link relocation-patching for a fixed-format ISA
+(:mod:`merlin.targetgen.fixed_format.link`).
 
 These are structural, board-free tests. The exact immediate-packing values below were reverse-derived
 from a fork-linked, cyclotron-verified boot image: they are the bit patterns the (now retired) forked
@@ -12,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.runtime.backends import muon_link as ML
+from merlin.targetgen.fixed_format import link as ML
 
 # Fixed-format field layout for the SIMT target (derived from its RTL-derived IsaModel). Kept explicit
 # here so the packing math is tested hermetically; test_derived_layout_matches checks it still equals
@@ -43,7 +44,7 @@ def test_branch_high_byte_lands_in_rd_not_rs2():
 
 
 def test_field_layout_missing_required_field_fails_closed():
-    with pytest.raises(ML.MuonLinkError):
+    with pytest.raises(ML.FixedFormatLinkError):
         ML._Fields({"opcode": (6, 0)})  # no imm24/rs2/rd
 
 
@@ -55,7 +56,7 @@ def test_relocation_type_numbers_are_psabi_constants():
 
 
 def test_resolve_stock_linker_rejects_missing_explicit(tmp_path):
-    with pytest.raises(ML.MuonLinkError):
+    with pytest.raises(ML.FixedFormatLinkError):
         ML.resolve_stock_linker(tmp_path / "nope-ld.lld")
 
 

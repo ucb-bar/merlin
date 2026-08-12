@@ -1,9 +1,9 @@
-"""Fork-free link + relocation patch for the fixed-format SIMT backend (Muon / RISC-V re-encoding).
+"""Fork-free link + relocation patch for a target whose ISA is a fixed-format re-encoding.
 
 Context
 -------
-The SIMT device this backend targets runs a fixed-64-bit re-encoding of RISC-V: the standard
-opcode/funct *values* survive, but each instruction's fields are re-packed into a clean 64-bit format
+Such a device runs a fixed-width re-encoding of a stock ISA: the standard
+opcode/funct *values* survive, but each instruction's fields are re-packed into a clean wide format
 whose immediate lives contiguously (see :mod:`merlin.targetgen.isa_model`). Device C is compiled with
 a **stock** clang (rv32) and transcoded to the fixed format with no relocations; the only remaining
 step that needed a compiler *fork* was the **link** of the boot/runtime (BSP) objects, which carry
@@ -58,7 +58,7 @@ _LO12_KINDS = frozenset({R_RISCV_PCREL_LO12_I, R_RISCV_PCREL_LO12_S})
 _CALL_KINDS = frozenset({R_RISCV_CALL, R_RISCV_CALL_PLT})
 
 
-class MuonLinkError(RuntimeError):
+class FixedFormatLinkError(RuntimeError):
     """A relocation could not be applied at fixed-format positions (fail closed, never a silent pass)."""
 
 
@@ -86,7 +86,7 @@ class Elf32:
         self.d = bytearray(self.path.read_bytes())
         d = self.d
         if d[:4] != b"\x7fELF" or d[4] != 1:
-            raise MuonLinkError(f"{path}: not an ELF32 little-endian object")
+            raise FixedFormatLinkError(f"{path}: not an ELF32 little-endian object")
         e_shoff = struct.unpack_from("<I", d, 0x20)[0]
         e_shentsize = struct.unpack_from("<H", d, 0x2e)[0]
         e_shnum = struct.unpack_from("<H", d, 0x30)[0]
@@ -159,7 +159,7 @@ class _Fields:
         self.fl = field_layout
         for req in ("imm24", "rs2", "rd"):
             if req not in field_layout:
-                raise MuonLinkError(f"field layout missing {req!r}; cannot pack relocation immediate")
+                raise FixedFormatLinkError(f"field layout missing {req!r}; cannot pack relocation immediate")
 
     def _set(self, word: int, name: str, value: int) -> int:
         hi, lo = self.fl[name]
@@ -198,7 +198,7 @@ def _clean_word(placement: list[tuple[bytes, int]], vaddr: int, out_sec: str) ->
     for data, b in placement:
         if b <= vaddr < b + len(data):
             return struct.unpack_from("<Q", data, vaddr - b)[0]
-    raise MuonLinkError(f"no input section covers {vaddr:#x} in {out_sec}")
+    raise FixedFormatLinkError(f"no input section covers {vaddr:#x} in {out_sec}")
 
 
 # --- the two public steps -------------------------------------------------------------------------
@@ -209,12 +209,12 @@ def resolve_stock_linker(explicit: str | Path | None = None) -> str:
         p = Path(explicit)
         if p.is_file():
             return str(p)
-        raise MuonLinkError(f"explicit linker {explicit} not found")
+        raise FixedFormatLinkError(f"explicit linker {explicit} not found")
     for cand in ("ld.lld", "lld"):
         found = shutil.which(cand)
         if found:
             return found
-    raise MuonLinkError("no stock ld.lld found on PATH (set an explicit linker path)")
+    raise FixedFormatLinkError("no stock ld.lld found on PATH (set an explicit linker path)")
 
 
 def stock_layout_link(objs: list[str | Path], linker_script: str | Path, out_path: str | Path,
@@ -230,7 +230,7 @@ def stock_layout_link(objs: list[str | Path], linker_script: str | Path, out_pat
         cmd.extend(extra_args)
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
-        raise MuonLinkError(f"stock link failed:\n{' '.join(cmd)}\n{proc.stderr[-2000:]}")
+        raise FixedFormatLinkError(f"stock link failed:\n{' '.join(cmd)}\n{proc.stderr[-2000:]}")
     return Path(out_path)
 
 
@@ -266,7 +266,7 @@ def patch_relocations(linked_elf: str | Path, objs: list[str | Path],
             elif r_type in _LO12_KINDS:
                 # The referenced symbol is the local hi label == the HI20 instruction address.
                 if si >= len(symval) or symval[si] not in hi20_target:
-                    raise MuonLinkError(f"LO12 at {vaddr:#x} has no paired HI20 in {sec}")
+                    raise FixedFormatLinkError(f"LO12 at {vaddr:#x} has no paired HI20 in {sec}")
                 off32 = (hi20_target[symval[si]] - symval[si]) & 0xffffffff
                 w = fields.put_imm32(_clean_word(placement, vaddr, sec), off32, sb=False)
                 struct.pack_into("<Q", out.d, foff, w)
@@ -286,7 +286,7 @@ def patch_relocations(linked_elf: str | Path, objs: list[str | Path],
                 w = fields.put_imm32(_clean_word(placement, vaddr, sec), disp, sb=True)
                 struct.pack_into("<Q", out.d, foff, w)
             else:
-                raise MuonLinkError(
+                raise FixedFormatLinkError(
                     f"unhandled relocation type {r_type} at {vaddr:#x} in {sec}; refusing to emit a "
                     f"boot image that would mis-execute (fail closed)")
     out.write(out_path)
@@ -312,10 +312,10 @@ def _verify_placement(out: Elf32, sec: str, recs, placement, stride: int) -> Non
         if v in dirty_full:
             continue
         if stock[i + 4:i + 8] != recon[i + 4:i + 8]:
-            raise MuonLinkError(f"placement mismatch (high half) at {v:#x} in {sec}: input "
+            raise FixedFormatLinkError(f"placement mismatch (high half) at {v:#x} in {sec}: input "
                                 f"reconstruction does not reproduce the stock layout")
         if v not in dirty_low and stock[i:i + 4] != recon[i:i + 4]:
-            raise MuonLinkError(f"placement mismatch (low half) at {v:#x} in {sec}")
+            raise FixedFormatLinkError(f"placement mismatch (low half) at {v:#x} in {sec}")
 
 
 def link_fork_free(objs: list[str | Path], linker_script: str | Path, out_path: str | Path,
@@ -328,8 +328,8 @@ def link_fork_free(objs: list[str | Path], linker_script: str | Path, out_path: 
     already-built ``isa_model`` to avoid re-deriving it.
     """
     if isa_model is None:
-        from ...targetgen.isa_model import isa_model_from_encoding
-        from ...targetgen.rtl import mlc_bridge
+        from ..isa_model import isa_model_from_encoding
+        from ..rtl import mlc_bridge
         isa_model = isa_model_from_encoding(target, mlc_bridge.isa_encoding_for(target))
     linked = Path(out_path).with_suffix(".layout.elf")
     stock_layout_link(objs, linker_script, linked, linker=linker)

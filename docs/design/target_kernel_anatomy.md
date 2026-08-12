@@ -47,7 +47,7 @@ Merlin already implemented seven of the eight for the SIMT target, all target-ag
 facts through the package's own `derive_facts.py`; the op vocabulary through the RTL-derived
 `IsaModel` and `isa_transcode`; dispatch through `muon.render_simt_runtime`, which reads `wspawn`,
 `tmc` and the warp-id CSR out of the derived runtime ABI and emits them as `.insn` forms; boot and
-link fork-free through `muon_bsp` and `muon_link`; reference, protocol and oracles through
+link fork-free through `targetgen/fixed_format/{boot,link}.py`; reference, protocol and oracles through
 `reference_outputs`, the arc readback, cyclotron and VCS.
 
 The missing slot was the **tile body** — the per-warp computation itself. `render_simt_runtime` had

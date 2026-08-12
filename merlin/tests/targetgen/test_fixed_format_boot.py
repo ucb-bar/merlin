@@ -1,4 +1,5 @@
-"""Fork-free boot/BSP object build for the fixed-format SIMT backend (:mod:`muon_bsp`).
+"""Fork-free boot/BSP object build for a fixed-format ISA
+(:mod:`merlin.targetgen.fixed_format.boot`).
 
 Hermetic, board-free checks of the instruction-level transcode that lets a STOCK-assembled boot object
 (mixing standard RISC-V ops with the target's CUSTOM-slot SIMT ops) be re-mapped into the target's
@@ -10,7 +11,7 @@ from __future__ import annotations
 from merlin.targetgen.isa_model import isa_model_from_encoding
 from merlin.targetgen.isa_asm import assemble_fixed
 from merlin.targetgen.isa_transcode import FixedFormatTranscoder
-from merlin.runtime.backends import muon_bsp as MB
+from merlin.targetgen.fixed_format import boot as MB
 
 # A Muon-shaped fixed-format model that also defines the standard CUSTOM slots + AUIPC.
 FACT = {
@@ -78,6 +79,25 @@ def test_pcrel_pair_at_a_reloc_site_is_left_to_the_linker():
     addi = (40 << 20) | (10 << 15) | (10 << 7) | 0x13
     data = struct.pack("<II", auipc, addi)
     assert MB._pcrel_lo_overrides(data, reloc_offsets={0}, stride_ratio=2) == {}
+
+
+def test_the_occupancy_shim_uses_the_callers_symbol_not_a_baked_one():
+    """The regression for a vendor symbol hiding inside a generic builder.
+
+    While this module was named after the first target that used it, the launch-width shim emitted a
+    literal ``__mu_num_warps`` — that BSP's spelling. Any second target links against its own symbol,
+    so the generic builder would have silently produced a data word nothing referenced.
+    """
+    src = MB.occupancy_shim("__vendor_lanes", 8)
+    assert ".globl __vendor_lanes" in src and "__vendor_lanes: .word 8" in src
+    assert "mu_num_warps" not in src
+
+
+def test_the_occupancy_shim_refuses_to_guess_a_symbol():
+    import pytest
+
+    with pytest.raises(MB.BootBuildError):
+        MB.occupancy_shim("", 4)
 
 
 def test_override_immediate_is_encoded_into_the_low_instruction():
