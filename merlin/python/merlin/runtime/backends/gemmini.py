@@ -266,3 +266,30 @@ def run_command_buffer(cb: dict[str, Any], *, workdir: str | Path | None = None,
         "elf": str(elf),
         "console": console,
     }
+
+
+def harness_build_recipe():
+    """How to compile + link a runner-owned harness against this target's bare-metal environment.
+
+    Declared here, where the target is owned, so the GENERIC contract-compile path can orchestrate the
+    build without importing this module. Every value is resolved the same way the backend's own build
+    resolves it — the curated harness tree (env-overridable), the riscv-tests include layout, the
+    toolchain gcc, and a link script whose ORIGIN is derived from the RTL memory map rather than baked
+    into the vendored script. Nothing new is hardcoded: this is the existing recipe, named.
+    """
+    from .base import HarnessBuildRecipe
+
+    rt, common = rocc_tests_dir(), _common_dir()
+    return HarnessBuildRecipe(
+        compiler=gcc_path(),
+        include_roots=(rt / "riscv-tests", rt / "riscv-tests/env", rt, common),
+        support_sources=tuple(sorted(common.glob("*.c"))) + tuple(sorted(common.glob("*.S"))),
+        link_script=_test_ld(),
+        load_address=platform_dram_base(),
+        cflags=("-DPREALLOCATE=1", "-DMULTITHREAD=1", "-mcmodel=medany", "-std=gnu99", "-O2",
+                "-ffast-math", "-fno-common", "-fno-builtin-printf",
+                "-fno-tree-loop-distribute-patterns", "-march=rv64gc", "-Wa,-march=rv64gc",
+                "-lm", "-lgcc", "-DID_STRING=", "-DPRINT_TILE=0",
+                "-nostdlib", "-nostartfiles", "-static", "-DBAREMETAL=1"),
+        error_cls=GemminiError,
+    )

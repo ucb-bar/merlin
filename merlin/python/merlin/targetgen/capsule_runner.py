@@ -90,12 +90,13 @@ class OracleUnavailable(Exception):
     pass
 
 
-def _spike_verilator_adapter(sim: str) -> Callable:
+def _spike_verilator_adapter(sim: str, target: str) -> Callable:
     def run(cb, llvm_text, workdir, timeout):
-        from ..runtime.backends import gemmini as gem
-        if not gem.available(sim):
+        from ..runtime.backends import base as _backends
+        backend = _backends.get_backend(target)
+        if not backend.available(sim):
             raise OracleUnavailable(f"{sim} not available")
-        return oot_compile.run_on_oracle(cb, llvm_text, simulator=sim,
+        return oot_compile.run_on_oracle(cb, llvm_text, simulator=sim, target=target,
                                          workdir=workdir, timeout=timeout)
     return run
 
@@ -157,13 +158,14 @@ def _bespoke_sim_via(target: str) -> str:
     return ""
 
 
-def _sim_engine_adapters(sim_via: str) -> dict[str, Callable]:
+def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
     """The concrete oracle adapters a DECLARED sim ENGINE provides (additive registry, mirroring
     ``sandbox.toolchain.SIM_TOOLCHAINS``): ``chipyard`` elaborates spike (L2) + verilator (L3). An
     unknown/absent engine contributes none (the arc RTL tier still carries the grade). A new bespoke sim
     registers one branch here — the engine name is DERIVED from the target's contract, never assumed."""
     if sim_via == "chipyard":
-        return {"L2": _spike_verilator_adapter("spike"), "L3": _spike_verilator_adapter("verilator")}
+        return {"L2": _spike_verilator_adapter("spike", target),
+                "L3": _spike_verilator_adapter("verilator", target)}
     return {}
 
 
@@ -216,7 +218,7 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
         from . import muon_oracles as _MO
         return _MO.default_adapters()
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
-    adapters.update(_sim_engine_adapters(sim_via))                    # optional declared bespoke sim (chipyard)
+    adapters.update(_sim_engine_adapters(sim_via, target))            # optional declared bespoke sim (chipyard)
     return adapters
 
 
@@ -352,8 +354,10 @@ def default_adapters() -> dict[str, Callable]:
     """Back-compat gemmini-only default (L2/L3 spike/verilator). DO NOT use as an unrouted fallback — a
     non-gemmini target would be mis-graded. New callers use :func:`oracle_adapters` (self-routing) or
     :func:`_resolve_oracle_adapters`. Retained only for the explicitly-gemmini perf-bench script."""
-    return {"L2": _spike_verilator_adapter("spike"),
-            "L3": _spike_verilator_adapter("verilator")}
+    # target-ok: this function IS the explicitly-single-target back-compat entry point (see the
+    # docstring); the name is its subject, not an assumption leaking into a shared path.
+    return {"L2": _spike_verilator_adapter("spike", "gemmini"),
+            "L3": _spike_verilator_adapter("verilator", "gemmini")}
 
 
 def qa_loop_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:

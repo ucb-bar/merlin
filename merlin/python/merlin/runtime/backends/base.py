@@ -21,6 +21,7 @@ import importlib.util
 import os
 import pkgutil
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -246,6 +247,56 @@ def class_of(name: str) -> TargetClass:
 def backends_of_class(target_class: TargetClass) -> list[str]:
     _ensure_discovered()
     return sorted(n for n, b in _REGISTRY.items() if b.target_class == target_class)
+
+
+@dataclass(frozen=True)
+class HarnessBuildRecipe:
+    """How to compile + link a runner-owned harness against one target's bare-metal environment.
+
+    The generic contract-compile path used to obtain every one of these by importing a specific
+    backend, which meant it did not merely emit one target's harness text — it ran one target's entire
+    build. None of it is derivable from RTL: a compiler path, an include layout and a set of support
+    sources are properties of a target's software environment, so the backend that owns the target
+    supplies them and the generic path only orchestrates.
+
+    ``error_cls`` travels with the recipe so a build failure still raises the exception type that
+    target's callers already catch, rather than a generic one they would have to start handling.
+    """
+
+    compiler: Path
+    include_roots: tuple[Path, ...]
+    support_sources: tuple[Path, ...]
+    link_script: Path
+    load_address: int
+    cflags: tuple[str, ...] = ()
+    error_cls: type[Exception] = RuntimeError
+
+    def command(self, *, sources: "Sequence[Path]", output: Path,
+                link_script: Path | None = None) -> list[str]:
+        """The full compiler invocation for ``sources`` -> ``output``."""
+        cmd = [str(self.compiler), *self.cflags]
+        for root in self.include_roots:
+            cmd += ["-I", str(root)]
+        cmd += ["-T", str(link_script or self.link_script), "-o", str(output)]
+        cmd += [str(s) for s in sources]
+        cmd += [str(s) for s in self.support_sources]
+        return cmd
+
+
+def harness_build_recipe(target: str) -> HarnessBuildRecipe:
+    """The build recipe ``target``'s backend declares, or a clear refusal.
+
+    Optional capability: a backend that never builds a bare-metal harness (a host or simulator-only
+    backend) simply does not define it, and callers that need one get told which target lacks it
+    rather than an AttributeError from somewhere deeper.
+    """
+    backend = get_backend(target)
+    factory = getattr(backend, "harness_build_recipe", None)
+    if factory is None:
+        raise NotImplementedError(
+            f"backend for target {target!r} declares no harness_build_recipe; it cannot build a "
+            f"runner-owned bare-metal harness. Add one to the backend module if it should.")
+    return factory()
 
 
 def name_of_module(module_name: str) -> str:

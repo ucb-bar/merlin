@@ -66,49 +66,35 @@ entries:
       runtime/backends/base.py (register + file-path discovery via a plugin.<key> contract entry), and
       these modules route through them instead of importing a target.
 
-  # ---------------------------------------------------------------- the harness ABI weld
-  - id: contract-compile-welded-to-one-harness-abi
+  # ---------------------------------------------------------------- the tiled-harness renderer
+  - id: contract-compile-renders-one-targets-tiled-harness
     kind: target_coupling
     status: triaged
     owner: targetgen
     items:
       - merlin/python/merlin/targetgen/contract/compile.py
     why: >-
-      NARROWED: the harness half is now closed. The emitted C used to call a literal entry symbol and
-      fence, include one target's test header and print its metric name; those four facts are now read
-      from the target's own `harness_abi` contract block (targetgen/contract/harness_abi.py), which
-      refuses rather than defaulting, and the rendered harness is byte-identical to what the literals
-      produced. What remains — and is the larger half — is that the BUILD is welded.
-      `link_elf` takes its compiler (`gem.gcc_path()`), its include
-      roots (`gem.rocc_tests_dir()`, `gem._common_dir()`, plus three riscv-tests subdirs), its link
-      script, its `-march=rv64gc`, and a `common/*.c` + `common/*.S` glob from one vendor's backend, and
-      raises that backend's error type. So the generic contract path does not merely emit one target's
-      harness text: it runs one target's entire build recipe. Only the load address is derived.
-      One consequence used to compound this and is now FIXED: the harness helper it imports
-      (`runtime/backends/gemmini_codegen_mlir.py`) resolved its ISA constants at IMPORT time, so merely
-      importing the generic contract-compile path loaded one target's capability manifest and RTL facts
-      and failed at import on a checkout without them. They are now resolved on first use and cached,
-      with the emitted MLIR, the emitted harness C and all fifteen constants verified byte-identical
-      across the non-requant battery, and the property locked by tests/gemmini/test_codegen_lazy_isa.py.
-      What remains under this entry is the weld itself, above.
+      NARROWED TWICE, and most of it is now closed. This path used to emit one target's harness text
+      (entry symbol, fence, include, metric) AND run that target's entire build (compiler, include
+      roots, march, link script, support-source globs, even the exception type). Both halves are now
+      declared by the target: the four harness facts in its contract's `harness_abi` block, and the
+      build in a `harness_build_recipe()` its backend supplies, resolved through the backend registry.
+      `target` is a required argument on link_elf / compile_lowered_to_elf / run_on_oracle precisely so
+      no default can reintroduce a target, and it is threaded from the three callers.
+      WHAT REMAINS is one import: the NON-movement harness renderer (`gemmini_codegen_mlir._harness_c`).
+      Unlike the movement harness it is not contract-shaped — it embeds that target's tile padding and
+      accumulator readout layout, i.e. real codegen, not four declarable strings. Calling it a missing
+      contract key would be wrong and would produce a key nothing else could implement.
     blocks: >-
-      Any target whose harness ABI OR toolchain recipe differs cannot use the contract-compile path at
-      all — which is most of them, since this is a RoCC test-harness convention. It also sits underneath
-      the `chipyard` oracle route, so it blocks that eviction too.
+      A second target whose tiled-matmul harness differs from this one's. A target with a movement-only
+      or scalar workload can already use this path end to end: it declares a harness ABI and a build
+      recipe and nothing here names it.
     removal_condition: >-
-      Two seams, not one. (a) DONE — the target's contract carries its harness ABI and the harness is
-      rendered from it. (b) REMAINS — the build recipe (compiler, include roots, march, link script,
-      support-source globs, error type) is read from the target's package rather than imported from its
-      backend, after which this module imports no target-named module. The sizing stated before (a) was
-      done still holds and is worth keeping: (a) alone does not unblock a second target, because (b) is
-      what actually compiles. A target can now DECLARE its harness ABI and still not build.
-      Known prerequisite, found while closing (a): (b) needs `target` THREADED IN, which is why it has
-      not happened incidentally. The recipe would be resolved with `backends.base.get_backend(target)`,
-      but `link_elf` currently learns the target FROM the backend module it imports, so the two are
-      circular until `target` becomes a parameter of link_elf / compile_lowered_to_elf / run_on_oracle.
-      None of the three callers (capsule_runner, oot_runner, heavy_oracles) has a target in scope today,
-      and all three are themselves declared in the oracle-and-runner-dispatch entry — so (b) and that
-      entry are one piece of work, not two.
+      The tiled harness renderer moves behind the same registry as the build recipe — either as a
+      further backend capability (`harness_renderer()`) or by moving into the target's package
+      alongside its codegen. Note the sizing was checked BOTH ways during this work: the harness-ABI
+      half alone unblocked nothing because the build refused to move, and the build half alone would
+      have left every tiled workload emitting one target's C. They had to land together, and did.
 
   # ---------------------------------------------------------------- cost model / calibration
   - id: cost-model-and-calibration-bound-to-an-instance

@@ -75,49 +75,44 @@ def _movement_harness_c(cb: dict[str, Any], *, target: str) -> str:
             '  printf("DONE\\n");\n  return 0;\n}\n')
 
 
-def link_elf(cb: dict[str, Any], obj: Path, workdir: Path) -> Path:
-    """Build the runner-owned harness from ``cb`` and link it with the package object -> ELF."""
+def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str) -> Path:
+    """Build the runner-owned harness from ``cb`` and link it with the package object -> ELF.
+
+    Orchestration only: the harness TEXT comes from ``target``'s declared harness ABI and the BUILD
+    from its declared recipe, both resolved through the backend registry. This module names no target
+    and imports no target's module — ``target`` is a required argument precisely so no default can
+    reintroduce one.
+    """
     from merlin.runtime.backends import base as _backends
-    from merlin.runtime.backends import gemmini as gem
+    # REMAINING WELD: the non-movement harness renderer still comes from one target's codegen
+    # module. It embeds that target's tile padding and readout layout, so unlike the movement
+    # harness it is not a contract-shaped fact; see merlin/contract/overfit_register.yaml.
     from merlin.runtime.backends.gemmini_codegen_mlir import _harness_c
-    # The target whose harness ABI applies is the one THIS backend is registered as. Read from the
-    # registry rather than written as a literal: the backend import above is the weld (declared in
-    # merlin/contract/overfit_register.yaml), and one weld should not spawn a second, independently
-    # maintained copy of the target's name that the gates cannot distinguish from a real hardcode.
-    target = _backends.name_of_module(gem.__name__)
-    harness = _movement_harness_c(cb, target=target) if _is_movement_cb(cb) else _harness_c(cb)
+    recipe = _backends.harness_build_recipe(target)
+    harness = (_movement_harness_c(cb, target=target) if _is_movement_cb(cb) else _harness_c(cb))
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
-    rt, common = gem.rocc_tests_dir(), gem._common_dir()
     # Linker load address DERIVED from the RTL memory map (platform DRAM base), reusing the curated
     # script's proven section layout but replacing its BAKED origin — so the base is a HW fact, not a
     # hardcoded literal in a vendored file.
     from ..runtime_build import derived_link_script
-    link_ld = derived_link_script(gem.platform_dram_base(), common / "test.ld", Path(workdir))
+    link_ld = derived_link_script(recipe.load_address, recipe.link_script, Path(workdir))
     elf = workdir / "package_kernel.elf"
-    cmd = [str(gem.gcc_path()), "-DPREALLOCATE=1", "-DMULTITHREAD=1", "-mcmodel=medany",
-           "-std=gnu99", "-O2", "-ffast-math", "-fno-common", "-fno-builtin-printf",
-           "-fno-tree-loop-distribute-patterns", "-march=rv64gc", "-Wa,-march=rv64gc",
-           "-lm", "-lgcc", "-I", str(rt / "riscv-tests"), "-I", str(rt / "riscv-tests/env"),
-           "-I", str(rt), "-I", str(common), "-DID_STRING=", "-DPRINT_TILE=0",
-           "-nostdlib", "-nostartfiles", "-static", "-T", str(link_ld), "-DBAREMETAL=1",
-           str(workdir / "harness.c"), str(obj), "-o", str(elf),
-           *(str(p) for p in sorted(common.glob("*.c"))),
-           *(str(p) for p in sorted(common.glob("*.S")))]
+    cmd = recipe.command(sources=[workdir / "harness.c", obj], output=elf, link_script=link_ld)
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
-        raise gem.GemminiError(f"link failed:\n{proc.stderr[-2000:]}")
+        raise recipe.error_cls(f"link failed:\n{proc.stderr[-2000:]}")
     return elf
 
 
 def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
-                           workdir: str | Path | None = None) -> Path:
+                           workdir: str | Path | None = None, *, target: str) -> Path:
     """Full package-lowered-MLIR -> rv64 ELF (object + runner harness + link)."""
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_compile_"))
     obj = llvm_mlir_to_object(lowered_mlir_text, work)
-    return link_elf(cb, obj, work)
+    return link_elf(cb, obj, work, target=target)
 
 
-def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
+def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str, target: str,
                   workdir: str | Path | None = None, timeout: int = 600) -> dict[str, Any]:
     """Compile the package's lowered MLIR + run on ``simulator``; return outputs/metrics/console.
 
@@ -126,15 +121,16 @@ def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
     spike/verilator — only VCS/FireSim adapters that route through a queue set it).
     """
     import time
-    from merlin.runtime.backends import gemmini as gem
+    from merlin.runtime.backends import base as _backends
+    backend = _backends.get_backend(target)
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_run_"))
     _t0 = time.perf_counter()
-    elf = compile_lowered_to_elf(cb, lowered_mlir_text, work)
+    elf = compile_lowered_to_elf(cb, lowered_mlir_text, work, target=target)
     _t1 = time.perf_counter()
-    console = gem.run_elf(elf, simulator=simulator, timeout=timeout)
+    console = backend.run_elf(elf, simulator=simulator, timeout=timeout)
     _t2 = time.perf_counter()
-    outputs, raw = gem.parse_output(console)
+    outputs, raw = backend.parse_output(console)
     return {"outputs": outputs, "raw_metrics": raw, "cycles": raw.get("cycles", 0),
-            "oracle": gem.ORACLE[simulator], "elf": str(elf), "console": console,
+            "oracle": backend.ORACLE[simulator], "elf": str(elf), "console": console,
             "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3),
                        "oracle_wait_s": 0.0}}

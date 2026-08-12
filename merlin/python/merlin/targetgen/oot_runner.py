@@ -450,7 +450,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         # K7/K8: oracle (skip-if-unavailable)
         if gem.available(simulator):
             try:
-                res = oot_compile.run_on_oracle(cb, p.stdout, simulator=simulator,
+                res = oot_compile.run_on_oracle(cb, p.stdout, simulator=simulator, target=target,
                                                 workdir=paths.generated, timeout=timeout)
             except Exception as e:
                 raise CertFailure("oracle_rtl", FailureCategory.TOOL_CRASH,
