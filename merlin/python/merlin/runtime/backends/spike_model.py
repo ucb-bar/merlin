@@ -34,6 +34,11 @@ from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
 RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2",
               "-ffreestanding", "-fno-builtin"]
 
+#: Cross-compilation triple for the clang-built objects. Named because more than one object is built with
+#: it now, and clang defaults to the HOST triple -- so an invocation that forgets this rejects every RISC-V
+#: flag in ``RVV_CFLAGS`` rather than mis-compiling, which is at least loud, but it is a needless failure.
+CLANG_TARGET = "--target=riscv64-unknown-elf"
+
 
 class SpikeModelError(RuntimeError):
     pass
@@ -113,7 +118,8 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
           features: "frozenset[str] | None" = None, rvv_schedule: str | None = None,
           cflags_override: list[str] | None = None, vlen: int | None = None,
           console: str = "htif", sdk_dir: str | Path | None = None,
-          sdk_chip: str | None = None, chip_freq_hz: int | None = None) -> dict:
+          sdk_chip: str | None = None, chip_freq_hz: int | None = None,
+          matrix: "Any | None" = None, matrix_scalar_tile: bool = False) -> dict:
     """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
 
     Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
@@ -133,6 +139,13 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     ``sdk_dir``/``sdk_chip``, from which the UART, PLL and clock-selector facts are derived (see
     ``runtime.sdk_facts``); ``chip_freq_hz`` additionally raises the PLL to that frequency the way the
     vendor SDK's own ``init_test()`` does, and ``None`` leaves the chip on its reset clock.
+
+    ``matrix`` is a :class:`zephyr_model.MatrixRouting` naming the matrix extension and configuration to
+    route contractions to; it is required whenever ``features`` enables the routing feature, and the same
+    object drives both the IR rewrite and the shim object, so the tile edge has one source.
+    ``matrix_scalar_tile`` compiles that shim with the scalar stand-in for the unit instead of its
+    instructions -- which is how the whole model gets graded on a simulator that has no such unit, proving
+    the routing, the packing, the ABI and the epilogue while proving nothing about the datapath.
     """
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -162,12 +175,13 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
         if int8_compute or features or rvv_schedule:
             from . import zephyr_model as _zm
             prepared_path, features = _zm.prepare_for_lowering(
-                prepared_path, work, int8_compute=int8_compute, features=features)
+                prepared_path, work, int8_compute=int8_compute, features=features,
+                matrix=matrix)
             vectorize = True
         res = lower_model_file(prepared_path, work / "lower", targets=(), textual=True,
                                vectorize=vectorize, transform_schedule=rvv_schedule,
                                features=features)   # produce only the .ll
-    _run([clang, "--target=riscv64-unknown-elf", *clang_cflags, "-c", res.ll_path,
+    _run([clang, CLANG_TARGET, *clang_cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 
     # 2. generate the data-driven runtime artifacts (arg table, call, weights.bin, io)
@@ -229,6 +243,30 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
         objs.append(work / obj)
     objs += [work / "model.o", work / "weights_blob.o"]
 
+    # 4b. the matrix-unit shim, if any contraction was routed to one. Built from the SIDECAR the rewrite
+    #     wrote rather than from anything passed in: the symbols the module actually calls are the ones
+    #     that must be defined, and a set reconstructed here could drift from them into a link error.
+    #     Compiled with CLANG, like the model object: the `.insn` directives and the vector intrinsics
+    #     want the same toolchain that lowered the model, and only the -march has to agree with GCC's.
+    matrix_build = None
+    from ...llvmlower.passes_opu import load_sidecar as _load_matrix_sidecar
+    matrix_sigs = _load_matrix_sidecar(work)
+    if matrix_sigs:
+        if matrix is None:
+            raise RuntimeError(
+                f"{len(matrix_sigs)} matrix-unit signature(s) were routed but no `matrix=` routing is "
+                "available to build them against; the image would not link")
+        from ...llvmlower import opu_shim
+        matrix_build = opu_shim.build_object(
+            matrix_sigs, work / "matrix", unit=matrix.unit, config=matrix.config,
+            cc=clang, cflags=[CLANG_TARGET, *clang_cflags],
+            scalar_tile=matrix_scalar_tile)
+        objs.append(matrix_build.object_path)
+        print(f"[matrix] linked {len(matrix_sigs)} entry point(s) for {matrix.unit} "
+              f"({matrix.config}, tile edge {matrix_build.tile_edge}, "
+              f"{'SCALAR STAND-IN' if matrix_build.scalar_tile else 'device instructions'}, "
+              f"{matrix_build.scratch_bytes} B pack scratch)")
+
     # 5. link: weights blob at its absolute high address.
     elf = work / "model.elf"
     _run([gcc, *gcc_cflags, "-nostdlib", "-nostartfiles",
@@ -237,7 +275,10 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     return {"elf": elf, "mem_bytes": lay["mem_bytes"], "build_hash": build_hash,
             "arena_base": lay["arena_base"], "weights_base": lay["weights_base"],
             "console": console, "chip_freq_hz": chip_freq_hz,
-            "console_provenance": dict(console_facts.provenance) if console_facts else {}, **info}
+            "console_provenance": dict(console_facts.provenance) if console_facts else {},
+            # The matrix build carries the hardware revision its instructions were derived from, so a
+            # result produced by this ELF can name what it is a result about.
+            "matrix": matrix_build.to_dict() if matrix_build is not None else None, **info}
 
 
 def run(elf: str | Path, harts: int = 1, mem_bytes: int = 1 << 30,

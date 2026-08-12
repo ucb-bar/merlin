@@ -33,6 +33,8 @@ from __future__ import annotations
 import os
 import struct
 import subprocess
+from collections.abc import Callable
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from merlin.common.paths import runtime_dir
@@ -366,10 +368,44 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     return out
 
 
+@dataclass(frozen=True)
+class MatrixRouting:
+    """Which matrix extension a build routes contractions to, and in which configuration.
+
+    Carried as one object so the tile edge has exactly ONE source. The alternative -- deriving the edge
+    here from the caller's ``vlen`` and again at object-build time from the config's Scala -- is two
+    statements of the same fact that can disagree, and the disagreement would be silent: the selector
+    would choose contractions for a geometry the compiled kernel does not have.
+
+    ``select`` overrides the default tile-filling decision, which is the seam the cost model and the
+    e-graph plug into. Nothing here decides profitability on its own.
+    """
+
+    unit: str                                       # a block in llvmlower/opu_shim.CONTRACT_PATH
+    config: str                                     # the elaborated hardware configuration
+    select: "Callable[[Any], bool] | None" = None
+
+    def tile_edge(self) -> int:
+        """The edge, read from this configuration's own declaration."""
+        from ...kernels import opu_cert
+        from ...llvmlower import opu_shim
+        contract = opu_shim.load_contract(self.unit)
+        return opu_cert.tile_edge_for_config(
+            self.config,
+            config_scala=contract.checkout() / str(contract.configs["config_scala"]),
+            mixin_scala=[contract.checkout() / str(m)
+                         for m in contract.configs.get("mixin_scala", ())])
+
+    def selector(self) -> "Callable[[Any], bool]":
+        from ...llvmlower.passes_opu import tile_filling_selector
+        return self.select if self.select is not None else tile_filling_selector(self.tile_edge())
+
+
 def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = False,
                          features: "frozenset[str] | None" = None,
                          blocking: bool = True, harts: int = 1,
-                         vlen: int | None = None) -> tuple[Path, frozenset[str]]:
+                         vlen: int | None = None,
+                         matrix: "MatrixRouting | None" = None) -> tuple[Path, frozenset[str]]:
     """``(prepared_mlir, concrete_features)`` — everything that must happen to a captured module
     before ``lower_model_file``, shared by every whole-model backend.
 
@@ -394,6 +430,22 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     prepared = _prepare_model_mlir(mlir_path, work, int8_compute=int8_compute,
                                    tag_vec_ranks=_lanes is not None,
                                    vec_lanes=_lanes or _VEC_RANK_LANES)
+    # MATRIX-UNIT ROUTING, before the register blocking below: a contraction that has become a call is no
+    # longer on the vector path, so the block table must be derived from the IR that remains. Doing it the
+    # other way round would tag ops that no longer exist and leave the routed ones double-claimed.
+    from ...llvmlower.impr_features import OPU_MATMUL_NAME
+    if OPU_MATMUL_NAME in features:
+        if matrix is None:
+            # Silently not routing would be indistinguishable from a feature that did nothing, and the
+            # model would grade correctly while reporting a capability it never used.
+            raise ValueError(
+                f"feature {OPU_MATMUL_NAME!r} is enabled but no `matrix=` routing was supplied, so the "
+                "unit and configuration to route to are unknown; pass MatrixRouting(unit=..., config=...)")
+        from ...llvmlower.passes_opu import rewrite_prepared_file
+        routed = rewrite_prepared_file(prepared, work, select=matrix.selector())
+        print(f"[matrix] routed {routed.count} contraction(s) to {matrix.unit} "
+              f"({matrix.config}) across {len(routed.signatures)} signature(s)"
+              + (f"; declined: {[why for _w, why in routed.skipped]}" if routed.skipped else ""))
     if not blocking:
         return prepared, features
     from ...llvmlower import perop_blocks as _pb
@@ -1153,7 +1205,9 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
               features: "frozenset[str] | None" = None,
               n_harts: int = 1, iters: int = 1, warmup: int = 0,
               omp_threads: int | None = None, vlen: int | None = None,
-              sdk_dir: str | Path | None = None, debug: bool = False) -> dict:
+              sdk_dir: str | Path | None = None, debug: bool = False,
+              matrix: "MatrixRouting | None" = None,
+              matrix_scalar_tile: bool = False) -> dict:
     """Lower the model, generate the Zephyr app, and build ``zephyr.elf``.
 
     ``backend``: ``"rvv"`` (vector tile / Saturn) or ``"scalar"`` (scalar tile). The
@@ -1234,7 +1288,7 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
         prepared, features = prepare_for_lowering(model_dir / "model.mlir", work,
                                                  int8_compute=int8_compute, features=features,
                                                  blocking=True, harts=n_harts,
-                                                 vlen=vlen)
+                                                 vlen=vlen, matrix=matrix)
         # A DEBUG image interleaves a mark between the top-level ops of @forward. Two things come out
         # of it: a per-op cost table at the end of a successful run, and -- the reason it is here at
         # all -- a continuously published "which op are we in", which the heartbeat prints while the
@@ -1323,7 +1377,30 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
 
     archive = work / "libmerlinmodel.a"
     archive.unlink(missing_ok=True)
-    _run([ar, "rcs", archive, work / "model.o", work / "weights_blob.o"])
+    # The matrix-unit shim, when the rewrite routed anything to one, goes into the SAME archive as the
+    # model object -- so it is covered by the --whole-archive the generated CMakeLists already applies and
+    # no CMake change is needed. Built from the SIDECAR the rewrite wrote: the symbols the module actually
+    # calls are the ones that must be defined, and a set reconstructed here could drift into a link error.
+    matrix_objs: list[Path] = []
+    matrix_build = None
+    from ...llvmlower.passes_opu import load_sidecar as _load_matrix_sidecar
+    matrix_sigs = _load_matrix_sidecar(work)
+    if matrix_sigs:
+        if matrix is None:
+            raise ZephyrModelError(
+                f"{len(matrix_sigs)} matrix-unit signature(s) were routed but no `matrix=` routing is "
+                "available to build them against; the image would not link")
+        from ...llvmlower import opu_shim
+        matrix_build = opu_shim.build_object(
+            matrix_sigs, work / "matrix", unit=matrix.unit, config=matrix.config,
+            cc=clang, cflags=["--target=riscv64-unknown-elf", *cflags],
+            scalar_tile=matrix_scalar_tile)
+        matrix_objs = [matrix_build.object_path]
+        print(f"[matrix] linked {len(matrix_sigs)} entry point(s) for {matrix.unit} "
+              f"({matrix.config}, tile edge {matrix_build.tile_edge}, "
+              f"{'SCALAR STAND-IN' if matrix_build.scalar_tile else 'device instructions'}, "
+              f"{matrix_build.scratch_bytes} B pack scratch)")
+    _run([ar, "rcs", archive, work / "model.o", work / "weights_blob.o", *matrix_objs])
 
     # 4. emit the Zephyr application tree.
     app = work / "app"

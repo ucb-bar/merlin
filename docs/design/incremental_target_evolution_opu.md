@@ -357,17 +357,39 @@ test asserts a *range* rather than a value, with a note that raising it by editi
 the purpose. The honest reading: this pass measures reuse at the resolution the pipeline currently
 supports, and improving that resolution is a separate piece of work from the delta itself.
 
-### 4.3 Where the OPU lowering attaches
+### 4.3 Where the OPU lowering attaches — BUILT
 
-Ranked by how little existing machinery is disturbed:
+The plan above was followed, with one correction: the feature edits neither the pipeline nor the transform
+schedule, because the rewrite happens on the prepared IR. So `opu_matmul` is registered with **both hooks
+`None`**, which makes the byte-identity invariant structural rather than merely tested — there is no edit
+to apply.
 
-1. **A default-OFF `ImprFeature`** (`impr_features.py:28-50`) — the intended seam, enabled per-package
-   through `knobs.yaml: compiler_features`.
-2. **Per-contraction tagging** — `llvmlower/perop_blocks.py` already solves exactly "route *this*
-   contraction differently from *that* one", and its docstring records the measured reason the tag must
-   be applied after `linalg-specialize-generic-ops` and before `transform-interpreter`: a tag set at
-   prepare time does not survive specialization ("20 ops renamed, 0 kept the tag").
-3. **`custom_isa.py`** for the `.insn` emission itself.
+The four pieces, and what each is responsible for:
+
+| piece | responsibility |
+|---|---|
+| `llvmlower/passes_opu.py` | the structural xDSL rewrite: contraction → `call @merlin_opu_gemm_i8_<n>`, one symbol per distinct signature, plus the sidecar the build reads |
+| `llvmlower/opu_shim.py` | the generated C translation unit and its compilation: the certified microkernel, the K-major pack, the descriptor ABI, provenance |
+| `contract/matrix_units.yaml` | where the derivation STARTS — the declaration names that are addresses of facts rather than facts |
+| `zephyr_model.MatrixRouting` | which unit and configuration a build routes to, so the tile edge has one source |
+
+Three things are worth recording because they were not obvious before building it:
+
+- **The init must be a zero fill, and this is correctness rather than convenience.** `linalg.matmul` computes
+  `C_init + A@B`; the microkernel *writes* its output. Those agree exactly when `C_init` is zero. All 90 of
+  spectformer's candidates are a `linalg.fill` of `0 : i32`, so requiring it costs nothing — but a model
+  whose contractions accumulate onto a live init is now **declined** instead of silently dropping the addend.
+- **xDSL drops `arg_attrs` when printing a bodyless declaration.** It stores them correctly and prints them
+  for a function *with* a body. So `bufferization.access` never reached the text mlir-opt parses, and
+  one-shot-bufferize would have copied the weight operand of every routed contraction. The rewrite repairs
+  the printed text and **refuses to write a module** whose declarations lost them.
+- **The routing runs before the per-op register blocking**, because a contraction that has become a call is
+  no longer on the vector path and the block table must be derived from the IR that remains.
+
+The two halves are joined by a **sidecar** (`opu_signatures.json`) rather than a return value, because the
+lowering runs in a subprocess that re-imports these modules — the same reason `impr_features` needs
+`_try_lazy_register`. The build generates its C side from the sidecar, so the symbols defined are exactly
+the ones the module calls; a set reconstructed independently could drift into a link error.
 
 The microkernel is compiled alongside the model object the way `runtime/c/merlin_op_prof.c` already is.
 Its epilogue shape is the interesting compiler question, and it is the one the XNNPACK template answers
