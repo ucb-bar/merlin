@@ -1,0 +1,12 @@
+# Whole-file exemptions for check_no_assumed_constants.py — files that still bake an ISA-identity
+# constant (opcode / funct / mesh dim / capacity) as a KNOWN overfit pending derivation-or-fail-closed.
+#
+# Format: one repo-relative path per line; text after `#` is the rationale (required, names the
+# tracking work). The list only ever SHRINKS: as each baked constant is derived from rtl.facts / the
+# manifest (or made to fail closed on UNKNOWN), delete its entry. Prefer an inline `# derived-ok: <why>`
+# on the exact line for a value that IS derived-then-cached or a genuinely-universal standard constant.
+#
+# These three are the audit's confirmed prohibition-#3 violations, scheduled for the de-overfit work:
+merlin/python/merlin/targetgen/rtl/circt_introspect.py   # CUSTOM_OPCODE/FUNCT3 0x7B/0x3 baked — derive major opcode from the mlc decoder (de-overfit Phase 2)
+merlin/python/merlin/targetgen/rtl_checks.py             # DEFAULT_RTL_FACTS mesh/scratchpad/opcode/funct3 fallback — fail closed on underived facts (de-overfit Phase 3)
+merlin/python/merlin/targetgen/rtl/gen_rocc_replay.py    # rocc_opcode 0x0b baked — derive from funct_decode_table.custom_opcode (de-overfit Phase 3)

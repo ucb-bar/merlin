@@ -932,8 +932,8 @@ class SpecRefSource:
 
         # (2) atlas MXU program (fp8 -> bf16); (3) radiance SIMT-warp program. Each returns None for a gen
         # it does not author — try both, use the one that produces a program, else fail closed.
-        from specir.interface.emit_atlas_program import emit_atlas_program
-        from specir.interface.emit_radiance_program import emit_radiance_program
+        from specir.interface.emit_atlas_program import emit_atlas_program      # target-ok: specir program emitters tried additively (each returns None for a gen it doesn't author); pending emitter registry (OV11/2f)
+        from specir.interface.emit_radiance_program import emit_radiance_program  # target-ok: specir program emitters tried additively; pending emitter registry (OV11/2f)
         aprog, _ = emit_atlas_program(module, op, gen_dir, workload=tuple(workload))
         if aprog is not None:
             return _float_program_artifacts(gen, op, aprog, cov, workload)

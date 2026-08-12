@@ -372,7 +372,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     from ..runtime.backends import base as _bk
     from ..runtime.reference import reference_outputs, outputs_match
     from ..runtime.simulator import simulate
-    from .eval.gemmini_suite import toolchain_shas
+    from .eval.gemmini_suite import toolchain_shas   # target-ok: toolchain-SHA util from the reference suite; pending relocation to a target-neutral home (OV11)
 
     interface_mlir = Path(interface_mlir)
     rung = interface_mlir.stem.split(".")[0]

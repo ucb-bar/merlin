@@ -18,6 +18,9 @@ echo "[pre-commit] no-regex (staged)…"
 echo "[pre-commit] no-target-name (staged)…"
 "$PY" build_tools/scripts/check_no_target_name.py --staged
 
+echo "[pre-commit] no-assumed-constants (staged)…"
+"$PY" build_tools/scripts/check_no_assumed_constants.py --staged
+
 echo "[pre-commit] no-answer-keys (tracked)…"
 "$PY" build_tools/scripts/check_no_answer_keys.py
 

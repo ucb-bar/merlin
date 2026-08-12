@@ -857,7 +857,7 @@ def _write_capsule(entry, binding, out_root):
         # (two MX GEMMs + a bf16 softmax), both over the SAME validated mx_ref engine.
         if entry.get("op") == "attention_mx":
             outputs, prov = _mx_attention_golden(entry, eb)
-            engine = ("mlc.validate.mx_ref.mx_matmul x2 (QK & PV, transcribed from radiance-kernels "
+            engine = ("mlc.validate.mx_ref.mx_matmul x2 (QK & PV, transcribed from radiance-kernels "  # target-ok: provenance string (source repo radiance-kernels), not control flow
                       "lib/golden/mx_golden.cpp) + numpy bf16 row-softmax; P requantized to mxfp8 per-row")
             datapath = ("O = mx_matmul(softmax(mx_matmul(Q,K^T)/sqrt(H) [+softcap]), V); E8M0 per 32-elt "
                         "K group; bf16 accumulate + bf16 softmax")
@@ -867,7 +867,7 @@ def _write_capsule(entry, binding, out_root):
             datapath = ("B x [M,H]@[H,N] on the mx_pe; one E8M0 scale per 32-elt K group; bf16 accumulate")
         else:
             outputs, prov = _mx_golden(entry, eb)
-            engine = ("mlc.validate.mx_ref.mx_matmul (transcribed from radiance-kernels "
+            engine = ("mlc.validate.mx_ref.mx_matmul (transcribed from radiance-kernels "  # target-ok: provenance string (source repo radiance-kernels), not control flow
                       "lib/golden/{mx_fp_math.h,mx_golden.cpp}; mirrors the RTL, bit-exact vs spike)")
             datapath = ("16-deep systolic per-column acc schedule (ACC_E/ACC_M); one E8M0 scale per "
                         "32-elt K group; bf16 accumulate")
@@ -877,7 +877,7 @@ def _write_capsule(entry, binding, out_root):
                 "engine": engine,
                 "datapath": datapath,
                 "operand_dtype": eb.cap_dtype(eb.operand_dtype), "block_scale": "e8m0", "output_dtype": "bf16",
-                "note": "NOT specir (specir is atlas fp8); MX is a distinct block-scaled datapath.",
+                "note": "NOT specir (specir is atlas fp8); MX is a distinct block-scaled datapath.",  # target-ok: descriptive note contrasting atlas-fp8 vs mx datapath, not control flow
                 "grade_policy": {"compare": eb.compare, "atol": eb.atol, "rtol": eb.rtol},
                 "inputs": prov},
             "outputs": outputs}, sort_keys=False), encoding="utf-8")
