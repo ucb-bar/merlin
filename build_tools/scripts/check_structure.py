@@ -194,6 +194,27 @@ def check_test_layout(errors):
             if has_tests:
                 errors.append(f"unknown test bucket merlin/tests/{b} (allowed: {sorted(TEST_BUCKETS)})")
 
+    # A basename may appear once across ALL buckets. The buckets carry no __init__.py, so pytest imports
+    # each test file under its bare basename; two files sharing one cannot both be imported and pytest
+    # aborts COLLECTION for the entire run. That failure is disproportionate and easy to misread -- it
+    # reports as one broken file while actually preventing every test in the suite from running, and it
+    # only appears when the two buckets are collected together, so a per-bucket run looks clean.
+    seen: dict[str, str] = {}
+    for b in sorted(os.listdir(tdir)):
+        bp = os.path.join(tdir, b)
+        if not os.path.isdir(bp) or b in {"fixtures", "data", "__pycache__"}:
+            continue
+        for f in sorted(os.listdir(bp)):
+            if not (f.startswith("test_") and f.endswith(".py")):
+                continue
+            if f in seen:
+                errors.append(
+                    f"duplicate test module basename {f!r}: merlin/tests/{seen[f]}/{f} and "
+                    f"merlin/tests/{b}/{f} — pytest imports test files by bare basename, so this "
+                    f"aborts collection for the WHOLE suite. Rename one after what it actually covers.")
+            else:
+                seen[f] = b
+
 
 def check_cli_docs(errors):
     """docs/cli.md must be in sync with pyproject [project.scripts] (single CLI source of truth)."""
