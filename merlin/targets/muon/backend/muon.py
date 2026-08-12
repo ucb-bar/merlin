@@ -820,7 +820,11 @@ def _run_verilator(elf: Path, timeout: int) -> tuple[str, int | None]:
 def run_elf(elf: str | Path, simulator: str = "cyclotron",
             timeout: int = 600) -> tuple[str, int | None, dict | None]:
     """Run the ELF on the chosen oracle; return (console, cycles, summary_json|None)."""
-    elf = Path(elf)
+    # Resolve to an ABSOLUTE path up front: every sim below runs with ``cwd`` set to a workdir, so a
+    # caller-supplied RELATIVE elf/runs-root (e.g. ``out/runs/...``) would otherwise resolve against the
+    # sim's cwd and vanish ("Elf file not found"). Absolute-ising here makes a relative runs-root work
+    # identically to an absolute one — one less thing to get right on a fresh clone / other machine.
+    elf = Path(elf).resolve()
     if simulator == "cyclotron":
         return _run_cyclotron(elf, timeout)
     if simulator == "vcs":
