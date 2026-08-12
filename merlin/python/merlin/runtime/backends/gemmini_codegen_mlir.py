@@ -15,16 +15,27 @@ MLIR lowered via `lower_to_llvm_ir` -> object; a thin C harness embeds data + ca
 """
 from __future__ import annotations
 
+from functools import cache
 from pathlib import Path
+from types import SimpleNamespace
 
 from .gemmini_codegen import _ceil_dim, _pad_rowmajor, _parse, CodegenError   # sibling — moves together
 from merlin.runtime.commandbuffer import materialize_inputs
+
+GARBAGE = 0xFFFFFFFF                  # universal, not target-specific — no derivation needed
 
 # ISA/ABI encoding constants — DERIVED from the single source of truth (gemmini's capability manifest +
 # the RTL fact bundle), not hand-copied. Byte-parity with the former literals is pinned by
 # test_codegen_constants_single_source; the emitted .insn is proven byte-identical by
 # test_codegen_emit_byte_identical. This retires the emitter's copy of the triplicated constants.
-def _load_isa() -> dict:
+#
+# Resolved on FIRST USE, not at import. Importing this module used to load a capability manifest and an
+# RTL fact bundle as a side effect, which made a target's data a prerequisite for merely NAMING this
+# module: the generic contract-compile path imports `_harness_c` from here, so on a checkout without
+# those facts it failed at import rather than at the point of use, and the traceback pointed at an
+# import line rather than at the thing that actually needed the facts.
+@cache
+def _isa() -> SimpleNamespace:
     from merlin.targetgen.target_experiment import load_capability_manifest
     from merlin.targetgen.rtl.facts import load_facts
     m = load_capability_manifest("gemmini")
@@ -34,38 +45,43 @@ def _load_isa() -> dict:
     fd = next(i for i in facts["interfaces"] if i.get("name") == "funct_decode_table")
     # DIM (systolic mesh dimension) is a CIRCT-extracted FACT, not a hand-declared manifest field.
     mesh = next((a for a in facts.get("arrays", []) if a.get("name") == "mesh"), {})
-    dim = mesh.get("rows", 16)
-    return {"DIM": dim, "ADDR_LEN": enc["addr_len"], "F1": rb["f1"], "C_ACC": rb["c_acc"],
-            "ACC_ACCUM": rb["acc_accum"], "ACC_I8": rb["acc_i8"], "K": code_of,
-            "CUSTOM_OPCODE": fd["custom_opcode"], "FUNCT3": fd["funct3"]}
+    isa = SimpleNamespace(
+        DIM=mesh.get("rows", 16), ADDR_LEN=enc["addr_len"],
+        F1=rb["f1"],                        # float 1.0 bits
+        C_ACC=rb["c_acc"],                  # 0xA0000000 full-i32 accumulator readout base
+        ACC_ACCUM=rb["acc_accum"],          # 0x40000000 accumulate-onto for K-tiles after the first
+        ACC_I8=rb["acc_i8"],                # 0x80000000 acc addr WITHOUT full_C: scaled i8 readout
+        K_CONFIG=code_of["CONFIG"], K_MVIN=code_of["MVIN"], K_MVOUT=code_of["MVOUT"],
+        K_COMPUTE_PRELOADED=code_of["COMPUTE_PRELOADED"], K_PRELOAD=code_of["PRELOAD"],
+        K_FLUSH=code_of["FLUSH"],
+        CUSTOM_OPCODE=fd["custom_opcode"],  # RoCC custom-3 (0x7b)
+        FUNCT3=fd["funct3"],                # 0x3
+    )
+    # config_ex (WS, no activation, shift 0, identity scales, strides 1) and config_ld RS1 (block
+    # stride defaults to DIM + pixel_repeats 1 — the RTL LoadController asserts block_stride>=rows).
+    isa.CFG_EX_RS1 = (isa.F1 << 32) | (1 << 16) | (1 << 2)          # CONFIG_EX=0, dataflow WS=1
+    isa.CFG_EX_RS2 = (1 << 48)
+    isa.CFG_LD_RS1 = (isa.F1 << 32) | (isa.DIM << 16) | (1 << 8) | 1  # CONFIG_LD=1
+    return isa
 
 
-_isa = _load_isa()
-DIM = _isa["DIM"]
-ADDR_LEN = _isa["ADDR_LEN"]
-F1 = _isa["F1"]                       # float 1.0 bits
-GARBAGE = 0xFFFFFFFF                  # universal, not target-specific
-C_ACC = _isa["C_ACC"]                # 0xA0000000 full-i32 accumulator readout base
-ACC_ACCUM = _isa["ACC_ACCUM"]        # 0x40000000 accumulate-onto bit for K-tiles after the first
-ACC_I8 = _isa["ACC_I8"]              # 0x80000000 accumulator addr WITHOUT full_C: scaled i8 readout
-K_CONFIG = _isa["K"]["CONFIG"]
-K_MVIN = _isa["K"]["MVIN"]
-K_MVOUT = _isa["K"]["MVOUT"]
-K_COMPUTE_PRELOADED = _isa["K"]["COMPUTE_PRELOADED"]
-K_PRELOAD = _isa["K"]["PRELOAD"]
-K_FLUSH = _isa["K"]["FLUSH"]
-CUSTOM_OPCODE = _isa["CUSTOM_OPCODE"]   # RoCC custom-3 (0x7b)
-FUNCT3 = _isa["FUNCT3"]                 # 0x3
+#: Names resolved lazily through :func:`_isa`. Exposed as module attributes via ``__getattr__`` (PEP
+#: 562) so ``gemmini_codegen_mlir.DIM`` keeps working for callers and tests — the laziness is an
+#: implementation change, not an API change.
+_DERIVED = ("DIM", "ADDR_LEN", "F1", "C_ACC", "ACC_ACCUM", "ACC_I8", "K_CONFIG", "K_MVIN", "K_MVOUT",
+            "K_COMPUTE_PRELOADED", "K_PRELOAD", "K_FLUSH", "CUSTOM_OPCODE", "FUNCT3",
+            "CFG_EX_RS1", "CFG_EX_RS2", "CFG_LD_RS1")
 
-# config_ex (WS, no activation, shift 0, identity scales, strides 1) and config_ld RS1 (block
-# stride defaults to DIM + pixel_repeats 1 — the RTL LoadController asserts block_stride>=rows).
-CFG_EX_RS1 = (F1 << 32) | (1 << 16) | (1 << 2)          # CONFIG_EX=0, dataflow WS=1
-CFG_EX_RS2 = (1 << 48)
-CFG_LD_RS1 = (F1 << 32) | (DIM << 16) | (1 << 8) | 1    # CONFIG_LD=1
+
+def __getattr__(name: str):
+    if name in _DERIVED:
+        return getattr(_isa(), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _pack(addr: int) -> int:
-    return (DIM << (ADDR_LEN + 16)) | (DIM << ADDR_LEN) | (addr & 0xFFFFFFFF)
+    isa = _isa()
+    return (isa.DIM << (isa.ADDR_LEN + 16)) | (isa.DIM << isa.ADDR_LEN) | (addr & 0xFFFFFFFF)
 
 
 def _f32_bits(scale: float) -> int:
@@ -123,10 +139,11 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
     arg_order is the func's pointer-arg order: [weight] + [matmul activations] + [outputs].
     Handles full-i32 readout AND Gemmini's scaled/clamped i8 readout (float acc_scale).
     """
+    isa = _isa()
     weight, jobs, k, n = _parse_full(cb)       # jobs: (lhs, out, epi, m, out_dtype, scale)
     kp, np_ = _ceil_dim(k), _ceil_dim(n)
-    Kt, Nt = kp // DIM, np_ // DIM
-    a_slot = Kt * Nt * DIM                      # A tile slot, after the resident W tiles
+    Kt, Nt = kp // isa.DIM, np_ // isa.DIM
+    a_slot = Kt * Nt * isa.DIM                      # A tile slot, after the resident W tiles
 
     lhss = [j[0] for j in jobs]
     outs = [j[1] for j in jobs]
@@ -146,7 +163,7 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
         return s
 
     def rocc(funct: int, rs1: str, rs2: str) -> None:
-        body.append(f'    llvm.inline_asm has_side_effects ".insn r {hex(CUSTOM_OPCODE)}, {hex(FUNCT3)}, '
+        body.append(f'    llvm.inline_asm has_side_effects ".insn r {hex(isa.CUSTOM_OPCODE)}, {hex(isa.FUNCT3)}, '
                     f'{funct}, x0, $0, $1", "r,r" {rs1}, {rs2} : (i64, i64) -> ()')
 
     pint = {}
@@ -166,44 +183,44 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
 
     def config_ld(stride: int) -> None:        # mvin row stride (bytes); re-emit only on change
         if last_ld[0] != stride:
-            rocc(K_CONFIG, konst(CFG_LD_RS1), konst(stride))
+            rocc(isa.K_CONFIG, konst(isa.CFG_LD_RS1), konst(stride))
             last_ld[0] = stride
 
     body.append('    llvm.inline_asm has_side_effects "fence", "" : () -> ()')
-    rocc(K_FLUSH, konst(0), konst(0))
-    rocc(K_CONFIG, konst(CFG_EX_RS1), konst(CFG_EX_RS2))
+    rocc(isa.K_FLUSH, konst(0), konst(0))
+    rocc(isa.K_CONFIG, konst(isa.CFG_EX_RS1), konst(isa.CFG_EX_RS2))
 
     # Resident weight: mvin all Kt x Nt tiles once (config_ld stride = np_ bytes, elem_t=1B).
     config_ld(np_)
     for kt in range(Kt):
         for nj in range(Nt):
-            w_row = (kt * Nt + nj) * DIM
-            off = (kt * DIM) * np_ + nj * DIM
-            rocc(K_MVIN, addr(weight, off), konst(_pack(w_row)))
+            w_row = (kt * Nt + nj) * isa.DIM
+            off = (kt * isa.DIM) * np_ + nj * isa.DIM
+            rocc(isa.K_MVIN, addr(weight, off), konst(_pack(w_row)))
 
     # config_ld for activations (stride = kp bytes).
     config_ld(kp)
 
     for (lhs, out, epi, m, out_dtype, scale) in jobs:
         mp = _ceil_dim(m)
-        Mt = mp // DIM
+        Mt = mp // isa.DIM
         i8_out = out_dtype == "i8"              # i8 readout = Gemmini float acc_scale + clamp
         acc_act = 1 if "relu" in epi else 0     # config_st acc_act (RELU=1)
-        scale_bits = _f32_bits(scale) if i8_out else F1
+        scale_bits = _f32_bits(scale) if i8_out else isa.F1
         elt = 1 if i8_out else 4               # output element bytes
-        read_base = ACC_I8 if i8_out else C_ACC  # i8 readout drops the full_C bit -> scale applies
+        read_base = isa.ACC_I8 if i8_out else isa.C_ACC  # i8 readout drops the full_C bit -> scale applies
         # config_st: RS1=(acc_act<<2)|CONFIG_ST ; RS2=(acc_scale_bits<<32)|out_row_stride_bytes
-        rocc(K_CONFIG, konst((acc_act << 2) | 2), konst((scale_bits << 32) | (np_ * elt)))
+        rocc(isa.K_CONFIG, konst((acc_act << 2) | 2), konst((scale_bits << 32) | (np_ * elt)))
         for mi in range(Mt):
             for nj in range(Nt):
                 for kt in range(Kt):
-                    a_off = ((mi * DIM) * kp + kt * DIM)
-                    rocc(K_MVIN, addr(lhs, a_off), konst(_pack(a_slot)))
-                    cad = C_ACC if kt == 0 else (C_ACC | ACC_ACCUM)   # accumulator is always i32
-                    rocc(K_PRELOAD, konst(_pack((kt * Nt + nj) * DIM)), konst(_pack(cad)))
-                    rocc(K_COMPUTE_PRELOADED, konst(_pack(a_slot)), konst(_pack(GARBAGE)))
-                c_off = ((mi * DIM) * np_ + nj * DIM) * elt
-                rocc(K_MVOUT, addr(out, c_off), konst(_pack(read_base)))
+                    a_off = ((mi * isa.DIM) * kp + kt * isa.DIM)
+                    rocc(isa.K_MVIN, addr(lhs, a_off), konst(_pack(a_slot)))
+                    cad = isa.C_ACC if kt == 0 else (isa.C_ACC | isa.ACC_ACCUM)   # accumulator is always i32
+                    rocc(isa.K_PRELOAD, konst(_pack((kt * Nt + nj) * isa.DIM)), konst(_pack(cad)))
+                    rocc(isa.K_COMPUTE_PRELOADED, konst(_pack(a_slot)), konst(_pack(GARBAGE)))
+                c_off = ((mi * isa.DIM) * np_ + nj * isa.DIM) * elt
+                rocc(isa.K_MVOUT, addr(out, c_off), konst(_pack(read_base)))
 
     body.append('    llvm.inline_asm has_side_effects "fence", "" : () -> ()')
     text = ("module {\n  llvm.func @gemmini_kernel(" + arg_decl + ") {\n"

@@ -130,18 +130,22 @@ The end-to-end test is therefore a **strict expected failure** rather than a ski
 "the oracle is unavailable", which is false — the oracle runs, and grades the accumulator correctly.
 A strict xfail states a named boundary and fails loudly the moment it moves.
 
-### A note on mechanism, and on two of my own wrong diagnoses
+### Measurement versus mechanism
 
-This section previously asserted that the SIMT scaffold *loses the spawning warp's tile at full width*,
-on the strength of three bodies all returning element 0 as zero at 8 warps and all being exact at 4.
-That measurement stands. The mechanism does not: element 0 belongs to the manager warp, which is
-precisely the warp whose store is followed by almost no execution — so the same table is explained by
-the visibility behaviour above, with no spawn defect at all. Two candidate causes fit the evidence and
-separating them is work on the model.
+The measurement is firm: across three unrelated kernel bodies, element 0 came back zero at 8 warps with
+the rest correct, and all three were exact at 4 warps.
 
-Recorded because it is the more useful lesson: two successive mechanisms were inferred from correct
-measurements and both were wrong. The measurements are reported as measurements, the boundary is named,
-and the guess is left out of the places a reader would trust it.
+The mechanism is not established, and this document deliberately does not assert one. An earlier
+reading — that the scaffold loses the spawning warp's tile at full width — fits the table but is not
+the only thing that does. Element 0 belongs to the manager warp, which is also the warp whose store is
+followed by almost no execution, so the same table is equally explained by the store-visibility
+behaviour described above with no spawn defect present at all. Separating the two candidates requires
+work on the model itself.
+
+The convention this follows is worth stating, because the two candidates are individually plausible and
+a confident-sounding mechanism would propagate into anything citing this page: measurements are
+reported as measurements, the boundary is named explicitly, and no inferred cause is written where a
+reader would take it as established.
 
 ## What the SIMT arm claims
 

@@ -31,7 +31,7 @@
 # restated, because inventing rationales for them would violate the paragraph above:
 #   build_tools/scripts/regex_allowlist.txt      (23 entries)
 #   build_tools/scripts/provenance_ratchet.txt   (28 entries)
-# Prose ledger of the same debt, task-numbered: docs/design/target_agnostic_core.md (T1–T12).
+# Prose ledger of the same debt, task-numbered: docs/design/target_agnostic_core.md (T1–T13).
 version: 1
 
 entries:
@@ -82,6 +82,13 @@ entries:
       script, its `-march=rv64gc`, and a `common/*.c` + `common/*.S` glob from one vendor's backend, and
       raises that backend's error type. So the generic contract path does not merely emit one target's
       harness text: it runs one target's entire build recipe. Only the load address is derived.
+      One consequence used to compound this and is now FIXED: the harness helper it imports
+      (`runtime/backends/gemmini_codegen_mlir.py`) resolved its ISA constants at IMPORT time, so merely
+      importing the generic contract-compile path loaded one target's capability manifest and RTL facts
+      and failed at import on a checkout without them. They are now resolved on first use and cached,
+      with the emitted MLIR, the emitted harness C and all fifteen constants verified byte-identical
+      across the non-requant battery, and the property locked by tests/gemmini/test_codegen_lazy_isa.py.
+      What remains under this entry is the weld itself, above.
     blocks: >-
       Any target whose harness ABI OR toolchain recipe differs cannot use the contract-compile path at
       all — which is most of them, since this is a RoCC test-harness convention. It also sits underneath
@@ -216,8 +223,7 @@ entries:
       is what this entry records. Triage means reading each one and either moving it to a triaged entry
       with a real removal condition, or fixing it and deleting it from this list — not relabelling it
       benign because it looks like prose.
-      Worked example of the two-way check, from the day this list was written: the scan caught a new
-      `unit: str = "saturn_opu"` DEFAULT argument in llvmlower/opu_shim.py, it was declared here
-      untriaged (its owner, not this scan, states why a default exists), the owner removed it hours
-      later, and the gate then reported the entry as no longer coupling so it could be deleted. Neither
-      direction required anyone to remember: that is the property a hand-maintained debt list lacks.
+      The check runs in both directions, which is what keeps this list honest without anyone having to
+      remember it: a module that starts depending on a target and is not declared here fails the gate,
+      and a declared module that no longer depends on one is reported as ready to delete. A
+      hand-maintained debt list has neither property and drifts in both directions.
