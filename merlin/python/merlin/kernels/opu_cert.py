@@ -526,6 +526,17 @@ def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], 
     elf = work / f"{stem}{'_screen' if screen_only else ''}.elf"
     cmd = [
         str(spike_backend.gcc_path()),
+        # `rv64gcv` without a `zvl<N>b` is DELIBERATE and safe HERE, and the reason is worth stating because
+        # it is not safe in general. A `zvl` declaration makes the compiler emit scalable-vector spill slots
+        # whose addresses it computes from `vlenb` read at run time; if the simulator reports a different
+        # vlenb, every such slot lands at the wrong offset and writes over neighbouring stack objects. That
+        # is a real defect on the whole-model path (see runtime/backends/spike_model.run).
+        #
+        # This image is immune because it contains NO vector code the compiler generated: the kernel is
+        # hand-written asm establishing its own `vl` with `vsetvli`, and the C around it is scalar. Verified
+        # rather than assumed -- a test requires the built image to contain no `vlenb` read and no vector
+        # register spill, so the day this image gains vectorised C the test fails instead of the numbers
+        # quietly becoming wrong.
         "-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany",
         # -fno-tree-vectorize keeps the in-image reference a genuinely independent scalar implementation
         # rather than a second vectorised one, which is the whole point of having it.

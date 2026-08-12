@@ -532,3 +532,68 @@ class TestTheRunAlsoMeasures:
         rep = C.verdict(console, cases, config="T", tile_edge=16, uses_unit=True)
         row = rep.to_dict()["results"][0]
         assert row["cycles"] == 777 and row["macs_per_cycle"] is not None
+
+
+class TestTheImageIsVectorLengthAgnostic:
+    """The certification image must not contain compiler-generated vector code.
+
+    A `zvl<N>b` declaration makes the compiler address scalable-vector spill slots from `vlenb` READ AT RUN
+    TIME, so a build and a simulator that disagree on the vector length place every such slot differently and
+    it writes over neighbouring stack objects. That defect is real on the whole-model path. This image is
+    immune only because its vector code is hand-written asm with explicit `vsetvli` and the surrounding C is
+    scalar — so it is built with a plain `rv64gcv`. That immunity is a property to CHECK, not to assume:
+    without this test, the day the image gains vectorised C its numbers would quietly become wrong on any
+    configuration whose VLEN differs from the compiler's assumption.
+    """
+
+    @pytest.fixture
+    def built(self, tmp_path):
+        from merlin.common.paths import env as _env
+        from merlin.llvmlower import opu_shim as S
+        if not _env("MERLIN_CHIPYARD"):
+            pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
+        contract = S.load_contract("saturn_opu")
+        derived = S.derive_encodings(contract)
+        if not derived.ok:
+            pytest.skip("encoding derivation unavailable")
+        cases, _ = _cases(16)
+        return C.build_image(cases[:4], derived.encodings, contract.spec(), tmp_path)
+
+    @staticmethod
+    def _instructions(disassembly: str) -> list[str]:
+        """Only the disassembled INSTRUCTION lines.
+
+        objdump prints the object's PATH in its header, so searching the whole output matches anything the
+        path happens to contain — this test failed against its own tmp directory, named after the test.
+        An instruction line is `<hex addr>:\t<encoding>\t<mnemonic> ...`, so require the colon-tab shape.
+        """
+        out = []
+        for line in disassembly.splitlines():
+            head, sep, rest = line.partition(":\t")
+            if sep and head.strip() and all(c in "0123456789abcdef " for c in head.strip()):
+                out.append(rest)
+        return out
+
+    def test_it_reads_no_vlenb(self, built):
+        import subprocess
+        from merlin.runtime.backends import spike as _spike
+        od = _spike.gcc_path().with_name("riscv64-unknown-elf-objdump")
+        got = subprocess.run([str(od), "-d", str(built)], capture_output=True, text=True)
+        if got.returncode != 0:
+            pytest.skip("objdump unavailable")
+        offenders = [i for i in self._instructions(got.stdout) if "vlenb" in i]
+        assert not offenders, (
+            f"the image reads vlenb ({offenders[:2]}), so its stack addressing now depends on the vector "
+            "length and the build must declare zvl<N>b matching the target")
+
+    def test_it_spills_no_vector_register(self, built):
+        import subprocess
+        from merlin.runtime.backends import spike as _spike
+        od = _spike.gcc_path().with_name("riscv64-unknown-elf-objdump")
+        got = subprocess.run([str(od), "-d", str(built)], capture_output=True, text=True)
+        if got.returncode != 0:
+            pytest.skip("objdump unavailable")
+        instrs = self._instructions(got.stdout)
+        for mnem in ("vs1r.v", "vs2r.v", "vs4r.v", "vs8r.v", "vl1r.v"):
+            hits = [i for i in instrs if mnem in i]
+            assert not hits, f"the image spills vector registers ({mnem}): {hits[:2]}"
