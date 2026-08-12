@@ -123,6 +123,11 @@ static void trace_desc(const char *tag, int64_t rank, void **desc) {
   htif_puts(tag);
   htif_puts(" rank ");
   htif_putd((long)rank);
+  /* The descriptor's own ADDRESS. Without it there is no way to tell a wrong pointer being passed from a
+   * right pointer whose contents are stale -- and the observed corruption (words 6..9 replaced by what
+   * looks like an adjacent descriptor) is consistent with either. */
+  htif_puts(" at ");
+  htif_putd((long)(uintptr_t)desc);
   htif_puts(" aligned ");
   htif_putd((long)(uintptr_t)desc[1]);
   htif_puts(" off ");
