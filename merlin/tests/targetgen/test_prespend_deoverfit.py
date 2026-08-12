@@ -104,6 +104,27 @@ def test_merge_match_policy_takes_looser_tolerance():
     assert _merge_match_policy(None, cap) == cap
 
 
+# --- MX accept-path: the block-scaled datapath oracle reproduces the mx goldens BIT-EXACT --------------
+@pytest.mark.parametrize("cap", ["R5_mx_tile_mxfp8", "R6_mx_tile_mxfp6", "R7_mx_tile_mxfp4"])
+def test_mx_datapath_oracle_reproduces_golden(cap):
+    """Radiance embeds an MX PE (mxfp4/6/8); its mx capsules are graded vs an mlc mx_ref golden. Prove the
+    ACCEPT path: the datapath oracle re-run over the golden's RAW operand codes reproduces the golden output
+    bit-exact — so the golden is genuine and a kernel computing the mx_ref result passes. (The fp32 reference
+    emitter can't target the MX PE, hence it fails these — a reference limit, not a grading gap.)"""
+    import yaml
+    from merlin.targetgen import mx_oracle
+    if not mx_oracle.mx_datapath_available():
+        pytest.skip("mlc mx_ref datapath not importable in this checkout")
+    gp = repo_root() / f"merlin/contract/capsules/radiance/isa/{cap}/golden.yaml"
+    if not gp.is_file():
+        pytest.skip(f"{cap} golden not present")
+    g = yaml.safe_load(gp.read_text())
+    inp = g["oracle_provenance"]["inputs"]
+    r = mx_oracle.grade_matmul(inp["operand_codes"], inp["SA_e8m0_codes"], inp["SB_e8m0_codes"],
+                               g["outputs"]["Y0"])
+    assert r["status"] == "pass" and r["exact"] is True, r
+
+
 # --- answer_surfaces: EVERY hidden-capsule dir is masked, not just the target's own -------------------
 def test_answer_surfaces_masks_all_hidden_dirs():
     """The shared merlin/contract/capsules/hidden and other targets' <t>/hidden are answer surfaces too
