@@ -109,8 +109,6 @@ memory_model:
 name: radiance
 plugin:
   backend: backend.py
-  dialect_module: radiance_mlir.dialect
-  lowering_entrypoint: radiance_mlir.lowering:lower
 provenance: 'chipyard generators/radiance (Muon SIMT): CVFPU FP32/FP16/BF16 + INT32
   lanes (muon backend/fp/FPU.scala; muon_introspect fp_datapath); tensor-core matmul
   via nu.invoke. Embeds the gemmini-mx MX PE as a contained low-bit unit. Not RTL-certified.'

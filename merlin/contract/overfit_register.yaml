@@ -121,31 +121,13 @@ entries:
       IRDL classes from dialect_plan.yaml data, and `lower_to_target(..., spec=...)` lets a caller pass a
       package's spec — but the built-in table remains as the fallback.
     blocks: >-
-      A package-declared dialect being the only path. Closing this needs plugin.dialect_module to be
-      consumed (see the dead-seam entry), since that is how a package would name its dialect at all.
+      A package-declared dialect being the only path.
     removal_condition: >-
-      plugin.dialect_module is loaded by the registry and the in-tree reference table is deleted.
-
-  # ---------------------------------------------------------------- declared seams nothing consumes
-  - id: plugin-keys-consumed-by-nothing
-    kind: dead_seam
-    status: triaged
-    owner: targetgen
-    items:
-      - merlin/python/merlin/targetgen/target_registry.py
-    why: >-
-      Three shipped contracts declare `plugin.dialect_module` and `plugin.lowering_entrypoint`, and
-      nothing anywhere reads either key. They are asserted in tests and otherwise inert. This went
-      unnoticed because the `plugin` block has no schema, so an unrecognised key is silently ignored —
-      the same reason a typo in one would also be silent.
-    blocks: >-
-      A package supplying its own dialect or lowering entrypoint, which is the prerequisite for the
-      reference-target dialect table above. Also makes every contract that declares them misleading:
-      the seam looks present and is not.
-    removal_condition: >-
-      Either the loaders are implemented and a test proves a package-declared dialect is used, or the keys
-      are removed from the shipped contracts. Plus a `plugin` schema under merlin/contract/schemas/ so an
-      unknown key is reported rather than ignored.
+      Every reference target ships its own dialect.py and lowering.yaml in its package, callers reach the
+      spec through `load_target`/`spec=` rather than the built-in table, and the in-tree table is deleted.
+      NOT via plugin.dialect_module: an earlier version of this entry named that key as the missing link,
+      which was wrong — it points at a package's feasibility prototype, exposes no SPEC_OPS, and wiring it
+      into the dialect loader would fail. The seam this needs already exists and is unrelated to it.
 
   # ---------------------------------------------------------------- run-time concession
   - id: simt-spawn-width-capped-below-declared-hardware

@@ -351,9 +351,19 @@ def main() -> int:
     capabilities["smem_aperture_bytes"] = int(aperture)
     capabilities.setdefault("simt", {})["warps_per_core"] = int(warps)
     base["features"] = features
+    # The plugin block is REBUILT for this package rather than inherited. The base contract points at
+    # prototype modules (`radiance_mlir.*`) that sit beside IT, one level above this package root, so
+    # copying them here would declare references that resolve to nothing — a rotted pointer that reads
+    # exactly like a live seam. Keep only what resolves under this package, then add what it owns.
+    from merlin.targetgen.plugins import validate as validate_plugin
+
+    inherited = dict(base.get("plugin") or {})
+    plugin = {k: v for k, v in inherited.items() if not validate_plugin({k: v}, root=HERE)}
+    dropped = sorted(set(inherited) - set(plugin))
     # This package supplies its own runtime backend (``backend.py``), so the core carries no
     # name -> module map for it: merlin.runtime.backends.base loads whatever ``plugin.backend`` names.
-    base.setdefault("plugin", {})["backend"] = "backend.py"
+    plugin["backend"] = "backend.py"
+    base["plugin"] = plugin
     base["derived_from"] = {
         "source": str(base_path.relative_to(HERE.parents[2].parent))
         if str(base_path).startswith(str(HERE.parents[2].parent)) else base_path.name,
@@ -380,6 +390,9 @@ def main() -> int:
         "# (see inputs/derived_facts.yaml for the per-fact provenance).\n"
         "# Do not hand-edit: re-run derive_facts.py.\n"
         + yaml.safe_dump(base, sort_keys=True), encoding="utf-8")
+    if dropped:
+        print(f"note: dropped inherited plugin key(s) {dropped} — they reference files beside the base "
+              f"contract, not inside this package, so they would point nowhere from here", file=sys.stderr)
     print(f"wrote {out}: capacity={smem['capacity_bytes']} "
           f"({smem['banks']} banks x {smem['row_bytes']} B x {smem['depth_rows']} rows) "
           f"aperture={aperture} lanes={lanes} warps={warps}")

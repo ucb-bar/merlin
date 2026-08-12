@@ -75,6 +75,16 @@ def load_target(package_dir: str | Path) -> TargetPackage:
     if cpath.is_file():
         contract = yaml.safe_load(cpath.read_text())
 
+    # A plugin block is checked here because this is where a package is taken seriously. An unknown key
+    # is silently ignored by everything downstream, so a misspelled `backend` is not a broken backend but
+    # no backend at all — discovered as a missing feature much later, if at all.
+    from .plugins import validate as _validate_plugin
+    problems = _validate_plugin(contract.get("plugin"), root=d,
+                                where=f"{cpath.name}:plugin")
+    if problems:
+        raise ValueError(f"target package {d} has an incoherent plugin block:\n  - "
+                         + "\n  - ".join(problems))
+
     # A package MAY require properties on its target ops that only its own contract can supply —
     # a SIMT target's warp width, for instance. It derives them itself (and fails closed if the
     # contract does not carry them); the core rebuild loop merges them without interpreting them.
