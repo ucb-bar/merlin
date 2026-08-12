@@ -59,7 +59,11 @@ HYPOTHESES: dict[str, dict[str, Any]] = {
                 "eager selection uses, so it cannot decide differently. Establishing this needs a "
                 "downstream pass that changes a candidate's cost after the graph is built; what is "
                 "demonstrated here is the precondition — the alternatives survive in the IR and "
-                "re-costing changes the choice"),
+                "re-costing changes the choice. `contraction_egraph` now carries that precondition on "
+                "REAL IR (the linalg.generic and the microkernel call in one e-class, extraction emitting "
+                "whichever survives), so the alternatives are real enough to compile from; what stands "
+                "between that and a decision worth trusting is a MEASURED matrix-unit throughput, since "
+                "MeasuredCost declines an unmeasured unit and routes nothing"),
     },
     "H-EQ2": {
         "claim": "saturate(E_parent, delta) is equivalent to saturate(program, parent | delta)",
