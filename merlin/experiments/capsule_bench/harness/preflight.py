@@ -233,11 +233,26 @@ def check_bundle_hash_repro() -> dict:
 
 
 def check_real_tokens() -> dict:
+    """Verify the token/cost accounting pipeline on a REAL claude stream-json (never synthetic). Prefer an
+    operator-supplied ``/tmp/real_stream.jsonl`` probe; otherwise fall back to the newest REAL prior-run
+    transcript under ``out/runs`` and parse THAT — validating the pipeline at $0 with no new spend. With
+    the result-event fix, this exercises the authoritative, subagent-inclusive usage path."""
     p = Path("/tmp/real_stream.jsonl")
-    if not p.is_file():
-        return {"tested": False, "reason": "no /tmp/real_stream.jsonl (run the tiny claude probe first)"}
-    s = ET.parse_transcript(p)
-    return {"tested": True, "available": s.get("available"), "tokens_total": s.get("tokens_total"),
+    src = p if p.is_file() else None
+    if src is None:
+        from merlin.common.paths import runs_dir
+        cands = sorted((q for q in runs_dir().rglob("*.transcript.jsonl") if q.stat().st_size > 0),
+                       key=lambda q: q.stat().st_mtime, reverse=True)
+        for q in cands[:8]:                       # newest-first; stop at the first with real usage metadata
+            if ET.parse_transcript(q).get("available"):
+                src = q
+                break
+    if src is None:
+        return {"tested": False,
+                "reason": "no /tmp/real_stream.jsonl and no prior-run transcript with usage to validate"}
+    s = ET.parse_transcript(src)
+    return {"tested": True, "source": str(src), "available": s.get("available"),
+            "usage_source": s.get("usage_source"), "tokens_total": s.get("tokens_total"),
             "estimated_cost_usd": s.get("estimated_cost_usd"), "unique_messages": s.get("unique_messages")}
 
 
