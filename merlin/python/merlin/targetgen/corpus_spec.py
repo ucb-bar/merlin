@@ -73,23 +73,32 @@ class CorpusBinding:
         return dtype_info(token)[1]
 
 
+# Compiler software-tiling default for a target with NO fixed hardware mesh (SIMT / vector): the matmul
+# tile size is a software blocking choice, not a hardware fact. A hardware-mesh target derives its dim
+# from facts/manifest and never reaches this. NOT an ISA/hardware constant.
+_DEFAULT_SW_TILE = 16
+
+
 def _tile_dim(target: str, contract: dict) -> int:
-    """Systolic tile/mesh dim: ``capabilities.mesh.rows`` if the manifest carries it, else the CIRCT
-    ``arrays[mesh].rows`` fact. FAIL-CLOSED: a systolic target with no derivable mesh raises rather than
-    sizing tiles to a baked gemmini DIM=16. No target literal — both sources are keyed on ``target``."""
-    mesh = ((contract.get("capabilities") or {}).get("mesh") or {})
-    if mesh.get("rows"):
-        return int(mesh["rows"])
+    """Tile dim for sizing capsule shapes. When the target has a FIXED HARDWARE mesh, it is DERIVED
+    (``capabilities.mesh.rows`` / ``.tile.rows`` from the manifest, else the CIRCT ``arrays[mesh].rows``
+    fact) — so gemmini's 16 comes from its RTL facts, never a literal. A target with NO fixed hardware
+    mesh (a SIMT / vector target such as radiance, whose matmul tiling is a SOFTWARE choice, not a
+    hardware dimension) has nothing to derive; it uses ``_DEFAULT_SW_TILE`` — a compiler software-tiling
+    default, NOT a per-target hardware fact. Both derivation sources are keyed on ``target``."""
+    caps = (contract.get("capabilities") or {})
+    for geom in (caps.get("mesh") or {}, caps.get("tile") or {}):      # systolic mesh OR spatial tile
+        if geom.get("rows"):
+            return int(geom["rows"])
     try:
         from merlin.targetgen.rtl.facts import load_facts
         arrays = (load_facts(target).get("facts") or {}).get("arrays") or []
         m = next((a for a in arrays if a.get("name") == "mesh"), {})
         if m.get("rows"):
             return int(m["rows"])
-    except Exception:  # noqa: BLE001 — no facts for this target -> fall through to the fail-closed raise
+    except Exception:  # noqa: BLE001 — no facts for this target -> software-tiling default (no hw mesh)
         pass
-    raise ValueError(f"{target}: systolic tile dim not derivable (no capabilities.mesh.rows and no "
-                     "facts.arrays[mesh]) — cannot size tiles; refusing a baked DIM=16 (fail closed)")
+    return _DEFAULT_SW_TILE
 
 
 def _accum_dtype(contract: dict, operand: str) -> str:
