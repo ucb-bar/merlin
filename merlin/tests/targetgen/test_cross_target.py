@@ -158,10 +158,12 @@ def test_mx_gemmini_is_a_systolic_gemmini_variant_graded_by_chipyard():
     te = _te("mx_gemmini")
     assert te.sim_via == "chipyard"                       # elaborates through chipyard like gemmini
     assert B.arc_available("mx_gemmini") is False         # no mlc arc model for the MX config yet
-    # The descriptor pins the RTL-derived structural facts (DIM=16, RoCC custom3) it shares with gemmini.
+    # mx_gemmini shares gemmini's structural facts (DIM=16, RoCC custom3), but those are RTL-DERIVED, not
+    # pinned in the descriptor — the descriptor must NOT carry them (cf. test_target_experiment's forbidden
+    # set + test_encoding_manifest: a baked dim/isa reads as authoritative but is ignored, the overfit smell).
     import yaml
     spec = yaml.safe_load(_te("mx_gemmini").path.read_text())["hardware_spec"]
-    assert spec["dim"] == 16 and spec["isa"] == "rocc_custom3"
+    assert "dim" not in spec and "isa" not in spec and "rtl_config" not in spec
 
 
 # The full roster the cross-target proof is built on. atlas/radiance/mx_gemmini are out-of-tree targets
