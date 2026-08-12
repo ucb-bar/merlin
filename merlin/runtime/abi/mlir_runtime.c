@@ -77,9 +77,44 @@ typedef struct {
   void *descriptor;
 } merlin_unranked_memref_t;
 
+/* Each descriptor is indexed by ITS OWN rank, and a disagreement is refused rather than computed through.
+ *
+ * The strides of a ranked descriptor start at `2 + 1 + rank` words, so indexing the DESTINATION's strides
+ * with the SOURCE's rank reads past them into whatever follows — in a real image, the adjacent
+ * descriptor's `allocated`/`aligned` POINTER, which then gets multiplied by the element size and added to
+ * the base. That is a defensive fix for a real hazard the previous code had, and it makes the precondition
+ * upstream MLIR merely asserts into something this reports.
+ *
+ * WHAT IT IS NOT: it is NOT the explanation for the whole-model store fault on spike. That fault was
+ * traced to this function — on deepjscc int8 the destination offset accumulates to 0xc0595c80, an arena
+ * POINTER rather than a stride, and multiplying by a 4-byte element size gives exactly the 0x301657200 the
+ * commit trace shows before mcause 7 — but the guard below does NOT fire on that run, so the two unranked
+ * descriptors agree on rank and something else puts a pointer where a stride belongs. At the faulting
+ * iteration the loaded strides are 1 and the loaded index is 0, i.e. the values being read are sane and
+ * the pointer entered the accumulator at an earlier dimension; the loop reaches i = 11, so the rank is at
+ * least 12 while this function's scratch index array is sized 16 and its comment assumes 6-D. Both facts
+ * are recorded because they bound where to look next, not because they are the answer.
+ *
+ * The counters exist because refusing is still a wrong answer — the copy did not happen — and a run that
+ * silently skipped copies would grade badly with no explanation. Refusing beats storing: a skipped copy is
+ * a bad number, a wild store is a dead image or memory corrupted somewhere else entirely. */
+unsigned long long g_merlin_memref_rank_mismatch = 0ULL;
+long long g_merlin_memref_bad_src_rank = -1;
+long long g_merlin_memref_bad_dst_rank = -1;
+unsigned long long merlin_memref_rank_mismatches(void) { return g_merlin_memref_rank_mismatch; }
+
 void memrefCopy(int64_t elem_size, merlin_unranked_memref_t *src_u,
                 merlin_unranked_memref_t *dst_u) {
   int64_t rank = src_u->rank;
+  int64_t d_rank = dst_u->rank;
+  if (rank != d_rank) {
+    if (g_merlin_memref_rank_mismatch == 0ULL) {
+      g_merlin_memref_bad_src_rank = rank;
+      g_merlin_memref_bad_dst_rank = d_rank;
+    }
+    ++g_merlin_memref_rank_mismatch;
+    return;
+  }
   void **sdesc = (void **)src_u->descriptor;
   void **ddesc = (void **)dst_u->descriptor;
   char *s_aligned = (char *)sdesc[1];
@@ -90,7 +125,7 @@ void memrefCopy(int64_t elem_size, merlin_unranked_memref_t *src_u,
   char *d_base = d_aligned + d_rest[0] * elem_size;
   int64_t *sizes = s_rest + 1;
   int64_t *s_strides = s_rest + 1 + rank;
-  int64_t *d_strides = d_rest + 1 + rank;
+  int64_t *d_strides = d_rest + 1 + d_rank;   /* the DESTINATION's own rank */
 
   if (rank == 0) {
     memcpy(d_base, s_base, (size_t)elem_size);
