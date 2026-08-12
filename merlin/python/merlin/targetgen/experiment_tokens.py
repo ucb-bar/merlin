@@ -87,12 +87,14 @@ def parse_transcript(path: str | Path) -> dict:
     if not p.is_file():
         return {"available": False, "reason": f"transcript not found: {p}"}
     seen: set[str] = set()
-    by_model: dict[str, dict] = defaultdict(
+    stream_by_model: dict[str, dict] = defaultdict(
         lambda: {"input": 0, "cache_create": 0, "cache_read": 0, "output": 0, "messages": 0})
     tool_calls = 0
     thinking_blocks = 0
     any_usage = False
     n_events = 0
+    result_usage: dict | None = None      # authoritative, SUBAGENT-INCLUSIVE per-model usage (result event)
+    result_cost = None                    # the CLI's true total_cost_usd
     for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
         line = line.strip()
         if not line:
@@ -102,6 +104,17 @@ def parse_transcript(path: str | Path) -> dict:
         except Exception:
             continue
         n_events += 1
+        if evt.get("type") == "result":
+            # The terminal `result` event carries the AUTHORITATIVE per-model totals — the orchestrator PLUS
+            # every delegated sub-agent / background tier — and the true cost. Streamed `assistant` usage is
+            # a partial streaming artifact (its output_tokens is far too low) and NEVER includes the subagent
+            # tiers, so prefer this when present. (The fallback below covers a truncated run with no result.)
+            mu = evt.get("modelUsage")
+            if isinstance(mu, dict) and mu:
+                result_usage = mu
+            if evt.get("total_cost_usd") is not None:
+                result_cost = evt.get("total_cost_usd")
+            continue
         if evt.get("type") != "assistant":
             continue
         msg = evt.get("message") or {}
@@ -118,12 +131,31 @@ def parse_transcript(path: str | Path) -> dict:
         u = msg.get("usage") or {}
         if u:
             any_usage = True
-        m = by_model[msg.get("model") or "unknown"]
+        m = stream_by_model[msg.get("model") or "unknown"]
         m["input"] += int(u.get("input_tokens", 0) or 0)
         m["cache_create"] += int(u.get("cache_creation_input_tokens", 0) or 0)
         m["cache_read"] += int(u.get("cache_read_input_tokens", 0) or 0)
         m["output"] += int(u.get("output_tokens", 0) or 0)
         m["messages"] += 1
+
+    # Token/cost accounting: PREFER the subagent-inclusive result-event usage; fall back to the streamed
+    # per-assistant aggregation only when the run produced no result event (killed/truncated mid-turn).
+    if result_usage:
+        usage_source = "result_event"
+        by_model: dict[str, dict] = defaultdict(
+            lambda: {"input": 0, "cache_create": 0, "cache_read": 0, "output": 0, "messages": 0})
+        for model, mu in result_usage.items():
+            if not isinstance(mu, dict):
+                continue
+            m = by_model[model]
+            m["input"] += int(mu.get("inputTokens", 0) or 0)
+            m["cache_create"] += int(mu.get("cacheCreationInputTokens", 0) or 0)
+            m["cache_read"] += int(mu.get("cacheReadInputTokens", 0) or 0)
+            m["output"] += int(mu.get("outputTokens", 0) or 0)
+        any_usage = True
+    else:
+        usage_source = "assistant_stream"
+        by_model = stream_by_model
 
     if not any_usage:
         return {"available": False, "reason": "no usage metadata in transcript",
@@ -133,19 +165,26 @@ def parse_transcript(path: str | Path) -> dict:
     tok_in = sum(m["input"] + m["cache_create"] for m in by_model.values())
     tok_cached = sum(m["cache_read"] for m in by_model.values())
     tok_out = sum(m["output"] for m in by_model.values())
-    cost = 0.0
-    for model, m in by_model.items():
-        rin, rout = _rate(model)
-        cost += m["input"] * rin
-        cost += m["cache_create"] * rin * _CACHE_WRITE_MULT
-        cost += m["cache_read"] * rin * _CACHE_READ_MULT
-        cost += m["output"] * rout
+    if usage_source == "result_event" and result_cost is not None:
+        cost = float(result_cost)                 # the CLI's authoritative, subagent-inclusive total
+    else:
+        cost = 0.0
+        for model, m in by_model.items():
+            rin, rout = _rate(model)
+            cost += m["input"] * rin
+            cost += m["cache_create"] * rin * _CACHE_WRITE_MULT
+            cost += m["cache_read"] * rin * _CACHE_READ_MULT
+            cost += m["output"] * rout
     return {
         "available": True,
+        "usage_source": usage_source,   # 'result_event' (subagent-inclusive) | 'assistant_stream' (fallback)
         "tokens_input": tok_in, "tokens_cached": tok_cached, "tokens_output": tok_out,
         "tokens_total": tok_in + tok_cached + tok_out,
+        # tool_calls/thinking are TOP-LEVEL agent only — subagent tool_use never appears in the top-level
+        # stream and the result event carries no per-subagent tool count, so this cannot include them.
         "tool_calls": tool_calls, "thinking_blocks": thinking_blocks,
-        "unique_messages": sum(m["messages"] for m in by_model.values()),
+        "subagent_tool_calls_tracked": False,
+        "unique_messages": len(seen),
         "estimated_cost_usd": round(cost, 4),
         "tokens_native_by_model": {k: dict(v) for k, v in by_model.items()},
         "n_events": n_events,
