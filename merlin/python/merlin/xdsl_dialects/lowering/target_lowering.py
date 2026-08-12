@@ -1,19 +1,67 @@
 """``interface`` -> target dialect (merlin-interface-to-target stage).
 
 Driven by the target's dialect plan lowering table (interface.<op> -> <target>.<op>).
-In-tree reference targets: ``toynpu`` (NPU with real resident storage) and ``saturn``
-(RVV CPU where residency is a packed weight kept live in memory). Both share the
-pack / matmul / commit / evict op shape, so one rebuild loop serves both via a
+The one BUILT-IN reference target is ``toynpu`` (NPU with real resident storage, the sanctioned neutral
+example). Other reference target dialects (e.g. ``saturn``, an RVV CPU where residency is a packed
+weight kept live in memory) are DISCOVERED: their target package contributes the dialect spec as a
+plugin (``plugin.dialect`` in the contract), self-registered into the same registry ``_specs()`` builds.
+All share the pack / matmul / commit / evict op shape, so one rebuild loop serves them via a
 :class:`TargetSpec`.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .._common import HAS_XDSL
 from .interface_lowering import LoweringError
+
+# --- discovered target-package dialect specs -------------------------------------------------------
+# A reference target's dialect is DATA its own package contributes (``plugin.dialect``), not a hardcoded
+# entry here. The package's dialect module self-registers its TargetSpec (and its target-op -> opcode
+# map) at import via :func:`register_dialect_spec`; discovery imports those modules so ``_specs()`` and
+# ``runtime_lowering`` pick them up without shared code naming a target. Mirrors the backend /
+# sim-oracle plugin seams (merlin.runtime.backends.base).
+_PLUGIN_SPECS: dict[str, Any] = {}
+_PLUGIN_OPCODES: dict[str, dict[str, str]] = {}
+_dialect_env_seen: str | None = None
+
+
+def register_dialect_spec(spec: Any, opcodes: dict[str, str] | None = None) -> None:
+    """A target package's dialect module calls this at import to contribute its :class:`TargetSpec`
+    (and optional target-op -> command-buffer opcode map) to the reference lowering registry
+    (idempotent per ``spec.name``)."""
+    _PLUGIN_SPECS[spec.name] = spec
+    if opcodes:
+        _PLUGIN_OPCODES[spec.name] = dict(opcodes)
+
+
+def _ensure_dialects_discovered() -> None:
+    """Import the dialect module every target package declares via its contract ``plugin.dialect`` — a
+    module that calls :func:`register_dialect_spec` at import — through the SAME OOT/reference plugin
+    discovery the runtime backends and sim oracles use. Re-scans only when ``MERLIN_TARGET_PATH``
+    changes; registration is idempotent, so repeated scans are harmless. Best-effort: a broken/optional
+    plugin must not break lowering."""
+    global _dialect_env_seen
+    key = os.environ.get("MERLIN_TARGET_PATH", "")
+    if key == _dialect_env_seen:
+        return
+    _dialect_env_seen = key
+    try:
+        from ...runtime.backends import base as _bk
+        for name, path in _bk._oot_plugin_modules("dialect"):
+            _bk._load_oot_backend(name, path, ns="merlin._oot_dialects")
+    except Exception:  # noqa: BLE001 — discovery is best-effort; a broken plugin must not break lowering
+        pass
+
+
+def plugin_opcodes() -> dict[str, dict[str, str]]:
+    """Discovered target-op -> opcode maps, keyed by target name (runs discovery first). Consumed by
+    ``runtime_lowering.lower_to_runtime`` so a discovered dialect's encoding rides with its package."""
+    _ensure_dialects_discovered()
+    return dict(_PLUGIN_OPCODES)
 
 # The interface ops a tensor-resident target must lower (used to check coverage for both
 # built-in reference targets and isolated/generated target packages).
@@ -66,24 +114,24 @@ if HAS_XDSL:
         vector_reduce_op: type | None = None
 
     def _specs() -> dict[str, "TargetSpec"]:
-        # Built-in REFERENCE targets only. Generated targets (e.g. gemmini) are NOT hardcoded
-        # here — they load from isolated per-run packages via merlin.targetgen.registry and are
-        # passed in through the ``spec`` argument of lower_to_target.
-        from ..targets import saturn as sat
+        # The ONE built-in REFERENCE target is toy_npu (the sanctioned neutral example). Other reference
+        # target dialects (e.g. saturn) are DISCOVERED — their package contributes the spec via
+        # ``plugin.dialect`` and self-registers it (see _ensure_dialects_discovered), so no target name is
+        # hardcoded here. Generated targets (e.g. gemmini) are not registered here at all — they load from
+        # isolated per-run packages via merlin.targetgen.registry and pass their spec through the ``spec``
+        # argument of lower_to_target.
         from ..targets import toynpu as toy
 
-        return {
+        specs = {
             "toy_npu": TargetSpec("toy_npu", toy, toy.ResPackOp, toy.MatmulOp,
                                   toy.CommitOp, toy.EvictOp, toy.ResidentTensorType,
                                   toy.AccumulatorType,
                                   vector_map_op=getattr(toy, "VectorMapOp", None),
                                   vector_reduce_op=getattr(toy, "VectorReduceOp", None)),
-            "saturn": TargetSpec("saturn", sat, sat.PackOp, sat.MatmulOp,
-                                 sat.CommitOp, sat.ReleaseOp, sat.PackedTensorType,
-                                 sat.AccumulatorType,
-                                 vector_map_op=getattr(sat, "VectorMapOp", None),
-                                 vector_reduce_op=getattr(sat, "VectorReduceOp", None)),
         }
+        _ensure_dialects_discovered()   # load any target-package-contributed dialect specs (e.g. saturn)
+        specs.update(_PLUGIN_SPECS)
+        return specs
 
 
 def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,

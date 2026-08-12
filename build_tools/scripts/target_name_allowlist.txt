@@ -35,13 +35,10 @@ merlin/python/merlin/targetgen/muon_capsule_runner.py        # muon capsule runn
 merlin/python/merlin/targetgen/muon_oracles.py               # muon oracle set (reference target)
 merlin/python/merlin/targetgen/oracle_helpers/npu_emit.py    # npu_model oracle emitter (reference target)
 merlin/python/merlin/targetgen/rtl/muon_introspect.py        # muon RTL introspection (reference target)
-merlin/python/merlin/xdsl_dialects/targets/saturn.py         # saturn reference dialect (reference target)
 build_tools/scripts/setup_atlas.py                           # atlas external-repo setup script (reference target)
 build_tools/scripts/probe_gemmini_oracle.py                  # gemmini oracle probe script (reference target)
 
 # ---------------------------------------------------------------- reference-target REGISTRY / catalog (the in-tree target catalog OV11 replaces with MERLIN_TARGET_PATH discovery)
-merlin/python/merlin/xdsl_dialects/lowering/runtime_lowering.py # saturn.* op->opcode map for the reference saturn dialect
-merlin/python/merlin/xdsl_dialects/lowering/target_lowering.py  # built-in saturn TargetSpec registration
 merlin/python/merlin/kernels/markers.py                      # ISA-family motif table (also regex-allowlisted); names reference families
 merlin/python/merlin/kernels/framework_contracts/__init__.py # saturn source->framework map (reference ingest source)
 merlin/python/merlin/kernels/cca_contract.py                 # CCA applicable-backend vocabulary + orphan registry (reference set)

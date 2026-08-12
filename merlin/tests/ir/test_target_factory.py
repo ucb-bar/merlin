@@ -32,13 +32,18 @@ def test_build_dialect_shape():
 
 
 def test_reference_modules_use_the_factory():
-    """The in-tree reference modules expose the factory-built classes under their stable names."""
-    from merlin.xdsl_dialects.targets import saturn, toynpu
+    """The reference dialect modules expose the factory-built classes under their stable names. toynpu
+    is the built-in; saturn is reached through discovery — its package contributes the spec via
+    ``plugin.dialect`` and ``_specs()`` picks it up, so this also proves the eviction is wired."""
+    from merlin.xdsl_dialects.lowering.target_lowering import _specs
 
+    specs = _specs()
+    toynpu = specs["toy_npu"].dialect_module
     assert toynpu.get_dialect().name == "toynpu"
     assert {o.name for o in toynpu.get_dialect().operations} == {
         "toynpu.res_pack", "toynpu.matmul", "toynpu.commit", "toynpu.evict",
         "toynpu.vector_map", "toynpu.vector_reduce"}
+    saturn = specs["saturn"].dialect_module   # discovered via plugin.dialect, not an in-tree import
     assert saturn.get_dialect().name == "saturn"
     assert {o.name for o in saturn.get_dialect().operations} == {
         "saturn.pack", "saturn.matmul", "saturn.commit", "saturn.release",

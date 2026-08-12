@@ -10,8 +10,13 @@ version: 0.1
 # saturn_vec.py + saturn_vec_codegen.py + saturn_vec_mlir.py). base._oot_backend_modules loads a reference
 # target's plugin.backend (the reference package root is injected as the path), so importing the backend
 # self-registers "saturn_vec" with zero env — the core no longer seeds a saturn reference backend.
+# Dialect, evicted from the shared library (xdsl_dialects/targets/saturn.py) into this package's
+# dialect/ dir. target_lowering._ensure_dialects_discovered loads a reference target's plugin.dialect
+# (the reference package root is injected as the path), so importing it self-registers saturn's
+# TargetSpec + op->opcode map — the core lowering no longer hardcodes a saturn dialect spec.
 plugin:
   backend: backend
+  dialect: dialect
 features: [rvv, scalable_vl, multicore, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
 ops: [pack, matmul, commit, release]
 types: [packed_tensor, accumulator]

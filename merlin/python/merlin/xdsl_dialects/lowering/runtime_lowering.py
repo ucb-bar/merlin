@@ -13,7 +13,10 @@ from .._common import HAS_XDSL
 from .interface_lowering import LoweringError
 
 # Target op -> Merlin-owned abstract opcode (the command buffer is Merlin's; every
-# target encodes onto the same opcode set — that is what keeps metrics comparable).
+# target encodes onto the same opcode set — that is what keeps metrics comparable). Only the ONE
+# built-in reference dialect (toynpu) is baked here. A reference target's dialect that lives in its own
+# package (e.g. saturn) ships its op->opcode map WITH the dialect (its plugin self-registers it); those
+# discovered maps are merged in via ``plugin_opcodes()`` below — no target name hardcoded here.
 TARGET_OPCODES = {
     "toynpu.res_pack": "RES_PACK",
     "toynpu.matmul": "MATMUL_RESIDENT",
@@ -21,12 +24,6 @@ TARGET_OPCODES = {
     "toynpu.evict": "EVICT",
     "toynpu.vector_map": "VECTOR_MAP",
     "toynpu.vector_reduce": "VREDUCE",
-    "saturn.pack": "RES_PACK",
-    "saturn.matmul": "MATMUL_RESIDENT",
-    "saturn.commit": "COMMIT",
-    "saturn.release": "EVICT",
-    "saturn.vector_map": "VECTOR_MAP",
-    "saturn.vector_reduce": "VREDUCE",
 }
 # Generated targets (e.g. gemmini) supply their own target-op -> opcode map from their isolated
 # package (merlin.targetgen.registry); it is merged in via the ``opcodes`` arg of
@@ -62,7 +59,13 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
     """
     if not HAS_XDSL:
         return module
-    opcode_map = {**TARGET_OPCODES, **(opcodes or {})}
+    # built-in (toynpu) + every discovered reference dialect's map (e.g. saturn, keyed by full op name so
+    # cross-target merges never collide) + the explicit ``opcodes`` a generated package supplies.
+    from .target_lowering import plugin_opcodes
+    opcode_map = {**TARGET_OPCODES}
+    for _m in plugin_opcodes().values():
+        opcode_map.update(_m)
+    opcode_map.update(opcodes or {})
     from xdsl.ir import Block, Region
     from xdsl.dialects.builtin import (ArrayAttr, DictionaryAttr, FunctionType,
                                        ModuleOp, StringAttr, TensorType)
