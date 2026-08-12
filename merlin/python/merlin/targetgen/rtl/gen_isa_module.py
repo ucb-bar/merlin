@@ -24,9 +24,10 @@ from .facts import load_facts
 
 _HEADER = '''"""GENERATED from RTL facts by merlin.targetgen.rtl.gen_isa_module — DO NOT hand-edit the tables.
 
-RTL-derived Gemmini ISA encoder scaffold. The funct codes, custom opcode, mesh dimensions and
-scratchpad/accumulator capacities below are extracted deterministically from the elaborated Gemmini RTL
-(firtool --ir-hw + GemminiISA.scala) — they are what the *hardware* accepts, not a reading of headers.
+RTL-derived RoCC ISA encoder scaffold. The funct codes, custom opcode, mesh dimensions and
+scratchpad/accumulator capacities below are extracted deterministically from the target's elaborated RTL
+(firtool --ir-hw + the target's ISA definition) — they are what the *hardware* accepts, not a reading of
+headers.
 
 Build your command-buffer / RoCC lowering on `emit()` + `Program`: only LEGAL funct codes can be emitted
 (an illegal funct raises), and `Program.finalize()` enforces config-before-use ordering. This eliminates

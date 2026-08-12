@@ -81,7 +81,14 @@ def _is_word_char(c: str) -> bool:
 def _contains_identifier(text: str, name: str) -> bool:
     """True if ``name`` occurs in ``text`` bounded by non-word chars on both sides (a whole-identifier
     match, implemented without regex). So ``gemmini`` matches `` gemmini `` / ``"gemmini"`` but not
-    ``gemmini_kernel`` or ``mx_gemmini`` — those are matched by their own entries in the name set."""
+    ``gemmini_kernel`` or ``mx_gemmini`` — those are matched by their own entries in the name set.
+
+    Matching is CASE-SENSITIVE by design: operative code uses the lowercase target token (``gemmini``),
+    while a Capitalized ``Gemmini`` in an operative string is almost always human-facing PROSE (an error
+    message, a report line, delivery docs) where that target is the legitimate SUBJECT — folding case
+    conflated the two and flagged ~16 such legitimate strings. Target names baked into GENERATED artifacts
+    (a digest/header that mislabels another target) are caught at their source instead of by widening this
+    proxy; a capitalized name in a genuinely-coupling operative string remains a known blind spot."""
     start = 0
     n = len(name)
     while True:

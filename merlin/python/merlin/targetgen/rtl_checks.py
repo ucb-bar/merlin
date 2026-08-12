@@ -408,7 +408,7 @@ def _check_decode_funct_legal(trace: dict, rtl_facts: dict) -> Check:
                      f"{len(bad)} instruction(s) use funct {functs} outside RTL legal set "
                      f"[{min(legal)}..{max(legal)}]",
                      expected=0, got=len(bad), evidence={"instruction_indices": bad[:8]},
-                     fix_hint="emitted a custom-3 funct the Gemmini decoder rejects; RTL would not accept")
+                     fix_hint="emitted a custom funct the target's RoCC decoder rejects; RTL would not accept")
     return Check("T0.decode_funct_legal", "T0", "error", "pass",
                  f"all emitted functs ∈ RTL legal set [{min(legal)}..{max(legal)}]", expected=0, got=0)
 
