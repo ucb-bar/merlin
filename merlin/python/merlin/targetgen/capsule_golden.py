@@ -51,6 +51,55 @@ def im2col(ifm: Tensor, ci: int, kh: int, kw: int, *, stride, padding, dilation,
 # --------------------------------------------------------------------------------------------
 # epilogue application (matches runtime/reference.py)
 # --------------------------------------------------------------------------------------------
+# Back-compat requant DEFAULTS — the numerics a capsule inherits when it declares no override. These
+# are DEFAULTS, not the only path: a capsule that declares a different integer shift, a different
+# acc_scale rounding mode, or a different narrow output dtype gets THAT value instead. Keeping them as
+# named, overridable parameters (sourced from the capsule's declared operation attributes) rather than
+# inline literals is what lets a differently-rounding / differently-narrowing integer target be
+# expressed without editing this function — the point of the de-overfit. A capsule that omits them
+# reproduces the historical behavior byte-for-byte.
+_DEFAULT_REQUANT_SHIFT = 4              # round-half-up integer shift when a ``requant`` stage omits it
+_DEFAULT_ACC_SCALE_ROUND = "half_even"  # gemmini ACC_SCALE / ROUND_NEAR_EVEN float readout rounding
+
+
+def _int_dtype_bits(dtype: str) -> tuple[int, bool] | None:
+    """Parse an integer dtype name (``i8`` / ``i16`` / ``i4`` / ``u8`` ...) to ``(bitwidth, signed)``.
+
+    Returns ``None`` for a non-integer dtype (``f32`` / ``bf16``) or an unparseable name, so the caller
+    leaves the tensor un-narrowed. Parsed structurally (leading kind char + digit suffix), never by a
+    literal dtype table."""
+    if not dtype:
+        return None
+    kind, digits = dtype[0], dtype[1:]
+    if kind not in ("i", "u") or not digits.isdigit():
+        return None
+    return int(digits), kind == "i"
+
+
+def _narrow_to_dtype(t: Tensor, dtype: str) -> Tensor:
+    """Saturating cast of the i32 accumulator to the capsule's DECLARED narrow integer output dtype.
+
+    The narrow width (hence the saturation range) is DERIVED from ``output_dtype`` — not assumed to be
+    i8. ``i8`` is routed through :meth:`Tensor.to_i8` so its result is byte-identical to the historical
+    path; any other narrow integer width (``i16`` / ``i4`` / ``u8`` ...) saturates to the range derived
+    from its bitwidth. A wide accumulator dtype (``i32`` / ``i64``) or a non-integer dtype passes
+    through unchanged — there is nothing to narrow."""
+    parsed = _int_dtype_bits(dtype)
+    if parsed is None:
+        return t
+    bits, signed = parsed
+    if bits >= 32:                      # wide accumulator width — no narrowing
+        return t
+    if dtype == "i8":                   # byte-identical to the historical to_i8() path
+        return t.to_i8()
+    if signed:
+        lo, hi = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
+    else:
+        lo, hi = 0, (1 << bits) - 1
+    out = [lo if x < lo else (hi if x > hi else x) for x in t.data]
+    return Tensor(t.shape, out, dtype)
+
+
 def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor]) -> Tensor:
     for stage in attrs.get("epilogue", []):
         if stage in ("bias_add", "bias"):
@@ -58,14 +107,22 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor]) -> Tensor:
             if bname:
                 t = t.add_bias(env[bname])
         elif stage == "requant":
-            t = t.requant(int(attrs.get("requant_shift", 4)))
+            t = t.requant(int(attrs.get("requant_shift", _DEFAULT_REQUANT_SHIFT)))
         elif stage == "acc_scale":
+            # The acc_scale readout rounding mode is a named, overridable parameter (default the gemmini
+            # round-half-even). The Tensor engine reproduces half-even exactly; a capsule that declares a
+            # different mode is a datapath this integer engine cannot reproduce, so fail CLOSED (surface
+            # it) rather than silently applying half-even to a target that rounds otherwise.
+            mode = attrs.get("requant_round", _DEFAULT_ACC_SCALE_ROUND)
+            if mode != "half_even":
+                raise ValueError(
+                    f"acc_scale requant_round={mode!r} is declared but the integer Tensor engine only "
+                    f"reproduces 'half_even'; grade this datapath against an independent golden.yaml "
+                    f"instead of silently rounding half-even")
             t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
         elif stage == "relu":
             t = t.relu()
-    if attrs.get("output_dtype", "i32") == "i8":
-        t = t.to_i8()
-    return t
+    return _narrow_to_dtype(t, attrs.get("output_dtype", "i32"))
 
 
 def _transpose2d(t: Tensor) -> Tensor:
