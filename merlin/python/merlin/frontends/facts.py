@@ -20,6 +20,22 @@ from .linalg_mlir import MatmulRecord
 DTYPE_BYTES = {"f32": 4, "bf16": 2, "f16": 2, "i8": 1, "i32": 4}
 
 
+def dtype_bytes(dtype: str) -> int:
+    """Bytes per element of ``dtype``. Plain MLIR scalar types resolve from :data:`DTYPE_BYTES`;
+    anything else is DERIVED from the extensible quant-format registry (``ceil(element_bits/8)``), so a
+    newly-registered format (fp8/mxfp8/e8m0/...) is sized correctly with no edit here. An unknown dtype
+    FAILS CLOSED (raises) rather than silently sizing to 4 bytes — mis-sizing a sub-byte or wide element
+    as 4 bytes is a correctness-adjacent bug."""
+    if dtype in DTYPE_BYTES:
+        return DTYPE_BYTES[dtype]
+    from merlin.common import quant_formats
+    if quant_formats.has(dtype):
+        return (quant_formats.get(dtype).element_bits + 7) // 8   # ceil(bits/8)
+    raise ValueError(
+        f"unknown dtype {dtype!r}: neither a known scalar type ({sorted(DTYPE_BYTES)}) nor a registered "
+        f"quant format ({quant_formats.names()}); cannot size its element in bytes")
+
+
 @dataclass
 class WeightReuseFact:
     """Contract-level facts about one model weight used by matmuls."""
@@ -52,7 +68,7 @@ def lift_weight_reuse(inventory: list[MatmulRecord],
             weight_arg_index=idx,
             shape=r0.rhs_shape,
             dtype=r0.dtype,
-            nbytes=elems * DTYPE_BYTES.get(r0.dtype, 4),
+            nbytes=elems * dtype_bytes(r0.dtype),
             uses_per_invocation=len(recs),
             reused_across_invocations=invocations > 1,
             gemm_shapes=[(r.m, r.k, r.n) for r in recs

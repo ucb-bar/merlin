@@ -53,15 +53,37 @@ _BASE_CAPABILITIES: dict[str, tuple[str, str, list[str]]] = {
     "llm_api": ("WS-B/D", "Anthropic API for real agentic runs", ["ANTHROPIC_API_KEY", "MERLIN_LLM_MODEL"]),
 }
 
-# env-var hints keyed on the DECLARED substrate label (never a target name) — informational only.
+# Cross-cutting env hints keyed on the DECLARED substrate label — the shared toolchain ROOTS a backend
+# needs (chipyard/spike/gcc/zephyr), which are target-generic. The per-TARGET substrate var name is NOT
+# enumerated here: it is DERIVED from (target, sim) by _backend_env_hints() below. Informational only.
 _BACKEND_ENV: dict[str, list[str]] = {
     "simulator": ["(pure-Python model — always available)"],
-    "spike_gemmini": ["MERLIN_GEMMINI_SPIKE", "MERLIN_CHIPYARD"],
-    "verilator": ["MERLIN_GEMMINI_VERILATOR", "MERLIN_SATURN_VERILATOR", "MERLIN_CHIPYARD"],
-    "vcs": ["MERLIN_GEMMINI_SIMV"],
     "baremetal": ["MERLIN_SPIKE", "MERLIN_RISCV_GCC", "MERLIN_CHIPYARD"],
     "zephyr": ["ZEPHYR_BASE", "MERLIN_ZEPHYR_SW", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"],
 }
+
+# Backend label -> the SIM token in the per-target env-var name MERLIN_<TARGET>_<SIM>. This is the same
+# derivation convention targetgen/sandbox/toolchain.py uses (``MERLIN_{target.upper()}_...``): a target's
+# verilator sim is MERLIN_<TARGET>_VERILATOR (e.g. MERLIN_MUON_VERILATOR / MERLIN_SATURN_VERILATOR), its
+# VCS simv binary is MERLIN_<TARGET>_SIMV (e.g. MERLIN_GEMMINI_SIMV), its RTL spike kernel sim is
+# MERLIN_<TARGET>_SPIKE. So each newly-registered target's substrate var name derives with zero edits.
+_BACKEND_SIM_TOKEN: dict[str, str] = {"verilator": "VERILATOR", "vcs": "SIMV"}
+
+
+def _backend_env_hints(target: str, backend: str) -> list[str]:
+    """Env-var hints for one target's declared execution substrate: the DERIVED per-target substrate var
+    ``MERLIN_<TARGET>_<SIM>`` (for the RTL kernel sims that resolve a per-target binary — verilator/vcs
+    and any ``spike_*`` kernel sim) followed by the cross-cutting toolchain roots from ``_BACKEND_ENV``.
+    No per-target env name is baked in — the target string threads through, matching the toolchain.py
+    naming convention, so this stays correct for a target with no bespoke entry here."""
+    tok = _BACKEND_SIM_TOKEN.get(backend)
+    if tok is None and backend.startswith("spike_"):
+        tok = "SPIKE"
+    hints: list[str] = []
+    if tok:
+        hints.append(f"MERLIN_{target.upper()}_{tok}")
+        hints.append("MERLIN_CHIPYARD")   # RTL sims are built under the chipyard toolchain root
+    return hints + _BACKEND_ENV.get(backend, [])
 
 
 def _build_capabilities() -> tuple[dict[str, tuple[str, str, list[str]]], dict[str, tuple[str, str]]]:
@@ -83,7 +105,7 @@ def _build_capabilities() -> tuple[dict[str, tuple[str, str, list[str]]], dict[s
             backends = []
         for b in backends:
             key = f"{name}_{b}"
-            caps[key] = ("target", f"{name}: {b} execution substrate", _BACKEND_ENV.get(b, []))
+            caps[key] = ("target", f"{name}: {b} execution substrate", _backend_env_hints(name, b))
             derived[key] = (name, b)
     return caps, derived
 

@@ -73,7 +73,13 @@ def aggregate(results: list[dict], capsules: list[dict] | None = None,
     by_tier_reached = {t: 0 for t in TIERS}
     mode_cov = {m: 0 for m in modes}
     class_cov = {c: 0 for c in classes}
-    unavail = {"vcs": 0, "firesim": 0}
+    # Heavy-oracle availability is tracked per heavy oracle tier; the substrate NAME for each tier is
+    # DERIVED from the canonical tier->simulator map (single source of truth in capsule_runner), never
+    # hardcoded as vcs/firesim here — so a target whose ladder names its heavy oracles differently is
+    # counted under its own substrate labels.
+    from .capsule_runner import _TIER_SIM
+    heavy_tiers = tuple(t for t in ("L4", "L5") if t in _TIER_SIM)
+    unavail = {_TIER_SIM[t]: 0 for t in heavy_tiers}
 
     for r in results:
         by_kind[r.get("kind", "unknown")] = by_kind.get(r.get("kind", "unknown"), 0) + 1
@@ -82,10 +88,8 @@ def aggregate(results: list[dict], capsules: list[dict] | None = None,
             tr = r.get("tiers", {}).get(t)
             if tr and tr.get("status") == "pass":
                 by_tier_reached[t] += 1
-            if t == "L4" and tr and tr.get("status") == "unavailable":
-                unavail["vcs"] += 1
-            if t == "L5" and tr and tr.get("status") == "unavailable":
-                unavail["firesim"] += 1
+            if t in heavy_tiers and tr and tr.get("status") == "unavailable":
+                unavail[_TIER_SIM[t]] += 1
         # modes from the capsule's declared expected.modes (only count when the capsule passed)
         cap = cap_by_name.get(r["capsule"])
         if cap and r.get("status") == "pass":

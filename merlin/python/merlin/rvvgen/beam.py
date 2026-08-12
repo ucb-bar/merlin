@@ -116,6 +116,13 @@ def _emitted_digest(run_dir: "Path") -> str | None:
 def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -> dict:
     """Attach gate_ok + structural_match + divergences to a certify result."""
     gate_ok = bool((result.get("correctness") or {}).get("gate_ok"))
+    # "spike" is the RVV instantiation's functional-cycles reference substrate: it is the label the
+    # runner stamps on the functional cycle-count measurement (rvvgen.runner emits {"target": "spike",
+    # "cycles": ...} for the spike gate). This selection is INHERENT to this path, not a derivable
+    # per-target fact — it deliberately picks spike's authoritative functional cycles and NOT k1's own
+    # record (which also carries a `cycles` field, but only an rdtime-derived estimate; k1 is the
+    # real-silicon WALL-time authority, read separately below as `wall_ns`). A different reference
+    # substrate would be a different instantiation of this engine.
     cycles = next((m.get("cycles") for m in result.get("measurement", [])
                    if m.get("target") == "spike"), None)
     # real-silicon wall time (K1) when the beam ran the k1 target — the REAL speedup signal (vs the
