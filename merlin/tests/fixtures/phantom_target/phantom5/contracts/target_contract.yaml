@@ -1,0 +1,74 @@
+# SYNTHETIC 5th-target fixture for the phantom-target regression harness
+# (merlin/tests/targetgen/test_phantom_target.py). ``phantom5`` is a MADE-UP accelerator name — NOT a
+# shipped target. It models a NOVEL systolic tensor engine that shares no code-path assumption with the
+# four real targets: an fp16 x fp16 -> f32 mesh (float, NOT gemmini's int8), an 8x8 array (NOT 16x16),
+# and a RoCC wired to custom SLOT 1 (major opcode 0x2b) rather than gemmini's slot 3 (0x7b).
+#
+# Its whole point is to PROVE that onboarding a new hardware target is DATA ONLY (this contract + fake
+# facts + a plugin module), with zero edit to any shared library code. Mesh geometry / capacities /
+# datapath dtypes / legal-funct codes are CIRCT-extracted FACTS (see contracts/rtl_facts/facts.json);
+# this contract carries only intent + the ABI encoding surface facts cannot ground.
+name: phantom5
+version: '0.1'
+family: tensor_resident
+# Plugin block: the target contributes a bespoke-sim ORACLE as data (a module path), loaded by
+# capsule_runner._ensure_sim_oracles_discovered via the SAME OOT/reference plugin discovery the runtime
+# backends use — proving a target-contributed oracle wires in with zero core edit.
+plugin:
+  sim_oracle: sim_oracle.py
+# The ABI encoding surface RTL discovery cannot ground. The MAJOR opcode is NOT declared here: it is
+# DERIVED by circt_introspect from ``rocc_custom_slot`` (the RISC-V standard custom-1 -> 0x2b), never
+# baked. This is deliberately NOT gemmini's slot 3.
+encoding:
+  addr_len: 32
+  rocc_custom_slot: 1      # RISC-V custom-1 -> major opcode 0x2b (43). NOT gemmini's slot 3 (0x7b/123).
+status: prototype
+features: [systolic_array, resident_packed_tensor, accumulator_commit, metrics]
+runtime:
+  backends: [simulator]
+  default_backend: baremetal
+  # DECLARED bespoke-sim engine name (the plugin.sim_oracle module registers under this key).
+  sim_via: phantomsim
+runner:
+  suite: phantom5-capsule-bench
+  # NOTE: runner.dtype is intentionally OMITTED so the run token is DERIVED from the primary unit's
+  # accumulate rule (fp16 x fp16 -> f32), exercising target_experiment._derived_dtype_token.
+# Datatype -> compute-unit -> op capability. The primary unit is an fp16 systolic mesh; a secondary
+# vector lane carries the norm/elementwise ops the mesh does not, so a whole model splits across lanes.
+compute_units:
+  - name: systolic_mesh
+    kind: systolic
+    dtypes: [fp16]
+    ops: [matmul, linear]
+    scaling: per_channel
+    accumulate:
+      - {in: fp16, weight: fp16, acc: f32}
+    requant: {ref: phantom5.accumulator_scale}
+  - name: vector_lane
+    kind: vector
+    dtypes: [fp16, fp32]
+    ops: [add, rmsnorm]
+capabilities: {}
+memory_model:
+  resident: true
+  accumulators: true
+prototype_scope:
+  workload: repeated_rhs_matmul
+  conformance_level: C0
+  epilogue: none
+  output_dtype: f32
+compiler_obligations:
+  - must_prove_rhs_immutable_for_residency
+  - must_tile_to_mesh_shape
+hardware_promises:
+  - weight_stationary_resident_array
+  - float_accumulate
+runtime_promises:
+  - command_buffer
+  - metrics
+certification:
+  status: uncertified
+requires_human_review: true
+notes: >-
+  Synthetic phantom target for the target-agnostic regression harness. Not RTL-certified; not a shipped
+  accelerator. Exists only to prove add-a-target is data-only.
