@@ -489,6 +489,26 @@ The readout costs about **3.4× an accumulate**, which no MAC-count model can se
 tall-M shape is readout-bound rather than compute-bound. Caveat recorded with the artifact: 6 measurements,
 3 parameters — the ranking is robust, the coefficients want the full 42-case corpus behind them.
 
+#### Substrate is chosen by output size, not by which shape matters most
+
+Extending the corpus to spectformer's real shapes (Phase C) exposed a property of the certification image
+that decides where a case can run at all. Per case the image runs a **scalar triple-loop reference**, zeroes
+two buffers and hashes the result with byte-wise `fnv1a64`. All three scale with the **output**, none with the
+unit. For `workload_ffn_up` (196×1024, 200,704 outputs) that is ~6.4M scalar MAC iterations and 800 KB hashed
+against the OPU kernel's ~204k cycles: **the measurement subject is under 4% of the runtime.**
+
+Measured on `OPUV256D128ShuttleConfig` Verilator: **~90 cycles/s**. The 31 small cases complete in 13 h; the
+five workload cases are **21.9× more work**, i.e. **~12 days**. That ratio makes the estimate assumption-free
+— ETA = elapsed × (remaining work ÷ done work), independent of any cycles-per-MAC guess. `screen_only` (drop
+the in-image reference) only reduces it to ~34 h, because the hashing and zeroing remain. The same corpus on
+**FireSim at 25 MHz is ~4 seconds**.
+
+So the split is not a preference, it is arithmetic: `workload_classifier` (1×1000, 1,000 outputs, ~46 min) is
+the only workload-scale case Verilator can certify, and the other four require the bitstream. A corollary for
+triaging any such run: the driver captures the image's stdout, so **an empty log is not a hang** — dividing
+`/proc/<pid>/io`'s `wchar` by the image's exact per-case `CASE`/`CYCLES` line length locates the running case
+index precisely, which is how the 13 h run was identified as sitting in case 31 of 36 rather than stuck.
+
 ### 5.3 What blocks L5, and it is not the unit
 
 The whole-model rung is blocked by a defect in the shared bare-metal path that has nothing to do with the
@@ -543,6 +563,33 @@ longer exists in the checkout's source, so its bitstream can be *used* but not *
 
 A **Kodiak-exact** bitstream is a separate question and still deferred (§9): Kodiak's config uses
 `genParams`, i.e. `useOpu = false`, so it has no OPU to target at all.
+
+#### A third bitstream is building, and its timing report reads far worse than it is
+
+`FireSimOPUV256D128ShuttleConfig` (recipe `alveo_u250_firesim_opu_v256d128`, 25 MHz) is being synthesised to
+match the **edge 32** geometry the corpus is certified against, so Phase C's shapes and the L3/L4 evidence
+share one geometry. Its first implementation pass ends with Vivado printing **"Timing constraints are not
+met"** — which in this flow is an intermediate state, not a verdict, and the already-shipped bitstream proves
+it:
+
+| | v128d64 (shipped, working) | v256d128 (building) |
+| --- | --- | --- |
+| `impl_1` post-route | WNS **+0.038**, WHS **−2.258**, 60,172 hold endpoints failing | WNS **+0.050**, WHS **−3.972**, 260,324 failing |
+| IDR hold-fix candidates | 50,879 nets | 231,911 nets |
+| after `phys_opt_design -aggressive_hold_fix` | WHS −2.539 → **−0.366** | in progress |
+| final | WNS **+0.031** / WHS **+0.009** / THS **0.000** → `.bit` written | — |
+
+Both are **fully routed with zero routing errors**; the IDR "RQS Utilization" stage is what converts a large
+negative hold slack into a positive one, and the failing-endpoint count scales with the design (607k → 901k
+routable nets), i.e. it tracks size rather than signalling a new defect.
+
+Two consequences worth stating because both are easy to get backwards. **Lowering the target frequency does
+not fix this**: the open violation is *hold*, which is evaluated against the same clock edge and is therefore
+period-independent, while *setup* already passes with margin — Vivado logs "worst setup slack (WNS) is greater
+than or equal to 0.250 ns. Skipping all physical synthesis optimizations." A frequency drop would buy nothing
+and cost a full re-synthesis. And **the FPGA is not needed to build a bitstream** — synthesis and
+implementation are Vivado work; the board is needed only to *run* one. So L6 remains gated on execution
+(§5.1), never on synthesis.
 
 **The honest bound.** Verilator is ~10⁴ cycles/s and deepjscc is ~4.6×10⁸ cycles, so L5 and L6 are not
 reachable with it, and (per §1.4) there is no functional simulator to stand in. Therefore:
