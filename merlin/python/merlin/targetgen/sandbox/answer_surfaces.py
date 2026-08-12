@@ -114,6 +114,25 @@ def golden_files(te: TargetExperiment) -> list[Path]:
     return out
 
 
+def _evicted_oracle_modules() -> list[Path]:
+    """Reference-target BACKENDS + sim-oracles evicted to their own packages (OV11) are oracle ROUTES too
+    — the SIMT cyclotron oracle now lives in the muon package (``muon_oracles`` inside its backend), and a
+    reference backend is the 'answer' codegen. DERIVE their host paths from the plugin registry (the same
+    discovery the runtime uses) rather than a per-target literal, so the mask FOLLOWS the eviction instead
+    of the now-stale in-tree paths in ORACLE_MODULES. Best-effort: if the registry is unavailable there is
+    simply nothing extra to mask (the stem audit still covers the evicted names)."""
+    paths: list[Path] = []
+    try:
+        from merlin.runtime.backends import base as _bk
+        for key in ("backend", "sim_oracle"):
+            for _name, p in _bk._oot_plugin_modules(key):
+                if p.exists():
+                    paths.append(p)
+    except Exception:  # noqa: BLE001 — no registry -> nothing extra to mask
+        pass
+    return paths
+
+
 def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
     """The COMPLETE derived answer-surface set for one target — the single source the sandbox masks and
     the coverage guard checks. Only surfaces that actually exist on this host are returned (a masked
@@ -143,6 +162,8 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
         if p.exists():
             out.append(AnswerSurface(f"oracle:{Path(rel).name}", p,
                                      "dir" if p.is_dir() else "file", "oracle"))
+    for p in _evicted_oracle_modules():          # OV11: oracle/backend routes relocated to target packages
+        out.append(AnswerSurface(f"oracle:{p.name}", p, "dir" if p.is_dir() else "file", "oracle"))
     for rel in GRADER_MODULES:
         p = root / rel
         if p.exists():
@@ -172,6 +193,7 @@ def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
         frag = rel[len("merlin/python/"):] if rel.startswith("merlin/python/") else rel
         answer.append(frag[:-3] if frag.endswith(".py") else frag)
     answer += list(te.prior_backends)
+    answer += [p.stem for p in _evicted_oracle_modules()]   # evicted oracle/backend stems (muon_oracles, …)
     answer.append("grader_private")
     grader = tuple(Path(rel).stem for rel in GRADER_MODULES)
     return {"answer": tuple(dict.fromkeys(answer)), "grader": grader,
