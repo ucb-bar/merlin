@@ -192,8 +192,9 @@ def assemble_copy_workspace(bundle: dict, ws: Path) -> dict:
     """sandbox=none isolation: build the workspace from COPIES of the allowed materials with every
     answer-bearing file dropped, and SYMLINK only answer-free large/toolchain paths. The agent's cwd
     is this workspace; it never receives goldens, hidden capsules, the reference, or prior backends.
-    (bwrap is unusable here: the Bun-based `claude` binary crashes under it — SIGILL / FailedToOpen-
-    Socket — so filesystem isolation is by construction + a post-run transcript audit, not bwrap.)
+    (This is the ``--sandbox none`` ESCAPE HATCH: FS isolation is by construction + a post-run transcript
+    audit — detection, not prevention. bwrap is now the default and the preferred, enforced path; use
+    ``none`` only for local dev where bwrap is unavailable.)
 
     Allowed Merlin authoring-tool dirs (under merlin/) are COPIED minus any deny-wins sub-path
     (e.g. runtime_adapter.py, xdsl_dialects/lowering/) so the workspace carries no in-workspace
@@ -1001,9 +1002,14 @@ def main(argv: list[str] | None = None) -> int:
                          "rate-limit-boundary exposure, and can cut a productive round mid-fix (rc=124). "
                          "The original abc runs used 4h and converged in ~1 productive round.")
     ap.add_argument("--qa-timeout", type=int, default=900)
-    # Default sandbox=none: bwrap crashes the Bun-based `claude` binary in this environment. Isolation
-    # under "none" is enforced by a golden-masked COPIED workspace + a post-run transcript audit.
-    ap.add_argument("--sandbox", choices=["bwrap", "none"], default="none")
+    # Default sandbox=bwrap: enforced FS isolation (the agent cannot read a masked answer surface at all),
+    # AND the driver-side broker tools (async simjob oracle, self-check, arc-model isa_tools, CCA) only
+    # start under bwrap. The earlier "bwrap crashes claude" blocker was a sandbox-config bug, now fixed in
+    # sandbox/bwrap.base_argv (bind the systemd-resolved dir so DNS works; drop inherited CLAUDE_CODE_*
+    # nesting markers; provide an XDG runtime dir) — validated end-to-end by smoke_agent_check. "none" stays
+    # available as an escape hatch (golden-masked COPY workspace + post-run transcript audit), but it is
+    # detection-not-prevention and must not be used for scored runs.
+    ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap")
     ap.add_argument("--no-oracle", action="store_true", help="QA = L0+trace only (fast dev)")
     ap.add_argument("--skip-hidden", action="store_true")
     ap.add_argument("--experiment", choices=["full", "realistic"], default="full",
