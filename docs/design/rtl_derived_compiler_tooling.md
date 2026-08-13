@@ -177,3 +177,17 @@ detection-not-prevention).
   gemmini/atlas/radiance · **X5** FireSim-vs-verilator + injected-wrong-DIM · **X6** component ablation ·
   **X7** N≥10 variance · **X8** fact-attribution (% of correctness-critical edits using an RTL-only fact).
 X3 is the single highest-leverage artifact.
+
+### X3/X5 demonstration — the RTL fact decides the correctness verdict (done, $0)
+Compiling the FileCheck tile assertion (`rtl_check_compiler.compile_trace_checks`) for a 32×32 matmul while
+varying the mesh DIM — the RTL-derived value vs an injected wrong value (what a stale doc or a guess yields):
+
+| mesh DIM | compiled assertion | consequence |
+|---|---|---|
+| **16 (RTL-derived)** | `MVOUT_COUNT 4{{$}}` | correct — ceil(32/16)² tiles |
+| 8 (wrong) | `MVOUT_COUNT 16{{$}}` | would **reject** the correct 4-tile kernel |
+| 32 (wrong) | `MVOUT_COUNT 1{{$}}` | would **accept** an under-tiled kernel that **aliases on the real 16×16 mesh → wrong answer** |
+
+The RTL-derived DIM changes the assertion, hence the pass/fail verdict: a wrong DIM accepts a kernel that is
+numerically wrong on the real mesh. This is the crux (correctness depends on the RTL fact, not just
+performance) shown constructively — not a full agentic experiment, but a verifiable single-variable proof.
