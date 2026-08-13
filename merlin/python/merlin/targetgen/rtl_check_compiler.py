@@ -213,7 +213,12 @@ def compile_kernel_checks(capsule: dict, prefix: str = "KERNEL",
         # count the discovered mesh geometry + the declared output shape imply. Skipped unless both resolve.
         shape = RC._declared_output_shape(capsule)
         mesh = _facts_to_rc(facts_rec or {}).get("mesh")   # DERIVED mesh only — fail-closed, no DIM=16 default
-        if compute and compute in required and shape and mesh:
+        # An EXACT tile count is only sound for a single-matmul op. A resident_reuse capsule issues several
+        # matmuls against a resident weight, so ceil(M/DIM)*ceil(N/DIM) understates the true compute count
+        # and false-rejects a correct multi-matmul kernel (parity with compile_trace_checks, which already
+        # degrades resident_reuse to COMPUTE_PRESENT). Emit only class-PRESENCE for it; leave the count to
+        # rtl_checks.screen()'s lower-bound check.
+        if compute and compute in required and shape and mesh and op != "resident_reuse":
             tiles = math.ceil(shape[0] / mesh[0]) * math.ceil(shape[1] / mesh[1])
             L.append(f"// {prefix}-DAG: CLASS_COUNT {compute} {tiles}{{{{$}}}}")
         # field-sanity: a memory (load/store) instruction with an all-zero operand payload addresses DRAM 0
