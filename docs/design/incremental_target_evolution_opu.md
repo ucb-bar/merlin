@@ -583,32 +583,73 @@ longer exists in the checkout's source, so its bitstream can be *used* but not *
 A **Kodiak-exact** bitstream is a separate question and still deferred (§9): Kodiak's config uses
 `genParams`, i.e. `useOpu = false`, so it has no OPU to target at all.
 
-#### A third bitstream is building, and its timing report reads far worse than it is
+#### The third bitstream does not close, and the cause is the OPU's own clock gate
 
-`FireSimOPUV256D128ShuttleConfig` (recipe `alveo_u250_firesim_opu_v256d128`, 25 MHz) is being synthesised to
-match the **edge 32** geometry the corpus is certified against, so Phase C's shapes and the L3/L4 evidence
-share one geometry. Its first implementation pass ends with Vivado printing **"Timing constraints are not
-met"** — which in this flow is an intermediate state, not a verdict, and the already-shipped bitstream proves
-it:
+`FireSimOPUV256D128ShuttleConfig` (recipe `alveo_u250_firesim_opu_v256d128`, 25 MHz) was synthesised to match
+the **edge 32** geometry the corpus is certified against, so that Phase C's shapes and the L3/L4 evidence
+would share one geometry. It was **stopped after 15 h** without producing a `.bit`. An earlier reading of this
+section treated Vivado's "Timing constraints are not met" as a normal intermediate state of the IDR flow, on
+the strength of the shipped v128d64 build having recovered from a similar-looking report. That reading was
+wrong, and the convergence *rate* is what shows it:
 
-| | v128d64 (shipped, working) | v256d128 (building) |
+| | v128d64 (shipped, working) | v256d128 (stopped) |
 | --- | --- | --- |
-| `impl_1` post-route | WNS **+0.038**, WHS **−2.258**, 60,172 hold endpoints failing | WNS **+0.050**, WHS **−3.972**, 260,324 failing |
-| IDR hold-fix candidates | 50,879 nets | 231,911 nets |
-| after `phys_opt_design -aggressive_hold_fix` | WHS −2.539 → **−0.366** | in progress |
-| final | WNS **+0.031** / WHS **+0.009** / THS **0.000** → `.bit` written | — |
+| entering hold fix | WHS **−2.539**, THS **−129,140** | WHS **−4.068**, THS **−840,230** |
+| after `phys_opt_design -aggressive_hold_fix` | WHS **−0.366**, THS −375.8 (**−99.7 %** THS) | WHS **−3.972**, THS −834,171 (**−0.7 %** THS) |
+| final | WNS +0.031 / WHS **+0.009** / THS 0.000 → `.bit` | never converged; IDR RQS then ran 5.5 h on one thread over 231,911 candidate nets, wrote zero bytes, produced no checkpoint |
 
-Both are **fully routed with zero routing errors**; the IDR "RQS Utilization" stage is what converts a large
-negative hold slack into a positive one, and the failing-endpoint count scales with the design (607k → 901k
-routable nets), i.e. it tracks size rather than signalling a new defect.
+Both designs are fully routed with zero routing errors, and setup is met in both. The difference is that one
+hold fix removed almost all of the violation and the other removed essentially none.
 
-Two consequences worth stating because both are easy to get backwards. **Lowering the target frequency does
-not fix this**: the open violation is *hold*, which is evaluated against the same clock edge and is therefore
-period-independent, while *setup* already passes with margin — Vivado logs "worst setup slack (WNS) is greater
-than or equal to 0.250 ns. Skipping all physical synthesis optimizations." A frequency drop would buy nothing
-and cost a full re-synthesis. And **the FPGA is not needed to build a bitstream** — synthesis and
+**The violation is 99.3 % one clock, and it is intra-clock.** Of 260,324 hold-failing endpoints, 258,620 sit
+in the group `uart_clock,clock_1000.0MHz,harnessbinder_clock,reference` — 58.8 % of that clock's 439,611
+endpoints — while the same clock carries **WNS +16.520 ns** of unused setup slack. Reading the worst path with
+`report_timing -hold -path_type full_clock_expanded` gives the mechanism directly:
+
+| | launch (`vu/vopu_ctrl_reg_in_t_*`, ungated) | capture (`vopu/clusters_*`, gated) |
+| --- | --- | --- |
+| clock path | `BUFGCE_X0Y72` → net (fo=71,743) | `BUFGCE_X0Y72` → net (fo=71,743) → **LUT** → **`BUFGCE_X0Y226`** |
+| clock delay | 5.077 ns | **8.868 ns** |
+
+Clock Path Skew **4.207 ns**, slack **−4.068 ns**. Saturn gates the whole OPU cluster array
+(`exu/OuterProductUnit.scala:181`, `ClockGate(clock, io.op.clock_enable, "opu_clock_gate")` +
+`withClock(gated_clock)`), which lowers to rocket-chip's `EICG_wrapper` — a latch-and-AND in LUTs. Golden
+Gate's `midas.passes.xilinx.ReplaceAbstractClockGates` rewrites only its *own* `AbstractClockGate` instances
+to `BUFGCE`, so the target's `EICG_wrapper` survives, and Vivado must add a **second global clock net** behind
+combinational logic to reach the gated domain's 131,585 loads. Both ends carry the same clock name, so hold is
+checked at zero skew against a tree that is 3.79 ns later. `v128d64` closed because its array is 4× smaller
+and the gated net's delay nearly matched its parent's. All 300 worst paths are SLR2→SLR2, so this is **not**
+an SLR crossing.
+
+Three things that are **not** the fix, each ruled out with a number rather than an argument. **Frequency**:
+the recipe is already `fpga_frequency: 25`, and the failing clock has 16.5 ns of setup slack — hold and skew
+are both period-independent, so a slower clock adds surplus where there is already surplus. **`CLOCK_DELAY_GROUP`**:
+it matches insertion delay across buffers driving one clock, but cannot match a one-buffer tree to a
+two-buffer cascade, because the depths genuinely differ. **More physopt passes**: closing this by delay
+insertion needs ~3.8 ns on 258,620 paths, tens of LUT1 hops each, which exceeds the device.
+
+The candidate fix is therefore to stop gating the OPU clock on FPGA, by pointing `ClockGateModelFile` at a
+passthrough (`merlin/contract/rtl/eicg_passthrough.v`) — a config-level swap that touches no target RTL.
+**Whether that is sound is a measurement, not a deduction**, because the gated domain is not uniformly
+enable-guarded: `OuterProductCell.regs` is written under an explicit `when`, but `OuterProductCluster.pipe`
+— the row-serial readout register — is assigned unconditionally, so it *does* rely on the clock stopping to
+hold. The sequencer raises the enable as `clock_enable := valid || mvout_valids =/= 0.U`, i.e. for every cycle
+an instruction is in flight or a readout is pending, and `pipe` is re-primed from `cell_outs` at the start of
+each readout rather than carried across readouts, so the clobbering ungating introduces should land only on
+idle cycles nobody reads. That is validated by re-running the certified corpus against
+`OPUV256D128ShuttleNoGateConfig` and requiring bit-identical digests, with the cases chosen to stress `pipe`
+(ragged tails, single-row and single-column readouts, the widest tile sweeps, long reductions, bias broadcast
+composed with the epilogue, and the multi-tile-column `workload_classifier`). Until those digests are in, the
+fix is a hypothesis. Note also that the geometry deriver **refused** an inherited vector length for the new
+config rather than defaulting one, and the provenance pin correctly reports drift once `chipyard/OPUConfigs.scala`
+carries the added config — so any number from that build records as *pinned revision plus one intended source
+change*, not as a clean pinned run.
+
+One point that stays true regardless: **the FPGA is not needed to build a bitstream** — synthesis and
 implementation are Vivado work; the board is needed only to *run* one. So L6 remains gated on execution
-(§5.1), never on synthesis.
+(§5.1), never on synthesis. Synthesis and placement survived the stop
+(`impl_1/overall_fpga_top_{opt,placed,physopt,routed,postroute_physopt}.dcp`), so a retry resumes from
+placement rather than from scratch.
 
 **The honest bound.** Verilator is ~10⁴ cycles/s and deepjscc is ~4.6×10⁸ cycles, so L5 and L6 are not
 reachable with it, and (per §1.4) there is no functional simulator to stand in. Therefore:

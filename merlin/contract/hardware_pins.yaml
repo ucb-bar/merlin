@@ -202,15 +202,27 @@ artifacts:
       only, so an image whose kernel runs on hart 0 finds no OPU there and takes an illegal instruction.
     root_env: MERLIN_CHIPYARD
     path: sims/firesim/deploy/results-build/PENDING/cl_xilinx_alveo_u250-firesim-FireSim-FireSimOPUV256D128ShuttleConfig-BaseXilinxAlveoU250Config/firesim.tar.gz
-    digest: ""                        # build in progress; an empty digest verifies as a GAP, not a pass
+    digest: ""                        # NOT BUILT; an empty digest verifies as a GAP, not a pass
     built_from:
       - saturn_opu_int8
     config: FireSimOPUV256D128ShuttleConfig
     notes: >-
-      Synthesised at 25 MHz rather than the 30 the vLen=128 OPU closed at: one vLen=256 unit is a real area
-      step up, and a frequency that will not close wastes the whole synthesis instead of degrading it. The
-      results-build directory is timestamped by the builder, so `path` carries PENDING until the build
-      finishes and the real directory name is known.
+      NOT BUILT — the 2026-08-12 attempt was stopped after 15 h without producing a bitstream, and the cause
+      is a design issue rather than a build that needed longer. Synthesis and routing complete with setup met
+      (WNS +0.050) and zero routing errors, but hold does not close: WHS −3.972 ns with 260,324 of 870,375
+      endpoints failing, 258,620 of them (99.3 %) inside the single intra-clock group
+      `uart_clock,clock_1000.0MHz,harnessbinder_clock,reference`, whose own setup slack is +16.520 ns.
+      `phys_opt_design -aggressive_hold_fix` improved THS by 0.7 % in 34 min where the shipped v128d64 build
+      achieved 99.7 %, so more passes do not converge. Root cause: Saturn gates the OPU cluster array's clock
+      (`exu/OuterProductUnit.scala:181`), which lowers to rocket-chip's `EICG_wrapper` — combinational logic
+      in the clock path that Golden Gate's ReplaceAbstractClockGates does not rewrite — so the tools add a
+      second global clock net for the gated domain's 131,585 loads, 3.79 ns later than its ungated parent,
+      while both ends share one clock name and are hold-checked at zero skew. Frequency is NOT the lever
+      (already 25 MHz, and hold and skew are period-independent); the candidate fix is a passthrough clock
+      gate (`merlin/contract/rtl/eicg_passthrough.v`), whose functional soundness is being validated against
+      the certified corpus before any rebuild. Synthesis and placement survived the stop, so a retry resumes
+      from `impl_1/overall_fpga_top_placed.dcp`. The results-build directory is timestamped by the builder,
+      so `path` carries PENDING until a build actually finishes.
 
   firesim_opu_v128d64:
     description: >-
