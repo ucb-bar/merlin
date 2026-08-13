@@ -329,9 +329,9 @@ def test_oracles_endtoend():
     # run would. (.compat_lib omission is exactly what made abc8's C++ build fail.)
     env["LD_LIBRARY_PATH"] = f"{_compat}:{CE}/lib:{CE}/riscv-tools/lib:" + env.get("LD_LIBRARY_PATH", "")
 
-    def _grade(sub, sim, to):
+    def _grade(sub, sim, to, cap="A1_mvin_mvout"):
         r = subprocess.run([PY, str(SCRIPTS / "agent_selfcheck.py"), "--submission", str(sub),
-                            "--sim", sim, "--capsules", "A1_mvin_mvout", "--workers", "1", "--timeout", str(to)],
+                            "--sim", sim, "--capsules", cap, "--workers", "1", "--timeout", str(to)],
                            cwd=str(SCRIPTS), env=env, capture_output=True, text=True, timeout=to + 120)
         try:
             return _json.loads(r.stdout)
@@ -357,11 +357,17 @@ def test_oracles_endtoend():
         _ok("spike RUNS to a real L2=pass on the reference backend",
             sp.get("all_pass") and sp.get("n_capsules") == 1 and c.get("barrier_status") == "pass",
             f"n={sp.get('n_passed')}/{sp.get('n_capsules')} {sp.get('error','')[:50]}")
-        t0 = _time.time(); ve = _grade(ref, "verilator", 900); dt = _time.time() - t0
+        # Probe a COMPUTE capsule for the L3 cert — a movement-only capsule (A1) tops out below L3, so it can
+        # never certify verilator's numerical tier. agent_selfcheck reports the reached tier on its
+        # per-capsule as barrier_tier/barrier_status (there is NO "tiers" map — the same field the spike
+        # check above reads); the old `tiers["L3"]` read was a field-name bug that always yielded None.
+        t0 = _time.time(); ve = _grade(ref, "verilator", 900, cap="A2_single_tile_matmul"); dt = _time.time() - t0
         cv = (ve.get("per_capsule") or [{}])[0]
-        l3 = ve.get("all_pass") and ve.get("n_capsules") == 1 and (cv.get("tiers") or {}).get("L3") == "pass"
+        l3 = (ve.get("all_pass") and ve.get("n_capsules") == 1
+              and cv.get("barrier_tier") == "L3" and cv.get("barrier_status") == "pass")
         _ok("verilator RUNS to a real L3=pass (not 0-capsules / timeout)", l3,
-            f"{dt:.0f}s n={ve.get('n_passed')}/{ve.get('n_capsules')} L3={(cv.get('tiers') or {}).get('L3')}")
+            f"{dt:.0f}s n={ve.get('n_passed')}/{ve.get('n_capsules')} "
+            f"barrier={cv.get('barrier_tier')}/{cv.get('barrier_status')}")
         if l3:
             (SCRIPTS / ".oracle_timing.json").write_text(_json.dumps(
                 {"verilator_per_capsule_s": round(dt, 1), "config": "GemminiRocketConfig",
