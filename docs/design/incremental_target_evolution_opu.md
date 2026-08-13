@@ -580,8 +580,22 @@ covers edge 16 (the `tile`-relative cases resolve against it), so Phase C needs 
 longer exists in the checkout's source, so its bitstream can be *used* but not *rebuilt*; prefer the
 `GemminiAndOPUShuttleConfig` one, whose config is still in `TargetConfigs.scala`.
 
-A **Kodiak-exact** bitstream is a separate question and still deferred (§9): Kodiak's config uses
-`genParams`, i.e. `useOpu = false`, so it has no OPU to target at all.
+A **Kodiak-exact** bitstream is a separate question and still deferred (§9), and a Kodiak FireSim bitstream
+existing does not change that. A built one was handed over on 2026-08-13
+(`FireSimCTCKodiakConfig`, bit dated 2025-05-22, sha256 `38219a1066b2c887…`) and it carries **no OPU** —
+verified by following its own chain rather than by the name: the bitstream's `metadata` names
+`FireSimCTCKodiakConfig`, which composes `chipyard.KodiakFireSimCTCConfig`, which instantiates
+`saturn.shuttle.WithShuttleVectorUnit(512, 256, VectorParams.genParams)`; that tree pins
+`generators/saturn` at `a898bdc`, and at that revision **`useOpu` does not appear in `common/Parameters.scala`
+at all and `opuParams` is not defined**. So the unit is not disabled there, it does not exist — the OPU lives
+only on the `opu-int8` fork branch (see the `saturn_opu_int8` pin), 128 commits ahead of the tapeout base.
+Note the distinction that made this easy to get wrong: `boards.board("chipyard_kodiak")` in `runtime/boards.py`
+is a *software board descriptor* for the physical Kodiak, a different object from any chipyard RTL config, and
+a claim about one does not transfer to the other.
+
+That bitstream is still useful, just not for this: it is a vLen=512/dLen=256 Saturn vector unit, which matches
+the VLEN 512 the Kodiak board descriptor declares, so it offers a FireSim route for the **RVV** whole-model
+work that today runs on the physical board.
 
 #### The third bitstream does not close, and the cause is the OPU's own clock gate
 
