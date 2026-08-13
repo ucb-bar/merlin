@@ -3,7 +3,7 @@ title: "Design: incremental target evolution — RVV + Saturn OPU as the driving
 kind: design
 status: draft
 owner: targetgen
-last_verified: 2026-08-12
+last_verified: 2026-08-13
 related: [beam_cca_architecture, target_onboarding, lowering_pipeline, llvm_integration, reproducibility]
 code_refs:
   - merlin/python/merlin/targetgen/compute_units.py
@@ -596,6 +596,38 @@ a claim about one does not transfer to the other.
 That bitstream is still useful, just not for this: it is a vLen=512/dLen=256 Saturn vector unit, which matches
 the VLEN 512 the Kodiak board descriptor declares, so it offers a FireSim route for the **RVV** whole-model
 work that today runs on the physical board.
+
+Two further facts came out of reading the forks directly, and the first explains why the "Kodiak has an OPU"
+claim keeps resurfacing. There is a branch called **`kodiak-multi-chip-firesim-opu-kernels`**, one commit
+ahead of the branch that built the bitstream, whose commit message is *"add opu stuff"*. It changes three
+lines: it bumps `sims/firesim` (adding an `opu-m2-gemm` **workload**), bumps `firemarshal`, and re-points
+saturn's submodule **URL** at the OPU author's fork while leaving the **sha unchanged at `a898bdc`**. It adds
+no RTL, and all three Kodiak configs on it still pass `VectorParams.genParams`. The intent was plainly there;
+the pin was never moved. An OPU workload existing is not an OPU existing.
+
+Second, the build is **not reproducible from git alone**: the bitstream's `metadata` records
+`firesim-commit 727a86ff…-dirty` and a build root under another user's home on a **different machine**, and
+the build recipe was never committed — so the `fpga_frequency` it closed at is not recoverable. Everything
+else about the target is.
+
+Since the OPU therefore had to be *added* rather than obtained, it was added in this checkout, which already
+carries the OPU-bearing saturn and the clock-gate fix below: `chipyard.WithKodiakBase` / `KodiakConfig` /
+`KodiakOPUConfig`, plus `FireSimKodiakConfig` / `FireSimKodiakOPUConfig`. The OPU is enabled with
+`genParams.copy(useOpu = true)` rather than by switching to `opuParams`, because `opuParams` also changes
+`vliqEntries`, `vlissqEntries` and `useElementwiseFP64` — that would produce a different vector unit that
+happens to have an OPU, whereas one boolean apart makes the A/B against `KodiakConfig` mean something.
+
+Two caveats belong with any result from it. The **chip-to-chip link is absent**: `KodiakFireSimConfig`'s
+`WithSerialTL` + `WithOffchipBusClient` combination does not elaborate (diplomacy rejects the overlap of the
+replicated off-chip window and the serial-TL manager window at `0x200000000`), and the config that was
+actually built is the CTC one, which has that whole block commented out and which needs a `testchipip.ctc`
+package this checkout does not have. Cores, vector units, TCM, L1s, L2 and scratchpad are untouched, so this
+is Kodiak's **compute** SoC on one chip, not a reproduction of the multi-chip target. And **area is the open
+risk**: the array scales with `dLen` (`yDim = (dLen/aWidth)/clusterYdim`), so each core's array is 8×8
+clusters against v256d128's 4×4, and there are two Shuttle tiles — verified in the generated Verilog, where
+`TilePRCIDomain` carrying the OPU is instantiated twice and each `OuterProductUnit` contains 64 clusters.
+That is **8× the OPU** that measured 81,335 LUTs and 131,584 FFs inside a design at 20.6% LUT utilisation,
+which projects to roughly 70% of the device. Whether it closes is a measurement not yet taken.
 
 #### The third bitstream does not close, and the cause is the OPU's own clock gate
 
