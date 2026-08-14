@@ -42,6 +42,20 @@ compute_units:
   requant:
     ref: none
   scaling: none
+  # Semantic-family capability (Acceleratable Region Recall denominator): the SIMT cluster runs the
+  # float families over its CVFPU/tensor-core formats; the low-bit contraction formats fold in from the
+  # contained mx_pe. attention/normalization/softmax are the fused patterns radiance's kernels emit
+  # (flash-attention incl. MX variants, rmsnorm/layernorm, softmax) — declared over the input formats
+  # the corpus exercises (internal reductions run at higher precision on-chip).
+  semantic_capabilities:
+  - {family: contraction, dtypes: [fp32, fp16, bf16], ranks: [2, 3]}
+  - {family: reduction, dtypes: [fp32, fp16, bf16]}
+  - {family: elementwise_map, dtypes: [fp32, fp16, bf16]}
+  - {family: movement, dtypes: [fp32, fp16, bf16]}
+  - {family: synchronization}
+  - {family: attention, dtypes: [fp16, bf16, fp32, mxfp8, mxfp6, mxfp4]}
+  - {family: normalization, dtypes: [fp32, fp16, bf16]}
+  - {family: softmax, dtypes: [fp32, fp16, bf16]}
 - accumulate:
   - acc: f32
     in: mxfp4
@@ -68,6 +82,9 @@ compute_units:
   requant:
     ref: mx_gemmini.mx_requantizer
   scaling: block_e8m0
+  # The MX PE is a matmul-only tensor tile: contraction over the micro-scaled + int8 formats.
+  semantic_capabilities:
+  - {family: contraction, dtypes: [mxfp4, mxfp6, mxfp8, int8, bf16]}
 family: simt_tensor
 features:
 - simt
