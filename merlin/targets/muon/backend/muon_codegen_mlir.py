@@ -200,6 +200,32 @@ def _rmsnorm_loop_nest(g: str, x: str, o: str, r: int, c: int, eps: float) -> st
     llvm.return"""
 
 
+def _elementwise_loop_nest(a: str, b: str, o: str, n: int, combine: str) -> str:
+    """LLVM-dialect single flat loop for an equal-shape elementwise map ``O[i] = A[i] <op> B[i]`` (fp32),
+    ``op`` = fadd (combine ``add``) or fmul (combine ``mul``) — the transcendental-free VECTOR_MAP core
+    (elementwise residual-add / scale). ``n`` is the total element count (rows*cols, flattened)."""
+    fop = {"add": "llvm.fadd", "mul": "llvm.fmul"}[combine]
+    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cN = llvm.mlir.constant({n} : i64) : i64
+    llvm.br ^l(%c0 : i64)
+  ^l(%i: i64):
+    %ic = llvm.icmp "slt" %i, %cN : i64
+    llvm.cond_br %ic, ^body, ^end
+  ^body:
+    %ap = llvm.getelementptr %{a}[%i] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %av = llvm.load %ap : !llvm.ptr -> f32
+    %bp = llvm.getelementptr %{b}[%i] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %bv = llvm.load %bp : !llvm.ptr -> f32
+    %rv = {fop} %av, %bv : f32
+    %op = llvm.getelementptr %{o}[%i] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %rv, %op : f32, !llvm.ptr
+    %i2 = llvm.add %i, %c1 : i64
+    llvm.br ^l(%i2 : i64)
+  ^end:
+    llvm.return"""
+
+
 def _shape2(env: dict, name: str) -> tuple[int, int]:
     t = env.get(name)
     if t is None or len(t.shape) != 2:
@@ -247,6 +273,27 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
             raise MuonMlirCodegenError(f"attention head-dim mismatch: {q}{(m, d)} vs {k}{(n, d2)}")
         arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (q, k, dst))
         nest = _attention_qk_loop_nest(q, k, dst, m, d, n)
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
+    if "VECTOR_MAP" in by_op and len(by_op) == 1 and len(by_op["VECTOR_MAP"]) == 1:
+        cmd = by_op["VECTOR_MAP"][0]
+        o = cmd.get("operands", {})
+        attrs = cmd.get("attributes", {}) or {}
+        combine = attrs.get("combine", "add")
+        if combine not in ("add", "mul"):
+            raise MuonMlirCodegenError(f"VECTOR_MAP combine {combine!r} not supported by the reference "
+                                       f"emitter (transcendental-free add/mul only)")
+        a, b, dst = o.get("lhs"), o.get("rhs"), o.get("dst")
+        if not (a and b and dst):
+            raise MuonMlirCodegenError("VECTOR_MAP needs operands lhs/rhs/dst")
+        ta, tb = env.get(a), env.get(b)
+        if ta is None or tb is None or ta.shape != tb.shape:
+            raise MuonMlirCodegenError(f"VECTOR_MAP requires equal-shape operands, got {a}/{b}")
+        n = 1
+        for d in ta.shape:
+            n *= d
+        arg_decl = ", ".join(f"%{x}: !llvm.ptr" for x in (a, b, dst))
+        nest = _elementwise_loop_nest(a, b, dst, n, combine)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     if "RMSNORM" in by_op:

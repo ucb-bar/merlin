@@ -74,6 +74,38 @@ def test_named_ops_reach_the_reference_emitter():
         assert "llvm.func @t_kernel(" in mlir
 
 
+def test_vector_map_elementwise_emits_add_and_mul():
+    """The transcendental-free elementwise core (VECTOR_MAP add/mul) emits a valid single-loop kernel."""
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    for combine, fop in (("add", "llvm.fadd"), ("mul", "llvm.fmul")):
+        cb = {
+            "abi_version": "0.1", "target": "t",
+            "tensors": {"A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+                        "B": {"shape": [16, 16], "dtype": "f32", "role": "input"}},
+            "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"},
+                          "attributes": {"combine": combine}}],
+            "outputs": ["Y"],
+        }
+        mlir = codegen.emit_kernel_mlir(cb, target="t")
+        assert "llvm.func @t_kernel(%A: !llvm.ptr, %B: !llvm.ptr, %Y: !llvm.ptr)" in mlir
+        assert fop in mlir
+
+
+def test_vector_map_requires_equal_shape_operands():
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = {
+        "abi_version": "0.1", "target": "t",
+        "tensors": {"A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+                    "B": {"shape": [16], "dtype": "f32", "role": "input"}},
+        "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"},
+                      "attributes": {"combine": "add"}}],
+    }
+    with pytest.raises(Exception, match="equal-shape"):
+        codegen.emit_kernel_mlir(cb, target="t")
+
+
 def test_fused_named_op_plus_matmul_fails_loud_not_silent():
     """A rmsnorm fused with a matmul must NOT silently emit one half; the reference emitter raises."""
     muon = pytest.importorskip("merlin.runtime.backends.base")
