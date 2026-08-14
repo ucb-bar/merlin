@@ -783,6 +783,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     trace_check_res = {"status": "skipped", "violations": []}
     decoded_trace: dict | None = None            # kept for the advisory divergence localizer (D2)
     numeric = {"status": "skipped"}
+    executability: dict = {}                      # advisory RTL-executability smoke result(s), by tier
     failure: dict | None = None
     status = "pass"
 
@@ -1030,6 +1031,25 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _acct = (_tm.get("build_s") or 0.0) + (_tm.get("sim_active_s") or 0.0)
                 _tm["oracle_wait_s"] = round(max(0.0, _adapter_wall - _acct), 3)
             _tm["adapter_wall_s"] = round(_adapter_wall, 3)
+            if res.get("executability") is not None:
+                # ADVISORY executability smoke: a bounded-cycle RTL-legality check (does a cyclotron(L2)-
+                # passing ELF at least RUN on the real Verilator RTL — boots, no trap, MX PE accepts a
+                # command), the RTL-grounding backstop for the non-RTL-certified perf oracle. It does NOT
+                # numeric-grade and NEVER blocks: recorded as a NON-mandatory tier + an ``executability``
+                # field, and — because it is never in ``required`` — it is not_run_is_not_pass-exempt by
+                # construction. A slow/flaky RTL smoke must not fail a capsule whose L2 grade passed, so
+                # its verdict (legal/illegal) is informational only; ``mand`` is ignored here on purpose.
+                ex = res["executability"]
+                executability[tier] = ex
+                _sim_name = cfg.tier_sim.get(tier) or tier
+                if res.get("console") is not None:
+                    (paths.artifacts_dir / f"{_sim_name}_console.log").write_text(
+                        res["console"], encoding="utf-8")
+                tiers[tier] = TierResult(
+                    tier, "pass" if ex.get("legal") else "fail", mandatory=False,
+                    reason=ex.get("reason"), cycles=ex.get("cycles"), derived_from_rtl=True,
+                    evidence=f"{_sim_name}_console.log", timing=_tm, not_applicable=True)
+                continue
             if res.get("completion_only"):
                 # An RTL cert that ran the emitted kernel to completion but cannot surface its outputs
                 # for an independent numeric check (e.g. the Muon Verilator harness $finish-races the
@@ -1203,6 +1223,10 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         "trace_check": trace_check_res, "numeric": numeric,
         "failure": failure, "toolchain_shas": toolchain_shas(),
     }
+    # Advisory RTL-executability smoke (never a gate): record it as its own field when one ran, so a
+    # reader sees the RTL-legality backstop verdict without it ever touching the pass/fail status.
+    if executability:
+        result["executability"] = executability
     (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
                                                         encoding="utf-8")
     _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite)

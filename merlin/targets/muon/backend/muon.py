@@ -64,6 +64,10 @@ ORACLE = {
     "cyclotron": {"kind": "cyclotron_perf_model", "derived_from_rtl": False},
     "vcs": {"kind": "rtl_vcs_muon_difftest", "derived_from_rtl": True},
     "verilator": {"kind": "rtl_verilator_muon", "derived_from_rtl": True},
+    # Bounded-cycle executability SMOKE on the same Verilator RTL build: not a numeric cert (that is
+    # ``verilator``'s job, ~45 min/capsule) but a minutes-scale "does a cyclotron(L2)-passing ELF at
+    # least RUN on the real RTL — boots, no trap, MX PE accepts a command". Advisory only.
+    "verilator_smoke": {"kind": "rtl_verilator_smoke", "derived_from_rtl": True},
 }
 
 
@@ -272,9 +276,10 @@ def available(simulator: str = "cyclotron") -> bool:
         return base and cyclotron_path().is_file() and config_path().is_file()
     if simulator == "vcs":
         return base and vcs_path().is_file()
-    if simulator == "verilator":
-        # The Verilator RTL cert grades a fork-free ELF, so it does NOT need clang-muon (`base`); it
-        # needs the sim, the testchipip dramsim ini, and the rv64 SoC-fuse toolchain + helper.
+    if simulator in ("verilator", "verilator_smoke"):
+        # The Verilator RTL cert / bounded executability smoke grade a fork-free ELF, so they do NOT need
+        # clang-muon (`base`); they need the sim, the testchipip dramsim ini, and the rv64 SoC-fuse
+        # toolchain + helper.
         return (verilator_path().is_file()
                 and verilator_dramsim_ini().is_dir()
                 and rv64_cross_prefix() is not None
@@ -834,6 +839,173 @@ def _run_verilator(elf: Path, timeout: int) -> tuple[str, int | None]:
             f"verilator RTL sim did not reach the finished-execution marker (rc={proc.returncode}). "
             f"tail:\n{console[-600:]}")
     return console, _cycles_from_rtl_report(console)
+
+
+def _int_after(console: str, marker: str) -> int | None:
+    """The first integer token following ``marker`` in ``console`` (structural, no regex). Used to read
+    the ``... after <N> simulation cycles`` count the RTL watchdog prints when it hits the cycle cap."""
+    idx = console.find(marker)
+    if idx == -1:
+        return None
+    for tok in console[idx + len(marker):].split():
+        if tok.isdigit():
+            return int(tok)
+    return None
+
+
+def _smoke_signals(console: str, max_cycles: int, mx_ctrl_base: int | None) -> dict:
+    """Derive the executability verdict from a bounded verilator console — STRUCTURALLY (str containment
+    + token split, never regex, never a baked opcode). ``mx_ctrl_base`` (the accelerator MMIO command
+    window, DERIVED from the target's ``mx_mmio`` fact) enables the MX-engagement check; None for a
+    non-MX capsule leaves ``mx_engaged`` unknown (None), never a fabricated True/False.
+
+    Legality is intentionally coarse: the ELF BOOTED, the cores made forward PROGRESS (issued
+    instructions), the run terminated cleanly (reached the RTL ``finished execution`` marker OR was
+    stopped by the benign max-cycles watchdog), and NO genuine fault fired. The benign watchdog the
+    RadianceTapeoutSim TestDriver prints on the cap — ``*** FAILED *** (timeout)`` /
+    ``%Fatal: TestDriver.v:NN: Assertion failed`` — is NOT a fault: it is the EXPECTED bounded stop and
+    must never be read as an illegal-instruction/trap (the numeric runner's ``*** FAILED ***`` == trap
+    heuristic would misclassify it, so the smoke path never routes through that raise)."""
+    booted = "created sim object" in console and "loading ELF" in console
+    # Forward progress: the verbose commit stream issues warp instructions (``[ISSUE]``) or retires a
+    # scalar commit (``DASM(``). Either proves the fetched image executed, not merely elaborated.
+    progressed = "[ISSUE]" in console or "DASM(" in console
+    finished = "finished execution" in console
+    # The max-cycles watchdog line ("*** FAILED *** (timeout) after <N> simulation cycles"): a clean,
+    # bounded stop — NOT a fault. Its presence (or "finished execution") is what makes a legal run.
+    hit_cap = "(timeout) after" in console
+    cycles = _int_after(console, "(timeout) after")
+    if cycles is None:                       # reached the report instead of the cap
+        cycles = _int_after(console, "Cycles:")
+    # A GENUINE fault: a verilator runtime error (``%Error``/``%Fatal``) that is NOT the benign TestDriver
+    # max-cycles watchdog, or an explicit trap/illegal spelling in the commit stream. Hitting ``+max-cycles``
+    # makes the RadianceTapeoutSim TestDriver execute ``$stop`` — verilator then prints
+    # ``%Error: .../TestDriver.v:147: Verilog $stop`` alongside the ``*** FAILED *** (timeout)`` line; that
+    # is the EXPECTED bounded stop, so any ``%Error``/``%Fatal`` originating in ``TestDriver`` (or carrying
+    # the ``(timeout)`` marker) is filtered out. A real core assertion / illegal-instruction fires in a
+    # DIFFERENT module and is NOT filtered.
+    fault_lines: list[str] = []
+    for ln in console.splitlines():
+        low = ln.lower()
+        benign_watchdog = ("testdriver" in low) or ("(timeout)" in low)
+        if ("%error" in low or "%fatal" in low) and not benign_watchdog:
+            fault_lines.append(ln.strip())
+        elif ("illegal instruction" in low or "illegal_instruction" in low
+              or "unimplemented" in low or "trap to" in low or "*** fault" in low):
+            fault_lines.append(ln.strip())
+    fault = bool(fault_lines)
+    # MX-engagement: a store landed on the accelerator MMIO command window. Detect the ctrl_base address
+    # appearing in a memory/issue line — the SIMT kernel loads it into a register and issues the shared
+    # store that the MX PE consumes as a command. Zero-padded 8-hex token, matched only inside an
+    # ISSUE/LSU/store line so an incidental occurrence elsewhere cannot false-positive.
+    mx_engaged: bool | None = None
+    if mx_ctrl_base is not None:
+        tok = "%08x" % (mx_ctrl_base & 0xFFFFFFFF)
+        mx_engaged = False
+        for ln in console.splitlines():
+            if tok in ln and ("[ISSUE]" in ln or "LSU" in ln or "store" in ln.lower()):
+                mx_engaged = True
+                break
+    legal = booted and progressed and (finished or hit_cap) and not fault
+    if not booted:
+        reason = "did not boot (no sim-object/ELF-load markers) — sim build or loadmem failed"
+    elif not progressed:
+        reason = "booted but no instruction issued (cores never fetched the kernel image)"
+    elif fault:
+        reason = f"faulted on RTL: {fault_lines[0][:200]}"
+    elif finished:
+        reason = "ran to the RTL 'finished execution' marker (completed within the cycle cap)"
+    elif hit_cap:
+        reason = (f"ran legally to the {max_cycles}-cycle cap (bounded watchdog stop, no trap) — "
+                  "executability confirmed; numerical correctness is the L2 oracle's job")
+    else:
+        reason = "run ended without a completion or cap marker (indeterminate)"
+    ev = "; ".join(x for x in [
+        "booted" if booted else None,
+        "issued-instructions" if progressed else None,
+        "finished-execution" if finished else "hit-max-cycles" if hit_cap else None,
+        ("mx-command-accepted@0x%x" % mx_ctrl_base) if mx_engaged else None,
+        ("FAULT:" + fault_lines[0][:120]) if fault else None,
+    ] if x)
+    return {"ran": booted, "legal": legal, "reason": reason, "cycles_capped": hit_cap,
+            "cycles": cycles, "max_cycles": max_cycles, "booted": booted, "progressed": progressed,
+            "finished": finished, "fault": fault,
+            "fault_evidence": fault_lines[0][:300] if fault_lines else None,
+            "mx_engaged": mx_engaged, "console_evidence": ev}
+
+
+def run_elf_smoke(elf: str | Path, *, max_cycles: int = 40000, timeout: int = 900,
+                  seed: int | None = None, mx_ctrl_base: int | None = None,
+                  keep_console: bool = False) -> dict:
+    """Bounded-cycle Verilator EXECUTABILITY smoke — the RTL-grounding backstop for the (non-RTL-cert)
+    cyclotron oracle. Fuse the rv32 Muon ELF into the rv64 SoC carrier (:func:`fuse_soc_elf`) and run it
+    on the SAME ``RadianceTapeoutSimConfig`` Verilator build the L3 cert uses, but with a SMALL
+    ``+max-cycles`` cap so it CANNOT hang — the sim is bounded by the RTL watchdog AND the wall-clock
+    ``timeout``. Returns a structured executability dict (see :func:`_smoke_signals`); it does NOT numeric-
+    grade (that is the cyclotron L2 oracle's job) and NEVER raises on a cap-hit — only genuine
+    unavailability (missing sim / fuse toolchain) raises :class:`MuonUnavailable`, so an absent RTL build
+    degrades honestly instead of failing a capsule whose L2 grade passed.
+
+    Determinism: the automatic random seed is dropped (a fixed default seed) so the same ELF yields the
+    same verdict; pass ``seed`` to pin ``+ntb_random_seed`` explicitly. ``+verbose`` is REQUIRED — the
+    per-cycle commit stream is what surfaces forward-progress and the MX command store; the cap keeps its
+    volume bounded. The console is streamed to a logfile in the ELF's workdir (not held wholesale in
+    memory)."""
+    import resource
+    import time as _time
+    if not available("verilator"):
+        raise MuonUnavailable("verilator RTL sim (or the rv64 SoC-fuse toolchain / dramsim ini) not "
+                              "available — cannot run the executability smoke")
+    elf = Path(elf).resolve()
+    work = elf.parent
+    soc = fuse_soc_elf(elf, work)
+    sqlite = work / "muon_smoke_trace.sqlite"
+    log = work / "verilator_smoke.log"
+    cmd = [str(verilator_path()), "+permissive", "+dramsim",
+           f"+dramsim_ini_dir={verilator_dramsim_ini()}",
+           f"+max-cycles={int(max_cycles)}", "+verbose",
+           f"+trace-db={sqlite}", f"+loadmem={soc}", "+permissive-off", str(soc)]
+    if seed is not None:
+        cmd.insert(-1, f"+ntb_random_seed={int(seed)}")  # else the fixed default seed (deterministic)
+
+    def _unlimited_stack() -> None:
+        try:
+            resource.setrlimit(resource.RLIMIT_STACK,
+                               (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+        except (ValueError, OSError):
+            pass
+
+    t0 = _time.perf_counter()
+    with open(log, "wb") as fh:
+        try:
+            subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout,
+                           cwd=str(verilator_path().parent), preexec_fn=_unlimited_stack)
+        except subprocess.TimeoutExpired:
+            # The wall-clock guard fired before the cycle cap — the run is still BOUNDED (not a hang),
+            # but we cannot certify a clean stop. Report it as an honest indeterminate, not a fault.
+            wall = round(_time.perf_counter() - t0, 1)
+            console = _read_tail(log)
+            sig = _smoke_signals(console, max_cycles, mx_ctrl_base)
+            sig.update(ran=sig["booted"], legal=False, wall_s=wall, timed_out_wall=True,
+                       reason=f"exceeded the {timeout}s wall-clock budget before the {max_cycles}-cycle "
+                              f"cap (increase timeout or lower max_cycles); bounded, not a hang")
+            return sig
+    wall = round(_time.perf_counter() - t0, 1)
+    console = log.read_text(errors="replace") if keep_console else _read_tail(log)
+    # Signal derivation needs the WHOLE stream (MX store / progress can be anywhere), so scan the file.
+    sig = _smoke_signals(log.read_text(errors="replace"), max_cycles, mx_ctrl_base)
+    sig["wall_s"] = wall
+    sig["log"] = str(log)
+    sig["console_tail"] = console if not keep_console else console[-4000:]
+    return sig
+
+
+def _read_tail(path: Path, n: int = 4000) -> str:
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return ""
+    return data[-n:].decode(errors="replace")
 
 
 def run_elf(elf: str | Path, simulator: str = "cyclotron",

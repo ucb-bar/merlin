@@ -131,6 +131,59 @@ def verilator_muon_adapter() -> Callable:
     return _adapter("verilator")
 
 
+def _mx_ctrl_base(target: str) -> int | None:
+    """The accelerator MMIO command-window base for ``target``, DERIVED from its ``mx_mmio`` fact (the
+    same header-derived, provenance-tagged block the MX kernel emitter reads) — never a baked address.
+    None for a target with no MX PE, which leaves the smoke's MX-engagement check honestly unknown."""
+    try:
+        from merlin.targetgen.rtl import mlc_bridge
+        mm = mlc_bridge.mx_mmio_for(target)
+        if mm and mm.get("ctrl_base") is not None:
+            return int(mm["ctrl_base"])
+    except Exception:  # noqa: BLE001 — no contract / no MX fact -> MX-engagement simply unknown
+        pass
+    return None
+
+
+def verilator_smoke_adapter(max_cycles: int | None = None, seed: int | None = None) -> Callable:
+    """ADVISORY oracle: a bounded-cycle Verilator EXECUTABILITY smoke — the RTL-grounding backstop for the
+    (non-RTL-certified) cyclotron perf oracle. It compiles the SAME submission artifact the graded
+    adapters do (fork-free), then runs it on the RadianceTapeoutSim Verilator build with a SMALL
+    ``+max-cycles`` cap (:func:`..muon.run_elf_smoke`) so it CANNOT hang, and records whether the ELF at
+    least RUNS on real RTL (boots, makes forward progress, no illegal-instruction/trap, and — for an MX
+    capsule — the MX PE accepts a command). It does NOT numeric-grade (that is the cyclotron L2 oracle's
+    job) and the result is carried as an ``executability`` field the runner records as a NON-mandatory,
+    never-blocking tier. Fails closed (``MuonUnavailable``) when the RTL build / fuse toolchain is absent,
+    so an unavailable smoke degrades honestly — it can never fail a capsule whose L2 grade passed."""
+    import os
+
+    def run(cb: dict, kernel_src: str, workdir: str | Path, timeout: int) -> dict:
+        if not muon.available("verilator_smoke"):
+            raise muon.MuonUnavailable("verilator RTL sim / rv64 SoC-fuse toolchain not available "
+                                       "for the executability smoke")
+        mc = int(max_cycles if max_cycles is not None
+                 else os.environ.get("MERLIN_EXEC_SMOKE_MAXCYCLES", "40000"))
+        target = cb.get("target", "radiance")
+        from . import muon_harness as _mh
+        t0 = time.perf_counter()
+        # Build the graded artifact EXACTLY as the real oracle does, so the smoke certifies the same ELF.
+        if muon.is_mlir_artifact(kernel_src):
+            elf = muon.compile_mlir_forkfree(kernel_src, cb, workdir, target=target)
+        else:
+            program = _mh.program_from_cb(cb, kernel_src, muon._model_for(target)) or kernel_src
+            elf, _tc = muon.compile_for_oracle(program, workdir, target=target)
+        t1 = time.perf_counter()
+        sig = muon.run_elf_smoke(elf, max_cycles=mc, timeout=timeout, seed=seed,
+                                 mx_ctrl_base=_mx_ctrl_base(target))
+        t2 = time.perf_counter()
+        return {"executability": sig, "advisory": True,
+                "console": sig.get("console_tail", ""),
+                "cycles": sig.get("cycles"),
+                "oracle": dict(muon.ORACLE["verilator_smoke"]),
+                "timing": _timing(t1 - t0, t2 - t1)}
+    return run
+
+
 def _shape2d(shape) -> tuple[int, int]:
     dims = [int(d) for d in (shape or []) if int(d) > 0] or [1]
     if len(dims) == 1:
@@ -191,5 +244,14 @@ def arc_readback_adapter() -> Callable:
 def default_adapters() -> dict[str, Callable]:
     """Tier -> adapter for the Muon runner. L2 = cyclotron (perf), L3 = VCS-RTL cert. The RTL-arc readback
     oracle (``arc_readback_adapter``) is the sim-independent, multi-warp-capable grade a real new target has
-    (its RTL-compiled model); selected by the harness when a run needs memory-readback rather than console."""
-    return {"L2": cyclotron_adapter(), "L3": verilator_muon_adapter()}
+    (its RTL-compiled model); selected by the harness when a run needs memory-readback rather than console.
+
+    ``L3-smoke`` — the ADVISORY bounded-cycle Verilator executability backstop — is added ONLY when
+    ``MERLIN_EXEC_SMOKE`` is set, so a normal grade is byte-identical when it is off. It is opt-in
+    (off by default) because it spends minutes of Verilator per capsule; when on, the runner records it as
+    a non-mandatory, never-blocking ``executability`` tier (RTL-legality grounding for the L2 oracle)."""
+    import os
+    adapters: dict[str, Callable] = {"L2": cyclotron_adapter(), "L3": verilator_muon_adapter()}
+    if os.environ.get("MERLIN_EXEC_SMOKE", "").strip().lower() in ("1", "true", "yes", "on"):
+        adapters["L3-smoke"] = verilator_smoke_adapter()
+    return adapters
