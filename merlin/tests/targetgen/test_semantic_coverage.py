@@ -7,10 +7,12 @@ from merlin.common.paths import repo_root
 from merlin.targetgen import compute_units as cu
 from merlin.targetgen import coverage_certificate as cert
 from merlin.targetgen import coverage_report as cov
+from merlin.targetgen import capability_probes as cp
 from merlin.targetgen import eligibility as el
 from merlin.targetgen import generalization_splits as gs
 from merlin.targetgen import routing as rt
 from merlin.targetgen import semantic_families as sf
+from merlin.targetgen import semantic_fuzzer as fz
 
 
 # --- A1: canonical semantic-family vocabulary ---------------------------------------------------
@@ -223,6 +225,54 @@ def test_leave_one_family_out_splits():
     assert {x["held_out_family"] for x in splits} == {"contraction", "softmax"}
     # every split withholds something and keeps something
     assert all(x["holdout"] and x["dev"] for x in splits)
+
+
+# --- D1: capability-derived property-test synthesis ---------------------------------------------
+
+def _rad_like_capmap():
+    contract = {"compute_units": [
+        {"name": "simt", "kind": "simt", "dtypes": ["fp16", "fp32", "bf16"],
+         "ops": ["matmul", "elementwise"],
+         "semantic_capabilities": [
+             {"family": "contraction", "dtypes": ["fp16", "fp32", "bf16"], "ranks": []},
+             {"family": "reduction", "dtypes": ["fp16", "fp32", "bf16"]},
+             {"family": "elementwise_map", "dtypes": ["fp16", "fp32", "bf16"]},
+             {"family": "softmax", "dtypes": ["fp16", "fp32", "bf16"]},
+         ]},
+    ]}
+    return el.capability_map_from_contract(contract)
+
+
+def test_probes_are_derived_and_eligible_by_construction():
+    cm = _rad_like_capmap()
+    probes = cp.synthesize(cm)
+    assert probes, "closure should synthesize probes"
+    # a probe exists for every declared family, and spans multiple generalization axes
+    fams = {p.descriptor.family for p in probes}
+    assert {"contraction", "reduction", "elementwise_map", "softmax"} <= fams
+    assert {"shape", "dtype"} <= {p.axis for p in probes}
+    # THE self-consistency property: every derived probe is drawn from the closure, so is eligible
+    for p in probes:
+        assert el.is_eligible(p.descriptor, cm).eligible, f"probe {p.name} not eligible: {p.descriptor}"
+    # deterministic: same contract -> same probe set
+    assert [p.name for p in cp.synthesize(cm)] == [p.name for p in probes]
+
+
+# --- D2: constrained-random semantic fuzzing ----------------------------------------------------
+
+def test_fuzzer_is_deterministic_and_in_closure():
+    cm = _rad_like_capmap()
+    a = fz.fuzz_corpus(cm, 20, base_seed=0)
+    b = fz.fuzz_corpus(cm, 20, base_seed=0)
+    # deterministic per seed
+    assert [p.name for p in a] == [p.name for p in b]
+    assert [tuple(r.source for r in p.regions) for p in a] == \
+           [tuple(r.source for r in p.regions) for p in b]
+    # every fuzzed region is legal (in-closure -> eligible)
+    for prog in a:
+        assert prog.regions
+        for r in prog.regions:
+            assert el.is_eligible(r, cm).eligible, f"fuzzed region not eligible: {r}"
 
 
 def test_eligibility_does_not_depend_on_routing():
