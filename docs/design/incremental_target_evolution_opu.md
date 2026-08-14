@@ -3,7 +3,7 @@ title: "Design: incremental target evolution — RVV + Saturn OPU as the driving
 kind: design
 status: draft
 owner: targetgen
-last_verified: 2026-08-13
+last_verified: 2026-08-14
 related: [beam_cca_architecture, target_onboarding, lowering_pipeline, llvm_integration, reproducibility]
 code_refs:
   - merlin/python/merlin/targetgen/compute_units.py
@@ -628,6 +628,45 @@ clusters against v256d128's 4×4, and there are two Shuttle tiles — verified i
 `TilePRCIDomain` carrying the OPU is instantiated twice and each `OuterProductUnit` contains 64 clusters.
 That is **8× the OPU** that measured 81,335 LUTs and 131,584 FFs inside a design at 20.6% LUT utilisation,
 which projects to roughly 70% of the device. Whether it closes is a measurement not yet taken.
+
+The measurement has now been taken, and **the two-core configuration does not route.** The ~70% projection
+was wrong — post-synthesis came in at **1,492,274 LUTs, 86.36%** of the U250 (each `ShuttleTile` 601,039
+LUTs, each `vopu` 348,328 LUTs / 526,336 FFs; the OPU half of the projection was right, the rest of Kodiak
+was under-estimated). Placement closed setup comfortably at **WNS +0.322 ns**, and the router reduced node
+overlaps from 1,950,333 to about 47,000, but Phase 8 ended with
+
+```
+CRITICAL WARNING: [Route 35-162] 23531 signals failed to route due to routing congestion
+```
+
+and **26,865 residual node overlaps** — an illegal route that `write_bitstream` will not accept.
+
+Two things about reading that report are worth recording, because one of them misled this work for twenty
+minutes. First, the same summary reports `Number of Failed Nets = 0`; that counts only *unrouted* and
+*partially routed* nets and says nothing about legality when `Number of Node Overlaps` is nonzero, and the
+Router Utilization Summary above it (42.0% vertical, 51.0% horizontal) is likewise computed excluding the
+failed nets, as its own footnote states. Second, the router **names the congestion source**: the top
+contended nodes are `vopu_ctrl_reg_mrf_idx_7[*]` and the cell input registers
+`vopu/clusters_4_5/cells_3_0/…in_l…` — the matrix-register-file index fanning out to 1024 cells per unit.
+
+Frequency is not the lever, and this is the second time that has had to be said: the binding clock is the
+shell's `mmcm_clkout0`, whose period `fpga_frequency` does not set, and congestion is not a period problem
+in any case. Area is the lever. Three exist, in descending size: **one Shuttle tile instead of two**
+(−601,039 LUTs of core and −348,328 of OPU, landing near 31%, and requiring no re-certification);
+**`nMrfRegs` 4→2**, halving `regsPerCell = (vLen/dLen)² × nMrfRegs = 16` (`OuterProductUnit.scala:29-30`)
+and attacking precisely the `mrf_idx` structure the router named, but reaching only ~73% and changing an
+architecturally visible register count, so the 31/31 corpus would need re-certifying; and **mapping the
+MACs to DSPs**, since `vopu` currently uses **zero** of the device's 12,288 DSPs — though that is worth
+about 12% of the device rather than the large share it first appears, because the 8×8 multiply is only
+~60–70 of the 340 LUTs per cell and the 16-entry dynamic-index accumulator file dominates the rest.
+
+The first lever was taken: `Kodiak1CoreConfig` / `KodiakOPU1CoreConfig` and their `FireSim…` wrappers, with
+the core count threaded as a constructor parameter on `WithKodiakBase`. That spelling is not cosmetic —
+`WithNShuttleCores` *appends* (`} ++ prev`, and `NumTiles => up(NumTiles) + n`), so listing a `(1)` mixin
+ahead of a base carrying `(2)` would have produced a **three**-core design with no elaboration error at all.
+The resulting bitstream must be cited as **single-core Kodiak**: the vector unit, TCM, L1s, L2, scratchpad
+and bus widths are Kodiak's, so a datapath or whole-model number measured on it is a statement about
+Kodiak's vector unit, but nothing that depends on core count or inter-core traffic may be read from it.
 
 #### The third bitstream does not close, and the cause is the OPU's own clock gate
 
