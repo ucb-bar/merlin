@@ -146,6 +146,48 @@ def _verilator_per_capsule_timeout() -> int:
     print(f"[timeout] no target-confirmed L3 timing for {tgt!r}; using conservative 2400s. Run readiness "
           f"or the L3 measurement to record scripts/.oracle_timing.{tgt}.json", file=sys.stderr)
     return 2400
+
+
+def _cycle_accurate_checkpoint_enabled() -> tuple[bool, str]:
+    """Whether to run the cycle-accurate RTL-cert (verilator/L3) barrier for THIS target.
+
+    Target-agnostic + DERIVED, never a per-target literal: the barrier's cycle-accurate cert tiers are the
+    checkpoint ladder (:func:`qa_checkpoint_adapters`) MINUS the fast loop tier (:func:`qa_loop_adapters`) —
+    e.g. verilator L3 (and VCS L4) once spike/cyclotron L2 is the loop gate. The barrier is a pass-gate ONLY
+    when at least one of those cert tiers is a MANDATORY tier of the pilot corpus (listed in a public
+    capsule's ``required_oracle_tiers``). A target whose corpus makes every cert tier OPTIONAL — a prototype
+    / not-RTL-certified accelerator graded on its functional oracle (its required tier is the fast
+    functional sim, e.g. cyclotron L2) — SKIPS the barrier, so a normal run is never blocked on a
+    slow/hanging RTL sim (the atlas-0/N `oracle_unavailable` trap, here on the driver side). An explicit
+    ``MERLIN_CAPSULE_L3_CHECKPOINT`` env var forces it on (opt-in RTL cert when the sim is available and
+    there is time) or off, overriding the derivation."""
+    env = os.environ.get("MERLIN_CAPSULE_L3_CHECKPOINT")
+    if env is not None:
+        on = env.strip().lower() in ("1", "true", "yes", "on")
+        return on, f"MERLIN_CAPSULE_L3_CHECKPOINT={env!r} (explicit opt-{'in' if on else 'out'})"
+    from merlin.targetgen import capsule_runner as _CR
+    try:
+        te = _te()
+        ck = _CR.qa_checkpoint_adapters(te.target, te.sim_via)
+        loop = _CR.qa_loop_adapters(te.target, te.sim_via)
+    except Exception:  # noqa: BLE001 — no resolvable checkpoint oracle -> nothing to gate on
+        ck, loop = {}, {}
+    cert_tiers = set(ck) - set(loop)   # the cycle-accurate cert tiers held back from the fast loop
+    if not cert_tiers:
+        return False, "no cycle-accurate cert tier beyond the fast loop oracle for this target"
+    mandatory: set[str] = set()
+    for cf in Path(_pilot_subset()).rglob("capsule.yaml"):
+        try:
+            doc = yaml.safe_load(cf.read_text()) or {}
+        except Exception:  # noqa: BLE001
+            continue
+        mandatory |= set(doc.get("required_oracle_tiers") or [])
+    hit = sorted(cert_tiers & mandatory)
+    if hit:
+        return True, f"cert tier(s) {hit} are mandatory in the pilot corpus"
+    return False, (f"cert tier(s) {sorted(cert_tiers)} are OPTIONAL for the pilot corpus (functional-tier "
+                   f"pass bar) — skipping the cycle-accurate RTL barrier; set "
+                   f"MERLIN_CAPSULE_L3_CHECKPOINT=1 to opt in")
 _EXPERIMENT = "full"    # set in main(): 'full' (abc1) or 'realistic' (abc2, whole-repo + self-check)
 _ARM = ""               # set in main(): the arm being run (enforces the per-arm language mandate)
 _DRIVER = "auto"        # set in main(): agent driver (auto|converse|claudecode|opencode); auto routes by model
@@ -1542,7 +1584,13 @@ def main(argv: list[str] | None = None) -> int:
 
     verilator_attempts: list = []
     _ready_marker = (ws / "submission" / READY_MARKER).exists()
-    if verdict.get("all_pass") or (_EXPERIMENT == "realistic" and _ready_marker):
+    # The cycle-accurate RTL barrier is a pass-gate only when the target's corpus makes its RTL-cert tier
+    # MANDATORY. A prototype target graded on its functional oracle (L3 optional) skips it, so a normal run
+    # is not blocked on a slow/hanging verilator; convergence then rides the functional-tier (L2) verdict.
+    _run_l3, _l3_reason = _cycle_accurate_checkpoint_enabled()
+    if not _run_l3:
+        print(f"[verilator] cycle-accurate RTL (L3) barrier SKIPPED — {_l3_reason}")
+    if _run_l3 and (verdict.get("all_pass") or (_EXPERIMENT == "realistic" and _ready_marker)):
         # ready = spike-converged OR (realistic) the agent declared done -> run the L3 verilator barrier.
         # In realistic mode this barrier IS the definition of done; the agent already self-checked on the
         # tool, so this confirms on the operator side. Up to VERILATOR_ATTEMPTS with a fix-round between.

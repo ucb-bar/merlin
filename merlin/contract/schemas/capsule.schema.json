@@ -91,6 +91,7 @@
     },
     "vcs": {"type": "string", "enum": ["required", "optional", "unavailable"]},
     "firesim": {"type": "string", "enum": ["required", "optional", "unavailable"]},
+    "verilator": {"type": "string", "enum": ["required", "optional", "unavailable"], "description": "Availability of the cycle-accurate Verilator RTL-cert tier (L3). optional = graded when the sim is available but NOT a pass-gate; the mandatory numeric tier is whatever the capsule lists in required_oracle_tiers (e.g. L2 = a functional oracle). A prototype/not-RTL-certified target sets this optional so an unavailable/slow RTL sim never forces incomplete."},
     "semantic": {
       "type": "object",
       "description": "Target-conditioned semantic-coverage annotations (Acceleratable Region Recall). semantic_family is the canonical computation family this capsule exercises (derived from operation.op when omitted); eligible is an author override of the independent eligibility oracle (auto = derive); must_accelerate makes a fallback on an eligible region a FAIL; generalization_axis records which held-out axis this capsule probes.",
