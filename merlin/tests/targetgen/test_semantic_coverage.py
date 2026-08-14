@@ -180,6 +180,31 @@ def test_generalization_axis_breakdown():
     assert axes["shape"]["n_eligible"] == 2 and axes["shape"]["recall"] == 0.5
 
 
+# --- cross-target: the denominator DERIVES per target, it is not one shape ----------------------
+
+def _residual_caps(relpath: str) -> dict:
+    from merlin.common.yaml import load_yaml
+    res = load_yaml(repo_root() / relpath)
+    return cu.semantic_capability_map(cu.compute_units(res))
+
+
+def test_semantic_capabilities_differ_across_targets():
+    # Each target's declared hardware capability follows its silicon — a GEMM mesh, a matmul-only MX
+    # tile, and a full SIMT tensor target expose progressively larger semantic surfaces. This is the
+    # derive-not-overfit property: the ARR denominator is not a single hardcoded shape.
+    gem = _residual_caps("merlin/targets/gemmini/contracts/residual.yaml")
+    mx = _residual_caps("out/artifacts/targets/mx_gemmini/contracts/residual.yaml")
+    rad = _residual_caps("out/artifacts/targets/radiance/contracts/residual.yaml")
+
+    assert set(gem) == {"contraction", "elementwise_map", "movement"}          # int8 GEMM accelerator
+    assert gem["contraction"].dtypes == ("int8",)
+    assert set(mx) == {"contraction"}                                          # matmul-only MX tile
+    assert "mxfp8" in mx["contraction"].dtypes
+    assert {"attention", "softmax", "normalization", "reduction"} <= set(rad)  # full SIMT tensor target
+    # value scales with the resource-legality surface: strictly growing family sets
+    assert len(gem) < len(rad) and len(mx) < len(rad)
+
+
 def test_eligibility_does_not_depend_on_routing():
     # The denominator must be independent of the compiler's routing/lowering. Walk the AST and assert
     # no import (module- or function-level) pulls in routing — so a future edit can't silently create

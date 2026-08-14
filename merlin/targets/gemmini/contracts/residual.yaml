@@ -94,6 +94,14 @@ compute_units:
     ops: [matmul]
     scaling: per_channel
     requant: {ref: gemmini.accumulator_scale}
+    # Semantic-family capability (ARR denominator): a GEMM accelerator — int8 contraction on the mesh
+    # (matmul + conv2d via im2col), the fused relu/requant/bias epilogue (elementwise_map on readout),
+    # and mvin/mvout DMA (movement). It has NO general reduction / softmax / attention / normalization
+    # hardware, so those families are honestly absent (regions needing them fall back off-mesh).
+    semantic_capabilities:
+      - {family: contraction, dtypes: [int8], ranks: [2]}
+      - {family: elementwise_map, dtypes: [int8]}
+      - {family: movement, dtypes: [int8]}
 # capabilities is intentionally empty: op/layout support is not pre-declared here. Mesh geometry +
 # scratchpad/accumulator capacities are CIRCT-extracted facts (arrays/memories), read from the fact
 # bundle by consumers; the supported ops/layouts follow from the agent's own target dialect, verified
