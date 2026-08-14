@@ -664,6 +664,8 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     engine = f"merlin-compile model --target {target} --run {run_where} --verify"
     if out.get("routing_plan") is not None:                   # per-op mesh routing for the target
         result["routing_plan"] = out["routing_plan"]
+    if out.get("coverage_certificate") is not None:           # ARR certificate (numerator×independent oracle)
+        result["coverage_certificate"] = out["coverage_certificate"]
     if out.get("mesh_execution") is not None:                 # per-tile on-mesh EXECUTION for the target
         result["mesh_execution"] = out["mesh_execution"]
     # A quantized whole model diverges from the fp32 golden BY DESIGN (int8/fp8 rounding). When the strict
@@ -768,6 +770,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     if capsule.get("kind") == "model":
         result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout)
         (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        # Persist the ARR coverage certificate as its own durable artifact (not only inside
+        # capsule_result.json) so the report/grader can read it back per compilation.
+        cert = result.get("coverage_certificate")
+        if cert is not None:
+            paths.generated.mkdir(parents=True, exist_ok=True)
+            (paths.generated / "coverage_certificate.json").write_text(
+                json.dumps(cert, indent=2), encoding="utf-8")
         return result
 
     tiers: dict[str, TierResult] = {}
