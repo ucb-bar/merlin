@@ -11,6 +11,8 @@ Sections (each is an independent pass/fail; a failure does not abort the rest):
                            correct bundles; agg_ab_results runs
   E. anti-cheat gate     — verify_no_cheat.py PASS (delegated)
   F. bundle integrity    — all 6 bundles exist, parse, and every API a prompt names actually imports
+  G. ARR coverage        — the independent eligibility oracle is live for the target: non-empty
+                           capability map, oracle discriminates, corpus capsules carry `semantic` tags
 
 Exit 0 = GO. Non-zero = NO-GO.  Usage: readiness_check.py
 """
@@ -382,11 +384,81 @@ def test_oracles_endtoend():
         subprocess.run(["pkill", "-9", "-f", "simulator-chipyard"], capture_output=True)
 
 
+# ---- G. ARR coverage readiness ---------------------------------------------------------------------
+def test_arr_readiness():
+    """The ARR pipeline must be LIVE for the launch target before a run — otherwise the run emits a
+    phantom coverage (denominator empty ⇒ vacuous 1.0). Confirms three things, target-agnostically:
+    (1) the target's capability contract yields a NON-EMPTY semantic-capability map (the independent
+    ARR denominator exists); (2) the eligibility oracle DISCRIMINATES (a declared family+dtype is
+    eligible, an out-of-closure dtype is not — so the denominator is meaningful, not all-true);
+    (3) the corpus capsules carry `semantic` annotations (so the per-axis generalization breakdown is
+    computable). No agent, no spend."""
+    section("G. ARR coverage readiness (independent eligibility oracle live for the target)")
+    from merlin.targetgen import eligibility as EL
+    from merlin.targetgen.eligibility import RegionDescriptor
+
+    cap_map = EL.capability_map_for_target(TARGET)
+    fams = sorted(cap_map)
+    _ok(f"{TARGET} declares a non-empty semantic-capability map (ARR denominator exists)",
+        bool(cap_map), f"families: {', '.join(fams) or '(none)'}")
+    if not cap_map:
+        return
+
+    fam = "contraction" if "contraction" in cap_map else fams[0]
+    cap = cap_map[fam]
+    dt = (list(cap.dtypes) or [None])[0]
+    contractionish = fam in ("contraction", "attention")
+    pos = RegionDescriptor(source="readiness/pos", family=fam, in_dtype=dt,
+                           weight_dtype=(dt if contractionish else None),
+                           m=16, k=(16 if contractionish else None),
+                           n=(16 if contractionish else None), rank=2)
+    neg = RegionDescriptor(source="readiness/neg", family=fam, in_dtype="__not_a_real_dtype__",
+                           weight_dtype=("__not_a_real_dtype__" if contractionish else None),
+                           m=16, k=(16 if contractionish else None),
+                           n=(16 if contractionish else None), rank=2)
+    vp, vn = EL.is_eligible(pos, cap_map), EL.is_eligible(neg, cap_map)
+    _ok("eligibility oracle DISCRIMINATES (in-closure eligible, out-of-closure rejected)",
+        vp.eligible and not vn.eligible,
+        f"{fam}/{dt}→{vp.eligible}; {fam}/bogus-dtype→{vn.eligible} ({vn.reason})")
+
+    # Per-family annotation is required on op/layer/slice capsules (they carry ONE semantic_family for the
+    # generalization axes). Whole-model capsules (kind == "model") legitimately span many families and carry
+    # no single family — they are graded per-region via the coverage_certificate, so they are exempt here.
+    # The corpus is the target-experiment's resolved corpus + its sibling categories (derived, not a
+    # hardcoded per-target path — the shared corpus lives in isa/ + layers/ + model_slices/).
+    roots = [_TE.capsule_corpus] + [REPO / s.rstrip("/") for s in _TE.corpus_siblings()]
+    cap_files = sorted({p for r in roots for p in r.rglob("capsule.yaml")})
+    annotated = missing = model = 0
+    for cf in cap_files:
+        try:
+            doc = yaml.safe_load(cf.read_text(encoding="utf-8")) or {}
+        except Exception:
+            doc = {}
+        if doc.get("kind") == "model":
+            model += 1
+            continue
+        if isinstance(doc.get("semantic"), dict) and doc["semantic"].get("semantic_family"):
+            annotated += 1
+        else:
+            missing += 1
+    need = annotated + missing
+    if annotated == 0:
+        # Target has not adopted ARR annotation — advisory (per-axis breakdown simply unavailable), not a
+        # regression that should NO-GO an otherwise-ready run (e.g. the gemmini ladder does not use ARR).
+        _ok(f"{TARGET} corpus `semantic` annotation (advisory: ARR per-axis breakdown unavailable)",
+            True, f"0/{need} family capsules annotated (+{model} whole-model)")
+    else:
+        # Once annotation is adopted it must be COMPLETE — a partially annotated corpus silently drops the
+        # unannotated capsules from the per-axis ARR, which reads as coverage the run never measured.
+        _ok(f"{TARGET} family capsules carry `semantic` annotations (per-axis ARR computable)",
+            missing == 0, f"{annotated}/{need} annotated (+{model} whole-model exempt)")
+
+
 def main() -> int:
     sys.path.insert(0, str(REPO / "merlin" / "python"))
     print("READINESS CHECK — exercising all tooling (no agent launched)")
     for fn in (test_starter_kit, test_generators, test_circt_gate, test_harness,
-               test_oracles_endtoend, test_verify_no_cheat, test_bundles):
+               test_oracles_endtoend, test_verify_no_cheat, test_bundles, test_arr_readiness):
         try:
             fn()
         except Exception as e:
