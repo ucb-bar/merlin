@@ -8,6 +8,7 @@ from merlin.targetgen import compute_units as cu
 from merlin.targetgen import coverage_certificate as cert
 from merlin.targetgen import coverage_report as cov
 from merlin.targetgen import eligibility as el
+from merlin.targetgen import generalization_splits as gs
 from merlin.targetgen import routing as rt
 from merlin.targetgen import semantic_families as sf
 
@@ -203,6 +204,25 @@ def test_semantic_capabilities_differ_across_targets():
     assert {"attention", "softmax", "normalization", "reduction"} <= set(rad)  # full SIMT tensor target
     # value scales with the resource-legality surface: strictly growing family sets
     assert len(gem) < len(rad) and len(mx) < len(rad)
+
+
+# --- C2: leave-one-family-out splits ------------------------------------------------------------
+
+def test_leave_one_family_out_splits():
+    caps = [
+        {"name": "A", "operation": {"op": "matmul"}, "semantic": {"semantic_family": "contraction"}},
+        {"name": "B", "operation": {"op": "matmul"}, "semantic": {"semantic_family": "contraction"}},
+        {"name": "C", "operation": {"op": "softmax"}, "semantic": {"semantic_family": "softmax"}},
+        {"name": "M", "kind": "model", "operation": {"op": "model"}},   # whole-model: never held out
+    ]
+    assert gs.families_present(caps) == ["contraction", "softmax"]
+    s = gs.partition_by_family(caps, "softmax")
+    assert s["holdout"] == ["C"]
+    assert "M" in s["dev"] and "A" in s["dev"]            # model stays in dev as an integration test
+    splits = gs.leave_one_family_out_splits(caps)
+    assert {x["held_out_family"] for x in splits} == {"contraction", "softmax"}
+    # every split withholds something and keeps something
+    assert all(x["holdout"] and x["dev"] for x in splits)
 
 
 def test_eligibility_does_not_depend_on_routing():
