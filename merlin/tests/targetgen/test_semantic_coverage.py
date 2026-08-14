@@ -6,6 +6,7 @@ from __future__ import annotations
 from merlin.common.paths import repo_root
 from merlin.targetgen import compute_units as cu
 from merlin.targetgen import coverage_certificate as cert
+from merlin.targetgen import coverage_report as cov
 from merlin.targetgen import eligibility as el
 from merlin.targetgen import routing as rt
 from merlin.targetgen import semantic_families as sf
@@ -117,6 +118,38 @@ def test_coverage_certificate_surfaces_false_fallback_and_ineligible():
     m = c["metrics"]
     assert m["acceleratable_region_recall"] == 0.5    # 1 of 2 eligible accelerated
     assert m["acceleration_precision"] == 0.5         # 1 of 2 accelerated were eligible
+
+
+# --- B2: suite-level ARR in the coverage aggregate ----------------------------------------------
+
+def test_suite_acceleratable_coverage():
+    # Three capsules with author-eligibility overrides (target=None -> oracle empty, overrides drive it).
+    # A2 accelerated (passed L2/spike); A7 eligible but only L1 passed = false_fallback; SORT ineligible.
+    caps = [
+        {"name": "A2", "operation": {"op": "matmul"}, "numeric_policy": {"dtype": "bf16"},
+         "semantic": {"eligible": True, "must_accelerate": True}},
+        {"name": "A7", "operation": {"op": "matmul"}, "numeric_policy": {"dtype": "bf16"},
+         "semantic": {"eligible": True, "must_accelerate": True}},
+        {"name": "SORT", "operation": {"op": "reduce"}, "numeric_policy": {"dtype": "fp32"},
+         "semantic": {"eligible": False, "fallback_allowed": True}},
+    ]
+    results = [
+        {"capsule": "A2", "kind": "isa", "label": "public", "status": "pass",
+         "tiers": {"L2": {"status": "pass"}}},
+        {"capsule": "A7", "kind": "isa", "label": "public", "status": "fail",
+         "tiers": {"L1": {"status": "pass"}, "L2": {"status": "fail"}}},
+        {"capsule": "SORT", "kind": "isa", "label": "public", "status": "pass",
+         "tiers": {"L0": {"status": "pass"}}},
+    ]
+    cap_by_name = {c["name"]: c for c in caps}
+    ac = cov._acceleratable_coverage(results, cap_by_name, target=None)
+    assert ac["n_eligible"] == 2
+    assert ac["n_eligible_accelerated"] == 1
+    assert ac["false_fallback"] == ["A7"]
+    assert ac["acceleratable_region_recall"] == 0.5
+    # full aggregate surfaces it too
+    full = cov.aggregate(results, capsules=caps, target=None)
+    assert full["acceleratable_coverage"]["false_fallback"] == ["A7"]
 
 
 def test_eligibility_does_not_depend_on_routing():

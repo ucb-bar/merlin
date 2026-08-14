@@ -21,6 +21,85 @@ _FALLBACK_MODES = ["i8", "relu", "acc_scale", "k_accumulate", "resident_reuse",
 TIERS = ["L0", "L1", "L2", "L3", "L4", "L5"]
 
 
+def _ratio(num: int, den: int):
+    """num/den, or ``None`` when there is no eligible work to recall."""
+    return (num / den) if den else None
+
+
+def _capsule_region(cap: dict):
+    """A :class:`merlin.targetgen.eligibility.RegionDescriptor` for a capsule spec — its declared
+    ``semantic.semantic_family`` (or, when omitted, the family derived from ``operation.op``) at its
+    numeric-policy dtype."""
+    from . import eligibility as _el
+    from . import semantic_families as _sf
+
+    sem = cap.get("semantic") or {}
+    op = (cap.get("operation") or {}).get("op")
+    fam = sem.get("semantic_family") or _sf.from_op(op)
+    dtype = (cap.get("numeric_policy") or {}).get("dtype")
+    return _el.RegionDescriptor(source=cap.get("name", ""), op=op, family=fam, in_dtype=dtype)
+
+
+def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str | None) -> dict:
+    """Suite-level Acceleratable Region Recall: treat each capsule as one region, score the compiler's
+    outcome (accelerated == passed on a real emitted-artifact / simulator tier) against the INDEPENDENT
+    eligibility oracle (the hardware's declared semantic capability). An eligible capsule that did not
+    accelerate is a ``false_fallback`` — the emit-layer gap ARR exists to surface. An empty capability
+    map (target declares no ``semantic_capabilities`` yet) yields an honest all-ineligible, recall=None
+    result rather than a fake 1.0."""
+    from . import eligibility as _el
+    from .capsule_runner import _TIER_SIM
+
+    sim_tiers = tuple(_TIER_SIM)                      # tiers that run the emitted artifact on a simulator
+    cap_map: dict = {}
+    if target:
+        try:
+            cap_map = _el.capability_map_for_target(target)
+        except Exception:  # noqa: BLE001 — no resolvable contract -> honest empty denominator
+            cap_map = {}
+
+    per_capsule: list[dict] = []
+    n_eligible = n_eligible_accelerated = n_accelerated = n_accel_eligible = 0
+    false_fallback: list[str] = []
+    for r in results:
+        cap = cap_by_name.get(r["capsule"])
+        if not cap:
+            continue
+        desc = _capsule_region(cap)
+        sem = cap.get("semantic") or {}
+        override = sem.get("eligible", "auto")
+        if isinstance(override, bool):
+            eligible, family, reason = override, desc.resolved_family(), "author override"
+        else:
+            v = _el.is_eligible(desc, cap_map)
+            eligible, family, reason = v.eligible, v.family, v.reason
+        accelerated = any(r.get("tiers", {}).get(t, {}).get("status") == "pass" for t in sim_tiers)
+        must = bool(sem.get("must_accelerate"))
+        per_capsule.append({"capsule": r["capsule"], "semantic_family": family, "eligible": eligible,
+                            "accelerated": accelerated, "must_accelerate": must, "reason": reason})
+        if accelerated:
+            n_accelerated += 1
+            if eligible:
+                n_accel_eligible += 1
+        if eligible:
+            n_eligible += 1
+            if accelerated:
+                n_eligible_accelerated += 1
+            else:
+                false_fallback.append(r["capsule"])
+
+    return {
+        "denominator_source": "semantic_capabilities (independent eligibility oracle)",
+        "n_eligible": n_eligible,
+        "n_accelerated": n_accelerated,
+        "n_eligible_accelerated": n_eligible_accelerated,
+        "false_fallback": false_fallback,
+        "acceleratable_region_recall": _ratio(n_eligible_accelerated, n_eligible),
+        "acceleration_precision": _ratio(n_accel_eligible, n_accelerated),
+        "per_capsule": per_capsule,
+    }
+
+
 def _isa_class_vocabulary(target: str | None) -> list[str]:
     """The target's OWN ISA class names, DERIVED from its capability manifest — a self-hosted-ISA/SIMT
     target's decoded-instruction classes (contract ``interfaces[].instruction_classes``), or a
@@ -111,6 +190,7 @@ def aggregate(results: list[dict], capsules: list[dict] | None = None,
         "mode_coverage": mode_cov,
         "instruction_class_coverage": class_cov,
         "unavailable": unavail,
+        "acceleratable_coverage": _acceleratable_coverage(results, cap_by_name, target),
     }
 
 

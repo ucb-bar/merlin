@@ -192,7 +192,8 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     cov = CV.aggregate(results, capsules=caps, traces=traces, target=target)
     score["coverage"] = {"by_tier_reached": cov["by_tier_reached"],
                          "instruction_class_coverage": cov["instruction_class_coverage"],
-                         "mode_coverage": cov["mode_coverage"], "unavailable": cov["unavailable"]}
+                         "mode_coverage": cov["mode_coverage"], "unavailable": cov["unavailable"],
+                         "acceleratable_coverage": cov["acceleratable_coverage"]}
     return score
 
 

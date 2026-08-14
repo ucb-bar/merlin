@@ -46,6 +46,21 @@
         "firesim": {"type": "integer"}
       },
       "additionalProperties": true
+    },
+    "acceleratable_coverage": {
+      "type": "object",
+      "description": "Acceleratable Region Recall (suite-level): each capsule scored as a region — eligible (independent oracle over the target's semantic_capabilities) vs accelerated (passed on a real emitted-artifact tier). recall/precision are null when there is no eligible work. false_fallback lists eligible capsules the compiler did not accelerate (the emit-layer gap).",
+      "properties": {
+        "denominator_source": {"type": "string"},
+        "n_eligible": {"type": "integer"},
+        "n_accelerated": {"type": "integer"},
+        "n_eligible_accelerated": {"type": "integer"},
+        "false_fallback": {"type": "array", "items": {"type": "string"}},
+        "acceleratable_region_recall": {"type": ["number", "null"]},
+        "acceleration_precision": {"type": ["number", "null"]},
+        "per_capsule": {"type": "array", "items": {"type": "object"}}
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": true

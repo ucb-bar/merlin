@@ -91,6 +91,18 @@
     },
     "vcs": {"type": "string", "enum": ["required", "optional", "unavailable"]},
     "firesim": {"type": "string", "enum": ["required", "optional", "unavailable"]},
+    "semantic": {
+      "type": "object",
+      "description": "Target-conditioned semantic-coverage annotations (Acceleratable Region Recall). semantic_family is the canonical computation family this capsule exercises (derived from operation.op when omitted); eligible is an author override of the independent eligibility oracle (auto = derive); must_accelerate makes a fallback on an eligible region a FAIL; generalization_axis records which held-out axis this capsule probes.",
+      "properties": {
+        "semantic_family": {"type": "string", "enum": ["contraction", "reduction", "elementwise_map", "movement", "synchronization", "attention", "normalization", "softmax"]},
+        "eligible": {"oneOf": [{"type": "boolean"}, {"type": "string", "enum": ["auto"]}]},
+        "must_accelerate": {"type": "boolean"},
+        "fallback_allowed": {"type": "boolean"},
+        "generalization_axis": {"type": "string", "enum": ["seen", "shape", "layout", "dtype", "surface", "composition", "fusion", "model", "kernel"]}
+      },
+      "additionalProperties": false
+    },
     "gate": {
       "type": "object",
       "description": "Scheduling gate: a whole-model capsule is only run once the op-level suite has proven itself. `after_op_pass_fraction` is the minimum fraction of graded op capsules that must PASS before this capsule is scheduled.",
