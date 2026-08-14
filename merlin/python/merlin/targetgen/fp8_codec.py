@@ -93,3 +93,106 @@ def e8m0_decode(code: int) -> float:
 def fp8_e4m3_encode_row(values) -> list[int]:
     """Encode a flat sequence of floats to their E4M3 codes (row-major, for a tensor preload)."""
     return [fp8_e4m3_encode(float(v)) for v in values]
+
+
+# ---------------------------------------------------------------------------
+# Sub-byte OCP microscaling grids: FP6 (E3M2) and FP4 (E2M1)
+# ---------------------------------------------------------------------------
+# These two formats share the E4M3 layout convention (1 sign | E exp | M mant,
+# bias ``2^(E-1)-1``, subnormal binade at ``e==0``) but reserve NO code for
+# infinity/NaN -- every bit pattern is a finite value, so the top exponent is a
+# normal binade. The reference decoders are cyclotron's ``fp_math::fp6_e3m2_decode``
+# / ``fp4_e2m1_decode`` (radiance mxgemmini co-model), themselves ports of the MX
+# RTL semantics. As with FP8 the encoder is a FAITHFUL inverse across the whole
+# grid -- including the subnormal binade -- so re-encoding an operand palette that
+# a golden already decoded is lossless (0 round-trip errors). Any mxfp6/mxfp4
+# datapath shares these grids, so this names no target.
+
+
+def _ocp_fpx_decode(code: int, exp_bits: int, mant_bits: int) -> float:
+    """Decode an OCP FPx code with ``exp_bits`` exponent and ``mant_bits`` mantissa
+    bits (bias ``2^(exp_bits-1)-1``, subnormal binade at ``e==0``, no inf/NaN)."""
+    bias = (1 << (exp_bits - 1)) - 1
+    width = 1 + exp_bits + mant_bits
+    code &= (1 << width) - 1
+    s = (code >> (exp_bits + mant_bits)) & 1
+    e = (code >> mant_bits) & ((1 << exp_bits) - 1)
+    m = code & ((1 << mant_bits) - 1)
+    scale = float(1 << mant_bits)
+    if e == 0:
+        val = (m / scale) * (2.0 ** (1 - bias))
+    else:
+        val = (1.0 + m / scale) * (2.0 ** (e - bias))
+    return -val if s else val
+
+
+def _ocp_fpx_encode(v: float, exp_bits: int, mant_bits: int) -> int:
+    """Encode a float to its OCP FPx code (round-half-to-even), saturating off-grid
+    magnitudes to the largest finite value. Faithful inverse of
+    :func:`_ocp_fpx_decode` across the whole grid, subnormal binade included."""
+    bias = (1 << (exp_bits - 1)) - 1
+    emin = 1 - bias
+    emax = ((1 << exp_bits) - 1) - bias  # top exponent is a normal binade (no inf/NaN)
+    mant_max = (1 << mant_bits) - 1
+    if v == 0.0 or not math.isfinite(v):
+        return 0
+    s = 1 if math.copysign(1.0, v) < 0 else 0
+    sign = s << (exp_bits + mant_bits)
+    av = abs(v)
+    E = int(math.floor(math.log2(av)))
+    if E < emin:
+        # subnormal grid: decode(e=0, m) = (m / 2^mant_bits) * 2^(1-bias) = m * 2^(emin-mant_bits)
+        m = _round_half_to_even(av * (2.0 ** (mant_bits - emin)))
+        if m <= 0:
+            return 0
+        if m > mant_max:  # rounded up to the smallest normal (e=1, m=0)
+            return sign | (1 << mant_bits)
+        return sign | (m & mant_max)
+    if E > emax:
+        e_used, mant = emax, mant_max
+    else:
+        e_used = E
+        base = 2.0 ** e_used
+        delta = base / (1 << mant_bits)
+        k = _round_half_to_even((av - base) / delta)
+        if k > mant_max:
+            e_used += 1
+            k = 0
+            if e_used > emax:
+                e_used, k = emax, mant_max
+        else:
+            k = min(max(k, 0), mant_max)
+        mant = k
+    return sign | (((e_used + bias) & ((1 << exp_bits) - 1)) << mant_bits) | (mant & mant_max)
+
+
+def fp6_e3m2_decode(code: int) -> float:
+    """Decode a 6-bit FP6 E3M2 code (1 sign | 3 exp | 2 mant, bias 3) to a Python float."""
+    return _ocp_fpx_decode(code, exp_bits=3, mant_bits=2)
+
+
+def fp6_e3m2_encode(v: float) -> int:
+    """Encode a float to its 6-bit FP6 E3M2 code (round-half-to-even). Faithful inverse of
+    :func:`fp6_e3m2_decode` across the whole grid (subnormal binade included)."""
+    return _ocp_fpx_encode(v, exp_bits=3, mant_bits=2)
+
+
+def fp4_e2m1_decode(code: int) -> float:
+    """Decode a 4-bit FP4 E2M1 code (1 sign | 2 exp | 1 mant, bias 1) to a Python float."""
+    return _ocp_fpx_decode(code, exp_bits=2, mant_bits=1)
+
+
+def fp4_e2m1_encode(v: float) -> int:
+    """Encode a float to its 4-bit FP4 E2M1 code (round-half-to-even). Faithful inverse of
+    :func:`fp4_e2m1_decode` across the whole grid (subnormal binade included)."""
+    return _ocp_fpx_encode(v, exp_bits=2, mant_bits=1)
+
+
+def fp6_e3m2_encode_row(values) -> list[int]:
+    """Encode a flat sequence of floats to their FP6 E3M2 codes (row-major, for a preload)."""
+    return [fp6_e3m2_encode(float(v)) for v in values]
+
+
+def fp4_e2m1_encode_row(values) -> list[int]:
+    """Encode a flat sequence of floats to their FP4 E2M1 codes (row-major, for a preload)."""
+    return [fp4_e2m1_encode(float(v)) for v in values]
