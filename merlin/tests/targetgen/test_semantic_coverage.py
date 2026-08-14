@@ -155,6 +155,31 @@ def test_suite_acceleratable_coverage():
     assert full["acceleratable_coverage"]["false_fallback"] == ["A7"]
 
 
+# --- C1: generalization-axis (G0-G5) breakdown --------------------------------------------------
+
+def test_generalization_axis_breakdown():
+    caps = [
+        {"name": "G0", "operation": {"op": "matmul"}, "numeric_policy": {"dtype": "bf16"},
+         "semantic": {"eligible": True, "generalization_axis": "seen"}},
+        {"name": "G1", "operation": {"op": "matmul"}, "numeric_policy": {"dtype": "bf16"},
+         "semantic": {"eligible": True, "generalization_axis": "shape"}},
+        {"name": "G1b", "operation": {"op": "matmul"}, "numeric_policy": {"dtype": "bf16"},
+         "semantic": {"eligible": True, "generalization_axis": "shape"}},
+    ]
+    results = [
+        {"capsule": "G0", "kind": "isa", "label": "public", "status": "pass",
+         "tiers": {"L2": {"status": "pass"}}},                                   # seen: accelerated
+        {"capsule": "G1", "kind": "isa", "label": "public", "status": "pass",
+         "tiers": {"L2": {"status": "pass"}}},                                   # shape: accelerated
+        {"capsule": "G1b", "kind": "isa", "label": "public", "status": "fail",
+         "tiers": {"L2": {"status": "fail"}}},                                   # shape: NOT accelerated
+    ]
+    ac = cov._acceleratable_coverage(results, {c["name"]: c for c in caps}, target=None)
+    axes = ac["by_generalization_axis"]
+    assert axes["seen"]["recall"] == 1.0
+    assert axes["shape"]["n_eligible"] == 2 and axes["shape"]["recall"] == 0.5
+
+
 def test_eligibility_does_not_depend_on_routing():
     # The denominator must be independent of the compiler's routing/lowering. Walk the AST and assert
     # no import (module- or function-level) pulls in routing — so a future edit can't silently create
