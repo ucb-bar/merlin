@@ -61,6 +61,7 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
     per_capsule: list[dict] = []
     n_eligible = n_eligible_accelerated = n_accelerated = n_accel_eligible = 0
     false_fallback: list[str] = []
+    must_accelerate_violations: list[str] = []
     for r in results:
         cap = cap_by_name.get(r["capsule"])
         if not cap:
@@ -75,8 +76,15 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
             eligible, family, reason = v.eligible, v.family, v.reason
         accelerated = any(r.get("tiers", {}).get(t, {}).get("status") == "pass" for t in sim_tiers)
         must = bool(sem.get("must_accelerate"))
+        # must_accelerate contract: an ELIGIBLE region declared must_accelerate that did NOT reach the
+        # accelerator is a violation — the fallback escape hatch cannot hide an emit-layer gap. An
+        # ineligible region (or one with must_accelerate unset / fallback_allowed) legitimately falls back.
+        violated = must and eligible and not accelerated
         per_capsule.append({"capsule": r["capsule"], "semantic_family": family, "eligible": eligible,
-                            "accelerated": accelerated, "must_accelerate": must, "reason": reason})
+                            "accelerated": accelerated, "must_accelerate": must,
+                            "must_accelerate_violated": violated, "reason": reason})
+        if violated:
+            must_accelerate_violations.append(r["capsule"])
         if accelerated:
             n_accelerated += 1
             if eligible:
@@ -94,6 +102,8 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         "n_accelerated": n_accelerated,
         "n_eligible_accelerated": n_eligible_accelerated,
         "false_fallback": false_fallback,
+        "must_accelerate_violations": must_accelerate_violations,
+        "must_accelerate_pass": not must_accelerate_violations,
         "acceleratable_region_recall": _ratio(n_eligible_accelerated, n_eligible),
         "acceleration_precision": _ratio(n_accel_eligible, n_accelerated),
         "per_capsule": per_capsule,

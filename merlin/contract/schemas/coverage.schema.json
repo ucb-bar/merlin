@@ -56,6 +56,8 @@
         "n_accelerated": {"type": "integer"},
         "n_eligible_accelerated": {"type": "integer"},
         "false_fallback": {"type": "array", "items": {"type": "string"}},
+        "must_accelerate_violations": {"type": "array", "items": {"type": "string"}, "description": "eligible capsules declared must_accelerate that did not reach the accelerator — the fallback escape hatch cannot hide an emit-layer gap"},
+        "must_accelerate_pass": {"type": "boolean"},
         "acceleratable_region_recall": {"type": ["number", "null"]},
         "acceleration_precision": {"type": ["number", "null"]},
         "per_capsule": {"type": "array", "items": {"type": "object"}}

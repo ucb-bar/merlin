@@ -147,6 +147,9 @@ def test_suite_acceleratable_coverage():
     assert ac["n_eligible_accelerated"] == 1
     assert ac["false_fallback"] == ["A7"]
     assert ac["acceleratable_region_recall"] == 0.5
+    # A7 is eligible + must_accelerate but did not accelerate -> a must_accelerate violation.
+    assert ac["must_accelerate_violations"] == ["A7"]
+    assert ac["must_accelerate_pass"] is False
     # full aggregate surfaces it too
     full = cov.aggregate(results, capsules=caps, target=None)
     assert full["acceleratable_coverage"]["false_fallback"] == ["A7"]
