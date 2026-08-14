@@ -19,4 +19,3 @@ merlin/python/merlin/kernels/action_catalog.py
 merlin/python/merlin/kernels/microkernel.py
 merlin/python/merlin/targetgen/rtl_backend.py
 merlin/python/merlin/targetgen/rtl/
-merlin/targets/radiance/contracts/rtl_facts/

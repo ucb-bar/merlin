@@ -68,9 +68,6 @@ allowed:
 - path: merlin/python/merlin/targetgen/rtl/
   mode: ro
   note: 'ALLOWED (CIRCT arm): RTL-facts generators'
-- path: merlin/targets/radiance/contracts/rtl_facts/
-  mode: ro
-  note: 'ALLOWED (CIRCT arm): RTL-extracted facts'
 denied:
 - path: merlin/python/merlin/runtime/reference.py
   reason: oracle-callable route
