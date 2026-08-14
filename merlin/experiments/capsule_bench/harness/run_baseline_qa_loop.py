@@ -122,15 +122,30 @@ def _spend_over_cap(this_round_cost) -> tuple[bool, float, float]:
 
 
 def _verilator_per_capsule_timeout() -> int:
-    """Per-capsule verilator timeout from the readiness-measured T_obs (generous 2x), min 900s. The
-    readiness gate (readiness_check.test_oracles_endtoend) writes scripts/.oracle_timing.json; the
-    launcher refuses to start without it, so a fresh measurement always backs this number."""
+    """Per-capsule L3 (verilator RTL cert) timeout, from a T_obs that is POSITIVELY confirmed to be THIS
+    target's sim (generous 2x, min 900s). The readiness gate writes scripts/.oracle_timing.json — but that
+    path is a symlink shared across targets, so a radiance run must NOT inherit a GemminiRocketConfig T_obs
+    measured for a different, far lighter RTL (which would floor to 900s and mass-timeout every L3 capsule,
+    the abc9 "L3 0/N = timeout not skill" trap). A measurement is trusted only when it is target-scoped:
+    the file ``.oracle_timing.<target>.json`` OR a legacy ``.oracle_timing.json`` whose ``target`` field
+    matches. An unconfirmed / foreign-config measurement is ignored in favor of a conservative bound and a
+    loud log — never a silent under-time."""
     import math
-    try:
-        t = json.loads((C.EXP / "scripts" / ".oracle_timing.json").read_text())["verilator_per_capsule_s"]
-        return max(900, int(math.ceil(2 * float(t))))
-    except Exception:
-        return 1200
+    tgt = _te().target
+    for p in (C.EXP / "scripts" / f".oracle_timing.{tgt}.json",
+              C.EXP / "scripts" / ".oracle_timing.json"):
+        try:
+            d = json.loads(p.read_text())
+        except Exception:
+            continue
+        if p.name.endswith(f".{tgt}.json") or d.get("target") == tgt:
+            return max(900, int(math.ceil(2 * float(d["verilator_per_capsule_s"]))))
+        print(f"[timeout] ignoring {p.name}: T_obs measured on config={d.get('config')!r} "
+              f"target={d.get('target')!r}, not {tgt!r} — needs a target-scoped measurement",
+              file=sys.stderr)
+    print(f"[timeout] no target-confirmed L3 timing for {tgt!r}; using conservative 2400s. Run readiness "
+          f"or the L3 measurement to record scripts/.oracle_timing.{tgt}.json", file=sys.stderr)
+    return 2400
 _EXPERIMENT = "full"    # set in main(): 'full' (abc1) or 'realistic' (abc2, whole-repo + self-check)
 _ARM = ""               # set in main(): the arm being run (enforces the per-arm language mandate)
 _DRIVER = "auto"        # set in main(): agent driver (auto|converse|claudecode|opencode); auto routes by model
@@ -1010,6 +1025,9 @@ def main(argv: list[str] | None = None) -> int:
     # available as an escape hatch (golden-masked COPY workspace + post-run transcript audit), but it is
     # detection-not-prevention and must not be used for scored runs.
     ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap")
+    ap.add_argument("--allow-unsandboxed", action="store_true",
+                    help="explicitly permit a real (spending) run under --sandbox none; without it a "
+                         "'none' run is refused (workspace assembly alone does not hide denied paths).")
     ap.add_argument("--no-oracle", action="store_true", help="QA = L0+trace only (fast dev)")
     ap.add_argument("--skip-hidden", action="store_true")
     ap.add_argument("--experiment", choices=["full", "realistic"], default="full",
@@ -1032,6 +1050,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--account-config-dir", default=os.environ.get("CLAUDE_CONFIG_DIR", ""),
                     help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)")
     a = ap.parse_args(argv)
+    # A real (spending) run MUST be sandboxed: without bwrap the agent can read any absolute path (incl.
+    # denied /scratch* answer dirs), so the copy-workspace + post-hoc transcript audit alone do NOT isolate
+    # it. Fail closed (parity with run_agent_experiment.py) — an unsandboxed run needs an explicit opt-in.
+    if a.sandbox != "bwrap" and not a.allow_unsandboxed:
+        print("REFUSING: a real run requires --sandbox bwrap (or explicit --allow-unsandboxed). "
+              "Workspace assembly alone does not hide denied absolute paths.", file=sys.stderr)
+        return 4
     arm = a.arm
     global _EXPERIMENT, _ARM, _DRIVER, _SUBAGENT_MODEL, _BACKGROUND_MODEL
     _EXPERIMENT = a.experiment
@@ -1230,6 +1255,21 @@ def main(argv: list[str] | None = None) -> int:
               f"structure-only smoke (NOT gradeable — structural tiers only).")
     else:
         print(f"[preflight] oracle GO: {_ora_why}")
+
+    # oracle_available proves we can GRADE; codegen_smoke proves the target's OWN emit path can PRODUCE a
+    # runnable kernel (fork-free build -> reference sim -> correct result). A broken emit path would
+    # tool-crash on EVERY capsule of a paid run (the atlas 0/N mode from the PRODUCE side, not the grade
+    # side). It returns n/a for targets whose emit path this smoke doesn't cover, and only a hard False for
+    # a genuinely broken fork-free pipeline — so gate only on that explicit False (zero tokens spent).
+    if not a.no_oracle:
+        _cg_ok, _cg_why = _CRpf.codegen_smoke(_te_pf.target)
+        (run_dir / "codegen_smoke.yaml").write_text(yaml.safe_dump(
+            {"target": _te_pf.target, "codegen_ok": _cg_ok, "reason": _cg_why}, sort_keys=False))
+        if not _cg_ok:
+            print(f"NO_GO: codegen smoke failed — the target's emit path cannot produce a runnable "
+                  f"kernel: {_cg_why}. Refusing to launch (zero tokens spent).", file=sys.stderr)
+            return 4
+        print(f"[preflight] codegen smoke: {_cg_why}")
 
     # realistic (abc2): the self-check tool the agent runs logs each invocation here (dev-trajectory /
     # soft-failure / tool-trigger record). T0 anchors wall-offset. Inherited by every claude subprocess.

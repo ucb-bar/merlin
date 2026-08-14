@@ -259,7 +259,18 @@ def main(argv=None):
     # tier is the mlc arc model (sim_via != "chipyard": atlas/npu_model, radiance, saturn …) has no
     # verilator binary to time against — the gate is N/A and would spuriously refuse an otherwise-ready run.
     if a.sandbox == "bwrap" and _sim_via() != "chipyard":
-        print(f"[pre-flight] verilator-timing gate N/A (sim_via={_sim_via()!r}; RTL tier is the mlc arc model)")
+        # Non-chipyard RTL tiers split two ways: a pure mlc-arc target (atlas/npu/saturn) has NO verilator
+        # binary to time — the gate is genuinely N/A — but a bespoke SIMT sim (cyclotron/radiance) DOES run
+        # a verilator RTL cert at L3 and needs a TARGET-SCOPED T_obs (it must not inherit gemmini's, which
+        # would floor to 900s and mass-timeout L3). Surface which case this is so an unverified L3 timing is
+        # never silent (the driver's _verilator_per_capsule_timeout falls back to a conservative bound).
+        _tsc = SCRIPTS / f".oracle_timing.{C.TARGET}.json"
+        if _tsc.is_file():
+            print(f"[pre-flight] L3 timing target-scoped & present: {_tsc.name} = {_tsc.read_text().strip()[:80]}")
+        else:
+            print(f"[pre-flight] verilator-timing gate: no target-scoped {_tsc.name} — if this target runs a "
+                  f"verilator L3 cert, the driver will use a CONSERVATIVE timeout (run the L3 measurement / "
+                  f"readiness to record it). N/A for pure mlc-arc targets.")
     elif a.sandbox == "bwrap":
         timing = SCRIPTS / ".oracle_timing.json"
         sim = Path("/path/to/chipyard/sims/verilator/simulator-chipyard.harness-GemminiRocketConfig")
