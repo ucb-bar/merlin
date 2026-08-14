@@ -44,6 +44,9 @@ allowed:
 - path: merlin/python/merlin/targetgen/contract/interface_emit.py
   mode: ro
   note: 'ALLOWED tool: xDSL kit / CCA spine'
+- path: merlin/python/merlin/targetgen/contract/linalg_iface.py
+  mode: ro
+  note: 'ALLOWED tool: xDSL kit / CCA spine'
 - path: merlin/python/merlin/targetgen/oot_starterkit/
   mode: ro
   note: 'ALLOWED tool: xDSL kit / CCA spine'

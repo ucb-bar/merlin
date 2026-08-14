@@ -11,6 +11,7 @@ merlin/python/merlin/targetgen/synthesize/
 merlin/python/merlin/targetgen/generate/
 merlin/python/merlin/xdsl_dialects/
 merlin/python/merlin/targetgen/contract/interface_emit.py
+merlin/python/merlin/targetgen/contract/linalg_iface.py
 merlin/python/merlin/targetgen/oot_starterkit/
 merlin/python/merlin/kernels/cca.py
 merlin/python/merlin/kernels/cca_compare.py

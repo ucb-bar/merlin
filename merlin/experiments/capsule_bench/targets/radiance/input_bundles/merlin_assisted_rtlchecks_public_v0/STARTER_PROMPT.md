@@ -28,7 +28,7 @@ submission/
 ```
 
 ## The 4 CLI entrypoints (your package is invoked ONLY via these)
-- `parse`: `{tool} --verify-diagnostics {input_mlir}` — parse + verify the `merlin_iface` interface MLIR
+- `parse`: `{tool} --verify-diagnostics {input_mlir}` — parse + verify the interface MLIR (ONE OF TWO frozen grammars — see **Input ingestion**)
 - `lower_interface_to_target`: `{tool} --convert-iface-to-radiance {input_mlir}` — emit radiance-dialect MLIR
 - `emit_command_buffer`: `{tool} --emit-command-buffer={output_json} {input_mlir}` — schema-valid `command_buffer.json`
 - `emit_target_artifact`: `{tool} --convert-iface-to-radiance --emit-target-artifact {input_mlir}` — emit an LLVM-dialect MLIR kernel lowering (compiled fork-free): an LLVM-dialect MLIR module (`builtin.module` with `llvm.func @<kernel>`) — a COMPILER LOWERING your xDSL passes produce — which the runner compiles FORK-FREE (stock LLVM rv32 + the target's RTL-derived Muon re-encode, no vendor fork) and runs on the cosim; NOT C/C++ source, NOT `.word`/`.insn` assembler, NOT a self-hosted kernel; the emitted module defines `radiance_kernel`
@@ -43,7 +43,15 @@ rounds — follow and refine PLAN.md. Keep each item to a line or two:
 - **Corpus**: the families/capsules you must pass and the distinct op/shape/dtype/epilogue cases in them.
 - **Input ingestion**: how your `parse` entrypoint consumes the interface MLIR — parse it **structurally**
   (a real IR / grammar parser), do NOT hand-roll a lexer or text-parser; a bespoke input parser is the most
-  common self-inflicted first-round failure.
+  common self-inflicted first-round failure. **Two frozen grammars ship over `capsule.interface.mlir`:**
+  `merlin_iface` v0.1 (a residency command list — `oot_starterkit.iface.parse_interface`) AND
+  `linalg-on-tensors` (a `func.func @forward` of `linalg`/`tensor`/`math` ops, used by model-slice
+  capsules for softmax/rmsnorm/layernorm/gelu/rope/elementwise and matmul-expressed-as-linalg).
+  Route on `oot_starterkit.iface.is_linalg_on_tensors(text)` and parse the latter with
+  `oot_starterkit.iface.parse_linalg(text)` — a structural xDSL reader returning a workload
+  inventory (per-op provenance, operand/result shapes+dtypes, matmul extents, and the inner
+  arithmetic `body_ops` that name softmax/rmsnorm/elementwise semantics). Lower matmul-family
+  records through the residency command path; lower the rest from their named semantics.
 - **Dialect + lowering**: the target-dialect ops you define and the interface->target rewrite passes.
 - **Encoding**: how each instruction class is packed from the derived ISA facts (opcodes/fields), and how
   you check that encoding before grading.

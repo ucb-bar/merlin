@@ -29,7 +29,8 @@ _CPP_DENY_AGN = [f"{_PY}targetgen/rtl/{m}.py" for m in
     f"{_PY}runtime/reference.py", f"{_PY}runtime/simulator.py", f"{_PY}xdsl_dialects/lowering/"]
 # arm3 adds the xDSL authoring kit + the CCA compiler-modification spine.
 _XDSL_ALLOW = [f"{_PY}targetgen/synthesize/", f"{_PY}targetgen/generate/", f"{_PY}xdsl_dialects/",
-               f"{_PY}targetgen/contract/interface_emit.py", f"{_PY}targetgen/oot_starterkit/"] + [
+               f"{_PY}targetgen/contract/interface_emit.py", f"{_PY}targetgen/contract/linalg_iface.py",
+               f"{_PY}targetgen/oot_starterkit/"] + [
     f"{_PY}kernels/{m}.py" for m in ("cca", "cca_compare", "cca_contract", "action_catalog", "microkernel")] + [
     f"{_PY}targetgen/rtl_backend.py"]
 # oracle-callable routes denied in the xDSL/CIRCT arms (arm3/arm4).

@@ -193,7 +193,11 @@ def parse_linalg_mlir(text: str, *, ctx=None) -> dict[str, Any]:
     """
     from xdsl.ir import BlockArgument
 
-    from ...common.ir_lock import IR_LOCK
+    try:
+        from ...common.ir_lock import IR_LOCK
+    except ImportError:  # sandbox: staged flat on sys.path (no parent package) — a per-process lock is
+        import threading  # semantically sufficient (each entrypoint parses single-process)
+        IR_LOCK = threading.Lock()
     from xdsl.parser import Parser
 
     with IR_LOCK:
