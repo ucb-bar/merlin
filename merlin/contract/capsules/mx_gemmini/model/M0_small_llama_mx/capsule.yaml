@@ -43,3 +43,6 @@ pytorch_ref:
   dtype: fp8_e4m3
   loader: capsule.pytorch.py
 linalg_mlir: capsule.interface.mlir
+semantic:
+  fallback_allowed: true
+  generalization_axis: model

@@ -44,3 +44,8 @@ pytorch_ref:
   dtype: f32
   loader: capsule.pytorch.py
 linalg_mlir: capsule.linalg.mlir
+semantic:
+  semantic_family: contraction
+  must_accelerate: true
+  fallback_allowed: false
+  generalization_axis: composition

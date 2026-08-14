@@ -39,3 +39,8 @@ required_oracle_tiers:
 - L3
 vcs: optional
 firesim: optional
+semantic:
+  semantic_family: contraction
+  must_accelerate: true
+  fallback_allowed: false
+  generalization_axis: seen

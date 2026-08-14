@@ -45,3 +45,6 @@ pytorch_ref:
   dtype: f32
   loader: capsule.pytorch.py
 linalg_mlir: capsule.interface.mlir
+semantic:
+  fallback_allowed: true
+  generalization_axis: model

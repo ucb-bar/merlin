@@ -37,3 +37,8 @@ pytorch_ref:
   dtype: f32
   loader: capsule.pytorch.py
 linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: softmax
+  must_accelerate: true
+  fallback_allowed: false
+  generalization_axis: composition

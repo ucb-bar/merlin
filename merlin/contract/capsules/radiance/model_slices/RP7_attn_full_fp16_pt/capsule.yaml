@@ -51,3 +51,8 @@ pytorch_ref:
   dtype: fp16
   loader: capsule.pytorch.py
 linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: attention
+  must_accelerate: true
+  fallback_allowed: false
+  generalization_axis: composition
