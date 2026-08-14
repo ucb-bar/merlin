@@ -237,6 +237,65 @@ artifacts:
       reads-aware pin check reports drift against saturn_opu_int8. This bitstream is therefore
       "pinned revision + those additions", and results citing it must say so until the additions land.
 
+  firesim_kodiak_opu_1core:
+    description: >-
+      FireSim bitstream for Kodiak's SoC at Kodiak's vector geometry (vLen=512/dLen=256 — a 64-lane int8
+      tile, 8x8 clusters of 4x4 cells) with the outer-product unit enabled. Built because every Kodiak
+      bitstream that existed before this one has NO OPU: the handed-over CTC bitstream pins saturn at
+      a898bdc, which does not contain OuterProductUnit.scala at all, and the branch named
+      "-opu-kernels" is one commit that adds a workload and re-points a submodule URL with the sha
+      unchanged. The workload existed; the hardware did not.
+    root_env: MERLIN_CHIPYARD
+    path: sims/firesim/deploy/results-build/2026-08-14--13-15-10-alveo_u250_firesim_kodiak_opu_1core/cl_xilinx_alveo_u250-firesim-FireSim-FireSimKodiakOPU1CoreConfig-BaseXilinxAlveoU250Config/firesim.tar.gz
+    digest: "f671be16ae5850c2765d897593010f4144654fe49bed0d5fe0d3ebdbd49d9462"
+    built_from:
+      - saturn_opu_int8
+    config: FireSimKodiakOPU1CoreConfig
+    notes: >-
+      ⚠️ ONE SHUTTLE CORE, NOT KODIAK'S TWO. This is the single most important thing to know before citing
+      it. The vector unit, TCM, L1/L2, scratchpad and bus widths are Kodiak's, so OPU datapath numbers and
+      whole-model grades from this bitstream are honest statements about Kodiak's vector unit. Nothing
+      about core count, inter-core traffic, or multi-core scaling can be read from it. Say "single-core
+      Kodiak" in any result that cites this digest.
+      WHY ONE CORE. The two-core config does not route on the U250 and this was measured, not guessed:
+      1,373,162 LUT post-place (79.47 %), post-placement estimated congestion of 128x128 in short /
+      32x32 in global, and after ~11 h the router ended Phase 8 with
+      "CRITICAL WARNING: [Route 35-162] 23531 signals failed to route due to routing congestion" and
+      26,865 residual node overlaps. The router named the culprit: `vopu_ctrl_reg_mrf_idx_7[*]`, the
+      matrix-register-file index fanning out to 1024 cells per unit. Dropping to one Shuttle core removed
+      600,948 LUT — matching one ShuttleTile's 601,039 almost exactly, which is how we know exactly one
+      tile came out and nothing else moved.
+      ⚠️ `Number of Failed Nets = 0` IS NOT SUCCESS and cost a day here. It counts only unrouted and
+      partially-routed nets. The failure is `Number of Node Overlaps` in the SAME table three lines below,
+      and the Router Utilization Summary is computed EXCLUDING failed nets — its own footnote says so.
+      Read both fields, and only at the end of Phase 9.
+      ⚠️ `WithNShuttleCores` APPENDS (`} ++ prev`, `NumTiles => up(NumTiles) + n`, shuttle
+      common/Configs.scala:20-37). Listing `(1)` ahead of a base carrying `(2)` silently yields THREE
+      cores with no elaboration error. The count is therefore threaded as a constructor parameter,
+      `WithKodiakBase(nShuttleCores)`, and was VERIFIED IN THE EMITTED VERILOG rather than assumed:
+      2 TilePRCIDomain (1 Rocket + 1 Shuttle), 1 ShuttleTile, 1 OuterProductUnit vopu,
+      1 OuterProductSequencer vos, 64 OuterProductCluster (8x8, matching the derived geometry for
+      dLen=256).
+      THIS BUILD: 15 MHz, TIMING strategy, 3 h 45 m, rc=0. 772,214 LUT post-place (44.69 %), 732,872 FF
+      (21.21 %). Route legal — 0 failed nets, 0 unrouted, 0 partially routed, 0 node overlaps, and Phase 8
+      "Verification completed successfully"; routing utilization 15.8 % vertical / 19.6 % horizontal, a
+      number that is meaningful here precisely because no nets were excluded from it. Timing MET:
+      WNS +0.116, TNS 0.000, WHS +0.008, THS 0.000. Hold needed the post-route phys_opt_design pass —
+      the router left WHS at −0.057 / THS −0.212 (one net), and physopt closed it with two buffers in
+      7 m 38 s. Had it not, `cl_firesim/scripts/implementation.tcl` reads STATS.WHS and falls through to
+      the IDR flow and then `ERROR: did not meet timing! / exit 1`, i.e. no bitstream at all.
+      FREQUENCY WAS NOT THE LEVER, AREA WAS. 15 MHz is well below what this design needs — setup closed at
+      placement with WNS positive throughout — and lowering it further could not have fixed either the
+      congestion or the hold, both of which are period-independent. It is left at 15 because that is what
+      was asked for; raising it would shorten every simulation run and costs nothing but a recipe edit.
+      The EICG passthrough (`merlin/contract/rtl/eicg_passthrough.v`) is mandatory at this size for the
+      reason recorded under firesim_opu_v256d128.
+      PROVENANCE CAVEAT: elaborated from saturn ea373800 with `chipyard/OPUConfigs.scala` MODIFIED in the
+      working tree (the WithKodiakBase / Kodiak* / KodiakOPU* configs) plus firechip `TargetConfigs.scala`
+      additions, none committed upstream. The saturn checkout is shared and also carries other sessions'
+      uncommitted work. This bitstream is therefore "ea373800 + those additions", and results citing it
+      must say so until the additions land.
+
   firesim_opu_v128d64:
     description: >-
       The pre-existing 16-lane OPU bitstream: a single Shuttle core with the unit on it. Registered because

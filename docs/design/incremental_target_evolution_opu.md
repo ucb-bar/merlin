@@ -668,6 +668,40 @@ The resulting bitstream must be cited as **single-core Kodiak**: the vector unit
 and bus widths are Kodiak's, so a datapath or whole-model number measured on it is a statement about
 Kodiak's vector unit, but nothing that depends on core count or inter-core traffic may be read from it.
 
+**That bitstream now exists** (pin `firesim_kodiak_opu_1core`, digest `f671be16ae58…`), built in **3 h 45 m**
+against the two-core attempt's ~11 h to no output. It is, on the evidence assembled in §5.1, the first Kodiak
+bitstream that actually contains an outer-product unit. What the lever bought is visible in every column:
+
+| | two-core (failed) | one-core (built) |
+| --- | --- | --- |
+| LUTs, post-placement | 1,373,162 (**79.47%**) | 772,214 (**44.69%**) |
+| estimated congestion, short | **128×128** | 8×8 |
+| failed nets / node overlaps | 0 / **26,865** | **0 / 0** |
+| WNS | +0.130 (never routed legally) | **+0.116** |
+| WHS | — | **+0.008** |
+
+The LUT delta is **600,948**, which matches one `ShuttleTile`'s 601,039 almost exactly — that agreement is
+the evidence that precisely one tile came out and nothing else moved, and it is worth more than the parameter
+value, given the append hazard above. The Verilog was counted as well: **2** `TilePRCIDomain` (one Rocket,
+one Shuttle), **1** `ShuttleTile`, **1** `vopu`, **1** `vos`, and **64** `OuterProductCluster` — 8×8, matching
+the geometry derived for `dLen=256`.
+
+Two corrections to the record. The ~31% projected for one core was **wrong; it is 44.69%**, because the
+subtraction double-counted: `vopu`'s 348,328 LUTs are *inside* the `ShuttleTile`'s 601,039, not additional to
+them. And the congestion collapse, not the area number, is what made routing succeed — the short-congestion
+region fell from 128×128 to 8×8 and the router finished in **48 m 49 s** where the two-core build ground for
+hours and gave up.
+
+**Hold needed the post-route pass, and that pass is a hard gate.** The router left `WHS −0.057 / THS −0.212`
+— one net, after driving THS from −1,971 through −46.4 to −0.16, the small final regression coming from
+Phase 10 (Leaf Clock Prog Delay Opt) and Phase 11 (Resolve XTalk) recomputing delays on the finished route.
+`phys_opt_design (Post-Route)` identified that single candidate net and closed it with two buffers in
+7 m 38 s. This matters because `cl_firesim/scripts/implementation.tcl` reads the run's `STATS.WHS` and, if it
+is negative, falls through to the IDR flow and then to `ERROR: did not meet timing! / exit 1` — a negative
+WHS yields **no bitstream at all**, not a bitstream with a warning. Frequency remains irrelevant to this:
+hold and skew are period-independent, and 15 MHz was already far below what the design needed, with setup
+positive from placement onward.
+
 #### The third bitstream does not close, and the cause is the OPU's own clock gate
 
 `FireSimOPUV256D128ShuttleConfig` (recipe `alveo_u250_firesim_opu_v256d128`, 25 MHz) was synthesised to match
