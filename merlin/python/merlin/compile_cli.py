@@ -972,6 +972,14 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
             demands = CSRC.model_op_demands(linalg_mlir, dtype)
             plan = _routing.route_plan(demands, target)
             out["routing_plan"] = _summarize_route_plan(plan)
+            try:
+                from .targetgen import coverage_certificate as _cert
+                # ARR coverage certificate: the compiler's routing decisions (numerator) scored against
+                # the target's INDEPENDENT eligibility oracle (denominator). Empty capability map (target
+                # declares no semantic_capabilities yet) yields an honest all-ineligible certificate.
+                out["coverage_certificate"] = _cert.for_target(plan, target)
+            except Exception as e:  # noqa: BLE001 — certificate is advisory; never mask routing/functional
+                out["coverage_certificate"] = {"error": f"{type(e).__name__}: {e}"}
             if mesh_verify:
                 out["mesh_execution"] = _mesh_verify(plan, target=target, package=mesh_package,
                                                      timeout=timeout)
