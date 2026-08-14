@@ -32,6 +32,17 @@ _OPCODE_TO_OP = {
 }
 _OP_TO_OPCODE = {v: k for k, v in _OPCODE_TO_OP.items()}
 
+# Named whole-op mnemonics (op classes with no residency decomposition): each maps its positional
+# operands to command-buffer operand keys the target codegen reads. The opcode is the mnemonic
+# upper-cased. Extend this table (and the command_buffer opcode enum) as codegen gains op classes;
+# the parse/emit machinery is generic over it, so a new class is one table row plus its kernel nest.
+_NAMED_OP_OPERAND_KEYS = {
+    "rmsnorm": ["src", "gamma"],
+    "attention_qk": ["q", "k"],
+}
+_NAMED_OP_TO_OPCODE = {op: op.upper() for op in _NAMED_OP_OPERAND_KEYS}
+_NAMED_OPCODE_TO_OP = {v: k for k, v in _NAMED_OP_TO_OPCODE.items()}
+
 
 # --------------------------------------------------------------------------- emit
 
@@ -163,6 +174,11 @@ _RE_MATMUL = re.compile(r'%(\S+)\s*=\s*merlin_iface\.matmul\s*%(\S+),\s*%(\S+)\s
 _RE_COMMIT = re.compile(r'%(\S+)\s*=\s*merlin_iface\.commit\s*%(\S+)\s*\{([^}]*)\}\s*:\s*\(.*?\)\s*->\s*(tensor<[^>]+>)')
 _RE_EVICT = re.compile(r'merlin_iface\.evict\s*%(\S+)')
 _RE_MOD = re.compile(r'module\s+attributes\s*\{([^}]*)\}')
+# A whole-op mnemonic line: `%dst = merlin_iface.<mnemonic> %a, %b, ... {attrs} : (types) -> type`.
+# The mnemonic (group 2) is looked up in _NAMED_OP_OPERAND_KEYS to decide whether to handle it and how
+# to name its operands; matmul/commit/etc. fall through to their own patterns (not in that table).
+_RE_NAMED_OP = re.compile(
+    r'%(\S+)\s*=\s*merlin_iface\.(\w+)\s+((?:%\S+\s*,?\s*)+)\{([^}]*)\}')
 
 
 def _parse_attr_block(s: str) -> dict[str, Any]:
@@ -277,6 +293,17 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
             dst, lhs, rhs = m.group(1), m.group(2), m.group(3)
             cb["commands"].append({"opcode": "MATMUL_RESIDENT",
                                    "operands": {"lhs": lhs, "rhs": rhs, "dst": dst}})
+            continue
+        m = _RE_NAMED_OP.search(line)
+        if m and m.group(2) in _NAMED_OP_OPERAND_KEYS:
+            dst_ssa, mnem = m.group(1), m.group(2)
+            srcs = [tok.strip().lstrip("%") for tok in m.group(3).split(",") if tok.strip()]
+            attrs = _parse_attr_block(m.group(4))
+            keys = _NAMED_OP_OPERAND_KEYS[mnem]
+            operands = {k: s for k, s in zip(keys, srcs)}
+            operands["dst"] = attrs.pop("name", dst_ssa)
+            cb["commands"].append({"opcode": _NAMED_OP_TO_OPCODE[mnem],
+                                   "operands": operands, "attributes": attrs})
             continue
         m = _RE_COMMIT.search(line)
         if m:

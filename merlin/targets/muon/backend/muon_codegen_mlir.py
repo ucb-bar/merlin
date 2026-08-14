@@ -226,6 +226,16 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
     for cmd in cb.get("commands", []):
         by_op.setdefault((cmd.get("opcode") or "").upper(), []).append(cmd)
 
+    # A whole-op mnemonic (RMSNORM / ATTENTION_QK) is a SINGLE-op kernel here; if the buffer also
+    # carries a matmul (a fused op class like rmsnorm+matmul), fail LOUD rather than silently emitting
+    # only one half and mis-grading — fused emission is not yet supported by this reference emitter.
+    _WHOLE_OPS = {"RMSNORM", "ATTENTION_QK"}
+    _MATMUL_OPS = {"RES_PACK", "MATMUL", "MATMUL_RESIDENT", "COMMIT"}
+    if (_WHOLE_OPS & by_op.keys()) and (_MATMUL_OPS & by_op.keys()):
+        raise MuonMlirCodegenError(
+            f"reference emitter does not support a fused op class "
+            f"({sorted(_WHOLE_OPS & by_op.keys())} + matmul); single-op or single matmul commit only")
+
     if "ATTENTION_QK" in by_op:
         o = by_op["ATTENTION_QK"][0].get("operands", {})
         q, k, dst = o.get("q"), o.get("k"), o.get("dst")
