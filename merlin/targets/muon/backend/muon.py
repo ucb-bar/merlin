@@ -288,6 +288,20 @@ def _mu_cflags() -> list[str]:
     llvm = llvm_muon_root()
     inc = lib_dir() / "include"
     gemmini_sw = lib_dir() / "mxgemmini"
+    # The MX-Gemmini reference kernels pull in mxgemm_lib.hpp (in lib/mxgemm) which includes gemmini.h,
+    # itself pulling <math.h> and calling abs() on an unsigned accumulator. Three additive, kernel-agnostic
+    # flags make that legal without disturbing any non-MX kernel: the extra include dir is only searched
+    # when a header asks for it; the newlib include is lowest-priority (-idirafter) and only supplies the
+    # libc <math.h> the vendor fork's sysroot lacks; the abs shim is a __ASSEMBLER__-guarded no-op that
+    # merely disambiguates abs() for the unsigned accumulator type (see gemmini_abs_shim.h).
+    mx = lib_dir() / "mxgemm"
+    newlib = chipyard_root() / ".conda-env/riscv-tools/riscv64-unknown-elf/include"
+    abs_shim = inc / "gemmini_abs_shim.h"
+    extra: list[str] = ["-I", str(mx)]
+    if newlib.is_dir():
+        extra += ["-idirafter", str(newlib)]
+    if abs_shim.is_file():
+        extra += ["-include", str(abs_shim)]
     return [
         f"--sysroot={llvm}",
         "-Xclang", "-target-feature", "-Xclang", "+vortex",
@@ -296,7 +310,7 @@ def _mu_cflags() -> list[str]:
         "-mcmodel=medany", "-fno-rtti", "-fno-exceptions",
         "-fdata-sections", "-ffunction-sections",
         "-mllvm", "-inline-threshold=262144",
-        "-I", str(inc), "-I", str(gemmini_sw),
+        "-I", str(inc), "-I", str(gemmini_sw), *extra,
         "-DRADIANCE", "-DRADIANCE_DEVICE", "-DNDEBUG", "-DLLVM_VORTEX",
     ]
 
@@ -719,6 +733,11 @@ def _run_cyclotron(elf: Path, timeout: int) -> tuple[str, int | None, dict | Non
             pass
     env = dict(os.environ)
     env["RUST_LOG"] = "error"
+    # Activate cyclotron's functional MX-Gemmini co-model (cluster.rs gates it on this var being set).
+    # Without it the accelerator MMIO block is a pure timing stub and a kernel driving the MX PE reads
+    # back zeros. It is inert for any kernel that never touches the Gemmini MMIO window, so setting it
+    # unconditionally is safe for the whole Muon corpus.
+    env.setdefault("CYCLOTRON_MXGEMMINI", "1")
     cmd = [str(cyclotron_path()), str(config_path()),
            "--binary-path", str(elf), "--timing", "--log", "0"]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
