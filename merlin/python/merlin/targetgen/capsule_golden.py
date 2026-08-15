@@ -257,6 +257,18 @@ def mx_operands(capsule: dict, capsule_dir: str | Path | None = None) -> dict | 
         return {"fmt": bc.get("fmt", "fp8_e4m3"), "batched": True,
                 "B": bc["B"], "M": bc["M"], "H": bc["H"], "N": bc["N"],
                 "stacked_out_shape": bc.get("stacked_out_shape"), "batches": bc["batches"]}
+    # Flash attention (fused MX): O = mx_matmul(softmax(mx_matmul(Q,Kᵀ)/scale), V). The golden decomposes it
+    # into the two MX matmul stages (each with its own operand codes + E8M0 scales) plus the softmax scale +
+    # the P (softmax output) requant scales, so the reference kernel can chain two mxgemm calls with an
+    # on-device softmax+requant between them. Passed through as ``flash``; the emitter builds the fused kernel.
+    ac = ins.get("attention_codes")
+    if isinstance(ac, dict) and ac.get("qk_stage") and ac.get("pv_stage"):
+        return {"fmt": ac.get("fmt", "fp8_e4m3"), "flash": True,
+                "M": ac["M"], "H": ac["H"], "Skv": ac["Skv"], "Dv": ac["Dv"],
+                "att_scale": ac["att_scale"], "softcap": ac.get("softcap"),
+                "qk_stage": ac["qk_stage"], "pv_stage": ac["pv_stage"],
+                "SA_q": ac["SA_q"], "SB_k": ac["SB_k"], "SB_v": ac["SB_v"], "SA_p": ac.get("SA_p"),
+                "P_decoded": ac.get("P_decoded")}
     oc = ins.get("operand_codes")
     if not isinstance(oc, dict) or "A_bytes" not in oc:
         return None

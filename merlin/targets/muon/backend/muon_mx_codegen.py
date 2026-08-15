@@ -154,6 +154,14 @@ def emit_mx_kernel(mx: dict, out_name: str) -> str:
     """Render the self-contained MX kernel: the data header + the ``mxgemm<CFG>`` driver + OUT-protocol print
     of the ``M x N`` top-left result. ``mx`` is the golden operand bundle (fmt / M / N / K / A_bytes / B_bytes
     / SA / SB / lutA / lutB)."""
+    if mx.get("flash"):
+        # Flash attention is DECOMPOSED + mechanism-validated (two MX matmul stages + softmax; PV-stage
+        # reproduces O exactly, SA_p is amax-derivable) but the on-device fused kernel (dual-mxgemm restaging
+        # + poly-exp softmax + fp8 P-requant) is not emitted yet. Fail closed with the precise status rather
+        # than mis-emit. See memory radiance-launch-tooling-gap (flash decomposition).
+        raise MxCodegenError(
+            "flash-attention MX kernel not yet emitted: decomposed + validated (qk_stage/pv_stage MX matmuls "
+            "+ amax-derived SA_p), pending the on-device fused softmax+requant kernel")
     if mx.get("batched"):
         mx = _assemble_batched(mx)
     fmt = _short_fmt(mx["fmt"])
