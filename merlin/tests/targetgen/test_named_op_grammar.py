@@ -122,8 +122,8 @@ def test_vector_map_rejects_incompatible_shapes():
         codegen.emit_kernel_mlir(cb, target="t")
 
 
-def test_fused_named_op_plus_matmul_fails_loud_not_silent():
-    """A rmsnorm fused with a matmul must NOT silently emit one half; the reference emitter raises."""
+def test_fused_rmsnorm_matmul_emits():
+    """rmsnorm feeding a matmul (Y = rmsnorm(X,G) @ W) is a supported fused kernel."""
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir
     cb = {
@@ -143,6 +143,31 @@ def test_fused_named_op_plus_matmul_fails_loud_not_silent():
              "attributes": {"output_dtype": "f32"}},
         ],
     }
-    with pytest.raises(Exception) as ei:
+    mlir = codegen.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(" in mlir and "llvm.intr.sqrt" in mlir   # rmsnorm stage present
+
+
+def test_unsupported_fused_op_plus_matmul_fails_loud_not_silent():
+    """A whole-op that is NOT the supported rmsnorm->matmul fusion (here attention_qk + matmul) must fail
+    loud rather than silently emitting one half."""
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = {
+        "abi_version": "0.1", "target": "t",
+        "tensors": {
+            "Q": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+            "K": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+            "W": {"shape": [16, 16], "dtype": "f32", "role": "weight"},
+        },
+        "commands": [
+            {"opcode": "ATTENTION_QK", "operands": {"q": "Q", "k": "K", "dst": "S"},
+             "attributes": {}},
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wp"},
+             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "S", "rhs": "Wp", "dst": "acc"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y"},
+             "attributes": {"output_dtype": "f32"}},
+        ],
+    }
+    with pytest.raises(Exception, match="fused"):
         codegen.emit_kernel_mlir(cb, target="t")
-    assert "fused" in str(ei.value).lower()

@@ -258,7 +258,28 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
             out_args = [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
             return in_args, out_args
         if op == "RMSNORM":
-            rms = [cc for cc in cb.get("commands", []) if (cc.get("opcode") or "").upper() == "RMSNORM"]
+            _cmds = cb.get("commands", [])
+            rms = [cc for cc in _cmds if (cc.get("opcode") or "").upper() == "RMSNORM"]
+            _mms = [cc for cc in _cmds if (cc.get("opcode") or "").upper() in ("MATMUL", "MATMUL_RESIDENT")]
+            if len(rms) == 1 and _mms:                           # fused rmsnorm -> matmul (Y = rmsnorm(X,G) @ W)
+                ro = rms[0].get("operands", {})
+                g, x, h = ro.get("gamma"), ro.get("src"), ro.get("dst")
+                resident = {cc["operands"]["dst"]: cc["operands"]["src"] for cc in _cmds
+                            if (cc.get("opcode") or "").upper() == "RES_PACK"}
+                mo = _mms[0].get("operands", {})
+                if mo.get("lhs") == h:
+                    w = resident.get(mo.get("rhs"), mo.get("rhs"))
+                    commit = next((cc for cc in _cmds if (cc.get("opcode") or "").upper() == "COMMIT"
+                                   and cc["operands"].get("src") == mo.get("dst")), None)
+                    y = commit["operands"]["dst"] if commit else mo.get("dst")
+                    if g and x and w and y and all(nm in env0 for nm in (g, x, w)) and len(env0[x].shape) == 2:
+                        r, c = env0[x].shape
+                        _, nn = env0[w].shape
+                        gr, gc = _shape2d(list(env0[g].shape))
+                        in_args = [TensorArg(g, gr, gc, _vals(canon0, g, env0[g]), "f32"),
+                                   TensorArg(w, c, nn, _vals(canon0, w, env0[w]), "f32"),
+                                   TensorArg(x, r, c, _vals(canon0, x, env0[x]), "f32")]
+                        return in_args, [TensorArg(y, r, nn, [0.0] * (r * nn), "f32")]
             if len(rms) == 2:                                    # gemma double rmsnorm (chained via alloca)
                 a0, a1 = rms[0].get("operands", {}), rms[1].get("operands", {})
                 g1, g2, xx, yy = a0.get("gamma"), a1.get("gamma"), a0.get("src"), a1.get("dst")

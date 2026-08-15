@@ -852,6 +852,31 @@ def _rmsnorm_stage(p: str, g: str, x: str, o: str, done_br: str) -> str:
     {done_br}"""
 
 
+def _rmsnorm_matmul_nest(g: str, x: str, w: str, y: str, r: int, c: int, n: int, eps: float) -> str:
+    """Fused ``Y = rmsnorm(X, G) @ W`` (fp32): a row-rmsnorm stage writes H into an llvm.alloca (r*c), a
+    matmul stage reads H for H@W -> Y (r,n). Weight-first ABI at the call: [G, W, X, Y]."""
+    hsz = r * c
+    cf = f"{float(c):.6e}"
+    ef = f"{float(eps):.6e}"
+    prelude = f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cR = llvm.mlir.constant({r} : i64) : i64
+    %cC = llvm.mlir.constant({c} : i64) : i64
+    %zero = llvm.mlir.constant(0.000000e+00 : f32) : f32
+    %one = llvm.mlir.constant(1.000000e+00 : f32) : f32
+    %cCf = llvm.mlir.constant({cf} : f32) : f32
+    %eps = llvm.mlir.constant({ef} : f32) : f32
+    %mcM = llvm.mlir.constant({r} : i64) : i64
+    %mcK = llvm.mlir.constant({c} : i64) : i64
+    %mcN = llvm.mlir.constant({n} : i64) : i64
+    %hsz = llvm.mlir.constant({hsz} : i64) : i64
+    %H = llvm.alloca %hsz x f32 : (i64) -> !llvm.ptr
+    llvm.br ^rm(%c0 : i64)"""
+    stage_r = _rmsnorm_stage("r", g, x, "H", "llvm.br ^mm(%c0 : i64)")
+    stage_m = _matmul_stage("m", "H", w, y, r, c, n, "llvm.br ^end")
+    return f"{prelude}\n{stage_r}\n{stage_m}\n  ^end:\n    llvm.return"
+
+
 def _double_rmsnorm_nest(g1: str, g2: str, x: str, y: str, r: int, c: int, eps: float) -> str:
     """Two chained row RMSNorms ``Y = rmsnorm(rmsnorm(X, G1), G2)`` (gemma 4-norm), the intermediate in an
     llvm.alloca (r*c fp32)."""
@@ -969,9 +994,30 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
     for cmd in cb.get("commands", []):
         by_op.setdefault((cmd.get("opcode") or "").upper(), []).append(cmd)
 
+    # Fused rmsnorm -> matmul (Y = rmsnorm(X, G) @ W): the RMSNORM feeds the matmul's lhs. Emit the two
+    # stages over an alloca for the normalized intermediate.
+    if "RMSNORM" in by_op and len(by_op["RMSNORM"]) == 1 and ("MATMUL" in by_op or "MATMUL_RESIDENT" in by_op):
+        rms = by_op["RMSNORM"][0].get("operands", {})
+        rattrs = by_op["RMSNORM"][0].get("attributes", {}) or {}
+        rsrc, gamma, hdst = rms.get("src"), rms.get("gamma"), rms.get("dst")
+        resident_source, matmul_for, commits = _plan(cb)
+        if len(commits) == 1 and rsrc and gamma and hdst:
+            commit = commits[0]
+            mm = matmul_for.get(commit["operands"]["src"])
+            if mm is not None and mm["operands"]["lhs"] == hdst:
+                w = resident_source.get(mm["operands"]["rhs"], mm["operands"]["rhs"])
+                y = commit["operands"]["dst"]
+                if rsrc in env and gamma in env and w in env and len(env[rsrc].shape) == 2:
+                    r, c = env[rsrc].shape
+                    _, nn = env[w].shape
+                    eps = float(rattrs.get("eps", 1e-5))
+                    arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (gamma, w, rsrc, y))
+                    nest = _rmsnorm_matmul_nest(gamma, rsrc, w, y, r, c, nn, eps)
+                    return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
     # A whole-op mnemonic (RMSNORM / ATTENTION_QK) is a SINGLE-op kernel here; if the buffer also
-    # carries a matmul (a fused op class like rmsnorm+matmul), fail LOUD rather than silently emitting
-    # only one half and mis-grading — fused emission is not yet supported by this reference emitter.
+    # carries a matmul in another (unsupported) fused shape, fail LOUD rather than silently emitting only
+    # one half and mis-grading.
     _WHOLE_OPS = {"RMSNORM", "ATTENTION_QK"}
     _MATMUL_OPS = {"RES_PACK", "MATMUL", "MATMUL_RESIDENT", "COMMIT"}
     if (_WHOLE_OPS & by_op.keys()) and (_MATMUL_OPS & by_op.keys()):
