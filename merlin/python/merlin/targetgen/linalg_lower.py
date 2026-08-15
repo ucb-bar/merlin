@@ -194,6 +194,49 @@ def lower_linalg_to_cb(parsed: dict[str, Any], *, target: str) -> dict[str, Any]
         return {"abi_version": "0.1", "target": target, "tensors": tensors,
                 "commands": commands, "outputs": [out]}
 
+    # --- a decomposed row LayerNorm, recognized by the layer_norm provenance -------------------------
+    if any(o.get("op") == "layer_norm" for o in ops):
+        # src = the sole 2-D func arg; gamma/beta = the 1-D args used in the final mul / add;
+        # eps = the constant added just before the rsqrt.
+        arg2d = [a["index"] for a in args if len(a["shape"]) == 2]
+        arg1d = [a["index"] for a in args if len(a["shape"]) == 1]
+        if len(arg2d) != 1 or len(arg1d) != 2:
+            raise LinalgLowerError("layernorm expects one 2-D input and two 1-D (gamma, beta) args")
+        x_i = arg2d[0]
+        gamma_i = beta_i = None
+        for o in ops:
+            for inp in o["ins"]:
+                if inp["source"][0] == "arg" and inp["source"][1] in arg1d:
+                    if any(b.endswith("mulf") for b in o["body_ops"]):
+                        gamma_i = inp["source"][1]
+                    elif any(b.endswith("addf") for b in o["body_ops"]):
+                        beta_i = inp["source"][1]
+        if gamma_i is None or beta_i is None:
+            raise LinalgLowerError("could not identify the layernorm gamma (mul) and beta (add) args")
+        eps = 1e-5
+        for o in ops:
+            if any("rsqrt" in b for b in o["body_ops"]):
+                src = o["ins"][0]["source"] if o["ins"] else None
+                if src and src[0] == "op":
+                    for inp in ops[src[1]]["ins"]:
+                        if "const_value" in inp:
+                            eps = inp["const_value"]
+        out = "out"
+        result_shape = list(ops[-1]["results"][0]["shape"]) if ops[-1].get("results") else argshape[x_i]
+        tensors = {
+            argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
+            argname[gamma_i]: {"shape": argshape[gamma_i], "dtype": "f32", "role": "weight"},
+            argname[beta_i]: {"shape": argshape[beta_i], "dtype": "f32", "role": "bias"},
+            out: {"shape": result_shape, "dtype": "f32", "role": "output"},
+        }
+        cmd = {"opcode": "LAYERNORM",
+               "operands": {"src": argname[x_i], "gamma": argname[gamma_i],
+                            "beta": argname[beta_i], "dst": out},
+               "attributes": {"eps": eps}}
+        return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                "commands": [cmd], "outputs": [out]}
+
     raise LinalgLowerError(
         f"reference lowering does not yet support this linalg pattern "
-        f"({[o['op'] for o in ops]}); supported: single elementwise add/mul, single 2-D matmul (+bias)")
+        f"({[o['op'] for o in ops]}); supported: single elementwise add/mul, matmul (+bias/chain/batch), "
+        f"layernorm")

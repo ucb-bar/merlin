@@ -426,6 +426,75 @@ def _broadcast_row_loop_nest(a: str, b: str, o: str, m: int, n: int, combine: st
     llvm.return"""
 
 
+def _layernorm_loop_nest(g: str, b: str, x: str, o: str, r: int, c: int, eps: float) -> str:
+    """LLVM-dialect nest for row LayerNorm ``O[i,j] = (X[i,j]-mean_i)*rsqrt(var_i+eps)*G[j] + B[j]``
+    (row-major, fp32). Per row: one pass accumulates sum and sum-of-squares (``var = ss/C - mean^2``),
+    ``inv = rsqrt(var+eps)`` via ``llvm.intr.sqrt`` (hardware fsqrt, no libcall), then a write pass scales
+    each centred element by ``inv*G[j]`` and shifts by ``B[j]``. Weight-first ABI: G is arg-0, B arg-1."""
+    cf = f"{float(c):.6e}"
+    ef = f"{float(eps):.6e}"
+    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cR = llvm.mlir.constant({r} : i64) : i64
+    %cC = llvm.mlir.constant({c} : i64) : i64
+    %zero = llvm.mlir.constant(0.000000e+00 : f32) : f32
+    %one = llvm.mlir.constant(1.000000e+00 : f32) : f32
+    %cCf = llvm.mlir.constant({cf} : f32) : f32
+    %eps = llvm.mlir.constant({ef} : f32) : f32
+    llvm.br ^m(%c0 : i64)
+  ^m(%mi: i64):
+    %mc = llvm.icmp "slt" %mi, %cR : i64
+    llvm.cond_br %mc, ^mbody, ^end
+  ^mbody:
+    %mC = llvm.mul %mi, %cC : i64
+    llvm.br ^r(%c0, %zero, %zero : i64, f32, f32)
+  ^r(%ri: i64, %s: f32, %sq: f32):
+    %rc = llvm.icmp "slt" %ri, %cC : i64
+    llvm.cond_br %rc, ^rbody, ^rdone
+  ^rbody:
+    %xidx = llvm.add %mC, %ri : i64
+    %xp = llvm.getelementptr %{x}[%xidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %xv = llvm.load %xp : !llvm.ptr -> f32
+    %s2 = llvm.fadd %s, %xv : f32
+    %xsq = llvm.fmul %xv, %xv : f32
+    %sq2 = llvm.fadd %sq, %xsq : f32
+    %ri2 = llvm.add %ri, %c1 : i64
+    llvm.br ^r(%ri2, %s2, %sq2 : i64, f32, f32)
+  ^rdone:
+    %mean = llvm.fdiv %s, %cCf : f32
+    %ex2 = llvm.fdiv %sq, %cCf : f32
+    %m2 = llvm.fmul %mean, %mean : f32
+    %var = llvm.fsub %ex2, %m2 : f32
+    %vare = llvm.fadd %var, %eps : f32
+    %rt = llvm.intr.sqrt(%vare) : (f32) -> f32
+    %inv = llvm.fdiv %one, %rt : f32
+    llvm.br ^w(%c0 : i64)
+  ^w(%wi: i64):
+    %wc = llvm.icmp "slt" %wi, %cC : i64
+    llvm.cond_br %wc, ^wbody, ^mnext
+  ^wbody:
+    %widx = llvm.add %mC, %wi : i64
+    %wxp = llvm.getelementptr %{x}[%widx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %wxv = llvm.load %wxp : !llvm.ptr -> f32
+    %cen = llvm.fsub %wxv, %mean : f32
+    %gp = llvm.getelementptr %{g}[%wi] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %gv = llvm.load %gp : !llvm.ptr -> f32
+    %bp = llvm.getelementptr %{b}[%wi] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %bv = llvm.load %bp : !llvm.ptr -> f32
+    %ni = llvm.fmul %cen, %inv : f32
+    %ng = llvm.fmul %ni, %gv : f32
+    %yv = llvm.fadd %ng, %bv : f32
+    %wop = llvm.getelementptr %{o}[%widx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %yv, %wop : f32, !llvm.ptr
+    %wi2 = llvm.add %wi, %c1 : i64
+    llvm.br ^w(%wi2 : i64)
+  ^mnext:
+    %mi2 = llvm.add %mi, %c1 : i64
+    llvm.br ^m(%mi2 : i64)
+  ^end:
+    llvm.return"""
+
+
 def _shape2(env: dict, name: str) -> tuple[int, int]:
     t = env.get(name)
     if t is None or len(t.shape) != 2:
@@ -545,6 +614,19 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
             raise MuonMlirCodegenError(f"batched matmul dim mismatch: {a_nm}{ta.shape} @ {w}{tw.shape}")
         arg_decl = ", ".join(f"%{x}: !llvm.ptr" for x in (w, a_nm, dst))   # weight-first ABI
         nest = _batched_matmul_loop_nest(a_nm, w, dst, batch, m, k, n)
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
+    if "LAYERNORM" in by_op:
+        cmd = by_op["LAYERNORM"][0]
+        o = cmd.get("operands", {})
+        attrs = cmd.get("attributes", {}) or {}
+        x, gamma, beta, dst = o.get("src"), o.get("gamma"), o.get("beta"), o.get("dst")
+        if not (x and gamma and beta and dst):
+            raise MuonMlirCodegenError("LAYERNORM needs operands src/gamma/beta/dst")
+        r, c = _shape2(env, x)
+        eps = float(attrs.get("eps", 1e-5))
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (gamma, beta, x, dst))  # weight-first ABI
+        nest = _layernorm_loop_nest(gamma, beta, x, dst, r, c, eps)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     # ---- matmul (gemm) path -----------------------------------------------------------------------

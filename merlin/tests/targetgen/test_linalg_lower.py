@@ -107,6 +107,27 @@ def test_batched_matmul_lowers_and_computes_per_batch():
     assert np.array_equal(np.array(simulate(cb)["outputs"]["out"]), np.matmul(a, w))
 
 
+def test_layernorm_recognized_by_provenance_and_lowered():
+    cb = lower_linalg_to_cb(_parse("RP5_layernorm_fp32_pt"), target="t")
+    schemas.validate_command_buffer(cb)
+    (cmd,) = cb["commands"]
+    assert cmd["opcode"] == "LAYERNORM"
+    o = cmd["operands"]
+    assert {"src", "gamma", "beta", "dst"} <= o.keys()
+    # gamma is a length-C weight, beta a length-C bias; the input is 2-D
+    roles = {v["role"]: tuple(v["shape"]) for v in cb["tensors"].values()}
+    assert len(roles["weight"]) == 1 and len(roles["bias"]) == 1 and len(roles["input"]) == 2
+    assert cmd["attributes"]["eps"] == pytest.approx(1e-5)
+
+
+def test_layernorm_emits_a_valid_kernel():
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = lower_linalg_to_cb(_parse("RP5_layernorm_fp32_pt"), target="t")
+    mlir = codegen.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(" in mlir and "llvm.intr.sqrt" in mlir
+
+
 def test_conv_im2col_matmul_fails_closed():
     # conv via im2col is not a plain matmul the reference emitter builds yet -> a clear error
     with pytest.raises(LinalgLowerError):
