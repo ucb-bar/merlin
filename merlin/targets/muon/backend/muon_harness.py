@@ -287,6 +287,17 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                        TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
             out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
             return in_args, out_args
+        if op == "SOFTMAX":
+            x, out = o.get("src"), o.get("dst")
+            if not (x and out) or x not in env0:
+                return None
+            xt = env0[x]
+            if len(xt.shape) != 2:
+                return None
+            r, c = xt.shape[0], xt.shape[1]
+            in_args = [TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
+            out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
+            return in_args, out_args
         if op == "BATCHED_MATMUL":
             a, w, out = o.get("a"), o.get("w"), o.get("dst")
             if not (a and w and out) or a not in env0 or w not in env0:

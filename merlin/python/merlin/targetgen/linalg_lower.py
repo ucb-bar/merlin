@@ -206,6 +206,20 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
         return {"abi_version": "0.1", "target": target, "tensors": tensors,
                 "commands": commands, "outputs": [out]}
 
+    # --- a decomposed row softmax, recognized by the softmax provenance ------------------------------
+    if any(o.get("op") == "softmax" for o in ops):
+        src_args = [a["index"] for a in args if len(a["shape"]) == 2]
+        if len(src_args) != 1:
+            raise LinalgLowerError("softmax expects a single 2-D input")
+        x_i = src_args[0]
+        out = "out"
+        result_shape = list(ops[-1]["results"][0]["shape"]) if ops[-1].get("results") else argshape[x_i]
+        tensors = {argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
+                   out: {"shape": result_shape, "dtype": "f32", "role": "output"}}
+        cmd = {"opcode": "SOFTMAX", "operands": {"src": argname[x_i], "dst": out}}
+        return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                "commands": [cmd], "outputs": [out]}
+
     # --- a decomposed row LayerNorm, recognized by the layer_norm provenance -------------------------
     if any(o.get("op") == "layer_norm" for o in ops):
         # src = the sole 2-D func arg; gamma/beta = the 1-D args used in the final mul / add;

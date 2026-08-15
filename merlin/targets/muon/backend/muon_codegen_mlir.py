@@ -426,6 +426,118 @@ def _broadcast_row_loop_nest(a: str, b: str, o: str, m: int, n: int, combine: st
     llvm.return"""
 
 
+# Inline exp(x) via range reduction exp = 2^k * poly(f), k=round(x/ln2), f=x-k*ln2 (degree-5 Taylor).
+# Pure arithmetic (fptosi/sitofp/shl/bitcast) — NO libm call, so it links in the freestanding fork-free
+# path (validated: rel-err ~3e-6 vs libm exp over [-88,0]). Constants named %x* (defined once by the caller).
+_FEXP_CONSTS = """    %xlog2e = llvm.mlir.constant(1.44269502 : f32) : f32
+    %xln2 = llvm.mlir.constant(0.693147182 : f32) : f32
+    %xhalf = llvm.mlir.constant(5.000000e-01 : f32) : f32
+    %xone = llvm.mlir.constant(1.000000e+00 : f32) : f32
+    %xinv6 = llvm.mlir.constant(0.166666672 : f32) : f32
+    %xinv24 = llvm.mlir.constant(4.16666679e-02 : f32) : f32
+    %xinv120 = llvm.mlir.constant(8.33333377e-03 : f32) : f32
+    %xi0 = llvm.mlir.constant(0 : i32) : i32
+    %xi1 = llvm.mlir.constant(1 : i32) : i32
+    %xi127 = llvm.mlir.constant(127 : i32) : i32
+    %xi23 = llvm.mlir.constant(23 : i32) : i32"""
+
+
+def _fexp(p: str, xin: str) -> str:
+    """Straight-line exp(%xin) -> %{p}ex, all SSA names prefixed by ``p`` (uses the %x* constants). Uses
+    i32 (not i64) for the exponent: rv32 has hardware f32<->i32 conversion (fcvt.w.s) but a f32<->i64
+    conversion lowers to a soft-float libcall (__fixsfdi/__floatdisf) that the freestanding BSP can't link."""
+    return f"""    %{p}t = llvm.fmul {xin}, %xlog2e : f32
+    %{p}th = llvm.fadd %{p}t, %xhalf : f32
+    %{p}ti = llvm.fptosi %{p}th : f32 to i32
+    %{p}tf = llvm.sitofp %{p}ti : i32 to f32
+    %{p}gt = llvm.fcmp "ogt" %{p}tf, %{p}th : f32
+    %{p}adj = llvm.select %{p}gt, %xi1, %xi0 : i1, i32
+    %{p}k = llvm.sub %{p}ti, %{p}adj : i32
+    %{p}kf = llvm.sitofp %{p}k : i32 to f32
+    %{p}kl = llvm.fmul %{p}kf, %xln2 : f32
+    %{p}f = llvm.fsub {xin}, %{p}kl : f32
+    %{p}h1 = llvm.fmul %xinv120, %{p}f : f32
+    %{p}h2 = llvm.fadd %{p}h1, %xinv24 : f32
+    %{p}h3 = llvm.fmul %{p}h2, %{p}f : f32
+    %{p}h4 = llvm.fadd %{p}h3, %xinv6 : f32
+    %{p}h5 = llvm.fmul %{p}h4, %{p}f : f32
+    %{p}h6 = llvm.fadd %{p}h5, %xhalf : f32
+    %{p}h7 = llvm.fmul %{p}h6, %{p}f : f32
+    %{p}h8 = llvm.fadd %{p}h7, %xone : f32
+    %{p}h9 = llvm.fmul %{p}h8, %{p}f : f32
+    %{p}poly = llvm.fadd %{p}h9, %xone : f32
+    %{p}kb = llvm.add %{p}k, %xi127 : i32
+    %{p}sh = llvm.shl %{p}kb, %xi23 : i32
+    %{p}twok = llvm.bitcast %{p}sh : i32 to f32
+    %{p}ex = llvm.fmul %{p}twok, %{p}poly : f32"""
+
+
+def _softmax_loop_nest(x: str, o: str, r: int, c: int) -> str:
+    """LLVM-dialect nest for numerically-stable row softmax ``O[i,j] = exp(x[i,j]-max_i)/sum_j`` (fp32).
+    Three passes per row: reduce-max, sum of exp(x-max) (inline poly-exp), divide. The row max and sum are
+    threaded through the loop-header block args."""
+    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cR = llvm.mlir.constant({r} : i64) : i64
+    %cC = llvm.mlir.constant({c} : i64) : i64
+    %zero = llvm.mlir.constant(0.000000e+00 : f32) : f32
+    %ninf = llvm.mlir.constant(-3.402823466e+38 : f32) : f32
+{_FEXP_CONSTS}
+    llvm.br ^m(%c0 : i64)
+  ^m(%mi: i64):
+    %mc = llvm.icmp "slt" %mi, %cR : i64
+    llvm.cond_br %mc, ^mbody, ^end
+  ^mbody:
+    %mC = llvm.mul %mi, %cC : i64
+    llvm.br ^p1(%c0, %ninf : i64, f32)
+  ^p1(%i1: i64, %mx: f32):
+    %p1c = llvm.icmp "slt" %i1, %cC : i64
+    llvm.cond_br %p1c, ^p1b, ^p1d(%mx : f32)
+  ^p1b:
+    %aidx = llvm.add %mC, %i1 : i64
+    %xp1 = llvm.getelementptr %{x}[%aidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %xv1 = llvm.load %xp1 : !llvm.ptr -> f32
+    %gt1 = llvm.fcmp "ogt" %xv1, %mx : f32
+    %nmx = llvm.select %gt1, %xv1, %mx : i1, f32
+    %i1n = llvm.add %i1, %c1 : i64
+    llvm.br ^p1(%i1n, %nmx : i64, f32)
+  ^p1d(%rmx: f32):
+    llvm.br ^p2(%c0, %zero : i64, f32)
+  ^p2(%i2: i64, %sm: f32):
+    %p2c = llvm.icmp "slt" %i2, %cC : i64
+    llvm.cond_br %p2c, ^p2b, ^p2d(%sm : f32)
+  ^p2b:
+    %bidx = llvm.add %mC, %i2 : i64
+    %xp2 = llvm.getelementptr %{x}[%bidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %xv2 = llvm.load %xp2 : !llvm.ptr -> f32
+    %xm2 = llvm.fsub %xv2, %rmx : f32
+{_fexp("a", "%xm2")}
+    %sm2 = llvm.fadd %sm, %aex : f32
+    %i2n = llvm.add %i2, %c1 : i64
+    llvm.br ^p2(%i2n, %sm2 : i64, f32)
+  ^p2d(%rsm: f32):
+    llvm.br ^w(%c0 : i64)
+  ^w(%wi: i64):
+    %wc = llvm.icmp "slt" %wi, %cC : i64
+    llvm.cond_br %wc, ^wb, ^mnext
+  ^wb:
+    %widx = llvm.add %mC, %wi : i64
+    %xpw = llvm.getelementptr %{x}[%widx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %xvw = llvm.load %xpw : !llvm.ptr -> f32
+    %xmw = llvm.fsub %xvw, %rmx : f32
+{_fexp("b", "%xmw")}
+    %yv = llvm.fdiv %bex, %rsm : f32
+    %opw = llvm.getelementptr %{o}[%widx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %yv, %opw : f32, !llvm.ptr
+    %win = llvm.add %wi, %c1 : i64
+    llvm.br ^w(%win : i64)
+  ^mnext:
+    %mi2 = llvm.add %mi, %c1 : i64
+    llvm.br ^m(%mi2 : i64)
+  ^end:
+    llvm.return"""
+
+
 def _layernorm_loop_nest(g: str, b: str, x: str, o: str, r: int, c: int, eps: float) -> str:
     """LLVM-dialect nest for row LayerNorm ``O[i,j] = (X[i,j]-mean_i)*rsqrt(var_i+eps)*G[j] + B[j]``
     (row-major, fp32). Per row: one pass accumulates sum and sum-of-squares (``var = ss/C - mean^2``),
@@ -614,6 +726,16 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
             raise MuonMlirCodegenError(f"batched matmul dim mismatch: {a_nm}{ta.shape} @ {w}{tw.shape}")
         arg_decl = ", ".join(f"%{x}: !llvm.ptr" for x in (w, a_nm, dst))   # weight-first ABI
         nest = _batched_matmul_loop_nest(a_nm, w, dst, batch, m, k, n)
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
+    if "SOFTMAX" in by_op:
+        o = by_op["SOFTMAX"][0].get("operands", {})
+        x, dst = o.get("src"), o.get("dst")
+        if not (x and dst):
+            raise MuonMlirCodegenError("SOFTMAX needs operands src/dst")
+        r, c = _shape2(env, x)
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (x, dst))
+        nest = _softmax_loop_nest(x, dst, r, c)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     if "LAYERNORM" in by_op:
