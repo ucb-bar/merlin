@@ -92,6 +92,27 @@ def _prov(op) -> dict[str, str]:
     return out
 
 
+def _scalar_const(value) -> float | None:
+    """The compile-time scalar constant behind ``value`` when it is an ``arith.constant`` or a
+    ``tensor.splat`` of one (e.g. a per-tensor scale ``x * 4.0`` splats a constant), else None.
+    Lets a lowering bake the scalar into the kernel instead of treating it as a runtime operand."""
+    owner = getattr(value, "owner", None)
+    name = getattr(owner, "name", "")
+    if name == "tensor.splat" and owner.operands:
+        owner = getattr(owner.operands[0], "owner", None)
+        name = getattr(owner, "name", "")
+    if name == "arith.constant":
+        attrs = {**owner.attributes, **(getattr(owner, "properties", {}) or {})}
+        v = attrs.get("value")
+        data = getattr(getattr(v, "value", None), "data", None)
+        if data is not None:
+            try:
+                return float(data)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
 def _ins_outs(op) -> tuple[list, list]:
     """The linalg operand split (ins= data operands, outs= init/destination operands).
 
@@ -240,7 +261,11 @@ def parse_linalg_mlir(text: str, *, ctx=None) -> dict[str, Any]:
         return ("other", oname)
 
     def _operand_rec(value):
-        return {"source": _source(value), "shape": _shape(value.type), "dtype": _dtype(value.type)}
+        rec = {"source": _source(value), "shape": _shape(value.type), "dtype": _dtype(value.type)}
+        cv = _scalar_const(value)
+        if cv is not None:
+            rec["const_value"] = cv
+        return rec
 
     ops_out: list[dict[str, Any]] = []
     for i, op in enumerate(payload):

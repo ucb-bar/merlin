@@ -226,6 +226,32 @@ def _elementwise_loop_nest(a: str, b: str, o: str, n: int, combine: str) -> str:
     llvm.return"""
 
 
+def _scalar_op_loop_nest(a: str, o: str, n: int, scalar: float, combine: str) -> str:
+    """LLVM-dialect single flat loop for a compile-time scalar map ``O[i] = A[i] <op> c`` (fp32), ``op`` =
+    fadd/fmul, ``c`` baked as a constant. The per-tensor-scale (embed-scale) / scalar-bias core; the scalar
+    lives in the kernel, not as a runtime operand."""
+    fop = {"add": "llvm.fadd", "mul": "llvm.fmul"}[combine]
+    cf = f"{float(scalar):.8e}"
+    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cN = llvm.mlir.constant({n} : i64) : i64
+    %cf = llvm.mlir.constant({cf} : f32) : f32
+    llvm.br ^l(%c0 : i64)
+  ^l(%i: i64):
+    %ic = llvm.icmp "slt" %i, %cN : i64
+    llvm.cond_br %ic, ^body, ^end
+  ^body:
+    %ap = llvm.getelementptr %{a}[%i] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %av = llvm.load %ap : !llvm.ptr -> f32
+    %rv = {fop} %av, %cf : f32
+    %op = llvm.getelementptr %{o}[%i] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %rv, %op : f32, !llvm.ptr
+    %i2 = llvm.add %i, %c1 : i64
+    llvm.br ^l(%i2 : i64)
+  ^end:
+    llvm.return"""
+
+
 def _broadcast_row_loop_nest(a: str, b: str, o: str, m: int, n: int, combine: str) -> str:
     """LLVM-dialect nest for a row-broadcast elementwise map ``O[i,j] = A[i,j] <op> B[j]`` (fp32), where
     ``B`` is a length-``n`` row broadcast over the ``m`` rows of ``A`` (standalone bias-add / per-channel
@@ -321,7 +347,20 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
         if combine not in ("add", "mul"):
             raise MuonMlirCodegenError(f"VECTOR_MAP combine {combine!r} not supported by the reference "
                                        f"emitter (transcendental-free add/mul only)")
-        a, b, dst = o.get("lhs"), o.get("rhs"), o.get("dst")
+        a, dst = o.get("lhs"), o.get("dst")
+        if "scalar" in attrs and o.get("rhs") is None:            # compile-time scalar map A <op> c
+            if not (a and dst):
+                raise MuonMlirCodegenError("scalar VECTOR_MAP needs operands lhs/dst")
+            ta = env.get(a)
+            if ta is None:
+                raise MuonMlirCodegenError(f"VECTOR_MAP operand {a} not materialized")
+            n = 1
+            for d in ta.shape:
+                n *= d
+            arg_decl = ", ".join(f"%{x}: !llvm.ptr" for x in (a, dst))
+            nest = _scalar_op_loop_nest(a, dst, n, float(attrs["scalar"]), combine)
+            return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+        b = o.get("rhs")
         if not (a and b and dst):
             raise MuonMlirCodegenError("VECTOR_MAP needs operands lhs/rhs/dst")
         ta, tb = env.get(a), env.get(b)

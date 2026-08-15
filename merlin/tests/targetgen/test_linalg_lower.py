@@ -40,6 +40,17 @@ def test_row_broadcast_bias_add_lowers_to_vector_map_with_bias_role():
     assert len(bias) == 1 and len(bias[0]["shape"]) == 1   # the length-n broadcast row
 
 
+def test_arg_times_constant_lowers_to_a_scalar_vector_map():
+    # embed-scale: X * splat(4.0) -> a scalar VECTOR_MAP with the constant baked in (no rhs operand)
+    cb = lower_linalg_to_cb(_parse("RP12_embed_scale_fp32_pt"), target="t")
+    schemas.validate_command_buffer(cb)
+    (cmd,) = cb["commands"]
+    assert cmd["opcode"] == "VECTOR_MAP" and cmd["attributes"]["combine"] == "mul"
+    assert cmd["attributes"]["scalar"] == 4.0 and "rhs" not in cmd["operands"]
+    inputs = [v for v in cb["tensors"].values() if v["role"] == "input"]
+    assert len(inputs) == 1   # only the activation is a runtime operand; the scale is compiled in
+
+
 def test_single_matmul_with_bias_lowers_to_residency_commands():
     cb = lower_linalg_to_cb(_parse("RP15_fused_matmul_bias_bf16_pt"), target="t")
     schemas.validate_command_buffer(cb)
@@ -51,7 +62,7 @@ def test_single_matmul_with_bias_lowers_to_residency_commands():
 
 
 @pytest.mark.parametrize("rel", ["RP18_resadd_bf16_pt", "RP16_bias_add_fp32_pt",
-                                 "RP15_fused_matmul_bias_bf16_pt"])
+                                 "RP15_fused_matmul_bias_bf16_pt", "RP12_embed_scale_fp32_pt"])
 def test_lowered_capsule_emits_a_valid_kernel(rel):
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir

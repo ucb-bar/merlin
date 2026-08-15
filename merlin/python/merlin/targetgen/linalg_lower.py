@@ -47,11 +47,28 @@ def lower_linalg_to_cb(parsed: dict[str, Any], *, target: str) -> dict[str, Any]
     if len(ops) == 1 and ops[0]["family"] in ("elementwise", "elementwise_map"):
         op = ops[0]
         ins = op["ins"]
-        if len(ins) != 2 or any(s["source"][0] != "arg" for s in ins):
-            raise LinalgLowerError(
-                "reference lowering supports a two-operand elementwise map over func args only "
-                f"(got {[s['source'] for s in ins]})")
         combine = _combine_from_body(op["body_ops"])
+        if len(ins) != 2:
+            raise LinalgLowerError(f"reference lowering supports a two-operand elementwise map (got {len(ins)})")
+
+        # A <op> c : one arg operand and one compile-time scalar (a splat of an arith.constant) -> a
+        # scalar map with the constant baked into the kernel (per-tensor scale / scalar bias).
+        arg_ins = [s for s in ins if s["source"][0] == "arg"]
+        const_ins = [s for s in ins if "const_value" in s]
+        if len(arg_ins) == 1 and len(const_ins) == 1:
+            ai = arg_ins[0]["source"][1]
+            out = "out"
+            tensors = {argname[ai]: {"shape": argshape[ai], "dtype": "f32", "role": "input"},
+                       out: {"shape": list(op["results"][0]["shape"]), "dtype": "f32", "role": "output"}}
+            cmd = {"opcode": "VECTOR_MAP", "operands": {"lhs": argname[ai], "dst": out},
+                   "attributes": {"combine": combine, "scalar": const_ins[0]["const_value"]}}
+            return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                    "commands": [cmd], "outputs": [out]}
+
+        if any(s["source"][0] != "arg" for s in ins):
+            raise LinalgLowerError(
+                "reference lowering supports a two-arg elementwise map or arg-times-constant only "
+                f"(got {[s['source'] for s in ins]})")
         i0, i1 = ins[0]["source"][1], ins[1]["source"][1]
         s0, s1 = argshape[i0], argshape[i1]
         # accept equal-shape, or a length-n rhs broadcast over an (m,n) lhs (the emitter handles both)
