@@ -40,7 +40,8 @@ from .opu_kernel import KernelSpec, emit_microkernel, emit_reference_c
 
 __all__ = ["CaseResult", "CertReport", "IMAGE_MAIN", "REPORT_VERSION", "build_image", "certify",
            "emit_image_c", "expected_digests", "fnv1a64", "logical_tile_edge",
-           "operand_alignment_for_config", "parse_console", "provenance_stamp", "tile_edge_for_config", "verdict"]
+           "operand_alignment_for_config", "parse_console", "provenance_stamp", "solve_unit_rate",
+           "tile_edge_for_config", "UnitRate", "verdict"]
 
 #: Bumped when the report's shape changes, so an old artifact is never read as a new one.
 REPORT_VERSION = 1
@@ -718,6 +719,135 @@ class CertReport:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(self.to_dict(), indent=1) + "\n", encoding="utf-8")
         return p
+
+
+@dataclass(frozen=True)
+class UnitRate:
+    """A tiled unit's throughput and per-tile-pair overhead, SOLVED from its own certification.
+
+    This is the number :class:`targetgen.routing.MeasuredCost` declines a unit for lacking, and the reason
+    it could not be filled in before is that **one cycle count per shape cannot produce it**. A tiled unit's
+    runtime has two terms that a single measurement cannot separate: work proportional to the reduction, and
+    a fixed cost per tile pair for loading operands into the array and draining the accumulator out of it.
+    Divide MACs by cycles once and you get neither -- you get a number that is right only at that K.
+
+    With TWO reduction depths per shape it becomes a two-point solve, ``cycles/pair = a*K + b``, and the
+    answer is checkable: independent shapes must agree on ``a``. MEASURED on the Saturn OPU at tile edge 64,
+    four shapes spanning 16 to 64 tile pairs agreed to within 5% (139.6 / 135.7 / 149.6 / 146.5 MACs per
+    cycle). Without the ``b`` term those same measurements imply rates from 39 to 135 depending only on which
+    shape they came from -- a 3.45x spread that is purely ``b`` amortizing over different K.
+
+    Shapes that do not fill a tile in BOTH extents are excluded from the blend and recorded in
+    :attr:`excluded`. Such a shape measures occupancy, not rate: at ``M = 1`` the unit does one row of work
+    per tile, so folding it into a peak-rate estimate would drag the rate down by the width of the tile and
+    make every wide shape look slower than it is. They are still reported per shape, because a reader
+    checking whether one constant is enough needs to see the spread rather than be told about it.
+
+    ``macs_per_cycle`` is None when nothing in the report can price the unit -- no full-tile shape with two
+    reduction depths. That is the fail-closed case, and it is deliberately the same signal
+    :class:`MeasuredCost` uses: an unmeasured unit is DECLINED, never scored optimistically.
+    """
+
+    tile_edge: int
+    macs_per_cycle: float | None
+    tile_overhead_cycles_per_pair: float | None
+    #: Per (m, n) group: the solved fit and whether it fed the blend. Keyed ``"MxN"``.
+    per_shape: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: ``(shape, why)`` for every group the blend left out.
+    excluded: tuple[tuple[str, str], ...] = ()
+    #: Why the unit could not be priced at all, when it could not.
+    gaps: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"tile_edge": self.tile_edge, "macs_per_cycle": self.macs_per_cycle,
+                "tile_overhead_cycles_per_pair": self.tile_overhead_cycles_per_pair,
+                "per_shape": dict(self.per_shape),
+                "excluded": [{"shape": s, "why": w} for s, w in self.excluded],
+                "gaps": list(self.gaps)}
+
+    def cost_model(self, unit: str, **kwargs: Any):
+        """A :class:`targetgen.routing.MeasuredCost` carrying these measurements for ``unit``.
+
+        This is the seam that turns a certification into a routing decision. Everything the cost model
+        knows about the unit comes from here; ``kwargs`` passes through the properties the CONTRACT declares
+        rather than the hardware measures (``requires_k_major``, ``pack_cycles_per_element``), which is why
+        they are not fields of this object.
+
+        An unpriced unit is passed through as unpriced -- the empty table makes ``MeasuredCost`` decline it,
+        which is the correct behaviour and not something to paper over with a default rate.
+        """
+        from ..targetgen import routing
+
+        rates = {} if self.macs_per_cycle is None else {unit: float(self.macs_per_cycle)}
+        over = ({} if self.tile_overhead_cycles_per_pair is None
+                else {unit: float(self.tile_overhead_cycles_per_pair)})
+        return routing.MeasuredCost(macs_per_cycle=rates, tile_edge={unit: int(self.tile_edge)},
+                                    tile_overhead_cycles=over, **kwargs)
+
+
+def solve_unit_rate(results: Sequence[CaseResult], *, tile_edge: int) -> UnitRate:
+    """Solve the unit's rate and per-tile-pair overhead from certified cases with cycle counts.
+
+    Only CERTIFIED cases are used. A case that did not agree with both references is not a measurement of
+    how fast the unit is; it is a measurement of something being wrong, and averaging it in would price the
+    unit on the strength of a run whose numbers are known bad.
+    """
+    tile = int(tile_edge)
+    if tile <= 0:
+        return UnitRate(tile_edge=tile, macs_per_cycle=None, tile_overhead_cycles_per_pair=None,
+                        gaps=(f"tile_edge={tile_edge} is not a tile geometry",))
+
+    groups: dict[tuple[int, int], dict[int, int]] = {}
+    for r in results:
+        if r.certified and r.cycles and r.cycles > 0:
+            groups.setdefault((int(r.m), int(r.n)), {})[int(r.k)] = int(r.cycles)
+
+    per_shape: dict[str, dict[str, Any]] = {}
+    excluded: list[tuple[str, str]] = []
+    rates: list[float] = []
+    overheads: list[float] = []
+    for (m, n), by_k in sorted(groups.items()):
+        name = f"{m}x{n}"
+        ks = sorted(by_k)
+        if len(ks) < 2:
+            excluded.append((name, f"one reduction depth (K={ks[0]}) cannot separate rate from overhead"))
+            continue
+        pairs = _ceil_div(m, tile) * _ceil_div(n, tile)
+        lo, hi = ks[0], ks[-1]
+        a = (by_k[hi] / pairs - by_k[lo] / pairs) / (hi - lo)
+        b = by_k[lo] / pairs - a * lo
+        # MACs a full K step performs per tile pair: the tile's LIVE area, which is the tile itself only
+        # when the shape fills it. Dividing by `a` then gives MACs per cycle at that occupancy.
+        live = min(m, tile) * min(n, tile)
+        rate = (live / a) if a > 0 else None
+        fills = (m >= tile and n >= tile)
+        entry = {"m": m, "n": n, "k_points": ks, "tile_pairs": pairs,
+                 "cycles_per_k_step_per_pair": a, "fixed_cycles_per_pair": b,
+                 "macs_per_cycle": rate, "fills_tile": fills}
+        per_shape[name] = entry
+        if rate is None:
+            excluded.append((name, "non-positive slope: the two depths do not separate"))
+        elif not fills:
+            excluded.append((name, f"does not fill a {tile}x{tile} tile in both extents "
+                                   f"(m={m}, n={n}); measures occupancy, not rate"))
+        else:
+            rates.append(rate)
+            overheads.append(b)
+            entry["in_blend"] = True
+
+    if not rates:
+        return UnitRate(tile_edge=tile, macs_per_cycle=None, tile_overhead_cycles_per_pair=None,
+                        per_shape=per_shape, excluded=tuple(excluded),
+                        gaps=("no certified full-tile shape has two reduction depths, so the unit's rate "
+                              "and its per-tile-pair overhead cannot be separated",))
+    return UnitRate(tile_edge=tile,
+                    macs_per_cycle=sum(rates) / len(rates),
+                    tile_overhead_cycles_per_pair=sum(overheads) / len(overheads),
+                    per_shape=per_shape, excluded=tuple(excluded))
+
+
+def _ceil_div(a: int, b: int) -> int:
+    return -(-int(a) // int(b))
 
 
 def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec: KernelSpec,

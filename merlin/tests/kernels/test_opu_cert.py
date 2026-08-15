@@ -597,3 +597,84 @@ class TestTheImageIsVectorLengthAgnostic:
         for mnem in ("vs1r.v", "vs2r.v", "vs4r.v", "vs8r.v", "vl1r.v"):
             hits = [i for i in instrs if mnem in i]
             assert not hits, f"the image spills vector registers ({mnem}): {hits[:2]}"
+
+
+class TestSolvingTheUnitRate:
+    """Pricing a tiled unit from its own certification.
+
+    The property that matters is not that a number comes out -- it is that the number is DECLINED when
+    the measurements cannot support it. `MeasuredCost` treats a missing rate as "decline this unit", so a
+    solver that guessed instead of declining would silently turn "we never measured this" into a routing
+    decision.
+    """
+
+    @staticmethod
+    def _r(m, n, k, cycles, *, certified=True):
+        return C.CaseResult(name=f"{m}x{n}x{k}", m=m, n=n, k=k, ran=True,
+                            in_image_agrees=certified, digest_agrees=certified, cycles=cycles)
+
+    def test_it_recovers_the_rate_and_overhead_a_synthetic_unit_was_built_with(self):
+        # A unit that does `tile*tile` MACs per pair per K step at `rate`, plus `b` fixed cycles per pair.
+        tile, rate, b = 64, 128.0, 2000.0
+        a = (tile * tile) / rate
+        rows = []
+        for (m, n) in [(128, 128), (192, 256)]:
+            pairs = (m // tile) * (n // tile)
+            for k in (32, 512):
+                rows.append(self._r(m, n, k, round(pairs * (a * k + b))))
+        got = C.solve_unit_rate(rows, tile_edge=tile)
+        assert got.macs_per_cycle == pytest.approx(rate, rel=1e-3)
+        assert got.tile_overhead_cycles_per_pair == pytest.approx(b, rel=1e-3)
+
+    def test_one_reduction_depth_cannot_price_the_unit(self):
+        rows = [self._r(128, 128, 64, 200_000), self._r(192, 256, 64, 900_000)]
+        got = C.solve_unit_rate(rows, tile_edge=64)
+        assert got.macs_per_cycle is None
+        assert got.gaps, "a unit that cannot be priced must say so rather than return a number"
+        assert any("one reduction depth" in why for _s, why in got.excluded)
+
+    def test_a_shape_that_does_not_fill_a_tile_is_kept_out_of_the_blend(self):
+        tile, rate, b = 64, 128.0, 2000.0
+        a = (tile * tile) / rate
+        rows = []
+        for k in (32, 512):
+            rows.append(self._r(128, 128, k, round(4 * (a * k + b))))
+        # A skinny shape whose per-pair slope reflects ONE live row, not the tile.
+        for k in (32, 512):
+            rows.append(self._r(1, 1000, k, round(16 * ((a / tile) * k + b))))
+        got = C.solve_unit_rate(rows, tile_edge=tile)
+        assert got.macs_per_cycle == pytest.approx(rate, rel=1e-3), \
+            "the skinny shape measures occupancy; blending it in would understate the unit"
+        assert any("does not fill" in why for _s, why in got.excluded)
+        assert "1x1000" in got.per_shape, "an excluded shape is still reported, so the spread is visible"
+
+    def test_an_uncertified_case_is_not_a_measurement(self):
+        rows = [self._r(128, 128, 32, 10_000, certified=False),
+                self._r(128, 128, 512, 90_000, certified=False)]
+        assert C.solve_unit_rate(rows, tile_edge=64).macs_per_cycle is None
+
+    def test_an_unpriced_unit_is_declined_by_the_cost_model_it_builds(self):
+        from merlin.targetgen import routing
+        got = C.solve_unit_rate([], tile_edge=64)
+        cost = got.cost_model("some_unit")
+        demand = routing.OpDemand(op="matmul", in_fmt="i8", weight_fmt="i8", m=196, n=1024, k=256)
+        cand = routing.Candidate(unit="some_unit", kind="matrix", acc="i32", exposure="intrinsic")
+        assert cost(demand, cand) is None
+
+    def test_the_cost_model_it_builds_charges_the_overhead_per_tile_pair(self):
+        tile, rate, b = 64, 128.0, 2000.0
+        a = (tile * tile) / rate
+        rows = [self._r(128, 128, k, round(4 * (a * k + b))) for k in (32, 512)]
+        from merlin.targetgen import routing
+        cost = C.solve_unit_rate(rows, tile_edge=tile).cost_model("u")
+        cand = routing.Candidate(unit="u", kind="matrix", acc="i32", exposure="intrinsic")
+
+        def at(k):
+            return cost(routing.OpDemand(op="matmul", in_fmt="i8", weight_fmt="i8",
+                                         m=128, n=128, k=k), cand)
+
+        # Two K points on the same shape differ by the work term alone; the gap between them and zero is
+        # the fixed cost. Without it the model would be linear THROUGH the origin and short reductions
+        # would be priced as if the array loaded itself for free.
+        assert at(512) - at(32) == pytest.approx(4 * a * (512 - 32), rel=1e-6)
+        assert at(0) == pytest.approx(4 * b, rel=1e-6)
