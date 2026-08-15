@@ -803,6 +803,23 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         gsource = CG.golden_source(capsule, capsule_dir)
         gold = CG.golden(capsule, capsule_dir)
 
+        # A linalg-on-tensors reference lowering names its output positionally ("out"); the readback base +
+        # golden compare are keyed by the capsule's DECLARED output name (the merlin_iface grammar already
+        # names it via the commit op). Rename the sole output leaf to the declared name so preload, kernel,
+        # readback, and golden all agree on one name+address. Scoped to linalg_positional cbs (no-op else).
+        if cb.get("interface") == "linalg_positional":
+            _outnm = ((capsule.get("operation") or {}).get("attributes") or {}).get("out")
+            _outs = [n for n, s in (cb.get("tensors") or {}).items() if s.get("role") == "output"]
+            if _outnm and len(_outs) == 1 and _outs[0] != _outnm:
+                _old = _outs[0]
+                cb["tensors"][_outnm] = cb["tensors"].pop(_old)
+                cb["outputs"] = [_outnm if o == _old else o for o in cb.get("outputs", [])]
+                cb["arg_order"] = [_outnm if a == _old else a for a in cb.get("arg_order", [])]
+                for _c in cb.get("commands", []):
+                    for _k, _v in (_c.get("operands") or {}).items():
+                        if _v == _old:
+                            _c["operands"][_k] = _outnm
+
         # A program-oracle (self-hosted-ISA) target must run its emitted kernel on the SAME operands the
         # independent golden used. Attach the capsule's canonical leaf-input bytes (golden.yaml raws) to
         # the cb's leaf tensors so the program oracle preloads them by cb-declared base (AW5). Keyed by
@@ -820,6 +837,23 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         _vals = CG.canonical_input_values(capsule, capsule_dir)
         if _vals:
             cb["canonical_inputs"] = _vals
+            # POSITIONAL FALLBACK for interface grammars whose operands are UNNAMED. The merlin_iface
+            # grammar names each leaf (``name = "X"``) so the by-name attach above matches; the
+            # linalg-on-tensors grammar has positional ``func.func @forward`` args (``%0``, ``%1`` …), so a
+            # lowering names its leaves positionally and NONE match the canonical keys (the capsule's
+            # arg_order). When no canonical key is a cb tensor name, re-key by POSITION: the capsule's
+            # arg_order and the cb's non-output leaves are both in @forward-argument order, so zip them.
+            _tensors = cb.get("tensors") or {}
+            if not (set(_vals) & set(_tensors)):
+                _leaves = [n for n, s in _tensors.items()
+                           if s.get("role") in ("input", "weight", "bias")]
+                _ordered = list(_vals.values())
+                if len(_leaves) == len(_ordered):
+                    cb["canonical_inputs"] = dict(zip(_leaves, _ordered))
+                    if _raws:
+                        import base64 as _b64
+                        for _leaf, _rb in zip(_leaves, list(_raws.values())):
+                            _tensors[_leaf]["preload_b64"] = _b64.b64encode(_rb).decode()
 
         # Stamp the HARNESS-owned canonical DRAM layout onto every cb tensor (inputs+output), matched by
         # name. The agent's kernel was told these exact addresses (see the emit contract), so preload,

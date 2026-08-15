@@ -62,8 +62,10 @@ def lower_linalg_to_cb(parsed: dict[str, Any], *, target: str) -> dict[str, Any]
                        out: {"shape": list(op["results"][0]["shape"]), "dtype": "f32", "role": "output"}}
             cmd = {"opcode": "VECTOR_MAP", "operands": {"lhs": argname[ai], "dst": out},
                    "attributes": {"combine": combine, "scalar": const_ins[0]["const_value"]}}
+            # the emitted kernel takes (lhs, dst) — the func-arg order the linalg_positional harness feeds
             return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                    "commands": [cmd], "outputs": [out]}
+                    "commands": [cmd], "outputs": [out],
+                    "interface": "linalg_positional", "arg_order": [argname[ai], out]}
 
         if any(s["source"][0] != "arg" for s in ins):
             raise LinalgLowerError(
@@ -84,8 +86,10 @@ def lower_linalg_to_cb(parsed: dict[str, Any], *, target: str) -> dict[str, Any]
         cmd = {"opcode": "VECTOR_MAP",
                "operands": {"lhs": argname[i0], "rhs": argname[i1], "dst": out},
                "attributes": {"combine": combine}}
+        # the emitted kernel takes (lhs, rhs, dst) — the func-arg order the linalg_positional harness feeds
         return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                "commands": [cmd], "outputs": [out]}
+                "commands": [cmd], "outputs": [out],
+                "interface": "linalg_positional", "arg_order": [argname[i0], argname[i1], out]}
 
     # --- two chained 2-D matmuls: A@W1 then (that result)@W2 -----------------------------------------
     if (len(ops) == 2 and ops[0].get("family") == "contraction" and ops[1].get("family") == "contraction"):
