@@ -351,12 +351,18 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
 # comparison + numeric report
 # --------------------------------------------------------------------------------------------
 def _flat(nested) -> list:
+    """Deep-flatten to a row-major value list (handles rank >= 3, e.g. a batched matmul output whose
+    golden is (batch, m, n) while the kernel readback is a flat (batch*m, n))."""
     out: list = []
-    if nested and isinstance(nested[0], list):
-        for r in nested:
-            out.extend(r)
-    else:
-        out.extend(nested)
+
+    def _rec(x):
+        if isinstance(x, list):
+            for e in x:
+                _rec(e)
+        else:
+            out.append(x)
+
+    _rec(nested)
     return out
 
 

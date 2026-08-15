@@ -190,7 +190,14 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
         if isinstance(c, dict):
             c = c.get("values")
         if c is not None:
-            return [float(x) for x in c]
+            def _fl(v):                                  # deep-flatten (batched operands are rank-3)
+                if isinstance(v, (list, tuple)):
+                    out: list[float] = []
+                    for e in v:
+                        out.extend(_fl(e))
+                    return out
+                return [float(v)]
+            return _fl(c)
         return [float(v) for row in t.to_list() for v in row]
 
     # --- linalg-interface fused op (softmax/layernorm/geglu/rope/attention_full) ----------------------
@@ -264,6 +271,37 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                        TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
             out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
             return in_args, out_args
+        if op == "LAYERNORM":
+            x, g, b, out = o.get("src"), o.get("gamma"), o.get("beta"), o.get("dst")
+            if not (x and g and b and out) or x not in env0 or g not in env0 or b not in env0:
+                return None
+            xt, gt, bt = env0[x], env0[g], env0[b]
+            if len(xt.shape) != 2:
+                return None
+            r, c = xt.shape[0], xt.shape[1]
+            gr, gc = _shape2d(list(gt.shape))
+            br, bc = _shape2d(list(bt.shape))
+            # weight-first ABI: [gamma, beta] ++ [src] ++ [out]
+            in_args = [TensorArg(g, gr, gc, _vals(canon0, g, gt), "f32"),
+                       TensorArg(b, br, bc, _vals(canon0, b, bt), "f32"),
+                       TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
+            out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
+            return in_args, out_args
+        if op == "BATCHED_MATMUL":
+            a, w, out = o.get("a"), o.get("w"), o.get("dst")
+            if not (a and w and out) or a not in env0 or w not in env0:
+                return None
+            at, wt = env0[a], env0[w]
+            if len(at.shape) != 3 or len(wt.shape) != 3:
+                return None
+            batch, m, k = at.shape
+            _, k2, n = wt.shape
+            # flatten the batch into rows for the flat preload (matches the kernel's flat indexing);
+            # weight-first ABI: [w] ++ [a] ++ [out]
+            in_args = [TensorArg(w, batch * k2, n, _vals(canon0, w, wt), "f32"),
+                       TensorArg(a, batch * m, k, _vals(canon0, a, at), "f32")]
+            out_args = [TensorArg(out, batch * m, n, [0.0] * (batch * m * n), "f32")]
+            return in_args, out_args
 
     # Tolerant single-matmul plan (do NOT reuse the strict muon_codegen._plan, which assumes ``dst`` on every
     # matmul): resolve RES_PACK residents, the one matmul (accepting ``dst``/``out`` and ``rhs``/``weight``),
@@ -287,6 +325,25 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                 commits.append((o["dst"], o["src"]))
                 if o.get("bias") and "bias_add" in (cmd.get("attributes", {}) or {}).get("epilogue", []):
                     commit_bias[o["dst"]] = o["bias"]
+    # Chained matmul: two matmuls where the second's lhs is the first's output (A@W1 then @W2). The
+    # intermediate is internal to the kernel; the graded operands are A, W1, W2 (weight-first: W1,W2,A) + Y.
+    if len(matmuls) == 2:
+        (d0, l0, r0), (d1, l1, r1) = matmuls
+        env = materialize_inputs(cb)
+        out0 = next((cout for cout, csrc in commits if csrc == d0), d0)   # matmul0's committed output
+        if l1 in (d0, out0):                                              # matmul1 consumes it (via commit)
+            a_nm, w1, w2 = l0, resident_source.get(r0, r0), resident_source.get(r1, r1)
+            y = next((cout for cout, csrc in commits if csrc == d1), d1)
+            if all(nm in env and len(env[nm].shape) == 2 for nm in (a_nm, w1, w2)):
+                m, k = env[a_nm].shape
+                _, k2 = env[w1].shape
+                _, n = env[w2].shape
+                in_args = [TensorArg(w1, k, k2, _vals(canon0, w1, env[w1]), "f32"),
+                           TensorArg(w2, k2, n, _vals(canon0, w2, env[w2]), "f32"),
+                           TensorArg(a_nm, m, k, _vals(canon0, a_nm, env[a_nm]), "f32")]
+                out_args = [TensorArg(y, m, n, [0.0] * (m * n), "f32")]
+                return in_args, out_args
+        return None
     if len(matmuls) != 1:
         return None
     mdst, lhs, rhs = matmuls[0]
@@ -319,7 +376,14 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
         if isinstance(c, dict):
             c = c.get("values")
         if c is not None:
-            return [float(x) for x in c]
+            def _fl(v):                                  # deep-flatten (batched operands are rank-3)
+                if isinstance(v, (list, tuple)):
+                    out: list[float] = []
+                    for e in v:
+                        out.extend(_fl(e))
+                    return out
+                return [float(v)]
+            return _fl(c)
         return [float(v) for row in t.to_list() for v in row]
 
     lv, rv = _flat(lhs, lt), _flat(rhs, rt)
