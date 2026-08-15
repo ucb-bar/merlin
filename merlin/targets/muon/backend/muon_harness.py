@@ -271,6 +271,7 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     resident_source: dict[str, str] = {}
     matmuls: list[tuple[str, str, str]] = []      # (dst, lhs, rhs)
     commits: list[tuple[str, str]] = []           # (out, src)
+    commit_bias: dict[str, str] = {}              # out -> bias operand (a bias_add epilogue)
     for cmd in cb.get("commands", []):
         op = (cmd.get("opcode") or "").upper()
         o = cmd.get("operands", {})
@@ -284,6 +285,8 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
         elif op == "COMMIT":
             if o.get("dst") and o.get("src"):
                 commits.append((o["dst"], o["src"]))
+                if o.get("bias") and "bias_add" in (cmd.get("attributes", {}) or {}).get("epilogue", []):
+                    commit_bias[o["dst"]] = o["bias"]
     if len(matmuls) != 1:
         return None
     mdst, lhs, rhs = matmuls[0]
@@ -322,8 +325,17 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     lv, rv = _flat(lhs, lt), _flat(rhs, rt)
     if lv is None or rv is None or len(lv) != m * k or len(rv) != k2 * n:
         return None
-    # ABI order: [weight] ++ [lhs] ++ [output]. weight = the (resident-resolved) rhs operand.
-    in_args = [TensorArg(rhs, k2, n, rv, "f32"), TensorArg(lhs, m, k, lv, "f32")]
+    # ABI order: [weight (+bias, before lhs)] ++ [lhs] ++ [output]. weight = the resident-resolved rhs.
+    in_args = [TensorArg(rhs, k2, n, rv, "f32")]
+    bias = commit_bias.get(out)
+    if bias is not None:
+        bt = env.get(bias)
+        bv = _flat(bias, bt) if bt is not None else None
+        if bt is None or bv is None:
+            return None
+        br, bc = _shape2d(list(bt.shape))
+        in_args.append(TensorArg(bias, br, bc, bv, "f32"))
+    in_args.append(TensorArg(lhs, m, k, lv, "f32"))
     out_args = [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
     return in_args, out_args
 

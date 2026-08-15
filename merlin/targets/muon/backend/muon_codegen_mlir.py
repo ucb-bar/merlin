@@ -685,8 +685,9 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
     if bias is not None and bias not in env:
         raise MuonMlirCodegenError(f"bias {bias!r} not materialized")
 
-    # Arg order = the generic kernel_abi [weight] ++ [lhs] ++ [outputs] (+ bias if present, after weight).
-    arg_names = [rhs, lhs, dst] + ([bias] if bias is not None else [])
+    # Arg order = the generic kernel_abi [weight (+bias, a weight-like preloaded operand)] ++ [lhs] ++
+    # [outputs] — bias sits with the weights (before lhs) so it is a preloaded INPUT, matching the harness.
+    arg_names = [rhs] + ([bias] if bias is not None else []) + [lhs, dst]
     arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in arg_names)
     nest = _matmul_loop_nest(rhs, lhs, dst, m, k, n, epi, bias)
     return f"module {{\n  llvm.func @{target}_kernel({arg_decl}) {{\n{nest}\n  }}\n}}\n"

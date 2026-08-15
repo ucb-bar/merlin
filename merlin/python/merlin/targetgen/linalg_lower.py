@@ -34,7 +34,15 @@ def _combine_from_body(body_ops: list[str]) -> str:
 
 def lower_linalg_to_cb(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
     """Lower a :func:`merlin.targetgen.contract.linalg_iface.parse_linalg_mlir` inventory to a command
-    buffer, or raise :class:`LinalgLowerError` for an unsupported pattern."""
+    buffer, or raise :class:`LinalgLowerError` for an unsupported pattern. Every cb is stamped
+    ``operand_naming: positional`` — its leaves are named by @forward-arg index (the linalg args are
+    unnamed), so the runner maps the golden's canonical inputs + the declared output by POSITION."""
+    cb = _lower_impl(parsed, target=target)
+    cb.setdefault("operand_naming", "positional")
+    return cb
+
+
+def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
     ops = parsed.get("ops", [])
     args = parsed.get("args", [])
     if not ops:

@@ -807,7 +807,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # golden compare are keyed by the capsule's DECLARED output name (the merlin_iface grammar already
         # names it via the commit op). Rename the sole output leaf to the declared name so preload, kernel,
         # readback, and golden all agree on one name+address. Scoped to linalg_positional cbs (no-op else).
-        if cb.get("interface") == "linalg_positional":
+        if cb.get("operand_naming") == "positional" or cb.get("interface") == "linalg_positional":
             _outnm = ((capsule.get("operation") or {}).get("attributes") or {}).get("out")
             _outs = [n for n, s in (cb.get("tensors") or {}).items() if s.get("role") == "output"]
             if _outnm and len(_outs) == 1 and _outs[0] != _outnm:
