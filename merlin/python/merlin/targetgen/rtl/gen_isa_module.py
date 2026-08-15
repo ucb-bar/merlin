@@ -20,7 +20,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .facts import load_facts
+from .facts import decode_body, load_facts
 
 _HEADER = '''"""GENERATED from RTL facts by merlin.targetgen.rtl.gen_isa_module — DO NOT hand-edit the tables.
 
@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 
 
 def generate(facts: dict, encoding: dict | None = None) -> str:
-    f = facts["facts"]
+    f = decode_body(facts, str(facts.get("target") or "target"), needs="a funct-legality encoder")
     fd = next(i for i in f["interfaces"] if i.get("name") == "funct_decode_table")
     names = {int(k): v for k, v in fd["names"].items()}
     legal = sorted(fd["legal_funct"])
@@ -141,7 +141,7 @@ def generate_header(facts: dict, encoding: dict, target: str) -> str:
     """Emit a C++ header of the SAME derived ISA constants (from facts + the manifest encoding block), so
     a C++ backend #includes generated constants instead of hand-typing constexprs — closing the third
     (C++) leg of the former triplication with the same single source the Python module uses."""
-    f = facts["facts"]
+    f = decode_body(facts, target, needs="a C++ constants header")
     fd = next(i for i in f["interfaces"] if i.get("name") == "funct_decode_table")
     mesh = next((a for a in f.get("arrays", []) if a.get("name") == "mesh"), {})
     rb = (encoding or {}).get("readout_bits") or {}

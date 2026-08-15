@@ -124,6 +124,28 @@ def load_facts(target: str, *, explicit: str | Path | None = None) -> dict[str, 
     return json.loads(ensure_facts(target, explicit=explicit).read_text(encoding="utf-8"))
 
 
+def decode_body(facts: dict[str, Any], target: str, *, needs: str) -> dict[str, Any]:
+    """The decode-shaped body of a facts artifact (``facts["facts"]``), or a clear refusal.
+
+    Not every accelerator HAS an instruction decode. A command-buffer spatial tile is driven over one-hot
+    op ports and has no opcode, no funct field and no decode table at all, so its fact bundle carries a
+    different shape entirely -- and a consumer that reaches straight for ``facts["facts"]`` greets that
+    with ``KeyError: 'facts'``, which reads as a broken tool rather than as "this generator does not
+    apply to this class of target". The distinction matters when onboarding: one is a bug to fix, the
+    other is a capability the target genuinely does not have, and only one of them should be worked on.
+
+    ``needs`` names what the caller was going to read, so the message says which fact was missing.
+    """
+    body = facts.get("facts") if isinstance(facts, dict) else None
+    if isinstance(body, dict):
+        return body
+    shape = sorted(facts) if isinstance(facts, dict) else type(facts).__name__
+    raise NotImplementedError(
+        f"{target}: these RTL facts carry no instruction-decode body, so {needs} cannot be derived. "
+        f"The artifact holds {shape}. A command-buffer or otherwise ISA-less target has no decode table "
+        f"by construction -- it needs a generator for ITS endpoint, not this one.")
+
+
 def rtl_cache_dir(target: str, *, ensure: bool = False) -> Path:
     """Purgeable introspect scratch (hw.mlir input, ``*.ll``/``*.o``, arcilator bins, per-run
     facts.json) under ``artifacts/cache/rtl_introspect/<target>/`` — never inside ``merlin/``.
