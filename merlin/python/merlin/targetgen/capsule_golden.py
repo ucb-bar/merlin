@@ -237,6 +237,37 @@ def mx_scale_codes(capsule: dict, capsule_dir: str | Path | None = None) -> dict
     return out
 
 
+def mx_operands(capsule: dict, capsule_dir: str | Path | None = None) -> dict | None:
+    """The block-scaled MX matmul operand bundle a microscaling golden records — the quantized element
+    ``operand_codes`` (A/B device bytes, shapes, fmt, M/N/K/G, fp6 LUTs) PLUS the ``SA``/``SB`` E8M0 block
+    scales — read from ``golden.yaml`` ``oracle_provenance.inputs``. Returns ``None`` for a non-MX capsule.
+
+    These operands are corpus-seeded (the E8M0 scales are a function of the capsule-name salt, not the
+    operand values — :func:`corpus_operands.e8m0_scale_codes`), so they exist ONLY in the golden and cannot
+    be reconstructed from the decoded-float workload. The reference MX kernel bakes them; a general backend
+    could not (this is the public-capsule known-good baseline, masked for hidden capsules)."""
+    gy = _load_golden_yaml(capsule_dir)
+    if not gy:
+        return None
+    ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
+    oc = ins.get("operand_codes")
+    if not isinstance(oc, dict) or "A_bytes" not in oc:
+        return None
+    scales = mx_scale_codes(capsule, capsule_dir)
+    # SA/SB laid out [K/32, lane]; take them as [groups][lanes] rows straight from the golden lists.
+    sa = ins.get("SA_e8m0_codes") or ins.get("SA_q_e8m0_codes")
+    sb = ins.get("SB_e8m0_codes") or ins.get("SB_k_e8m0_codes")
+    if sa is None or sb is None:
+        return None
+    return {
+        "fmt": oc["fmt"], "M": oc["M"], "N": oc["N"], "K": oc["K"], "G": oc.get("G", 0),
+        "A_bytes": oc["A_bytes"], "B_bytes": oc["B_bytes"],
+        "A_shape": oc.get("A_shape"), "B_shape": oc.get("B_shape"),
+        "SA": sa, "SB": sb, "lutA": oc.get("lutA"), "lutB": oc.get("lutB"),
+        "_scale_codes": scales,
+    }
+
+
 def golden_source(capsule: dict, capsule_dir: str | Path | None = None) -> str:
     """The golden's PROVENANCE: ``merlin_tensor_int`` when it is (re)computed on the integer
     :class:`~merlin.runtime.tensor.Tensor` engine, or the INDEPENDENT source declared in the capsule's

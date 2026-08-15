@@ -834,6 +834,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # Attach the golden's DECODED operand values so a self-hosted kernel harness (the fork-free SIMT
         # path) can embed them and run the emitted kernel on the SAME operands the independent golden used.
         # Generic + additive: empty for integer capsules, ignored by adapters that grade the command buffer.
+        # A block-scaled MX capsule's operands (quantized codes + corpus-seeded E8M0 block scales) live only
+        # in the golden and cannot be rebuilt from the decoded floats — attach them so the reference MX
+        # kernel can bake them. Public-capsule reference path (masked for hidden); a no-op for non-MX goldens.
+        _mxops = CG.mx_operands(capsule, capsule_dir)
+        if _mxops:
+            cb["mx_operands"] = _mxops
+
         _vals = CG.canonical_input_values(capsule, capsule_dir)
         if _vals:
             cb["canonical_inputs"] = _vals

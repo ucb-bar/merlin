@@ -569,6 +569,14 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
     """Build the self-contained harness program for a capsule directly from its COMMAND BUFFER, or return
     None when the artifact is already a full program (has ``main``) — the caller then compiles it directly.
     Inlines the *source* kernel (:func:`build_program`); operand order from :func:`args_from_cb`."""
+    # A block-scaled MX matmul (fp8/fp6/fp4): the emit entrypoint left a placeholder; bake the self-contained
+    # MX-Gemmini co-model kernel from the golden-provided operand codes + block scales the runner attached.
+    from . import muon_mx_codegen as _mx
+    if _mx.is_mx_cb(cb):
+        mxops = cb.get("mx_operands")
+        if not mxops:
+            return None                       # fail closed: no MX operands (e.g. a masked hidden golden)
+        return _mx.emit_mx_kernel(mxops, _mx.mx_output_name(cb))
     if "int main" in kernel_fn_src:
         return None
     derived = args_from_cb(cb)
