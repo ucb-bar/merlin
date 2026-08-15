@@ -39,6 +39,7 @@ _OP_TO_OPCODE = {v: k for k, v in _OPCODE_TO_OP.items()}
 _NAMED_OP_OPERAND_KEYS = {
     "rmsnorm": ["src", "gamma"],
     "attention_qk": ["q", "k"],
+    "rope": ["src"],
 }
 _NAMED_OP_TO_OPCODE = {op: op.upper() for op in _NAMED_OP_OPERAND_KEYS}
 _NAMED_OPCODE_TO_OP = {v: k for k, v in _NAMED_OP_TO_OPCODE.items()}

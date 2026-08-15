@@ -50,6 +50,53 @@ def test_attention_qk_parses_to_the_opcode_and_operand_keys_codegen_reads():
     schemas.validate_command_buffer(cb)
 
 
+_ROPE = """
+module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+  %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xf32>
+  %Y0 = merlin_iface.rope %X {name = "Y0", theta = 10000.0 : f64, output_dtype = "f32"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+}
+"""
+
+_FUSED_MATMUL_ROPE = """
+module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+  %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xbf16>
+  %Wqkv = merlin_iface.tensor {name = "Wqkv", role = "weight"} : tensor<16x32xbf16>
+  %Wp = merlin_iface.resident_pack %Wqkv {layout = "packed_rhs"} : (tensor<16x32xbf16>) -> !merlin_iface.resident
+  %acc = merlin_iface.matmul %X, %Wp : (tensor<16x16xbf16>, !merlin_iface.resident) -> !merlin_iface.acc<f32>
+  %H = merlin_iface.commit %acc {name = "H", output_dtype = "f32"} : (!merlin_iface.acc<f32>) -> tensor<16x32xf32>
+  %Y0 = merlin_iface.rope %H {name = "Y0", theta = 10000.0 : f64, output_dtype = "f32"} : (tensor<16x32xf32>) -> tensor<16x32xf32>
+  merlin_iface.evict %Wp : (!merlin_iface.resident) -> ()
+}
+"""
+
+
+def test_rope_parses_to_the_opcode_and_operand_keys_codegen_reads():
+    cb = parse_interface_mlir(_ROPE)
+    c = cb["commands"][0]
+    assert c["opcode"] == "ROPE"
+    assert c["operands"] == {"src": "X", "dst": "Y0"}
+    schemas.validate_command_buffer(cb)
+
+
+def test_standalone_rope_reaches_the_reference_emitter():
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = parse_interface_mlir(_ROPE)
+    mlir = codegen.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(%X: !llvm.ptr, %Y0: !llvm.ptr)" in mlir
+
+
+def test_fused_matmul_rope_emits_both_stages():
+    """A matmul feeding a rope (Y = rope(X @ W)) is a supported fused kernel: the emitted function takes the
+    weight-first ABI [W, X, Y] and carries both the matmul accumulation and the sin/cos rope rewrite."""
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = parse_interface_mlir(_FUSED_MATMUL_ROPE)
+    mlir = codegen.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(%Wqkv: !llvm.ptr, %X: !llvm.ptr, %Y0: !llvm.ptr)" in mlir
+    assert "%ocos" in mlir and "%osin" in mlir     # rope stage (prefix o) present
+
+
 def test_named_ops_do_not_disturb_the_residency_grammar():
     # a plain matmul buffer still parses to exactly its residency commands (no named-op misfire)
     mm = """

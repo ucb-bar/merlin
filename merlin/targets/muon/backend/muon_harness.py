@@ -350,9 +350,39 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                        TensorArg(wu, k, n, _vals(canon0, wu, wut), "f32"),
                        TensorArg(x, m, k, _vals(canon0, x, xt), "f32")]
             return in_args, [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
-        if op in ("SOFTMAX", "GELU", "SOFTCAP", "ROPE"):
+        if op in ("SOFTMAX", "GELU", "SOFTCAP"):
             x, out = o.get("src"), o.get("dst")
             if not (x and out) or x not in env0:
+                return None
+            xt = env0[x]
+            if len(xt.shape) != 2:
+                return None
+            r, c = xt.shape[0], xt.shape[1]
+            in_args = [TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
+            out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
+            return in_args, out_args
+        if op == "ROPE":
+            _cmds = cb.get("commands", [])
+            _mms = [cc for cc in _cmds if (cc.get("opcode") or "").upper() in ("MATMUL", "MATMUL_RESIDENT")]
+            x, out = o.get("src"), o.get("dst")
+            if _mms:                                                 # fused matmul -> rope (Y = rope(X @ W))
+                resident = {cc["operands"]["dst"]: cc["operands"]["src"] for cc in _cmds
+                            if (cc.get("opcode") or "").upper() == "RES_PACK"}
+                mo = _mms[0].get("operands", {})
+                commit = next((cc for cc in _cmds if (cc.get("opcode") or "").upper() == "COMMIT"
+                               and cc["operands"].get("src") == mo.get("dst")), None)
+                h = commit["operands"]["dst"] if commit else mo.get("dst")
+                if x == h and out:
+                    lhs = mo.get("lhs")
+                    w = resident.get(mo.get("rhs"), mo.get("rhs"))
+                    if lhs in env0 and w in env0 and len(env0[lhs].shape) == 2 and len(env0[w].shape) == 2:
+                        m, k = env0[lhs].shape
+                        _, n = env0[w].shape
+                        in_args = [TensorArg(w, k, n, _vals(canon0, w, env0[w]), "f32"),
+                                   TensorArg(lhs, m, k, _vals(canon0, lhs, env0[lhs]), "f32")]
+                        return in_args, [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
+                return None
+            if not (x and out) or x not in env0:                     # standalone rope over a leaf
                 return None
             xt = env0[x]
             if len(xt.shape) != 2:

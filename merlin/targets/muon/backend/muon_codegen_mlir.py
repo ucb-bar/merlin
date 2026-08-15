@@ -800,70 +800,102 @@ def _attention_full_nest(q: str, k: str, v: str, o: str, m: int, d: int, n: int,
     llvm.return"""
 
 
-def _rope_nest(x: str, o: str, m: int, d: int) -> str:
-    """RoPE ``O[p,i] = X[p,i]*cos(p*invf[i]) + rotate_half(X)[p,i]*sin(p*invf[i])`` (fp32), where
-    ``invf[i] = 10000^(-(i%(d/2))/(d/2))`` (baked) and ``rotate_half(X)[p,i] = -X[p,i+d/2]`` for i<d/2 else
-    ``X[p,i-d/2]``. sin/cos via the inline range-reduced polynomials. ``invf`` is precomputed into an alloca."""
+def _rope_setup(p: str, m: int, d: int) -> str:
+    """Prelude fragment (entry-block) for a RoPE stage: per-prefix extents, the sign/half constants, the
+    shared sin/cos polynomial constants, and the baked ``invf`` table materialized into an ``llvm.alloca``.
+    ``invf[i] = 10000^(-(i%(d/2))/(d/2))``. Emitted once before the stage loop branches in."""
     half = d // 2
     invf = [10000.0 ** (-(i % half) / half) for i in range(d)]
     stores = "\n".join(
-        f"    %ifc{i} = llvm.mlir.constant({invf[i]:.8e} : f32) : f32\n"
-        f"    %ifi{i} = llvm.mlir.constant({i} : i64) : i64\n"
-        f"    %ifp{i} = llvm.getelementptr %IF[%ifi{i}] : (!llvm.ptr, i64) -> !llvm.ptr, f32\n"
-        f"    llvm.store %ifc{i}, %ifp{i} : f32, !llvm.ptr" for i in range(d))
-    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
-    %c1 = llvm.mlir.constant(1 : i64) : i64
-    %cM = llvm.mlir.constant({m} : i64) : i64
-    %cD = llvm.mlir.constant({d} : i64) : i64
-    %cHalf = llvm.mlir.constant({half} : i64) : i64
-    %cDsz = llvm.mlir.constant({d} : i64) : i64
-    %negone = llvm.mlir.constant(-1.000000e+00 : f32) : f32
-    %posone = llvm.mlir.constant(1.000000e+00 : f32) : f32
+        f"    %{p}ifc{i} = llvm.mlir.constant({invf[i]:.8e} : f32) : f32\n"
+        f"    %{p}ifi{i} = llvm.mlir.constant({i} : i64) : i64\n"
+        f"    %{p}ifp{i} = llvm.getelementptr %{p}IF[%{p}ifi{i}] : (!llvm.ptr, i64) -> !llvm.ptr, f32\n"
+        f"    llvm.store %{p}ifc{i}, %{p}ifp{i} : f32, !llvm.ptr" for i in range(d))
+    return f"""    %{p}cM = llvm.mlir.constant({m} : i64) : i64
+    %{p}cD = llvm.mlir.constant({d} : i64) : i64
+    %{p}cHalf = llvm.mlir.constant({half} : i64) : i64
+    %{p}negone = llvm.mlir.constant(-1.000000e+00 : f32) : f32
+    %{p}posone = llvm.mlir.constant(1.000000e+00 : f32) : f32
 {_FSINCOS_CONSTS}
-    %IF = llvm.alloca %cDsz x f32 : (i64) -> !llvm.ptr
-{stores}
-    llvm.br ^m(%c0 : i64)
-  ^m(%pmi: i64):
-    %mc = llvm.icmp "slt" %pmi, %cM : i64
-    llvm.cond_br %mc, ^mb, ^end
-  ^mb:
-    %p32 = llvm.trunc %pmi : i64 to i32
-    %pf = llvm.sitofp %p32 : i32 to f32
-    %mD = llvm.mul %pmi, %cD : i64
-    llvm.br ^n(%c0 : i64)
-  ^n(%ni: i64):
-    %nc = llvm.icmp "slt" %ni, %cD : i64
-    llvm.cond_br %nc, ^nb, ^mnext
-  ^nb:
-    %ifip = llvm.getelementptr %IF[%ni] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    %ifv = llvm.load %ifip : !llvm.ptr -> f32
-    %angle = llvm.fmul %pf, %ifv : f32
-{_fcos("r", "%angle")}
-{_fsin("r", "%angle")}
-    %xidx = llvm.add %mD, %ni : i64
-    %xp = llvm.getelementptr %{x}[%xidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    %xv = llvm.load %xp : !llvm.ptr -> f32
-    %ilt = llvm.icmp "slt" %ni, %cHalf : i64
-    %iplus = llvm.add %ni, %cHalf : i64
-    %iminus = llvm.sub %ni, %cHalf : i64
-    %rhcol = llvm.select %ilt, %iplus, %iminus : i1, i64
-    %rhidx = llvm.add %mD, %rhcol : i64
-    %rhp = llvm.getelementptr %{x}[%rhidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    %rhx = llvm.load %rhp : !llvm.ptr -> f32
-    %sgn = llvm.select %ilt, %negone, %posone : i1, f32
-    %rh = llvm.fmul %rhx, %sgn : f32
-    %t1 = llvm.fmul %xv, %rcos : f32
-    %t2 = llvm.fmul %rh, %rsin : f32
-    %yv = llvm.fadd %t1, %t2 : f32
-    %op = llvm.getelementptr %{o}[%xidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    llvm.store %yv, %op : f32, !llvm.ptr
-    %ni2 = llvm.add %ni, %c1 : i64
-    llvm.br ^n(%ni2 : i64)
-  ^mnext:
-    %pmi2 = llvm.add %pmi, %c1 : i64
-    llvm.br ^m(%pmi2 : i64)
-  ^end:
-    llvm.return"""
+    %{p}IF = llvm.alloca %{p}cD x f32 : (i64) -> !llvm.ptr
+{stores}"""
+
+
+def _rope_stage(p: str, x: str, o: str, done_br: str) -> str:
+    """One RoPE loop ``O[r,i] = X[r,i]*cos(r*invf[i]) + rotate_half(X)[r,i]*sin(r*invf[i])`` (fp32) with
+    every SSA name / block label prefixed by ``p`` (so it composes after a matmul stage). Shared ``%c0``/
+    ``%c1`` and the ``_rope_setup(p, ...)`` prelude constants come from the caller; the position index is
+    narrowed to i32 before ``sitofp`` (rv32 ``fcvt.s.w``, no soft-float double-word libcall). The m-loop
+    falls into ``^{p}done`` and runs ``done_br``."""
+    return f"""  ^{p}m(%{p}pmi: i64):
+    %{p}mc = llvm.icmp "slt" %{p}pmi, %{p}cM : i64
+    llvm.cond_br %{p}mc, ^{p}mb, ^{p}done
+  ^{p}mb:
+    %{p}p32 = llvm.trunc %{p}pmi : i64 to i32
+    %{p}pf = llvm.sitofp %{p}p32 : i32 to f32
+    %{p}mD = llvm.mul %{p}pmi, %{p}cD : i64
+    llvm.br ^{p}n(%c0 : i64)
+  ^{p}n(%{p}ni: i64):
+    %{p}nc = llvm.icmp "slt" %{p}ni, %{p}cD : i64
+    llvm.cond_br %{p}nc, ^{p}nb, ^{p}mnext
+  ^{p}nb:
+    %{p}ifip = llvm.getelementptr %{p}IF[%{p}ni] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %{p}ifv = llvm.load %{p}ifip : !llvm.ptr -> f32
+    %{p}angle = llvm.fmul %{p}pf, %{p}ifv : f32
+{_fcos(p, f"%{p}angle")}
+{_fsin(p, f"%{p}angle")}
+    %{p}xidx = llvm.add %{p}mD, %{p}ni : i64
+    %{p}xp = llvm.getelementptr %{x}[%{p}xidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %{p}xv = llvm.load %{p}xp : !llvm.ptr -> f32
+    %{p}ilt = llvm.icmp "slt" %{p}ni, %{p}cHalf : i64
+    %{p}iplus = llvm.add %{p}ni, %{p}cHalf : i64
+    %{p}iminus = llvm.sub %{p}ni, %{p}cHalf : i64
+    %{p}rhcol = llvm.select %{p}ilt, %{p}iplus, %{p}iminus : i1, i64
+    %{p}rhidx = llvm.add %{p}mD, %{p}rhcol : i64
+    %{p}rhp = llvm.getelementptr %{x}[%{p}rhidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %{p}rhx = llvm.load %{p}rhp : !llvm.ptr -> f32
+    %{p}sgn = llvm.select %{p}ilt, %{p}negone, %{p}posone : i1, f32
+    %{p}rh = llvm.fmul %{p}rhx, %{p}sgn : f32
+    %{p}t1 = llvm.fmul %{p}xv, %{p}cos : f32
+    %{p}t2 = llvm.fmul %{p}rh, %{p}sin : f32
+    %{p}yv = llvm.fadd %{p}t1, %{p}t2 : f32
+    %{p}op = llvm.getelementptr %{o}[%{p}xidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %{p}yv, %{p}op : f32, !llvm.ptr
+    %{p}ni2 = llvm.add %{p}ni, %c1 : i64
+    llvm.br ^{p}n(%{p}ni2 : i64)
+  ^{p}mnext:
+    %{p}pmi2 = llvm.add %{p}pmi, %c1 : i64
+    llvm.br ^{p}m(%{p}pmi2 : i64)
+  ^{p}done:
+    {done_br}"""
+
+
+def _rope_nest(x: str, o: str, m: int, d: int) -> str:
+    """Standalone RoPE kernel: shared ``%c0``/``%c1``, the ``_rope_setup`` prelude, then one ``_rope_stage``."""
+    prelude = f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+{_rope_setup("r", m, d)}
+    llvm.br ^rm(%c0 : i64)"""
+    return f"{prelude}\n{_rope_stage('r', x, o, 'llvm.return')}"
+
+
+def _matmul_rope_nest(x: str, w: str, y: str, m: int, k: int, n: int) -> str:
+    """Fused ``Y = rope(X @ W)`` (fp32): a matmul stage writes ``H = X@W`` (m,n) into an ``llvm.alloca``, then
+    a RoPE stage rewrites it into ``Y`` (rope head-dim = n). Weight-first ABI at the call: [W, X, Y]."""
+    hsz = m * n
+    prelude = f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %zero = llvm.mlir.constant(0.000000e+00 : f32) : f32
+    %mcM = llvm.mlir.constant({m} : i64) : i64
+    %mcK = llvm.mlir.constant({k} : i64) : i64
+    %mcN = llvm.mlir.constant({n} : i64) : i64
+    %hsz = llvm.mlir.constant({hsz} : i64) : i64
+    %H = llvm.alloca %hsz x f32 : (i64) -> !llvm.ptr
+{_rope_setup("o", m, n)}
+    llvm.br ^mm(%c0 : i64)"""
+    stage_m = _matmul_stage("m", x, w, "H", m, k, n, "llvm.br ^om(%c0 : i64)")
+    stage_o = _rope_stage("o", "H", y, "llvm.br ^end")
+    return f"{prelude}\n{stage_m}\n{stage_o}\n  ^end:\n    llvm.return"
 
 
 def _softmax_loop_nest(x: str, o: str, r: int, c: int) -> str:
@@ -1143,10 +1175,29 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
                     nest = _rmsnorm_matmul_nest(gamma, rsrc, w, y, r, c, nn, eps)
                     return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
-    # A whole-op mnemonic (RMSNORM / ATTENTION_QK) is a SINGLE-op kernel here; if the buffer also
+    # Fused matmul -> rope (Y = rope(X @ W)): the ROPE consumes the matmul's committed output. Emit the
+    # matmul stage into an alloca then the rope stage over it.
+    if "ROPE" in by_op and len(by_op["ROPE"]) == 1 and ("MATMUL" in by_op or "MATMUL_RESIDENT" in by_op):
+        rop = by_op["ROPE"][0].get("operands", {})
+        rsrc, y = rop.get("src"), rop.get("dst")
+        resident_source, matmul_for, commits = _plan(cb)
+        commit_for_src = next((c for c in commits if c["operands"].get("dst") == rsrc), None)
+        if commit_for_src is not None and rsrc and y:
+            mm = matmul_for.get(commit_for_src["operands"]["src"])
+            if mm is not None:
+                lhs = mm["operands"]["lhs"]
+                w = resident_source.get(mm["operands"]["rhs"], mm["operands"]["rhs"])
+                if lhs in env and w in env and len(env[lhs].shape) == 2 and len(env[w].shape) == 2:
+                    mm_m, mm_k = env[lhs].shape
+                    _, mm_n = env[w].shape
+                    arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (w, lhs, y))
+                    nest = _matmul_rope_nest(lhs, w, y, mm_m, mm_k, mm_n)
+                    return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
+    # A whole-op mnemonic (RMSNORM / ATTENTION_QK / ROPE) is a SINGLE-op kernel here; if the buffer also
     # carries a matmul in another (unsupported) fused shape, fail LOUD rather than silently emitting only
     # one half and mis-grading.
-    _WHOLE_OPS = {"RMSNORM", "ATTENTION_QK"}
+    _WHOLE_OPS = {"RMSNORM", "ATTENTION_QK", "ROPE"}
     _MATMUL_OPS = {"RES_PACK", "MATMUL", "MATMUL_RESIDENT", "COMMIT"}
     if (_WHOLE_OPS & by_op.keys()) and (_MATMUL_OPS & by_op.keys()):
         raise MuonMlirCodegenError(
