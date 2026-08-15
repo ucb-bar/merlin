@@ -610,6 +610,76 @@ def _softmax_loop_nest(x: str, o: str, r: int, c: int) -> str:
     llvm.return"""
 
 
+def _rmsnorm_stage(p: str, g: str, x: str, o: str, done_br: str) -> str:
+    """One row RMSNorm loop ``O[i,j]=X[i,j]*rsqrt(mean_j(X^2)+eps)*G[j]`` with SSA/labels prefixed by ``p``
+    (so stages compose). Shared constants %c0/%c1/%cR/%cC/%cCf/%eps/%one/%zero come from the caller."""
+    return f"""  ^{p}m(%{p}mi: i64):
+    %{p}mc = llvm.icmp "slt" %{p}mi, %cR : i64
+    llvm.cond_br %{p}mc, ^{p}mb, ^{p}done
+  ^{p}mb:
+    %{p}mC = llvm.mul %{p}mi, %cC : i64
+    llvm.br ^{p}r(%c0, %zero : i64, f32)
+  ^{p}r(%{p}ri: i64, %{p}ss: f32):
+    %{p}rc = llvm.icmp "slt" %{p}ri, %cC : i64
+    llvm.cond_br %{p}rc, ^{p}rb, ^{p}rd
+  ^{p}rb:
+    %{p}xidx = llvm.add %{p}mC, %{p}ri : i64
+    %{p}xp = llvm.getelementptr %{x}[%{p}xidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %{p}xv = llvm.load %{p}xp : !llvm.ptr -> f32
+    %{p}sq = llvm.fmul %{p}xv, %{p}xv : f32
+    %{p}ss2 = llvm.fadd %{p}ss, %{p}sq : f32
+    %{p}ri2 = llvm.add %{p}ri, %c1 : i64
+    llvm.br ^{p}r(%{p}ri2, %{p}ss2 : i64, f32)
+  ^{p}rd:
+    %{p}ms = llvm.fdiv %{p}ss, %cCf : f32
+    %{p}mse = llvm.fadd %{p}ms, %eps : f32
+    %{p}rt = llvm.intr.sqrt(%{p}mse) : (f32) -> f32
+    %{p}inv = llvm.fdiv %one, %{p}rt : f32
+    llvm.br ^{p}w(%c0 : i64)
+  ^{p}w(%{p}wi: i64):
+    %{p}wc = llvm.icmp "slt" %{p}wi, %cC : i64
+    llvm.cond_br %{p}wc, ^{p}wb, ^{p}mnext
+  ^{p}wb:
+    %{p}widx = llvm.add %{p}mC, %{p}wi : i64
+    %{p}wxp = llvm.getelementptr %{x}[%{p}widx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %{p}wxv = llvm.load %{p}wxp : !llvm.ptr -> f32
+    %{p}gp = llvm.getelementptr %{g}[%{p}wi] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %{p}gv = llvm.load %{p}gp : !llvm.ptr -> f32
+    %{p}xn = llvm.fmul %{p}wxv, %{p}inv : f32
+    %{p}yv = llvm.fmul %{p}xn, %{p}gv : f32
+    %{p}wop = llvm.getelementptr %{o}[%{p}widx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %{p}yv, %{p}wop : f32, !llvm.ptr
+    %{p}wi2 = llvm.add %{p}wi, %c1 : i64
+    llvm.br ^{p}w(%{p}wi2 : i64)
+  ^{p}mnext:
+    %{p}mi2 = llvm.add %{p}mi, %c1 : i64
+    llvm.br ^{p}m(%{p}mi2 : i64)
+  ^{p}done:
+    {done_br}"""
+
+
+def _double_rmsnorm_nest(g1: str, g2: str, x: str, y: str, r: int, c: int, eps: float) -> str:
+    """Two chained row RMSNorms ``Y = rmsnorm(rmsnorm(X, G1), G2)`` (gemma 4-norm), the intermediate in an
+    llvm.alloca (r*c fp32)."""
+    hsz = r * c
+    cf = f"{float(c):.6e}"
+    ef = f"{float(eps):.6e}"
+    prelude = f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cR = llvm.mlir.constant({r} : i64) : i64
+    %cC = llvm.mlir.constant({c} : i64) : i64
+    %zero = llvm.mlir.constant(0.000000e+00 : f32) : f32
+    %one = llvm.mlir.constant(1.000000e+00 : f32) : f32
+    %cCf = llvm.mlir.constant({cf} : f32) : f32
+    %eps = llvm.mlir.constant({ef} : f32) : f32
+    %hsz = llvm.mlir.constant({hsz} : i64) : i64
+    %H = llvm.alloca %hsz x f32 : (i64) -> !llvm.ptr
+    llvm.br ^am(%c0 : i64)"""
+    stage_a = _rmsnorm_stage("a", g1, x, "H", "llvm.br ^bm(%c0 : i64)")
+    stage_b = _rmsnorm_stage("b", g2, "H", y, "llvm.br ^end")
+    return f"{prelude}\n{stage_a}\n{stage_b}\n  ^end:\n    llvm.return"
+
+
 def _layernorm_loop_nest(g: str, b: str, x: str, o: str, r: int, c: int, eps: float) -> str:
     """LLVM-dialect nest for row LayerNorm ``O[i,j] = (X[i,j]-mean_i)*rsqrt(var_i+eps)*G[j] + B[j]``
     (row-major, fp32). Per row: one pass accumulates sum and sum-of-squares (``var = ss/C - mean^2``),
@@ -768,6 +838,20 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
             raise MuonMlirCodegenError(
                 f"VECTOR_MAP supports equal-shape or a row-broadcast rhs B[n] over A[m,n]; "
                 f"got {a}{tuple(ta.shape)} / {b}{tuple(tb.shape)}")
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
+    if "RMSNORM" in by_op and len(by_op["RMSNORM"]) == 2:
+        c0, c1 = by_op["RMSNORM"]
+        o0, o1 = c0.get("operands", {}), c1.get("operands", {})
+        if o1.get("src") != o0.get("dst"):
+            raise MuonMlirCodegenError("two RMSNORMs that are not chained (second's src != first's dst)")
+        g1, g2, x, y = o0.get("gamma"), o1.get("gamma"), o0.get("src"), o1.get("dst")
+        if not (g1 and g2 and x and y):
+            raise MuonMlirCodegenError("chained RMSNORM needs gamma/src/dst on both")
+        r, c = _shape2(env, x)
+        eps = float((c0.get("attributes", {}) or {}).get("eps", 1e-5))
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (g1, g2, x, y))   # weight-first ABI
+        nest = _double_rmsnorm_nest(g1, g2, x, y, r, c, eps)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     if "RMSNORM" in by_op:

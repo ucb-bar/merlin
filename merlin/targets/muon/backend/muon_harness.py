@@ -258,6 +258,22 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
             out_args = [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
             return in_args, out_args
         if op == "RMSNORM":
+            rms = [cc for cc in cb.get("commands", []) if (cc.get("opcode") or "").upper() == "RMSNORM"]
+            if len(rms) == 2:                                    # gemma double rmsnorm (chained via alloca)
+                a0, a1 = rms[0].get("operands", {}), rms[1].get("operands", {})
+                g1, g2, xx, yy = a0.get("gamma"), a1.get("gamma"), a0.get("src"), a1.get("dst")
+                if not (g1 and g2 and xx and yy) or xx not in env0 or g1 not in env0 or g2 not in env0:
+                    return None
+                xt = env0[xx]
+                if len(xt.shape) != 2:
+                    return None
+                r, c = xt.shape[0], xt.shape[1]
+                g1r, g1c = _shape2d(list(env0[g1].shape))
+                g2r, g2c = _shape2d(list(env0[g2].shape))
+                in_args = [TensorArg(g1, g1r, g1c, _vals(canon0, g1, env0[g1]), "f32"),
+                           TensorArg(g2, g2r, g2c, _vals(canon0, g2, env0[g2]), "f32"),
+                           TensorArg(xx, r, c, _vals(canon0, xx, xt), "f32")]
+                return in_args, [TensorArg(yy, r, c, [0.0] * (r * c), "f32")]
             x, g, out = o.get("src"), o.get("gamma"), o.get("dst")
             if not (x and g and out) or x not in env0 or g not in env0:
                 return None

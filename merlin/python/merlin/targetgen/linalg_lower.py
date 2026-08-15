@@ -238,6 +238,36 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
             return {"abi_version": "0.1", "target": target, "tensors": tensors,
                     "commands": [cmd], "outputs": [out]}
 
+    # --- gemma double RMSNorm: two chained rmsnorm decompositions (recognized by TWO rsqrt ops) --------
+    rsqrt_ops = [o for o in ops if any("rsqrt" in b for b in o["body_ops"])]
+    if len(rsqrt_ops) == 2:
+        x2d = [a["index"] for a in args if len(a["shape"]) == 2 and a["shape"][0] > 1]
+        gam = [a["index"] for a in args if a["shape"] and a["shape"][0] == 1]
+        if len(x2d) == 1 and len(gam) == 2:
+            x_i, g1_i, g2_i = x2d[0], gam[0], gam[1]
+            eps = 1e-6
+            for rs in rsqrt_ops:                                  # eps = the const added before an rsqrt
+                src = rs["ins"][0]["source"] if rs["ins"] else None
+                if src and src[0] == "op":
+                    for inp in ops[src[1]]["ins"]:
+                        if "const_value" in inp:
+                            eps = inp["const_value"]
+            out = "out"
+            tensors = {
+                argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
+                argname[g1_i]: {"shape": argshape[g1_i], "dtype": "f32", "role": "weight"},
+                argname[g2_i]: {"shape": argshape[g2_i], "dtype": "f32", "role": "weight"},
+                out: {"shape": list(ops[-1]["results"][0]["shape"]), "dtype": "f32", "role": "output"},
+            }
+            commands = [
+                {"opcode": "RMSNORM", "operands": {"src": argname[x_i], "gamma": argname[g1_i], "dst": "H"},
+                 "attributes": {"eps": eps}},
+                {"opcode": "RMSNORM", "operands": {"src": "H", "gamma": argname[g2_i], "dst": out},
+                 "attributes": {"eps": eps}},
+            ]
+            return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                    "commands": commands, "outputs": [out]}
+
     # --- a decomposed row LayerNorm, recognized by the layer_norm provenance -------------------------
     if any(o.get("op") == "layer_norm" for o in ops):
         # src = the sole 2-D func arg; gamma/beta = the 1-D args used in the final mul / add;
