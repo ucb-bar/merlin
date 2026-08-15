@@ -211,6 +211,50 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
         return {"abi_version": "0.1", "target": target, "tensors": tensors,
                 "commands": [cmd], "outputs": [out]}
 
+    # --- convolution lowered as im2col + matmul (ViT patch-embed): the region is one im2col gather feeding
+    #     a matmul. Derive the conv geometry structurally from the operand/result shapes (no padding/dilation
+    #     assumed, matching the im2col map) and hand the emitter a compile-time (k, patch) -> X source-offset
+    #     table so it fuses the gather into the matmul. --------------------------------------------------
+    if any(o.get("op") == "convolution_im2col_matmul" for o in ops):
+        mm = next((o for o in ops if o.get("kind") == "linalg.matmul"), None)
+        if mm is None:
+            raise LinalgLowerError("im2col conv region has no linalg.matmul anchor")
+        ext = mm.get("extents", {})
+        oc, kk, pp = ext.get("m"), ext.get("k"), ext.get("n")
+        four_d = [a["index"] for a in args if len(a["shape"]) == 4]
+        if len(four_d) != 2 or not (oc and kk and pp):
+            raise LinalgLowerError("im2col conv expects a 4-D input + 4-D weight and an (m,k,n) matmul")
+        x_i, w_i = four_d[0], four_d[1]
+        _, c_in, ih, iw = argshape[x_i]
+        o_w, c_w, khh, kww = argshape[w_i]
+        res_shape = list(ops[-1]["results"][0]["shape"]) if ops[-1].get("results") else None
+        if res_shape is None or len(res_shape) != 4:
+            raise LinalgLowerError("im2col conv expects a 4-D (N,O,OH,OW) result")
+        _, _, oh, ow = res_shape
+        if c_in != c_w or kk != c_in * khh * kww or pp != oh * ow or oc != o_w:
+            raise LinalgLowerError("im2col conv geometry is inconsistent with the matmul extents")
+        sh = (ih - khh) // (oh - 1) if oh > 1 else 1
+        sw = (iw - kww) // (ow - 1) if ow > 1 else 1
+        src_offsets: list[int] = []
+        for kidx in range(kk):                                    # k = (c, kh, kw), row-major over the patch
+            c = kidx // (khh * kww)
+            rem = kidx % (khh * kww)
+            khi, kwi = rem // kww, rem % kww
+            for q in range(pp):                                   # q = (oh, ow) patch position, row-major
+                ohi, owi = q // ow, q % ow
+                src_offsets.append(c * ih * iw + (ohi * sh + khi) * iw + (owi * sw + kwi))
+        out = "out"
+        tensors = {
+            argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
+            argname[w_i]: {"shape": argshape[w_i], "dtype": "f32", "role": "weight"},
+            out: {"shape": res_shape, "dtype": "f32", "role": "output"},
+        }
+        cmd = {"opcode": "CONV",
+               "operands": {"src": argname[x_i], "weight": argname[w_i], "dst": out},
+               "attributes": {"o": oc, "k": kk, "p": pp, "src_offsets": src_offsets}}
+        return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                "commands": [cmd], "outputs": [out]}
+
     # --- a single 2-D matmul, optionally followed by a row-broadcast bias add -------------------------
     if ops[0].get("family") == "contraction":
         mm = ops[0]

@@ -391,6 +391,19 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
             in_args = [TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
             out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
             return in_args, out_args
+        if op == "CONV":
+            x, w, out = o.get("src"), o.get("weight"), o.get("dst")
+            attrs = cmd.get("attributes", {}) or {}
+            oc, kk, pp = attrs.get("o"), attrs.get("k"), attrs.get("p")
+            if not (x and w and out) or x not in env0 or w not in env0 or None in (oc, kk, pp):
+                return None
+            xv, wv = _vals(canon0, x, env0[x]), _vals(canon0, w, env0[w])
+            # weight-first ABI [W, X, Y]; shapes are only used to embed the flat operands (row-major),
+            # so any r*c matching the leaf's element count is faithful. Y is O*P (the conv output).
+            in_args = [TensorArg(w, oc, kk, wv, "f32"),
+                       TensorArg(x, len(xv), 1, xv, "f32")]
+            out_args = [TensorArg(out, oc, pp, [0.0] * (oc * pp), "f32")]
+            return in_args, out_args
         if op == "BATCHED_MATMUL":
             a, w, out = o.get("a"), o.get("w"), o.get("dst")
             if not (a and w and out) or a not in env0 or w not in env0:

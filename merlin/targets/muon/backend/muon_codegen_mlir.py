@@ -898,6 +898,70 @@ def _matmul_rope_nest(x: str, w: str, y: str, m: int, k: int, n: int) -> str:
     return f"{prelude}\n{stage_m}\n{stage_o}\n  ^end:\n    llvm.return"
 
 
+def _conv_im2col_matmul_nest(x: str, w: str, y: str, oc: int, k: int, p: int,
+                             src_offsets: list[int]) -> str:
+    """Fused im2col-conv ``Y[o,q] = sum_k W[o,k] * X[src(k,q)]`` (fp32), the reference lowering of a
+    ``convolution_im2col_matmul`` region. The im2col gather is a compile-time source-index table (one X
+    flat offset per (k, patch) position, baked into an ``i64`` alloca), so no im2col buffer is materialized:
+    the k-loop reads ``W[o*K+k]`` and ``X[SRC[k*P+q]]`` directly. Weight-first ABI at the call: [W, X, Y]."""
+    sz = k * p
+    stores = "\n".join(
+        f"    %sc{i} = llvm.mlir.constant({src_offsets[i]} : i64) : i64\n"
+        f"    %si{i} = llvm.mlir.constant({i} : i64) : i64\n"
+        f"    %sp{i} = llvm.getelementptr %SRC[%si{i}] : (!llvm.ptr, i64) -> !llvm.ptr, i64\n"
+        f"    llvm.store %sc{i}, %sp{i} : i64, !llvm.ptr" for i in range(sz))
+    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cO = llvm.mlir.constant({oc} : i64) : i64
+    %cK = llvm.mlir.constant({k} : i64) : i64
+    %cP = llvm.mlir.constant({p} : i64) : i64
+    %zero = llvm.mlir.constant(0.000000e+00 : f32) : f32
+    %ssz = llvm.mlir.constant({sz} : i64) : i64
+    %SRC = llvm.alloca %ssz x i64 : (i64) -> !llvm.ptr
+{stores}
+    llvm.br ^o(%c0 : i64)
+  ^o(%oi: i64):
+    %oc2 = llvm.icmp "slt" %oi, %cO : i64
+    llvm.cond_br %oc2, ^ob, ^end
+  ^ob:
+    %oK = llvm.mul %oi, %cK : i64
+    %oP = llvm.mul %oi, %cP : i64
+    llvm.br ^p(%c0 : i64)
+  ^p(%pi: i64):
+    %pc = llvm.icmp "slt" %pi, %cP : i64
+    llvm.cond_br %pc, ^pb, ^onext
+  ^pb:
+    llvm.br ^k(%c0, %zero : i64, f32)
+  ^k(%ki: i64, %acc: f32):
+    %kc = llvm.icmp "slt" %ki, %cK : i64
+    llvm.cond_br %kc, ^kb, ^kdone
+  ^kb:
+    %widx = llvm.add %oK, %ki : i64
+    %wp = llvm.getelementptr %{w}[%widx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %wv = llvm.load %wp : !llvm.ptr -> f32
+    %kP = llvm.mul %ki, %cP : i64
+    %sidx = llvm.add %kP, %pi : i64
+    %srcp = llvm.getelementptr %SRC[%sidx] : (!llvm.ptr, i64) -> !llvm.ptr, i64
+    %srcv = llvm.load %srcp : !llvm.ptr -> i64
+    %xp = llvm.getelementptr %{x}[%srcv] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %xv = llvm.load %xp : !llvm.ptr -> f32
+    %prod = llvm.fmul %wv, %xv : f32
+    %acc2 = llvm.fadd %acc, %prod : f32
+    %ki2 = llvm.add %ki, %c1 : i64
+    llvm.br ^k(%ki2, %acc2 : i64, f32)
+  ^kdone:
+    %yidx = llvm.add %oP, %pi : i64
+    %yp = llvm.getelementptr %{y}[%yidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %acc, %yp : f32, !llvm.ptr
+    %pi2 = llvm.add %pi, %c1 : i64
+    llvm.br ^p(%pi2 : i64)
+  ^onext:
+    %oi2 = llvm.add %oi, %c1 : i64
+    llvm.br ^o(%oi2 : i64)
+  ^end:
+    llvm.return"""
+
+
 def _softmax_loop_nest(x: str, o: str, r: int, c: int) -> str:
     """LLVM-dialect nest for numerically-stable row softmax ``O[i,j] = exp(x[i,j]-max_i)/sum_j`` (fp32).
     Three passes per row: reduce-max, sum of exp(x-max) (inline poly-exp), divide. The row max and sum are
@@ -1350,6 +1414,22 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
         m, d = t.shape
         arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (x, dst))
         nest = _rope_nest(x, dst, m, d)
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
+    if "CONV" in by_op and len(by_op) == 1 and len(by_op["CONV"]) == 1:
+        cmd = by_op["CONV"][0]
+        o = cmd.get("operands", {})
+        attrs = cmd.get("attributes", {}) or {}
+        x, w, dst = o.get("src"), o.get("weight"), o.get("dst")
+        if not (x and w and dst):
+            raise MuonMlirCodegenError("CONV needs operands src/weight/dst")
+        oc, kk, pp = attrs.get("o"), attrs.get("k"), attrs.get("p")
+        src_offsets = attrs.get("src_offsets")
+        if not (isinstance(oc, int) and isinstance(kk, int) and isinstance(pp, int)
+                and isinstance(src_offsets, list) and len(src_offsets) == kk * pp):
+            raise MuonMlirCodegenError("CONV needs integer o/k/p and a k*p src_offsets table")
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (w, x, dst))
+        nest = _conv_im2col_matmul_nest(x, w, dst, oc, kk, pp, [int(s) for s in src_offsets])
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     if "GELU" in by_op and len(by_op) == 1 and len(by_op["GELU"]) == 1:

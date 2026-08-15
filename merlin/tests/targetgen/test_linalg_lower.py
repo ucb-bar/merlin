@@ -128,7 +128,17 @@ def test_layernorm_emits_a_valid_kernel():
     assert "llvm.func @t_kernel(" in mlir and "llvm.intr.sqrt" in mlir
 
 
-def test_conv_im2col_matmul_fails_closed():
-    # conv via im2col is not a plain matmul the reference emitter builds yet -> a clear error
-    with pytest.raises(LinalgLowerError):
-        lower_linalg_to_cb(_parse("RP14_patch_embed_bf16_pt"), target="t")
+def test_conv_im2col_matmul_lowers_to_conv_and_emits():
+    # an im2col-conv region lowers to a single CONV command carrying the derived geometry + the compile-time
+    # (k, patch) -> X source-offset table, and the reference emitter builds a kernel from it.
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = lower_linalg_to_cb(_parse("RP14_patch_embed_bf16_pt"), target="t")
+    c = cb["commands"][0]
+    assert c["opcode"] == "CONV"
+    assert set(c["operands"]) == {"src", "weight", "dst"}
+    a = c["attributes"]
+    assert a["o"] == 16 and a["k"] == 12 and a["p"] == 16
+    assert len(a["src_offsets"]) == a["k"] * a["p"]
+    mlir = codegen.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(" in mlir
