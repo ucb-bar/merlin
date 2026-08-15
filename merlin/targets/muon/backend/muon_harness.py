@@ -303,6 +303,19 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                        TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
             out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
             return in_args, out_args
+        if op == "ATTENTION_FULL":
+            q, k, v, out = o.get("q"), o.get("k"), o.get("v"), o.get("dst")
+            if not (q and k and v and out) or any(nm not in env0 for nm in (q, k, v)):
+                return None
+            qt, kt, vt = env0[q], env0[k], env0[v]
+            if len(qt.shape) != 2 or len(vt.shape) != 2:
+                return None
+            mq, dq = qt.shape
+            _, dvv = vt.shape
+            in_args = [TensorArg(q, qt.shape[0], qt.shape[1], _vals(canon0, q, qt), "f32"),
+                       TensorArg(k, kt.shape[0], kt.shape[1], _vals(canon0, k, kt), "f32"),
+                       TensorArg(v, vt.shape[0], vt.shape[1], _vals(canon0, v, vt), "f32")]
+            return in_args, [TensorArg(out, mq, dvv, [0.0] * (mq * dvv), "f32")]
         if op == "GEGLU":
             x, wg, wu, out = o.get("src"), o.get("w_gate"), o.get("w_up"), o.get("dst")
             if not (x and wg and wu and out) or any(nm not in env0 for nm in (x, wg, wu)):

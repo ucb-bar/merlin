@@ -486,8 +486,14 @@ _FEXP_CONSTS = """    %xlog2e = llvm.mlir.constant(1.44269502 : f32) : f32
 def _fexp(p: str, xin: str) -> str:
     """Straight-line exp(%xin) -> %{p}ex, all SSA names prefixed by ``p`` (uses the %x* constants). Uses
     i32 (not i64) for the exponent: rv32 has hardware f32<->i32 conversion (fcvt.w.s) but a f32<->i64
-    conversion lowers to a soft-float libcall (__fixsfdi/__floatdisf) that the freestanding BSP can't link."""
-    return f"""    %{p}t = llvm.fmul {xin}, %xlog2e : f32
+    conversion lowers to a soft-float libcall (__fixsfdi/__floatdisf) that the freestanding BSP can't link.
+    The input is CLAMPED to >= -87 first: below that exp underflows to ~0, but the raw 2^k bit-construction
+    would overflow the i32 exponent field into garbage — this bites softmax/attention whose masked scores
+    are -inf. Clamping keeps exp(very-negative) ~= 0 (correct) instead of NaN."""
+    return f"""    %{p}lo = llvm.mlir.constant(-8.700000e+01 : f32) : f32
+    %{p}clc = llvm.fcmp "olt" {xin}, %{p}lo : f32
+    %{p}xin = llvm.select %{p}clc, %{p}lo, {xin} : i1, f32
+    %{p}t = llvm.fmul %{p}xin, %xlog2e : f32
     %{p}th = llvm.fadd %{p}t, %xhalf : f32
     %{p}ti = llvm.fptosi %{p}th : f32 to i32
     %{p}tf = llvm.sitofp %{p}ti : i32 to f32
@@ -496,7 +502,7 @@ def _fexp(p: str, xin: str) -> str:
     %{p}k = llvm.sub %{p}ti, %{p}adj : i32
     %{p}kf = llvm.sitofp %{p}k : i32 to f32
     %{p}kl = llvm.fmul %{p}kf, %xln2 : f32
-    %{p}f = llvm.fsub {xin}, %{p}kl : f32
+    %{p}f = llvm.fsub %{p}xin, %{p}kl : f32
     %{p}h1 = llvm.fmul %xinv120, %{p}f : f32
     %{p}h2 = llvm.fadd %{p}h1, %xinv24 : f32
     %{p}h3 = llvm.fmul %{p}h2, %{p}f : f32
@@ -581,6 +587,153 @@ def _softcap_loop_nest(x: str, o: str, n: int, cap: float) -> str:
     llvm.store %yv, %op : f32, !llvm.ptr
     %i2 = llvm.add %i, %c1 : i64
     llvm.br ^l(%i2 : i64)
+  ^end:
+    llvm.return"""
+
+
+def _attention_full_nest(q: str, k: str, v: str, o: str, m: int, d: int, n: int, dv: int,
+                         scale: float, causal: bool) -> str:
+    """Causal scaled dot-product attention ``Y = softmax(scale * Q@K^T + causal_mask) @ V`` (fp32). Three
+    stages over a scratch score buffer S[m,n]: (1) S=scale*Q@Kᵀ with S[i,j]=-inf for j>i when causal,
+    (2) row-softmax in place (inline poly-exp), (3) Y=S@V. One alloca (S)."""
+    sf = f"{float(scale):.8e}"
+    mask_line = ("    %qgt = llvm.icmp \"sgt\" %qnj, %qmi : i64\n"
+                 "    %qsel = llvm.select %qgt, %ninf, %qsc : i1, f32\n") if causal else ""
+    qstore = "%qsel" if causal else "%qsc"
+    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cM = llvm.mlir.constant({m} : i64) : i64
+    %cD = llvm.mlir.constant({d} : i64) : i64
+    %cN = llvm.mlir.constant({n} : i64) : i64
+    %cDV = llvm.mlir.constant({dv} : i64) : i64
+    %zero = llvm.mlir.constant(0.000000e+00 : f32) : f32
+    %ninf = llvm.mlir.constant(-3.402823466e+38 : f32) : f32
+    %scale = llvm.mlir.constant({sf} : f32) : f32
+    %snn = llvm.mlir.constant({m * n} : i64) : i64
+{_FEXP_CONSTS}
+    %S = llvm.alloca %snn x f32 : (i64) -> !llvm.ptr
+    llvm.br ^qm(%c0 : i64)
+  ^qm(%qmi: i64):
+    %qmc = llvm.icmp "slt" %qmi, %cM : i64
+    llvm.cond_br %qmc, ^qmb, ^sm(%c0 : i64)
+  ^qmb:
+    %qmD = llvm.mul %qmi, %cD : i64
+    %qmN = llvm.mul %qmi, %cN : i64
+    llvm.br ^qn(%c0 : i64)
+  ^qn(%qnj: i64):
+    %qnc = llvm.icmp "slt" %qnj, %cN : i64
+    llvm.cond_br %qnc, ^qnb, ^qmnext
+  ^qnb:
+    %qnD = llvm.mul %qnj, %cD : i64
+    llvm.br ^qk(%c0, %zero : i64, f32)
+  ^qk(%qki: i64, %qacc: f32):
+    %qkc = llvm.icmp "slt" %qki, %cD : i64
+    llvm.cond_br %qkc, ^qkb, ^qst
+  ^qkb:
+    %qqi = llvm.add %qmD, %qki : i64
+    %qqp = llvm.getelementptr %{q}[%qqi] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %qqv = llvm.load %qqp : !llvm.ptr -> f32
+    %qki2a = llvm.add %qnD, %qki : i64
+    %qkp = llvm.getelementptr %{k}[%qki2a] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %qkv = llvm.load %qkp : !llvm.ptr -> f32
+    %qpr = llvm.fmul %qqv, %qkv : f32
+    %qacc2 = llvm.fadd %qacc, %qpr : f32
+    %qki2 = llvm.add %qki, %c1 : i64
+    llvm.br ^qk(%qki2, %qacc2 : i64, f32)
+  ^qst:
+    %qsc = llvm.fmul %qacc, %scale : f32
+{mask_line}    %qsi = llvm.add %qmN, %qnj : i64
+    %qsp = llvm.getelementptr %S[%qsi] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store {qstore}, %qsp : f32, !llvm.ptr
+    %qnj2 = llvm.add %qnj, %c1 : i64
+    llvm.br ^qn(%qnj2 : i64)
+  ^qmnext:
+    %qmi2 = llvm.add %qmi, %c1 : i64
+    llvm.br ^qm(%qmi2 : i64)
+  ^sm(%smi: i64):
+    %smc = llvm.icmp "slt" %smi, %cM : i64
+    llvm.cond_br %smc, ^smb, ^pm(%c0 : i64)
+  ^smb:
+    %smN = llvm.mul %smi, %cN : i64
+    llvm.br ^s1(%c0, %ninf : i64, f32)
+  ^s1(%s1i: i64, %s1m: f32):
+    %s1c = llvm.icmp "slt" %s1i, %cN : i64
+    llvm.cond_br %s1c, ^s1b, ^s1d(%s1m : f32)
+  ^s1b:
+    %s1x = llvm.add %smN, %s1i : i64
+    %s1p = llvm.getelementptr %S[%s1x] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %s1v = llvm.load %s1p : !llvm.ptr -> f32
+    %s1g = llvm.fcmp "ogt" %s1v, %s1m : f32
+    %s1nm = llvm.select %s1g, %s1v, %s1m : i1, f32
+    %s1i2 = llvm.add %s1i, %c1 : i64
+    llvm.br ^s1(%s1i2, %s1nm : i64, f32)
+  ^s1d(%smx: f32):
+    llvm.br ^s2(%c0, %zero : i64, f32)
+  ^s2(%s2i: i64, %s2s: f32):
+    %s2c = llvm.icmp "slt" %s2i, %cN : i64
+    llvm.cond_br %s2c, ^s2b, ^s2d(%s2s : f32)
+  ^s2b:
+    %s2x = llvm.add %smN, %s2i : i64
+    %s2p = llvm.getelementptr %S[%s2x] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %s2v = llvm.load %s2p : !llvm.ptr -> f32
+    %s2sub = llvm.fsub %s2v, %smx : f32
+{_fexp("e2", "%s2sub")}
+    llvm.store %e2ex, %s2p : f32, !llvm.ptr
+    %s2s2 = llvm.fadd %s2s, %e2ex : f32
+    %s2i2 = llvm.add %s2i, %c1 : i64
+    llvm.br ^s2(%s2i2, %s2s2 : i64, f32)
+  ^s2d(%sms: f32):
+    llvm.br ^s3(%c0 : i64)
+  ^s3(%s3i: i64):
+    %s3c = llvm.icmp "slt" %s3i, %cN : i64
+    llvm.cond_br %s3c, ^s3b, ^smnext
+  ^s3b:
+    %s3x = llvm.add %smN, %s3i : i64
+    %s3p = llvm.getelementptr %S[%s3x] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %s3v = llvm.load %s3p : !llvm.ptr -> f32
+    %s3d = llvm.fdiv %s3v, %sms : f32
+    llvm.store %s3d, %s3p : f32, !llvm.ptr
+    %s3i2 = llvm.add %s3i, %c1 : i64
+    llvm.br ^s3(%s3i2 : i64)
+  ^smnext:
+    %smi2 = llvm.add %smi, %c1 : i64
+    llvm.br ^sm(%smi2 : i64)
+  ^pm(%pmi: i64):
+    %pmc = llvm.icmp "slt" %pmi, %cM : i64
+    llvm.cond_br %pmc, ^pmb, ^end
+  ^pmb:
+    %pmN = llvm.mul %pmi, %cN : i64
+    %pmDV = llvm.mul %pmi, %cDV : i64
+    llvm.br ^pn(%c0 : i64)
+  ^pn(%pnj: i64):
+    %pnc = llvm.icmp "slt" %pnj, %cDV : i64
+    llvm.cond_br %pnc, ^pnb, ^pmnext
+  ^pnb:
+    llvm.br ^pk(%c0, %zero : i64, f32)
+  ^pk(%pki: i64, %pacc: f32):
+    %pkc = llvm.icmp "slt" %pki, %cN : i64
+    llvm.cond_br %pkc, ^pkb, ^pst
+  ^pkb:
+    %ppi = llvm.add %pmN, %pki : i64
+    %ppp = llvm.getelementptr %S[%ppi] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %ppv = llvm.load %ppp : !llvm.ptr -> f32
+    %pkDV = llvm.mul %pki, %cDV : i64
+    %pvi = llvm.add %pkDV, %pnj : i64
+    %pvp = llvm.getelementptr %{v}[%pvi] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %pvv = llvm.load %pvp : !llvm.ptr -> f32
+    %ppr = llvm.fmul %ppv, %pvv : f32
+    %pacc2 = llvm.fadd %pacc, %ppr : f32
+    %pki2 = llvm.add %pki, %c1 : i64
+    llvm.br ^pk(%pki2, %pacc2 : i64, f32)
+  ^pst:
+    %poi = llvm.add %pmDV, %pnj : i64
+    %pop = llvm.getelementptr %{o}[%poi] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %pacc, %pop : f32, !llvm.ptr
+    %pnj2 = llvm.add %pnj, %c1 : i64
+    llvm.br ^pn(%pnj2 : i64)
+  ^pmnext:
+    %pmi2 = llvm.add %pmi, %c1 : i64
+    llvm.br ^pm(%pmi2 : i64)
   ^end:
     llvm.return"""
 
@@ -825,6 +978,25 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
         raise MuonMlirCodegenError(
             f"reference emitter does not support a fused op class "
             f"({sorted(_WHOLE_OPS & by_op.keys())} + matmul); single-op or single matmul commit only")
+
+    if "ATTENTION_FULL" in by_op:
+        cmd = by_op["ATTENTION_FULL"][0]
+        o = cmd.get("operands", {})
+        attrs = cmd.get("attributes", {}) or {}
+        q, k, v, dst = o.get("q"), o.get("k"), o.get("v"), o.get("dst")
+        if not (q and k and v and dst):
+            raise MuonMlirCodegenError("ATTENTION_FULL needs operands q/k/v/dst")
+        for nm in (q, k, v):
+            if nm not in env or len(env[nm].shape) != 2:
+                raise MuonMlirCodegenError(f"ATTENTION_FULL operand {nm!r} is not a 2-D materialized leaf")
+        m, d = env[q].shape
+        n, _ = env[k].shape
+        _, dv = env[v].shape
+        scale = float(attrs.get("scale", 1.0))
+        causal = bool(attrs.get("causal", False))
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (q, k, v, dst))
+        nest = _attention_full_nest(q, k, v, dst, m, d, n, dv, scale, causal)
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     if "ATTENTION_QK" in by_op:
         o = by_op["ATTENTION_QK"][0].get("operands", {})

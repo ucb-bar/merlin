@@ -100,6 +100,39 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
                 "commands": [cmd], "outputs": [out],
                 "interface": "linalg_positional", "arg_order": [argname[i0], argname[i1], out]}
 
+    # --- full attention: softmax(scale*Q@Kᵀ + mask) @ V (a softmax + two matmuls, optional causal) -----
+    if any(o.get("op") == "softmax" for o in ops) and sum(o.get("family") == "contraction" for o in ops) == 2:
+        mm = [o for o in ops if o.get("family") == "contraction"]
+        div_c = [i["const_value"] for o in ops if o.get("op") == "div"
+                 for i in o["ins"] if "const_value" in i]
+        causal = any(o.get("op") == "select" for o in ops)
+
+        def _arg_or_transpose(src):
+            if src[0] == "arg":
+                return src[1]
+            if src[0] == "op" and ops[src[1]].get("op") in ("transpose", "unsqueeze"):
+                inner = ops[src[1]]["ins"][0]["source"] if ops[src[1]]["ins"] else None
+                return inner[1] if inner and inner[0] == "arg" else None
+            return None
+
+        q_i = _arg_or_transpose(mm[0]["ins"][0]["source"])
+        k_i = _arg_or_transpose(mm[0]["ins"][1]["source"])
+        v_srcs = [s["source"] for s in mm[1]["ins"][:2] if s["source"][0] == "arg"]
+        if q_i is not None and k_i is not None and v_srcs and div_c:
+            v_i = v_srcs[0][1]
+            out = "out"
+            tensors = {
+                argname[q_i]: {"shape": argshape[q_i], "dtype": "f32", "role": "input"},
+                argname[k_i]: {"shape": argshape[k_i], "dtype": "f32", "role": "input"},
+                argname[v_i]: {"shape": argshape[v_i], "dtype": "f32", "role": "input"},
+                out: {"shape": list(ops[-1]["results"][0]["shape"]), "dtype": "f32", "role": "output"},
+            }
+            cmd = {"opcode": "ATTENTION_FULL",
+                   "operands": {"q": argname[q_i], "k": argname[k_i], "v": argname[v_i], "dst": out},
+                   "attributes": {"scale": 1.0 / div_c[0], "causal": causal}}
+            return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                    "commands": [cmd], "outputs": [out]}
+
     # --- SwiGLU/GEGLU: silu(X@W_gate) * (X@W_up) (a sigmoid + two shared-lhs matmuls) -----------------
     if any(o.get("op") == "sigmoid" for o in ops):
         mmg = [o for o in ops if o.get("family") == "contraction"]
