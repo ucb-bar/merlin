@@ -92,17 +92,33 @@ def test_vector_map_elementwise_emits_add_and_mul():
         assert fop in mlir
 
 
-def test_vector_map_requires_equal_shape_operands():
+def test_vector_map_row_broadcast_bias_add_emits():
+    """A length-n rhs broadcasts over the m rows of an (m,n) lhs (standalone bias-add / per-channel scale)."""
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir
     cb = {
         "abi_version": "0.1", "target": "t",
         "tensors": {"A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
-                    "B": {"shape": [16], "dtype": "f32", "role": "input"}},
+                    "B": {"shape": [16], "dtype": "f32", "role": "bias"}},
         "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"},
                       "attributes": {"combine": "add"}}],
     }
-    with pytest.raises(Exception, match="equal-shape"):
+    mlir = codegen.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(%A: !llvm.ptr, %B: !llvm.ptr, %Y: !llvm.ptr)" in mlir
+    assert "llvm.fadd" in mlir
+
+
+def test_vector_map_rejects_incompatible_shapes():
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = {
+        "abi_version": "0.1", "target": "t",
+        "tensors": {"A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+                    "B": {"shape": [8], "dtype": "f32", "role": "input"}},
+        "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"},
+                      "attributes": {"combine": "add"}}],
+    }
+    with pytest.raises(Exception, match="equal-shape or a row-broadcast"):
         codegen.emit_kernel_mlir(cb, target="t")
 
 

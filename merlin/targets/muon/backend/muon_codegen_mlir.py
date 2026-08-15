@@ -226,6 +226,44 @@ def _elementwise_loop_nest(a: str, b: str, o: str, n: int, combine: str) -> str:
     llvm.return"""
 
 
+def _broadcast_row_loop_nest(a: str, b: str, o: str, m: int, n: int, combine: str) -> str:
+    """LLVM-dialect nest for a row-broadcast elementwise map ``O[i,j] = A[i,j] <op> B[j]`` (fp32), where
+    ``B`` is a length-``n`` row broadcast over the ``m`` rows of ``A`` (standalone bias-add / per-channel
+    scale). ``op`` = fadd (``add``) or fmul (``mul``). Two nested loops; the ``B`` element is reloaded per
+    (i,j) at column index ``j``."""
+    fop = {"add": "llvm.fadd", "mul": "llvm.fmul"}[combine]
+    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cM = llvm.mlir.constant({m} : i64) : i64
+    %cN = llvm.mlir.constant({n} : i64) : i64
+    llvm.br ^m(%c0 : i64)
+  ^m(%mi: i64):
+    %mc = llvm.icmp "slt" %mi, %cM : i64
+    llvm.cond_br %mc, ^mbody, ^end
+  ^mbody:
+    %mN = llvm.mul %mi, %cN : i64
+    llvm.br ^n(%c0 : i64)
+  ^n(%ni: i64):
+    %nc = llvm.icmp "slt" %ni, %cN : i64
+    llvm.cond_br %nc, ^nbody, ^mnext
+  ^nbody:
+    %idx = llvm.add %mN, %ni : i64
+    %ap = llvm.getelementptr %{a}[%idx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %av = llvm.load %ap : !llvm.ptr -> f32
+    %bp = llvm.getelementptr %{b}[%ni] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %bv = llvm.load %bp : !llvm.ptr -> f32
+    %rv = {fop} %av, %bv : f32
+    %op = llvm.getelementptr %{o}[%idx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %rv, %op : f32, !llvm.ptr
+    %ni2 = llvm.add %ni, %c1 : i64
+    llvm.br ^n(%ni2 : i64)
+  ^mnext:
+    %mi2 = llvm.add %mi, %c1 : i64
+    llvm.br ^m(%mi2 : i64)
+  ^end:
+    llvm.return"""
+
+
 def _shape2(env: dict, name: str) -> tuple[int, int]:
     t = env.get(name)
     if t is None or len(t.shape) != 2:
@@ -287,13 +325,21 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
         if not (a and b and dst):
             raise MuonMlirCodegenError("VECTOR_MAP needs operands lhs/rhs/dst")
         ta, tb = env.get(a), env.get(b)
-        if ta is None or tb is None or ta.shape != tb.shape:
-            raise MuonMlirCodegenError(f"VECTOR_MAP requires equal-shape operands, got {a}/{b}")
-        n = 1
-        for d in ta.shape:
-            n *= d
+        if ta is None or tb is None:
+            raise MuonMlirCodegenError(f"VECTOR_MAP operands {a}/{b} not materialized")
         arg_decl = ", ".join(f"%{x}: !llvm.ptr" for x in (a, b, dst))
-        nest = _elementwise_loop_nest(a, b, dst, n, combine)
+        if ta.shape == tb.shape:                                     # equal-shape elementwise
+            n = 1
+            for d in ta.shape:
+                n *= d
+            nest = _elementwise_loop_nest(a, b, dst, n, combine)
+        elif len(ta.shape) == 2 and tb.shape == (ta.shape[1],):      # row broadcast B[n] over A[m,n]
+            m, n = ta.shape
+            nest = _broadcast_row_loop_nest(a, b, dst, m, n, combine)
+        else:
+            raise MuonMlirCodegenError(
+                f"VECTOR_MAP supports equal-shape or a row-broadcast rhs B[n] over A[m,n]; "
+                f"got {a}{tuple(ta.shape)} / {b}{tuple(tb.shape)}")
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     if "RMSNORM" in by_op:
