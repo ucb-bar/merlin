@@ -71,8 +71,27 @@ def test_lowered_capsule_emits_a_valid_kernel(rel):
     assert "llvm.func @t_kernel(" in mlir
 
 
-@pytest.mark.parametrize("rel", ["RP17_k_chain_fp16_pt",        # chained matmul (>1 commit)
-                                 "RP10_gemv_batched_fp16_pt"])  # batched matmul
+def test_chained_matmul_lowers_and_computes_a_at_w1_at_w2():
+    import numpy as np
+
+    from merlin.runtime.commandbuffer import materialize_inputs
+    from merlin.runtime.simulator import simulate
+
+    cb = lower_linalg_to_cb(_parse("RP17_k_chain_fp16_pt"), target="t")
+    schemas.validate_command_buffer(cb)
+    assert [c["opcode"] for c in cb["commands"]] == \
+        ["RES_PACK", "MATMUL_RESIDENT", "COMMIT", "RES_PACK", "MATMUL_RESIDENT", "COMMIT"]
+    assert sum(v["role"] == "weight" for v in cb["tensors"].values()) == 2  # two weights, one input
+    # the chained structure computes A@W1@W2 (checked with the integer simulator)
+    for t in cb["tensors"].values():
+        t["dtype"] = "i8" if t["role"] in ("input", "weight") else "i32"
+    env = materialize_inputs(cb)
+    a, w1, w2 = (np.array(env[n].to_list(), dtype=np.int64) for n in ("arg0", "arg1", "arg2"))
+    assert simulate(cb)["outputs"]["out"] == ((a @ w1) @ w2).tolist()
+
+
+@pytest.mark.parametrize("rel", ["RP10_gemv_batched_fp16_pt",   # batched matmul
+                                 "RP14_patch_embed_bf16_pt"])    # conv via im2col
 def test_unsupported_matmul_shapes_fail_closed(rel):
     # a clear error, not a wrong cb, for compositions the reference emitter cannot build yet
     with pytest.raises(LinalgLowerError):

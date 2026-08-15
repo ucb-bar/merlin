@@ -88,6 +88,74 @@ def _matmul_loop_nest(w: str, l: str, o: str, m: int, k: int, n: int, epi: list,
     llvm.return"""
 
 
+def _matmul_stage(p: str, ll: str, rr: str, oo: str, m: int, k: int, n: int, done_br: str) -> str:
+    """One row-major matmul loop ``O[i,j] = sum_p L[i,p]*R[p,j]`` with every SSA name / block label
+    prefixed by ``p`` (so several stages compose in one function). When the m-loop finishes it falls into
+    ``^{p}done`` and runs ``done_br`` (a full ``llvm.br`` the caller supplies, so it can pass the next
+    stage's loop-header block argument). Shared constants ``%c0``/``%c1``/``%zero`` come from the prelude;
+    the caller branches into ``^{p}m`` with the initial index (no leading branch here, so stages chain
+    without an orphan terminator)."""
+    return f"""  ^{p}m(%{p}mi: i64):
+    %{p}mc = llvm.icmp "slt" %{p}mi, %{p}cM : i64
+    llvm.cond_br %{p}mc, ^{p}mb, ^{p}done
+  ^{p}mb:
+    %{p}mK = llvm.mul %{p}mi, %{p}cK : i64
+    %{p}mN = llvm.mul %{p}mi, %{p}cN : i64
+    llvm.br ^{p}n(%c0 : i64)
+  ^{p}n(%{p}ni: i64):
+    %{p}nc = llvm.icmp "slt" %{p}ni, %{p}cN : i64
+    llvm.cond_br %{p}nc, ^{p}nb, ^{p}mnext
+  ^{p}nb:
+    llvm.br ^{p}k(%c0, %zero : i64, f32)
+  ^{p}k(%{p}ki: i64, %{p}acc: f32):
+    %{p}kc = llvm.icmp "slt" %{p}ki, %{p}cK : i64
+    llvm.cond_br %{p}kc, ^{p}kb, ^{p}st
+  ^{p}kb:
+    %{p}lidx = llvm.add %{p}mK, %{p}ki : i64
+    %{p}lp = llvm.getelementptr %{ll}[%{p}lidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %{p}lv = llvm.load %{p}lp : !llvm.ptr -> f32
+    %{p}kN = llvm.mul %{p}ki, %{p}cN : i64
+    %{p}widx = llvm.add %{p}kN, %{p}ni : i64
+    %{p}wp = llvm.getelementptr %{rr}[%{p}widx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %{p}wv = llvm.load %{p}wp : !llvm.ptr -> f32
+    %{p}prod = llvm.fmul %{p}lv, %{p}wv : f32
+    %{p}acc2 = llvm.fadd %{p}acc, %{p}prod : f32
+    %{p}ki2 = llvm.add %{p}ki, %c1 : i64
+    llvm.br ^{p}k(%{p}ki2, %{p}acc2 : i64, f32)
+  ^{p}st:
+    %{p}oidx = llvm.add %{p}mN, %{p}ni : i64
+    %{p}op = llvm.getelementptr %{oo}[%{p}oidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %{p}acc, %{p}op : f32, !llvm.ptr
+    %{p}ni2 = llvm.add %{p}ni, %c1 : i64
+    llvm.br ^{p}n(%{p}ni2 : i64)
+  ^{p}mnext:
+    %{p}mi2 = llvm.add %{p}mi, %c1 : i64
+    llvm.br ^{p}m(%{p}mi2 : i64)
+  ^{p}done:
+    {done_br}"""
+
+
+def _chained_matmul_loop_nest(a: str, w1: str, w2: str, y: str, m: int, k: int, k2: int, n: int) -> str:
+    """Two chained matmuls ``H = A@W1`` (m,k,k2) then ``Y = H@W2`` (m,k2,n), with the intermediate ``H``
+    in an ``llvm.alloca`` (m*k2 fp32) — never a kernel argument. Stage A writes H, stage B reads it."""
+    hsz = m * k2
+    prelude = f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %zero = llvm.mlir.constant(0.000000e+00 : f32) : f32
+    %acM = llvm.mlir.constant({m} : i64) : i64
+    %acK = llvm.mlir.constant({k} : i64) : i64
+    %acN = llvm.mlir.constant({k2} : i64) : i64
+    %bcM = llvm.mlir.constant({m} : i64) : i64
+    %bcK = llvm.mlir.constant({k2} : i64) : i64
+    %bcN = llvm.mlir.constant({n} : i64) : i64
+    %hsz = llvm.mlir.constant({hsz} : i64) : i64
+    %H = llvm.alloca %hsz x f32 : (i64) -> !llvm.ptr
+    llvm.br ^am(%c0 : i64)"""
+    stage_a = _matmul_stage("a", a, w1, "H", m, k, k2, "llvm.br ^bm(%c0 : i64)")
+    stage_b = _matmul_stage("b", "H", w2, y, m, k2, n, "llvm.br ^end")
+    return f"{prelude}\n{stage_a}\n{stage_b}\n  ^end:\n    llvm.return"
+
+
 def _attention_qk_loop_nest(q: str, k: str, o: str, m: int, d: int, n: int) -> str:
     """LLVM-dialect nest for attention scores ``O[m,n] = sum_d Q[m,d]*K[n,d]`` — i.e. ``Q @ K^T`` (row-major).
     Same phi-form skeleton as the matmul nest but the K operand is indexed by ROW ``[n,d]`` (the transpose)
@@ -395,8 +463,35 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
         nest = _rmsnorm_loop_nest(gamma, x, dst, r, c, eps)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
-    # ---- matmul (gemm) path (unchanged) ----------------------------------------------------------
+    # ---- matmul (gemm) path -----------------------------------------------------------------------
     resident_source, matmul_for, commits = _plan(cb)
+
+    # chained matmul: TWO commits where the second matmul consumes the first commit's output (A@W1@W2).
+    if len(commits) == 2:
+        c0, c1 = commits
+        mm0, mm1 = matmul_for.get(c0["operands"]["src"]), matmul_for.get(c1["operands"]["src"])
+        if mm0 is None or mm1 is None:
+            raise MuonMlirCodegenError("chained matmul: a commit has no source matmul")
+        if mm1["operands"]["lhs"] != c0["operands"]["dst"]:
+            raise MuonMlirCodegenError("reference MLIR emitter supports a single matmul commit or a "
+                                       "2-matmul chain (second consuming the first); got two unrelated commits")
+        a_nm = mm0["operands"]["lhs"]
+        w1 = resident_source.get(mm0["operands"]["rhs"], mm0["operands"]["rhs"])
+        w2 = resident_source.get(mm1["operands"]["rhs"], mm1["operands"]["rhs"])
+        y = c1["operands"]["dst"]                           # the output is produced, not materialized
+        for nm in (a_nm, w1, w2):
+            if nm not in env or len(env[nm].shape) != 2:
+                raise MuonMlirCodegenError(f"chained matmul operand {nm!r} is not a 2-D materialized leaf")
+        m, k = env[a_nm].shape
+        _, k2 = env[w1].shape
+        k2b, n = env[w2].shape
+        if env[w1].shape[0] != k or k2b != k2:
+            raise MuonMlirCodegenError("chained matmul inner dimensions do not agree")
+        arg_names = [w1, w2, a_nm, y]                       # weights first, then input, then output
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in arg_names)
+        nest = _chained_matmul_loop_nest(a_nm, w1, w2, y, m, k, k2, n)
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
     if len(commits) != 1:
         raise MuonMlirCodegenError(f"reference MLIR emitter supports a single matmul commit, got {len(commits)}")
     # Only the 2-D leaves (matmul operands + output) index into the m/k/n loop math; a 1-D leaf (a

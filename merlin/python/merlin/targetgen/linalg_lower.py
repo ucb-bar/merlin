@@ -87,6 +87,44 @@ def lower_linalg_to_cb(parsed: dict[str, Any], *, target: str) -> dict[str, Any]
         return {"abi_version": "0.1", "target": target, "tensors": tensors,
                 "commands": [cmd], "outputs": [out]}
 
+    # --- two chained 2-D matmuls: A@W1 then (that result)@W2 -----------------------------------------
+    if (len(ops) == 2 and ops[0].get("family") == "contraction" and ops[1].get("family") == "contraction"):
+        mm0, mm1 = ops[0], ops[1]
+        for mm in (mm0, mm1):
+            ext = mm.get("extents", {})
+            if "batch" in ext or not {"m", "k", "n"} <= ext.keys():
+                raise LinalgLowerError(f"chained matmul supports plain 2-D matmuls only (extents {ext})")
+        s0, s1 = [s["source"] for s in mm0["ins"][:2]], [s["source"] for s in mm1["ins"][:2]]
+        if any(s[0] != "arg" for s in s0):
+            raise LinalgLowerError("first matmul operands must be func args")
+        if ("op", mm0["id"]) not in s1:
+            raise LinalgLowerError("the second matmul does not consume the first matmul result")
+        w2_src = [s for s in s1 if s != ("op", mm0["id"])]
+        if len(w2_src) != 1 or w2_src[0][0] != "arg":
+            raise LinalgLowerError("the second matmul's weight must be a func arg")
+        act_i, w1_i, w2_i = s0[0][1], s0[1][1], w2_src[0][1]
+        out = "out"
+        tensors = {
+            argname[act_i]: {"shape": argshape[act_i], "dtype": "f32", "role": "input"},
+            argname[w1_i]: {"shape": argshape[w1_i], "dtype": "f32", "role": "weight"},
+            argname[w2_i]: {"shape": argshape[w2_i], "dtype": "f32", "role": "weight"},
+            out: {"shape": list(mm1["results"][0]["shape"]), "dtype": "f32", "role": "output"},
+        }
+        commands = [
+            {"opcode": "RES_PACK", "operands": {"src": argname[w1_i], "dst": "W1p"},
+             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": argname[act_i], "rhs": "W1p", "dst": "acc0"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "H"},
+             "attributes": {"epilogue": [], "output_dtype": "f32"}},
+            {"opcode": "RES_PACK", "operands": {"src": argname[w2_i], "dst": "W2p"},
+             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "H", "rhs": "W2p", "dst": "acc1"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc1", "dst": out},
+             "attributes": {"epilogue": [], "output_dtype": "f32"}},
+        ]
+        return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                "commands": commands, "outputs": [out]}
+
     # --- a single 2-D matmul, optionally followed by a row-broadcast bias add -------------------------
     if ops[0].get("family") == "contraction":
         mm = ops[0]
