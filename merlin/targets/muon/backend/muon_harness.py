@@ -287,7 +287,7 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                        TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
             out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
             return in_args, out_args
-        if op in ("SOFTMAX", "GELU"):
+        if op in ("SOFTMAX", "GELU", "SOFTCAP"):
             x, out = o.get("src"), o.get("dst")
             if not (x and out) or x not in env0:
                 return None

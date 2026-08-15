@@ -517,6 +517,33 @@ def _gelu_loop_nest(x: str, o: str, n: int) -> str:
     llvm.return"""
 
 
+def _softcap_loop_nest(x: str, o: str, n: int, cap: float) -> str:
+    """LLVM-dialect flat loop for logit soft-capping ``O[i] = cap * tanh(x[i]/cap)`` (fp32), tanh via the
+    inline poly-exp. ``cap`` is baked into the kernel."""
+    cf = f"{float(cap):.8e}"
+    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cN = llvm.mlir.constant({n} : i64) : i64
+    %cap = llvm.mlir.constant({cf} : f32) : f32
+{_FEXP_CONSTS}
+    llvm.br ^l(%c0 : i64)
+  ^l(%i: i64):
+    %ic = llvm.icmp "slt" %i, %cN : i64
+    llvm.cond_br %ic, ^body, ^end
+  ^body:
+    %ap = llvm.getelementptr %{x}[%i] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %xv = llvm.load %ap : !llvm.ptr -> f32
+    %xd = llvm.fdiv %xv, %cap : f32
+{_ftanh("s", "%xd")}
+    %yv = llvm.fmul %cap, %stanh : f32
+    %op = llvm.getelementptr %{o}[%i] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %yv, %op : f32, !llvm.ptr
+    %i2 = llvm.add %i, %c1 : i64
+    llvm.br ^l(%i2 : i64)
+  ^end:
+    llvm.return"""
+
+
 def _softmax_loop_nest(x: str, o: str, r: int, c: int) -> str:
     """LLVM-dialect nest for numerically-stable row softmax ``O[i,j] = exp(x[i,j]-max_i)/sum_j`` (fp32).
     Three passes per row: reduce-max, sum of exp(x-max) (inline poly-exp), divide. The row max and sum are
@@ -771,6 +798,23 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
             raise MuonMlirCodegenError(f"batched matmul dim mismatch: {a_nm}{ta.shape} @ {w}{tw.shape}")
         arg_decl = ", ".join(f"%{x}: !llvm.ptr" for x in (w, a_nm, dst))   # weight-first ABI
         nest = _batched_matmul_loop_nest(a_nm, w, dst, batch, m, k, n)
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
+    if "SOFTCAP" in by_op and len(by_op) == 1 and len(by_op["SOFTCAP"]) == 1:
+        cmd = by_op["SOFTCAP"][0]
+        o = cmd.get("operands", {})
+        x, dst = o.get("src"), o.get("dst")
+        if not (x and dst):
+            raise MuonMlirCodegenError("SOFTCAP needs operands src/dst")
+        t = env.get(x)
+        if t is None:
+            raise MuonMlirCodegenError(f"SOFTCAP operand {x} not materialized")
+        n = 1
+        for d in t.shape:
+            n *= d
+        cap = float((cmd.get("attributes", {}) or {}).get("cap", 1.0))
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (x, dst))
+        nest = _softcap_loop_nest(x, dst, n, cap)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     if "GELU" in by_op and len(by_op) == 1 and len(by_op["GELU"]) == 1:

@@ -222,6 +222,22 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
             return {"abi_version": "0.1", "target": target, "tensors": tensors,
                     "commands": [cmd], "outputs": [out]}
 
+    # --- logit soft-cap: div by cap -> tanh -> mul by cap (recognized by the tanh op + the cap const) --
+    if any(o.get("op") == "tanh" for o in ops):
+        div_const = [i["const_value"] for o in ops if o.get("op") == "div"
+                     for i in o["ins"] if "const_value" in i]
+        src_args = [a["index"] for a in args if len(a["shape"]) == 2]
+        if len(src_args) == 1 and div_const:
+            x_i = src_args[0]
+            out = "out"
+            result_shape = list(ops[-1]["results"][0]["shape"]) if ops[-1].get("results") else argshape[x_i]
+            tensors = {argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
+                       out: {"shape": result_shape, "dtype": "f32", "role": "output"}}
+            cmd = {"opcode": "SOFTCAP", "operands": {"src": argname[x_i], "dst": out},
+                   "attributes": {"cap": div_const[0]}}
+            return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                    "commands": [cmd], "outputs": [out]}
+
     # --- a decomposed row LayerNorm, recognized by the layer_norm provenance -------------------------
     if any(o.get("op") == "layer_norm" for o in ops):
         # src = the sole 2-D func arg; gamma/beta = the 1-D args used in the final mul / add;
