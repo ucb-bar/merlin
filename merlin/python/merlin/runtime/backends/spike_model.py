@@ -119,7 +119,8 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
           cflags_override: list[str] | None = None, vlen: int | None = None,
           console: str = "htif", sdk_dir: str | Path | None = None,
           sdk_chip: str | None = None, chip_freq_hz: int | None = None,
-          matrix: "Any | None" = None, matrix_scalar_tile: bool = False) -> dict:
+          matrix: "Any | None" = None, matrix_scalar_tile: bool = False,
+          stack_bytes: int = 0x40000) -> dict:
     """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
 
     Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
@@ -131,6 +132,13 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     image will actually run on. Passing none of them lowers ``model.mlir`` raw — correct only when the
     caller wants the unprepared module, which is NOT what a delivery wants (measured: raw scored
     ``cos 0.925`` where the prepared path is bit-exact).
+
+    ``stack_bytes`` is the linker-reserved stack, and it is a SIZING decision rather than a layout
+    constant: the lowering promotes static intermediates to stack ``alloca``s for this target, so the
+    demand follows the model. It matters because nothing checks it -- ``crt.S`` hands each hart a slice
+    and the region immediately below the reserve is ``.bss``/``.data``/``.rodata``/``.htif``, so running
+    out corrupts the allocator's bookkeeping and the HTIF mailbox instead of faulting. The default is
+    the historical 0x40000, so existing callers are byte-identical.
 
     ``console`` selects the output channel and is a real correctness knob, not a preference. The
     default ``htif`` needs a **host** servicing ``tohost`` (spike, FireSim, uart_tsi); on bare silicon
@@ -271,6 +279,7 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     elf = work / "model.elf"
     _run([gcc, *gcc_cflags, "-nostdlib", "-nostartfiles",
           f"-Wl,--defsym,MERLIN_WEIGHTS_BASE={hex(lay['weights_base'])}",
+          f"-Wl,--defsym,MERLIN_STACK_BYTES={hex(int(stack_bytes))}",
           "-T", h / "model_link.ld", *objs, "-lm", "-o", elf])
     return {"elf": elf, "mem_bytes": lay["mem_bytes"], "build_hash": build_hash,
             "arena_base": lay["arena_base"], "weights_base": lay["weights_base"],
