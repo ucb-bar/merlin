@@ -743,7 +743,18 @@ def _run_cyclotron(elf: Path, timeout: int) -> tuple[str, int | None, dict | Non
     # back zeros. It is inert for any kernel that never touches the Gemmini MMIO window, so setting it
     # unconditionally is safe for the whole Muon corpus.
     env.setdefault("CYCLOTRON_MXGEMMINI", "1")
-    cmd = [str(cyclotron_path()), str(config_path()),
+    # Run with a RAISED cycle cap. The stock config's ``[sim] timeout`` is 1e6 cycles; the sim's main loop
+    # is ``for cycle in 0..timeout { if finished() {..} tick() }`` and, if a kernel has not finished by the
+    # cap, it returns ``Err(0)`` — which Rust reports as exit 1 with the output TRUNCATED mid-print (seen as
+    # a spurious "cyclotron exited 1" on large fused/MX kernels that legitimately need >1e6 cycles; the small
+    # kernels finish well under it). Write a workdir copy of the config with a higher cap and run that — its
+    # ``[timing] include = ["config/timing/…"]`` paths resolve against the config's dir, i.e. through the
+    # ``config`` symlink created above, so they stay valid. Parsed structurally (no regex).
+    run_cfg = work / "cyclotron.run.toml"
+    _bumped = ["timeout = 20000000" if ln.strip().startswith("timeout ") and "=" in ln else ln
+               for ln in config_path().read_text(encoding="utf-8").splitlines()]
+    run_cfg.write_text("\n".join(_bumped) + "\n", encoding="utf-8")
+    cmd = [str(cyclotron_path()), str(run_cfg),
            "--binary-path", str(elf), "--timing", "--log", "0"]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
                           cwd=str(work), env=env)

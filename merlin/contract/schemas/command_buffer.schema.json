@@ -35,7 +35,7 @@
         "properties": {
           "opcode": {
             "type": "string",
-            "enum": ["RES_PACK", "MATMUL_RESIDENT", "MATMUL", "COMMIT", "EVICT", "VECTOR_MAP", "VREDUCE", "RMSNORM", "ATTENTION_QK", "BATCHED_MATMUL", "LAYERNORM", "SOFTMAX", "GELU", "SOFTCAP"]
+            "enum": ["RES_PACK", "MATMUL_RESIDENT", "MATMUL", "COMMIT", "EVICT", "VECTOR_MAP", "VREDUCE", "RMSNORM", "ATTENTION_QK", "BATCHED_MATMUL", "LAYERNORM", "SOFTMAX", "GELU", "SOFTCAP", "GEGLU"]
           },
           "operands": {"type": "object", "additionalProperties": {"type": "string"}},
           "attributes": {

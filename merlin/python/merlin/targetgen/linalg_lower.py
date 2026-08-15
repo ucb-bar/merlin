@@ -100,6 +100,26 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
                 "commands": [cmd], "outputs": [out],
                 "interface": "linalg_positional", "arg_order": [argname[i0], argname[i1], out]}
 
+    # --- SwiGLU/GEGLU: silu(X@W_gate) * (X@W_up) (a sigmoid + two shared-lhs matmuls) -----------------
+    if any(o.get("op") == "sigmoid" for o in ops):
+        mmg = [o for o in ops if o.get("family") == "contraction"]
+        if (len(mmg) == 2 and all(m["ins"][0]["source"][0] == "arg" and m["ins"][1]["source"][0] == "arg"
+                                  for m in mmg) and mmg[0]["ins"][0]["source"] == mmg[1]["ins"][0]["source"]):
+            x_i = mmg[0]["ins"][0]["source"][1]
+            wg_i = mmg[0]["ins"][1]["source"][1]
+            wu_i = mmg[1]["ins"][1]["source"][1]
+            out = "out"
+            tensors = {
+                argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
+                argname[wg_i]: {"shape": argshape[wg_i], "dtype": "f32", "role": "weight"},
+                argname[wu_i]: {"shape": argshape[wu_i], "dtype": "f32", "role": "weight"},
+                out: {"shape": list(ops[-1]["results"][0]["shape"]), "dtype": "f32", "role": "output"},
+            }
+            cmd = {"opcode": "GEGLU", "operands": {"src": argname[x_i], "w_gate": argname[wg_i],
+                                                   "w_up": argname[wu_i], "dst": out}}
+            return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                    "commands": [cmd], "outputs": [out]}
+
     # --- two chained 2-D matmuls: A@W1 then (that result)@W2 -----------------------------------------
     if (len(ops) == 2 and ops[0].get("family") == "contraction" and ops[1].get("family") == "contraction"):
         mm0, mm1 = ops[0], ops[1]

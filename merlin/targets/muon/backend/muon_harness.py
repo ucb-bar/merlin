@@ -303,6 +303,19 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                        TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
             out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
             return in_args, out_args
+        if op == "GEGLU":
+            x, wg, wu, out = o.get("src"), o.get("w_gate"), o.get("w_up"), o.get("dst")
+            if not (x and wg and wu and out) or any(nm not in env0 for nm in (x, wg, wu)):
+                return None
+            xt, wgt, wut = env0[x], env0[wg], env0[wu]
+            if len(xt.shape) != 2 or len(wgt.shape) != 2:
+                return None
+            m, k = xt.shape
+            _, n = wgt.shape
+            in_args = [TensorArg(wg, k, n, _vals(canon0, wg, wgt), "f32"),
+                       TensorArg(wu, k, n, _vals(canon0, wu, wut), "f32"),
+                       TensorArg(x, m, k, _vals(canon0, x, xt), "f32")]
+            return in_args, [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
         if op in ("SOFTMAX", "GELU", "SOFTCAP"):
             x, out = o.get("src"), o.get("dst")
             if not (x and out) or x not in env0:

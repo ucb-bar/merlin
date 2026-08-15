@@ -224,6 +224,47 @@ def _batched_matmul_loop_nest(a: str, w: str, o: str, batch: int, m: int, k: int
     llvm.return"""
 
 
+def _geglu_nest(x: str, wg: str, wu: str, o: str, m: int, k: int, n: int) -> str:
+    """SwiGLU/GEGLU ``O = silu(X@Wg) * (X@Wu)``, silu(a)=a/(1+exp(-a)) (fp32). One alloca: the gate A goes
+    to a scratch buffer, the up-projection B is written straight to the output O, then a final pass gates
+    O in place (O[i] = silu(A[i]) * O[i])."""
+    mn = m * n
+    prelude = f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %zero = llvm.mlir.constant(0.000000e+00 : f32) : f32
+    %negone = llvm.mlir.constant(-1.000000e+00 : f32) : f32
+    %acM = llvm.mlir.constant({m} : i64) : i64
+    %acK = llvm.mlir.constant({k} : i64) : i64
+    %acN = llvm.mlir.constant({n} : i64) : i64
+    %bcM = llvm.mlir.constant({m} : i64) : i64
+    %bcK = llvm.mlir.constant({k} : i64) : i64
+    %bcN = llvm.mlir.constant({n} : i64) : i64
+    %cMN = llvm.mlir.constant({mn} : i64) : i64
+{_FEXP_CONSTS}
+    %aA = llvm.alloca %cMN x f32 : (i64) -> !llvm.ptr
+    llvm.br ^am(%c0 : i64)"""
+    stage_a = _matmul_stage("a", x, wg, "aA", m, k, n, "llvm.br ^bm(%c0 : i64)")
+    stage_b = _matmul_stage("b", x, wu, o, m, k, n, "llvm.br ^cl(%c0 : i64)")
+    stage_c = f"""  ^cl(%ci: i64):
+    %ccc = llvm.icmp "slt" %ci, %cMN : i64
+    llvm.cond_br %ccc, ^cb, ^end
+  ^cb:
+    %cap = llvm.getelementptr %aA[%ci] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %cav = llvm.load %cap : !llvm.ptr -> f32
+    %cop = llvm.getelementptr %{o}[%ci] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %cbv = llvm.load %cop : !llvm.ptr -> f32
+    %cneg = llvm.fmul %cav, %negone : f32
+{_fexp("s", "%cneg")}
+    %cden = llvm.fadd %sex, %xone : f32
+    %csig = llvm.fdiv %xone, %cden : f32
+    %csilu = llvm.fmul %cav, %csig : f32
+    %cout = llvm.fmul %csilu, %cbv : f32
+    llvm.store %cout, %cop : f32, !llvm.ptr
+    %ci2 = llvm.add %ci, %c1 : i64
+    llvm.br ^cl(%ci2 : i64)"""
+    return f"{prelude}\n{stage_a}\n{stage_b}\n{stage_c}\n  ^end:\n    llvm.return"
+
+
 def _attention_qk_loop_nest(q: str, k: str, o: str, m: int, d: int, n: int) -> str:
     """LLVM-dialect nest for attention scores ``O[m,n] = sum_d Q[m,d]*K[n,d]`` — i.e. ``Q @ K^T`` (row-major).
     Same phi-form skeleton as the matmul nest but the K operand is indexed by ROW ``[n,d]`` (the transpose)
@@ -914,6 +955,20 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
             n *= d
         arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (x, dst))
         nest = _gelu_loop_nest(x, dst, n)
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
+    if "GEGLU" in by_op and len(by_op) == 1 and len(by_op["GEGLU"]) == 1:
+        o = by_op["GEGLU"][0].get("operands", {})
+        x, wg, wu, dst = o.get("src"), o.get("w_gate"), o.get("w_up"), o.get("dst")
+        if not (x and wg and wu and dst):
+            raise MuonMlirCodegenError("GEGLU needs operands src/w_gate/w_up/dst")
+        for nm in (x, wg, wu):
+            if nm not in env or len(env[nm].shape) != 2:
+                raise MuonMlirCodegenError(f"GEGLU operand {nm!r} is not a 2-D materialized leaf")
+        m, k = env[x].shape
+        _, n = env[wg].shape
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (wg, wu, x, dst))   # weight-first ABI
+        nest = _geglu_nest(x, wg, wu, dst, m, k, n)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     if "SOFTMAX" in by_op:
