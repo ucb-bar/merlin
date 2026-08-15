@@ -472,6 +472,51 @@ def _fexp(p: str, xin: str) -> str:
     %{p}ex = llvm.fmul %{p}twok, %{p}poly : f32"""
 
 
+def _ftanh(p: str, xin: str) -> str:
+    """Straight-line tanh(%xin) -> %{p}tanh via ``tanh = 1 - 2/(exp(2x)+1)`` (reuses the inline poly-exp).
+    Names prefixed by ``p``. Adequate for the bounded activations gelu/softcap see (tolerance ~3%)."""
+    return f"""    %{p}two = llvm.mlir.constant(2.000000e+00 : f32) : f32
+    %{p}2x = llvm.fmul {xin}, %{p}two : f32
+{_fexp(p + "e", "%" + p + "2x")}
+    %{p}den = llvm.fadd %{p}eex, %xone : f32
+    %{p}rat = llvm.fdiv %{p}two, %{p}den : f32
+    %{p}tanh = llvm.fsub %xone, %{p}rat : f32"""
+
+
+def _gelu_loop_nest(x: str, o: str, n: int) -> str:
+    """LLVM-dialect flat loop for the tanh-approximation GELU ``O[i]=0.5*x*(1+tanh(0.79788456*(x+0.044715
+    *x^3)))`` (fp32). Matches the exact erf-GELU golden within a few 1e-3 (well inside tolerance)."""
+    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cN = llvm.mlir.constant({n} : i64) : i64
+    %half = llvm.mlir.constant(5.000000e-01 : f32) : f32
+    %kk = llvm.mlir.constant(0.797884583 : f32) : f32
+    %cc = llvm.mlir.constant(4.47150005e-02 : f32) : f32
+{_FEXP_CONSTS}
+    llvm.br ^l(%c0 : i64)
+  ^l(%i: i64):
+    %ic = llvm.icmp "slt" %i, %cN : i64
+    llvm.cond_br %ic, ^body, ^end
+  ^body:
+    %ap = llvm.getelementptr %{x}[%i] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %xv = llvm.load %ap : !llvm.ptr -> f32
+    %x2 = llvm.fmul %xv, %xv : f32
+    %x3 = llvm.fmul %x2, %xv : f32
+    %cx3 = llvm.fmul %cc, %x3 : f32
+    %sum = llvm.fadd %xv, %cx3 : f32
+    %arg = llvm.fmul %kk, %sum : f32
+{_ftanh("g", "%arg")}
+    %opl = llvm.fadd %xone, %gtanh : f32
+    %hx = llvm.fmul %half, %xv : f32
+    %yv = llvm.fmul %hx, %opl : f32
+    %op = llvm.getelementptr %{o}[%i] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %yv, %op : f32, !llvm.ptr
+    %i2 = llvm.add %i, %c1 : i64
+    llvm.br ^l(%i2 : i64)
+  ^end:
+    llvm.return"""
+
+
 def _softmax_loop_nest(x: str, o: str, r: int, c: int) -> str:
     """LLVM-dialect nest for numerically-stable row softmax ``O[i,j] = exp(x[i,j]-max_i)/sum_j`` (fp32).
     Three passes per row: reduce-max, sum of exp(x-max) (inline poly-exp), divide. The row max and sum are
@@ -726,6 +771,21 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
             raise MuonMlirCodegenError(f"batched matmul dim mismatch: {a_nm}{ta.shape} @ {w}{tw.shape}")
         arg_decl = ", ".join(f"%{x}: !llvm.ptr" for x in (w, a_nm, dst))   # weight-first ABI
         nest = _batched_matmul_loop_nest(a_nm, w, dst, batch, m, k, n)
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
+    if "GELU" in by_op and len(by_op) == 1 and len(by_op["GELU"]) == 1:
+        o = by_op["GELU"][0].get("operands", {})
+        x, dst = o.get("src"), o.get("dst")
+        if not (x and dst):
+            raise MuonMlirCodegenError("GELU needs operands src/dst")
+        t = env.get(x)
+        if t is None:
+            raise MuonMlirCodegenError(f"GELU operand {x} not materialized")
+        n = 1
+        for d in t.shape:
+            n *= d
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (x, dst))
+        nest = _gelu_loop_nest(x, dst, n)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     if "SOFTMAX" in by_op:
