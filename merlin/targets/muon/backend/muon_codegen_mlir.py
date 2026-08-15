@@ -156,6 +156,74 @@ def _chained_matmul_loop_nest(a: str, w1: str, w2: str, y: str, m: int, k: int, 
     return f"{prelude}\n{stage_a}\n{stage_b}\n  ^end:\n    llvm.return"
 
 
+def _batched_matmul_loop_nest(a: str, w: str, o: str, batch: int, m: int, k: int, n: int) -> str:
+    """LLVM-dialect nest for a batched matmul ``O[b,i,j] = sum_p A[b,i,p]*W[b,p,j]`` (row-major, fp32):
+    an outer batch loop adds per-batch base offsets (b*m*k / b*k*n / b*m*n) around the 2-D matmul body."""
+    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cB = llvm.mlir.constant({batch} : i64) : i64
+    %cM = llvm.mlir.constant({m} : i64) : i64
+    %cK = llvm.mlir.constant({k} : i64) : i64
+    %cN = llvm.mlir.constant({n} : i64) : i64
+    %sA = llvm.mlir.constant({m * k} : i64) : i64
+    %sW = llvm.mlir.constant({k * n} : i64) : i64
+    %sO = llvm.mlir.constant({m * n} : i64) : i64
+    %zero = llvm.mlir.constant(0.000000e+00 : f32) : f32
+    llvm.br ^b(%c0 : i64)
+  ^b(%bi: i64):
+    %bc = llvm.icmp "slt" %bi, %cB : i64
+    llvm.cond_br %bc, ^bbody, ^end
+  ^bbody:
+    %aBase = llvm.mul %bi, %sA : i64
+    %wBase = llvm.mul %bi, %sW : i64
+    %oBase = llvm.mul %bi, %sO : i64
+    llvm.br ^m(%c0 : i64)
+  ^m(%mi: i64):
+    %mc = llvm.icmp "slt" %mi, %cM : i64
+    llvm.cond_br %mc, ^mbody, ^bnext
+  ^mbody:
+    %mK = llvm.mul %mi, %cK : i64
+    %mN = llvm.mul %mi, %cN : i64
+    llvm.br ^n(%c0 : i64)
+  ^n(%ni: i64):
+    %nc = llvm.icmp "slt" %ni, %cN : i64
+    llvm.cond_br %nc, ^nbody, ^mnext
+  ^nbody:
+    llvm.br ^k(%c0, %zero : i64, f32)
+  ^k(%ki: i64, %acc: f32):
+    %kc = llvm.icmp "slt" %ki, %cK : i64
+    llvm.cond_br %kc, ^kbody, ^store
+  ^kbody:
+    %arow = llvm.add %aBase, %mK : i64
+    %aidx = llvm.add %arow, %ki : i64
+    %ap = llvm.getelementptr %{a}[%aidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %av = llvm.load %ap : !llvm.ptr -> f32
+    %kN = llvm.mul %ki, %cN : i64
+    %wrow = llvm.add %wBase, %kN : i64
+    %widx = llvm.add %wrow, %ni : i64
+    %wp = llvm.getelementptr %{w}[%widx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %wv = llvm.load %wp : !llvm.ptr -> f32
+    %prod = llvm.fmul %av, %wv : f32
+    %acc2 = llvm.fadd %acc, %prod : f32
+    %ki2 = llvm.add %ki, %c1 : i64
+    llvm.br ^k(%ki2, %acc2 : i64, f32)
+  ^store:
+    %orow = llvm.add %oBase, %mN : i64
+    %oidx = llvm.add %orow, %ni : i64
+    %op = llvm.getelementptr %{o}[%oidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %acc, %op : f32, !llvm.ptr
+    %ni2 = llvm.add %ni, %c1 : i64
+    llvm.br ^n(%ni2 : i64)
+  ^mnext:
+    %mi2 = llvm.add %mi, %c1 : i64
+    llvm.br ^m(%mi2 : i64)
+  ^bnext:
+    %bi2 = llvm.add %bi, %c1 : i64
+    llvm.br ^b(%bi2 : i64)
+  ^end:
+    llvm.return"""
+
+
 def _attention_qk_loop_nest(q: str, k: str, o: str, m: int, d: int, n: int) -> str:
     """LLVM-dialect nest for attention scores ``O[m,n] = sum_d Q[m,d]*K[n,d]`` — i.e. ``Q @ K^T`` (row-major).
     Same phi-form skeleton as the matmul nest but the K operand is indexed by ROW ``[n,d]`` (the transpose)
@@ -461,6 +529,22 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
         # weight-first ABI: [gamma] ++ [src] ++ [out]
         arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (gamma, x, dst))
         nest = _rmsnorm_loop_nest(gamma, x, dst, r, c, eps)
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
+    if "BATCHED_MATMUL" in by_op and len(by_op) == 1 and len(by_op["BATCHED_MATMUL"]) == 1:
+        o = by_op["BATCHED_MATMUL"][0].get("operands", {})
+        a_nm, w, dst = o.get("a"), o.get("w"), o.get("dst")
+        if not (a_nm and w and dst):
+            raise MuonMlirCodegenError("BATCHED_MATMUL needs operands a/w/dst")
+        ta, tw = env.get(a_nm), env.get(w)
+        if ta is None or tw is None or len(ta.shape) != 3 or len(tw.shape) != 3:
+            raise MuonMlirCodegenError("BATCHED_MATMUL needs 3-D (batch,m,k)/(batch,k,n) operands")
+        batch, m, k = ta.shape
+        b2, k2, n = tw.shape
+        if b2 != batch or k2 != k:
+            raise MuonMlirCodegenError(f"batched matmul dim mismatch: {a_nm}{ta.shape} @ {w}{tw.shape}")
+        arg_decl = ", ".join(f"%{x}: !llvm.ptr" for x in (w, a_nm, dst))   # weight-first ABI
+        nest = _batched_matmul_loop_nest(a_nm, w, dst, batch, m, k, n)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     # ---- matmul (gemm) path -----------------------------------------------------------------------

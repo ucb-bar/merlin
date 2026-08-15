@@ -125,6 +125,26 @@ def lower_linalg_to_cb(parsed: dict[str, Any], *, target: str) -> dict[str, Any]
         return {"abi_version": "0.1", "target": target, "tensors": tensors,
                 "commands": commands, "outputs": [out]}
 
+    # --- a single batched matmul (batch,m,k)@(batch,k,n) ---------------------------------------------
+    if len(ops) == 1 and ops[0].get("family") == "contraction" and "batch" in ops[0].get("extents", {}):
+        mm = ops[0]
+        ins = mm["ins"]
+        if len(ins) < 2 or ins[0]["source"][0] != "arg" or ins[1]["source"][0] != "arg":
+            raise LinalgLowerError("batched matmul operands must both be func args")
+        if len(ins[0]["shape"]) != 3 or len(ins[1]["shape"]) != 3:
+            raise LinalgLowerError(f"batched matmul needs 3-D operands (got {ins[0]['shape']}/{ins[1]['shape']})")
+        a_i, w_i = ins[0]["source"][1], ins[1]["source"][1]
+        out = "out"
+        tensors = {
+            argname[a_i]: {"shape": argshape[a_i], "dtype": "f32", "role": "input"},
+            argname[w_i]: {"shape": argshape[w_i], "dtype": "f32", "role": "weight"},
+            out: {"shape": list(mm["results"][0]["shape"]), "dtype": "f32", "role": "output"},
+        }
+        cmd = {"opcode": "BATCHED_MATMUL",
+               "operands": {"a": argname[a_i], "w": argname[w_i], "dst": out}}
+        return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                "commands": [cmd], "outputs": [out]}
+
     # --- a single 2-D matmul, optionally followed by a row-broadcast bias add -------------------------
     if ops[0].get("family") == "contraction":
         mm = ops[0]

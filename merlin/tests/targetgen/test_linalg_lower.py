@@ -90,9 +90,24 @@ def test_chained_matmul_lowers_and_computes_a_at_w1_at_w2():
     assert simulate(cb)["outputs"]["out"] == ((a @ w1) @ w2).tolist()
 
 
-@pytest.mark.parametrize("rel", ["RP10_gemv_batched_fp16_pt",   # batched matmul
-                                 "RP14_patch_embed_bf16_pt"])    # conv via im2col
-def test_unsupported_matmul_shapes_fail_closed(rel):
-    # a clear error, not a wrong cb, for compositions the reference emitter cannot build yet
+def test_batched_matmul_lowers_and_computes_per_batch():
+    import numpy as np
+
+    from merlin.runtime.commandbuffer import materialize_inputs
+    from merlin.runtime.simulator import simulate
+
+    cb = lower_linalg_to_cb(_parse("RP10_gemv_batched_fp16_pt"), target="t")
+    schemas.validate_command_buffer(cb)
+    assert [c["opcode"] for c in cb["commands"]] == ["BATCHED_MATMUL"]
+    for t in cb["tensors"].values():
+        t["dtype"] = "i8" if t["role"] in ("input", "weight") else "i32"
+    env = materialize_inputs(cb)
+    a = np.array(env["arg0"].data, dtype=np.int64).reshape(env["arg0"].shape)
+    w = np.array(env["arg1"].data, dtype=np.int64).reshape(env["arg1"].shape)
+    assert np.array_equal(np.array(simulate(cb)["outputs"]["out"]), np.matmul(a, w))
+
+
+def test_conv_im2col_matmul_fails_closed():
+    # conv via im2col is not a plain matmul the reference emitter builds yet -> a clear error
     with pytest.raises(LinalgLowerError):
-        lower_linalg_to_cb(_parse(rel), target="t")
+        lower_linalg_to_cb(_parse("RP14_patch_embed_bf16_pt"), target="t")

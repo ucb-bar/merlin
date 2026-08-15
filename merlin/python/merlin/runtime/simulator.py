@@ -136,6 +136,24 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             metrics.cycles += len(t.data)
             trace.append({"name": "vector_map", "object": dst, "count": len(t.data)})
 
+        elif op == "BATCHED_MATMUL":
+            # O[b] = A[b] @ W[b] for a batch of independent 2-D matmuls (weight differs per batch, so no
+            # residency reuse). Slice the flat (batch,m,k)/(batch,k,n) tensors per batch and matmul each.
+            a, w, dst = env[ops["a"]], env[ops["w"]], ops["dst"]
+            batch, m, kdim = a.shape
+            _, _, n = w.shape
+            out: list = []
+            for bb in range(batch):
+                asl = Tensor((m, kdim), a.data[bb * m * kdim:(bb + 1) * m * kdim], a.dtype)
+                wsl = Tensor((kdim, n), w.data[bb * kdim * n:(bb + 1) * kdim * n], w.dtype)
+                out.extend(asl.matmul(wsl).data)
+            env[dst] = Tensor((batch, m, n), out, "i32")
+            outputs[dst] = [[[out[bb * m * n + i * n + j] for j in range(n)]
+                             for i in range(m)] for bb in range(batch)]
+            metrics.dispatch_count += batch
+            metrics.cycles += batch * base_matmul_cycles(m, kdim, n)
+            trace.append({"name": "batched_matmul", "object": dst, "count": batch})
+
         elif op == "VREDUCE":
             src, dst = env[ops["src"]], ops["dst"]
             rop = attrs.get("op", "sum")
