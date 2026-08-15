@@ -316,6 +316,36 @@ _CASES: tuple[Case, ...] = (
     Case("workload_classifier", 1, 1000, 32, "the classifier head: M=1 at a large N, i.e. a vecmat over "
          "many tile columns. The M=1 probes above use a single tile; this one runs the tiling loop with "
          "one live row throughout, which is where a row-index bug in the readout would show", seed=504),
+    # The same five contractions at the model's REAL reduction lengths. The K=32 versions above stay --
+    # a certified case is never removed -- but they are reduced-depth stand-ins, and a corpus that only
+    # ever ran the model's M and N could be cited as "the model's shapes pass" while no case had ever
+    # performed the model's reduction. These close that gap.
+    #
+    # Why they can exist NOW and could not before: the stated blocker was the in-image scalar reference
+    # at O(M*N*K) on cycle-accurate RTL. On the FPGA that argument no longer holds -- all five are 180M
+    # MACs together, which is seconds, not the hours Verilator would have taken. The compromise was
+    # honest when written and is simply obsolete; the cost that justified it was measured away.
+    #
+    # These are also the cases where a K-major packing bug can finally show. At K=32 the packed left
+    # operand is a single tile deep at every edge, so a stride computed from the wrong extent still lands
+    # inside the buffer; at K=1024 it does not.
+    Case("workload_ffn_up_k256", 196, 1024, 256, "the FFN up-projection at the model's real reduction "
+         "depth (12 of these, tied for the largest contributor at 51.4M MACs). The K=32 twin certifies "
+         "the parallel geometry; this one certifies that geometry while the reduction actually runs to "
+         "the model's length", seed=520),
+    Case("workload_ffn_down_k1024", 196, 256, 1024, "the FFN down-projection at its real K -- the "
+         "LONGEST reduction in the model. K=1024 is where an accumulator that is re-zeroed, or carried "
+         "across a tile boundary it should not be, stops being maskable by a short reduction", seed=521),
+    Case("workload_attn_proj_k256", 196, 768, 256, "the fused QKV projection at real depth: N=768 is a "
+         "whole number of tiles at every edge, so a failure here is the reduction or the pack, never the "
+         "N tail -- which is exactly what makes it diagnostic alongside the two above", seed=522),
+    Case("workload_im2col_k768", 256, 196, 768, "patch embedding at real depth. Its N=196 is still not a "
+         "multiple of the operand alignment, so this is the one case that exercises an unaligned "
+         "right-operand row stride AND a long reduction at the same time", seed=523),
+    Case("workload_classifier_k256", 1, 1000, 256, "the classifier head at real depth: M=1 with a "
+         "reduction 8x longer than its twin. Measured on this part, the M=1 shape is the one the cost "
+         "model should DECLINE to route (row-serial readout charges a full tile of rows for one live "
+         "row), so it is here for correctness, not throughput", seed=524),
 )
 
 #: The reduction length at which int8 x int8 accumulation could first exceed a signed 32-bit

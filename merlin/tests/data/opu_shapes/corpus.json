@@ -462,6 +462,61 @@
    "requant": false,
    "seed": 504,
    "amplitude": 8
+  },
+  {
+   "name": "workload_ffn_up_k256",
+   "m": 196,
+   "n": 1024,
+   "k": 256,
+   "why": "the FFN up-projection at the model's real reduction depth (12 of these, tied for the largest contributor at 51.4M MACs). The K=32 twin certifies the parallel geometry; this one certifies that geometry while the reduction actually runs to the model's length",
+   "bias": false,
+   "requant": false,
+   "seed": 520,
+   "amplitude": 8
+  },
+  {
+   "name": "workload_ffn_down_k1024",
+   "m": 196,
+   "n": 256,
+   "k": 1024,
+   "why": "the FFN down-projection at its real K -- the LONGEST reduction in the model. K=1024 is where an accumulator that is re-zeroed, or carried across a tile boundary it should not be, stops being maskable by a short reduction",
+   "bias": false,
+   "requant": false,
+   "seed": 521,
+   "amplitude": 8
+  },
+  {
+   "name": "workload_attn_proj_k256",
+   "m": 196,
+   "n": 768,
+   "k": 256,
+   "why": "the fused QKV projection at real depth: N=768 is a whole number of tiles at every edge, so a failure here is the reduction or the pack, never the N tail -- which is exactly what makes it diagnostic alongside the two above",
+   "bias": false,
+   "requant": false,
+   "seed": 522,
+   "amplitude": 8
+  },
+  {
+   "name": "workload_im2col_k768",
+   "m": 256,
+   "n": 196,
+   "k": 768,
+   "why": "patch embedding at real depth. Its N=196 is still not a multiple of the operand alignment, so this is the one case that exercises an unaligned right-operand row stride AND a long reduction at the same time",
+   "bias": false,
+   "requant": false,
+   "seed": 523,
+   "amplitude": 8
+  },
+  {
+   "name": "workload_classifier_k256",
+   "m": 1,
+   "n": 1000,
+   "k": 256,
+   "why": "the classifier head at real depth: M=1 with a reduction 8x longer than its twin. Measured on this part, the M=1 shape is the one the cost model should DECLINE to route (row-serial readout charges a full tile of rows for one live row), so it is here for correctness, not throughput",
+   "bias": false,
+   "requant": false,
+   "seed": 524,
+   "amplitude": 8
   }
  ]
 }
