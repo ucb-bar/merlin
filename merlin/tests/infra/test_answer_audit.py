@@ -63,6 +63,20 @@ def test_read_tool_blocked_probe_stays_clean(audit, tmp_path):
     assert r["blocked_probes"] == 1
 
 
+@pytest.mark.parametrize("err", [
+    "Error: ENOENT: no such file or directory, open 'isa/AT0_config_smoke/golden.yaml'",
+    "cat: isa/AT0_config_smoke/golden.yaml: Permission denied",
+    "cat: isa/AT0_config_smoke/golden.yaml: No such file or directory",
+])
+def test_read_that_errored_is_blocked_not_leak(audit, tmp_path, err):
+    # The mask blocks an answer path by absence / mode-000 too, not only by binding to /dev/null: the read
+    # then returns an ERROR, no answer bytes. That attempt must classify as blocked_probe, never path_read.
+    tp = _transcript(tmp_path, "isa/AT0_config_smoke/golden.yaml", err, tool="Read")
+    r = audit(tp, arm="merlin_assisted")
+    assert r["clean"] is True
+    assert [h["kind"] for h in r["hits"]] == ["blocked_probe"]
+
+
 def test_no_answer_reference_is_clean(audit, tmp_path):
     tp = _transcript(tmp_path, "ls submission", "manifest.yaml\natlas_opt.py")
     r = audit(tp, arm="merlin_assisted")

@@ -402,6 +402,15 @@ def _is_oracle_code(text: str) -> str | None:
 
 
 _EMPTY_RESULT_MARKERS = ("(bash completed with no output)", "(no output)", "(no content)")
+# Read-FAILED signatures: the mask blocks an answer path either by binding it to /dev/null (an EMPTY
+# result) OR by leaving it absent / mode-000 (the tool returns an ERROR). In BOTH cases NO answer content
+# reached the agent, so an attempt whose result carries one of these is a benign blocked_probe, not a leak.
+# (A golden.yaml's own content never IS one of these error strings, so this cannot mask a true leak.)
+_BLOCKED_READ_MARKERS = (
+    "no such file", "enoent", "does not exist", "cannot open", "not found",
+    "permission denied", "eacces", "operation not permitted", "eperm",
+    "file not found", "is a directory", "error: enoent", "no content",
+)
 
 
 def _result_text_by_id(tpath: Path) -> dict:
@@ -438,7 +447,10 @@ def _read_was_blocked(result_text) -> bool:
     if result_text is None:
         return False
     s = result_text.strip().lower()
-    return s == "" or s in _EMPTY_RESULT_MARKERS
+    if s == "" or s in _EMPTY_RESULT_MARKERS:
+        return True
+    # a read that FAILED (masked-absent / mode-000) returned an error, not answer bytes -> still blocked.
+    return any(m in s for m in _BLOCKED_READ_MARKERS)
 
 
 # Path-LISTING searches (grep -l / find / ls / locate) output FILENAMES, not file content — so they cannot
