@@ -260,6 +260,22 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
         return {"abi_version": "0.1", "target": target, "tensors": tensors,
                 "commands": commands, "outputs": [out]}
 
+    # --- RoPE: rotary position embedding, recognized by the co-present sin + cos ops -----------------
+    #     out[p,i] = x[p,i]*cos(theta) + rotate_half(x)[p,i]*sin(theta); the emitter bakes inv_freq and
+    #     rotate_half, so the command is a single-input map over the sole 2-D func arg.
+    if any(o.get("op") == "sin" for o in ops) and any(o.get("op") == "cos" for o in ops):
+        src_args = [a["index"] for a in args if len(a["shape"]) == 2]
+        if len(src_args) != 1:
+            raise LinalgLowerError("rope expects a single 2-D input")
+        x_i = src_args[0]
+        out = "out"
+        result_shape = list(ops[-1]["results"][0]["shape"]) if ops[-1].get("results") else argshape[x_i]
+        tensors = {argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
+                   out: {"shape": result_shape, "dtype": "f32", "role": "output"}}
+        cmd = {"opcode": "ROPE", "operands": {"src": argname[x_i], "dst": out}}
+        return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                "commands": [cmd], "outputs": [out]}
+
     # --- single-input elementwise transcendentals, recognized by provenance (softmax / gelu) ---------
     for _pop, _opcode in (("softmax", "SOFTMAX"), ("gelu", "GELU")):
         if any(o.get("op") == _pop for o in ops):

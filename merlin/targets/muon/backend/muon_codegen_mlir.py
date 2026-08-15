@@ -519,6 +519,68 @@ def _fexp(p: str, xin: str) -> str:
     %{p}ex = llvm.fmul %{p}twok, %{p}poly : f32"""
 
 
+_FSINCOS_CONSTS = """    %twopi = llvm.mlir.constant(6.28318548 : f32) : f32
+    %inv2pi = llvm.mlir.constant(0.159154937 : f32) : f32
+    %rhalf = llvm.mlir.constant(5.000000e-01 : f32) : f32
+    %rone = llvm.mlir.constant(1.000000e+00 : f32) : f32
+    %s_c3 = llvm.mlir.constant(-0.166666672 : f32) : f32
+    %s_c5 = llvm.mlir.constant(8.33333377e-03 : f32) : f32
+    %s_c7 = llvm.mlir.constant(-1.98412701e-04 : f32) : f32
+    %s_c9 = llvm.mlir.constant(2.75573188e-06 : f32) : f32
+    %c_c2 = llvm.mlir.constant(-5.000000e-01 : f32) : f32
+    %c_c4 = llvm.mlir.constant(4.16666679e-02 : f32) : f32
+    %c_c6 = llvm.mlir.constant(-1.38888892e-03 : f32) : f32
+    %c_c8 = llvm.mlir.constant(2.48015874e-05 : f32) : f32
+    %c_c10 = llvm.mlir.constant(-2.75573190e-07 : f32) : f32
+    %ri0 = llvm.mlir.constant(0 : i32) : i32
+    %ri1 = llvm.mlir.constant(1 : i32) : i32"""
+
+
+def _frr(p: str, xin: str) -> str:
+    """Range-reduce %xin to [-pi,pi]: r = x - 2pi*round(x/2pi), round via floor(y+0.5) (i32). -> %{p}r."""
+    return f"""    %{p}y = llvm.fmul {xin}, %inv2pi : f32
+    %{p}yh = llvm.fadd %{p}y, %rhalf : f32
+    %{p}yi = llvm.fptosi %{p}yh : f32 to i32
+    %{p}yf = llvm.sitofp %{p}yi : i32 to f32
+    %{p}yg = llvm.fcmp "ogt" %{p}yf, %{p}yh : f32
+    %{p}ya = llvm.select %{p}yg, %ri1, %ri0 : i1, i32
+    %{p}kk = llvm.sub %{p}yi, %{p}ya : i32
+    %{p}kf = llvm.sitofp %{p}kk : i32 to f32
+    %{p}kt = llvm.fmul %{p}kf, %twopi : f32
+    %{p}r = llvm.fsub {xin}, %{p}kt : f32"""
+
+
+def _fsin(p: str, xin: str) -> str:
+    """sin(%xin) via range-reduce + degree-9 odd Taylor -> %{p}sin."""
+    return f"""{_frr(p + "s", xin)}
+    %{p}r2 = llvm.fmul %{p}sr, %{p}sr : f32
+    %{p}sh1 = llvm.fmul %s_c9, %{p}r2 : f32
+    %{p}sh2 = llvm.fadd %{p}sh1, %s_c7 : f32
+    %{p}sh3 = llvm.fmul %{p}sh2, %{p}r2 : f32
+    %{p}sh4 = llvm.fadd %{p}sh3, %s_c5 : f32
+    %{p}sh5 = llvm.fmul %{p}sh4, %{p}r2 : f32
+    %{p}sh6 = llvm.fadd %{p}sh5, %s_c3 : f32
+    %{p}sh7 = llvm.fmul %{p}sh6, %{p}r2 : f32
+    %{p}sh8 = llvm.fadd %{p}sh7, %rone : f32
+    %{p}sin = llvm.fmul %{p}sh8, %{p}sr : f32"""
+
+
+def _fcos(p: str, xin: str) -> str:
+    """cos(%xin) via range-reduce + degree-10 even Taylor -> %{p}cos."""
+    return f"""{_frr(p + "c", xin)}
+    %{p}cr2 = llvm.fmul %{p}cr, %{p}cr : f32
+    %{p}ch1 = llvm.fmul %c_c10, %{p}cr2 : f32
+    %{p}ch2 = llvm.fadd %{p}ch1, %c_c8 : f32
+    %{p}ch3 = llvm.fmul %{p}ch2, %{p}cr2 : f32
+    %{p}ch4 = llvm.fadd %{p}ch3, %c_c6 : f32
+    %{p}ch5 = llvm.fmul %{p}ch4, %{p}cr2 : f32
+    %{p}ch6 = llvm.fadd %{p}ch5, %c_c4 : f32
+    %{p}ch7 = llvm.fmul %{p}ch6, %{p}cr2 : f32
+    %{p}ch8 = llvm.fadd %{p}ch7, %c_c2 : f32
+    %{p}ch9 = llvm.fmul %{p}ch8, %{p}cr2 : f32
+    %{p}cos = llvm.fadd %{p}ch9, %rone : f32"""
+
+
 def _ftanh(p: str, xin: str) -> str:
     """Straight-line tanh(%xin) -> %{p}tanh via ``tanh = 1 - 2/(exp(2x)+1)`` (reuses the inline poly-exp).
     Names prefixed by ``p``. Adequate for the bounded activations gelu/softcap see (tolerance ~3%)."""
@@ -734,6 +796,72 @@ def _attention_full_nest(q: str, k: str, v: str, o: str, m: int, d: int, n: int,
   ^pmnext:
     %pmi2 = llvm.add %pmi, %c1 : i64
     llvm.br ^pm(%pmi2 : i64)
+  ^end:
+    llvm.return"""
+
+
+def _rope_nest(x: str, o: str, m: int, d: int) -> str:
+    """RoPE ``O[p,i] = X[p,i]*cos(p*invf[i]) + rotate_half(X)[p,i]*sin(p*invf[i])`` (fp32), where
+    ``invf[i] = 10000^(-(i%(d/2))/(d/2))`` (baked) and ``rotate_half(X)[p,i] = -X[p,i+d/2]`` for i<d/2 else
+    ``X[p,i-d/2]``. sin/cos via the inline range-reduced polynomials. ``invf`` is precomputed into an alloca."""
+    half = d // 2
+    invf = [10000.0 ** (-(i % half) / half) for i in range(d)]
+    stores = "\n".join(
+        f"    %ifc{i} = llvm.mlir.constant({invf[i]:.8e} : f32) : f32\n"
+        f"    %ifi{i} = llvm.mlir.constant({i} : i64) : i64\n"
+        f"    %ifp{i} = llvm.getelementptr %IF[%ifi{i}] : (!llvm.ptr, i64) -> !llvm.ptr, f32\n"
+        f"    llvm.store %ifc{i}, %ifp{i} : f32, !llvm.ptr" for i in range(d))
+    return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %cM = llvm.mlir.constant({m} : i64) : i64
+    %cD = llvm.mlir.constant({d} : i64) : i64
+    %cHalf = llvm.mlir.constant({half} : i64) : i64
+    %cDsz = llvm.mlir.constant({d} : i64) : i64
+    %negone = llvm.mlir.constant(-1.000000e+00 : f32) : f32
+    %posone = llvm.mlir.constant(1.000000e+00 : f32) : f32
+{_FSINCOS_CONSTS}
+    %IF = llvm.alloca %cDsz x f32 : (i64) -> !llvm.ptr
+{stores}
+    llvm.br ^m(%c0 : i64)
+  ^m(%pmi: i64):
+    %mc = llvm.icmp "slt" %pmi, %cM : i64
+    llvm.cond_br %mc, ^mb, ^end
+  ^mb:
+    %p32 = llvm.trunc %pmi : i64 to i32
+    %pf = llvm.sitofp %p32 : i32 to f32
+    %mD = llvm.mul %pmi, %cD : i64
+    llvm.br ^n(%c0 : i64)
+  ^n(%ni: i64):
+    %nc = llvm.icmp "slt" %ni, %cD : i64
+    llvm.cond_br %nc, ^nb, ^mnext
+  ^nb:
+    %ifip = llvm.getelementptr %IF[%ni] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %ifv = llvm.load %ifip : !llvm.ptr -> f32
+    %angle = llvm.fmul %pf, %ifv : f32
+{_fcos("r", "%angle")}
+{_fsin("r", "%angle")}
+    %xidx = llvm.add %mD, %ni : i64
+    %xp = llvm.getelementptr %{x}[%xidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %xv = llvm.load %xp : !llvm.ptr -> f32
+    %ilt = llvm.icmp "slt" %ni, %cHalf : i64
+    %iplus = llvm.add %ni, %cHalf : i64
+    %iminus = llvm.sub %ni, %cHalf : i64
+    %rhcol = llvm.select %ilt, %iplus, %iminus : i1, i64
+    %rhidx = llvm.add %mD, %rhcol : i64
+    %rhp = llvm.getelementptr %{x}[%rhidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %rhx = llvm.load %rhp : !llvm.ptr -> f32
+    %sgn = llvm.select %ilt, %negone, %posone : i1, f32
+    %rh = llvm.fmul %rhx, %sgn : f32
+    %t1 = llvm.fmul %xv, %rcos : f32
+    %t2 = llvm.fmul %rh, %rsin : f32
+    %yv = llvm.fadd %t1, %t2 : f32
+    %op = llvm.getelementptr %{o}[%xidx] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    llvm.store %yv, %op : f32, !llvm.ptr
+    %ni2 = llvm.add %ni, %c1 : i64
+    llvm.br ^n(%ni2 : i64)
+  ^mnext:
+    %pmi2 = llvm.add %pmi, %c1 : i64
+    llvm.br ^m(%pmi2 : i64)
   ^end:
     llvm.return"""
 
@@ -1158,6 +1286,19 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
         cap = float((cmd.get("attributes", {}) or {}).get("cap", 1.0))
         arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (x, dst))
         nest = _softcap_loop_nest(x, dst, n, cap)
+        return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
+
+    if "ROPE" in by_op and len(by_op) == 1 and len(by_op["ROPE"]) == 1:
+        o = by_op["ROPE"][0].get("operands", {})
+        x, dst = o.get("src"), o.get("dst")
+        if not (x and dst):
+            raise MuonMlirCodegenError("ROPE needs operands src/dst")
+        t = env.get(x)
+        if t is None or len(t.shape) != 2:
+            raise MuonMlirCodegenError(f"ROPE operand {x!r} is not a 2-D materialized leaf")
+        m, d = t.shape
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (x, dst))
+        nest = _rope_nest(x, dst, m, d)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     if "GELU" in by_op and len(by_op) == 1 and len(by_op["GELU"]) == 1:
