@@ -127,6 +127,18 @@ def manifest_for(name: str) -> dict[str, Any]:
         # grounds endpoint_kind from them. Empty {} when no introspect serves the target (family default).
         from .rtl import mlc_bridge as _mb
         facts = _mb.simt_facts(facts_target)
+    elif facts_source == "spatial":
+        # A spatial tensor tile (a cluster x cell accumulator grid driven by a command buffer, with no
+        # opcode decode at all). Its facts come from the OuterProductUnit state manifest + hw.mlir rather
+        # than a RoCC decode table, and they carry a DIFFERENT shape than facts.json -- which
+        # ``derive_manifest`` already recognises by its ``tile_dim`` field. The only thing missing was a
+        # way to LOAD them here, and without it such a target's contract could be derived once by hand and
+        # never regenerated: deriving it from the residual alone silently drops the tile geometry and
+        # collapses the named fp8 datapaths to an unnamed float width, which is a quietly weaker contract
+        # rather than a failure. Empty {} when mlc or the OPU artifacts are unavailable, so the deriver
+        # falls back to the family default instead of a fabricated tile.
+        from .rtl import spatial_introspect as _si
+        facts = _si.build_fact_bundle(facts_target)
     return derive_manifest({"target": name}, facts, residual=residual)
 
 

@@ -1,0 +1,10 @@
+merlin/contract/
+merlin/contract/capsules/isa/
+merlin/contract/capsules/layers/
+merlin/contract/capsules/model_slices/
+experiments/capsule_bench/targets/saturn_opu/task/
+third_party/llvm-install/
+experiments/capsule_bench/targets/saturn_opu/scripts/agent_selfcheck.py
+merlin/python/merlin/targetgen/generate/mlir_scaffold.py
+merlin/python/merlin/targetgen/generate/llvm_plan.py
+merlin/python/merlin/targetgen/generate/target_repo.py
