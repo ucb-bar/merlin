@@ -360,11 +360,10 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
     resident_source, matmul_for, commits = _plan(cb)
     if len(commits) != 1:
         raise MuonMlirCodegenError(f"reference MLIR emitter supports a single matmul commit, got {len(commits)}")
-    shapes: dict[str, tuple[int, int]] = {}
-    for name, t in env.items():
-        if len(t.shape) != 2:
-            raise MuonMlirCodegenError(f"leaf {name!r} is rank {len(t.shape)}; expected 2D")
-        shapes[name] = (t.shape[0], t.shape[1])
+    # Only the 2-D leaves (matmul operands + output) index into the m/k/n loop math; a 1-D leaf (a
+    # length-n bias vector) is consumed by the bias_add epilogue, indexed by column — do NOT reject it.
+    shapes: dict[str, tuple[int, int]] = {name: (t.shape[0], t.shape[1])
+                                          for name, t in env.items() if len(t.shape) == 2}
 
     commit = commits[0]
     ops = commit.get("operands", {})
@@ -375,7 +374,7 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
     mops = mm.get("operands", {})
     lhs, rhs = mops["lhs"], resident_source.get(mops["rhs"], mops["rhs"])
     if lhs not in shapes or rhs not in shapes:
-        raise MuonMlirCodegenError(f"matmul operands {lhs!r}/{rhs!r} not materialized")
+        raise MuonMlirCodegenError(f"matmul operands {lhs!r}/{rhs!r} are not 2-D materialized leaves")
     m, k = shapes[lhs]
     k2, n = shapes[rhs]
     if k != k2:
@@ -383,7 +382,7 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
     dst = ops["dst"]
     epi = attrs.get("epilogue", []) or []
     bias = ops.get("bias")
-    if bias is not None and bias not in shapes:
+    if bias is not None and bias not in env:
         raise MuonMlirCodegenError(f"bias {bias!r} not materialized")
 
     # Arg order = the generic kernel_abi [weight] ++ [lhs] ++ [outputs] (+ bias if present, after weight).

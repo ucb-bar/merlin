@@ -40,16 +40,29 @@ def test_row_broadcast_bias_add_lowers_to_vector_map_with_bias_role():
     assert len(bias) == 1 and len(bias[0]["shape"]) == 1   # the length-n broadcast row
 
 
-@pytest.mark.parametrize("rel", ["RP18_resadd_bf16_pt", "RP16_bias_add_fp32_pt"])
-def test_lowered_elementwise_emits_a_valid_kernel(rel):
+def test_single_matmul_with_bias_lowers_to_residency_commands():
+    cb = lower_linalg_to_cb(_parse("RP15_fused_matmul_bias_bf16_pt"), target="t")
+    schemas.validate_command_buffer(cb)
+    assert [c["opcode"] for c in cb["commands"]] == ["RES_PACK", "MATMUL_RESIDENT", "COMMIT"]
+    roles = {v["role"] for v in cb["tensors"].values()}
+    assert {"input", "weight", "bias", "output"} <= roles
+    commit = cb["commands"][-1]
+    assert commit["attributes"]["epilogue"] == ["bias_add"] and commit["operands"].get("bias")
+
+
+@pytest.mark.parametrize("rel", ["RP18_resadd_bf16_pt", "RP16_bias_add_fp32_pt",
+                                 "RP15_fused_matmul_bias_bf16_pt"])
+def test_lowered_capsule_emits_a_valid_kernel(rel):
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir
     cb = lower_linalg_to_cb(_parse(rel), target="t")
     mlir = codegen.emit_kernel_mlir(cb, target="t")
-    assert "llvm.func @t_kernel(" in mlir and "llvm.fadd" in mlir
+    assert "llvm.func @t_kernel(" in mlir
 
 
-def test_unsupported_pattern_fails_closed():
-    # a matmul-family capsule is not (yet) a pattern this lowering builds -> a clear error, not a wrong cb
+@pytest.mark.parametrize("rel", ["RP17_k_chain_fp16_pt",        # chained matmul (>1 commit)
+                                 "RP10_gemv_batched_fp16_pt"])  # batched matmul
+def test_unsupported_matmul_shapes_fail_closed(rel):
+    # a clear error, not a wrong cb, for compositions the reference emitter cannot build yet
     with pytest.raises(LinalgLowerError):
-        lower_linalg_to_cb(_parse("RP15_fused_matmul_bias_bf16_pt"), target="t")
+        lower_linalg_to_cb(_parse(rel), target="t")

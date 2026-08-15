@@ -70,6 +70,55 @@ def lower_linalg_to_cb(parsed: dict[str, Any], *, target: str) -> dict[str, Any]
         return {"abi_version": "0.1", "target": target, "tensors": tensors,
                 "commands": [cmd], "outputs": [out]}
 
+    # --- a single 2-D matmul, optionally followed by a row-broadcast bias add -------------------------
+    if ops[0].get("family") == "contraction":
+        mm = ops[0]
+        ext = mm.get("extents", {})
+        if "batch" in ext or "k_rhs" in ext or not {"m", "k", "n"} <= ext.keys():
+            raise LinalgLowerError(f"reference lowering supports a plain 2-D matmul only (extents {ext})")
+        m_ins = mm["ins"]
+        if len(m_ins) < 2 or m_ins[0]["source"][0] != "arg" or m_ins[1]["source"][0] != "arg":
+            raise LinalgLowerError("matmul operands must both be func args (no fused producer)")
+        act_i, w_i = m_ins[0]["source"][1], m_ins[1]["source"][1]
+
+        bias_i = None
+        epilogue: list[str] = []
+        if len(ops) == 2:
+            add = ops[1]
+            if add["family"] not in ("elementwise", "elementwise_map") or "add" not in _combine_from_body(add["body_ops"]):
+                raise LinalgLowerError(f"the op after a matmul is not a bias add ({add['op']})")
+            ains = add["ins"]
+            srcs = [s["source"] for s in ains]
+            if ("op", mm["id"]) not in srcs:
+                raise LinalgLowerError("the trailing add does not consume the matmul result")
+            other = [s for s in srcs if s != ("op", mm["id"])]
+            if len(other) != 1 or other[0][0] != "arg":
+                raise LinalgLowerError("bias add must combine the matmul result with a func-arg bias")
+            bias_i = other[0][1]
+            epilogue = ["bias_add"]
+        elif len(ops) != 1:
+            raise LinalgLowerError(f"unsupported matmul composition ({[o['op'] for o in ops]})")
+
+        out = "out"
+        tensors = {
+            argname[act_i]: {"shape": argshape[act_i], "dtype": "f32", "role": "input"},
+            argname[w_i]: {"shape": argshape[w_i], "dtype": "f32", "role": "weight"},
+            out: {"shape": list(ops[-1]["results"][0]["shape"]), "dtype": "f32", "role": "output"},
+        }
+        commit_ops = {"src": "acc", "dst": out}
+        if bias_i is not None:
+            tensors[argname[bias_i]] = {"shape": argshape[bias_i], "dtype": "f32", "role": "bias"}
+            commit_ops["bias"] = argname[bias_i]
+        commands = [
+            {"opcode": "RES_PACK", "operands": {"src": argname[w_i], "dst": "Wp"},
+             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": argname[act_i], "rhs": "Wp", "dst": "acc"}},
+            {"opcode": "COMMIT", "operands": commit_ops,
+             "attributes": {"epilogue": epilogue, "output_dtype": "f32"}},
+        ]
+        return {"abi_version": "0.1", "target": target, "tensors": tensors,
+                "commands": commands, "outputs": [out]}
+
     raise LinalgLowerError(
         f"reference lowering does not yet support this linalg pattern "
-        f"({[o['op'] for o in ops]}); supported: single elementwise add/mul")
+        f"({[o['op'] for o in ops]}); supported: single elementwise add/mul, single 2-D matmul (+bias)")
