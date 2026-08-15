@@ -101,6 +101,19 @@ void htif_putd(long v) {
     htif_putc(buf[--i]);
 }
 
+void htif_puthex(unsigned long long v) {
+  char buf[16];
+  int i = 0;
+  htif_putc('0');
+  htif_putc('x');
+  do {
+    buf[i++] = "0123456789abcdef"[v & 0xf];
+    v >>= 4;
+  } while (v);
+  while (i)
+    htif_putc(buf[--i]);
+}
+
 void htif_exit(int code) {
   /* Flush FIRST: the exit request is terminal, and anything still buffered would be lost — including
    * the DONE line the host parser gates on. */

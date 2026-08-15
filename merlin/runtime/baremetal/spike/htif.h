@@ -16,6 +16,10 @@ void console_init(void);
 void htif_putc(char c);
 void htif_puts(const char *s);
 void htif_putd(long v);          /* signed decimal */
+/* Unsigned hex, `0x`-prefixed, no leading zeros. Sizes and addresses are unsigned, and putting one
+ * through the signed printer reports a large pointer or a corrupt length as a negative number --
+ * which reads as a different kind of bug than the one that happened. */
+void htif_puthex(unsigned long long v);
 void htif_exit(int code) __attribute__((noreturn));
 
 #endif
