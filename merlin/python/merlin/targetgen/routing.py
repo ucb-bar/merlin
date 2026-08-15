@@ -194,6 +194,20 @@ class MeasuredCost:
     #: Logical tile edge per unit, for units that quantize work into tiles. Absent -> costed elementwise.
     #: Derived from the target (see ``kernels.opu_cert.logical_tile_edge``), never assumed here.
     tile_edge: Mapping[str, int] = field(default_factory=dict)
+    #: Fixed cycles charged ONCE PER TILE PAIR, for units whose per-tile overhead (loading operands into
+    #: the array, draining the accumulator out of it) does not scale with the reduction.
+    #:
+    #: This is separate from ``dispatch_cycles`` — which is charged once per operation — because the two
+    #: amortize against completely different things, and collapsing them mismeasures by a large factor.
+    #: MEASURED on the Saturn OPU at tile edge 64 (FPGA, 47/47-certified corpus): four shapes spanning 16
+    #: to 64 tile pairs and K from 32 to 1024 fit ``cycles/pair = 29*K + ~2000`` with the asymptotic rate
+    #: agreeing to within 5% (139.6 / 135.7 / 149.6 / 146.5 MACs per cycle). Without this term the SAME
+    #: measurements imply rates from 39 to 135 depending only on which shape they were taken from -- a
+    #: 3.45x spread that is entirely this overhead being amortized over different reduction lengths, and
+    #: whichever single number were chosen would misprice every other shape.
+    #:
+    #: Defaults to zero, so a unit that does not declare one is costed exactly as before.
+    tile_overhead_cycles: Mapping[str, float] = field(default_factory=dict)
 
     def __call__(self, demand: OpDemand, candidate: Candidate) -> float | None:
         rate = self.macs_per_cycle.get(candidate.unit)
@@ -205,8 +219,14 @@ class MeasuredCost:
         tile = int(self.tile_edge.get(candidate.unit, 0) or 0)
         if tile > 0:
             # Work is quantized: a partly-filled tile costs a full one.
-            steps = _ceil_div(demand.m, tile) * _ceil_div(demand.n, tile) * demand.k
+            pairs = _ceil_div(demand.m, tile) * _ceil_div(demand.n, tile)
+            steps = pairs * demand.k
             cost = float(steps) * (float(tile) * float(tile)) / rate
+            # Per-tile-pair overhead, charged whatever the reduction length. Charging it here rather
+            # than folding it into `rate` is what makes a SHORT reduction expensive on a tiled unit:
+            # the measured 2000-odd cycles of load+drain per tile pair are ~65% of runtime at K=32 and
+            # ~6% at K=1024, so a single blended rate cannot be right at both ends.
+            cost += float(pairs) * float(self.tile_overhead_cycles.get(candidate.unit, 0.0))
         else:
             cost = m * n * k / rate
         cost += float(self.dispatch_cycles.get(candidate.unit, 0.0))
