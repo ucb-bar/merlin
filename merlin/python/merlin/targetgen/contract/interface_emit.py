@@ -41,8 +41,13 @@ _NAMED_OP_OPERAND_KEYS = {
     "attention_qk": ["q", "k"],
     "rope": ["src"],
     "matmul_batched": ["a", "w"],
+    "softmax": ["src"],
 }
-_NAMED_OP_TO_OPCODE = {op: op.upper() for op in _NAMED_OP_OPERAND_KEYS}
+# Most mnemonics map to their upper-case opcode; a few need an explicit target opcode because the emitter /
+# harness / simulator spell it differently (``matmul_batched`` -> the ``BATCHED_MATMUL`` those consume, not
+# the auto-upper ``MATMUL_BATCHED``). Keep this the ONE place the spelling is reconciled.
+_NAMED_OP_OPCODE_OVERRIDE = {"matmul_batched": "BATCHED_MATMUL"}
+_NAMED_OP_TO_OPCODE = {op: _NAMED_OP_OPCODE_OVERRIDE.get(op, op.upper()) for op in _NAMED_OP_OPERAND_KEYS}
 _NAMED_OPCODE_TO_OP = {v: k for k, v in _NAMED_OP_TO_OPCODE.items()}
 
 

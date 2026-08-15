@@ -50,6 +50,40 @@ def test_attention_qk_parses_to_the_opcode_and_operand_keys_codegen_reads():
     schemas.validate_command_buffer(cb)
 
 
+def test_softmax_mnemonic_parses_and_emits():
+    """`merlin_iface.softmax` is a whole-op mnemonic (the SOFTMAX opcode + nest already exist, so the grammar
+    row is a one-line unlock); it parses to SOFTMAX{src,dst} and reaches a valid emitted kernel."""
+    sm = """
+module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+  %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xf32>
+  %Y0 = merlin_iface.softmax %X {name = "Y0", output_dtype = "f32"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+}
+"""
+    cb = parse_interface_mlir(sm)
+    c = cb["commands"][0]
+    assert c["opcode"] == "SOFTMAX"
+    assert c["operands"] == {"src": "X", "dst": "Y0"}
+    schemas.validate_command_buffer(cb)
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    mlir = muon.get_backend("muon").muon_codegen_mlir.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(%X: !llvm.ptr, %Y0: !llvm.ptr)" in mlir
+
+
+def test_matmul_batched_mnemonic_emits_the_consumed_opcode():
+    """`merlin_iface.matmul_batched` must emit the opcode the emitter/harness/simulator CONSUME
+    (`BATCHED_MATMUL`), not the auto-upper `MATMUL_BATCHED` — else the merlin_iface batched path is dead."""
+    mb = """
+module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+  %A0 = merlin_iface.tensor {name = "A0", role = "input"} : tensor<2x16x32xf8E4M3FN>
+  %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<2x32x16xf8E4M3FN>
+  %Y0 = merlin_iface.matmul_batched %A0, %W {name = "Y0", batch = 2 : i64, output_dtype = "bf16"} : (tensor<2x16x32xf8E4M3FN>, tensor<2x32x16xf8E4M3FN>) -> tensor<32x16xbf16>
+}
+"""
+    cb = parse_interface_mlir(mb)
+    assert cb["commands"][0]["opcode"] == "BATCHED_MATMUL"
+    schemas.validate_command_buffer(cb)
+
+
 _ROPE = """
 module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
   %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xf32>
