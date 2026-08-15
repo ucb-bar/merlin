@@ -250,6 +250,13 @@ def mx_operands(capsule: dict, capsule_dir: str | Path | None = None) -> dict | 
     if not gy:
         return None
     ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
+    # Batched MX matmul (B independent tiles stacked): pass the per-batch codes through; the reference
+    # emitter packs them block-diagonally into a single MX tile.
+    bc = ins.get("batched_codes")
+    if isinstance(bc, dict) and bc.get("batches"):
+        return {"fmt": bc.get("fmt", "fp8_e4m3"), "batched": True,
+                "B": bc["B"], "M": bc["M"], "H": bc["H"], "N": bc["N"],
+                "stacked_out_shape": bc.get("stacked_out_shape"), "batches": bc["batches"]}
     oc = ins.get("operand_codes")
     if not isinstance(oc, dict) or "A_bytes" not in oc:
         return None

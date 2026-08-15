@@ -40,6 +40,7 @@ _NAMED_OP_OPERAND_KEYS = {
     "rmsnorm": ["src", "gamma"],
     "attention_qk": ["q", "k"],
     "rope": ["src"],
+    "matmul_batched": ["a", "w"],
 }
 _NAMED_OP_TO_OPCODE = {op: op.upper() for op in _NAMED_OP_OPERAND_KEYS}
 _NAMED_OPCODE_TO_OP = {v: k for k, v in _NAMED_OP_TO_OPCODE.items()}

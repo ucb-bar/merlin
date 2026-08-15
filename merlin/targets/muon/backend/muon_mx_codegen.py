@@ -94,14 +94,18 @@ def _data_header(mx: dict) -> str:
                 bh[kk][c] = b[kk * (n // 2) + c]
         parts.append(_emit2d("uint8_t", "A_in_hw", _PADW // 2, _PADW, ah))
         parts.append(_emit2d("uint8_t", "B_in", _PADW, _PADW // 2, bh))
-    # scales [GK][PADW]: real K-group 0 in cols 0..M/N-1, 0x7f (scale 1.0) in the discarded M/N padding;
-    # padding K-groups 1..GK-1 stay code 0 -> 2**-127 so their (zero-code) contribution cannot perturb.
+    # scales [GK][PADW]: the ``gk_real = K/32`` real K-groups carry the golden scales (one row of ``sa``/``sb``
+    # per group) in cols 0..M/N-1, 0x7f (scale 1.0) in the discarded M/N padding; the K-padding groups
+    # ``gk_real..GK-1`` stay code 0 -> 2**-127 so their (zero-code) contribution cannot perturb the result.
+    gk_real = max(1, k // _GROUP)
     as_ = [[0] * _PADW for _ in range(gk)]
     bs = [[0] * _PADW for _ in range(gk)]
-    for i in range(_PADW):
-        as_[0][i] = sa[0][i] if i < m else 0x7F
-    for j in range(_PADW):
-        bs[0][j] = sb[0][j] if j < n else 0x7F
+    for g in range(min(gk_real, len(sa))):
+        for i in range(_PADW):
+            as_[g][i] = sa[g][i] if i < m else 0x7F
+    for g in range(min(gk_real, len(sb))):
+        for j in range(_PADW):
+            bs[g][j] = sb[g][j] if j < n else 0x7F
     parts.append(_emit2d("uint8_t", "A_scales_row", gk, _PADW, as_))
     parts.append(_emit2d("uint8_t", "B_scales_col", gk, _PADW, bs))
     if is_fp6:                                            # one 16-entry palette replicated to every LUT slot
@@ -113,6 +117,35 @@ def _data_header(mx: dict) -> str:
     return "\n".join(parts)
 
 
+def _assemble_batched(mx: dict) -> dict:
+    """Pack a ``B``-way batched MX matmul (each batch ``[M,H]@[H,N]``, stacked to ``[B*M, N]``) into ONE
+    block-diagonal MX tile: batch ``b`` occupies rows ``b*M..`` and K-group ``b`` (cols ``b*H..``), off-blocks
+    zero. A single tile then reproduces every batch (batch ``b``'s output rows read only its own K-group; the
+    zero off-blocks contribute nothing), so the existing single-tile path emits it. fp8 only (byte/element)."""
+    if _short_fmt(mx["fmt"]) != "fp8":
+        raise MxCodegenError("batched MX packing is implemented for fp8 operands only")
+    B, m, h, n = int(mx["B"]), int(mx["M"]), int(mx["H"]), int(mx["N"])
+    md, kd = B * m, B * h                                  # block-diagonal tile dims
+    a_bd = [0] * (md * kd)
+    b_bd = [0] * (kd * n)
+    sa_bd = [[0x7F] * md for _ in range(B)]
+    sb_bd = [[0x7F] * n for _ in range(B)]
+    for bi, batch in enumerate(mx["batches"]):
+        a, w, sa, sb = batch["A_bytes"], batch["W_bytes"], batch["SA"], batch["SB"]
+        for i in range(m):                                # A block at rows bi*m.., cols bi*h..
+            for j in range(h):
+                a_bd[(bi * m + i) * kd + (bi * h + j)] = a[i * h + j]
+        for kk in range(h):                               # W block stacked at rows bi*h..
+            for j in range(n):
+                b_bd[(bi * h + kk) * n + j] = w[kk * n + j]
+        for i in range(m):                                # row scales live in this batch's K-group only
+            sa_bd[bi][bi * m + i] = int(sa[i])
+        for j in range(n):
+            sb_bd[bi][j] = int(sb[j])
+    return {"fmt": mx["fmt"], "M": md, "N": n, "K": kd, "G": 0,
+            "A_bytes": a_bd, "B_bytes": b_bd, "SA": sa_bd, "SB": sb_bd, "lutA": None, "lutB": None}
+
+
 def _putchars(s: str) -> str:
     return "".join(f"vx_putchar({ord(c)}); " for c in s)
 
@@ -121,6 +154,8 @@ def emit_mx_kernel(mx: dict, out_name: str) -> str:
     """Render the self-contained MX kernel: the data header + the ``mxgemm<CFG>`` driver + OUT-protocol print
     of the ``M x N`` top-left result. ``mx`` is the golden operand bundle (fmt / M / N / K / A_bytes / B_bytes
     / SA / SB / lutA / lutB)."""
+    if mx.get("batched"):
+        mx = _assemble_batched(mx)
     fmt = _short_fmt(mx["fmt"])
     is_fp6 = fmt == "fp6"
     rows, cols = int(mx["M"]), int(mx["N"])

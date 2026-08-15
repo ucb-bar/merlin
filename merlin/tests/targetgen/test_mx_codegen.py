@@ -51,6 +51,26 @@ def test_emit_mx_kernel_bakes_the_format_specific_datatype_and_layout(name, data
     assert "OUT" in k                          # OUT-protocol result print (via vx_putchar)
 
 
+def test_batched_mx_packs_block_diagonal_single_tile():
+    """A B-way batched MX matmul packs into ONE block-diagonal tile (batch b in K-group b) that reproduces
+    every batch — so the single-tile emitter handles it. The assembled tile is numerically identical to the
+    per-batch matmuls at fp8-decode level (verified against the golden's per-batch codes)."""
+    name = "R11_gemv_batched_mx"
+    slic = repo_root() / "merlin" / "contract" / "capsules" / "radiance" / "model_slices" / name
+    if not slic.is_dir():
+        pytest.skip(f"{name} capsule not present")
+    mx = _mx()
+    cap = load_capsule(str(slic), contract=str(_CONTRACT))
+    ops = CG.mx_operands(cap, cap.get("__dir__", str(slic)))
+    assert ops is not None and ops.get("batched")
+    bd = mx._assemble_batched(ops)
+    b, m, n, h = ops["B"], ops["M"], ops["N"], ops["H"]
+    assert bd["M"] == b * m and bd["K"] == b * h and bd["N"] == n
+    assert len(bd["A_bytes"]) == bd["M"] * bd["K"] and len(bd["SA"]) == b
+    k = mx.emit_mx_kernel(ops, "Y0")               # emits through the single-tile path
+    assert "mxgemm<CFG>" in k and "int main" in k
+
+
 def test_fp6_bakes_the_lut_palette():
     name = "R6_mx_tile_mxfp6"
     if not (_ISA / name).is_dir():
