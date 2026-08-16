@@ -219,6 +219,55 @@ def test_verify_no_cheat():
 
 
 # ---- F. bundle integrity --------------------------------------------------------------------------
+def test_corpus_fits_the_endpoint():
+    """H. The capsules must be gradeable ON THIS MACHINE.
+
+    Every other section checks that a tool RUNS. None of them checks that the corpus the arms will be
+    graded against is one this target can satisfy, and that gap is not hypothetical: a target pointed at
+    another target's corpus reaches GO with every tool working and then scores zero for a reason no
+    per-capsule verdict explains -- the capsules demand instruction classes the hardware does not have.
+
+    Derived, not asserted per target: a capsule's `expected.instruction_classes` names an INSTRUCTION,
+    and whether this target has instructions at all is the same question section B asks of its facts.
+    A command-buffer machine driven over one-hot op ports has none by construction.
+    """
+    section("H. corpus fits the endpoint (capsules are gradeable on this machine)")
+    corpus = _TE.capsule_corpus
+    caps = sorted(corpus.rglob("capsule.yaml")) if corpus.is_dir() else []
+    if not caps:
+        _ok("the declared capsule corpus has capsules", False, f"none under {corpus}")
+        return
+    demanded: set[str] = set()
+    for cap in caps:
+        try:
+            spec = yaml.safe_load(cap.read_text()) or {}
+        except Exception:  # noqa: BLE001
+            continue
+        demanded.update((spec.get("expected") or {}).get("instruction_classes") or [])
+
+    has_isa = True
+    try:
+        from merlin.targetgen.rtl import facts as _facts
+        _facts.decode_body(_facts.load_facts(TARGET), TARGET, needs="the corpus's instruction classes")
+    except NotImplementedError:
+        has_isa = False
+    except Exception:  # noqa: BLE001 — cannot tell; do not manufacture a verdict either way
+        _na("corpus instruction classes match the target's vocabulary",
+            "the target's facts could not be loaded, so this cannot be decided")
+        return
+
+    if not demanded:
+        _ok("the corpus demands no instruction classes this endpoint lacks", True,
+            f"{len(caps)} capsule(s), none declaring instruction_classes")
+        return
+    _ok("the corpus demands no instruction classes this endpoint lacks", has_isa,
+        f"{len(caps)} capsule(s) demand {len(demanded)} instruction class(es) "
+        + (f"e.g. {sorted(demanded)[:4]}" if has_isa else
+           f"({sorted(demanded)[:4]}...) but this target has no instruction decode at all -- it is a "
+           f"{(_TE.sim_via or 'arc')}-graded command endpoint. The corpus at {corpus.name} belongs to "
+           f"another target; this one needs its own (contract/capsules/generate_corpus.py + a profile)"))
+
+
 def test_bundles():
     section("F. bundle integrity (6 bundles parse; prompt APIs import)")
     # conditions DERIVED from the target's materialized bundles (gemmini kernel+nokernel; atlas
@@ -401,7 +450,8 @@ def main() -> int:
     sys.path.insert(0, str(REPO / "merlin" / "python"))
     print("READINESS CHECK — exercising all tooling (no agent launched)")
     for fn in (test_starter_kit, test_generators, test_circt_gate, test_harness,
-               test_oracles_endtoend, test_verify_no_cheat, test_bundles):
+               test_oracles_endtoend, test_verify_no_cheat, test_corpus_fits_the_endpoint,
+               test_bundles):
         try:
             fn()
         except Exception as e:

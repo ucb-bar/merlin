@@ -26,10 +26,21 @@ hardware_spec:
 # capsule set is a TODO sibling once the command-buffer codegen + arc oracle adapter are wired.
 capsule_corpus: merlin/contract/capsules/isa
 
-# The OPU's RTL oracle is the mlc arc OuterProductUnit cosim (OpuCosim), NOT spike/verilator or the
-# systolic arc MXU command-buffer model. sim_via names the INTENDED adapter (TODO: wire the OpuCosim grader).
+# The OPU's RTL oracle is the mlc arc OuterProductUnit cosim, NOT spike/verilator and not the systolic
+# arc MXU command-buffer model.
+#
+# `sim_via` used to read `opu_cosim`, naming a BESPOKE sim engine to be wired later. There is nothing to
+# wire: mlc registers an arc model under this target's own name, and the DEFAULT arc path already reaches
+# it — `arc_available('saturn_opu_mxv256d128')` is true and `arc_run_command_buffer` executes a command
+# buffer against it, returning RTL-derived metrics and a hardware fingerprint (kind mlc.arc,
+# derived_from_rtl, hw_sha 4dc2f2f9b78cc623). `opu_cosim` was a second name for that same model.
+#
+# Declaring it anyway was not harmless. `_sim_engine_adapters` contributes nothing for an unknown engine,
+# so oracle_adapters silently fell back to arc-only and the DECLARED oracle never ran — a target that
+# looked like it had a bespoke grading tier and did not. Empty means arc-only, the same shape atlas uses,
+# and it is now what actually happens rather than an intention.
 toolchain:
-  sim_via: opu_cosim
+  sim_via: ""
 
 answer_surfaces:
   prior_backends: []
