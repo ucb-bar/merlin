@@ -271,3 +271,41 @@ class TestAGarbledConsoleIsStillReadable:
         got = SM.run("/nonexistent.elf", mem_bytes=1 << 20)
         assert got["metrics"]["cycles"] == 42
         assert abs(float(got["outputs"][0]) - 1.5) < 1e-6
+
+
+class TestRankBeyondTheIndexBuffer:
+    """The per-dimension counter is a fixed-size stack array, and nothing bounded `rank` against it.
+
+    A rank past its end writes straight off the array -- a stack smash inside the very function this file
+    exists to keep safe. The old code carried a comment asserting the model's memrefs were at most 6-D,
+    while the trace helper beside it already capped its own loop at 16 and the runtime had logged a rank
+    of 11. This pins the bound instead of the assumption.
+    """
+
+    def test_a_rank_past_the_buffer_is_refused_and_counted(self, rt):
+        rt.merlin_memref_ranks_too_large.restype = ctypes.c_ulonglong
+        before = rt.merlin_memref_ranks_too_large()
+        rank = 17                                  # one past MERLIN_MEMREF_MAX_RANK
+        sizes = [1] * rank
+        strides = [1] * rank
+        src = np.arange(4, dtype=np.int32)
+        dst = np.zeros(4, dtype=np.int32)
+        _copy(rt, 4, _unranked(rank, _ranked(src.ctypes.data, sizes, strides)),
+              _unranked(rank, _ranked(dst.ctypes.data, sizes, strides)))
+        assert rt.merlin_memref_ranks_too_large() == before + 1
+        np.testing.assert_array_equal(dst, np.zeros(4, dtype=np.int32),
+                                      err_msg="the copy must be refused, not attempted")
+
+    def test_the_largest_supported_rank_still_copies(self, rt):
+        """The bound must not cost a rank the buffer can hold -- otherwise it is a regression, not a guard."""
+        rt.merlin_memref_ranks_too_large.restype = ctypes.c_ulonglong
+        before = rt.merlin_memref_ranks_too_large()
+        rank = 16
+        sizes = [1] * (rank - 1) + [4]
+        strides = [4] * (rank - 1) + [1]
+        src = np.arange(4, dtype=np.int32)
+        dst = np.zeros(4, dtype=np.int32)
+        _copy(rt, 4, _unranked(rank, _ranked(src.ctypes.data, sizes, strides)),
+              _unranked(rank, _ranked(dst.ctypes.data, sizes, strides)))
+        assert rt.merlin_memref_ranks_too_large() == before
+        np.testing.assert_array_equal(dst, src)

@@ -103,6 +103,17 @@ long long g_merlin_memref_bad_src_rank = -1;
 long long g_merlin_memref_bad_dst_rank = -1;
 unsigned long long merlin_memref_rank_mismatches(void) { return g_merlin_memref_rank_mismatch; }
 
+/* The per-dimension counter below is a fixed-size stack array, so a rank larger than it holds would be
+ * written straight past its end -- a stack smash inside the one function this file exists to make safe,
+ * and one whose damage would land on whatever the compiler placed next. The bound is checked rather than
+ * commented about: the previous note said "memrefs in this model are <= 6-D" while the trace helper next
+ * to it already capped its own loop at 16, and the runtime has since logged a rank of 11. Which model is
+ * being run is not this function's business to assume. */
+#define MERLIN_MEMREF_MAX_RANK 16
+unsigned long long g_merlin_memref_rank_too_large = 0ULL;
+long long g_merlin_memref_worst_rank = -1;
+unsigned long long merlin_memref_ranks_too_large(void) { return g_merlin_memref_rank_too_large; }
+
 /* OPT-IN DESCRIPTOR TRACE (-DMERLIN_MEMREF_TRACE), off by default so a normal build is byte-identical.
  *
  * This exists because the alternative is inferring descriptor contents from a spike commit trace, which is
@@ -158,6 +169,14 @@ void memrefCopy(int64_t elem_size, merlin_unranked_memref_t *src_u,
     ++g_merlin_memref_rank_mismatch;
     return;
   }
+  if (rank > MERLIN_MEMREF_MAX_RANK) {
+    /* Same policy as the mismatch above: refuse and count. A skipped copy is a bad number; writing past
+     * `idx` is corruption somewhere else entirely, which is far harder to trace back to here. */
+    if (rank > g_merlin_memref_worst_rank)
+      g_merlin_memref_worst_rank = rank;
+    ++g_merlin_memref_rank_too_large;
+    return;
+  }
   void **sdesc = (void **)src_u->descriptor;
   void **ddesc = (void **)dst_u->descriptor;
 #ifdef MERLIN_MEMREF_TRACE
@@ -183,7 +202,7 @@ void memrefCopy(int64_t elem_size, merlin_unranked_memref_t *src_u,
   for (int64_t i = 0; i < rank; i++)
     total *= sizes[i];
 
-  int64_t idx[16] = {0}; /* MLIR memrefs in this model are <= 6-D */
+  int64_t idx[MERLIN_MEMREF_MAX_RANK] = {0};   /* bounded above, not assumed */
   for (int64_t lin = 0; lin < total; lin++) {
     int64_t s_off = 0, d_off = 0;
     for (int64_t i = 0; i < rank; i++) {
