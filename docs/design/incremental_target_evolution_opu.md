@@ -551,12 +551,49 @@ The control's audit is the other half: it contains none of them, so it is a real
 same image twice — which the artifact writer refuses to publish (it compares both audits and both
 build hashes before writing).
 
-**What bounds 1.328×.** 90.49% of the model's contraction MACs are routed (1,682,702,336 of
-1,859,577,856), so Amdahl over *contraction work* would allow ~10.5×. The gap between 1.33× and that
-ceiling is not the unit: it is everything the census does not count — requant epilogues, softmax,
-layer norms, the FFT twiddles, and memory traffic — plus the K-major packing the routed path pays for.
-That is where the next measurement should look, and it is the reason §7 wants both units priced rather
-than one.
+**What bounds 1.328×, measured rather than argued.** A profiled control on the same bitstream
+(`op_profile`, 5034 marks accounting for **99.985%** of the run) says where the cycles go:
+
+| op | cycles | share of the run | ops |
+| --- | --- | --- | --- |
+| `linalg.generic` | 2,101,527,943 | 39.32% | 843 |
+| **`linalg.matmul`** | **1,494,791,991** | **27.97%** | 90 |
+| `linalg.batch_matmul` | 635,524,073 | 11.89% | 16 |
+| `linalg.transpose` | 423,085,714 | 7.92% | 139 |
+| `linalg.broadcast` | 299,006,571 | 5.59% | 567 |
+| everything else | ~390,000,000 | ~7.3% | — |
+
+So the ceiling is not what MAC share suggests. **90.49% of contraction MACs are routed, but contraction
+MACs occupy only 27.96% of the TIME** — quoting the MAC figure as an Amdahl bound (it implies ~10.5×)
+is measuring the wrong denominator, and an earlier revision of this section did exactly that.
+
+Against the right denominator: making every `linalg.matmul` free would give **1.388×**, and the measured
+**1.328× is 95.7% of that**. Concretely, routing eliminated **88.4% of all matmul time**
+(1,317,311,796 of 1,489,701,062 cycles), leaving 172,389,266 cycles to do the same 1,682,702,336 MACs —
+**9.76 MACs/cycle effective** for the routed path including K-major packing and dispatch. The device
+runs at **1.041× the non-matmul floor**. The unit has essentially removed matmul as a cost; what is left
+is the other 72% of the model.
+
+The largest remaining routable block is therefore **`batch_matmul` at 11.89%** — 16 contractions the
+matmul-only contract correctly declines today — not any amount of extra unit throughput.
+
+**The vector unit is priced too, from the same run.** 90 `linalg.matmul` ops are individually profiled;
+they carry no `prov.fqn` (the quant/blocking rewrites drop it) but their result types carry M and N, and
+the census supplies K, so each op's OWN ticks price it — no shared bucket is split:
+
+| M | N | K | ops | cycles | MACs/cycle |
+| --- | --- | --- | --- | --- | --- |
+| 196 | 1024 | 256 | 12 | 502,608,707 | 1.23 |
+| 196 | 768 | 256 | 8 | 244,940,838 | 1.26 |
+| 256 | 196 | 768 | 1 | 148,539,009 | **0.26** |
+| 1 | 1000 | 256 | 1 | 1,024,941 | **0.25** |
+
+MAC-weighted 1.07 MACs/cycle, but **spread 5.69×** — and the split is not noise: the two fast shapes fill
+the vector length, while `patch_embed` (N=196) and the `M=1` classifier do not. So the vector unit needs
+more than one number for the same reason the matrix unit did (§5.2), and a single `macs_per_cycle` fitted
+here would misprice exactly the narrow shapes the census found numerous. 20 further ops were excluded as
+ambiguous (one parallel shape, two possible reduction depths) and 48 as blocked/reshaped forms whose
+original extents the table does not record — 1.09% of the run.
 
 **A correction.** This section previously reported L5 as blocked by a `memrefCopy` descriptor-aliasing
 defect, argued from address arithmetic (a rank-4 destination at `0x80085b60` spanning 88 bytes with a
