@@ -37,12 +37,28 @@ _TE = load_target_experiment(EXP / "target_experiment.yaml")
 PY = str(REPO / ".venv/bin/python")
 SCRIPTS = EXP / "scripts"
 BUNDLES = EXP / "input_bundles"
-results: list[tuple[str, bool, str]] = []
+#: (name, verdict, detail) where verdict is True=pass, False=fail, None=not applicable.
+results: list[tuple[str, bool | None, str]] = []
 
 
 def _ok(name: str, cond: bool, detail: str = ""):
     results.append((name, bool(cond), detail))
     print(f"  [{'PASS' if cond else 'FAIL'}] {name}" + (f"  — {detail}" if detail else ""))
+
+
+def _na(name: str, why: str):
+    """Record a check that does not apply to THIS target's endpoint.
+
+    Distinct from a failure, and the distinction is the whole point: a tool that refuses because the
+    hardware has no such capability is behaving correctly, and counting it as a FAIL leaves only two ways
+    to reach GO -- both wrong. Either the check gets deleted (and then a target that DOES have the
+    capability stops being checked), or something is generated to satisfy it (a decode table for a
+    machine with no decode, which is a fabrication that would go on to be graded against).
+
+    An N/A must be DERIVED from the target's own facts, never asserted per target.
+    """
+    results.append((name, None, why))
+    print(f"  [ N/A] {name}" + (f"  — {why}" if why else ""))
 
 
 def section(t):
@@ -106,6 +122,22 @@ def test_starter_kit():
 # ---- B. CIRCT generators --------------------------------------------------------------------------
 def test_generators():
     section("B. CIRCT RTL-facts generators (generate + import + flag)")
+    # These three generators all read the instruction-decode body of the facts artifact. Whether the
+    # target HAS one is a fact about the target, so ask the facts rather than the target's name: an
+    # ISA-less endpoint (a command-buffer spatial tile driven over one-hot op ports) has no opcode, no
+    # funct field and no decode table by construction, and `facts.decode_body` is the single place that
+    # distinction is made -- the same call the generators themselves make.
+    try:
+        from merlin.targetgen.rtl import facts as _facts
+        _facts.decode_body(_facts.load_facts(TARGET), TARGET, needs="the RTL-facts generators")
+    except NotImplementedError as e:
+        why = str(e).split(". ")[0][:90]
+        for name in ("gen_isa_module generates", "gen_rtl_digest generates",
+                     "gen_numeric_facts generates", "generated numeric checker"):
+            _na(name, why)
+        return
+    except Exception:      # noqa: BLE001 — any OTHER problem is the generators' to report, below
+        pass
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
         for mod, out in [("gen_isa_module", f"{TARGET}_isa.py"),
@@ -261,11 +293,48 @@ def test_oracles_endtoend():
             ok, why = False, (pr.stderr or pr.stdout or "probe produced no output")[-120:]
         _ok(f"program oracle runnable now ({why})", ok, why[:80])
         try:
+            # What a graded round actually needs: every tier the CORPUS will require must resolve to an
+            # adapter, and a bespoke sim the target DECLARES must actually contribute one.
+            #
+            # The old form asserted `{"L2","L3"} <= adapters` and `"program_oracle" in module` for all of
+            # them. That is one endpoint's wiring written as if it were the general rule, and no
+            # command-buffer target can satisfy it however well wired — its graded tier is the arc cosim,
+            # which lives in a different module by design. Worse, it fails for the RIGHT target for the
+            # WRONG reason: saturn_opu's real blocker is that it declares `sim_via: opu_cosim` and no
+            # adapter is registered under that name, so oracle_adapters quietly returns the arc default
+            # and the declared oracle is simply absent. Say THAT.
             ad = CR.oracle_adapters(TARGET, sim_via)
             mods = {t: getattr(fn, "__module__", "") for t, fn in ad.items()}
-            routed = {"L2", "L3"} <= set(ad) and all("program_oracle" in m for m in mods.values())
-            _ok("oracle_adapters routes L2+L3 to the program oracle (the graded-round wiring)",
-                routed, str(mods))
+            try:
+                from merlin.targetgen import corpus_spec as _CS
+                need = list(_CS.derive_binding(_TE).tiers)
+            except Exception:  # noqa: BLE001 — no corpus binding yet; the adapter set is its own floor
+                need = sorted(ad)
+            missing = [t for t in need if t not in ad]
+            # `derive_binding` falls back to the adapter keys when the datapath declares no
+            # `required_oracle_tiers`, and then this check compares a set against itself. Say so, or a
+            # PASS here reads as "the corpus's demands are met" when nothing demanded anything.
+            self_derived = sorted(need) == sorted(ad)
+            _ok("every tier the corpus requires resolves to an adapter",
+                bool(ad) and not missing,
+                f"need={need} have={sorted(ad)}" + (f" MISSING={missing}" if missing else "")
+                + (" (tiers self-derived from the adapter set — the corpus declares none)"
+                   if self_derived else ""))
+            # An external_backend endpoint is graded by the PROGRAM oracle, and "resolves to an adapter"
+            # would be satisfied by the arc default it must NOT be using. That check is kept, but routed
+            # from the contract's endpoint kind rather than assumed for every non-chipyard target.
+            endpoint_kind, _ = CR._endpoint_of(TARGET)
+            if endpoint_kind == "external_backend":
+                _ok("the program oracle owns the graded tiers (external_backend endpoint)",
+                    bool(mods) and all("program_oracle" in m for m in mods.values()), str(mods))
+            if sim_via:
+                # `_sim_engine_adapters` returns {} for an unknown engine, which is indistinguishable in
+                # the result from a target that declared nothing -- so compare against the arc-only set.
+                bespoke = {t for t in ad if t not in CR.oracle_adapters(TARGET, "")}
+                _ok(f"the declared sim ({sim_via}) contributes a real adapter", bool(bespoke),
+                    str(sorted(bespoke)) if bespoke
+                    else f"no adapter registered for sim_via={sim_via!r}; grading falls back to the arc "
+                         f"default ({sorted(mods.values())}), so the declared oracle never runs")
         except Exception as e:  # noqa: BLE001
             _ok("oracle_adapters resolves the program-oracle ladder", False, f"{type(e).__name__}: {e}")
         return
@@ -337,10 +406,13 @@ def main() -> int:
             fn()
         except Exception as e:
             _ok(f"{fn.__name__} (uncaught)", False, f"{type(e).__name__}: {e}")
-    n_pass = sum(1 for _, ok, _ in results if ok)
-    n = len(results)
-    print(f"\n{'='*60}\nREADINESS: {n_pass}/{n} checks passed")
-    go = n_pass == n
+    n_pass = sum(1 for _, ok, _ in results if ok is True)
+    n_fail = sum(1 for _, ok, _ in results if ok is False)
+    n_na = sum(1 for _, ok, _ in results if ok is None)
+    n = n_pass + n_fail
+    print(f"\n{'='*60}\nREADINESS: {n_pass}/{n} checks passed"
+          + (f" ({n_na} N/A for this endpoint)" if n_na else ""))
+    go = n_fail == 0
     print("🟢 GO — all tooling verified; ready for an A/B run pending your approval."
           if go else "🔴 NO-GO — resolve the FAILs above before launching.")
     return 0 if go else 1
