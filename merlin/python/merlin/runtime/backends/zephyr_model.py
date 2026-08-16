@@ -1676,6 +1676,13 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
             sumval = struct.unpack("<f", struct.pack("<I", int(l.split()[1]) & 0xFFFFFFFF))[0]
     res = {"outputs": flat, "prefix": flat, "argmax": argmax, "sum": sumval,
            "metrics": metrics, "console": console}
+    # `PROF <id> <ticks> <hits>` from an op_profile build. The K1 path already reads these; this one
+    # dropped them on the floor, so a Zephyr/FireSim console carried per-op cycles that no caller could
+    # reach -- which is why the vector unit had no measured rate while the matrix unit had one.
+    from ...llvmlower import op_profile as _op_profile          # `op_profile` is a parameter name here
+    prof = _op_profile.parse_prof_lines(console)
+    if prof:
+        res["op_prof"] = prof
     if iter_cycles:
         res["iter_cycles"] = iter_cycles
         res["sustained"] = _sustained_stats(iter_cycles)
@@ -1806,6 +1813,32 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
     return out
 
 
+def _check_firesim_workload(firesim_root: str, workload: str) -> None:
+    """Fail closed when the shared ``config_runtime.yaml`` names a different workload than the one we
+    stage into.
+
+    ``FIRESIM_WORKLOAD_NAME`` only tells the RUNNER where to put the ELF. What FireSim boots comes from
+    ``workload.workload_name`` in ``config_runtime.yaml``, and when the two disagree the simulator loads
+    whatever binary the other workload last left behind -- with no error anywhere, because from
+    FireSim's side nothing is wrong. That cost a 63-minute FPGA run whose uartlog turned out to be a
+    months-old image for a different accelerator, trapping on its first custom instruction.
+
+    The queue path is immune (the daemon is passed ``--workload`` and writes a per-job config), so this
+    is checked only where the shared file is actually consulted.
+    """
+    import yaml
+    cfg = Path(firesim_root) / "deploy" / "config_runtime.yaml"
+    if not cfg.is_file():
+        return
+    declared = ((yaml.safe_load(cfg.read_text()) or {}).get("workload", {}) or {}).get("workload_name")
+    want = f"{workload}.json"
+    if declared != want:
+        raise RuntimeError(
+            f"{cfg} declares workload_name={declared!r} but this run stages into {workload!r}. FireSim "
+            f"would boot the binary belonging to {declared!r}, not ours. Set workload_name to {want!r} "
+            f"(and restore it afterwards), or run through the queue, which manages its own config.")
+
+
 def run_on_firesim(elf: str | Path, *, reference: np.ndarray | None = None,
                    references: dict | None = None,
                    timeout: int = 900, queue: bool = True,
@@ -1851,6 +1884,10 @@ def run_on_firesim(elf: str | Path, *, reference: np.ndarray | None = None,
     if queue:
         os.environ["FIRESIM_QUEUE"] = "1"
         os.environ.setdefault("FIRESIM_QUEUE_TIMEOUT", str(timeout))
+    else:
+        # Without the queue the shared config_runtime.yaml is what FireSim reads, so it has to agree
+        # with where we stage. See _check_firesim_workload.
+        _check_firesim_workload(fr, os.environ["FIRESIM_WORKLOAD_NAME"])
     try:
         from modelblaster.validation.firesim_runner import run_firesim  # type: ignore
     except ModuleNotFoundError:
