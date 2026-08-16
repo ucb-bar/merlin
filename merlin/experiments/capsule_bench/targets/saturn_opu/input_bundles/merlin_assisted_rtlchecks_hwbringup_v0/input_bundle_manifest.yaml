@@ -9,12 +9,12 @@ allowed:
 - path: merlin/contract/
   mode: ro
   note: frozen ABI v0.1
-- path: merlin/contract/capsules/isa/
+- path: merlin/contract/capsules/saturn_opu/isa/
   mode: ro
   note: capsule corpus
-- path: merlin/contract/capsules/layers/
+- path: merlin/contract/capsules/saturn_opu/layers/
   mode: ro
-- path: merlin/contract/capsules/model_slices/
+- path: merlin/contract/capsules/saturn_opu/model_slices/
   mode: ro
 - path: experiments/capsule_bench/targets/saturn_opu/task/
   mode: ro
@@ -73,7 +73,7 @@ denied:
   reason: oracle-callable route
 - path: merlin/python/merlin/xdsl_dialects/lowering/
   reason: oracle-callable route
-- path: merlin/contract/capsules/hidden/
+- path: merlin/contract/capsules/saturn_opu/hidden/
   reason: hidden capsules + goldens
 - path: experiments/capsule_bench/targets/saturn_opu/input_bundles/grader_private_v0/
   reason: grader-private

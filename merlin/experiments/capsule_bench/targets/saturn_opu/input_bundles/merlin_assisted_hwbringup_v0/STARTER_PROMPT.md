@@ -8,9 +8,9 @@ the interface — you never author a compute kernel.
 
 ## Scope
 Make **every** public/dev capsule under the declared corpus pass. Families are discovered, not restated:
-- `merlin/contract/capsules/isa/`
-- `merlin/contract/capsules/layers/`
-- `merlin/contract/capsules/model_slices/`
+- `merlin/contract/capsules/saturn_opu/isa/`
+- `merlin/contract/capsules/saturn_opu/layers/`
+- `merlin/contract/capsules/saturn_opu/model_slices/`
 Read each capsule's `capsule.yaml` + `capsule.interface.mlir` for its op/shapes/dtypes/epilogue, and the
 target-agnostic contracts (`command_buffer_abi.yaml`, `interface_grammar.md`, the command-buffer schema).
 Derive everything (rounding, tiling, dtypes, im2col, padding) from the contract + the target's own docs
@@ -31,7 +31,7 @@ submission/
 - `parse`: `{tool} --verify-diagnostics {input_mlir}` — parse + verify the `merlin_iface` interface MLIR
 - `lower_interface_to_target`: `{tool} --convert-iface-to-saturn_opu_mxv256d128 {input_mlir}` — emit saturn_opu_mxv256d128-dialect MLIR
 - `emit_command_buffer`: `{tool} --emit-command-buffer={output_json} {input_mlir}` — schema-valid `command_buffer.json`
-- `emit_target_artifact`: `{tool} --convert-iface-to-saturn_opu_mxv256d128 --emit-target-artifact {input_mlir}` — emit the target's schema-valid command buffer directly — the artifact the target's runtime consumes; no `.insn` assembly (the target has no command ISA, e.g. a spatial tensor tile driven by one-hot op ports): a command stream driving the discovered 16x16 outer-product accumulator tile with the {macc, mvin, shift} command set over the int8, float8 datapaths
+- `emit_target_artifact`: `{tool} --convert-iface-to-saturn_opu_mxv256d128 --emit-target-artifact {input_mlir}` — emit the target's schema-valid command buffer directly — the artifact the target's runtime consumes; no `.insn` assembly (the target has no command ISA, e.g. a spatial tensor tile driven by one-hot op ports): a command stream driving the discovered 16x16 outer-product accumulator tile over the int8, float8 datapaths. The unit's op ports are {macc, mvin, shift} -- that is the HARDWARE's command set, which the backend drives; it is not what you write in the buffer. The buffer's own `opcode` values are the ABI's: {RES_PACK, MATMUL_RESIDENT, MATMUL, COMMIT, EVICT, VECTOR_MAP, VREDUCE} (closed enum, validated)
 
 Declare these four commands in `manifest.yaml` exactly as the runner expects — see the OOT backend
 contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
