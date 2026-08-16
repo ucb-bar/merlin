@@ -184,6 +184,12 @@ void merlin_prof_mark(int32_t id) {
  * plus a summary the driver uses to check the profiler accounted for the whole run. */
 void merlin_prof_dump(void) {
   uint64_t total = merlin_prof_overflow_ticks;
+#ifdef MERLIN_PROF_BAREMETAL
+  /* Thousands of short lines, and the console flushes per line by default -- one host round-trip per
+   * ~25 bytes. On FireSim that is the difference between a few minutes and about five hours. Held for
+   * the dump only; restoring it flushes whatever is still buffered. */
+  htif_line_flush(0);
+#endif
   for (int i = 0; i < MERLIN_PROF_MAX_OPS; i++) {
     if (merlin_prof_hits[i] == 0) continue;
     total += merlin_prof_ticks[i];
@@ -193,4 +199,7 @@ void merlin_prof_dump(void) {
     merlin_prof_emit_op(-1, merlin_prof_overflow_ticks, merlin_prof_overflow_hits);
   merlin_prof_emit_metric("prof_total_ticks", total);
   merlin_prof_emit_metric("prof_marks", merlin_prof_marks);
+#ifdef MERLIN_PROF_BAREMETAL
+  htif_line_flush(1);
+#endif
 }

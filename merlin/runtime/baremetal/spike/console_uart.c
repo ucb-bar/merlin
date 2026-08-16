@@ -103,6 +103,13 @@ void htif_putc(char c) {
   UART_REG(MERLIN_UART_TXDATA_OFF) = (uint32_t)(uint8_t)c;
 }
 
+void htif_line_flush(int enable) {
+  /* Nothing to hold back: this backend writes each byte straight to the UART's TX register, so there is
+   * no buffer whose flush policy could be changed. Defined anyway because it is part of the console ABI
+   * and exactly one backend is linked per image -- a caller must not have to know which. */
+  (void)enable;
+}
+
 void htif_puts(const char *s) {
   while (*s)
     htif_putc(*s++);

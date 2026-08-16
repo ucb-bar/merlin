@@ -51,3 +51,16 @@ def test_the_default_backend_still_uses_rdtime(tmp_path):
     """The K1 path is the reason rdtime is there at all -- its kernel traps userspace rdcycle."""
     asm = _compile_asm(tmp_path, [])
     assert "rdtime" in asm
+
+
+def test_the_baremetal_dump_holds_the_per_line_flush(tmp_path):
+    """A bulk dump must not pay one host round-trip per line.
+
+    The console flushes whenever a line completes, so a log appears while the model still runs instead
+    of only at exit. That is the right default, but a dump of thousands of ~25-byte lines then pays a
+    round-trip per line rather than per 256-byte buffer. Measured on FireSim: ~6.6 B/s for the profiler
+    dump against ~100 B/s for the single long OUT line -- about five hours of FPGA for one profiled
+    whole-model run. The dump holds the policy and restores it.
+    """
+    asm = _compile_asm(tmp_path, ["-DMERLIN_PROF_BAREMETAL"])
+    assert "htif_line_flush" in asm, "the bare-metal dump must suspend the per-line flush"
