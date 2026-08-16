@@ -26,6 +26,8 @@ class SiliconFacts:
     scratchpad_rows: int | None = None       # SRAM depth in rows (MVIN spad_addr is a row index)
     accumulator_bytes: int | None = None
     accumulator_rows: int | None = None
+    accumulator_row_bytes: int | None = None  # derived acc row width (cols * acc elem bytes)
+    acc_ctrl_mask: int | None = None           # derived high control bits carried in an acc address
     legal_funct: list[int] | None = None
     custom_opcode: int | None = None
     funct3: int | None = None
@@ -48,6 +50,29 @@ def _memory(f: dict, name: str) -> dict | None:
     return next((m for m in f.get("memories", []) if m.get("name") == name), None)
 
 
+def _dtype_bits(dtype: str | None) -> int | None:
+    """Bit width of a datapath dtype string (``i8``→8, ``i32``→32, ``bf16``→16, ``fp8``→8). Structural —
+    the trailing digits are the width; no regex, no per-target literal."""
+    if not isinstance(dtype, str):
+        return None
+    digits = "".join(c for c in dtype if c.isdigit())
+    return int(digits) if digits else None
+
+
+def _datapath_bits(f: dict, name: str) -> int | None:
+    dp = next((d for d in f.get("datapaths", []) if d.get("name") == name), None)
+    return _dtype_bits(dp.get("dtype")) if dp else None
+
+
+def _rows_from_bytes(total_bytes: int | None, cols: int | None, elem_bits: int | None) -> int | None:
+    """Logical addressable row count = total_bytes / row_width, row_width = ceil(cols * elem_bits / 8).
+    All three inputs are derived facts; returns None if any is missing (the capacity check then skips)."""
+    if not total_bytes or not cols or not elem_bits:
+        return None
+    row_bytes = (cols * elem_bits + 7) // 8
+    return total_bytes // row_bytes if row_bytes else None
+
+
 def silicon_facts(target: str) -> SiliconFacts:
     """Derive :class:`SiliconFacts` for ``target``. Never raises for a missing/degraded fact source —
     it fails closed to ``None`` fields (the consuming checks skip and surface ``UNKNOWN``)."""
@@ -65,21 +90,27 @@ def silicon_facts(target: str) -> SiliconFacts:
         out.mesh_rows = mesh.get("rows")
         out.mesh_cols = mesh.get("cols")
 
+    # Element widths from the datapath dtypes (i8→8, i32→32, …) — used to size a logical row. The
+    # scratchpad holds input-dtype elements; the accumulator holds accumulator-dtype elements.
+    in_bits = _datapath_bits(f, "input")
+    acc_bits = _datapath_bits(f, "accumulator")
+
     sp = _memory(f, "scratchpad")
     if sp:
         out.scratchpad_bytes = sp.get("bytes")
-        # scratchpad_rows is the LOGICAL addressable row count that an MVIN spad_addr indexes — NOT the
-        # physical SRAM depth (which is banked/wider and would under-count, false-flagging passing kernels).
-        # A logical row holds DIM columns of 1-byte (i8) elements, so rows = bytes / (cols * 1). This is the
-        # same bound rtl_checks._check_spad_capacity derives.
-        if out.scratchpad_bytes and out.mesh_cols:
-            out.scratchpad_rows = out.scratchpad_bytes // out.mesh_cols
+        # scratchpad_rows is the LOGICAL addressable row count an MVIN spad_addr indexes — NOT the physical
+        # SRAM depth (banked/wider, would under-count and false-flag passing kernels). rows = bytes /
+        # ceil(cols * input_elem_bits / 8), same bound rtl_checks._check_spad_capacity derives.
+        out.scratchpad_rows = _rows_from_bytes(out.scratchpad_bytes, out.mesh_cols, in_bits)
 
     acc = _memory(f, "accumulator")
     if acc:
         out.accumulator_bytes = acc.get("bytes")
-        if isinstance(acc.get("depth"), int):
-            out.accumulator_rows = acc["depth"]
+        if out.mesh_cols and acc_bits:
+            out.accumulator_row_bytes = (out.mesh_cols * acc_bits + 7) // 8
+        # Total addressable accumulator rows = bytes / row_bytes (spans all banks) — the introspected
+        # ``depth`` is per-bank and would under-count a multi-bank accumulator.
+        out.accumulator_rows = _rows_from_bytes(out.accumulator_bytes, out.mesh_cols, acc_bits)
 
     ft = next((i for i in f.get("interfaces", []) if i.get("name") == "funct_decode_table"), None)
     if ft:
@@ -89,8 +120,28 @@ def silicon_facts(target: str) -> SiliconFacts:
 
     gen = rec.get("generator", {}) if isinstance(rec, dict) else {}
     out.provenance = f"circt_introspect facts.json ({gen.get('version', '?')})"
+    _fill_acc_ctrl_mask(out)
     _fill_dram_base(out)
     return out
+
+
+def _fill_acc_ctrl_mask(out: SiliconFacts) -> None:
+    """The control bits an accumulator address carries in its high bits (full-C / i8-readout / accumulate),
+    OR'd into one mask so a consumer can strip them to recover the raw row index. Derived from the target's
+    RoCC ISA constants (``readout_bits``), never a literal; ``None`` when not derivable (acc check skips)."""
+    try:
+        from merlin.targetgen.rocc_decode import isa_constants
+
+        isa = isa_constants(out.target)
+        bits = [isa.get(k) for k in ("FULL_C_BIT", "ACC_I8", "ACC_ACCUM")]
+        derived = [b for b in bits if isinstance(b, int)]
+        if derived:
+            mask = 0
+            for b in derived:
+                mask |= b
+            out.acc_ctrl_mask = mask
+    except Exception:  # noqa: BLE001 — no derivable ISA constants → mask stays None (acc check skips)
+        pass
 
 
 def _fill_dram_base(out: SiliconFacts) -> None:

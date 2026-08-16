@@ -89,6 +89,40 @@ def simulate(
             evidence={"max_row": max_top, "capacity_rows": cap, "instruction_indices": bad},
             fix_hint="tile K/N smaller or evict resident tiles; the functional oracle hides this (magic memory)"))
 
+    # ---- 1b. accumulator footprint (mask derived control bits off the acc-row address) --------------
+    acc_cap = facts.accumulator_rows
+    mask = facts.acc_ctrl_mask
+    # acc-row addresses live on MVOUT (acc_addr) and PRELOAD (c_addr), with control bits in the high bits.
+    acc_addrs = []
+    for i in ins:
+        dec = i.get("decoded", {}) or {}
+        for key in ("acc_addr", "c_addr"):
+            a = dec.get(key)
+            if isinstance(a, int):
+                acc_addrs.append(a)
+    if acc_addrs:
+        if acc_cap is None or mask is None:
+            peaks["accumulator_rows_capacity"] = acc_cap
+            findings.append(Finding(
+                "accumulator-capacity", Severity.UNKNOWN,
+                "accumulator row capacity or the address control-bit mask is not derivable — cannot bound "
+                "the accumulator footprint",
+                derived_from=facts.provenance))
+        else:
+            acc_rows = [a & ~mask for a in acc_addrs]
+            max_acc = max(acc_rows)
+            peaks["accumulator_max_row"] = max_acc
+            peaks["accumulator_rows_capacity"] = acc_cap
+            if max_acc >= acc_cap:
+                findings.append(Finding(
+                    "accumulator-overflow", Severity.STALL,
+                    f"accumulator row {max_acc} (control bits masked) reaches/exceeds the {acc_cap}-row "
+                    f"accumulator — output tiles alias/wrap on silicon",
+                    derived_from=facts.provenance,
+                    evidence={"max_acc_row": max_acc, "capacity_rows": acc_cap,
+                              "ctrl_mask": f"{mask:#x}"},
+                    fix_hint="commit/evict accumulator tiles sooner or tile N smaller"))
+
     # ---- 2. DRAM address-map legality of every movement transaction ---------------------------------
     base = facts.dram_base
     hi = (base + dram_bytes) if (isinstance(base, int) and isinstance(dram_bytes, int)) else None

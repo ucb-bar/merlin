@@ -86,6 +86,59 @@ def untranscodable_op(rv32_text: bytes, target: str) -> list[Finding]:
     return []
 
 
+def vlen_match(*, declared_vlen: int | None, hw_vlen: int | None) -> list[Finding]:
+    """A vector program's declared VLEN must match the chip's VLEN.
+
+    ``hw_vlen`` is the target's hardware vector length (derived by the caller from facts/manifest; ``None``
+    when the target is not a vector machine — the rule then does not apply and returns nothing).
+    ``declared_vlen`` is what the build declared (``VECTOR_MAX_LEN`` / ``-march=…_zvlNNNb``). A mismatch
+    silently corrupts state on silicon: an under-declared VLEN overruns per-thread vector storage, and an
+    over-declared one doubles LMUL and mis-targets ``-march``. HW-agnostic — the rule carries no VLEN
+    literal; both values are supplied."""
+    if hw_vlen is None:
+        return []  # not a vector target → rule not applicable
+    if declared_vlen is None:
+        return [Finding("vlen-match", Severity.UNKNOWN,
+                        f"target VLEN is {hw_vlen} but the program's declared VLEN was not supplied — "
+                        f"cannot verify they match",
+                        derived_from="facts/manifest (hw VLEN)")]
+    if declared_vlen != hw_vlen:
+        return [Finding(
+            "vlen-match", Severity.FAULT,
+            f"declared VLEN {declared_vlen} != chip VLEN {hw_vlen} — vector state corrupts on silicon "
+            f"(under-declared overruns per-thread vector storage; over-declared doubles LMUL / mis-targets march)",
+            derived_from="facts/manifest (hw VLEN) vs build declaration",
+            fix_hint=f"declare VLEN={hw_vlen} (VECTOR_MAX_LEN and -march=…_zvl{hw_vlen}b) to match the chip")]
+    return []
+
+
+def medany_span(*, uses_medany: bool | None, image_span_bytes: int | None) -> list[Finding]:
+    """Under ``-mcmodel=medany`` all addressing is PC-relative within ±2 GB; a large image (e.g. a big
+    embedded weights blob) can push symbols out of that window → correct arithmetic on wrong data.
+
+    ``uses_medany`` = whether the target's compile path builds with medany (caller-derived from the target
+    compile facts; ``None`` → rule not applicable). ``image_span_bytes`` = the linked image's symbol span
+    (caller-derived from the ELF). HW-agnostic — the only constant here is the RISC-V ISA's fixed ±2 GB
+    medany window, which is a property of the code model, not of any one target."""
+    if not uses_medany or image_span_bytes is None:
+        return []  # not a medany target, or no image span supplied → rule not applicable
+    window = 1 << 31  # RISC-V medany PC-relative reach (±2 GB); an ISA constant, not a target literal.
+    if image_span_bytes >= window:
+        return [Finding(
+            "medany-span", Severity.FAULT,
+            f"image span {image_span_bytes} bytes ({image_span_bytes / (1 << 30):.2f} GB) meets/exceeds the "
+            f"medany ±2 GB PC-relative window — some symbol references cannot be reached and mis-address",
+            derived_from="target compile facts (medany) + ELF image span",
+            fix_hint="place the large blob AFTER heap/stack in the linker script, or drop below the 2 GB window")]
+    if image_span_bytes >= window // 2:
+        return [Finding(
+            "medany-span", Severity.WARN,
+            f"image span {image_span_bytes / (1 << 30):.2f} GB is over half the medany ±2 GB window — a "
+            f"further-placed symbol or a bigger blob could push references out of reach",
+            derived_from="target compile facts (medany) + ELF image span")]
+    return []
+
+
 def host_assist(*, hostless: bool | None, has_htif: bool | None,
                 has_tohost: bool | None = None) -> list[Finding]:
     """A program bound for a hostless substrate must not depend on the HTIF debug channel.

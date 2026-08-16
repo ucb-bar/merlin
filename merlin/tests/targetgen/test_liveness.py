@@ -5,7 +5,7 @@ from __future__ import annotations
 from merlin.liveness import Program, Severity, assess, silicon_facts
 from merlin.liveness.facts import SiliconFacts
 from merlin.liveness.interconnect import simulate
-from merlin.liveness.preconditions import funct_legality, host_assist
+from merlin.liveness.preconditions import funct_legality, host_assist, medany_span, vlen_match
 from merlin.liveness.report import Finding, LivenessReport
 
 
@@ -15,7 +15,8 @@ def _facts(**kw) -> SiliconFacts:
     base = dict(
         target="synthtest", mesh_rows=16, mesh_cols=16,
         scratchpad_bytes=262144, scratchpad_rows=4096,
-        accumulator_bytes=65536, accumulator_rows=512,
+        accumulator_bytes=65536, accumulator_rows=1024,
+        accumulator_row_bytes=64, acc_ctrl_mask=0xE0000000,
         legal_funct=[2, 3, 4, 8, 9, 10, 14, 15, 16, 18, 19, 23, 24, 25, 27],
         custom_opcode=0x7B, funct3=3, dram_base=0x0, provenance="synthetic",
     )
@@ -64,6 +65,36 @@ def test_scratchpad_capacity_unknown_is_failclosed():
     tr = _trace([_ins(0, "MVIN", funct=2, spad_addr=10, rows=4, dram={"kind": "argbase"})])
     findings, _ = simulate(tr, _facts(scratchpad_rows=None))
     unk = [f for f in findings if f.rule == "scratchpad-capacity"]
+    assert unk and unk[0].severity == Severity.UNKNOWN
+
+
+# --- (A) interconnect: accumulator footprint --------------------------------------------------------
+
+def test_accumulator_within_capacity_is_clean():
+    # acc_addr carries control bits (0x80000000) but a low row index -> masked row small -> no overflow
+    tr = _trace([
+        _ins(0, "MVOUT", funct=3, acc_addr=0x80000005, dram={"kind": "argbase"}),
+        _ins(1, "FENCE", funct=1),
+    ])
+    findings, peaks = simulate(tr, _facts())
+    assert peaks["accumulator_max_row"] == 5
+    assert not [f for f in findings if f.rule == "accumulator-overflow"]
+
+
+def test_accumulator_overflow_detected():
+    tr = _trace([
+        _ins(0, "MVOUT", funct=3, acc_addr=0x80000000 | 2000, dram={"kind": "argbase"}),  # row 2000 > 1024
+        _ins(1, "FENCE", funct=1),
+    ])
+    findings, _ = simulate(tr, _facts())
+    over = [f for f in findings if f.rule == "accumulator-overflow"]
+    assert over and over[0].severity == Severity.STALL
+
+
+def test_accumulator_unknown_when_mask_missing():
+    tr = _trace([_ins(0, "MVOUT", funct=3, acc_addr=0x80000005, dram={"kind": "argbase"})])
+    findings, _ = simulate(tr, _facts(acc_ctrl_mask=None))
+    unk = [f for f in findings if f.rule == "accumulator-capacity"]
     assert unk and unk[0].severity == Severity.UNKNOWN
 
 
@@ -176,6 +207,47 @@ def test_host_assist_tohost_symbol_on_hostless_is_fault():
 def test_host_assist_unknown_when_unsupplied():
     out = host_assist(hostless=None, has_htif=None)
     assert out and out[0].severity == Severity.UNKNOWN
+
+
+# --- (B) preconditions: vlen-match ------------------------------------------------------------------
+
+def test_vlen_match_ok():
+    assert vlen_match(declared_vlen=256, hw_vlen=256) == []
+
+
+def test_vlen_mismatch_is_fault():
+    out = vlen_match(declared_vlen=128, hw_vlen=256)
+    assert out and out[0].severity == Severity.FAULT
+
+
+def test_vlen_not_applicable_when_hw_none():
+    assert vlen_match(declared_vlen=128, hw_vlen=None) == []  # not a vector target
+
+
+def test_vlen_unknown_when_declared_missing():
+    out = vlen_match(declared_vlen=None, hw_vlen=256)
+    assert out and out[0].severity == Severity.UNKNOWN
+
+
+# --- (B) preconditions: medany-span -----------------------------------------------------------------
+
+def test_medany_span_within_window_ok():
+    assert medany_span(uses_medany=True, image_span_bytes=256 << 20) == []  # 256 MB, well within
+
+
+def test_medany_span_exceeds_window_is_fault():
+    out = medany_span(uses_medany=True, image_span_bytes=(1 << 31) + 1)  # >2 GB
+    assert out and out[0].severity == Severity.FAULT
+
+
+def test_medany_span_over_half_is_warn():
+    out = medany_span(uses_medany=True, image_span_bytes=(1 << 30) + (1 << 29))  # 1.5 GB
+    assert out and out[0].severity == Severity.WARN
+
+
+def test_medany_not_applicable_when_not_medany():
+    assert medany_span(uses_medany=False, image_span_bytes=1 << 32) == []
+    assert medany_span(uses_medany=None, image_span_bytes=1 << 32) == []
 
 
 # --- report / verdict -------------------------------------------------------------------------------

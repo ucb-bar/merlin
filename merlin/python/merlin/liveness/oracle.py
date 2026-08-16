@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .facts import silicon_facts
 from .interconnect import simulate
-from .preconditions import funct_legality, host_assist, untranscodable_op
+from .preconditions import funct_legality, host_assist, medany_span, untranscodable_op, vlen_match
 from .report import LivenessReport
 
 
@@ -30,6 +30,11 @@ class Program:
     hostless: bool | None = None             # delivery substrate has no fesvr host?
     address_model: str | None = None         # harness DRAM addressing convention (pointer_args/…)
     dram_bytes: int | None = None            # DRAM window size, when the caller can supply it
+    # delivery/build context (not RTL-derivable — the caller who chose the substrate/compile path supplies it):
+    declared_vlen: int | None = None         # VLEN the build declared (VECTOR_MAX_LEN / -march zvl)
+    hw_vlen: int | None = None               # the target board's hardware VLEN (bits); None = non-vector
+    uses_medany: bool | None = None          # does the chosen compile path build with -mcmodel=medany?
+    image_span_bytes: int | None = None      # linked image symbol span (for the medany window check)
 
 
 def assess(program: Program, target: str) -> LivenessReport:
@@ -51,6 +56,12 @@ def assess(program: Program, target: str) -> LivenessReport:
     if program.hostless is not None or program.has_htif is not None or program.has_tohost is not None:
         report.extend(host_assist(
             hostless=program.hostless, has_htif=program.has_htif, has_tohost=program.has_tohost))
+
+    # vector-length + medany rules are delivery/build-context checks (VLEN and medany are substrate/compile
+    # properties, not RTL facts), so both sides come from the caller-supplied Program. Each is a no-op unless
+    # both its inputs are present (fail-closed / not-applicable), so they are always safe to call.
+    report.extend(vlen_match(declared_vlen=program.declared_vlen, hw_vlen=program.hw_vlen))
+    report.extend(medany_span(uses_medany=program.uses_medany, image_span_bytes=program.image_span_bytes))
 
     return report
 

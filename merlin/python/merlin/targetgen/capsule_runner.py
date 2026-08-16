@@ -957,6 +957,19 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _sys.stderr.write(f"WARNING: instruction_trace self-validation failed (advisory): {_sv}\n")
             (paths.generated / "instruction_trace.json").write_text(
                 json.dumps(trace, indent=2), encoding="utf-8")
+            # Advisory silicon-liveness screen (HW-agnostic): would this emitted stream stall/fault on real
+            # silicon? It uses only the target's OWN derived facts (scratchpad/accumulator capacity, address
+            # map, ISA legality) + this decoded trace, never a target literal, and — like trace_check — is
+            # advisory: it writes liveness_report.json for the author and never gates or crashes the capsule.
+            try:
+                from merlin.liveness import Program as _LProg, assess as _lassess
+                _lname = capsule.get("id") or capsule.get("name") or "kernel"
+                _lrep = _lassess(_LProg(name=_lname, trace=trace, address_model="pointer_args"), eff_target)
+                (paths.generated / "liveness_report.json").write_text(
+                    json.dumps(_lrep.to_dict(), indent=2), encoding="utf-8")
+            except Exception as _le:  # noqa: BLE001 — advisory: our screener's limit is not the backend's defect
+                import sys as _sys
+                _sys.stderr.write(f"WARNING: liveness screen failed (advisory): {_le}\n")
             # trace_check is ADVISORY: instruction-class coverage / ordering / UNKNOWN are diagnostics
             # for the author, NOT the verdict. Correctness is decided by the numeric + L2/L3 RTL oracle
             # below (which EXECUTE the actual emitted stream), and the hidden golden precludes faking an
