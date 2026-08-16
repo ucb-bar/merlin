@@ -1,0 +1,41 @@
+name: OPM4_classifier
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: 'the classifier head: M=1 at a large N, a vecmat over the widest
+  output'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 256
+  - 1000
+  dtype: i8
+- name: X
+  role: input
+  shape:
+  - 1
+  - 256
+  dtype: i8
+operation:
+  op: linear
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes: []
+  modes:
+    relu: false
+    acc_scale: false
+    i8: false
+required_oracle_tiers:
+- L3
+vcs: optional
+firesim: optional

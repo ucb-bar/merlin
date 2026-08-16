@@ -1,0 +1,40 @@
+name: OPL0_quantized_linear
+kind: layer
+source_role: pytorch_model_slice
+source_reference: nn.Linear int8 x int8 -> i32 across two reduction tiles
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: i8
+- name: X
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+operation:
+  op: linear
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes: []
+  modes:
+    relu: false
+    acc_scale: false
+    i8: false
+required_oracle_tiers:
+- L3
+vcs: optional
+firesim: optional

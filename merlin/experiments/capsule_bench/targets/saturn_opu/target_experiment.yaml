@@ -22,9 +22,13 @@ rtl:
 hardware_spec:
   target_contract: out/artifacts/targets/saturn_opu_oot/contracts/target_contract.yaml
 
-# The generic op-capsule corpus (a matmul golden is op-derived, target-neutral). An OPU outer-product
-# capsule set is a TODO sibling once the command-buffer codegen + arc oracle adapter are wired.
-capsule_corpus: merlin/contract/capsules/isa
+# This target's OWN corpus, generated from profiles/saturn_opu.yaml. It previously pointed at the
+# generic op-capsule set on the reasoning that a matmul golden is op-derived and target-neutral. The
+# GOLDEN is; the rest of the capsule is not. Those capsules declare expected instruction classes
+# (CONFIG_EX / CONFIG_LD / CONFIG_ST / PRELOAD / COMPUTE_PRELOADED / MVIN / MVOUT / FLUSH) belonging to a
+# RoCC machine, and this one is a command buffer over one-hot op ports with no instruction decode at all
+# -- so no submission could satisfy them, however good. Readiness section H now fails on exactly that.
+capsule_corpus: merlin/contract/capsules/saturn_opu/isa
 
 # The OPU's RTL oracle is the mlc arc OuterProductUnit cosim, NOT spike/verilator and not the systolic
 # arc MXU command-buffer model.

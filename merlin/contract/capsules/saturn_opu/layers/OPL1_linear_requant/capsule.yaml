@@ -1,0 +1,43 @@
+name: OPL1_linear_requant
+kind: layer
+source_role: pytorch_model_slice
+source_reference: 'nn.Linear + requant to int8: what a quantized model actually runs'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: i8
+- name: X
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+operation:
+  op: linear
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue:
+    - acc_scale
+    output_dtype: i32
+    acc_scale: 0.5
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+  acc_scale: 0.5
+expected:
+  instruction_classes: []
+  modes:
+    relu: false
+    acc_scale: true
+    i8: false
+required_oracle_tiers:
+- L3
+vcs: optional
+firesim: optional
