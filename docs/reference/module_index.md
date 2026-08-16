@@ -33,6 +33,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.kernels.features` | Feature extraction: NormalizedKernel -> typed feature dict + fired markers. |
 | `merlin.kernels.framework_contracts` | Per-framework contract descriptors — the caller-side assumptions (prepack/transpose/layout/ |
 | `merlin.kernels.ingest` | Ingest kernels from external sources. |
+| `merlin.liveness` | HW-agnostic *liveness / progress* oracle — an L2.5 tier between functional (L2) and RTL (L3). |
 | `merlin.llvmlower` | Whole-model lowering: linalg-on-tensors MLIR -> LLVM IR -> RVV objects. |
 | `merlin.plotting` | Shared plotting house style (palette + card/callout/style_ax helpers). |
 | `merlin.runtime` | Merlin-owned runtime substrate (real, dependency-free). |
