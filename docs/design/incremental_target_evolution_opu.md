@@ -3,7 +3,7 @@ title: "Design: incremental target evolution — RVV + Saturn OPU as the driving
 kind: design
 status: draft
 owner: targetgen
-last_verified: 2026-08-14
+last_verified: 2026-08-15
 related: [beam_cca_architecture, target_onboarding, lowering_pipeline, llvm_integration, reproducibility]
 code_refs:
   - merlin/python/merlin/targetgen/compute_units.py
@@ -449,8 +449,8 @@ back-edge was compressed.
 | L2 | emitted-code audit | `kernels/decode/opu.py` (structural, derived opcodes) |
 | L3 | microkernel numerics, frozen shape corpus | **OPU Verilator RTL — PASSED 31/31** (§8c.2), + 1 of 5 workload shapes (§5.2) |
 | L4 | single-dispatch numerics incl. epilogue | **OPU Verilator RTL — PASSED 6/6** (§5.2) |
-| L5 | whole-model numerics | **blocked — not by the unit** (§5.3) |
-| L6 | whole-model cycles | needs the bitstream of §5.1; L5 first |
+| L5 | whole-model numerics | **Kodiak+OPU FireSim — PASSED bit-exact** (§5.3) |
+| L6 | whole-model cycles | **1.328× over the RVV control on that same bitstream** (§5.3) |
 
 ### 5.2 L4 passed, and it moved the corpus's centre of gravity
 
@@ -528,20 +528,50 @@ stated 14.1% worst error and on a shape 30× larger than anything in its fitting
 readout term that makes this work: M=1 charges 32 readouts (one per column tile), not a tile's worth, which is
 exactly the correction the tile-occupancy model lacked.
 
-### 5.3 What blocks L5, and it is not the unit
+### 5.3 L5 and L6 passed on the Kodiak+OPU bitstream
 
-The whole-model rung is blocked by a defect in the shared bare-metal path that has nothing to do with the
-matrix unit: the unrouted control fails identically, and so does a second model (deepjscc). `memrefCopy` is
-handed a descriptor whose middle words hold **another copy's descriptor bytes** — proven by address
-arithmetic, the rank-4 destination at `0x80085b60` spanning 88 bytes while a rank-2 descriptor sits at
-`0x80085ba0`, which is word 8 of it. The stray pointer is then read as a stride and the store lands
-gigabytes outside any mapping.
+Both rungs are measured, on `alveo_u250_firesim_kodiak_opu_1core` (artifact digest `f671be16…`, RTL pin
+`saturn_opu_int8`). **SINGLE-CORE Kodiak** — one Shuttle tile; nothing here speaks to core count or
+inter-core traffic.
 
-Seven hypotheses have been eliminated (rank mismatch, stride magnitude, wrapper-vs-descriptor rank, wrong
-descriptor values, mis-scoped allocas within one copy, two allocator rewrites, and self-copies). A separate
-finding came out of it and stands on its own: **12 of 23 copy sites are `memref.copy %x, %x`**, accounting
-for 602,112 of 602,113 runtime copies, and the existing default-OFF `erase_self_copy` removes them with a
-documented bit-exact 1.88× speedup. It does not fix this fault.
+| leg | build_hash | uses the unit | grade | cycles |
+| --- | --- | --- | --- | --- |
+| device (41 contractions routed) | `7b065cda323d` | `OPMACC` 3, `OPMVINBCAST` 2, `OPMVOUT` 1 | `w8a8` cos 1.0, rel 0.0, **max_rel 0.0** | 4,010,140,489 |
+| control (RVV, unrouted) | `a1fdc60cba87` | none | `w8a8` cos 1.0, rel 0.0, **max_rel 0.0** | 5,327,452,285 |
+
+**L6 = 1.328×**, both terms measured on the same device, in the same runtime, from the same bundle and
+the same tuned RVV package — the routing is the only difference between the two images.
+
+**Why this says the unit executed, not merely that the image contained it.** The instruction audit alone
+proves presence. What proves execution is that the 41 routed contractions have no fallback path: they are
+rewritten to call five generated kernels (`merlin_opu_gemm_i8_0..4` — `patch_embed.proj` 256×196×768,
+`blocks.N.mlp.fc1` 196×1024×256, and so on), and those kernels are where the unit's instructions live. A
+bit-exact whole-model result therefore requires the unit to have run *and* to have computed correctly.
+The control's audit is the other half: it contains none of them, so it is a real control rather than the
+same image twice — which the artifact writer refuses to publish (it compares both audits and both
+build hashes before writing).
+
+**What bounds 1.328×.** 90.49% of the model's contraction MACs are routed (1,682,702,336 of
+1,859,577,856), so Amdahl over *contraction work* would allow ~10.5×. The gap between 1.33× and that
+ceiling is not the unit: it is everything the census does not count — requant epilogues, softmax,
+layer norms, the FFT twiddles, and memory traffic — plus the K-major packing the routed path pays for.
+That is where the next measurement should look, and it is the reason §7 wants both units priced rather
+than one.
+
+**A correction.** This section previously reported L5 as blocked by a `memrefCopy` descriptor-aliasing
+defect, argued from address arithmetic (a rank-4 destination at `0x80085b60` spanning 88 bytes with a
+rank-2 descriptor at `0x80085ba0`). **That inference did not hold, and there was no defect.** All 113
+`memrefCopy` sites are wrapped in `llvm.stacksave`/`llvm.stackrestore` around dynamic allocas, so two
+copies reusing the same stack bytes is what the lowering is supposed to do — it is not evidence of
+aliasing. The failures came from building with `features=frozenset()`, the raw lowering that nothing
+ships; `make_delivery.py` builds with per-op register blocking, a tuned package schedule and its cflags,
+and in that configuration both models reproduce their recorded results with byte-identical build hashes.
+
+The self-copy finding stands on its own and is unaffected: **12 of 23 copy sites are `memref.copy %x, %x`**,
+602,112 of 602,113 runtime copies. Its speedup, however, was mis-stated here. The **1.88× is an f32 GEMM
+microbenchmark** number (`llvmlower/selfcopy.py`: 1,710,650 → 475,899 instructions), not a whole-model
+one. Measured whole-model, bit-exact: **spectformer 1.117×, deepjscc 1.00×** (noise). Citing 1.88× for a
+shipped model overstates it by roughly 8×.
 
 RTL sims for `OPUV256D128ShuttleConfig`, `OPUV128D64ShuttleConfig`, `OPUMXV256D128ShuttleConfig` and
 `GemminiAndOPUShuttleConfig` are already built under `$MERLIN_CHIPYARD/sims/verilator`, and
@@ -770,20 +800,30 @@ implementation are Vivado work; the board is needed only to *run* one. So L6 rem
 (`impl_1/overall_fpga_top_{opt,placed,physopt,routed,postroute_physopt}.dcp`), so a retry resumes from
 placement rather than from scratch.
 
-**The honest bound.** Verilator is ~10⁴ cycles/s and deepjscc is ~4.6×10⁸ cycles, so L5 and L6 are not
-reachable with it, and (per §1.4) there is no functional simulator to stand in. Therefore:
+**The honest bound.** Verilator is ~10⁴ cycles/s and deepjscc is ~4.6×10⁸ cycles, so neither whole-model
+rung is reachable with it, and (per §1.4) there is no functional simulator to stand in. FireSim closed
+both (§5.3) — a whole-model leg is ~12–15 minutes there, of which ~9 is the TSI load of a 12 MB ELF.
+The rules the rungs were held to while they were open still bind anything not yet measured:
 
-- Whole-model rows record `not_run` **with the oracle that would close them** — a repaired OPU spike
-  model for L5, an OPU FireSim bitstream for L6. They are never reported as passes.
+- A whole-model row records `not_run` **with the oracle that would close it**, never a pass.
 - Any whole-model number derived by extrapolation is labelled a projection and never printed adjacent
   to a measured value without that label.
-- Correctness therefore rests entirely on L3/L4 — which is precisely the surface the historical failure
-  escaped through. That is the argument for the frozen corpus being exhaustive rather than
+- Where no whole-model number exists, correctness rests on L3/L4 — precisely the surface the historical
+  failure escaped through. That is the argument for the frozen corpus being exhaustive rather than
   representative, and for `M = 1` being in it from the first commit.
 
-Kodiak, for the avoidance of doubt, **has no OPU**: `boards.board("chipyard_kodiak")` is 3 harts / 2
-vector harts / VLEN 512 with no OPU anywhere in `runtime/boards.py`. The OPU driving example executes
-on RTL configs, not on that board.
+One trap this cost 63 FPGA-minutes to learn, recorded because nothing in the tooling surfaced it:
+`FIRESIM_WORKLOAD_NAME` tells the *runner* where to stage an ELF, while `workload.workload_name` in
+`config_runtime.yaml` decides what FireSim *boots*. When they disagree the simulator loads the other
+workload's leftover binary and reports nothing unusual. Guarded now in
+`zephyr_model._check_firesim_workload`, and worth checking by the simulator's own `+prog0=` line, which
+is the only record of what it actually loaded.
+
+Kodiak *the board entry* still has no OPU: `boards.board("chipyard_kodiak")` is 3 harts / 2 vector harts
+/ VLEN 512, with no OPU anywhere in `runtime/boards.py`, and it describes the delivered chip. The
+bitstream of §5.3 is a different thing with a similar name — Kodiak's SoC and vector geometry rebuilt
+*with* the unit and with one Shuttle core instead of two, which is why it can run this example and the
+board cannot. Do not read a result on one as a statement about the other.
 
 ## 6. Experiment matrix
 
