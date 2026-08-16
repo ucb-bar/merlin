@@ -21,6 +21,9 @@ unsigned long long merlin_memref_rank_mismatches(void);
 void htif_putd(long);
 void htif_putc(char);
 void htif_exit(int);
+#ifdef MERLIN_PROF_BAREMETAL
+void merlin_prof_dump(void);
+#endif
 
 /* Weights are loaded at a fixed absolute address (a separate ELF section, see
  * model_link.ld) and addressed by literal constant — with multi-GB blobs they sit
@@ -116,6 +119,13 @@ int main(int hart) {
   htif_puts("METRIC memref_rank_mismatch ");
   htif_putd((long)merlin_memref_rank_mismatches());
   htif_putc('\n');
+#ifdef MERLIN_PROF_BAREMETAL
+  /* Per-op ticks, emitted only by a build that instrumented the IR to produce them. Placed after the
+     output and the cycle metric so a profiled run is a superset of a normal one -- the same grade, the
+     same whole-model cycle count, plus the breakdown -- rather than a different run that has to be
+     compared across images. */
+  merlin_prof_dump();
+#endif
   htif_puts("DONE\n");
   htif_exit(0);
   return 0;

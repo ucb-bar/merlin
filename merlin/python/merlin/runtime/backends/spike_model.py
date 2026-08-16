@@ -120,7 +120,7 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
           console: str = "htif", sdk_dir: str | Path | None = None,
           sdk_chip: str | None = None, chip_freq_hz: int | None = None,
           matrix: "Any | None" = None, matrix_scalar_tile: bool = False,
-          stack_bytes: int = 0x40000) -> dict:
+          stack_bytes: int = 0x40000, op_profile: bool = False) -> dict:
     """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
 
     Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
@@ -154,6 +154,13 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     ``matrix_scalar_tile`` compiles that shim with the scalar stand-in for the unit instead of its
     instructions -- which is how the whole model gets graded on a simulator that has no such unit, proving
     the routing, the packing, the ABI and the epilogue while proving nothing about the datapath.
+
+    ``op_profile`` instruments ``@forward`` with a mark before each top-level op and links the profiler,
+    so the run additionally emits ``PROF <id> <ticks> <hits>`` (``mcycle``, the same counter as
+    ``METRIC cycles``) plus the id->op table beside the image. It is the only way this path can say WHERE
+    its cycles went rather than only how many there were, which is what pricing a compute unit needs. It
+    changes the emitted code, so a profiled image is for measuring per-op cost, never for a cycle count
+    compared against an unprofiled one.
     """
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -186,6 +193,15 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
                 prepared_path, work, int8_compute=int8_compute, features=features,
                 matrix=matrix)
             vectorize = True
+        if op_profile:
+            # Instrumented AFTER preparation, so the ids name the ops that actually run -- instrumenting
+            # the raw module would number ops the rewrites go on to split, fuse or route away, and the
+            # table would then resolve PROF lines to the wrong names.
+            from ...llvmlower import op_profile as _op_profile
+            text, prof_table = _op_profile.instrument(Path(prepared_path).read_text())
+            prepared_path = work / "model_prof.mlir"
+            Path(prepared_path).write_text(text)
+            _op_profile.write_table(prof_table, work / "op_profile_table.json")
         res = lower_model_file(prepared_path, work / "lower", targets=(), textual=True,
                                vectorize=vectorize, transform_schedule=rvv_schedule,
                                features=features)   # produce only the .ll
@@ -233,11 +249,15 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     elif console != CONSOLE_HTIF:
         raise RuntimeError(f"unknown console kind {console!r}")
 
+    # The profiler's console is the harness's own four-symbol ABI, so it needs the harness dir on the
+    # include path and the same define the harness is compiled with -- both units must agree, or the
+    # dump call compiles out of one side and leaves an undefined symbol on the other.
+    prof_defs = ["-DMERLIN_PROF_BAREMETAL", "-I", str(h)] if op_profile else []
     units = {
         "model_call.o": (cgen / "model_call.c", inc),
         "merlin_model.o": (rt / "merlin_model.c", inc),
         "model_main.o": (h / "model_main.c",
-                         inc + addr_defs + console_defs
+                         inc + addr_defs + console_defs + prof_defs
                          + [f'-DMERLIN_BUILD_HASH="{build_hash}"']),
         "mlir_rt.o": (runtime_dir() / "abi/mlir_runtime.c", []),
         "crt.o": (h / "crt.S", []),
@@ -245,6 +265,8 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
         "libc_min.o": (h / "libc_min.c", []),
         "malloc.o": (h / "merlin_malloc.c", addr_defs),
     }
+    if op_profile:
+        units["op_prof.o"] = (rt / "merlin_op_prof.c", prof_defs)
     objs = []
     for obj, (src, extra) in units.items():
         _run([gcc, *gcc_cflags, *extra, "-c", src, "-o", work / obj])
