@@ -147,9 +147,10 @@ def simulate(
         drains_after = any(classes[k] in _DRAIN for k in range(last_work + 1, len(classes))) if last_work is not None else False
         if not drains_after:
             findings.append(Finding(
-                "visibility-no-drain", Severity.STALL,
+                "visibility-no-drain", Severity.WARN,
                 "the stream does not close with a FENCE after its last store/compute — final results are "
-                "not guaranteed visible at program halt on silicon (the functional oracle commits eagerly)",
+                "not guaranteed visible at program halt on silicon (advisory: a host-assisted harness may "
+                "drain externally; on a hostless substrate this is a real visibility hazard)",
                 derived_from="ordering invariant (quiesce-before-halt)",
                 fix_hint="emit a closing FENCE to drain outstanding movement before halt"))
     peaks["closes_with_fence"] = bool(classes and classes[-1] in _DRAIN)

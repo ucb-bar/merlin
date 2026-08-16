@@ -68,11 +68,11 @@ def silicon_facts(target: str) -> SiliconFacts:
     sp = _memory(f, "scratchpad")
     if sp:
         out.scratchpad_bytes = sp.get("bytes")
-        # Prefer the introspected SRAM depth (row count) — spad_addr is a row index into it. Fall back
-        # to bytes / row-width only when depth is absent (row width = mesh cols * 1 byte for i8 tiles).
-        if isinstance(sp.get("depth"), int):
-            out.scratchpad_rows = sp["depth"]
-        elif out.scratchpad_bytes and out.mesh_cols:
+        # scratchpad_rows is the LOGICAL addressable row count that an MVIN spad_addr indexes — NOT the
+        # physical SRAM depth (which is banked/wider and would under-count, false-flagging passing kernels).
+        # A logical row holds DIM columns of 1-byte (i8) elements, so rows = bytes / (cols * 1). This is the
+        # same bound rtl_checks._check_spad_capacity derives.
+        if out.scratchpad_bytes and out.mesh_cols:
             out.scratchpad_rows = out.scratchpad_bytes // out.mesh_cols
 
     acc = _memory(f, "accumulator")

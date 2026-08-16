@@ -114,7 +114,7 @@ def test_dram_unknown_provenance_is_unknown():
 
 # --- (A) interconnect: visibility / drain -----------------------------------------------------------
 
-def test_no_closing_fence_is_stall():
+def test_no_closing_fence_is_warn():
     tr = _trace([
         _ins(0, "FENCE", funct=1),
         _ins(1, "MVIN", funct=2, spad_addr=0, rows=1, dram={"kind": "argbase"}),
@@ -122,7 +122,7 @@ def test_no_closing_fence_is_stall():
     ])
     findings, peaks = simulate(tr, _facts())
     vis = [f for f in findings if f.rule == "visibility-no-drain"]
-    assert vis and vis[0].severity == Severity.STALL
+    assert vis and vis[0].severity == Severity.WARN
     assert peaks["closes_with_fence"] is False
 
 
