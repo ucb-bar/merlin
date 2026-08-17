@@ -350,6 +350,94 @@ def test_the_driver_does_not_author_instruction_files_itself(tmp_path):
     assert not (tmp_path / "ws" / "AGENTS.md").exists(), "parity is recorded, never manufactured"
 
 
+# ---------------------------------------------------------------------------
+# The isolated CODEX_HOME — keeping prior sessions away from a graded agent
+# ---------------------------------------------------------------------------
+
+
+def test_the_isolated_home_holds_a_frozen_config_and_no_credential(tmp_path):
+    info = CA.prepare_codex_home(tmp_path / "home", model="gpt-5.6-sol", effort="high")
+
+    config = (tmp_path / "home" / "config.toml").read_text()
+    assert 'model = "gpt-5.6-sol"' in config
+    assert 'model_reasoning_effort = "high"' in config
+    # The user's own config carries per-project trust levels and notice state;
+    # none of it belongs in a measured run.
+    assert "trust_level" not in config and "[projects" not in config
+
+    assert info["auth_copied"] is False
+    assert not (tmp_path / "home" / "auth.json").exists(), \
+        "the credential is bind-mounted read-only, never written into the tree"
+    assert info["config_sha256"] and info["isolated_from_real_home"] is True
+
+
+def test_the_binds_reach_the_launchers_real_target_and_redirect_the_home(tmp_path):
+    """~/.local/bin/codex is a symlink into ~/.codex/packages, so binding
+    ~/.local/bin alone leaves the launcher pointing at nothing."""
+    home = tmp_path / "home"
+    home.mkdir()
+    binds = CA.codex_runtime_binds(home)
+
+    joined = " ".join(binds)
+    assert "--setenv CODEX_HOME " + str(home) in joined
+    assert f"--bind {home} {home}" in joined, "codex must be able to write sessions/state"
+    real = CA.real_codex_home()
+    if (real / "packages").exists():
+        assert f"--ro-bind {real / 'packages'} {real / 'packages'}" in joined
+
+
+def test_the_real_dotcodex_directory_is_never_bound_wholesale(tmp_path):
+    """Binding ~/.codex would expose sessions/ — every prior conversation on the
+    host — to a graded agent. That is an answer-leak surface."""
+    home = tmp_path / "home"
+    home.mkdir()
+    binds = CA.codex_runtime_binds(home)
+    real = str(CA.real_codex_home())
+
+    # The only permitted sources under the real home are packages/ and auth.json.
+    sources = [binds[i + 1] for i, a in enumerate(binds)
+               if a in ("--bind", "--ro-bind") and i + 1 < len(binds)]
+    under_real = [s for s in sources if s.startswith(real)]
+    assert all(s.startswith(f"{real}/packages") or s == f"{real}/auth.json"
+               for s in under_real), f"unexpected bind out of the real home: {under_real}"
+    assert real not in sources, "the real ~/.codex must never be bound as a whole"
+
+
+def test_the_credential_is_bound_read_only_onto_the_isolated_home(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    binds = CA.codex_runtime_binds(home)
+    auth = CA.real_codex_home() / "auth.json"
+    if not auth.is_file():
+        pytest.skip("no local codex credential to assert against")
+    idx = binds.index(str(auth))
+    assert binds[idx - 1] == "--ro-bind", "a token must not be modifiable by the agent"
+    assert binds[idx + 1] == str(home / "auth.json")
+
+
+def test_a_canary_prompt_can_override_the_graded_instruction_but_is_not_the_default(tmp_path):
+    """A measured arm always gets the graded text, so two arms cannot differ in
+    what they were asked; only out-of-band uses override it."""
+    script = _fake_codex(tmp_path, _stream())
+    ws = tmp_path / "ws"; ws.mkdir()
+    run_dir = tmp_path / "run"; run_dir.mkdir()
+    os.environ["CODEX_BIN"] = str(script)
+    try:
+        _rc, tpath = CA.run_round(ws, run_dir, "m", {}, None, "none", 0, 60,
+                                  prompt="CANARY: run probe.sh")
+    finally:
+        os.environ.pop("CODEX_BIN", None)
+    assert (tpath.parent / "round_00.prompt.txt").read_text() == "CANARY: run probe.sh"
+
+    # Default (no override) is the graded instruction.
+    os.environ["CODEX_BIN"] = str(script)
+    try:
+        _rc, tpath2 = CA.run_round(ws, run_dir, "m", {}, None, "none", 1, 60)
+    finally:
+        os.environ.pop("CODEX_BIN", None)
+    assert "agent_selfcheck.py" in (tpath2.parent / "round_01.prompt.txt").read_text()
+
+
 def test_an_unsupported_tiering_request_is_recorded_rather_than_silently_dropped(tmp_path):
     ws = tmp_path / "ws"; ws.mkdir()
     (ws / "TASK.md").write_text("x")

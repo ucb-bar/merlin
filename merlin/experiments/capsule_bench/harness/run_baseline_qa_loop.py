@@ -438,7 +438,7 @@ def claude_runtime_binds() -> list[str]:
     return _BW.claude_runtime_binds()
 
 
-def bwrap_cmd(inner: str, ws: Path, bundle: dict) -> str:
+def bwrap_cmd(inner: str, ws: Path, bundle: dict, extra_binds: list[str] | None = None) -> str:
     """bwrap argv (deny-by-default) + claude runtime binds + TOOLCHAIN binds (the legit build+sim tools,
     bound back over the /scratch* masks) + the DERIVED answer-mask pass + toolchain env. The mask set now
     comes from the shared descriptor-driven answer surface (goldens/hidden/prior/oracle/grader/memory) and
@@ -448,6 +448,10 @@ def bwrap_cmd(inner: str, ws: Path, bundle: dict) -> str:
     from merlin.targetgen.sandbox import bwrap as _BW
     from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as _surfaces
     parts = RX.bwrap_argv(ws, bundle) + claude_runtime_binds() + TC.toolchain_binds()
+    # Per-driver runtime binds (e.g. the Codex CLI's package dir + an isolated
+    # CODEX_HOME) go in BEFORE the mask pass, so a bind can never re-expose an
+    # answer surface: masking is applied last and therefore wins.
+    parts += list(extra_binds or [])
     parts = _BW.apply_answer_masks(parts, _surfaces(_te()))
     return " ".join(parts) + f" bash -c '{TC.sandbox_env(ws)} {inner}'"
 

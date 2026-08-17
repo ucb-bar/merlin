@@ -193,6 +193,84 @@ def usage_to_claude_shape(usage: dict) -> tuple[dict, bool]:
     return shaped, True
 
 
+#: The frozen per-experiment Codex config. Deliberately minimal: the user's own
+#: config.toml carries per-project trust levels and notice state that have nothing
+#: to do with the experiment and would differ between machines.
+_FROZEN_CONFIG = 'model = {model}\nmodel_reasoning_effort = {effort}\n'
+
+
+def real_codex_home() -> Path:
+    return Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+
+
+def prepare_codex_home(dest: Path, *, model: str, effort: str) -> dict:
+    """Build an ISOLATED ``CODEX_HOME`` at *dest* and describe it.
+
+    Why not just bind the real ``~/.codex``: it contains ``sessions/`` — every
+    prior Codex conversation on this host — plus history and state databases.
+    Exposing those to a graded agent is an answer-leak surface of exactly the
+    kind this bench has already been bitten by, and none of it is needed to run.
+
+    What the isolated home holds is a frozen ``config.toml`` and nothing else;
+    Codex creates its own ``sessions/``, ``state_*.sqlite`` and caches inside it.
+    **The credential is never copied here** — :func:`codex_runtime_binds`
+    read-only *bind-mounts* the real ``auth.json`` over this path inside the
+    sandbox, so no secret is written to the artifact tree.
+
+    Measured caveat: a fresh home has no warm prompt cache, so the cached-token
+    share differs from a run using the user's own home. Every arm must therefore
+    build its home the same way, or the cache-hit rate varies between arms for a
+    reason that has nothing to do with the treatment.
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    config = _FROZEN_CONFIG.format(model=json.dumps(model),
+                                  effort=json.dumps(effort or "high"))
+    config_path = dest / "config.toml"
+    config_path.write_text(config)
+    auth = real_codex_home() / "auth.json"
+    import hashlib
+
+    return {
+        "codex_home": str(dest),
+        "config_sha256": hashlib.sha256(config.encode()).hexdigest(),
+        "auth_source": str(auth),
+        "auth_present": auth.is_file(),
+        "auth_copied": False,  # bind-mounted read-only; never written to disk here
+        "isolated_from_real_home": True,
+    }
+
+
+def codex_runtime_binds(codex_home: Path) -> list[str]:
+    """bwrap args that make ``codex`` runnable and authenticated inside the sandbox.
+
+    Three binds, each for a reason:
+
+    * ``~/.codex/packages`` RO — ``~/.local/bin/codex`` is a SYMLINK into it, so
+      binding ``~/.local/bin`` alone (which the shared claude binds already do)
+      leaves the launcher pointing at nothing. Contains no conversation state.
+    * *codex_home* writable — Codex must create sessions/state/caches somewhere.
+    * the real ``auth.json`` RO **onto** ``<codex_home>/auth.json`` — auth works,
+      the token cannot be modified, and nothing secret is written to disk. A
+      refresh attempt fails loudly rather than silently rewriting a shared
+      credential.
+
+    Note what is NOT bound: ``~/.codex`` itself. Inside the sandbox that
+    directory therefore contains only ``packages/``, so no prior session,
+    history file or state database is reachable. The canary asserts this.
+    """
+    home = real_codex_home()
+    binds: list[str] = []
+    packages = home / "packages"
+    if packages.exists():
+        binds += ["--ro-bind", str(packages), str(packages)]
+    binds += ["--bind", str(codex_home), str(codex_home)]
+    auth = home / "auth.json"
+    if auth.is_file():
+        binds += ["--ro-bind", str(auth), str(codex_home / "auth.json")]
+    binds += ["--setenv", "CODEX_HOME", str(codex_home)]
+    return binds
+
+
 def _instruction_files(ws: Path) -> dict[str, int]:
     """Which instruction files the workspace carries, and their sizes."""
     found = {}
@@ -255,7 +333,7 @@ def _kill_tree(proc: subprocess.Popen) -> None:
 
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
-              effort: str = "", **_ignored) -> tuple[int, Path]:
+              effort: str = "", prompt: str | None = None, **_ignored) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via ``codex exec``. Returns ``(rc, transcript_path)``.
 
     Tier-within-agent (``subagent_model`` / ``background_model``) has no Codex
@@ -285,22 +363,35 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "started_at": _now(),
     })
 
-    msg = ("Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
-           "backend under submission/ per those instructions. Run `python3 agent_selfcheck.py --submission "
-           "submission --sim spike --capsules all` with your shell after each build to grade against the "
-           "real oracle (goldens withheld), and iterate until capsules pass. Begin now.")
+    # The graded instruction. ``prompt=`` overrides it only for out-of-band uses
+    # (the sandbox canary states its own task); a measured arm always gets this
+    # text, so two arms cannot silently differ in what they were asked to do.
+    msg = prompt if prompt is not None else (
+        "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
+        "backend under submission/ per those instructions. Run `python3 agent_selfcheck.py --submission "
+        "submission --sim spike --capsules all` with your shell after each build to grade against the "
+        "real oracle (goldens withheld), and iterate until capsules pass. Begin now.")
     prompt_path.write_text(msg)
 
     run_cmd = build_cmd(ws, model=resolved, effort=effort, final_path=final_path,
                         sandbox=sandbox, codex_bin=codex_bin)
+    home_info: dict = {}
     if sandbox == "bwrap":
         # Imported here rather than at module scope: it is needed only for the
         # bwrap wrapper, and keeping it lazy lets the driver be exercised (and
         # its command contract tested) without pulling in the whole QA loop.
         import run_baseline_qa_loop as _R  # the same integrity wrapper the claude path uses
+        from merlin.common.artifacts import cache_dir
 
+        # An isolated CODEX_HOME per run: the real ~/.codex holds every prior
+        # session on this host, which a graded agent must not be able to read.
+        # PURGEABLE cache, and no credential is written into it — the real
+        # auth.json is bind-mounted read-only (see codex_runtime_binds).
+        codex_home = cache_dir("codex_home") / f"{run_dir.name}_r{rnd:02d}"
+        home_info = prepare_codex_home(codex_home, model=resolved, effort=effort)
         inner = " ".join(shlex.quote(c) for c in run_cmd)
-        cmd = ["bash", "-c", _R.bwrap_cmd(inner, ws, bundle)]
+        cmd = ["bash", "-c", _R.bwrap_cmd(inner, ws, bundle,
+                                         extra_binds=codex_runtime_binds(codex_home))]
     else:
         cmd = run_cmd
 
@@ -475,6 +566,7 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         # ChatGPT-auth runs consume a subscription, not metered dollars. Any USD
         # figure downstream is notional and must not enter a money budget.
         "billing_mode": "subscription_notional",
+        "codex_home": home_info,
         "artifacts": {"raw": str(raw_path), "timestamped": str(stamped_path),
                       "stderr": str(stderr_path), "prompt": str(prompt_path),
                       "final": str(final_path)},
