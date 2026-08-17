@@ -1,9 +1,15 @@
 # Examples
 
-Two end-to-end walkthroughs of the thing this repo is actually for: compiling a PyTorch model to int8
-multicore-RVV binaries for a **RISC-V tapeout you cannot attach to**, proving as much as possible in
-simulation, and packaging it so the one person with the board can run it and mail back a log that
-explains itself.
+Start with [`triton/`](triton/) if you want to see the compiler itself: it is the only example that runs
+**end to end from a fresh clone with no toolchain**, and it takes minutes.
+
+| example | what it is |
+| --- | --- |
+| [`triton/`](triton/) | One stock `@triton.jit` kernel → an accelerator's command buffer → that accelerator's own RTL. The compiler-facing example: how a target is plugged in, how the route is chosen, and how the same kernel compiles for two different accelerators. **Needs only the repo and its venv** (RTL certification is optional). |
+
+The other two are the delivery story: compiling a PyTorch model to int8 multicore-RVV binaries for a
+**RISC-V tapeout you cannot attach to**, proving as much as possible in simulation, and packaging it so
+the one person with the board can run it and mail back a log that explains itself.
 
 | example | chip | what it exercises that the other does not |
 |---|---|---|
