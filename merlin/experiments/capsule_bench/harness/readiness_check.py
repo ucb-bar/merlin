@@ -239,10 +239,15 @@ def test_corpus_fits_the_endpoint():
     A command-buffer machine driven over one-hot op ports has none by construction.
     """
     section("H. corpus fits the endpoint (capsules are gradeable on this machine)")
-    corpus = _TE.capsule_corpus
-    caps = sorted(corpus.rglob("capsule.yaml")) if corpus.is_dir() else []
+    # Scope: the roots the GRADE resolves, not the single directory the descriptor names. Reading only
+    # the declared one under-counts -- for one target 21 capsules against the 28 section I actually grades
+    # -- so a capsule in a sibling category could demand a class this endpoint lacks and never be looked
+    # at here. Same under-scoping the A/B drivers had; graded_roots() is the one resolution both use.
+    roots = [r for r in _TE.graded_roots() if r.is_dir()]
+    caps = sorted({c for r in roots for c in r.rglob("capsule.yaml")})
     if not caps:
-        _ok("the declared capsule corpus has capsules", False, f"none under {corpus}")
+        _ok("the graded capsule roots have capsules", False,
+            f"none under {[str(r) for r in roots] or _TE.capsule_corpus}")
         return
     demanded: set[str] = set()
     for cap in caps:
@@ -277,8 +282,9 @@ def test_corpus_fits_the_endpoint():
         f"{len(caps)} capsule(s) demand {len(demanded)} instruction class(es) "
         + (f"e.g. {sorted(demanded)[:4]}" if has_isa else
            f"({sorted(demanded)[:4]}...) but this target has no instruction decode at all -- it is a "
-           f"{(_TE.sim_via or 'arc')}-graded command endpoint. The corpus at {corpus.name} belongs to "
-           f"another target; this one needs its own (contract/capsules/generate_corpus.py + a profile)"))
+           f"{(_TE.sim_via or 'arc')}-graded command endpoint. The corpus at "
+           f"{', '.join(r.name for r in roots)} belongs to another target; this one needs its own "
+           f"(contract/capsules/generate_corpus.py + a profile)"))
 
 
 def test_graded_path_is_the_declared_one():
