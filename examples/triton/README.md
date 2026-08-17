@@ -229,6 +229,19 @@ model gets reported as a hardware result.
 L0 compares twice — the command-buffer interpreter against the reference outputs, *and* every `COMMIT`
 against a matmul computed in numpy — because one comparison would only prove Merlin agrees with itself.
 
+> **What these checks do and do not prove.** All three levels run on the runtime's default stimulus
+> (`Tensor.deterministic`), and that stimulus is **degenerate**: the repo's own checker,
+> `targetgen.corpus_operands.rigor_findings`, reports `duplicate rows: only 1 distinct of 16` and
+> `duplicate columns: only 2 distinct of 32` for these operands. Every tensor here holds just two
+> distinct values, and every row of each operand is identical.
+>
+> So bit-exact agreement across reference, simulator and RTL is real — the path executes and the bytes
+> match — but it is **not** evidence that indexing is right. Mutating the computation to reverse the M
+> order, reverse the K order, read only the weight's first row, or use `A0` for both matmuls all still
+> produce the *same* answer on this stimulus. Rigorous operands exist in-tree
+> (`corpus_operands.operand_values`, which the same checker passes clean); the command-buffer path does
+> not use them yet.
+
 The L1/L2 distinction is **asserted, not documented**: the L1 test requires `derived_from_rtl` to be
 `False` and L2 requires it to be `True`, so a functional-model number cannot be passed off as silicon.
 
