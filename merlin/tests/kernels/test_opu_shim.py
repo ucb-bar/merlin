@@ -353,6 +353,72 @@ class TestRefusesToGuess:
         assert "0x51" in base and "0x51" not in shifted
 
 
+class TestTheTileLoopIsParallel:
+    """The tile loop is where a chip with one unit PER CORE reaches its extra units.
+
+    A routed contraction is one opaque call by the time the parallel transform schedule runs, so the
+    schedule cannot split it; the split has to live inside the kernel. These run the emitted loop under
+    real threads on the host and check the ONLY thing that can go wrong silently -- that concurrent tiles
+    still compute the same values. The datapath is stood in for (`OPU_SCALAR_TILE`), so what is under
+    test is the tiling, the bounds and the disjointness of the writes, which is exactly the part that
+    parallelising changes. Whether the device's units then run concurrently is a hardware question these
+    cannot answer.
+    """
+
+    @staticmethod
+    def _build_omp(signatures, tmp_path: Path, *, edge: int):
+        src = emit_translation_unit(_TABLE, signatures, spec=_SPEC, alignment_bytes=_ALIGN)
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        c = tmp_path / "opu_shim_omp.c"
+        c.write_text(str(src), encoding="utf-8")
+        so = tmp_path / "opu_shim_omp.so"
+        cmd = ["cc", "-O1", "-fPIC", "-shared", "-Wall", "-Werror", "-fopenmp",
+               "-DOPU_SCALAR_TILE", f"-DOPU_TILE_EDGE={edge}", str(c), "-o", str(so)]
+        got = subprocess.run(cmd, capture_output=True, text=True)
+        if got.returncode != 0:
+            pytest.skip(f"no working OpenMP host compiler: {got.stderr[-400:]}")
+        return ctypes.CDLL(str(so))
+
+    @pytest.mark.parametrize("m,n,k", [(196, 1024, 256), (196, 256, 256), (65, 129, 33), (1, 64, 64)])
+    def test_threads_do_not_change_the_result(self, tmp_path, m, n, k):
+        # Shapes chosen so the collapsed iteration space is not a multiple of the thread count and the
+        # last row and column tiles are short -- a split that mis-assigned a tail would show up here.
+        lib = self._build_omp({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path, edge=64)
+        a, b = _operands(m, n, k)
+        got = _call(lib, "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
+        np.testing.assert_array_equal(got, _expected(a, b))
+
+    def test_it_is_the_same_answer_as_the_serial_build(self, tmp_path):
+        """Bit-identical to the unparallelised object, which is the certified one."""
+        m, n, k = 196, 768, 256
+        a, b = _operands(m, n, k)
+        par = _call(self._build_omp({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "omp", edge=64),
+                    "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
+        ser = _call(_build({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "ser", edge=64),
+                    "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
+        np.testing.assert_array_equal(par, ser)
+
+    def test_the_serial_loop_is_kept_separate_from_the_parallel_one(self):
+        """The certified configuration must not pay for a capability it does not use.
+
+        `collapse(2)` needs a perfect nest, so the parallel form computes the row length inside the
+        column loop — and MEASURED on RTL that costs the serial build 1.8% overall (2.8–3.9% on the
+        workload shapes) because the length stops being hoisted. So two forms are emitted and the serial
+        one keeps its hoist. Asserting the shape of the guard is what keeps a later simplification from
+        collapsing them back into one and quietly reintroducing that cost.
+        """
+        src = str(emit_translation_unit(_TABLE, {"merlin_opu_gemm_i8_0": (64, 64, 64)}, spec=_SPEC,
+                                        alignment_bytes=_ALIGN))
+        i = src.index("#pragma omp parallel for")
+        assert "#ifdef _OPENMP" in src[i - 200:i], "the pragma must sit inside an _OPENMP guard"
+        parallel, _, serial = src[i:].partition("#else")
+        # The parallel form recomputes both lengths in the inner loop; the serial one hoists `ml`.
+        assert parallel.count("const size_t ml") == 1 and parallel.count("const size_t nl") == 1
+        head = serial[:serial.index("#endif")]
+        assert head.index("const size_t ml") < head.index("for (size_t j"), \
+            "the serial loop must keep the row length hoisted out of the column loop"
+
+
 class TestTheUnitContract:
     """The derivation's entry points are declared as DATA, so adding a second unit is not a code change.
 

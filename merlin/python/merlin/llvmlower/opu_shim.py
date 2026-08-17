@@ -457,6 +457,10 @@ class OpuBuild:
     scratch_bytes: int
     tile_edge: int | None = None
     scalar_tile: bool = False
+    #: Whether the tile loop was compiled with OpenMP, i.e. whether this object can reach more than one
+    #: matrix unit. Recorded rather than inferred: on a chip with a unit per core, a serial object uses
+    #: exactly one of them and still computes the right answer, so nothing else distinguishes the two.
+    parallel_tiles: bool = False
     provenance: dict[str, Any] = field(default_factory=dict)
     gaps: tuple[str, ...] = ()
 
@@ -465,12 +469,14 @@ class OpuBuild:
                 "signatures": {k: list(v) for k, v in self.signatures.items()},
                 "alignment_bytes": self.alignment_bytes, "scratch_bytes": self.scratch_bytes,
                 "tile_edge": self.tile_edge, "scalar_tile": self.scalar_tile,
+                "parallel_tiles": self.parallel_tiles,
                 "provenance": self.provenance, "gaps": list(self.gaps)}
 
 
 def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Path", *,
                  unit: str, config: str, cc: "str | Path", cflags: Sequence[str],
                  scalar_tile: bool = False,
+                 parallel_tiles: bool = False,
                  scratch_bytes: int | None = None,
                  contract_path: "str | Path | None" = None) -> OpuBuild:
     """Derive the unit's facts, emit the translation unit, compile it, and record what it came from.
@@ -487,6 +493,13 @@ def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Pa
     is what lets a whole model be graded on a host or a plain simulator: it validates the routing, the
     pack, the descriptor ABI and the epilogue while proving nothing about the datapath, which is the
     certification's job. The build records which of the two it is, so a report cannot confuse them.
+
+    ``parallel_tiles`` compiles the tile loop with OpenMP, which is the ONLY way an image reaches more
+    than one matrix unit on a chip that has one per core: a routed contraction is a single opaque call by
+    the time the parallel transform schedule runs, so the schedule cannot split it and the split has to
+    live inside the kernel. Off by default, so a single-core image is compiled exactly as certified and
+    acquires no runtime dependency. It is recorded on the build because a serial object on a multi-unit
+    chip uses one unit and still computes the right answer -- there is no other symptom.
     """
     work = Path(work)
     work.mkdir(parents=True, exist_ok=True)
@@ -530,6 +543,9 @@ def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Pa
     src.write_text(str(unit_src), encoding="utf-8")
 
     cmd = [str(cc), *cflags, "-c", str(src), "-o", str(work / "merlin_opu_shim.o")]
+    if parallel_tiles:
+        # Defines _OPENMP, which is what the emitted pragma is guarded on.
+        cmd[1:1] = ["-fopenmp"]
     if scalar_tile:
         # The host/simulator build needs the edge supplied, since there is no unit to ask for it.
         cmd[1:1] = ["-DOPU_SCALAR_TILE", f"-DOPU_TILE_EDGE={tile_edge}"]
@@ -545,5 +561,5 @@ def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Pa
     return OpuBuild(object_path=obj, source_path=src,
                     signatures={k: tuple(int(x) for x in v) for k, v in signatures.items()},
                     alignment_bytes=alignment, scratch_bytes=unit_src.scratch_bytes,
-                    tile_edge=tile_edge, scalar_tile=scalar_tile, provenance=prov,
-                    gaps=tuple(gaps))
+                    tile_edge=tile_edge, scalar_tile=scalar_tile, parallel_tiles=parallel_tiles,
+                    provenance=prov, gaps=tuple(gaps))

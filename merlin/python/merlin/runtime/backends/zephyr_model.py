@@ -1390,15 +1390,22 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
                 f"{len(matrix_sigs)} matrix-unit signature(s) were routed but no `matrix=` routing is "
                 "available to build them against; the image would not link")
         from ...llvmlower import opu_shim
+        # A routed contraction is an opaque `call` by the time the parallel transform schedule runs, so
+        # that schedule -- which matches `linalg.matmul`/`linalg.batch_matmul` -- cannot split it. On a
+        # chip with a matrix unit per core, the ONLY place the other units can be reached from is inside
+        # the kernel's own tile loop, so a multi-hart image compiles that loop with OpenMP. A serial
+        # object on such a chip is not an error and not a wrong answer: it uses one unit, silently.
         matrix_build = opu_shim.build_object(
             matrix_sigs, work / "matrix", unit=matrix.unit, config=matrix.config,
             cc=clang, cflags=["--target=riscv64-unknown-elf", *cflags],
-            scalar_tile=matrix_scalar_tile)
+            scalar_tile=matrix_scalar_tile, parallel_tiles=n_harts > 1)
         matrix_objs = [matrix_build.object_path]
         print(f"[matrix] linked {len(matrix_sigs)} entry point(s) for {matrix.unit} "
               f"({matrix.config}, tile edge {matrix_build.tile_edge}, "
               f"{'SCALAR STAND-IN' if matrix_build.scalar_tile else 'device instructions'}, "
-              f"{matrix_build.scratch_bytes} B pack scratch)")
+              f"{matrix_build.scratch_bytes} B pack scratch, "
+              f"tile loop {'parallel over ' + str(n_harts) + ' hart(s)' if matrix_build.parallel_tiles
+                           else 'serial — ONE unit will be used'})")
     _run([ar, "rcs", archive, work / "model.o", work / "weights_blob.o", *matrix_objs])
 
     # 4. emit the Zephyr application tree.

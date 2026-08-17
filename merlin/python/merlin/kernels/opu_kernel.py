@@ -266,7 +266,22 @@ static void {spec.func_name}_tile(int32_t *c, const int8_t *at, const int8_t *b,
  *
  * Tails are the interesting part: the last row and column tile are short, and a short tile is exactly
  * where the historical failure lived. They go through the SAME tile routine with a smaller length, so
- * there is no separate tail path that could be right in the full case and wrong at the edge. */
+ * there is no separate tail path that could be right in the full case and wrong at the edge.
+ *
+ * THE TILE LOOP IS THE PARALLEL ONE, and on a chip with a unit per core it is the only place the extra
+ * units can be reached from: a routed contraction is one opaque call by the time the parallel transform
+ * schedule runs, so that schedule cannot split it. Distinct tiles write disjoint spans of `c` and read
+ * `at`/`b` without writing them, so the iterations are independent by construction; each core
+ * accumulates in ITS OWN matrix register file, so there is no shared accumulator to race on either.
+ *
+ * TWO loop forms are emitted rather than one parallel form that degenerates. `collapse(2)` needs a
+ * perfect nest, which means computing `ml` inside the inner loop -- and MEASURED on the RTL that costs
+ * the serial build 1.8% overall and 2.8-3.9% on the workload-scale shapes, because the row length stops
+ * being hoisted out of the column loop. The certified configuration should not pay for a capability it
+ * does not use, so `#ifndef _OPENMP` keeps exactly the loop the corpus certified 47/47 and the collapsed
+ * form appears only under -fopenmp. Both loops are collapsed there because splitting only the outer one
+ * hands out `ceil(m/tile)` pieces -- 4 for a 196-row activation, which divides badly over 2 or 3 cores --
+ * while the collapsed space is `ceil(m/tile) * ceil(n/tile)`, e.g. 64 for 196x1024. */
 void {spec.func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32_t *bias,
                       size_t m, size_t n, size_t k)
 {{
@@ -280,6 +295,17 @@ void {spec.func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32
 #endif
   if (tile == 0) return;                      /* no vector unit: nothing this kernel can do */
 
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) schedule(static)
+  for (size_t i = 0; i < m; i += tile) {{
+    for (size_t j = 0; j < n; j += tile) {{
+      const size_t ml = (m - i) < tile ? (m - i) : tile;
+      const size_t nl = (n - j) < tile ? (n - j) : tile;
+      {spec.func_name}_tile(c + i * n + j, at + i, b + j, bias ? bias + j : (const int32_t *)0,
+                            m, n, k, ml, nl);
+    }}
+  }}
+#else
   for (size_t i = 0; i < m; i += tile) {{
     const size_t ml = (m - i) < tile ? (m - i) : tile;
     for (size_t j = 0; j < n; j += tile) {{
@@ -288,6 +314,7 @@ void {spec.func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32
                             m, n, k, ml, nl);
     }}
   }}
+#endif
 }}
 """
 

@@ -1311,19 +1311,40 @@ different target for the software in three specific ways, all found by reading t
 rather than by running anything — none of them announces itself, and two of them produce a *correct*
 answer while being wrong.
 
-**1. Nothing splits a routed contraction across cores, and the failure is silent.** Multicore reaches
-the RVV path as an outer `scf.forall` introduced by `pipeline.parallel_transform_schedule`, which matches
-`ops{["linalg.matmul"]}` and `ops{["linalg.batch_matmul"]}`. But routing runs earlier, in
-`prepare_for_lowering`, and has already turned those contractions into `call`s — the tagged IR carries 49
-`linalg.matmul` and 41 `call`. So an N-hart build splits the 49 and leaves all 41 routed contractions on
-whichever hart runs `@forward`: **N OPUs present, one used**. `parallel_harts` and `matrix=` are passed
-to `lower_model_file` independently and nothing checks the combination, so this builds, runs and grades
-`w8a8` bit-exact while delivering one core's throughput.
+**1. Nothing splits a routed contraction across cores, and the failure is silent — now fixed in the
+kernel.** Multicore reaches the RVV path as an outer `scf.forall` introduced by
+`pipeline.parallel_transform_schedule`, which matches `ops{["linalg.matmul"]}` and
+`ops{["linalg.batch_matmul"]}`. But routing runs earlier, in `prepare_for_lowering`, and has already
+turned those contractions into `call`s — the tagged IR carries 49 `linalg.matmul` and 41 `call`. So an
+N-hart build splits the 49 and leaves all 41 routed contractions on whichever hart runs `@forward`:
+**N OPUs present, one used**, building and grading `w8a8` bit-exact throughout.
 
-**2. The shim's pack scratch is a single `static`.** `merlin_opu_lhs_pack` is one buffer for the whole
-image. It is safe today only because exactly one hart ever calls the shim; the moment routed calls run
-concurrently it is a data race on the left operand of every contraction. It wants to be per-hart
-(indexed by `mhartid`), which also gives each core's pack locality to its own cache.
+Because the schedule cannot see inside a call, the split has to live in the kernel, and that is where it
+now is: the emitted tile loop carries an `_OPENMP`-guarded `#pragma omp parallel for collapse(2)`, and
+`build_object(..., parallel_tiles=n_harts > 1)` compiles it with `-fopenmp` for a multi-hart image. Both
+loops are collapsed because splitting only the outer one hands out `ceil(m/tile)` pieces — 4 for a
+196-row activation, which divides badly over 2 or 3 cores — while the collapsed space is 64 for
+196×1024. Distinct tiles write disjoint spans of `C` and read the operands without writing them, and
+each core accumulates in its own MRF, so the iterations are independent by construction. The build line
+now states which of the two it produced, since a serial object on a multi-unit chip has no other symptom.
+
+**Two loop forms are emitted, and the reason is measured.** `collapse(2)` requires a perfect nest, so the
+parallel form computes the row length inside the column loop. Re-certifying that single-form version on
+the bitstream came back **47/47 with no case regressed — and 1.8% slower overall**, 2.8–3.9% on the
+workload-scale shapes, because the row length stops being hoisted. A certified configuration should not
+pay for a capability it does not use, so the serial form keeps its hoist under `#ifndef _OPENMP`. That
+restores byte-identity where it matters: the compiled `.text` of the serial kernel object is **md5-equal
+to the one the corpus certified**, so the existing 47/47 stands rather than needing to be re-earned. The
+parallel form is verified on the host under real threads (bit-identical to the serial answer, including
+the short row and column tiles); whether N units then run concurrently is a hardware question that needs
+a multi-unit part to answer.
+
+**2. The pack scratch is a single `static`, and that is fine for this split — but only for this split.**
+`merlin_opu_lhs_pack` is one buffer for the whole image. The parallelism above is *within* one
+contraction: the pack completes before the parallel region opens, and the threads only read it. What the
+single buffer cannot support is *task* parallelism — two different routed contractions in flight at once
+— which nothing in `@forward` does today. If that ever changes the buffer has to become per-`mhartid`
+first.
 
 **3. The MRF is architectural state that no context switch saves.** The accumulator lives in
 `regs = Reg(Vec(regsPerCell, ...))` *inside each `OuterProductCell`* — µarch registers addressed by
