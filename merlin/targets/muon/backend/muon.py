@@ -393,6 +393,27 @@ static inline void mu_done() { muon_console::puts_("DONE\n"); }
 """
 
 
+def _extra_include_flags(kernel_src: str) -> list[str]:
+    """Honor a leading ``// mu-extra-include: <dir>`` directive an emitted kernel may carry, adding
+    ``-I <dir>`` for a self-contained kernel that wraps an out-of-tree source tree (the MX flash kernel
+    bakes its data inline but still ``#include``s that tree's ``mxgemm_core.hpp`` / ``flash_mx_impl.hpp``).
+    Scoped to the emitted TU (only the kernels that declare it get the extra path); parsed structurally
+    from the source header, no regex. Multiple directives are allowed."""
+    flags: list[str] = []
+    key = "// mu-extra-include:"
+    for line in kernel_src.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(key):
+            inc = stripped[len(key):].strip()
+            if inc:
+                flags += ["-I", inc]
+        elif not stripped.startswith("//") and not stripped.startswith("#define"):
+            break  # directives sit in the leading comment/define banner; stop at the first real code
+    return flags
+
+
 def compile_kernel(kernel_src: str, workdir: str | Path) -> Path:
     """Compile a SIMT C++ kernel source string into ``kernel.radiance.elf``; return its path.
 
@@ -404,8 +425,8 @@ def compile_kernel(kernel_src: str, workdir: str | Path) -> Path:
     src = work / "kernel.cpp"
     src.write_text(kernel_src, encoding="utf-8")
     elf = work / "kernel.radiance.elf"
-    cmd = [str(clang_path()), *_mu_cflags(), str(src), *_print_runtime_sources(),
-           *_mu_ldflags(), "-o", str(elf)]
+    cmd = [str(clang_path()), *_mu_cflags(), *_extra_include_flags(kernel_src), str(src),
+           *_print_runtime_sources(), *_mu_ldflags(), "-o", str(elf)]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise MuonError(f"clang-muon failed:\n{' '.join(cmd)}\n{proc.stderr[-3000:]}")
