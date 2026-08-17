@@ -136,6 +136,13 @@ def test_generators():
                      "gen_numeric_facts generates", "generated numeric checker"):
             _na(name, why)
         return
+    except _facts.FactsEmpty as e:
+        # NOT N/A. An empty facts artifact means the extractor never found the RTL, so every derived fact
+        # is absent -- the opposite verdict from "this endpoint has no decode table". Reporting it as N/A
+        # would let a target whose facts were never extracted read as ready for the arms that are supposed
+        # to be GROUNDED in those facts. Both this repo's newest two targets are in exactly that state.
+        _ok("the RTL-facts artifact carries facts", False, str(e).split(" — ")[0][:110])
+        return
     except Exception:      # noqa: BLE001 — any OTHER problem is the generators' to report, below
         pass
     with tempfile.TemporaryDirectory() as td:
@@ -245,6 +252,17 @@ def test_corpus_fits_the_endpoint():
             continue
         demanded.update((spec.get("expected") or {}).get("instruction_classes") or [])
 
+    # Settle the trivial case BEFORE probing the facts: a corpus that demands no instruction classes
+    # cannot demand one the endpoint lacks, whatever the facts say. (Probing first turned this into an
+    # N/A for the two targets whose facts artifact is empty, which is less true than the plain answer.)
+    # Note what a trivial pass here does NOT mean: a capsule declaring `instruction_classes: []` cannot
+    # FAIL a coverage check either, so this row says the corpus asks for nothing, not that it is rigorous.
+    if not demanded:
+        _ok("the corpus demands no instruction classes this endpoint lacks", True,
+            f"{len(caps)} capsule(s), none declaring instruction_classes "
+            f"(so none can fail coverage either)")
+        return
+
     has_isa = True
     try:
         from merlin.targetgen.rtl import facts as _facts
@@ -254,11 +272,6 @@ def test_corpus_fits_the_endpoint():
     except Exception:  # noqa: BLE001 — cannot tell; do not manufacture a verdict either way
         _na("corpus instruction classes match the target's vocabulary",
             "the target's facts could not be loaded, so this cannot be decided")
-        return
-
-    if not demanded:
-        _ok("the corpus demands no instruction classes this endpoint lacks", True,
-            f"{len(caps)} capsule(s), none declaring instruction_classes")
         return
     _ok("the corpus demands no instruction classes this endpoint lacks", has_isa,
         f"{len(caps)} capsule(s) demand {len(demanded)} instruction class(es) "
@@ -343,6 +356,41 @@ def test_graded_path_is_the_declared_one():
         len(res) == n_pub and not passed,
         f"graded {len(res)}/{n_pub}, passed {len(passed)}"
         + (f" — {[r.get('capsule') for r in passed][:4]}" if passed else ""))
+
+
+def test_contract_provenance():
+    """J. The capability contract the tooling READS is the one the descriptor DECLARES.
+
+    `hardware_spec.target_contract` was parsed and dropped -- no field on TargetExperiment held it -- so
+    what everything actually read was whatever `target_registry.resolve(target)` found by name, and the
+    descriptor's declaration was decoration. That is invisible in both directions and both directions
+    happened here: for one target the registry resolved NOTHING while the declared file sat on disk (so
+    three of its four STARTER_PROMPT.md silently failed to render, which then failed the anti-cheat gate
+    on their absence), and for another the two paths resolve to genuinely DIFFERENT contracts -- one
+    naming its fp8 datapaths, the other carrying the fail-closed `unnamed_float_datapaths` derivation.
+    Which is authoritative is the contract owner's call, so a mismatch FAILS here rather than being
+    silently decided: an agent told the wrong thing about its hardware is the run-invalidating version of
+    a result attributed to the wrong device.
+    """
+    section("J. contract provenance (the contract read == the contract declared)")
+    from merlin.targetgen.target_experiment import declared_vs_resolved_contract
+    declared, resolved, verdict = declared_vs_resolved_contract(_TE)
+    rel = (lambda p: str(Path(p).relative_to(REPO)) if p else "(none)")
+    if verdict == "mismatch":
+        _ok("the declared contract is the one in use", False,
+            f"descriptor declares {rel(declared)} but the tooling reads {rel(resolved)} — "
+            f"decide which is authoritative; they differ in content")
+    elif verdict == "none":
+        _ok("the target has a capability contract", False,
+            "no contract declared and none resolves — every derived fact would be missing")
+    elif verdict == "stale_declaration":
+        _ok("the declared contract exists", False,
+            f"descriptor declares {_TE.declared_contract}, which is not there; the tooling silently "
+            f"reads {rel(resolved)} instead")
+    else:
+        _ok("the declared contract is the one in use", True,
+            {"agree": f"both resolve to {rel(resolved or declared)}",
+             "declared_only": f"registry resolves none; using the declared {rel(declared)}"}[verdict])
 
 
 def test_bundles():
@@ -539,7 +587,7 @@ def main() -> int:
     print("READINESS CHECK — exercising all tooling (no agent launched)")
     for fn in (test_starter_kit, test_generators, test_circt_gate, test_harness,
                test_oracles_endtoend, test_verify_no_cheat, test_corpus_fits_the_endpoint,
-               test_graded_path_is_the_declared_one, test_bundles):
+               test_graded_path_is_the_declared_one, test_contract_provenance, test_bundles):
         try:
             fn()
         except Exception as e:

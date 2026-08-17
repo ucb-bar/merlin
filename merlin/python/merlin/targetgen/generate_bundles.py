@@ -170,8 +170,17 @@ def materialize_bundles(te: TargetExperiment, dest, *,
     # The capability manifest (needed to render STARTER_PROMPT.md) is target-level; load it once and
     # degrade honestly if unavailable (e.g. mlc absent) — manifests + grant files are still written.
     try:
-        from .target_experiment import load_capability_manifest
-        cap = load_capability_manifest(te.target)
+        from .target_experiment import declared_vs_resolved_contract, load_capability_manifest
+        # When the registry resolves nothing for this target, fall back to the contract the DESCRIPTOR
+        # declares. Without this a descriptor could name its contract, have that file sit right there on
+        # disk, and still render no prompt — which is how a target reached "bundles generated" with three
+        # of its four STARTER_PROMPT.md missing and the anti-cheat gate failing on their absence.
+        declared, resolved, verdict = declared_vs_resolved_contract(te)
+        explicit = declared if verdict == "declared_only" else None
+        if explicit:
+            print(f"  note: registry resolves no contract for {te.target!r}; using the descriptor's "
+                  f"declared {te.declared_contract}")
+        cap = load_capability_manifest(te.target, contract_path=explicit)
     except Exception as e:  # noqa: BLE001 — no capability manifest -> skip prompt, keep the rest
         cap = None
         print(f"  note: capability manifest for {te.target!r} unavailable ({type(e).__name__}: {e}); "

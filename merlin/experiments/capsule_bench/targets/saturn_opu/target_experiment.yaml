@@ -26,7 +26,15 @@ rtl:
   via: mlc            # facts via spatial_introspect (OuterProductUnit state manifest); RoCC funct discovery is N/A
 
 hardware_spec:
-  target_contract: out/artifacts/targets/saturn_opu_oot/contracts/target_contract.yaml
+  # The contract the tooling ACTUALLY reads (target_registry resolves it by target name) and the one this
+  # file's own prose describes -- it is the derive_manifest output, regenerable from the residual.yaml
+  # beside it. This used to declare .../saturn_opu_oot/contracts/target_contract.yaml, which is a
+  # DIFFERENT file: the earlier "render-only prototype", carrying no residual and naming the fp8
+  # datapaths fp8_e4m3/fp8_e5m2 where the derived one records `float8` + `unnamed_float_datapaths` --
+  # i.e. the fail-closed form, since the RTL does not name the format and capability_manifests refuses to
+  # fabricate one from bit width. Nothing read the declaration (no field on TargetExperiment held it), so
+  # the disagreement was invisible; readiness section J now compares the two and fails on a mismatch.
+  target_contract: out/artifacts/targets/saturn_opu_mxv256d128/contracts/target_contract.yaml
 
 # This target's OWN corpus, generated from profiles/saturn_opu.yaml. It previously pointed at the
 # generic op-capsule set on the reasoning that a matmul golden is op-derived and target-neutral. The

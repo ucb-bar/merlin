@@ -124,6 +124,20 @@ def load_facts(target: str, *, explicit: str | Path | None = None) -> dict[str, 
     return json.loads(ensure_facts(target, explicit=explicit).read_text(encoding="utf-8"))
 
 
+class FactsEmpty(RuntimeError):
+    """The facts artifact exists but carries NO extracted facts.
+
+    Distinct from "this target has no instruction decode" (:class:`NotImplementedError` from
+    :func:`decode_body`) because the two demand opposite responses: an ISA-less endpoint genuinely has no
+    decode table and the right answer is "not applicable", whereas an empty artifact means the extractor
+    never found the RTL and every fact downstream of it is absent — a hard blocker that must not be
+    reported as "N/A for this endpoint". Both radiance's and mx_gemmini's cached artifacts are in this
+    state (``hw_sha: "missing"``, ``facts: {}``), and because an empty dict satisfied the old
+    is-it-a-dict check they read as a valid decode body and crashed the generators one layer down with
+    ``KeyError: 'interfaces'`` — a broken-tool symptom for a missing-input cause.
+    """
+
+
 def decode_body(facts: dict[str, Any], target: str, *, needs: str) -> dict[str, Any]:
     """The decode-shaped body of a facts artifact (``facts["facts"]``), or a clear refusal.
 
@@ -137,8 +151,16 @@ def decode_body(facts: dict[str, Any], target: str, *, needs: str) -> dict[str, 
     ``needs`` names what the caller was going to read, so the message says which fact was missing.
     """
     body = facts.get("facts") if isinstance(facts, dict) else None
-    if isinstance(body, dict):
+    if isinstance(body, dict) and body:
         return body
+    if isinstance(body, dict):          # present but EMPTY -> nothing was extracted; see FactsEmpty
+        inputs = (facts.get("inputs") or {}) if isinstance(facts, dict) else {}
+        raise FactsEmpty(
+            f"{target}: the RTL-facts artifact is EMPTY (facts: {{}}), so {needs} cannot be derived — "
+            f"the extractor produced no facts (inputs: hw_mlir={inputs.get('hw_mlir')!r} "
+            f"hw_sha={inputs.get('hw_sha')!r}). This is a MISSING INPUT, not an ISA-less endpoint: "
+            f"re-run introspection with the RTL reachable (MERLIN_MLC_DIR / the design's hw.mlir) "
+            f"rather than treating the generators as inapplicable. Artifact: {rtl_facts_path(target)}")
     shape = sorted(facts) if isinstance(facts, dict) else type(facts).__name__
     raise NotImplementedError(
         f"{target}: these RTL facts carry no instruction-decode body, so {needs} cannot be derived. "
