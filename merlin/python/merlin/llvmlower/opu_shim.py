@@ -193,6 +193,14 @@ typedef struct {{
 static int8_t merlin_opu_lhs_pack[MERLIN_OPU_LHS_SCRATCH_BYTES]
     __attribute__((aligned(MERLIN_OPU_ALIGN)));
 
+/* Block edge for the pack loop below. A LOCALITY knob, not a hardware fact: every block edge computes
+ * exactly the same bytes, so nothing about correctness depends on it and a wrong value costs time only.
+ * The default is one cache line's worth of the M axis, which is the shape that makes each output line be
+ * written once instead of once per surrounding row; override with -DMERLIN_OPU_PACK_BLK=<n>. */
+#ifndef MERLIN_OPU_PACK_BLK
+#define MERLIN_OPU_PACK_BLK 64
+#endif
+
 /* How the split actually went. A fallback is CORRECT but slow, so without these a systematically
  * declined model would grade perfectly and report a speedup it never got. */
 static unsigned long long g_merlin_opu_calls = 0ULL;
@@ -281,11 +289,25 @@ merlin_memref_2d_i32 merlin_opu_shim_gemm_i8(
    * the routing decision has to price: O(M*K) against the kernel's O(M*N*K), so it is a small fraction of
    * a large contraction and can dominate a thin one. The pack buffer's base is aligned by declaration,
    * which is what the unit needs; its row stride is M and may be misaligned, which the corpus certifies
-   * is harmless (see the module docstring). */
-  for (size_t i = 0; i < M; ++i) {{
-    const int8_t *arow = A + (intptr_t)i * a_st0;
-    for (size_t kk = 0; kk < K; ++kk)
-      merlin_opu_lhs_pack[kk * M + i] = arow[(intptr_t)kk * a_st1];
+   * is harmless (see the module docstring).
+   *
+   * BLOCKED, because the ORDER of an O(M*K) loop decides whether it behaves like O(M*K) memory traffic or
+   * like M passes over the whole buffer. Writing `pack[kk*M + i]` down a whole column of k puts every
+   * consecutive store M bytes apart -- a different cache line each time -- and then the next row of A
+   * revisits every one of those lines to fill its next byte. The buffer is M*K bytes and does not fit a
+   * cache at these extents, so each line is fetched and evicted repeatedly and the pack costs far more
+   * than the bytes it moves. Iterating a block at a time keeps both sides local: the read stays along A's
+   * contiguous k, and the writes stay inside BLK output lines until they are finished with. */
+  for (size_t i0 = 0; i0 < M; i0 += MERLIN_OPU_PACK_BLK) {{
+    const size_t i1 = (M - i0) < MERLIN_OPU_PACK_BLK ? M : i0 + MERLIN_OPU_PACK_BLK;
+    for (size_t k0 = 0; k0 < K; k0 += MERLIN_OPU_PACK_BLK) {{
+      const size_t k1 = (K - k0) < MERLIN_OPU_PACK_BLK ? K : k0 + MERLIN_OPU_PACK_BLK;
+      for (size_t i = i0; i < i1; ++i) {{
+        const int8_t *arow = A + (intptr_t)i * a_st0;
+        for (size_t kk = k0; kk < k1; ++kk)
+          merlin_opu_lhs_pack[kk * M + i] = arow[(intptr_t)kk * a_st1];
+      }}
+    }}
   }}
 
   {func}(C, merlin_opu_lhs_pack, B, (const int32_t *)0, M, N, K);
