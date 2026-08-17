@@ -1,0 +1,41 @@
+name: R0_gemm_fp32
+kind: isa
+source_role: handauthored_compiler_test
+source_reference: SIMT fp32 GEMM tile (CVFPU fp32 lanes, fp32 accumulate)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: f32
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: f32
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional

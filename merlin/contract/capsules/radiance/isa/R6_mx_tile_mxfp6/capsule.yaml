@@ -1,0 +1,42 @@
+name: R6_mx_tile_mxfp6
+kind: isa
+source_role: handauthored_compiler_test
+source_reference: contained MX PE tile (mxfp6 e3m2, E8M0 block scale, bf16 accumulate)
+  via simt_cluster.mx_pe (gemm_mxgemmini fp6 ladder)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 32
+  dtype: mxfp6
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: mxfp6
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: bf16
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional

@@ -1,0 +1,11 @@
+merlin/contract/
+merlin/contract/capsules/radiance/isa/
+merlin/contract/capsules/radiance/model_slices/
+experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/isa_include/isa_definition.py
+experiments/capsule_bench/targets/radiance/task/
+third_party/llvm-install/
+experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0
+experiments/capsule_bench/targets/radiance/scripts/agent_selfcheck.py
+merlin/python/merlin/targetgen/generate/mlir_scaffold.py
+merlin/python/merlin/targetgen/generate/llvm_plan.py
+merlin/python/merlin/targetgen/generate/target_repo.py
