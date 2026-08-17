@@ -440,6 +440,161 @@ def _write_capsule(entry, binding, out_root):
     return d
 
 
+#: Extent tokens a sweep axis may use, resolved against the binding's tile edge.
+#: Spelled the way `kernels/opu_corpus.py` already spells tile-relative extents
+#: ("tile", "tile/2"), so one convention covers both corpora.
+_TILE_TOKEN = "tile"
+
+#: A sweep may not silently become a thousand capsules. Exceeding this raises;
+#: it is never truncated, because a corpus that quietly dropped points reads as
+#: "covered everything" when it did not.
+_MAX_SWEEP_CAPSULES = 128
+
+
+def resolve_extent(token, tile: int) -> int:
+    """Resolve a sweep extent token against *tile* (the binding's tile edge).
+
+    Accepts a plain int, or a tile-relative expression of the form
+    ``[<mult>*]tile[+<n>|-<n>|/<div>]`` — e.g. ``tile``, ``tile-1``, ``tile+1``,
+    ``tile/2``, ``2*tile``, ``2*tile-1``. Parsed structurally (``partition``), not
+    by pattern-matching, so an unsupported spelling raises instead of silently
+    resolving to something plausible.
+
+    The point of tile-relative tokens is that a profile never hardcodes a
+    geometry: the same sweep produces edge cases for a 16-wide command-buffer
+    tile and for a 64-wide VLMAX tile without being edited.
+    """
+    if isinstance(token, bool):
+        raise ValueError(f"sweep extent {token!r} is a bool, not an extent")
+    if isinstance(token, int):
+        if token < 1:
+            raise ValueError(f"sweep extent {token!r} must be >= 1")
+        return token
+    if not isinstance(token, str):
+        raise ValueError(f"sweep extent {token!r} is neither an int nor a tile expression")
+
+    text = token.strip()
+    mult_text, star, rest = text.partition("*")
+    if star:
+        mult = int(mult_text.strip())
+        rest = rest.strip()
+    else:
+        mult, rest = 1, text
+
+    for op in ("+", "-", "/"):
+        head, found, tail = rest.partition(op)
+        if found:
+            if head.strip() != _TILE_TOKEN:
+                raise ValueError(f"sweep extent {token!r}: expected {_TILE_TOKEN!r} before {op!r}")
+            operand = int(tail.strip())
+            base = mult * tile
+            if op == "+":
+                value = base + operand
+            elif op == "-":
+                value = base - operand
+            else:
+                if operand == 0:
+                    raise ValueError(f"sweep extent {token!r}: division by zero")
+                value = base // operand
+            break
+    else:
+        if rest.strip() != _TILE_TOKEN:
+            raise ValueError(f"sweep extent {token!r} is not a recognized tile expression")
+        value = mult * tile
+
+    if value < 1:
+        raise ValueError(f"sweep extent {token!r} resolves to {value} at tile={tile}; must be >= 1")
+    return value
+
+
+def expand_sweeps(profile: dict, binding) -> list[dict]:
+    """Return the profile's capsule entries with any ``sweeps:`` block expanded.
+
+    A sweep is a cross-product over named axes plus a shared ``base``, producing
+    exactly the flat entry dicts the per-capsule pipeline already consumes — so
+    ``_write_capsule`` and every golden path are untouched by this feature.
+
+    Two rules are enforced rather than documented:
+
+    * **A sweep over K needs at least two distinct K points.** One reduction depth
+      cannot separate a tiled unit's rate from its per-tile-pair overhead, so a
+      corpus built at a single K prices the unit confidently and wrongly. A
+      one-point K axis is a mistake, and this raises on it.
+    * **Names must be unique across generated and hand-authored entries.** A
+      collision would have one capsule overwrite another's directory, silently
+      shrinking the corpus.
+
+    Hand-written entries in ``capsules:`` are kept verbatim and come first, so a
+    profile can mix a sweep with cases whose prose is worth writing by hand.
+    """
+    entries = list(profile.get("capsules") or [])
+    sweeps = profile.get("sweeps") or []
+    if not sweeps:
+        return entries
+
+    tile = int(getattr(binding, "tile_dim", 0) or 0)
+    if tile < 1:
+        raise ValueError("sweeps need a tile edge; the binding reports none")
+
+    seen = {e.get("name") for e in entries if isinstance(e, dict)}
+    generated: list[dict] = []
+
+    for sweep in sweeps:
+        if not isinstance(sweep, dict):
+            raise ValueError(f"sweep entry {sweep!r} is not a mapping")
+        sweep_id = str(sweep.get("id") or "").strip()
+        if not sweep_id:
+            raise ValueError("every sweep needs an `id` (it prefixes the generated names)")
+        base = dict(sweep.get("base") or {})
+        axes = sweep.get("axes") or {}
+        if not isinstance(axes, dict) or not axes:
+            raise ValueError(f"sweep {sweep_id!r} declares no axes")
+
+        # Resolve each axis to concrete extents, preserving declaration order so
+        # the generated corpus is reproducible.
+        resolved: dict[str, list[int]] = {}
+        for axis, tokens in axes.items():
+            if not isinstance(tokens, list) or not tokens:
+                raise ValueError(f"sweep {sweep_id!r} axis {axis!r} must be a non-empty list")
+            resolved[axis] = [resolve_extent(t, tile) for t in tokens]
+
+        if "K" in resolved and len(set(resolved["K"])) < 2:
+            raise ValueError(
+                f"sweep {sweep_id!r} sweeps K over {resolved['K']} — a tiled unit needs at least TWO "
+                f"distinct K points, because one cannot separate the rate from the per-tile overhead")
+
+        combos = _cross_product(resolved)
+        if len(combos) > _MAX_SWEEP_CAPSULES:
+            raise ValueError(
+                f"sweep {sweep_id!r} would generate {len(combos)} capsules (cap {_MAX_SWEEP_CAPSULES}); "
+                f"narrow the axes rather than letting it be truncated")
+
+        template = str(sweep.get("name") or "{id}_{i:02d}")
+        for index, combo in enumerate(combos):
+            entry = dict(base)
+            entry.update(combo)
+            entry["name"] = template.format(id=sweep_id, i=index, **combo)
+            entry.setdefault("source_role", "derived_sweep")
+            # Provenance survives generation: say which sweep and which point.
+            reference = sweep.get("source_reference") or f"generated by sweep {sweep_id!r}"
+            axis_note = ", ".join(f"{k}={v}" for k, v in sorted(combo.items()))
+            entry["source_reference"] = f"{reference} (tile={tile}; {axis_note})"
+            if entry["name"] in seen:
+                raise ValueError(f"sweep {sweep_id!r} generated duplicate capsule name {entry['name']!r}")
+            seen.add(entry["name"])
+            generated.append(entry)
+
+    return entries + generated
+
+
+def _cross_product(axes: dict) -> list[dict]:
+    """Cross-product of ``{axis: [values]}`` preserving declaration order."""
+    combos: list[dict] = [{}]
+    for axis, values in axes.items():
+        combos = [{**combo, axis: value} for combo in combos for value in values]
+    return combos
+
+
 def _descriptor_for(target: str) -> Path:
     from merlin.common.paths import repo_root
     return (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
@@ -468,7 +623,10 @@ def generate_target(target: str) -> list[Path]:
     profile = yaml.safe_load((PROFILES / f"{target}.yaml").read_text())
     binding = CS.derive_binding(te, profile.get("datapath", {}))
     out_root = Path(te.capsule_corpus).parent                 # target's corpus root, derived (no move)
-    written = [_write_capsule(e, binding, out_root) for e in profile["capsules"]]
+    # `sweeps:` (if any) expand into the same flat entries `capsules:` holds, so
+    # everything downstream — builders, goldens, coverage — is unchanged.
+    entries = expand_sweeps(profile, binding)
+    written = [_write_capsule(e, binding, out_root) for e in entries]
     return written
 
 
