@@ -527,27 +527,40 @@ def _mx_attention_golden(entry, binding):
     V = synth(v, (Skv, Dv))
     Kt = np.ascontiguousarray(K.T)                             # device consumes K pre-transposed (K^T)
 
-    # stage 1: S = mx_matmul(Q[M,H], K^T[H,Skv]) -> bf16 scores [M, Skv]
+    # stage 1: S = mx_matmul(Q[M,H], K^T[H,Skv]) -> bf16 scores [M, Skv] (UNSCALED; the logit scale +
+    # optional soft-cap are applied inside stage 2, in the datapath-faithful order the kernel uses).
     SA_q = scales("SA_q", (H // mx.GROUP, M))
     SB_k = scales("SB_k", (H // mx.GROUP, Skv))
     S_rows, qk_art = _mx_stage_matmul(mx, Q, Kt, SA_q, SB_k, M, Skv, H, tok)
-    S = bf16_round(np.array(S_rows) * att_scale)
-    if softcap is not None:
-        cap = float(softcap)
-        S = bf16_round(cap * np.tanh(S / cap))
-
-    # stage 2: bf16 row-softmax (numerically stable: subtract row max) -> P [M, Skv]
-    P = np.zeros((M, Skv), dtype=np.float64)
-    for m in range(M):
-        r = bf16_round(S[m] - float(np.max(S[m])))
-        e = bf16_round(np.exp(r))
-        P[m] = bf16_round(e / float(np.sum(e)))
-
-    # stage 3: requant P into the format palette (per (K-group,row) E8M0), then O = mx_matmul(P, V)
-    palette = _mx_safe_palette(mx, tok)
-    P_dec, SA_p = _mx_requant_blocks(P, palette, group=mx.GROUP)      # SA_p shape [Skv/32, M]
     SB_v = scales("SB_v", (Skv // mx.GROUP, Dv))
-    O_rows, pv_art = _mx_stage_matmul(mx, P_dec, V, SA_p, SB_v, M, Dv, Skv, tok)
+
+    if not sub:
+        # stages 2-5, DATAPATH-FAITHFUL (mxfp8): the EXACT flash-kernel order — a bf16 softmax over the
+        # UNNORMALIZED exp-P, the online-softmax row denominator l (kernel reduction order), a per-32-block
+        # e4m3 requant of the UNNORMALIZED P, the PV MX matmul, then finalize O = O_unnorm * bf16(1/bf16(l)).
+        # The reference (mx_flash_ref) is validated bit-exact vs the cyclotron RTL, so the generator and the
+        # kernel share ONE arithmetic — a regeneration reproduces exactly what the kernel computes.
+        from merlin.targetgen import mx_flash_ref as MXF
+        O_arr, _P_codes, SA_p, _l, P_dec, pv_art = MXF.flash_attention_fp8(
+            mx, S_rows, V, SB_v, M=M, Skv=Skv, Dv=Dv, att_scale=att_scale, softcap=softcap)
+        O_rows = [[float(O_arr[m, j]) for j in range(Dv)] for m in range(M)]
+    else:
+        # sub-formats (mxfp6/mxfp4): the flash kernel's e4m3 requant is not defined for these, so keep the
+        # palette-requant composition unchanged (these goldens fail closed at grade time and stay identical).
+        S = bf16_round(np.array(S_rows) * att_scale)
+        if softcap is not None:
+            cap = float(softcap)
+            S = bf16_round(cap * np.tanh(S / cap))
+        # bf16 row-softmax (numerically stable: subtract row max) -> P [M, Skv]
+        P = np.zeros((M, Skv), dtype=np.float64)
+        for m in range(M):
+            r = bf16_round(S[m] - float(np.max(S[m])))
+            e = bf16_round(np.exp(r))
+            P[m] = bf16_round(e / float(np.sum(e)))
+        # requant P into the format palette (per (K-group,row) E8M0), then O = mx_matmul(P, V)
+        palette = _mx_safe_palette(mx, tok)
+        P_dec, SA_p = _mx_requant_blocks(P, palette, group=mx.GROUP)  # SA_p shape [Skv/32, M]
+        O_rows, pv_art = _mx_stage_matmul(mx, P_dec, V, SA_p, SB_v, M, Dv, Skv, tok)
 
     prov = {
         q: {"shape": [M, H], "decoded": Q.reshape(-1).tolist()},
