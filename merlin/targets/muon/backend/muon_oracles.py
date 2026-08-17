@@ -348,13 +348,16 @@ def default_adapters() -> dict[str, Callable]:
     a non-mandatory, never-blocking ``executability`` tier (RTL-legality grounding for the L2 oracle)."""
     import os
     adapters: dict[str, Callable] = {"L2": cyclotron_adapter(), "L3": verilator_muon_adapter()}
-    # When the GSIM emu is present, use the (much faster) RTL-derived GSIM model as the L3 cert and keep the
-    # Verilator cert available alongside as ``L3-verilator``. Both grade the SAME fork-free ELF on the SAME
-    # RTL completion contract; GSIM (FIRRTL->C++) is ~an order of magnitude faster than Verilator. When the
-    # env is unset, L3 stays Verilator and a normal grade is byte-identical.
+    # When the GSIM emu is present, use the (much faster) RTL-derived GSIM model as the L3 cert. Both grade
+    # the SAME fork-free ELF on the SAME RTL completion contract; GSIM (FIRRTL->C++) is ~an order of magnitude
+    # faster than Verilator. When the env is unset, L3 stays Verilator and a normal grade is byte-identical.
+    # The Verilator cert is NOT kept alongside by default: the runner executes every adapter in the tier map,
+    # so a co-resident ``L3-verilator`` would run the slow Verilator sim on every capsule and erase GSIM's
+    # whole speed advantage. Opt in to the (advisory) cross-check with MERLIN_MUON_L3_VERILATOR_ALSO.
     if os.environ.get("MERLIN_MUON_GSIM_EMU", "").strip():
         adapters["L3"] = gsim_muon_adapter()
-        adapters["L3-verilator"] = verilator_muon_adapter()
+        if os.environ.get("MERLIN_MUON_L3_VERILATOR_ALSO", "").strip().lower() in ("1", "true", "yes", "on"):
+            adapters["L3-verilator"] = verilator_muon_adapter()
     if os.environ.get("MERLIN_EXEC_SMOKE", "").strip().lower() in ("1", "true", "yes", "on"):
         adapters["L3-smoke"] = verilator_smoke_adapter()
     # Offline L2-only certification: L3 is an RTL-cert tier that NEVER gates a capsule (required tiers are
