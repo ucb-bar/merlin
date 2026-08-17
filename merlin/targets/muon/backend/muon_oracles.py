@@ -357,4 +357,11 @@ def default_adapters() -> dict[str, Callable]:
         adapters["L3-verilator"] = verilator_muon_adapter()
     if os.environ.get("MERLIN_EXEC_SMOKE", "").strip().lower() in ("1", "true", "yes", "on"):
         adapters["L3-smoke"] = verilator_smoke_adapter()
+    # Offline L2-only certification: L3 is an RTL-cert tier that NEVER gates a capsule (required tiers are
+    # L0/L1/L2), and a full-corpus Verilator L3 sweep costs many hours. When MERLIN_MUON_SKIP_RTL_L3 is set,
+    # drop every RTL-cert tier (L3*/L4/L5) so the runner certifies the required functional ladder quickly;
+    # the required L2 (cyclotron) oracle is untouched, so a pass means exactly what it did before.
+    if os.environ.get("MERLIN_MUON_SKIP_RTL_L3", "").strip().lower() in ("1", "true", "yes", "on"):
+        adapters = {t: a for t, a in adapters.items()
+                    if not (t.startswith("L3") or t in ("L4", "L5"))}
     return adapters
