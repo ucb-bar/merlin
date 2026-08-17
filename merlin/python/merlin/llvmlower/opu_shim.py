@@ -69,16 +69,29 @@ class ShimUnit(str):
         return self
 
 
-def scratch_bytes_for(signatures: Mapping[str, tuple[int, int, int]]) -> int:
+def is_batched(sig: Sequence[int]) -> bool:
+    """Whether a signature is ``(B, M, N, K)`` rather than ``(M, N, K)``.
+
+    The arity IS the discriminator — a batched contraction has one more parallel dim, and that is the
+    whole difference between the two entry shapes. Keeping it a length test rather than a flag means a
+    caller cannot pass a batched signature and forget to say so.
+    """
+    return len(tuple(sig)) == 4
+
+
+def scratch_bytes_for(signatures: Mapping[str, Sequence[int]]) -> int:
     """Bytes the left-operand pack needs: the largest ``M * K`` any signature in this unit will pack.
 
     One buffer serves every signature because model inference calls them in sequence — the pack is dead
     the moment the kernel returns. Sizing it to the maximum rather than per signature is what keeps this
     from being 5 buffers and ~600 KB of ``.bss`` for spectformer instead of ~200 KB.
+
+    A BATCHED signature packs one batch slice at a time, so its demand is ``M * K`` too, not ``B * M * K``
+    — the batch loop reuses the same buffer, which is only sound because the slices run in sequence.
     """
     if not signatures:
         return DEFAULT_SCRATCH_BYTES
-    return max(int(m) * int(k) for (m, _n, k) in signatures.values())
+    return max(int(s[-3]) * int(s[-1]) for s in signatures.values())
 
 
 def emit_translation_unit(encodings: Mapping[str, Any],
@@ -114,14 +127,16 @@ def emit_translation_unit(encodings: Mapping[str, Any],
                     scratch_bytes=need, symbols=tuple(sorted(signatures)))
 
 
-def _entry(symbol: str, sig: tuple[int, int, int], kernel_func: str) -> str:
-    """One MLIR-ABI entry point.
+def _entry(symbol: str, sig: Sequence[int], kernel_func: str) -> str:
+    """One MLIR-ABI entry point, rank-2 or rank-3 according to the signature's arity.
 
     Every entry is the same code — the shared body reads its extents from the descriptors. They exist as
     separate symbols only because MLIR function types are monomorphic, so a 256x196/K=768 contraction and
     a 196x1024/K=256 one cannot call the same declaration. The generated-time extents go into a comment
     and a cheap consistency check, never into the arithmetic.
     """
+    if is_batched(sig):
+        return _batched_entry(symbol, sig)
     m, n, k = (int(v) for v in sig)
     return f"""
 /* {symbol}: generated for M={m} N={n} K={k} (packs {m * k} bytes of left operand). The extents are
@@ -137,6 +152,65 @@ merlin_memref_2d_i32 {symbol}(
   return merlin_opu_shim_gemm_i8(a_alloc, a_aligned, a_off, a_s0, a_s1, a_st0, a_st1,
                                  b_alloc, b_aligned, b_off, b_s0, b_s1, b_st0, b_st1,
                                  c_alloc, c_aligned, c_off, c_s0, c_s1, c_st0, c_st1);
+}}"""
+
+
+def _batched_entry(symbol: str, sig: Sequence[int]) -> str:
+    """A rank-3 entry: one batch of independent contractions, run as a loop over the rank-2 body.
+
+    The batch dimension is a LOOP, not a third tile axis. The unit contracts two dimensions and reduces a
+    third; a batch is just many of those, and each slice's operands and result are disjoint, so the whole
+    batched form is the existing certified path called `B` times with the leading offset advanced. That is
+    why this reuses `merlin_opu_shim_gemm_i8` rather than growing a second kernel: every legality check
+    (density, alignment, scratch capacity) and the scalar fallback come along unchanged, and the code the
+    unit executes is still the certified microkernel.
+
+    Offsets rather than pointers: the descriptor's `offset` is in ELEMENTS, so advancing it by
+    `b * stride0` names the slice base without any cast, and the rank-2 body sees exactly the descriptor
+    it would have seen had the slice been passed directly.
+
+    The pack scratch is reused across slices, which is sound only because the slices run in sequence
+    here -- see `scratch_bytes_for`, which sizes for one slice for the same reason.
+    """
+    b, m, n, k = (int(v) for v in sig)
+    return f"""
+/* {symbol}: generated for B={b} M={m} N={n} K={k} (packs {m * k} bytes per batch slice). The extents are
+ * re-read from the descriptors below, so this entry stays correct if it is ever called with others. */
+merlin_memref_3d_i32 {symbol}(
+    int8_t *a_alloc, int8_t *a_aligned, intptr_t a_off, intptr_t a_s0, intptr_t a_s1, intptr_t a_s2,
+    intptr_t a_st0, intptr_t a_st1, intptr_t a_st2,
+    int8_t *b_alloc, int8_t *b_aligned, intptr_t b_off, intptr_t b_s0, intptr_t b_s1, intptr_t b_s2,
+    intptr_t b_st0, intptr_t b_st1, intptr_t b_st2,
+    int32_t *c_alloc, int32_t *c_aligned, intptr_t c_off, intptr_t c_s0, intptr_t c_s1, intptr_t c_s2,
+    intptr_t c_st0, intptr_t c_st1, intptr_t c_st2)
+{{
+  merlin_memref_3d_i32 ret;
+  ret.allocated = c_alloc; ret.aligned = c_aligned; ret.offset = c_off;
+  ret.sizes[0] = c_s0; ret.sizes[1] = c_s1; ret.sizes[2] = c_s2;
+  ret.strides[0] = c_st0; ret.strides[1] = c_st1; ret.strides[2] = c_st2;
+
+  for (intptr_t bi = 0; bi < c_s0; ++bi) {{
+    merlin_opu_shim_gemm_i8(a_alloc, a_aligned, a_off + bi * a_st0, a_s1, a_s2, a_st1, a_st2,
+                            b_alloc, b_aligned, b_off + bi * b_st0, b_s1, b_s2, b_st1, b_st2,
+                            c_alloc, c_aligned, c_off + bi * c_st0, c_s1, c_s2, c_st1, c_st2);
+    /* WAR on the pack scratch, and it is specific to the batched form. Every slice packs into the SAME
+     * buffer, so slice bi+1's scalar stores target bytes slice bi's kernel read -- and on a decoupled
+     * vector machine the scalar core runs ahead of the vector load/store unit, so those stores can land
+     * while the previous slice's operand loads are still outstanding. The rank-2 path cannot hit this:
+     * it packs once and never writes the buffer again while a kernel is reading it.
+     *
+     * Neither of the two things that would have caught it can: the acceptance corpus hands the kernel
+     * pre-transposed operands and never packs, and spike orders memory functionally.
+     *
+     * Guarded on the ISA rather than on the scalar stand-in: the host build of this same source is the
+     * one the unit tests compile and run, and it is not RISC-V. */
+#ifdef __riscv
+    __asm__ volatile("fence rw, rw" ::: "memory");
+#else
+    __asm__ volatile("" ::: "memory");   /* the compiler-barrier half, which is all a host needs */
+#endif
+  }}
+  return ret;
 }}"""
 
 
@@ -175,6 +249,17 @@ typedef struct {{
   intptr_t sizes[2];
   intptr_t strides[2];
 }} merlin_memref_2d_i32;
+
+/* The rank-3 form, for batched contractions. Same layout one rank up -- the lowered convention passes a
+ * memref as (allocated, aligned, offset, sizes..., strides...), so the rank decides the arity and
+ * nothing else changes. */
+typedef struct {{
+  int32_t *allocated;
+  int32_t *aligned;
+  intptr_t offset;
+  intptr_t sizes[3];
+  intptr_t strides[3];
+}} merlin_memref_3d_i32;
 
 /* Byte alignment the unit's operand loads require of a panel BASE, derived from its datapath width
  * (dLen/8). A multi-beat load from a misaligned base returns a wrong second beat; see the module

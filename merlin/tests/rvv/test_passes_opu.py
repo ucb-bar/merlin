@@ -87,9 +87,11 @@ class TestWhatItRefuses:
         assert PO.routable_contractions(mod) == []
         assert PO.rewrite_contractions_to_opu(mod, select=_ALL).count == 0
 
-    def test_a_batch_contraction_is_not_routed(self):
-        # A contract declaring `matmul` gaps batch_matmul; folding the batch dim into the tile would
-        # compute something the contract never promised.
+    def test_a_batch_contraction_is_routed_as_a_loop_over_slices(self):
+        # A batch dim is admitted, but as a LOOP: the callee runs the certified rank-2 kernel once per
+        # slice. What must never happen is the batch being folded into the tile, which would compute
+        # something the hardware never promised -- so the signature has to keep it as a separate leading
+        # extent and the tile extents have to stay the LAST two.
         text = _INT8_MM.replace(
             "affine_map<(d0, d1, d2) -> (d0, d2)>,\n                                          "
             "affine_map<(d0, d1, d2) -> (d2, d1)>,\n                                          "
@@ -103,10 +105,17 @@ class TestWhatItRefuses:
             "tensor<32x16xi8>", "tensor<4x32x16xi8>").replace(
             "tensor<64x16xi32>", "tensor<4x64x16xi32>")
         mod = _module(text)
-        assert all(sh.op == PO.ROUTABLE_OP for _op, sh in PO.routable_contractions(mod)), \
-            "a batch contraction must not be classified as the rank-2 class"
+        found = PO.routable_contractions(mod)
+        assert found, "a batched int8 contraction is routable now that the callee can loop the batch"
+        rewrite = PO.rewrite_contractions_to_opu(mod, select=lambda _sh: True)
+        (sig,) = rewrite.signatures.values()
+        assert tuple(sig) == (4, 64, 16, 32), \
+            "the batch must stay a leading extent, with M and N the last two"
+        (routed,) = rewrite.routed
+        assert (routed.batch, routed.m, routed.n, routed.k) == (4, 64, 16, 32)
 
-    def test_the_routable_op_class_is_the_rank_two_one(self):
+    def test_the_routable_classes_name_their_parallel_rank(self):
+        assert PO.ROUTABLE_OPS == {"linalg.matmul": 2, "linalg.batch_matmul": 3}
         assert PO.ROUTABLE_OP == "linalg.matmul"
         assert PO.INT8_DTYPES == ("i8", "i8", "i32")
 
@@ -274,24 +283,41 @@ class TestOnTheRealPreparedModel:
         return parse_mlir_file(_PREPARED)
 
     def test_it_finds_exactly_the_census_count(self, prepared):
-        # The workload census records 90 linalg.matmul + 16 linalg.batch_matmul for spectformer; the
-        # batch ones must not appear here.
-        assert len(PO.routable_contractions(prepared)) == 90
+        # The workload census records 90 linalg.matmul + 16 linalg.batch_matmul for spectformer, and
+        # both classes are candidates now that the callee loops a batch over the rank-2 kernel.
+        found = PO.routable_contractions(prepared)
+        assert len(found) == 106
+        assert sum(1 for _op, sh in found if len(sh.parallel) == 3) == 16
 
-    def test_every_candidate_is_int8_rank_two(self, prepared):
+    def test_every_candidate_is_int8_and_contracts_exactly_two_dims(self, prepared):
         for _op, sh in PO.routable_contractions(prepared):
             assert tuple(sh.dtypes) == PO.INT8_DTYPES
-            assert len(sh.parallel) == 2 and len(sh.reduction) == 1
+            # Two tile dims and one reduction, whatever the rank: anything else would mean a batch had
+            # been folded into the tile.
+            assert len(sh.parallel) in (2, 3) and len(sh.reduction) == 1
 
     def test_a_tile_filling_selector_splits_the_work_dominant_shapes_out(self, prepared):
         from merlin.frontends.linalg_mlir import parse_mlir_file
         mod = parse_mlir_file(_PREPARED)
         got = PO.rewrite_contractions_to_opu(mod, select=lambda s: min(s.parallel) >= 32)
-        # 41 of 90: the matmul/im2col families that can fill a 32-edge tile. The remaining 49 are the
-        # FFT-family N in {8,14} plus the 1x1000 classifier, together ~1% of the arithmetic.
+        # 41 of 106: the matmul/im2col families that can fill a 32-edge tile. This selector reads MIN OF
+        # ALL parallel dims, so it also declines the 16 batched ones on their batch extent of 4 — which
+        # is why 65 remain rather than 49, and why the real selector below looks at the tile dims only.
         assert got.count == 41
-        assert len(PO.routable_contractions(mod)) == 49
+        assert len(PO.routable_contractions(mod)) == 65
         assert got.skipped == ()
+
+    def test_the_real_tile_filling_selector_takes_the_batched_shapes_too(self, prepared):
+        # `tile_filling_selector` judges the LAST TWO parallel extents, because a batch dim is a loop
+        # over slices and says nothing about how full a tile each slice makes. At the device's edge of
+        # 64 that adds attention's QK^T and attn.V — 11.89% of the model's runtime — to the 41.
+        from merlin.frontends.linalg_mlir import parse_mlir_file
+        mod = parse_mlir_file(_PREPARED)
+        got = PO.rewrite_contractions_to_opu(mod, select=PO.tile_filling_selector(64))
+        assert got.count == 57
+        assert sum(1 for r in got.routed if r.batch > 1) == 16
+        batched = {tuple(s) for s in got.signatures.values() if len(s) == 4}
+        assert batched == {(4, 196, 196, 64), (4, 196, 64, 196)}
 
     def test_the_dominant_shapes_are_among_the_signatures(self, prepared):
         from merlin.frontends.linalg_mlir import parse_mlir_file

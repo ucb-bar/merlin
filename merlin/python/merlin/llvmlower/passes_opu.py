@@ -68,10 +68,18 @@ SYMBOL_PREFIX = "merlin_opu_gemm_i8"
 #: ``ContractionShape.dtypes``, which is positionally ``(lhs, rhs, out)``.
 INT8_DTYPES: tuple[str, str, str] = ("i8", "i8", "i32")
 
-#: Only the rank-2 class. ``linalg.batch_matmul`` is deliberately NOT routed: a contract declaring
-#: ``matmul`` gaps it, which is the correct fail-closed reading, and silently folding a batch dim into
-#: the tile would compute something the contract never promised. For spectformer that leaves 16 of 106
-#: contractions on the vector path, which is a coverage fact to report rather than to paper over.
+#: ``{op: number of PARALLEL dims}``. A batch dimension is a LOOP over the rank-2 contraction, never a
+#: third tile axis -- the unit contracts two dims and reduces a third, and folding a batch into the tile
+#: would compute something the hardware never promised. So the batched form is admitted only because the
+#: callee runs the *same certified rank-2 kernel* once per slice, on operands the slices do not share.
+#:
+#: This was deliberately matmul-only until the cost of the gap was measured: `linalg.batch_matmul` is
+#: 11.89% of spectformer's runtime (attention's QK^T and attn.V) and the vector path runs it at 0.248
+#: MACs/cycle, its narrow-shape floor. Declining it was the right fail-closed default while the callee
+#: could only do rank 2; it is not right once the callee can do the batch.
+ROUTABLE_OPS: dict[str, int] = {"linalg.matmul": 2, "linalg.batch_matmul": 3}
+
+#: Retained for callers that ask what the rank-2 class is called.
 ROUTABLE_OP = "linalg.matmul"
 
 
@@ -85,12 +93,18 @@ class Routed:
     fqn: str = ""
 
     @property
+    def batch(self) -> int:
+        """Leading batch extent, or 1 when the contraction is rank-2. The batch is a LOOP over slices."""
+        return int(self.parallel[0]) if len(self.parallel) == 3 else 1
+
+    @property
     def m(self) -> int:
-        return int(self.parallel[0])
+        # Counted from the END, so a batch dim in front does not shift M and N onto the wrong extents.
+        return int(self.parallel[-2])
 
     @property
     def n(self) -> int:
-        return int(self.parallel[1])
+        return int(self.parallel[-1])
 
     @property
     def k(self) -> int:
@@ -102,8 +116,9 @@ class OpuRewrite:
     """What the rewrite did. ``signatures`` is what the C side must define."""
 
     routed: tuple[Routed, ...] = ()
-    #: ``{symbol: (m, n, k)}`` — one entry per DISTINCT type signature actually called.
-    signatures: dict[str, tuple[int, int, int]] = field(default_factory=dict)
+    #: ``{symbol: (m, n, k)}``, or ``(b, m, n, k)`` for a batched one — one entry per DISTINCT type
+    #: signature actually called. The arity is what tells the C emitter which entry shape to generate.
+    signatures: dict[str, tuple[int, ...]] = field(default_factory=dict)
     skipped: tuple[tuple[str, str], ...] = ()      # (what, why)
 
     @property
@@ -112,8 +127,8 @@ class OpuRewrite:
 
     def to_dict(self) -> dict[str, Any]:
         return {"count": self.count,
-                "routed": [{"symbol": r.symbol, "m": r.m, "n": r.n, "k": r.k, "fqn": r.fqn}
-                           for r in self.routed],
+                "routed": [{"symbol": r.symbol, "b": r.batch, "m": r.m, "n": r.n, "k": r.k,
+                            "fqn": r.fqn} for r in self.routed],
                 "signatures": {k: list(v) for k, v in self.signatures.items()},
                 "skipped": [{"what": w, "why": y} for w, y in self.skipped]}
 
@@ -172,11 +187,12 @@ def routable_contractions(module) -> list[tuple[Any, Any]]:
 
     out: list[tuple[Any, Any]] = []
     for op, shape in observe_contractions(module):
-        if shape.op != ROUTABLE_OP:
+        want_parallel = ROUTABLE_OPS.get(shape.op)
+        if want_parallel is None:
             continue
         if tuple(shape.dtypes) != INT8_DTYPES:
             continue
-        if len(shape.parallel) != 2 or len(shape.reduction) != 1:
+        if len(shape.parallel) != want_parallel or len(shape.reduction) != 1:
             continue
         if not zero_initialised(op):
             continue
@@ -184,8 +200,14 @@ def routable_contractions(module) -> list[tuple[Any, Any]]:
     return out
 
 
-def _signature_key(shape) -> tuple[int, int, int]:
-    return (int(shape.parallel[0]), int(shape.parallel[1]), int(shape.reduction[0]))
+def _signature_key(shape) -> tuple[int, ...]:
+    """``(M, N, K)``, or ``(B, M, N, K)`` when the contraction carries a batch dim.
+
+    The key IS the callee's identity: MLIR function types are monomorphic, so two contractions share a
+    symbol only if every extent agrees — and a batched one cannot share with a rank-2 one even at the
+    same M/N/K, because the descriptors it is passed have a different arity.
+    """
+    return (*(int(d) for d in shape.parallel), int(shape.reduction[0]))
 
 
 def rewrite_contractions_to_opu(module, *,
@@ -345,7 +367,9 @@ def tile_filling_selector(tile_edge: int) -> Callable[[Any], bool]:
                          "vector length and a guessed one selects the wrong contractions")
 
     def select(shape) -> bool:
-        return min(int(shape.parallel[0]), int(shape.parallel[1])) >= edge
+        # The LAST TWO parallel extents are the tile's, whatever the rank: a batch dim in front is a loop
+        # over slices and says nothing about how full a tile each slice makes.
+        return min(int(shape.parallel[-2]), int(shape.parallel[-1])) >= edge
 
     return select
 
@@ -399,17 +423,24 @@ def load_sidecar(work: "str | Path") -> dict[str, tuple[int, int, int]]:
         raise ValueError(f"{path} records no usable `signatures` map")
     out: dict[str, tuple[int, int, int]] = {}
     for sym, extents in sigs.items():
-        if not isinstance(extents, (list, tuple)) or len(extents) != 3:
-            raise ValueError(f"{path}: signature {sym!r} is not an (m, n, k) triple: {extents!r}")
-        out[str(sym)] = (int(extents[0]), int(extents[1]), int(extents[2]))
+        if not isinstance(extents, (list, tuple)) or len(extents) not in (3, 4):
+            raise ValueError(f"{path}: signature {sym!r} is not an (m, n, k) triple or a "
+                             f"(b, m, n, k) quad: {extents!r}")
+        out[str(sym)] = tuple(int(e) for e in extents)
     return out
 
 
-def _signature_types(module, key: tuple[int, int, int]):
-    """The three tensor types for one signature, built from the element types this path computes."""
+def _signature_types(module, key: tuple[int, ...]):
+    """The three tensor types for one signature, built from the element types this path computes.
+
+    A leading batch extent is carried through onto all three operands: the callee takes the whole batch
+    and loops over it, so its type is rank-3 throughout rather than a rank-2 type called several times.
+    """
     from xdsl.dialects.builtin import IntegerType, TensorType
 
-    m, n, k = key
+    *batch, m, n, k = (int(v) for v in key)
     i8 = IntegerType(8)
     i32 = IntegerType(32)
-    return (TensorType(i8, [m, k]), TensorType(i8, [k, n]), TensorType(i32, [m, n]))
+    return (TensorType(i8, [*batch, m, k]),
+            TensorType(i8, [*batch, k, n]),
+            TensorType(i32, [*batch, m, n]))

@@ -353,6 +353,73 @@ class TestRefusesToGuess:
         assert "0x51" in base and "0x51" not in shifted
 
 
+class _Memref3D(ctypes.Structure):
+    _fields_ = [("allocated", ctypes.c_void_p), ("aligned", ctypes.c_void_p),
+                ("offset", ctypes.c_ssize_t),
+                ("sizes", ctypes.c_ssize_t * 3), ("strides", ctypes.c_ssize_t * 3)]
+
+
+class TestBatchedContractions:
+    """A batch dimension is a LOOP over the certified rank-2 path, never a third tile axis.
+
+    The unit contracts two dims and reduces a third, so the only sound way to admit `batch_matmul` is to
+    run the same kernel once per slice. These check the two things that can go wrong in that translation
+    and produce a plausible wrong answer rather than a crash: the rank-3 descriptor being unpacked at the
+    wrong positions (one more size and one more stride than the rank-2 form), and the per-slice offset
+    arithmetic pointing at the wrong slice.
+
+    Routing these was the largest measured gap in the compile path — `linalg.batch_matmul` is 11.89% of
+    spectformer's runtime, at 0.248 MACs/cycle on the vector path.
+    """
+
+    @staticmethod
+    def _call_batched(lib, symbol, a, b, *, batch, m, n, k):
+        c = np.zeros((batch, m, n), dtype=np.int32)
+
+        def unpack(buf, sizes, strides, ctype):
+            base = ctypes.cast(buf, ctypes.c_void_p)
+            return [base, base, ctypes.c_ssize_t(0),
+                    *[ctypes.c_ssize_t(s) for s in sizes],
+                    *[ctypes.c_ssize_t(s) for s in strides]]
+
+        fn = getattr(lib, symbol)
+        fn.restype = _Memref3D
+        fn.argtypes = None
+        fn(*unpack(a.ctypes.data_as(ctypes.c_void_p), (batch, m, k), (m * k, k, 1), None),
+           *unpack(b.ctypes.data_as(ctypes.c_void_p), (batch, k, n), (k * n, n, 1), None),
+           *unpack(c.ctypes.data_as(ctypes.c_void_p), (batch, m, n), (m * n, n, 1), None))
+        return c
+
+    @pytest.mark.parametrize("batch,m,n,k", [(4, 196, 196, 64), (4, 196, 64, 196),
+                                             (3, 17, 33, 5), (1, 64, 64, 64), (2, 1, 1, 1)])
+    def test_every_slice_gets_its_own_contraction(self, tmp_path, batch, m, n, k):
+        # spectformer's two real attention shapes, plus a batch that is not a power of two with short
+        # tails, plus the degenerate ends. A slice-offset bug shows up as one correct slice and the rest
+        # repeating it, which array_equal against a per-slice reference catches.
+        lib = _build({"merlin_opu_gemm_i8_0": (batch, m, n, k)}, tmp_path, edge=64)
+        rng = np.random.default_rng(11)
+        a = rng.integers(-128, 128, size=(batch, m, k), dtype=np.int8)
+        b = rng.integers(-128, 128, size=(batch, k, n), dtype=np.int8)
+        got = self._call_batched(lib, "merlin_opu_gemm_i8_0", a, b, batch=batch, m=m, n=n, k=k)
+        want = np.stack([_expected(a[i], b[i]) for i in range(batch)])
+        np.testing.assert_array_equal(got, want)
+
+    def test_slices_are_not_all_the_same_answer(self, tmp_path):
+        """Guards the test above: with identical slices, a slice-offset bug would pass unnoticed."""
+        batch, m, n, k = 4, 196, 196, 64
+        lib = _build({"merlin_opu_gemm_i8_0": (batch, m, n, k)}, tmp_path, edge=64)
+        rng = np.random.default_rng(3)
+        a = rng.integers(-128, 128, size=(batch, m, k), dtype=np.int8)
+        b = rng.integers(-128, 128, size=(batch, k, n), dtype=np.int8)
+        got = self._call_batched(lib, "merlin_opu_gemm_i8_0", a, b, batch=batch, m=m, n=n, k=k)
+        assert not np.array_equal(got[0], got[1]), "the slices must differ or the test proves nothing"
+
+    def test_the_scratch_is_sized_per_slice_not_per_batch(self):
+        """The batch loop reuses one pack buffer, so `B` does not multiply the demand."""
+        assert scratch_bytes_for({"s": (8, 196, 256, 1024)}) == 196 * 1024
+        assert scratch_bytes_for({"s": (196, 256, 1024)}) == 196 * 1024
+
+
 class TestTheTileLoopIsParallel:
     """The tile loop is where a chip with one unit PER CORE reaches its extra units.
 
