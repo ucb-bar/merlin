@@ -3,7 +3,7 @@ title: "Design: incremental target evolution — RVV + Saturn OPU as the driving
 kind: design
 status: draft
 owner: targetgen
-last_verified: 2026-08-15
+last_verified: 2026-08-17
 related: [beam_cca_architecture, target_onboarding, lowering_pipeline, llvm_integration, reproducibility]
 code_refs:
   - merlin/python/merlin/targetgen/compute_units.py
@@ -450,7 +450,7 @@ back-edge was compressed.
 | L3 | microkernel numerics, frozen shape corpus | **OPU Verilator RTL — PASSED 31/31** (§8c.2), + 1 of 5 workload shapes (§5.2) |
 | L4 | single-dispatch numerics incl. epilogue | **OPU Verilator RTL — PASSED 6/6** (§5.2) |
 | L5 | whole-model numerics | **Kodiak+OPU FireSim — PASSED bit-exact** (§5.3) |
-| L6 | whole-model cycles | **1.328× over the RVV control on that same bitstream** (§5.3) |
+| L6 | whole-model cycles | **1.345× over the RVV control on that same bitstream** (§5.3, §5.4) |
 
 ### 5.2 L4 passed, and it moved the corpus's centre of gravity
 
@@ -568,14 +568,71 @@ MACs occupy only 27.96% of the TIME** — quoting the MAC figure as an Amdahl bo
 is measuring the wrong denominator, and an earlier revision of this section did exactly that.
 
 Against the right denominator: making every `linalg.matmul` free would give **1.388×**, and the measured
-**1.328× is 95.7% of that**. Concretely, routing eliminated **88.4% of all matmul time**
-(1,317,311,796 of 1,489,701,062 cycles), leaving 172,389,266 cycles to do the same 1,682,702,336 MACs —
-**9.76 MACs/cycle effective** for the routed path including K-major packing and dispatch. The device
-runs at **1.041× the non-matmul floor**. The unit has essentially removed matmul as a cost; what is left
-is the other 72% of the model.
+**1.328× is 95.7% of that**. The unit has essentially removed matmul as a cost; what is left is the other
+72% of the model. The largest remaining routable block is **`batch_matmul` at 11.89%** — 16 contractions
+the matmul-only contract correctly declines today — not any amount of extra unit throughput.
 
-The largest remaining routable block is therefore **`batch_matmul` at 11.89%** — 16 contractions the
-matmul-only contract correctly declines today — not any amount of extra unit throughput.
+### 5.4 What the unit's utilization actually is, measured per contraction
+
+An earlier revision of this section priced the routed region by SUBTRACTION — the control's matmul share
+minus the whole-model saving — and got 172,389,266 cycles at 9.76 MACs/cycle. That inference assumes the
+two legs spend identical time everywhere else, and they do not. **Measured directly it is 114,276,780
+cycles**, 33% less. The measurement is available because the routing rewrite leaves each contraction as a
+top-level `call` WITH a result in `@forward`, which is exactly what `op_profile.instrument` marks: a
+profiled DEVICE image reports all 41 routed contractions individually, so the region is a division rather
+than a difference. (The join has one trap: the instrumented module has been round-tripped through
+`mlir-opt`, so `func.call` is recorded as `call`. Matching only the qualified spelling finds nothing and
+reads as "the calls were never profiled".)
+
+**Peak is derived, not quoted.** An `OuterProductCell` computes one int8 product per cycle
+(`OuterProductUnit.scala:69`); a cluster is `(cWidth/aWidth) × (cWidth/bWidth)` = 4×4 cells and the array
+is `(dLen/aWidth)/clusterY` × `(dLen/bWidth)/clusterX` = 8×8 clusters, so `KodiakOPU1CoreConfig`
+(vLen 512, dLen 256) is **32×32 = 1024 int8 MACs/cycle**. The same derivation gives 256 for
+`OPUV256D128ShuttleConfig`, so it is geometry rather than a fitted constant. The logical 64×64 tile the
+software sees is held across `(vLen/dLen)² = 4` MRF sub-tiles, so a full-tile accumulate cannot beat
+4 cycles.
+
+| level | rate | fraction of peak | what it excludes |
+| --- | --- | --- | --- |
+| whole model | 0.42 MACs/cyc | **0.04%** | nothing |
+| routed region (41 calls, 114,276,780 cyc) | 14.72 | **1.44%** | the rest of the model |
+| certified microkernel, full tile | 142.8 | 13.95% | packing, dispatch, tails |
+
+The three losses are independent and multiply: the kernel is **7.2× off peak** even on a full tile, the
+pack costs **another ~10×**, and the unit is **idle for 97.15%** of the run.
+
+**87% of the routed region was not the unit, and it was one loop.** Against the unit's own certified cost
+model (142.8 MACs/cyc steady, 2079.5 cycles/tile-pair, both solved from the L3 certification) the 41
+contractions should cost 14,877,926 cycles; they cost 114,276,780. The excess divided by packed elements
+is **21.3–26.6 cycles per element across five shapes whose pack sizes differ by 4×** — a constant
+per-byte cost, which is a cache miss per store rather than anything shape-dependent, and 25 cyc ×
+4,009,984 elements ≈ the 99.4M excess. The shim transposed `A` into K-major by writing `pack[kk*M + i]`
+down a column of `k`, so consecutive stores landed `M` bytes apart and each line was re-fetched once per
+row of `A`. Blocking that loop is bit-exact on hardware and leaves `build_hash` unchanged (only the shim
+moved):
+
+| leg | cycles | vs control | grade |
+| --- | --- | --- | --- |
+| device, naive pack | 4,010,140,489 | 1.328× | `w8a8` cos 1.0, max_rel 0.0 |
+| device, blocked pack | **3,960,882,937** | **1.345×** | `w8a8` cos 1.0, max_rel 0.0 |
+
+That is 49,257,552 cycles — 1.23% of the model, about half the pack excess. The remainder is still ~12.5
+cycles/element, so the loop is improved rather than solved; the structural fix is to stop packing at all
+(consume an already-K-major `A`, of which the model has some: `linalg.transpose` is 7.92% of the run).
+
+**A negative result worth recording: the vector-length declaration does not matter here.** Both L5/L6
+legs were compiled `zvl256b` on a VLEN-512 machine, which looked like a handicapped baseline —
+`perop_nr_cap()` returns 16 at 256 and 32 at 512, turning fractional-LMUL ops into whole-register ones,
+and its own docstring says whether that is faster "is a cycle question we cannot answer without that
+chip". Measured on that chip: the control runs **5,325,754,854** cycles at 512 against **5,327,452,285**
+at 256, a **0.03%** difference, and the device is likewise flat (3,963,688,012 vs 3,960,882,937). The
+emitted code genuinely differs (`build_hash` 288975f5cfeb vs a1fdc60cba87); the cycle count does not. So
+**1.328× was not measured against an under-targeted control**, and the open question in `perop_nr_cap` has
+an answer for this chip: no.
+
+All six legs, every one graded `w8a8` cos 1.0 / max_rel 0.0, are recorded with the bitstream digest and
+the pin verified against the sources actually read, at
+`out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/spectformer_int8_full/opu_utilization_v1_*`.
 
 **The vector unit is priced too, from the same run.** 90 `linalg.matmul` ops are individually profiled;
 they carry no `prov.fqn` (the quant/blocking rewrites drop it) but their result types carry M and N, and
@@ -1246,6 +1303,42 @@ reasoning could not. And **reading the RTL**, which is ours: the mechanism, the 
 the fix all fell out of thirty lines of the sequencer. The stable mismatch count (identical across
 structurally different binaries) was the signal that something deterministic was wrong, and it was twice
 explained away as garbage.
+
+## 8d. What a multicore, OPU-per-core chip needs that this path does not have
+
+Everything above is **one** Shuttle tile with **one** OPU. A Kodiak-like chip with an OPU per core is a
+different target for the software in three specific ways, all found by reading the code and the RTL
+rather than by running anything — none of them announces itself, and two of them produce a *correct*
+answer while being wrong.
+
+**1. Nothing splits a routed contraction across cores, and the failure is silent.** Multicore reaches
+the RVV path as an outer `scf.forall` introduced by `pipeline.parallel_transform_schedule`, which matches
+`ops{["linalg.matmul"]}` and `ops{["linalg.batch_matmul"]}`. But routing runs earlier, in
+`prepare_for_lowering`, and has already turned those contractions into `call`s — the tagged IR carries 49
+`linalg.matmul` and 41 `call`. So an N-hart build splits the 49 and leaves all 41 routed contractions on
+whichever hart runs `@forward`: **N OPUs present, one used**. `parallel_harts` and `matrix=` are passed
+to `lower_model_file` independently and nothing checks the combination, so this builds, runs and grades
+`w8a8` bit-exact while delivering one core's throughput.
+
+**2. The shim's pack scratch is a single `static`.** `merlin_opu_lhs_pack` is one buffer for the whole
+image. It is safe today only because exactly one hart ever calls the shim; the moment routed calls run
+concurrently it is a data race on the left operand of every contraction. It wants to be per-hart
+(indexed by `mhartid`), which also gives each core's pack locality to its own cache.
+
+**3. The MRF is architectural state that no context switch saves.** The accumulator lives in
+`regs = Reg(Vec(regsPerCell, ...))` *inside each `OuterProductCell`* — µarch registers addressed by
+`mrf_idx`, **not** the RVV vector register file. Zephyr's `z_riscv_vstate_save` saves `v0..v31`; it knows
+nothing about `nMrfRegs = 4` tile registers of 64×64 int32, i.e. **64 KB per core**. On the single-hart
+bare-metal image there is no preemption and this cannot arise. On a preemptive SMP OS, a context switch
+between two routed GEMMs on the same core silently corrupts the accumulator of whichever one is
+descheduled. The ISA can save and restore it (`OPMVOUT` reads a row out, `OPMVIN` writes one back), but
+nothing does, and a full save is ~256 row operations.
+
+This is the same shape as the defect that made every multi-hart Kodiak image hang: `CONFIG_RISCV_ISA_EXT_V`
+unset meant no thread's `mstatus` carried `VS`, so vector state was lost across a switch — and **no
+simulator we have reproduces it**, because neither spike nor the Saturn RTL enforces `mstatus.VS`. The
+MRF is that failure one level deeper, and it is a question for whoever owns the chip's context-switch
+path before any OS-scheduled multicore run is trusted.
 
 ## 9. Open, and deliberately unresolved here
 
