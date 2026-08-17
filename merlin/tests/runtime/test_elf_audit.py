@@ -14,7 +14,7 @@ from merlin.runtime import boards, elf_audit
 
 
 def _an_elf():
-    """Any Zephyr ELF this session built, else skip — these tests audit a real artifact."""
+    """Any locally built Zephyr ELF, else skip — these tests audit a real artifact."""
     import glob
     import os
     c = sorted(glob.glob("/tmp/*/build/zephyr/zephyr.elf")

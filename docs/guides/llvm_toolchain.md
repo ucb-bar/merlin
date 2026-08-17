@@ -136,7 +136,7 @@ faster if you have one; nothing downstream depends on which host compiler produc
 ## What is deliberately absent
 
 - **`lld`.** Not in `LLVM_ENABLE_PROJECTS`, on purpose. Where a stock `ld.lld` is needed — the Muon/SIMT
-  link — `runtime/backends/muon_link.py:206` finds one on `PATH` (your distro's is fine). That is the
+  link — `targetgen/fixed_format/link.py` finds one on `PATH` (your distro's is fine). That is the
   "no forked toolchain" rule: we link with stock tools rather than shipping our own linker.
 - **`FileCheck` and `lit`.** `LLVM_INSTALL_UTILS` is `OFF`, so they exist only in the build tree.
   `targetgen/rtl_check_runner.py:47` looks for `third_party/llvm-build/bin/FileCheck` first and falls back

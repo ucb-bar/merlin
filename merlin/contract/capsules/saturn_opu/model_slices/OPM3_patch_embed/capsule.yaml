@@ -1,0 +1,41 @@
+name: OPM3_patch_embed
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: the patch-embedding contraction; N=196 is not a whole number of
+  tiles
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 768
+  - 196
+  dtype: i8
+- name: X
+  role: input
+  shape:
+  - 256
+  - 768
+  dtype: i8
+operation:
+  op: linear
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes: []
+  modes:
+    relu: false
+    acc_scale: false
+    i8: false
+required_oracle_tiers:
+- L3
+vcs: optional
+firesim: optional

@@ -63,6 +63,40 @@ def validate(obj: Any, name: str, *, contract: str | Path | None = None) -> None
         raise ContractViolation(f"{name} schema violation at {loc}: {e.message}") from e
 
 
+def _declared_dtypes(cap: Any):
+    """Yield ``(location, token)`` for every element type a capsule declares."""
+    for i, t in enumerate((cap.get("inputs") if isinstance(cap, dict) else None) or []):
+        if isinstance(t, dict) and "dtype" in t:
+            yield f"inputs/{i}/dtype", t["dtype"]
+    pol = cap.get("numeric_policy") if isinstance(cap, dict) else None
+    if isinstance(pol, dict) and "dtype" in pol:
+        yield "numeric_policy/dtype", pol["dtype"]
+
+
+def validate_capsule(cap: Any, *, contract: str | Path | None = None) -> None:
+    """Validate a capsule: the JSON schema, then its dtype tokens against the numeric-format registry.
+
+    The dtype vocabulary is deliberately NOT a closed enum in the schema. It was one, and that enum was
+    both too small and partly wrong: it rejected every MX format the corpus builder emits (``mxfp8`` /
+    ``mxfp6`` / ``mxfp4``) and spelled half precision ``f16``, which is a spelling the builder never
+    writes (``corpus_spec._DTYPE`` canonicalizes both ``f16`` and ``fp16`` to ``fp16``). So radiance's and
+    mx_gemmini's corpora could not be LOADED at all — every capsule in them failed validation — while the
+    generator that wrote them saw nothing wrong, because the two vocabularies had nothing tying them
+    together. Copying a format list into a shared schema is the overfit: which numeric formats exist is a
+    property of ``merlin/schemas/quant_formats.registry.yaml``, the declared single source of truth where
+    a new format is a data entry. Accumulator widths beside them are plain machine types. Both are checked
+    here, so an unrecognized token still fails closed with the ContractViolation the enum used to raise.
+    """
+    validate(cap, "capsule", contract=contract)
+    from merlin.common import quant_formats as qf
+    for loc, tok in _declared_dtypes(cap):
+        if not isinstance(tok, str) or not qf.is_element_dtype(tok):
+            raise ContractViolation(
+                f"capsule schema violation at {loc}: {tok!r} is not a registered numeric format "
+                f"(merlin/schemas/quant_formats.registry.yaml declares {qf.names()}) "
+                f"nor a machine width (i8/i32/f32/…)")
+
+
 def validate_command_buffer(cb: Any, *, contract: str | Path | None = None) -> None:
     validate(cb, "command_buffer", contract=contract)
 

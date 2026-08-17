@@ -47,6 +47,23 @@ class TargetExperiment:
     # per-target SETUP (which shipped validation program to smoke), so declared, not derived. Only an
     # ``external_backend`` (self-hosted-ISA program-oracle) target needs one; others leave it None.
     preflight_smoke_program: str | None = None
+    # OPTIONAL: the contract the descriptor DECLARES as this target's capability manifest, repo-root
+    # relative. It was parsed and thrown away before — no field held it — so every descriptor's
+    # ``hardware_spec.target_contract`` was dead data, and what the tooling actually read was whatever
+    # ``target_registry.resolve(target)`` found by name. That was invisible in both directions: for one
+    # target the two paths resolve to DIFFERENT contracts (one naming its fp8 datapaths, the other
+    # carrying the fail-closed ``unnamed_float_datapaths`` derivation), and for another the registry
+    # resolves NOTHING while the declaration is right there, which is why its STARTER_PROMPT.md silently
+    # failed to render. Kept as a declaration, deliberately NOT as an override: see
+    # :func:`declared_vs_resolved_contract`.
+    declared_contract: str | None = None
+
+    def declared_contract_path(self) -> Path | None:
+        """The declared contract as an absolute path, if the descriptor names one that exists."""
+        if not self.declared_contract:
+            return None
+        p = repo_root() / self.declared_contract
+        return p if p.is_file() else None
 
     @property
     def exp_name(self) -> str:
@@ -96,6 +113,30 @@ class TargetExperiment:
         h = self.capsule_corpus.parent / "hidden"
         return str(h.relative_to(repo_root())) + "/" if h.is_dir() else None
 
+    def graded_roots(self) -> list[Path]:
+        """Every root the PUBLIC/dev grade must read: the primary corpus plus its sibling categories.
+
+        This exists because "the corpus" and "what gets graded" had drifted apart. The descriptor names
+        one directory (``.../isa``), but a target's capsules are split by kind across sibling categories,
+        so grading the named directory alone scores a subset — for this repo's targets, 8 of 20 for one
+        and 21 of 28 for another — while reporting a clean denominator.
+
+        The obvious alternative, grading their shared parent, is wrong in the other direction: that
+        parent also holds other targets' corpora, which would leak foreign capsules into the suite.
+        :meth:`corpus_siblings` already draws that line structurally (a CATEGORY holds capsule dirs
+        directly; a nested corpus holds categories), so this is just its resolved form.
+        """
+        return [self.capsule_corpus, *(repo_root() / s for s in self.corpus_siblings())]
+
+    def hidden_roots(self) -> list[Path]:
+        """The roots the HIDDEN grade must read — empty when the target ships no hidden capsules.
+
+        Empty is a real answer and the caller must not paper over it: grading the public roots with the
+        ``hidden`` label matches nothing and yields a 0/0 "pass" that never ran.
+        """
+        h = self.hidden_corpus()
+        return [repo_root() / h] if h else []
+
 
 def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
     """Load + validate a ``target_experiment.yaml`` descriptor. Shared-spec paths are kept as the bundle-
@@ -119,7 +160,40 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         path=p,
         preflight_smoke_program=(lambda s: str(s) if s else None)(
             (doc.get("preflight") or {}).get("smoke_program")),
+        declared_contract=(lambda s: str(s) if s else None)(hw.get("target_contract")),
     )
+
+
+def declared_vs_resolved_contract(te: TargetExperiment) -> tuple[Path | None, Path | None, str]:
+    """``(declared, resolved, verdict)`` for this target's capability contract.
+
+    Verdicts: ``"agree"`` (same file, or nothing declared and one resolves), ``"declared_only"`` (the
+    registry resolves nothing — the declaration is the only contract there is), ``"stale_declaration"``
+    (the declared path does not exist but the registry resolves one), ``"mismatch"`` (both exist and are
+    DIFFERENT files), or ``"none"`` (no contract at all).
+
+    A mismatch is reported, never resolved here. Picking a winner would silently change what an agent is
+    told the hardware is — the two saturn_opu contracts disagree on whether its fp8 datapaths are named
+    (``fp8_e4m3``/``fp8_e5m2``) or honestly unnamed (``float8`` + ``unnamed_float_datapaths``), and that is
+    the difference between a target that declares two formats and one that admits its RTL does not name
+    them. Which is authoritative is a call for whoever owns the contract, so this surfaces it and the
+    readiness gate fails on it.
+    """
+    from . import target_registry
+    declared = te.declared_contract_path()
+    try:
+        resolved = target_registry.resolve(te.target).contract_path
+        resolved = resolved if resolved and Path(resolved).is_file() else None
+    except Exception:  # noqa: BLE001 — an unresolvable target is one of the answers
+        resolved = None
+    if declared and resolved:
+        same = Path(declared).resolve() == Path(resolved).resolve()
+        return declared, resolved, "agree" if same else "mismatch"
+    if declared:
+        return declared, None, "declared_only"
+    if resolved:
+        return None, resolved, "stale_declaration" if te.declared_contract else "agree"
+    return None, None, "none"
 
 
 def shared_spec_paths(te: TargetExperiment) -> set[str]:
@@ -223,11 +297,21 @@ def _derived_dtype_token(units) -> str:
     return "unknown"
 
 
-def load_capability_manifest(target: str) -> CapabilityManifest:
+def load_capability_manifest(target: str, *,
+                             contract_path: str | Path | None = None) -> CapabilityManifest:
     """Load a target's capability manifest from its committed ``target_contract.yaml`` + fill the family
-    defaults. Raises if the target has no contract or no compute_units (fail-closed: no fabricated kind)."""
+    defaults. Raises if the target has no contract or no compute_units (fail-closed: no fabricated kind).
+
+    ``contract_path`` reads that file instead of asking the registry. It exists for the case where the
+    registry resolves NOTHING and a descriptor names the contract explicitly — the alternative there is
+    not "use the resolved one", it is "render no prompt at all", which is what used to happen. It is not
+    a general override: when the registry does resolve a contract, callers pass nothing and any
+    disagreement with the declaration is reported by :func:`declared_vs_resolved_contract`."""
     from . import families, compute_units, target_registry   # lazy: avoid import-order cycles
-    contract = target_registry.resolve(target).load_contract()
+    if contract_path is not None:
+        contract = yaml.safe_load(Path(contract_path).read_text(encoding="utf-8"))
+    else:
+        contract = target_registry.resolve(target).load_contract()
     units = compute_units.compute_units(contract)
     if not units:
         raise ValueError(f"{target}: target_contract has no compute_units — cannot derive a kind")

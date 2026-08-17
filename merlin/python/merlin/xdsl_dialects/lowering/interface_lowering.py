@@ -10,7 +10,7 @@ analyses (use-after-evict, place legality, discharged checks) run on the result.
 from __future__ import annotations
 
 from .._common import HAS_XDSL
-from .input_workload import find_matmuls, matmul_lhs_rhs
+from .input_workload import elementwise_operands, find_elementwise, find_matmuls, matmul_lhs_rhs
 
 
 class LoweringError(RuntimeError):
@@ -123,14 +123,152 @@ def _lower_vector_map(op, value_map, i):
     return i.VectorMapOp(operands=[lhs, rhs], result_types=[op.results[0].type], properties=props)
 
 
+def support_ops(block, payload: set) -> set:
+    """Ops in ``block`` whose results feed ONLY the payload — safely consumed by materialization.
+
+    For the matmul payload these are the accumulator inits (``tensor.empty``) and the quantized
+    matmul's zero-point constants: the rebuilt body re-creates their effect, so dropping the
+    original op loses nothing. Computed as a fixpoint rather than a hardcoded op-name list, so it
+    stays correct for any frontend's spelling of "value that exists only to feed the contraction".
+
+    An op with NO results can never qualify: it is kept out because a result-less op is how a side
+    effect is spelled (a store, a copy), and silently dropping one changes what the program does.
+    """
+    support: set = set()
+    changed = True
+    while changed:
+        changed = False
+        for op in block.ops:
+            if op in support or op in payload or not op.results:
+                continue
+            if all(use.operation in payload or use.operation in support
+                   for res in op.results for use in res.uses):
+                support.add(op)
+                changed = True
+    return support
+
+
+def unaccounted_ops(block, payload) -> list:
+    """Ops in ``block`` that interface materialization would neither rebuild nor safely drop.
+
+    This is the single definition of "what the staged pipeline can carry", used both by the guard
+    below and by the router in :mod:`merlin.compile_core`. They were separate op-name lists once,
+    and drifted immediately: the router called a zeroing ``linalg.fill`` generic computation while
+    materialization correctly treated it as support, so a perfectly stageable matmul was routed to
+    the LLVM path. One computation cannot disagree with itself.
+    """
+    from .. import contract as c
+    from .. import schedule as s
+
+    decoration = {c.DIALECT_NAME, s.DIALECT_NAME}
+    payload = set(payload)
+    support = support_ops(block, payload)
+    terminator = block.last_op
+    return [op for op in block.ops
+            if op not in support and op not in payload and op is not terminator
+            and op.dialect_name() not in decoration]
+
+
+def _check_payload_complete(fn, src_block, payload: list) -> None:
+    """Fail closed if materialization would silently drop part of the computation.
+
+    :func:`lower_to_interface` REBUILDS the function body from scratch as pack / matmul / commit /
+    evict + return. Anything it does not recognize simply never gets emitted — and because every
+    stage after it verifies the *rebuilt* module, a dropped masked store, epilogue or grid loop
+    produces a module that verifies at all six stages, emits a command buffer, and computes
+    something other than what was asked for. Nothing downstream can notice.
+
+    That is a false-PASS generator, and it matters most for exactly the payloads a kernel frontend
+    submits, so the drop is turned into an error naming what would have been lost.
+    """
+    dropped = [op.name for op in unaccounted_ops(src_block, payload)]
+    if dropped:
+        raise LoweringError(
+            "interface materialization would silently drop " f"{len(dropped)} op(s) of the payload: "
+            + ", ".join(sorted(set(dropped)))
+            + ". The staged pipeline rebuilds the function body as resident_pack/matmul/commit/evict, "
+              "so it can only carry matmul-family computation; anything else (masked store, "
+              "elementwise epilogue, grid loop) has to be expressed as an interface op before it can "
+              "descend. Failing here instead of compiling a different program.")
+
+    # An epilogue would be caught above, but a payload whose RESULTS are not the matmul results is a
+    # second way to lose computation (the rebuilt return carries commits of the matmuls, in order).
+    terminator = src_block.last_op
+    if terminator is not None:
+        returned = list(terminator.operands)
+        expected = [mm.results[0] for mm in payload]
+        if returned != expected:
+            raise LoweringError(
+                f"function @{fn.sym_name.data} returns {len(returned)} value(s) that are not exactly "
+                f"the {len(expected)} matmul result(s), in order — interface materialization returns "
+                "the commits of the matmuls it found, so the difference would be dropped.")
+
+
+def _lower_elementwise_to_interface(fn, src_block, elementwise: list):
+    """Materialize an elementwise payload as ``interface.elementwise`` ops.
+
+    Kept separate from the matmul path rather than folded into it. The matmul path is RTL-certified
+    on real hardware and its output is byte-compared against a second frontend; a refactor that
+    merged the two would put that at risk to save a few lines. The completeness guard is the same
+    one, so neither path can silently drop computation.
+    """
+    from xdsl.dialects.builtin import FunctionType, ModuleOp, StringAttr
+    from xdsl.dialects.func import FuncOp, ReturnOp
+    from xdsl.ir import Block, Region
+
+    from .. import interface as i
+
+    payload = [op for op, _ in elementwise]
+    dropped = [op.name for op in unaccounted_ops(src_block, payload)]
+    if dropped:
+        raise LoweringError(
+            f"interface materialization would silently drop {len(dropped)} op(s) of the elementwise "
+            f"payload: {', '.join(sorted(set(dropped)))}. Failing here instead of compiling a "
+            "different program.")
+
+    arg_types = [a.type for a in src_block.args]
+    blk = Block(arg_types=arg_types)
+    value_map = dict(zip(src_block.args, blk.args))
+
+    ops = []
+    for op, combine in elementwise:
+        lhs, rhs = elementwise_operands(op)
+        for operand in (lhs, rhs):
+            if operand not in value_map:
+                raise LoweringError(
+                    "elementwise operand is not a function argument — the interface layer maps "
+                    "operands through the function's own arguments, so a computed operand cannot "
+                    "be materialized (chain the kernel or re-raise it to an argument)")
+        new = i.ElementwiseOp(
+            operands=[value_map[lhs], value_map[rhs]],
+            result_types=[op.results[0].type],
+            properties={"combine": StringAttr(combine)})
+        value_map[op.results[0]] = new.out
+        ops.append(new)
+
+    terminator = src_block.last_op
+    returned = list(terminator.operands) if terminator is not None else []
+    expected = [op.results[0] for op, _ in elementwise]
+    if returned != expected:
+        raise LoweringError(
+            f"function @{fn.sym_name.data} returns {len(returned)} value(s) that are not exactly the "
+            f"{len(expected)} elementwise result(s), in order — the difference would be dropped.")
+
+    out_types = [v.type for v in expected]
+    ops.append(ReturnOp(*[value_map[v] for v in expected]))
+    blk.add_ops(ops)
+    new_fn = FuncOp(fn.sym_name.data, FunctionType.from_lists(arg_types, out_types), Region([blk]))
+    return ModuleOp([new_fn])
+
+
 def lower_to_interface(module):
     """Build a fresh interface-level module from the scheduled module."""
     if not HAS_XDSL:
         return module
-    from xdsl.ir import Block, Region
     from xdsl.dialects.builtin import (ArrayAttr, FunctionType, IntegerAttr, ModuleOp,
                                        StringAttr, TensorType)
     from xdsl.dialects.func import FuncOp, ReturnOp
+    from xdsl.ir import Block, Region
 
     from .. import contract as c
     from .. import interface as i
@@ -154,11 +292,33 @@ def lower_to_interface(module):
     fns = [op for op in module.walk() if op.name == "func.func"]
     if not fns:
         raise LoweringError("no func.func in module")
+    if len(fns) > 1:
+        # Only fns[0] is materialized, so the rest would vanish without a word.
+        raise LoweringError(
+            f"{len(fns)} func.func in module ({', '.join(f.sym_name.data for f in fns)}) — interface "
+            "materialization rebuilds a single function; submit one kernel per module")
     fn = fns[0]
+    if len(fn.body.blocks) != 1:
+        raise LoweringError(
+            f"@{fn.sym_name.data} has {len(fn.body.blocks)} blocks — only the entry block is "
+            "materialized, so control flow must be resolved before this stage")
     src_block = fn.body.blocks[0]
     matmuls = find_matmuls(module)
-    if not matmuls:
-        raise LoweringError("no matmul payload to materialize")
+    elementwise = find_elementwise(module)
+    if not matmuls and not elementwise:
+        raise LoweringError("no matmul or elementwise payload to materialize")
+    if matmuls and elementwise:
+        # A fused shape (elementwise epilogue on a matmul) is a real workload, but materializing it
+        # means deciding whether the combine folds into the commit or stays a separate dispatch —
+        # a scheduling question with a measurable answer, not a detail to guess at here.
+        raise LoweringError(
+            f"mixed payload: {len(matmuls)} matmul(s) and {len(elementwise)} elementwise op(s). "
+            "Materializing both together needs a fusion decision (fold the combine into the commit "
+            "epilogue, or emit it as its own dispatch) that the schedule stage does not make yet; "
+            "split the kernel or wait for that decision to exist.")
+    if elementwise:
+        return _lower_elementwise_to_interface(fn, src_block, elementwise)
+    _check_payload_complete(fn, src_block, matmuls)
 
     arg_types = [a.type for a in src_block.args]
     blk = Block(arg_types=arg_types)

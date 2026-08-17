@@ -59,7 +59,11 @@ MARK_SYM = "merlin_prof_mark"
 #: in another frontend (ExecuTorch/GGUF/ONNX) — see :mod:`merlin.baselines.contract` /
 #: ``baselines/_et_export.py``. Captures that predate fqn-tagging still carry ``prov.region_id``,
 #: which the driver uses as the fallback join key; ``join_key()`` encodes that preference.
-_PROV_KEYS = ("prov.op", "prov.family", "prov.region_id", "prov.aten", "prov.module", "prov.fqn")
+#: ``prov.role`` is stamped by a rewrite that SPLIT one captured op into several (the int8 datapath
+#: emits a contraction plus a requant epilogue from one matmul, and both carry the source op's fqn);
+#: without it the two pieces are indistinguishable under a single join key.
+_PROV_KEYS = ("prov.op", "prov.family", "prov.region_id", "prov.aten", "prov.module", "prov.fqn",
+              "prov.role")
 
 
 class OpProfileError(RuntimeError):
@@ -102,7 +106,15 @@ def _attr_value(line: str, key: str) -> str | None:
 
 
 def _op_name(line: str) -> str:
-    """Dialect-qualified op name of a top-level op line (``%3 = linalg.generic ...``)."""
+    """Dialect-qualified op name of a top-level op line (``%3 = linalg.generic ...``).
+
+    It is the name AS PRINTED, which is not always the dialect-qualified one: ops with a custom
+    assembly format lose their dialect prefix, so a ``func.call`` reaches the table as ``call`` once the
+    module has been round-tripped through ``mlir-opt`` (and as ``func.call`` before that). A consumer
+    that selects records by ``mlir_op`` therefore has to accept both spellings; matching only the
+    qualified one silently returns nothing, which reads as "those ops were never profiled" rather than
+    as a failed match -- exactly how the matrix-unit calls first looked unmeasurable.
+    """
     body = line.strip()
     eq = body.find(" = ")
     if eq >= 0 and body.startswith("%"):

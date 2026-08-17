@@ -111,7 +111,7 @@ _DTYPE_BYTES = {"f64": 8, "f32": 4, "f16": 2, "bf16": 2,
                 "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1}
 
 
-def _value_bytes(t) -> int:
+def value_bytes(t) -> int:
     """Footprint of one SSA value of tensor type ``t``; 0 for scalars and dynamic shapes."""
     shape, dtype = type_shape_dtype(t)
     width = _DTYPE_BYTES.get(dtype)
@@ -153,7 +153,7 @@ def activation_peak_bytes(src: "Any", func_name: str = "forward") -> int | None:
         peak = 0
         for i, op in enumerate(ops):
             for res in op.results:
-                nbytes = _value_bytes(res.type)
+                nbytes = value_bytes(res.type)
                 if nbytes:
                     live[res] = nbytes
             peak = max(peak, sum(live.values()))

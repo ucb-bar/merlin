@@ -23,6 +23,10 @@ because an elementwise family can be irrelevant on flops and dominant on traffic
 Ops are grouped by the `prov.op` provenance attribute the capture pipeline stamps on every region
 (matmul / softmax / gelu / conv2d / rmsnorm / ...), which is the semantic op the model author wrote,
 falling back to the linalg op name when a region is unstamped.
+
+The work/bytes weighting itself lives in `merlin.kernels.work` -- the per-contraction census
+(`merlin.kernels.census`) needs the identical proxy, and two copies of a cost model drift into two
+different rankings of the same model.
 """
 from __future__ import annotations
 
@@ -31,34 +35,9 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from xdsl.ir.affine import AffineDimExpr
-
 from merlin.common import mlir_query as mq
 from merlin.common.paths import artifacts_dir
-
-# Named linalg ops carry no region, so their body arithmetic is implicit. Value = scalar arith ops
-# performed per iteration-space point.
-_NAMED_BODY_OPS = {
-    "linalg.matmul": 2,          # mul + add
-    "linalg.batch_matmul": 2,
-    "linalg.matvec": 2,
-    "linalg.fill": 0,            # a store, no arithmetic
-    "linalg.copy": 0,
-    "linalg.transpose": 0,       # pure movement
-    "linalg.broadcast": 0,
-    "linalg.reduce": 1,
-}
-
-# Named contractions whose iteration space is NOT just the result shape: the reduction dim has to
-# come from an input. Value = (operand index, dim index within that operand).
-_NAMED_EXTRA_DIM = {
-    "linalg.matmul": (0, -1),        # K = lhs last dim
-    "linalg.batch_matmul": (0, -1),
-    "linalg.matvec": (0, -1),
-}
-
-_ELEM_BYTES = {"f32": 4, "f64": 8, "f16": 2, "bf16": 2, "i64": 8, "i32": 4,
-               "i16": 2, "i8": 1, "i1": 1, "index": 8}
+from merlin.kernels import work as wk
 
 
 def _shape_of(t) -> tuple[list[int], str]:
@@ -68,80 +47,6 @@ def _shape_of(t) -> tuple[list[int], str]:
         return [], ""
 
 
-def _iteration_space_generic(op) -> tuple[int, bool]:
-    """(product of iteration-space extents, complete?) recovered from the indexing maps."""
-    maps = op.properties.get("indexing_maps") or op.attributes.get("indexing_maps")
-    if maps is None:
-        return 0, False
-    maps = list(maps.data)
-    tensors = [*op.operands, *op.results]
-    extents: dict[int, int] = {}
-    ndims = 0
-    for amap_attr, tensor in zip(maps, tensors):
-        amap = amap_attr.data
-        ndims = max(ndims, amap.num_dims)
-        shape, _ = _shape_of(tensor.type)
-        if len(shape) != len(amap.results):
-            continue
-        for res, extent in zip(amap.results, shape):
-            if isinstance(res, AffineDimExpr):
-                extents[res.position] = max(extents.get(res.position, 0), extent)
-    if ndims == 0:
-        return 0, False
-    prod = 1
-    for v in extents.values():
-        prod *= max(v, 1)
-    # An iteration dim that only ever appears inside a compound expression cannot be pinned down;
-    # flag it rather than silently understating the work.
-    return prod, len(extents) == ndims
-
-
-def _body_arith_ops(op) -> int:
-    """Count real arithmetic in the region (yields/constants/index reads are not work)."""
-    n = 0
-    for region in op.regions:
-        for inner in region.walk():
-            name = mq.op_name(inner)
-            if name.startswith(("arith.", "math.")) and not name.endswith(".constant"):
-                n += 1
-    return n
-
-
-def _footprint_bytes(op) -> int:
-    total = 0
-    for tensor in [*op.operands, *op.results]:
-        shape, dtype = _shape_of(tensor.type)
-        if not shape:
-            continue
-        elems = 1
-        for d in shape:
-            elems *= max(d, 1)
-        total += elems * _ELEM_BYTES.get(dtype, 4)
-    return total
-
-
-def _named_iters(op, name: str) -> int:
-    """Iteration space of a named linalg op (no indexing maps to read)."""
-    if name == "linalg.reduce" and op.operands:
-        in_shape, _ = _shape_of(op.operands[0].type)
-        iters = 1
-        for d in in_shape:
-            iters *= max(d, 1)
-        return iters
-    res_shape: list[int] = []
-    if op.results:
-        res_shape, _ = _shape_of(op.results[0].type)
-    iters = 1
-    for d in res_shape:
-        iters *= max(d, 1)
-    extra = _NAMED_EXTRA_DIM.get(name)
-    if extra is not None and op.operands:
-        lhs_shape, _ = _shape_of(op.operands[extra[0]].type)
-        if lhs_shape:
-            iters *= max(lhs_shape[extra[1]], 1)
-    return iters
-
-
 def census_bundle(mlir: Path) -> dict:
     module = mq.parse(mlir)
     per_op: dict[str, dict] = defaultdict(
@@ -149,21 +54,15 @@ def census_bundle(mlir: Path) -> dict:
                  "linalg_ops": defaultdict(int), "shapes": defaultdict(int)})
     for op in module.walk():
         name = mq.op_name(op)
-        if not name.startswith("linalg.") or name in ("linalg.yield", "linalg.index"):
+        if not wk.is_weighable(op):
             continue
-        complete = True
-        if name == "linalg.generic":
-            iters, complete = _iteration_space_generic(op)
-            body = _body_arith_ops(op)
-        else:
-            iters = _named_iters(op, name)
-            body = _NAMED_BODY_OPS.get(name, 1)
+        work, complete = wk.work_of(op)
         prov = mq.provenance(op)
         family = prov.get("prov.op") or prov.get("prov.family") or name.split(".", 1)[1]
         rec = per_op[family]
         rec["count"] += 1
-        rec["work"] += iters * body
-        rec["bytes"] += _footprint_bytes(op)
+        rec["work"] += work
+        rec["bytes"] += wk.footprint_bytes(op)
         rec["partial"] += 0 if complete else 1
         rec["linalg_ops"][name] += 1
         if op.results:

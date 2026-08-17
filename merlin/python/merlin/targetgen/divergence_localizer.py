@@ -4,7 +4,7 @@ defect is then in the emitted hardware artifact (the RoCC ``.insn`` stream), car
 buffer cannot express (a store stride, a tile DRAM offset, ...). Before this, that class surfaced only as
 an opaque "oracle != golden" (see the ``glm-np12r`` unlocalizable lesson).
 
-The localizer reads the *already-decoded* artifact trace (from :mod:`rocc_decode` — we consume its
+The localizer reads the *already-decoded* artifact trace (from :mod:`rocc.decode` — we consume its
 output and NEVER change its decode semantics) and diffs the decoded fields against two ANSWER-FREE
 intents the agent already owns:
 
@@ -17,7 +17,7 @@ look. It is FAIL-CLOSED: a field it cannot derive an intent for (a role it canno
 came back ``None``, a geometry it cannot reconstruct) is simply NOT flagged — never a guessed or baked
 ``field == role`` verdict (which would misfire on a new RTL). No target name and no regex live here; the
 field *meanings* (store-stride, readout dtype, DRAM operand) come pre-derived from the target's manifest
-encoding via :mod:`rocc_decode`, so this stays hardware-agnostic.
+encoding via :mod:`rocc.decode`, so this stays hardware-agnostic.
 """
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ def _decoded(ins: dict) -> dict:
 
 def _config_st_stride_finding(instructions: list[dict], outs: list[dict]) -> dict | None:
     """Any decoded op that carries an ``out_stride_bytes`` field (the output ROW stride in DRAM, in bytes
-    — the normalized field :mod:`rocc_decode` derives from a target's store-config encoding) whose value
+    — the normalized field :mod:`rocc.decode` derives from a target's store-config encoding) whose value
     matches NO declared output's row stride (``cols * elem_bytes``). The classic symptom: the stride was
     computed with the wrong element byte width (an i8 cell for an i32 output), so rows land 4x too close /
     too far and the hardware output is scrambled while the command buffer (which never carries a byte

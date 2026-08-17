@@ -37,7 +37,7 @@ def vcs_available() -> bool:
     return gemmini_simv() is not None
 
 
-def vcs_adapter() -> Callable:
+def vcs_adapter(target: str) -> Callable:
     """capsule_runner oracle adapter for L4 (VCS RTL). Honest-unavailable when no simv."""
     def run(cb, llvm_text, workdir, timeout):
         import subprocess
@@ -48,7 +48,7 @@ def vcs_adapter() -> Callable:
         if simv is None:
             raise OracleUnavailable("VCS simv not found (set MERLIN_GEMMINI_SIMV)")
         _t0 = time.perf_counter()
-        elf = oot_compile.compile_lowered_to_elf(cb, llvm_text, workdir)
+        elf = oot_compile.compile_lowered_to_elf(cb, llvm_text, workdir, target=target)
         _t1 = time.perf_counter()
         try:
             proc = subprocess.run([str(simv), str(elf)], capture_output=True, text=True,
@@ -87,7 +87,7 @@ def run_vcs_parallel(capsules: list[dict], package_dir: str | Path, *, runs_root
                              "detail": "VCS simv unavailable"}} for c in capsules]
     pkg = CR.load_package(package_dir, contract=contract)
     CR.integrity_scan(pkg); CR.build_package(pkg)
-    adapters = {"L4": vcs_adapter()}
+    adapters = {"L4": vcs_adapter(target)}
 
     def one(cap):
         c = dict(cap); c["required_oracle_tiers"] = ["L0", "L1", "L4"]
@@ -111,7 +111,7 @@ def firesim_queue_alive() -> bool:
     return q.is_dir() and (q / "daemon.pid").is_file()
 
 
-def firesim_adapter() -> Callable:
+def firesim_adapter(target: str) -> Callable:
     """L5 adapter. FireSim bare-metal ELF replay is config-gated; honest-unavailable otherwise."""
     def run(cb, llvm_text, workdir, timeout):
         if firesim_root() is None:
@@ -121,7 +121,7 @@ def firesim_adapter() -> Callable:
         # Building the ELF is always safe; the actual FPGA replay path for a bare-metal Gemmini
         # ELF is environment-specific and gated. Until a verified bare-metal FireSim replay hook is
         # wired, report unavailable rather than fabricate a result.
-        oot_compile.compile_lowered_to_elf(cb, llvm_text, workdir)
+        oot_compile.compile_lowered_to_elf(cb, llvm_text, workdir, target=target)
         raise OracleUnavailable("FireSim bare-metal Gemmini replay hook not wired in this env")
     return run
 

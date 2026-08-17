@@ -278,16 +278,40 @@ def main() -> None:
                          "per-op breakdown isolates the NON-matmul 94%% when the GEMM is fast")
     ap.add_argument("--features", default=None,
                     help="comma-separated default-off compiler features to enable on BOTH the "
-                         "profiled and control builds (e.g. fuse_transpose_b). Empty -> the frozen "
-                         "baseline lowering. Run once without and once with a feature to get the "
-                         "before/after whole-model profile for that feature.")
+                         "profiled and control builds (e.g. fuse_transpose_b). OMITTED -> the "
+                         "package's own compiler_features, i.e. the lowering it was certified with. "
+                         "Pass an empty string for the frozen baseline lowering. Run once with and "
+                         "once without a feature to get its before/after whole-model profile.")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
     md = Path(a.model)
-    golden = np.load(md / "golden.npy")
     base = load_rvv_package(a.baseline)
-    feats = [f.strip() for f in (a.features or "").split(",") if f.strip()]
+    # The reference has to match the DATAPATH, not just the bundle. An int8 bundle's golden.npy is
+    # weight-only (int8 weights dequantized into an f32 contraction); a W8A8 build also quantizes the
+    # activations and is graded against golden_w8a8.npy. Gating a W8A8 run on the weight-only golden
+    # fails cos for a correct build, which reads as "the model regressed" rather than "the wrong
+    # reference was loaded". Fail closed when the package is int8 and no W8A8 reference exists.
+    golden_path = md / "golden.npy"
+    if base.is_int8:
+        w8a8 = md / "golden_w8a8.npy"
+        if not w8a8.is_file():
+            raise SystemExit(f"{a.baseline} is an int8 package but {md.name} ships no "
+                             f"golden_w8a8.npy — recapture it rather than grading W8A8 output "
+                             f"against the weight-only golden")
+        golden_path = w8a8
+    print(f"[golden] {golden_path.name} (package is_int8={base.is_int8})")
+    golden = np.load(golden_path)
+    # A package's compiler_features ARE part of what it is: the champion int8 package carries
+    # `accumulator_resident_wholemodel_vf`, and replacing that with [] compiles the BASELINE lowering
+    # while still calling itself that package. Measured on deepjscc W8A8, the discarded feature is the
+    # difference between gating and cos=0.9176 -- which reads as a model regression rather than as the
+    # profiler having built something else. So an omitted --features means "whatever this package was
+    # certified with"; an explicitly empty one still means the frozen baseline.
+    feats = ([f.strip() for f in a.features.split(",") if f.strip()] if a.features is not None
+             else list(base.compiler_features or []))
+    print(f"[features] {feats or '<baseline>'} "
+          f"({'from the package' if a.features is None else 'from --features'})")
     # distinct run_ids so the two builds get distinct /tmp deploy paths on the shared board
     # (tr_ prefix per the shared-board tag convention; backend + feature-tag suffix keeps native vs
     # routed and baseline vs feature-on builds apart so before/after never collide on /tmp).

@@ -71,11 +71,21 @@ void console_init(void) {
   htif_len = 0;
 }
 
+/* Whether a completed line forces a flush. See htif_line_flush() in htif.h for why this is switchable. */
+static int htif_flush_each_line = 1;
+
+void htif_line_flush(int enable) {
+  htif_flush_each_line = enable ? 1 : 0;
+  if (htif_flush_each_line) {
+    htif_flush();      /* re-enabling must not leave a partial line sitting in the buffer */
+  }
+}
+
 void htif_putc(char c) {
   htif_buf[htif_len++] = c;
   /* Flush on a full buffer, and on a newline so a line is readable as soon as it is complete — a log
    * that only appears at exit is indistinguishable from a hang while the model is still running. */
-  if (htif_len == sizeof(htif_buf) || c == '\n') {
+  if (htif_len == sizeof(htif_buf) || (c == '\n' && htif_flush_each_line)) {
     htif_flush();
   }
 }
@@ -97,6 +107,19 @@ void htif_putd(long v) {
     buf[i++] = '0' + (u % 10);
     u /= 10;
   } while (u);
+  while (i)
+    htif_putc(buf[--i]);
+}
+
+void htif_puthex(unsigned long long v) {
+  char buf[16];
+  int i = 0;
+  htif_putc('0');
+  htif_putc('x');
+  do {
+    buf[i++] = "0123456789abcdef"[v & 0xf];
+    v >>= 4;
+  } while (v);
   while (i)
     htif_putc(buf[--i]);
 }

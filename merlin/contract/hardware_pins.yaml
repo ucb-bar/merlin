@@ -1,0 +1,312 @@
+# Pinned external hardware sources — which RTL revision each piece of work is against.
+#
+# WHY THIS FILE EXISTS. A session certified a microkernel against the only saturn revision that
+# contains the outer-product unit, while the revision named for the tapeout does not contain that unit
+# at all. Both are "saturn-vectors", both were checked out at some point in the same tree, and nothing
+# anywhere recorded which one a result belonged to. A result attributed to the wrong hardware is worse
+# than no result, so the revision is now declared here, verified before use, and recorded into whatever
+# the run produces.
+#
+# THE SHA IS THE TRUTH. `branch` is informational: branches move, and the same branch name on a fork and
+# on upstream are different histories. `repo_canonical` is where the work is *supposed* to live;
+# `repo_observed_note` records where it actually is when those differ, because a personal fork hosting
+# the branch everything depends on is a fact worth writing down rather than rediscovering.
+#
+# VERIFY BY CONTENT, NOT BY NAME. `requires_paths` lists files whose PRESENCE is what the work actually
+# needs. That is what catches the failure above: a checkout can be the right repo, on a plausible
+# branch, and still be missing the unit entirely. Checking a path is cheap and does not care how the
+# revision was spelled.
+#
+# Consumed by `merlin.common.provenance`; gated by `build_tools/scripts/check_provenance.py`.
+version: 1
+
+pins:
+
+  saturn_opu_int8:
+    description: >-
+      The saturn revision that carries the OuterProductUnit (the int8 outer-product matrix extension).
+      This is the ONLY revision the OPU work can be built or certified against, because the unit does
+      not exist anywhere earlier.
+    repo_canonical: https://github.com/ucb-bar/saturn-vectors.git
+    repo_observed_note: >-
+      The opu-int8 branch lives on the fork https://github.com/miles-rusch-berkeley/saturn-vectors.git,
+      not on ucb-bar. Recorded rather than silently tolerated: anyone reproducing this needs the fork.
+    commit: ea373800169ce7bbb9ca27ececf74101a7caf9d5
+    branch: opu-int8
+    root_env: MERLIN_CHIPYARD
+    path: generators/saturn
+    requires_paths:
+      - src/main/scala/backend/OuterProductSequencer.scala
+      - src/main/scala/exu/OuterProductUnit.scala
+      - src/main/scala/common/Consts.scala
+      - src/main/scala/common/Parameters.scala
+      - benchmarks/common/bme.h
+    used_by:
+      - OPU microkernel emission and encoding derivation (kernels/opu_kernel, targetgen/rtl/opu_isa)
+      - OPU L3 numerical certification (kernels/opu_cert)
+    notes: >-
+      128 commits ahead of saturn_tapeout, which it descends from. Carries a sequencer hazard bug the L3
+      corpus found: the accumulate's LHS read-intent (rvs1_mask) is cleared every iteration while the RHS
+      is gated on row_idx_tail, so a younger write to the left operand is not blocked for the final
+      subtile. Our kernel works around it by rotating the left-operand register; see
+      docs/design/incremental_target_evolution_opu.md 8c.2.
+
+  saturn_tapeout:
+    description: >-
+      The saturn revision this tapeout uses. It does NOT contain the outer-product unit; no
+      OuterProductUnit, no OuterProductSequencer, no opuInsns.
+    repo_canonical: https://github.com/ucb-bar/saturn-vectors.git
+    commit: 249340a6ec64a2cb7dc6dbe7fd90e2fad2497bfa
+    branch: null                      # reachable from master and several opu-* branches; not pinned to one
+    root_env: MERLIN_CHIPYARD
+    path: generators/saturn
+    requires_paths:
+      - src/main/scala/common/Consts.scala
+      - src/main/scala/common/Parameters.scala
+    forbids_paths:                    # asserting the ABSENCE is the point of this pin
+      - src/main/scala/backend/OuterProductSequencer.scala
+      - src/main/scala/exu/OuterProductUnit.scala
+    used_by: []
+    notes: >-
+      Recorded so that nothing claims an OPU result against it. Any OPU work targeting this tapeout
+      requires the unit to be brought onto this base first, at which point the hazard above must be
+      re-checked rather than assumed to carry over.
+
+  radiance_muon_rtl:
+    description: >-
+      The chipyard revision the SIMT (Muon) RTL configuration is elaborated from. Both the scratchpad
+      geometry the compiler tiles against and the warp/lane counts the emitter maps onto are read out of
+      this tree's Scala, so a different revision can silently change either.
+    repo_canonical: https://github.com/ucb-bar/chipyard.git
+    commit: "6a9b4cd95081100dc932e422cc52777bc9a98b2d"
+    branch: graphics
+    root_env: MERLIN_CHIPYARD
+    path: generators/radiance
+    requires_paths:
+      - chipyard/RadianceConfigs.scala
+      - src/main/scala/radiance/subsystem/Configs.scala
+      - src/main/scala/radiance/virgo/VirgoSharedMemComponents.scala
+    used_by:
+      - SIMT scratchpad capacity + SIMT geometry derivation (targets/radiance/hand_v0/derive_facts.py)
+    notes: >-
+      This checkout carries uncommitted changes, so its commit alone does not describe what a derivation
+      reads — which is why every consumer also records a source_digest over the exact files it read. At the
+      revision above those files (RadianceConfigs.scala, subsystem/Configs.scala) are clean and the edits
+      are elsewhere in the tree, but that is a fact to record per run, not to assume. `generators/radiance`
+      is a plain directory in this worktree rather than an initialised submodule, so it carries no
+      independent revision of its own.
+
+  radiance_kernels:
+    description: >-
+      The SIMT target's own kernel corpus and runtime headers. It is the second, independent witness to
+      the scratchpad capacity (MU_SMEM_SIZE_BYTES) and the source of the boot/spawn conventions the
+      emitted scaffold has to agree with.
+    repo_canonical: https://github.com/ucb-bar/radiance-kernels.git
+    commit: "56aad6e1620c452bd131c948f72352dab0754d6e"
+    branch: main
+    root_env: MERLIN_RADIANCE_KERNELS
+    path: ""
+    requires_paths:
+      - lib/include/VX_config.h
+      - lib/include/mu_intrinsics.h
+      - lib/src/mu_start.S
+      - lib/src/mu_schedule.cpp
+    used_by:
+      - SIMT aperture-vs-capacity cross-check (targets/radiance/hand_v0/derive_facts.py)
+    notes: >-
+      TWO CHECKOUTS OF THIS REPO EXIST ON THIS HOST AND ONLY ONE IS READ. $MERLIN_RADIANCE_KERNELS resolves
+      to the revision above (branch `main`); a second clone sits elsewhere on a different branch. The pin
+      was first written from the one that is NOT read, and verification caught it — which is the whole
+      reason this file exists. The facts happened to agree in both, but that was luck: always pin the tree
+      the code resolves, not the one that is convenient to read.
+      VX_config.h's SMEM_LOG_SIZE is the shared-memory ADDRESS WINDOW, not the capacity — the same header
+      derives IO_BASE_ADDR from it. The capacity comes from the RTL config in `radiance_muon_rtl`; this
+      checkout's MU_SMEM_SIZE_BYTES is used only to corroborate it, and a disagreement is refused rather
+      than resolved by preference.
+
+  muon_arc_model:
+    description: >-
+      The ModeLIR (mlc) checkout supplying the RTL-derived arc cosim model used as the SIMT oracle. Every
+      bit-exactness claim about SIMT execution is a claim about the model built here, so the model's own
+      identity is part of the result.
+    repo_canonical: git@github.com:copparihollmann/ModeLIR.git
+    repo_observed_note: >-
+      No upstream is known for this repository; the personal remote above is its only recorded home.
+      Written down rather than left implicit, so nobody reproducing this looks for one that does not exist.
+    commit: "0c64b766e731f64b2cf3d1e69bdeccd83947b68c"
+    branch: feature/discover-datapaths
+    root_env: MERLIN_MLC_DIR
+    path: ""
+    requires_paths:
+      - mlc/backends/cosim_muon.py
+      - runs/circt-arc/muon/native_run/libmuon_model.so
+      - runs/circt-arc/muon/outputs/muon_core_state.json
+    used_by:
+      - SIMT command-buffer execution grade (targets/radiance/hand_v0/backend.py)
+    notes: >-
+      The two `runs/` entries are BUILT products, not sources, and they are what makes the oracle usable at
+      all — hence their presence is required rather than merely expected. This checkout carries a
+      substantial number of uncommitted changes, so a consumer must record a digest of the model binary it
+      actually loaded; the commit identifies the recipe, not the artifact.
+      LOCATING IT: $MERLIN_MLC_DIR is normally UNSET, and `mlc_bridge.mlc_dir()` then falls back to a
+      sibling-checkout default. A pin cannot verify a path found by an implicit default, so a consumer must
+      resolve the path the way the code does and hand it over explicitly —
+      `provenance.verify("muon_arc_model", checkout=mlc_bridge.mlc_dir())`. Verifying the declared env var
+      instead would report drift for a checkout that is present and correct, which is worse than useless:
+      it trains people to ignore the check.
+
+  gemmini_rtl:
+    description: >-
+      The Gemmini generator revision a systolic result is measured against. The mesh dimension the
+      compiler tiles to, the scratchpad/accumulator capacities it must respect, and the RoCC funct
+      encodings the emitter packs are all read out of this tree, so a different revision can change a
+      verdict without changing anything in merlin. Pinned separately from the chipyard root because it
+      is a submodule with its own revision: the outer tree can move while this one does not, and vice
+      versa, so recording only one of the two leaves the result ambiguous.
+    repo_canonical: https://github.com/ucb-bar/gemmini
+    commit: "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca"
+    branch: HEAD
+    root_env: MERLIN_CHIPYARD
+    path: generators/gemmini
+    requires_paths:
+      - src/main/scala/gemmini/Configs.scala
+      - src/main/scala/gemmini/GemminiISA.scala
+      - src/main/scala/gemmini/Mesh.scala
+    used_by:
+      - RoCC encoding + mesh/capacity fact extraction (targetgen/rtl/introspect.py)
+      - run records for the systolic capsule suites (targetgen.provenance.toolchain_shas)
+    notes: >-
+      Detached HEAD is normal here — a submodule is checked out at the sha its superproject records,
+      not on a branch, so `branch` is informational and the sha is the fact. Shares a checkout root
+      with radiance_muon_rtl (the same chipyard tree), which is why both are verified by CONTENT.
+
+# BUILT ARTIFACTS — identified by their CONTENTS, because they have no revision of their own.
+#
+# A pin answers "which checkout was this read from". An FPGA bitstream, a compiled simulator and a packaged
+# image have no answer to that: they are outputs. What identifies them is the bytes, plus the revisions they
+# were elaborated FROM — so `built_from` names pins above rather than repeating their shas, and `config`
+# records which elaborated configuration the bytes are.
+#
+# `digest` may be absent while a build is still running. That is honest, and `verify_artifact` reports it as
+# a GAP rather than a pass: an artifact that verifies against nothing is self-certifying, which is exactly
+# what this registry exists to prevent. Fill it in when the build lands.
+#
+# Consumed by `merlin.common.provenance.load_artifacts` / `verify_artifact`.
+artifacts:
+
+  firesim_opu_v256d128:
+    description: >-
+      FireSim bitstream for a single Shuttle core carrying the outer-product unit at vLen=256/dLen=128 —
+      a 32-lane int8 tile, matching the geometry the microkernel acceptance corpus is certified against.
+      Built because both pre-existing OPU bitstreams are 16-lane and one of them carries the unit on tile 1
+      only, so an image whose kernel runs on hart 0 finds no OPU there and takes an illegal instruction.
+    root_env: MERLIN_CHIPYARD
+    path: sims/firesim/deploy/results-build/2026-08-13--07-53-16-alveo_u250_firesim_opu_v256d128_nogate/cl_xilinx_alveo_u250-firesim-FireSim-FireSimOPUV256D128ShuttleNoGateConfig-BaseXilinxAlveoU250Config/firesim.tar.gz
+    digest: "6950194e7f85da43646c0799e23b80c83b7ae509eb71d6652391d2585bb1cd95"
+    built_from:
+      - saturn_opu_int8
+    config: FireSimOPUV256D128ShuttleNoGateConfig
+    notes: >-
+      Built 2026-08-13 at 25 MHz from the NoGate config, in ~2 h, closing timing outright:
+      "All user specified timing constraints are met" — WNS +0.083, WHS +0.010, TNS/THS 0.000, ZERO failing
+      endpoints of 869,789 setup / 868,829 hold, and 631,644 of 631,644 routable nets fully routed with no
+      routing errors.
+      WHY THE CONFIG IS THE NoGate ONE. The stock `FireSimOPUV256D128ShuttleConfig` does not close and cannot
+      be made to: an attempt on 2026-08-12 ran 15 h and was stopped at WHS −3.972 ns with 260,324 of 870,375
+      endpoints failing, 258,620 of them (99.3 %) inside the single intra-clock group
+      `uart_clock,clock_1000.0MHz,harnessbinder_clock,reference` — whose own SETUP slack was +16.520 ns, so
+      the design was nowhere near a frequency limit. Saturn gates the OPU cluster array's clock
+      (`exu/OuterProductUnit.scala:181`), which lowers to rocket-chip's `EICG_wrapper`: combinational logic in
+      the clock path that Golden Gate's ReplaceAbstractClockGates does not rewrite, so the tools insert a
+      SECOND global clock net to reach the gated domain's 131,585 loads. That net arrived 3.79 ns behind its
+      ungated parent (clock path skew 4.207 ns) while both ends share one clock name and are therefore
+      hold-checked at zero skew. `phys_opt_design -aggressive_hold_fix` moved THS by 0.7 % in 34 min where the
+      shipped v128d64 build managed 99.7 %, i.e. it was failing slowly rather than converging.
+      Replacing the gate model with a passthrough (`merlin/contract/rtl/eicg_passthrough.v`) removes the
+      second net and takes hold from −3.972 ns / 258,620 failing endpoints to +0.010 ns / 0. Frequency was
+      never the lever and is unchanged at 25 MHz; hold and skew are both period-independent.
+      FUNCTIONAL EQUIVALENCE IS MEASURED, NOT ASSUMED. Ungating is not free by inspection: OuterProductCell
+      .regs is written under an explicit `when`, but OuterProductCluster.pipe (the row-serial readout
+      register) is assigned unconditionally and so does rely on the gate to hold. 14 corpus cases chosen to
+      stress that register — ragged tails, single-row and single-column readouts, the widest tile sweeps, long
+      reductions, bias broadcast composed with the epilogue, and the 1x1000 classifier — are bit-exact against
+      BOTH the in-image scalar reference and the host digest (14/14, no gaps) on the matching Verilator
+      config.
+      PROVENANCE CAVEAT: the configs this was elaborated from (`chipyard/OPUConfigs.scala` in the saturn
+      checkout, and firechip `TargetConfigs.scala`) are additions not yet committed upstream, so the
+      reads-aware pin check reports drift against saturn_opu_int8. This bitstream is therefore
+      "pinned revision + those additions", and results citing it must say so until the additions land.
+
+  firesim_kodiak_opu_1core:
+    description: >-
+      FireSim bitstream for Kodiak's SoC at Kodiak's vector geometry (vLen=512/dLen=256 — a 64-lane int8
+      tile, 8x8 clusters of 4x4 cells) with the outer-product unit enabled. Built because every Kodiak
+      bitstream that existed before this one has NO OPU: the handed-over CTC bitstream pins saturn at
+      a898bdc, which does not contain OuterProductUnit.scala at all, and the branch named
+      "-opu-kernels" is one commit that adds a workload and re-points a submodule URL with the sha
+      unchanged. The workload existed; the hardware did not.
+    root_env: MERLIN_CHIPYARD
+    path: sims/firesim/deploy/results-build/2026-08-14--13-15-10-alveo_u250_firesim_kodiak_opu_1core/cl_xilinx_alveo_u250-firesim-FireSim-FireSimKodiakOPU1CoreConfig-BaseXilinxAlveoU250Config/firesim.tar.gz
+    digest: "f671be16ae5850c2765d897593010f4144654fe49bed0d5fe0d3ebdbd49d9462"
+    built_from:
+      - saturn_opu_int8
+    config: FireSimKodiakOPU1CoreConfig
+    notes: >-
+      ⚠️ ONE SHUTTLE CORE, NOT KODIAK'S TWO. This is the single most important thing to know before citing
+      it. The vector unit, TCM, L1/L2, scratchpad and bus widths are Kodiak's, so OPU datapath numbers and
+      whole-model grades from this bitstream are honest statements about Kodiak's vector unit. Nothing
+      about core count, inter-core traffic, or multi-core scaling can be read from it. Say "single-core
+      Kodiak" in any result that cites this digest.
+      WHY ONE CORE. The two-core config does not route on the U250 and this was measured, not guessed:
+      1,373,162 LUT post-place (79.47 %), post-placement estimated congestion of 128x128 in short /
+      32x32 in global, and after ~11 h the router ended Phase 8 with
+      "CRITICAL WARNING: [Route 35-162] 23531 signals failed to route due to routing congestion" and
+      26,865 residual node overlaps. The router named the culprit: `vopu_ctrl_reg_mrf_idx_7[*]`, the
+      matrix-register-file index fanning out to 1024 cells per unit. Dropping to one Shuttle core removed
+      600,948 LUT — matching one ShuttleTile's 601,039 almost exactly, which is how we know exactly one
+      tile came out and nothing else moved.
+      ⚠️ `Number of Failed Nets = 0` IS NOT SUCCESS and cost a day here. It counts only unrouted and
+      partially-routed nets. The failure is `Number of Node Overlaps` in the SAME table three lines below,
+      and the Router Utilization Summary is computed EXCLUDING failed nets — its own footnote says so.
+      Read both fields, and only at the end of Phase 9.
+      ⚠️ `WithNShuttleCores` APPENDS (`} ++ prev`, `NumTiles => up(NumTiles) + n`, shuttle
+      common/Configs.scala:20-37). Listing `(1)` ahead of a base carrying `(2)` silently yields THREE
+      cores with no elaboration error. The count is therefore threaded as a constructor parameter,
+      `WithKodiakBase(nShuttleCores)`, and was VERIFIED IN THE EMITTED VERILOG rather than assumed:
+      2 TilePRCIDomain (1 Rocket + 1 Shuttle), 1 ShuttleTile, 1 OuterProductUnit vopu,
+      1 OuterProductSequencer vos, 64 OuterProductCluster (8x8, matching the derived geometry for
+      dLen=256).
+      THIS BUILD: 15 MHz, TIMING strategy, 3 h 45 m, rc=0. 772,214 LUT post-place (44.69 %), 732,872 FF
+      (21.21 %). Route legal — 0 failed nets, 0 unrouted, 0 partially routed, 0 node overlaps, and Phase 8
+      "Verification completed successfully"; routing utilization 15.8 % vertical / 19.6 % horizontal, a
+      number that is meaningful here precisely because no nets were excluded from it. Timing MET:
+      WNS +0.116, TNS 0.000, WHS +0.008, THS 0.000. Hold needed the post-route phys_opt_design pass —
+      the router left WHS at −0.057 / THS −0.212 (one net), and physopt closed it with two buffers in
+      7 m 38 s. Had it not, `cl_firesim/scripts/implementation.tcl` reads STATS.WHS and falls through to
+      the IDR flow and then `ERROR: did not meet timing! / exit 1`, i.e. no bitstream at all.
+      FREQUENCY WAS NOT THE LEVER, AREA WAS. 15 MHz is well below what this design needs — setup closed at
+      placement with WNS positive throughout — and lowering it further could not have fixed either the
+      congestion or the hold, both of which are period-independent. It is left at 15 because that is what
+      was asked for; raising it would shorten every simulation run and costs nothing but a recipe edit.
+      The EICG passthrough (`merlin/contract/rtl/eicg_passthrough.v`) is mandatory at this size for the
+      reason recorded under firesim_opu_v256d128.
+      PROVENANCE CAVEAT: elaborated from saturn ea373800 with `chipyard/OPUConfigs.scala` MODIFIED in the
+      working tree (the WithKodiakBase / Kodiak* / KodiakOPU* configs) plus firechip `TargetConfigs.scala`
+      additions, none committed upstream. The saturn checkout is shared and also carries other sessions'
+      uncommitted work. This bitstream is therefore "ea373800 + those additions", and results citing it
+      must say so until the additions land.
+
+  firesim_opu_v128d64:
+    description: >-
+      The pre-existing 16-lane OPU bitstream: a single Shuttle core with the unit on it. Registered because
+      it is the one usable OPU bitstream that already exists — the other (shuttle_gemmini_opu) puts the unit
+      on tile 1 only.
+    root_env: MERLIN_CHIPYARD
+    path: sims/firesim/deploy/results-build/2026-03-20--01-24-38-alveo_u250_firesim-opu-v128-d64-shuttle/cl_xilinx_alveo_u250-firesim-FireSim-FireSimOPUV128D64ShuttleConfig-BaseXilinxAlveoU250Config/firesim.tar.gz
+    digest: "61565f4c9f3c045662a795ee6491356552c1a0945180e4612d5bde90069db8e0"
+    built_from: []                    # elaborated before the pin registry existed; unattributable, and said so
+    config: FireSimOPUV128D64ShuttleConfig
+    notes: >-
+      REPRODUCIBILITY CAVEAT: FireSimOPUV128D64ShuttleConfig no longer exists in the checkout's source, so
+      this bitstream can be USED but not REBUILT. `built_from` is empty rather than guessed — nothing records
+      which saturn revision it was elaborated from, and inventing one would be worse than admitting it.

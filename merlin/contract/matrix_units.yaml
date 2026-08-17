@@ -1,0 +1,88 @@
+# Where a matrix extension's facts are READ FROM — the entry points of the derivation, as data.
+#
+# WHY THIS FILE EXISTS. Every value the compiler needs about a matrix unit (instruction encodings, tile
+# edge, operand alignment) is derived from the unit's own RTL rather than written down. But a derivation
+# has to start somewhere: it has to know that the funct6 ordinals live in a ChiselEnum called `OPMFunct6`,
+# that the instruction list is a Seq called `opuInsns`, that the vector length is the first argument of a
+# mixin called `WithShuttleVectorUnit`. Those names are not derivable — they are the addresses of the facts.
+#
+# Spreading them across call sites is what makes code overfit to one unit: adding a second extension would
+# mean editing shared Python instead of adding an entry here. So they live here, as data, and the code
+# takes them as parameters. A different matrix unit is a new block below, not a new code path.
+#
+# WHAT IS NOT HERE. No encodings, no tile edges, no alignments, no mesh dimensions. Those are all read out
+# of the sources named below at run time, and a value that cannot be read fails closed. If you find
+# yourself wanting to add one, that is the signal that a derivation is missing — not that this file needs
+# a default.
+#
+# The REVISION these paths are read at is declared separately, in hardware_pins.yaml, and named by `pin`.
+# This file says where to look; that one says which checkout.
+#
+# Consumed by `merlin.llvmlower.opu_shim` and `merlin.kernels.opu_cert`.
+version: 1
+
+units:
+
+  saturn_opu:
+    description: >-
+      The outer-product matrix extension: four instructions in reserved even funct6 slots of the vector
+      opcode, an int8 datapath accumulating in int32, and a tile whose edge is the vector unit's VLMAX at
+      e8/m1.
+    pin: saturn_opu_int8              # hardware_pins.yaml — the revision these paths are read at
+    root_env: MERLIN_CHIPYARD
+    path: generators/saturn
+
+    # The Chisel sources the encoding derivation reads, relative to `path`.
+    sources:
+      consts: src/main/scala/common/Consts.scala
+      instructions: src/main/scala/insns/Instructions.scala
+      params: src/main/scala/common/Parameters.scala
+      # A SECOND, independent statement of the same encodings, written by the unit's own author. The
+      # derivation is cross-checked against it and a disagreement refuses to emit rather than picking a
+      # side — one source could be stale and there is no way to tell which from one source alone.
+      crosscheck_header: benchmarks/common/bme.h
+
+    # The declaration names the derivation looks for. Chisel conventions, not values.
+    declarations:
+      funct6_enum: OPMFunct6          # ChiselEnum whose ORDINALS are the funct6 values
+      consts_container: HasVectorConsts
+      insn_seq: opuInsns              # the Seq naming which instructions the unit implements
+      opcode_name: opcVector
+      # Instantiation form -> the consts name holding that form's funct3. This is the one piece of
+      # convention that is not itself written down in the sources, because the mapping lives in a class
+      # definition rather than in a table.
+      form_funct3:
+        VV: OPMVV
+        VX: OPMVX
+      # RTL name -> cross-check header name. They differ: the RTL calls the accumulate OPMACC and the
+      # header calls it VOPACC, which is exactly the kind of skew a cross-check exists to survive.
+      crosscheck_pairs:
+        OPMACC: VOPACC
+        OPMVIN: VMV_RV
+        OPMVINBCAST: OPMVINBCAST
+        OPMVOUT: VMV_VR
+
+    # Where the elaborated configurations are declared, and the mixin whose POSITIONAL arguments carry the
+    # geometry. Binding by the mixin's own declared parameter names is what stops (vLen, dLen) being read
+    # in the wrong order — a reversal that would give a plausible tile edge and a wrong alignment.
+    #
+    # TWO places, because a unit's configurations do not all live in one file. `config_scala` is the
+    # extension's OWN generator, which declares the standalone configs (one core, the unit, nothing else).
+    # `host_config_scala` is the integrating SoC's repo, which declares the heterogeneous ones that put the
+    # unit on one tile beside something else — and those are the configs real bitstreams tend to be built
+    # from, so leaving them out would mean the compiler could not target hardware that already exists.
+    configs:
+      config_scala:                     # relative to `path` (the unit's own checkout)
+        - chipyard/OPUConfigs.scala
+      host_config_scala:                # relative to `root_env` (the integrating SoC's root)
+        - generators/chipyard/src/main/scala/config/HeteroConfigs.scala
+      mixin_scala:
+        - src/main/scala/shuttle/Configs.scala
+        - src/main/scala/rocket/Configs.scala
+
+    # The instruction roles the microkernel needs, by their RTL names. Which instruction plays which role
+    # is a fact about the kernel's structure, not about the hardware, so it is stated rather than derived.
+    kernel_roles:
+      accumulate: OPMACC
+      broadcast: OPMVINBCAST
+      readout: OPMVOUT

@@ -69,13 +69,33 @@ def load_target(package_dir: str | Path) -> TargetPackage:
     run_id = manifest.get("run_id", d.name)
     mod = _import_module(d / "dialect.py", f"gen_target_{manifest['target']}_{run_id}")
     ops = mod.SPEC_OPS
-    spec = TargetSpec(mod.DIALECT_NAME, mod, ops["pack"], ops["matmul"], ops["commit"],
-                      ops["evict"], ops["resident_type"], ops["accumulator_type"])
     low = yaml.safe_load((d / "lowering.yaml").read_text())
     contract = {}
     cpath = d / "contracts" / "target_contract.yaml"
     if cpath.is_file():
         contract = yaml.safe_load(cpath.read_text())
+
+    # A plugin block is checked here because this is where a package is taken seriously. An unknown key
+    # is silently ignored by everything downstream, so a misspelled `backend` is not a broken backend but
+    # no backend at all — discovered as a missing feature much later, if at all.
+    from .plugins import validate as _validate_plugin
+    problems = _validate_plugin(contract.get("plugin"), root=d,
+                                where=f"{cpath.name}:plugin")
+    if problems:
+        raise ValueError(f"target package {d} has an incoherent plugin block:\n  - "
+                         + "\n  - ".join(problems))
+
+    # A package MAY require properties on its target ops that only its own contract can supply —
+    # a SIMT target's warp width, for instance. It derives them itself (and fails closed if the
+    # contract does not carry them); the core rebuild loop merges them without interpreting them.
+    op_properties = None
+    derive = getattr(mod, "op_properties", None)
+    if callable(derive):
+        op_properties = derive(contract)
+    spec = TargetSpec(mod.DIALECT_NAME, mod, ops["pack"], ops["matmul"], ops["commit"],
+                      ops["evict"], ops["resident_type"], ops["accumulator_type"],
+                      op_properties=op_properties,
+                      elementwise_op=ops.get("elementwise"))
     return TargetPackage(
         name=mod.DIALECT_NAME, run_id=run_id, directory=d, dialect_module=mod, spec=spec,
         lowering_table=dict(low["interface_to_target"]),

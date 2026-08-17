@@ -44,6 +44,29 @@ descriptor + data dir), the code is overfit — lift the fact into derivation. S
 `derive-dont-overfit-hw-agnostic`, `abi-is-derivable-not-irreducible`, `no-regex-sweep`, and the OV/*
 de-overfitting task series.
 
+# Hardware-provenance convention — pin it, verify it, record it
+
+A result that claims a hardware verdict must record **which hardware revision it came from**. This is not
+bookkeeping: a session certified a microkernel 31/31 against the only `saturn` revision containing the
+outer-product unit while the revision named for the tapeout does not contain that unit at all, and nothing
+in the artifact recorded which one the numbers belonged to. A result attributed to the wrong device is
+worse than no result, because it gets cited.
+
+- **One registry**: `merlin/contract/hardware_pins.yaml` — tracked and reviewed, full quoted 40-char shas.
+  Each pin carries `requires_paths` (what the work needs present) and may carry `forbids_paths` (whose
+  *absence* is the point). Verify by CONTENT, not by branch name: branches move and forks share them.
+- **API**: `merlin.common.provenance` — `verify()` (declared vs actual), `record()` (the block to embed),
+  `require()` (the raising form), `source_digest()` (the bytes actually READ, which a dirty tree changes
+  while the commit still looks right). It never mutates a checkout — other sessions work in those trees.
+- **Binaries carry their own stamp** and the report compares it, so a stale ELF is detectable
+  (`kernels.opu_cert.provenance_stamp`).
+- **Enforced** by `build_tools/scripts/check_provenance.py` (pre-commit `--staged`, session Stop hook
+  `--stop-hook`, `--verify-pins` for live checkouts). It scans untracked reports under `out/artifacts/`
+  too, since that is where reports live. `provenance_ratchet.txt` lists pre-existing debt and MAY ONLY
+  SHRINK — never add to it; regenerate the artifact with provenance instead.
+
+See `.claude/skills/hardware-pins/SKILL.md`.
+
 # Generated-output convention — one root (`out/`), three subdirs
 
 All generated/produced output lives under a **single top-level `out/` root**, with exactly three

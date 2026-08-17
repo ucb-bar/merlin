@@ -5,18 +5,32 @@ from merlin.runtime.backends import base
 from merlin.runtime.backends.base import BackendKind, TargetClass
 
 
+#: The backends this repo ships. An OUT-OF-TREE package may register more via `plugin.backend`, which
+#: is the seam working as designed — so these assertions pin the in-tree set and require anything extra
+#: to actually be out-of-tree, rather than pinning a global total that any discovery breaks. Asserting
+#: equality made this test fail for a target package that had merely been loaded earlier in the run,
+#: which reports as "the taxonomy is wrong" when nothing about the taxonomy changed.
+IN_TREE = {"spike", "saturn_vec", "gemmini", "muon", "spike_model", "zephyr_model",
+           "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
+
+
+def _in_tree(names):
+    """Registered names implemented inside this repo (OOT packages load under merlin._oot_backends)."""
+    return {n for n in names if base.info(n).module.startswith("merlin.runtime.backends.")}
+
+
 def test_registry_taxonomy():
-    assert set(base.list_backends()) == {
-        "spike", "saturn_vec", "gemmini", "muon", "spike_model", "zephyr_model",
-        "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
+    registered = set(base.list_backends())
+    assert IN_TREE <= registered, "an in-tree backend stopped registering"
+    assert _in_tree(registered) == IN_TREE, "an unexpected in-tree backend appeared"
     # class taxonomy: address backends by CPU/GPU/NPU, not by silicon instance
     assert base.class_of("gemmini") is TargetClass.NPU
     assert base.class_of("muon") is TargetClass.GPU
     assert base.class_of("spike") is TargetClass.CPU
     # NPU=gemmini, GPU=muon; everything else (RVV/host CPU kernels, whole-model, matmul-route) is CPU
-    assert base.backends_of_class(TargetClass.NPU) == ["gemmini"]
-    assert base.backends_of_class(TargetClass.GPU) == ["muon"]
-    assert set(base.backends_of_class(TargetClass.CPU)) == {
+    assert _in_tree(base.backends_of_class(TargetClass.NPU)) == {"gemmini"}
+    assert _in_tree(base.backends_of_class(TargetClass.GPU)) == {"muon"}
+    assert _in_tree(base.backends_of_class(TargetClass.CPU)) == {
         "spike", "saturn_vec", "spike_model", "zephyr_model",
         "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
 
@@ -25,8 +39,8 @@ def test_backend_kinds():
     assert base.info("gemmini").kind is BackendKind.KERNEL
     assert base.info("zephyr_model").kind is BackendKind.WHOLE_MODEL
     assert base.info("xnnpack_board").kind is BackendKind.MATMUL_ROUTE
-    assert {b for b in base.list_backends()
-            if base.info(b).kind is BackendKind.MATMUL_ROUTE} == {
+    assert _in_tree(b for b in base.list_backends()
+                    if base.info(b).kind is BackendKind.MATMUL_ROUTE) == {
         "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
 
 

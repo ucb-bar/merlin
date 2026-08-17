@@ -37,6 +37,10 @@
           {
             "type": "command",
             "command": ".venv/bin/python build_tools/scripts/check_no_answer_keys.py --stop-hook"
+          },
+          {
+            "type": "command",
+            "command": ".venv/bin/python build_tools/scripts/check_provenance.py --stop-hook"
           }
         ]
       }

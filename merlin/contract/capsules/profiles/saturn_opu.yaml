@@ -1,0 +1,169 @@
+# Capsule corpus for the Saturn OuterProductUnit (command-buffer spatial tile, tile_dim 16).
+#
+# The 47-case microkernel certification is the source of INTENT, not of data: it grades an int32
+# accumulator (and, at L4, a narrowed int8 output) produced by an RVV matrix-extension microkernel, while
+# these capsules grade a COMMAND BUFFER on the arc model. Different endpoint, different grader, goldens
+# computed rather than stored. What ports is which shapes are load-bearing and why -- and that is the part
+# worth keeping, because it was learned from failures rather than chosen for coverage:
+#
+#   * NARROW EXTENTS FIRST. M=1 is the case a prior integration got wrong by packing a single row to a
+#     full tile, and it is the shape the workload census found to be both numerous and cheap. A corpus
+#     that starts at one full tile cannot see it. `M`/`N`/`K` here are RAW extents where the point is a
+#     specific narrowness, and *_tiles where the point is a tile multiple.
+#   * EDGES AROUND THE TILE. Below, at, and just over the tile edge, plus an odd extent, because a tiling
+#     loop's off-by-one lands exactly there and nowhere else.
+#   * BOTH ASYMMETRIES. M>N and N>M, so an operand swap in the accumulate fails in both directions rather
+#     than cancelling.
+#   * THE REDUCTION SEPARATELY. K tiny / odd / exact / one-over / long: per-tile-pair overhead and the
+#     rate are different terms, and one K point cannot separate them.
+#   * THE EPILOGUE IS ITS OWN RUNG. An accumulator that is right with an epilogue that rounds the other
+#     way yields a model subtly wrong EVERYWHERE. Requant cases repeat the narrow and tail shapes rather
+#     than only the comfortable square one.
+#   * THE WORKLOAD'S REAL SHAPES, AT THEIR REAL REDUCTION DEPTHS. spectformer's five routed signatures.
+#     Their K is 256/768/1024, and a corpus that ran them at K=32 would price and validate a different
+#     thing than the model executes.
+#
+# No `expected.instruction_classes` appear below and none are generated: this endpoint has no instruction
+# decode at all, so its classes derive to the empty list and the capsules are graded on numerics plus
+# command-buffer legality. That is the whole reason this target needed its own corpus instead of the
+# RoCC one it was pointed at.
+
+datapath:
+  compare: exact_int          # int8 x int8 -> i32 is exact; a tolerance here would hide a real error
+  required_oracle_tiers: [L3] # the arc OPU cosim; this target declares no bespoke sim (see descriptor)
+
+capsules:
+# ---- narrow extents: the shapes a tiling loop is most likely to get wrong -------------------------
+- {cat: isa, name: OP0_narrow_m_1, kind: isa, op: matmul, M: 1, N: 16, K: 64,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'M=1 vecmat: a prior integration packed this to a single row of a full tile',
+   label: public}
+- {cat: isa, name: OP1_narrow_n_1, kind: isa, op: matmul, M: 16, N: 1, K: 64,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'N=1 matvec: the mirror case, one column operand', label: public}
+- {cat: isa, name: OP2_narrow_both_1, kind: isa, op: matmul, M: 1, N: 1, K: 64,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'both parallel extents 1: a rank-1 accumulate reduced to a dot product',
+   label: public}
+
+# ---- the tile edge, swept from both sides --------------------------------------------------------
+- {cat: isa, name: OP3_m_below_tile, kind: isa, op: matmul, M: 15, N: 16, K: 64,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: M one short of the tile edge, label: public}
+- {cat: isa, name: OP4_m_over_tile, kind: isa, op: matmul, M: 17, N: 16, K: 64,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'M one over the tile edge: a second tile row holding one element', label: public}
+- {cat: isa, name: OP5_n_below_tile, kind: isa, op: matmul, M: 16, N: 15, K: 64,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: N one short of the tile edge, label: public}
+- {cat: isa, name: OP6_n_over_tile, kind: isa, op: matmul, M: 16, N: 17, K: 64,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'N one over the tile edge: a second tile column holding one element',
+   label: public}
+
+# ---- the reduction, swept independently of the parallel extents ----------------------------------
+- {cat: isa, name: OP7_k_1, kind: isa, op: matmul, M: 8, N: 8, K: 1,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'K=1: a single outer product, no accumulation at all', label: public}
+- {cat: isa, name: OP8_k_odd, kind: isa, op: matmul, M: 8, N: 8, K: 33,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'K odd and one over a power of two: the reduction tail', label: public}
+- {cat: isa, name: OP9_k_long, kind: isa, op: matmul, M: 8, N: 8, K: 1024,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'a long reduction: per-tile-pair overhead amortized away, so the rate shows',
+   label: public}
+
+# ---- asymmetry in both directions ----------------------------------------------------------------
+- {cat: isa, name: OP10_asymmetric_m_gt_n, kind: isa, op: matmul, M: 16, N: 4, K: 24,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'M != N, so an operand swap in the accumulate is visible', label: public}
+- {cat: isa, name: OP11_asymmetric_n_gt_m, kind: isa, op: matmul, M: 4, N: 16, K: 24,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'the other asymmetry, so a swap fails in both directions', label: public}
+
+# ---- magnitude -----------------------------------------------------------------------------------
+- {cat: isa, name: OP12_full_range_int8, kind: isa, op: matmul, M: 8, N: 8, K: 255,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'full-range int8 operands over a long reduction: the largest accumulator the
+     datapath can be handed, which distinguishes a magnitude bug from a plain arithmetic one',
+   label: public}
+
+# ---- the requant epilogue: its own rung, repeated on the awkward shapes ---------------------------
+- {cat: isa, name: OP13_requant_square, kind: isa, op: matmul, M: 8, N: 8, K: 32,
+   lhs: A0, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.5,
+   source_role: handauthored_compiler_test,
+   source_reference: 'the epilogue on a square tile: the base case', label: public}
+- {cat: isa, name: OP14_requant_narrow_m, kind: isa, op: matmul, M: 1, N: 8, K: 32,
+   lhs: A0, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.5,
+   source_role: handauthored_compiler_test,
+   source_reference: 'epilogue with a single output row: the readout writes one row', label: public}
+- {cat: isa, name: OP15_requant_narrow_n, kind: isa, op: matmul, M: 8, N: 1, K: 32,
+   lhs: A0, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.5,
+   source_role: handauthored_compiler_test,
+   source_reference: 'epilogue on a single output column', label: public}
+- {cat: isa, name: OP16_requant_tail, kind: isa, op: matmul, M: 17, N: 33, K: 24,
+   lhs: A0, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.25,
+   source_role: handauthored_compiler_test,
+   source_reference: 'epilogue across a short row tile AND a short column tile at once', label: public}
+- {cat: isa, name: OP17_requant_saturating, kind: isa, op: matmul, M: 8, N: 8, K: 255,
+   lhs: A0, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.5,
+   source_role: handauthored_compiler_test,
+   source_reference: 'full-range operands over a long reduction, so the narrowing saturates',
+   label: public}
+- {cat: isa, name: OP18_relu_epilogue, kind: isa, op: matmul, M: 8, N: 8, K: 32,
+   lhs: A0, weight: W, out: Y0, epilogue: [relu], source_role: handauthored_compiler_test,
+   source_reference: 'matmul + relu epilogue: a clamp the accumulator alone cannot check', label: public}
+
+# ---- movement and reuse --------------------------------------------------------------------------
+- {cat: isa, name: OP19_mvin_mvout, kind: isa, op: movement, src: X, M: 16, N: 16, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'load an int8 tile and store it back: the movement path with no accumulate',
+   label: public, modes: {movement: true}}
+- {cat: isa, name: OP20_resident_reuse, kind: isa, op: resident_reuse, weight: W, K_tiles: 1, N_tiles: 1,
+   matmuls: [{lhs: A0, out: Y0, M_tiles: 1}, {lhs: A1, out: Y1, M_tiles: 1}],
+   source_role: handauthored_compiler_test,
+   source_reference: 'one resident weight, two activation tiles: the reuse the MRF exists for',
+   label: public, modes: {resident_reuse: true}}
+
+# ---- layers --------------------------------------------------------------------------------------
+- {cat: layers, name: OPL0_quantized_linear, kind: layer, op: linear, M_tiles: 1, K_tiles: 2, N_tiles: 1,
+   lhs: X, weight: W, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'nn.Linear int8 x int8 -> i32 across two reduction tiles', label: public}
+- {cat: layers, name: OPL1_linear_requant, kind: layer, op: linear, M_tiles: 1, K_tiles: 2, N_tiles: 1,
+   lhs: X, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.5,
+   source_role: pytorch_model_slice,
+   source_reference: 'nn.Linear + requant to int8: what a quantized model actually runs', label: public}
+
+# ---- the workload's own shapes, at their REAL reduction depths ------------------------------------
+# These five are spectformer's routed signatures. Running them at a short K would validate a different
+# computation than the model performs, and would price the unit against the wrong overhead/rate split.
+- {cat: model_slices, name: OPM0_ffn_up, kind: model_slice, op: linear, M: 196, N: 1024, K: 256,
+   lhs: X, weight: W, out: Y0, source_role: pytorch_model_slice,
+   source_reference: "spectformer's FFN up-projection at its real depth (12 instances)", label: public}
+- {cat: model_slices, name: OPM1_ffn_down, kind: model_slice, op: linear, M: 196, N: 256, K: 1024,
+   lhs: X, weight: W, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'the FFN down-projection at its real depth (12 instances)', label: public}
+- {cat: model_slices, name: OPM2_attn_proj, kind: model_slice, op: linear, M: 196, N: 768, K: 256,
+   lhs: X, weight: W, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'the fused QKV projection (8 instances); N=768 is a whole number of tiles',
+   label: public}
+- {cat: model_slices, name: OPM3_patch_embed, kind: model_slice, op: linear, M: 256, N: 196, K: 768,
+   lhs: X, weight: W, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'the patch-embedding contraction; N=196 is not a whole number of tiles',
+   label: public}
+- {cat: model_slices, name: OPM4_classifier, kind: model_slice, op: linear, M: 1, N: 1000, K: 256,
+   lhs: X, weight: W, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'the classifier head: M=1 at a large N, a vecmat over the widest output',
+   label: public}
+
+# ---- hidden: the same load-bearing properties, different shapes, so a corpus-fitted submission fails
+- {cat: hidden, name: OPH0_narrow_m_hidden, kind: isa, op: matmul, M: 1, N: 48, K: 96,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'hidden M=1 at a different N and K', label: hidden}
+- {cat: hidden, name: OPH1_tail_hidden, kind: isa, op: matmul, M: 19, N: 35, K: 41,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'hidden ragged tile in every dimension at once', label: hidden}
+- {cat: hidden, name: OPH2_requant_hidden, kind: isa, op: matmul, M: 9, N: 7, K: 130,
+   lhs: A0, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.125,
+   source_role: handauthored_compiler_test,
+   source_reference: 'hidden requant on a ragged shape with a long reduction', label: hidden}

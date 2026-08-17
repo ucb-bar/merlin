@@ -89,3 +89,42 @@ def test_gate_multi_tier_and_legacy():
     assert _gate(near, fp32)["ok"] is True
     far = np.array([5.0, 4, 3, 2, 1], np.float32)                 # argmax flipped, low cos
     assert _gate(far, {"fp32": fp32})["ok"] is False
+
+
+def test_firesim_workload_mismatch_is_refused(tmp_path):
+    """A ``config_runtime.yaml`` naming someone else's workload must raise, not run.
+
+    The staging name and the booted name are two different settings, and when they disagree FireSim
+    boots the OTHER workload's leftover binary and reports nothing unusual -- the run just produces the
+    wrong program's output, or none. Only the no-queue path consults this file; the queue daemon is
+    passed the workload explicitly and writes its own config.
+    """
+    from merlin.runtime.backends.zephyr_model import _check_firesim_workload
+
+    deploy = tmp_path / "deploy"
+    deploy.mkdir()
+    cfg = deploy / "config_runtime.yaml"
+
+    cfg.write_text("workload:\n  workload_name: modelblaster-firesim.json\n"
+                   "  terminate_on_completion: true\n")
+    with pytest.raises(RuntimeError) as e:
+        _check_firesim_workload(str(tmp_path), "merlin-oscar")
+    assert "modelblaster-firesim.json" in str(e.value) and "merlin-oscar" in str(e.value)
+
+    cfg.write_text("workload:\n  workload_name: merlin-oscar.json\n")
+    _check_firesim_workload(str(tmp_path), "merlin-oscar")          # agrees -> silent
+
+    # An absent config is not this check's business: FireSim itself reports it, with its own message.
+    _check_firesim_workload(str(tmp_path / "nowhere"), "merlin-oscar")
+
+
+def test_console_parse_surfaces_per_op_profile():
+    """A console from an ``op_profile`` build carries ``PROF <id> <ticks> <hits>``; the parser must
+    hand them back, since per-op cycles are what price a unit. Absent PROF lines, the key stays absent
+    rather than becoming an empty dict a caller could mistake for "measured, and it was zero"."""
+    from merlin.runtime.backends.zephyr_model import _parse_console
+
+    base = "OUT 2 1065353216 1073741824\nMETRIC cycles 1234\nDONE\n"
+    res = _parse_console(base + "PROF 3 900 2\nPROF 7 100 1\n", 0)
+    assert res["op_prof"] == {3: (900, 2), 7: (100, 1)}
+    assert "op_prof" not in _parse_console(base, 0)

@@ -54,6 +54,11 @@ VCS_CONFIG = "RadianceMuonConfig"
 # evaluated on); it is the sim actually built in chipyard, not the WIP VCS RadianceMuonConfig.
 VERILATOR_CONFIG = "RadianceTapeoutSimConfig"
 
+# The weak data word this target's own BSP (mu_start.S) declares to carry the launch width; the BSP
+# build overrides it with the warp count. Its spelling belongs to that BSP, so it lives here with the
+# backend that owns the target rather than in the generic fixed-format builder, which cannot know it.
+OCCUPANCY_SYMBOL = "__mu_num_warps"
+
 # Muon SIMT FP peak (RadianceMuonConfig, config_muon.toml): 2 cores x 16 lanes x 2 flop/FMA = 64
 # flop/cycle; at 500 MHz that is 32 GFLOP/s. Reported conservatively as a denominator for utilization.
 FP_PEAK_FLOPS_PER_CYCLE = 64
@@ -524,7 +529,8 @@ def build_forkfree_bsp(workdir: str | Path, *, target: str = "radiance", num_war
     lib = lib_dir()
     return muon_bsp.build_bsp(lib / "src/mu_start.S", lib / "tohost.S", Path(workdir) / "bsp",
                               target=target, clang=str(mlir_bin("clang")), mc=str(mlir_bin("llvm-mc")),
-                              asm_preamble=render_simt_preamble(_model_for(target)), num_warps=num_warps)
+                              asm_preamble=render_simt_preamble(_model_for(target)),
+                              occupancy=(OCCUPANCY_SYMBOL, num_warps))
 
 
 def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[str | Path] | None = None,

@@ -1,7 +1,7 @@
 """RTL-derived cheap checks layer (Phase 0, ADVISORY / UN-WIRED).
 
 A pure-static pre-screen + richer-feedback layer that consumes the **already-decoded** RoCC
-instruction trace (:mod:`merlin.targetgen.rocc_decode` output) plus the target's RTL facts, and
+instruction trace (:mod:`merlin.targetgen.rocc.decode` output) plus the target's RTL facts, and
 produces graded, RTL-grounded check results the codegen agent can act on.
 
 Why this exists (task #131, untouched half):
@@ -487,7 +487,7 @@ def screen(trace: dict, capsule: dict | None = None,
     """Run the Phase-0 T0 checks over a decoded trace; return an advisory :class:`CheckReport`.
 
     Pure function: no simulation, no frozen-runner imports, no verdict mutation. ``trace`` is a
-    ``rocc_decode`` output dict; ``capsule`` is a loaded capsule.yaml dict (for declared
+    ``rocc.decode`` output dict; ``capsule`` is a loaded capsule.yaml dict (for declared
     shapes/modes); ``target`` is REQUIRED and selects the base RTL facts (the run's resolved target,
     via :func:`load_default_facts`); ``rtl_facts`` optionally OVERRIDES specific fact keys on top.
     """

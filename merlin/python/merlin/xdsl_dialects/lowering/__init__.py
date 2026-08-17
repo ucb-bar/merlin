@@ -2,7 +2,8 @@
 
 linalg input -> contract -> schedule -> interface -> target -> runtime -> command
 buffer. Stages are plain module->module transforms; cross-op legality lives in
-``analyses``. Entry point: :func:`pipeline.lower_repeated_rhs_matmul`.
+``analyses``. Entry point: :func:`pipeline.lower_module` (any generic-MLIR payload);
+:func:`pipeline.lower_repeated_rhs_matmul` is the reference workload built on top of it.
 """
 from __future__ import annotations
 

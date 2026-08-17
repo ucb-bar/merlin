@@ -19,63 +19,65 @@ from __future__ import annotations
 
 from typing import Any
 
-# Bytes per element per dtype token (capsule dtypes + the MLIR/torch spellings that show up in interfaces).
-_DTYPE_BYTES: dict[str, int] = {
-    "i8": 1, "int8": 1, "u8": 1, "fp8_e4m3": 1, "fp8_e5m2": 1, "f8E4M3FN": 1, "f8E5M2": 1,
-    "i16": 2, "int16": 2, "f16": 2, "float16": 2, "bf16": 2, "bfloat16": 2, "torch.bfloat16": 2,
-    "i32": 4, "int32": 4, "torch.int32": 4, "f32": 4, "float32": 4,
-    "i64": 8, "int64": 8, "f64": 8, "float64": 8,
-    # microscaling (MX) block-float: the ELEMENT is whole-byte (its shared scale is stored per block,
-    # separately) — an mx element is 1 byte in the tensor's DRAM footprint regardless of its bit width
-    # (fp8/fp6/fp4 codes are stored one-per-byte here; see corpus_spec._DTYPE, the operand-gen authority).
-    "mxfp8": 1, "mxint8": 1, "mxfp6": 1, "mxfp4": 1,
-    "f6E3M2FN": 1, "f4E2M1FN": 1, "fp6_e3m2": 1, "fp4_e2m1": 1,
-    # the E8M0 shared block-scale code is itself a whole byte (one exponent per K-group).
-    "e8m0": 1, "f8E8M0FNU": 1,
-}
-
 DEFAULT_BASE = 0x1000      # start above a small guard region (never address 0)
 DEFAULT_ALIGN = 64         # 64-byte alignment is safe for any vector/tile datapath
 
 
-def _canonical_dtype(dtype: str) -> str:
-    """Fold equivalent width spellings to the table's canonical token so a byte-width lookup never crashes
-    on a synonym: capsule specs write ``fp16``/``fp32`` where MLIR interfaces write ``f16``/``f32`` for the
-    SAME width. Only the bare ``fp<N>`` family folds to ``f<N>`` (``fp8_e4m3``, ``bf16``, ``mx*`` keep their
-    own explicit tokens). A DRAM layout must be robust to the spelling, not fail-closed on a synonym."""
-    key = str(dtype).strip()
-    if key.startswith("fp") and key[2:].isdigit():   # fp16 -> f16, fp32 -> f32, fp64 -> f64
-        return "f" + key[2:]
-    return key
+def dtype_bits(dtype: str) -> int:
+    """STORAGE bits per element for a capsule/interface dtype token.
+
+    This used to be a literal ``{token: bytes}`` table, and it was the third copy of the dtype
+    vocabulary in this repo (after the capsule schema's enum and ``corpus_spec._DTYPE``). It knew
+    neither the MX formats nor ``fp16``, so an mx_gemmini or radiance capsule that LOADED would still
+    die here at address-map time — the size is the derived fact now:
+
+      * a registered format contributes its ``pack.bits`` if it is sub-byte packed (mxfp4 -> 4,
+        mxfp6 -> 6, dense along the packed dim), else its ``element_bits``;
+      * a plain machine width (``i32``, ``f32``) parses structurally.
+
+    Both come from :mod:`merlin.common.quant_formats`, so a new format is a registry entry rather than
+    an edit here. Unknown tokens still raise (fail-closed — a silent wrong size mis-places every
+    following tensor, which is the defect this module exists to prevent).
+
+    NOT included: a block-scaled format's SCALE plane. Where the E8M0 scales live is a property of the
+    target's memory ABI, not of the format — mx_gemmini, for instance, addresses them through a separate
+    scale-factor memory (its own derived ``SF_MEM`` base), not inline with the operand — so a caller that
+    needs to place scales must size them from that target's facts. Sizing them in here would bake one
+    target's layout into a module whose whole contract is to be target-agnostic.
+    """
+    from merlin.common import quant_formats as qf
+    key = str(dtype)
+    if key.startswith("torch."):          # torch spellings reach us via model-slice interfaces
+        key = key[len("torch."):]
+    if qf.has(key):
+        fmt = qf.get(key)
+        return int(fmt.pack_bits or fmt.element_bits)
+    bits = qf.machine_bits(key)
+    if bits is None:
+        raise KeyError(
+            f"capsule_dram: cannot size dtype {dtype!r} — it is neither a format registered in "
+            f"merlin/schemas/quant_formats.registry.yaml ({qf.names()}) nor a machine width; "
+            f"register the format rather than assuming a width")
+    return bits
 
 
 def dtype_bytes(dtype: str) -> int:
-    """Bytes per element for a capsule/interface dtype token. Raises on a genuinely unknown dtype
-    (fail-closed — a silent wrong size would mis-place every following tensor); spelling synonyms
-    (``fp16`` vs ``f16``) are folded first so they never trip that guard."""
-    key = _canonical_dtype(dtype)
-    if key in _DTYPE_BYTES:
-        return _DTYPE_BYTES[key]
-    # Fall back to the operand-generation authority (corpus_spec._DTYPE) so a dtype the corpus can produce
-    # is never a DRAM-layout KeyError just because this table drifted — one source of dtype widths, not two
-    # (the mxfp6/mxfp4 drift that crashed the runner on the MX-tile capsules was exactly this two-table gap).
-    try:
-        from merlin.targetgen.corpus_spec import dtype_info
-        for tok in (key, str(dtype).strip()):
-            try:
-                return dtype_info(tok)[2]
-            except KeyError:
-                continue
-    except Exception:  # noqa: BLE001 — corpus_spec unavailable -> fall through to the honest fail-closed error
-        pass
-    raise KeyError(f"capsule_dram: unknown dtype {dtype!r}; add it to _DTYPE_BYTES (or corpus_spec._DTYPE)")
+    """Bytes per element, for the byte-aligned formats. Raises for a sub-byte format, where "bytes per
+    element" has no integer answer and rounding it up would silently over-stride a packed tensor — those
+    callers must size whole tensors via :func:`tensor_nbytes` / :func:`dtype_bits`."""
+    bits = dtype_bits(dtype)
+    if bits % 8:
+        raise KeyError(f"capsule_dram: {dtype!r} is sub-byte ({bits} bits/element); use tensor_nbytes()")
+    return bits // 8
 
 
 def tensor_nbytes(shape: list[int], dtype: str) -> int:
+    """Storage bytes for a whole tensor — ceil over the packed bit total, so a sub-byte format occupies
+    what it actually occupies (a 16x32 mxfp6 operand is 384 bytes, not 512)."""
     n = 1
     for d in shape:
         n *= int(d)
-    return n * dtype_bytes(dtype)
+    return (n * dtype_bits(dtype) + 7) // 8
 
 
 def _align_up(x: int, a: int) -> int:

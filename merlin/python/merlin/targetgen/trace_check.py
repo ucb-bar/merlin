@@ -1,6 +1,6 @@
 """Verify a decoded RoCC instruction trace against a capsule's expected coverage.
 
-Given a trace from :mod:`merlin.targetgen.rocc_decode` and a capsule's ``expected`` block, assert:
+Given a trace from :mod:`merlin.targetgen.rocc.decode` and a capsule's ``expected`` block, assert:
 
 * all required instruction classes appear; all forbidden classes are absent;
 * the legal ordering invariants hold (FLUSH/FENCE bracketing, config-before-use,

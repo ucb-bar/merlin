@@ -34,6 +34,11 @@ from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
 RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2",
               "-ffreestanding", "-fno-builtin"]
 
+#: Cross-compilation triple for the clang-built objects. Named because more than one object is built with
+#: it now, and clang defaults to the HOST triple -- so an invocation that forgets this rejects every RISC-V
+#: flag in ``RVV_CFLAGS`` rather than mis-compiling, which is at least loud, but it is a needless failure.
+CLANG_TARGET = "--target=riscv64-unknown-elf"
+
 
 class SpikeModelError(RuntimeError):
     pass
@@ -113,7 +118,9 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
           features: "frozenset[str] | None" = None, rvv_schedule: str | None = None,
           cflags_override: list[str] | None = None, vlen: int | None = None,
           console: str = "htif", sdk_dir: str | Path | None = None,
-          sdk_chip: str | None = None, chip_freq_hz: int | None = None) -> dict:
+          sdk_chip: str | None = None, chip_freq_hz: int | None = None,
+          matrix: "Any | None" = None, matrix_scalar_tile: bool = False,
+          stack_bytes: int = 0x40000, op_profile: bool = False) -> dict:
     """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
 
     Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
@@ -126,6 +133,13 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     caller wants the unprepared module, which is NOT what a delivery wants (measured: raw scored
     ``cos 0.925`` where the prepared path is bit-exact).
 
+    ``stack_bytes`` is the linker-reserved stack, and it is a SIZING decision rather than a layout
+    constant: the lowering promotes static intermediates to stack ``alloca``s for this target, so the
+    demand follows the model. It matters because nothing checks it -- ``crt.S`` hands each hart a slice
+    and the region immediately below the reserve is ``.bss``/``.data``/``.rodata``/``.htif``, so running
+    out corrupts the allocator's bookkeeping and the HTIF mailbox instead of faulting. The default is
+    the historical 0x40000, so existing callers are byte-identical.
+
     ``console`` selects the output channel and is a real correctness knob, not a preference. The
     default ``htif`` needs a **host** servicing ``tohost`` (spike, FireSim, uart_tsi); on bare silicon
     nothing does, so the image hangs inside its first print before any model work -- looking exactly
@@ -133,6 +147,20 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     ``sdk_dir``/``sdk_chip``, from which the UART, PLL and clock-selector facts are derived (see
     ``runtime.sdk_facts``); ``chip_freq_hz`` additionally raises the PLL to that frequency the way the
     vendor SDK's own ``init_test()`` does, and ``None`` leaves the chip on its reset clock.
+
+    ``matrix`` is a :class:`zephyr_model.MatrixRouting` naming the matrix extension and configuration to
+    route contractions to; it is required whenever ``features`` enables the routing feature, and the same
+    object drives both the IR rewrite and the shim object, so the tile edge has one source.
+    ``matrix_scalar_tile`` compiles that shim with the scalar stand-in for the unit instead of its
+    instructions -- which is how the whole model gets graded on a simulator that has no such unit, proving
+    the routing, the packing, the ABI and the epilogue while proving nothing about the datapath.
+
+    ``op_profile`` instruments ``@forward`` with a mark before each top-level op and links the profiler,
+    so the run additionally emits ``PROF <id> <ticks> <hits>`` (``mcycle``, the same counter as
+    ``METRIC cycles``) plus the id->op table beside the image. It is the only way this path can say WHERE
+    its cycles went rather than only how many there were, which is what pricing a compute unit needs. It
+    changes the emitted code, so a profiled image is for measuring per-op cost, never for a cycle count
+    compared against an unprofiled one.
     """
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -162,12 +190,22 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
         if int8_compute or features or rvv_schedule:
             from . import zephyr_model as _zm
             prepared_path, features = _zm.prepare_for_lowering(
-                prepared_path, work, int8_compute=int8_compute, features=features)
+                prepared_path, work, int8_compute=int8_compute, features=features,
+                matrix=matrix)
             vectorize = True
+        if op_profile:
+            # Instrumented AFTER preparation, so the ids name the ops that actually run -- instrumenting
+            # the raw module would number ops the rewrites go on to split, fuse or route away, and the
+            # table would then resolve PROF lines to the wrong names.
+            from ...llvmlower import op_profile as _op_profile
+            text, prof_table = _op_profile.instrument(Path(prepared_path).read_text())
+            prepared_path = work / "model_prof.mlir"
+            Path(prepared_path).write_text(text)
+            _op_profile.write_table(prof_table, work / "op_profile_table.json")
         res = lower_model_file(prepared_path, work / "lower", targets=(), textual=True,
                                vectorize=vectorize, transform_schedule=rvv_schedule,
                                features=features)   # produce only the .ll
-    _run([clang, "--target=riscv64-unknown-elf", *clang_cflags, "-c", res.ll_path,
+    _run([clang, CLANG_TARGET, *clang_cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 
     # 2. generate the data-driven runtime artifacts (arg table, call, weights.bin, io)
@@ -211,11 +249,15 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     elif console != CONSOLE_HTIF:
         raise RuntimeError(f"unknown console kind {console!r}")
 
+    # The profiler's console is the harness's own four-symbol ABI, so it needs the harness dir on the
+    # include path and the same define the harness is compiled with -- both units must agree, or the
+    # dump call compiles out of one side and leaves an undefined symbol on the other.
+    prof_defs = ["-DMERLIN_PROF_BAREMETAL", "-I", str(h)] if op_profile else []
     units = {
         "model_call.o": (cgen / "model_call.c", inc),
         "merlin_model.o": (rt / "merlin_model.c", inc),
         "model_main.o": (h / "model_main.c",
-                         inc + addr_defs + console_defs
+                         inc + addr_defs + console_defs + prof_defs
                          + [f'-DMERLIN_BUILD_HASH="{build_hash}"']),
         "mlir_rt.o": (runtime_dir() / "abi/mlir_runtime.c", []),
         "crt.o": (h / "crt.S", []),
@@ -223,34 +265,88 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
         "libc_min.o": (h / "libc_min.c", []),
         "malloc.o": (h / "merlin_malloc.c", addr_defs),
     }
+    if op_profile:
+        units["op_prof.o"] = (rt / "merlin_op_prof.c", prof_defs)
     objs = []
     for obj, (src, extra) in units.items():
         _run([gcc, *gcc_cflags, *extra, "-c", src, "-o", work / obj])
         objs.append(work / obj)
     objs += [work / "model.o", work / "weights_blob.o"]
 
+    # 4b. the matrix-unit shim, if any contraction was routed to one. Built from the SIDECAR the rewrite
+    #     wrote rather than from anything passed in: the symbols the module actually calls are the ones
+    #     that must be defined, and a set reconstructed here could drift from them into a link error.
+    #     Compiled with CLANG, like the model object: the `.insn` directives and the vector intrinsics
+    #     want the same toolchain that lowered the model, and only the -march has to agree with GCC's.
+    matrix_build = None
+    from ...llvmlower.passes_opu import load_sidecar as _load_matrix_sidecar
+    matrix_sigs = _load_matrix_sidecar(work)
+    if matrix_sigs:
+        if matrix is None:
+            raise RuntimeError(
+                f"{len(matrix_sigs)} matrix-unit signature(s) were routed but no `matrix=` routing is "
+                "available to build them against; the image would not link")
+        from ...llvmlower import opu_shim
+        matrix_build = opu_shim.build_object(
+            matrix_sigs, work / "matrix", unit=matrix.unit, config=matrix.config,
+            cc=clang, cflags=[CLANG_TARGET, *clang_cflags],
+            scalar_tile=matrix_scalar_tile)
+        objs.append(matrix_build.object_path)
+        print(f"[matrix] linked {len(matrix_sigs)} entry point(s) for {matrix.unit} "
+              f"({matrix.config}, tile edge {matrix_build.tile_edge}, "
+              f"{'SCALAR STAND-IN' if matrix_build.scalar_tile else 'device instructions'}, "
+              f"{matrix_build.scratch_bytes} B pack scratch)")
+
     # 5. link: weights blob at its absolute high address.
     elf = work / "model.elf"
     _run([gcc, *gcc_cflags, "-nostdlib", "-nostartfiles",
           f"-Wl,--defsym,MERLIN_WEIGHTS_BASE={hex(lay['weights_base'])}",
+          f"-Wl,--defsym,MERLIN_STACK_BYTES={hex(int(stack_bytes))}",
           "-T", h / "model_link.ld", *objs, "-lm", "-o", elf])
     return {"elf": elf, "mem_bytes": lay["mem_bytes"], "build_hash": build_hash,
             "arena_base": lay["arena_base"], "weights_base": lay["weights_base"],
+            # Reported so `run` can be given it. A run at a different vector length than the build
+            # mis-places every scalable-vector spill slot; see run()'s docstring.
+            "vlen": vlen,
             "console": console, "chip_freq_hz": chip_freq_hz,
-            "console_provenance": dict(console_facts.provenance) if console_facts else {}, **info}
+            "console_provenance": dict(console_facts.provenance) if console_facts else {},
+            # The matrix build carries the hardware revision its instructions were derived from, so a
+            # result produced by this ELF can name what it is a result about.
+            "matrix": matrix_build.to_dict() if matrix_build is not None else None, **info}
 
 
 def run(elf: str | Path, harts: int = 1, mem_bytes: int = 1 << 30,
-        isa: str = "rv64gcv_zfh_zvfh", timeout: int = 3600) -> dict[str, Any]:
+        isa: str = "rv64gcv_zfh_zvfh", timeout: int = 3600,
+        vlen: int | None = None) -> dict[str, Any]:
     """Run the ELF on spike; parse the HTIF output. Returns {outputs, metrics, console}.
 
     ``mem_bytes`` must cover 0x80000000 .. weights_base + weights size (use the value
-    returned by :func:`build`)."""
+    returned by :func:`build`).
+
+    ``vlen`` MUST match the vector length the image was BUILT for, and this is not a preference.
+    ``-march=...zvl<N>b`` makes the compiler emit scalable-vector spill slots whose addresses are computed
+    from ``vlenb`` READ AT RUN TIME (`csrr a1, vlenb` then a shift and an add). If the simulator reports a
+    different ``vlenb``, every such slot lands at the wrong offset -- MEASURED on deepjscc int8: a
+    ``vs1r.v`` spill computed as ``sp + 328 + 16*vlenb + 2384`` is 256 bytes off between VLEN 128 and 256,
+    and at the wrong length it writes over the memref descriptors sitting nearby.
+    The bare ``rv64gcv`` in the default ISA string is VLEN=128, so an image built with ``vlen=256`` and run
+    without this argument was silently running at half the declared width; matching them took the same
+    model 602k copies further to 2.37M. Pass the ``vlen`` you passed to :func:`build`, or read it back from
+    that call's result.
+    """
+    if vlen is not None:
+        want = f"zvl{int(vlen)}b"
+        if want not in isa:
+            isa = f"{isa}_{want}"
     cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}",
            f"-m{hex(DRAM_BASE)}:{hex(mem_bytes)}", str(elf)]
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
-                          timeout=timeout)
-    console = proc.stdout + proc.stderr
+    # Capture BYTES and decode leniently. `text=True` raises UnicodeDecodeError on the first invalid byte
+    # and takes the WHOLE console with it -- and an image that is failing is exactly the one that emits
+    # stray bytes, so the log was being destroyed precisely when it was needed. A replacement character in
+    # a garbled region is strictly better than losing every OUT/METRIC/DONE line that preceded it.
+    proc = subprocess.run([str(c) for c in cmd], capture_output=True, timeout=timeout)
+    console = (proc.stdout or b"").decode("utf-8", errors="replace") + \
+              (proc.stderr or b"").decode("utf-8", errors="replace")
     out_line = next((l for l in console.splitlines() if l.startswith("OUT ")), None)
     if out_line is None or "DONE" not in console:
         raise SpikeModelError(f"run did not produce OUT/DONE (rc={proc.returncode}):\n"
@@ -288,7 +384,10 @@ def build_and_run(model_dir: str | Path, work: str | Path, *, harts: int = 1,
     plus ``rel``/``cos``/``ok`` vs the reference. spike memory is sized automatically."""
     b = build(model_dir, work, arena_mb=arena_mb)
     elf = b["elf"]
-    result = run(elf, harts=harts, mem_bytes=mem_bytes or b["mem_bytes"], timeout=timeout)
+    # The vlen the build used, threaded through so the two cannot disagree. A run at a different vector
+    # length mis-places every scalable-vector spill slot; see run()'s docstring.
+    result = run(elf, harts=harts, mem_bytes=mem_bytes or b["mem_bytes"], timeout=timeout,
+                 vlen=b.get("vlen"))
     if reference is not None:
         ref = np.asarray(reference, dtype=np.float32).ravel()
         pref = result["prefix"]

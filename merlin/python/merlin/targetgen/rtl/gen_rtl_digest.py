@@ -19,7 +19,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .facts import load_facts
+from .facts import decode_body, load_facts
 
 
 class NotARoccTarget(ValueError):
@@ -29,7 +29,7 @@ class NotARoccTarget(ValueError):
 
 
 def generate(facts: dict) -> str:
-    f = facts["facts"]
+    f = decode_body(facts, str(facts.get("target") or "target"), needs="an RTL decode digest")
     src = f.get("source", {})
     gen = facts.get("generator", {})
     fd = next((i for i in (f.get("interfaces") or []) if i.get("name") == "funct_decode_table"), None)

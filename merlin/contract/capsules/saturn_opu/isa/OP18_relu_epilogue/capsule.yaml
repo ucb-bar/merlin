@@ -1,0 +1,41 @@
+name: OP18_relu_epilogue
+kind: isa
+source_role: handauthored_compiler_test
+source_reference: 'matmul + relu epilogue: a clamp the accumulator alone cannot check'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 8
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 8
+  - 32
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue:
+    - relu
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes: []
+  modes:
+    relu: true
+    acc_scale: false
+    i8: false
+required_oracle_tiers:
+- L3
+vcs: optional
+firesim: optional

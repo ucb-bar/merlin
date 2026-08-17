@@ -467,7 +467,7 @@ def lift_spatial(op_counts: dict, *, op: str, source: str,
                  dataflow: str | None = None, pe_rows: int | None = None,
                  pe_cols: int | None = None, backend: str) -> CCA:
     """Spatial/systolic (Gemmini) lifter — fills the SPATIAL facet from decoded accelerator ops
-    (e.g. targetgen.rocc_decode counts of preload/compute/mvin/mvout). Keeps the same CCA schema
+    (e.g. targetgen.rocc.decode counts of preload/compute/mvin/mvout). Keeps the same CCA schema
     so a gemmini region compares against a gemmini expert just like RVV does for vector."""
     return CCA(
         op=op, backend=[backend],
