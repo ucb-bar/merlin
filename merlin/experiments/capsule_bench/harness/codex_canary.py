@@ -73,8 +73,16 @@ def _check(name: str, ok: bool, detail: str) -> dict:
     return {"check": name, "ok": bool(ok), "detail": detail}
 
 
-def run_canary(sandbox: str = "bwrap", timeout: int = 600) -> tuple[int, dict]:
-    """Run the canary. Returns ``(exit_code, report)``."""
+def run_canary(sandbox: str = "bwrap", timeout: int = 600,
+               arm: str | None = None) -> tuple[int, dict]:
+    """Run the canary. Returns ``(exit_code, report)``.
+
+    With *arm*, the REAL bundle for that arm is loaded and its workspace
+    assembled, so masking is checked against what a graded cell actually binds.
+    Without it, the bundle is empty — the strictest case, but not the case where a
+    re-exposure bug would live, since a real bundle legitimately binds corpus
+    spec paths next to the answers.
+    """
     import run_baseline_qa_loop as R
 
     from merlin.common.artifacts import cache_dir
@@ -85,6 +93,21 @@ def run_canary(sandbox: str = "bwrap", timeout: int = 600) -> tuple[int, dict]:
     ws.mkdir(parents=True, exist_ok=True)
     run_dir = work / "run"
     run_dir.mkdir(parents=True, exist_ok=True)
+
+    # The bundle under test: a real arm's (what a graded cell binds) or empty.
+    bundle_info: dict = {"arm": arm}
+    if arm:
+        import run_agent_experiment as RX
+
+        bundle = RX._load_bundle(arm)
+        assembled = R.assemble_copy_workspace(bundle, ws)
+        bundle_info.update({
+            "allowed": len(bundle.get("allowed") or []),
+            "denied": len(bundle.get("denied") or []),
+            "assembled": {k: v for k, v in (assembled or {}).items() if k != "files"},
+        })
+    else:
+        bundle = {"allowed": [], "denied": []}
 
     golden, _iface = R._corpus_probe_paths()
     corpus = golden.parent.parent.parent  # the capsule corpus root
@@ -97,7 +120,6 @@ def run_canary(sandbox: str = "bwrap", timeout: int = 600) -> tuple[int, dict]:
     checks: list[dict] = []
 
     # --- Check 4a: the harness's own masking proof, from OUTSIDE the sandbox ---
-    bundle: dict = {"allowed": [], "denied": []}
     try:
         mask = R.mask_selftest(ws, bundle, sandbox)
         # The field is "pilot_golden_visible_to_agent": OK | LEAK. There is no
@@ -167,6 +189,7 @@ def run_canary(sandbox: str = "bwrap", timeout: int = 600) -> tuple[int, dict]:
     report = {
         "verdict": "GO" if ok else "NO-GO",
         "sandbox": sandbox,
+        "bundle": bundle_info,
         "timestamp": stamp,
         "checks": checks,
         "agent_report": agent_report,
@@ -192,10 +215,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap",
                     help="bwrap (the boundary the isolation claim rests on) or none (diagnostic only)")
     ap.add_argument("--timeout", type=int, default=600)
+    ap.add_argument("--arm", default=None,
+                    help="load a REAL arm bundle (raw_baseline|merlin_assisted|cpp_merlininfra) so "
+                         "masking is checked against what a graded cell actually binds")
     a = ap.parse_args(argv)
 
-    rc, report = run_canary(a.sandbox, a.timeout)
-    print(f"\n=== Codex sandbox canary: {report['verdict']} (sandbox={a.sandbox}) ===")
+    rc, report = run_canary(a.sandbox, a.timeout, a.arm)
+    print(f"\n=== Codex sandbox canary: {report['verdict']} (sandbox={a.sandbox}, bundle={a.arm or 'empty'}) ===")
     for c in report["checks"]:
         print(f"  [{'ok' if c['ok'] else 'FAIL'}] {c['check']}: {c['detail'][:300]}")
     if a.sandbox == "none":
