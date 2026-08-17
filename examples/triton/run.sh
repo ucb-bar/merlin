@@ -103,6 +103,10 @@ compare)
   done
   ex_note "The matmul is staged on both. The vector add is staged only on radiance, because radiance"
   ex_note "declares interface.elementwise and gemmini does not. Coverage decided that, not the name."
+  ex_note ""
+  ex_note "What is compared here is ROUTING, which is settled before any hardware is involved. Only"
+  ex_note "gemmini is RTL-certified; the radiance package is status: prototype, certification: none,"
+  ex_note "so nothing above is a hardware claim about it. 'certify' runs on gemmini for that reason."
   ;;
 
 converge)

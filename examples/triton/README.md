@@ -129,6 +129,11 @@ whether this design is real, so the example takes the flag everywhere:
 ./run.sh walk --package out/artifacts/targets/radiance/hand_v0    # a SIMT machine instead
 ```
 
+> **Gemmini is the certified target; treat the others as illustration.** The radiance package exists and
+> the descent above genuinely runs, but its own manifest says `status: prototype`,
+> `certification: none`, and `certified_execution_reproducible: false` — its claims stop at the
+> command-buffer tier. Every *hardware* claim in this example is gemmini's.
+
 Same kernel, same declarations, and the identical descent ends in a **different dialect**:
 
 ```
@@ -160,10 +165,14 @@ closed**, because routing cannot distinguish "accelerates nothing" from "the pla
 `./run.sh compare` is the clearest single demonstration in this example — two kernels × two accelerators,
 one compiler:
 
-|  | matmul | vector add |
-| --- | --- | --- |
-| **gemmini** | `staged` — materializes matmul through its own dialect | `llvm` — cannot materialize elementwise |
-| **radiance** | `staged` — materializes matmul through its own dialect | `staged` — materializes elementwise |
+|  | matmul | vector add | status |
+| --- | --- | --- | --- |
+| **gemmini** | `staged` — materializes matmul through its own dialect | `llvm` — cannot materialize elementwise | RTL-certified |
+| **radiance** | `staged` — materializes matmul through its own dialect | `staged` — materializes elementwise | prototype, uncertified |
+
+Read that last column as part of the result, not a footnote. What is being compared here is **routing**,
+which is decided before any hardware is involved, so a prototype package is a legitimate subject. What
+would *not* be legitimate is reading the radiance row as a hardware claim — it isn't one.
 
 The vector add is accelerated on one and not the other. Nothing about that was keyed on a name: radiance
 declares `interface.elementwise` in its lowering table and gemmini does not, so **its own declaration
