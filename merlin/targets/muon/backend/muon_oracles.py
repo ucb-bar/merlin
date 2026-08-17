@@ -131,6 +131,102 @@ def verilator_muon_adapter() -> Callable:
     return _adapter("verilator")
 
 
+def gsim_muon_adapter() -> Callable:
+    """Certification oracle: the GSIM-emitted C++ cycle-accurate model of the RadianceGsimConfig SoC.
+
+    GSIM compiles the design's FIRRTL to standalone C++ (an RTL-DERIVED simulator, like Verilator but
+    an order of magnitude faster), which is built once into a self-contained ``emu`` binary. This adapter
+    mirrors :func:`verilator_muon_adapter` exactly -- it builds the SAME fork-free rv32 ELF, fuses it into
+    the rv64 SoC carrier (:func:`..muon.fuse_soc_elf`), and drives it via the ``+loadmem`` backdoor -- but
+    runs the prebuilt GSIM emulator instead of the Verilator sim. The radiance kernels self-verify against
+    an embedded golden and then go idle on PASS (the emitted model turns the GPUResetAggregator ``stopSim``
+    into an early ``exit(0)`` before the cycle cap) or spin on FAIL (the RTL rdtime watchdog trips the
+    ``Timeout exceeded`` assertion). Completion is graded on those observables, so a pass means the same
+    thing it does on Verilator.
+
+    Gated on the GSIM emu binary (``MERLIN_MUON_GSIM_EMU``, a compiled snapshot of the emitted model) AND
+    the rv64 SoC-fuse toolchain being present; fails closed (``MuonUnavailable``) when either is absent, so
+    an unavailable GSIM cert is honest (never a fabricated pass), exactly like the Verilator tier. The
+    wall-cycle budget is ``MERLIN_MUON_GSIM_MAXCYCLES`` (default 2_000_000)."""
+    import os
+    import resource
+    import subprocess
+
+    def run(cb: dict, kernel_src: str, workdir: str | Path, timeout: int) -> dict:
+        emu = os.environ.get("MERLIN_MUON_GSIM_EMU", "").strip()
+        if not emu or not Path(emu).is_file() or not os.access(emu, os.X_OK):
+            raise muon.MuonUnavailable(
+                "GSIM emulator not available -- set MERLIN_MUON_GSIM_EMU to the emitted GSIM emu binary")
+        # The GSIM emu loads a fused rv64 SoC image (rv32 Muon kernel + rv64 Rocket carrier) via +loadmem,
+        # exactly like the Verilator path, so it needs the same SoC-fuse toolchain.
+        if not (muon.soc_fuse_dir() / "fuse_rv32_into_rv64.sh").is_file() or muon.rv64_cross_prefix() is None:
+            raise muon.MuonUnavailable("rv64 SoC-fuse toolchain not available for the GSIM oracle")
+        flops = flops_from_cb(cb)
+        target = cb.get("target", "radiance")
+        from . import muon_harness as _mh
+        t0 = time.perf_counter()
+        # Build the graded ELF identically to the Verilator/cyclotron adapters (fork-free thesis path when
+        # the artifact is LLVM-dialect MLIR; otherwise the runner-owned harness + oracle compile).
+        if muon.is_mlir_artifact(kernel_src):
+            elf, toolchain = muon.compile_mlir_forkfree(kernel_src, cb, workdir, target=target), "fork-free"
+        else:
+            program = _mh.program_from_cb(cb, kernel_src, muon._model_for(target)) or kernel_src
+            elf, toolchain = muon.compile_for_oracle(program, workdir, target=target)
+        soc = muon.fuse_soc_elf(Path(elf), Path(workdir))
+        t1 = time.perf_counter()
+        maxcyc = os.environ.get("MERLIN_MUON_GSIM_MAXCYCLES", "2000000")
+
+        def _unlimited_stack() -> None:
+            try:
+                resource.setrlimit(resource.RLIMIT_STACK,
+                                   (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+            except (ValueError, OSError):
+                pass
+
+        # +max_core_cycles=0 disables the Rocket rdtime PlusArgTimeout watchdog (default 32). GSIM's
+        # slow instruction-cache flush epilogue (invalidating 512 lines x N cores at kernel exit) is a
+        # razor's edge past that default, so the watchdog would kill the run just as the GPU is going
+        # idle; disabling it (the RTL's own "Off if 0") lets the flush drain and the GPU-idle stopSim
+        # fire, which is when a passing self-verifying kernel cleanly exits. Not a correctness relaxation
+        # -- the kernel's own on-chip self-verify still gates the clean exit.
+        cmd = [emu, str(soc), f"+loadmem={soc}", "+max_core_cycles=0", f"+max-cycles={maxcyc}"]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                                  preexec_fn=_unlimited_stack)
+        except subprocess.TimeoutExpired as e:
+            raise muon.MuonUnavailable(f"GSIM emu wall-timed out after {timeout}s") from e
+        t2 = time.perf_counter()
+        console = proc.stdout + ("\n" + proc.stderr if proc.stderr else "")
+        # GSIM completion contract (the radiance kernels self-verify against their embedded golden, then
+        # go idle on PASS or spin on FAIL):
+        #   PASS  => the GPUResetAggregator's stopSim (GPU idle for 1k cycles) fires, which the emitted
+        #            model turns into an early ``exit(0)`` BEFORE the cycle cap -- the harness never prints
+        #            its "FINISHED: cycles=<cap>" line.
+        #   FAIL  => the verify kernel spins, the GPU never idles, and the RTL rdtime watchdog trips the
+        #            "Timeout exceeded" PlusArgTimeout assertion (or the run hits the +max-cycles cap).
+        # Grade on those observables (structural string containment; no regex, no fabricated pass).
+        completed = ("Timeout exceeded" not in console
+                     and f"FINISHED: cycles={maxcyc}" not in console)
+        if not completed:
+            raise muon.MuonUnavailable(
+                "GSIM RTL model ran but the kernel did not reach GPU-idle completion within "
+                f"{maxcyc} cycles (self-verify failed / hung: rdtime watchdog or cycle cap). "
+                f"tail:\n{console[-600:]}")
+        cycles = muon._cycles_from_rtl_report(console)
+        return {
+            "outputs": {},
+            "cycles": cycles,
+            "oracle": {"kind": "rtl_gsim_muon", "derived_from_rtl": True},
+            "console": console,
+            "toolchain": toolchain,
+            "timing": _timing(t1 - t0, t2 - t1),
+            "gflops": muon.gflops(flops, cycles),
+            "pct_fp_peak": muon.pct_fp_peak(flops, cycles),
+            "completion_only": True,
+        }
+    return run
+
+
 def _mx_ctrl_base(target: str) -> int | None:
     """The accelerator MMIO command-window base for ``target``, DERIVED from its ``mx_mmio`` fact (the
     same header-derived, provenance-tagged block the MX kernel emitter reads) — never a baked address.
@@ -252,6 +348,13 @@ def default_adapters() -> dict[str, Callable]:
     a non-mandatory, never-blocking ``executability`` tier (RTL-legality grounding for the L2 oracle)."""
     import os
     adapters: dict[str, Callable] = {"L2": cyclotron_adapter(), "L3": verilator_muon_adapter()}
+    # When the GSIM emu is present, use the (much faster) RTL-derived GSIM model as the L3 cert and keep the
+    # Verilator cert available alongside as ``L3-verilator``. Both grade the SAME fork-free ELF on the SAME
+    # RTL completion contract; GSIM (FIRRTL->C++) is ~an order of magnitude faster than Verilator. When the
+    # env is unset, L3 stays Verilator and a normal grade is byte-identical.
+    if os.environ.get("MERLIN_MUON_GSIM_EMU", "").strip():
+        adapters["L3"] = gsim_muon_adapter()
+        adapters["L3-verilator"] = verilator_muon_adapter()
     if os.environ.get("MERLIN_EXEC_SMOKE", "").strip().lower() in ("1", "true", "yes", "on"):
         adapters["L3-smoke"] = verilator_smoke_adapter()
     return adapters
