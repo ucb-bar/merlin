@@ -22,13 +22,19 @@ from merlin.targetgen import capsule_runner as CR  # noqa: E402
 import freeze_run  # noqa: E402
 
 
+def _roots(spec: str) -> list[str]:
+    """A comma-separated root list. A target's graded suite spans sibling capsule CATEGORIES, so one
+    path cannot name it; the launcher resolves them from the descriptor and passes them through here."""
+    return [s for s in (x.strip() for x in str(spec).split(",")) if s]
+
+
 def _score(pkg, capsules, runs_root, labels, no_oracle):
     # Resolve the TARGET'S OWN oracle ladder from its contract (external_backend->program_oracle,
     # chipyard->spike/verilator, else arc) — never pass None here, which historically fell back to the
     # gemmini spike/verilator MLIR-lowering oracle and mis-graded atlas (torch-mlir run_lowering.py crash).
     # `{}` = honest no-oracle (L0/L1/trace only). sim_via is self-resolved from the contract.
     adapters = {} if no_oracle else CR.oracle_adapters(C.TARGET)
-    return CG.grade(pkg, capsules_root=capsules, runs_root=runs_root, labels=labels,
+    return CG.grade(pkg, capsules_root=_roots(capsules), runs_root=runs_root, labels=labels,
                     contract=str(C.REPO / "merlin/contract"),
                     oracle_adapters=adapters, timeout=900, target=C.TARGET, no_oracle=no_oracle)
 
@@ -38,11 +44,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--arm", required=True)
     ap.add_argument("--model", default="unknown")
-    ap.add_argument("--capsules", default=str(C.REPO / "merlin/contract" / "capsules"))
+    ap.add_argument("--capsules", default=str(C.REPO / "merlin/contract" / "capsules"),
+                    help="comma-separated capsule roots for the PUBLIC/dev phase. The launcher resolves "
+                         "these from the target descriptor (primary corpus + its sibling categories); "
+                         "the default is the shared parent and is only right for a target whose corpus "
+                         "IS that parent.")
     ap.add_argument("--hidden-capsules", default=None,
-                    help="capsules root for the HIDDEN phase (defaults to --capsules). The launcher "
-                         "passes the target's own hidden dir so the public-only materialized subset "
-                         "does not yield an empty hidden grade.")
+                    help="comma-separated capsule roots for the HIDDEN phase (defaults to --capsules). "
+                         "The launcher passes the target's own hidden dir so the public-only "
+                         "materialized subset does not yield an empty hidden grade.")
     ap.add_argument("--no-oracle", action="store_true")
     ap.add_argument("--skip-hidden", action="store_true")
     a = ap.parse_args(argv)

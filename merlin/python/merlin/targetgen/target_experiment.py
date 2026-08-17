@@ -96,6 +96,30 @@ class TargetExperiment:
         h = self.capsule_corpus.parent / "hidden"
         return str(h.relative_to(repo_root())) + "/" if h.is_dir() else None
 
+    def graded_roots(self) -> list[Path]:
+        """Every root the PUBLIC/dev grade must read: the primary corpus plus its sibling categories.
+
+        This exists because "the corpus" and "what gets graded" had drifted apart. The descriptor names
+        one directory (``.../isa``), but a target's capsules are split by kind across sibling categories,
+        so grading the named directory alone scores a subset — for this repo's targets, 8 of 20 for one
+        and 21 of 28 for another — while reporting a clean denominator.
+
+        The obvious alternative, grading their shared parent, is wrong in the other direction: that
+        parent also holds other targets' corpora, which would leak foreign capsules into the suite.
+        :meth:`corpus_siblings` already draws that line structurally (a CATEGORY holds capsule dirs
+        directly; a nested corpus holds categories), so this is just its resolved form.
+        """
+        return [self.capsule_corpus, *(repo_root() / s for s in self.corpus_siblings())]
+
+    def hidden_roots(self) -> list[Path]:
+        """The roots the HIDDEN grade must read — empty when the target ships no hidden capsules.
+
+        Empty is a real answer and the caller must not paper over it: grading the public roots with the
+        ``hidden`` label matches nothing and yields a 0/0 "pass" that never ran.
+        """
+        h = self.hidden_corpus()
+        return [repo_root() / h] if h else []
+
 
 def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
     """Load + validate a ``target_experiment.yaml`` descriptor. Shared-spec paths are kept as the bundle-

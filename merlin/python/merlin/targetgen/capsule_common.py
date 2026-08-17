@@ -46,14 +46,29 @@ def load_capsule(capsule_dir: str | Path, *, contract: str | Path | None = None)
     return cap
 
 
-def discover_capsules(root: str | Path, *, labels: set[str] | None = None,
+def discover_capsules(root, *, labels: set[str] | None = None,
                       contract: str | Path | None = None) -> list[dict]:
-    """Load every capsule under ``root`` (recursively), optionally filtered by label."""
-    caps = []
-    for cy in sorted(Path(root).rglob("capsule.yaml")):
-        cap = load_capsule(cy.parent, contract=contract)
-        if labels is None or cap.get("label") in labels:
-            caps.append(cap)
+    """Load every capsule under ``root`` (recursively), optionally filtered by label.
+
+    ``root`` is one path OR several. Several, because a target's graded suite is not one directory: the
+    capsules are split by KIND into sibling categories (``isa`` / ``layers`` / ``model_slices``), and a
+    caller that passes only the primary one silently grades a subset. Passing their common parent instead
+    is not the fix — that parent also contains OTHER targets' corpora, which would both leak foreign
+    capsules in and (today) fail to load at all.
+
+    Duplicates are dropped by capsule directory, so overlapping roots cost nothing and cannot
+    double-count a capsule into the denominator.
+    """
+    roots = [root] if isinstance(root, (str, Path)) else list(root)
+    caps, seen = [], set()
+    for r in roots:
+        for cy in sorted(Path(r).rglob("capsule.yaml")):
+            if cy.parent in seen:
+                continue
+            seen.add(cy.parent)
+            cap = load_capsule(cy.parent, contract=contract)
+            if labels is None or cap.get("label") in labels:
+                caps.append(cap)
     return caps
 
 

@@ -148,7 +148,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dummy-submission",
                     default=str(C.REPO / "out/artifacts/targets" / C.TARGET / "agent_spec_v1_mlir_oot"))
     ap.add_argument("--no-oracle-grade", action="store_true")
-    ap.add_argument("--grade-capsules", default=str(C.REPO / "merlin/contract" / "capsules"))
+    ap.add_argument("--grade-capsules", default="",
+                    help="comma-separated capsule roots for the public/dev grade. Empty (the default) "
+                         "RESOLVES them from the target descriptor — the primary corpus plus its "
+                         "sibling categories — which is the only spelling that grades the whole suite "
+                         "for the target actually under test.")
+    ap.add_argument("--grade-hidden-capsules", default="",
+                    help="comma-separated capsule roots for the hidden grade. Empty resolves the "
+                         "target's own hidden/ dir from the descriptor.")
     ap.add_argument("--skip-hidden", action="store_true")
     a = ap.parse_args(argv)
 
@@ -242,9 +249,21 @@ def main(argv: list[str] | None = None) -> int:
                        wall_time_seconds=wall, model=a.model, exit_code=exit_code)
 
     # separate full-access grading phase
+    # WHICH capsules this run is graded on is part of the experiment's definition, not a CLI default.
+    # The default used to be the shared parent of every target's corpus: for the target whose corpus IS
+    # that parent it happened to be right, and for every other target it graded foreign capsules (or,
+    # for the hidden phase, another target's hidden set entirely). Resolve from the descriptor.
+    pub_roots, hid_roots = _grade_roots(a)
     grade_cmd = [sys.executable, str(C.EXP / "scripts" / "grade_agent_run.py"),
                  "--run-dir", str(run_dir), "--arm", a.arm, "--model", a.model,
-                 "--capsules", a.grade_capsules]
+                 "--capsules", pub_roots]
+    if hid_roots:
+        grade_cmd += ["--hidden-capsules", hid_roots]
+    elif not a.skip_hidden:
+        # A hidden phase with no hidden capsules scores 0/0 and reads as a pass. Say so and skip it.
+        print("[run_agent_experiment] no hidden capsules for this target — skipping the hidden phase "
+              "rather than recording a 0/0 that looks like one", flush=True)
+        grade_cmd.append("--skip-hidden")
     if a.no_oracle_grade:
         grade_cmd.append("--no-oracle")
     if a.skip_hidden:
@@ -252,6 +271,27 @@ def main(argv: list[str] | None = None) -> int:
     subprocess.run(grade_cmd, cwd=str(C.REPO))
     print(f"run complete: {run_dir}")
     return 0
+
+
+def _grade_roots(a) -> tuple[str, str]:
+    """``(public_roots, hidden_roots)`` as comma-separated strings, from the flags or the descriptor.
+
+    Explicit flags win, so a one-off subset run stays possible; otherwise the descriptor decides, which
+    is what keeps "the corpus this target declares" and "the corpus this run is graded on" the same
+    thing. Falling back to a fixed path is deliberately NOT an option here — that fallback is the defect.
+    """
+    from merlin.targetgen.target_experiment import load_target_experiment
+    desc = C.EXP / "target_experiment.yaml"          # C.EXP honors MERLIN_TARGET_EXPERIMENT
+    if a.grade_capsules and (a.grade_hidden_capsules or a.skip_hidden):
+        return a.grade_capsules, a.grade_hidden_capsules
+    if not desc.is_file():
+        raise SystemExit(f"no target descriptor at {desc}: cannot resolve which capsules to grade on, "
+                         "and defaulting to a fixed path is how a target gets graded on another "
+                         "target's capsules. Pass --grade-capsules explicitly.")
+    te = load_target_experiment(desc)
+    pub = a.grade_capsules or ",".join(str(r) for r in te.graded_roots())
+    hid = a.grade_hidden_capsules or ",".join(str(r) for r in te.hidden_roots())
+    return pub, hid
 
 
 def bwrap_argv(ws: Path, bundle: dict) -> list[str]:

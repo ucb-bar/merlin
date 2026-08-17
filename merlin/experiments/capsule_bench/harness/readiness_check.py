@@ -268,6 +268,83 @@ def test_corpus_fits_the_endpoint():
            f"another target; this one needs its own (contract/capsules/generate_corpus.py + a profile)"))
 
 
+def test_graded_path_is_the_declared_one():
+    """I. The suite the RUN grades on, exercised — not the one the descriptor names.
+
+    Every other section reads `capsule_corpus`. The grade does not: it reads whatever roots the launcher
+    hands `grade_agent_run`, and while those two were allowed to differ a GO verdict could not see the
+    difference. Measured, before this was wired: the public phase resolved to the shared parent of every
+    target's corpus (which does not even load -- a sibling target's capsule fails the schema) and the
+    hidden phase to ANOTHER target's five hidden capsules.
+
+    So this resolves the roots the way the launcher now does and grades a DELIBERATELY EMPTY submission
+    through them. An empty package must fail, and it must fail against a non-zero denominator: that one
+    assertion catches both an empty suite (0/0 reads as a pass) and a grader that passes anything. The
+    good half -- a real submission passing -- is what the run itself measures; it cannot be faked here
+    without shipping an answer key, which is the one thing this bench must not contain.
+    """
+    section("I. the graded path (resolved roots + a submission that must FAIL)")
+    import tempfile
+
+    from merlin.targetgen import capsule_grade as CG
+    from merlin.targetgen import capsule_runner as CR
+
+    pub_roots, hid_roots = _TE.graded_roots(), _TE.hidden_roots()
+    contract = str(REPO / "merlin/contract")
+    try:
+        n_pub = len(CR.discover_capsules(pub_roots, labels={"public", "dev"}, contract=contract))
+        n_hid = len(CR.discover_capsules(hid_roots, labels={"hidden"}, contract=contract)) if hid_roots else 0
+    except Exception as exc:  # noqa: BLE001
+        _ok("the resolved capsule roots load", False,
+            f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]} "
+            f"(roots={[str(r) for r in pub_roots]})")
+        return
+    _ok("the public grade resolves to a non-empty suite", n_pub > 0,
+        f"{n_pub} capsule(s) over {len(pub_roots)} root(s): "
+        + ", ".join(r.name for r in pub_roots))
+    _ok("the hidden grade resolves to its OWN capsules", n_hid > 0,
+        f"{n_hid} capsule(s) at {hid_roots[0].name if hid_roots else '(none declared)'}"
+        if hid_roots else "no hidden/ beside this corpus — the hidden phase would score 0/0")
+
+    if not n_pub:
+        return
+    # Straight at the SUITE, not through `grade()`. `grade()` builds and integrity-scans the package
+    # first and returns early when that fails, so an empty submission never reaches a capsule -- which
+    # would have made this check pass for the wrong reason (0 graded, 0 passed, "fails" ✓). Package
+    # integrity is its own plane and section A already covers it; what is under test here is that the
+    # resolved suite is real and that nothing in it passes without a submission.
+    caps = CR.discover_capsules(pub_roots, labels={"public", "dev"}, contract=contract)
+    with tempfile.TemporaryDirectory() as td:
+        pkg, runs = Path(td) / "submission", Path(td) / "runs"
+        pkg.mkdir(parents=True)
+        # A WELL-FORMED but empty submission: it satisfies the package contract (so it reaches the
+        # capsules) and implements nothing (so it can only fail them). A malformed one would be rejected
+        # at the contract plane and never reach a capsule, which would make this pass for the wrong
+        # reason -- 0 graded, 0 passed, "fails" -- i.e. exactly the vacuity it exists to detect.
+        tool = pkg / "tool.py"
+        tool.write_text("import sys\nsys.exit(2)\n", encoding="utf-8")
+        (pkg / "manifest.yaml").write_text(yaml.safe_dump({
+            "artifact_type": "mlir_oot_target_backend", "target": TARGET, "language": "python",
+            "authoring": {"mode": "hand_curated"}, "integrity_exempt": True,
+            "entrypoints": {"tool": "tool.py"},
+            "commands": {k: {"argv": ["python3", "tool.py", k]} for k in
+                         ("parse", "lower_interface_to_target",
+                          "emit_command_buffer", "lower_target_to_llvm")},
+        }, sort_keys=False), encoding="utf-8")
+        try:
+            res = CR.run_suite(caps, pkg, runs_root=runs, contract=contract,
+                               oracle_adapters={}, target=TARGET, no_oracle=True, timeout=120)
+        except Exception as exc:  # noqa: BLE001
+            _ok("the resolved suite runs against a submission", False,
+                f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]}")
+            return
+    passed = [r for r in res if r.get("passed") or r.get("functional_pass")]
+    _ok("every resolved capsule is graded, and an empty submission passes none of them",
+        len(res) == n_pub and not passed,
+        f"graded {len(res)}/{n_pub}, passed {len(passed)}"
+        + (f" — {[r.get('capsule') for r in passed][:4]}" if passed else ""))
+
+
 def test_bundles():
     section("F. bundle integrity (6 bundles parse; prompt APIs import)")
     # conditions DERIVED from the target's materialized bundles (gemmini kernel+nokernel; atlas
@@ -363,7 +440,18 @@ def test_oracles_endtoend():
             # `derive_binding` falls back to the adapter keys when the datapath declares no
             # `required_oracle_tiers`, and then this check compares a set against itself. Say so, or a
             # PASS here reads as "the corpus's demands are met" when nothing demanded anything.
-            self_derived = sorted(need) == sorted(ad)
+            #
+            # ASK THE CAPSULES, do not infer it from `need == adapters`. That equality holds just as
+            # readily when the corpus declares exactly the tiers this target has — which is the healthy
+            # case — so inferring from it reported a correctly-declaring corpus as vacuous, and the
+            # vacuity was then chased as if it were real.
+            declared: set[str] = set()
+            for cap_yaml in {p for r in _TE.graded_roots() for p in Path(r).rglob("capsule.yaml")}:
+                try:
+                    declared.update(yaml.safe_load(cap_yaml.read_text()).get("required_oracle_tiers") or [])
+                except Exception:  # noqa: BLE001
+                    continue
+            self_derived = not declared
             _ok("every tier the corpus requires resolves to an adapter",
                 bool(ad) and not missing,
                 f"need={need} have={sorted(ad)}" + (f" MISSING={missing}" if missing else "")
@@ -451,7 +539,7 @@ def main() -> int:
     print("READINESS CHECK — exercising all tooling (no agent launched)")
     for fn in (test_starter_kit, test_generators, test_circt_gate, test_harness,
                test_oracles_endtoend, test_verify_no_cheat, test_corpus_fits_the_endpoint,
-               test_bundles):
+               test_graded_path_is_the_declared_one, test_bundles):
         try:
             fn()
         except Exception as e:
