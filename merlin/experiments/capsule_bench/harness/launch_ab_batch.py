@@ -162,8 +162,9 @@ def main(argv=None):
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
     # Agent driver + tier-within-agent models (Claude-Code-like). auto preserves route-by-model-id behavior.
-    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode"], default="auto",
-                    help="agent driver for every arm (auto|converse|claudecode|opencode)")
+    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode", "codex"],
+                    default="auto",
+                    help="agent driver for every arm (auto|converse|claudecode|opencode|codex)")
     ap.add_argument("--subagent-model", default="", help="delegate/subagent model (alias or Bedrock id)")
     ap.add_argument("--background-model", default="", help="background/mechanical model (alias or Bedrock id)")
     # Provider for the agent CLI (experiments-only; interactive Claude Code keeps the subscription).

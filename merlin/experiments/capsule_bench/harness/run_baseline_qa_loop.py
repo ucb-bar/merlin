@@ -674,6 +674,16 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
                 raise SystemExit(f"--driver opencode is not available yet: {e}")
             return _OA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
                                  subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL)
+        if drv == "codex":
+            try:
+                import codex_agent as _CA
+            except ImportError as e:
+                raise SystemExit(f"--driver codex is not available: {e}")
+            # effort is threaded through: codex takes it as a config override, and an
+            # arm that silently ran at a different reasoning effort is a different arm.
+            return _CA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
+                                 subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL,
+                                 effort=effort)
         inner = (f'claude --print --model {model} --effort {effort} '
                  f'--permission-mode bypassPermissions --add-dir {ws} '
                  f'--output-format stream-json --verbose < {ws_task}')
@@ -889,9 +899,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--effort", default="high")
     # AGENT DRIVER (Claude-Code-like interfaces). auto (default) preserves today's behavior: route by model
     # id — the Bedrock Converse loop for a non-Anthropic id, else the claude CLI.
-    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode"], default="auto",
+    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode", "codex"],
+                    default="auto",
                     help="agent driver: auto (route by model id), converse (Bedrock Converse loop), "
-                         "claudecode (claude CLI; Bedrock via --provider bedrock), opencode (OpenCode CLI)")
+                         "claudecode (claude CLI; Bedrock via --provider bedrock), opencode (OpenCode CLI), "
+                         "codex (Codex CLI; ChatGPT auth = subscription_notional cost, never metered)")
     ap.add_argument("--subagent-model", default="",
                     help="delegate/subagent model (alias or Bedrock id) for tier-within-agent; default per "
                          "driver (Anthropic: sonnet; non-Anthropic: qwen-coder)")
