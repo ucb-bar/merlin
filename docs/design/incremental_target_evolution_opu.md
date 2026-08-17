@@ -450,7 +450,7 @@ back-edge was compressed.
 | L3 | microkernel numerics, frozen shape corpus | **OPU Verilator RTL — PASSED 31/31** (§8c.2), + 1 of 5 workload shapes (§5.2) |
 | L4 | single-dispatch numerics incl. epilogue | **OPU Verilator RTL — PASSED 6/6** (§5.2) |
 | L5 | whole-model numerics | **Kodiak+OPU FireSim — PASSED bit-exact** (§5.3) |
-| L6 | whole-model cycles | **1.345× over the RVV control on that same bitstream** (§5.3, §5.4) |
+| L6 | whole-model cycles | **1.586× over the RVV control on that same bitstream** (§5.3–§5.5) |
 
 ### 5.2 L4 passed, and it moved the corpus's centre of gravity
 
@@ -569,8 +569,8 @@ is measuring the wrong denominator, and an earlier revision of this section did 
 
 Against the right denominator: making every `linalg.matmul` free would give **1.388×**, and the measured
 **1.328× is 95.7% of that**. The unit has essentially removed matmul as a cost; what is left is the other
-72% of the model. The largest remaining routable block is **`batch_matmul` at 11.89%** — 16 contractions
-the matmul-only contract correctly declines today — not any amount of extra unit throughput.
+72% of the model. The largest remaining routable block was **`batch_matmul` at 11.89%** — 16 contractions the
+matmul-only contract declined at the time, and §5.5 routes them.
 
 ### 5.4 What the unit's utilization actually is, measured per contraction
 
@@ -633,6 +633,39 @@ an answer for this chip: no.
 All six legs, every one graded `w8a8` cos 1.0 / max_rel 0.0, are recorded with the bitstream digest and
 the pin verified against the sources actually read, at
 `out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/spectformer_int8_full/opu_utilization_v1_*`.
+
+### 5.5 The batched contractions, and the hazard only the whole model could find
+
+`linalg.batch_matmul` was the largest remaining lever and §5.3 named it: 11.89% of the runtime, run at
+**0.248 MACs/cycle** on the vector path, its narrow-shape floor. It is now routed. The batch is a LOOP,
+never a third tile axis — the rank-3 entry advances each descriptor's offset by its leading stride and
+calls the same certified rank-2 body per slice, so the legality checks and the scalar fallback are
+inherited rather than rewritten. spectformer routes **57 contractions across 7 signatures** (was 41
+across 5), and the two attention shapes measure **57.1 and 84.1 MACs/cycle per slice** on the device.
+
+| leg | cycles | vs control | grade |
+| --- | --- | --- | --- |
+| device, naive pack | 4,010,140,489 | 1.328× | `w8a8` cos 1.0, max_rel 0.0 |
+| device, blocked pack | 3,960,882,937 | 1.345× | `w8a8` cos 1.0, max_rel 0.0 |
+| device, batched + fenced | **3,358,400,099** | **1.586×** | `w8a8` cos 1.0, max_rel 0.0 |
+
+**The first batched run was 1.586× and WRONG** — `w8a8 cos 0.99995, max_rel 0.83` — and the way that was
+resolved is the part worth keeping. Three facts arrived before any hypothesis: the identical build with
+the scalar stand-in was bit-exact on spike; the two legs share a `build_hash`, so the model object and
+its bufferization are the same in both; and a 7-case RTL certification of the exact attention extents
+(plus probes holding M/N/K at certified values one at a time) came back **0 mismatches on all seven**.
+That exonerates the routing, the ABI and the datapath, and leaves only what the batched form does that
+the rank-2 form cannot.
+
+It re-packs. **Every slice packs into the SAME scratch buffer**, so slice `i+1`'s scalar stores land on
+bytes slice `i`'s kernel read — and on a decoupled vector machine the scalar core runs ahead of the
+load/store unit, so those stores can overtake operand loads that are still outstanding. The rank-2 path
+cannot hit it: one pack, one kernel, no rewrite while a kernel reads. A `fence rw, rw` between slices
+makes it bit-exact for **168,891 cycles — 0.005%**.
+
+Neither existing guard could have caught this, and that is a coverage fact rather than an oversight: the
+acceptance corpus hands the kernel **pre-transposed operands and never packs at all**, and spike orders
+memory functionally. It took the whole model on real RTL, which is exactly what the L5 rung is for.
 
 **The vector unit is priced too, from the same run.** 90 `linalg.matmul` ops are individually profiled;
 they carry no `prov.fqn` (the quant/blocking rewrites drop it) but their result types carry M and N, and
