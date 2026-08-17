@@ -249,6 +249,30 @@ def by_kind(kind: str) -> list[QuantFormat]:
     return [f for f in registry().values() if f.kind == kind]
 
 
+def machine_bits(token: str) -> int | None:
+    """Bit width for a PLAIN machine scalar spelling (``i8`` / ``i32`` / ``f32`` / ``int8``), else None.
+
+    These are deliberately NOT registry entries: an accumulator width is a machine type, not a way of
+    encoding a quantized value, and the registry describes the latter. Parsed structurally (known prefix
+    + decimal width) rather than pattern-matched, and a spelling this does not recognize returns None so
+    the caller fails closed instead of assuming a width. Note this rejects MLIR's float spellings
+    (``f8E4M3FN``) on purpose — those name a registry format and resolve through :func:`get`.
+    """
+    for prefix in ("float", "uint", "int", "f", "u", "i"):
+        if token.startswith(prefix):
+            suffix = token[len(prefix):]
+            if suffix.isdigit():
+                return int(suffix)
+    return None
+
+
+def is_element_dtype(token: str) -> bool:
+    """True if ``token`` names an element type this tooling can reason about — a registered format (by
+    canonical name or alias) or a plain machine width. The vocabulary check for artifacts that declare a
+    dtype as data (capsules, contracts), so none of them has to carry its own copy of the list."""
+    return has(token) or machine_bits(token) is not None
+
+
 def from_torchao(scheme_name: str) -> QuantFormat | None:
     """Return the canonical format a torchAO scheme produces, if one is registered."""
     for f in registry().values():

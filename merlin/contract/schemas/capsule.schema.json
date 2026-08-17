@@ -24,7 +24,11 @@
           "name": {"type": "string"},
           "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]},
           "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
-          "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16", "fp8_e4m3"]},
+          "dtype": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Element type of this tensor. Not a fixed enum: the numeric-format vocabulary is data, declared in merlin/schemas/quant_formats.registry.yaml (where a new format -- MX, NVFP4, a GGUF k-quant -- is an entry, not a code change), so a list copied here goes stale the moment a target brings a format the list predates. Validity is enforced by merlin.targetgen.contract.schemas.validate_capsule against that registry plus plain machine accumulator widths, and an unknown token is still a hard ContractViolation."
+          },
           "layout": {"type": "string"}
         },
         "additionalProperties": false
@@ -34,7 +38,11 @@
       "type": "object",
       "required": ["op"],
       "properties": {
-        "op": {"type": "string", "enum": ["matmul", "linear", "conv2d", "movement", "attention_qk", "attention_pv", "resident_reuse"]},
+        "op": {
+          "type": "string",
+          "enum": ["matmul", "linear", "conv2d", "movement", "attention_qk", "attention_pv", "resident_reuse", "rmsnorm"],
+          "description": "The workload the capsule asks the backend to compile. Unlike dtype this IS a closed set, because an op is only expressible if the tooling can build its interface MLIR and produce its golden -- the vocabulary is code, not data. Its sources are merlin.targetgen.corpus_spec.BUILDERS (capsule + interface MLIR) and capsule_golden._recompute_golden (integer goldens; float ops carry an independent golden.yaml instead). Adding a builder without adding it here rejects the whole corpus at load, which is why merlin/tests/targetgen/test_capsule_vocabulary.py pins this list against BUILDERS."
+        },
         "attributes": {"type": "object", "additionalProperties": true}
       },
       "additionalProperties": false
@@ -44,7 +52,11 @@
       "required": ["compare", "dtype"],
       "properties": {
         "compare": {"type": "string", "enum": ["exact_int", "tolerance_float"]},
-        "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16", "fp8_e4m3"]},
+        "dtype": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Element type the golden comparison is performed in. Same open vocabulary as inputs[].dtype -- see that field."
+        },
         "acc_scale": {"type": "number"},
         "requant_shift": {"type": "integer"},
         "rtol": {"type": "number"},
@@ -67,17 +79,8 @@
         },
         "modes": {
           "type": "object",
-          "properties": {
-            "i8": {"type": "boolean"},
-            "relu": {"type": "boolean"},
-            "acc_scale": {"type": "boolean"},
-            "k_accumulate": {"type": "boolean"},
-            "resident_reuse": {"type": "boolean"},
-            "conv2d": {"type": "boolean"},
-            "movement": {"type": "boolean"},
-            "padded_edge": {"type": "boolean"}
-          },
-          "additionalProperties": false
+          "description": "Coverage axes this capsule exercises, as {mode: true}. Open for the same reason instruction_classes is: a mode names a datapath feature of the target under test, so the vocabulary belongs to the corpus and its target, not to this file. The closed list this replaced was gemmini's eight (i8/relu/acc_scale/k_accumulate/resident_reuse/conv2d/movement/padded_edge) and it rejected radiance's whole corpus over `rmsnorm: true`. coverage_report keeps those eight as the BASELINE always-reported axes so a 0 stays an explicit 'not covered' row, and unions in whatever else a corpus declares rather than dropping it.",
+          "additionalProperties": {"type": "boolean"}
         }
       },
       "additionalProperties": false

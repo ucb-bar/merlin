@@ -9,12 +9,26 @@ import json
 from pathlib import Path
 from typing import Any
 
-# every Gemmini instruction class the bench knows about (so 0-counts are explicit "not covered")
-ALL_CLASSES = ["CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
-               "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV"]
-ALL_MODES = ["i8", "relu", "acc_scale", "k_accumulate", "resident_reuse",
-             "conv2d", "movement", "padded_edge"]
+# BASELINE axes: always reported, so a 0 is an explicit "not covered" row rather than an absent one.
+# These are gemmini's (the ISA the bench was written against) and they are NOT the vocabulary — a
+# self-hosted-ISA or command-buffer target names its classes and modes differently, and a corpus may
+# declare a mode no gemmini capsule has (radiance's `rmsnorm`). The axes actually reported are these
+# UNIONED with what the capsules declare and the traces contain; see `_axes`. Counting only the baseline
+# is how a mode could be declared, graded, and silently absent from its own coverage report.
+BASELINE_CLASSES = ["CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
+                    "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV"]
+BASELINE_MODES = ["i8", "relu", "acc_scale", "k_accumulate", "resident_reuse",
+                  "conv2d", "movement", "padded_edge"]
+#: Back-compat aliases for the baseline sets (their former names).
+ALL_CLASSES = BASELINE_CLASSES
+ALL_MODES = BASELINE_MODES
 TIERS = ["L0", "L1", "L2", "L3", "L4", "L5"]
+
+
+def _axes(baseline: list[str], observed) -> list[str]:
+    """Baseline axes first (stable report order), then anything else observed, sorted."""
+    extra = sorted(set(observed) - set(baseline))
+    return [*baseline, *extra]
 
 
 def aggregate(results: list[dict], capsules: list[dict] | None = None,
@@ -27,8 +41,12 @@ def aggregate(results: list[dict], capsules: list[dict] | None = None,
     by_kind: dict[str, int] = {}
     by_label: dict[str, int] = {}
     by_tier_reached = {t: 0 for t in TIERS}
-    mode_cov = {m: 0 for m in ALL_MODES}
-    class_cov = {c: 0 for c in ALL_CLASSES}
+    declared_modes = {m for c in capsules
+                      for m in ((c.get("expected") or {}).get("modes") or {})}
+    traced_classes = {i.get("class") for tr in traces.values()
+                      for i in (tr.get("instructions") or []) if i.get("class")}
+    mode_cov = {m: 0 for m in _axes(BASELINE_MODES, declared_modes)}
+    class_cov = {c: 0 for c in _axes(BASELINE_CLASSES, traced_classes)}
     unavail = {"vcs": 0, "firesim": 0}
 
     for r in results:
@@ -76,12 +94,14 @@ def render_markdown(cov: dict, results: list[dict]) -> str:
         L.append(f"| {t} | {cov['by_tier_reached'].get(t, 0)} |")
     L += ["", "## Instruction-class coverage (explicit not-covered rows)", "",
           "| class | capsules exercising |", "|---|---|"]
-    for c in ALL_CLASSES:
+    # Iterate the AGGREGATE's own axes, not the baseline list: a class or mode this corpus contributed
+    # is in the counts, and rendering only the baseline would drop it from the report it belongs to.
+    for c in _axes(BASELINE_CLASSES, cov["instruction_class_coverage"]):
         n = cov["instruction_class_coverage"].get(c, 0)
         mark = "" if n else "  _(not covered)_"
         L.append(f"| {c} | {n}{mark} |")
     L += ["", "## Mode coverage", "", "| mode | passing capsules |", "|---|---|"]
-    for m in ALL_MODES:
+    for m in _axes(BASELINE_MODES, cov.get("mode_coverage") or {}):
         n = cov["mode_coverage"].get(m, 0)
         mark = "" if n else "  _(not covered)_"
         L.append(f"| {m} | {n}{mark} |")

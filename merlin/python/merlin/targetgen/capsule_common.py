@@ -41,7 +41,7 @@ def load_capsule(capsule_dir: str | Path, *, contract: str | Path | None = None)
     """Load + validate a capsule.yaml; stamp its directory for interface-MLIR resolution."""
     d = Path(capsule_dir)
     cap = yaml.safe_load((d / "capsule.yaml").read_text(encoding="utf-8"))
-    schemas.validate(cap, "capsule", contract=contract)
+    schemas.validate_capsule(cap, contract=contract)
     cap["__dir__"] = str(d)
     return cap
 
