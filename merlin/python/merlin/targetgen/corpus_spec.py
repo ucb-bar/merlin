@@ -111,11 +111,33 @@ def _accum_dtype(contract: dict, operand: str) -> str:
     return "i32" if dtype_info(operand)[3] else "f32"
 
 
+def _declared_matrix_unit(contract: dict) -> str | None:
+    """The ``matrix_unit`` a compute unit declares, if any — the name of a block in ``matrix_units.yaml``.
+
+    Declared per compute unit rather than per target because a target can carry both a matrix extension
+    and something else, and it is the UNIT that has the encodings.
+    """
+    for cu in (contract.get("compute_units") or []):
+        name = cu.get("matrix_unit")
+        if name:
+            return str(name)
+    return None
+
+
 def _classes_source(te, contract: dict) -> Callable[..., list[str]]:
     """The instruction-class deriver for a matmul-family op. Two regimes, chosen by what the target ships:
     a self-hosted-ISA target (an ``isa_definition.py`` is present) derives its classes from the taxonomy;
     a RoCC/command target derives the RoCC semantic classes from its ``encoding`` map. Never hardcoded."""
     from merlin.targetgen import isa_taxonomy as IT
+    # A compute unit may declare that it IS a matrix extension whose encodings are derived by the
+    # matrix-unit reader (``matrix_units.yaml``). That surface ships no isa_definition.py and no RoCC
+    # ``encoding`` map, so both regimes below saw nothing and the class list came out empty — the state in
+    # which a coverage expectation is satisfied by emitting no instructions at all. Checked FIRST and
+    # allowed to raise: a declared unit whose classes cannot be derived must stop corpus generation, not
+    # quietly produce an unfalsifiable corpus.
+    unit = _declared_matrix_unit(contract)
+    if unit:
+        return IT.matrix_unit_classes_for(unit)
     try:
         tax = IT.derive_isa_taxonomy(te)
     except Exception:  # noqa: BLE001

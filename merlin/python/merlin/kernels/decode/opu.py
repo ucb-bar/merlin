@@ -31,7 +31,9 @@ __all__ = ["Audit", "Decoded", "audit", "decode_stream", "digest", "fields_of"]
 #: RISC-V 32-bit field positions. These are the *instruction format*, not a property of any target: an
 #: R-type word is funct7[31:25] rs2[24:20] rs1[19:15] funct3[14:12] rd[11:7] opcode[6:0], and a
 #: vector-format instruction splits funct7 into funct6[31:26] and vm[25].
-_OPCODE_MASK = 0x7F
+_OPCODE_MASK = 0x7F  # derived-ok: RISC-V base encoding — opcode is bits[6:0] of every 32-bit
+#                      word; a field WIDTH, not an opcode VALUE (the value is compared against
+#                      the derived table in targetgen.rtl.opu_isa, never against a literal here)
 _FUNCT3_SHIFT, _FUNCT3_MASK = 12, 0x7
 _FUNCT6_SHIFT, _FUNCT6_MASK = 26, 0x3F
 _VM_SHIFT = 25

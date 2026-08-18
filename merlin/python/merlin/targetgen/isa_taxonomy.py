@@ -249,3 +249,77 @@ def decode_word(word: int, taxonomy: dict) -> list[str]:
 
 def clear_cache() -> None:
     _CACHE.clear()
+
+
+# --------------------------------------------------------------------------- matrix-extension bridge
+# A matrix extension reached through the VECTOR opcode has no shipped ``isa_definition.py`` and no RoCC
+# ``encoding`` map, so neither regime above sees it and its class list came out EMPTY — which makes a
+# corpus's coverage expectation unfalsifiable (an empty required set is satisfied by emitting nothing).
+# Its encodings ARE derived, just by a different reader (:mod:`targetgen.rtl.opu_isa`, cross-checked
+# against the unit's own header), so this bridges that derivation into the same role-slot vocabulary the
+# taxonomy path uses.
+#
+# The class NAMES are the derived instruction names — whatever the unit's own RTL calls them — so nothing
+# here invents a vocabulary. What IS stated is the alignment between the two role vocabularies we own: the
+# microkernel's roles (``matrix_units.yaml``'s ``kernel_roles``, deliberately declared because which
+# instruction plays which role is a property of the kernel's structure) and the capsule role slots
+# (:func:`required_role_slots`, pure op semantics). A hardware fact would have to be derived; a mapping
+# between two of our own declarations is exactly the kind of thing that belongs written down.
+KERNEL_ROLE_TO_CAPSULE_ROLE: dict[str, str] = {
+    "operand_load": "memory",        # move an operand into the unit's register file
+    "broadcast": "weight_load",      # push the stationary operand across the array
+    "accumulate": "matmul",          # the multiply-accumulate itself
+    "readout": "acc_readout",        # read the accumulator back out
+}
+
+
+def matrix_unit_role_classes(unit: str, *, contract_path: "str | Path | None" = None) -> dict[str, list[str]]:
+    """``{capsule role: [derived instruction name]}`` for a declared matrix extension.
+
+    Fails closed, loudly, in three ways, because each silent version of it produces a corpus that cannot
+    fail: an undeclared unit, a derivation that is not ``ok`` (a gap or a cross-check disagreement), and a
+    ``kernel_roles`` entry naming an instruction the derivation does not contain.
+    """
+    from merlin.llvmlower import opu_shim
+
+    uc = opu_shim.load_contract(unit, path=contract_path)
+    derivation = opu_shim.derive_encodings(uc)
+    if not derivation.ok:
+        raise ValueError(
+            f"matrix unit {unit!r}: encodings are not fully derived (gaps={list(derivation.gaps)}, "
+            f"crosschecks={[c.get('agrees') for c in derivation.crosschecks]}) — refusing to build a "
+            f"coverage expectation from an ungrounded derivation")
+    out: dict[str, list[str]] = {}
+    for kernel_role, insn in sorted(uc.kernel_roles.items()):
+        capsule_role = KERNEL_ROLE_TO_CAPSULE_ROLE.get(kernel_role)
+        if capsule_role is None:
+            continue                       # a role the capsule slots do not consume (not an error)
+        if insn not in derivation.encodings:
+            raise ValueError(
+                f"matrix unit {unit!r}: kernel_roles.{kernel_role} names {insn!r}, which the derivation "
+                f"does not contain (derived: {sorted(derivation.encodings)}) — the contract and the RTL "
+                f"disagree about what this unit implements")
+        out.setdefault(capsule_role, []).append(insn)
+    return out
+
+
+def matrix_unit_classes_for(unit: str, *, contract_path: "str | Path | None" = None):
+    """A ``classes_for(op=, output_dtype=, epilogue=, movement=)`` callable over a matrix extension's
+    derived encodings, shaped exactly like the taxonomy and RoCC regimes so ``CorpusBinding`` cannot tell
+    them apart. Raises if the derivation yields no usable role — an empty class list is the failure this
+    bridge exists to prevent."""
+    by_role = matrix_unit_role_classes(unit, contract_path=contract_path)
+    if not by_role:
+        raise ValueError(f"matrix unit {unit!r}: no declared kernel role maps to a capsule role slot "
+                         f"(kernel roles must cover at least one of {sorted(KERNEL_ROLE_TO_CAPSULE_ROLE)})")
+
+    def _from_matrix_unit(*, op="matmul", output_dtype=None, epilogue=(), movement=False):
+        classes = required_classes_from_roles(by_role, op=op, output_dtype=output_dtype,
+                                              epilogue=tuple(epilogue), movement=movement)
+        if not classes:
+            raise ValueError(
+                f"matrix unit {unit!r}: op={op!r} resolved to NO instruction classes from roles "
+                f"{sorted(by_role)} — a capsule whose coverage expectation is empty cannot fail, so this "
+                f"is refused rather than recorded")
+        return classes
+    return _from_matrix_unit

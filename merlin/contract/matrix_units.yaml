@@ -86,3 +86,8 @@ units:
       accumulate: OPMACC
       broadcast: OPMVINBCAST
       readout: OPMVOUT
+      # The plain operand move-in. The microkernel's three roles above are the ones it EMITS in its inner
+      # loop; this fourth one exists because a capsule's coverage expectation also has to name how an
+      # operand reaches the unit, and a coverage list that omits the load is satisfied by a kernel that
+      # never fetches anything.
+      operand_load: OPMVIN
