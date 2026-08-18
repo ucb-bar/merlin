@@ -43,6 +43,7 @@ ARMS = {
     "merlin":           (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "merlin_assisted"], "merlin", "merlin_assisted", "merlin_assisted_hwbringup_v0"),
     "merlin_rtlchecks": (SCRIPTS / "run_rtlchecks_qa_loop.py", [], "merlincirct", "merlin_assisted", "merlin_assisted_rtlchecks_hwbringup_v0"),
     "cpp_merlininfra":  (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "cpp_merlininfra"], "rbinfra", "cpp_merlininfra", "cpp_merlininfra_hwbringup_v0"),
+    "merlin_eqsat":     (SCRIPTS / "run_eqsat_qa_loop.py", [], "merlineqsat", "merlin_assisted", "merlin_assisted_eqsat_hwbringup_v0"),
 }
 
 

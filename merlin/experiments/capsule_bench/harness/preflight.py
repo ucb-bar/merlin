@@ -81,10 +81,17 @@ def _bundle_id_for(arm: str) -> str:
     if (C.BUNDLES / declared / "input_bundle_manifest.yaml").is_file():
         return declared
     others = {v for k, v in RAE.ARM_BUNDLE.items() if k != arm}
+    # Variant arms whose bundle STEM extends this arm's own. `merlin_assisted_rtlchecks` and
+    # `merlin_assisted_eqsat` both start with `merlin_assisted_`, so a prefix match alone would return
+    # three candidates for the plain merlin arm and the gate would refuse to resolve any of them. Each
+    # variant is a DIFFERENT arm that deliberately shares the stem (generate_prompt keys the assisted
+    # seam menu off that substring), so they are excluded here by their differentiating token.
+    _VARIANT_TOKENS = ("rtlchecks", "eqsat")
     candidates = sorted(
         d.name for d in C.BUNDLES.iterdir()
         if d.is_dir() and d.name.startswith(f"{arm}_") and d.name not in others
-        and "rtlchecks" not in d.name and (d / "input_bundle_manifest.yaml").is_file())
+        and not any(t in d.name for t in _VARIANT_TOKENS)
+        and (d / "input_bundle_manifest.yaml").is_file())
     if len(candidates) == 1:
         return candidates[0]
     raise SystemExit(

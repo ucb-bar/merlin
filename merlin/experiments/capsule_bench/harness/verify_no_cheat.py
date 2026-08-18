@@ -35,8 +35,13 @@ RTL_DIR = REPO / "merlin/python/merlin/targetgen/rtl"
 BUNDLES = EXP / "input_bundles"
 
 # arms that exist as bundles, and which tooling each should/shouldn't have
-MERLIN_ARMS = ["merlin_assisted", "merlin_assisted_rtlchecks"]
+MERLIN_ARMS = ["merlin_assisted", "merlin_assisted_rtlchecks", "merlin_assisted_eqsat"]
 CIRCT_ARM = "merlin_assisted_rtlchecks"
+# arm5's one declared difference from the xDSL arm: the equivalence seam. Named here so the moat check
+# below asserts the grant in BOTH directions — present for arm5, absent everywhere else. A new arm ships
+# with zero fairness checking unless its differentiator is written down somewhere a gate reads.
+EQSAT_ARM = "merlin_assisted_eqsat"
+EQSAT_PATHS = ("contraction_egraph", "persistent_equivalence")
 # hw-bringup conditions DERIVED from the target's materialized bundles (gemmini ships kernel+nokernel;
 # atlas ships kernel-only) — not a hardcoded gemmini set, so the moat/parity/grant checks run over
 # exactly the conditions this target actually launches.
@@ -110,6 +115,18 @@ def check_moat() -> tuple[bool, list[str]]:
         base = _manifest("raw_baseline", cond)
         if _has(_allowed(base), "merlin/python") or _has(_allowed(base), "oot_starterkit"):
             probs.append(f"raw_baseline_{cond}: baseline must get NO merlin tooling (control)")
+        # The eqsat moat, checked in both directions: arm5 must HAVE the seam (else its treatment is
+        # absent and a null result means nothing), and no other arm may reach it (else the comparison
+        # is against an arm that also had it).
+        eqsat = _manifest(EQSAT_ARM, cond)
+        for tok in EQSAT_PATHS:
+            if not _has(_allowed(eqsat), tok):
+                probs.append(f"{EQSAT_ARM}_{cond}: eqsat arm must ALLOW {tok} — it is the treatment")
+        for other in ("raw_baseline", "merlin_assisted", CIRCT_ARM, "cpp_merlininfra"):
+            man = _manifest(other, cond)
+            for tok in EQSAT_PATHS:
+                if _has(_allowed(man), tok):
+                    probs.append(f"{other}_{cond}: {tok} is granted outside the eqsat arm (moat leak)")
     return (not probs), probs
 
 

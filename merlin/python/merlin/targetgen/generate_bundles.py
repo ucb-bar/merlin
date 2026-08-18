@@ -38,6 +38,11 @@ _ORACLE_DENY = [f"{_PY}runtime/reference.py", f"{_PY}runtime/simulator.py",
                 f"{_PY}targetgen/generate/runtime_adapter.py", f"{_PY}xdsl_dialects/lowering/"]
 # arm4 adds the CIRCT RTL-facts generators (agnostic module set).
 _RTLCHECKS_ALLOW = [f"{_PY}targetgen/rtl/"]
+# arm5 adds the EQUIVALENCE SEAM and nothing else: the e-graph over real IR plus the persistent
+# equivalence store. The treatment under test is the seam itself — the agent registers its own
+# implementation as an alternative in an e-class and the extractor chooses — so arm5 differs from the
+# xDSL arm in exactly this one declared way, and the moat check asserts no other arm can reach it.
+_EQSAT_ALLOW = [f"{_PY}targetgen/contraction_egraph.py", f"{_PY}targetgen/persistent_equivalence.py"]
 
 
 def _shared_allow(te: TargetExperiment) -> list[dict]:
@@ -92,6 +97,15 @@ def _arm_manifest(te: TargetExperiment, arm: str, bundle_id: str) -> dict[str, A
         allow += [{"path": p, "mode": "ro", "note": "ALLOWED (CIRCT arm): RTL-facts generators"} for p in _RTLCHECKS_ALLOW]
         allow += [{"path": te.rtl_facts_pin, "mode": "ro", "note": "ALLOWED (CIRCT arm): RTL-extracted facts"}]
         deny = [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY] + deny
+    elif arm == "merlin_eqsat":
+        allow += [{"path": p, "mode": "ro", "note": "ALLOWED tool: xDSL kit / CCA spine"} for p in _XDSL_ALLOW]
+        allow += [{"path": p, "mode": "ro", "note": "ALLOWED (eqsat arm): the equivalence seam"}
+                  for p in _EQSAT_ALLOW]
+        # Same denials as the xDSL arm it is compared against: an arm that also gained the RTL facts
+        # would differ in TWO ways and its result would not attribute to the seam.
+        deny = ([{"path": f"{_PY}targetgen/rtl/", "reason": "CIRCT RTL generators (CIRCT arm only)"},
+                 {"path": te.rtl_facts_pin, "reason": "RTL facts (CIRCT arm only)"}]
+                + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY] + deny)
     else:
         raise ValueError(f"unknown arm {arm!r}")
     return {"bundle_id": bundle_id, "arm": arm, "task": f"{te.target}-mlir-oot-capsule",
@@ -101,7 +115,10 @@ def _arm_manifest(te: TargetExperiment, arm: str, bundle_id: str) -> dict[str, A
 
 # arm -> the bundle-id stem (the launcher appends the variant suffix).
 _ARMS = {"raw_baseline": "raw_baseline", "cpp_merlininfra": "cpp_merlininfra",
-         "merlin_assisted": "merlin_assisted", "merlin_rtlchecks": "merlin_assisted_rtlchecks"}
+         "merlin_assisted": "merlin_assisted", "merlin_rtlchecks": "merlin_assisted_rtlchecks",
+         # arm5's stem CONTAINS "merlin_assisted" on purpose: generate_prompt._is_assisted_arm is a
+         # substring test, so the arm inherits the assisted seam menu with no prompt edit.
+         "merlin_eqsat": "merlin_assisted_eqsat"}
 
 
 def generate_bundles(te: TargetExperiment, *, variant: str = "hwbringup_v0") -> dict[str, dict]:
