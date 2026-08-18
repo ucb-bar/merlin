@@ -231,7 +231,25 @@ def main(argv=None):
     # the driver's in-memory grade was correct (the atlas 0/11 blind-loop bug).
     cb_root = runs_root / "runs" / CR.suite_for(_tgt)
     rows, npass = [], 0
-    for cr in sorted(cb_root.glob("*/capsule_result.json")) if cb_root.exists() else []:
+    _results = sorted(cb_root.glob("*/capsule_result.json")) if cb_root.exists() else []
+    # Does the declared barrier EVER produce a verdict for this target? Two very different situations
+    # look identical per-capsule, and only this whole-corpus view separates them:
+    #   • the tier ran for some capsule but not this one -> this capsule genuinely fell short of the
+    #     barrier and MUST fail; falling back would pass it on weaker evidence than the bar demands.
+    #   • the tier ran for NO capsule -> the declared barrier is one the target cannot produce at all
+    #     (a descriptor/adapter mismatch), and scoring against it fails everything regardless of merit.
+    # Only the second case licenses a fallback.
+    _declared_ran = False
+    for _cr in _results:
+        try:
+            _d = json.loads(_cr.read_text())
+        except Exception:
+            continue
+        _s = ((_d.get("tiers") or {}).get(barrier_tier) or {}).get("status")
+        if _s not in (None, "skipped"):
+            _declared_ran = True
+            break
+    for cr in _results:
         try:
             d = json.loads(cr.read_text())
         except Exception:
@@ -242,8 +260,8 @@ def main(argv=None):
         tiers = {t: (v or {}).get("status") for t, v in (d.get("tiers") or {}).items()}
         bar = tiers.get(barrier_tier)
         bar_used = barrier_tier
-        if bar is None:
-            # The declared barrier never ran for this target, so scoring against it marks EVERY capsule
+        if bar is None and not _declared_ran:
+            # The declared barrier never ran for ANY capsule, so scoring against it marks EVERY capsule
             # failed no matter what the grade said. Measured on atlas: the barrier resolved to L4 (the
             # lexicographic max of a wider adapter set) while its results carry only {L0 skipped, L1
             # skipped, L2 pass} -- so 110 consecutive self-checks reported 0/11 while the operator grade

@@ -16,11 +16,15 @@ from __future__ import annotations
 import pytest
 
 
-def score(tiers: dict, status: str, declared: str) -> tuple[bool, str]:
-    """Mirror of agent_selfcheck's barrier resolution (kept in sync by the tests below)."""
+def score(tiers: dict, status: str, declared: str, declared_ran: bool = False) -> tuple[bool, str]:
+    """Mirror of agent_selfcheck's barrier resolution (kept in sync by the tests below).
+
+    `declared_ran` is the whole-corpus fact: did the declared tier produce a verdict for ANY capsule?
+    It is what separates "this capsule fell short of a real bar" from "the bar does not exist here".
+    """
     bar = tiers.get(declared)
     used = declared
-    if bar is None:
+    if bar is None and not declared_ran:
         ran = [k for k, v in tiers.items() if v not in (None, "skipped")]
         if ran:
             used = max(ran)
@@ -64,9 +68,33 @@ def test_atlas_is_gradeable_whatever_barrier_is_declared(declared):
     assert ok and used == "L2"
 
 
+def test_a_capsule_that_fell_short_of_a_REAL_barrier_still_fails():
+    """The fallback must not become a leniency hole.
+
+    Where the target genuinely produces the declared tier, a capsule missing it did not reach the bar.
+    Scoring it against a weaker tier would report a pass on weaker evidence than the barrier demands --
+    the same "plausible wrong number" failure as the original bug, only inverted. Measured on the live
+    gemmini run: barrier_used came back ['L0', 'L2'], i.e. capsules were being passed at L0 on a target
+    whose bar is L2.
+    """
+    short = {"L0": "pass", "L1": "pass"}          # L2 never reached for THIS capsule
+    ok, used = score(short, "pass", "L2", declared_ran=True)
+    assert not ok, "L2 runs on this target, so a capsule that never reached it has not met the bar"
+    assert used == "L2", "the row must still report the bar it was held to"
+
+
+def test_the_fallback_survives_when_the_tier_exists_nowhere():
+    """The atlas case is unchanged: no capsule anywhere produced L4, so the bar is not real."""
+    ok, used = score(ATLAS, "pass", "L4", declared_ran=False)
+    assert ok and used == "L2"
+
+
 def test_the_helper_matches_the_shipped_implementation():
     """Guard against the mirror above drifting from agent_selfcheck."""
     from merlin.common.paths import repo_root
     src = (repo_root() / "merlin/experiments/capsule_bench/harness/agent_selfcheck.py").read_text()
     assert 'ran = [k for k, v in tiers.items() if v not in (None, "skipped")]' in src
     assert "bar_used = max(ran)" in src
+    # the whole-corpus gate: without it the fallback is a leniency hole
+    assert "if bar is None and not _declared_ran:" in src
+    assert "_declared_ran = True" in src
