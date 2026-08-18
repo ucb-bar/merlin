@@ -24,6 +24,7 @@ allowed:
   - {path: "merlin/python/merlin/targetgen/generate/", mode: ro, note: "ALLOWED tool: xDSL + MLIR scaffold generators (runtime_adapter.py denied below)"}
   - {path: "merlin/python/merlin/xdsl_dialects/", mode: ro, note: "ALLOWED tool: xDSL dialect patterns (lowering/ denied below)"}
   - {path: "merlin/python/merlin/targetgen/contract/interface_emit.py", mode: ro, note: "ALLOWED: interface grammar emit/parse"}
+  - {path: "merlin/python/merlin/targetgen/contract/linalg_iface.py", mode: ro, note: "ALLOWED: linalg interface READER (granted to the assisted arms by generate_bundles)"}
   - {path: "merlin/python/merlin/targetgen/oot_starterkit/", mode: ro, note: "ALLOWED tool: hw-agnostic OOT starter kit (parse_interface, CommandBufferBuilder, transforms.im2col/tile_to_dim, verify.validate, dialect.parse_to_verified_ir)"}
   # Compiler-modification SPINE (arm-3): the CCA extract/diff/route/seam machinery + the generic
   # derivation-driven backend. Answer-free; none import the oracle or the grader.

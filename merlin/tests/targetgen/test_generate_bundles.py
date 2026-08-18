@@ -19,10 +19,17 @@ def _sets(m):
     return ({e["path"] for e in m.get("allowed", [])}, {e["path"] for e in m.get("denied", [])})
 
 
-def test_generates_the_four_arms():
+def test_generates_every_registered_arm():
+    """One bundle per registered arm. Asserted against the registry rather than a written-out set, so
+    adding an arm cannot leave this test asserting the old count while the launcher runs a new one."""
+    from merlin.targetgen.generate_bundles import _ARMS
+
     gen = generate_bundles(_te())
-    assert set(gen) == {"raw_baseline_hwbringup_v0", "cpp_merlininfra_hwbringup_v0",
-                        "merlin_assisted_hwbringup_v0", "merlin_assisted_rtlchecks_hwbringup_v0"}
+    assert set(gen) == {f"{stem}_hwbringup_v0" for stem in _ARMS.values()}
+    # the arms that exist today, named so a deletion is also visible
+    assert {"raw_baseline_hwbringup_v0", "cpp_merlininfra_hwbringup_v0",
+            "merlin_assisted_hwbringup_v0", "merlin_assisted_rtlchecks_hwbringup_v0",
+            "merlin_assisted_eqsat_hwbringup_v0"} <= set(gen)
 
 
 def _norm(paths):
