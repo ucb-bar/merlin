@@ -575,7 +575,7 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
 
 
 def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, sdk_dir=None,
-                 debug: bool = False, unit: str, config: str):
+                 debug: bool = False, unit: str, config: str, simulate: bool = True):
     """Build an image that routes contractions to a MATRIX EXTENSION, and gate it honestly.
 
     The problem this solves: the shipped image contains instructions no functional simulator we have can
@@ -652,9 +652,16 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
         raise RuntimeError(f"the stand-in twin contains the unit's instructions ({twin_counts}), "
                            "so it is not a stand-in")
 
-    res = zm.run_on_spike(twin["elf"], harts=cpus, mem_bytes=twin["ram_bytes"],
-                          timeout=timeout, vlen=vlen)
-    res.update(zm._gate(res["prefix"], refs))
+    if simulate:
+        res = zm.run_on_spike(twin["elf"], harts=cpus, mem_bytes=twin["ram_bytes"],
+                              timeout=timeout, vlen=vlen)
+        res.update(zm._gate(res["prefix"], refs))
+    else:
+        # --no-spike: the twin is still BUILT and both images still audited (the digest match and the
+        # instruction-count checks above are what make the pair meaningful), but the functional grade is
+        # not taken here. Everything derived from a console stays empty rather than defaulted, so nothing
+        # downstream can read an ungraded image as a passing one.
+        res = {"console": "", "prefix": "", "metrics": {}, "outputs": None, "simulated": False}
     res["backend"] = "matrix"
     # The twin's identity, so the recipient's grade.py can tell "this console came from the documented
     # stand-in" apart from "this package is inconsistent" -- the same mechanism a UART board's HTIF twin
@@ -878,6 +885,20 @@ def main(argv=None) -> int:
         # audited, never simulated, and the package says so rather than implying a gate.
         if a.no_spike or model in no_spike_models:
             print(f"  [{tag}] building (no simulation) in {work}", flush=True)
+            if backend == "matrix":
+                # A matrix image is not a `backend=` variant of the ordinary build: it needs the routing,
+                # the stand-in twin and the instruction audit. Passing "matrix" to build_board_only
+                # raised `unknown backend 'matrix'`, so --no-spike and --matrix-harts together could not
+                # build at all — the one combination you want when the twin's functional run costs hours
+                # and the real evidence comes from the RTL.
+                res, board_build, dbg_build = build_matrix(
+                    bundle, brd, harts, vlen=brd.vlen, work=work, timeout=a.timeout,
+                    sdk_dir=a.sdk_dir, debug=a.debug, unit=a.matrix_unit, config=a.matrix_config,
+                    simulate=False)
+                print(f"  [{tag}] built (ungraded): {board_build['ram_bytes'] // 2**20} MB region, "
+                      f"{board_build['build_hash']}, unit counts "
+                      f"{res.get('matrix', {}).get('unit_instruction_counts')}", flush=True)
+                return res, board_build, dbg_build
             board_build = build_board_only(bundle, brd, harts, work=work, sdk_dir=a.sdk_dir,
                                            backend=backend, debug=False)
             dbg_build = (build_board_only(bundle, brd, harts, work=work / "dbg",
