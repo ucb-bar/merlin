@@ -152,6 +152,7 @@ def collect(tag: str | None, arm_filter: str | None) -> list[dict]:
                 "converged": r["converged"], "n_rounds": r["n_rounds"],
                 "public": _score(man, "public_dev"), "hidden": _score(man, "hidden"),
                 "integrity_status": man.get("integrity_status"),
+                "highest_tier": (man.get("public_dev") or {}).get("highest_tier"),
                 "oracle_mode": man.get("oracle_mode"),
                 "gradeable": man.get("gradeable"),
                 "first_failure_planes": _first_planes(man),
@@ -162,6 +163,10 @@ def collect(tag: str | None, arm_filter: str | None) -> list[dict]:
                 "tokens_output": r["tokens_output"], "tokens_cached": r["tokens_cached"],
                 "tokens_by_model": ct.get("tokens_native_by_model"),
                 "cost_usd": r["cost_usd"],
+                # A seat run leaves estimated_cost_usd null on purpose; its dollars live here. Without
+                # reading it the table printed $0.00 notional for runs that cost $5-8 of equivalent
+                # traffic, which reads as "free" rather than "not billed per token".
+                "notional_usd": ct.get("subscription_notional_usd"),
                 "codex": _codex_facts(d),
                 "billing_mode": billing_mode(env, _codex_facts(d)),
             })
@@ -177,7 +182,7 @@ def by_model(rows: list[dict]) -> dict:
             "best_public": None, "best_hidden": None, "best_public_n": -1, "best_hidden_n": -1,
             "metered_cost_usd": 0.0, "unpriced_runs": 0,
             "notional_cost_usd": 0.0, "unknown_billing_cost_usd": 0.0,
-            "subscription_notional_runs": 0, "unknown_billing_runs": 0,
+            "subscription_notional_runs": 0, "unknown_billing_runs": 0, "notional_unpriced_runs": 0,
             "lower_bound_token_runs": 0,
             "tokens_total": 0, "tool_calls": 0, "planes": {},
         })
@@ -194,7 +199,9 @@ def by_model(rows: list[dict]) -> dict:
         bm = r["billing_mode"]
         if bm == "subscription_notional":
             m["subscription_notional_runs"] += 1
-            m["notional_cost_usd"] += float(r["cost_usd"] or 0.0)
+            m["notional_cost_usd"] += float(r.get("notional_usd") or r["cost_usd"] or 0.0)
+            if r.get("notional_usd") is None:
+                m["notional_unpriced_runs"] += 1
         elif r["cost_usd"] is None:
             m["unpriced_runs"] += 1          # cost unavailable - NOT zero
         elif bm == "metered":
@@ -220,8 +227,12 @@ def markdown(models: dict, rows: list[dict], arm: str | None) -> str:
         m = models[name]
         rd = [r["n_rounds"] for r in rows if r["model"] == name and r["n_rounds"]]
         if m["subscription_notional_runs"] == m["n_runs"]:
-            cost = (f"${m['notional_cost_usd']:.2f} notional (subscription)"
-                    if m["notional_cost_usd"] else "subscription — not billed per token")
+            if m["notional_cost_usd"]:
+                cost = f"${m['notional_cost_usd']:.2f} notional (subscription, not billed)"
+                if m["notional_unpriced_runs"]:
+                    cost += f" (+{m['notional_unpriced_runs']} run(s) predate the rate)"
+            else:
+                cost = "subscription — not billed per token"
         elif m["unpriced_runs"] == m["n_runs"]:
             cost = "unpriced (cost unavailable - not $0)"
         elif m["unknown_billing_runs"] == m["n_runs"]:
@@ -237,6 +248,14 @@ def markdown(models: dict, rows: list[dict], arm: str | None) -> str:
         tok = f"{m['tokens_total']:,}" + (" (lower bound)" if m["lower_bound_token_runs"] else "")
         L.append(f"| `{name}` | {m['n_runs']} | {m['best_public']} | {m['best_hidden']} | "
                  f"{max(rd) if rd else '-'} | {m['tool_calls']:,} | {tok} | {cost} |")
+    L += ["", "## per run (a best-of row hides a run that diverged)", "",
+          "| run | model | public | hidden | tier | rounds | tokens | cost |", "|---|---|---|---|---|---|---|---|"]
+    for r in sorted(rows, key=lambda x: (x["model"], x["run_id"])):
+        c = (f"${r['notional_usd']:.2f} notional" if r.get("notional_usd")
+             else (f"${r['cost_usd']:.2f}" if r.get("cost_usd") else "—"))
+        L.append(f"| `{r['run_id']}` | `{r['model']}` | {(r['public'] or {}).get('passed')} | "
+                 f"{(r['hidden'] or {}).get('passed')} | {r.get('highest_tier') or '—'} | "
+                 f"{r['n_rounds']} | {(r['tokens_total'] or 0):,} | {c} |")
     L += ["", "## where capsules die (first failure plane, summed over runs)", ""]
     for name in sorted(models):
         planes = models[name]["planes"]
