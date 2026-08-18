@@ -164,6 +164,15 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
     so a whole multi-layer model lowers to ONE co-scheduled kernel.
     """
     isa = _isa()
+    # Bind the RTL-derived facts as LOCALS. They used to be module-level constants; the lazy refactor
+    # moved them behind a PEP 562 module __getattr__, which serves `gemmini_codegen_mlir.DIM` from
+    # OUTSIDE but is never consulted for a bare global lookup inside this module -- so every use below
+    # raised NameError the moment this path ran. Reading them off `isa` once keeps the laziness and makes
+    # the dependency explicit.
+    DIM, F1, C_ACC = isa.DIM, isa.F1, isa.C_ACC
+    ACC_ACCUM, ACC_I8, SCRATCHPAD_ROWS = isa.ACC_ACCUM, isa.ACC_I8, isa.SCRATCHPAD_ROWS
+    K_CONFIG, K_MVIN, K_MVOUT = isa.K_CONFIG, isa.K_MVIN, isa.K_MVOUT
+    K_PRELOAD, K_COMPUTE_PRELOADED = isa.K_PRELOAD, isa.K_COMPUTE_PRELOADED
     groups = _parse_groups(cb)                  # [(weight, k, n, jobs)], jobs: (lhs,out,epi,m,odt,scale)
     weights = [g[0] for g in groups]
     lhss = [j[0] for g in groups for j in g[3]]
