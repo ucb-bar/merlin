@@ -74,7 +74,7 @@ def _check(name: str, ok: bool, detail: str) -> dict:
 
 
 def run_canary(sandbox: str = "bwrap", timeout: int = 600,
-               arm: str | None = None) -> tuple[int, dict]:
+               arm: str | None = None, bundle_id: str = "") -> tuple[int, dict]:
     """Run the canary. Returns ``(exit_code, report)``.
 
     With *arm*, the REAL bundle for that arm is loaded and its workspace
@@ -95,10 +95,15 @@ def run_canary(sandbox: str = "bwrap", timeout: int = 600,
     run_dir.mkdir(parents=True, exist_ok=True)
 
     # The bundle under test: a real arm's (what a graded cell binds) or empty.
-    bundle_info: dict = {"arm": arm}
+    bundle_info: dict = {"arm": arm, "bundle_id": bundle_id or None}
     if arm:
         import run_agent_experiment as RX
 
+        # A target's bundle ids are its own (saturn_opu ships *_hwbringup_v0 where
+        # the default map still names the gemmini-era *_public_v0), so honour an
+        # explicit id the way run_baseline_qa_loop's --bundle does.
+        if bundle_id:
+            RX.ARM_BUNDLE[arm] = bundle_id
         bundle = RX._load_bundle(arm)
         assembled = R.assemble_copy_workspace(bundle, ws)
         bundle_info.update({
@@ -218,9 +223,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--arm", default=None,
                     help="load a REAL arm bundle (raw_baseline|merlin_assisted|cpp_merlininfra) so "
                          "masking is checked against what a graded cell actually binds")
+    ap.add_argument("--bundle", default="", help="explicit bundle id for --arm (per-target ids differ)")
     a = ap.parse_args(argv)
 
-    rc, report = run_canary(a.sandbox, a.timeout, a.arm)
+    rc, report = run_canary(a.sandbox, a.timeout, a.arm, a.bundle)
     print(f"\n=== Codex sandbox canary: {report['verdict']} (sandbox={a.sandbox}, bundle={a.arm or 'empty'}) ===")
     for c in report["checks"]:
         print(f"  [{'ok' if c['ok'] else 'FAIL'}] {c['check']}: {c['detail'][:300]}")
