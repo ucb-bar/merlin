@@ -21,6 +21,7 @@ import importlib.util
 import os
 import pkgutil
 import sys
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -216,6 +217,9 @@ def _load_oot_backend(name: str, path: Path, *, ns: str = "merlin._oot_backends"
         sys.modules.pop(modname, None)
 
 
+_oot_lock = threading.RLock()   # guards OOT discovery: the sentinel is published only after it completes
+
+
 def _ensure_oot_discovered() -> None:
     """Load OOT backend modules for the current ``MERLIN_TARGET_PATH``. Re-scans only when the env value
     changes (cheap no-op otherwise); registration is idempotent, so repeated scans are harmless. Note:
@@ -225,9 +229,20 @@ def _ensure_oot_discovered() -> None:
     key = os.environ.get("MERLIN_TARGET_PATH", "")
     if key == _oot_env_seen:
         return
-    _oot_env_seen = key
-    for name, path in _oot_backend_modules():
-        _load_oot_backend(name, path)
+    # Publish the sentinel only AFTER every module has registered, under a lock.
+    #
+    # Setting it first is a check-then-set race, and grading fans capsules out across threads: worker A
+    # passes the check and starts loading (imports + RTL facts, not fast), worker B sees the sentinel
+    # already set, returns immediately, and then reads an EMPTY registry -> `KeyError: 'gemmini'`, which
+    # the runner reports as `spike invocation failed: 'gemmini'` / tool_crash. Measured on the first
+    # gemmini arm-4 run: 15 of 20 capsules crashed that way and 5 passed, purely on thread timing -- an
+    # agent that had actually solved all 20 graded 5.
+    with _oot_lock:
+        if key == _oot_env_seen:          # another thread completed discovery while we waited
+            return
+        for name, path in _oot_backend_modules():
+            _load_oot_backend(name, path)
+        _oot_env_seen = key
 
 
 @runtime_checkable
