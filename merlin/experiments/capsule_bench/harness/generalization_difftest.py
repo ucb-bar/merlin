@@ -66,6 +66,26 @@ NORM_C = 16                    # feature width for row-op families (probes vary 
 MAX_DIM_DEFAULT = 64           # skip 4096-wide skinny probes (impractical to simulate)
 
 
+def datapath_policy() -> dict:
+    """The target's NUMERIC datapath, from its own corpus profile — not assumed to be float.
+
+    Probes were materialized with `output_dtype: f32` and `compare: tolerance_float`, which is right for
+    a SIMT float core and wrong for an integer systolic one: gemmini computes i8 x i8 -> i32 EXACTLY, and
+    its shipped capsules declare `compare: exact_int`. Grading an integer datapath against a float golden
+    mismatches every probe, including the canonical tile the same backend passes on a shipped capsule --
+    a recall of 0 that measures the materializer, not the compiler.
+    """
+    prof = C.REPO / "merlin/contract/capsules/profiles" / f"{TARGET}.yaml"
+    dp = {}
+    if prof.is_file():
+        dp = (yaml.safe_load(prof.read_text()) or {}).get("datapath") or {}
+    compare = dp.get("compare", "tolerance_float")
+    exact = compare in ("exact_int", "exact")
+    return {"compare": compare, "exact": exact,
+            "operand_dtype": "i8" if exact else None,      # float path keeps the probe's own dtype
+            "acc_dtype": "i32" if exact else "f32"}
+
+
 def _round_dtype(x: np.ndarray, dt: str) -> np.ndarray:
     if dt == "fp32":
         return x.astype(np.float32)
@@ -85,6 +105,7 @@ def _iface_header() -> str:
 
 
 def _write_capsule(probe, iface, *, inputs, out, op, op_attrs, ct) -> Path:
+    pol = datapath_policy()
     cdir = OUTDIR / probe.name.replace(".", "_")
     cdir.mkdir(parents=True, exist_ok=True)
     (cdir / "capsule.interface.mlir").write_text(iface)
@@ -95,42 +116,67 @@ def _write_capsule(probe, iface, *, inputs, out, op, op_attrs, ct) -> Path:
         "interface_mlir": "capsule.interface.mlir",
         "inputs": [{"name": nm, "role": role, "shape": sh, "dtype": ct} for nm, role, sh, _ in inputs],
         "operation": {"op": op, "attributes": op_attrs},
-        "numeric_policy": {"compare": "tolerance_float", "dtype": "f32", "atol": 0.03125, "rtol": 0.015625},
+        "numeric_policy": ({"compare": pol["compare"], "dtype": pol["acc_dtype"]} if pol["exact"] else
+                           {"compare": "tolerance_float", "dtype": "f32", "atol": 0.03125, "rtol": 0.015625}),
         "expected": {"instruction_classes": [], "modes": {}},
         "required_oracle_tiers": ["L0", "L1", "L2"], "vcs": "optional",
     }, sort_keys=False))
-    (cdir / "golden.yaml").write_text(yaml.safe_dump({
-        "golden_source": "ieee_simt_f32_accumulate",
-        "oracle_provenance": {"engine": f"numpy IEEE float {op} (independent CPU reference)",
-                              "operand_dtype": ct, "accum_dtype": "f32", "output_dtype": "f32",
-                              "grade_policy": {"compare": "tolerance_float", "atol": 0.03125, "rtol": 0.015625},
-                              "inputs": {nm: {"shape": sh, "decoded": arr.reshape(-1).tolist()}
-                                         for nm, _, sh, arr in inputs}},
-        "outputs": {"Y0": out.reshape(-1).tolist()},
-    }, sort_keys=False))
+    if pol["exact"]:
+        # Integer datapath: declare `merlin_tensor_int` and ship NO decoded operands, so the grader
+        # materializes the leaves and recomputes the golden on its own exact-integer engine — the same
+        # path every shipped integer capsule takes. A numpy float reference would introduce a second
+        # arithmetic definition for a datapath that has exactly one.
+        (cdir / "golden.yaml").write_text(yaml.safe_dump({
+            "golden_source": "merlin_tensor_int",
+            "oracle_provenance": {"engine": "merlin Tensor exact-integer recompute (grader-side)",
+                                  "operand_dtype": ct, "accum_dtype": pol["acc_dtype"],
+                                  "output_dtype": pol["acc_dtype"],
+                                  "grade_policy": {"compare": pol["compare"]}},
+        }, sort_keys=False))
+    else:
+        (cdir / "golden.yaml").write_text(yaml.safe_dump({
+            "golden_source": "ieee_simt_f32_accumulate",
+            "oracle_provenance": {"engine": f"numpy IEEE float {op} (independent CPU reference)",
+                                  "operand_dtype": ct, "accum_dtype": "f32", "output_dtype": "f32",
+                                  "grade_policy": {"compare": "tolerance_float", "atol": 0.03125,
+                                                   "rtol": 0.015625},
+                                  "inputs": {nm: {"shape": sh, "decoded": arr.reshape(-1).tolist()}
+                                             for nm, _, sh, arr in inputs}},
+            "outputs": {"Y0": out.reshape(-1).tolist()},
+        }, sort_keys=False))
     return cdir
 
 
 def materialize_contraction(probe, seed):
     d = probe.descriptor
-    ct = GRADEABLE_DTYPE.get(d.in_dtype)
+    pol = datapath_policy()
+    # An integer datapath has one operand dtype and one accumulator width, both from the profile; a float
+    # one keeps the probe's declared dtype. Emitting f32 at an i8 x i8 -> i32 core is what made every
+    # probe mismatch, canonical tile included.
+    ct = pol["operand_dtype"] or GRADEABLE_DTYPE.get(d.in_dtype)
     if ct is None:
         return None
+    acc = pol["acc_dtype"]
     m, k, n = int(d.m), int(d.k), int(d.n)
     rng = np.random.default_rng(seed)
-    A = _round_dtype(rng.standard_normal((m, k)), d.in_dtype)
-    W = _round_dtype(rng.standard_normal((k, n)), d.in_dtype)
-    Y = (A.astype(np.float32) @ W.astype(np.float32)).astype(np.float32)
+    if pol["exact"]:
+        A = W = None                       # grader materializes the leaves and recomputes the golden
+        Y = None
+    else:
+        A = _round_dtype(rng.standard_normal((m, k)), d.in_dtype)
+        W = _round_dtype(rng.standard_normal((k, n)), d.in_dtype)
+        Y = (A.astype(np.float32) @ W.astype(np.float32)).astype(np.float32)
     iface = (_iface_header()
              + f'  %W = merlin_iface.tensor {{name = "W", role = "weight"}} : tensor<{k}x{n}x{ct}>\n'
              + f'  %A0 = merlin_iface.tensor {{name = "A0", role = "input"}} : tensor<{m}x{k}x{ct}>\n'
              + f'  %W_res = merlin_iface.resident_pack %W {{layout = "packed_rhs"}} : (tensor<{k}x{n}x{ct}>) -> !merlin_iface.resident\n'
-             + f'  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<{m}x{k}x{ct}>, !merlin_iface.resident) -> !merlin_iface.acc<f32>\n'
-             + f'  %Y0 = merlin_iface.commit %acc0 {{name = "Y0", epilogue = [], output_dtype = "f32"}} : (!merlin_iface.acc<f32>) -> tensor<{m}x{n}xf32>\n'
+             + f'  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<{m}x{k}x{ct}>, !merlin_iface.resident) -> !merlin_iface.acc<{acc}>\n'
+             + f'  %Y0 = merlin_iface.commit %acc0 {{name = "Y0", epilogue = [], output_dtype = "{acc}"}} : (!merlin_iface.acc<{acc}>) -> tensor<{m}x{n}x{acc}>\n'
              + '  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()\n}\n')
     return _write_capsule(probe, iface, inputs=[("W", "weight", [k, n], W), ("A0", "input", [m, k], A)],
                           out=Y, op="matmul", ct=ct,
-                          op_attrs={"lhs": "A0", "weight": "W", "out": "Y0", "epilogue": [], "output_dtype": "f32"})
+                          op_attrs={"lhs": "A0", "weight": "W", "out": "Y0", "epilogue": [],
+                                    "output_dtype": acc})
 
 
 def materialize_normalization(probe, seed):
