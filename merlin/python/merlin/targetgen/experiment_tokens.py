@@ -226,19 +226,26 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED) -> dict:
     }
     if tok_reason:
         rec["tokens_reasoning"] = tok_reason      # subset of tokens_output; not added to any total
-    if unpriced:
+    if billing_mode != METERED:
+        # Checked BEFORE the missing-price case: for a seat run both are usually true (a subscription
+        # model has no metered rate), and "no price entry" is the wrong reason to print -- it reads as a
+        # gap in the price table someone should fill, when the real answer is that this traffic is not
+        # billed per token at all. A seat's dollars are notional; the spend field stays empty so no
+        # aggregator can sum them into a budget.
+        rec["estimated_cost_usd"] = None
+        rec["cost_unavailable_reason"] = (
+            f"{billing_mode}: a subscription seat is not billed per token; any dollar figure is what the "
+            "same traffic would have cost metered, not money spent")
+        if not unpriced:
+            rec["subscription_notional_usd"] = round(cost, 4)
+        else:
+            rec["cost_unavailable_reason"] += ("; no metered rate for "
+                                               + ", ".join(sorted(unpriced)) + " either")
+    elif unpriced:
         # No rate for a model that actually ran ⇒ no dollar figure, with the gap named.
         rec["estimated_cost_usd"] = None
         rec["cost_unavailable_reason"] = ("no price entry for model(s): "
                                           + ", ".join(sorted(unpriced)))
-    elif billing_mode != METERED:
-        # A seat is not billed per token. Report what the traffic WOULD have cost, labelled notional,
-        # and leave the spend field empty so no aggregator can sum it into a budget.
-        rec["estimated_cost_usd"] = None
-        rec["subscription_notional_usd"] = round(cost, 4)
-        rec["cost_unavailable_reason"] = (
-            f"{billing_mode}: a subscription seat is not billed per token; the notional figure is "
-            "what the same traffic would have cost metered, not money spent")
     else:
         rec["estimated_cost_usd"] = round(cost, 4)
     return rec
