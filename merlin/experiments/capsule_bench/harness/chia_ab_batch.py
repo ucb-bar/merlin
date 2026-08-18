@@ -113,10 +113,19 @@ def main(argv: list[str] | None = None) -> int:
     LB._run_preflight()   # lock answer surfaces + verify_no_cheat before any spend
     # target is DERIVED from the active descriptor (MERLIN_TARGET_EXPERIMENT via _common), never hardcoded
     # — so the chia run dir + telemetry land under the right target (atlas/gemmini/…), no per-target branch.
+    # The cluster must SUPPLY every resource a task requests, or Ray never schedules that task at all
+    # (a Codex arm asks for a `codex_slots` unit below, so the pool has to declare one).
+    cluster_resources = {"verilator": a.verilator_slots}
+    if a.driver == "codex":
+        if a.codex_slots < 1:
+            print("--codex-slots must be >= 1", file=sys.stderr)
+            return 2
+        cluster_resources["codex_slots"] = a.codex_slots
     with chia_run(suite="capsule-bench", method="chia_ab_batch", target=LB.C.TARGET,
                   extra={"arms": arms, "repeats": a.repeats, "verilator_slots": a.verilator_slots,
-                         "provider": a.provider},
-                  ray_resources={"verilator": a.verilator_slots}) as run:
+                         "codex_slots": a.codex_slots if a.driver == "codex" else None,
+                         "driver": a.driver, "model": a.model, "provider": a.provider},
+                  ray_resources=cluster_resources) as run:
         # A Codex arm consumes provider quota, so it holds a `codex_slots` unit for
         # its duration in addition to the verilator unit. Requested at call time
         # because the resource set depends on the chosen driver; if the installed

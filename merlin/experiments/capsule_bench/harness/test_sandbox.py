@@ -43,10 +43,16 @@ def _ok(name, cond, detail=""):
 
 
 def _bwrap(ws: Path, bundle: dict, inner: str) -> str:
-    parts = RX.bwrap_argv(ws, bundle) + QA.claude_runtime_binds() + TC.toolchain_binds()
-    for f in QA.answer_files():
-        parts += ["--ro-bind", "/dev/null", str(f)]
-    return " ".join(parts) + f" bash -c '{TC.sandbox_env(ws)} {inner}'"
+    """The SAME sandbox the agent runs in — delegated to the run path, never rebuilt here.
+
+    This used to hand-roll its own box: base argv + binds, then an UNGUARDED ``--ro-bind /dev/null``
+    over every file in the legacy ``answer_files()`` list. Two things went wrong with that. It skipped
+    the directory surfaces entirely, and — worse — binding a file that the deny-by-default base had
+    already tmpfs-hidden RE-CREATES that path inside the tmpfs, so the held-out capsule NAMES
+    (``hidden/H0_matmul_hidden/…``) became listable again even though their contents were empty. A gate
+    that assembles its own weaker sandbox is not evidence about the real one; ``bwrap_cmd`` applies the
+    derived answer-mask pass, which skips a surface the base already hides."""
+    return QA.bwrap_cmd(inner, ws, bundle)
 
 
 def _run(ws, bundle, inner, timeout=180):

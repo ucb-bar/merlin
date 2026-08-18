@@ -335,6 +335,33 @@ def _kill_tree(proc: subprocess.Popen) -> None:
             continue
 
 
+def _link_for_aet(run_dir: Path, raw_path: Path, rnd: int) -> Path | None:
+    """Expose this round's RAW codex stream under ``<run_dir>/agent/`` for ``aet import --format codex``.
+
+    aet's codex importer takes a directory and globs ``**/*.jsonl`` recursively, replaying files in NAME
+    order as consecutive rounds. Pointing it at ``rounds/`` would therefore also swallow
+    ``round_NN.transcript.jsonl`` (the translated Claude-shape stream) and the ``timestamped`` wrapper
+    shape, double-counting the round and polluting the trajectory. So the raw streams — and only those —
+    are linked into their own directory under a zero-padded, sortable name.
+
+    A hard link keeps one copy of the bytes; a symlink is the cross-device fallback. Failure here is
+    never fatal: the raw file is already written, and losing the convenience link must not kill a round.
+    """
+    try:
+        agent_dir = run_dir / "agent"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        dest = agent_dir / f"events.{rnd:02d}.raw.jsonl"
+        if dest.exists() or dest.is_symlink():
+            dest.unlink()
+        try:
+            os.link(raw_path, dest)
+        except OSError:
+            dest.symlink_to(os.path.relpath(raw_path, agent_dir))
+        return dest
+    except Exception:
+        return None
+
+
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
               effort: str = "", prompt: str | None = None, **_ignored) -> tuple[int, Path]:
@@ -577,6 +604,7 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     }
     (rounds / f"round_{rnd:02d}.codex_summary.json").write_text(json.dumps(summary, indent=2))
     tr.emit({"type": "codex_summary", **summary})
+    _link_for_aet(run_dir, raw_path, rnd)
 
     if timed_out:
         tr.emit({"type": "result", "subtype": "error", "is_error": True,

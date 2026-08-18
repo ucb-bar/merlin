@@ -31,6 +31,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from merlin.common.paths import ext_path  # noqa: E402
 import _common as C
 
 SCRIPTS = C.EXP / "scripts"
@@ -254,12 +255,20 @@ def main(argv=None):
         print(f"[pre-flight] verilator-timing gate N/A (sim_via={_sim_via()!r}; RTL tier is the mlc arc model)")
     elif a.sandbox == "bwrap":
         timing = SCRIPTS / ".oracle_timing.json"
-        sim = Path("/path/to/chipyard/sims/verilator/simulator-chipyard.harness-GemminiRocketConfig")
         if not timing.is_file():
             print("REFUSING TO LAUNCH: scripts/.oracle_timing.json missing — run readiness_check.py "
                   "(it RUNS spike+verilator on the reference backend) first.", file=sys.stderr)
             return 3
-        if sim.is_file() and timing.stat().st_mtime < sim.stat().st_mtime:
+        # Resolve the verilator binary the SAME way the sandbox and readiness_check do (.env chipyard),
+        # and take the design name from the timing record readiness_check wrote — a literal path here
+        # silently never matched, so the staleness half of this gate could not fire at all.
+        _cfg = (json.loads(timing.read_text()) or {}).get("config")
+        sim = (ext_path("chipyard") / "sims" / "verilator"
+               / f"simulator-chipyard.harness-{_cfg}") if _cfg else None
+        if sim is None or not sim.is_file():
+            print(f"[pre-flight] verilator staleness check SKIPPED (no binary at {sim}) — the timing "
+                  f"record exists but cannot be compared against a build.")
+        elif timing.stat().st_mtime < sim.stat().st_mtime:
             print("REFUSING TO LAUNCH: .oracle_timing.json is STALE (older than the verilator binary) — "
                   "re-run readiness_check.py to re-measure.", file=sys.stderr)
             return 3

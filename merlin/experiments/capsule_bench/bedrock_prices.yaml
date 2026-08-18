@@ -17,3 +17,20 @@ glm:       [0.60, 2.20, 0.06, 0.75]   # substring fallback for any glm-* profile
 
 # (Nova micro/lite/pro are already verified in aet's built-in table; Anthropic models likewise. Add any
 # other Bedrock model the experiments use here so cost is estimated from ONE place, never fabricated.)
+
+# --- open-weight models the 2026-08 gemmini arm-4 model comparison routes to -----------------------
+# Published Bedrock list prices as of 2026-08-18 (US regions), USD per MILLION tokens. Where sources
+# disagreed the HIGHER figure is taken, so a budget check errs toward over-reporting spend rather than
+# under-reporting it. Cache columns follow the same 0.1x read / 1.25x write convention as the GLM entry
+# above; note this account is DENIED Bedrock prompt caching for every non-Anthropic/non-Nova model
+# (AccessDeniedException on cachePoint), so those columns should see zero tokens in practice.
+# Sources: getmaxim.ai/bifrost Bedrock cost calculators + pricepertoken.com, 2026-08-18. ESTIMATE:
+# reconcile against the account bill / AWS Cost Explorer before quoting a dollar figure as measured.
+nvidia.nemotron-super-3-120b: [0.15, 0.65, 0.015, 0.19]
+nemotron:                     [0.15, 0.65, 0.015, 0.19]   # substring fallback
+moonshotai.kimi-k2.5:         [0.72, 3.60, 0.072, 0.90]
+kimi:                         [0.72, 3.60, 0.072, 0.90]   # substring fallback
+qwen.qwen3-coder-next:        [0.60, 1.44, 0.060, 0.75]
+qwen:                         [0.60, 1.44, 0.060, 0.75]   # substring fallback
+deepseek.v3.2:                [0.74, 2.22, 0.074, 0.93]
+deepseek:                     [0.74, 2.22, 0.074, 0.93]   # substring fallback
