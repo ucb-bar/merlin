@@ -1389,9 +1389,19 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 else:
                     status = "incomplete"
                     if failure is None:
+                        # The tier's OWN reason is the only actionable half of this message, and it was
+                        # being dropped. Measured on atlas: every capsule carried "program did not halt
+                        # within 20000 instructions" while the agent was shown only "mandatory tier L#
+                        # did not run (unavailable)". Ten rounds of a fully conformant model went into
+                        # feedback that named nothing it could fix, and effort decayed round over round.
+                        # An oracle that is ABSENT and a program that RAN AND HUNG are different events;
+                        # when the tier reported a reason, that reason leads.
+                        _why = (getattr(tr, "reason", None) or "").strip() if tr else ""
+                        _st = tr.status if tr else "absent"
                         failure = {"plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
-                                   "detail": f"mandatory tier {tier} did not run "
-                                             f"({tr.status if tr else 'absent'})"}
+                                   "tier": tier, "tier_status": _st, "tier_reason": _why or None,
+                                   "detail": (f"{_why} (mandatory tier {tier}, status {_st})" if _why
+                                              else f"mandatory tier {tier} did not run ({_st})")}
                 break
 
     # Fail-open guard (complements the loop above, which never fires for an EMPTY/all-N/A required set):

@@ -86,6 +86,11 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
                             if (tiers.get(t) or {}).get("cycles") is not None},
             "failure_plane": fail.get("plane"),
             "failure_category": fail.get("category"),
+            # The tier LABEL survives redaction. It is a harness constant ("L2"), never capsule data, and
+            # the blanket numeric scrub was rewriting it to "L#" -- so an agent could not even tell WHICH
+            # tier blocked it. Passed through a strict shape check so only a tier label can ever ride here.
+            "failure_tier": (lambda v: v if isinstance(v, str) and len(v) <= 4 and v[:1] == "L"
+                             and v[1:].isdigit() else None)(fail.get("tier")),
             "failure_detail": _redact_detail(fail.get("detail")),
         }
     return out

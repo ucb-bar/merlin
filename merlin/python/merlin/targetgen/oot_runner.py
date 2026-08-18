@@ -290,6 +290,11 @@ def _resolve_argv(pkg: Package, name: str, input_mlir: Path, output_json: Path |
     if name not in commands and _ENTRYPOINT_ALIASES.get(name) in commands:
         name = _ENTRYPOINT_ALIASES[name]      # back-compat: package declares the other spelling
     template = commands[name]["argv"]
+    # Substituted I/O paths must be ABSOLUTE. Entrypoints run with cwd=pkg.directory, so a caller that
+    # passes a repo-relative capsule path would otherwise hand the package a path that cannot resolve
+    # from where it actually runs -- trading one misrooting for another.
+    input_mlir = Path(input_mlir).resolve()
+    output_json = Path(output_json).resolve() if output_json is not None else None
     out: list[str] = []
     for tok in template:
         tok = tok.replace("{tool}", str(pkg.tool))
@@ -306,7 +311,36 @@ def _resolve_argv(pkg: Package, name: str, input_mlir: Path, output_json: Path |
         if tok != str(pkg.tool) and Path(tok).name == Path(str(pkg.tool)).name \
                 and not (pkg.directory / tok).exists():
             tok = str(pkg.tool)
+        # The rescue above only fires for the DECLARED tool's own basename, so it cannot help a package
+        # that declares a separate script per command (a shape the schema permits) -- and it is dead
+        # entirely when `entrypoints.tool` names an interpreter rather than a script, since no script
+        # basename can match `python`. The package root IS the submission directory, so a token rooted
+        # at `submission/` is unambiguously double-rooted; strip it when, and only when, the remainder
+        # names a real file under the package root.
+        elif not (pkg.directory / tok).exists():
+            for _pfx in ("./submission/", "submission/"):
+                if tok.startswith(_pfx) and (pkg.directory / tok[len(_pfx):]).exists():
+                    tok = tok[len(_pfx):]
+                    break
         out.append(tok)
+    # Fail CLOSED on a placeholder the runner does not substitute. Left alone, an unknown token reaches
+    # the package verbatim and surfaces as FileNotFoundError: '{input_json}' from inside the submission's
+    # own traceback -- indistinguishable from the package being broken. Measured: a model invented
+    # {input_json} for a chained-JSON pipeline, and every capsule reported a cryptic missing file instead
+    # of "that placeholder does not exist, here are the ones that do".
+    _known = ("{tool}", "{input_mlir}", "{output_json}")
+    for tok in out:
+        lo = tok.find("{")
+        if lo == -1:
+            continue
+        hi = tok.find("}", lo)
+        if hi == -1:
+            continue
+        raise CertFailure(
+            "contract", FailureCategory.STRUCTURAL_INVARIANT_VIOLATION,
+            f"manifest command {name!r}: unsubstituted placeholder {tok[lo:hi + 1]!r} in argv. "
+            f"The runner substitutes only {', '.join(_known)}. Every stage receives the interface MLIR "
+            f"as {{input_mlir}}; stages are not chained through intermediate JSON.")
     return out
 
 
@@ -338,7 +372,12 @@ def run_entrypoint(pkg: Package, name: str, input_mlir: Path,
     argv = _resolve_argv(pkg, name, input_mlir, output_json)
     if _needs_interpreter(pkg, argv):
         argv = [sys.executable, *argv]
-    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    # cwd=pkg.directory is the CONTRACT, not a convenience: _resolve_argv documents "steps run with
+    # cwd=pkg.directory" and build_package already honours it, but this path did not pass cwd at all, so
+    # every relative argv token resolved against the grader's process CWD (the repo root). A package that
+    # declared its entrypoints package-relative -- exactly what the contract describes -- failed every
+    # capsule at `parse` with "no such file", naming a file that was present in the submission.
+    return subprocess.run(argv, cwd=str(pkg.directory), capture_output=True, text=True, timeout=timeout)
 
 
 # --------------------------------------------------------------------------- certification
