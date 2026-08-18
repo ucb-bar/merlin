@@ -156,7 +156,7 @@ def check_audit_regression() -> tuple[bool, list[str]]:
     probs = []
     for sub, rid in [("raw_baseline", "rb_abc4"), ("merlin_assisted", "merlin_abc4"),
                      ("merlin_assisted", "merlincirct_abc4")]:
-        d = EXP / "runs" / sub / rid
+        d = C.RUNS / sub / rid
         if not d.is_dir():
             continue  # abc4 may have been archived; skip silently
         r = TTA.audit_run(d)

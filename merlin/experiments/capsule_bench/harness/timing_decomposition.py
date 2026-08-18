@@ -32,7 +32,7 @@ TIER_TOOL = {"L2": "spike", "L3": "verilator/VCS", "L4": "verilator/VCS"}
 
 def harvest(rid: str) -> dict:
     sd = ARMS[rid][0]
-    d = EXP / "runs" / sd / rid
+    d = C.RUNS / sd / rid
     st = yaml.safe_load((d / "qa_loop_state.yaml").read_text()) if (d / "qa_loop_state.yaml").is_file() else {}
     active = (st.get("cumulative") or {}).get("active_wall_s", 0.0)
 

@@ -27,27 +27,42 @@ import _common as C  # noqa: E402 — active target (descriptor-driven), bootstr
 EXP = C.EXP
 REPORTS = C.REPORTS
 RUN_DIRS = ["raw_baseline", "merlin_assisted"]   # both scanned; arm decided by bundle_id
-BUNDLE_ARM = {
-    "raw_baseline_public_v0": "baseline",
-    "merlin_assisted_public_v0": "merlin",
-    "merlin_assisted_rtlchecks_public_v0": "merlin_rtlchecks",
-}
+# Bundle id -> arm. Each arm ships several VARIANTS of its bundle (_public_v0, _realistic_v0,
+# _hwbringup_v0, _hwbringup_nokernel_v0), and the variant is a condition, not a different arm — so the
+# stem is matched structurally rather than enumerating every (arm x variant) pair. Order matters:
+# "merlin_assisted_rtlchecks_*" also starts with "merlin_assisted_", so the CIRCT arm is tested first,
+# otherwise every arm-4 run would be mis-filed as arm-3.
+_ARM_STEMS = (
+    ("merlin_assisted_rtlchecks", "merlin_rtlchecks"),
+    ("cpp_merlininfra", "cpp_merlininfra"),
+    ("merlin_assisted", "merlin"),
+    ("raw_baseline", "baseline"),
+)
 ARM_ORDER = ["baseline", "merlin", "merlin_rtlchecks"]
+
+
+def arm_from_bundle_id(bundle_id: str | None) -> str | None:
+    """The arm a bundle id belongs to, by stem. Unknown id -> None (fail closed, never guess)."""
+    if not bundle_id:
+        return None
+    for stem, arm in _ARM_STEMS:
+        if bundle_id.startswith(stem):
+            return arm
+    return None
 
 
 def _arm_of(d: Path) -> str | None:
     env = d / "environment.yaml"
     if env.is_file():
-        bid = (yaml.safe_load(env.read_text()) or {}).get("bundle_id")
-        if bid in BUNDLE_ARM:
-            return BUNDLE_ARM[bid]
+        arm = arm_from_bundle_id((yaml.safe_load(env.read_text()) or {}).get("bundle_id"))
+        if arm:
+            return arm
     # fallback for older runs without environment.yaml bundle_id
-    bid = None
     man = d / "input_bundle_manifest.yaml"
     if man.is_file():
-        bid = (yaml.safe_load(man.read_text()) or {}).get("bundle_id")
-    if bid in BUNDLE_ARM:
-        return BUNDLE_ARM[bid]
+        arm = arm_from_bundle_id((yaml.safe_load(man.read_text()) or {}).get("bundle_id"))
+        if arm:
+            return arm
     if (d / "TRACK_RTLCHECKS").exists():
         return "merlin_rtlchecks"
     if d.parent.name == "raw_baseline":
@@ -104,7 +119,7 @@ def main():
     audit = json.loads(fa.read_text()) if fa.is_file() else {}
     out = {"arms": {a: [] for a in ARM_ORDER}, "n_valid": {}, "arm_order": ARM_ORDER}
     for sub in RUN_DIRS:
-        base = EXP / "runs" / sub
+        base = C.RUNS / sub        # out/runs/<target>/capsule-bench/<arm>
         if not base.is_dir():
             continue
         for d in sorted(base.iterdir()):

@@ -26,6 +26,7 @@ from pathlib import Path
 
 import yaml
 
+from merlin.common.artifacts import cache_dir  # noqa: E402 — purgeable work trees
 import _common as C
 
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
@@ -99,7 +100,9 @@ def audit_backend(run_id: str, *, workers: int, tiers: list[str], timeout: int) 
     if not (sub / "manifest.yaml").is_file():
         print(f"  !! {run_id}: no submission/manifest.yaml — skipping")
         return None
-    runs_root = C.EXP / "runs" / "_audit" / run_id
+    # A grading WORK tree, not a run: keep it out of the runs root so run-enumerating tools
+    # (gen_reports / gen_fullsuite_report glob "*/*/run_manifest.yaml") cannot mistake it for one.
+    runs_root = cache_dir("capsule_bench_audit") / run_id
     runs_root.mkdir(parents=True, exist_ok=True)
     adapters = _adapters_for(tiers)
     t0 = time.perf_counter()

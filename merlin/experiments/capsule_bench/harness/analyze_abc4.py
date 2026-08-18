@@ -40,7 +40,7 @@ def _cls(name: str) -> str:
 def round_dirs(rid: str):
     """All per-round capsule dirs for an arm (has generated/ + capsule_result.json), sorted by round."""
     sd = ARMS[rid][0]
-    base = EXP / "runs" / sd / rid / "_qa_work"
+    base = C.RUNS / sd / rid / "_qa_work"
     out = []
     for cr in base.glob(f"runs_*/runs/{C.TARGET}-capsule-bench/*/capsule_result.json"):
         rnd = int(str(cr).split("runs_")[1][:2])
@@ -120,7 +120,7 @@ def trajectory() -> dict:
     """B: per-arm effort to correct (active wall only) + self-check intensity + per-round cost."""
     T = {}
     for rid, (sd, label) in ARMS.items():
-        d = EXP / "runs" / sd / rid
+        d = C.RUNS / sd / rid
         st = yaml.safe_load((d / "qa_loop_state.yaml").read_text()) if (d / "qa_loop_state.yaml").is_file() else {}
         rs = st.get("rounds") or []
         cum = st.get("cumulative") or {}

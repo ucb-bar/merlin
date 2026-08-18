@@ -26,6 +26,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
 from merlin.common.paths import ext_path, repo_root  # noqa: E402
+from merlin.common.artifacts import cache_dir  # noqa: E402 — purgeable scratch for probes
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
 # Repo root + venv interpreter come from the canonical path helpers (never Path(__file__).parents[N],
@@ -211,7 +212,12 @@ def test_harness():
     _ok("launch_ab_batch dry-run = 18 runs, both conditions, fresh ids",
         r.returncode == 0 and n_runs == 18 and has_nk and has_kern,
         f"n_runs={n_runs}, nokernel={has_nk}, kernels={has_kern}")
-    r2 = subprocess.run([PY, str(SCRIPTS / "agg_ab_results.py"), "--tag", "abc4"],
+    # Write to a throwaway dir: this is a WIRING probe, and the real ab_results.json is a result.
+    # (Running readiness under a non-gemmini descriptor used to overwrite that target's aggregate
+    #  with an all-zero skeleton, because tag "abc4" matches no run there.)
+    probe_out = cache_dir("readiness_probe") / "agg_ab_results"
+    r2 = subprocess.run([PY, str(SCRIPTS / "agg_ab_results.py"), "--tag", "abc4",
+                         "--out-dir", str(probe_out)],
                         cwd=str(REPO), capture_output=True, text=True)
     _ok("agg_ab_results runs", r2.returncode == 0, (r2.stdout.strip().splitlines() or [""])[0][:70])
 

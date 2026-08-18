@@ -38,9 +38,12 @@ import _style as S
 S.apply_theme()
 
 HERE = Path(__file__).resolve().parent
-EXP = HERE.parent.parent
-RUNS = EXP / "runs"
-REPORTS = EXP / "reports"
+import sys                                    # noqa: E402
+sys.path.insert(0, str(HERE.parent))          # harness/ holds _common (descriptor-driven roots)
+import _common as C                           # noqa: E402
+EXP = C.EXP
+RUNS = C.RUNS                                 # out/runs/<target>/capsule-bench
+REPORTS = C.REPORTS                           # out/artifacts/capsule-bench/<target>
 
 # ---- palette (muted ML-paper aesthetic; all colours come from _style) -----------------------------
 BAND_A = S.CREAM        # tan round band

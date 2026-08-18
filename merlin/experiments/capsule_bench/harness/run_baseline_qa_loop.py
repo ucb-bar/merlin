@@ -56,6 +56,7 @@ def _strip_build_state(root: Path) -> None:
                 pass
 
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
+from merlin.common.paths import ext_path  # noqa: E402
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
 
 def _repo_root():
@@ -1004,7 +1005,7 @@ def main(argv: list[str] | None = None) -> int:
     # the .compat_lib shim + conda libs are on LD_LIBRARY_PATH, else the C++ build fails "libidn.so.11:
     # cannot open shared object file" and every grade is 0/0 (the abc8 rb blocker). Python arms have no
     # build step so this is a harmless no-op for them.
-    _CE = "/path/to/chipyard/.conda-env"
+    _CE = str(ext_path("chipyard") / ".conda-env")   # from .env, like the sandbox toolchain binds
     _compat = str(C.REPO / ".compat_lib")
     os.environ["LD_LIBRARY_PATH"] = (f"{_compat}:{_CE}/lib:{_CE}/riscv-tools/lib:"
                                      + os.environ.get("LD_LIBRARY_PATH", ""))
@@ -1146,6 +1147,11 @@ def main(argv: list[str] | None = None) -> int:
     mask = mask_selftest(ws, bundle, a.sandbox)
     (run_dir / "environment.yaml").write_text(yaml.safe_dump({
         "run_id": a.run_id, "arm": arm, "model": a.model, "effort": a.effort,
+        # driver + provider decide how a dollar figure must be READ later: a subscription run's cost is
+        # notional, a bedrock run's is metered spend against the budget. Recording them here is what
+        # lets a cross-model rollup keep the two apart instead of summing them into one wrong total.
+        "driver": _DRIVER, "provider": a.provider,
+        "subagent_model": _SUBAGENT_MODEL or None, "background_model": _BACKGROUND_MODEL or None,
         "sandbox": a.sandbox, "qa_loop": True, "pilot": ["A0", "A2", "A4", "B0"],
         "workspace_path": str(ws), "workspace_copy_report": copy_report,
         "repo_sha": C.repo_sha(), "bundle_id": bundle["bundle_id"],

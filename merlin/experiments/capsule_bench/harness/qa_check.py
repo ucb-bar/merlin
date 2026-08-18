@@ -30,6 +30,7 @@ import re
 import sys
 from pathlib import Path
 
+from merlin.common.artifacts import cache_dir  # noqa: E402 — purgeable work trees
 import _common as C
 
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
@@ -204,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--timeout", type=int, default=900)
     a = ap.parse_args(argv)
 
-    runs_root = Path(a.runs_root) if a.runs_root else (C.EXP / "runs" / "_qa_work" / "scratch")
+    runs_root = Path(a.runs_root) if a.runs_root else (cache_dir("capsule_bench_qa") / "scratch")
     runs_root.mkdir(parents=True, exist_ok=True)
     labels = set(a.labels.split(","))
     verdict = run(a.submission, a.capsules_root, runs_root, labels, a.no_oracle, a.timeout)

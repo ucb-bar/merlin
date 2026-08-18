@@ -10,73 +10,80 @@
   ],
   "cells": {
     "baseline|kernels": {
-      "n_runs": 1,
+      "n_runs": 4,
       "n_valid": 1,
       "run_ids": [
-        "rb_abc4"
+        "20260724T164149Z_e2e_smoke_seed000",
+        "gem_smoke_bwrap_3",
+        "rb_gemrecreate1",
+        "rb_smoke_live"
       ],
       "metrics": {
         "cost_usd": {
-          "mean": 33.628,
+          "mean": 168.541,
           "std": 0.0,
           "n": 1,
           "values": [
-            33.628
+            168.541
           ],
           "label": "cost",
           "unit": "$"
         },
         "wall_s": {
-          "mean": 48.00826666666667,
+          "mean": 476.5426166666667,
           "std": 0.0,
           "n": 1,
           "values": [
-            48.00826666666667
+            476.5426166666667
           ],
           "label": "active wall",
           "unit": "min"
         },
         "n_rounds": {
-          "mean": 2.0,
+          "mean": 6.0,
           "std": 0.0,
           "n": 1,
           "values": [
-            2
+            6
           ],
           "label": "rounds",
           "unit": "rounds"
         },
         "passed": {
-          "mean": 25.0,
-          "std": 0.0,
-          "n": 1,
-          "values": [
-            25
-          ],
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
           "label": "capsules passed",
           "unit": "/25"
         },
         "think_pct": {
-          "mean": null,
-          "std": null,
-          "n": 0,
-          "values": [],
+          "mean": 95.5,
+          "std": 0.0,
+          "n": 1,
+          "values": [
+            95.5
+          ],
           "label": "think+gen share",
           "unit": "%"
         },
         "sims_skipped": {
-          "mean": null,
-          "std": null,
-          "n": 0,
-          "values": [],
+          "mean": 0.0,
+          "std": 0.0,
+          "n": 1,
+          "values": [
+            0
+          ],
           "label": "CIRCT sims skipped",
           "unit": "#"
         },
         "sims_run": {
-          "mean": null,
-          "std": null,
-          "n": 0,
-          "values": [],
+          "mean": 0.0,
+          "std": 0.0,
+          "n": 1,
+          "values": [
+            0
+          ],
           "label": "sims actually run",
           "unit": "#"
         }
@@ -146,9 +153,11 @@
       }
     },
     "merlin|kernels": {
-      "n_runs": 0,
+      "n_runs": 1,
       "n_valid": 0,
-      "run_ids": [],
+      "run_ids": [
+        "merlin_gemrecreate1"
+      ],
       "metrics": {
         "cost_usd": {
           "mean": null,
@@ -272,9 +281,25 @@
       }
     },
     "merlin_rtlchecks|kernels": {
-      "n_runs": 0,
+      "n_runs": 15,
       "n_valid": 0,
-      "run_ids": [],
+      "run_ids": [
+        "bedrock_dbg_haiku1",
+        "bedrock_fixcheck",
+        "bedrock_haiku_manifestfix",
+        "bedrock_longrun_gemmini",
+        "bedrock_opus_gemmini",
+        "bedrock_opusorch_gemmini",
+        "bedrock_sonnet1",
+        "bedrock_sonnet2",
+        "bedrock_sonnet3",
+        "bedrock_sonnet_fixed",
+        "bedrock_toolval_gemmini",
+        "merlincirct_gemglm5locfix1",
+        "merlincirct_gemopencode5",
+        "merlincirct_gemopencode8",
+        "merlincirct_gemrecreate1"
+      ],
       "metrics": {
         "cost_usd": {
           "mean": null,
@@ -407,5 +432,5 @@
     "sims_skipped",
     "sims_run"
   ],
-  "tag_filter": "abc4"
+  "tag_filter": null
 }

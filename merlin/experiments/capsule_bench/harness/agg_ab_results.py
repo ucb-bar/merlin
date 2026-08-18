@@ -87,7 +87,7 @@ def collect(tag: str | None) -> dict:
     # cells[(arm, cond)] = list of per-run records
     cells: dict[tuple, list] = {(a, c): [] for a in ARM_ORDER for c in COND_ORDER}
     for sub in AAR.RUN_DIRS:
-        base = EXP / "runs" / sub
+        base = C.RUNS / sub        # out/runs/<target>/capsule-bench/<arm>
         if not base.is_dir():
             continue
         for d in sorted(base.iterdir()):
@@ -166,15 +166,21 @@ def plot(agg: dict, outdir: Path) -> list[Path]:
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default=None, help="filter run-ids by tag substring (e.g. abc5); default=all")
+    ap.add_argument("--out-dir", default=None,
+                    help="write ab_results.json + figs/ here instead of the target's report dir. A "
+                         "wiring PROBE (e.g. readiness_check section D) must pass a scratch dir: this "
+                         "aggregate is a real result, and probing under an unrelated descriptor would "
+                         "otherwise overwrite it with an empty skeleton.")
     a = ap.parse_args(argv)
     cells = collect(a.tag)
     agg = aggregate(cells)
     agg["tag_filter"] = a.tag
-    REPORTS.mkdir(parents=True, exist_ok=True)
-    p = REPORTS / "ab_results.json"
+    out_dir = Path(a.out_dir) if a.out_dir else REPORTS
+    out_dir.mkdir(parents=True, exist_ok=True)
+    p = out_dir / "ab_results.json"
     p.write_text(json.dumps(agg, indent=2))
     print(f"wrote {p}")
-    figs = plot(agg, REPORTS / "figs")
+    figs = plot(agg, out_dir / "figs")
     for f in figs:
         print(f"  fig: {f}")
     # console summary

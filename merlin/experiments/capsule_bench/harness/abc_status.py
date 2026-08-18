@@ -9,8 +9,9 @@ from __future__ import annotations
 import argparse, json, re, subprocess, time
 from pathlib import Path
 
-EXP = Path(__file__).resolve().parents[1]
-RUNS = EXP / "runs"
+import _common as C  # noqa: E402 — active target (descriptor-driven)
+EXP = C.EXP
+RUNS = C.RUNS
 ARMS = [("baseline", "raw_baseline", "rb"), ("merlin", "merlin_assisted", "merlin"),
         ("merlin+CIRCT", "merlin_assisted", "merlincirct")]
 GENS = ("gen_isa_module", "gen_rtl_digest", "gen_numeric_facts")
