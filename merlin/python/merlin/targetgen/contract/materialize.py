@@ -202,12 +202,21 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
         loop = _CR.qa_loop_adapters(te.target, te.sim_via, declared_tiers=declared)
         if not loop:
             reach = sorted(_CR.oracle_adapters(te.target, te.sim_via))
-            raise ValueError(
-                f"target {te.target!r}: its capsule corpus declares required oracle tiers "
-                f"{sorted(declared)} but the endpoint reaches {reach} — no declared tier is reachable, "
-                f"so this phase cannot grade these capsules. Refusing to substitute a tier the capsules "
-                f"never declared; make the declared tier reachable or fix the corpus.")
-        tier_ceiling = max(loop, key=lambda t: _TIER_ORDER.index(t) if t in _TIER_ORDER else -1)
+            if reach:
+                # The endpoint DOES expose tiers, just none the corpus declared. Substituting one of them
+                # is precisely the defect; refuse and name both sets.
+                raise ValueError(
+                    f"target {te.target!r}: its capsule corpus declares required oracle tiers "
+                    f"{sorted(declared)} but the endpoint reaches {reach} — no declared tier is "
+                    f"reachable, so this phase cannot grade these capsules. Refusing to substitute a "
+                    f"tier the capsules never declared; make the declared tier reachable or fix the "
+                    f"corpus.")
+            # The endpoint reaches NOTHING (no mlc/sim/model venv in this environment). That is an
+            # honestly ABSENT oracle, not a substitution risk: materialize at the legacy floor and let
+            # the runner report each capsule's missing tier as unavailable, as it always has.
+            tier_ceiling = _DEFAULT_CEILING
+        else:
+            tier_ceiling = max(loop, key=lambda t: _TIER_ORDER.index(t) if t in _TIER_ORDER else -1)
     # Concurrency-safe publish. Several A/B arms materialize the SAME target's public set at once; the old
     # ``rmtree(dest) + rebuild`` in place let one arm delete another's half-built cache mid-read (corrupt or
     # missing capsules -> wrong grades). Instead build into a UNIQUE versioned dir, then ATOMICALLY repoint a
