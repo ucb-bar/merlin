@@ -20,7 +20,9 @@ import argparse, json, subprocess, sys, time
 from pathlib import Path
 import _pbcommon as PB
 sys.path.insert(0, str(PB.REPO / "merlin" / "python"))
-from merlin.runtime.backends import gemmini as gem  # noqa: E402
+from merlin.runtime.backends.base import get_backend  # noqa: E402
+
+gem = get_backend("gemmini")   # evicted to its own target package; reached via the registry
 
 SMALL = ["G00_single_tile_16x16x16", "G02_rect_32x64x16", "G03_kaccum_16x128x16",
          "G04_wideN_16x16x128", "G05_tallM_128x16x16"]

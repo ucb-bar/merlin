@@ -277,7 +277,10 @@ def harness_build_recipe():
     toolchain gcc, and a link script whose ORIGIN is derived from the RTL memory map rather than baked
     into the vendored script. Nothing new is hardcoded: this is the existing recipe, named.
     """
-    from .base import HarnessBuildRecipe
+    # Absolute, like the other two imports of this module: the package registers OUT-OF-TREE as
+    # `merlin._oot_backends.gemmini`, so a relative `.base` resolves to a sibling that does not
+    # exist there and the spike/verilator invocation dies with ModuleNotFoundError at grade time.
+    from merlin.runtime.backends.base import HarnessBuildRecipe
 
     rt, common = rocc_tests_dir(), _common_dir()
     return HarnessBuildRecipe(
@@ -321,8 +324,12 @@ def _movement_harness_c(cb: dict, *, target: str) -> str:
     removing.
     """
     from .gemmini_codegen import _ceil_dim, _pad_rowmajor
-    from ..commandbuffer import materialize_inputs
-    from ...targetgen.contract.harness_abi import for_target
+    # Absolute: this package registers OUT-OF-TREE as `merlin._oot_backends.gemmini`, where `..` is the
+    # synthetic namespace rather than `merlin.runtime` — the layout these relative imports were written
+    # against before the eviction. Left relative they raise ModuleNotFoundError at GRADE time, inside the
+    # harness renderer, which the runner reports as an opaque "spike invocation failed".
+    from merlin.runtime.commandbuffer import materialize_inputs
+    from merlin.targetgen.contract.harness_abi import for_target
     mv = next(c for c in cb["commands"]
               if c.get("opcode") == "VECTOR_MAP" and c["attributes"].get("combine") == "identity")
     src, dst = mv["operands"]["lhs"], mv["operands"]["dst"]

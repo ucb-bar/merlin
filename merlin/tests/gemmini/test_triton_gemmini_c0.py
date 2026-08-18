@@ -24,7 +24,11 @@ import triton_kernels as K
 
 from merlin.common.paths import repo_root
 from merlin.runtime import reference_outputs, simulate
-from merlin.runtime.backends import gemmini
+# The gemmini reference backend was EVICTED from runtime/backends/ into its own target package
+# (contract `plugin.backend`), so it is reached through the registry rather than by module path.
+from merlin.runtime.backends.base import get_backend
+
+gemmini = get_backend("gemmini")
 from merlin.triton import source
 from merlin.triton.bridge import to_linalg
 
