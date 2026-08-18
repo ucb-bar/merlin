@@ -217,7 +217,14 @@ def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
         frag = rel[len("merlin/python/"):] if rel.startswith("merlin/python/") else rel
         answer.append(frag[:-3] if frag.endswith(".py") else frag)
     answer += list(te.prior_backends)
-    answer += [p.stem for p in _evicted_oracle_modules()]   # evicted oracle/backend stems (muon_oracles, …)
+    # Evicted oracle/backend routes, tokenised as "<target>/<route>" rather than by bare stem. Most of
+    # these live in a directory literally named `backend`, so a stem token is the generic word "backend"
+    # — which substring-matches innocuous granted paths (mlir_oot_backend_contract.yaml, any *_backend_*
+    # doc) and flags them as answer reads. A transcript audit that cries wolf on the contract the agent is
+    # required to read is worse than no audit: the next real leak reads as more noise.
+    for _p in _evicted_oracle_modules():
+        _stem = _p.stem if not _p.name.endswith(".py") else _p.name[:-3]
+        answer.append(f"{_p.parent.name}/{_stem}" if _p.parent.name else _stem)
     answer.append("grader_private")
     grader = tuple(Path(rel).stem for rel in GRADER_MODULES)
     return {"answer": tuple(dict.fromkeys(answer)), "grader": grader,
