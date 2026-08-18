@@ -200,10 +200,11 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Grade a backend package through capsule_bench_v0")
     ap.add_argument("--package", required=True)
-    ap.add_argument("--capsules", default="merlin/contract/capsules")
+    ap.add_argument("--capsules", default=None,
+                    help="capsules ROOT (a single directory, not a list); default = the contract's own")
     ap.add_argument("--runs-root", required=True)
     ap.add_argument("--target", required=True, help="target being graded (its config/oracle are derived)")
-    ap.add_argument("--contract", default="merlin/contract")
+    ap.add_argument("--contract", default=None)
     ap.add_argument("--labels", default="public,dev")
     ap.add_argument("--hidden", action="store_true", help="grade ONLY hidden capsules (post-freeze)")
     ap.add_argument("--no-oracle", action="store_true", help="L0/L1/trace only (skip spike/verilator)")
@@ -212,6 +213,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--workers", type=int, default=0,
                     help="parallel oracle instances (verilator/VCS/cyclotron); 0 = host-scaled default")
     a = ap.parse_args(argv)
+    # Resolve the roots ABSOLUTELY before anything runs. run_capsule chdirs into the build tree, so a
+    # relative contract/capsules root stops resolving mid-grade and surfaces as a FileNotFoundError
+    # from inside a worker thread -- which reads as a broken package rather than a bad path. The
+    # defaults also came from string literals; the repo's rule is to ask paths for its roots.
+    from merlin.common.paths import data_path
+    a.contract = Path(a.contract).resolve() if a.contract else data_path("contract")
+    a.capsules = Path(a.capsules).resolve() if a.capsules else (data_path("contract") / "capsules")
 
     labels = {"hidden"} if a.hidden else set(a.labels.split(","))
     adapters = {} if a.no_oracle else None
