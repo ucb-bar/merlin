@@ -1390,10 +1390,10 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     status = "incomplete"
                     if failure is None:
                         # The tier's OWN reason is the only actionable half of this message, and it was
-                        # being dropped. Measured on atlas: every capsule carried "program did not halt
-                        # within 20000 instructions" while the agent was shown only "mandatory tier L#
-                        # did not run (unavailable)". Ten rounds of a fully conformant model went into
-                        # feedback that named nothing it could fix, and effort decayed round over round.
+                        # being dropped. Measured on a self-hosted-ISA target: every capsule carried
+                        # "program did not halt within N instructions" while the agent was shown only
+                        # "mandatory tier L# did not run (unavailable)". Ten rounds of a fully conformant
+                        # model went into feedback naming nothing it could fix; effort decayed each round.
                         # An oracle that is ABSENT and a program that RAN AND HUNG are different events;
                         # when the tier reported a reason, that reason leads.
                         _why = (getattr(tr, "reason", None) or "").strip() if tr else ""
