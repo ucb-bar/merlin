@@ -236,6 +236,20 @@ def main(argv=None):
             continue
         tiers = {t: (v or {}).get("status") for t, v in (d.get("tiers") or {}).items()}
         bar = tiers.get(barrier_tier)
+        bar_used = barrier_tier
+        if bar is None:
+            # The declared barrier never ran for this target, so scoring against it marks EVERY capsule
+            # failed no matter what the grade said. Measured on atlas: the barrier resolved to L4 (the
+            # lexicographic max of a wider adapter set) while its results carry only {L0 skipped, L1
+            # skipped, L2 pass} -- so 110 consecutive self-checks reported 0/11 while the operator grade
+            # of the same submission was 10/11. An agent told it fails everything cannot converge; it
+            # rewrites working code. Fall back to the deepest tier that actually produced a verdict.
+            # This can only reclassify a capsule the grade RAN and PASSED: `status == "pass"` is still
+            # required below, and a 'skipped' tier is never treated as a barrier.
+            ran = [k for k, v in tiers.items() if v not in (None, "skipped")]
+            if ran:
+                bar_used = max(ran)
+                bar = tiers.get(bar_used)
         passed = (d.get("status") == "pass") and (bar == "pass")
         npass += int(passed)
         # numeric diagnostics — keep ALL stats; redact ONLY the golden expected value
@@ -263,7 +277,8 @@ def main(argv=None):
         console_tail = None
         for lg in (cr.parent / "artifacts").glob("*_console.log") if (cr.parent / "artifacts").is_dir() else []:
             console_tail = lg.read_text()[-800:]
-        row = {"capsule": name, "pass": passed, "barrier_tier": barrier_tier, "barrier_status": bar}
+        row = {"capsule": name, "pass": passed, "barrier_tier": bar_used,
+               "barrier_declared": barrier_tier, "barrier_status": bar}
         if not passed:
             # FULL debug detail ONLY for a FAILING capsule (the one you are working). A passing capsule's
             # diff stats / trace dump / console tail are noise that re-inflates the agent's context every
