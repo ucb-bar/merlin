@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from merlin.common import stimulus as STIM
+
 DTYPE_BYTES = {"i8": 1, "i16": 2, "i32": 4, "i64": 8, "f32": 4}
 
 
@@ -45,14 +47,14 @@ class Tensor:
     @classmethod
     def deterministic(cls, name: str, shape: tuple[int, ...], dtype: str = "i8",
                       lo: int = 0, hi: int = 3) -> "Tensor":
-        """Fill deterministically from ``name`` (no RNG): stable across runs/machines."""
-        n = 1
-        for d in shape:
-            n *= d
-        span = hi - lo + 1
-        seed = sum((i + 1) * ord(c) for i, c in enumerate(name)) or 1
-        data = [lo + ((seed * (k + 1) + (k * k)) % span) for k in range(n)]
-        return cls(tuple(shape), data, dtype)
+        """Fill deterministically from ``name`` (no RNG): stable across runs/machines.
+
+        The fill is indexed by ``(row, col)`` rather than by flat position, so rows and columns
+        differ from one another and a row-stride / offset / transpose bug changes the output.
+        See :mod:`merlin.common.stimulus` for why that matters and for the C emitters that keep
+        the baremetal reference programs filling byte-identical data.
+        """
+        return cls(tuple(shape), STIM.fill(name, tuple(shape), lo, hi), dtype)
 
     # -- introspection ------------------------------------------------------
     @property

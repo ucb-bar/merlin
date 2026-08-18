@@ -21,6 +21,7 @@ without breaking any property.
 """
 from __future__ import annotations
 
+from merlin.common import stimulus as _stimulus
 from merlin.runtime.fp8_formats import canonical_float, representable_values
 
 # Keep magnitudes modest so a long-K reduction cannot overflow bf16 accumulation, while still spanning the
@@ -39,18 +40,10 @@ def _is_prime(n: int) -> bool:
     return True
 
 
-def _mix(r: int, c: int, s: int) -> int:
-    """A deterministic 32-bit avalanche hash of ``(row, col, salt)`` — pseudo-random alphabet indices so a
-    small-alphabet operand still gets distinct row/column tuples (no linear periodicity that would repeat a
-    column every ``alphabet`` steps). Structural + integer-only (no regex, no float)."""
-    x = ((r + 1) * 0x9E3779B1) ^ ((c + 1) * 0x85EBCA77) ^ ((s + 1) * 0xC2B2AE3D)
-    x &= 0xFFFFFFFF
-    x ^= x >> 15
-    x = (x * 0x2545F491) & 0xFFFFFFFF
-    x ^= x >> 13
-    x = (x * 0x27D4EB2F) & 0xFFFFFFFF
-    x ^= x >> 16
-    return x
+# The avalanche hash now lives in merlin.common.stimulus, so the float operand synthesis here and the
+# integer leaf fill in merlin.runtime.tensor (and its C emitters) share ONE definition. Re-exported under
+# the original private name because this module's callers and tests already use it.
+_mix = _stimulus.mix
 
 
 def _prime_at_least(k: int) -> int:

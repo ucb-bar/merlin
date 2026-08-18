@@ -29,6 +29,7 @@ from pathlib import Path
 import yaml
 
 import _pbcommon as PB
+from merlin.common import stimulus as STIM  # noqa: E402  (one source of truth for leaf data)
 from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402  (golden C build/run reuse)
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 from merlin.targetgen import capsule_runner as CR  # noqa: E402
@@ -87,9 +88,10 @@ _GOLDEN_C = r"""
 static elem_t A[MI][MK] row_align(1);
 static elem_t B[MK][MJ] row_align(1);
 {cdecl}
+{mix_fn}
 int main() {{
-  for (int i=0;i<MI;i++) for (int k=0;k<MK;k++) {{ long t=(long)SEED_A*(i*MK+k+1)+(long)(i*MK+k)*(i*MK+k); A[i][k]=(elem_t)(t%4); }}
-  for (int k=0;k<MK;k++) for (int j=0;j<MJ;j++) {{ long t=(long)SEED_B*(k*MJ+j+1)+(long)(k*MJ+j)*(k*MJ+j); B[k][j]=(elem_t)(t%4); }}
+{fill_a}
+{fill_b}
   uint64_t c0 = read_cycles();
   tiled_matmul_auto(MI, MJ, MK, (elem_t*)A, (elem_t*)B, NULL, (void*)C,
       MK, MJ, MJ, MJ,
@@ -119,8 +121,9 @@ _GOLDEN_MOVE_C = r"""
 #define SEED_X {seed_x}
 static elem_t In[MI][MJ] row_align(1);
 static elem_t Out[MI][MJ] row_align(1);
+{mix_fn}
 int main() {{
-  for (long k=0;k<(long)MI*MJ;k++) {{ long t=(long)SEED_X*(k+1)+k*k; ((elem_t*)In)[k]=(elem_t)(t%4); }}
+{fill_x}
   gemmini_flush(0);
   gemmini_config_ld(MJ * sizeof(elem_t));
   gemmini_config_st(MJ * sizeof(elem_t));
@@ -150,6 +153,9 @@ def _golden_src(M, K, N, epilogue, acc_scale, lhs_name, weight_name) -> str:
     cdecl = "static elem_t C[MI][MJ] row_align(1);" if i8out else "static acc_t C[MI][MJ];"
     full_C = "false" if i8out else "true"
     return _GOLDEN_C.format(M=M, K=K, N=N, seed_a=BMC.det_seed(lhs_name), seed_b=BMC.det_seed(weight_name),
+                            mix_fn=STIM.C_MIX_FN,
+                            fill_a=STIM.c_fill_loop_2d("A", "MI", "MK", "SEED_A"),
+                            fill_b=STIM.c_fill_loop_2d("B", "MK", "MJ", "SEED_B"),
                             act=act, scale=scale, full_C=full_C, cdecl=cdecl, celem="C[i][j]")
 
 
@@ -170,7 +176,8 @@ def run_golden(k: dict, kdir: Path, sims: list[str], workdir: Path, timeout: int
     elif op == "movement":
         src_name = attrs.get("src", "X")
         M, N = next(i["shape"] for i in cap["inputs"] if i["name"] == src_name)
-        src = _GOLDEN_MOVE_C.format(M=M, N=N, seed_x=BMC.det_seed(src_name))
+        src = _GOLDEN_MOVE_C.format(M=M, N=N, seed_x=BMC.det_seed(src_name), mix_fn=STIM.C_MIX_FN,
+                                    fill_x=STIM.c_fill_loop_2d("In", "MI", "MJ", "SEED_X"))
     else:  # conv2d (+ any other): golden C-lib wiring pending; honest skip (MLIR arms still run it)
         res["error"] = f"golden({op}) C-lib template not wired (deferred; baseline/merlin/native run it)"
         return res

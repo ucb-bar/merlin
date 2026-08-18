@@ -31,6 +31,7 @@ from pathlib import Path
 import yaml
 
 import _pbcommon as PB
+from merlin.common import stimulus as STIM  # noqa: E402  (one source of truth for leaf data)
 from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402  (build flags + run reuse)
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 
@@ -65,8 +66,9 @@ func.func @{name}(%x: tensor<{M}x{K}xi8>, %w: tensor<{K}x{N}xi8>) -> tensor<{M}x
 """
 
 # Harness: build the IREE executable-library dispatch ABI + call the self-contained dispatch .o.
-# Deterministic X/W match Tensor.deterministic("X"/"W") = (seed*(k+1)+k*k)%4 over the flat row-major
-# index. Output Y is i32 [M,N]. We time the whole workgroup grid with read_cycles.
+# Deterministic X/W match Tensor.deterministic("X"/"W"); the fill loops are EMITTED from
+# merlin.common.stimulus so this harness and the Python golden cannot drift. Output Y is i32 [M,N].
+# We time the whole workgroup grid with read_cycles.
 _HARNESS_C = r"""
 #include <stdint.h>
 #include <stddef.h>
@@ -97,10 +99,10 @@ static int8_t W[MK*MJ] row_align(1);
 static int32_t Y[MI*MJ] row_align(1);
 static uint8_t scratch[64*1024] row_align(1);
 static uint8_t env_buf[256];  // zeroed iree_hal_executable_environment_v0_t (no imports used)
-
+{mix_fn}
 int main() {{
-  for (long k=0;k<(long)MI*MK;k++) {{ long t=(long)SEED_X*(k+1)+k*k; X[k]=(int8_t)(t%4); }}
-  for (long k=0;k<(long)MK*MJ;k++) {{ long t=(long)SEED_W*(k+1)+k*k; W[k]=(int8_t)(t%4); }}
+{fill_x}
+{fill_w}
   for (long k=0;k<(long)MI*MJ;k++) Y[k]=0;
 
   void* const binds[3] = {{ (void*)X, (void*)W, (void*)Y }};
@@ -168,6 +170,9 @@ def iree_compile(name, M, K, N, workdir: Path) -> tuple[Path, str, tuple]:
 def build_iree_elf(name, M, K, N, obj: Path, sym: str, wgc: tuple, workdir: Path) -> Path:
     src = workdir / f"{name}_harness.c"
     src.write_text(_HARNESS_C.format(M=M, K=K, N=N, seed_x=BMC.det_seed("X"), seed_w=BMC.det_seed("W"),
+                                     mix_fn=STIM.C_MIX_FN,
+                                     fill_x=STIM.c_fill_loop("X", "MI", "MK", "SEED_X", cast="int8_t"),
+                                     fill_w=STIM.c_fill_loop("W", "MK", "MJ", "SEED_W", cast="int8_t"),
                                      sym=sym, wcx=wgc[0], wcy=wgc[1], wcz=wgc[2]))
     elf = workdir / f"{name}.elf"
     cmd = BMC._build_cmd(src, elf)

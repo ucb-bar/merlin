@@ -22,12 +22,13 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from merlin.common import stimulus as STIM
 from merlin.runtime.tensor import Tensor
 
 
 def det_seed(name: str) -> int:
-    """Replicate Tensor.deterministic's seed so a C program can fill identical leaf data."""
-    return sum((i + 1) * ord(c) for i, c in enumerate(name)) or 1
+    """The salt a C program needs to fill leaf data identical to ``Tensor.deterministic``."""
+    return STIM.det_seed(name)
 
 
 def det_tensor(name: str, shape, dtype="i8") -> Tensor:
@@ -35,7 +36,9 @@ def det_tensor(name: str, shape, dtype="i8") -> Tensor:
 
 
 # ---- C reference-program templates --------------------------------------------------------------
-# Inputs filled by the Tensor.deterministic formula: a[k] = (seed*(k+1) + k*k) % 4  (lo=0,hi=3).
+# Inputs are filled by merlin.common.stimulus -- the SAME definition Tensor.deterministic uses, emitted
+# as C from `stimulus.c_fill_loop_2d` rather than restated here, so the C program and the Python golden
+# can never drift apart.
 
 _MATMUL_C = r"""
 #include <stdint.h>
@@ -52,10 +55,11 @@ _MATMUL_C = r"""
 static elem_t A[MI][MK] row_align(1);
 static elem_t B[MK][MJ] row_align(1);
 {cdecl}
+{mix_fn}
 
 int main() {{
-  for (int i=0;i<MI;i++) for (int k=0;k<MK;k++) {{ long t=(long)SEED_A*(i*MK+k+1)+(long)(i*MK+k)*(i*MK+k); A[i][k]=(elem_t)(t%4); }}
-  for (int k=0;k<MK;k++) for (int j=0;j<MJ;j++) {{ long t=(long)SEED_B*(k*MJ+j+1)+(long)(k*MJ+j)*(k*MJ+j); B[k][j]=(elem_t)(t%4); }}
+{fill_a}
+{fill_b}
 
   tiled_matmul_auto(MI, MJ, MK, (elem_t*)A, (elem_t*)B, NULL, (void*)C,
       MK, MJ, MJ, MJ,
@@ -132,8 +136,10 @@ def run(elf: Path, simulator: str, timeout: int = 600) -> dict:
     return {"outputs": outputs, "cycles": raw.get("cycles"), "console": console}
 
 
-def matmul_source(I: int, K: int, J: int, *, seed_a: int, seed_b: int,
+def matmul_source(I: int, K: int, J: int, *, name_a: str, name_b: str,
                   act="NO_ACTIVATION", scale="ACC_SCALE_IDENTITY", full_C=True) -> str:
+    """C source filling A/B with exactly ``Tensor.deterministic(name_a/name_b, ...)``."""
+    seed_a, seed_b = STIM.det_seed(name_a), STIM.det_seed(name_b)
     if full_C:
         cdecl = "static acc_t C[MI][MJ];"
         celem = "C[i][j]"
@@ -143,7 +149,9 @@ def matmul_source(I: int, K: int, J: int, *, seed_a: int, seed_b: int,
         celem = "C[i][j]"
         fc = "false"
     return _MATMUL_C.format(I=I, K=K, J=J, seed_a=seed_a, seed_b=seed_b, act=act, scale=scale,
-                            full_C=fc, cdecl=cdecl, celem=celem)
+                            full_C=fc, cdecl=cdecl, celem=celem, mix_fn=STIM.C_MIX_FN,
+                            fill_a=STIM.c_fill_loop_2d("A", "MI", "MK", "SEED_A"),
+                            fill_b=STIM.c_fill_loop_2d("B", "MK", "MJ", "SEED_B"))
 
 
 def _i8(x: int) -> int:
@@ -151,12 +159,10 @@ def _i8(x: int) -> int:
     return x - 256 if x >= 128 else x
 
 
-def _matmul_golden(seed_a, seed_b, I, K, J, *, relu=False, acc_scale=None, i8out=False):
-    """Tensor-engine golden on the SAME deterministic inputs the C reference uses."""
-    a = [[((seed_a * (i * K + k + 1) + (i * K + k) ** 2) % 4) for k in range(K)] for i in range(I)]
-    b = [[((seed_b * (k * J + j + 1) + (k * J + j) ** 2) % 4) for j in range(J)] for k in range(K)]
-    A = Tensor((I, K), [v for row in a for v in row], "i8")
-    B = Tensor((K, J), [v for row in b for v in row], "i8")
+def _matmul_golden(name_a, name_b, I, K, J, *, relu=False, acc_scale=None, i8out=False):
+    """Tensor-engine golden on the SAME deterministic inputs the C reference fills."""
+    A = Tensor.deterministic(name_a, (I, K), "i8")
+    B = Tensor.deterministic(name_b, (K, J), "i8")
     t = A.matmul(B)
     if acc_scale is not None:
         t = t.requant_acc_scale(acc_scale)
@@ -169,7 +175,6 @@ def _matmul_golden(seed_a, seed_b, I, K, J, *, relu=False, acc_scale=None, i8out
 
 # Each anchor: (name, builder -> src, golden, capsule, classes-note)
 def _anchors():
-    sA, sW = det_seed("A0"), det_seed("W")
     return [
         {"name": "mvin_mvout", "specimen": "bareMetalC/mvin_mvout.c (upstream, instrumented)",
          "capsule": "A1_mvin_mvout", "feature": "MVIN/MVOUT movement (identity, i8)",
@@ -177,19 +182,19 @@ def _anchors():
          "golden": [[_i8(i * 16 + j) for j in range(16)] for i in range(16)]},
         {"name": "ref_matmul_16", "specimen": "tiled_matmul_auto (canonical Gemmini lib), WS",
          "capsule": "A2_single_tile_matmul", "feature": "single-tile i8xi8->i32 matmul",
-         "src": matmul_source(16, 16, 16, seed_a=sA, seed_b=sW),
-         "golden": _matmul_golden(sA, sW, 16, 16, 16)},
+         "src": matmul_source(16, 16, 16, name_a="A0", name_b="W"),
+         "golden": _matmul_golden("A0", "W", 16, 16, 16)},
         {"name": "ref_matmul_k32", "specimen": "tiled_matmul_auto, K=32 (K-accumulation)",
          "capsule": "A3_k_accumulation", "feature": "K-accumulation (Kt>1)",
-         "src": matmul_source(16, 32, 16, seed_a=sA, seed_b=sW),
-         "golden": _matmul_golden(sA, sW, 16, 32, 16)},
+         "src": matmul_source(16, 32, 16, name_a="A0", name_b="W"),
+         "golden": _matmul_golden("A0", "W", 16, 32, 16)},
         {"name": "ref_matmul_relu", "specimen": "tiled_matmul_auto + RELU", "capsule": "A5_relu_epilogue",
-         "feature": "relu epilogue", "src": matmul_source(16, 16, 16, seed_a=sA, seed_b=sW, act="RELU"),
-         "golden": _matmul_golden(sA, sW, 16, 16, 16, relu=True)},
+         "feature": "relu epilogue", "src": matmul_source(16, 16, 16, name_a="A0", name_b="W", act="RELU"),
+         "golden": _matmul_golden("A0", "W", 16, 16, 16, relu=True)},
         {"name": "ref_acc_scale_i8", "specimen": "tiled_matmul_auto + acc_scale->i8",
          "capsule": "A4_acc_scale_i8", "feature": "acc_scale (f32) + saturating i8 readout",
-         "src": matmul_source(16, 16, 16, seed_a=sA, seed_b=sW, scale="0.0625f", full_C=False),
-         "golden": _matmul_golden(sA, sW, 16, 16, 16, acc_scale=0.0625, i8out=True)},
+         "src": matmul_source(16, 16, 16, name_a="A0", name_b="W", scale="0.0625f", full_C=False),
+         "golden": _matmul_golden("A0", "W", 16, 16, 16, acc_scale=0.0625, i8out=True)},
     ]
 
 
