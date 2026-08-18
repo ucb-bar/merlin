@@ -9,6 +9,7 @@ experiment_preflight_report.md) ending in GO_FOR_PILOT or NO_GO.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -284,13 +285,115 @@ def check_bundle_hash_repro() -> dict:
     return out
 
 
+def _codex_token_witness() -> Path | None:
+    """The newest REAL Codex event stream this host has captured, if any.
+
+    ``MERLIN_TOKEN_WITNESS`` names one explicitly; otherwise the most recent
+    ``*.codex_events.raw.jsonl`` written by the driver (under the runs tree) or by
+    the sandbox canary (under the artifact cache). Both are genuine CLI output,
+    which is the property this check exists to establish — a synthetic fixture
+    would prove only that the parser runs.
+    """
+    explicit = os.environ.get("MERLIN_TOKEN_WITNESS", "").strip()
+    if explicit:
+        p = Path(explicit)
+        return p if p.is_file() else None
+    from merlin.common.paths import artifacts_dir, runs_dir
+
+    found: list[Path] = []
+    for root in (runs_dir(), artifacts_dir() / "cache"):
+        if root.is_dir():
+            found += list(root.rglob("*codex_events.raw.jsonl"))
+    live = [p for p in found if p.is_file() and p.stat().st_size > 0]
+    if not live:
+        return None
+    live.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    # Prefer the newest stream that actually CONTAINS a completed turn. Usage lands
+    # only on `turn.completed`, so the newest file is often a round still in flight
+    # with nothing to capture yet — a true "no usage" that would misreport this
+    # check as unable to capture tokens. Fall back to the newest so the report can
+    # still say what it looked at.
+    for p in live:
+        try:
+            if '"turn.completed"' in p.read_text(errors="replace"):
+                return p
+        except OSError:
+            continue
+    return live[0]
+
+
+def _codex_tokens(path: Path) -> dict:
+    """Token capture from a real Codex stream, using the driver's own translation.
+
+    Reuses ``codex_agent.usage_to_claude_shape`` rather than re-deriving the subset
+    arithmetic here: Codex reports ``input_tokens`` as a TOTAL already containing
+    the cache reads, so a second implementation is a second chance to double-count.
+
+    Cost stays ``None``. This host authenticates Codex with a ChatGPT account, so
+    a dollar figure would be ``subscription_notional`` at best, and this gate must
+    not hand a metered-looking number to a budget.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import codex_agent as CA
+
+    totals = {"input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 0,
+              "cache_creation_input_tokens": 0, "reasoning_output_tokens": 0}
+    turns = reported = 0
+    for line in path.read_text(errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue                                    # a killed writer's partial tail
+        if not isinstance(event, dict) or event.get("type") != CA.EVENT_TURN_COMPLETED:
+            continue
+        turns += 1
+        shaped, ok = CA.usage_to_claude_shape(event.get("usage") or {})
+        if not ok:
+            continue
+        reported += 1
+        for key in totals:
+            totals[key] += int(shaped.get(key) or 0)
+    tokens_total = totals["input_tokens"] + totals["output_tokens"] + \
+        totals["cache_read_input_tokens"] + totals["cache_creation_input_tokens"]
+    return {
+        "tested": True, "driver": "codex", "witness": str(path),
+        # Available only when the provider actually reported usage for a turn.
+        # A stream with turns but no usage is a lower bound, not a capture.
+        "available": reported > 0 and tokens_total > 0,
+        "tokens_total": tokens_total, "per_bucket": totals,
+        "turns_seen": turns, "turns_usage_reported": reported,
+        "usage_complete": turns > 0 and reported >= turns,
+        "estimated_cost_usd": None, "billing_mode": "subscription_notional",
+        "cost_note": "ChatGPT-auth Codex consumes a subscription; any USD figure is notional "
+                     "and must never enter a metered budget",
+    }
+
+
 def check_real_tokens() -> dict:
-    p = Path("/tmp/real_stream.jsonl")
-    if not p.is_file():
-        return {"tested": False, "reason": "no /tmp/real_stream.jsonl (run the tiny claude probe first)"}
-    s = ET.parse_transcript(p)
-    return {"tested": True, "available": s.get("available"), "tokens_total": s.get("tokens_total"),
-            "estimated_cost_usd": s.get("estimated_cost_usd"), "unique_messages": s.get("unique_messages")}
+    """Prove token/cost capture works on a REAL agent stream, whichever agent ran.
+
+    The check used to demand ``/tmp/real_stream.jsonl`` from a Claude probe, so a
+    Codex campaign could never satisfy it and the gate reported NO_GO for having
+    run the agent it was configured to run. Either witness now counts, and the
+    record says which one it was.
+    """
+    p = Path(os.environ.get("MERLIN_CLAUDE_TOKEN_WITNESS", "/tmp/real_stream.jsonl"))
+    if p.is_file():
+        s = ET.parse_transcript(p)
+        return {"tested": True, "driver": "claudecode", "witness": str(p),
+                "available": s.get("available"), "tokens_total": s.get("tokens_total"),
+                "estimated_cost_usd": s.get("estimated_cost_usd"),
+                "unique_messages": s.get("unique_messages"), "billing_mode": "metered_or_subscription"}
+    codex = _codex_token_witness()
+    if codex is not None:
+        return _codex_tokens(codex)
+    return {"tested": False, "available": False,
+            "reason": "no real agent stream to check: neither a claude stream-json at "
+                      f"{p} nor a codex *.codex_events.raw.jsonl under the runs/cache trees "
+                      "(set MERLIN_TOKEN_WITNESS to name one)"}
 
 
 def baremetalc_table() -> list[dict]:
