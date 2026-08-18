@@ -238,8 +238,8 @@ def check_workload_constants() -> tuple[bool, list[str]]:
     """Scan any materialized submission trees for workload-specific constants (empty == nothing to
     scan yet, which passes — the substantive scan runs post-freeze in grade_agent_run)."""
     probs: list[str] = []
-    runs = EXP / "runs"
-    if runs.is_dir():
+    runs = C.RUNS          # out/runs/<target>/capsule-bench — the retired <experiment>/runs never
+    if runs.is_dir():      # existed here, so this scan silently covered nothing and always "passed"
         for sub in sorted(runs.glob("*/*/submission")):
             for h in scan_workload_constants(sub):
                 probs.append(f"{sub.parent.name}: {h}")
