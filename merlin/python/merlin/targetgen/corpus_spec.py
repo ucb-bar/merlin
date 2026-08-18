@@ -86,6 +86,17 @@ def _tile_dim(target: str, contract: dict) -> int:
     mesh (a SIMT / vector target such as radiance, whose matmul tiling is a SOFTWARE choice, not a
     hardware dimension) has nothing to derive; it uses ``_DEFAULT_SW_TILE`` — a compiler software-tiling
     default, NOT a per-target hardware fact. Both derivation sources are keyed on ``target``."""
+    # A matrix extension driven as INSTRUCTIONS has two different tile notions at once, and they are
+    # different NUMBERS: the spatial array's own edge (the manifest's mesh/tile rows — 16 for the unit
+    # this was measured on) and the LOGICAL tile a kernel addresses, which is VLMAX for the element width
+    # (32 on the same hardware at VLEN 256). Sizing capsules against the array edge on the instruction
+    # surface would bracket the wrong boundary — the tile-edge cases would sit mid-tile and prove nothing.
+    # So a unit that declares which hardware CONFIG it is elaborated as gets its edge from that config's
+    # own Scala, and a declared-but-underivable geometry raises instead of falling back to a mesh row.
+    unit, config = _declared_matrix_unit(contract), _declared_hardware_config(contract)
+    if unit and config:
+        from merlin.llvmlower import opu_shim
+        return int(opu_shim.load_contract(unit).geometry(config)[0])
     caps = (contract.get("capabilities") or {})
     for geom in (caps.get("mesh") or {}, caps.get("tile") or {}):      # systolic mesh OR spatial tile
         if geom.get("rows"):
@@ -109,6 +120,17 @@ def _accum_dtype(contract: dict, operand: str) -> str:
         if acc.get("acc"):
             return str(acc["acc"])
     return "i32" if dtype_info(operand)[3] else "f32"
+
+
+def _declared_hardware_config(contract: dict) -> str | None:
+    """The elaborated hardware configuration a compute unit declares (a config class in the unit's own
+    generator). Which config a target IS is a statement about the hardware being targeted, not a fact to
+    derive; what it IMPLIES — tile edge, operand alignment — is derived from that config's declaration."""
+    for cu in (contract.get("compute_units") or []):
+        cfg = cu.get("hardware_config")
+        if cfg:
+            return str(cfg)
+    return None
 
 
 def _declared_matrix_unit(contract: dict) -> str | None:

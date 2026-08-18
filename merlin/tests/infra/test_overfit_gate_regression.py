@@ -71,33 +71,49 @@ def test_assumed_constant_gate_ignores_a_benign_mask(tmp_path):
 # --------------------------------------------------------------------------- hardcoded target names
 
 
-def test_target_name_gate_flags_import_and_filename_and_marker_silences(tmp_path):
-    """A hardcoded target-name IMPORT and a target-named module FILENAME are both flagged by
-    ``check_no_target_name``, and a ``# target-ok:`` marker silences the import line — proving the gate
-    catches the two structural coupling surfaces and honors its escape hatch."""
+# The three coupling surfaces are checked by three separate entry points, because the gate was split once
+# it started reporting COUPLING (an import/attribute dependency) apart from a bare literal: `_scan_file`
+# reads in-code literals, `_scan_coupling` reads dependencies, and the filename surface is decided by
+# `_is_target_owned` on the repo-relative path. Calling each by name is what keeps this test honest — the
+# earlier single-entry version passed a `rel` argument the gate no longer takes, so it failed with a
+# TypeError instead of checking anything.
+
+
+def test_target_name_gate_flags_an_import_dependency(tmp_path):
+    """Surface 1: a generic module that IMPORTS a specific target is coupled to it."""
     gate = _load_gate("check_no_target_name")
+    flagged = _write(tmp_path, "planted.py", "import merlin.targets.gemmini.backend\n")
+    hits = gate._scan_coupling(flagged)
+    assert hits, "import coupling not flagged"
+    assert all(name == "gemmini" for _ln, name, _kind, _snip in hits)
 
-    body = "import merlin.targets.gemmini.backend\n"
-    flagged = _write(tmp_path, "planted.py", body)
-    # Surface (2) import + surface (3) filename (the rel path itself names a target).
-    hits = gate._scan_file(flagged, "merlin/python/merlin/cost_model/gemmini.py")
-    kinds = {kind for _ln, _name, _snip, kind in hits}
-    assert "import" in kinds, f"import coupling not flagged: {hits}"
-    assert "filename" in kinds, f"target-named filename not flagged: {hits}"
-    assert all(name == "gemmini" for _ln, name, _snip, _k in hits)
 
-    silenced_body = "import merlin.targets.gemmini.backend  # target-ok: pending eviction reference\n"
-    silenced = _write(tmp_path, "marked.py", silenced_body)
-    # rel path has no target name now, so only the (silenced) import surface is in play.
-    assert gate._scan_file(silenced, "merlin/python/merlin/shared_ok.py") == []
+def test_target_name_gate_flags_a_literal_and_the_marker_silences_it(tmp_path):
+    """Surface 2: a target name written as a literal, and the sanctioned escape hatch."""
+    gate = _load_gate("check_no_target_name")
+    flagged = _write(tmp_path, "planted.py", 'TARGET = "gemmini"\n')
+    hits = gate._scan_file(flagged)
+    assert hits and all(name == "gemmini" for _ln, name, _snip in hits)
+
+    silenced = _write(tmp_path, "marked.py",
+                      'TARGET = "gemmini"  # target-ok: pending eviction reference\n')
+    assert gate._scan_file(silenced) == [], "# target-ok: marker did not silence the literal"
+
+
+def test_target_name_gate_treats_a_target_named_module_as_target_owned(tmp_path):
+    """Surface 3: the filename. A module NAMED after a target is allowed to mention it (it is target-owned
+    by construction); a generically-named one is not, which is the asymmetry the gate rests on."""
+    gate = _load_gate("check_no_target_name")
+    assert gate._is_target_owned("merlin/python/merlin/cost_model/gemmini.py")
+    assert not gate._is_target_owned("merlin/python/merlin/cost_model/shared_ok.py")
 
 
 def test_target_name_gate_ignores_a_generic_module(tmp_path):
-    """A module with no target name in its imports/literals/filename trips nothing — the gate does not
-    flag ordinary code."""
+    """A module with no target name in its imports or literals trips nothing."""
     gate = _load_gate("check_no_target_name")
     benign = _write(tmp_path, "benign.py", "import os\nTARGET = resolve_target()\n")
-    assert gate._scan_file(benign, "merlin/python/merlin/generic_thing.py") == []
+    assert gate._scan_file(benign) == []
+    assert gate._scan_coupling(benign) == []
 
 
 # --------------------------------------------------------------------------- regex in core library
@@ -139,5 +155,5 @@ def test_benign_file_passes_all_three_gates(tmp_path):
                     "    '''Add two numbers.'''\n"
                     "    return a + b\n")
     assert a._scan_file(benign) == []
-    assert t._scan_file(benign, "merlin/python/merlin/clean.py") == []
+    assert t._scan_file(benign) == [] and t._scan_coupling(benign) == []
     assert r._scan_file(benign) == []

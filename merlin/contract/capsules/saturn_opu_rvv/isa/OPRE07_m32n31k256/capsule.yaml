@@ -1,0 +1,46 @@
+name: OPRE07_m32n31k256
+kind: isa
+source_role: derived_sweep
+source_reference: 'tile-edge bracket over both parallel extents at two reduction depths:
+  below, at and one over the logical tile, which is where a tiling loop''s off-by-one
+  lands and nowhere else (tile=32; K=256, M=32, N=31)'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 256
+  - 31
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 256
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - OPMVIN
+  - OPMVINBCAST
+  - OPMACC
+  - OPMVOUT
+  modes:
+    relu: false
+    acc_scale: false
+    i8: false
+required_oracle_tiers:
+- L3
+vcs: optional
+firesim: optional

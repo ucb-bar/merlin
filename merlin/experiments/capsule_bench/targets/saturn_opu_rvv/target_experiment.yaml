@@ -1,0 +1,40 @@
+# Declarative per-target experiment SETUP for SATURN_OPU_RVV — the Saturn OuterProductUnit reached through
+# its VECTOR-OPCODE INSTRUCTION EXTENSION, rather than through the command buffer.
+#
+# WHY IT EXISTS. The bench already carries this unit as a command_buffer target. That surface has no
+# instruction decode, so its capsules' `expected.instruction_classes` derive to an EMPTY list and coverage
+# is satisfied by a submission that emits nothing. The instructions exist — four reserved even funct6 slots
+# of the vector opcode, which is how the shipped microkernel drives the unit — they were simply not
+# represented in the bench. This target is that surface: the submitted artifact is a kernel, the coverage
+# expectation names derived instructions, and the geometry is the logical VLMAX tile the kernel addresses
+# (32 at VLEN 256) rather than the spatial array edge (16).
+#
+# STATUS: corpus + contract land here; the RTL grading tier is opu_cert.certify (see `toolchain` below).
+# Nothing in this file states an encoding, an opcode, or a tile size: the contract is generated from RTL
+# facts + manifest_residual.yaml, the encodings are derived per run by targetgen.rtl.opu_isa and
+# cross-checked against the unit's own header, and the tile edge is read from the declared config's Scala.
+target: saturn_opu_mxv256d128_rvv
+
+rtl:
+  via: mlc            # spatial facts (OuterProductUnit state manifest); the encodings come from opu_isa
+
+hardware_spec:
+  # GENERATED, regenerable from manifest_residual.yaml beside this file (build_tools/scripts/
+  # gen_saturn_opu_rvv_contract.py). Not hand-authored: a hand-written contract is how a target starts
+  # claiming capability its RTL does not have.
+  target_contract: out/artifacts/targets/saturn_opu_mxv256d128_rvv/contracts/target_contract.yaml
+
+# This target's OWN corpus, generated from profiles/saturn_opu_rvv.yaml. Its shapes are declared as
+# tile-relative sweeps, so they track the geometry of whichever config the contract names instead of
+# baking a number.
+capsule_corpus: merlin/contract/capsules/saturn_opu_rvv/isa
+
+toolchain:
+  # No bespoke sim ENGINE name here (declaring one that nothing implements is how a target ends up with a
+  # grading tier that never runs — see the note in saturn_opu's descriptor). The instruction surface's RTL
+  # tier is opu_cert.certify, which assembles the emitted kernel, runs it, and audits the decoded object to
+  # prove the datapath actually fired; it is registered as an oracle adapter, not as a sim engine.
+  sim_via: ""
+
+answer_surfaces:
+  prior_backends: []

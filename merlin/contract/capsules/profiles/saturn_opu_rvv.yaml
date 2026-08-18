@@ -1,0 +1,95 @@
+# Capsule corpus for the Saturn OuterProductUnit driven as INSTRUCTIONS (the vector-opcode matrix
+# extension), as opposed to profiles/saturn_opu.yaml which drives the same unit through a command buffer.
+#
+# WHAT IS DIFFERENT HERE, AND WHY IT MATTERS:
+#
+#   * COVERAGE CAN FAIL. The command-buffer surface has no instruction decode, so its capsules' expected
+#     instruction classes derive to an empty list and any submission satisfies coverage. On this surface the
+#     classes are DERIVED from the unit's own encodings (accumulate / operand move-in / broadcast move-in /
+#     accumulator readout, via targetgen.rtl.opu_isa cross-checked against the unit's header), so a kernel
+#     that never issues a readout fails coverage instead of passing it vacuously.
+#   * THE TILE IS THE LOGICAL ONE. A kernel here addresses VLMAX for the element width (32 on this config),
+#     not the spatial array edge (16). Both are real numbers about the same silicon, and bracketing the
+#     wrong one would put every "tile edge" case mid-tile, where an off-by-one does not live.
+#
+# EVERY SHAPE IS TILE-RELATIVE. Nothing below names 32, or any other extent whose value depends on the
+# hardware: `tile`, `tile-1`, `tile+1`, `2*tile` resolve against whichever config the contract declares, so
+# the same file brackets a VLEN-512 part (tile 64) without an edit. Raw integers appear only where the point
+# IS a specific small number (M=1, a K tail) or where the extent is a property of the WORKLOAD rather than
+# of the hardware (the model's real reduction depths).
+#
+# The intent ported from the 47-case microkernel certification and from profiles/saturn_opu.yaml — narrow
+# extents first, edges from both sides, both asymmetries, the reduction as its own axis, the epilogue as its
+# own rung, and the workload's real depths — is preserved, because each item was learned from a failure. The
+# DATA does not port: goldens are recomputed here for this surface's dtypes.
+
+datapath:
+  compare: exact_int          # int8 x int8 -> i32 is exact; a tolerance would hide a real error
+  # The RTL tier for this surface assembles the emitted kernel, runs it, and audits the decoded object to
+  # prove the datapath actually fired. L0/L1 are the numeric floor; L3 is that audit.
+  required_oracle_tiers: [L3]
+
+capsules:
+# Hand-authored where the prose carries something a template cannot generate. Tile-relative extents use
+# the `*_tiles` spelling here: sweep tokens (`tile`, `tile-1`) are resolved inside sweep AXES, while a
+# hand-authored entry is passed through verbatim by design, so it states tile multiples the way every other
+# hand-authored profile does.
+- {cat: isa, name: OPR0_narrow_m_1, kind: isa, op: matmul, M: 1, N_tiles: 1, K: 64,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'M=1 vecmat: a prior integration packed a single row to a full tile; also the shape
+     the workload census found both numerous and cheap',
+   label: public}
+- {cat: isa, name: OPR1_narrow_both_1, kind: isa, op: matmul, M: 1, N: 1, K: 64,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'both parallel extents 1: a rank-1 accumulate degenerating to a dot product, where a
+     broadcast move-in that assumes a full tile writes past the operand',
+   label: public}
+- {cat: isa, name: OPR2_k_1, kind: isa, op: matmul, M_tiles: 1, N_tiles: 1, K: 1,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'a single rank-1 update: the accumulate fires exactly once, so a kernel that folds
+     the readout into the loop tail emits it in the wrong place',
+   label: public}
+
+sweeps:
+# ---- the tile edge and the two asymmetries, at two reduction depths -------------------------------
+# Two K points are mandatory (the generator refuses one): a tiled unit's rate and its per-tile-pair
+# overhead are different terms and a single depth cannot separate them.
+- id: OPRE
+  base: {cat: isa, kind: isa, op: matmul, lhs: A0, weight: W, out: Y0, label: public,
+         source_role: derived_sweep}
+  axes:
+    M: [tile-1, tile, tile+1]
+    N: [tile-1, tile, tile+1]
+    K: [64, 256]
+  name: '{id}{i:02d}_m{M}n{N}k{K}'
+  source_reference: >-
+    tile-edge bracket over both parallel extents at two reduction depths: below, at and one over the
+    logical tile, which is where a tiling loop's off-by-one lands and nowhere else
+
+# ---- narrow extents against a full tile, both directions -----------------------------------------
+- id: OPRN
+  base: {cat: isa, kind: isa, op: matmul, lhs: A0, weight: W, out: Y0, label: public,
+         source_role: derived_sweep}
+  axes:
+    M: [1, tile]
+    N: [1, tile]
+    K: [64, 256]
+  name: '{id}{i:02d}_m{M}n{N}k{K}'
+  source_reference: >-
+    narrow-vs-full in both parallel extents, so an operand swap in the accumulate fails in both
+    directions instead of cancelling
+
+# ---- the reduction as its own axis, including a tail over the tile --------------------------------
+- id: OPRK
+  base: {cat: isa, kind: isa, op: matmul, lhs: A0, weight: W, out: Y0,
+         label: public, source_role: derived_sweep}
+  # M and N are single-point AXES rather than base fields: a tile-relative token is resolved where the
+  # sweep resolves extents, and the base is passed through as-is.
+  axes:
+    M: [tile]
+    N: [tile]
+    K: [3, 65, 2*tile, 1024]
+  name: '{id}{i:02d}_k{K}'
+  source_reference: >-
+    reduction depth swept alone at fixed parallel extents: an odd tiny depth, one over a 64-boundary, two
+    logical tiles, and the deepest depth the workload actually runs
