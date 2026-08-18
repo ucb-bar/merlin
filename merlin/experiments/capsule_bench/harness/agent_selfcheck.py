@@ -121,6 +121,11 @@ def _log_telemetry(out: dict, capsules_arg: str) -> None:
         rows = out.get("per_capsule") or []
         line = {"wall_offset_s": round(_t.time() - t0, 1) if t0 else None,
                 "sim": out.get("sim"), "barrier_tier": out.get("barrier_tier"),
+                # The EFFECTIVE barrier each capsule was scored against, distinct from the declared one.
+                # When they differ the declared tier never ran, and scoring against it silently fails
+                # every capsule -- the atlas defect that hid behind 110 identical 0/11 lines. Recording
+                # both makes that visible in the log instead of only in a per-row field nobody reads.
+                "barrier_used": sorted({r.get("barrier_tier") for r in rows if r.get("barrier_tier")}) or None,
                 "capsules": capsules_arg, "n_passed": out.get("n_passed"),
                 "n_capsules": out.get("n_capsules"), "all_pass": out.get("all_pass"),
                 "build_failed": out.get("build_failed", False), "no_results": out.get("no_results", False),
