@@ -37,7 +37,27 @@ from merlin.targetgen.capsule_common import load_capsule  # noqa: E402
 from merlin.targetgen.capsule_runner import qa_loop_adapters, run_capsule  # noqa: E402
 
 TARGET = C.TARGET
-PKG = C.REPO / "out/artifacts/targets" / TARGET / "reference_v0"
+PKG_ROOT = C.REPO / "out/artifacts/targets" / TARGET
+
+
+def default_package() -> Path | None:
+    """The target's reference backend, DERIVED — never a per-target directory name.
+
+    ``reference_v0`` is what one target happens to call it; another calls it ``agent_spec_v1_mlir_oot``,
+    so naming it here quietly restricted this measurement to a single target. Pick the package whose
+    manifest marks it ``integrity_exempt`` (the reference backend is the one package allowed to import
+    Merlin internals), else any package carrying a manifest. None when the target ships none.
+    """
+    exempt, any_pkg = [], []
+    for m in sorted(PKG_ROOT.glob("*/manifest.yaml")):
+        any_pkg.append(m.parent)
+        try:
+            if (yaml.safe_load(m.read_text(encoding="utf-8")) or {}).get("integrity_exempt"):
+                exempt.append(m.parent)
+        except Exception:  # noqa: BLE001 -- an unreadable manifest just isn't a candidate
+            continue
+    pool = exempt or any_pkg
+    return pool[0] if pool else None
 CONTRACT = C.REPO / "merlin" / "contract"
 OUTDIR = C.RUNS / "genmatrix" / "caps"
 RUNS = C.RUNS / "genmatrix"
@@ -174,9 +194,9 @@ FAMILY_MAT = {"contraction": materialize_contraction, "normalization": materiali
               "softmax": materialize_softmax, "attention": materialize_attention}
 
 
-def grade(cdir: Path, adapters) -> str:
+def grade(cdir: Path, adapters, pkg: Path) -> str:
     cap = load_capsule(str(cdir), contract=str(CONTRACT))
-    res = run_capsule(cap, PKG, runs_root=RUNS, run_id=cap["name"], contract=str(CONTRACT),
+    res = run_capsule(cap, pkg, runs_root=RUNS, run_id=cap["name"], contract=str(CONTRACT),
                       target=TARGET, timeout=600, oracle_adapters=adapters)
     l2 = (res.get("tiers", {}) or {}).get("L2", {}).get("status")
     return "pass" if res.get("status") == "pass" or l2 == "pass" else "fail"
@@ -186,7 +206,14 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--max-dim", type=int, default=MAX_DIM_DEFAULT)
     ap.add_argument("--families", default=",".join(FAMILY_MAT))
+    ap.add_argument("--package", default=None,
+                    help="backend package to measure (default: the target's derived reference backend). "
+                         "Point it at a run's frozen submission/ to measure THAT compiler's recall.")
     a = ap.parse_args(argv)
+    pkg = Path(a.package) if a.package else default_package()
+    if pkg is None or not (pkg / "manifest.yaml").is_file():
+        print(f"no backend package to measure under {PKG_ROOT} (pass --package)", file=sys.stderr)
+        return 2
     fams = set(a.families.split(","))
     adapters = qa_loop_adapters(TARGET)
     cap_map = EL.capability_map_for_target(TARGET)
@@ -208,7 +235,7 @@ def main(argv=None) -> int:
             continue
         cdir = FAMILY_MAT[fam](p, seed=1000 + i)
         try:
-            verdict = grade(cdir, adapters)
+            verdict = grade(cdir, adapters, pkg)
         except Exception as e:  # noqa: BLE001
             verdict = f"error:{type(e).__name__}:{str(e)[:80]}"
         rows.append({"probe": p.name, "family": fam, "axis": p.axis, "verdict": verdict})
@@ -223,7 +250,7 @@ def main(argv=None) -> int:
         return {k: f"{p}/{t}" for k, (p, t) in sorted(agg.items())}
 
     n_pass = sum(1 for r in rows if r["verdict"] == "pass")
-    summary = {"target": TARGET, "graded": len(rows), "overall": f"{n_pass}/{len(rows)}",
+    summary = {"target": TARGET, "package": str(pkg), "graded": len(rows), "overall": f"{n_pass}/{len(rows)}",
                "acceleratable_region_recall_sampled": (n_pass / len(rows)) if rows else None,
                "per_family_recall": _recall("family"), "per_axis_recall": _recall("axis"),
                "skipped": skipped}

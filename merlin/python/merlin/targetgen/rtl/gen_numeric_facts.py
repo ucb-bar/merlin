@@ -73,9 +73,31 @@ def generate(facts: dict) -> str:
     # generated checker FAIL CLOSED (skip that check) — NEVER substitute a per-target default. The old
     # ``or 32`` / ``"i8"`` / ``"i32"`` fallbacks silently handed any target whose facts lacked datapaths
     # gemmini's numeric-shape rules (the derive-vs-overfit cardinal-rule violation this repo forbids).
+    acc_dtype = dps.get("accumulator", {}).get("dtype")
+    # Two RTL facts can ground the accumulation width, and the memory one is not always extracted: some
+    # targets' memory facts carry only bytes/depth. The accumulator DATAPATH dtype (e.g. "i32", evidence
+    # "AccumulatorMem SInt<32>") carries the same width, so read it as the second source rather than
+    # defaulting. This is still derivation -- both values come from the target's own facts. When NEITHER
+    # is present the width stays None and the generated checker fail-closed SKIPS the narrow-accumulator
+    # rule, which is the honest outcome; a baked "or 32" here silently handed every target gemmini's
+    # accumulator width, the derive-vs-overfit violation this file exists to avoid.
+    acc_bits = acc.get("lane_bits") or _dtype_bits(acc_dtype)
     return _TMPL.format(input_dtype=dps.get("input", {}).get("dtype"),
-                        acc_dtype=dps.get("accumulator", {}).get("dtype"),
-                        acc_bits=acc.get("lane_bits"))
+                        acc_dtype=acc_dtype,
+                        acc_bits=acc_bits)
+
+
+def _dtype_bits(dtype: str | None) -> int | None:
+    """Width in bits from a dtype token's first contiguous digit run (i8->8, bf16->16, f8E4M3FN->8).
+    Structural and integer-only: no regex (repo rule), and an unparseable token yields None, never a
+    guess."""
+    digits = ""
+    for ch in str(dtype or ""):
+        if ch.isdigit():
+            digits += ch
+        elif digits:
+            break
+    return int(digits) if digits else None
 
 
 def main(argv=None):
