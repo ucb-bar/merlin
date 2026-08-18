@@ -12,6 +12,8 @@ allowed:
 - path: merlin/contract/capsules/radiance/isa/
   mode: ro
   note: capsule corpus
+- path: merlin/contract/capsules/radiance/model/
+  mode: ro
 - path: merlin/contract/capsules/radiance/model_slices/
   mode: ro
 - path: experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/isa_include/isa_definition.py
@@ -33,6 +35,8 @@ allowed:
 denied:
 - path: merlin/
   reason: Merlin internals (no tools for the raw arm)
+- path: merlin/contract/capsules/radiance/hidden/
+  reason: hidden capsules + goldens
 - path: experiments/capsule_bench/targets/radiance/input_bundles/grader_private_v0/
   reason: grader-private
 - path: experiments/capsule_bench/targets/radiance/runs/

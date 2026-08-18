@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from merlin.runtime.backends import muon
+from merlin.runtime.backends.base import get_backend
+muon = get_backend("muon").muon                 # evicted SIMT backend, resolved via plugin discovery
 
 
 def _stock_clang() -> bool:
@@ -62,7 +63,7 @@ def test_multiwarp_graded_on_the_rtl_arc_oracle(tmp_path):
 def test_arc_readback_adapter_fails_closed_without_the_model(tmp_path, monkeypatch):
     """The RTL-arc readback grading adapter (the sim-independent multi-warp oracle) must fail closed with
     MuonUnavailable when the compiled arc model is absent — never fabricate a verdict. Hermetic."""
-    from merlin.targetgen import muon_oracles as MO
+    MO = get_backend("muon").muon_oracles
     monkeypatch.setattr(muon, "arc_oracle_available", lambda target="radiance": False)
     with pytest.raises(muon.MuonUnavailable):
         MO.arc_readback_adapter()({"target": "radiance", "tensors": {}}, "int main(void){return 0;}",
@@ -189,7 +190,7 @@ def test_grading_oracle_routes_forkfree_and_stamps_the_toolchain(tmp_path):
     coverage (never a hidden fork fallback), runs cyclotron, and parses the graded outputs. Proves the infra
     the live run uses works offline. Gated on the stock toolchain + the derived fact + cyclotron."""
     from merlin.targetgen.rtl import mlc_bridge
-    from merlin.targetgen import muon_oracles as MO
+    MO = get_backend("muon").muon_oracles
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
         pytest.skip("stock LLVM / derived fact / cyclotron not all available")
     res = MO.cyclotron_adapter()({"target": "radiance"}, _PROTOCOL_KERNEL, tmp_path, 180)
@@ -242,7 +243,7 @@ def test_real_fp32_capsule_grades_forkfree_against_its_golden(tmp_path):
     import numpy as np
     from merlin.common.paths import repo_root
     from merlin.targetgen.rtl import mlc_bridge
-    from merlin.runtime import selfcontained_c_harness as MH
+    MH = get_backend("muon").muon_harness
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
         pytest.skip("stock LLVM / derived fact / cyclotron not all available")
     gfile = repo_root() / "merlin/contract/capsules/radiance/isa/R0_gemm_fp32/golden.yaml"
@@ -282,7 +283,7 @@ def test_grading_adapter_wraps_a_kernel_function_and_grades_forkfree(tmp_path, c
     import numpy as np
     from merlin.common.paths import repo_root
     from merlin.targetgen.rtl import mlc_bridge
-    from merlin.targetgen import muon_oracles as MO
+    MO = get_backend("muon").muon_oracles
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
         pytest.skip("stock LLVM / derived fact / cyclotron not all available")
     cdir = repo_root() / "merlin/contract/capsules/radiance/isa" / capsule

@@ -1,0 +1,45 @@
+name: RP11_logit_softcap_fp32_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: PyTorch Gemma-2 logit soft-cap fp32
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: f32
+operation:
+  op: logit_softcap
+  attributes:
+    out: Y0
+    arg_order:
+    - X
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+verilator: optional
+pytorch_ref:
+  op: logit_softcap
+  dtype: f32
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: elementwise_map
+  must_accelerate: true
+  fallback_allowed: false
+  generalization_axis: composition

@@ -36,8 +36,10 @@ def check_numeric_shapes(cb: dict) -> list[str]:
     for i, c in enumerate(cb.get("commands", [])):
         op = c.get("opcode", "")
         attrs = c.get("attributes", {{}}) or {{}}
-        # accumulator-producing ops should accumulate at ACC_DTYPE width
-        if "MATMUL" in op or "COMPUTE" in op:
+        # accumulator-producing ops should accumulate at ACC_DTYPE width. Fail-closed: when the RTL facts
+        # did not ground the accumulator width (ACC_WIDTH_BITS is None), SKIP this check rather than
+        # assume one — a numeric-shape finding must never rest on a defaulted width.
+        if ("MATMUL" in op or "COMPUTE" in op) and ACC_WIDTH_BITS:
             dst = (c.get("operands", {{}}) or {{}}).get("dst")
             dt = (tensors.get(dst, {{}}) or {{}}).get("dtype")
             if dt and _bits(dt) and _bits(dt) < ACC_WIDTH_BITS:
@@ -52,9 +54,14 @@ def check_numeric_shapes(cb: dict) -> list[str]:
     return findings
 
 def _bits(dt: str):
-    import re
-    m = re.search(r"(\\d+)", dt or "")
-    return int(m.group(1)) if m else None
+    # first contiguous run of digits in the dtype token (i8->8, bf16->16, f8E4M3FN->8) — structural, no regex
+    digits = ""
+    for ch in (dt or ""):
+        if ch.isdigit():
+            digits += ch
+        elif digits:
+            break
+    return int(digits) if digits else None
 '''
 
 
@@ -62,10 +69,13 @@ def generate(facts: dict) -> str:
     f = decode_body(facts, str(facts.get("target") or "target"), needs="a numeric-shape checker")
     dps = {d["name"]: d for d in f.get("datapaths", [])}
     acc = next((m for m in f.get("memories", []) if m.get("name") == "accumulator"), {})
-    acc_bits = acc.get("lane_bits") or 32
-    return _TMPL.format(input_dtype=dps.get("input", {}).get("dtype", "i8"),
-                        acc_dtype=dps.get("accumulator", {}).get("dtype", "i32"),
-                        acc_bits=acc_bits)
+    # DERIVE every value from the target's RTL facts; when a fact is absent, emit ``None`` and let the
+    # generated checker FAIL CLOSED (skip that check) — NEVER substitute a per-target default. The old
+    # ``or 32`` / ``"i8"`` / ``"i32"`` fallbacks silently handed any target whose facts lacked datapaths
+    # gemmini's numeric-shape rules (the derive-vs-overfit cardinal-rule violation this repo forbids).
+    return _TMPL.format(input_dtype=dps.get("input", {}).get("dtype"),
+                        acc_dtype=dps.get("accumulator", {}).get("dtype"),
+                        acc_bits=acc.get("lane_bits"))
 
 
 def main(argv=None):

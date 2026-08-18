@@ -271,6 +271,7 @@ class CapabilityManifest:
     rtl_tiers: tuple[str, ...]
     perf_fields: tuple[str, ...]
     trace_gate: str | None         # trace-gate plugin name (e.g. "rocc_insn") or None
+    force_match_policy: dict | None  # optional oracle output-equality override (float target -> {compare,atol})
     encoding_required: bool
     encoding: dict                 # the ABI encoding surface RTL can't ground (readout_bits/semantic_class/...)
     contract: dict                 # the full target_contract.yaml (for consumers that need more)
@@ -281,6 +282,19 @@ def _primary_kind(units) -> str:
     contained = {c for u in units for c in u.contains}
     primary = [u for u in units if u.name not in contained]
     return (primary[0] if primary else units[0]).kind
+
+
+def _derived_dtype_token(units) -> str:
+    """A run-identity dtype token DERIVED from the primary compute unit's first accumulate rule
+    (``<in>x<weight>_<acc>``). Replaces the former gemmini ``i8xi8_i32`` fail-open default so a target
+    that omits ``runner.dtype`` (e.g. an mx target) is labeled by its OWN datapath, never mislabeled as
+    gemmini int8. Falls back to ``"unknown"`` (fail-closed, surfaced in the run label) if no rule."""
+    for u in units:
+        if u.accumulate:
+            a = u.accumulate[0]
+            if a.inp and a.acc:
+                return f"{a.inp}x{a.weight or a.inp}_{a.acc}"
+    return "unknown"
 
 
 def load_capability_manifest(target: str, *,
@@ -317,7 +331,7 @@ def load_capability_manifest(target: str, *,
     return CapabilityManifest(
         target=target, kind=kind, endpoint_kind=endpoint,
         suite=runner.get("suite") or f"{target}-capsule-bench",
-        dtype=runner.get("dtype") or "i8xi8_i32",
+        dtype=runner.get("dtype") or _derived_dtype_token(units),
         fourth_output_name=runner.get("fourth_output_name"),
         tier_sim=dict(runner.get("tier_sim") or {}),
         rtl_tiers=tuple(runner.get("rtl_tiers") or prof.default_rtl_tiers),
@@ -328,6 +342,10 @@ def load_capability_manifest(target: str, *,
         # the contract explicitly declares one). Keys on the endpoint, never a target name.
         trace_gate=runner.get("trace_gate",
                               prof.trace_gate if endpoint == "inline_asm_insn" else None),
+        # Optional oracle output-equality override (a float target declares {compare: float, atol: ...}
+        # so its oracle comparison is tolerant regardless of the per-capsule numeric_policy). None ->
+        # the capsule's own numeric_policy governs (integer capsules -> exact).
+        force_match_policy=runner.get("force_match_policy"),
         encoding_required=prof.encoding_required,
         encoding=encoding,
         contract=contract)

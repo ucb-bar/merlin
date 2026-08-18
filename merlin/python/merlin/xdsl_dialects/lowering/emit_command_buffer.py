@@ -66,17 +66,25 @@ def emit_command_buffer(module) -> dict[str, Any]:
         commands.append(cmd)
 
     weights = {c["operands"]["src"] for c in commands if c["opcode"] == "RES_PACK"}
-    # Vector-family destinations are the only tensor-table entries that are RESULTS. Both engines
-    # collect them by role, so mislabelling one as an input silently yields no output for it.
+    output_names = [s.data for s in create.outputs] if create.outputs is not None else []
+    # Vector-family destinations are RESULTS too — a vector workload declares no create.outputs, so also
+    # collect VECTOR_MAP/VREDUCE dsts by role, else such a result is mislabelled an input and silently
+    # not read back. The matmul path names its result through create.outputs; union covers both engines.
     produced = {c["operands"]["dst"] for c in commands
                 if c["opcode"] in ("VECTOR_MAP", "VREDUCE") and "dst" in c["operands"]}
+    outputs_set = set(output_names) | produced
     tensors: dict[str, Any] = {}
     table = create.tensors.data if create.tensors is not None else {}
     for name, spec in table.items():
         shape, dtype = _parse_shape(spec.data)
-        role = ("output" if name in produced
-                else "weight" if name in weights
-                else "bias" if name in bias_names else "input")
+        if name in outputs_set:
+            role = "output"
+        elif name in weights:
+            role = "weight"
+        elif name in bias_names:
+            role = "bias"
+        else:
+            role = "input"
         tensors[name] = {"shape": shape, "dtype": dtype, "role": role}
 
     metrics_requested: list[str] = []
@@ -91,6 +99,8 @@ def emit_command_buffer(module) -> dict[str, Any]:
         "tensors": tensors,
         "commands": commands,
     }
+    if output_names:
+        cb["outputs"] = output_names
     if metrics_requested:
         cb["metrics_requested"] = metrics_requested
     return cb

@@ -165,6 +165,22 @@ def isa_encoding_for(target: str) -> dict | None:
         return None
 
 
+def mx_mmio_for(target: str) -> dict | None:
+    """The target's MX-Gemmini accelerator MMIO command ABI (``{ctrl_base, reg_offsets, inst_word, funct,
+    sf_mem, gpu_dram_offset, dim, group, config_ex, bounds, loop_ws, mxquant_config_mvout, read_smem}``) —
+    the memory-mapped RoCC command surface a Muon SIMT kernel pushes to drive the block-scaled matmul PE.
+    This is an ABI the RTL decoder cannot ground (like gemmini's ``encoding`` residual), so it is declared,
+    header-derived + human-reviewed, in the target's ``contracts/residual.yaml`` under ``mx_mmio``. Returns
+    the parsed fact, or None when the target ships no MX MMIO contract — an honest fallback the emitter/harness
+    degrade on (the mxfp8 op is unsupported), never a guessed base/opcode."""
+    try:
+        from ..capability_manifests import _load_residual
+        fact = (_load_residual(target) or {}).get("mx_mmio")
+        return fact if isinstance(fact, dict) and fact.get("ctrl_base") is not None else None
+    except Exception:  # noqa: BLE001 — no residual / unreadable ⇒ honest None
+        return None
+
+
 def opu_artifact_paths(target: str) -> dict | None:
     """Resolved ``{hw, man, so}`` artifact paths for a SPATIAL/OPU target via mlc's per-target
     fingerprint map — which knows the two-level ``runs/circt-arc/<family>/<config>/outputs`` layout the
@@ -1153,24 +1169,52 @@ def render_fact_bundle_for(target: str, bundle: dict | None = None) -> str:
     return render_fact_bundle(target, bundle)
 
 
+#: Registry of SIMT RTL introspects, keyed by the introspect's DECLARED identity (its ``TARGET``) — the
+#: fact-extraction analog of the runtime backend registry and the capsule_runner sim-oracle registry. A
+#: SIMT introspect must expose ``TARGET`` + ``build_facts()``. The reference Muon introspect registers
+#: itself (below); a SECOND SIMT core registers its own introspect via :func:`register_simt_introspect`
+#: (in-tree, or from its out-of-tree package at import) so :func:`_simt_fact_bundle` resolves it WITHOUT
+#: editing this dispatch — the seam that keeps SIMT fact extraction from bottoming out at one core.
+_SIMT_INTROSPECTS: dict = {}
+
+
+def register_simt_introspect(module) -> None:
+    """Register a SIMT RTL introspect (must expose ``TARGET`` + ``build_facts()``). Idempotent."""
+    _SIMT_INTROSPECTS[module.TARGET] = module
+
+
+def _resolve_simt_introspect(target: str):
+    """The registered SIMT introspect whose declared identity matches ``target``'s arc alias, or None.
+    Serves by the ARC-target alias (not the merlin name): a composite SIMT target (e.g. radiance) whose
+    RTL IS the introspect's config (RadianceCluster) resolves to that introspect via ``_arc_target``."""
+    if not _SIMT_INTROSPECTS:
+        # The reference Muon introspect was evicted to its own package (merlin/targets/muon/backend/);
+        # resolve it via the registry so mlc_bridge no longer imports it directly, while preserving the
+        # on-demand registration guarantee (this fires whenever the registry is empty, independent of
+        # discovery order — so SIMT introspection radiance relies on cannot silently go missing).
+        try:
+            from ...runtime.backends import base as _bk
+            register_simt_introspect(_bk.get_backend("muon").muon_introspect)
+        except Exception:  # noqa: BLE001 — no SIMT introspect available -> _simt_fact_bundle reports honestly
+            pass
+    return _SIMT_INTROSPECTS.get(_arc_target(target))
+
+
 def _simt_fact_bundle(target: str) -> dict:
-    """Adapt the SIMT RTL introspect to the uniform fact-bundle shape. The concrete introspect
-    (``muon_introspect``, reading RadianceMuonConfig) declares which target it serves, so a SIMT
-    target it does NOT serve is reported honestly rather than mis-attributed to muon's geometry.
-    The core gates on that declared identity, not a literal target name."""
-    from . import muon_introspect
-    # Serve by the ARC-target alias, not the merlin name: a composite SIMT target (e.g. radiance) whose
-    # RTL IS the introspect's config (RadianceCluster) resolves to the introspect's declared identity via
-    # _arc_target, so its SIMT facts are delegated to the one SIMT introspect that models that RTL. A
-    # target the introspect does not model is reported honestly, never mis-attributed.
-    if _arc_target(target) != muon_introspect.TARGET:
+    """Adapt the SIMT RTL introspect to the uniform fact-bundle shape. The introspect is resolved from
+    the registry by the target's declared identity, so a SIMT target no registered introspect serves is
+    reported honestly rather than mis-attributed to another core's geometry. Keys on that declared
+    identity, never a literal target name."""
+    intro = _resolve_simt_introspect(target)
+    if intro is None:
+        served = sorted(_SIMT_INTROSPECTS)
         fields = {"simt": {"value": None, "derived": False, "source": None,
                            "evidence": f"no SIMT RTL introspect serves {target!r} "
-                                       f"(only {muon_introspect.TARGET!r} today)"}}
+                                       f"(registered: {served})"}}
         return {"target": target,
-                "method": f"SIMT RTL introspect (serves {muon_introspect.TARGET!r} only)",
+                "method": f"SIMT RTL introspect (registered: {served})",
                 "kind": "simt", "fields": fields, "n_derived": 0}
-    facts = muon_introspect.build_facts()
+    facts = intro.build_facts()
     f = facts.get("facts", {})
     present = facts.get("inputs", {}).get("rtl_present", False)
     fields = {name: {"value": f.get(name), "derived": name in f,

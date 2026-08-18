@@ -162,5 +162,27 @@ class Tensor:
         """Sum all elements -> a length-1 tensor."""
         return Tensor((1,), [sum(self.data)], self.dtype)
 
+    def dequant_per_channel(self, scale: "Tensor", axis: int = 1) -> "Tensor":
+        """Dequantize a 2-D integer weight by a per-channel float scale -> a float32 weight.
+
+        This is model2MLIR's int8 weight-only idiom: ``W_f32[k, n] = W_i8[k, n] * scale[c]`` where
+        ``c`` is ``n`` for ``axis == 1`` (per-output-channel, the transposed matmul-RHS layout) or
+        ``k`` for ``axis == 0``. The result is a plain float weight the matmul consumes normally."""
+        if len(self.shape) != 2:
+            raise ValueError(f"dequant_per_channel expects a 2-D weight, got {self.shape}")
+        k, n = self.shape
+        s = scale.data
+        if axis == 1:
+            if len(s) != n:
+                raise ValueError(f"scale length {len(s)} != n {n} for axis 1")
+            out = [self.data[r * n + c] * s[c] for r in range(k) for c in range(n)]
+        elif axis == 0:
+            if len(s) != k:
+                raise ValueError(f"scale length {len(s)} != k {k} for axis 0")
+            out = [self.data[r * n + c] * s[r] for r in range(k) for c in range(n)]
+        else:
+            raise ValueError(f"dequant_per_channel axis must be 0 or 1, got {axis}")
+        return Tensor((k, n), out, "f32")
+
     def to_i8(self) -> "Tensor":
         return Tensor(self.shape, [_i8_clamp(x) for x in self.data], "i8")

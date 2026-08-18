@@ -1,0 +1,54 @@
+name: RP10_gemv_batched_fp16_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: PyTorch batched GEMV fp16 (decode-time attn)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A0
+  role: input
+  shape:
+  - 2
+  - 16
+  - 16
+  dtype: fp16
+- name: V
+  role: input
+  shape:
+  - 2
+  - 16
+  - 1
+  dtype: fp16
+operation:
+  op: gemv_batched
+  attributes:
+    out: Y0
+    arg_order:
+    - A0
+    - V
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: fp16
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+verilator: optional
+pytorch_ref:
+  op: gemv_batched
+  dtype: fp16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: contraction
+  must_accelerate: true
+  fallback_allowed: false
+  generalization_axis: composition

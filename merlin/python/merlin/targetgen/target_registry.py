@@ -192,11 +192,44 @@ def resolve(name: str) -> TargetInfo:
     gen = _discover([generated_target_home()])
     if name in gen:
         return _resolve_external(name, gen[name])
-    # 4. legacy generated location
+    # 3b. opt-in native fetch of the published <target>-mlir repo into the generated home, then
+    # re-discover. Off by default (no surprise network calls); set MERLIN_TARGET_AUTOFETCH=1 to enable.
+    if os.environ.get("MERLIN_TARGET_AUTOFETCH", "").strip() not in ("", "0", "false", "False"):
+        from .oot_fetch import fetch, FetchError  # lazy: oot_fetch imports from this module
+        try:
+            fetch(name, champion=os.environ.get("MERLIN_TARGET_CHAMPION") or None)
+        except FetchError:
+            pass
+        else:
+            gen = _discover([generated_target_home()])
+            if name in gen:
+                return _resolve_external(name, gen[name])
+    # 4. legacy generated location. A DISCOVERED residual-target (ships a contracts/residual.yaml but no
+    # committed contract) is materialized on demand here — the "drop a descriptor + residual, let mlc
+    # derive" path: its structural facts come from RTL via mlc and its datapath from the residual. This
+    # only fires when nothing is committed (reference targets are caught at step 2), so it changes no
+    # committed target; it fails closed (writes nothing) when mlc can't derive, and load_contract then
+    # surfaces the missing contract honestly rather than fabricating one.
+    if not target_contract_path(name).is_file():
+        _materialize_discovered(name)
     return TargetInfo(
         name=name, kind="generated", base=target_base(name),
         contract_path=target_contract_path(name), dialect_plan_path=dialect_plan_path(name),
         facts_path=rtl_facts_path(name), backend=backend_for(name))
+
+
+def _materialize_discovered(name: str) -> None:
+    """Materialize a discovered residual-target's ``target_contract.yaml`` + ``dialect_plan.yaml`` from its
+    residual + mlc-derived RTL facts, into its legacy generated home. Best-effort and ATOMIC: the manifest
+    is fully derived (and schema-validated) before anything is written, so a failure (mlc absent, schema
+    mismatch, not a discovered generator) writes nothing — never a partial or fabricated contract."""
+    try:
+        from . import capability_manifests as cm
+        if name not in cm.discovered_targets():
+            return
+        cm.write_oot_target(name, target_base(name))
+    except Exception:  # noqa: BLE001 — no derivation possible in this env: leave it missing, fail closed
+        return
 
 
 def list_targets() -> list[str]:

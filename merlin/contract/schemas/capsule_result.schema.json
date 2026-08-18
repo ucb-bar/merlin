@@ -7,7 +7,7 @@
   "required": ["capsule", "status", "contract_version", "tiers", "trace_check", "numeric"],
   "properties": {
     "capsule": {"type": "string"},
-    "kind": {"type": "string", "enum": ["isa", "layer", "model_slice"]},
+    "kind": {"type": "string", "enum": ["isa", "layer", "model_slice", "model"]},
     "label": {"type": "string", "enum": ["public", "dev", "hidden"]},
     "status": {"type": "string", "enum": ["pass", "fail", "incomplete", "error", "not_gradeable_no_oracle"]},
     "contract_version": {"type": "string"},

@@ -99,24 +99,32 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
     return cmd
 
 
-# answer surfaces locked (chmod 000) right before any spend — prior backends, hidden capsules, goldens,
-# results, the experimenter's agent memory. Defence-in-depth on top of the per-bundle workspace assembly.
-ANSWER_SURFACES = [
-    f"out/artifacts/targets/{C.TARGET}",
-    "merlin/contract/capsules/hidden",
-    f"out/artifacts/capsule-bench/{C.TARGET}",
-]
+# Host-side answer surfaces locked (chmod 000) right before any spend — defence-in-depth on top of the
+# per-bundle workspace assembly + the bwrap answer masks. DERIVED from the descriptor so a new target
+# locks ITS OWN surfaces: the per-target hidden holdout dir (the answers) + stale prior results. NOTE
+# the target's contract dir (out/artifacts/targets/<target>) is deliberately NOT locked — it holds the
+# capability contract, not an answer, and locking it would break the run's own contract resolution.
+def _answer_surfaces_to_lock(te) -> list[str]:
+    locks: list[str] = []
+    if te is not None:
+        h = te.hidden_corpus()                                # per-target hidden set (capsules/<t>/hidden)
+        if h:
+            locks.append(str(C.REPO / h.rstrip("/")))
+    locks.append(str(C.REPO / f"out/artifacts/capsule-bench/{C.TARGET}"))  # stale prior results
+    return locks
 
 
 def _run_preflight() -> int:
     """Lock answer surfaces + run verify_no_cheat.py (the authoritative gate). Returns 0 iff safe."""
     C.require_scaffolding()   # fail loudly if MERLIN_TARGET_EXPERIMENT points at a scaffolding-less dir
+    from merlin.targetgen.target_experiment import load_target_experiment, bundles_match_descriptor
+    desc = C.EXP / "target_experiment.yaml"          # C.EXP honors MERLIN_TARGET_EXPERIMENT
+    te = load_target_experiment(desc) if desc.is_file() else None
     locked = []
-    for rel in ANSWER_SURFACES:
-        p = C.REPO / rel
-        if p.exists():
-            subprocess.run(["chmod", "-R", "000", str(p)], capture_output=True)
-            locked.append(rel)
+    for p in _answer_surfaces_to_lock(te):
+        if Path(p).exists():
+            subprocess.run(["chmod", "-R", "000", p], capture_output=True)
+            locked.append(p)
     print(f"  locked answer surfaces (chmod 000): {locked or '(none present)'}")
     vnc = SCRIPTS / "verify_no_cheat.py"
     if not vnc.is_file():
@@ -129,10 +137,7 @@ def _run_preflight() -> int:
     # Descriptor governs the shared hardware spec: refuse if any active arm bundle drifted from it (so
     # every arm gets exactly the ISA/RTL the target_experiment.yaml declares — a fair, honest run).
     try:
-        from merlin.targetgen.target_experiment import load_target_experiment, bundles_match_descriptor
-        desc = C.EXP / "target_experiment.yaml"          # C.EXP honors MERLIN_TARGET_EXPERIMENT
-        if desc.is_file():
-            te = load_target_experiment(desc)
+        if te is not None:
             bundles = C.BUNDLES
             manifests = [bundles / ARMS[arm][4] / "input_bundle_manifest.yaml" for arm in ARMS
                          if (bundles / ARMS[arm][4] / "input_bundle_manifest.yaml").is_file()]
@@ -176,6 +181,10 @@ def main(argv=None):
     ap.add_argument("--max-rounds", type=int, default=12)
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
     ap.add_argument("--round-timeout", type=int, default=14400, help="per-round agent wall cap (s); large = effectively no timeout")
+    ap.add_argument("--max-spend-usd", type=float, default=0.0,
+                    help="batch DOLLAR ceiling across ALL arms (0=off). Each arm appends its per-round cost "
+                         "to a shared ledger and stops before its next round once the total crosses this "
+                         "(enforces the org spend ceiling in code, e.g. --max-spend-usd 300).")
     ap.add_argument("--skip-hidden", action="store_true")
     ap.add_argument("--experiment", choices=["full", "realistic"], default="full",
                     help="'realistic' (abc2): whole-repo + self-check tool + verilator barrier; baseline=C++")
@@ -252,7 +261,18 @@ def main(argv=None):
     # tier is the mlc arc model (sim_via != "chipyard": atlas/npu_model, radiance, saturn …) has no
     # verilator binary to time against — the gate is N/A and would spuriously refuse an otherwise-ready run.
     if a.sandbox == "bwrap" and _sim_via() != "chipyard":
-        print(f"[pre-flight] verilator-timing gate N/A (sim_via={_sim_via()!r}; RTL tier is the mlc arc model)")
+        # Non-chipyard RTL tiers split two ways: a pure mlc-arc target (atlas/npu/saturn) has NO verilator
+        # binary to time — the gate is genuinely N/A — but a bespoke SIMT sim (cyclotron/radiance) DOES run
+        # a verilator RTL cert at L3 and needs a TARGET-SCOPED T_obs (it must not inherit gemmini's, which
+        # would floor to 900s and mass-timeout L3). Surface which case this is so an unverified L3 timing is
+        # never silent (the driver's _verilator_per_capsule_timeout falls back to a conservative bound).
+        _tsc = SCRIPTS / f".oracle_timing.{C.TARGET}.json"
+        if _tsc.is_file():
+            print(f"[pre-flight] L3 timing target-scoped & present: {_tsc.name} = {_tsc.read_text().strip()[:80]}")
+        else:
+            print(f"[pre-flight] verilator-timing gate: no target-scoped {_tsc.name} — if this target runs a "
+                  f"verilator L3 cert, the driver will use a CONSERVATIVE timeout (run the L3 measurement / "
+                  f"readiness to record it). N/A for pure mlc-arc targets.")
     elif a.sandbox == "bwrap":
         timing = SCRIPTS / ".oracle_timing.json"
         if not timing.is_file():
@@ -277,6 +297,14 @@ def main(argv=None):
     env = dict(os.environ)
     if acct:
         env["CLAUDE_CONFIG_DIR"] = acct
+    if a.max_spend_usd and a.max_spend_usd > 0:
+        # Enforce the batch dollar ceiling in code: all arms share one spend ledger (keyed by tag) and stop
+        # before their next round once the running total crosses the cap. Bounded overshoot = one in-flight
+        # round per arm. Consumed by run_baseline_qa_loop._spend_over_cap.
+        env["MERLIN_MAX_SPEND_USD"] = str(a.max_spend_usd)
+        env["MERLIN_SPEND_LEDGER"] = str(C.RUNS / f"ab_batch_{a.tag}.spend_ledger.jsonl")
+        print(f"[cost-cap] batch ceiling ${a.max_spend_usd:.2f} across all arms; shared ledger "
+              f"{env['MERLIN_SPEND_LEDGER']} (each arm stops before its next round once crossed).")
     manifest = {"tag": a.tag, "mode": a.mode, "launched_at": datetime.now(timezone.utc).isoformat(),
                 "model": a.model, "effort": a.effort, "account_config_dir": acct or None, "runs": []}
 

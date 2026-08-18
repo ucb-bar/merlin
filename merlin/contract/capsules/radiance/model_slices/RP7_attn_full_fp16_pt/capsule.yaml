@@ -1,0 +1,59 @@
+name: RP7_attn_full_fp16_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: PyTorch causal flash-style attention fp16 (Q@K^T,softmax,@V)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: Q
+  role: input
+  shape:
+  - 16
+  - 64
+  dtype: fp16
+- name: K
+  role: input
+  shape:
+  - 16
+  - 64
+  dtype: fp16
+- name: V
+  role: input
+  shape:
+  - 16
+  - 64
+  dtype: fp16
+operation:
+  op: attention_full
+  attributes:
+    out: Y0
+    arg_order:
+    - Q
+    - K
+    - V
+    causal: true
+numeric_policy:
+  compare: tolerance_float
+  dtype: fp16
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+verilator: optional
+pytorch_ref:
+  op: attention_full
+  dtype: fp16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: attention
+  must_accelerate: true
+  fallback_allowed: false
+  generalization_axis: composition

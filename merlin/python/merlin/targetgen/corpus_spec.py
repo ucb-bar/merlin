@@ -38,6 +38,7 @@ _DTYPE = {
     "f16": ("fp16", "f16", 2, False),
     "bf16": ("bf16", "bf16", 2, False),
     "f32": ("f32", "f32", 4, False),
+    "fp32": ("f32", "f32", 4, False),      # alias: a contract may spell single precision "fp32"
 }
 
 
@@ -72,21 +73,32 @@ class CorpusBinding:
         return dtype_info(token)[1]
 
 
+# Compiler software-tiling default for a target with NO fixed hardware mesh (SIMT / vector): the matmul
+# tile size is a software blocking choice, not a hardware fact. A hardware-mesh target derives its dim
+# from facts/manifest and never reaches this. NOT an ISA/hardware constant.
+_DEFAULT_SW_TILE = 16
+
+
 def _tile_dim(target: str, contract: dict) -> int:
-    """Systolic tile/mesh dim: ``capabilities.mesh.rows`` if the manifest carries it, else the CIRCT
-    ``arrays[mesh].rows`` fact, else 16. No target literal — both sources are keyed on ``target``."""
-    mesh = ((contract.get("capabilities") or {}).get("mesh") or {})
-    if mesh.get("rows"):
-        return int(mesh["rows"])
+    """Tile dim for sizing capsule shapes. When the target has a FIXED HARDWARE mesh, it is DERIVED
+    (``capabilities.mesh.rows`` / ``.tile.rows`` from the manifest, else the CIRCT ``arrays[mesh].rows``
+    fact) — so gemmini's 16 comes from its RTL facts, never a literal. A target with NO fixed hardware
+    mesh (a SIMT / vector target such as radiance, whose matmul tiling is a SOFTWARE choice, not a
+    hardware dimension) has nothing to derive; it uses ``_DEFAULT_SW_TILE`` — a compiler software-tiling
+    default, NOT a per-target hardware fact. Both derivation sources are keyed on ``target``."""
+    caps = (contract.get("capabilities") or {})
+    for geom in (caps.get("mesh") or {}, caps.get("tile") or {}):      # systolic mesh OR spatial tile
+        if geom.get("rows"):
+            return int(geom["rows"])
     try:
         from merlin.targetgen.rtl.facts import load_facts
         arrays = (load_facts(target).get("facts") or {}).get("arrays") or []
         m = next((a for a in arrays if a.get("name") == "mesh"), {})
         if m.get("rows"):
             return int(m["rows"])
-    except Exception:  # noqa: BLE001 — no facts for this target -> fall back to the mesh default
+    except Exception:  # noqa: BLE001 — no facts for this target -> software-tiling default (no hw mesh)
         pass
-    return 16
+    return _DEFAULT_SW_TILE
 
 
 def _accum_dtype(contract: dict, operand: str) -> str:
@@ -387,11 +399,241 @@ def build_rmsnorm(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     return cap, "\n".join(L) + "\n"
 
 
+def build_attention_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """A fused MX flash-attention capsule (op == attention_mx): O = softmax(Q @ K^T / sqrt(H) [+ soft-cap])
+    @ V, with the two matmuls on the block-scaled MX PE (E8M0 per 32-element K group, bf16 accumulate) and
+    a bf16 row-softmax between them. The interface is a fused merlin_iface program (attention_qk -> softmax
+    -> attention_pv) in mxfp8; the golden is composed by the driver from mx_ref (QK & PV) + a numpy bf16
+    softmax. Dims: M queries, H head dim (%32), Skv keys (%32), Dv value dim (%16)."""
+    D = binding.tile_dim
+    M = entry.get("M", entry.get("M_tiles", 1) * D)
+    H = entry.get("H", entry.get("head_dim", 2 * D))
+    Skv = entry.get("Skv", entry.get("keys", 2 * D))
+    Dv = entry.get("Dv", D)
+    q, k, v, out = entry.get("q", "Q"), entry.get("k", "K"), entry.get("v", "V"), entry.get("out", "Y0")
+    idt = binding.cap_dtype(binding.operand_dtype)               # mxfp8
+    odt = binding.cap_dtype(binding.accum_dtype)                 # bf16
+    midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(binding.accum_dtype)
+    import math
+    scale = float(entry.get("scale", 1.0 / math.sqrt(H)))
+    softcap = entry.get("softcap")
+    attrs: dict[str, Any] = {"q": q, "k": k, "v": v, "out": out, "scale": scale,
+                             "block_scale": "e8m0", "output_dtype": odt}
+    if softcap is not None:
+        attrs["softcap"] = float(softcap)
+    cap = {
+        "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
+        "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
+        "interface_mlir": "capsule.interface.mlir",
+        "inputs": [{"name": q, "role": "input", "shape": [M, H], "dtype": idt},
+                   {"name": k, "role": "input", "shape": [Skv, H], "dtype": idt},
+                   {"name": v, "role": "input", "shape": [Skv, Dv], "dtype": idt}],
+        "operation": {"op": "attention_mx", "attributes": attrs},
+        "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
+        # two matmuls (QK, PV) drive the MX PE; the softmax rides the SIMT/vector lanes (no matmul classes).
+        "expected": {"instruction_classes": binding.classes_for(op="matmul", output_dtype=odt),
+                     "modes": entry.get("modes", {})},
+        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+    }
+    sc_attr = f", scale = {scale} : f32"
+    cap_attr = f", softcap = {float(softcap)} : f32" if softcap is not None else ""
+    L = _iface_prelude(binding.target, entry.get("comment", ""))
+    L += [
+        f'  %{q} = merlin_iface.tensor {{name = "{q}", role = "input"}} : tensor<{M}x{H}x{midt}>',
+        f'  %{k} = merlin_iface.tensor {{name = "{k}", role = "input"}} : tensor<{Skv}x{H}x{midt}>',
+        f'  %{v} = merlin_iface.tensor {{name = "{v}", role = "input"}} : tensor<{Skv}x{Dv}x{midt}>',
+        f'  %S = merlin_iface.attention_qk %{q}, %{k} {{name = "S", block_scale = "e8m0", '
+        f'output_dtype = "{odt}"}} : (tensor<{M}x{H}x{midt}>, tensor<{Skv}x{H}x{midt}>) '
+        f'-> tensor<{M}x{Skv}x{modt}>',
+        f'  %P = merlin_iface.softmax %S {{name = "P", axis = 1 : i64{sc_attr}{cap_attr}}} '
+        f': (tensor<{M}x{Skv}x{modt}>) -> tensor<{M}x{Skv}x{modt}>',
+        f'  %{out} = merlin_iface.attention_pv %P, %{v} {{name = "{out}", block_scale = "e8m0", '
+        f'output_dtype = "{odt}"}} : (tensor<{M}x{Skv}x{modt}>, tensor<{Skv}x{Dv}x{midt}>) '
+        f'-> tensor<{M}x{Dv}x{modt}>', "}"]
+    return cap, "\n".join(L) + "\n"
+
+
+def build_rmsnorm_qkv(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """Fused pre-norm QKV projection (op == rmsnorm_qkv): H = rmsnorm(X, gamma); Y = H @ Wqkv. A SIMT
+    op (rmsnorm on the vector lanes feeding a matmul); golden is ordinary IEEE float (driver-composed).
+    Interface chains the two EXISTING merlin_iface ops (rmsnorm -> matmul)."""
+    D = binding.tile_dim
+    M = entry.get("M", entry.get("M_tiles", 1) * D)
+    K = entry.get("K", entry.get("K_tiles", 1) * D)
+    N = entry.get("N", entry.get("N_tiles", 1) * D)
+    x, gamma, weight, out = (entry.get("src", "X"), entry.get("gamma", "G"),
+                             entry.get("weight", "Wqkv"), entry.get("out", "Y0"))
+    eps = entry.get("eps", 1.0 / 65536.0)
+    idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)
+    midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(binding.accum_dtype)
+    attrs = {"src": x, "gamma": gamma, "weight": weight, "out": out, "eps": eps,
+             "semantic": "rmsnorm_qkv", "output_dtype": odt}
+    cap = {
+        "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
+        "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
+        "interface_mlir": "capsule.interface.mlir",
+        "inputs": [{"name": x, "role": "input", "shape": [M, K], "dtype": idt},
+                   {"name": gamma, "role": "weight", "shape": [1, K], "dtype": idt},
+                   {"name": weight, "role": "weight", "shape": [K, N], "dtype": idt}],
+        "operation": {"op": "rmsnorm_qkv", "attributes": attrs},
+        "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
+        "expected": {"instruction_classes": binding.classes_for(op="matmul", output_dtype=odt),
+                     "modes": entry.get("modes", {"rmsnorm": True})},
+        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+    }
+    L = _iface_prelude(binding.target, entry.get("comment", ""))
+    L += [
+        f'  %{x} = merlin_iface.tensor {{name = "{x}", role = "input"}} : tensor<{M}x{K}x{midt}>',
+        f'  %{gamma} = merlin_iface.tensor {{name = "{gamma}", role = "weight"}} : tensor<1x{K}x{midt}>',
+        f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{K}x{N}x{midt}>',
+        f'  %H = merlin_iface.rmsnorm %{x}, %{gamma} {{name = "H", eps = {eps:.9e} : f64, '
+        f'output_dtype = "{odt}"}} : (tensor<{M}x{K}x{midt}>, tensor<1x{K}x{midt}>) -> tensor<{M}x{K}x{modt}>',
+        f'  %{weight}_res = merlin_iface.resident_pack %{weight} {{layout = "packed_rhs"}} '
+        f': (tensor<{K}x{N}x{midt}>) -> !merlin_iface.resident',
+        f'  %acc0 = merlin_iface.matmul %H, %{weight}_res '
+        f': (tensor<{M}x{K}x{modt}>, !merlin_iface.resident) -> !merlin_iface.acc<{modt}>',
+        f'  %{out} = merlin_iface.commit %acc0 {{name = "{out}", epilogue = [], output_dtype = "{odt}"}} '
+        f': (!merlin_iface.acc<{modt}>) -> tensor<{M}x{N}x{modt}>',
+        f'  merlin_iface.evict %{weight}_res : (!merlin_iface.resident) -> ()', "}"]
+    return cap, "\n".join(L) + "\n"
+
+
+def build_rope_qkv(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """Fused QKV projection + RoPE (op == rope_qkv): H = X @ Wqkv; Y = rope(H) (GPT-NeoX/Llama rotation,
+    theta=10000, position = row). SIMT float; golden driver-composed. Interface chains matmul -> rope."""
+    D = binding.tile_dim
+    M = entry.get("M", entry.get("M_tiles", 1) * D)
+    K = entry.get("K", entry.get("K_tiles", 1) * D)
+    N = entry.get("N", entry.get("N_tiles", 1) * D)
+    x, weight, out = entry.get("src", "X"), entry.get("weight", "Wqkv"), entry.get("out", "Y0")
+    theta = float(entry.get("rope_theta", 10000.0))
+    idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)
+    midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(binding.accum_dtype)
+    attrs = {"src": x, "weight": weight, "out": out, "rope_theta": theta,
+             "semantic": "rope_qkv", "output_dtype": odt}
+    cap = {
+        "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
+        "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
+        "interface_mlir": "capsule.interface.mlir",
+        "inputs": [{"name": x, "role": "input", "shape": [M, K], "dtype": idt},
+                   {"name": weight, "role": "weight", "shape": [K, N], "dtype": idt}],
+        "operation": {"op": "rope_qkv", "attributes": attrs},
+        "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
+        "expected": {"instruction_classes": binding.classes_for(op="matmul", output_dtype=odt),
+                     "modes": entry.get("modes", {"rope": True})},
+        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+    }
+    L = _iface_prelude(binding.target, entry.get("comment", ""))
+    L += [
+        f'  %{x} = merlin_iface.tensor {{name = "{x}", role = "input"}} : tensor<{M}x{K}x{midt}>',
+        f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{K}x{N}x{midt}>',
+        f'  %{weight}_res = merlin_iface.resident_pack %{weight} {{layout = "packed_rhs"}} '
+        f': (tensor<{K}x{N}x{midt}>) -> !merlin_iface.resident',
+        f'  %acc0 = merlin_iface.matmul %{x}, %{weight}_res '
+        f': (tensor<{M}x{K}x{midt}>, !merlin_iface.resident) -> !merlin_iface.acc<{modt}>',
+        f'  %H = merlin_iface.commit %acc0 {{name = "H", epilogue = [], output_dtype = "{odt}"}} '
+        f': (!merlin_iface.acc<{modt}>) -> tensor<{M}x{N}x{modt}>',
+        f'  %{out} = merlin_iface.rope %H {{name = "{out}", theta = {theta} : f64, '
+        f'output_dtype = "{odt}"}} : (tensor<{M}x{N}x{modt}>) -> tensor<{M}x{N}x{modt}>',
+        f'  merlin_iface.evict %{weight}_res : (!merlin_iface.resident) -> ()', "}"]
+    return cap, "\n".join(L) + "\n"
+
+
+def build_gemv_batched_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """Batched MX matmul (op == gemv_batched): B independent MX GEMMs A_b[M,H] @ W_b[H,N] on the mx_pe,
+    output stacked row-major to [B*M, N] bf16. mxfp8; golden from mx_ref. Interface presents the batched
+    tensors + a batched matmul op (the device iterates the B tiles)."""
+    D = binding.tile_dim
+    B = int(entry.get("B", 2))
+    M = entry.get("M", entry.get("M_tiles", 1) * D)
+    H = entry.get("H", entry.get("K", 2 * D))
+    N = entry.get("N", D)
+    lhs, weight, out = entry.get("lhs", "A0"), entry.get("weight", "W"), entry.get("out", "Y0")
+    idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)
+    midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(binding.accum_dtype)
+    attrs = {"lhs": lhs, "weight": weight, "out": out, "batch": B, "block_scale": "e8m0",
+             "semantic": "gemv_batched", "output_dtype": odt}
+    cap = {
+        "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
+        "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
+        "interface_mlir": "capsule.interface.mlir",
+        "inputs": [{"name": weight, "role": "weight", "shape": [B, H, N], "dtype": idt},
+                   {"name": lhs, "role": "input", "shape": [B, M, H], "dtype": idt}],
+        "operation": {"op": "gemv_batched", "attributes": attrs},
+        "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
+        "expected": {"instruction_classes": binding.classes_for(op="matmul", output_dtype=odt),
+                     "modes": entry.get("modes", {})},
+        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+    }
+    L = _iface_prelude(binding.target, entry.get("comment", ""))
+    L += [
+        f'  %{lhs} = merlin_iface.tensor {{name = "{lhs}", role = "input"}} : tensor<{B}x{M}x{H}x{midt}>',
+        f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{B}x{H}x{N}x{midt}>',
+        f'  %{out} = merlin_iface.matmul_batched %{lhs}, %{weight} {{name = "{out}", batch = {B} : i64, '
+        f'block_scale = "e8m0", output_dtype = "{odt}"}} '
+        f': (tensor<{B}x{M}x{H}x{midt}>, tensor<{B}x{H}x{N}x{midt}>) -> tensor<{B * M}x{N}x{modt}>', "}"]
+    return cap, "\n".join(L) + "\n"
+
+
+def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """An im2col conv2d capsule (op == conv2d): NHWC IFM + pre-im2col'd weight [KH*KW*Ci, Cout] -> a resident
+    matmul over conv windows, output [Ho*Wo, Cout]. Reuses the runtime's canonical conv geometry so the golden
+    (capsule_golden conv2d branch) and the harness agree. Native operand dtype (e.g. gemmini int8)."""
+    from merlin.runtime.commandbuffer import conv_out_dims
+    ifm, weight, out = entry.get("ifm", "IFM"), entry.get("weight", "W"), entry.get("out", "Y0")
+    ci = entry.get("ci", entry.get("Cin", 4))
+    cout = entry.get("N", entry.get("Cout", binding.tile_dim))
+    H, W = entry.get("Himg", 8), entry.get("Wimg", 8)
+    kh, kw = entry.get("kh", 3), entry.get("kw", 3)
+    stride = list(entry.get("stride", [1, 1]))
+    padding = list(entry.get("padding", [0, 0, 0, 0]))
+    dilation = list(entry.get("dilation", [1, 1]))
+    Ho, Wo = conv_out_dims(H, W, kh, kw, stride, padding, dilation)
+    Kdim = kh * kw * ci
+    epilogue = list(entry.get("epilogue", []))
+    output_dtype = _resolve_output_dtype(binding, epilogue)
+    idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(output_dtype)
+    midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(output_dtype)
+    attrs = {"ifm": ifm, "weight": weight, "out": out, "ci": ci, "kh": kh, "kw": kw,
+             "stride": stride, "padding": padding, "dilation": dilation, "layout": "nhwc",
+             "epilogue": epilogue, "output_dtype": odt, "semantic": "conv2d_im2col"}
+    cap = {
+        "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
+        "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
+        "interface_mlir": "capsule.interface.mlir",
+        "inputs": [{"name": weight, "role": "weight", "shape": [Kdim, cout], "dtype": idt},
+                   {"name": ifm, "role": "input", "shape": [1, H, W, ci], "dtype": idt}],
+        "operation": {"op": "conv2d", "attributes": attrs},
+        "numeric_policy": _numeric_policy(binding, output_dtype, entry.get("acc_scale")),
+        "expected": {"instruction_classes": binding.classes_for(op="conv2d", output_dtype=odt,
+                                                                epilogue=epilogue, movement=False),
+                     "modes": dict(entry["modes"]) if "modes" in entry
+                     else {"conv2d": True, "k_accumulate": True}},
+        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+    }
+    epi = ", ".join(f'"{e}"' for e in epilogue)
+    L = _iface_prelude(binding.target, entry.get("comment", ""))
+    L += [
+        f'  %{ifm} = merlin_iface.tensor {{name = "{ifm}", role = "input"}} : tensor<1x{H}x{W}x{ci}x{midt}>',
+        f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{Kdim}x{cout}x{midt}>',
+        f'  %{weight}_res = merlin_iface.resident_pack %{weight} {{layout = "packed_conv_rhs"}} '
+        f': (tensor<{Kdim}x{cout}x{midt}>) -> !merlin_iface.resident',
+        f'  %{out} = merlin_iface.conv2d %{ifm}, %{weight}_res {{kernel = [{kh}, {kw}, {ci}, {cout}], '
+        f'stride = [{stride[0]}, {stride[1]}], padding = [{padding[0]}, {padding[1]}, {padding[2]}, {padding[3]}], '
+        f'dilation = [{dilation[0]}, {dilation[1]}], name = "{out}", epilogue = [{epi}], '
+        f'output_dtype = "{odt}", layout = "nhwc"}} '
+        f': (tensor<1x{H}x{W}x{ci}x{midt}>, !merlin_iface.resident) -> tensor<{Ho * Wo}x{cout}x{modt}>',
+        f'  merlin_iface.evict %{weight}_res : (!merlin_iface.resident) -> ()', "}"]
+    return cap, "\n".join(L) + "\n"
+
+
 # op -> builder, for the driver to dispatch on the entry's declared op.
 BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
     "matmul": build_matmul, "linear": build_matmul,
     "resident_reuse": build_resident_reuse, "movement": build_movement,
-    "attention_qk": build_attention_qk, "rmsnorm": build_rmsnorm,
+    "attention_qk": build_attention_qk, "rmsnorm": build_rmsnorm, "conv2d": build_conv2d,
+    "attention_mx": build_attention_mx, "rmsnorm_qkv": build_rmsnorm_qkv, "rope_qkv": build_rope_qkv,
+    "gemv_batched": build_gemv_batched_mx,
 }
 
 

@@ -23,6 +23,12 @@ jobs:
         run: uv run python build_tools/scripts/check_structure.py
       - name: artifact-layout gate
         run: uv run python build_tools/scripts/check_artifact_layout.py
+      - name: no-target-name gate (derive-don't-overfit)
+        run: uv run python build_tools/scripts/check_no_target_name.py
+      - name: no-regex gate (derive-don't-overfit)
+        run: uv run python build_tools/scripts/check_no_regex.py
+      - name: no-assumed-constants gate (derive-don't-overfit)
+        run: uv run python build_tools/scripts/check_no_assumed_constants.py
       - name: docs anti-drift gate
         run: uv run python build_tools/scripts/check_docs.py
       - name: tests (fast subset; hardware buckets self-skip via skipif)

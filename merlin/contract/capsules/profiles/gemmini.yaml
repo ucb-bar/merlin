@@ -338,3 +338,80 @@ capsules:
     relu: false
     acc_scale: false
   cat: model_slices
+# --- Fused ops mined from gemmini-rocc-tests (tiled_matmul_ws_{layernorm,softmax,igelu}, attn_fp8_*).
+# These norm/activation/attention algorithms run in bf16 (the non-accelerator lanes compose with the int8
+# matmul mesh), so they are PyTorch-sourced (source: pytorch) with the m2m linalg as the interface.
+- {cat: model_slices, name: GF0_rmsnorm_bf16_pt, kind: model_slice, op: rmsnorm, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch RMSNorm bf16 (gemmini-rocc-tests tiled_matmul_ws_layernorm family)',
+   label: public, modes: {}}
+- {cat: model_slices, name: GF1_softmax_bf16_pt, kind: model_slice, op: softmax, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch softmax bf16 (tiled_matmul_ws_softmax family)', label: public, modes: {}}
+- {cat: model_slices, name: GF2_attn_full_bf16_pt, kind: model_slice, op: attention_full,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 64, N: 16, Dv: 64, causal: true, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'PyTorch causal attention bf16 (attn_fp8_full family)', label: public, modes: {}}
+- {cat: model_slices, name: GF3_geglu_bf16_pt, kind: model_slice, op: geglu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, N: 32, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch GeGLU bf16 (tiled_matmul_ws_igelu family)', label: public, modes: {}}
+# --- More int8 matmul-family (direct-MLIR int engine): Q@K^T attention scores.
+- {cat: model_slices, name: C7_attention_qk_i8, kind: model_slice, op: attention_qk, M_tiles: 1,
+   K_tiles: 2, q: Q, k: K, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'int8 Q@K^T attention scores (bareMetalC attention)', label: public, modes: {}}
+# --- Whole-model capstone (GATED): small_llama in int8 (torchAO int8_weight_only) end to end.
+- {cat: model, name: M0_small_llama_gemmini, kind: model, op: model, model: small_llama,
+   operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama int8 — whole-model capstone (embed/RMSNorm/RoPE/attn/SwiGLU/lm_head)',
+   label: public, gate: {after_op_pass_fraction: 0.8}}
+# --- Elementwise/activation ops mined from gemmini-rocc-tests (resadd residual, igelu activation).
+- {cat: model_slices, name: GF4_add_bf16_pt, kind: model_slice, op: add, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch residual add bf16 (gemmini-rocc-tests resadd)', label: public, modes: {}}
+- {cat: model_slices, name: GF5_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch GELU-tanh bf16 (gemmini-rocc-tests igelu)', label: public, modes: {}}
+# --- Spec-sourced capsule: the PROGRAM + bit-exact golden come from the specir verification spec itself
+# (spec_ref), not a handauthored template — the spec's command buffer + coverage_goal ship as grounding.
+- {cat: isa, name: GS0_matmul_spec, kind: isa, op: matmul, source: spec, spec_ref: 'gemmini:op.matmul',
+   M: 16, K: 16, N: 16, lhs: A0, weight: W, out: Y0, source_role: spec_derived,
+   source_reference: 'specir spec-sourced int8 matmul (program + bit-exact refmodel golden + coverage)',
+   label: public}
+# --- Conv family: native int8 conv2d (direct-MLIR merlin_iface.conv2d, mined from bareMetalC/conv.c) +
+# the vector-lane conv/pool ops (bf16 pytorch: depthwise MixFFN, pooling, global average).
+- {cat: layers, name: GC0_conv2d_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8, kh: 3, kw: 3,
+   source_role: uplifted_from_bareMetalC, source_reference: 'im2col conv2d int8 (bareMetalC/conv.c)',
+   label: public}
+- {cat: model_slices, name: GC1_depthwise_bf16_pt, kind: model_slice, op: depthwise_conv2d,
+   operand_dtype: bf16, source: pytorch, Cin: 8, Himg: 8, Wimg: 8, P: 3, out: Y0,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch depthwise conv bf16 (MixFFN depthwise)',
+   label: public, modes: {}}
+- {cat: model_slices, name: GC2_maxpool_bf16_pt, kind: model_slice, op: maxpool2d, operand_dtype: bf16,
+   source: pytorch, Cin: 8, Himg: 8, Wimg: 8, P: 2, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch 2x2 max-pool bf16', label: public, modes: {}}
+- {cat: model_slices, name: GC3_avgpool_bf16_pt, kind: model_slice, op: avgpool2d, operand_dtype: bf16,
+   source: pytorch, Cin: 8, Himg: 8, Wimg: 8, P: 2, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch 2x2 avg-pool bf16', label: public, modes: {}}
+- {cat: model_slices, name: GC4_global_avg_bf16_pt, kind: model_slice, op: global_average,
+   operand_dtype: bf16, source: pytorch, Cin: 8, Himg: 8, Wimg: 8, out: Y0,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch global average pool bf16', label: public,
+   modes: {}}
+- {cat: model_slices, name: GC5_fused_matmul_bias_bf16_pt, kind: model_slice, op: fused_matmul_bias,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: fused_matmul_bias,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch linear+bias bf16', label: public, modes: {}}
+- {cat: model_slices, name: GC6_bias_add_bf16_pt, kind: model_slice, op: bias_add, operand_dtype: bf16,
+   source: pytorch, M: 16, N: 16, out: Y0, comparison_group: bias_add, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch bias add bf16', label: public, modes: {}}
+# --- Hidden fused holdouts.
+- {cat: hidden, name: GH0_softmax_bf16_hidden, kind: model_slice, op: softmax, operand_dtype: bf16,
+   source: pytorch, M: 24, K: 24, out: Y0, source_role: pytorch_model_slice,
+   source_reference: hidden PyTorch softmax bf16 (unseen 24x24), label: hidden, modes: {}}
+- {cat: hidden, name: GH1_conv2d_i8_hidden, kind: layer, op: conv2d, Himg: 10, Wimg: 10, ci: 4, N: 16,
+   kh: 3, kw: 3, source_role: uplifted_from_bareMetalC,
+   source_reference: hidden im2col conv2d int8 (unseen 10x10x4 -> 16), label: hidden}
+# --- Second whole-model capstone (GATED): lstmnetvit int8 — broader layer types (conv patch-embed,
+# spatial-reduction attention, depthwise MixFFN, PixelShuffle+upsample, LSTM head) beyond small_llama.
+- {cat: model, name: M1_lstmnetvit_gemmini, kind: model, op: model, model: lstmnetvit,
+   operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'lstmnetvit int8 — vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)',
+   label: public, gate: {after_op_pass_fraction: 0.8}}

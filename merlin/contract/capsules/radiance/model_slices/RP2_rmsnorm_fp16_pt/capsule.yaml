@@ -1,0 +1,54 @@
+name: RP2_rmsnorm_fp16_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: 'PyTorch row RMSNorm fp16: x * rsqrt(mean(x^2)+eps) * gamma'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: fp16
+- name: G
+  role: weight
+  shape:
+  - 1
+  - 16
+  dtype: fp16
+operation:
+  op: rmsnorm
+  attributes:
+    src: X
+    gamma: G
+    out: Y0
+    eps: 1.0e-05
+    semantic: rmsnorm
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes:
+    rmsnorm: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+verilator: optional
+pytorch_ref:
+  op: rmsnorm
+  dtype: fp16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.linalg.mlir
+semantic:
+  semantic_family: normalization
+  must_accelerate: true
+  fallback_allowed: false
+  generalization_axis: composition

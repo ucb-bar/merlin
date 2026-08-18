@@ -6,8 +6,8 @@ Real, committed target descriptors drive this — nothing gemmini-specific and n
                DERIVED from RTL via mlc discovery, and its RTL oracle is the mlc arc MXU model
                (arc_available=True). This is the real 2nd target the plan calls for.
   * RADIANCE — the RadianceMuon / Muon SIMT config. A real, matmul-capable target (SIMT tensor-core +
-               an embedded gemmini-mx MX PE; committed OOT contract at
-               out/artifacts/targets/radiance_oot) that exercises a DIFFERENT oracle path than an arc
+               an embedded gemmini-mx MX PE; derived contract materialized at
+               out/artifacts/targets/radiance) that exercises a DIFFERENT oracle path than an arc
                MXU: its RTL oracle is the bespoke cyclotron perf model (muon_oracles.cyclotron_adapter,
                toolchain.sim_via=cyclotron), and its facts come from muon_introspect, NOT the arc
                decoder. So arc_available=False is by design (radiance is not an mlc arc-matmul target),
@@ -137,16 +137,18 @@ def test_radiance_uses_the_simt_cyclotron_oracle_not_arc_mxu():
     assert not RB.derived_levers(prof)                    # nothing fabricated on the arc systolic leg
 
     # But radiance has a real oracle: the committed cyclotron adapter (fail-closed via MuonUnavailable).
-    from merlin.targetgen import muon_oracles
+    from merlin.runtime.backends.base import get_backend
+    muon_oracles = get_backend("muon").muon_oracles
     assert callable(muon_oracles.cyclotron_adapter())
     assert muon_oracles.default_adapters()                # radiance ships real L-tier oracle adapters
     assert _te("radiance").sim_via == "cyclotron"
 
-    # And it is genuinely matmul-capable per its committed OOT contract (not degraded to nothing).
-    import yaml
-    contract = yaml.safe_load(
-        (repo_root() / "out/artifacts/targets/radiance_oot/contracts/target_contract.yaml").read_text())
-    assert "matmul" in contract["capabilities"]["ops"]
+    # And it is genuinely matmul-capable per its DERIVED contract (not degraded to nothing). The
+    # target_contract.yaml is gitignored (regenerable from the residual + RTL facts), so derive it via
+    # the manifest deriver rather than reading a committed generated file.
+    from merlin.targetgen import capability_manifests as cm
+    manifest = cm.manifest_for("radiance")
+    assert "matmul" in manifest["capabilities"]["ops"]
 
 
 def test_mx_gemmini_is_a_systolic_gemmini_variant_graded_by_chipyard():
@@ -156,10 +158,12 @@ def test_mx_gemmini_is_a_systolic_gemmini_variant_graded_by_chipyard():
     te = _te("mx_gemmini")
     assert te.sim_via == "chipyard"                       # elaborates through chipyard like gemmini
     assert B.arc_available("mx_gemmini") is False         # no mlc arc model for the MX config yet
-    # The descriptor pins the RTL-derived structural facts (DIM=16, RoCC custom3) it shares with gemmini.
+    # mx_gemmini shares gemmini's structural facts (DIM=16, RoCC custom3), but those are RTL-DERIVED, not
+    # pinned in the descriptor — the descriptor must NOT carry them (cf. test_target_experiment's forbidden
+    # set + test_encoding_manifest: a baked dim/isa reads as authoritative but is ignored, the overfit smell).
     import yaml
     spec = yaml.safe_load(_te("mx_gemmini").path.read_text())["hardware_spec"]
-    assert spec["dim"] == 16 and spec["isa"] == "rocc_custom3"
+    assert "dim" not in spec and "isa" not in spec and "rtl_config" not in spec
 
 
 # The full roster the cross-target proof is built on. atlas/radiance/mx_gemmini are out-of-tree targets

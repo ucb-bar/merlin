@@ -52,6 +52,23 @@ _ROLES: list[tuple[str, str, Any, str]] = [
     ("resident_evict", "evict", lambda o: "evict" in o or "release" in o, "free resident storage"),
 ]
 
+# Optional vector-lane roles — emitted only when the contract advertises non-matmul pointwise
+# compute (relu/bias_add/elementwise), i.e. the target has vector/scalar lanes beyond the systolic
+# matmul. A pure-matmul target omits them (its dialect stays the 4-op resident core).
+_VECTOR_ROLES: list[tuple[str, Any, str]] = [
+    ("vector_map", lambda o: "vector_map" in o,
+     "elementwise combine (add/mul/identity) + activation on the vector lanes"),
+    ("vector_reduce", lambda o: "vector_reduce" in o, "reduce a tensor (sum) on the vector lanes"),
+]
+
+
+def _has_vector_lanes(tc: dict[str, Any]) -> bool:
+    """True when the contract advertises non-matmul pointwise compute — a vector/scalar lane beyond
+    the systolic matmul. Derived from its capability ops (never a target name): any capability op
+    other than matmul (bias_add, relu, an elementwise add/mul, …) implies a vector datapath."""
+    cap_ops = set((tc.get("capabilities") or {}).get("ops") or [])
+    return bool(cap_ops - {"matmul"})
+
 
 def _is_tensor_resident(tc: dict[str, Any]) -> bool:
     """A target that implements the Merlin tensor-resident interface (packs a resident weight,
@@ -71,15 +88,24 @@ def _generate(target_contract: dict[str, Any]) -> dict[str, Any]:
     decl_ops = list(target_contract.get("ops") or [])
     role_op = {role: (next((o for o in decl_ops if match(o)), canon))
                for role, canon, match, _ in _ROLES}
+    # Vector-lane roles are conditional: a pure-matmul target keeps the 4-op resident core.
+    vector_roles = []
+    if _has_vector_lanes(target_contract):
+        vector_roles = [(role, next((o for o in decl_ops if match(o)), role), summ)
+                        for role, match, summ in _VECTOR_ROLES]
     types = target_contract.get("types") or ["resident_tensor", "accumulator"]
     plan = {
         "target": name,
         "dialect_name": dname,
         "ops": [{"name": role_op[r], "summary": summ, "source_interface": f"interface.{r}"}
-                for r, _c, _m, summ in _ROLES],
+                for r, _c, _m, summ in _ROLES]
+               + [{"name": op, "summary": summ, "source_interface": f"interface.{r}"}
+                  for r, op, summ in vector_roles],
         "types": [{"name": t} for t in types],
         "lowering": [{"from": f"interface.{r}", "to": f"{dname}.{role_op[r]}"}
-                     for r, _c, _m, _s in _ROLES],
+                     for r, _c, _m, _s in _ROLES]
+                    + [{"from": f"interface.{r}", "to": f"{dname}.{op}"}
+                       for r, op, _s in vector_roles],
         "tests": [{"lit": "pack_roundtrip"}, {"lit": "matmul_commit_epilogue"},
                   {"lit": "evict_after_use"}],
         "confidence": "medium",

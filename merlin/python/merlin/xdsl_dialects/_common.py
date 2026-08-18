@@ -35,6 +35,10 @@ if HAS_XDSL:
         from xdsl.dialects.builtin import Builtin
         from xdsl.dialects.func import Func
 
+        # Teach the parser the fp8 element types the corpus uses before any parse.
+        from .fp8 import register_fp8_types
+        register_fp8_types()
+
         ctx = Context()
         ctx.load_dialect(Builtin)
         ctx.load_dialect(Func)

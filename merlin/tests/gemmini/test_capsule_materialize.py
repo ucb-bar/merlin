@@ -68,3 +68,23 @@ def test_public_capsules_for_is_target_aware_and_gemmini_parity():
     atlas = sorted(p.name for p in public_capsules_for(te_a).iterdir() if p.is_dir())
     assert atlas and not (set(atlas) & set(committed)), (
         f"atlas graded set must be disjoint from gemmini's (no leak); got overlap {set(atlas) & set(committed)}")
+
+
+def test_public_capsules_for_is_concurrency_safe():
+    """Many A/B arms materialize the SAME target's public set at once. The publish must be atomic (build a
+    unique versioned dir, then repoint a per-target symlink) so no arm rmtrees another's half-built cache
+    mid-read: every concurrent caller must see a COMPLETE corpus (equal, non-zero capsule count)."""
+    from concurrent.futures import ThreadPoolExecutor
+    from merlin.common.paths import repo_root
+    from merlin.targetgen.contract.materialize import public_capsules_for
+    from merlin.targetgen.target_experiment import load_target_experiment
+    te = load_target_experiment(
+        repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+    assert public_capsules_for(te).is_symlink()          # atomic-publish handle, not an in-place dir
+
+    def worker(_):
+        d = public_capsules_for(te)
+        return sum(1 for _ in d.rglob("capsule.yaml"))   # full traversal blows up on a half-deleted tree
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        counts = list(ex.map(worker, range(16)))
+    assert len(set(counts)) == 1 and counts[0] > 0, f"racey materialization corrupted the corpus: {counts}"

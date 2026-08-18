@@ -37,27 +37,20 @@ from typing import Any
 
 SCHEMA = "rtl_checks/v0"  # advisory artifact tag — deliberately NOT a frozen merlin/contract schema
 
-# RTL-grounded defaults (mesh + scratchpad capacity) mirroring the hand-curated, provenance-tagged
-# capacities in merlin/targets/gemmini/contracts/target_contract.yaml, which rtl/introspect.py
-# reproduces from elaborated FIRRTL. A caller may pass an override dict (e.g. introspect.dump_facts).
-DEFAULT_RTL_FACTS: dict[str, Any] = {
-    "mesh": [16, 16],            # DIM x DIM systolic array
-    "scratchpad_bytes": 262144,  # resident_storage_bytes
-    "legal_funct": list(range(0, 26)),  # RoCC funct7 legal set (GemminiISA.scala funct block)
-    "custom_opcode": 0x7B, "funct3": 0x3,
-    "from": "target_contract.yaml (hand-curated, introspect-reproduced)",
-}
-
-# The deterministic CIRCT-extracted facts (preferred over the curated defaults when derivable).
+# The deterministic CIRCT-extracted facts — the ONLY source (no baked gemmini-shaped fallback).
 from .rtl.facts import load_facts
 
 
 def load_default_facts(target: str) -> dict[str, Any]:
-    """Prefer the deterministic CIRCT-extracted facts for ``target`` (regenerated from the RTL on
-    demand); fall back to the curated DEFAULT_RTL_FACTS. Flattens to the
-    {mesh, scratchpad_bytes, legal_funct} shape here. ``target`` is REQUIRED — the facts are the run's
+    """The RTL-derived facts for ``target`` (mesh, scratchpad capacity, legal funct set, custom opcode),
+    flattened from the CIRCT-extracted facts.json (regenerated from the RTL on demand). FAIL-CLOSED: a
+    fact that cannot be derived is left UNKNOWN (``None``) — never a gemmini-shaped default (an assumed
+    16x16 mesh / 0x7B opcode / 256 KB scratchpad would silently mis-screen a non-gemmini target). The
+    consuming checks SKIP any fact that is UNKNOWN. ``target`` is REQUIRED — the facts are the run's
     resolved target's facts, never an assumed default."""
-    facts = dict(DEFAULT_RTL_FACTS)
+    facts: dict[str, Any] = {"mesh": None, "scratchpad_bytes": None, "legal_funct": None,
+                             "custom_opcode": None, "funct3": None,
+                             "from": "UNKNOWN (RTL facts not derivable)"}
     try:
         rec = load_facts(target)
         f = rec.get("facts", rec)
@@ -69,10 +62,11 @@ def load_default_facts(target: str) -> dict[str, Any]:
             facts["scratchpad_bytes"] = sp["bytes"]
         ft = next((i for i in f.get("interfaces", []) if i.get("name") == "funct_decode_table"), None)
         if ft:
-            facts["legal_funct"] = ft.get("legal_funct", facts["legal_funct"])
-            facts["custom_opcode"] = ft.get("custom_opcode", facts["custom_opcode"])
+            facts["legal_funct"] = ft.get("legal_funct")
+            facts["custom_opcode"] = ft.get("custom_opcode")
+            facts["funct3"] = ft.get("funct3")
         facts["from"] = f"circt_introspect facts.json ({rec.get('generator', {}).get('version', '?')})"
-    except Exception:
+    except Exception:  # noqa: BLE001 — facts not derivable -> everything stays UNKNOWN (checks skip)
         pass
     return facts
 
@@ -200,9 +194,11 @@ def _elem_bytes(capsule: dict | None) -> int:
     return _DTYPE_BYTES.get(str(dt).lower(), 1) if dt else 1
 
 
-def _mesh(rtl_facts: dict) -> tuple[int, int]:
-    m = rtl_facts.get("mesh") or DEFAULT_RTL_FACTS["mesh"]
-    return int(m[0]), int(m[1])
+def _mesh(rtl_facts: dict) -> tuple[int, int] | None:
+    """The (rows, cols) systolic mesh, or None when UNKNOWN (no RTL facts derived) — callers SKIP the
+    check rather than screen against an assumed default."""
+    m = rtl_facts.get("mesh")
+    return (int(m[0]), int(m[1])) if m else None
 
 
 # --------------------------------------------------------------------------- individual T0 checks
@@ -253,7 +249,11 @@ def _check_movement_compute_balance(trace: dict, capsule: dict | None) -> Check:
 def _check_tile_coverage(trace: dict, capsule: dict | None, rtl_facts: dict) -> Check:
     classes = _classes(trace)
     n_mvout = classes.count("MVOUT")
-    mr, mc = _mesh(rtl_facts)
+    mesh = _mesh(rtl_facts)
+    if mesh is None:
+        return Check("T0.tile_coverage", "T0", "warn", "skipped",
+                     "mesh dims UNKNOWN (no RTL facts derived) — cannot screen tile coverage")
+    mr, mc = mesh
     shape = _declared_output_shape(capsule)
     # multi-matmul: count declared matmuls; if >1 we can only assert a LOWER BOUND generally.
     op_attrs = ((capsule or {}).get("operation") or {}).get("attributes") or {}
@@ -311,8 +311,13 @@ def _check_data_movement_reuse(trace: dict, capsule: dict | None, rtl_facts: dic
         return Check("T0.data_movement_reuse", "T0", "info", "skipped",
                      "could not derive (M,N,K) generally — skipped")
     M, N, K = mkn
-    mr, _mc = _mesh(rtl_facts)
-    spad_bytes = int(rtl_facts.get("scratchpad_bytes") or DEFAULT_RTL_FACTS["scratchpad_bytes"])
+    mesh = _mesh(rtl_facts)
+    spad_bytes = rtl_facts.get("scratchpad_bytes")
+    if mesh is None or spad_bytes is None:
+        return Check("T0.data_movement_reuse", "T0", "info", "skipped",
+                     "mesh/scratchpad UNKNOWN (no RTL facts) — advisory reuse check skipped")
+    mr, _mc = mesh
+    spad_bytes = int(spad_bytes)
     from .rtl import mlc_bridge  # lazy: keeps rtl_checks import-light and mlc optional
     pred = mlc_bridge.matmul_reuse_prediction(
         M, N, K, dim=mr, capacity_bytes=spad_bytes, elem_bytes=_elem_bytes(capsule))
@@ -351,8 +356,13 @@ def _check_spad_capacity(trace: dict, rtl_facts: dict) -> Check:
     ``must_respect_scratchpad_capacity`` compiler obligation — a real silicon-correctness bound,
     identical for every shape.
     """
-    mr, _mc = _mesh(rtl_facts)
-    spad_bytes = int(rtl_facts.get("scratchpad_bytes") or DEFAULT_RTL_FACTS["scratchpad_bytes"])
+    mesh = _mesh(rtl_facts)
+    spad_bytes = rtl_facts.get("scratchpad_bytes")
+    if mesh is None or spad_bytes is None:
+        return Check("T0.spad_capacity", "T0", "error", "skipped",
+                     "mesh/scratchpad UNKNOWN (no RTL facts) — cannot bound scratchpad capacity")
+    mr, _mc = mesh
+    spad_bytes = int(spad_bytes)
     # rows = bytes / (cols-per-row * elem_bytes); i8 => 1 byte, row holds DIM columns.
     rows_capacity = spad_bytes // (mr * 1)
     addrs = [i.get("decoded", {}).get("spad_addr") for i in trace.get("instructions", [])
@@ -384,7 +394,11 @@ def _check_decode_funct_legal(trace: dict, rtl_facts: dict) -> Check:
     This is the hardware-legality invariant: a funct outside the decoder's legal range is an encoding
     the silicon would not accept. Mirrors the FileCheck ILLEGAL_FUNCT_COUNT assertion for the no-FileCheck
     path + a structured verdict."""
-    legal = set(rtl_facts.get("legal_funct") or DEFAULT_RTL_FACTS["legal_funct"])
+    legal_list = rtl_facts.get("legal_funct")
+    if not legal_list:
+        return Check("T0.decode_funct_legal", "T0", "error", "skipped",
+                     "legal funct set UNKNOWN (no RTL facts derived) — cannot screen funct legality")
+    legal = set(legal_list)
     bad = [i["index"] for i in trace.get("instructions", [])
            if isinstance(i.get("funct"), int) and i["funct"] not in legal]
     if bad:
@@ -394,7 +408,7 @@ def _check_decode_funct_legal(trace: dict, rtl_facts: dict) -> Check:
                      f"{len(bad)} instruction(s) use funct {functs} outside RTL legal set "
                      f"[{min(legal)}..{max(legal)}]",
                      expected=0, got=len(bad), evidence={"instruction_indices": bad[:8]},
-                     fix_hint="emitted a custom-3 funct the Gemmini decoder rejects; RTL would not accept")
+                     fix_hint="emitted a custom funct the target's RoCC decoder rejects; RTL would not accept")
     return Check("T0.decode_funct_legal", "T0", "error", "pass",
                  f"all emitted functs ∈ RTL legal set [{min(legal)}..{max(legal)}]", expected=0, got=0)
 

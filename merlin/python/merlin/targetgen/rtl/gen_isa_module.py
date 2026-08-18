@@ -24,9 +24,10 @@ from .facts import decode_body, load_facts
 
 _HEADER = '''"""GENERATED from RTL facts by merlin.targetgen.rtl.gen_isa_module — DO NOT hand-edit the tables.
 
-RTL-derived Gemmini ISA encoder scaffold. The funct codes, custom opcode, mesh dimensions and
-scratchpad/accumulator capacities below are extracted deterministically from the elaborated Gemmini RTL
-(firtool --ir-hw + GemminiISA.scala) — they are what the *hardware* accepts, not a reading of headers.
+RTL-derived RoCC ISA encoder scaffold. The funct codes, custom opcode, mesh dimensions and
+scratchpad/accumulator capacities below are extracted deterministically from the target's elaborated RTL
+(firtool --ir-hw + the target's ISA definition) — they are what the *hardware* accepts, not a reading of
+headers.
 
 Build your command-buffer / RoCC lowering on `emit()` + `Program`: only LEGAL funct codes can be emitted
 (an illegal funct raises), and `Program.finalize()` enforces config-before-use ordering. This eliminates
@@ -38,17 +39,37 @@ from dataclasses import dataclass, field
 '''
 
 
+class NotARoccTarget(ValueError):
+    """Raised when the facts carry no RoCC ``funct_decode_table`` — this generator emits a RoCC
+    command-ISA module and does not apply to a SIMT / self-hosted-ISA target (which uses its own
+    derived isa_tools model instead). Fail CLOSED with a clear reason rather than KeyError."""
+
+
 def generate(facts: dict, encoding: dict | None = None) -> str:
     f = decode_body(facts, str(facts.get("target") or "target"), needs="a funct-legality encoder")
-    fd = next(i for i in f["interfaces"] if i.get("name") == "funct_decode_table")
+    fd = next((i for i in (f.get("interfaces") or []) if i.get("name") == "funct_decode_table"), None)
+    if fd is None:
+        raise NotARoccTarget(
+            "target facts carry no RoCC funct_decode_table interface (endpoint is not a RoCC command "
+            "ISA); the RoCC ISA-module generator does not apply — a SIMT / self-hosted-ISA target uses "
+            "its own derived isa_tools model (isa_asm/isa_disasm) instead.")
     names = {int(k): v for k, v in fd["names"].items()}
     legal = sorted(fd["legal_funct"])
-    opcode = fd["custom_opcode"]
-    funct3 = fd["funct3"]
+    opcode = fd.get("custom_opcode")
+    funct3 = fd.get("funct3")
+    if opcode is None:
+        raise NotARoccTarget(
+            "target facts carry a funct_decode_table but no RoCC custom_opcode (UNKNOWN — the RISC-V "
+            "custom slot is undeclared and not RTL-derived). Declare `encoding.rocc_custom_slot` or "
+            "ground it from RTL; refusing to emit an ISA module with a guessed opcode (fail closed).")
     mesh = next((a for a in f.get("arrays", []) if a.get("name") == "mesh"), {})
     spad = next((m for m in f.get("memories", []) if m.get("name") == "scratchpad"), {})
     acc = next((m for m in f.get("memories", []) if m.get("name") == "accumulator"), {})
-    dim = mesh.get("rows", 16)
+    dim = mesh.get("rows")
+    if dim is None:
+        raise NotARoccTarget(
+            "target facts carry no mesh dimension (UNKNOWN) — refusing to emit an ISA module with a "
+            "guessed DIM (fail closed); the mesh must be RTL-derived into facts.arrays[mesh].")
 
     # config funct names (the "must precede use" set) + their dependent ops, derived from the table names
     config_functs = {c for c, n in names.items() if "CONFIG" in n}
@@ -143,7 +164,16 @@ def generate_header(facts: dict, encoding: dict, target: str) -> str:
     (C++) leg of the former triplication with the same single source the Python module uses."""
     f = decode_body(facts, target, needs="a C++ constants header")
     fd = next(i for i in f["interfaces"] if i.get("name") == "funct_decode_table")
+    if fd.get("custom_opcode") is None:
+        raise NotARoccTarget(
+            "target facts carry a funct_decode_table but no RoCC custom_opcode (UNKNOWN — undeclared "
+            "custom slot / underived). Declare `encoding.rocc_custom_slot` or ground it from RTL; "
+            "refusing to emit a C++ ISA header with a guessed opcode (fail closed).")
     mesh = next((a for a in f.get("arrays", []) if a.get("name") == "mesh"), {})
+    if mesh.get("rows") is None:
+        raise NotARoccTarget(
+            "target facts carry no mesh dimension (UNKNOWN) — refusing to emit a C++ ISA header with a "
+            "guessed DIM (fail closed); the mesh must be RTL-derived into facts.arrays[mesh].")
     rb = (encoding or {}).get("readout_bits") or {}
     code_of = {cls: code for code, cls in ((encoding or {}).get("semantic_class") or {}).items()}
     ns = f"{target}_isa"
@@ -152,9 +182,10 @@ def generate_header(facts: dict, encoding: dict, target: str) -> str:
            "#pragma once", f"namespace {ns} {{",
            f"  constexpr unsigned CUSTOM_OPCODE = {hex(fd['custom_opcode'])};",
            f"  constexpr unsigned FUNCT3 = {hex(fd['funct3'])};",
-           f"  constexpr int DIM = {mesh.get('rows', 16)};"]
+           f"  constexpr int DIM = {mesh['rows']};"]
     if encoding:
-        out.append(f"  constexpr unsigned ADDR_LEN = {encoding.get('addr_len', 32)};")
+        if encoding.get("addr_len") is not None:      # emit only when derived — no baked 32-bit default
+            out.append(f"  constexpr unsigned ADDR_LEN = {encoding['addr_len']};")
         for sym, key in (("F1", "f1"), ("C_ACC", "c_acc"), ("ACC_I8", "acc_i8"),
                          ("ACC_ACCUM", "acc_accum"), ("FULL_C_BIT", "full_c_bit")):
             if rb.get(key) is not None:
@@ -180,7 +211,12 @@ def main(argv=None):
         encoding = load_capability_manifest(a.target).encoding
     except Exception:  # noqa: BLE001 — no manifest -> emit the RTL-derived encoder only
         pass
-    code = generate_header(facts, encoding or {}, a.target) if a.header else generate(facts, encoding)
+    try:
+        code = generate_header(facts, encoding or {}, a.target) if a.header else generate(facts, encoding)
+    except NotARoccTarget as e:
+        # Honest n/a — not a crash: this RoCC generator does not apply to this target's endpoint.
+        print(f"n/a: {e}")
+        return 0
     if a.out:
         Path(a.out).write_text(code)
         print(f"wrote {a.out} ({len(code.splitlines())} lines) from {a.facts}")

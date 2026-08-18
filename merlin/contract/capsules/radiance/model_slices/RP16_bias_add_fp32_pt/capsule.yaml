@@ -1,0 +1,51 @@
+name: RP16_bias_add_fp32_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: PyTorch bias add fp32
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: f32
+- name: B
+  role: input
+  shape:
+  - 16
+  dtype: f32
+operation:
+  op: bias_add
+  attributes:
+    out: Y0
+    arg_order:
+    - X
+    - B
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+verilator: optional
+pytorch_ref:
+  op: bias_add
+  dtype: f32
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: elementwise_map
+  must_accelerate: true
+  fallback_allowed: false
+  generalization_axis: composition

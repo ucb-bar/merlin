@@ -41,6 +41,70 @@ _ENDPOINT_DESC = {
 }
 
 
+def _is_simt_mlir(manifest) -> bool:
+    """True when the target's 4th artifact is an LLVM-dialect MLIR module (``lowered.llvm.mlir``) that the
+    oracle compiles FORK-FREE (stock LLVM rv32 + the target's RTL-derived Muon re-encode, no vendor fork) —
+    the thesis path where the agent emits a COMPILER LOWERING, not a hand kernel.
+
+    DERIVED, no target literal: resolve the 4th-output filename EXACTLY as the runner does
+    (:func:`runner_config.runner_config_from_manifest`) — the contract's explicit ``runner.fourth_output_name``
+    if present, else the endpoint-kind default — and key on the ``.mlir`` suffix, so the PROMPT's emit form
+    stays in lockstep with what the ORACLE actually compiles (they must never disagree)."""
+    if getattr(manifest, "endpoint_kind", None) != "external_backend":
+        return False
+    from .runner_config import ENDPOINT_ARTIFACT
+    fourth = getattr(manifest, "fourth_output_name", None) or ENDPOINT_ARTIFACT.get(manifest.endpoint_kind, "")
+    return str(fourth or "").endswith(".mlir")
+
+
+def _simt_mlir_emit_framing() -> str:
+    """The 4th-artifact one-liner for a SIMT core graded on the MLIR thesis path: an LLVM-dialect MLIR module
+    (a compiler LOWERING the agent's xDSL passes build), compiled fork-free — NOT C/C++ source, NOT a
+    ``.word``/``.insn`` self-hosted stream."""
+    return ("an LLVM-dialect MLIR module (`builtin.module` with `llvm.func @<kernel>`) — a COMPILER LOWERING "
+            "your xDSL passes produce — which the runner compiles FORK-FREE (stock LLVM rv32 + the target's "
+            "RTL-derived Muon re-encode, no vendor fork) and runs on the cosim; NOT C/C++ source, NOT "
+            "`.word`/`.insn` assembler, NOT a self-hosted kernel")
+
+
+def _simt_mlir_grounding(target: str) -> str:
+    """The LLVM-dialect MLIR kernel contract for a SIMT core on the fork-free thesis path (replaces the .word
+    self-hosted grounding). The agent emits ONLY the kernel FUNCTION as verified LLVM-dialect IR: the runner
+    OWNS the harness (embeds the cb operands, calls the kernel, prints OUT/DONE) and the SIMT runtime OWNS the
+    warps/barriers, so the kernel is plain scalar compute over pointer operands. Mirrors the gemmini
+    LLVM-dialect contract (the SAME shared ``llvmlower``→stock-LLVM front), minus the RoCC ``.insn`` — the
+    reference emitter (:func:`merlin.runtime.backends.muon_codegen_mlir.emit_kernel_mlir`) emits this shape."""
+    sym = f"{target}_kernel"
+    skeleton = (
+        "module {\n"
+        f"  llvm.func @{sym}(%W: !llvm.ptr, %L: !llvm.ptr, %O: !llvm.ptr) {{\n"
+        "    // O = L @ W  (row-major; M, K, N come from the interface). Emit the loads\n"
+        "    // (llvm.getelementptr + llvm.load), the multiply-accumulate (llvm.fmul / llvm.fadd), and the\n"
+        "    // stores (llvm.store) — or lower scf/arith loops to this. Your xDSL passes BUILD this IR.\n"
+        "    llvm.return\n"
+        "  }\n"
+        "}\n")
+    return (
+        f"**Your 4th artifact is an LLVM-dialect MLIR module (`submission/lowered.llvm.mlir`) defining "
+        f"`llvm.func @{sym}` — a COMPILER LOWERING, not a hand kernel.** The runner compiles it FORK-FREE via "
+        "the SHARED `llvmlower` front (MLIR → LLVM IR → STOCK clang rv32 object), then re-encodes it to the "
+        "target's own ISA and runs it on the cosim. Contract:\n"
+        f"1. Emit ONE `builtin.module` containing `llvm.func @{sym}(...)`. Every argument is `!llvm.ptr`, in "
+        "the ABI order **[weight] ++ [lhs in command order] ++ [outputs in command order]** (the generic "
+        "kernel_abi); pointees are row-major f32.\n"
+        "2. The function COMPUTES the op (loads → multiply-accumulate → stores into the output pointers) and "
+        "`llvm.return`s. It is plain scalar compute over the pointer operands — the SIMT warps / barriers / "
+        "scheduling are the RUNTIME's (the fork-free BSP spawns warps around your kernel), so you do NOT write "
+        "`mu_schedule`, barriers, or thread-id logic.\n"
+        "3. Emit NO prints, NO `.insn`/`.word`, NO DRAM base map, NO halt — the runner owns the harness (it "
+        "embeds the operands, calls your kernel, and prints the `OUT`/`DONE` protocol) and the BSP owns "
+        "boot/halt. A kernel that writes its output pointers and returns is complete.\n"
+        "4. BUILD the module with your xDSL pass pipeline (typed IR, `verify()`-checked) — NEVER by string "
+        "assembly and NEVER with regex; this is checked on your submission.\n"
+        "\nThe module skeleton (structure is mandatory; the reference backend emits this shape):\n"
+        "```mlir\n" + skeleton + "```\n\n")
+
+
 def _isa_spec_block(te) -> str:
     """Name the SHIPPED, real ISA sources (green card + ISA definition + the worked example kernel) and
     tell the agent to derive encodings from THEM — the fix for the observed failure where the agent,
@@ -118,7 +182,7 @@ def _cmdbuf_opcodes() -> list[str]:
     return [str(v) for v in enum] if isinstance(enum, list) else []
 
 
-def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn") -> str:
+def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn", inst_width: int = 32) -> str:
     """A CONCRETE, derived one-liner describing what the 4th-entrypoint artifact must be — derived from
     the fact bundle + the codegen ENDPOINT (never a gemmini literal). A RoCC ``inline_asm_insn`` target
     emits a host `.insn` word stream encoding the discovered opcodes; a self-hosted-ISA ``external_backend``
@@ -138,8 +202,8 @@ def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn") -> str:
     # is what stops it inventing opcodes (the AW2 hallucination finding).
     if endpoint == "external_backend":
         return ("a `kernel.S` of `.word`/`.insn` directives encoding the target's OWN instructions "
-                "(compute each 32-bit encoding from the opcode/funct/field layout in the ISA definition "
-                "shipped in your bundle; the bundled example kernel shows the required instruction "
+                f"(compute each {inst_width}-bit encoding from the opcode/funct/field layout in the ISA "
+                "definition shipped in your bundle; the bundled example kernel shows the required instruction "
                 "sequence) that STOCK LLVM (`llvm-mc -triple=riscv64`) assembles into IMEM words — emit "
                 "assembler text ONLY: NOT an MLIR module, NOT `llvm.inline_asm`, NOT the model's mnemonic "
                 "assembler syntax (stock LLVM cannot assemble the target's custom mnemonics)" + _mesh)
@@ -330,6 +394,17 @@ def prompt_slots(te, manifest) -> dict:
     from .rtl.mlc_bridge import render_fact_bundle_for, fact_bundle_for
     target = te.target
     bundle = fact_bundle_for(target)                  # KIND-routed; discovered ONCE; feeds brief + emit framing
+    _iw = 32                                           # instruction width for the emit framing — DERIVED, not literal
+    try:
+        from .isa_model import isa_model_for_target
+        _iw = isa_model_for_target(target).inst_width or 32
+    except Exception:  # noqa: BLE001 — no derivable model -> keep the 32-bit default phrasing
+        pass
+    # A SIMT external target graded on the MLIR thesis path (lowered.llvm.mlir) emits an LLVM-dialect MLIR
+    # kernel LOWERING compiled fork-free, not a self-hosted .word/.insn stream. Its grounding is the
+    # LLVM-dialect kernel contract, and the .word-ISA contracts (DRAM base map + halt-op) do not apply — the
+    # runner owns the harness (embed/call/print) and the BSP owns boot/halt.
+    _mlir = _is_simt_mlir(manifest)
     return {
         "target": target,
         "tool_stem": f"{target}-opt",                 # not "gemmini-opt"
@@ -339,11 +414,13 @@ def prompt_slots(te, manifest) -> dict:
         "emit_symbol_note": ("" if manifest.endpoint_kind == "command_buffer"
                              else f"; the emitted module defines `{target}_kernel`"),
         "endpoint_kind": manifest.endpoint_kind,
-        "endpoint_desc": _ENDPOINT_DESC.get(manifest.endpoint_kind, _ENDPOINT_DESC["inline_asm_insn"]),
+        "endpoint_desc": ("emit an LLVM-dialect MLIR kernel lowering (compiled fork-free)" if _mlir
+                          else _ENDPOINT_DESC.get(manifest.endpoint_kind, _ENDPOINT_DESC["inline_asm_insn"])),
         # The grading model the runner will actually apply — float-tolerance vs exact-integer — classified
         # from the corpus goldens (never a per-target branch), so the agent is not told the wrong contract.
         "grading_model": _GRADE_FLOAT if _corpus_uses_independent_float_goldens(te) else _GRADE_INTEGER,
-        "emit_framing": _emit_framing(bundle, manifest.endpoint_kind),  # endpoint-aware, derived from the bundle
+        "emit_framing": (_simt_mlir_emit_framing() if _mlir
+                         else _emit_framing(bundle, manifest.endpoint_kind, inst_width=_iw)),  # endpoint+width derived
         "isa_facts": render_fact_bundle_for(target, bundle),  # KIND-routed provenance-tagged ISA brief (agent info)
         "corpus_rel": te.corpus_rel(),                # the primary corpus (isa/), repo-root-relative
         "corpus_families": te.corpus_siblings(),      # globbed, not a hardcoded ISA/layers/model_slices list
@@ -351,13 +428,16 @@ def prompt_slots(te, manifest) -> dict:
         "prior_backend_deny": list(te.prior_backends),
         "isa_headers": list(te.isa_headers),
         "hwbringup_set": te.hwbringup_set,
-        "isa_spec": _isa_spec_block(te),              # names the shipped real ISA files (derive, don't invent)
-        # DRAM address contract (external_backend only): declare every tensor + base so the emitted kernel
-        # and the program oracle agree on operand/result addresses (the atlas 0/11 output-base bug).
-        "dram_contract": _dram_contract(manifest),
-        # program-termination contract (external_backend only): the emitted kernel must reach the ISA's
-        # halt instruction or it fails functional before numerics (the atlas non-halting-kernel wall).
-        "termination_contract": _termination_contract(te, manifest),
+        # SIMT-MLIR target: ground the agent in the LLVM-dialect kernel contract (a compiler lowering compiled
+        # fork-free), NOT the self-hosted-ISA .word spec. Otherwise: name the shipped real ISA files.
+        "isa_spec": _simt_mlir_grounding(target) if _mlir else _isa_spec_block(te),
+        # DRAM address contract (self-hosted-ISA external_backend only): declare every tensor + base so the
+        # emitted .word kernel and the program oracle agree on operand/result addresses (the atlas 0/11
+        # output-base bug). A SIMT-MLIR kernel takes pointer operands from the runner harness — no DRAM map.
+        "dram_contract": "" if _mlir else _dram_contract(manifest),
+        # program-termination contract (self-hosted-ISA only): the emitted .word kernel must reach the ISA's
+        # halt instruction. A SIMT-MLIR kernel just `llvm.return`s; the BSP owns boot/halt.
+        "termination_contract": "" if _mlir else _termination_contract(te, manifest),
     }
 
 
@@ -452,7 +532,7 @@ AFTER you converge on the fast functional tier, so tight, narrow loops cost you 
 
 ## Target ISA facts (derived — build your lowering on these)
 {isa_spec}{isa_facts}
-{isa_dev_tools}{seam_menu}## Final status line (end of `submission/REPORT.md`) — write exactly one of:
+{isa_dev_tools}{seam_menu}{enforced_workflow}## Final status line (end of `submission/REPORT.md`) — write exactly one of:
 1. "Backend passes all required public/dev capsules and is ready for hidden grading."
 2. "Backend does not yet pass all required public/dev capsules; remaining failures listed by capsule + plane."
 3. "Backend is not comparable because it violates the compiler/runtime/integrity boundary."
@@ -467,14 +547,17 @@ AFTER you converge on the fast functional tier, so tight, narrow loops cost you 
 _SEAM_MENU = """## Menu of OOT modification points (merlin_assisted — the machine-checkable lever set)
 The granted CCA spine is not just files to read: two answer-free calls ENUMERATE the full,
 target-specific set of compiler seams you may modify for `{target}`, so you build the right lever set
-instead of guessing from the file tree (neither imports the oracle or the grader):
-- `cca_contract.check_bijection("{target}")` — the *what-to-build* checklist: which lever axes this
-  target's ISA/RTL admits vs. which the compiler already routes (`orphan_fields` = leverable axes still
-  to wire; `orphan_routes` = routes with no backing lever). Build every leverable axis; add no phantom.
-- `action_catalog.escalation_ladder(axis, "{target}")` — for one axis, the full
+instead of guessing from the file tree (neither imports the oracle or the grader). Both are runnable
+CLIs exactly like `isa_tools.py` — run them from the workspace root:
+- `python cca_contract.py check-bijection {target}` — the *what-to-build* checklist: which lever axes
+  this target's ISA/RTL admits vs. which the compiler already routes (`orphan_fields` = leverable axes
+  still to wire; `orphan_routes` = routes with no backing lever). Build every leverable axis; add no
+  phantom. (API form, if you prefer: `from cca_contract import check_bijection; check_bijection("{target}")`.)
+- `python action_catalog.py escalation-ladder <axis> {target}` — for one axis, the full
   FLAG→KNOB→HEURISTIC→PASS→CODEGEN ladder weakest→strongest, each row naming the concrete OOT-relative
   seam file to edit and whether it is forkable today (the "which section, and the next stronger lever"
-  answer). The seams point at YOUR generated OOT package, not our in-tree reference.
+  answer). The seams point at YOUR generated OOT package, not our in-tree reference. (API form:
+  `from action_catalog import escalation_ladder; escalation_ladder("<axis>", "{target}")`.)
 
 """
 
@@ -553,10 +636,94 @@ the RTL oracle disagrees), OBSERVE the hardware behavior of YOUR OWN command buf
 def _is_assisted_arm(arm: str) -> bool:
     """The seam menu is exposed only to arms that are actually granted the CCA spine (the assisted arms);
     raw_baseline is not, so it must not be told to reach for tools it cannot use. Target-agnostic."""
-    return "merlin_assisted" in arm
+    return "merlin_assisted" in arm or "rtlchecks" in arm
 
 
-def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseline") -> str:
+def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str, simt_mlir: bool = False) -> str:
+    """The per-arm MANDATORY development workflow — a compulsory checklist (not an optional aid) matching
+    the experiment ladder: it names ONLY the tools the arm actually grants, so raw_baseline gets just the
+    build + self-check floor, arm-2 the C++ generators, arm-3 the xDSL/CCA + own-artifact lint, and arm-4
+    ALSO the RTL-facts derivation. Fully DERIVED from ``granted_tools`` (the arm's allowed-tool set from its
+    bundle grant) so it stays target-agnostic and precisely per-arm; when the grant set is not threaded
+    (direct/test callers) it falls back to a coarse arm-string approximation. This is what compels the agent
+    to USE the tools (availability != usage) and to develop in xDSL with no regex."""
+    if granted_tools is None:                                   # coarse fallback; real runs thread the grant
+        assisted = _is_assisted_arm(arm)
+        granted_tools = set()
+        if assisted:
+            granted_tools |= {"xdsl_dialects", "kernels/cca", "action_catalog"}
+        if "rtlchecks" in arm:
+            granted_tools.add("targetgen/rtl/")
+        if arm == "cpp_merlininfra":
+            granted_tools = {"targetgen/generate/mlir_scaffold"}
+    g = granted_tools
+    def _has(sub: str) -> bool:
+        return any(sub in p for p in g)
+    has_xdsl = _has("xdsl_dialects") or _has("targetgen/synthesize")
+    has_cca = _has("kernels/cca") or _has("action_catalog")
+    has_rtl = _has("targetgen/rtl/") or _has("rtl_facts")
+    has_cpp = _has("mlir_scaffold") or _has("llvm_plan") or _has("target_repo")
+    art = ("submission/lowered.llvm.mlir" if simt_mlir
+           else "submission/kernel.S" if endpoint_kind == "external_backend"
+           else "your emitted submission/*.mlir")
+    L = ["## MANDATORY development workflow (do ALL of these BEFORE the final status line — not optional)",
+         "1. Your compiler backend lives under `submission/`; compute is COMPILER-GENERATED (never a hand kernel).",
+         "2. Base every ISA / mesh / datapath / encoding decision on the **Target ISA facts** above + the",
+         "   capability contract under `merlin/contract/` — never guess or hardcode; derive any fact not given.",
+         "3. After EVERY build, run `python3 agent_selfcheck.py --submission submission --capsules all` and",
+         "   iterate until all required capsules pass — a submission you did not self-check is not acceptable.",
+         "4. GRADEABLE-FLOOR FIRST (do this in your FIRST minutes, before deep encoder / ISA / parse work):",
+         "   write `submission/manifest.yaml` declaring your entrypoints + a minimal CLI that ANSWERS all of",
+         "   them (even trivially / with empty output) so `agent_selfcheck` can invoke your package and the",
+         "   grader reaches the capsules. A round that ends WITHOUT a valid manifest scores 0 no matter how",
+         "   much compiler you built — make the package structurally gradeable EARLY, THEN iterate on real",
+         "   codegen. If you run low on time, a graded-but-imperfect package beats an ungradeable one."]
+    n = 5
+    if has_cpp and not has_xdsl:                                # arm-2
+        L.append(f"{n}. Scaffold the package with the granted C++ OOT generators "
+                 "(`targetgen/generate/{mlir_scaffold,llvm_plan,target_repo}`), not ad-hoc hand files.")
+        n += 1
+    if has_xdsl:                                                # arm-3 and arm-4
+        L.append(f"{n}. Author the backend as an **xDSL pass pipeline** (`xdsl_dialects/`, "
+                 "`targetgen/synthesize/`, `targetgen/generate/`) — structured IR passes, NOT ad-hoc string "
+                 "assembly, and with **NO regular expressions** (`import re` / regex text-matching is "
+                 "prohibited; parse the IR structurally). This is checked on your submission.")
+        n += 1
+        if has_cca:
+            L.append(f"{n}. Enumerate your lever set: run `python cca_contract.py check-bijection {target}` "
+                     f"+ `python action_catalog.py escalation-ladder <axis> {target}` (runnable CLIs, like "
+                     "`isa_tools.py`) and build every leverable axis they list.")
+            n += 1
+        if endpoint_kind == "external_backend" and not simt_mlir:
+            L.append(f"{n}. Assemble every instruction word with `python isa_tools.py asm ops.txt` — it packs "
+                     "the exact bits this target's own encoder uses and REFUSES to emit a wrong word. NEVER "
+                     "hand-pack `.word` hex: a word that is opcode-legal but decodes to a DIFFERENT op moves "
+                     "no data (your DMA/load silently no-ops) and scores 0 even though `lint` passes. Confirm "
+                     "with `disasm` that each word decodes back to the op you intended.")
+            n += 1
+        if simt_mlir:
+            # A SIMT-MLIR target emits an LLVM-dialect kernel LOWERING (compiled fork-free), not a self-hosted
+            # word stream to assemble/lint. The mandate is that your xDSL passes BUILD the `llvm.func @<kernel>`
+            # module (verified IR) that the shared llvmlower front compiles — the runner owns the harness.
+            L.append(f"{n}. Emit `{art}` per the LLVM-dialect MLIR contract above: your xDSL pass pipeline BUILDS "
+                     f"the `builtin.module` with `llvm.func @{target}_kernel(...)` (pointer operands in "
+                     "[weight]++[lhs]++[out] order) that COMPUTES the op and `llvm.return`s — no prints, no "
+                     "`.insn`/`.word`, no `mu_schedule`. Verify the module parses/`verify()`s before self_check.")
+            n += 1
+        else:
+            L.append(f"{n}. Before every self_check, run `python isa_tools.py lint` and `disasm` on {art} and "
+                     "confirm every instruction decodes (nothing UNKNOWN or ambiguous) and the kernel halts.")
+            n += 1
+    if has_rtl:                                                 # arm-4 only (the CIRCT / RTL-facts arm)
+        L.append(f"{n}. RTL-checks arm: DERIVE the ISA / mesh / datapath from the granted RTL-extracted facts "
+                 "(`targetgen/rtl/` + the RTL facts pin) — do not hand-invent them — and run the CIRCT RTL "
+                 "checks on your lowering. Your backend must be a compilation FROM those RTL-derived facts.")
+        n += 1
+    return "\n".join(L) + "\n\n"
+
+
+def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseline",
+                  granted_tools=None) -> str:
     """Render a target's full task prompt = the ONE shared template + the derived slots. ``experiment``
     and ``arm`` are the target-AGNOSTIC axes (they select the scope label / optional blocks); the target
     axis is entirely the {slot} substitutions, so for a fixed (experiment, arm) two targets' prompts
@@ -576,16 +743,22 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
     # ISA dev tools: assisted arms only. A self-hosted-ISA (external_backend) target gets the .word/kernel.S
     # toolset; a RoCC/MLIR (inline_asm_insn) target gets the llvm.inline_asm variant; any other endpoint gets
     # nothing (empty slot renders nothing).
+    # A SIMT-MLIR external target emits an LLVM-dialect kernel lowering compiled fork-free (no self-hosted-ISA
+    # words to assemble/disassemble/lint), so the .word toolset does not apply — its grounding is the
+    # LLVM-dialect kernel contract in isa_spec instead.
+    _mlir = _is_simt_mlir(manifest)
     isa_dev_tools = ""
-    if _is_assisted_arm(arm):
+    if _is_assisted_arm(arm) and not _mlir:
         if s["endpoint_kind"] == "external_backend":
             isa_dev_tools = _ISA_DEVTOOLS
         elif s["endpoint_kind"] == "inline_asm_insn":
             isa_dev_tools = _ROCC_DEVTOOLS
+    enforced_workflow = _enforced_workflow(arm, s["endpoint_kind"], granted_tools, s["target"], simt_mlir=_mlir)
     return _TEMPLATE.format(target=s["target"], scope_label=scope, corpus_families=families,
                             tool_stem=s["tool_stem"], kernel_symbol=s["kernel_symbol"],
                             endpoint_desc=s["endpoint_desc"], emit_framing=s["emit_framing"],
                             emit_symbol_note=s["emit_symbol_note"], grading_model=s["grading_model"],
                             isa_facts=s["isa_facts"], sim_tier_ladder=ladder, seam_menu=seam_menu,
                             isa_spec=s["isa_spec"], dram_contract=s["dram_contract"],
-                            termination_contract=s["termination_contract"], isa_dev_tools=isa_dev_tools)
+                            termination_contract=s["termination_contract"], isa_dev_tools=isa_dev_tools,
+                            enforced_workflow=enforced_workflow)

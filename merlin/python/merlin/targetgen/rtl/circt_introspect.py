@@ -41,10 +41,45 @@ from .facts import rtl_cache_dir
 
 _REPO = repo_root()  # the repo root (contains merlin/)
 
-GENERATOR_VERSION = "rtl-introspect-v2-circt-hw"
-# RoCC custom-3 opcode + the funct3 group (the shared RoCC-ABI encoding, same for every RoCC target).
-CUSTOM_OPCODE = 0x7B
-FUNCT3 = 0x3
+GENERATOR_VERSION = "rtl-introspect-v3-slot-derived-opcode"
+# RISC-V ISA STANDARD custom-N major opcodes — fixed by the base ISA for EVERY RISC-V chip, NOT a
+# per-target fact. WHICH custom slot a RoCC accelerator is wired to IS target-specific; it is resolved
+# from the target's own reviewed encoding (contract ``encoding.rocc_custom_slot``) — never a baked
+# gemmini=custom3 assumption. The major opcode is a SoC-config (OpcodeSet) fact the accelerator's own
+# decoder does not carry, so it cannot be recovered from the core HW dialect the funct fan-out uses.
+_RISCV_CUSTOM_OPCODES = {0: 0x0b, 1: 0x2b, 2: 0x5b, 3: 0x7b}  # derived-ok: RISC-V standard custom-0/1/2/3 encodings
+# RoCC ``.insn`` func3 is the xd/xs1/xs2 register-usage field — a RoCC ABI field that varies per
+# instruction and is NOT an instruction-identity constraint (identity is func7; see rocc_decode), and
+# not per-target. Recorded as the standard reg-usage default so the pin carries a value.
+_ROCC_FUNCT3_DEFAULT = 0x3  # derived-ok: RoCC xd/xs1/xs2 reg-usage field (standard, not identity/per-target)
+
+
+def _contract_rocc_slot(target: str | None) -> int | None:
+    """The RISC-V custom SLOT (0..3) this target's RoCC is wired to, read from its reviewed contract
+    (``encoding.rocc_custom_slot``). Reads the raw contract yaml (NOT the manifest — loading the manifest
+    would re-enter facts regeneration). None when the target declares no slot (a non-RoCC target, or one
+    that has not declared it) -> the opcode fails closed rather than defaulting to gemmini's custom-3."""
+    if not target:
+        return None
+    try:
+        import yaml  # function-local: off the hot path, avoids an import cycle
+        from .facts import target_contract_path
+        p = target_contract_path(target)
+        if not p.is_file():
+            return None
+        enc = (yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("encoding") or {}
+        slot = enc.get("rocc_custom_slot")
+        return int(slot) if slot is not None else None
+    except Exception:  # noqa: BLE001 — a missing/broken contract is simply "no declared slot"
+        return None
+
+
+def _rocc_custom_opcode(target: str | None) -> int | None:
+    """The RoCC MAJOR opcode for ``target`` = the RISC-V-standard encoding of the custom SLOT it uses.
+    The slot is the per-target fact (from the reviewed contract encoding); slot->opcode is a RISC-V
+    standard. Returns None (UNKNOWN — fail closed) when the slot is undeclared, never a baked default."""
+    slot = _contract_rocc_slot(target)
+    return _RISCV_CUSTOM_OPCODES.get(slot) if slot is not None else None
 
 
 # ---------------------------------------------------------------------- per-target path resolution
@@ -188,8 +223,6 @@ def extract_funct_table(isa_src: str) -> dict[str, Any]:
     legal = sorted(table)
     return {
         "name": "funct_decode_table",
-        "custom_opcode": CUSTOM_OPCODE,
-        "funct3": FUNCT3,
         "legal_funct": legal,
         "names": {str(k): table[k] for k in legal},
         "evidence": f"GemminiISA.scala // funct values block: {len(legal)} codes "
@@ -217,8 +250,6 @@ def extract_funct_table_via_decoder(target: str) -> dict[str, Any] | None:
         return None
     return {
         "name": "funct_decode_table",
-        "custom_opcode": CUSTOM_OPCODE,
-        "funct3": FUNCT3,
         "legal_funct": legal,
         "names": {},  # the decoder yields numeric codes; names are cross-referenced from the header below
         "hw_source": res.get("hw_source"),
@@ -379,8 +410,6 @@ def _funct_name_table(target: str, isa_path: Path | None) -> dict[str, Any] | No
     legal = sorted(code_name)
     return {
         "name": "funct_decode_table",
-        "custom_opcode": CUSTOM_OPCODE,
-        "funct3": FUNCT3,
         "legal_funct": legal,
         "names": {str(k): code_name[k] for k in legal},
         "evidence": f"ISA headers {[Path(h).name for h in headers]} '#define k_* <N>': "
@@ -464,6 +493,10 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
     decoder_funct = extract_funct_table_via_decoder(target)
     funct = _reconcile_funct(decoder_funct, header_funct)
     if funct:
+        # The RoCC major opcode is a SoC-config fact the accelerator decoder does not carry: resolve it
+        # from the target's reviewed custom-slot (RISC-V standard slot->opcode), UNKNOWN if undeclared.
+        funct["custom_opcode"] = _rocc_custom_opcode(target)
+        funct.setdefault("funct3", _ROCC_FUNCT3_DEFAULT)
         v1.setdefault("interfaces", []).append(funct)
         sourced.append("funct" if funct.get("method", "").startswith("decoder") else "funct(header)")
 

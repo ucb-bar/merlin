@@ -35,8 +35,23 @@ def base_argv(ws: Path, bundle: dict, *, repo: Path | None = None) -> list[str]:
     parts = ["bwrap", "--die-with-parent", "--unshare-pid",
              "--ro-bind", "/usr", "/usr", "--ro-bind", "/bin", "/bin", "--ro-bind", "/lib", "/lib",
              "--ro-bind", "/lib64", "/lib64", "--ro-bind", "/etc", "/etc",
+             # DNS: /etc/resolv.conf is a symlink into the systemd-resolved runtime dir. Binding /etc alone
+             # leaves that symlink dangling inside the sandbox, so every name lookup fails and the agent's
+             # `claude` session hangs on an unreachable API. Bind the resolver dir so the symlink resolves.
+             # --ro-bind-try tolerates non-systemd hosts (where resolv.conf is a real file under /etc).
+             "--ro-bind-try", "/run/systemd/resolve", "/run/systemd/resolve",
              "--tmpfs", "/scratch", "--tmpfs", "/scratch2", "--tmpfs", "/tmp",
-             "--proc", "/proc", "--dev", "/dev", "--chdir", str(ws)]
+             "--proc", "/proc", "--dev", "/dev",
+             # a writable XDG runtime dir under the tmpfs /tmp — the Bun-based `claude` opens a socket there.
+             "--dir", "/tmp/.xdg", "--setenv", "XDG_RUNTIME_DIR", "/tmp/.xdg",
+             "--chdir", str(ws)]
+    # Drop Claude-Code nesting markers inherited from a parent agent session so the sandboxed `claude`
+    # starts a clean top-level session. A leaked CLAUDE_CODE_MESSAGING_SOCKET / CLAUDECODE makes it wait on
+    # a parent IPC socket that is not inside the box and hang. Auth vars (ANTHROPIC_API_KEY,
+    # CLAUDE_CODE_USE_BEDROCK) are intentionally NOT cleared — the launch may need them.
+    for _v in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT", "CLAUDE_CODE_MESSAGING_SOCKET",
+               "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID", "CLAUDE_EFFORT", "AI_AGENT"):
+        parts += ["--unsetenv", _v]
     home_claude = os.path.expanduser("~/.claude")
     if Path(home_claude).exists():
         parts += ["--bind", home_claude, home_claude]

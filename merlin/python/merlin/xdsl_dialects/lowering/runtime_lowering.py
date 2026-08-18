@@ -13,16 +13,17 @@ from .._common import HAS_XDSL
 from .interface_lowering import LoweringError
 
 # Target op -> Merlin-owned abstract opcode (the command buffer is Merlin's; every
-# target encodes onto the same opcode set — that is what keeps metrics comparable).
+# target encodes onto the same opcode set — that is what keeps metrics comparable). Only the ONE
+# built-in reference dialect (toynpu) is baked here. A reference target's dialect that lives in its own
+# package (e.g. saturn) ships its op->opcode map WITH the dialect (its plugin self-registers it); those
+# discovered maps are merged in via ``plugin_opcodes()`` below — no target name hardcoded here.
 TARGET_OPCODES = {
     "toynpu.res_pack": "RES_PACK",
     "toynpu.matmul": "MATMUL_RESIDENT",
     "toynpu.commit": "COMMIT",
     "toynpu.evict": "EVICT",
-    "saturn.pack": "RES_PACK",
-    "saturn.matmul": "MATMUL_RESIDENT",
-    "saturn.commit": "COMMIT",
-    "saturn.release": "EVICT",
+    "toynpu.vector_map": "VECTOR_MAP",
+    "toynpu.vector_reduce": "VREDUCE",
 }
 # Generated targets (e.g. gemmini) supply their own target-op -> opcode map from their isolated
 # package (merlin.targetgen.registry); it is merged in via the ``opcodes`` arg of
@@ -38,6 +39,10 @@ def _dtype_str(t) -> str:
     elem = t.element_type
     if isinstance(elem, IntegerType):
         return "i%d" % elem.width.data
+    # Float element types carry their own mnemonic (f16/f32/f64/bf16) for a float-model layer.
+    tok = str(elem)
+    if tok in ("f16", "f32", "f64", "bf16"):
+        return tok
     raise LoweringError("unsupported element type %s" % elem)
 
 
@@ -54,7 +59,13 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
     """
     if not HAS_XDSL:
         return module
-    opcode_map = {**TARGET_OPCODES, **(opcodes or {})}
+    # built-in (toynpu) + every discovered reference dialect's map (e.g. saturn, keyed by full op name so
+    # cross-target merges never collide) + the explicit ``opcodes`` a generated package supplies.
+    from .target_lowering import plugin_opcodes
+    opcode_map = {**TARGET_OPCODES}
+    for _m in plugin_opcodes().values():
+        opcode_map.update(_m)
+    opcode_map.update(opcodes or {})
     from xdsl.ir import Block, Region
     from xdsl.dialects.builtin import (ArrayAttr, DictionaryAttr, FunctionType,
                                        ModuleOp, StringAttr, TensorType)
@@ -72,7 +83,9 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         """Merlin opcode for a target op (reference + generated dialects share field names)."""
         return opcode_map.get(op.name)
 
-    # Deterministic tensor names. Pack sources are weights; other args activations.
+    # Deterministic names, assigned in ONE pre-pass so every value (incl. committed outputs)
+    # is named before the create op is built. Pack sources are weights; other args activations;
+    # accumulators acc%d; committed tensors Y%d.
     pack_srcs = [op.src for op in src_block.ops if kind(op) == "RES_PACK"]
     names: dict = {}
     tensors: dict[str, str] = {}
@@ -87,19 +100,34 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         if isinstance(arg.type, TensorType):
             names[arg] = "A%d" % n_a
             n_a += 1
+    n_acc = n_y = n_v = 0
+    for op in src_block.ops:
+        k = kind(op)
+        if k == "RES_PACK":
+            names[op.res] = names[op.src] + "_res"
+        elif k in ("MATMUL_RESIDENT", "MATMUL"):
+            names[op.acc] = "acc%d" % n_acc
+            n_acc += 1
+        elif k == "COMMIT":
+            names[op.out] = "Y%d" % n_y
+            n_y += 1
+        elif k in ("VECTOR_MAP", "VREDUCE"):
+            names[op.out] = "V%d" % n_v
+            n_v += 1
     for arg in src_block.args:
         if arg in names:
             tensors[names[arg]] = _shape_str(arg.type)
-    # Vector-family destinations are RESULTS, not arguments, so they have to be named and declared
-    # here — the tensor table is frozen into the command-buffer-create op below, before the command
-    # loop runs, and a destination added later would never reach it. Both engines find vector results
-    # by scanning the table, so the omission produced a buffer that ran and returned nothing.
-    n_declared_results = 0
-    for op in src_block.ops:
-        if kind(op) == "VECTOR_MAP":
-            names[op.out] = f"Y{n_declared_results}"
-            tensors[names[op.out]] = _shape_str(op.out.type)
-            n_declared_results += 1
+    # The function's RETURN values are the model's output tensors — declare them (with shape)
+    # and name them explicitly so the engine surfaces exactly these, not every commit. A vector-family
+    # result reaches here through the return, so this covers both the matmul and the vector engine.
+    ret_ops = [o for o in src_block.ops if o.name == "func.return"]
+    output_names: list[str] = []
+    for operand in (ret_ops[0].operands if ret_ops else []):
+        nm = names.get(operand)
+        if nm is None:
+            raise LoweringError("return operand has no runtime name")
+        tensors[nm] = _shape_str(operand.type)
+        output_names.append(nm)
 
     blk = Block()
     dev = r.DeviceGetOp(result_types=[r.DeviceType()], properties={
@@ -110,35 +138,31 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         "target": StringAttr(target),
         "mode": r.SubmitModeAttr(r.SubmitMode.BATCHED),
         "tensors": DictionaryAttr({k: StringAttr(v) for k, v in sorted(tensors.items())}),
+        "outputs": ArrayAttr([StringAttr(n) for n in output_names]),
     })
     ops = [dev, cb]
 
-    n_acc = 0
-    # Continue the Y numbering past anything the pre-pass already claimed, so commits and vector
-    # results can never be handed the same name. They cannot co-occur today (a mixed payload is
-    # refused at the interface stage), and a silent collision is not the way to find out that changed.
-    n_y = n_declared_results
     for op in src_block.ops:
         opcode = kind(op)
         if opcode == "RES_PACK":
-            handle = names[op.src] + "_res"
-            names[op.res] = handle
-            args = {"src": names[op.src], "dst": handle}
+            args = {"src": names[op.src], "dst": names[op.res]}
             attrs = {"layout": op.layout}
+            # A generated target's pack op may not declare the optional dequant-scale operand/axis
+            # (only the factory-built resident packs do) — getattr keeps this total for both.
+            scale = getattr(op, "scale", None)
+            if scale is not None:                        # int8 weight-only dequant pack
+                args["scale"] = names[scale]
+                dq_axis = getattr(op, "dequant_axis", None)
+                if dq_axis is not None:
+                    attrs["dequant_axis"] = dq_axis
         elif opcode in ("MATMUL_RESIDENT", "MATMUL"):
-            acc = "acc%d" % n_acc
-            n_acc += 1
-            names[op.acc] = acc
-            args = {"lhs": names[op.lhs], "rhs": names[op.rhs], "dst": acc}
+            args = {"lhs": names[op.lhs], "rhs": names[op.rhs], "dst": names[op.acc]}
             attrs = {}
             # Honest opcode: only a pack-produced RHS is a resident matmul.
             if not names[op.rhs].endswith("_res"):
                 opcode = "MATMUL"
         elif opcode == "COMMIT":
-            y = "Y%d" % n_y
-            n_y += 1
-            names[op.out] = y
-            args = {"src": names[op.acc], "dst": y}
+            args = {"src": names[op.acc], "dst": names[op.out]}
             if op.bias is not None:
                 args["bias"] = op.bias.data
             attrs = {"epilogue": op.epilogue}
@@ -156,6 +180,14 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         elif opcode == "EVICT":
             args = {"handle": names[op.handle]}
             attrs = {}
+        elif opcode == "VECTOR_MAP":
+            args = {"lhs": names[op.lhs], "rhs": names[op.rhs], "dst": names[op.out]}
+            attrs = {"combine": op.combine}
+            if op.activation is not None:
+                attrs["activation"] = op.activation
+        elif opcode == "VREDUCE":
+            args = {"src": names[op.src], "dst": names[op.out]}
+            attrs = {"op": op.reduce}
         elif op.name == "func.return":
             continue
         else:

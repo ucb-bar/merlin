@@ -108,18 +108,19 @@ def check_canary_isolation() -> dict:
     probe = ("for p in " + " ".join(f'"{p}"' for p in abspaths) +
              '; do if [ -r "$p" ]; then echo "REACHABLE $p"; fi; done; '
              'grep -rlI CANARY . 2>/dev/null | head -3')
+    from merlin.targetgen.sandbox import bwrap as _BW
+    from merlin.targetgen.target_experiment import load_target_experiment
+    _te = load_target_experiment(C.EXP / "target_experiment.yaml")
     for bundle_id in bundles_to_check():
         bundle = load_bundle_by_id(bundle_id)
         with tempfile.TemporaryDirectory(dir="/tmp") as td:
             ws = Path(td) / "workspace"
             RAE.assemble_workspace(bundle, ws)
-            # The FULL isolation argv — deny-by-default base PLUS the derived answer
-            # masks — because that is what a real agent runs under. Probing the base
-            # alone tested a weaker sandbox than the experiment uses, and so reported
-            # a leak for every surface that masking is responsible for hiding.
-            from merlin.targetgen.sandbox import bwrap as _BW
-            from merlin.targetgen.target_experiment import load_target_experiment
-            _te = load_target_experiment(C.EXP / "target_experiment.yaml")
+            # The FULL isolation argv -- deny-by-default base, the runtime + toolchain binds, and the
+            # derived answer-mask pass -- because that is what a real agent runs under. Probing the base
+            # alone tested a WEAKER sandbox than the experiment uses (it does not re-mask an answer surface
+            # that a broad legit grant re-exposes), and so reported a leak for every surface masking is
+            # responsible for hiding.
             argv = _BW.full_argv(_te, ws, bundle) + ["bash", "-c", probe]
             r = subprocess.run(argv, capture_output=True, text=True, timeout=120)
             reachable = [ln for ln in r.stdout.splitlines() if ln.startswith("REACHABLE")]
@@ -134,28 +135,42 @@ def check_canary_isolation() -> dict:
     return out
 
 
-def reference_package() -> Path | None:
-    """The target's known-good reference package, or None when it ships none.
+def reference_package() -> str | None:
+    """The target's known-good reference package (repo-relative), or None when it ships none.
 
-    The end-to-end negative fixtures mutate a VALID package so that "one injected
-    defect makes grading fail closed" is a real statement. Synthesizing a package
-    instead would satisfy the assertions vacuously — a garbage package also scores
-    zero — so when the target has no reference package the honest outcome is that
-    this class is UNVERIFIED, not that it passed.
+    DERIVED, never a per-target literal: the first package under the target's artifact home whose
+    manifest marks it ``integrity_exempt`` (the reference backend is the one package allowed to import
+    Merlin internals), falling back to any package with a manifest. So radiance seeds from
+    ``reference_v0`` and gemmini from its own ``agent_spec_v1_mlir_oot`` with no per-target code.
+
+    Returns None rather than raising when the target ships none: the end-to-end negative fixtures mutate
+    a VALID package so that "one injected defect makes grading fail closed" is a real statement, and
+    synthesizing a package instead would satisfy the assertions vacuously (a garbage package also scores
+    zero). The honest outcome for such a target is UNVERIFIED, not passed.
     """
-    path = C.REPO / f"{_TGT}/agent_spec_v1_mlir_oot"
-    return path if path.is_dir() else None
+    import glob
+    manifests = sorted(glob.glob(str(C.REPO / _TGT / "*" / "manifest.yaml")))
+    exempt, any_pkg = [], []
+    for m in manifests:
+        rel = str(Path(m).parent.relative_to(C.REPO))
+        any_pkg.append(rel)
+        try:
+            if (yaml.safe_load(Path(m).read_text(encoding="utf-8")) or {}).get("integrity_exempt"):
+                exempt.append(rel)
+        except Exception:  # noqa: BLE001 -- an unreadable manifest just isn't a candidate
+            continue
+    pool = exempt or any_pkg
+    return pool[0] if pool else None
 
 
 def _mk_pkg_with(text_file: dict, base=None) -> Path:
     """Copy the known-good package and inject a file (for integrity/contract negative fixtures)."""
     if base is None:
-        ref = reference_package()
-        if ref is None:
+        base = reference_package()
+        if base is None:
             raise FileNotFoundError(
-                f"no reference package at {_TGT}/agent_spec_v1_mlir_oot; "
-                f"the end-to-end negative fixtures need a valid package to mutate")
-        base = ref.relative_to(C.REPO)
+                f"no reference package under {_TGT}; the end-to-end negative fixtures need a valid "
+                f"package to mutate")
     import shutil
     d = Path(tempfile.mkdtemp(dir="/tmp", prefix="negfix_"))
     shutil.copytree(C.REPO / base, d / "pkg", ignore=shutil.ignore_patterns("build", "__pycache__"))
@@ -164,7 +179,8 @@ def _mk_pkg_with(text_file: dict, base=None) -> Path:
         if content is None:
             p.unlink(missing_ok=True)
         else:
-            p.write_text(content)
+            p.parent.mkdir(parents=True, exist_ok=True)   # layout-agnostic: the injected path's subdir
+            p.write_text(content)                          # (e.g. mlir_oot/) need not pre-exist in the pkg
     return d / "pkg"
 
 
@@ -186,9 +202,18 @@ def check_negative_fixtures() -> dict:
 
     # (1) import-merlin injected -> integrity FORBIDDEN_PATTERN
     pkg = _mk_pkg_with({"mlir_oot/CANARY_import.py": "import merlin.runtime.reference\n"})
+    # The integrity scanner is SKIPPED for an ``integrity_exempt`` package (the reference backend is the
+    # one package allowed to import Merlin). This fixture is seeded from the target's reference package,
+    # which MAY be exempt (radiance's reference_v0 is) — so force it NON-exempt to actually exercise the
+    # scanner. Target-agnostic: the fixture tests the integrity GATE, not the reference's exemption.
+    _mf = pkg / "manifest.yaml"
+    if _mf.is_file():
+        _m = yaml.safe_load(_mf.read_text(encoding="utf-8")) or {}
+        _m["integrity_exempt"] = False
+        _mf.write_text(yaml.safe_dump(_m, sort_keys=False), encoding="utf-8")
     g = CGRADE.grade(str(pkg), capsules_root=str(C.REPO / "merlin/contract/capsules"),
                      runs_root=tempfile.mkdtemp(dir="/tmp"), labels={"public"}, contract=contract,
-                     oracle_adapters={})
+                     oracle_adapters={}, target=TARGET)
     res["grader_endtoend"].append({"case": "import_merlin_injected", "functional_pass": g["functional_pass"],
                                    "integrity_status": g["integrity_status"],
                                    "fails_closed": g["functional_pass"] == 0 and "FAIL" in str(g["integrity_status"])})
@@ -196,7 +221,7 @@ def check_negative_fixtures() -> dict:
     pkg2 = _mk_pkg_with({"manifest.yaml": None})
     g2 = CGRADE.grade(str(pkg2), capsules_root=str(C.REPO / "merlin/contract/capsules"),
                       runs_root=tempfile.mkdtemp(dir="/tmp"), labels={"public"}, contract=contract,
-                      oracle_adapters={})
+                      oracle_adapters={}, target=TARGET)
     res["grader_endtoend"].append({"case": "missing_manifest", "functional_pass": g2["functional_pass"],
                                    "integrity_status": g2["integrity_status"],
                                    "fails_closed": g2["functional_pass"] == 0})
@@ -213,32 +238,43 @@ def _negatives_without_package(res: dict, contract: str) -> dict:
     the gate or being silently absent from the verdict.
     """
     # --- component: trace_check negatives (the gate the grader calls) ---
-    try:
-        real = RD.decode_file(C.REPO / G0, target=TARGET)  # a valid g0 matmul trace
-    except Exception as exc:  # noqa: BLE001 - a gate reports, it does not crash
-        res["trace"].append({"case": "trace_negatives", "unavailable": True,
-                             "reason": f"cannot decode a reference trace for {TARGET}: "
-                                       f"{type(exc).__name__}: {exc}"})
-        return _negatives_numeric_and_schema(res, contract)
-    common = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST", "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
-    empty = {"source": "x", "abi": {"custom_opcode": "0x7b", "funct3": "0x3"},
-             "instructions": [{"index": 0, "class": "FENCE"}, {"index": 1, "class": "FENCE"}]}
-    cases = [
-        ("no_insn_C_compute_proxy", empty, {"instruction_classes": common}, "required class missing"),
-        ("required_LOOP_CONV_absent", real, {"instruction_classes": ["LOOP_CONV"]}, "LOOP_CONV missing"),
-        ("movement_mode_but_compute_present", real, {"instruction_classes": [], "modes": {"movement": True}}, "compute present"),
-        ("relu_required_but_absent", real, {"instruction_classes": [], "modes": {"relu": True}}, "no relu"),
-        ("k_accum_required_but_absent", real, {"instruction_classes": [], "modes": {"k_accumulate": True}}, "no accumulate"),
-        ("forbidden_compute_present", real, {"instruction_classes": [], "forbidden_classes": ["COMPUTE_PRELOADED"]}, "forbidden present"),
-    ]
-    for name, tr, exp, why in cases:
-        r = TCK.check(tr, exp)
-        res["trace"].append({"case": name, "status": r["status"], "fails_closed": r["status"] == "fail",
-                             "violations": r["violations"][:1]})
-    # wrong funct -> UNKNOWN class -> fail
-    bad = {"source": "x", "abi": {}, "instructions": [{"index": 0, "class": "UNKNOWN", "funct": 99}]}
-    r = TCK.check(bad, {"instruction_classes": common})
-    res["trace"].append({"case": "unknown_funct", "status": r["status"], "fails_closed": r["status"] == "fail"})
+    # These fixtures are a RoCC COMMAND-ISA trace (a g0 matmul + RoCC instruction classes). They only apply
+    # to a target that HAS a command trace; a SIMT/no-command-ISA target has none to gate -- detected by the
+    # absence of the target's g0 trace artifact -- so we record it n/a rather than fabricate a trace for it.
+    # The trace GATE itself is target-agnostic; only these fixtures are RoCC-specific.
+    g0_path = C.REPO / G0
+    if not g0_path.is_file():
+        res["trace"].append({"case": "n/a_no_command_trace", "status": "n/a", "applicable": False,
+                             "fails_closed": True,
+                             "note": f"target {TARGET!r} has no RoCC command trace (no {G0}); RoCC "
+                                     f"trace-gate negatives do not apply to a SIMT/command-buffer target"})
+    else:
+        try:
+            real = RD.decode_file(g0_path, target=TARGET)  # a valid g0 matmul trace
+        except Exception as exc:  # noqa: BLE001 - a gate reports, it does not crash
+            res["trace"].append({"case": "trace_negatives", "unavailable": True,
+                                 "reason": f"cannot decode a reference trace for {TARGET}: "
+                                           f"{type(exc).__name__}: {exc}"})
+            return _negatives_numeric_and_schema(res, contract)
+        common = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST", "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
+        empty = {"source": "x", "abi": {"custom_opcode": "0x7b", "funct3": "0x3"},
+                 "instructions": [{"index": 0, "class": "FENCE"}, {"index": 1, "class": "FENCE"}]}
+        cases = [
+            ("no_insn_C_compute_proxy", empty, {"instruction_classes": common}, "required class missing"),
+            ("required_LOOP_CONV_absent", real, {"instruction_classes": ["LOOP_CONV"]}, "LOOP_CONV missing"),
+            ("movement_mode_but_compute_present", real, {"instruction_classes": [], "modes": {"movement": True}}, "compute present"),
+            ("relu_required_but_absent", real, {"instruction_classes": [], "modes": {"relu": True}}, "no relu"),
+            ("k_accum_required_but_absent", real, {"instruction_classes": [], "modes": {"k_accumulate": True}}, "no accumulate"),
+            ("forbidden_compute_present", real, {"instruction_classes": [], "forbidden_classes": ["COMPUTE_PRELOADED"]}, "forbidden present"),
+        ]
+        for name, tr, exp, why in cases:
+            r = TCK.check(tr, exp)
+            res["trace"].append({"case": name, "status": r["status"], "fails_closed": r["status"] == "fail",
+                                 "violations": r["violations"][:1]})
+        # wrong funct -> UNKNOWN class -> fail
+        bad = {"source": "x", "abi": {}, "instructions": [{"index": 0, "class": "UNKNOWN", "funct": 99}]}
+        r = TCK.check(bad, {"instruction_classes": common})
+        res["trace"].append({"case": "unknown_funct", "status": r["status"], "fails_closed": r["status"] == "fail"})
 
     return _negatives_numeric_and_schema(res, contract)
 
@@ -375,25 +411,38 @@ def _codex_tokens(path: Path) -> dict:
 def check_real_tokens() -> dict:
     """Prove token/cost capture works on a REAL agent stream, whichever agent ran.
 
-    The check used to demand ``/tmp/real_stream.jsonl`` from a Claude probe, so a
-    Codex campaign could never satisfy it and the gate reported NO_GO for having
-    run the agent it was configured to run. Either witness now counts, and the
-    record says which one it was.
+    The check used to demand ``/tmp/real_stream.jsonl`` from a Claude probe, so a Codex campaign could
+    never satisfy it and the gate reported NO_GO for having run the agent it was configured to run. Any
+    of three real witnesses now counts -- an operator-supplied claude probe, a codex event stream, or the
+    newest prior-run transcript that carries usage -- and the record says which one it was. The last
+    validates the pipeline at $0 with no new spend.
     """
     p = Path(os.environ.get("MERLIN_CLAUDE_TOKEN_WITNESS", "/tmp/real_stream.jsonl"))
     if p.is_file():
         s = ET.parse_transcript(p)
         return {"tested": True, "driver": "claudecode", "witness": str(p),
-                "available": s.get("available"), "tokens_total": s.get("tokens_total"),
+                "available": s.get("available"), "usage_source": s.get("usage_source"),
+                "tokens_total": s.get("tokens_total"),
                 "estimated_cost_usd": s.get("estimated_cost_usd"),
-                "unique_messages": s.get("unique_messages"), "billing_mode": "metered_or_subscription"}
+                "unique_messages": s.get("unique_messages"), "billing_mode": s.get("billing_mode")}
     codex = _codex_token_witness()
     if codex is not None:
         return _codex_tokens(codex)
+    from merlin.common.paths import runs_dir
+    cands = sorted((q for q in runs_dir().rglob("*.transcript.jsonl") if q.stat().st_size > 0),
+                   key=lambda q: q.stat().st_mtime, reverse=True)
+    for q in cands[:8]:                       # newest-first; stop at the first with real usage metadata
+        s = ET.parse_transcript(q)
+        if s.get("available"):
+            return {"tested": True, "driver": "prior_run", "witness": str(q),
+                    "available": True, "usage_source": s.get("usage_source"),
+                    "tokens_total": s.get("tokens_total"),
+                    "estimated_cost_usd": s.get("estimated_cost_usd"),
+                    "unique_messages": s.get("unique_messages"), "billing_mode": s.get("billing_mode")}
     return {"tested": False, "available": False,
             "reason": "no real agent stream to check: neither a claude stream-json at "
-                      f"{p} nor a codex *.codex_events.raw.jsonl under the runs/cache trees "
-                      "(set MERLIN_TOKEN_WITNESS to name one)"}
+                      f"{p}, a codex *.codex_events.raw.jsonl under the runs/cache trees, nor a "
+                      "prior-run transcript carrying usage (set MERLIN_TOKEN_WITNESS to name one)"}
 
 
 def baremetalc_table() -> list[dict]:
@@ -462,6 +511,19 @@ def _program_oracle_smoke(*, sim_okay: bool, desc: Path) -> dict:
     endpoint_kind, model_ext = CR._endpoint_of(TARGET)
     if endpoint_kind != "external_backend":
         return {"ok": True, "reason": "n/a (not an external_backend program-oracle target)"}
+    # An EXCLUSIVE bespoke sim (a self-hosted SIMT core, e.g. cyclotron) grades the target on its OWN kernel
+    # ELF and takes precedence over the program-oracle path (mirrors capsule_runner.oracle_available's
+    # routing — the arc/program oracle grades the wrong artifact for a SIMT core). Its end-to-end
+    # correctness is already exercised by codegen_smoke (fork-free emit -> sim -> assert the result), so the
+    # program-oracle smoke does not apply here. Contract-routed, no target-name branch.
+    sim_via = ""
+    if desc.is_file():
+        from merlin.targetgen.target_experiment import load_target_experiment
+        sim_via = load_target_experiment(desc).sim_via
+    so = CR.sim_oracle_caps(sim_via)
+    if so is not None and so.exclusive:
+        return {"ok": True, "reason": (f"n/a (exclusive bespoke sim {sim_via!r} grades on its own kernel ELF; "
+                                       f"end-to-end correctness covered by codegen_smoke)")}
     if not sim_okay:
         return {"ok": True, "reason": "n/a (an earlier oracle/codegen check already blocks — fix that first)"}
     if desc.is_file():

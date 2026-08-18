@@ -39,6 +39,37 @@ def _row(n: int, v: dict) -> tuple:
     return (n, v.get("n_passed"), v.get("n_capsules"), plane_s, best)
 
 
+def _focus_section(v: dict) -> list[str]:
+    """From the latest redacted verdict, a crisp FAILING-set focus list + the PASSING set as locked-don't-
+    break. Prioritization only (the grader still grades every capsule; a regression on a passing one still
+    surfaces via the mismatch delta) — it does not restrict what the agent may touch. Golden-free: uses only
+    the per-capsule status/plane/mismatch_count the grader already redacts."""
+    per = v.get("per_capsule") or []
+    if not per:
+        return []
+
+    def _st(e):
+        return str(e.get("status", "")).lower()
+
+    passing = [e.get("capsule") for e in per if _st(e) == "pass" and e.get("capsule")]
+    failing = [e for e in per if _st(e) and _st(e) != "pass"]
+    if not failing:
+        return []                                          # nothing failing → no focus needed
+    L = ["## Focus THIS round — spend your turns on the FAILING capsules", ""]
+    for e in failing:
+        pl = e.get("failure_plane") or e.get("plane") or (e.get("first_failure_plane")) or "?"
+        mc = e.get("mismatch_count")
+        L.append(f"- `{e.get('capsule')}` — {_st(e)}, plane `{pl}`"
+                 + (f", mismatch_count {mc}" if isinstance(mc, int) else ""))
+    L += ["",
+          f"{len(passing)} capsule(s) already PASS. Do NOT re-work them — but do NOT delete or break the "
+          "code that makes them pass (a regression shows up as the lowest mismatch getting worse above). "
+          "Put this round's effort into the failing set listed here."]
+    if passing:
+        L += ["", "Passing (locked): " + ", ".join(f"`{c}`" for c in passing) + "."]
+    return L + [""]
+
+
 def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> str:
     """Markdown brief for the round ABOUT TO START (``rnd`` = the round just graded)."""
     verdicts = _load_verdicts(run_dir)
@@ -69,6 +100,9 @@ def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> st
                     delta.append(f"lowest mismatch improved ({pbest} → {cbest}) — continue this direction")
             if delta:
                 L += ["**Since last round:** " + "; ".join(delta) + ".", ""]
+
+    if verdicts:
+        L += _focus_section(verdicts[-1][1])
 
     notes = ws / "submission" / "docs" / "iteration_notes.md"
     body = notes.read_text(encoding="utf-8", errors="replace") if notes.is_file() else ""

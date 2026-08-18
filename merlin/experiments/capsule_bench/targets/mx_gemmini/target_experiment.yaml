@@ -25,9 +25,10 @@ rtl:
   via: mlc            # structural facts shared with gemmini; MX datapath from the chipyard config
 
 hardware_spec:
-  rtl_config: generators/gemmini/src/main/scala/gemmini/ConfigsFP.scala   # GemminiMxFPConfigs.defaultMxFPConfig
-  isa: rocc_custom3   # same RoCC opcode set as gemmini
-  dim: 16             # 16x16 WS systolic mesh (meshRows == meshColumns)
+  # NOTE: the structural facts (RoCC opcode set, mesh DIM=16, the ConfigsFP.scala source) are DERIVED
+  # from the RTL, not declared here — they are documented in the header comment above for the reader.
+  # Do NOT re-add `isa`/`dim`/`rtl_config` as descriptor fields: the loader never reads them (a baked
+  # `dim: 16` reads as authoritative but is ignored, which is exactly the overfit smell).
   # Shipped ISA doc for the derived assembler/disassembler/linter — the MX-Gemmini MMIO/RoCC command word
   # (derived from mxgemmini_mmio.h:66). Self-contained (no model venv). The MMIO map + microscaling dtypes +
   # E8M0 block scale + bf16 accumulate are carried as derived ABI data in the sibling mmio_abi.py.

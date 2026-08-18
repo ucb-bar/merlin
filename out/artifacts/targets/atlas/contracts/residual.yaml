@@ -45,6 +45,18 @@ requires_human_review: true
 runner:
   fourth_output_name: kernel.S
   model_ext: npu_model
+  # Run-identity dtype token (the fp8 E4M3 activation/weight format; accumulate/output is BF16). Without
+  # this the shared runner's manifest-derived RunnerConfig defaults to the gemmini i8xi8_i32 token, which
+  # would MISLABEL an atlas run's identity (the float grading itself rides each capsule's numeric_policy).
+  dtype: fp8_e4m3
+# Oracle ladder (informational parity with the other targets): the merlin reference + the npu_model
+# functional bootstrap are NOT RTL-derived; the mlc arc cosim is the RTL-derived functional gold; the
+# program-driven Verilator sim is the RTL-certified tier (additive, present only when a vsim is wired).
+oracle_ladder:
+  level_0: {name: merlin_reference, derived_from_rtl: false}
+  level_1: {name: npu_model_functional, derived_from_rtl: false}
+  level_2: {name: mlc_arc_cosim, derived_from_rtl: true}
+  level_3: {name: program_verilator_rtl, derived_from_rtl: true}
 runtime:
   default_backend: simulator
 runtime_promises:

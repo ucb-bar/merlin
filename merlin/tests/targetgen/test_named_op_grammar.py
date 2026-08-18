@@ -1,0 +1,254 @@
+"""The merlin_iface grammar's whole-op mnemonics (op classes with no residency decomposition).
+
+`parse_interface_mlir` learned `rmsnorm` / `attention_qk` (mnemonics the frozen parser previously
+dropped -> 0 commands -> a hard parse failure, or, when fused with a matmul, a SILENT drop that
+mis-graded). These tests assert the mnemonics parse to the command-buffer opcode + operand keys the
+target codegen reads, schema-validate, reach the reference emitter, and that an unsupported FUSED
+combination fails loud instead of silently emitting one half.
+"""
+from __future__ import annotations
+
+import pytest
+
+from merlin.targetgen.contract import schemas
+from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+
+_RMSNORM = """
+module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+  %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xf32>
+  %G = merlin_iface.tensor {name = "G", role = "weight"} : tensor<1x16xf32>
+  %Y0 = merlin_iface.rmsnorm %X, %G {name = "Y0", eps = 1.000000000e-05 : f64, output_dtype = "f32"} : (tensor<16x16xf32>, tensor<1x16xf32>) -> tensor<16x16xf32>
+}
+"""
+
+_ATTN_QK = """
+module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+  %Q = merlin_iface.tensor {name = "Q", role = "input"} : tensor<16x32xf16>
+  %K = merlin_iface.tensor {name = "K", role = "input"} : tensor<16x32xf16>
+  %Y0 = merlin_iface.attention_qk %Q, %K {name = "Y0", output_dtype = "f32"} : (tensor<16x32xf16>, tensor<16x32xf16>) -> tensor<16x16xf32>
+}
+"""
+
+
+def test_rmsnorm_parses_to_the_opcode_and_operand_keys_codegen_reads():
+    cb = parse_interface_mlir(_RMSNORM)
+    cmds = cb["commands"]
+    assert len(cmds) == 1
+    c = cmds[0]
+    assert c["opcode"] == "RMSNORM"
+    assert c["operands"] == {"src": "X", "gamma": "G", "dst": "Y0"}
+    assert c["attributes"]["eps"] == pytest.approx(1e-5)
+    assert c["attributes"]["output_dtype"] == "f32"
+    schemas.validate_command_buffer(cb)
+
+
+def test_attention_qk_parses_to_the_opcode_and_operand_keys_codegen_reads():
+    cb = parse_interface_mlir(_ATTN_QK)
+    c = cb["commands"][0]
+    assert c["opcode"] == "ATTENTION_QK"
+    assert c["operands"] == {"q": "Q", "k": "K", "dst": "Y0"}
+    schemas.validate_command_buffer(cb)
+
+
+def test_softmax_mnemonic_parses_and_emits():
+    """`merlin_iface.softmax` is a whole-op mnemonic (the SOFTMAX opcode + nest already exist, so the grammar
+    row is a one-line unlock); it parses to SOFTMAX{src,dst} and reaches a valid emitted kernel."""
+    sm = """
+module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+  %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xf32>
+  %Y0 = merlin_iface.softmax %X {name = "Y0", output_dtype = "f32"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+}
+"""
+    cb = parse_interface_mlir(sm)
+    c = cb["commands"][0]
+    assert c["opcode"] == "SOFTMAX"
+    assert c["operands"] == {"src": "X", "dst": "Y0"}
+    schemas.validate_command_buffer(cb)
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    mlir = muon.get_backend("muon").muon_codegen_mlir.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(%X: !llvm.ptr, %Y0: !llvm.ptr)" in mlir
+
+
+def test_matmul_batched_mnemonic_emits_the_consumed_opcode():
+    """`merlin_iface.matmul_batched` must emit the opcode the emitter/harness/simulator CONSUME
+    (`BATCHED_MATMUL`), not the auto-upper `MATMUL_BATCHED` — else the merlin_iface batched path is dead."""
+    mb = """
+module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+  %A0 = merlin_iface.tensor {name = "A0", role = "input"} : tensor<2x16x32xf8E4M3FN>
+  %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<2x32x16xf8E4M3FN>
+  %Y0 = merlin_iface.matmul_batched %A0, %W {name = "Y0", batch = 2 : i64, output_dtype = "bf16"} : (tensor<2x16x32xf8E4M3FN>, tensor<2x32x16xf8E4M3FN>) -> tensor<32x16xbf16>
+}
+"""
+    cb = parse_interface_mlir(mb)
+    assert cb["commands"][0]["opcode"] == "BATCHED_MATMUL"
+    schemas.validate_command_buffer(cb)
+
+
+_ROPE = """
+module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+  %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xf32>
+  %Y0 = merlin_iface.rope %X {name = "Y0", theta = 10000.0 : f64, output_dtype = "f32"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+}
+"""
+
+_FUSED_MATMUL_ROPE = """
+module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+  %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xbf16>
+  %Wqkv = merlin_iface.tensor {name = "Wqkv", role = "weight"} : tensor<16x32xbf16>
+  %Wp = merlin_iface.resident_pack %Wqkv {layout = "packed_rhs"} : (tensor<16x32xbf16>) -> !merlin_iface.resident
+  %acc = merlin_iface.matmul %X, %Wp : (tensor<16x16xbf16>, !merlin_iface.resident) -> !merlin_iface.acc<f32>
+  %H = merlin_iface.commit %acc {name = "H", output_dtype = "f32"} : (!merlin_iface.acc<f32>) -> tensor<16x32xf32>
+  %Y0 = merlin_iface.rope %H {name = "Y0", theta = 10000.0 : f64, output_dtype = "f32"} : (tensor<16x32xf32>) -> tensor<16x32xf32>
+  merlin_iface.evict %Wp : (!merlin_iface.resident) -> ()
+}
+"""
+
+
+def test_rope_parses_to_the_opcode_and_operand_keys_codegen_reads():
+    cb = parse_interface_mlir(_ROPE)
+    c = cb["commands"][0]
+    assert c["opcode"] == "ROPE"
+    assert c["operands"] == {"src": "X", "dst": "Y0"}
+    schemas.validate_command_buffer(cb)
+
+
+def test_standalone_rope_reaches_the_reference_emitter():
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = parse_interface_mlir(_ROPE)
+    mlir = codegen.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(%X: !llvm.ptr, %Y0: !llvm.ptr)" in mlir
+
+
+def test_fused_matmul_rope_emits_both_stages():
+    """A matmul feeding a rope (Y = rope(X @ W)) is a supported fused kernel: the emitted function takes the
+    weight-first ABI [W, X, Y] and carries both the matmul accumulation and the sin/cos rope rewrite."""
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = parse_interface_mlir(_FUSED_MATMUL_ROPE)
+    mlir = codegen.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(%Wqkv: !llvm.ptr, %X: !llvm.ptr, %Y0: !llvm.ptr)" in mlir
+    assert "%ocos" in mlir and "%osin" in mlir     # rope stage (prefix o) present
+
+
+def test_named_ops_do_not_disturb_the_residency_grammar():
+    # a plain matmul buffer still parses to exactly its residency commands (no named-op misfire)
+    mm = """
+module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+  %A = merlin_iface.tensor {name = "A", role = "input"} : tensor<16x16xi8>
+  %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<16x16xi8>
+  %Wp = merlin_iface.resident_pack %W {layout = "packed_rhs"} : (tensor<16x16xi8>) -> !merlin_iface.resident
+  %acc = merlin_iface.matmul %A, %Wp : (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>
+  %Y = merlin_iface.commit %acc {name = "Y", output_dtype = "i8"} : (!merlin_iface.acc<i32>) -> tensor<16x16xi8>
+}
+"""
+    cb = parse_interface_mlir(mm)
+    assert [c["opcode"] for c in cb["commands"]] == ["RES_PACK", "MATMUL_RESIDENT", "COMMIT"]
+
+
+def test_named_ops_reach_the_reference_emitter():
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    for text in (_RMSNORM, _ATTN_QK):
+        cb = parse_interface_mlir(text)
+        mlir = codegen.emit_kernel_mlir(cb, target="t")
+        assert "llvm.func @t_kernel(" in mlir
+
+
+def test_vector_map_elementwise_emits_add_and_mul():
+    """The transcendental-free elementwise core (VECTOR_MAP add/mul) emits a valid single-loop kernel."""
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    for combine, fop in (("add", "llvm.fadd"), ("mul", "llvm.fmul")):
+        cb = {
+            "abi_version": "0.1", "target": "t",
+            "tensors": {"A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+                        "B": {"shape": [16, 16], "dtype": "f32", "role": "input"}},
+            "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"},
+                          "attributes": {"combine": combine}}],
+            "outputs": ["Y"],
+        }
+        mlir = codegen.emit_kernel_mlir(cb, target="t")
+        assert "llvm.func @t_kernel(%A: !llvm.ptr, %B: !llvm.ptr, %Y: !llvm.ptr)" in mlir
+        assert fop in mlir
+
+
+def test_vector_map_row_broadcast_bias_add_emits():
+    """A length-n rhs broadcasts over the m rows of an (m,n) lhs (standalone bias-add / per-channel scale)."""
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = {
+        "abi_version": "0.1", "target": "t",
+        "tensors": {"A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+                    "B": {"shape": [16], "dtype": "f32", "role": "bias"}},
+        "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"},
+                      "attributes": {"combine": "add"}}],
+    }
+    mlir = codegen.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(%A: !llvm.ptr, %B: !llvm.ptr, %Y: !llvm.ptr)" in mlir
+    assert "llvm.fadd" in mlir
+
+
+def test_vector_map_rejects_incompatible_shapes():
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = {
+        "abi_version": "0.1", "target": "t",
+        "tensors": {"A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+                    "B": {"shape": [8], "dtype": "f32", "role": "input"}},
+        "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"},
+                      "attributes": {"combine": "add"}}],
+    }
+    with pytest.raises(Exception, match="equal-shape or a row-broadcast"):
+        codegen.emit_kernel_mlir(cb, target="t")
+
+
+def test_fused_rmsnorm_matmul_emits():
+    """rmsnorm feeding a matmul (Y = rmsnorm(X,G) @ W) is a supported fused kernel."""
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = {
+        "abi_version": "0.1", "target": "t",
+        "tensors": {
+            "X": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+            "G": {"shape": [1, 16], "dtype": "f32", "role": "weight"},
+            "W": {"shape": [16, 16], "dtype": "f32", "role": "weight"},
+        },
+        "commands": [
+            {"opcode": "RMSNORM", "operands": {"src": "X", "gamma": "G", "dst": "H"},
+             "attributes": {"eps": 1e-5}},
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wp"},
+             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "H", "rhs": "Wp", "dst": "acc"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y"},
+             "attributes": {"output_dtype": "f32"}},
+        ],
+    }
+    mlir = codegen.emit_kernel_mlir(cb, target="t")
+    assert "llvm.func @t_kernel(" in mlir and "llvm.intr.sqrt" in mlir   # rmsnorm stage present
+
+
+def test_unsupported_fused_op_plus_matmul_fails_loud_not_silent():
+    """A whole-op that is NOT the supported rmsnorm->matmul fusion (here attention_qk + matmul) must fail
+    loud rather than silently emitting one half."""
+    muon = pytest.importorskip("merlin.runtime.backends.base")
+    codegen = muon.get_backend("muon").muon_codegen_mlir
+    cb = {
+        "abi_version": "0.1", "target": "t",
+        "tensors": {
+            "Q": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+            "K": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+            "W": {"shape": [16, 16], "dtype": "f32", "role": "weight"},
+        },
+        "commands": [
+            {"opcode": "ATTENTION_QK", "operands": {"q": "Q", "k": "K", "dst": "S"},
+             "attributes": {}},
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wp"},
+             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "S", "rhs": "Wp", "dst": "acc"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y"},
+             "attributes": {"output_dtype": "f32"}},
+        ],
+    }
+    with pytest.raises(Exception, match="fused"):
+        codegen.emit_kernel_mlir(cb, target="t")

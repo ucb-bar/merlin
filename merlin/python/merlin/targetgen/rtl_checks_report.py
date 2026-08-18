@@ -62,8 +62,9 @@ def load_rtl_facts(target: str, contract_path: Path | None = None,
     """RTL facts (mesh + scratchpad) for ``target`` from the CIRCT-extracted fact bundle, with an
     optional ``rtl/introspect.dump_facts`` JSON override. The mesh/scratchpad capacities are no longer
     hand-declared in target_contract.yaml — they ARE the facts — so we read them from the same
-    fact bundle the codegen/decoder do (falling back to rtl_checks.DEFAULT_RTL_FACTS). ``target`` is
-    the run's resolved target, never an assumed default."""
+    fact bundle the codegen/decoder do; a fact that cannot be derived stays UNKNOWN (fail-closed, the
+    consuming checks skip it) rather than falling back to a baked default. ``target`` is the run's
+    resolved target, never an assumed default."""
     facts = rtl_checks.load_default_facts(target)
     if introspect_json and Path(introspect_json).is_file():
         ov = json.loads(Path(introspect_json).read_text(encoding="utf-8"))

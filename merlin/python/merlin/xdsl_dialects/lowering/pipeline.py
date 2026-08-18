@@ -98,9 +98,11 @@ def lower_module(
     * every other op in the block either feeding that payload or being contract/schedule
       decoration (see :func:`interface_lowering.lower_to_interface`'s completeness check).
 
-    ``target_package`` (a merlin.targetgen.registry.TargetPackage) lowers through an ISOLATED,
-    dynamically-loaded target dialect instead of a built-in reference target — no core edits,
-    plug-and-play. Built-in reference targets (toy_npu, saturn) still work via ``target``.
+    This is the whole-model / section compiler entry: ``input_module`` may hold a single matmul,
+    the MVP repeated-RHS workload, a chained multi-layer model, or a sliced section — the staged
+    descent is the same. ``target_package`` (a merlin.targetgen.registry.TargetPackage) lowers
+    through an ISOLATED, dynamically-loaded target dialect (no core edits, plug-and-play); built-in
+    reference targets (toy_npu, saturn) still work via ``target``.
     """
     if not HAS_XDSL:
         raise LoweringError("xDSL is required for the lowering pipeline")

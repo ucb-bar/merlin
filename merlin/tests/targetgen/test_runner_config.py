@@ -32,6 +32,7 @@ def _simt_manifest() -> CapabilityManifest:
         suite="muon-perf-bench", dtype="f32", fourth_output_name=None,
         tier_sim={"L2": "cyclotron", "L3": "vcs"}, rtl_tiers=("L3",),
         perf_fields=("flops", "gflops", "pct_fp_peak"), trace_gate=None,
+        force_match_policy={"compare": "float", "atol": 1e-3},
         encoding_required=False, encoding={}, contract={})
 
 
@@ -46,6 +47,7 @@ def test_simt_config_matches_muon_runner_constants():
     assert cfg.oracle_tiers == ("L2", "L3")
     assert cfg.perf_fields == ("flops", "gflops", "pct_fp_peak")
     assert cfg.trace_gate is None                             # no RoCC trace gate on the SIMT path
+    assert cfg.force_match_policy == {"compare": "float", "atol": 1e-3}  # float device -> tolerant match
 
 
 def test_config_is_frozen_pure_data():

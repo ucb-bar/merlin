@@ -23,10 +23,7 @@
         "required": ["index", "class"],
         "properties": {
           "index": {"type": "integer", "minimum": 0},
-          "class": {"type": "string", "enum": [
-            "CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
-            "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV", "UNKNOWN"
-          ]},
+          "class": {"type": "string", "minLength": 1, "description": "Decoded instruction class. NOT a hardcoded (gemmini-RoCC) list — the class vocabulary is the target's own ISA taxonomy (isa_taxonomy), the same rationale as capsule.schema expected.instruction_classes; validity is the per-target coverage checker, not this schema. 'UNKNOWN' remains the fail-closed marker the decoder emits."},
           "funct": {"type": ["integer", "null"]},
           "raw": {"type": "string"},
           "rs1": {"$ref": "#/$defs/operand"},

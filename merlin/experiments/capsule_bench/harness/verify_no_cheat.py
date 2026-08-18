@@ -18,6 +18,7 @@ arm contrast is honest. Five checks:
 Exit 0 = safe to launch. Non-zero = DO NOT launch.  Usage: verify_no_cheat.py
 """
 from __future__ import annotations
+import ast
 import re
 import sys
 from pathlib import Path
@@ -165,12 +166,93 @@ def check_audit_regression() -> tuple[bool, list[str]]:
     return (not probs), probs
 
 
+# ---- check 6: no workload-specific constants baked into a frozen submission ----------------------
+# A generated compiler must GENERALIZE — it may carry legal target-derived thresholds (`if K >= tile*4`,
+# arithmetic on the mesh dim), but NOT a dispatch keyed to a specific workload's shape or name
+# (`if M == 512`, `if model_name == "llama"`, `M in (512, 4096)`). We detect the latter structurally
+# (AST), never the former: only EQUALITY / membership of a shape identifier against a real-dimension
+# literal, or a name identifier against a string literal, is a hit. `>=`/`<`/`*` and small structural
+# guards (== 0/1/2/...) are legal and pass.
+_SHAPE_IDENTS = {"m", "n", "k", "rows", "cols", "seq", "seqlen", "seq_len", "batch", "bsz",
+                 "dim", "hidden", "hidden_size", "heads", "n_heads", "d_model", "shape"}
+_NAME_IDENTS = {"model_name", "model", "workload", "capsule", "capsule_name", "arch", "net", "task"}
+_LEGAL_SMALL_INTS = {0, 1, 2, 3, 4, 8}   # structural guards, not a hardcoded tensor dimension
+
+
+def _ident_of(node: ast.AST) -> str | None:
+    """Lowercased identifier for a Name or a trailing attribute (`cfg.model_name` -> 'model_name')."""
+    if isinstance(node, ast.Name):
+        return node.id.lower()
+    if isinstance(node, ast.Attribute):
+        return node.attr.lower()
+    return None
+
+
+def scan_workload_constants(root: Path) -> list[str]:
+    """Structurally flag workload-specific dispatch in the .py under ``root`` (a frozen submission).
+
+    Returns a list of ``file:line — reason`` findings; empty == clean. Uses the AST so a comment or a
+    string that merely mentions a shape does not trip it, and legal target-derived thresholds pass.
+    """
+    hits: list[str] = []
+    root = Path(root)
+    for p in sorted(root.rglob("*.py")):
+        if "__pycache__" in str(p):
+            continue
+        try:
+            tree = ast.parse(p.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError):
+            continue
+        rel = p.relative_to(root) if root in p.parents else p.name
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Compare) or len(node.ops) != 1:
+                continue
+            op = node.ops[0]
+            operands = [node.left, node.comparators[0]]
+            idents = {_ident_of(o) for o in operands}
+            # shape identifier == / != a real-dimension integer literal → hardcoded shape dispatch
+            if isinstance(op, (ast.Eq, ast.NotEq)) and idents & _SHAPE_IDENTS:
+                for o in operands:
+                    if isinstance(o, ast.Constant) and isinstance(o.value, int) \
+                            and o.value not in _LEGAL_SMALL_INTS:
+                        hits.append(f"{rel}:{node.lineno} — shape identifier compared to literal "
+                                    f"{o.value} (hardcoded-shape dispatch)")
+            # shape identifier IN a tuple/list of dimension literals → same, spelled as membership
+            if isinstance(op, ast.In) and _ident_of(node.left) in _SHAPE_IDENTS \
+                    and isinstance(node.comparators[0], (ast.Tuple, ast.List, ast.Set)):
+                lits = [e.value for e in node.comparators[0].elts
+                        if isinstance(e, ast.Constant) and isinstance(e.value, int)]
+                if any(v not in _LEGAL_SMALL_INTS for v in lits):
+                    hits.append(f"{rel}:{node.lineno} — shape identifier tested against a set of "
+                                f"dimension literals {lits} (hardcoded-shape dispatch)")
+            # name/workload identifier == a string literal → model/workload branch
+            if isinstance(op, (ast.Eq, ast.NotEq)) and idents & _NAME_IDENTS:
+                for o in operands:
+                    if isinstance(o, ast.Constant) and isinstance(o.value, str):
+                        hits.append(f"{rel}:{node.lineno} — workload/model name compared to "
+                                    f"{o.value!r} (workload-specific branch)")
+    return hits
+
+
+def check_workload_constants() -> tuple[bool, list[str]]:
+    """Scan any materialized submission trees for workload-specific constants (empty == nothing to
+    scan yet, which passes — the substantive scan runs post-freeze in grade_agent_run)."""
+    probs: list[str] = []
+    runs = EXP / "runs"
+    if runs.is_dir():
+        for sub in sorted(runs.glob("*/*/submission")):
+            for h in scan_workload_constants(sub):
+                probs.append(f"{sub.parent.name}: {h}")
+    return (not probs), probs
+
+
 CHECKS = [
     ("1. no answer-content in shipped tools/prompts", check_answer_content),
     ("2. moat separation (RTL facts = CIRCT arm only)", check_moat),
     ("3. prompt↔grant consistency", check_grant_consistency),
     ("4. kit parity (both merlin arms; baseline none)", check_kit_parity),
     ("5. audit no-regression on abc4", check_audit_regression),
+    ("6. no workload-specific constants in submissions", check_workload_constants),
 ]
 
 

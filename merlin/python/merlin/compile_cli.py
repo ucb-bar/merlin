@@ -200,8 +200,12 @@ def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
 
 def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: str | None,
                 auto_capture: bool, timeout: int, harts: int = 1, iters: int = 1,
-                warmup: int = 0) -> dict:
-    """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden)."""
+                warmup: int = 0, kernel_backend: str | None = None,
+                mesh_target: str | None = None) -> dict:
+    """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
+
+    ``kernel_backend='mesh'`` + ``mesh_target`` runs the model's matmul LAYERS on that target's
+    accelerator mesh (host dispatch runtime, each matmul injected onto the mesh oracle)."""
     import numpy as np
     from .rvvgen import k1
     from .rvvgen.registry import load_rvv_package
@@ -248,7 +252,13 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     if run == "host":
         from .runtime.dispatch_runtime import run_model
 
-        res = run_model(bundle, work, int8_compute=pkg.is_int8)
+        res = run_model(bundle, work, int8_compute=pkg.is_int8,
+                        kernel_backend=kernel_backend, mesh_target=mesh_target)
+        if kernel_backend == "mesh":
+            from .runtime import dispatch_runtime as _dr
+            out["mesh_execution"] = {"target": mesh_target,
+                                     "matmul_layers_on_mesh": getattr(_dr.execute, "mesh_ran", None),
+                                     "matmul_layers_host_fallback": getattr(_dr.execute, "mesh_fell_back", None)}
         out["status"] = "ran"
         out["n_kernels"] = res.get("n_kernels")
         if refs:
@@ -349,6 +359,635 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     return out
 
 
+def _default_oot_package(target: str) -> str | None:
+    """The conventional OOT backend package for ``target``, or None when the target ships no default (a
+    bespoke-layout target must name it via ``--package``). Prefers the agent-submission package
+    (``.../targets/<target>/agent_spec_v1_mlir_oot`` — the SAME default ``compile_oot`` resolves, so on-mesh
+    tile verification reuses it verbatim) and falls back to a hand-curated REFERENCE backend package
+    (``.../reference_v0``) when a target ships one instead of an agent submission (e.g. a SIMT core whose
+    deterministic reference lowering is the package). Target-agnostic — both are directory conventions, not
+    target literals."""
+    from .common.artifacts import artifacts_dir
+    base = artifacts_dir() / "targets" / target
+    for pkg_id in ("agent_spec_v1_mlir_oot", "reference_v0"):
+        cand = base / pkg_id
+        if (cand / "manifest.yaml").is_file():
+            return str(cand)
+    return None
+
+
+def _dtype_bytes(tok: str | None) -> int:
+    """Byte width of an operand dtype token (i8/i16/i32/f16/f32/…). Defaults to 1 (int8-class)."""
+    if not tok:
+        return 1
+    digits = "".join(ch for ch in str(tok) if ch.isdigit())
+    return max(1, int(digits) // 8) if digits else 1
+
+
+def _scratchpad_capacity_elems(target: str, dtype_bytes: int) -> int | None:
+    """On-chip operand-store capacity (in elements of ``dtype_bytes``) DERIVED from the target's RTL
+    memory facts (the ``scratchpad`` memory's byte size); None when facts don't declare it (fail-open —
+    the caller then keeps the untiled extent). Never a hardcoded capacity."""
+    try:
+        from .targetgen.rtl import facts as _facts
+        mems = (_facts.load_facts(target).get("facts") or {}).get("memories") or []
+    except Exception:  # noqa: BLE001 — no facts bundle → capacity unknown, caller falls back
+        return None
+    sp = next((m for m in mems if m.get("name") == "scratchpad"), None)
+    nbytes = sp.get("bytes") if sp else None
+    return int(nbytes) // max(1, dtype_bytes) if nbytes else None
+
+
+def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int) -> tuple[int, int, int, int]:
+    """Shrink a matmul (M,K,N) to the largest D-aligned tile whose on-chip working set — the weight
+    tile K·N plus the activation tile M·K — fits ``cap_elems``, and return (mt,kt,nt,n_tiles) where
+    n_tiles is how many such tiles cover the layer. Keeps M whole (the row dim streams); halves the
+    larger of K/N (never below D) until the tile fits. Pure arithmetic, target-agnostic."""
+    def _fits(mt, kt, nt):
+        return kt * nt + mt * kt <= cap_elems
+
+    mt, kt, nt = M, K, N
+    while not _fits(mt, kt, nt) and (kt > D or nt > D):
+        if nt >= kt and nt > D:
+            nt = max(D, (nt // 2 // D) * D or D)
+        elif kt > D:
+            kt = max(D, (kt // 2 // D) * D or D)
+        else:
+            nt = max(D, (nt // 2 // D) * D or D)
+    import math
+    n_tiles = math.ceil(M / mt) * math.ceil(K / kt) * math.ceil(N / nt)
+    return mt, kt, nt, n_tiles
+
+
+def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str | None,
+                       requant_output_dtype: str | None = None):
+    """A ``corpus_spec.CorpusBinding`` for synthesizing a single systolic mesh tile of ``target``, with the
+    operand/accumulate datapath pinned to what the routed op actually needs (derived, never assumed). The
+    tile dim, compare policy, and instruction-class deriver all come from the target's own descriptor +
+    manifest via ``derive_binding`` — no target literal, no hand-set dims.
+
+    ``requant_output_dtype`` (the narrow dtype an ``acc_scale`` epilogue requants the i32 accumulator to,
+    e.g. i8) is passed only when the caller needs a requant handoff — an int8 matmul chain commits each
+    layer's accumulator back to i8 so it can feed the next mesh layer."""
+    from types import SimpleNamespace
+    from .targetgen import corpus_spec as CS
+    from .targetgen.capsule_runner import _bespoke_sim_via
+    te = SimpleNamespace(target=target, sim_via=_bespoke_sim_via(target))
+    datapath: dict = {}
+    if operand_dtype:
+        datapath["operand_dtype"] = operand_dtype
+    if accum_dtype:
+        datapath["accum_dtype"] = accum_dtype
+    if requant_output_dtype:
+        datapath["requant_output_dtype"] = requant_output_dtype
+    return CS.derive_binding(te, datapath)
+
+
+def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) -> dict:
+    """Execute each mesh-routed matmul as a single systolic tile on the target's REAL mesh oracle.
+
+    For every op the router placed on the accelerator mesh (``plan["mesh"]``), synthesize its
+    ``merlin_iface`` tile capsule (``corpus_spec.build_matmul`` — one ``DxD`` tile at the target's derived
+    mesh dimension, in the op's routed operand/accumulate dtype) and run it through the EXISTING
+    ``oot_runner.certify`` accelerator path (the same one ``compile_oot`` uses). ``certify`` gates the
+    emitted kernel's output bit-exact (integer) / within-tolerance (float) against the command buffer's
+    mathematical reference == simulate == the RTL/mesh oracle — so a PASS is proof the matmul executed
+    correctly ON the mesh, not merely that a routing plan was produced.
+
+    FAIL-CLOSED: a tile whose oracle is unavailable is recorded ``oracle_unavailable`` (never a silent pass);
+    an op with no single-tile synthesizer is recorded honestly and never counted as executed."""
+    import tempfile
+    from .targetgen import oot_runner
+    from .targetgen import corpus_spec as CS
+    from .benchharness import runs_root
+
+    pkg_dir = package or _default_oot_package(target)
+    out: dict = {"n_tiles": 0, "n_passed": 0, "n_failed": 0, "n_unavailable": 0,
+                 "n_unsynthesizable": 0, "package": pkg_dir, "per_tile": []}
+    if pkg_dir is None:
+        out["status"] = "not_run"
+        out["reason"] = (f"no default OOT backend package for target {target!r}; pass --mesh-package "
+                         f"to name one")
+        return out
+    # Build the OOT backend ONCE up front so a broken build is a single honest not_run, not a per-tile
+    # storm. certify re-runs an incremental (no-op) build per tile — harmless.
+    try:
+        oot_runner.build_package(oot_runner.load_package(pkg_dir), timeout=timeout)
+    except Exception as e:  # noqa: BLE001 — a build failure is honest not_run, never a fake mesh pass
+        out["status"] = "not_run"
+        out["reason"] = f"OOT backend build failed: {type(e).__name__}: {str(e)[-400:]}"
+        return out
+
+    # Real RTL oracle by default (verilator); MERLIN_MESH_SIM can select spike (functional bootstrap) or
+    # verilator (cycle-accurate RTL). The whole point of on-hardware validation is the RTL, not the ISS.
+    import os
+    sim = os.environ.get("MERLIN_MESH_SIM", "verilator")
+    rr = runs_root(target, "mesh_verify")
+    for i, r in enumerate(plan.get("mesh", [])):
+        d = r.demand
+        op = "matmul" if d.op in ("matmul", "linear") else d.op
+        rec: dict = {"op": d.op, "site": d.site}
+        if op not in CS.BUILDERS:
+            out["n_unsynthesizable"] += 1
+            rec.update(status="no_tile_synthesizer",
+                       reason=f"no single-tile capsule synthesizer for mesh op {d.op!r}")
+            out["per_tile"].append(rec)
+            continue
+        try:
+            binding = _mesh_tile_binding(target, d.in_fmt, r.acc)
+            D = binding.tile_dim
+            # compile the matmul LAYER at its REAL extent when the router carried one (rounded up to the
+            # mesh dim — the backend tiles it into DxD tiles); else a single DxD tile.
+            def _rup(x):
+                return D if not x else ((int(x) + D - 1) // D) * D
+            M, K, N = (_rup(d.m), _rup(d.k), _rup(d.n)) if (d.m and d.k and d.n) else (D, D, D)
+            # A whole layer's weight tile (K·N) + activation (M·K) may exceed the on-chip operand store;
+            # shrink to the largest capacity-fit tile (derived from the target's scratchpad memory fact)
+            # and record how many such tiles cover the layer. The certified tile is the layer's real
+            # repeating unit — a fit tile that passes proves the layer runs on the mesh once tiled. When
+            # the capacity fact is absent we keep the untiled extent (prior behavior).
+            layer_extent = f"{M}x{K}x{N}"
+            n_subtiles = 1
+            sp_cap = _scratchpad_capacity_elems(target, _dtype_bytes(binding.operand_dtype))
+            if sp_cap and (K * N + M * K) > sp_cap:
+                M, K, N, n_subtiles = _capacity_fit_tile(M, K, N, D, sp_cap)
+            entry = {"name": f"mesh_tile_{i}_{op}", "op": op, "kind": "op",
+                     "source_role": "mesh_tile_synthesized",
+                     "source_reference": f"whole-model op {d.op} [{d.site}]: layer {layer_extent} on the "
+                                         f"mesh as {n_subtiles} capacity-fit {M}x{K}x{N} tile(s)",
+                     "M": M, "K": K, "N": N}
+            capsule, mlir = CS.build(entry, binding)
+        except Exception as e:  # noqa: BLE001 — a synthesis failure is recorded, never a fake pass
+            out["n_unsynthesizable"] += 1
+            rec.update(status="synth_error", reason=f"{type(e).__name__}: {str(e)[-300:]}")
+            out["per_tile"].append(rec)
+            continue
+        rec.update(M=M, K=K, N=N, layer_extent=layer_extent, n_subtiles=n_subtiles,
+                   operand_dtype=binding.cap_dtype(binding.operand_dtype),
+                   output_dtype=binding.cap_dtype(binding.accum_dtype), sim=sim)
+        with tempfile.TemporaryDirectory(prefix="mesh_tile_") as td:
+            iface = Path(td) / f"{entry['name']}.interface.mlir"
+            iface.write_text(mlir, encoding="utf-8")
+            res = oot_runner.certify(pkg_dir, iface, runs_root=str(rr), run_id=entry["name"],
+                                     simulator=sim, target=target, timeout=timeout)
+        oracle = res.get("oracle") or {}
+        out["n_tiles"] += 1
+        rec.update(oracle_kind=oracle.get("kind"), oracle_result=oracle.get("result"),
+                   cycles=oracle.get("cycles"))
+        if oracle.get("result") == "skipped":
+            out["n_unavailable"] += 1
+            rec["status"] = "oracle_unavailable"
+            rec["reason"] = (res.get("failure") or {}).get("detail") or "mesh oracle unavailable in this env"
+        elif res.get("status") == "pass":
+            out["n_passed"] += 1
+            rec["status"] = "pass"
+        else:
+            out["n_failed"] += 1
+            rec["status"] = "fail"
+            rec["reason"] = (res.get("failure") or {}).get("detail")
+        out["per_tile"].append(rec)
+
+    if out["n_tiles"] == 0:
+        out["status"] = "no_mesh_matmuls" if out["n_unsynthesizable"] == 0 else "no_synthesizable_mesh_ops"
+    elif out["n_unavailable"] == out["n_tiles"]:
+        out["status"] = "oracle_unavailable"
+    elif out["n_passed"] == out["n_tiles"]:
+        out["status"] = "verified"
+    else:
+        out["status"] = "partial"
+    out["note"] = (
+        "each mesh-routed matmul LAYER is verified by EXECUTING its capacity-fit tile on the target mesh "
+        f"oracle (simulator={sim}): the tile is the largest D-aligned unit whose weight+activation working "
+        "set fits the target's DERIVED scratchpad capacity (n_subtiles = how many tile it into the layer); "
+        "the emitted kernel's output is gated (bit-exact int / tolerance float) against the command buffer's "
+        "reference == simulate == oracle three-way. A fit tile that certifies proves the layer runs on the "
+        "mesh once tiled. The remaining gap is the single SPLICED image (all layers' mesh kernels + the "
+        "scalar/RVV remainder co-scheduled in one binary with activations handed between layers) — see "
+        "compile_model's docstring.")
+    return out
+
+
+def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | None = None,
+                       accum_dtype: str | None = None, simulator: str | None = None,
+                       package: str | None = None, epilogue: list | None = None,
+                       acc_scale: float | None = None, timeout: int = 900) -> list | None:
+    """Execute ``A @ W`` on the target's mesh oracle with the REAL operand values INJECTED (not
+    materialized-from-name), and return the mesh's output tensor (nested list) — or ``None`` when this
+    target has no reachable mesh path. ``A`` / ``W`` are the layer's real activations / weights.
+
+    ``epilogue`` (e.g. ``["acc_scale"]``) applies the accumulator epilogue the layer commits with; an
+    ``acc_scale`` epilogue re-quantizes the i32 accumulator to the target's narrow requant dtype (the
+    target-declared ``requant_output_dtype``, e.g. i8 for an integer mesh) by the float ``acc_scale`` +
+    saturating cast, so the layer's output is a same-dtype activation that can feed the NEXT mesh layer —
+    this is what makes an int8 matmul CHAIN executable on the mesh end to end (the requant handoff).
+
+    TARGET-AGNOSTIC: it dispatches on the target's DERIVED ``endpoint_kind`` (from the contract, never a
+    literal) to that target's OWN oracle — a systolic/RoCC target (``inline_asm_insn``) through its generated
+    OOT-package cert path, a self-hosted-ISA target (``external_backend``) through the program oracle whose
+    RTL cosim mlc DERIVES from the target. The per-target kernel + harness come from the GENERATED package;
+    this tool only builds the merlin_iface interface, injects the operands, and reads the output back.
+    Fail-closed (``None``) on an unavailable oracle or an endpoint with no mesh path (never a fabricated
+    result)."""
+    from .targetgen import corpus_spec as CS
+    from .targetgen.capsule_runner import _bespoke_sim_via, _endpoint_of, _SIM_ORACLES
+
+    endpoint, model_ext = _endpoint_of(target)
+    M, K, N = len(A), len(A[0]), len(W[0])
+    # An acc_scale requant commits the accumulator back to the operand's narrow dtype so the layer's
+    # output can feed the next mesh layer (the int8 chain handoff); tell the binding that narrow dtype.
+    requant_out = (operand_dtype or "i8") if (epilogue and "acc_scale" in epilogue) else None
+    binding = _mesh_tile_binding(target, operand_dtype, accum_dtype, requant_output_dtype=requant_out)
+    entry = {"name": "mesh_layer", "op": "matmul", "kind": "op",
+             "source_role": "mesh_layer_real_operands",
+             "source_reference": f"whole-model matmul layer {M}x{K}x{N} on the mesh with real operands",
+             "M": M, "K": K, "N": N, "lhs": "A0", "weight": "W", "out": "Y0"}
+    if epilogue:
+        entry["epilogue"] = list(epilogue)
+        if acc_scale is not None:
+            entry["acc_scale"] = float(acc_scale)
+    _, mlir = CS.build(entry, binding)
+
+    # DISPATCH ORDER is deliberate (mirrors capsule_runner.oracle_adapters): a target whose contract
+    # DECLARES an EXCLUSIVE bespoke sim (a self-hosted SIMT core graded on its own emitted kernel by its
+    # own oracle, e.g. a cyclotron/muon backend) is routed FIRST — its endpoint is ALSO external_backend,
+    # but the arc command-buffer program oracle grades the WRONG artifact for a SIMT kernel, so the bespoke
+    # executor must take precedence. Only when no exclusive sim is declared does the endpoint kind pick the
+    # path. Derived from the contract's sim_via + the _SIM_ORACLES registry — never a target-name branch.
+    so = _SIM_ORACLES.get(_bespoke_sim_via(target))
+    if so is not None and so.exclusive:
+        return _matmul_via_bespoke_sim(target, mlir, A, W, package=package, timeout=timeout)
+    if endpoint in (None, "inline_asm_insn", "upstream_target"):
+        return _matmul_via_oot_cert(target, mlir, A, W, simulator=simulator, package=package, timeout=timeout)
+    if endpoint == "external_backend":
+        return _matmul_via_program_oracle(target, mlir, A, W, model_ext=model_ext,
+                                          package=package, timeout=timeout)
+    return None                                  # no mesh-execution path derived for this endpoint kind
+
+
+def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout) -> list | None:
+    """Systolic/RoCC path: certify the matmul through the target's generated OOT package on its ELF/mesh
+    oracle, with the real operands injected (``inputs`` -> the package harness's ``materialize_inputs``)."""
+    import os
+    import tempfile
+    from .benchharness import runs_root
+    from .targetgen import oot_runner
+    sim = simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")
+    pkg = package or _default_oot_package(target)
+    if pkg is None:
+        return None
+    with tempfile.TemporaryDirectory(prefix="mesh_layer_") as td:
+        iface = Path(td) / "mesh_layer.interface.mlir"
+        iface.write_text(mlir, encoding="utf-8")
+        res = oot_runner.certify(pkg, iface, runs_root=str(runs_root(target, "mesh_run")),
+                                 run_id="mesh_layer", simulator=sim, target=target, timeout=timeout,
+                                 inputs={"A0": A, "W": W})
+    if res.get("status") != "pass":
+        return None
+    return (res.get("oracle_outputs") or {}).get("Y0")
+
+
+def _matmul_via_program_oracle(target, mlir, A, W, *, model_ext, package, timeout) -> list | None:
+    """Self-hosted-ISA (external_backend) path: emit the target's kernel from the interface through its
+    generated OOT package (target-agnostic ``run_entrypoints``), inject the real operands onto the command
+    buffer's leaf tensors, and run on the target's mlc-DERIVED arc cosim via the generic program oracle.
+    Returns the output or ``None`` (fail-closed). The kernel/codegen is the GENERATED package's; the operand
+    injection + oracle dispatch are target-agnostic. Requires ``model_ext`` (the operand-layout model)."""
+    if not model_ext:
+        return None
+    from .targetgen import mesh_program_run
+    return mesh_program_run.matmul_on_program_oracle(
+        target, mlir, A, W, model_ext=model_ext, package=package or _default_oot_package(target),
+        timeout=timeout)
+
+
+def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | None:
+    """Exclusive bespoke-sim path: a self-hosted SIMT core (endpoint ``external_backend``) graded on the
+    kernel its OWN generated package emits, by its OWN declared bespoke oracle (e.g. cyclotron via the muon
+    backend) — NOT the arc command-buffer program oracle, which would grade the wrong artifact for a SIMT
+    kernel. Emits the matmul kernel from the target's generated OOT package via the SAME target-agnostic
+    entrypoint runner the grader uses (``capsule_common.run_entrypoints``), INJECTS the real ``A``/``W``
+    operands onto the command buffer's leaf tensors (``preload_b64``, decoded harness-side by
+    ``muon_harness``), runs on the target's DECLARED exclusive bespoke oracle, and reads the named output
+    tensor (``Y0``) back off the device. Target-agnostic: the sim engine + adapters come from the DERIVED
+    ``_SIM_ORACLES`` entry (contract ``sim_via``); the kernel/codegen is the generated package's. Fail-closed
+    (``None``) on a missing package, an unavailable oracle, or an entrypoint/oracle failure — never a
+    fabricated result."""
+    import base64
+    import tempfile
+
+    from .benchharness import runs_root
+    from .targetgen import capsule_common as CC
+    from .targetgen import capsule_runner as CR
+    from .targetgen import mesh_program_run as MP
+    from .targetgen.capsule_common import make_run_paths
+
+    pkg = package or _default_oot_package(target)
+    if pkg is None:
+        return None
+    so = CR._SIM_ORACLES.get(CR._bespoke_sim_via(target))
+    if so is None or not so.exclusive:
+        return None
+    ok, _reason = so.available(target)
+    if not ok:
+        return None
+    adapters = so.adapters(target)                    # {tier: adapter}
+    # The FUNCTIONAL tier (L2) carries the numeric grade for a SIMT core; fall back to any adapter present.
+    run = adapters.get("L2") or next(iter(adapters.values()), None)
+    if run is None:
+        return None
+
+    with tempfile.TemporaryDirectory(prefix="mesh_bsim_") as td:
+        tdp = Path(td)
+        cdir = tdp / "cap"
+        cdir.mkdir(parents=True, exist_ok=True)
+        (cdir / "capsule.interface.mlir").write_text(mlir, encoding="utf-8")
+        capsule = {"name": "mesh_layer", "kind": "op", "interface_mlir": "capsule.interface.mlir",
+                   "operation": {"op": "matmul", "attributes": {}}, "__dir__": str(cdir),
+                   "required_oracle_tiers": ["L2"]}
+        paths = make_run_paths(runs_root(target, "mesh_bsim"), "mesh_layer", suite="mesh",
+                               target=target, dtype="prog", benchmark="mesh_layer")
+        try:
+            _pkg, cb, kernel_text = CC.run_entrypoints(None, pkg, capsule, paths, contract=None,
+                                                       timeout=timeout, fourth_output_name="kernel.cpp")
+        except Exception:                             # noqa: BLE001 — package can't emit this kernel: honest None
+            return None
+        if cb is None or not kernel_text:
+            return None
+        # INJECT the real operands onto the cb's leaf tensors (encoded for each tensor's declared dtype);
+        # the muon harness decodes ``preload_b64`` and embeds THESE values instead of the materialized ones.
+        operands = {"A0": A, "W": W}
+        for tname, tspec in (cb.get("tensors") or {}).items():
+            if tspec.get("role") in ("input", "weight", "bias") and tname in operands:
+                raw = MP._encode_operand(operands[tname], tspec.get("dtype", "f32"))
+                if raw is None:
+                    return None
+                tspec["preload_b64"] = base64.b64encode(raw).decode()
+        try:
+            res = run(cb, kernel_text, tdp / "oracle", timeout)
+        except Exception:                             # noqa: BLE001 — oracle unavailable / run failure: fail closed
+            return None
+        outs = res.get("outputs") or {}
+        return outs.get("Y0") or next(iter(outs.values()), None)
+
+
+def run_whole_model_on_mesh(target: str, module, *, in_fmt: str = "f32",
+                            weight_fmt: str | None = None, leaf_values: dict | None = None,
+                            operand_dtype: str | None = None, accum_dtype: str | None = None,
+                            simulator: str | None = None, package: str | None = None,
+                            ref_target: str = "toy_npu", seed: int = 0, timeout: int = 900) -> dict:
+    """Execute a WHOLE MODEL co-scheduled across the target's mesh + scalar lanes on the REAL oracle.
+
+    Routes ``module``'s ops (``mesh_program_run.demands_from_module``), builds the co-scheduled
+    whole-model program, then walks it IN ORDER: each mesh matmul LAYER runs on the target's real oracle
+    (``run_matmul_on_mesh`` — the operands injected, the kernel emitted by the target's generated OOT
+    package, the output read back off the device), while norms/activations/elementwise run inline on the
+    scalar lane, and every layer's on-device output is handed to the op that consumes it. The final tensor
+    is gated against the whole-model engine reference (``lower_module`` of the entire module) — a PASS is
+    proof the model ran end-to-end with its matmul layers ON the mesh, not merely that a plan was produced.
+
+    This is the single co-scheduled whole-model run (mesh layers on hardware + scalar lane inline +
+    inter-lane activation handoff). It is TARGET-AGNOSTIC: the lane split is READ from the routing plan, the
+    layer extents from the module's def-use edges, the kernel from the generated package. FAIL-CLOSED: a
+    layer with no reachable oracle returns ``status="oracle_unavailable"`` (never a fabricated result).
+
+    Residual toward a single fused binary: this co-schedules the mesh kernels with the scalar lane
+    host-driven (one program, multiple dispatched kernels), not yet ONE fused kernel in a single device
+    address space — that final slice is the OOT backend emitting the whole loop nest inline. Seeded with
+    small-integer operands by default so an integer mesh reproduces the f32 reference bit-exact."""
+    import os
+
+    import numpy as np
+
+    from .targetgen import compute_units as _cu
+    from .targetgen import mesh_program_run as mp
+    from .targetgen import routing as _routing
+    from .targetgen import target_registry as tr
+    from .xdsl_dialects.lowering import execute, lower_module
+
+    fn = next(op for op in module.walk() if op.name == "func.func")
+    args = list(fn.body.blocks[0].args)
+
+    def _shape(v):
+        return [int(d) for d in v.type.get_shape()]
+
+    rng = np.random.default_rng(seed)
+    if leaf_values is None:
+        # Small integer operands: an integer mesh (e.g. int8·int8->int32) reproduces the f32 engine
+        # reference EXACTLY, so the whole-model gate is bit-exact rather than tolerance-bounded.
+        arrays = {a: np.rint(rng.standard_normal(tuple(_shape(a))) * 3).clip(-8, 7).astype(np.float32)
+                  for a in args}
+    else:
+        by_index = {a.index: a for a in args}
+        arrays = {by_index[int(k[1:])]: np.asarray(v, dtype=np.float32) for k, v in leaf_values.items()}
+
+    # Route + build the co-scheduled program, then run its mesh lane on the REAL oracle.
+    demands = mp.demands_from_module(module, in_fmt, weight_fmt)
+    plan = _routing.route_plan_on(demands, _cu.compute_units(tr.load_contract(target)))
+    program = mp.build_whole_model_program(plan, target, module)
+    seed_leaves = {f"L{a.index}": arrays[a] for a in args if f"L{a.index}" in program.leaves}
+
+    # Whole-model reference (the numeric gate). A module in the engine's op vocabulary lowers+runs as ONE
+    # module on the target-agnostic engine (through an in-tree ``ref_target``); a module carrying a
+    # transcendental / fused op the engine cannot evaluate (softmax/rmsnorm/rope/attention/…) is gated
+    # against a host-eager numpy recomputation of the whole model instead. Either way the mesh execution
+    # below runs the matmul layers on the REAL ``target`` hardware; both must agree on the whole-model result.
+    if mp._engine_can_lower(module):
+        ref_names = mp._reference_leaf_names(module)
+        ref_inj = {ref_names[a]: arrays[a].tolist() for a in args}
+        ref_final = np.asarray(next(iter(
+            execute(lower_module(module, target=ref_target), ref_inj)["outputs"].values())))
+        ref_kind = "engine"
+    else:
+        ref_final = mp._host_eager_final(program, seed_leaves)
+        ref_kind = "host_eager"
+
+    per_layer: list = []
+
+    def _mesh_exec(lhs, rhs, step):
+        la, ra = np.asarray(lhs), np.asarray(rhs)
+        got = run_matmul_on_mesh(target, la.tolist(), ra.tolist(),
+                                 operand_dtype=operand_dtype, accum_dtype=accum_dtype,
+                                 simulator=simulator, package=package, timeout=timeout)
+        # extents read from the actual operands (a fused op's matmul sub-ops carry the sub-op shapes, not
+        # the enclosing step's), so the per-layer log is honest for attention/geglu as well as plain matmuls.
+        per_layer.append({"index": step.index, "m": int(la.shape[0]), "k": int(la.shape[1]),
+                          "n": int(ra.shape[1]), "unit": step.unit,
+                          "oracle": "ok" if got is not None else "unavailable"})
+        return got
+
+    base = {"target": target, "ref_target": ref_target, "ref_kind": ref_kind,
+            "n_steps": len(program.steps), "n_mesh": program.n_mesh(),
+            "n_scalar": program.n_scalar(), "output_id": program.output, "per_layer": per_layer,
+            "simulator": simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")}
+    try:
+        spliced = mp.run_whole_model_program(program, seed_leaves, mesh_exec=_mesh_exec)
+    except mp.MeshLayerUnavailable as e:
+        return {**base, "status": "oracle_unavailable", "reason": str(e)}
+
+    spliced_final = spliced["outputs"][program.output]
+    exact = bool(np.array_equal(spliced_final, ref_final))
+    match = bool(np.allclose(spliced_final, ref_final, rtol=1e-4, atol=1e-4))
+    return {**base, "status": "pass" if match else "fail", "exact": exact, "match": match,
+            "note": "single co-scheduled whole-model run: matmul layers executed on the real mesh oracle, "
+                    "scalar/vector lane inline, activations handed between lanes; gated vs the whole-model "
+                    "engine reference. Residual: host-driven multi-kernel, not yet one fused address-space "
+                    "image."}
+
+
+def _int8_chain_reference(A0, weights: list, acc_scale: float):
+    """Host int8 matmul-chain reference matching the mesh's per-layer requant EXACTLY: i32 accumulate,
+    gemmini-faithful ``acc_scale`` (round-half-even of the f32 product), saturating i8 cast; each layer's
+    i8 output is the next layer's activation. This is the golden the on-mesh chain is gated against."""
+    import numpy as np
+    x = np.asarray(A0, dtype=np.int64)
+    for w in weights:
+        acc = x @ np.asarray(w, dtype=np.int64)
+        x = np.clip(np.rint(acc.astype(np.float32) * np.float32(acc_scale)), -128, 127).astype(np.int64)
+    return x
+
+
+def run_int8_chain_on_mesh(target: str, A0: list, weights: list, *, acc_scale: float,
+                           operand_dtype: str = "i8", accum_dtype: str = "i32",
+                           simulator: str | None = None, package: str | None = None,
+                           timeout: int = 900) -> dict:
+    """Run an int8 matmul CHAIN on the target mesh with the per-layer REQUANT HANDOFF — the shape of a real
+    quantized model's linear stack. For each layer ``Y_l = requant_i8(A_l @ W_l)`` executes on the REAL
+    oracle (``run_matmul_on_mesh`` with an ``acc_scale`` epilogue that commits the i32 accumulator back to
+    i8), and ``Y_l`` becomes ``A_{l+1}`` — so the activation stays device-native i8 across the whole chain
+    rather than round-tripping through a wider host dtype. The final tensor (and every layer) is gated
+    bit-exact vs :func:`_int8_chain_reference`.
+
+    This closes the int8 inter-layer handoff that a single independent matmul does not exercise: a real
+    model is a CHAIN, and each mesh layer's output must be requantized to the operand dtype to feed the
+    next mesh layer. FAIL-CLOSED: a layer with no reachable oracle returns ``oracle_unavailable`` (never a
+    fabricated activation). TARGET-AGNOSTIC: the requant + narrow output dtype are the target's own
+    (``run_matmul_on_mesh``); this only threads activations layer to layer."""
+    import os
+
+    import numpy as np
+
+    a = np.asarray(A0, dtype=np.int64)           # device activation, threaded layer to layer
+    r = np.asarray(A0, dtype=np.int64)           # independent host reference, advanced in lockstep
+    per_layer: list = []
+    for i, w in enumerate(weights):
+        wl = np.asarray(w, dtype=np.int64)
+        # advance the reference prefix (i32 matmul, gemmini-faithful acc_scale requant, i8 saturate)
+        r = np.clip(np.rint((r @ wl).astype(np.float32) * np.float32(acc_scale)), -128, 127).astype(np.int64)
+        out = run_matmul_on_mesh(target, a.tolist(), wl.tolist(), operand_dtype=operand_dtype,
+                                 accum_dtype=accum_dtype, simulator=simulator, package=package,
+                                 epilogue=["acc_scale"], acc_scale=acc_scale, timeout=timeout)
+        if out is None:
+            return {"target": target, "status": "oracle_unavailable", "failed_layer": i,
+                    "n_layers": len(weights), "per_layer": per_layer,
+                    "reason": f"mesh layer {i} ({a.shape[0]}x{a.shape[1]}x{wl.shape[1]}) has no reachable "
+                              f"oracle in this env"}
+        a = np.asarray(out, dtype=np.int64)
+        per_layer.append({"layer": i, "m": int(a.shape[0]), "n": int(wl.shape[1]),
+                          "matches_ref": bool(np.array_equal(a, r))})
+
+    exact = bool(all(p["matches_ref"] for p in per_layer))
+    return {"target": target, "status": "pass" if exact else "fail", "exact": exact,
+            "n_layers": len(weights), "acc_scale": acc_scale, "per_layer": per_layer,
+            "final_shape": [int(d) for d in a.shape],
+            "simulator": simulator or os.environ.get("MERLIN_MESH_SIM", "verilator"),
+            "note": "int8 matmul chain on the real mesh oracle with the per-layer acc_scale requant handoff "
+                    "(each layer's i8 output feeds the next mesh layer); gated bit-exact vs the host int8 "
+                    "chain reference at EVERY layer."}
+
+
+def _summarize_route_plan(plan: dict) -> dict:
+    """Collapse a routing.route_plan into per-op-family counts for the report, plus the REAL per-matmul
+    extents each mesh contraction carries (threaded from the linalg by ``model_op_demands``) so the plan
+    reports each layer's true M x K x N rather than only the op family. A mesh matmul whose extents could
+    not be read from the linalg (``m``/``k``/``n`` None) is surfaced with None extents, never dropped."""
+    def _counts(results):
+        c: dict[str, int] = {}
+        for r in results:
+            c[r.demand.op] = c.get(r.demand.op, 0) + 1
+        return c
+
+    def _extents(results):
+        out = []
+        for r in results:
+            d = r.demand
+            if d.m is None and d.k is None and d.n is None:
+                continue                                     # not a contraction / no extents attached
+            out.append({"op": d.op, "site": d.site, "m": d.m, "k": d.k, "n": d.n})
+        return out
+
+    return {
+        "on_mesh": _counts(plan["mesh"]),
+        "in_contract_vector_scalar": _counts(plan["fallback"]),
+        "scalar_rvv_lane": _counts(plan["scalar_rvv"]),
+        "n_mesh_ops": len(plan["mesh"]),
+        "n_scalar_ops": len(plan["fallback"]) + len(plan["scalar_rvv"]),
+        "mesh_matmul_extents": _extents(plan["mesh"]),
+        "note": "mesh ops execute on the target's systolic/spatial/simt unit (accelerator OOT path); the "
+                "rest run on the vector/scalar (RVV) lane. Each mesh matmul carries its real MxKxN extent "
+                "(mesh_matmul_extents) so a whole-model layer is compiled at its true shape. The functional "
+                "gate below is the scalar/RVV whole-model reference (numerically correct across ALL ops).",
+    }
+
+
+def compile_model(workload: str, dtype: str, *, target: str | None, run: str, verify: bool,
+                  package: str | None, auto_capture: bool, timeout: int,
+                  linalg_mlir: str | None = None, mesh_verify: bool = False,
+                  mesh_package: str | None = None) -> dict:
+    """Target-aware whole-model compile. Routes each op across the target's compute units (matmul/systolic
+    tiles -> the mesh, norms/activations/elementwise -> the vector/scalar lane) via
+    ``routing.route_plan``, then compiles the functional whole model (the scalar/RVV reference, numerically
+    correct across every op) and attaches the per-op mesh-routing plan. An op that no unit supports is an
+    honest scalar/RVV fallback, never a silent drop. ``target=None`` degrades to the plain RVV flow.
+
+    ``mesh_verify=True`` goes one step past the PLAN and actually EXECUTES the matmul layers on the mesh:
+    for each mesh-routed matmul it synthesizes a single ``DxD`` systolic-tile ``merlin_iface`` capsule and
+    runs it through the existing ``oot_runner.certify`` accelerator path on the target's real mesh oracle,
+    gated bit-exact (int) / within-tolerance (float). The aggregate lands in ``out["mesh_execution"]``
+    (``n_tiles``/``n_passed``/``n_unavailable``/``per_tile``); an unavailable oracle is reported honestly,
+    never a fake pass. This proves the matmul layers RUN correctly on the mesh.
+
+    WHOLE-MODEL ON MESH (``run_whole_model_on_mesh``): past per-tile certification, that entrypoint runs a
+    whole model co-scheduled across the lanes on the REAL oracle — each matmul LAYER executes on the target
+    mesh with its operands injected, the scalar/vector ops run inline, and every layer's on-device output
+    is handed to the op that consumes it, gated bit-exact vs the whole-model engine reference. Of the three
+    pieces this used to name: (a) per-op real shapes are now threaded from the module's def-use edges
+    (``mesh_program_run.demands_from_module`` + ``mesh_matmul_extents``); (b) each layer compiles at its
+    real MxKxN and the OOT backend tiles it. RESIDUAL: (c) it is still host-driven multi-kernel — one
+    program dispatching several mesh kernels + the scalar lane, not yet ONE fused kernel in a single device
+    address space. That last slice is the OOT backend emitting the whole loop nest inline."""
+    # run=="mesh": execute the model's matmul layers on the target accelerator mesh (host dispatch runtime
+    # with mesh routing); otherwise the plain RVV/scalar reference (host/spike/...).
+    if run == "mesh":
+        out = compile_rvv(workload, dtype, run="host", verify=verify, package=package,
+                          auto_capture=auto_capture, timeout=timeout,
+                          kernel_backend="mesh", mesh_target=target)
+    else:
+        out = compile_rvv(workload, dtype, run=run, verify=verify, package=package,
+                          auto_capture=auto_capture, timeout=timeout)
+    out["requested_target"] = target
+    if target and linalg_mlir:
+        try:
+            from .targetgen import capsule_source as CSRC
+            from .targetgen import routing as _routing
+            demands = CSRC.model_op_demands(linalg_mlir, dtype)
+            plan = _routing.route_plan(demands, target)
+            out["routing_plan"] = _summarize_route_plan(plan)
+            try:
+                from .targetgen import coverage_certificate as _cert
+                # ARR coverage certificate: the compiler's routing decisions (numerator) scored against
+                # the target's INDEPENDENT eligibility oracle (denominator). Empty capability map (target
+                # declares no semantic_capabilities yet) yields an honest all-ineligible certificate.
+                out["coverage_certificate"] = _cert.for_target(plan, target)
+            except Exception as e:  # noqa: BLE001 — certificate is advisory; never mask routing/functional
+                out["coverage_certificate"] = {"error": f"{type(e).__name__}: {e}"}
+            if mesh_verify:
+                out["mesh_execution"] = _mesh_verify(plan, target=target, package=mesh_package,
+                                                     timeout=timeout)
+        except Exception as e:  # noqa: BLE001 — a routing failure must not mask the functional result
+            out["routing_plan"] = {"error": f"{type(e).__name__}: {e}"}
+    return out
+
+
 def compile_oot(workload: str, *, target: str, run: str, verify: bool, package: str | None,
                 timeout: int) -> dict:
     """OOT target: build the backend package and run a capsule through it, three-way gated.
@@ -359,15 +998,12 @@ def compile_oot(workload: str, *, target: str, run: str, verify: bool, package: 
     from .targetgen import oot_runner, capsule_common
     from .benchharness import runs_root
     from .common.paths import repo_root
-    from .common.artifacts import artifacts_dir
 
     # Default to the resolved target's conventional OOT backend package
     # (``out/artifacts/targets/<target>/agent_spec_v1_mlir_oot``, artifact_type mlir_oot_target_backend,
     # which oot_runner.certify requires) when it exists on disk — so any target that ships one resolves
     # its default. A target without that package (or with a bespoke layout) must name it via --package.
-    cand = artifacts_dir() / "targets" / target / "agent_spec_v1_mlir_oot"
-    default_pkg = str(cand) if (cand / "manifest.yaml").is_file() else None
-    pkg_dir = package or default_pkg
+    pkg_dir = package or _default_oot_package(target)
     corpus = repo_root() / "merlin/contract/capsules/isa"
     out: dict = {"tool": "merlin-compile", "target": target, "workload": workload,
                  "package": pkg_dir, "run": run}

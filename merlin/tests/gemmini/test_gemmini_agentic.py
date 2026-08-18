@@ -17,8 +17,10 @@ from pathlib import Path
 import pytest
 
 from merlin.runtime import outputs_match, reference_outputs, simulate
-from merlin.runtime.backends import gemmini
+from merlin.runtime.backends import base as _bk
 from merlin.targetgen.eval.gemmini_conformance import build
+
+gemmini = _bk.get_backend("gemmini")
 from merlin.targetgen.agent import kernel_slot
 
 REPO = repo_root()

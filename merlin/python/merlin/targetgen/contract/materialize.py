@@ -19,8 +19,11 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
+import time
+import uuid
 from pathlib import Path
 
 import yaml
@@ -165,10 +168,35 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     if tier_ceiling is None:
         loop = _CR.qa_loop_adapters(te.target, te.sim_via) or {"L2": None}
         tier_ceiling = max(loop, key=lambda t: _TIER_ORDER.index(t) if t in _TIER_ORDER else -1)
-    dest = cache_dir("capsule_bench_public") / te.target
-    shutil.rmtree(dest, ignore_errors=True)   # rematerialize fresh (cheap; tracks corpus edits)
-    materialize_public_capsules(dest, tier_ceiling=tier_ceiling, corpus_roots=roots)
-    return dest
+    # Concurrency-safe publish. Several A/B arms materialize the SAME target's public set at once; the old
+    # ``rmtree(dest) + rebuild`` in place let one arm delete another's half-built cache mid-read (corrupt or
+    # missing capsules -> wrong grades). Instead build into a UNIQUE versioned dir, then ATOMICALLY repoint a
+    # per-target symlink at it (os.replace is atomic even over an existing symlink). A reader always follows
+    # the symlink to a COMPLETE, immutable build; the last writer wins the symlink; nobody rmtrees a dir
+    # another arm is reading. The cache namespace is purgeable, so stale builds are best-effort GC'd by age.
+    base = cache_dir("capsule_bench_public")
+    base.mkdir(parents=True, exist_ok=True)
+    link = base / te.target
+    ver = base / f".{te.target}.build.{os.getpid()}.{uuid.uuid4().hex[:8]}"
+    shutil.rmtree(ver, ignore_errors=True)
+    materialize_public_capsules(ver, tier_ceiling=tier_ceiling, corpus_roots=roots)
+    tmp_link = base / f".{te.target}.lnk.{os.getpid()}.{uuid.uuid4().hex[:8]}"
+    if tmp_link.is_symlink() or tmp_link.exists():
+        tmp_link.unlink()
+    os.symlink(ver.name, tmp_link)            # relative target -> resolves beside the versioned dir
+    if link.exists() and not link.is_symlink():
+        shutil.rmtree(link, ignore_errors=True)   # one-time migration off the old in-place real dir
+    os.replace(tmp_link, link)                # atomic publish (replaces the prior symlink in one step)
+    # Best-effort GC: drop this target's OTHER finished builds that are old enough (>15 min) that no live
+    # reader can still hold a path into them; never the just-published one (the symlink points at it).
+    cutoff = time.time() - 900
+    for old in base.glob(f".{te.target}.build.*"):
+        try:
+            if old.name != ver.name and old.stat().st_mtime < cutoff:
+                shutil.rmtree(old, ignore_errors=True)
+        except OSError:
+            pass
+    return link
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import signal
 import subprocess
 import tempfile
 from pathlib import Path
@@ -127,14 +128,31 @@ def _parse_run_error(stdout: str) -> str | None:
 
 def _capture(cmd: list, env: dict, timeout: int, cwd: str) -> tuple[int, str, str]:
     """Run ``cmd`` capturing stdout to a FILE (opencode truncates a piped stream at 64 KiB and still exits 0,
-    cutting the JSON mid-stream). stdin=DEVNULL because ``run`` blocks on an open stdin pipe."""
+    cutting the JSON mid-stream). stdin=DEVNULL because ``run`` blocks on an open stdin pipe.
+
+    ``cmd`` is ``bash -c '<bwrap ... opencode ...>'``, so a plain ``subprocess.run(timeout=)`` would SIGKILL
+    only the outer bash and leave the bwrap->opencode grandchildren alive (bwrap ``--die-with-parent`` does
+    not reliably cascade across the extra shell + PID namespace); the orphaned child keeps the inherited
+    stderr pipe open, hanging the parent's own post-timeout reap (observed: a stalled GLM-5 agent sat at the
+    1800s cap with the driver blocked and no result). Run in a NEW SESSION and, on timeout, SIGKILL the whole
+    PROCESS GROUP so the entire tree dies and the reap returns promptly; the caller maps TimeoutExpired to a
+    rc=124 round result."""
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".out", prefix="oc_out_", delete=False)
     tmp.close()
     try:
         with open(tmp.name, "w") as out:
-            p = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.PIPE,
-                               text=True, timeout=timeout, cwd=cwd, env=env)
-        return p.returncode, Path(tmp.name).read_text(), (p.stderr or "")
+            p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.PIPE,
+                                 text=True, cwd=cwd, env=env, start_new_session=True)
+            try:
+                _out, stderr = p.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(os.getpgid(p.pid), signal.SIGKILL)   # whole tree: bash -> bwrap -> opencode
+                except (ProcessLookupError, PermissionError):
+                    p.kill()
+                p.wait()
+                raise
+        return p.returncode, Path(tmp.name).read_text(), (stderr or "")
     finally:
         try:
             os.unlink(tmp.name)
@@ -152,6 +170,7 @@ def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
         tok = info.get("tokens") or {}
         cache = tok.get("cache") or {}
         blocks = []
+        tool_results = []
         for p in msg.get("parts", []) or []:
             if not isinstance(p, dict):
                 continue
@@ -159,8 +178,13 @@ def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
                 blocks.append({"type": "text", "text": p.get("text", "")})
             elif p.get("type") == "tool":
                 st = p.get("state") or {}
-                blocks.append({"type": "tool_use", "name": p.get("tool", "tool"),
+                cid = p.get("callID") or p.get("id")            # same id links tool_use <-> tool_result
+                blocks.append({"type": "tool_use", "id": cid, "name": p.get("tool", "tool"),
                                "input": st.get("input", {}) if isinstance(st, dict) else {}})
+                out = st.get("output") if isinstance(st, dict) else None
+                if out is not None:
+                    tool_results.append({"type": "tool_result", "tool_use_id": cid,
+                                         "content": out if isinstance(out, str) else json.dumps(out)})
         emit({"type": "assistant", "message": {
             "id": f"opencode_{rnd}_{info.get('id', '')}",
             "model": info.get("modelID") or mid,
@@ -169,6 +193,60 @@ def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
                       "cache_read_input_tokens": cache.get("read", 0) or 0,
                       "cache_creation_input_tokens": cache.get("write", 0) or 0},
             "content": blocks}})
+        # claude-compatible tool_result events so the transcript is self-authoritative + the mask-leak
+        # audit can correlate each read's result (parity with the claude-CLI path).
+        if tool_results:
+            emit({"type": "user", "message": {"content": tool_results}})
+
+
+def _parse_run_stream(stdout: str, mid: str, rnd: int, emit) -> int:
+    """Reconstruct the transcript from opencode's ``run --format json`` STDOUT stream (always captured),
+    instead of a post-hoc ``opencode export`` (fragile: a wrong sandbox isolates the session data dir, so
+    the export is blind and yields 0 messages — the empty-transcript bug). Each stream line is an event with
+    a ``part``: a ``text`` part is an assistant text block; a ``tool`` part is a tool_use (+ its result from
+    ``state.output``); ``step-finish`` parts carry token usage. Emits claude-compatible events (assistant +
+    user/tool_result) so parse_transcript / audit_transcript / conformance consume them like every driver.
+    Returns the number of tool calls seen."""
+    tok = {"input": 0, "output": 0, "cread": 0, "cwrite": 0}
+    n_tools = 0
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        part = e.get("part") or {}
+        pt = part.get("type")
+        if pt == "text" and part.get("text"):
+            emit({"type": "assistant", "message": {"id": f"opencode_{rnd}_{part.get('id','')}", "model": mid,
+                  "usage": {"input_tokens": 0, "output_tokens": 0}, "content": [{"type": "text", "text": part["text"]}]}})
+        elif pt == "tool":
+            st = part.get("state") or {}
+            cid = part.get("callID") or part.get("id")
+            emit({"type": "assistant", "message": {"id": f"opencode_{rnd}_{cid}", "model": mid,
+                  "usage": {"input_tokens": 0, "output_tokens": 0},
+                  "content": [{"type": "tool_use", "id": cid, "name": part.get("tool", "tool"),
+                               "input": st.get("input", {}) if isinstance(st, dict) else {}}]}})
+            n_tools += 1
+            out = st.get("output") if isinstance(st, dict) else None
+            if out is not None:
+                emit({"type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": cid,
+                     "content": out if isinstance(out, str) else json.dumps(out)}]}})
+        elif pt == "step-finish":
+            t = part.get("tokens") or {}
+            c = t.get("cache") or {}
+            tok["input"] += t.get("input", 0) or 0
+            tok["output"] += t.get("output", 0) or 0
+            tok["cread"] += c.get("read", 0) or 0
+            tok["cwrite"] += c.get("write", 0) or 0
+    # one usage-bearing assistant event so token/cost accounting sees the round's totals
+    emit({"type": "assistant", "message": {"id": f"opencode_{rnd}_usage", "model": mid, "content": [],
+          "usage": {"input_tokens": tok["input"], "output_tokens": tok["output"],
+                    "cache_read_input_tokens": tok["cread"], "cache_creation_input_tokens": tok["cwrite"]}}})
+    return n_tools
 
 
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
@@ -252,12 +330,17 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
             pass
         return (code or 1), tpath
 
-    ecode, eout, _estderr = _capture([opencode_bin, "export", sid], env, max(60, timeout // 4), str(ws))
-    try:
-        export = json.loads(eout) if ecode == 0 else {}
-    except json.JSONDecodeError:
-        export = {}
-    _export_to_transcript(export, mid, rnd, emit)
+    # PRIMARY: reconstruct from the run's own --format json STDOUT stream (always captured; robust to the
+    # sandbox/data-dir isolation that leaves `opencode export` blind). Fall back to `export` only if the
+    # stream yielded no tool activity (e.g. a future format change).
+    n_tools = _parse_run_stream(stdout, mid, rnd, emit)
+    if n_tools == 0:
+        ecode, eout, _estderr = _capture([opencode_bin, "export", sid], env, max(60, timeout // 4), str(ws))
+        try:
+            export = json.loads(eout) if ecode == 0 else {}
+        except json.JSONDecodeError:
+            export = {}
+        _export_to_transcript(export, mid, rnd, emit)
 
     if run_err:
         emit({"type": "result", "subtype": "error", "is_error": True, "result": run_err})

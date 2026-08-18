@@ -40,6 +40,11 @@ compute_units:
   requant:
     ref: mx_gemmini.mx_requantizer
   scaling: block_e8m0
+  # Semantic-family capability (ARR denominator): the MX PE is a matmul-only tensor tile — contraction
+  # over the micro-scaled + int8 formats. It has no reduction/elementwise/softmax hardware of its own, so
+  # a whole attention/normalization region is only partially eligible (its contractions, not the rest).
+  semantic_capabilities:
+  - {family: contraction, dtypes: [mxfp4, mxfp6, mxfp8, int8, bf16]}
 family: tensor_resident
 features:
 - systolic_array

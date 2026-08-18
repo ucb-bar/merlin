@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from merlin.common import quant_formats as qf
+from merlin.targetgen import semantic_families as _sf
 
 #: Coarse compute-unit kinds (aligned with runtime.backends.base.TargetClass at the silicon level).
 #: ``spatial`` is the non-systolic spatial tensor tile (an OuterProductUnit-style grid of accumulator
@@ -47,6 +48,29 @@ class AccumRule:
 
 
 @dataclass(frozen=True)
+class SemanticCapability:
+    """What a unit can compute at the **semantic-family** level — the HARDWARE-truth declaration the
+    eligibility oracle (:mod:`merlin.targetgen.eligibility`) reads as the ARR *denominator*.
+
+    Deliberately independent of ``ComputeUnit.ops`` (which is what the generated compiler's *routing*
+    binds against, the ARR *numerator*): this says "the silicon can run this family over these formats
+    and shapes", not "the compiler currently has a lowering for it". Authored per target in the
+    residual, from hardware facts — the gap between this and what routing achieves IS the compiler
+    deficiency ARR is meant to surface. ``family`` is a :mod:`merlin.targetgen.semantic_families` name;
+    ``dtypes`` reference the quant-format registry.
+    """
+
+    family: str
+    dtypes: tuple[str, ...] = ()
+    ranks: tuple[int, ...] = ()           # legal tensor ranks (e.g. (2, 3) for 2D + batched); () = any
+    transpose: bool = True                # transposed-operand variants legal where applicable
+    arbitrary_mnk: bool = True            # M/N/K need not be tile multiples (tails handled)
+    batch: bool = True                    # batch dimensions supported
+    layouts: tuple[str, ...] = ()         # legal layout tags (coarse); () = unconstrained
+    notes: str = ""
+
+
+@dataclass(frozen=True)
 class ComputeUnit:
     name: str
     kind: str
@@ -56,6 +80,7 @@ class ComputeUnit:
     scaling: str | None = None            # a quant_formats SCALE_KIND (per_channel/block_e8m0/none/...)
     requant: dict[str, Any] | None = None  # opaque {ref: <out-of-tree lowering id>}; not interpreted
     contains: tuple[str, ...] = ()
+    semantic_capabilities: tuple[SemanticCapability, ...] = ()
     #: How SOFTWARE drives this unit (a ``families.ENDPOINT_KINDS`` token), independent of ``kind``.
     #: None means "not declared" and defers to the target, then to the family default — see
     #: :func:`resolve_exposure`. This is a PER-UNIT axis on purpose: a hybrid target has two units with
@@ -73,6 +98,28 @@ def _accum(raw: Any) -> AccumRule:
     return AccumRule(inp=raw.get("in", ""), weight=raw.get("weight", raw.get("in", "")), acc=raw.get("acc", ""))
 
 
+def _sem_cap(raw: dict[str, Any], unit_name: str) -> SemanticCapability:
+    family = raw.get("family")
+    if not _sf.is_family(family):
+        raise ValueError(f"compute unit {unit_name!r}: semantic_capabilities family {family!r} not in "
+                         f"{sorted(_sf.FAMILIES)}")
+    dtypes = tuple(raw.get("dtypes", ()) or ())
+    unknown = [d for d in dtypes if not qf.has(d)]
+    if unknown:
+        raise ValueError(f"compute unit {unit_name!r}: semantic_capability {family!r} unknown quant "
+                         f"formats {unknown} (known: {qf.names()})")
+    return SemanticCapability(
+        family=family,
+        dtypes=dtypes,
+        ranks=tuple(raw.get("ranks", ()) or ()),
+        transpose=bool(raw.get("transpose", True)),
+        arbitrary_mnk=bool(raw.get("arbitrary_mnk", True)),
+        batch=bool(raw.get("batch", True)),
+        layouts=tuple(raw.get("layouts", ()) or ()),
+        notes=raw.get("notes", "") or "",
+    )
+
+
 def _unit(raw: dict[str, Any]) -> ComputeUnit:
     kind = raw.get("kind")
     if kind not in KINDS:
@@ -86,6 +133,7 @@ def _unit(raw: dict[str, Any]) -> ComputeUnit:
     if scaling is not None and scaling not in qf.SCALE_KINDS:
         raise ValueError(f"compute unit {raw.get('name')!r}: scaling {scaling!r} not in "
                          f"{sorted(qf.SCALE_KINDS)}")
+    name = raw["name"]
     exposure = raw.get("exposure")
     if exposure is not None:
         from . import families                  # lazy: families is a sibling registry, not a dependency
@@ -93,7 +141,7 @@ def _unit(raw: dict[str, Any]) -> ComputeUnit:
             raise ValueError(f"compute unit {raw.get('name')!r}: exposure {exposure!r} not in "
                              f"{list(families.ENDPOINT_KINDS)}")
     return ComputeUnit(
-        name=raw["name"],
+        name=name,
         kind=kind,
         dtypes=dtypes,
         ops=tuple(raw.get("ops", ()) or ()),
@@ -101,6 +149,7 @@ def _unit(raw: dict[str, Any]) -> ComputeUnit:
         scaling=scaling,
         requant=raw.get("requant"),
         contains=tuple(raw.get("contains", ()) or ()),
+        semantic_capabilities=tuple(_sem_cap(s, name) for s in raw.get("semantic_capabilities", ()) or ()),
         exposure=exposure,
     )
 
@@ -148,6 +197,7 @@ def effective(unit: ComputeUnit, all_units: list[ComputeUnit]) -> ComputeUnit:
     dtypes = list(unit.dtypes)
     ops = list(unit.ops)
     accum = list(unit.accumulate)
+    sem = list(unit.semantic_capabilities)
     for child_name in unit.contains:
         child = by_name.get(child_name)
         if child is None:
@@ -156,9 +206,11 @@ def effective(unit: ComputeUnit, all_units: list[ComputeUnit]) -> ComputeUnit:
         dtypes += [d for d in child.dtypes if d not in dtypes]
         ops += [o for o in child.ops if o not in ops]
         accum += [a for a in child.accumulate if a not in accum]
+        sem += [s for s in child.semantic_capabilities if s not in sem]
     return ComputeUnit(
         name=unit.name, kind=unit.kind, dtypes=tuple(dtypes), ops=tuple(ops),
         accumulate=tuple(accum), scaling=unit.scaling, requant=unit.requant, contains=unit.contains,
+        semantic_capabilities=tuple(sem),
         # Composition unions CAPABILITY (what can be computed), not exposure: how software drives this
         # unit is a property of this unit, and inheriting a child's would silently retarget the parent.
         exposure=unit.exposure,
@@ -177,3 +229,36 @@ def datatype_tokens(unit: ComputeUnit) -> set[str]:
         tokens.add(fmt.name)
         tokens.update(fmt.aliases)
     return tokens
+
+
+def _merge_caps(a: SemanticCapability, b: SemanticCapability) -> SemanticCapability:
+    """Union two same-family capabilities into the most-permissive combined capability (a target is
+    capable of a family if ANY of its units is): union dtypes/layouts/ranks, OR the boolean flags."""
+    def _u(x: tuple, y: tuple) -> tuple:
+        out = list(x)
+        out += [v for v in y if v not in out]
+        return tuple(out)
+
+    notes = "; ".join(n for n in (a.notes, b.notes) if n)
+    return SemanticCapability(
+        family=a.family,
+        dtypes=_u(a.dtypes, b.dtypes),
+        ranks=_u(a.ranks, b.ranks),
+        transpose=a.transpose or b.transpose,
+        arbitrary_mnk=a.arbitrary_mnk or b.arbitrary_mnk,
+        batch=a.batch or b.batch,
+        layouts=_u(a.layouts, b.layouts),
+        notes=notes,
+    )
+
+
+def semantic_capability_map(units: list[ComputeUnit]) -> dict[str, SemanticCapability]:
+    """The target's HARDWARE semantic capability, folded across all units (composition resolved): a
+    ``family -> merged SemanticCapability`` map. This is the independent ARR denominator source the
+    eligibility oracle reads — derived only from the declared contract, never from routing/lowering.
+    """
+    merged: dict[str, SemanticCapability] = {}
+    for u in units:
+        for cap in effective(u, units).semantic_capabilities:
+            merged[cap.family] = _merge_caps(merged[cap.family], cap) if cap.family in merged else cap
+    return merged

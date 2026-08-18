@@ -1,10 +1,11 @@
-"""Radiance/Muon (Vortex) custom-ISA definition — the shipped ISA doc merlin's IsaModel introspects to give
-the raw-ISA developer tools (assembler / disassembler / linter) to the SIMT target, exactly as the atlas
-``isa_definition.py`` does for its self-hosted core.
+"""Radiance/Muon (Vortex) custom-ISA definition — the shipped ISA doc merlin's IsaModel introspects to map
+each SIMT WARP-CONTROL mnemonic to its semantic ROLE, exactly as the atlas ``isa_definition.py`` does for
+its self-hosted core.
 
-DERIVED (with provenance), FAIL-CLOSED. Each op below is the standard 32-bit RISC-V ``.insn r`` form the
-shipped header ``radiance-kernels/lib/include/vx_intrinsics.h`` composes for the Vortex CUSTOM0 warp-control
-surface — i.e. what stock LLVM emits for merlin's derive-don't-fork SIMT-divergence lowering. Fields cited:
+Scope of THIS file: only the CUSTOM0 warp-control surface (tmc / wspawn / split / join / barrier / pred /
+rast). It is a mnemonic→role taxonomy, not the emit encoding. Each op is cited to the standard RISC-V
+``.insn r`` form the shipped header ``radiance-kernels/lib/include/vx_intrinsics.h`` composes for that op;
+merlin's introspection differential-probes the ``to_bytecode`` below to recover the role. Fields cited:
 
   * CUSTOM opcode constants — ``vx_intrinsics.h:36-39`` (RISCV_CUSTOM0=0x0B .. CUSTOM3=0x7B), matching
     ``RISCVInstrInfoVX.td:3-6``.
@@ -12,20 +13,33 @@ surface — i.e. what stock LLVM emits for merlin's derive-don't-fork SIMT-diver
     (line refs per op) cross-checked against the ``RVInstR<funct7,funct3,opcode>`` defs in
     ``RISCVInstrInfoVX.td`` (line refs per op).
 
-RESIDUE recorded as UNKNOWN (not fabricated) — these need the Muon-LLVM fork's 64-bit instruction format
-(8-bit reg fields + ``ext2`` address-space bits) and have NO faithful standard-32-bit ``.insn r`` encoding,
-so emitting them here would be a fabricated encoding:
-  * ``sw.shared`` / ``lw.shared`` / ``fence.s`` — the ``.shared`` qualifier lives in ``ext2`` (Inst{8-7}),
-    which overlaps rd in the 32-bit layout (RISCVInstrInfo.td:675-699,771).
-  * ``fexp.h`` / ``fnexp.h`` / ``fexp.s`` / ``fnexp.s`` — 64-bit ``NuCustomFPUnaryFrm`` with ext2=0b01
-    (RISCVInstrInfoNU.td:45-51,86-109).
-  * ``nu.invoke*`` — 64-bit ``NeutrinoInst`` (RISCVInstrInfoNU.td:3-81).
-  * ``vx_tex`` / ``vx_rop`` / ``vx_cmov`` — R4 (4-register) forms (RISCVInstrInfoVX.td:52-54; vx_cmov is
-    header-only, no .td def → doubly UNKNOWN).
-  * ``vx_bar`` has TWO conflicting encodings across the toolchain (a commented-out CUSTOM0/funct3=4 native
-    def in VX.td:34-37 vs an InstAlias to a CUSTOM2 ``nu.invoke`` in NU.td:114); the header still emits the
-    native CUSTOM0/funct3=4 form (vx_intrinsics.h:154), which is what we model as VX_BARRIER below, and the
-    nu.invoke alias is recorded as residue.
+WHERE THE REAL COMPUTE ENCODING LIVES (read this before concluding "compute is unencodable"): this file
+is NOT the source of truth for how you EMIT an instruction. The target's true instruction is a 64-bit
+FIXED-FORMAT word, and its exact field layout + opcode table are DERIVED from the RTL decoder and exposed
+by ``merlin.targetgen.isa_model.isa_model_for_target("radiance")`` — 24 opcodes incl. compute
+(``MADD`` / ``MSUB`` / ``NM_ADD`` / ``NM_SUB`` = fused FP multiply-add, ``OP_FP``, ``OP``, ``OP_IMM``),
+memory (``LOAD`` / ``STORE`` with the ``ext2`` field selecting the address space: global=0, shared=1),
+and the neutrino ops (``NU_INVOKE`` …). That is the layout the shipped ``isa_tools.py disasm``/``lint``
+decode your emitted ``.word``/``.quad`` against, and the layout merlin's own FORK-FREE backend emits into
+(stock rv32 compile → ``isa_transcode.FixedFormatTranscoder`` re-encode). There is NO Muon-LLVM fork in
+that path and none is needed. A ready-made, assembled, disassembly-clean proof is shipped alongside this
+file at ``example_kernel/gemm_tile.S`` (a real f32 GEMM tile with ``LOAD`` / ``MADD`` / ``STORE``).
+
+So the following ops — which an earlier note wrongly recorded as "no faithful encoding, needs the fork" —
+ARE encodable in that derived 64-bit word; the accurate statement is only about what stock-LLVM
+compilation currently LOWERS to, not about the encoding's existence:
+  * ``sw.shared`` / ``lw.shared`` / ``fence.s`` — the ``.shared`` qualifier is the derived ``ext2`` field
+    (global=0, shared=1); a scratchpad access sets ext2=1. Fully encodable and checkable via the tools.
+  * ``nu.invoke*`` — the ``NU_INVOKE`` opcode family is in the derived opcode table; encodable.
+  * ``fexp.h`` / ``fnexp.h`` / ``fexp.s`` / ``fnexp.s`` — SFU transcendentals. The opcode word is
+    derivable; what is genuinely residual is that stock LLVM emits these as libcalls (not a single
+    instruction), so merlin's fork-free codegen does not auto-lower them to one HW op yet — a lowering
+    gap, NOT an unencodable instruction.
+  * ``vx_tex`` / ``vx_rop`` / ``vx_cmov`` — R4 (4-register) graphics forms (they use the derived ``rs3``
+    field); not exercised by the compute capsules. ``vx_cmov`` is header-only (no .td def).
+  * ``vx_bar`` has TWO spellings across the toolchain (a native CUSTOM0/funct3=4 def commented out in
+    VX.td:34-37 vs an InstAlias to a CUSTOM2 ``nu.invoke`` in NU.td:114); the header emits the native
+    CUSTOM0/funct3=4 form (vx_intrinsics.h:154), which is what we model as VX_BARRIER below.
 """
 from __future__ import annotations
 

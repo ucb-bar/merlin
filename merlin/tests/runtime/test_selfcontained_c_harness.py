@@ -59,11 +59,13 @@ def test_integer_output_uses_base10_not_float_print():
     assert "_pu(_out_Y[i]);" in p and "_pf(" not in p.split("int main")[1]   # integer path prints base-10
 
 
-# a command buffer the runner produces + the operand values it attaches (canonical_inputs).
+# a command buffer the runner produces (RES_PACK + MATMUL_RESIDENT + COMMIT) + the operand values it
+# attaches at grade time (canonical_inputs = the independent golden's decoded operands).
 _CB = {
-    "tensors": {"W": {"shape": [2, 2], "role": "weight"}, "A0": {"shape": [2, 2], "role": "input"},
-                "Y0": {"shape": [2, 2], "role": "output"}},
-    "commands": [{"opcode": "MATMUL", "operands": {"weight": "W", "lhs": "A0", "out": "Y0"}}],
+    "tensors": {"W": {"shape": [2, 2], "role": "weight"}, "A0": {"shape": [2, 2], "role": "input"}},
+    "commands": [{"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}},
+                 {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},
+                 {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}}],
     "canonical_inputs": {"W": {"shape": [2, 2], "values": [1.0, 2.0, 3.0, 4.0]},
                          "A0": {"shape": [2, 2], "values": [0.5, 0.25, 0.125, 1.0]}},
 }
@@ -73,9 +75,9 @@ _FN = "void radiance_kernel(float* W, float* A0, float* Y0){Y0[0]=A0[0]*W[0];}"
 def test_program_from_cb_derives_abi_order_and_embeds_operands():
     p = program_from_cb(_CB, _FN, _MODEL)
     assert p is not None
-    # ABI order [weight] ++ [lhs] ++ [out] -> radiance_kernel(W, A0, Y0)
+    # ABI order [weight] ++ [lhs] ++ [output] -> radiance_kernel(W, A0, Y0); output name = COMMIT dst (Y0)
     assert "radiance_kernel((float*)_in_W, (float*)_in_A0, (float*)_out_Y0);" in p
-    assert "_in_W[0]=0x3f800000u;" in p and "_in_A0[0]=0x3f000000u;" in p   # 1.0, 0.5
+    assert "_in_W[0]=0x3f800000u;" in p and "_in_A0[0]=0x3f000000u;" in p   # canonical 1.0, 0.5
     assert '_ps("OUT Y0 2 2");' in p
 
 
@@ -84,7 +86,11 @@ def test_program_from_cb_passes_through_a_full_program():
     assert program_from_cb(_CB, "int main(void){return 0;}", _MODEL) is None
 
 
-def test_program_from_cb_fails_safe_without_operands():
-    # no canonical operands attached -> None (the caller compiles the artifact as-is; never grades unfed).
+def test_program_from_cb_materializes_deterministically_without_canonical():
+    # No canonical operands -> the harness embeds the SAME deterministic materialization the golden uses when
+    # a capsule ships no recorded raws (never a false pass: a float capsule that DID ship raws has them
+    # attached, and a wrong-operand run fails the golden rather than passing it).
     cb = {k: v for k, v in _CB.items() if k != "canonical_inputs"}
-    assert program_from_cb(cb, _FN, _MODEL) is None
+    p = program_from_cb(cb, _FN, _MODEL)
+    assert p is not None
+    assert "radiance_kernel((float*)_in_W, (float*)_in_A0, (float*)_out_Y0);" in p

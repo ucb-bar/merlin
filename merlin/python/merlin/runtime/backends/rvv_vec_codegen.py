@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..commandbuffer import materialize_inputs
+from merlin.runtime.commandbuffer import materialize_inputs
 
 
 class VecCodegenError(RuntimeError):

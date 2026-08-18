@@ -1,0 +1,272 @@
+"""Evaluate a completed capsule-bench run dir → a per-(target, arm) GO / ISSUES verdict.
+
+This is the "evaluate" half of the cheap-first smoke→evaluate→fix loop: point it at one or more run dirs
+and it reports, for each, whether the round was BOUNDED (no hang), GRADED (the oracle actually ran),
+CLEAN (no answer access), and CONFORMANT for the arm (used the right contracts/info/tools + developed in
+xDSL with no regex — the per-arm expectations that follow the experiment ladder). It reads only run
+artifacts (qa_loop_summary.yaml, cost_time_toolcalls.yaml, the round transcript, the submission, the
+grade), so it never spends and never needs the oracle.
+
+Conformance is a FLAG, not a hard gate: a non-conformant run is reported loudly (and should be treated as
+NOT a valid arm-N demonstration), but this tool does not alter the run's oracle grade. Per-arm expectations
+are derived from the arm (from run_manifest.yaml), so arm-1/2 are held only to the build+self-check floor
+while arm-3 adds xDSL/no-regex/isa-tools and arm-4 adds the RTL-facts derivation.
+
+Usage:
+    evaluate_smoke.py <run_dir> [<run_dir> ...]
+    evaluate_smoke.py --roots out/runs/radiance out/runs/atlas   # newest run under each target's arms
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import yaml
+
+
+def _load_yaml(p: Path) -> dict:
+    try:
+        return yaml.safe_load(p.read_text()) or {}
+    except Exception:  # noqa: BLE001 — a missing/garbled artifact is reported as absent, never a crash
+        return {}
+
+
+def _load_json(p: Path) -> dict:
+    try:
+        return json.loads(p.read_text())
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _arm_of(run_dir: Path) -> str:
+    """The arm this run exercised. The RTL-checks track (arm-4) reuses the merlin_assisted arm string but
+    marks its runs with TRACK_RTLCHECKS + a ``merlincirct`` run-id stem, so detect it FIRST (else it would
+    read back as arm-3 and skip the RTL-derivation conformance check)."""
+    if (run_dir / "TRACK_RTLCHECKS").exists() or run_dir.name.startswith("merlincirct"):
+        return "merlin_rtlchecks"
+    m = _load_yaml(run_dir / "run_manifest.yaml")
+    arm = m.get("arm") or m.get("bundle_arm") or ""
+    if arm:
+        return arm
+    name = run_dir.name
+    if name.startswith("merlin"):
+        return "merlin_assisted"
+    if name.startswith("rb") or "raw" in name:
+        return "raw_baseline"
+    return "unknown"
+
+
+def _transcript_commands(run_dir: Path) -> list[str]:
+    """Every Bash/tool command string in the round transcripts (best-effort; the driver merges the agent's
+    session into transcript.jsonl at round end)."""
+    cmds: list[str] = []
+    files = [run_dir / "transcript.jsonl"] + sorted((run_dir / "rounds").glob("round_*.transcript.jsonl"))
+    for f in files:
+        if not f.is_file():
+            continue
+        for line in f.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except Exception:  # noqa: BLE001
+                cmds.append(line)                      # keep the raw line as a scannable fallback
+                continue
+            cmds.append(json.dumps(ev))                # scan the whole event blob for tool/command mentions
+    return cmds
+
+
+def _tool_activity(run_dir: Path) -> int:
+    """Count tool-use events across the round transcripts. This distinguishes a true STALL (a provider/
+    driver hang produces near-zero tool activity) from a BUDGET-EXHAUSTED round (an actively-working agent
+    that simply ran past the round cap) — both surface as rc=124 but are very different failures."""
+    n = 0
+    files = [run_dir / "transcript.jsonl"] + sorted((run_dir / "rounds").glob("round_*.transcript.jsonl"))
+    for f in files:
+        if not f.is_file():
+            continue
+        for line in f.read_text().splitlines():
+            if '"type":"tool_use"' in line or '"type": "tool_use"' in line:
+                n += 1
+    return n
+
+
+def _terminal_reason(run_dir: Path) -> str | None:
+    """Detect a round that ENDED on a provider/API error (esp. a rate-limit / quota 429) rather than a
+    clean finish or a wall-clock timeout. Such a round is NOT a valid demonstration — the agent was cut
+    off by quota, not by finishing. Scans the transcripts for the terminal markers the drivers emit."""
+    blob = "\n".join(_transcript_commands(run_dir))
+    if '"terminal_reason":"api_error"' in blob or '"terminal_reason": "api_error"' in blob:
+        if "seven_day" in blob or "weekly limit" in blob:
+            return "rate_limit_weekly(429)"
+        if "429" in blob or "rate_limit" in blob:
+            return "rate_limit(429)"
+        return "api_error"
+    return None
+
+
+def _submission_sources(run_dir: Path) -> list[Path]:
+    sub = run_dir / "submission"
+    return [p for p in sub.rglob("*") if p.is_file() and p.suffix in (".py", ".txt", ".md", ".yaml", ".mlir")]
+
+
+# Human-readable violation text for the core checks conformance.py computes (exec-command / AST derived).
+_CORE_VIOL = {
+    "no_regex_ok": "submission uses regex (import re) — prohibited for development",
+    "isa_tools_used": "never ran isa_tools (disasm/lint/asm) on its own emitted artifact",
+    "asm_used": "external_backend but never assembled words via `isa_tools asm` (hand-packed encodings)",
+    "cca_used": "never enumerated the lever set (cca_contract / action_catalog) — mandated for assisted arms",
+    "full_selfcheck": "never ran a full `--capsules all` self-check (only spot-checked one capsule)",
+}
+
+
+def _endpoint_of(run_dir: Path) -> str:
+    """endpoint_kind for the conformance computation. Prefer the run manifest; else infer external_backend
+    from a shipped kernel.S (self-hosted ISA) — only affects whether `asm_used` is required."""
+    ek = _load_yaml(run_dir / "run_manifest.yaml").get("endpoint_kind")
+    if ek:
+        return ek
+    sub = run_dir / "submission"
+    return "external_backend" if (sub.is_dir() and any(sub.rglob("kernel.S"))) else ""
+
+
+def _conformance(run_dir: Path, arm: str, round_block: dict | None = None) -> dict:
+    """Per-arm dev-conformance: did the agent use the right contracts/info/tools + develop in xDSL w/o
+    regex, as the arm's ladder rung requires? The CORE signals (no-regex via AST, isa_tools/asm/cca use,
+    full self-check) come from the authoritative :mod:`conformance` — the per-round block the run recorded
+    if present, else recomputed from the persisted transcript + submission — so this tool and the live run
+    never diverge. Layered on top are the evaluate-only extras conformance.py does not cover (contract
+    consulted, xDSL authoring, arm-4 RTL derivation)."""
+    import conformance as _CONF
+    if round_block and isinstance(round_block, dict) and round_block.get("checks"):
+        base = round_block                                     # authoritative: computed live with the real endpoint
+    else:
+        tps = sorted((run_dir / "rounds").glob("round_*.transcript.jsonl"))
+        tp = tps[-1] if tps else run_dir / "transcript.jsonl"
+        base = _CONF.compute(tp, run_dir / "submission", arm, _endpoint_of(run_dir))
+    checks: dict = dict(base.get("checks") or {})
+    viol: list[str] = [_CORE_VIOL[k] for k, v in checks.items() if v is False and k in _CORE_VIOL]
+
+    blob = "\n".join(_transcript_commands(run_dir))
+    assisted = ("merlin_assisted" in arm) or ("rtlchecks" in arm)
+    checks["contracts_read"] = ("merlin/contract" in blob)     # floor: consulted the capability contract
+    if assisted:                                               # arm-3 / arm-4: authored via xDSL
+        src_text = "\n".join(p.read_text(errors="ignore")
+                             for p in _submission_sources(run_dir) if p.suffix == ".py")
+        checks["xdsl_authored"] = ("xdsl" in src_text.lower()) or ("xdsl" in blob.lower())
+        if not checks["xdsl_authored"]:
+            viol.append("no evidence the backend was authored in xDSL")
+    if "rtlchecks" in arm:                                     # arm-4 only: genuine RTL derivation
+        checks["rtl_derived"] = ("targetgen/rtl" in blob) or ("rtl_facts" in blob) or ("circt" in blob.lower())
+        if not checks["rtl_derived"]:
+            viol.append("arm-4 but no evidence it derived from the RTL facts / ran the CIRCT checks")
+    return {"checks": checks, "violations": viol, "conformant": not viol}
+
+
+def evaluate(run_dir: Path) -> dict:
+    run_dir = Path(run_dir)
+    summ = _load_yaml(run_dir / "qa_loop_summary.yaml")
+    rounds = summ.get("rounds") or [{}]
+    r0 = rounds[0] if rounds else {}
+    arm = _arm_of(run_dir)
+    pub = _load_json(run_dir / "grading_public" / "score_capsule.json")
+    rc = r0.get("agent_rc")
+    wall = summ.get("wall_seconds") or (summ.get("timing") or {}).get("wall_seconds")
+    n_caps = r0.get("n_capsules") or 0
+    n_pass = r0.get("n_passed") or 0
+    tool_calls = r0.get("tool_calls")
+    activity = _tool_activity(run_dir)                 # tool-use events: the stall-vs-budget discriminator
+    if tool_calls is None:
+        tool_calls = activity
+    bounded = (rc != 124)                              # 124 = round-timeout hit (stall OR budget-exhausted)
+    timeout_class = None
+    if rc == 124:
+        timeout_class = "budget_exhausted" if activity >= 10 else "stalled"
+    graded = bool(n_caps) and bool(pub)
+    # A structural/integrity FAIL (e.g. no manifest.yaml -> contract plane) means the package was rejected
+    # BEFORE any capsule compiled — it is NOT a valid graded outcome even though a score json exists.
+    integrity = str(pub.get("integrity_status") or "")
+    integrity_fail = "FAIL" in integrity.upper()
+    terminated = _terminal_reason(run_dir)             # 429 / quota / api_error cut the round short
+    submission = (run_dir / "submission").is_dir() and any((run_dir / "submission").iterdir())
+    clean = bool(r0.get("answer_access_clean", True)) and not (r0.get("audit_hits") or [])
+    rlast = rounds[-1] if rounds else {}                # conformance reflects the FINAL round's submission
+    conf = _conformance(run_dir, arm, rlast.get("conformance"))
+    issues: list[str] = []
+    if terminated:
+        issues.append(f"NOT COMPLETED — round terminated by {terminated} (agent cut off by quota/provider, "
+                      f"not a finish); {activity} tool calls before the cut. Restore quota / add resume.")
+    if integrity_fail:
+        issues.append(f"STRUCTURAL/INTEGRITY FAIL — {integrity} (package rejected before any capsule "
+                      f"compiled; n_capsules={n_caps}). NOT a valid graded result.")
+    if not bounded:
+        if timeout_class == "budget_exhausted":
+            issues.append(f"NOT COMPLETED — active agent ({activity} tool calls) hit the round cap "
+                          f"(rc=124, wall={wall}s); this is a BUDGET limit, not a stall — raise "
+                          f"--max-rounds/--round-timeout (arm-4 compile-from-RTL needs the full budget)")
+        else:
+            issues.append(f"NOT BOUNDED — round timed out with near-zero tool activity ({activity} calls, "
+                          f"rc=124, wall={wall}s); STALL/hang class (provider or driver)")
+    if not submission:
+        issues.append("no submission produced")
+    if not graded:
+        issues.append(f"NOT GRADED — n_capsules={n_caps} (oracle did not grade a submission)")
+    if not clean:
+        issues.append("ANSWER ACCESS / audit hit — possible cheat, investigate")
+    if not conf["conformant"]:
+        issues += [f"non-conformant: {v}" for v in conf["violations"]]
+    return {"run": str(run_dir), "arm": arm, "bounded": bounded, "submission": submission,
+            "graded": graded, "n_capsules": n_caps, "n_passed": n_pass, "tool_calls": tool_calls,
+            "timeout_class": timeout_class, "terminated": terminated, "integrity_fail": integrity_fail,
+            "clean": clean, "conformance": conf, "wall_seconds": wall,
+            "verdict": "GO" if not issues else "ISSUES", "issues": issues}
+
+
+def _latest_runs(root: Path) -> list[Path]:
+    """Newest run dir under each arm subtree of a target root (out/runs/<target>/capsule-bench/<arm>/<id>)."""
+    out: list[Path] = []
+    base = root / "capsule-bench"
+    if not base.is_dir():
+        return out
+    for arm_dir in base.iterdir():
+        if not arm_dir.is_dir():
+            continue
+        runs = [d for d in arm_dir.iterdir() if d.is_dir() and (d / "qa_loop_summary.yaml").is_file()]
+        if runs:
+            out.append(max(runs, key=lambda d: (d / "qa_loop_summary.yaml").stat().st_mtime))
+    return out
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="Evaluate capsule-bench run dirs -> GO/ISSUES per (target, arm).")
+    ap.add_argument("run_dirs", nargs="*", help="explicit run dirs to evaluate")
+    ap.add_argument("--roots", nargs="*", default=[], help="target roots; evaluate the newest run per arm")
+    ap.add_argument("--json", action="store_true", help="emit the full verdict JSON")
+    a = ap.parse_args(argv)
+    dirs = [Path(d) for d in a.run_dirs]
+    for r in a.roots:
+        dirs += _latest_runs(Path(r))
+    if not dirs:
+        print("no run dirs given (pass run dirs or --roots)", file=sys.stderr)
+        return 2
+    results = [evaluate(d) for d in dirs]
+    if a.json:
+        print(json.dumps(results, indent=2))
+        return 0
+    print(f"{'VERDICT':8} {'ARM':22} {'bnd':4} {'grd':4} {'cnf':4} {'pass/caps':10} run")
+    for v in results:
+        c = v["conformance"]["conformant"]
+        print(f"{v['verdict']:8} {v['arm']:22} {str(v['bounded'])[:1]:4} {str(v['graded'])[:1]:4} "
+              f"{str(c)[:1]:4} {str(v['n_passed'])+'/'+str(v['n_capsules']):10} {v['run']}")
+        for iss in v["issues"]:
+            print(f"    - {iss}")
+    n_go = sum(1 for v in results if v["verdict"] == "GO")
+    print(f"\n{n_go}/{len(results)} GO")
+    return 0 if n_go == len(results) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

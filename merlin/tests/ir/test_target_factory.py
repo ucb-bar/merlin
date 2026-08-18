@@ -16,8 +16,10 @@ pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed
 def test_build_dialect_shape():
     from merlin.xdsl_dialects.targets.factory import build_dialect
 
-    for target, dname, ops in (("toy_npu", "toynpu", {"res_pack", "matmul", "commit", "evict"}),
-                               ("saturn", "saturn", {"pack", "matmul", "commit", "release"})):
+    vec = {"vector_map", "vector_reduce"}
+    for target, dname, ops in (
+            ("toy_npu", "toynpu", {"res_pack", "matmul", "commit", "evict"} | vec),
+            ("saturn", "saturn", {"pack", "matmul", "commit", "release"} | vec)):
         b = build_dialect(target, matmul_rhs_typed=(target == "toy_npu"),
                           matmul_vl_policy=(target == "saturn"))
         assert b.dialect.name == dname
@@ -30,15 +32,22 @@ def test_build_dialect_shape():
 
 
 def test_reference_modules_use_the_factory():
-    """The in-tree reference modules expose the factory-built classes under their stable names."""
-    from merlin.xdsl_dialects.targets import saturn, toynpu
+    """The reference dialect modules expose the factory-built classes under their stable names. toynpu
+    is the built-in; saturn is reached through discovery — its package contributes the spec via
+    ``plugin.dialect`` and ``_specs()`` picks it up, so this also proves the eviction is wired."""
+    from merlin.xdsl_dialects.lowering.target_lowering import _specs
 
+    specs = _specs()
+    toynpu = specs["toy_npu"].dialect_module
     assert toynpu.get_dialect().name == "toynpu"
     assert {o.name for o in toynpu.get_dialect().operations} == {
-        "toynpu.res_pack", "toynpu.matmul", "toynpu.commit", "toynpu.evict"}
+        "toynpu.res_pack", "toynpu.matmul", "toynpu.commit", "toynpu.evict",
+        "toynpu.vector_map", "toynpu.vector_reduce"}
+    saturn = specs["saturn"].dialect_module   # discovered via plugin.dialect, not an in-tree import
     assert saturn.get_dialect().name == "saturn"
     assert {o.name for o in saturn.get_dialect().operations} == {
-        "saturn.pack", "saturn.matmul", "saturn.commit", "saturn.release"}
+        "saturn.pack", "saturn.matmul", "saturn.commit", "saturn.release",
+        "saturn.vector_map", "saturn.vector_reduce"}
 
 
 def test_factory_lowering_matches_per_target():

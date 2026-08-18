@@ -110,6 +110,16 @@ def main() -> int:
     ap.add_argument("--experiment", choices=["full", "realistic"], default="full")
     ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap")
     ap.add_argument("--skip-hidden", action="store_true")
+    # Agent driver + provider — mirrored so _arm_cmd builds the SAME command on the initial launch AND on
+    # every --resume (else a resume would silently drop to driver=auto / a different provider than the run
+    # was started with). Names + defaults match launch_ab_batch exactly.
+    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode"], default="auto",
+                    help="agent driver for the guarded arm(s) (auto|converse|claudecode|opencode)")
+    ap.add_argument("--subagent-model", default="")
+    ap.add_argument("--background-model", default="")
+    ap.add_argument("--provider", choices=["subscription", "bedrock"], default="subscription")
+    ap.add_argument("--aws-region", default="us-east-1", help="AWS region for --provider bedrock")
+    ap.add_argument("--aws-profile", default="", help="AWS profile (~/.aws) for --provider bedrock")
     a = ap.parse_args()
 
     arms = [s.strip() for s in a.arms.split(",") if s.strip()]

@@ -27,6 +27,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -38,6 +39,7 @@ import yaml
 import _common as C
 import run_agent_experiment as RX  # reuse bundle/workspace/bwrap primitives
 import _ratelimit as RL  # five-hour rate-limit detection + reset epoch (shared)
+import resume_on_quota as ROQ  # cut-short (timeout / weekly-quota) detection + checkpoint/resume policy
 
 SCRIPTS = Path(__file__).resolve().parent  # this scripts/ dir (selfcheck_broker.py, selfcheck_shim.py)
 
@@ -89,16 +91,104 @@ def _l3_barrier_decision(l3_all_pass: bool, rnd: int, max_rounds: int) -> str:
     return "iterate"
 
 
+def _spend_over_cap(this_round_cost) -> tuple[bool, float, float]:
+    """Enforce the experiment's DOLLAR ceiling in code. Append this round's cost to a SHARED spend ledger
+    (all arm processes of the batch write to ``MERLIN_SPEND_LEDGER``) and return ``(over_cap, total, cap)``
+    against ``MERLIN_MAX_SPEND_USD``. Once the running total across EVERY arm crosses the cap, each arm stops
+    before its next round — a soft ceiling whose overshoot is bounded by one in-flight round per arm (a
+    round's true cost is only known once it completes). No cap / no ledger configured → never over. The cost
+    is the now-authoritative, subagent-inclusive figure from :func:`experiment_tokens.parse_transcript`."""
+    import os as _os
+    cap = float(_os.environ.get("MERLIN_MAX_SPEND_USD") or 0)
+    ledger = _os.environ.get("MERLIN_SPEND_LEDGER")
+    if cap <= 0 or not ledger:
+        return False, 0.0, 0.0
+    import fcntl
+    c = float(this_round_cost or 0)
+    p = Path(ledger)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    total = 0.0
+    with open(p, "a+", encoding="utf-8") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.write(json.dumps({"cost": c}) + "\n")
+        f.flush()
+        f.seek(0)
+        for line in f:
+            try:
+                total += float(json.loads(line).get("cost", 0) or 0)
+            except Exception:  # noqa: BLE001 — a malformed ledger line must not defeat the cap
+                continue
+        fcntl.flock(f, fcntl.LOCK_UN)
+    return total >= cap, total, cap
+
+
 def _verilator_per_capsule_timeout() -> int:
-    """Per-capsule verilator timeout from the readiness-measured T_obs (generous 2x), min 900s. The
-    readiness gate (readiness_check.test_oracles_endtoend) writes scripts/.oracle_timing.json; the
-    launcher refuses to start without it, so a fresh measurement always backs this number."""
+    """Per-capsule L3 (verilator RTL cert) timeout, from a T_obs that is POSITIVELY confirmed to be THIS
+    target's sim (generous 2x, min 900s). The readiness gate writes scripts/.oracle_timing.json — but that
+    path is a symlink shared across targets, so a radiance run must NOT inherit a GemminiRocketConfig T_obs
+    measured for a different, far lighter RTL (which would floor to 900s and mass-timeout every L3 capsule,
+    the abc9 "L3 0/N = timeout not skill" trap). A measurement is trusted only when it is target-scoped:
+    the file ``.oracle_timing.<target>.json`` OR a legacy ``.oracle_timing.json`` whose ``target`` field
+    matches. An unconfirmed / foreign-config measurement is ignored in favor of a conservative bound and a
+    loud log — never a silent under-time."""
     import math
+    tgt = _te().target
+    for p in (C.EXP / "scripts" / f".oracle_timing.{tgt}.json",
+              C.EXP / "scripts" / ".oracle_timing.json"):
+        try:
+            d = json.loads(p.read_text())
+        except Exception:
+            continue
+        if p.name.endswith(f".{tgt}.json") or d.get("target") == tgt:
+            return max(900, int(math.ceil(2 * float(d["verilator_per_capsule_s"]))))
+        print(f"[timeout] ignoring {p.name}: T_obs measured on config={d.get('config')!r} "
+              f"target={d.get('target')!r}, not {tgt!r} — needs a target-scoped measurement",
+              file=sys.stderr)
+    print(f"[timeout] no target-confirmed L3 timing for {tgt!r}; using conservative 2400s. Run readiness "
+          f"or the L3 measurement to record scripts/.oracle_timing.{tgt}.json", file=sys.stderr)
+    return 2400
+
+
+def _cycle_accurate_checkpoint_enabled() -> tuple[bool, str]:
+    """Whether to run the cycle-accurate RTL-cert (verilator/L3) barrier for THIS target.
+
+    Target-agnostic + DERIVED, never a per-target literal: the barrier's cycle-accurate cert tiers are the
+    checkpoint ladder (:func:`qa_checkpoint_adapters`) MINUS the fast loop tier (:func:`qa_loop_adapters`) —
+    e.g. verilator L3 (and VCS L4) once spike/cyclotron L2 is the loop gate. The barrier is a pass-gate ONLY
+    when at least one of those cert tiers is a MANDATORY tier of the pilot corpus (listed in a public
+    capsule's ``required_oracle_tiers``). A target whose corpus makes every cert tier OPTIONAL — a prototype
+    / not-RTL-certified accelerator graded on its functional oracle (its required tier is the fast
+    functional sim, e.g. cyclotron L2) — SKIPS the barrier, so a normal run is never blocked on a
+    slow/hanging RTL sim (the atlas-0/N `oracle_unavailable` trap, here on the driver side). An explicit
+    ``MERLIN_CAPSULE_L3_CHECKPOINT`` env var forces it on (opt-in RTL cert when the sim is available and
+    there is time) or off, overriding the derivation."""
+    env = os.environ.get("MERLIN_CAPSULE_L3_CHECKPOINT")
+    if env is not None:
+        on = env.strip().lower() in ("1", "true", "yes", "on")
+        return on, f"MERLIN_CAPSULE_L3_CHECKPOINT={env!r} (explicit opt-{'in' if on else 'out'})"
+    from merlin.targetgen import capsule_runner as _CR
     try:
-        t = json.loads((C.EXP / "scripts" / ".oracle_timing.json").read_text())["verilator_per_capsule_s"]
-        return max(900, int(math.ceil(2 * float(t))))
-    except Exception:
-        return 1200
+        te = _te()
+        ck = _CR.qa_checkpoint_adapters(te.target, te.sim_via)
+        loop = _CR.qa_loop_adapters(te.target, te.sim_via)
+    except Exception:  # noqa: BLE001 — no resolvable checkpoint oracle -> nothing to gate on
+        ck, loop = {}, {}
+    cert_tiers = set(ck) - set(loop)   # the cycle-accurate cert tiers held back from the fast loop
+    if not cert_tiers:
+        return False, "no cycle-accurate cert tier beyond the fast loop oracle for this target"
+    mandatory: set[str] = set()
+    for cf in Path(_pilot_subset()).rglob("capsule.yaml"):
+        try:
+            doc = yaml.safe_load(cf.read_text()) or {}
+        except Exception:  # noqa: BLE001
+            continue
+        mandatory |= set(doc.get("required_oracle_tiers") or [])
+    hit = sorted(cert_tiers & mandatory)
+    if hit:
+        return True, f"cert tier(s) {hit} are mandatory in the pilot corpus"
+    return False, (f"cert tier(s) {sorted(cert_tiers)} are OPTIONAL for the pilot corpus (functional-tier "
+                   f"pass bar) — skipping the cycle-accurate RTL barrier; set "
+                   f"MERLIN_CAPSULE_L3_CHECKPOINT=1 to opt in")
 _EXPERIMENT = "full"    # set in main(): 'full' (abc1) or 'realistic' (abc2, whole-repo + self-check)
 _ARM = ""               # set in main(): the arm being run (enforces the per-arm language mandate)
 _DRIVER = "auto"        # set in main(): agent driver (auto|converse|claudecode|opencode); auto routes by model
@@ -160,8 +250,9 @@ def assemble_copy_workspace(bundle: dict, ws: Path) -> dict:
     """sandbox=none isolation: build the workspace from COPIES of the allowed materials with every
     answer-bearing file dropped, and SYMLINK only answer-free large/toolchain paths. The agent's cwd
     is this workspace; it never receives goldens, hidden capsules, the reference, or prior backends.
-    (bwrap is unusable here: the Bun-based `claude` binary crashes under it — SIGILL / FailedToOpen-
-    Socket — so filesystem isolation is by construction + a post-run transcript audit, not bwrap.)
+    (This is the ``--sandbox none`` ESCAPE HATCH: FS isolation is by construction + a post-run transcript
+    audit — detection, not prevention. bwrap is now the default and the preferred, enforced path; use
+    ``none`` only for local dev where bwrap is unavailable.)
 
     Allowed Merlin authoring-tool dirs (under merlin/) are COPIED minus any deny-wins sub-path
     (e.g. runtime_adapter.py, xdsl_dialects/lowering/) so the workspace carries no in-workspace
@@ -312,6 +403,15 @@ def _is_oracle_code(text: str) -> str | None:
 
 
 _EMPTY_RESULT_MARKERS = ("(bash completed with no output)", "(no output)", "(no content)")
+# Read-FAILED signatures: the mask blocks an answer path either by binding it to /dev/null (an EMPTY
+# result) OR by leaving it absent / mode-000 (the tool returns an ERROR). In BOTH cases NO answer content
+# reached the agent, so an attempt whose result carries one of these is a benign blocked_probe, not a leak.
+# (A golden.yaml's own content never IS one of these error strings, so this cannot mask a true leak.)
+_BLOCKED_READ_MARKERS = (
+    "no such file", "enoent", "does not exist", "cannot open", "not found",
+    "permission denied", "eacces", "operation not permitted", "eperm",
+    "file not found", "is a directory", "error: enoent", "no content",
+)
 
 
 def _result_text_by_id(tpath: Path) -> dict:
@@ -348,7 +448,10 @@ def _read_was_blocked(result_text) -> bool:
     if result_text is None:
         return False
     s = result_text.strip().lower()
-    return s == "" or s in _EMPTY_RESULT_MARKERS
+    if s == "" or s in _EMPTY_RESULT_MARKERS:
+        return True
+    # a read that FAILED (masked-absent / mode-000) returned an error, not answer bytes -> still blocked.
+    return any(m in s for m in _BLOCKED_READ_MARKERS)
 
 
 # Path-LISTING searches (grep -l / find / ls / locate) output FILENAMES, not file content — so they cannot
@@ -439,6 +542,19 @@ def claude_runtime_binds() -> list[str]:
     return _BW.claude_runtime_binds()
 
 
+def _granted_merlin_tools(arm: str) -> set:
+    """The merlin tool paths THIS arm's bundle grants (its ``allowed_files.txt``) — the authoritative,
+    per-arm set the enforced-workflow prompt block is derived from, so arm-4's RTL-facts grant (via the
+    rtlchecks bundle RX.ARM_BUNDLE was swapped to) distinguishes it from arm-3. Empty when the file is
+    absent (render_prompt then falls back to its coarse arm-string gate). Target-agnostic."""
+    bdir = C.BUNDLES / RX.ARM_BUNDLE[arm]
+    f = bdir / "allowed_files.txt"
+    if not f.is_file():
+        return set()
+    return {ln.strip() for ln in f.read_text().splitlines()
+            if ln.strip().startswith(("merlin/", "experiments/"))}
+
+
 def bwrap_cmd(inner: str, ws: Path, bundle: dict, extra_binds: list[str] | None = None) -> str:
     """bwrap argv (deny-by-default) + claude runtime binds + TOOLCHAIN binds (the legit build+sim tools,
     bound back over the /scratch* masks) + the DERIVED answer-mask pass + toolchain env. The mask set now
@@ -454,7 +570,13 @@ def bwrap_cmd(inner: str, ws: Path, bundle: dict, extra_binds: list[str] | None 
     # answer surface: masking is applied last and therefore wins.
     parts += list(extra_binds or [])
     parts = _BW.apply_answer_masks(parts, _surfaces(_te()))
-    return " ".join(parts) + f" bash -c '{TC.sandbox_env(ws)} {inner}'"
+    payload = f"{TC.sandbox_env(ws)} {inner}"
+    # Single-quote the whole payload for the OUTER `bash -c`, escaping any embedded single quotes (the
+    # POSIX '\'' idiom). ``inner`` may itself be shlex-quoted by the caller (the opencode driver quotes
+    # its prompt arg, e.g. "…(if present)…"), so a naive f"…'{inner}'" would let those quotes close the
+    # wrapper early and expose a `(` to the outer shell (opencode arm died rc=2 on exactly this). The
+    # INNER bash still re-parses the payload as a script, so $(…)/\( \) in mask_selftest keep working.
+    return " ".join(parts) + " bash -c '" + payload.replace("'", "'\\''") + "'"
 
 
 def _corpus_probe_paths() -> tuple[Path, Path]:
@@ -543,7 +665,8 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
         _generated_task = not _task_md.is_file()
         if _generated_task:
             from merlin.targetgen.generate_prompt import render_prompt
-            body = render_prompt(_te(), _manifest(), "realistic", arm)
+            body = render_prompt(_te(), _manifest(), "realistic", arm,
+                                 granted_tools=_granted_merlin_tools(arm))
         else:
             body = _task_md.read_text()
         if os.environ.get("PILOT_LANG", "").strip().lower() == "cpp":
@@ -584,7 +707,7 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
     # diff). The runtime-only operational blocks below (language mandate + the 20-public/L3 scope note) are
     # still appended: they carry run-specific numbers the target-agnostic template deliberately omits.
     from merlin.targetgen.generate_prompt import render_prompt
-    pilot = render_prompt(_te(), _manifest(), _EXPERIMENT, arm)
+    pilot = render_prompt(_te(), _manifest(), _EXPERIMENT, arm, granted_tools=_granted_merlin_tools(arm))
     # Language mandate (env PILOT_LANG=cpp|python). The C++ arms (baseline/cpp_merlininfra) are forced to
     # the status-quo C++ OOT MLIR; the merlin arms (arm-3 merlin_assisted + arm-4 merlin_assisted_rtlchecks,
     # both carry "merlin_assisted") DEFAULT to the xDSL/Python path — the whole point of those arms is to
@@ -724,8 +847,20 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
         tpath.parent.mkdir(parents=True, exist_ok=True)
         epath = run_dir / "rounds" / f"round_{rnd:02d}.stderr.log"
         with open(tpath, "w") as tf, open(epath, "w") as ef:
-            proc = subprocess.run(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef,
-                                  timeout=timeout)
+            # start_new_session + killpg on timeout: the command is `bash -c '<bwrap ... claude ...>'`, so a
+            # plain subprocess timeout SIGKILLs only the outer bash and leaves the bwrap->claude tree alive
+            # (bwrap --die-with-parent does not reliably cascade). Kill the whole process group instead.
+            proc = subprocess.Popen(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef,
+                                    start_new_session=True)
+            try:
+                proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    proc.kill()
+                proc.wait()
+                raise
     finally:
         _stop_selfcheck_broker(ws, broker)
     return proc.returncode, tpath
@@ -759,6 +894,16 @@ def _start_selfcheck_broker(ws: Path):
         (ws / ".isa_channel" / "STOP").unlink(missing_ok=True)
         _stage_shim(ws, "isa_tools_shim.py", "isa_tools.py")
         broker_specs.append(("isa_tools_broker.py", "isa_tools_broker.log"))
+        # CCA contract tools (check_bijection + escalation_ladder) — the arm-4 prompt MANDATES these but
+        # full merlin cannot import in the sandbox (merlin/kernels/types.py shadows stdlib `types` on a
+        # flat sys.path; regions.py needs the unstaged merlin.common.paths). A driver-side broker runs
+        # them OUTSIDE the box, exactly like the ISA tools. Oracle-free (public CCA<->action structure).
+        # Same channel-dir + STOP pattern; the shim is staged under BOTH mandated module names.
+        (ws / ".cca_channel").mkdir(parents=True, exist_ok=True)
+        (ws / ".cca_channel" / "STOP").unlink(missing_ok=True)
+        _stage_shim(ws, "cca_shim.py", "cca_contract.py")
+        _stage_shim(ws, "cca_shim.py", "action_catalog.py")
+        broker_specs.append(("cca_broker.py", "cca_broker.log"))
     brokers = []
     for name, log in broker_specs:
         brokers.append(subprocess.Popen(
@@ -774,6 +919,9 @@ def _stop_selfcheck_broker(ws: Path, brokers) -> None:
     isa_ch = ws / ".isa_channel"
     if isa_ch.is_dir():                                  # assisted-arm ISA-tools broker (if it was started)
         (isa_ch / "STOP").write_text("stop")
+    cca_ch = ws / ".cca_channel"
+    if cca_ch.is_dir():                                  # assisted-arm CCA-contract broker (if it was started)
+        (cca_ch / "STOP").write_text("stop")
     for b in (brokers if isinstance(brokers, list) else [brokers]):
         try:
             b.wait(timeout=15)
@@ -967,9 +1115,17 @@ def main(argv: list[str] | None = None) -> int:
                          "rate-limit-boundary exposure, and can cut a productive round mid-fix (rc=124). "
                          "The original abc runs used 4h and converged in ~1 productive round.")
     ap.add_argument("--qa-timeout", type=int, default=900)
-    # Default sandbox=none: bwrap crashes the Bun-based `claude` binary in this environment. Isolation
-    # under "none" is enforced by a golden-masked COPIED workspace + a post-run transcript audit.
-    ap.add_argument("--sandbox", choices=["bwrap", "none"], default="none")
+    # Default sandbox=bwrap: enforced FS isolation (the agent cannot read a masked answer surface at all),
+    # AND the driver-side broker tools (async simjob oracle, self-check, arc-model isa_tools, CCA) only
+    # start under bwrap. The earlier "bwrap crashes claude" blocker was a sandbox-config bug, now fixed in
+    # sandbox/bwrap.base_argv (bind the systemd-resolved dir so DNS works; drop inherited CLAUDE_CODE_*
+    # nesting markers; provide an XDG runtime dir) — validated end-to-end by smoke_agent_check. "none" stays
+    # available as an escape hatch (golden-masked COPY workspace + post-run transcript audit), but it is
+    # detection-not-prevention and must not be used for scored runs.
+    ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap")
+    ap.add_argument("--allow-unsandboxed", action="store_true",
+                    help="explicitly permit a real (spending) run under --sandbox none; without it a "
+                         "'none' run is refused (workspace assembly alone does not hide denied paths).")
     ap.add_argument("--no-oracle", action="store_true", help="QA = L0+trace only (fast dev)")
     ap.add_argument("--skip-hidden", action="store_true")
     ap.add_argument("--experiment", choices=["full", "realistic"], default="full",
@@ -992,6 +1148,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--account-config-dir", default=os.environ.get("CLAUDE_CONFIG_DIR", ""),
                     help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)")
     a = ap.parse_args(argv)
+    # A real (spending) run MUST be sandboxed: without bwrap the agent can read any absolute path (incl.
+    # denied /scratch* answer dirs), so the copy-workspace + post-hoc transcript audit alone do NOT isolate
+    # it. Fail closed (parity with run_agent_experiment.py) — an unsandboxed run needs an explicit opt-in.
+    if a.sandbox != "bwrap" and not a.allow_unsandboxed:
+        print("REFUSING: a real run requires --sandbox bwrap (or explicit --allow-unsandboxed). "
+              "Workspace assembly alone does not hide denied absolute paths.", file=sys.stderr)
+        return 4
     arm = a.arm
     global _EXPERIMENT, _ARM, _DRIVER, _SUBAGENT_MODEL, _BACKGROUND_MODEL
     _EXPERIMENT = a.experiment
@@ -1196,6 +1359,21 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"[preflight] oracle GO: {_ora_why}")
 
+    # oracle_available proves we can GRADE; codegen_smoke proves the target's OWN emit path can PRODUCE a
+    # runnable kernel (fork-free build -> reference sim -> correct result). A broken emit path would
+    # tool-crash on EVERY capsule of a paid run (the atlas 0/N mode from the PRODUCE side, not the grade
+    # side). It returns n/a for targets whose emit path this smoke doesn't cover, and only a hard False for
+    # a genuinely broken fork-free pipeline — so gate only on that explicit False (zero tokens spent).
+    if not a.no_oracle:
+        _cg_ok, _cg_why = _CRpf.codegen_smoke(_te_pf.target)
+        (run_dir / "codegen_smoke.yaml").write_text(yaml.safe_dump(
+            {"target": _te_pf.target, "codegen_ok": _cg_ok, "reason": _cg_why}, sort_keys=False))
+        if not _cg_ok:
+            print(f"NO_GO: codegen smoke failed — the target's emit path cannot produce a runnable "
+                  f"kernel: {_cg_why}. Refusing to launch (zero tokens spent).", file=sys.stderr)
+            return 4
+        print(f"[preflight] codegen smoke: {_cg_why}")
+
     # realistic (abc2): the self-check tool the agent runs logs each invocation here (dev-trajectory /
     # soft-failure / tool-trigger record). T0 anchors wall-offset. Inherited by every claude subprocess.
     if _EXPERIMENT == "realistic":
@@ -1208,6 +1386,11 @@ def main(argv: list[str] | None = None) -> int:
     # and EACH wait, so a fresh --resume invocation continues exactly where it stopped — not from 0.
     state_p = run_dir / "qa_loop_state.yaml"
     rounds_summary: list = []
+    try:                             # endpoint_kind — drives the per-round dev-conformance flag (asm applies only to external_backend)
+        from merlin.targetgen.generate_prompt import prompt_slots as _pslots
+        _endpoint_kind = _pslots(_te(), _manifest()).get("endpoint_kind", "")
+    except Exception:  # noqa: BLE001
+        _endpoint_kind = ""
     _best_progress = None            # plateau early-stop: best (#passed, -total_mismatch) seen so far
     _plateau_stall = 0               # consecutive rounds with no progress
     rl_waits_used = 0
@@ -1252,6 +1435,7 @@ def main(argv: list[str] | None = None) -> int:
                            "rl_waits_used": rl_waits_used, "started_at": started_at},
             "last_updated": datetime.now(timezone.utc).isoformat()}, sort_keys=False))
 
+    cost_capped = False             # set if the batch dollar ceiling (MERLIN_MAX_SPEND_USD) is reached
     while rnd < a.max_rounds and not verdict.get("all_pass"):
         print(f"\n===== ROUND {rnd} =====")
         _rstart = time.time()
@@ -1272,6 +1456,21 @@ def main(argv: list[str] | None = None) -> int:
                   f"remaining rounds. Relaunch after the daily quota resets.")
             _checkpoint(rnd)
             break
+
+        # WEEKLY (seven-day) quota wall: the subscription budget is exhausted and resets DAYS later, so a
+        # same-session sleep-and-retry (what the five-hour branch below does) is pointless — it would burn
+        # every remaining round against the wall. Crucially this can fire AFTER real work (the agent built
+        # a partial submission), so grading it as a normal round would score a misleading 0 and discard the
+        # partial. Instead: checkpoint at THIS round (a later --resume continues it — the workspace
+        # submission/ persists), write a DISTINCT status, and exit early with a distinct code.
+        if ROQ.weekly_quota_hit(tpath):
+            active_wall_s += time.time() - _rstart
+            _checkpoint(rnd)  # next_round stays rnd: --resume after the weekly reset continues THIS round
+            sp = ROQ.write_quota_status(run_dir, ROQ.REASON_WEEKLY, rnd, transcript=tpath)
+            print(f"[round {rnd}] {ROQ.STATUS_WEEKLY}: weekly (seven-day) subscription budget exhausted "
+                  f"~mid-round; partial submission checkpointed. Relaunch with --resume (same run_id) "
+                  f"after the weekly reset — see {sp}. Exiting (not a converged/failed 0).", flush=True)
+            return ROQ.QUOTA_WEEKLY_EXIT_CODE
 
         # Rate-limit backoff: if the org five-hour budget REJECTED this round (zero work), don't
         # consume it — sleep until the window resets and retry the SAME round index.
@@ -1302,9 +1501,31 @@ def main(argv: list[str] | None = None) -> int:
             round_brief.write(run_dir, ws, rnd)
         except Exception as _e:  # noqa: BLE001
             print(f"[round {rnd}] round_brief skipped: {type(_e).__name__}: {_e}")
+        # If this round was CUT SHORT mid-work but is resumable in-budget (a wall-clock timeout, rc=124),
+        # its partial submission/ persists in the workspace — do NOT treat it as a converged/failed final.
+        # Prepend a RESUME banner to the next round's brief so the fresh session CONTINUES the partial
+        # (finish manifest.yaml + the CLI + the target artifact first) instead of restarting from scratch.
+        _cut, _cut_reason = ROQ.round_was_cut_short(run_dir, rc=rc, transcript=tpath)
+        if _cut and ROQ.resume_policy(_cut_reason) == ROQ.RESUME_IN_BUDGET:
+            try:
+                ROQ.prepend_resume_note(ws, _cut_reason)
+                print(f"[round {rnd}] cut short ({_cut_reason}); partial submission preserved — next round "
+                      f"will RESUME it (finish manifest.yaml + CLI + target artifact first).")
+            except Exception as _e:  # noqa: BLE001
+                print(f"[round {rnd}] resume-note skipped: {type(_e).__name__}: {_e}")
         rsum = ET.parse_transcript(tpath, billing_mode=_billing_mode(a.model))
         audit = audit_transcript(tpath, arm)
-        rounds_summary.append({"round": rnd, "agent_rc": rc,
+        # dev-conformance FLAG (never a grade gate): did the agent develop the way this arm mandates?
+        try:
+            import conformance as _CONF
+            conf = _CONF.compute(tpath, ws / "submission", arm, _endpoint_kind)
+            _bad = _CONF.failing_checks(conf)
+            if _bad:
+                print(f"[round {rnd}] NOT CONFORMANT — failing: {', '.join(_bad)} "
+                      "(flag only; the capsule grade still reports)")
+        except Exception as _e:  # noqa: BLE001
+            conf = {"conformant": None, "error": f"{type(_e).__name__}: {_e}"}
+        rounds_summary.append({"round": rnd, "agent_rc": rc, "conformance": conf,
                                "all_pass": verdict.get("all_pass"),
                                "n_passed": verdict.get("n_passed"),
                                "n_capsules": verdict.get("n_capsules"),
@@ -1326,6 +1547,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[round {rnd}] all_pass={verdict.get('all_pass')} "
               f"{verdict.get('n_passed')}/{verdict.get('n_capsules')} "
               f"answer_access_clean={audit['clean']}")
+        # Enforce the batch DOLLAR ceiling: once the shared spend ledger crosses MERLIN_MAX_SPEND_USD, stop
+        # before starting the next (paid) round. Uses the authoritative subagent-inclusive per-round cost.
+        _over, _spent, _cap = _spend_over_cap(rsum.get("estimated_cost_usd"))
+        if _over:
+            print(f"[round {rnd}] COST CAP: batch spend ${_spent:.2f} >= ${_cap:.2f} "
+                  f"(MERLIN_MAX_SPEND_USD) — stopping before the next round; zero further spend.")
+            cost_capped = True
+            rnd = rnd + 1
+            _checkpoint(rnd)
+            break
         rnd = rnd + 1
         _checkpoint(rnd)  # next_round advances only after a completed (non-rate-limited) round
         # Plateau early-stop: a stuck agent re-sends its (uncached) growing context every round for no
@@ -1395,8 +1626,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             _CG.grade(str(vcand), capsules_root=str(_pilot_subset()), runs_root=str(vruns),
                       labels={"public", "dev"}, contract=str(C.REPO / "merlin/contract"),
-                      oracle_adapters=adapters, timeout=_verilator_per_capsule_timeout(), max_workers=8,
-                      target=_te().target)
+                      oracle_adapters=adapters, timeout=_verilator_per_capsule_timeout(),
+                      max_workers=_CG.default_grade_workers(), target=_te().target)
         except Exception as e:
             print(f"[verilator attempt {attempt}] grade error: {str(e)[:200]}")
         if _glog is not None:  # record CIRCT gate decisions (skips + per-call wall)
@@ -1417,7 +1648,13 @@ def main(argv: list[str] | None = None) -> int:
 
     verilator_attempts: list = []
     _ready_marker = (ws / "submission" / READY_MARKER).exists()
-    if verdict.get("all_pass") or (_EXPERIMENT == "realistic" and _ready_marker):
+    # The cycle-accurate RTL barrier is a pass-gate only when the target's corpus makes its RTL-cert tier
+    # MANDATORY. A prototype target graded on its functional oracle (L3 optional) skips it, so a normal run
+    # is not blocked on a slow/hanging verilator; convergence then rides the functional-tier (L2) verdict.
+    _run_l3, _l3_reason = _cycle_accurate_checkpoint_enabled()
+    if not _run_l3:
+        print(f"[verilator] cycle-accurate RTL (L3) barrier SKIPPED — {_l3_reason}")
+    if _run_l3 and (verdict.get("all_pass") or (_EXPERIMENT == "realistic" and _ready_marker)):
         # ready = spike-converged OR (realistic) the agent declared done -> run the L3 verilator barrier.
         # In realistic mode this barrier IS the definition of done; the agent already self-checked on the
         # tool, so this confirms on the operator side. Up to VERILATOR_ATTEMPTS with a fix-round between.
@@ -1511,6 +1748,7 @@ def main(argv: list[str] | None = None) -> int:
     _cy.write_text(yaml.safe_dump(_cd, sort_keys=False))
     (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(
         {"rounds": rounds_summary, "converged": verdict.get("all_pass", False),
+         "cost_capped": cost_capped,   # stopped by the batch dollar ceiling, not convergence/max_rounds
          "n_rounds": len(rounds_summary), "wall_seconds": wall, "finalize": finalize,
          "timing": timing}, sort_keys=False))
 

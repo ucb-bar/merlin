@@ -70,7 +70,8 @@ def test_parse_console_shared_protocol():
 
 
 def test_spike_gemmini_delegate_to_parse_console():
-    from merlin.runtime.backends import gemmini, spike
+    from merlin.runtime.backends import base as _bk, spike
+    gemmini = _bk.get_backend("gemmini")
     t = "OUT Y0 1 2 3 4\nMETRIC cycles 9\nDONE\n"
     assert spike.parse_output(t) == ({"Y0": [[3, 4]]}, {"cycles": 9})
     assert gemmini.parse_output(t) == ({"Y0": [[3, 4]]}, {"cycles": 9})

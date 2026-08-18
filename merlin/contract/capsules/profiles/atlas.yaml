@@ -49,3 +49,85 @@ capsules:
 - {cat: hidden, name: HT2_k_accum_hidden, kind: isa, op: matmul, M_tiles: 1, K_tiles: 2, N_tiles: 1,
    lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
    source_reference: hidden K=64 accumulate, label: hidden, modes: {k_accumulate: true}}
+# --- Fused ops mined from atlas-npu/baremetal (smolvla_rms_norm, fused_silu_gate, softmax,
+# fused_attention): the VPU/norm/activation algorithms run in bf16 alongside the fp8 MXU matmuls, so they
+# are PyTorch-sourced (the m2m linalg is the interface the atlas backend compiles).
+- {cat: model_slices, name: AF0_rmsnorm_bf16_pt, kind: model_slice, op: rmsnorm, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch RMSNorm bf16 (atlas smolvla_rms_norm)', label: public, modes: {}}
+- {cat: model_slices, name: AF1_geglu_bf16_pt, kind: model_slice, op: geglu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, N: 32, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch SiLU-gate/GeGLU bf16 (atlas smolvla_fused_silu_gate)', label: public,
+   modes: {}}
+- {cat: model_slices, name: AF2_softmax_bf16_pt, kind: model_slice, op: softmax, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch softmax bf16 (atlas smolvla_softmax)', label: public, modes: {}}
+- {cat: model_slices, name: AF3_attn_full_bf16_pt, kind: model_slice, op: attention_full,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 64, N: 16, Dv: 64, causal: true, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'PyTorch causal attention bf16 (atlas smolvla_fused_attention)', label: public,
+   modes: {}}
+# --- Whole-model capstone (GATED): small_llama in fp8 (atlas MXU inputs are fp8 e4m3).
+- {cat: model, name: M0_small_llama_atlas, kind: model, op: model, model: small_llama,
+   operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama fp8 — whole-model capstone', label: public,
+   gate: {after_op_pass_fraction: 0.8}}
+# --- Hidden fused holdout.
+- {cat: hidden, name: AHF0_rmsnorm_bf16_hidden, kind: model_slice, op: rmsnorm, operand_dtype: bf16,
+   source: pytorch, M: 24, K: 32, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
+   source_reference: hidden PyTorch RMSNorm bf16 (unseen 24x32), label: hidden, modes: {}}
+# --- More VPU/activation/reduction ops mined from atlas-npu/baremetal (smolvla_gelu_tanh, smolvla_silu,
+# smolvla_elementwise_*, smolvla_reduction_sum, smolvla_rope_frequency).
+- {cat: model_slices, name: AF4_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch GELU-tanh bf16 (atlas smolvla_gelu_tanh)', label: public, modes: {}}
+- {cat: model_slices, name: AF5_silu_bf16_pt, kind: model_slice, op: silu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch SiLU bf16 (atlas smolvla_silu)', label: public, modes: {}}
+- {cat: model_slices, name: AF6_add_bf16_pt, kind: model_slice, op: add, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch elementwise add bf16 (atlas smolvla_elementwise_add)', label: public,
+   modes: {}}
+- {cat: model_slices, name: AF7_reduce_sum_bf16_pt, kind: model_slice, op: reduce_sum, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch row reduction-sum bf16 (atlas smolvla_reduction_sum)', label: public,
+   modes: {}}
+- {cat: model_slices, name: AF8_rope_bf16_pt, kind: model_slice, op: rope, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch RoPE bf16 (atlas smolvla_rope_frequency)', label: public, modes: {}}
+# --- Spec-sourced capsule: PROGRAM (MXU command sequence) + golden from the specir verification spec, via
+# emit_atlas_program; the spec's fp8->bf16 refmodel is the reference (SA C-model corroborated 1024/1024).
+- {cat: isa, name: AS0_matmul_spec, kind: isa, op: matmul, source: spec,
+   spec_ref: 'atlas-npu:op.matmul_mxu0', M: 32, K: 32, N: 32, lhs: A0, weight: W, out: Y0,
+   source_role: spec_derived,
+   source_reference: 'specir spec-sourced fp8->bf16 MXU matmul (program + refmodel golden + coverage)',
+   label: public}
+# --- Both MXU mesh types (atlas has two systolic meshes: mxu0/mxu1) as distinct fp8 matmul tiles, plus a
+# k-chain and fused matmul+bias mined from atlas-npu/baremetal (smolvla_matmul_mxu*, k_chain, fused_matmul_bias).
+- {cat: isa, name: AT7_matmul_mxu0, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, semantic: matmul_mxu0, source_role: handauthored_compiler_test,
+   source_reference: 'fp8 matmul on MXU mesh 0 (smolvla_matmul_mxu0)', label: public, modes: {}}
+- {cat: isa, name: AT8_matmul_mxu1, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, semantic: matmul_mxu1, source_role: handauthored_compiler_test,
+   source_reference: 'fp8 matmul on MXU mesh 1 (smolvla_matmul_mxu1)', label: public, modes: {}}
+- {cat: model_slices, name: AF9_fused_matmul_bias_bf16_pt, kind: model_slice, op: fused_matmul_bias,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: fused_matmul_bias,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch linear+bias bf16 (atlas fused_matmul_bias)',
+   label: public, modes: {}}
+- {cat: model_slices, name: AF10_bias_add_bf16_pt, kind: model_slice, op: bias_add, operand_dtype: bf16,
+   source: pytorch, M: 16, N: 16, out: Y0, comparison_group: bias_add, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch bias add bf16 (atlas bias_add)', label: public, modes: {}}
+- {cat: model_slices, name: AF11_k_chain_bf16_pt, kind: model_slice, op: k_chain, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: k_chain,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch chained matmul bf16 (atlas k_chain)',
+   label: public, modes: {}}
+- {cat: model_slices, name: AF12_gemv_batched_bf16_pt, kind: model_slice, op: gemv_batched,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, B: 2, out: Y0, comparison_group: gemv_batched,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch batched GEMV bf16 (atlas gemv_batched)',
+   label: public, modes: {}}
+# --- Second whole-model capstone (GATED): lstmnetvit fp8 — broader layer types (conv patch-embed,
+# spatial-reduction attention, depthwise MixFFN, PixelShuffle+upsample, LSTM head) beyond small_llama.
+- {cat: model, name: M1_lstmnetvit_atlas, kind: model, op: model, model: lstmnetvit,
+   operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'lstmnetvit fp8 — vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)',
+   label: public, gate: {after_op_pass_fraction: 0.8}}

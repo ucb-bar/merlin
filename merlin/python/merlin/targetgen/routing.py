@@ -41,9 +41,9 @@ class OpDemand:
     in_fmt: str
     weight_fmt: str | None = None   # None for unary/elementwise ops
     site: str = ""                  # optional label (weight name / op id) for reporting
-    m: int | None = None
-    n: int | None = None
-    k: int | None = None
+    m: int | None = None            # the op's real extents when known (a contraction's M x K x N), so a
+    n: int | None = None            # whole-model matmul LAYER is compiled at its true shape (the backend
+    k: int | None = None            # tiles it into DxD mesh tiles) rather than a single fixed tile
 
     @property
     def has_shape(self) -> bool:
@@ -291,6 +291,39 @@ def route_target(demands: list[OpDemand], target_name: str) -> list[RouteResult]
 
     units = _cu.compute_units(tr.load_contract(target_name))
     return route(demands, units)
+
+
+# compute-unit kinds that ARE the accelerator (execute on-mesh); everything else runs on the scalar/vector
+# lane. A demand that routes to none of a target's units is not a failure for a whole model — it means that
+# op (a norm/activation/elementwise) runs on the scalar/RVV lane, not the mesh.
+_MESH_KINDS = {"systolic", "spatial", "simt"}
+
+
+def route_plan_on(demands: list[OpDemand], units: list[_cu.ComputeUnit]) -> dict:
+    """Split a whole model's ops across a set of already-loaded ``units`` (the target-agnostic core of
+    :func:`route_plan`). ``results`` preserves the input op ORDER — the whole-model splice walks it to
+    co-schedule each op on its lane while handing activations between steps."""
+    kind = {u.name: u.kind for u in units}
+    results = route(demands, units)
+    mesh, fallback, scalar_rvv = [], [], []
+    for r in results:
+        if r.unit and kind.get(r.unit) in _MESH_KINDS:
+            mesh.append(r)
+        elif r.unit:
+            fallback.append(r)
+        else:
+            scalar_rvv.append(r)
+    return {"mesh": mesh, "fallback": fallback, "scalar_rvv": scalar_rvv, "results": results}
+
+
+def route_plan(demands: list[OpDemand], target_name: str) -> dict:
+    """Split a whole model's ops across a target: which run on the accelerator MESH (systolic/spatial/simt
+    unit), which on an in-contract vector/scalar unit, and which fall back to the scalar/RVV lane (no
+    accelerator unit — an honest, expected outcome for norms/activations on a matmul-only mesh)."""
+    from merlin.targetgen import target_registry as tr
+
+    units = _cu.compute_units(tr.load_contract(target_name))
+    return route_plan_on(demands, units)
 
 
 def gaps(results: list[RouteResult]) -> list[RouteResult]:

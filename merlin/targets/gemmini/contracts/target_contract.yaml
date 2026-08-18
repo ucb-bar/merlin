@@ -12,6 +12,12 @@
 name: gemmini
 version: 0.1
 family: tensor_resident
+# Runtime backend, evicted from the core runtime/backends/ into this package's backend/ dir (a package of
+# gemmini.py + gemmini_codegen.py + gemmini_codegen_mlir.py). base._oot_backend_modules loads a reference
+# target's plugin.backend (the reference package root is injected as the path), so importing the backend
+# self-registers "gemmini" with zero env — the core no longer contains a gemmini reference backend.
+plugin:
+  backend: backend
 # Codegen endpoint + grading knobs the shared RunnerConfig reads (rtl_tiers + the rocc_insn trace gate
 # ride the systolic family default; declared here only where they differ from it). Fork-free .insn on
 # stock LLVM — no gemmini-forked toolchain.
@@ -31,6 +37,10 @@ runner:
 encoding:
   addr_len: 32             # RoCC accumulator/scratchpad address field width (bits). The lone irreducible
                            # anchor; header-cross-checkable (gemmini_params.h `#define ADDR_LEN 32`).
+  rocc_custom_slot: 3      # which RISC-V custom slot (0..3) this accelerator's RoCC is wired to (SoC
+                           # OpcodeSet.custom3). The major opcode (0x7b) is the RISC-V standard encoding
+                           # of THIS slot — derived by circt_introspect, not baked. Reviewed ABI fact the
+                           # accelerator's own decoder cannot ground (it sees only the funct7 fan-out).
   # readout_bits are NOT declared here: they are DERIVED from addr_len + the 3-flag-bit accumulator-address
   # convention + float32(1.0) by target_experiment.derived_readout_bits (grounded in gemmini.h's own
   # `1<<(ADDR_LEN-1)` / `3<<(ADDR_LEN-2)` / `full_C<<(ADDR_LEN-3)` address arithmetic). Byte-identical to
@@ -81,6 +91,13 @@ compute_units:
     ops: [matmul]
     scaling: per_channel
     requant: {ref: gemmini.accumulator_scale}
+    # Semantic-family capability (ARR denominator): a GEMM accelerator — int8 contraction on the mesh
+    # (matmul + conv2d via im2col), the fused relu/requant/bias epilogue (elementwise_map on readout),
+    # and mvin/mvout DMA (movement). No general reduction / softmax / attention / normalization hardware.
+    semantic_capabilities:
+      - {family: contraction, dtypes: [int8], ranks: [2]}
+      - {family: elementwise_map, dtypes: [int8]}
+      - {family: movement, dtypes: [int8]}
 # capabilities is intentionally empty: op/layout support is not pre-declared here. Mesh geometry +
 # scratchpad/accumulator capacities are CIRCT-extracted facts (arrays/memories), read from the fact
 # bundle by consumers; the supported ops/layouts follow from the agent's own target dialect, verified

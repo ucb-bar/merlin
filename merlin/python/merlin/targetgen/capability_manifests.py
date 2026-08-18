@@ -283,7 +283,7 @@ def _encoding_codes_from_facts(body: dict[str, Any]) -> dict[str, Any]:
 # decode table with wider opcodes is a standalone instruction decode (a self-hosted ISA core with its own
 # opcodes/PC/IMEM), not a RoCC co-processor. This is the load-bearing, RTL-grounded distinction between a
 # host-driven ``.insn`` endpoint and a device-kernel (``external_backend``) endpoint — never hand-set.
-_ROCC_FUNCT7_MAX = 0x7f
+_ROCC_FUNCT7_MAX = 0x7f  # derived-ok: standard RoCC ABI — funct7 is a 7-bit field, max 2^7-1 (not target-specific)
 
 
 def _endpoint_from_facts(body: dict[str, Any]) -> str | None:

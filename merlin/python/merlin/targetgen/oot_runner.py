@@ -43,6 +43,12 @@ SUITE = "gemmini-contract"  # target-ok: aet suite identity of the gemmini refer
 DEFAULT_TARGET = "unknown"  # fallback only when a package manifest declares no ``target`` field
 CONTRACT_VERSION = "0.1"
 
+# Cycle-accurate RTL SIMULATOR tools — a property of the simulator TOOL, not of any target. A tier
+# graded by one of these carries a cycle-accurate cert; a functional tier (spike / the arc coarse
+# model) does not. Extensible as data: a new cycle-accurate sim adds its tool name here. These are
+# simulator tool names, never target names, so no target is baked by keying on the set.
+_CYCLE_ACCURATE_SIMULATORS = frozenset({"verilator", "vcs"})
+
 # Reference/oracle-ACCESS markers forbidden in a non-exempt package's tool sources (integrity scan; see
 # merlin/contract/integrity_policy.md). These are specific dotted paths — matched as substrings across
 # ALL languages because they name the actual reference/oracle surface, not a common word.
@@ -55,11 +61,23 @@ _FORBIDDEN = (
 _SRC_SUFFIXES = (".py", ".cpp", ".cc", ".h", ".hpp", ".td", ".sh")
 
 
+# The one merlin module a submission MAY import: the PUBLIC input-dialect grammar. The benchmark's input
+# format is the fixed public contract ("Reading the contract bundle — grammar, schemas" is fair game), and
+# the shipped oot_starterkit tells agents to parse the input via this typed dialect rather than regex-scrape
+# it. Importing it is "using the interface", not reading the ANSWER — so it is exempt while every other
+# merlin import (the reference/simulator/lowering/oracle that COMPUTES the expected result) stays forbidden.
+_INPUT_DIALECT_EXEMPT = "merlin.xdsl_dialects.interface"
+
+
+def _is_input_dialect(mod: str) -> bool:
+    return mod == _INPUT_DIALECT_EXEMPT or mod.startswith(_INPUT_DIALECT_EXEMPT + ".")
+
+
 def _py_imports_merlin(text: str) -> str | None:
-    """Return the offending module name iff ``text`` (Python source) actually imports the ``merlin``
-    harness package, else None. AST-based: docstrings, comments, and unrelated names like
-    ``merlin_iface`` never match. Unparseable source returns None — a syntax error is the build gate's
-    job, not integrity's."""
+    """Return the offending module name iff ``text`` (Python source) actually imports a NON-EXEMPT ``merlin``
+    harness module, else None. AST-based: docstrings, comments, and unrelated names like ``merlin_iface``
+    never match. The public input dialect (:data:`_INPUT_DIALECT_EXEMPT`) is allowed (using the interface,
+    not reading the answer). Unparseable source returns None — a syntax error is the build gate's job."""
     import ast
     try:
         tree = ast.parse(text)
@@ -68,12 +86,22 @@ def _py_imports_merlin(text: str) -> str | None:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for a in node.names:
-                if a.name == "merlin" or a.name.startswith("merlin."):
+                if (a.name == "merlin" or a.name.startswith("merlin.")) and not _is_input_dialect(a.name):
                     return a.name
         elif isinstance(node, ast.ImportFrom):
+            if node.level != 0:
+                continue
             mod = node.module or ""
-            if (mod == "merlin" or mod.startswith("merlin.")) and node.level == 0:
-                return mod
+            if not (mod == "merlin" or mod.startswith("merlin.")):
+                continue
+            if _is_input_dialect(mod):
+                continue
+            # `from merlin.xdsl_dialects import interface` resolves each imported name to its FQN; allow only
+            # when EVERY name is the exempt input dialect, else flag the module (e.g. a `lowering` sibling).
+            fqns = [f"{mod}.{a.name}" for a in node.names]
+            if fqns and all(_is_input_dialect(f) for f in fqns):
+                continue
+            return mod
     return None
 
 
@@ -336,7 +364,8 @@ def _package_target(package_dir: str | Path, default: str = DEFAULT_TARGET) -> s
 
 def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: str | Path,
             run_id: str, simulator: str = "spike", contract: str | Path | None = None,
-            seed: int = 0, timeout: int = 600, target: str | None = None) -> dict[str, Any]:
+            seed: int = 0, timeout: int = 600, target: str | None = None,
+            inputs: dict | None = None) -> dict[str, Any]:
     """Run the K-ladder for one (package, interface input) and record an aet run dir.
 
     Returns the results dict (also written as results.yaml). Never raises for a package/gate
@@ -346,7 +375,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     ``target`` labels the run; when omitted it is derived from the package manifest's ``target``
     field, so the runner is target-agnostic rather than hardcoded to the reference target.
     """
-    from ..runtime.backends import gemmini as gem
+    from ..runtime.backends import base as _bk
     from ..runtime.reference import reference_outputs, outputs_match
     from ..runtime.simulator import simulate
     from .provenance import toolchain_shas
@@ -368,6 +397,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     semantic = {"reference_outputs_vs_simulate": "skipped"}
     oracle = {"kind": "none", "derived_from_rtl": False, "cycle_accurate": False,
               "result": "skipped", "cycles": None}
+    oracle_outputs: dict | None = None      # the mesh's actual output values (for in-process callers)
     artifacts_recorded: dict[str, bool] = {}
     failure: dict[str, Any] | None = None
     status = "pass"
@@ -386,6 +416,16 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         if not pkg.tool.exists():
             raise CertFailure("build", FailureCategory.ELABORATION_ERROR,
                               f"package tool not found after build: {pkg.tool}")
+
+        # Resolve the package's runtime backend from the run's target (not a name literal) — the
+        # runner is target-agnostic, so a package for any registered target reaches its own backend
+        # helpers. Done AFTER load_package so a broken/unknown package fails closed on the manifest
+        # (K0) rather than raising here; an unregistered target is a fail-closed contract violation.
+        try:
+            gem = _bk.get_backend(target)
+        except KeyError as e:
+            raise CertFailure("contract", FailureCategory.STRUCTURAL_INVARIANT_VIOLATION,
+                              f"package declares target {target!r} with no registered backend") from e
 
         # K2: parse
         p = run_entrypoint(pkg, "parse", inp, timeout=timeout)
@@ -418,9 +458,9 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
                               f"command_buffer.json invalid: {e}") from e
         entry["emit_command_buffer"] = "pass"
 
-        # K5 (L0): reference == simulate, always
-        ref = reference_outputs(cb)
-        sim = simulate(cb)["outputs"]
+        # K5 (L0): reference == simulate, always — over the SAME (optionally injected) operands
+        ref = reference_outputs(cb, inputs)
+        sim = simulate(cb, inputs)["outputs"]
         if not outputs_match(ref, sim):
             raise CertFailure("command_buffer_semantics", FailureCategory.FUNCTIONAL_MISMATCH,
                               "reference_outputs(cb) != simulate(cb): the emitted command buffer "
@@ -456,9 +496,10 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
                 raise CertFailure("oracle_rtl", FailureCategory.TOOL_CRASH,
                                   f"oracle {simulator} invocation failed: {str(e)[-800:]}") from e
             ok = outputs_match(res["outputs"], ref) and outputs_match(res["outputs"], sim)
+            oracle_outputs = res["outputs"]      # what the mesh actually produced (bit-exact == ref when ok)
             oracle = {"kind": res["oracle"].get("kind"),
                       "derived_from_rtl": res["oracle"].get("derived_from_rtl", False),
-                      "cycle_accurate": simulator == "verilator" and ok,
+                      "cycle_accurate": simulator in _CYCLE_ACCURATE_SIMULATORS and ok,
                       "result": "pass" if ok else "fail", "cycles": res.get("cycles")}
             if res.get("console") is not None:
                 cpath = paths.artifacts_dir / "console.log"
@@ -496,6 +537,9 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         schemas.validate(results, "result", contract=contract)
     except schemas.ContractViolation as e:  # pragma: no cover - shape bug
         sys.stderr.write(f"WARNING: results.yaml self-validation failed: {e}\n")
+    # expose the mesh's actual outputs to in-process callers (NOT persisted to results.yaml / validated),
+    # so a whole-model executor can thread a matmul layer's real on-mesh result to the next layer.
+    results["oracle_outputs"] = oracle_outputs
     return results
 
 
@@ -503,7 +547,7 @@ def _record(paths: RunPaths, run_id: str, rung: str, simulator: str, status: str
             cb: dict | None, shas: dict, oracle: dict, entry: dict, semantic: dict,
             artifacts_recorded: dict, failure: dict | None, seed: int, target: str) -> None:
     """Write the run_manifest + artifact records + FailureRecord (the attributable ledger)."""
-    cycle_accurate = simulator == "verilator" and oracle.get("result") == "pass"
+    cycle_accurate = simulator in _CYCLE_ACCURATE_SIMULATORS and oracle.get("result") == "pass"
     manifest = {
         "schema_version": "1.0", "project": "merlin", "suite": SUITE, "method": run_id,
         "seed": seed, "run_id": run_id, "target": target, "benchmark": rung,

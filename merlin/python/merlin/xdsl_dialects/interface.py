@@ -10,11 +10,14 @@ See docs/core_dialects.md and docs/dialects.md.
 from __future__ import annotations
 
 from ._common import HAS_XDSL, Visibility
+# Importing the fp8 kit installs the parser hook so fp8 capsule interfaces
+# (tensor<...xf8E4M3FN> / f8E5M2) parse without the agent registering the type.
+from . import fp8 as _fp8  # noqa: F401 - imported for its registration side effect
 
 DIALECT_NAME = "interface"
 OPS = ["resident_pack", "resident_evict", "matmul", "elementwise", "accumulator.create",
-       "accumulate", "commit", "async_copy", "await", "fifo.create", "fifo.push", "fifo.pop",
-       "command.region"]
+       "accumulate", "commit", "vector_map", "vector_reduce", "async_copy", "await",
+       "fifo.create", "fifo.push", "fifo.pop", "command.region"]
 TYPES = ["resident_tensor", "streaming_tile", "accumulator", "committed_tensor",
          "event", "fifo", "command"]
 
@@ -22,8 +25,17 @@ TYPES = ["resident_tensor", "streaming_tile", "accumulator", "committed_tensor",
 # engine's COMMIT semantics (merlin/python/merlin/runtime/simulator.py).
 KNOWN_EPILOGUE = {"bias", "bias_add", "requant", "relu"}
 
-# Output dtypes `interface.commit` can produce (engine: to_i8() or raw i32).
-KNOWN_OUTPUT_DTYPES = {"i8", "i32"}
+# Output dtypes `interface.commit` can produce: integer commits (engine to_i8()/raw i32) and
+# float commits (whole-model layers that stay in float — the accumulator element type is carried
+# through unchanged). Kept as data, not a per-target assumption.
+KNOWN_OUTPUT_DTYPES = {"i8", "i32", "f16", "f32", "f64", "bf16"}
+
+# Vector-family (target scalar/vector lane) vocabulary for the non-matmul ops of a whole model —
+# elementwise combine + activation + reduction. Must stay aligned with the runtime engine
+# (merlin/python/merlin/runtime/{simulator,reference}.py VECTOR_MAP/VREDUCE) and the target factory.
+KNOWN_COMBINE = {"add", "mul", "identity"}
+KNOWN_ACTIVATION = {"relu"}
+KNOWN_REDUCE = {"sum"}
 
 # Combines and activations `interface.elementwise` accepts. These are exactly what the runtime's
 # VECTOR_MAP command implements (`runtime/simulator.py`, `runtime/reference.py`) — accepting more
@@ -37,8 +49,8 @@ if HAS_XDSL:
     from xdsl.ir import (Attribute, Dialect, EnumAttribute, ParametrizedAttribute,
                          SpacedOpaqueSyntaxAttribute, TypeAttribute)
     from xdsl.irdl import (IRDLOperation, irdl_attr_definition, irdl_op_definition,
-                           operand_def, opt_prop_def, prop_def, region_def, result_def,
-                           traits_def)
+                           operand_def, opt_operand_def, opt_prop_def, prop_def, region_def,
+                           result_def, traits_def)
     from xdsl.traits import NoTerminator
     from xdsl.utils.exceptions import VerifyException
     from xdsl.utils.str_enum import StrEnum
@@ -151,9 +163,13 @@ if HAS_XDSL:
         """
         name = "interface.resident_pack"
         src = operand_def()
+        # int8 weight-only: an optional per-channel scale operand + axis dequantizes the i8 source to
+        # a float resident weight at pack time (model2MLIR's dequantize_per_channel idiom).
+        scale = opt_operand_def()
         layout = prop_def(LayoutAttr)
         lifetime = opt_prop_def(LifetimeAttr)
         visibility = opt_prop_def(VisibilityAttr)
+        dequant_axis = opt_prop_def(IntegerAttr)
         res = result_def(ResidentTensorType)
 
         def verify_(self) -> None:
@@ -307,6 +323,56 @@ if HAS_XDSL:
                             raise VerifyException(
                                 "interface.commit output_dtype %s does not match result "
                                 "element type %s" % (dtype, elem))
+                    elif str(elem) != dtype:
+                        # float commit: the token must name the accumulator's float element
+                        # type (f16/f32/f64/bf16) — no cast, so they must agree.
+                        raise VerifyException(
+                            "interface.commit output_dtype %s does not match result "
+                            "element type %s" % (dtype, elem))
+
+    @irdl_op_definition
+    class VectorMapOp(IRDLOperation):
+        """interface.vector_map — an elementwise combine of two equal-shape tensors
+        (``combine`` = add/mul) or an identity copy of ``lhs`` (``combine`` = identity),
+        followed by an optional activation (relu). This is the non-matmul workhorse of a whole
+        model: residual adds, gating multiplies, and pointwise activations run on the target's
+        vector/scalar lanes. Lowers to the runtime VECTOR_MAP command."""
+        name = "interface.vector_map"
+        lhs = operand_def()
+        rhs = operand_def()
+        combine = prop_def(StringAttr)
+        activation = opt_prop_def(ArrayAttr)
+        visibility = opt_prop_def(VisibilityAttr)
+        out = result_def()
+
+        def verify_(self) -> None:
+            if self.combine.data not in KNOWN_COMBINE:
+                raise VerifyException(
+                    "interface.vector_map combine %r not in %s"
+                    % (self.combine.data, sorted(KNOWN_COMBINE)))
+            if self.activation is not None:
+                for entry in self.activation:
+                    act = entry.data if isinstance(entry, StringAttr) else None
+                    if act not in KNOWN_ACTIVATION:
+                        raise VerifyException(
+                            "interface.vector_map activation %r not in %s"
+                            % (act, sorted(KNOWN_ACTIVATION)))
+
+    @irdl_op_definition
+    class VectorReduceOp(IRDLOperation):
+        """interface.vector_reduce — reduce a tensor to a scalar-per-row (sum). Runs on the
+        target's vector/scalar lanes; lowers to the runtime VREDUCE command."""
+        name = "interface.vector_reduce"
+        src = operand_def()
+        reduce = prop_def(StringAttr, prop_name="op")
+        visibility = opt_prop_def(VisibilityAttr)
+        out = result_def()
+
+        def verify_(self) -> None:
+            if self.reduce.data not in KNOWN_REDUCE:
+                raise VerifyException(
+                    "interface.vector_reduce op %r not in %s"
+                    % (self.reduce.data, sorted(KNOWN_REDUCE)))
 
     @irdl_op_definition
     class AsyncCopyOp(IRDLOperation):
@@ -382,8 +448,8 @@ if HAS_XDSL:
                 raise VerifyException("interface.command.region must be named")
 
     _OP_CLASSES = [ResidentPackOp, ResidentEvictOp, MatmulOp, ElementwiseOp,
-                   AccumulatorCreateOp, AccumulateOp, CommitOp, AsyncCopyOp, AwaitOp,
-                   FifoCreateOp, FifoPushOp, FifoPopOp, CommandRegionOp]
+                   AccumulatorCreateOp, AccumulateOp, CommitOp, VectorMapOp, VectorReduceOp,
+                   AsyncCopyOp, AwaitOp, FifoCreateOp, FifoPushOp, FifoPopOp, CommandRegionOp]
     _ATTR_CLASSES = [ResidentTensorType, StreamingTileType, AccumulatorType,
                      CommittedTensorType, EventType, FifoType, CommandType,
                      MemoryStateAttr, VisibilityAttr, LayoutAttr, LifetimeAttr]
@@ -409,7 +475,7 @@ if HAS_XDSL:
         blk = Block(arg_types=arg_types)
         a_args, w = list(blk.args[:-1]), blk.args[-1]
         ops = []
-        pack = ResidentPackOp(operands=[w], result_types=[res_t], properties={
+        pack = ResidentPackOp(operands=[w, None], result_types=[res_t], properties={
             "layout": LayoutAttr(Layout.PACKED_RHS),
             "lifetime": LifetimeAttr(Lifetime.REGION),
             "visibility": VisibilityAttr(Visibility.SOFTWARE_VISIBLE)})

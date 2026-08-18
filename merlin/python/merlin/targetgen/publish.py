@@ -80,6 +80,14 @@ _VECTOR_SCHEDULE_FAMILIES = frozenset({"vector_schedule"})
 _STATUS_RANK = {"rtl_certified": 0, "k1_verified": 1, "spike_verified": 2}
 _DEFAULT_STATUS_RANK = 3
 
+# The certified-status vocabulary is the SAME single source as the ranking above: every status that
+# carries a rank is a recognized certification tier (RTL cycle-cert / real-silicon / functional sim),
+# so the gate accepts exactly the ranked set. A new substrate becomes "certified" the moment it appends
+# its status to `_STATUS_RANK` (with its tier) — there is no second literal list to keep in sync here.
+# (This is still a fixed enum keyed on substrate-named statuses; the deeper fix would model an explicit
+# substrate-agnostic certification TIER on the selection record and gate on that.)
+CERTIFIED_STATUSES = frozenset(_STATUS_RANK)
+
 # The FROZEN, hand-authored, UNoptimized controls (BB0 / C5). These publish to a single shared
 # `baseline` branch so the before->after is externally visible; every certified champion publishes
 # to its own `stable/<package_id>` branch. A package can also opt into the baseline branch via a
@@ -796,9 +804,10 @@ def _check_gate(sel: ChampionSelection) -> tuple[bool, str]:
         # promote_champion stamp). For a physical RVV target that is a STRONGER certification than
         # the spike simulator, not a weaker one — so accept it alongside spike/rtl. A beam champion
         # then publishes without --no-gate, because its certification IS real silicon.
-        ok = sel.status in ("spike_verified", "rtl_certified", "k1_verified")
+        ok = sel.status in CERTIFIED_STATUSES
+        accepted = sorted(CERTIFIED_STATUSES, key=lambda s: _STATUS_RANK[s])
         return ok, (f"rvv gate: status={sel.status!r} "
-                    f"(need spike_verified, rtl_certified, or k1_verified)")
+                    f"(need one of {accepted})")
     ok = sel.status == "rtl_certified" or sel.cert_status == "pass"
     return ok, (f"mlir_oot gate: status={sel.status!r} certification={sel.cert_status!r} "
                 f"(need rtl_certified or oot_runner.certify pass)")

@@ -49,11 +49,14 @@ def _load_isa(target: str) -> dict:
     # DIM (systolic mesh dimension) is a CIRCT-extracted FACT (arrays[mesh]), not a manifest field —
     # same source the codegen emitter reads, so the decoder's DIM cannot drift from the encoder's.
     mesh = next((a for a in facts.get("arrays", []) if a.get("name") == "mesh"), {})
-    dim = mesh.get("rows", 16)
-    # The custom major opcode is an RTL-extracted FACT (funct_decode_table.custom_opcode), NOT a baked
-    # literal: the decoder must match whatever opcode the RTL decoder actually reserves. funct3 is the
-    # RoCC xd/xs1/xs2 register-usage field — it VARIES per instruction (e.g. a result-returning op sets
-    # xd=1), so it is NOT an identity constraint; instruction identity is func7 (-> FUNCT_CLASS).
+    dim = mesh.get("rows")   # UNKNOWN (None) if the target declares no mesh — no baked gemmini DIM=16
+    # The custom major opcode is a per-target FACT read from facts (funct_decode_table.custom_opcode),
+    # NOT a baked literal: it is the RISC-V-standard encoding of the custom SLOT the target's RoCC is
+    # wired to (SoC OpcodeSet), resolved by circt_introspect from the target's reviewed
+    # encoding.rocc_custom_slot. It may be None (UNKNOWN) for a target that declares no slot — the
+    # decoder then does not filter by major opcode (see _parse_insn). funct3 is the RoCC xd/xs1/xs2
+    # register-usage field — it VARIES per instruction (e.g. a result-returning op sets xd=1), so it is
+    # NOT an identity constraint; instruction identity is func7 (-> FUNCT_CLASS).
     fdt = next((i for i in facts.get("interfaces", []) if i.get("name") == "funct_decode_table"), {})
     custom_opcode = fdt.get("custom_opcode")
     return {"DIM": dim, "F1": rb["f1"], "C_ACC": rb["c_acc"], "ACC_I8": rb["acc_i8"],

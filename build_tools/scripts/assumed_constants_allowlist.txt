@@ -1,0 +1,11 @@
+# Whole-file exemptions for check_no_assumed_constants.py — files that still bake an ISA-identity
+# constant (opcode / funct / mesh dim / capacity) as a KNOWN overfit pending derivation-or-fail-closed.
+#
+# Format: one repo-relative path per line; text after `#` is the rationale (required, names the
+# tracking work). The list only ever SHRINKS: as each baked constant is derived from rtl.facts / the
+# manifest (or made to fail closed on UNKNOWN), delete its entry. Prefer an inline `# derived-ok: <why>`
+# on the exact line for a value that IS derived-then-cached or a genuinely-universal standard constant.
+#
+# (Ledger drained: the audit's three prohibition-#3 violations are all resolved — circt_introspect
+# derives the opcode from the reviewed custom slot, rtl_checks fails closed on UNKNOWN, and
+# gen_rocc_replay reads the opcode from the decoded trace's abi block. No entries remain.)

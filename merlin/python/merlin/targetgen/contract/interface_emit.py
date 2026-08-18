@@ -32,6 +32,24 @@ _OPCODE_TO_OP = {
 }
 _OP_TO_OPCODE = {v: k for k, v in _OPCODE_TO_OP.items()}
 
+# Named whole-op mnemonics (op classes with no residency decomposition): each maps its positional
+# operands to command-buffer operand keys the target codegen reads. The opcode is the mnemonic
+# upper-cased. Extend this table (and the command_buffer opcode enum) as codegen gains op classes;
+# the parse/emit machinery is generic over it, so a new class is one table row plus its kernel nest.
+_NAMED_OP_OPERAND_KEYS = {
+    "rmsnorm": ["src", "gamma"],
+    "attention_qk": ["q", "k"],
+    "rope": ["src"],
+    "matmul_batched": ["a", "w"],
+    "softmax": ["src"],
+}
+# Most mnemonics map to their upper-case opcode; a few need an explicit target opcode because the emitter /
+# harness / simulator spell it differently (``matmul_batched`` -> the ``BATCHED_MATMUL`` those consume, not
+# the auto-upper ``MATMUL_BATCHED``). Keep this the ONE place the spelling is reconciled.
+_NAMED_OP_OPCODE_OVERRIDE = {"matmul_batched": "BATCHED_MATMUL"}
+_NAMED_OP_TO_OPCODE = {op: _NAMED_OP_OPCODE_OVERRIDE.get(op, op.upper()) for op in _NAMED_OP_OPERAND_KEYS}
+_NAMED_OPCODE_TO_OP = {v: k for k, v in _NAMED_OP_TO_OPCODE.items()}
+
 
 # --------------------------------------------------------------------------- emit
 
@@ -157,15 +175,17 @@ def _commit_out_shape(cb: dict[str, Any], acc_name: str) -> tuple[int, int]:
 
 # --------------------------------------------------------------------------- parse
 
-# dtype accepts integer (i8/i32, Gemmini) AND floating (f16/f32/bf16, Muon SIMT) element types.
-# Widened additively for the Muon target; i8/i32 matching is unchanged.
-_TENSOR_TY = re.compile(r"tensor<([0-9x]+)x(i\d+|f\d+|bf\d+)>")
 _RE_TENSOR = re.compile(r'%(\S+)\s*=\s*merlin_iface\.tensor\s*\{([^}]*)\}\s*:\s*(tensor<[^>]+>)')
 _RE_PACK = re.compile(r'%(\S+)\s*=\s*merlin_iface\.resident_pack\s*%(\S+)\s*\{([^}]*)\}')
 _RE_MATMUL = re.compile(r'%(\S+)\s*=\s*merlin_iface\.matmul\s*%(\S+),\s*%(\S+)\s*:')
 _RE_COMMIT = re.compile(r'%(\S+)\s*=\s*merlin_iface\.commit\s*%(\S+)\s*\{([^}]*)\}\s*:\s*\(.*?\)\s*->\s*(tensor<[^>]+>)')
 _RE_EVICT = re.compile(r'merlin_iface\.evict\s*%(\S+)')
 _RE_MOD = re.compile(r'module\s+attributes\s*\{([^}]*)\}')
+# A whole-op mnemonic line: `%dst = merlin_iface.<mnemonic> %a, %b, ... {attrs} : (types) -> type`.
+# The mnemonic (group 2) is looked up in _NAMED_OP_OPERAND_KEYS to decide whether to handle it and how
+# to name its operands; matmul/commit/etc. fall through to their own patterns (not in that table).
+_RE_NAMED_OP = re.compile(
+    r'%(\S+)\s*=\s*merlin_iface\.(\w+)\s+((?:%\S+\s*,?\s*)+)\{([^}]*)\}')
 
 
 def _parse_attr_block(s: str) -> dict[str, Any]:
@@ -217,11 +237,27 @@ def _parse_value(v: str) -> Any:
 
 
 def _shape_dtype(ttype: str) -> tuple[list[int], str]:
-    m = _TENSOR_TY.search(ttype)
-    if not m:
+    """Parse ``tensor<D0xD1x...xELEM>`` into (dims, element-dtype) STRUCTURALLY (no regex): split the
+    shape/elem list on ``x``; the trailing token is the element dtype, the leading tokens are integer dims.
+    Deriving the dtype instead of matching a fixed ``i\\d+|f\\d+|bf\\d+`` alternation is what lets it accept
+    the OCP MX float spellings (``f8E4M3FN`` / ``f6E3M2FN`` / ``f4E2M1FN``) the old narrow pattern silently
+    dropped — the exact "too-narrow regex mis-measures a conformant input" failure this repo forbids."""
+    s = ttype.strip()
+    lb, rb = s.find("<"), s.rfind(">")
+    if not s.startswith("tensor") or lb < 0 or rb <= lb:
         raise ValueError(f"unparseable tensor type {ttype!r}")
-    dims = [int(d) for d in m.group(1).split("x")]
-    return dims, m.group(2)
+    body = s[lb + 1:rb].split(",", 1)[0].strip()   # drop any trailing layout/encoding attribute
+    parts = body.split("x")
+    if len(parts) < 2:
+        raise ValueError(f"unparseable tensor type {ttype!r} (need at least one dim and an element type)")
+    *dim_toks, dtype = parts
+    try:
+        dims = [int(d) for d in dim_toks]
+    except ValueError as e:
+        raise ValueError(f"unparseable tensor type {ttype!r} (non-integer dim)") from e
+    if not dtype:
+        raise ValueError(f"unparseable tensor type {ttype!r} (empty element type)")
+    return dims, dtype
 
 
 def parse_interface_mlir(text: str) -> dict[str, Any]:
@@ -264,6 +300,17 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
             dst, lhs, rhs = m.group(1), m.group(2), m.group(3)
             cb["commands"].append({"opcode": "MATMUL_RESIDENT",
                                    "operands": {"lhs": lhs, "rhs": rhs, "dst": dst}})
+            continue
+        m = _RE_NAMED_OP.search(line)
+        if m and m.group(2) in _NAMED_OP_OPERAND_KEYS:
+            dst_ssa, mnem = m.group(1), m.group(2)
+            srcs = [tok.strip().lstrip("%") for tok in m.group(3).split(",") if tok.strip()]
+            attrs = _parse_attr_block(m.group(4))
+            keys = _NAMED_OP_OPERAND_KEYS[mnem]
+            operands = {k: s for k, s in zip(keys, srcs)}
+            operands["dst"] = attrs.pop("name", dst_ssa)
+            cb["commands"].append({"opcode": _NAMED_OP_TO_OPCODE[mnem],
+                                   "operands": operands, "attributes": attrs})
             continue
         m = _RE_COMMIT.search(line)
         if m:

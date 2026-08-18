@@ -26,7 +26,7 @@ def test_simt_cyclotron_target_routes_to_cyclotron_not_arc():
     # radiance is a self-hosted SIMT core (sim_via=cyclotron): its emitted kernel ELF is graded by the
     # bespoke cyclotron/VCS oracle, NOT the arc command-buffer adapter (which grades the wrong artifact).
     ad = CR.oracle_adapters("radiance", sim_via=None)
-    assert set(ad) >= {"L2"} and all(v.__module__ == "merlin.targetgen.muon_oracles" for v in ad.values())
+    assert set(ad) >= {"L2"} and all(v.__module__ == "merlin._oot_backends.muon.muon_oracles" for v in ad.values())
     assert not any(v.__qualname__.startswith("mlc_arc_adapter") for v in ad.values())
 
 
@@ -166,6 +166,6 @@ def test_qa_adapters_are_cyclotron_for_a_simt_target():
     # the VCS tier. Both are the muon_oracles adapters.
     loop = CR.qa_loop_adapters("radiance", "cyclotron")
     ckpt = CR.qa_checkpoint_adapters("radiance", "cyclotron")
-    assert loop and all(v.__module__ == "merlin.targetgen.muon_oracles" for v in loop.values())
-    assert ckpt and all(v.__module__ == "merlin.targetgen.muon_oracles" for v in ckpt.values())
+    assert loop and all(v.__module__ == "merlin._oot_backends.muon.muon_oracles" for v in loop.values())
+    assert ckpt and all(v.__module__ == "merlin._oot_backends.muon.muon_oracles" for v in ckpt.values())
     assert not any(_factory(v) == "mlc_arc_adapter" for v in {**loop, **ckpt}.values())

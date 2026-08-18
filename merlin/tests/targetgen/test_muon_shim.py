@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.targetgen import muon_capsule_runner as MR
+from merlin.runtime.backends.base import get_backend
+MR = get_backend("muon").muon_capsule_runner    # evicted SIMT backend/CLI, resolved via plugin discovery
 from merlin.targetgen.capsule_runner import OracleUnavailable
-from merlin.runtime.backends.muon import MuonUnavailable
+MuonUnavailable = get_backend("muon").MuonUnavailable
 
 
 def test_muon_config_carries_the_simt_constants():

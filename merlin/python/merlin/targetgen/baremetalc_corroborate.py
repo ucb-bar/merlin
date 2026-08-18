@@ -15,7 +15,8 @@ These are external REFERENCE ORACLES only — never copied/called inside any sub
 K-accumulation, relu, and acc_scale→i8.
 
 Build flags / toolchain are reused verbatim from ``contract.compile.link_elf`` via the
-``runtime.backends.gemmini`` helpers, so the reference ELF runs on the identical simulators.
+gemmini backend's helpers (resolved through the registry, ``base.get_backend("gemmini")``),
+so the reference ELF runs on the identical simulators.
 """
 from __future__ import annotations
 
@@ -105,7 +106,8 @@ int main() {
 
 def _build_cmd(src: Path, elf: Path) -> list[str]:
     """Identical flags/toolchain to contract.compile.link_elf, with our .c as the main."""
-    from merlin.runtime.backends import gemmini as gem
+    from merlin.runtime.backends import base as _bk
+    gem = _bk.get_backend("gemmini")
     rt, common = gem.rocc_tests_dir(), gem._common_dir()
     return [str(gem.gcc_path()), "-DPREALLOCATE=1", "-DMULTITHREAD=1", "-mcmodel=medany",
             "-std=gnu99", "-O2", "-ffast-math", "-fno-common", "-fno-builtin-printf",
@@ -130,7 +132,8 @@ def build(src_text: str, name: str, workdir: Path) -> Path:
 
 
 def run(elf: Path, simulator: str, timeout: int = 600) -> dict:
-    from merlin.runtime.backends import gemmini as gem
+    from merlin.runtime.backends import base as _bk
+    gem = _bk.get_backend("gemmini")
     console = gem.run_elf(elf, simulator=simulator, timeout=timeout)
     outputs, raw = gem.parse_output(console)
     return {"outputs": outputs, "cycles": raw.get("cycles"), "console": console}

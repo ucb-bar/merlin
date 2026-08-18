@@ -1,19 +1,67 @@
 """``interface`` -> target dialect (merlin-interface-to-target stage).
 
 Driven by the target's dialect plan lowering table (interface.<op> -> <target>.<op>).
-In-tree reference targets: ``toynpu`` (NPU with real resident storage) and ``saturn``
-(RVV CPU where residency is a packed weight kept live in memory). Both share the
-pack / matmul / commit / evict op shape, so one rebuild loop serves both via a
+The one BUILT-IN reference target is ``toynpu`` (NPU with real resident storage, the sanctioned neutral
+example). Other reference target dialects (e.g. ``saturn``, an RVV CPU where residency is a packed
+weight kept live in memory) are DISCOVERED: their target package contributes the dialect spec as a
+plugin (``plugin.dialect`` in the contract), self-registered into the same registry ``_specs()`` builds.
+All share the pack / matmul / commit / evict op shape, so one rebuild loop serves them via a
 :class:`TargetSpec`.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .._common import HAS_XDSL
 from .interface_lowering import LoweringError
+
+# --- discovered target-package dialect specs -------------------------------------------------------
+# A reference target's dialect is DATA its own package contributes (``plugin.dialect``), not a hardcoded
+# entry here. The package's dialect module self-registers its TargetSpec (and its target-op -> opcode
+# map) at import via :func:`register_dialect_spec`; discovery imports those modules so ``_specs()`` and
+# ``runtime_lowering`` pick them up without shared code naming a target. Mirrors the backend /
+# sim-oracle plugin seams (merlin.runtime.backends.base).
+_PLUGIN_SPECS: dict[str, Any] = {}
+_PLUGIN_OPCODES: dict[str, dict[str, str]] = {}
+_dialect_env_seen: str | None = None
+
+
+def register_dialect_spec(spec: Any, opcodes: dict[str, str] | None = None) -> None:
+    """A target package's dialect module calls this at import to contribute its :class:`TargetSpec`
+    (and optional target-op -> command-buffer opcode map) to the reference lowering registry
+    (idempotent per ``spec.name``)."""
+    _PLUGIN_SPECS[spec.name] = spec
+    if opcodes:
+        _PLUGIN_OPCODES[spec.name] = dict(opcodes)
+
+
+def _ensure_dialects_discovered() -> None:
+    """Import the dialect module every target package declares via its contract ``plugin.dialect`` — a
+    module that calls :func:`register_dialect_spec` at import — through the SAME OOT/reference plugin
+    discovery the runtime backends and sim oracles use. Re-scans only when ``MERLIN_TARGET_PATH``
+    changes; registration is idempotent, so repeated scans are harmless. Best-effort: a broken/optional
+    plugin must not break lowering."""
+    global _dialect_env_seen
+    key = os.environ.get("MERLIN_TARGET_PATH", "")
+    if key == _dialect_env_seen:
+        return
+    _dialect_env_seen = key
+    try:
+        from ...runtime.backends import base as _bk
+        for name, path in _bk._oot_plugin_modules("dialect"):
+            _bk._load_oot_backend(name, path, ns="merlin._oot_dialects")
+    except Exception:  # noqa: BLE001 — discovery is best-effort; a broken plugin must not break lowering
+        pass
+
+
+def plugin_opcodes() -> dict[str, dict[str, str]]:
+    """Discovered target-op -> opcode maps, keyed by target name (runs discovery first). Consumed by
+    ``runtime_lowering.lower_to_runtime`` so a discovered dialect's encoding rides with its package."""
+    _ensure_dialects_discovered()
+    return dict(_PLUGIN_OPCODES)
 
 # The interface ops a tensor-resident target must lower (used to check coverage for both
 # built-in reference targets and isolated/generated target packages).
@@ -70,6 +118,9 @@ if HAS_XDSL:
         evict_op: type
         resident_type: type
         accumulator_type: type
+        # Optional non-matmul vector-lane ops — None when the target lowers neither.
+        vector_map_op: type | None = None
+        vector_reduce_op: type | None = None
         op_properties: dict[str, dict[str, Any]] | None = None
         # Optional: only targets whose dialect plan covers interface.elementwise supply one.
         elementwise_op: type | None = None
@@ -79,20 +130,24 @@ if HAS_XDSL:
             return dict((self.op_properties or {}).get(kind, {}))
 
     def _specs() -> dict[str, "TargetSpec"]:
-        # Built-in REFERENCE targets only. Generated targets (e.g. gemmini) are NOT hardcoded
-        # here — they load from isolated per-run packages via merlin.targetgen.registry and are
-        # passed in through the ``spec`` argument of lower_to_target.
-        from ..targets import saturn as sat
+        # The ONE built-in REFERENCE target is toy_npu (the sanctioned neutral example). Other reference
+        # target dialects (e.g. saturn) are DISCOVERED — their package contributes the spec via
+        # ``plugin.dialect`` and self-registers it (see _ensure_dialects_discovered), so no target name is
+        # hardcoded here. Generated targets (e.g. gemmini) are not registered here at all — they load from
+        # isolated per-run packages via merlin.targetgen.registry and pass their spec through the ``spec``
+        # argument of lower_to_target.
         from ..targets import toynpu as toy
 
-        return {
+        specs = {
             "toy_npu": TargetSpec("toy_npu", toy, toy.ResPackOp, toy.MatmulOp,
                                   toy.CommitOp, toy.EvictOp, toy.ResidentTensorType,
-                                  toy.AccumulatorType),
-            "saturn": TargetSpec("saturn", sat, sat.PackOp, sat.MatmulOp,
-                                 sat.CommitOp, sat.ReleaseOp, sat.PackedTensorType,
-                                 sat.AccumulatorType),
+                                  toy.AccumulatorType,
+                                  vector_map_op=getattr(toy, "VectorMapOp", None),
+                                  vector_reduce_op=getattr(toy, "VectorReduceOp", None)),
         }
+        _ensure_dialects_discovered()   # load any target-package-contributed dialect specs (e.g. saturn)
+        specs.update(_PLUGIN_SPECS)
+        return specs
 
 
 def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
@@ -133,16 +188,28 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
     value_map = dict(zip(src_block.args, blk.args))
 
     ops = []
-    outs = []
-    out_types = []
+    ret_op = None
     for op in src_block.ops:
         if isinstance(op, i.ResidentPackOp):
             props = {"layout": StringAttr(op.layout.data.value)}
+            scale = value_map[op.scale] if op.scale is not None else None
+            if op.dequant_axis is not None:
+                props["dequant_axis"] = op.dequant_axis
             props.update(spec.extra("pack"))
-            new = spec.pack_op(
-                operands=[value_map[op.src]],
-                result_types=[spec.resident_type(op.src.type)],
-                properties=props)
+            # A target's pack op may or may not carry the optional dequant-scale operand (generated
+            # dialects predating it have only `src`). Match its arity; a dequant pack against a
+            # scale-less pack op is an honest LoweringError, not a silent drop.
+            pack_operands = [n for n, _ in spec.pack_op.get_irdl_definition().operands]
+            if "scale" in pack_operands:
+                operands = [value_map[op.src], scale]
+            elif scale is not None:
+                raise LoweringError(f"target {spec.name!r} pack op has no dequant scale operand")
+            else:
+                operands = [value_map[op.src]]
+            # Mirror the interface resident element type (f32 for a dequant pack, else the src type).
+            new = spec.pack_op(operands=operands,
+                               result_types=[spec.resident_type(op.res.type.element)],
+                               properties=props)
             value_map[op.res] = new.res
         elif isinstance(op, i.MatmulOp):
             new = spec.matmul_op(
@@ -160,8 +227,25 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
             new = spec.commit_op(operands=[value_map[op.acc]],
                                  result_types=[op.out.type], properties=props)
             value_map[op.out] = new.out
-            outs.append(new.out)
-            out_types.append(op.out.type)
+        elif isinstance(op, i.ResidentEvictOp):
+            new = spec.evict_op(operands=[value_map[op.handle]],
+                                properties=spec.extra("evict"))
+        elif isinstance(op, i.VectorMapOp):
+            if spec.vector_map_op is None:
+                raise LoweringError(f"target {spec.name!r} does not lower interface.vector_map")
+            props = {"combine": op.combine}
+            if op.activation is not None:
+                props["activation"] = op.activation
+            new = spec.vector_map_op(operands=[value_map[op.lhs], value_map[op.rhs]],
+                                     result_types=[op.out.type], properties=props)
+            value_map[op.out] = new.out
+        elif isinstance(op, i.VectorReduceOp):
+            if spec.vector_reduce_op is None:
+                raise LoweringError(f"target {spec.name!r} does not lower interface.vector_reduce")
+            new = spec.vector_reduce_op(operands=[value_map[op.src]],
+                                        result_types=[op.out.type],
+                                        properties={"reduce": op.reduce})
+            value_map[op.out] = new.out
         elif isinstance(op, i.ElementwiseOp):
             if "interface.elementwise" not in table:
                 raise LoweringError(
@@ -182,16 +266,19 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
                 operands=[value_map[op.lhs], value_map[op.rhs]],
                 result_types=[op.out.type], properties=props)
             value_map[op.out] = new.out
-            outs.append(new.out)
-            out_types.append(op.out.type)
-        elif isinstance(op, i.ResidentEvictOp):
-            new = spec.evict_op(operands=[value_map[op.handle]],
-                                properties=spec.extra("evict"))
         elif op.name == "func.return":
+            ret_op = op
             continue
         else:
             raise LoweringError(f"no {target} lowering for {op.name}")
         ops.append(new)
+    # Return exactly what the interface function returned — NOT every commit (a chained
+    # layer's committed output is an intermediate, not a result).
+    outs, out_types = [], []
+    if ret_op is not None:
+        for operand in ret_op.operands:
+            outs.append(value_map[operand])
+            out_types.append(value_map[operand].type)
     ops.append(ReturnOp(*outs))
     blk.add_ops(ops)
     new_fn = FuncOp(fn.sym_name.data, FunctionType.from_lists(arg_types, out_types),

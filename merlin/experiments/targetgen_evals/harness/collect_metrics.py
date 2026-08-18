@@ -19,7 +19,11 @@ _ALL_COLUMNS = [
     "arch_rules_passed", "arch_rules_failed",
     # paper ablation columns (legacy names kept for compatibility)
     "human_interventions", "cost_usd", "time_to_first_pass_s",
-    "heldout_shape_success", "merlin_core_files_modified",
+    # generalization matrix (G0-G5): held-out success per axis, not shape alone
+    "heldout_shape_success", "heldout_layout_success", "heldout_dtype_success",
+    "heldout_surface_success", "heldout_composition_success", "heldout_fusion_success",
+    "heldout_model_success", "heldout_kernel_success",
+    "merlin_core_files_modified",
     # tracking metadata
     "tracking_mode", "mlflow_run_id", "otel_trace_id",
     # effort columns
@@ -69,6 +73,13 @@ def build_summary(manifest: dict, validator_results: dict, arch_rules: list[dict
         "cost_usd": _NA,
         "time_to_first_pass_s": _NA,
         "heldout_shape_success": _NA,
+        "heldout_layout_success": _NA,
+        "heldout_dtype_success": _NA,
+        "heldout_surface_success": _NA,
+        "heldout_composition_success": _NA,
+        "heldout_fusion_success": _NA,
+        "heldout_model_success": _NA,
+        "heldout_kernel_success": _NA,
         "merlin_core_files_modified": merlin.get("merlin_core_files_modified", _NA),
         # tracking
         "tracking_mode": obs.get("tracking_mode", "local"),

@@ -1,0 +1,63 @@
+# Muon (SIMT) target contract (validates against merlin/schemas/target_contract.schema.yaml).
+#
+# Curated reference contract for the Muon SIMT core (the RadianceMuonConfig cluster). This package is the
+# OUT-OF-TREE home for BOTH the Muon runtime backend (evicted from runtime/backends/) AND the bespoke
+# cyclotron grading oracle (evicted from targetgen/capsule_runner.py). Declaring both plugins below makes
+# discovery load them with zero env: importing the backend self-registers "muon"
+# (base._ensure_oot_discovered), and importing the sim_oracle self-registers the "cyclotron" bespoke-sim
+# oracle (capsule_runner._ensure_sim_oracles_discovered). A self-hosted-ISA SIMT target that declares
+# toolchain.sim_via == cyclotron (e.g. radiance) grades on that discovered oracle.
+#
+# Mesh/warp geometry, register-file and shared-memory capacities and datapath dtypes are NOT declared
+# here: they are RTL-derived facts (merlin/targets/muon/backend/muon_introspect.py, registered via the
+# mlc_bridge SIMT-introspect seam) that consumers read from the fact bundle directly.
+name: muon
+version: 0.1
+family: simt_tensor
+plugin:
+  # Runtime backend package (muon.py + muon_bsp/codegen/codegen_mlir/harness/link + the co-located
+  # oracle/introspect/CLI siblings). base._oot_backend_modules loads a reference target's plugin.backend
+  # (the reference package root is the injected path), so importing the backend self-registers "muon".
+  backend: backend
+  # Bespoke SIMT grading oracle (registers "cyclotron" via capsule_runner.register_sim_oracle at import).
+  # A single leaf module that reaches the relocated muon_oracles via the backend registry.
+  sim_oracle: sim_oracle.py
+features: [simt, warp_parallel, self_hosted_isa, command_buffer, metrics]
+runtime:
+  backends: [simulator, cyclotron, verilator]
+  # Default runtime backend the lowering pipeline stamps when a caller passes none (DERIVED from this
+  # contract, not from a name -> backend map in code; see target_registry.backend_for).
+  default_backend: simulator
+capabilities:
+  ops: [matmul, elementwise]
+  layouts: [row_major]
+# Datatype -> compute-unit -> op capability model (parsed by merlin.targetgen.compute_units). The concrete
+# warp/mesh geometry + accumulator dtypes are RTL-derived facts, so they are NOT re-declared here.
+compute_units:
+  - name: simt_cluster
+    kind: simt
+    dtypes: [float32]
+    ops: [matmul, elementwise]
+    scaling: none
+    requant: {ref: none}
+memory_model:
+  resident: false
+  accumulators: false
+compiler_obligations:
+  - must_emit_relocation_free_kernel
+  - must_partition_work_across_warps_deterministically
+hardware_promises:
+  - warp_parallel_execution
+  - cycle_counter
+runtime_promises:
+  - command_buffer
+  - metrics
+legality:
+  - "kernel must be self-hosted-ISA (emits its own encoded instructions, not host .insn)"
+confidence: medium
+requires_human_review: false
+notes: >-
+  Curated reference contract for the Muon SIMT core. This package physically hosts the evicted Muon
+  runtime backend and the cyclotron sim-oracle; the cyclotron oracle is the RTL grade radiance routes to
+  (sim_via: cyclotron). RTL geometry/datapath facts come from the fact bundle (muon_introspect), never
+  from this contract.

@@ -51,6 +51,55 @@ def im2col(ifm: Tensor, ci: int, kh: int, kw: int, *, stride, padding, dilation,
 # --------------------------------------------------------------------------------------------
 # epilogue application (matches runtime/reference.py)
 # --------------------------------------------------------------------------------------------
+# Back-compat requant DEFAULTS — the numerics a capsule inherits when it declares no override. These
+# are DEFAULTS, not the only path: a capsule that declares a different integer shift, a different
+# acc_scale rounding mode, or a different narrow output dtype gets THAT value instead. Keeping them as
+# named, overridable parameters (sourced from the capsule's declared operation attributes) rather than
+# inline literals is what lets a differently-rounding / differently-narrowing integer target be
+# expressed without editing this function — the point of the de-overfit. A capsule that omits them
+# reproduces the historical behavior byte-for-byte.
+_DEFAULT_REQUANT_SHIFT = 4              # round-half-up integer shift when a ``requant`` stage omits it
+_DEFAULT_ACC_SCALE_ROUND = "half_even"  # gemmini ACC_SCALE / ROUND_NEAR_EVEN float readout rounding
+
+
+def _int_dtype_bits(dtype: str) -> tuple[int, bool] | None:
+    """Parse an integer dtype name (``i8`` / ``i16`` / ``i4`` / ``u8`` ...) to ``(bitwidth, signed)``.
+
+    Returns ``None`` for a non-integer dtype (``f32`` / ``bf16``) or an unparseable name, so the caller
+    leaves the tensor un-narrowed. Parsed structurally (leading kind char + digit suffix), never by a
+    literal dtype table."""
+    if not dtype:
+        return None
+    kind, digits = dtype[0], dtype[1:]
+    if kind not in ("i", "u") or not digits.isdigit():
+        return None
+    return int(digits), kind == "i"
+
+
+def _narrow_to_dtype(t: Tensor, dtype: str) -> Tensor:
+    """Saturating cast of the i32 accumulator to the capsule's DECLARED narrow integer output dtype.
+
+    The narrow width (hence the saturation range) is DERIVED from ``output_dtype`` — not assumed to be
+    i8. ``i8`` is routed through :meth:`Tensor.to_i8` so its result is byte-identical to the historical
+    path; any other narrow integer width (``i16`` / ``i4`` / ``u8`` ...) saturates to the range derived
+    from its bitwidth. A wide accumulator dtype (``i32`` / ``i64``) or a non-integer dtype passes
+    through unchanged — there is nothing to narrow."""
+    parsed = _int_dtype_bits(dtype)
+    if parsed is None:
+        return t
+    bits, signed = parsed
+    if bits >= 32:                      # wide accumulator width — no narrowing
+        return t
+    if dtype == "i8":                   # byte-identical to the historical to_i8() path
+        return t.to_i8()
+    if signed:
+        lo, hi = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
+    else:
+        lo, hi = 0, (1 << bits) - 1
+    out = [lo if x < lo else (hi if x > hi else x) for x in t.data]
+    return Tensor(t.shape, out, dtype)
+
+
 def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor]) -> Tensor:
     for stage in attrs.get("epilogue", []):
         if stage in ("bias_add", "bias"):
@@ -58,14 +107,22 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor]) -> Tensor:
             if bname:
                 t = t.add_bias(env[bname])
         elif stage == "requant":
-            t = t.requant(int(attrs.get("requant_shift", 4)))
+            t = t.requant(int(attrs.get("requant_shift", _DEFAULT_REQUANT_SHIFT)))
         elif stage == "acc_scale":
+            # The acc_scale readout rounding mode is a named, overridable parameter (default the gemmini
+            # round-half-even). The Tensor engine reproduces half-even exactly; a capsule that declares a
+            # different mode is a datapath this integer engine cannot reproduce, so fail CLOSED (surface
+            # it) rather than silently applying half-even to a target that rounds otherwise.
+            mode = attrs.get("requant_round", _DEFAULT_ACC_SCALE_ROUND)
+            if mode != "half_even":
+                raise ValueError(
+                    f"acc_scale requant_round={mode!r} is declared but the integer Tensor engine only "
+                    f"reproduces 'half_even'; grade this datapath against an independent golden.yaml "
+                    f"instead of silently rounding half-even")
             t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
         elif stage == "relu":
             t = t.relu()
-    if attrs.get("output_dtype", "i32") == "i8":
-        t = t.to_i8()
-    return t
+    return _narrow_to_dtype(t, attrs.get("output_dtype", "i32"))
 
 
 def _transpose2d(t: Tensor) -> Tensor:
@@ -104,6 +161,12 @@ def canonical_input_raws(capsule: dict, capsule_dir: str | Path | None = None) -
     ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
     out: dict[str, bytes] = {}
     for name, spec in ins.items():
+        # An ``inputs`` entry is a per-tensor spec dict; a block-scaled datapath (mxfp8) also records
+        # NON-tensor provenance under the same map (E8M0 block-scale code arrays as lists, a scale_example
+        # dict without raw bytes). Only real tensor specs carry raw device bytes — skip the rest, never
+        # ``.get`` on a non-dict (that raised ``AttributeError: 'list' object has no attribute 'get'``).
+        if not isinstance(spec, dict):
+            continue
         raws = spec.get("fp8_raw_hex") or spec.get("raw_hex")
         if raws:
             out[name] = bytes(int(x, 16) & 0xFF for x in raws)
@@ -123,10 +186,105 @@ def canonical_input_values(capsule: dict, capsule_dir: str | Path | None = None)
     ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
     out: dict[str, dict] = {}
     for name, spec in ins.items():
+        if not isinstance(spec, dict):   # skip non-tensor provenance (mxfp8 block-scale code arrays, examples)
+            continue
         decoded = spec.get("decoded")
         if decoded is not None:
-            out[name] = {"shape": list(spec.get("shape") or []), "values": list(decoded)}
+            # Normalize to the documented FLAT row-major list. Most goldens store ``decoded`` flat, but a
+            # specir golden stores it as a 2D nested list (rows) — leaving it nested makes every consumer
+            # (each does ``float(x)`` per element) crash on a row. Flatten so the contract holds regardless
+            # of the golden generator.
+            out[name] = {"shape": list(spec.get("shape") or []), "values": _flatten_row_major(decoded)}
     return out
+
+
+def _flatten_row_major(x: object) -> list:
+    """Flatten an arbitrarily-nested list to a single row-major list of scalars; a non-list passes through
+    as a 1-element list. Idempotent on an already-flat list."""
+    if not isinstance(x, (list, tuple)):
+        return [x]
+    flat: list = []
+    for e in x:
+        if isinstance(e, (list, tuple)):
+            flat.extend(_flatten_row_major(e))
+        else:
+            flat.append(e)
+    return flat
+
+
+def mx_scale_codes(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, list[int]]:
+    """The E8M0 per-block scale codes a microscaling (mxfp8) golden used, keyed by their provenance name
+    (e.g. ``SA_e8m0_codes`` / ``SB_e8m0_codes``) — read from ``golden.yaml`` ``oracle_provenance.inputs``,
+    where they sit alongside the tensor operands as a list (NOT a per-tensor dict). Each is flattened to a
+    row-major list of int codes (one exponent per K group). Empty for a non-block-scaled capsule. The block
+    scale is a device operand the accelerator kernel stages into its scale SRAM, separate from the fp8
+    element bytes — the two together reproduce the block-scaled matmul the golden records."""
+    gy = _load_golden_yaml(capsule_dir)
+    if not gy:
+        return {}
+    ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
+    out: dict[str, list[int]] = {}
+    for name, spec in ins.items():
+        if not isinstance(spec, list):   # scale-code arrays are lists; tensor specs are dicts (skipped here)
+            continue
+        flat: list[int] = []
+        for row in spec:
+            if isinstance(row, list):
+                flat.extend(int(x) & 0xFF for x in row)
+            else:
+                flat.append(int(row) & 0xFF)
+        out[name] = flat
+    return out
+
+
+def mx_operands(capsule: dict, capsule_dir: str | Path | None = None) -> dict | None:
+    """The block-scaled MX matmul operand bundle a microscaling golden records — the quantized element
+    ``operand_codes`` (A/B device bytes, shapes, fmt, M/N/K/G, fp6 LUTs) PLUS the ``SA``/``SB`` E8M0 block
+    scales — read from ``golden.yaml`` ``oracle_provenance.inputs``. Returns ``None`` for a non-MX capsule.
+
+    These operands are corpus-seeded (the E8M0 scales are a function of the capsule-name salt, not the
+    operand values — :func:`corpus_operands.e8m0_scale_codes`), so they exist ONLY in the golden and cannot
+    be reconstructed from the decoded-float workload. The reference MX kernel bakes them; a general backend
+    could not (this is the public-capsule known-good baseline, masked for hidden capsules)."""
+    gy = _load_golden_yaml(capsule_dir)
+    if not gy:
+        return None
+    ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
+    # Batched MX matmul (B independent tiles stacked): pass the per-batch codes through; the reference
+    # emitter packs them block-diagonally into a single MX tile.
+    bc = ins.get("batched_codes")
+    if isinstance(bc, dict) and bc.get("batches"):
+        return {"fmt": bc.get("fmt", "fp8_e4m3"), "batched": True,
+                "B": bc["B"], "M": bc["M"], "H": bc["H"], "N": bc["N"],
+                "stacked_out_shape": bc.get("stacked_out_shape"), "batches": bc["batches"]}
+    # Flash attention (fused MX): O = mx_matmul(softmax(mx_matmul(Q,Kᵀ)/scale), V). The golden decomposes it
+    # into the two MX matmul stages (each with its own operand codes + E8M0 scales) plus the softmax scale +
+    # the P (softmax output) requant scales, so the reference kernel can chain two mxgemm calls with an
+    # on-device softmax+requant between them. Passed through as ``flash``; the emitter builds the fused kernel.
+    ac = ins.get("attention_codes")
+    if isinstance(ac, dict) and ac.get("qk_stage") and ac.get("pv_stage"):
+        return {"fmt": ac.get("fmt", "fp8_e4m3"), "flash": True,
+                "M": ac["M"], "H": ac["H"], "Skv": ac["Skv"], "Dv": ac["Dv"],
+                "att_scale": ac["att_scale"], "softcap": ac.get("softcap"),
+                "qk_stage": ac["qk_stage"], "pv_stage": ac["pv_stage"],
+                "SA_q": ac["SA_q"], "SB_k": ac["SB_k"], "SB_v": ac["SB_v"], "SA_p": ac.get("SA_p"),
+                "P_decoded": ac.get("P_decoded")}
+    oc = ins.get("operand_codes")
+    if not isinstance(oc, dict) or "A_bytes" not in oc:
+        return None
+    scales = mx_scale_codes(capsule, capsule_dir)
+    # SA/SB laid out [K/32, lane]; take them as [groups][lanes] rows straight from the golden lists.
+    sa = ins.get("SA_e8m0_codes") or ins.get("SA_q_e8m0_codes")
+    sb = ins.get("SB_e8m0_codes") or ins.get("SB_k_e8m0_codes")
+    if sa is None or sb is None:
+        return None
+    return {
+        "fmt": oc["fmt"], "M": oc["M"], "N": oc["N"], "K": oc["K"], "G": oc.get("G", 0),
+        "A_bytes": oc["A_bytes"], "B_bytes": oc["B_bytes"],
+        "A_shape": oc.get("A_shape"), "B_shape": oc.get("B_shape"),
+        "SA": sa, "SB": sb, "lutA": oc.get("lutA"), "lutB": oc.get("lutB"),
+        "_scale_codes": scales,
+    }
 
 
 def golden_source(capsule: dict, capsule_dir: str | Path | None = None) -> str:
@@ -243,12 +401,18 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
 # comparison + numeric report
 # --------------------------------------------------------------------------------------------
 def _flat(nested) -> list:
+    """Deep-flatten to a row-major value list (handles rank >= 3, e.g. a batched matmul output whose
+    golden is (batch, m, n) while the kernel readback is a flat (batch*m, n))."""
     out: list = []
-    if nested and isinstance(nested[0], list):
-        for r in nested:
-            out.extend(r)
-    else:
-        out.extend(nested)
+
+    def _rec(x):
+        if isinstance(x, list):
+            for e in x:
+                _rec(e)
+        else:
+            out.append(x)
+
+    _rec(nested)
     return out
 
 

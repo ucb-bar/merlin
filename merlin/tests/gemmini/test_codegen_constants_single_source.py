@@ -8,8 +8,10 @@ the ISA encoding must go through the manifest, and this fails if the emitter is 
 """
 from __future__ import annotations
 
-from merlin.runtime.backends import gemmini_codegen_mlir as gm
+from merlin.runtime.backends import base as _bk
 from merlin.targetgen.target_experiment import load_capability_manifest
+
+gm = _bk.get_backend("gemmini").gemmini_codegen_mlir
 
 
 def _enc():
@@ -41,3 +43,12 @@ def test_dim_matches_the_extracted_mesh_fact():
     from merlin.targetgen.rtl.facts import load_facts
     mesh = next(a for a in load_facts("gemmini")["facts"]["arrays"] if a["name"] == "mesh")
     assert gm.DIM == mesh["rows"]
+
+
+def test_scratchpad_rows_match_the_extracted_memory_fact():
+    # The capacity-fit residency lever bounds resident operands by the scratchpad DEPTH — a
+    # CIRCT-extracted memory fact (memories[scratchpad].depth), never a hardcoded capacity. Pin it so
+    # the emitter's capacity budget can never drift from the extracted on-chip store geometry.
+    from merlin.targetgen.rtl.facts import load_facts
+    sp = next(m for m in load_facts("gemmini")["facts"]["memories"] if m["name"] == "scratchpad")
+    assert gm.SCRATCHPAD_ROWS == sp["depth"]

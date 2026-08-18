@@ -21,12 +21,16 @@ from typing import Any
 
 from xdsl.ir import Attribute, Dialect, ParametrizedAttribute, TypeAttribute
 from xdsl.irdl import (IRDLOperation, irdl_attr_definition, irdl_op_definition,
-                       operand_def, opt_prop_def, prop_def, result_def)
+                       operand_def, opt_operand_def, opt_prop_def, prop_def, result_def)
 from xdsl.utils.exceptions import VerifyException
 from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, StringAttr
 
 # Must stay aligned with interface.KNOWN_EPILOGUE and the runtime engine.
 KNOWN_EPILOGUE = {"bias", "bias_add", "requant", "relu"}
+# Must stay aligned with interface.KNOWN_{COMBINE,ACTIVATION,REDUCE} and the runtime engine.
+KNOWN_COMBINE = {"add", "mul", "identity"}
+KNOWN_ACTIVATION = {"relu"}
+KNOWN_REDUCE = {"sum"}
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,10 @@ class BuiltDialect:
     evict_op: type
     resident_type: type
     accumulator_type: type
+    # Optional non-matmul vector-lane ops — built only when the plan declares a lowering rule
+    # for interface.vector_map / interface.vector_reduce (a target may support neither).
+    vector_map_op: type | None = None
+    vector_reduce_op: type | None = None
 
 
 def _roles(plan: dict[str, Any]) -> dict[str, str]:
@@ -82,7 +90,8 @@ def build_dialect(target: str, *, plan: dict[str, Any] | None = None,
 
     pack_op = _op(f"{dname}_{pack_n}", {
         "name": f"{dname}.{pack_n}", "src": operand_def(),
-        "layout": prop_def(StringAttr), "res": result_def(resident_type)})
+        "scale": opt_operand_def(), "layout": prop_def(StringAttr),
+        "dequant_axis": opt_prop_def(IntegerAttr), "res": result_def(resident_type)})
 
     mm_ns = {"name": f"{dname}.{mm_n}", "lhs": operand_def(),
              "rhs": operand_def(resident_type) if matmul_rhs_typed else operand_def(),
@@ -112,9 +121,46 @@ def build_dialect(target: str, *, plan: dict[str, Any] | None = None,
     evict_op = _op(f"{dname}_{evict_n}", {
         "name": f"{dname}.{evict_n}", "handle": operand_def(resident_type)})
 
-    dialect = Dialect(dname, [pack_op, matmul_op, commit_op, evict_op],
+    # Non-matmul vector-lane ops are OPTIONAL: synthesized only when the plan lowers them, so a
+    # target (or a generated package predating them) that supports neither is unaffected.
+    vector_map_op = vector_reduce_op = None
+    if "vector_map" in roles:
+        vmap_n = roles["vector_map"]
+
+        def _vmap_verify(self) -> None:
+            if self.combine.data not in KNOWN_COMBINE:
+                raise VerifyException(
+                    f"{dname}.{vmap_n} combine {self.combine.data!r} not in {sorted(KNOWN_COMBINE)}")
+            if self.activation is not None:
+                for entry in self.activation:
+                    act = entry.data if isinstance(entry, StringAttr) else None
+                    if act not in KNOWN_ACTIVATION:
+                        raise VerifyException(
+                            f"{dname}.{vmap_n} activation {act!r} not in {sorted(KNOWN_ACTIVATION)}")
+
+        vector_map_op = _op(f"{dname}_{vmap_n}", {
+            "name": f"{dname}.{vmap_n}", "lhs": operand_def(), "rhs": operand_def(),
+            "combine": prop_def(StringAttr), "activation": opt_prop_def(ArrayAttr),
+            "out": result_def(), "verify_": _vmap_verify})
+    if "vector_reduce" in roles:
+        vred_n = roles["vector_reduce"]
+
+        def _vred_verify(self) -> None:
+            if self.reduce.data not in KNOWN_REDUCE:
+                raise VerifyException(
+                    f"{dname}.{vred_n} op {self.reduce.data!r} not in {sorted(KNOWN_REDUCE)}")
+
+        vector_reduce_op = _op(f"{dname}_{vred_n}", {
+            "name": f"{dname}.{vred_n}", "src": operand_def(),
+            "reduce": prop_def(StringAttr, prop_name="op"),
+            "out": result_def(), "verify_": _vred_verify})
+
+    extra_ops = [o for o in (vector_map_op, vector_reduce_op) if o is not None]
+    dialect = Dialect(dname, [pack_op, matmul_op, commit_op, evict_op, *extra_ops],
                       [resident_type, accumulator_type])
     spec = TargetSpec(target, None, pack_op, matmul_op, commit_op, evict_op,
-                      resident_type, accumulator_type)
+                      resident_type, accumulator_type,
+                      vector_map_op=vector_map_op, vector_reduce_op=vector_reduce_op)
     return BuiltDialect(dialect, spec, pack_op, matmul_op, commit_op, evict_op,
-                        resident_type, accumulator_type)
+                        resident_type, accumulator_type,
+                        vector_map_op=vector_map_op, vector_reduce_op=vector_reduce_op)

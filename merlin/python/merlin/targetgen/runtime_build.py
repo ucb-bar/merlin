@@ -68,8 +68,11 @@ def platform_dram_base(target: str, sim_via: str | None) -> int:
     """The platform (SoC) DRAM base for ``target`` — the load address the bare-metal linker uses. DERIVED
     from the RTL build's memory map, dispatched by the RTL build tool (``sim_via``): chipyard reads its
     ``memmap.json`` ``memory@`` region. Falls back to :data:`DEFAULT_PLATFORM_DRAM_BASE` only when the
-    build/memmap is unavailable. No per-target address is baked here."""
-    derived = _chipyard_dram_base(target) if sim_via == "chipyard" else None
+    build/memmap is unavailable. Keyed on the sim ENGINE's ``has_memmap`` capability, not its NAME. No
+    per-target address is baked here."""
+    from .capsule_runner import sim_oracle_caps            # function-local: avoid an import cycle
+    caps = sim_oracle_caps(sim_via)
+    derived = _chipyard_dram_base(target) if (caps is not None and caps.has_memmap) else None
     return derived if derived is not None else DEFAULT_PLATFORM_DRAM_BASE
 
 
@@ -78,8 +81,11 @@ def compiler_smoke(sim_via: str | None) -> tuple[bool, str]:
     exist. It compiles a trivial LLVM-IR module to a riscv object with the oracle's own clang, so a missing
     or broken compiler is caught as a NO_GO before a paid run tool-crashes on every capsule (the retired-
     clang lesson: ``available()`` passed because the binaries were present, then the compile step failed).
-    Only for a compile-based sim (``sim_via`` that lowers to an object); other oracles return n/a."""
-    if sim_via != "chipyard":
+    Only for a compile-based sim (its ``_SimOracle.is_compile_based`` capability); other oracles return
+    n/a. Keyed on the capability, not the engine NAME."""
+    from .capsule_runner import sim_oracle_caps            # function-local: avoid an import cycle
+    caps = sim_oracle_caps(sim_via)
+    if caps is None or not caps.is_compile_based:
         return True, "n/a (no compile-based oracle for this sim)"
     try:
         from merlin.llvmlower import toolchain as _tc

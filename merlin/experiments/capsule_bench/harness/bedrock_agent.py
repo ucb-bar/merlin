@@ -125,15 +125,73 @@ def _roll_cachepoint(messages: list) -> None:
             last.append(dict(_CACHE_POINT))
 
 
+# Substrings (case-insensitive) that mark a line as decisive signal — an error, a failure, or a grade
+# result — which must SURVIVE compaction so the model never loses feedback it needs to debug. Matched by
+# plain substring containment (structural, no regex).
+_SIGNAL_TOKENS = ("error", "fail", "warning", "warn:", "exception", "traceback", "assert", "undefined",
+                  "cannot", "no such", "not found", "panic", "abort", "segmentation", "fault", "mismatch",
+                  "pass", "cycles", "cos=", "cos ", "max_rel", "max_abs", "rel_l2", "diff", "unexpected",
+                  "violation", "reject", "invalid", "halt", "did not")
+
+
+def _extract_output(stdout: str, stderr: str, *, cap: int = 7000, head_chars: int = 2400,
+                    tail_chars: int = 2400, err_cap: int = 2600, max_signal: int = 80) -> str:
+    """Compact a tool's stdout/stderr for the model WITHOUT dropping decisive signal.
+
+    Short combined output is returned VERBATIM (the common case — full fidelity). For long output: stderr is
+    preserved (whole when it fits ``err_cap``, else head+tail of it — errors surface there), and stdout is
+    reduced to its head + tail + EVERY 'signal' line (error/failure/warning/PASS-FAIL/cycles/diff) from the
+    elided middle, with a transparent marker stating how many lines were dropped and that the model can
+    re-run the command with ``grep``/``sed -n``/``tail`` to inspect any part. This strictly increases signal
+    vs a flat head-truncate (which silently drops the tail AND all stderr on a long stdout) while cutting the
+    quiet bulk that wastes tokens — the model keeps full debuggability."""
+    stdout = stdout or ""
+    stderr = stderr or ""
+    if len(stdout) + len(stderr) <= cap:
+        return stdout + (("\n[stderr]\n" + stderr) if stderr else "")
+
+    def _take(s: str, budget: int, from_end: bool):
+        src = reversed(s.splitlines()) if from_end else iter(s.splitlines())
+        acc, used = [], 0
+        for ln in src:
+            if used + len(ln) + 1 > budget:
+                break
+            acc.append(ln)
+            used += len(ln) + 1
+        return list(reversed(acc)) if from_end else acc
+
+    lines = stdout.splitlines()
+    head = _take(stdout, head_chars, False)
+    tail = _take(stdout, tail_chars, True)
+    mid = lines[len(head):len(lines) - len(tail)] if len(lines) - len(tail) > len(head) else []
+    signal = [ln for ln in mid if any(tok in ln.lower() for tok in _SIGNAL_TOKENS)][:max_signal]
+    parts = list(head)
+    if mid:
+        if signal:
+            parts.append(f"[… {len(mid)} middle lines elided; the {len(signal)} error/grade-signal line(s) "
+                         f"below are kept verbatim — re-run with grep/sed/tail to see any other part …]")
+            parts.extend(signal)
+        else:
+            parts.append(f"[… {len(mid)} middle lines elided (no error/grade signal detected); re-run with "
+                         f"grep/tail to inspect …]")
+    parts.extend(tail)
+    body = "\n".join(parts)
+    if stderr:
+        err = stderr if len(stderr) <= err_cap else (
+            stderr[:err_cap // 2] + "\n[… stderr middle elided — re-run to see it in full …]\n"
+            + stderr[-err_cap // 2:])
+        body += "\n[stderr]\n" + err
+    return body
+
+
 def _bash_in_sandbox(te, ws: Path, bundle: dict, command: str, sandbox: str, timeout: int) -> str:
     from merlin.targetgen.sandbox import bwrap as _BW
     cmd = _BW.wrap(te, ws, command, bundle) if sandbox == "bwrap" else f"cd {ws} && {command}"
     try:
         r = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=timeout, cwd=str(ws))
-        out = (r.stdout or "") + (("\n[stderr]\n" + r.stderr) if r.stderr else "")
+        return _extract_output(r.stdout or "", r.stderr or "")
     except subprocess.TimeoutExpired:
-        out = f"[command timed out after {timeout}s]"
-    return out[:6000]
+        return f"[command timed out after {timeout}s]"
 
 
 def _write_file(ws: Path, rel: str, content: str) -> str:
@@ -373,7 +431,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                     blocks.append({"type": "text", "text": c["text"]})
                 elif "toolUse" in c:
                     tu = c["toolUse"]
-                    blocks.append({"type": "tool_use", "name": tu["name"], "input": tu.get("input", {})})
+                    blocks.append({"type": "tool_use", "id": tu.get("toolUseId"),
+                                   "name": tu["name"], "input": tu.get("input", {})})
             emit({"type": "assistant", "message": {
                 "id": f"bedrock_{rnd}_{it}", "model": mid,
                 "usage": {"input_tokens": u.get("inputTokens", 0),
@@ -408,6 +467,11 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                     output = _bash_in_sandbox(te, ws, bundle, inp.get("command", ""), sandbox, cmd_timeout)
                 results.append({"toolResult": {"toolUseId": tu["toolUseId"],
                                                 "content": [{"text": output or "(no output)"}]}})
+            # claude-compatible tool_result event so the transcript is the authoritative record (post-hoc
+            # trace reads + the mask-leak audit no longer need to reconstruct results from broker channels).
+            emit({"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": r["toolResult"]["toolUseId"],
+                 "content": r["toolResult"]["content"][0]["text"]} for r in results]}})
             messages.append({"role": "user", "content": results})
     finally:
         tf.close()

@@ -24,7 +24,9 @@ from __future__ import annotations
 import dataclasses
 import datetime as _dt
 import json
+import threading
 import traceback as _traceback
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -46,7 +48,7 @@ from .oot_runner import (CertFailure, Package, build_package, integrity_scan,
 SUITE = "gemmini-capsule-bench"
 CONTRACT_VERSION = "0.1"
 
-# tier -> simulator name understood by runtime.backends.gemmini / adapters
+# tier -> simulator name understood by the gemmini backend / adapters
 _TIER_SIM = {"L2": "spike", "L3": "verilator", "L4": "vcs", "L5": "firesim"}
 _RTL_TIERS = {"L3", "L4", "L5"}
 
@@ -254,6 +256,110 @@ def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
     return {}
 
 
+@dataclass(frozen=True)
+class _SimOracle:
+    """A DECLARED bespoke simulator's oracle contribution, keyed by the sim-ENGINE name a target's
+    contract/descriptor declares (``sim_via``) — the same additive-registry pattern as
+    :func:`_sim_engine_adapters` and ``sandbox.toolchain.SIM_TOOLCHAINS``, so the shared dispatch below
+    never branches on a literal engine name.
+
+    ``exclusive`` engines grade the emitted kernel ELF DIRECTLY and REPLACE the arc/program-oracle default
+    entirely — a self-hosted SIMT core (cyclotron) must not be graded by the arc command-buffer path,
+    which would grade the wrong artifact. Non-exclusive engines are ADDITIVE: their higher-fidelity tiers
+    layer on top of the arc default (chipyard: spike L2 / verilator L3 over the arc L3). A new bespoke sim
+    registers ONE entry here + ships its adapter module; the dispatch is unchanged."""
+    adapters: Callable[[str], dict]                 # target -> {tier: adapter}
+    available: Callable[[str], tuple[bool, str]]    # target -> (ok, reason) pre-spend probe
+    exclusive: bool                                 # replaces (True) vs augments (False) the arc default
+    has_memmap: bool = False                        # exposes an SoC memory map (DRAM base derivable from the build)
+    is_compile_based: bool = False                  # lowers the kernel via an oracle-side compile toolchain (smoke-testable)
+
+
+def _chipyard_available(target: str) -> tuple[bool, str]:
+    """chipyard (gemmini/mx-gemmini): the loop-tier spike binary carries GO; the mlc arc model is the
+    fallback gold tier when spike is absent. Preserves the prior gemmini availability semantics exactly."""
+    from .rtl import mlc_bridge
+    arc_ok = mlc_bridge.arc_available(target)
+    try:
+        from ..runtime.backends import base as _bk
+        _gem = _bk.get_backend(target)  # resolve THIS target's backend (chipyard spike availability)
+        spike_ok = bool(_gem.available("spike"))
+    except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
+        spike_ok = False
+    if spike_ok:
+        return True, f"{target!r}: chipyard spike oracle available (loop tier)"
+    if arc_ok:
+        return True, f"{target!r}: chipyard sim absent but mlc arc oracle available (fallback)"
+    return False, f"{target!r}: neither the chipyard spike sim nor the mlc arc oracle is available"
+
+
+#: DECLARED bespoke-sim oracle registry, keyed by sim ENGINE (``sim_via``) — the seam that keeps oracle
+#: routing target-name-free (a new sim engine registers here; the dispatch below is untouched). The
+#: ``cyclotron`` (self-hosted SIMT) oracle is NOT hardcoded here: it is DISCOVERED from the muon reference
+#: package's ``plugin.sim_oracle`` (merlin/targets/muon/sim_oracle.py), which calls
+#: :func:`register_sim_oracle` at import via :func:`_ensure_sim_oracles_discovered` — the same eviction as
+#: the muon runtime backend. Radiance grades on that discovered cyclotron oracle.
+_SIM_ORACLES: dict[str, _SimOracle] = {
+    "chipyard": _SimOracle(lambda t: _sim_engine_adapters("chipyard", t), _chipyard_available,
+                           exclusive=False, has_memmap=True, is_compile_based=True),
+}
+
+
+def sim_oracle_caps(sim_via: str | None):
+    """The registered :class:`_SimOracle` for a sim engine (its capability flags), or None. The
+    contract-routed way for other layers (e.g. runtime_build) to ask 'does this sim expose a memory
+    map / a compile toolchain?' without branching on the engine NAME. Runs plugin discovery first so a
+    target-contributed engine is visible."""
+    _ensure_sim_oracles_discovered()
+    return _SIM_ORACLES.get(sim_via or "")
+
+
+def register_sim_oracle(sim_via: str, *, adapters: Callable[[str], dict],
+                        available: Callable[[str], tuple[bool, str]], exclusive: bool,
+                        has_memmap: bool = False, is_compile_based: bool = False) -> None:
+    """Register a bespoke-sim oracle under its ``sim_via`` engine name (idempotent) — the public seam a
+    NEW simulator uses to plug into oracle routing without editing :func:`oracle_adapters` /
+    :func:`oracle_available`. ``exclusive=True`` replaces the arc/program default (a self-hosted SIMT
+    core graded on its own kernel ELF); ``exclusive=False`` layers additive tiers on top of the arc
+    default (a chipyard-style sim). See :class:`_SimOracle`."""
+    _SIM_ORACLES[sim_via] = _SimOracle(adapters=adapters, available=available, exclusive=exclusive,
+                                       has_memmap=has_memmap, is_compile_based=is_compile_based)
+
+
+_sim_oracle_env_seen: str | None = None
+_sim_oracle_lock = threading.Lock()
+
+
+def _ensure_sim_oracles_discovered() -> None:
+    """Load any bespoke-sim oracle a target contributes via its contract ``plugin.sim_oracle`` — a module
+    that calls :func:`register_sim_oracle` at import — through the SAME OOT/reference plugin discovery the
+    runtime backends use. This is what WIRES the registry: a new target adds its oracle as DATA (a plugin
+    path in its contract), never a core edit to the ``_SIM_ORACLES`` literal. Re-scans only when
+    ``MERLIN_TARGET_PATH`` changes; registration is idempotent, so repeated scans are harmless.
+
+    THREAD-SAFE (double-checked locking): the ``_sim_oracle_env_seen`` marker is published only AFTER the
+    discovery loop has registered every plugin oracle, under a lock. A grade fans capsules across worker
+    threads that each call this; the old code set the marker BEFORE discovering, so a second thread could
+    observe "already scanned" and race past with e.g. cyclotron not yet registered — collapsing an
+    exclusive-sim target to the external_backend program-oracle path (the spurious 'no runner.model_ext'
+    crash). Under the lock the first caller finishes registering before any other proceeds."""
+    global _sim_oracle_env_seen
+    import os
+    key = os.environ.get("MERLIN_TARGET_PATH", "")
+    if key == _sim_oracle_env_seen:                 # fast path: already discovered for this env
+        return
+    with _sim_oracle_lock:
+        if key == _sim_oracle_env_seen:             # re-check under lock (another thread may have finished)
+            return
+        try:
+            from ..runtime.backends import base as _bk
+            for name, path in _bk._oot_plugin_modules("sim_oracle"):
+                _bk._load_oot_backend(name, path, ns="merlin._oot_sim_oracles")
+        except Exception:  # noqa: BLE001 — discovery is best-effort; a broken plugin must not break routing
+            pass
+        _sim_oracle_env_seen = key                  # publish ONLY after every plugin oracle is registered
+
+
 def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
     """The oracle adapters per tier for a target. The mlc ARC model is the DEFAULT RTL tier (works for
     ANY mlc target, no bespoke sim); a target that DECLARES a bespoke sim (``sim_via``) additionally gets
@@ -265,7 +371,19 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
 
     ``sim_via=None`` (unspecified) is self-resolved from the target's contract via :func:`_bespoke_sim_via`
     so a bare ``oracle_adapters(target)`` is fully contract-routed — never a silent gemmini default. An
-    explicit ``""`` (arc-only, e.g. atlas) is honored as-is and NOT re-resolved."""
+    explicit ``""`` (arc-only, e.g. atlas) is honored as-is and NOT re-resolved.
+
+    Routing order is DELIBERATE: a declared EXCLUSIVE bespoke sim (a self-hosted SIMT core, ``sim_via=
+    cyclotron``) takes precedence over the ``external_backend`` program-oracle default. A SIMT core's
+    endpoint is ALSO ``external_backend`` (it emits a kernel, not ``.insn``), but its kernel ELF must be
+    graded by its own sim — the arc-cosim program oracle grades the wrong artifact for it. So the sim
+    engine is resolved first; only when no exclusive sim is declared does the endpoint select the oracle."""
+    _ensure_sim_oracles_discovered()                                # wire any target-contributed plugin.sim_oracle
+    if sim_via is None:                                              # unspecified -> derive from contract
+        sim_via = _bespoke_sim_via(target)
+    so = _SIM_ORACLES.get(sim_via)
+    if so is not None and so.exclusive:                             # self-hosted SIMT: replaces arc/program default
+        return so.adapters(target)
     endpoint_kind, model_ext = _endpoint_of(target)
     if endpoint_kind == "external_backend":
         # Self-hosted-ISA program oracle. ``model_ext`` (the model project that lays out operands + owns
@@ -293,17 +411,9 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
         if vl is not None:
             adapters["L4"] = vl
         return adapters
-    if sim_via is None:                                              # unspecified -> derive from contract
-        sim_via = _bespoke_sim_via(target)
-    if sim_via == "cyclotron":
-        # A self-hosted SIMT target graded on its emitted kernel ELF by the bespoke cyclotron/VCS oracle
-        # (muon_oracles) — NOT the arc command-buffer path, which grades the wrong artifact for a SIMT
-        # kernel. Replaces the arc seed entirely; the muon adapters fail closed (MuonUnavailable) when the
-        # MERLIN_MUON_* toolchain env is unset, so an unwired target degrades honestly, never mis-grades.
-        from . import muon_oracles as _MO
-        return _MO.default_adapters()
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
-    adapters.update(_sim_engine_adapters(sim_via, target))            # optional declared bespoke sim (chipyard)
+    if so is not None:                                               # optional ADDITIVE bespoke sim (chipyard)
+        adapters.update(so.adapters(target))
     return adapters
 
 
@@ -321,9 +431,20 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
     Returns ``(ok, reason)``. ``ok is False`` means grading would only ever emit ``oracle_unavailable``:
     a real (gradeable) run must NOT be launched on it — the sanctioned way to proceed without an oracle
     is an EXPLICIT structure-only smoke (``--no-oracle``). This is the preflight the launcher + the
-    GO/NO_GO validator share so a run that cannot be graded aborts before spending tokens."""
-    endpoint_kind, model_ext = _endpoint_of(target)
+    GO/NO_GO validator share so a run that cannot be graded aborts before spending tokens.
+
+    Routing order mirrors :func:`oracle_adapters` exactly: a declared EXCLUSIVE bespoke sim
+    (``sim_via == "cyclotron"``, a self-hosted SIMT core) is probed FIRST and takes precedence over the
+    ``external_backend`` program-oracle default (a SIMT core's endpoint is also external_backend, but the
+    arc command-buffer path grades the wrong artifact for it, so arc_available must NOT false-green it)."""
     from .rtl import mlc_bridge
+    _ensure_sim_oracles_discovered()                  # wire any target-contributed plugin.sim_oracle
+    if sim_via is None:
+        sim_via = _bespoke_sim_via(target)
+    so = _SIM_ORACLES.get(sim_via)
+    if so is not None and so.exclusive:               # self-hosted SIMT: its own sim carries the grade
+        return so.available(target)
+    endpoint_kind, model_ext = _endpoint_of(target)
     if endpoint_kind == "external_backend":
         if not mlc_bridge.arc_available(target):
             return False, (f"external_backend target {target!r}: mlc arc cosim unavailable "
@@ -338,36 +459,12 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
         except _PU as e:
             return False, f"external_backend target {target!r}: {e}"
         return True, (f"external_backend program oracle available (mlc arc cosim + model venv {model_ext!r})")
-    # command_buffer / arc-default target (+ an optional DECLARED bespoke sim)
-    if sim_via is None:
-        sim_via = _bespoke_sim_via(target)
-    arc_ok = mlc_bridge.arc_available(target)
-    if sim_via == "chipyard":
-        try:
-            from ..runtime.backends import gemmini as _gem
-            spike_ok = bool(_gem.available("spike"))
-        except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
-            spike_ok = False
-        if spike_ok:
-            return True, f"{target!r}: chipyard spike oracle available (loop tier)"
-        if arc_ok:
-            return True, f"{target!r}: chipyard sim absent but mlc arc oracle available (fallback)"
-        return False, f"{target!r}: neither the chipyard spike sim nor the mlc arc oracle is available"
-    if sim_via == "cyclotron":
-        # A SIMT target graded on its emitted kernel ELF by the bespoke cyclotron oracle. The generic mlc
-        # arc adapter grades the COMMAND BUFFER (the wrong artifact for a self-hosted SIMT kernel), so
-        # arc_available must NOT report GO here — that was a false-green. Require the cyclotron oracle;
-        # fail closed otherwise (never fall back to the mis-targeting arc command-buffer path).
-        try:
-            from ..runtime.backends import muon as _muon
-            if _muon.available("cyclotron"):
-                return True, f"{target!r}: cyclotron SIMT oracle available"
-        except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
-            pass
-        return False, (f"{target!r}: cyclotron SIMT oracle unavailable (set the MERLIN_MUON_* env); the mlc "
-                       "arc command-buffer adapter grades the wrong artifact for a SIMT target and is not "
-                       "a valid fallback")
-    if arc_ok:
+    # command_buffer / arc-default target (+ an optional ADDITIVE declared bespoke sim, e.g. chipyard).
+    # Dispatch through the sim-oracle REGISTRY rather than naming sims here, so a target contributes its
+    # own oracle without editing this function.
+    if so is not None:
+        return so.available(target)
+    if mlc_bridge.arc_available(target):
         # "Present" is not "usable": ANSWER a buffer before promising a grade. A target whose arc model
         # imported fine still failed every capsule as a tool_crash because the adapter's input contract
         # was unmet (leaf values, resident aliases, the target argument) — two full agent runs spent
@@ -445,7 +542,8 @@ def codegen_smoke(target: str) -> tuple[bool, str]:
     if _bespoke_sim_via(target) != "cyclotron":
         return True, "n/a (fixed-format ISA but no cyclotron reference sim declared for the fork-free smoke)"
     try:
-        from ..runtime.backends import muon as _muon
+        from ..runtime.backends import base as _bk
+        _muon = _bk.get_backend("muon")   # the evicted SIMT reference backend, resolved via discovery
     except Exception as e:  # noqa: BLE001
         return True, f"n/a (fork-free backend unimportable: {str(e)[-120:]})"
     if not _muon.available("cyclotron"):
@@ -549,6 +647,36 @@ def _match_by_policy(a: dict, b: dict, policy: dict | None) -> bool:
     return True
 
 
+def _absent_outputs(nrep: dict) -> list[str]:
+    """Outputs the kernel DECLARED (present in the interface/golden) but never wrote — or wrote at the
+    wrong length — extracted from :func:`capsule_golden.compare`'s ``per_output``. These structural
+    failures are the ones that read as ``mismatch_count > 0`` while ``max_abs_error == 0`` and
+    ``first_mismatch is None`` (there is no value to diff — the bytes were never produced), a
+    self-contradictory signal unless the missing output is named. Reveals no golden VALUE: only the
+    identity of a declared output, which the agent already holds in the interface it was handed."""
+    po = nrep.get("per_output") or {}
+    return [nm for nm, d in po.items()
+            if isinstance(d, dict) and d.get("status") == "fail"
+            and str(d.get("reason", "")).startswith(("missing", "length"))]
+
+
+def _absent_output_detail(nrep: dict, sim_name: str, expected: dict, observed: dict) -> str | None:
+    """A precise failure detail when the kernel dropped a declared output, else None. Turns the baffling
+    "1024 mismatches, 0 error" into "you never wrote Y1" — the exact class of silent no-op the generic
+    hint tells the agent to hunt for. Target-agnostic; no answer key crosses this boundary."""
+    absent = _absent_outputs(nrep)
+    if not absent:
+        return None
+    n_decl = len(expected)
+    n_written = sum(1 for k in expected if k in (observed or {}))
+    return (f"on {sim_name}, your emitted artifact never wrote output(s) {', '.join(absent)} — "
+            f"declared in the interface (a commit op) but ABSENT from the observed DRAM readback "
+            f"(your kernel produced {n_written} of {n_decl} declared outputs). This is a DROPPED or "
+            f"mis-addressed store, NOT a value error (max_abs_error is 0 because those bytes were never "
+            f"produced). Decode your OWN emitted artifact and confirm every declared output gets a store "
+            f"to its base address.")
+
+
 def _default_config(target: str, suite: str, dtype: str):
     """The implicit gemmini/systolic RunnerConfig — the exact constants run_capsule used before it took a
     config, so a call with config=None is byte-identical to the pre-collapse behavior."""
@@ -624,6 +752,112 @@ def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: b
     return (concrete + hint) if concrete else hint
 
 
+def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int) -> dict:
+    """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
+    (``compile_model``): route each op across the target's compute units (matmul/systolic -> the mesh, the
+    rest -> the vector/scalar lane), compile the functional whole model (the scalar/RVV reference,
+    numerically correct across every op), and gate its output vs the model's golden — attaching the per-op
+    mesh-routing plan for the target. ``MERLIN_MODEL_GRADE_RUN`` selects ``host`` (default; x86 dispatch
+    runtime) or ``spike``. Honestly reports ``incomplete`` when the whole-model toolchain (m2m venv /
+    clang-23) is absent — never a silent pass."""
+    import os
+    from pathlib import Path as _P
+    attrs = (capsule.get("operation") or {}).get("attributes") or {}
+    model, dtype = attrs.get("model"), attrs.get("compile_dtype", "fp32")
+    run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN", "host")
+    # MERLIN_MESH_VERIFY additionally EXECUTES each mesh-routed matmul as a single systolic tile on the
+    # target's real mesh oracle (compile_model mesh_verify) — proving the matmul layers run ON the mesh, not
+    # just that a routing plan was produced. Off by default (the oracle build/run is heavy); the whole-model
+    # functional gate stays compile_rvv either way.
+    mesh_verify = os.environ.get("MERLIN_MESH_VERIFY", "").lower() in ("1", "true", "yes", "on")
+    result: dict = {"capsule": capsule["name"], "kind": "model", "label": capsule.get("label"),
+                    "operation": {"op": "model", "model": model, "dtype": dtype, "run": run_where,
+                                  "target": target},
+                    "contract_version": CONTRACT_VERSION}
+    if not model:
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "RUNNER_CRASH",
+                               "detail": "model capsule missing operation.attributes.model"})
+        return result
+    # the captured linalg (visible grounding) drives the per-op mesh routing when present
+    linalg_mlir = None
+    cdir = capsule.get("__dir__")
+    if cdir:
+        lp = _P(cdir) / "capsule.linalg.mlir"
+        if lp.is_file():
+            linalg_mlir = lp.read_text(encoding="utf-8")
+    try:
+        from ..compile_cli import compile_model
+        out = compile_model(model, dtype, target=target, run=run_where, verify=True, package=None,
+                            auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir,
+                            mesh_verify=mesh_verify)
+    except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": f"whole-model compile/run unavailable: {str(e)[:300]}"})
+        return result
+    except Exception as e:  # noqa: BLE001
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": f"whole-model grade error: {type(e).__name__}: {str(e)[:300]}"})
+        return result
+    st, gate = out.get("status"), (out.get("verify") or {}).get("gate_ok")
+    engine = f"merlin-compile model --target {target} --run {run_where} --verify"
+    if out.get("routing_plan") is not None:                   # per-op mesh routing for the target
+        result["routing_plan"] = out["routing_plan"]
+    if out.get("coverage_certificate") is not None:           # ARR certificate (numerator×independent oracle)
+        result["coverage_certificate"] = out["coverage_certificate"]
+    if out.get("mesh_execution") is not None:                 # per-tile on-mesh EXECUTION for the target
+        result["mesh_execution"] = out["mesh_execution"]
+    # A quantized whole model diverges from the fp32 golden BY DESIGN (int8/fp8 rounding). When the strict
+    # gate rejects it only on that expected drop, accept it if the cosine similarity to the golden still
+    # clears a quant floor (MERLIN_MODEL_QUANT_COS, default 0.90) — reasonable quantization error is a pass,
+    # a gross codegen defect (cosine below the floor / structural mismatch) is still a fail.
+    _v = out.get("verify") or {}
+    _cos = max(float(_v.get("fp32_cos", 0.0)), float(_v.get("w8a8_cos", 0.0)))
+    _quant = dtype in ("int8", "i8", "fp8", "fp8_e4m3")
+    _quant_floor = float(os.environ.get("MERLIN_MODEL_QUANT_COS", "0.90") or "0.90")
+    if st == "verified" and gate:
+        result.update(status="pass", numeric={"status": "pass", "engine": engine, "gate": out.get("verify")})
+    elif _quant and st == "run_mismatch" and _cos >= _quant_floor:
+        result.update(status="pass",
+                      numeric={"status": "pass", "engine": engine, "gate": _v,
+                               "quant_tolerance": {"cos": _cos, "floor": _quant_floor, "dtype": dtype}},
+                      note=(f"quantized ({dtype}) whole-model output within quant tolerance of the fp32 "
+                            f"golden (cos {_cos:.4f} >= floor {_quant_floor}); the drop vs fp32 is expected "
+                            f"quantization error, not a codegen defect."))
+    elif st == "not_run":
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": out.get("reason", "whole-model run toolchain unavailable")})
+    else:
+        result.update(status="fail",
+                      numeric={"status": "fail", "engine": engine, "gate": out.get("verify"),
+                               "model_status": st},
+                      failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
+                               "detail": f"the whole model did not verify (status={st}, gate_ok={gate})"})
+    return result
+
+
+def _merge_match_policy(force: dict | None, capsule: dict | None) -> dict | None:
+    """Combine a target's ``force_match_policy`` with the capsule's declared ``numeric_policy`` so neither's
+    tolerance is silently discarded. The compare MODE comes from the force policy (a float/SIMT target
+    grades with tolerance even for an integer-policy capsule); ``atol``/``rtol`` take the LOOSER (max) of
+    the two present values — a capsule's bf16-appropriate tolerance is honoured, and the tight global
+    default still applies where the capsule declares none. Returns the other policy unchanged when one side
+    is absent."""
+    if not force:
+        return capsule
+    if not capsule:
+        return force
+    merged = dict(force)
+    for k in ("atol", "rtol"):
+        vals = [float(p[k]) for p in (force, capsule) if p.get(k) is not None]
+        if vals:
+            merged[k] = max(vals)
+    return merged
+
+
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
@@ -653,9 +887,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         raise ValueError("run_capsule requires a target (or a config carrying one); "
                          "no default target is assumed")
     cfg = config or _config_for_target(eff_target, suite, dtype)
-    # L1/oracle output equality uses the capsule's numeric_policy (integer -> exact), unless the config
-    # forces one (a float/SIMT target grades its oracle output with tolerance regardless of the capsule).
-    policy = cfg.force_match_policy or capsule.get("numeric_policy")
+    # L1/oracle output equality uses the capsule's numeric_policy (integer -> exact). A float/SIMT target
+    # ALSO declares a force_match_policy (a global float tolerance) so an integer-policy capsule is still
+    # graded with tolerance — but the global force must NOT DISCARD the capsule's OWN declared tolerance:
+    # a bf16 / low-precision capsule legitimately declares a looser atol/rtol than the global f32 default,
+    # and letting the tight global override it makes a CONFORMANT kernel unpassable (RP3). Merge: keep the
+    # force policy's compare MODE, take the LOOSER (max) atol/rtol per field.
+    policy = _merge_match_policy(cfg.force_match_policy, capsule.get("numeric_policy"))
     name = capsule["name"]
     run_id = run_id or f"{name}"
     # An unrouted grade (oracle_adapters=None) resolves to the TARGET'S OWN endpoint oracle from the
@@ -667,10 +905,26 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     paths = make_run_paths(runs_root, run_id, suite=cfg.suite, target=cfg.target,
                            dtype=cfg.dtype, benchmark=name)
 
+    # Whole-model capsule: graded end to end by compiling the captured model through the merlin
+    # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
+    # same capsule_result.json shape so downstream reporting is uniform.
+    if capsule.get("kind") == "model":
+        result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout)
+        (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        # Persist the ARR coverage certificate as its own durable artifact (not only inside
+        # capsule_result.json) so the report/grader can read it back per compilation.
+        cert = result.get("coverage_certificate")
+        if cert is not None:
+            paths.generated.mkdir(parents=True, exist_ok=True)
+            (paths.generated / "coverage_certificate.json").write_text(
+                json.dumps(cert, indent=2), encoding="utf-8")
+        return result
+
     tiers: dict[str, TierResult] = {}
     trace_check_res = {"status": "skipped", "violations": []}
     decoded_trace: dict | None = None            # kept for the advisory divergence localizer (D2)
     numeric = {"status": "skipped"}
+    executability: dict = {}                      # advisory RTL-executability smoke result(s), by tier
     failure: dict | None = None
     status = "pass"
 
@@ -690,6 +944,23 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         gsource = CG.golden_source(capsule, capsule_dir)
         gold = CG.golden(capsule, capsule_dir)
 
+        # A linalg-on-tensors reference lowering names its output positionally ("out"); the readback base +
+        # golden compare are keyed by the capsule's DECLARED output name (the merlin_iface grammar already
+        # names it via the commit op). Rename the sole output leaf to the declared name so preload, kernel,
+        # readback, and golden all agree on one name+address. Scoped to linalg_positional cbs (no-op else).
+        if cb.get("operand_naming") == "positional" or cb.get("interface") == "linalg_positional":
+            _outnm = ((capsule.get("operation") or {}).get("attributes") or {}).get("out")
+            _outs = [n for n, s in (cb.get("tensors") or {}).items() if s.get("role") == "output"]
+            if _outnm and len(_outs) == 1 and _outs[0] != _outnm:
+                _old = _outs[0]
+                cb["tensors"][_outnm] = cb["tensors"].pop(_old)
+                cb["outputs"] = [_outnm if o == _old else o for o in cb.get("outputs", [])]
+                cb["arg_order"] = [_outnm if a == _old else a for a in cb.get("arg_order", [])]
+                for _c in cb.get("commands", []):
+                    for _k, _v in (_c.get("operands") or {}).items():
+                        if _v == _old:
+                            _c["operands"][_k] = _outnm
+
         # A program-oracle (self-hosted-ISA) target must run its emitted kernel on the SAME operands the
         # independent golden used. Attach the capsule's canonical leaf-input bytes (golden.yaml raws) to
         # the cb's leaf tensors so the program oracle preloads them by cb-declared base (AW5). Keyed by
@@ -704,9 +975,33 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # Attach the golden's DECODED operand values so a self-hosted kernel harness (the fork-free SIMT
         # path) can embed them and run the emitted kernel on the SAME operands the independent golden used.
         # Generic + additive: empty for integer capsules, ignored by adapters that grade the command buffer.
+        # A block-scaled MX capsule's operands (quantized codes + corpus-seeded E8M0 block scales) live only
+        # in the golden and cannot be rebuilt from the decoded floats — attach them so the reference MX
+        # kernel can bake them. Public-capsule reference path (masked for hidden); a no-op for non-MX goldens.
+        _mxops = CG.mx_operands(capsule, capsule_dir)
+        if _mxops:
+            cb["mx_operands"] = _mxops
+
         _vals = CG.canonical_input_values(capsule, capsule_dir)
         if _vals:
             cb["canonical_inputs"] = _vals
+            # POSITIONAL FALLBACK for interface grammars whose operands are UNNAMED. The merlin_iface
+            # grammar names each leaf (``name = "X"``) so the by-name attach above matches; the
+            # linalg-on-tensors grammar has positional ``func.func @forward`` args (``%0``, ``%1`` …), so a
+            # lowering names its leaves positionally and NONE match the canonical keys (the capsule's
+            # arg_order). When no canonical key is a cb tensor name, re-key by POSITION: the capsule's
+            # arg_order and the cb's non-output leaves are both in @forward-argument order, so zip them.
+            _tensors = cb.get("tensors") or {}
+            if not (set(_vals) & set(_tensors)):
+                _leaves = [n for n, s in _tensors.items()
+                           if s.get("role") in ("input", "weight", "bias")]
+                _ordered = list(_vals.values())
+                if len(_leaves) == len(_ordered):
+                    cb["canonical_inputs"] = dict(zip(_leaves, _ordered))
+                    if _raws:
+                        import base64 as _b64
+                        for _leaf, _rb in zip(_leaves, list(_raws.values())):
+                            _tensors[_leaf]["preload_b64"] = _b64.b64encode(_rb).decode()
 
         # Stamp the HARNESS-owned canonical DRAM layout onto every cb tensor (inputs+output), matched by
         # name. The agent's kernel was told these exact addresses (see the emit contract), so preload,
@@ -761,7 +1056,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             nrep = CG.compare(gold, ref, capsule["numeric_policy"], golden_source=gsource)
             numeric = {"status": nrep["status"], "policy": nrep["policy"],
                        "max_abs_diff": nrep["max_abs_error"], "max_rel_error": nrep["max_rel_error"],
-                       "mismatch_count": nrep["mismatch_count"], "first_mismatch": nrep["first_mismatch"]}
+                       "mismatch_count": nrep["mismatch_count"], "first_mismatch": nrep["first_mismatch"],
+                       # same DROPPED-store surfacing as the float path (see _absent_outputs): a missing
+                       # declared output is reported distinctly, never as a phantom 0-magnitude mismatch.
+                       "per_output": nrep.get("per_output", {}),
+                       "missing_outputs": _absent_outputs(nrep)}
             CG.write_numeric_report(paths.generated / "numeric_report.yaml", nrep)
             tiers["L0"] = TierResult("L0", "pass" if nrep["status"] == "pass" else "fail",
                                      mandatory="L0" in required or True,
@@ -769,9 +1068,10 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                              else "your command buffer does not compute the declared operation"),
                                      evidence="numeric_report.yaml")
             if nrep["status"] != "pass":
+                _absent_cb = _absent_output_detail(nrep, "command_buffer", gold, ref)
                 raise CertFailure("numeric_golden", _cat("FUNCTIONAL_MISMATCH"),
-                                  "your command buffer does not compute the declared operation "
-                                  f"(first divergence at index {(nrep['first_mismatch'] or {}).get('index')})")
+                                  _absent_cb or ("your command buffer does not compute the declared operation "
+                                  f"(first divergence at index {(nrep['first_mismatch'] or {}).get('index')})"))
 
             l1_ok = _match_by_policy(ref, sim, policy)
             tiers["L1"] = TierResult("L1", "pass" if l1_ok else "fail", mandatory=True,
@@ -798,6 +1098,19 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _sys.stderr.write(f"WARNING: instruction_trace self-validation failed (advisory): {_sv}\n")
             (paths.generated / "instruction_trace.json").write_text(
                 json.dumps(trace, indent=2), encoding="utf-8")
+            # Advisory silicon-liveness screen (HW-agnostic): would this emitted stream stall/fault on real
+            # silicon? It uses only the target's OWN derived facts (scratchpad/accumulator capacity, address
+            # map, ISA legality) + this decoded trace, never a target literal, and — like trace_check — is
+            # advisory: it writes liveness_report.json for the author and never gates or crashes the capsule.
+            try:
+                from merlin.liveness import Program as _LProg, assess as _lassess
+                _lname = capsule.get("id") or capsule.get("name") or "kernel"
+                _lrep = _lassess(_LProg(name=_lname, trace=trace, address_model="pointer_args"), eff_target)
+                (paths.generated / "liveness_report.json").write_text(
+                    json.dumps(_lrep.to_dict(), indent=2), encoding="utf-8")
+            except Exception as _le:  # noqa: BLE001 — advisory: our screener's limit is not the backend's defect
+                import sys as _sys
+                _sys.stderr.write(f"WARNING: liveness screen failed (advisory): {_le}\n")
             # trace_check is ADVISORY: instruction-class coverage / ordering / UNKNOWN are diagnostics
             # for the author, NOT the verdict. Correctness is decided by the numeric + L2/L3 RTL oracle
             # below (which EXECUTE the actual emitted stream), and the hidden golden precludes faking an
@@ -832,7 +1145,21 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # TOOL_CRASH, so the unavailable->incomplete / not_gradeable_no_oracle path never fires for atlas.
         # Catch BOTH so unavailability is honest for every endpoint.
         from .program_oracle import OracleUnavailable as _POUnavailable
-        _ORACLE_UNAVAILABLE = (OracleUnavailable, _POUnavailable)
+        # The muon (SIMT/cyclotron/VCS) adapters raise their OWN MuonUnavailable — a THIRD unrelated class.
+        # The VCS RTL difftest is honest-unavailable (WIP upstream: the DPI ELF path is not wired for arbitrary
+        # corpus kernels), so it raises MuonUnavailable; without catching it here that honest unavailability
+        # falls through to the generic handler and is mislabeled a TOOL_CRASH (an agent FAIL) instead of
+        # firing the unavailable -> not_gradeable_no_oracle path — the same bug the program-oracle catch above
+        # fixed for atlas. Catch it too so an unavailable RTL oracle is honest for the SIMT endpoint as well.
+        # The muon backend was evicted to its own reference package; resolve its MuonUnavailable via the
+        # registry (get_backend), and simply skip it if the SIMT backend is not present in this env — an
+        # absent backend cannot raise it, so there is nothing to catch.
+        try:
+            from ..runtime.backends import base as _bk
+            _muon_unavail = (_bk.get_backend("muon").MuonUnavailable,)
+        except Exception:  # noqa: BLE001 — SIMT backend absent -> no MuonUnavailable to catch
+            _muon_unavail = ()
+        _ORACLE_UNAVAILABLE = (OracleUnavailable, _POUnavailable) + _muon_unavail
         for tier in sorted(set(cfg.oracle_tiers) | set(adapters or {})):
             mand = tier in required
             adapter = (adapters or {}).get(tier)
@@ -899,6 +1226,54 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _acct = (_tm.get("build_s") or 0.0) + (_tm.get("sim_active_s") or 0.0)
                 _tm["oracle_wait_s"] = round(max(0.0, _adapter_wall - _acct), 3)
             _tm["adapter_wall_s"] = round(_adapter_wall, 3)
+            if res.get("executability") is not None:
+                # ADVISORY executability smoke: a bounded-cycle RTL-legality check (does a cyclotron(L2)-
+                # passing ELF at least RUN on the real Verilator RTL — boots, no trap, MX PE accepts a
+                # command), the RTL-grounding backstop for the non-RTL-certified perf oracle. It does NOT
+                # numeric-grade and NEVER blocks: recorded as a NON-mandatory tier + an ``executability``
+                # field, and — because it is never in ``required`` — it is not_run_is_not_pass-exempt by
+                # construction. A slow/flaky RTL smoke must not fail a capsule whose L2 grade passed, so
+                # its verdict (legal/illegal) is informational only; ``mand`` is ignored here on purpose.
+                ex = res["executability"]
+                executability[tier] = ex
+                _sim_name = cfg.tier_sim.get(tier) or tier
+                if res.get("console") is not None:
+                    (paths.artifacts_dir / f"{_sim_name}_console.log").write_text(
+                        res["console"], encoding="utf-8")
+                tiers[tier] = TierResult(
+                    tier, "pass" if ex.get("legal") else "fail", mandatory=False,
+                    reason=ex.get("reason"), cycles=ex.get("cycles"), derived_from_rtl=True,
+                    evidence=f"{_sim_name}_console.log", timing=_tm, not_applicable=True)
+                continue
+            if res.get("completion_only"):
+                # An RTL cert that ran the emitted kernel to completion but cannot surface its outputs
+                # for an independent numeric check (e.g. the Muon Verilator harness $finish-races the
+                # UART flush). It certifies RTL COMPLETION + cycle-accurate cycles; CORRECTNESS is the
+                # mandatory functional tier's job. It is NEVER allowed to stand in for a mandatory tier
+                # (a required tier must verify output) — there it degrades to honest-unavailable.
+                _sim_name = cfg.tier_sim.get(tier) or tier
+                if mand:
+                    tiers[tier] = TierResult(
+                        tier, "unavailable", mand,
+                        reason="RTL cert ran to completion but cannot surface outputs for a mandatory "
+                               "correctness check (use the functional tier as the required gate)",
+                        cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers, timing=_tm)
+                    continue
+                _cg = _cp = None
+                if perf_extractor is not None:
+                    _cperf = perf_extractor(cb, res) or {}
+                    _cg, _cp = _cperf.get("gflops"), _cperf.get("pct_fp_peak")
+                if res.get("console") is not None:
+                    (paths.artifacts_dir / f"{_sim_name}_console.log").write_text(
+                        res["console"], encoding="utf-8")
+                tiers[tier] = TierResult(
+                    tier, "pass", mand,
+                    reason="RTL completion + cycle-accurate perf cert (correctness gated by the "
+                           "required functional tier)",
+                    cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers,
+                    cycle_accurate=tier in cfg.rtl_tiers, evidence=f"{_sim_name}_console.log",
+                    timing=_tm, gflops=_cg, pct_fp_peak=_cp)
+                continue
             if independent_float:
                 # Float grade: the RTL program-oracle output vs the INDEPENDENT golden.yaml (tolerance_float).
                 # There is no integer reference/simulate to cross-check against — this comparison IS the
@@ -914,7 +1289,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                "golden_source": gsource, "max_abs_diff": onrep["max_abs_error"],
                                "max_rel_error": onrep["max_rel_error"],
                                "mismatch_count": onrep["mismatch_count"],
-                               "first_mismatch": onrep["first_mismatch"]}
+                               "first_mismatch": onrep["first_mismatch"],
+                               # carry the per-output breakdown + the DROPPED-store list through to
+                               # capsule_result.json so the agent (and the self-check, which reads this
+                               # dict) sees WHICH output failed and WHY — a missing store otherwise reads
+                               # as mismatch_count>0 with max_abs_error==0, a self-contradictory signal.
+                               "per_output": onrep.get("per_output", {}),
+                               "missing_outputs": _absent_outputs(onrep)}
                     CG.write_numeric_report(paths.generated / "numeric_report.yaml", onrep)
             else:
                 okt = _match_by_policy(res["outputs"], gold, policy) \
@@ -935,7 +1316,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # declared operation. There is no answer key handed to the agent — the reference is the op's
             # own definition, which the agent can reproduce from the declared inputs. The appended
             # _encoding_divergence_hint adds that the cheap tiers agreed, so the defect is in the encoding.
-            _mismatch_reason = (
+            # A DROPPED declared output (kernel never wrote it) gets a precise, distinct detail so the
+            # agent isn't left with the baffling "N mismatches, 0 error" of a store that never fired.
+            _absent_detail = (_absent_output_detail(onrep, sim_name, gold, res["outputs"])
+                              if independent_float else None)
+            _mismatch_reason = _absent_detail or (
                 f"on {sim_name}, your emitted artifact does not compute the declared operation within tolerance"
                 if independent_float
                 else f"on {sim_name}, your emitted artifact does not compute the declared operation")
@@ -1033,6 +1418,10 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         "trace_check": trace_check_res, "numeric": numeric,
         "failure": failure, "toolchain_shas": toolchain_shas(eff_target),
     }
+    # Advisory RTL-executability smoke (never a gate): record it as its own field when one ran, so a
+    # reader sees the RTL-legality backstop verdict without it ever touching the pass/fail status.
+    if executability:
+        result["executability"] = executability
     (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
                                                         encoding="utf-8")
     _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite)
@@ -1094,11 +1483,36 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
                            pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype,
                            config=config, perf_extractor=perf_extractor, no_oracle=no_oracle)
 
-    if max_workers <= 1:
-        return [_one(cap) for cap in capsules]
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        return list(ex.map(_one, capsules))  # order preserved by ex.map
+    def _run_all(caps: list[dict]) -> list[dict]:
+        if max_workers <= 1:
+            return [_one(c) for c in caps]
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            return list(ex.map(_one, caps))
+
+    # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op
+    # suite proves itself (its ``gate.after_op_pass_fraction`` of the graded op capsules passed). Grade the
+    # op capsules first; if no model capsule is present this is exactly the original single-pass behavior.
+    from .capsule_source import model_gate_satisfied
+    op_caps = [c for c in capsules if c.get("kind") != "model"]
+    model_caps = [c for c in capsules if c.get("kind") == "model"]
+    op_results = _run_all(op_caps)
+    if not model_caps:
+        return op_results
+    graded = [r for r in op_results if r.get("status") in ("pass", "fail")]
+    frac = (sum(1 for r in graded if r.get("status") == "pass") / len(graded)) if graded else 0.0
+    model_results = []
+    for c in model_caps:
+        if model_gate_satisfied(c, frac):
+            model_results.append(_one(c))
+        else:
+            thr = (c.get("gate") or {}).get("after_op_pass_fraction")
+            model_results.append({
+                "capsule": c["name"], "kind": "model", "label": c.get("label"), "status": "gated",
+                "failure": {"plane": "gate", "category": "GATED",
+                            "detail": f"whole-model capsule deferred: op pass fraction {frac:.2f} "
+                                      f"< gate {thr}"}})
+    return op_results + model_results
 
 
 def main(argv: list[str] | None = None) -> int:

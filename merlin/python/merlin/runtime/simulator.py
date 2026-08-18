@@ -46,7 +46,9 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
         if op == "RES_PACK":
             src, dst = ops["src"], ops["dst"]
             t = env[src]
-            env[dst] = t                      # packed copy has identical values
+            if "scale" in ops:                # int8 weight-only: dequantize per channel at pack time
+                t = t.dequant_per_channel(env[ops["scale"]], int(attrs.get("dequant_axis", 1)))
+            env[dst] = t                      # packed copy (identical values, or dequantized weight)
             resident[dst] = src
             metrics.pack_count += 1
             metrics.bytes_moved += t.nbytes
@@ -134,6 +136,24 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             metrics.cycles += len(t.data)
             trace.append({"name": "vector_map", "object": dst, "count": len(t.data)})
 
+        elif op == "BATCHED_MATMUL":
+            # O[b] = A[b] @ W[b] for a batch of independent 2-D matmuls (weight differs per batch, so no
+            # residency reuse). Slice the flat (batch,m,k)/(batch,k,n) tensors per batch and matmul each.
+            a, w, dst = env[ops["a"]], env[ops["w"]], ops["dst"]
+            batch, m, kdim = a.shape
+            _, _, n = w.shape
+            out: list = []
+            for bb in range(batch):
+                asl = Tensor((m, kdim), a.data[bb * m * kdim:(bb + 1) * m * kdim], a.dtype)
+                wsl = Tensor((kdim, n), w.data[bb * kdim * n:(bb + 1) * kdim * n], w.dtype)
+                out.extend(asl.matmul(wsl).data)
+            env[dst] = Tensor((batch, m, n), out, "i32")
+            outputs[dst] = [[[out[bb * m * n + i * n + j] for j in range(n)]
+                             for i in range(m)] for bb in range(batch)]
+            metrics.dispatch_count += batch
+            metrics.cycles += batch * base_matmul_cycles(m, kdim, n)
+            trace.append({"name": "batched_matmul", "object": dst, "count": batch})
+
         elif op == "VREDUCE":
             src, dst = env[ops["src"]], ops["dst"]
             rop = attrs.get("op", "sum")
@@ -154,6 +174,11 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
         if spec.get("role") == "output" and name in env and name not in outputs:
             outputs[name] = env[name].to_list()
 
+    # Surface EXACTLY the declared model outputs when the buffer names them (a chained layer's
+    # committed output is an intermediate, not a result).
+    declared = cb.get("outputs")
+    if declared:
+        outputs = {k: v for k, v in outputs.items() if k in set(declared)}
     return {"outputs": outputs, "metrics": metrics.as_dict(), "trace": trace}
 
 
