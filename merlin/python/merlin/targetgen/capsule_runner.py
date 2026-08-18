@@ -1112,10 +1112,32 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 # (a required tier must verify output) — there it degrades to honest-unavailable.
                 _sim_name = cfg.tier_sim.get(tier) or tier
                 if mand:
+                    # A mandatory completion-only RTL tier certifies that the emitted kernel RAN to
+                    # completion on cycle-accurate RTL, but cannot itself surface outputs for a numeric
+                    # check. Correctness is still REQUIRED: it passes only when an independent functional
+                    # oracle has ALREADY established a numeric pass on the SAME artifact — L2 (cyclotron)
+                    # and this RTL tier build the identical fork-free ELF (``compile_mlir_forkfree``), and
+                    # tiers are graded in sorted() order so L2 sets ``numeric`` before this runs. So a
+                    # completing RTL run of a numerically-verified ELF is a sound mandatory certificate.
+                    # Fail-closed otherwise: if no functional tier established a numeric pass
+                    # (``numeric.status`` stays "skipped"/"fail"), it degrades to honest-unavailable. The
+                    # agent never sees the golden — correctness is graded against it inside the runner —
+                    # so this does not weaken anti-cheat; it makes the mandatory RTL tier meaningful
+                    # instead of un-satisfiable. (completion_only is produced only by the Muon adapters;
+                    # command-ISA targets surface outputs and never reach this branch.)
+                    if numeric.get("status") == "pass":
+                        tiers[tier] = TierResult(
+                            tier, "pass", mand,
+                            reason="RTL completion cert; correctness verified by the functional tier "
+                                   "on the same fork-free ELF",
+                            cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers,
+                            cycle_accurate=tier in cfg.rtl_tiers, timing=_tm)
+                        continue
                     tiers[tier] = TierResult(
                         tier, "unavailable", mand,
                         reason="RTL cert ran to completion but cannot surface outputs for a mandatory "
-                               "correctness check (use the functional tier as the required gate)",
+                               "correctness check, and no functional tier established a numeric pass "
+                               "(use the functional tier as the required gate)",
                         cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers, timing=_tm)
                     continue
                 _cg = _cp = None
