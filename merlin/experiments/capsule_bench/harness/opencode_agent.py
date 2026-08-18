@@ -249,6 +249,23 @@ def _parse_run_stream(stdout: str, mid: str, rnd: int, emit) -> int:
     return n_tools
 
 
+def opencode_runtime_binds(data_home: Path) -> list[str]:
+    """bwrap args giving opencode a WRITABLE, ISOLATED data home inside the sandbox.
+
+    The launcher resolves through the already-bound ``~/.nvm``, but opencode keeps its state under
+    ``~/.local/share/opencode``, which nothing binds -- so inside the box it starts with no data dir.
+    Binding the REAL one would hand the agent ``~/.local/share/opencode/storage``: every prior opencode
+    session on this host, an answer-leak surface for exactly the same reason ``~/.codex/sessions`` is.
+
+    So the run gets its own directory and ``XDG_DATA_HOME`` points at it (verified: opencode honours the
+    variable and creates ``<home>/opencode`` there). These binds are passed to ``bwrap_cmd`` as
+    ``extra_binds``, which are applied BEFORE the answer-mask pass, so masking still wins.
+    """
+    data_home.mkdir(parents=True, exist_ok=True)
+    return ["--bind", str(data_home), str(data_home),
+            "--setenv", "XDG_DATA_HOME", str(data_home)]
+
+
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
               **_ignored) -> tuple[int, Path]:
@@ -295,12 +312,16 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     run_cmd = [opencode_bin, "run", "--format", "json", "--agent", agent_name, "-m", mid,
                "--dir", str(ws), "--auto", msg]
 
-    # Same integrity wrapper as the claude path: bwrap when requested, else raw (cwd=ws). opencode is
-    # Bun-based, so at --sandbox bwrap it may crash exactly like the claude binary (hence sandbox=none is the
-    # harness default); at none, isolation is the copied workspace + the post-run transcript audit.
+    # Same integrity wrapper as the claude path: bwrap when requested, else raw (cwd=ws). At bwrap the
+    # run gets an isolated data home (see opencode_runtime_binds) so it neither starts without state nor
+    # sees any prior session; at none, isolation is the copied workspace + the post-run transcript audit.
     if sandbox == "bwrap":
+        from merlin.common.artifacts import cache_dir
+        data_home = cache_dir("opencode_home") / f"{run_dir.name}_r{rnd:02d}"
+        env["XDG_DATA_HOME"] = str(data_home)     # also for the outer process, so both agree
         inner = " ".join(shlex.quote(c) for c in run_cmd)
-        cmd = ["bash", "-c", _R.bwrap_cmd(inner, ws, bundle)]
+        cmd = ["bash", "-c", _R.bwrap_cmd(inner, ws, bundle,
+                                          extra_binds=opencode_runtime_binds(data_home))]
     else:
         cmd = run_cmd
 
