@@ -92,6 +92,31 @@ class OracleUnavailable(Exception):
     pass
 
 
+# The failure plane for "the endpoint RAN the submitted artifact and it never reached the ISA's
+# halt/terminate instruction inside the budget". It gets a plane of its own because the alternative —
+# folding it into ``oracle_unavailable`` — tells an agent its grader is missing when in fact its program
+# hangs, and those imply opposite actions ("wait for infra" vs "emit the halt"). Measured cost of the
+# collapse: ten rounds of a conformant agent shown "mandatory tier L# did not run (unavailable)" while
+# every tier record already carried "program did not halt within N instructions". Target-agnostic — any
+# endpoint that executes a program can produce it.
+DID_NOT_HALT_PLANE = "program_did_not_halt"
+
+
+def _did_not_halt_reason(msg: str) -> str:
+    """The tier ``reason`` for a program that ran to the cap without halting."""
+    return f"did not halt (ran to the cycle cap): {msg[-240:]}"
+
+
+def _did_not_halt_failure(msg: str) -> "CertFailure":
+    """The agent-facing failure for a program that ran to the cap without halting — one construction
+    shared by every endpoint, so the verdict reads identically however the endpoint reported it."""
+    return CertFailure(DID_NOT_HALT_PLANE, _cat("TIMEOUT"),
+                       f"{msg}; the emitted kernel never reached the ISA's halt/terminate "
+                       "instruction — emit it as the final instruction on every control path (see the "
+                       "program-termination contract). Numerics are never checked until the program "
+                       "halts.")
+
+
 def _spike_verilator_adapter(sim: str, target: str) -> Callable:
     def run(cb, llvm_text, workdir, timeout):
         from ..runtime.backends import base as _backends
@@ -595,16 +620,31 @@ def default_adapters() -> dict[str, Callable]:
             "L3": _spike_verilator_adapter("verilator", "gemmini")}
 
 
-def qa_loop_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
+def qa_loop_adapters(target: str, sim_via: str | None = None, *,
+                     declared_tiers: set[str] | None = None) -> dict[str, Callable]:
     """The FAST per-round QA-loop oracle set for ``target`` — resolved from :func:`oracle_adapters`, never
-    hardwired. It keeps ONLY the lowest (fastest) RTL oracle tier and reserves the slower cycle-accurate
-    tiers for the bounded checkpoint (:func:`qa_checkpoint_adapters`). This is a tier-order distinction, not
-    a per-target one: a chipyard target's fastest tier is spike (L2) so verilator (L3) is held back; an
-    arc/mlc target's single RTL-derived tier (L3) is already fast, so IT is the loop tier. No target-name
-    branch — a new accelerator's loop gate falls out of its declared ``sim_via`` with no edit here."""
+    hardwired. It keeps ONE tier (the fastest) and reserves the slower cycle-accurate tiers for the bounded
+    checkpoint (:func:`qa_checkpoint_adapters`). This is a tier-order distinction, not a per-target one; no
+    target-name branch — a new accelerator's loop gate falls out of its declared ``sim_via`` with no edit.
+
+    ``declared_tiers`` is the set of tiers the CORPUS BEING GRADED lists in ``required_oracle_tiers``.
+    When given, the loop tier is the fastest endpoint tier that the corpus actually declares — so the
+    per-round gate always rides a tier the capsule asked for. This matters where an endpoint exposes an
+    ADDITIVE cheaper tier below its declared gold tier: picking the merely-fastest tier there makes the
+    loop enforce a gate the capsule never declared (and, when that cheap tier's runner misbehaves, every
+    capsule fails on it while the declared tier passes). Returns ``{}`` — fail closed, never a
+    substitute — when the endpoint reaches none of the declared tiers; the caller reports that.
+
+    Omitting ``declared_tiers`` keeps the legacy "fastest available tier" behavior for callers that have
+    no corpus in hand."""
     full = oracle_adapters(target, sim_via)
     if not full:
         return {}
+    if declared_tiers:
+        cand = sorted(t for t in full if t in declared_tiers)
+        if not cand:
+            return {}
+        return {cand[0]: full[cand[0]]}
     lowest = min(full)                       # tier keys sort lexically (L2 < L3 < L4 …): lowest == fastest
     return {lowest: full[lowest]}
 
@@ -1145,6 +1185,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # TOOL_CRASH, so the unavailable->incomplete / not_gradeable_no_oracle path never fires for atlas.
         # Catch BOTH so unavailability is honest for every endpoint.
         from .program_oracle import OracleUnavailable as _POUnavailable
+        # An endpoint that RAN the program and watched it never halt reports a VERDICT, not an absent
+        # oracle. It is raised as a SUBCLASS of the unavailable exception (so every fail-closed handler
+        # still works) and must therefore be caught FIRST, or it collapses back into "the oracle did not
+        # run" — which is what left a whole agent run with nothing it could act on.
+        from .program_oracle import ProgramDidNotHalt as _PODidNotHalt
         # The muon (SIMT/cyclotron/VCS) adapters raise their OWN MuonUnavailable — a THIRD unrelated class.
         # The VCS RTL difftest is honest-unavailable (WIP upstream: the DPI ELF path is not wired for arbitrary
         # corpus kernels), so it raises MuonUnavailable; without catching it here that honest unavailability
@@ -1165,14 +1210,32 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             adapter = (adapters or {}).get(tier)
             if adapter is None:
                 if mand:
-                    tiers[tier] = TierResult(tier, "unavailable", True,
-                                             reason=f"no adapter for {tier} ({cfg.tier_sim.get(tier, '?')})",
-                                             derived_from_rtl=tier in cfg.rtl_tiers)
+                    # FAIL CLOSED on the DECLARED tier, and name it. Never substitute another tier and
+                    # report its verdict as the declared one — a grade that silently rides a tier the
+                    # capsule never asked for is not the grade the capsule specified.
+                    tiers[tier] = TierResult(
+                        tier, "unavailable", True,
+                        reason=(f"this capsule declares required oracle tier {tier} "
+                                f"({cfg.tier_sim.get(tier, 'no sim declared')}) but this phase supplies "
+                                f"no adapter for it; reachable tiers here: "
+                                f"{sorted(adapters or {}) or 'none'}"),
+                        derived_from_rtl=tier in cfg.rtl_tiers)
                 continue
             import time as _time
             _adapter_t0 = _time.perf_counter()
             try:
                 res = adapter(cb, llvm_text, paths.generated, timeout)
+            except _PODidNotHalt as e:
+                # The oracle RAN and returned a verdict: the program never halted. That is the AGENT's
+                # bug, not a missing oracle — record it as a tier FAIL (not "unavailable") so the
+                # not_run_is_not_pass path never relabels it, and fail the capsule on the named
+                # did-not-halt plane. MUST precede the _ORACLE_UNAVAILABLE clause below: this is a
+                # subclass of it, and being caught there is exactly what hid the diagnosis.
+                tiers[tier] = TierResult(tier, "fail", mand, reason=_did_not_halt_reason(str(e)),
+                                         derived_from_rtl=tier in cfg.rtl_tiers)
+                if mand:
+                    raise _did_not_halt_failure(str(e)) from e
+                continue
             except _ORACLE_UNAVAILABLE as e:
                 tiers[tier] = TierResult(tier, "unavailable", mand, reason=str(e),
                                          derived_from_rtl=tier in cfg.rtl_tiers)
@@ -1193,17 +1256,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _trapped = ("*** FAILED ***" in _msg) and not _did_not_halt
                 tiers[tier] = TierResult(
                     tier, "fail", mand,
-                    reason=(f"did not halt (ran to the cycle cap): {_msg[-240:]}" if _did_not_halt
+                    reason=(_did_not_halt_reason(_msg) if _did_not_halt
                             else f"kernel faulted at runtime: {_msg[-260:]}" if _trapped
                             else f"{_sim} crash: {_msg[-300:]}"),
                     derived_from_rtl=tier in cfg.rtl_tiers)
                 if mand:
                     if _did_not_halt:
-                        raise CertFailure(_sim, _cat("TIMEOUT"),
-                                          f"{_msg}; the emitted kernel never reached the ISA's "
-                                          "halt/terminate instruction — emit it as the final instruction "
-                                          "on every control path (see the program-termination contract). "
-                                          "Numerics are never checked until the program halts.") from e
+                        raise _did_not_halt_failure(_msg) from e
                     if _trapped:
                         raise CertFailure(_sim, _cat("FUNCTIONAL_MISMATCH"),
                                           "the emitted kernel RAN but FAULTED on "
@@ -1416,10 +1475,24 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         if not ran_required:
             status = "incomplete"
             if failure is None:
-                failure = {"plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
-                           "detail": f"no runnable required oracle tier certified this capsule "
-                                     f"(required={sorted(required)}) — refusing to pass on the L0/L1 "
-                                     f"command-buffer interpretation alone"}
+                # When the phase capped a DECLARED tier away, name it: "this phase cannot reach the tier
+                # your capsule requires" is a configuration fact the operator can fix, and it is a
+                # different statement from "the oracle is missing". The materializer records the dropped
+                # declared tiers on the capsule precisely so this message can be specific.
+                _unreach = capsule.get("unreachable_required_oracle_tiers") or []
+                _ceil = capsule.get("oracle_tier_ceiling")
+                failure = {"plane": "declared_tier_unreachable" if _unreach else "oracle_unavailable",
+                           "category": "NOT_RUN_IS_NOT_PASS",
+                           "unreachable_required_oracle_tiers": sorted(_unreach) or None,
+                           "detail": (
+                               f"this capsule declares required oracle tier(s) {sorted(_unreach)} that "
+                               f"this phase cannot reach (ceiling {_ceil}); the tiers it can reach "
+                               f"({sorted(required)}) are not applicable to this capsule's datapath, so "
+                               f"nothing certified it. Refusing to substitute a tier the capsule never "
+                               f"declared." if _unreach else
+                               f"no runnable required oracle tier certified this capsule "
+                               f"(required={sorted(required)}) — refusing to pass on the L0/L1 "
+                               f"command-buffer interpretation alone")}
 
     result = {
         "capsule": name, "kind": capsule.get("kind"), "label": capsule.get("label"),

@@ -89,28 +89,47 @@ def _cap_tiers(tier_ceiling: str) -> list[str]:
 _RTL_TIERS = frozenset({"L2", "L3", "L4", "L5"})
 
 
-def _cap_required(tiers: list[str], keep: set[str], tier_ceiling: str) -> list[str]:
-    """Cap a capsule's ``required_oracle_tiers`` to what THIS phase can reach — WITHOUT ever stripping the
-    numeric floor to nothing.
+def _cap_required(tiers: list[str], keep: set[str]) -> tuple[list[str], list[str]]:
+    """Cap a capsule's ``required_oracle_tiers`` to what THIS phase can reach. Returns
+    ``(kept, unreachable)`` — a PURE intersection plus the declared tiers this phase cannot reach.
 
-    Capping to the phase ceiling drops tiers above it. For a float capsule that requires the cycle-accurate
-    cert (atlas: ``[L0, L1, L3]`` with the integer L0/L1 marked not_applicable), a naive intersection with
-    a loop ceiling of L2 yields ``[L0, L1]`` — both N/A — so the grade enforces ZERO numeric tiers and any
-    capsule that merely builds reads back as pass. That is the crash-pass regression: it appeared the moment
-    the fast L2 npu-functional tier lowered the loop ceiling from L3 to L2.
+    NEVER substitutes. An earlier revision, when capping removed every RTL/numeric tier a capsule
+    required, appended the phase ceiling instead — so a capsule that declared the cycle-accurate cert
+    tier was silently graded against a DIFFERENT, cheaper tier it had never asked for, and the result
+    was reported as if it were the declared one. Measured cost: an entire agent run where the declared
+    tier ran fine and returned real verdicts while the substituted tier's endpoint hung, and every
+    capsule failed on a gate the capsule never named.
 
-    Rule: when capping removes every RTL/numeric tier the capsule required, the HIGHEST REACHABLE tier (the
-    ceiling itself, when it is an RTL tier) BECOMES the required tier for this phase. The fast loop still
-    enforces a real numeric oracle (atlas → L2 npu-functional is mandatory each round), while the
-    cycle-accurate cert (L3) stays required at the checkpoint (ceiling L3, kept as-is). Target-general — it
-    only fires when a required RTL tier was capped away; gemmini, whose loop tier L2 is already in its
-    required set, is untouched."""
+    The declared tier is the capsule's contract. When a phase cannot reach it the honest outcome is to
+    say so (the caller fails closed on the empty/floor-only result and names the unreachable tier), not
+    to quietly grade something else. Choosing a phase ceiling that the corpus actually declares is the
+    caller's job — see :func:`declared_oracle_tiers` and ``qa_loop_adapters(declared_tiers=...)``."""
     kept = [t for t in tiers if t in keep]
-    if (any(t in _RTL_TIERS for t in tiers)
-            and not any(t in _RTL_TIERS for t in kept)
-            and tier_ceiling in _RTL_TIERS):
-        kept.append(tier_ceiling)
-    return kept
+    unreachable = [t for t in tiers if t not in keep]
+    return kept, unreachable
+
+
+def declared_oracle_tiers(*roots: str | Path) -> set[str]:
+    """The union of every ``required_oracle_tiers`` entry declared by the capsules under ``roots``.
+
+    The CORPUS is the authority on which oracle tiers a grade must ride. Deriving a phase's tier from
+    this (rather than from "whichever tier the endpoint reaches fastest") is what keeps grading on the
+    tier the capsule actually declared. Target-agnostic by construction: it reads capsule yaml, never a
+    target name."""
+    out: set[str] = set()
+    for root in roots:
+        root = Path(root)
+        if not root.is_dir():
+            continue
+        for cap_yaml in sorted(root.rglob("capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cap_yaml.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            tiers = cap.get("required_oracle_tiers")
+            if isinstance(tiers, list):
+                out |= {str(t) for t in tiers}
+    return out
 
 
 def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAULT_CEILING,
@@ -142,7 +161,17 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
                 cap = yaml.safe_load(sp.read_text(encoding="utf-8")) or {}
                 tiers = cap.get("required_oracle_tiers")
                 if isinstance(tiers, list):
-                    cap["required_oracle_tiers"] = _cap_required(tiers, keep, tier_ceiling)
+                    kept, unreachable = _cap_required(tiers, keep)
+                    cap["required_oracle_tiers"] = kept
+                    if unreachable and not any(t in _RTL_TIERS for t in kept):
+                        # Capping left NO numeric/RTL tier: this phase cannot certify the capsule at all.
+                        # Carry the dropped DECLARED tiers forward so the grader can fail closed and NAME
+                        # them, instead of reporting a bare "no oracle" — or, as it once did, silently
+                        # substituting the ceiling tier and grading against something never declared.
+                        # Only annotated in that case, so a capsule whose numeric floor survives capping
+                        # (the ordinary case) stays byte-identical to the source.
+                        cap["unreachable_required_oracle_tiers"] = unreachable
+                        cap["oracle_tier_ceiling"] = tier_ceiling
                 (d / f).write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
             else:
                 shutil.copyfile(sp, d / f)
@@ -157,8 +186,11 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     reproduces its 20-capsule L2 set exactly, atlas gets its fp8/bf16 set at L3, any target its own — with
     NO per-target hardcode and no gemmini leak.
 
-    ``tier_ceiling`` caps ``required_oracle_tiers`` to what the caller can reach; default = the target's
-    loop-reachable tier (``max(qa_loop_adapters)``), so gemmini→L2 (spike) and atlas→L3 (arc)."""
+    ``tier_ceiling`` caps ``required_oracle_tiers`` to what the caller can reach. The default is the
+    per-round loop tier the corpus itself DECLARES — ``qa_loop_adapters`` is asked for the fastest
+    endpoint tier that is also a declared required tier, so the loop always grades against a tier the
+    capsules asked for. When the endpoint reaches NONE of the declared tiers this FAILS CLOSED with the
+    declared-vs-reachable sets named, rather than capping onto a substitute tier."""
     from merlin.common.artifacts import cache_dir
     from merlin.common.paths import repo_root
     from merlin.targetgen import capsule_runner as _CR
@@ -166,8 +198,25 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     roots = ([te.capsule_corpus] if te.capsule_corpus else [])
     roots += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
     if tier_ceiling is None:
-        loop = _CR.qa_loop_adapters(te.target, te.sim_via) or {"L2": None}
-        tier_ceiling = max(loop, key=lambda t: _TIER_ORDER.index(t) if t in _TIER_ORDER else -1)
+        declared = declared_oracle_tiers(*roots)
+        loop = _CR.qa_loop_adapters(te.target, te.sim_via, declared_tiers=declared)
+        if not loop:
+            reach = sorted(_CR.oracle_adapters(te.target, te.sim_via))
+            if reach:
+                # The endpoint DOES expose tiers, just none the corpus declared. Substituting one of them
+                # is precisely the defect; refuse and name both sets.
+                raise ValueError(
+                    f"target {te.target!r}: its capsule corpus declares required oracle tiers "
+                    f"{sorted(declared)} but the endpoint reaches {reach} — no declared tier is "
+                    f"reachable, so this phase cannot grade these capsules. Refusing to substitute a "
+                    f"tier the capsules never declared; make the declared tier reachable or fix the "
+                    f"corpus.")
+            # The endpoint reaches NOTHING (no mlc/sim/model venv in this environment). That is an
+            # honestly ABSENT oracle, not a substitution risk: materialize at the legacy floor and let
+            # the runner report each capsule's missing tier as unavailable, as it always has.
+            tier_ceiling = _DEFAULT_CEILING
+        else:
+            tier_ceiling = max(loop, key=lambda t: _TIER_ORDER.index(t) if t in _TIER_ORDER else -1)
     # Concurrency-safe publish. Several A/B arms materialize the SAME target's public set at once; the old
     # ``rmtree(dest) + rebuild`` in place let one arm delete another's half-built cache mid-read (corrupt or
     # missing capsules -> wrong grades). Instead build into a UNIQUE versioned dir, then ATOMICALLY repoint a

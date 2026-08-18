@@ -170,7 +170,7 @@ def _cycle_accurate_checkpoint_enabled() -> tuple[bool, str]:
     try:
         te = _te()
         ck = _CR.qa_checkpoint_adapters(te.target, te.sim_via)
-        loop = _CR.qa_loop_adapters(te.target, te.sim_via)
+        loop = _CR.qa_loop_adapters(te.target, te.sim_via, declared_tiers=_declared_loop_tiers())
     except Exception:  # noqa: BLE001 — no resolvable checkpoint oracle -> nothing to gate on
         ck, loop = {}, {}
     cert_tiers = set(ck) - set(loop)   # the cycle-accurate cert tiers held back from the fast loop
@@ -216,6 +216,19 @@ def _pilot_subset():
         from merlin.targetgen.contract.materialize import public_capsules_for
         _DERIVED_PILOT = public_capsules_for(_te())
     return _DERIVED_PILOT
+
+
+def _declared_loop_tiers() -> set:
+    """The oracle tiers THIS target's graded corpus declares in ``required_oracle_tiers``.
+
+    Read from the corpus roots (not the materialized subset, which is derived FROM this) and handed to
+    ``qa_loop_adapters`` so the per-round loop tier is one the capsules actually declared, rather than
+    whichever endpoint tier happens to be fastest."""
+    from merlin.targetgen.contract.materialize import declared_oracle_tiers
+    try:
+        return declared_oracle_tiers(*_te().graded_roots())
+    except Exception:  # noqa: BLE001 — no resolvable corpus -> legacy fastest-tier behavior
+        return set()
 
 
 def _manifest():
@@ -742,7 +755,8 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
     # gemmini spike/verilator literals (atlas's loop tier is the arc program-oracle, its checkpoint the
     # cycle-accurate RTL cosim/Verilator). `_loop`/`_ckpt` are the tier keys the runner resolves.
     from merlin.targetgen import capsule_runner as CR
-    _loop = min(CR.qa_loop_adapters(_te().target, _te().sim_via) or {"L3": 1})
+    _loop = min(CR.qa_loop_adapters(_te().target, _te().sim_via,
+                                    declared_tiers=_declared_loop_tiers()) or {"L3": 1})
     _ckpt = max(CR.qa_checkpoint_adapters(_te().target, _te().sim_via) or {"L3": 1})
     pilot += (
         "\n\n## Scope & grading (READ THIS)\n"
