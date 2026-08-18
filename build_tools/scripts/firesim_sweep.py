@@ -17,6 +17,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "merlin" / "python"))
+from merlin.common.artifacts import recaptures_dir  # noqa: E402
 from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
 
 
@@ -79,6 +80,15 @@ def main() -> int:
                          "throughput win lives on rvv — i8 lanes pack ~4x an f32 lane.")
     ap.add_argument("--rvv-hart", type=int, default=1,
                     help="hart the rvv model object runs on (Saturn-OPU tile = hart 1)")
+    # Routing the contractions to a matrix unit is a THIRD thing, orthogonal to --backend: the host
+    # core still runs everything the unit does not take, so the image is an rvv (or scalar) image
+    # that additionally dispatches to the unit. Both names are required together and neither has a
+    # default -- which unit a chip carries and in which geometry is a fact about that chip.
+    ap.add_argument("--matrix-unit", default=None,
+                    help="route contractions to this matrix unit (a key in contract/matrix_units.yaml)")
+    ap.add_argument("--matrix-config", default=None,
+                    help="the unit's hardware configuration class, e.g. the one the bitstream was built "
+                         "from; decides the tile edge, so it is not optional")
     # Build scratch goes on /scratch (3 TB), NOT /tmp (the small shared root disk) — a
     # multi-GB external-weights image in /tmp pressures root, where /home caches already
     # sit at ~94%. /scratch is the project's filesystem with terabytes free.
@@ -87,6 +97,11 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="re-run even if already passed")
     args = ap.parse_args()
     ledger = Path(args.ledger)
+    if bool(args.matrix_unit) != bool(args.matrix_config):
+        ap.error("--matrix-unit and --matrix-config go together: the tile edge comes from the "
+                 "configuration, so a unit without one would be routed at a guessed geometry")
+    matrix = (zm.MatrixRouting(unit=args.matrix_unit, config=args.matrix_config)
+              if args.matrix_unit else None)
 
     if args.report:
         return cycle_report(ledger)
@@ -95,18 +110,42 @@ def main() -> int:
         if not args.force and already_done(ledger, bundle):
             print(f"SKIP {bundle} (already passed in ledger)", flush=True)
             continue
-        mdir = ROOT / "artifacts" / "recaptures" / bundle
+        mdir = recaptures_dir() / bundle
         rec = {"bundle": bundle, "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
-               "int8_compute": bool(args.int8), "backend": args.backend}
+               "int8_compute": bool(args.int8),
+               "backend": "matrix" if matrix else args.backend}
         try:
             golden = np.load(mdir / "golden.npy")
             # 1. build the chipyard image locally (int8: real W8A8 integer datapath). The rvv
             #    backend targets the Saturn-OPU vector tile (hart 1) where i8xi8->i32 packs ~4x
             #    the lanes of f32 — that is where the int8 throughput win actually shows up.
+            extra = {}
+            if matrix:
+                # The feature is what makes the rewrite look for contractions at all; without it the
+                # routing object is inert and the image would be an ordinary rvv image wearing the
+                # matrix label.
+                from merlin.llvmlower.impr_features import OPU_MATMUL_NAME, PEROP_BLOCK_NAME
+                extra = {"matrix": matrix,
+                         "features": frozenset([PEROP_BLOCK_NAME, OPU_MATMUL_NAME])}
             b = zm.build_app(mdir, f"{args.workroot}/{bundle}", board="chipyard_riscv64",
                              backend=args.backend, rvv_hart=args.rvv_hart, cpus=2,
-                             int8_compute=args.int8)
+                             int8_compute=args.int8, **extra)
             rec["ram_mb"] = b["ram_bytes"] // (1024 * 1024)
+            # The anti-cheat, in both directions, on the bytes that will boot. An image carrying none
+            # of the unit's instructions computes correct answers on the host core and passes every
+            # numerical gate below -- the most comfortable way for a matrix-unit run to be wrong. And
+            # an unrouted image that DOES carry them is not the control it would be compared against.
+            if args.matrix_unit or matrix:
+                from merlin.kernels.decode import opu as unit_audit
+                from merlin.llvmlower import opu_shim
+                enc = opu_shim.derive_encodings(opu_shim.load_contract(args.matrix_unit)).encodings
+                counts = {k: int(v) for k, v in
+                          sorted((unit_audit.audit_object(b["elf"], enc).counts or {}).items()) if v}
+                rec["unit_instruction_counts"] = counts
+                if matrix and not counts:
+                    raise RuntimeError(f"the image for {bundle} contains NONE of "
+                                       f"{args.matrix_unit}'s instructions, so it would measure the "
+                                       "host core while claiming the unit")
             print(f"BUILT {bundle} ram={rec['ram_mb']}MB -> submitting to firesim-queue",
                   flush=True)
             # 2. run on FireSim through the queue, gate cos. For int8, gate multi-tier vs the
