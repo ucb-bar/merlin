@@ -49,6 +49,10 @@ CONTRACT_VERSION = "0.1"
 # simulator tool names, never target names, so no target is baked by keying on the set.
 _CYCLE_ACCURATE_SIMULATORS = frozenset({"verilator", "vcs"})
 
+# A package root IS the submission directory, so an argv token rooted at ``submission/`` is doubly
+# rooted. Only these prefixes are eligible for the strip below; every other token is left untouched.
+_SUBMISSION_PREFIXES = ("./submission/", "submission/")
+
 # Reference/oracle-ACCESS markers forbidden in a non-exempt package's tool sources (integrity scan; see
 # merlin/contract/integrity_policy.md). These are specific dotted paths — matched as substrings across
 # ALL languages because they name the actual reference/oracle surface, not a common word.
@@ -317,11 +321,13 @@ def _resolve_argv(pkg: Package, name: str, input_mlir: Path, output_json: Path |
         # basename can match `python`. The package root IS the submission directory, so a token rooted
         # at `submission/` is unambiguously double-rooted; strip it when, and only when, the remainder
         # names a real file under the package root.
-        elif not (pkg.directory / tok).exists():
-            for _pfx in ("./submission/", "submission/"):
-                if tok.startswith(_pfx) and (pkg.directory / tok[len(_pfx):]).exists():
-                    tok = tok[len(_pfx):]
-                    break
+        elif tok.startswith(_SUBMISSION_PREFIXES):
+            _root = getattr(pkg, "directory", None)
+            if _root is not None and not (Path(_root) / tok).exists():
+                for _pfx in _SUBMISSION_PREFIXES:
+                    if tok.startswith(_pfx) and (Path(_root) / tok[len(_pfx):]).exists():
+                        tok = tok[len(_pfx):]
+                        break
         out.append(tok)
     # Fail CLOSED on a placeholder the runner does not substitute. Left alone, an unknown token reaches
     # the package verbatim and surfaces as FileNotFoundError: '{input_json}' from inside the submission's
