@@ -68,6 +68,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tag", required=True)
     ap.add_argument("--arms", default="baseline,merlin,merlin_rtlchecks,cpp_merlininfra")
     ap.add_argument("--repeats", type=int, default=1)
+    # AGENT DRIVER. LB._arm_cmd already forwards --driver to each arm script when it
+    # is not "auto", so the fan-out only has to expose it — and gate the provider's
+    # concurrency, which is a different scarce resource from the simulator's.
+    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode", "codex"],
+                    default="auto", help="agent driver for every arm (codex = Codex CLI)")
+    ap.add_argument("--codex-slots", type=int, default=1,
+                    help="how many arm-repeats may hold the logical 'codex_slots' resource at once. A "
+                         "provider quota is not a simulator slot: two arms can share a Verilator host and "
+                         "still contend on one account, so it is gated separately (1 == one Codex call "
+                         "in flight)")
     ap.add_argument("--verilator-slots", type=int, default=1,
                     help="how many arm-repeats may hold the logical 'verilator' resource at once (1 == sequential)")
     ap.add_argument("--model", default="claude-opus-4-8")
@@ -107,7 +117,20 @@ def main(argv: list[str] | None = None) -> int:
                   extra={"arms": arms, "repeats": a.repeats, "verilator_slots": a.verilator_slots,
                          "provider": a.provider},
                   ray_resources={"verilator": a.verilator_slots}) as run:
-        refs = [run_arm.chia_remote(t["cmd"], str(LB.C.REPO), t["run_id"]) for t in tasks]
+        # A Codex arm consumes provider quota, so it holds a `codex_slots` unit for
+        # its duration in addition to the verilator unit. Requested at call time
+        # because the resource set depends on the chosen driver; if the installed
+        # chia cannot re-option a ChiaFunction, say so rather than silently running
+        # an ungated fan-out against one account.
+        launcher = run_arm
+        if a.driver == "codex":
+            opts = getattr(run_arm, "options", None)
+            if callable(opts):
+                launcher = opts(resources={"verilator": 1, "codex_slots": 1})
+            else:
+                print("WARNING: this chia build cannot re-option resources; the Codex fan-out is NOT "
+                      "gated on codex_slots — run with --verilator-slots to bound concurrency instead.")
+        refs = [launcher.chia_remote(t["cmd"], str(LB.C.REPO), t["run_id"]) for t in tasks]
         results = chia_get(refs)
     fails = [r for r in results if r.get("returncode")]
     print(f"=== done: {len(results) - len(fails)}/{len(results)} ok ===")
