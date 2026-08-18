@@ -637,7 +637,7 @@ def run_command_buffer_debug(target: str, *, cb: dict, capsule_dir) -> dict[str,
     # program cosim uses — never a global sys.path insert).
     with _mlc_importable(mlc_bridge.mlc_dir()):
         try:
-            res = mlc_bridge.arc_run_command_buffer(prepared)
+            res = mlc_bridge.arc_run_command_buffer(prepared, target)
         except Exception as e:  # noqa: BLE001 — a run fault is surfaced, never a fabricated pass
             raise OracleUnavailable(f"{target} arc command-buffer run failed: {type(e).__name__}: {e}")
     # REDACT the answer-bearing keys; keep only the RTL-derived effect counts + provenance.

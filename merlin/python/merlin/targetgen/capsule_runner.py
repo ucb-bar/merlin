@@ -101,6 +101,83 @@ def _spike_verilator_adapter(sim: str, target: str) -> Callable:
     return run
 
 
+def _cb_with_leaf_values(cb: dict) -> dict:
+    """A copy of ``cb`` whose leaf tensors carry their operand VALUES inline.
+
+    The command-buffer schema declares a leaf by shape/dtype/role only — values are materialized from
+    the declaration, which is how the reference, the simulator and the device harness all end up
+    computing on the same stimulus. The mlc arc backend instead indexes ``tensors[name]["data"]``, so
+    handing it the raw cb raised ``KeyError: 'data'`` and every capsule failed its RTL tier as a
+    ``tool_crash`` (27/28 in both arms of the first saturn_opu agent runs, an infra verdict wearing an
+    agent verdict's clothes — the preflight said "mlc arc oracle available", which was true of the
+    module and false of the grade).
+
+    Materializing here through the SAME ``materialize_inputs`` the numeric floor uses is the load-bearing
+    part: values invented separately for the RTL tier would make it disagree with L0/L1 on stimulus and
+    report a mismatch that is really a stimulus difference.
+    """
+    import copy
+
+    from merlin.runtime.commandbuffer import materialize_inputs
+
+    out = copy.deepcopy(cb)
+    leaves = materialize_inputs(cb)
+    tensors = out.setdefault("tensors", {})
+    for name, spec in tensors.items():
+        if name in leaves and "data" not in spec:
+            spec["data"] = list(leaves[name].data)
+    # A resident handle (RES_PACK dst) is a LAYOUT alias of its source, not a new value — which is
+    # exactly how the reference interpreter reads it. The arc backend resolves a matmul's operand names
+    # straight against the tensor table, so without the alias entry it raised KeyError on the handle.
+    # Only RES_PACK is aliased; any other producer stays absent so the backend fails loudly rather than
+    # grading against a value this translation invented.
+    for cmd in out.get("commands") or []:
+        if cmd.get("opcode") != "RES_PACK":
+            continue
+        ops = cmd.get("operands") or {}
+        src, dst = ops.get("src"), ops.get("dst")
+        if src in tensors and dst and dst not in tensors:
+            tensors[dst] = {**tensors[src], "resident_of": src}
+    return out
+
+
+def _epilogue_stages_ignored(prepared: dict, res: dict, target: str, mlc_bridge) -> set[str]:
+    """Which declared commit-epilogue stages this arc model demonstrably IGNORES (empty set if none).
+
+    Deduced, not declared: run the same buffer again with the epilogue stripped and compare. Identical
+    outputs while a stage was declared means the model answered with the pre-epilogue accumulator. Found
+    on the first agent runs of a command-buffer OPU target, where the model applies the matmul but not the
+    commit stage, so seven epilogue capsules scored numerically "wrong" against a reference that was
+    right — a model gap presented as an agent failure. The caller turns this into an UNAVAILABLE tier
+    (unknown, not failed); a tier that quietly failed instead would teach the agent to break its epilogue.
+
+    Probing per buffer rather than per target keeps it geometry-free: the shapes are the ones already
+    being graded, and only a buffer that actually declares a stage pays the second run.
+    """
+    import copy
+
+    stages: set[str] = set()
+    for cmd in prepared.get("commands") or []:
+        if cmd.get("opcode") != "COMMIT":
+            continue
+        attrs = cmd.get("attributes") or {}
+        stages.update(str(x) for x in (attrs.get("epilogue") or []))
+    if not stages:
+        return set()
+
+    stripped = copy.deepcopy(prepared)
+    for cmd in stripped.get("commands") or []:
+        if cmd.get("opcode") == "COMMIT":
+            (cmd.setdefault("attributes", {}))["epilogue"] = []
+    try:
+        plain = mlc_bridge.arc_run_command_buffer(stripped, target)
+    except Exception:  # noqa: BLE001 — the probe must never turn a working tier into a failure
+        return set()
+    if (res.get("outputs") or {}) == (plain.get("outputs") or {}):
+        return stages
+    return set()
+
+
 def mlc_arc_adapter(target: str) -> Callable:
     """The DEFAULT cross-target RTL oracle: run the command buffer on ``target``'s mlc ARC model (the
     RTL-derived functional model — bit-exact datapath outputs + cycle count from the arc state), for ANY
@@ -110,7 +187,15 @@ def mlc_arc_adapter(target: str) -> Callable:
         from .rtl import mlc_bridge
         if not mlc_bridge.arc_available(target):
             raise OracleUnavailable(f"mlc arc model unavailable for target {target!r}")
-        res = mlc_bridge.arc_run_command_buffer(cb)
+        prepared = _cb_with_leaf_values(cb)
+        res = mlc_bridge.arc_run_command_buffer(prepared, target)
+        ignored = _epilogue_stages_ignored(prepared, res, target, mlc_bridge)
+        if ignored:
+            raise OracleUnavailable(
+                f"the arc model for {target!r} does not model the commit epilogue "
+                f"{sorted(ignored)}: it returned identical outputs with the epilogue declared and "
+                f"stripped, so its answer is the pre-epilogue accumulator and cannot grade this "
+                f"capsule (the hardware does apply it — this is a gap in the model, not in the RTL)")
         return {"outputs": res.get("outputs"),
                 "cycles": (res.get("metrics") or {}).get("cycles"),
                 "oracle": res.get("oracle"), "console": ""}
@@ -283,8 +368,60 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
                        "arc command-buffer adapter grades the wrong artifact for a SIMT target and is not "
                        "a valid fallback")
     if arc_ok:
-        return True, f"{target!r}: mlc arc oracle available"
+        # "Present" is not "usable": ANSWER a buffer before promising a grade. A target whose arc model
+        # imported fine still failed every capsule as a tool_crash because the adapter's input contract
+        # was unmet (leaf values, resident aliases, the target argument) — two full agent runs spent
+        # against an oracle that could not grade. The probe closes exactly that gap.
+        live_ok, live_why = _arc_answers_a_buffer(target)
+        if live_ok:
+            return True, f"{target!r}: mlc arc oracle available ({live_why})"
+        return False, f"{target!r}: mlc arc model present but cannot grade — {live_why}"
     return False, (f"{target!r}: mlc arc model unavailable (set MERLIN_MLC_DIR and build the arc model)")
+
+
+def _arc_answers_a_buffer(target: str) -> tuple[bool, str]:
+    """Run one minimal command buffer through the arc adapter and check it reproduces the reference.
+
+    The buffer is built from DERIVED geometry (the target's own tile edge) in the same schema an agent
+    emits, so the probe exercises the real translation path rather than a special case. A mismatch or a
+    raise is reported as "cannot grade" with the reason — never swallowed, since a swallowed probe would
+    restore the false green it exists to remove.
+    """
+    from merlin.runtime.reference import reference_outputs
+    from .corpus_spec import _tile_dim
+    from .target_experiment import load_capability_manifest
+    try:
+        contract = load_capability_manifest(target).contract
+    except Exception:  # noqa: BLE001 — no manifest: _tile_dim falls back to the RTL facts / mesh default
+        contract = {}
+    tile = _tile_dim(target, contract)
+    cb = {
+        "abi_version": "0.1", "target": target,
+        "tensors": {
+            "probe_w": {"shape": [tile, tile], "dtype": "i8", "role": "weight"},
+            "probe_a": {"shape": [tile, tile], "dtype": "i8", "role": "input"},
+            "probe_y": {"shape": [tile, tile], "dtype": "i32", "role": "output"},
+        },
+        "commands": [
+            {"opcode": "RES_PACK", "operands": {"src": "probe_w", "dst": "probe_w_res"},
+             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT",
+             "operands": {"lhs": "probe_a", "rhs": "probe_w_res", "dst": "probe_acc"}},
+            {"opcode": "COMMIT", "operands": {"src": "probe_acc", "dst": "probe_y"},
+             "attributes": {"epilogue": [], "output_dtype": "i32"}},
+        ],
+    }
+    try:
+        got = (mlc_arc_adapter(target)(cb, "", None, 120).get("outputs") or {})
+    except Exception as e:  # noqa: BLE001 — includes OracleUnavailable: either way it cannot grade
+        return False, f"a {tile}x{tile} probe buffer raised {type(e).__name__}: {str(e)[-200:]}"
+    want = reference_outputs(cb)
+    if not got:
+        return False, f"a {tile}x{tile} probe buffer produced no outputs"
+    if any(got.get(k) != v for k, v in want.items()):
+        return False, (f"a {tile}x{tile} probe buffer disagreed with the reference — the model answers, "
+                       "but not with this buffer's result")
+    return True, f"answered a {tile}x{tile} probe buffer matching the reference"
 
 
 def codegen_smoke(target: str) -> tuple[bool, str]:

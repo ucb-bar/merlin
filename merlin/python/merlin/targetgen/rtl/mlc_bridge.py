@@ -1353,12 +1353,23 @@ def arc_core(target: str):
         return CosimCore(str((d / p["so"]).resolve()), str((d / p["man"]).resolve()))
 
 
-def arc_run_command_buffer(cb: dict) -> dict:
-    """Answer a merlin command buffer on the RTL-derived arc model — target-AGNOSTIC (mlc infers the
-    target/config from the command buffer). Returns mlc's backend contract ``{outputs, metrics, correct,
-    oracle, ...}`` where ``metrics`` carries the RTL's internal counts (cycles, bytes_moved,
-    resident_hits, accumulator_commits, ...) — verilator-level state without verilator, for ANY target."""
+def arc_run_command_buffer(cb: dict, target: str | None = None) -> dict:
+    """Answer a merlin command buffer on the RTL-derived arc model for ``target``. Returns mlc's backend
+    contract ``{outputs, metrics, correct, oracle, ...}`` where ``metrics`` carries the RTL's internal
+    counts (cycles, bytes_moved, resident_hits, accumulator_commits, ...) — verilator-level state without
+    verilator, for ANY target.
+
+    The target is PASSED, not inferred. mlc's ``run_command_buffer`` routes on its ``target`` argument and
+    defaults it to one specific accelerator, so omitting it silently answered every other target's buffer
+    on the wrong model: a saturn_opu buffer reached the systolic cosim and died on its
+    dims-divisible-by-DIM assertion. Falls back to the buffer's own ``target`` field, and raises rather
+    than letting a default stand in.
+    """
     require_mlc()
+    t = target or cb.get("target")
+    if not t:
+        raise ValueError("arc_run_command_buffer needs a target: pass one, or declare it in the "
+                         "command buffer — the oracle must never fall back to a default model")
     with _mlc_cwd():
         from mlc.runtime.backend import run_command_buffer
-        return run_command_buffer(cb)
+        return run_command_buffer(cb, target=_arc_target(str(t)))
