@@ -43,6 +43,17 @@ class OracleUnavailable(RuntimeError):
     """Raised when the program oracle cannot run (model venv / cosim / arc artifacts absent)."""
 
 
+class ProgramDidNotHalt(OracleUnavailable):
+    """The oracle RAN the submitted program and it never reached the ISA's halt/terminate instruction
+    inside the cycle/instruction budget.
+
+    This is a VERDICT about the artifact, not an absent oracle — the two were collapsed into
+    ``OracleUnavailable`` and the grade reported "the oracle did not run" for a program that had run and
+    hung. An agent cannot act on "the oracle is unavailable"; it can act on "your program never halts".
+    Subclasses ``OracleUnavailable`` so existing fail-closed handlers keep working; handlers that want
+    the distinction catch THIS first."""
+
+
 @contextmanager
 def _mlc_importable(mlc_dir):
     """Make ``mlc`` importable for the duration of THIS call ONLY, by inserting ``mlc_dir`` on
@@ -268,7 +279,7 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
         res = large_stack_call(backend.run_program, str(ap["so"]), str(ap["man"]),
                                words, preload=preload, max_cycles=max_cycles)
     if not res.halted:
-        raise OracleUnavailable(f"{target} program did not halt within {max_cycles} cycles")
+        raise ProgramDidNotHalt(f"{target} program did not halt within {max_cycles} cycles")
 
     # resolve the output tensor spec from the cb (generation-declared) or the program's own golden.
     out_spec = _resolve_out_spec(target, cb, bundle)
@@ -425,7 +436,7 @@ def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | Non
     }
     res = _run_func_helper(target, model_ext, req, Path(workdir), timeout)
     if not res.get("halted"):
-        raise OracleUnavailable(
+        raise ProgramDidNotHalt(
             f"{target} program did not halt within {max_cycles} instructions (functional)")
 
     outmap = res.get("outputs") or {}
@@ -705,7 +716,7 @@ def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: d
                              reads=[(int(out_spec["base"]), int(nbytes))],
                              max_cycles=max_cycles, timeout=timeout)
     if not res.get("halted"):
-        raise OracleUnavailable(f"{target} program did not halt within {max_cycles} cycles (verilator)")
+        raise ProgramDidNotHalt(f"{target} program did not halt within {max_cycles} cycles (verilator)")
     outs = res.get("outputs") or []
     if not outs:
         raise OracleUnavailable(f"{target}: verilator oracle returned no output at base {out_spec['base']}")

@@ -116,7 +116,20 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
     # storm). The adapters are resolved from the descriptor's target+sim_via via the shared factory, so a
     # non-chipyard target (arc/cyclotron) grades on its own RTL-derived tier with NO gemmini-specific path.
     _target, _sim_via = _loop_target_sim_via()
-    _loop_adapters = {} if no_oracle else CR.qa_loop_adapters(_target, _sim_via)
+    # The loop tier is chosen from the tiers THESE capsules declare, so the per-round gate always rides a
+    # tier the capsule asked for. Without this the loop picks the endpoint's fastest tier, which for an
+    # endpoint that exposes an additive cheap tier below its declared gold tier means grading against a
+    # tier the capsule never declared.
+    from merlin.targetgen.contract.materialize import declared_oracle_tiers as _declared
+    _decl = _declared(capsules_root)
+    _loop_adapters = ({} if no_oracle
+                      else CR.qa_loop_adapters(_target, _sim_via, declared_tiers=_decl))
+    if not no_oracle and not _loop_adapters:
+        raise SystemExit(
+            f"capsule corpus {capsules_root} declares required oracle tiers {sorted(_decl)} but target "
+            f"{_target!r} reaches {sorted(CR.oracle_adapters(_target, _sim_via))} — no declared tier is "
+            f"reachable, so this loop cannot grade. Refusing to substitute a tier the capsules never "
+            f"declared.")
     score = CG.grade(submission, capsules_root=capsules_root, runs_root=str(runs_root),
                      labels=labels, contract=str(C.REPO / "merlin/contract"),
                      oracle_adapters=_loop_adapters, timeout=timeout, target=_target,

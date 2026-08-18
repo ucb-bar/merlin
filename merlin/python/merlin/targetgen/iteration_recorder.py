@@ -44,7 +44,8 @@ def first_failure(results: list[dict]) -> dict | None:
                    "command_buffer_schema", "command_buffer_reference", "command_buffer_simulate",
                    "numeric_golden", "target_to_instruction_trace", "trace_check",
                    "target_to_llvm", "llvm_compile", "runtime_link", "spike", "verilator",
-                   "vcs", "firesim", "oracle_unavailable", "runner_internal"]
+                   "vcs", "firesim", "program_did_not_halt", "declared_tier_unreachable",
+                   "oracle_unavailable", "runner_internal"]
 
     def rank(p):
         return plane_order.index(p) if p in plane_order else len(plane_order)
