@@ -30,6 +30,19 @@ formats:
     scale: {kind: none}
     aliases: [f16, half, float16]
     notes: IEEE-754 half (E5M10). Tight precision, reduced range.
+  fp64:
+    kind: float_ieee
+    element_bits: 64
+    exp_bits: 11
+    mant_bits: 52
+    signed: true
+    scale: {kind: none}
+    aliases: [f64, double, float64]
+    notes: >-
+      IEEE-754 double. Registered rather than parsed as a machine width because the `fp` spellings are
+      deliberately registry names here (`machine_bits("fp16")` returns None on purpose, so a width is
+      never guessed from a prefix) — and without an entry the same type was known as `f64` and unknown
+      as `fp64`, which made the address map refuse an ordinary double under one of its two names.
   bf16:
     kind: float_ieee
     element_bits: 16
@@ -155,6 +168,20 @@ formats:
     torchao_scheme: mx_dyn_act_mx_weight_mx9
     quant_ext_type: mx_tensor
     notes: OCP MXFP8 (torchao "mx9") — E4M3 elements, per-32 E8M0 block scale.
+  mxint8:
+    kind: int_affine
+    element_bits: 8
+    signed: true
+    scale: {kind: block_e8m0, block: 32}
+    granularity: per_block
+    quant_ext_type: mx_tensor
+    notes: >-
+      OCP MXINT8 — int8 elements under a per-32 E8M0 block scale. `int_affine` rather than
+      `mx_block`, because the element is an integer: `mx_block` is validated as a self-describing
+      FLOAT element (1 + exp_bits + mant_bits must fill the width), which an int8 element has no
+      exponent to satisfy. The MX part of it is the scale, and that is what `scale` records.
+      Registered because the DRAM address map sizes every operand through this registry and fails
+      closed on an unknown token, so a capsule declaring mxint8 could not be placed at all.
 
   # --- NVIDIA NVFP4 ------------------------------------------------------------------------------
   nvfp4:
