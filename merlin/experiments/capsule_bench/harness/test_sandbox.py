@@ -61,6 +61,93 @@ def _run(ws, bundle, inner, timeout=180):
     return r.returncode, (r.stdout or "").strip(), (r.stderr or "").strip()
 
 
+def _descriptor() -> dict:
+    """The SELECTED target's target_experiment.yaml, as data."""
+    import yaml
+    d = C.EXP / "target_experiment.yaml"
+    try:
+        return yaml.safe_load(d.read_text(encoding="utf-8")) or {}
+    except OSError:
+        return {}
+
+
+def _declares_bespoke_sim() -> bool:
+    """True iff this target's RTL tier runs through an external RISC-V/chipyard simulator.
+
+    Read from the descriptor's ``sim_via``: a target that leaves it empty grades on an in-process RTL
+    model and never shells out to spike / riscv-gcc / a chipyard verilator binary. Derived, not a
+    target-name branch -- a new endpoint's answer falls out of its own descriptor.
+    """
+    def _find(node):
+        """`sim_via` is nested (gemmini declares it under `toolchain`); find it wherever it sits."""
+        if isinstance(node, dict):
+            v = node.get("sim_via")
+            if isinstance(v, str) and v.strip():
+                return True
+            return any(_find(x) for x in node.values())
+        if isinstance(node, list):
+            return any(_find(x) for x in node)
+        return False
+
+    return _find(_descriptor())
+
+
+def _broker_sim() -> str:
+    """The simulator name the broker should run for THIS target's loop tier.
+
+    Derived from the target's own oracle adapters (the loop tier is the one the QA loop grades on), so a
+    target whose RTL tier is an in-process model is probed through that model rather than through a
+    RISC-V simulator it never invokes.
+    """
+    try:
+        from merlin.targetgen.capsule_runner import qa_loop_adapters
+        tiers = sorted(qa_loop_adapters(C.TARGET))
+    except Exception:  # noqa: BLE001 -- an unresolvable adapter set is not this probe's business
+        tiers = []
+    if not _declares_bespoke_sim():
+        # the broker's neutral token: "grade on whatever tier this target's contract resolves to"
+        return "contract"
+    return "spike" if "L2" in tiers else (tiers[0].lower() if tiers else "spike")
+
+
+def _probe_capsule() -> str:
+    """One real public capsule id belonging to THIS target, read from the corpus it declares.
+
+    The probe only needs A capsule that exists and is public. Naming one target's capsule here would
+    make the gate fail on every other target for a reason that has nothing to do with the sandbox --
+    and, worse, would silently hand a NEW target of the same class another target's capsule id. The
+    corpus root comes from the descriptor's ``capsule_corpus``, so each target answers for itself.
+    """
+    import yaml
+    root = _descriptor().get("capsule_corpus")
+    roots = [C.REPO / root] if isinstance(root, str) and root.strip() else [C.REPO / "merlin/contract/capsules"]
+    for base in roots:
+        for cy in sorted(base.rglob("capsule.yaml")):
+            if "hidden" in cy.parts:                      # never probe a held-out capsule
+                continue
+            try:
+                y = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except OSError:
+                continue
+            if str(y.get("label", "")).strip() == "public":
+                return cy.parent.name
+    raise SystemExit(f"no public capsule found for {C.TARGET} under {[str(r) for r in roots]}; "
+                     f"the sandbox probe cannot be constructed without one")
+
+
+def _verilator_design() -> str:
+    """The chipyard verilator design this target's sim is built for, from the descriptor."""
+    d = _descriptor()
+    for key in ("verilator_design", "chipyard_config"):
+        v = d.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    o = d.get("oracle")
+    if isinstance(o, dict) and isinstance(o.get("verilator_design"), str):
+        return o["verilator_design"].strip()
+    return "GemminiRocketConfig"  # historical default for the chipyard endpoint
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--arm", default="merlin_rtlchecks", choices=list(ARM_BUNDLE))
@@ -108,10 +195,22 @@ def main(argv=None):
             ("cmake>=3.20", "cmake --version | head -1"),
             ("ninja", "ninja --version"),
             ("make", "make --version | head -1"),
-            ("spike", "spike --help 2>&1 | head -1"),
-            ("riscv64-unknown-elf-gcc", "riscv64-unknown-elf-gcc --version | head -1"),
-            ("verilator L3 sim", f'test -x {TC.CHIPYARD_VERILATOR}/simulator-chipyard.harness-GemminiRocketConfig && echo present'),
         ]
+        # The RISC-V/chipyard toolchain is required only by a target whose RTL tier RUNS THROUGH IT. A
+        # target that declares no bespoke sim (``sim_via: ""`` -- its RTL oracle is an in-process model
+        # such as the mlc arc MXU model) never invokes spike, riscv-gcc or a chipyard verilator binary,
+        # so demanding them marks a healthy sandbox NO-GO for tools it will never call. Derived from the
+        # descriptor, not from a target name, so a new endpoint needs no edit here.
+        if _declares_bespoke_sim():
+            checks += [
+                ("spike", "spike --help 2>&1 | head -1"),
+                ("riscv64-unknown-elf-gcc", "riscv64-unknown-elf-gcc --version | head -1"),
+                ("verilator L3 sim",
+                 f'test -x {TC.CHIPYARD_VERILATOR}/simulator-chipyard.harness-{_verilator_design()} && echo present'),
+            ]
+        else:
+            print(f"  [n/a ] RISC-V/chipyard toolchain — {C.TARGET} declares no bespoke sim "
+                  f"(sim_via empty); its RTL tier is an in-process model")
         for label, inner in checks:
             rc, out, err = _run(ws, bundle, inner, timeout=120)
             _ok(f"tool: {label}", rc == 0 and out, (out or err).splitlines()[0][:70] if (out or err) else f"rc={rc}")
@@ -126,14 +225,17 @@ def main(argv=None):
         # --- END-TO-END: the agent's real in-sandbox capability = compile + run on spike ---
         # (golden grading is DRIVER-SIDE/redacted, outside the sandbox — the target's runtime backend
         # imports the oracle, so it is correctly absent here. In-sandbox the agent authors -> compiles -> runs spike.)
-        print("\n-- end-to-end (compile with riscv-gcc + curated harness, run on spike) --")
-        e2e = (f'cd /tmp && printf "int main(){{return 0;}}" > t.c && '
-               f'riscv64-unknown-elf-gcc -I {TC.CURATED_HARNESS}/include -c t.c -o t.o && echo COMPILED && '
-               f'riscv64-unknown-elf-gcc -march=rv64gc -o t.elf t.c -nostartfiles -e main 2>/dev/null; '
-               f'spike --help >/dev/null 2>&1 && echo SPIKE_OK')
-        rc, out, err = _run(ws, bundle, e2e, timeout=120)
-        _ok("riscv-gcc compiles (curated harness) + spike runnable",
-            "COMPILED" in out and "SPIKE_OK" in out, (out or err).replace("\n", " ")[:80])
+        if _declares_bespoke_sim():
+            print("\n-- end-to-end (compile with riscv-gcc + curated harness, run on spike) --")
+            e2e = (f'cd /tmp && printf "int main(){{return 0;}}" > t.c && '
+                   f'riscv64-unknown-elf-gcc -I {TC.CURATED_HARNESS}/include -c t.c -o t.o && echo COMPILED && '
+                   f'riscv64-unknown-elf-gcc -march=rv64gc -o t.elf t.c -nostartfiles -e main 2>/dev/null; '
+                   f'spike --help >/dev/null 2>&1 && echo SPIKE_OK')
+            rc, out, err = _run(ws, bundle, e2e, timeout=120)
+            _ok("riscv-gcc compiles (curated harness) + spike runnable",
+                "COMPILED" in out and "SPIKE_OK" in out, (out or err).replace("\n", " ")[:80])
+        else:
+            print(f"\n-- end-to-end: n/a — {C.TARGET} compiles no RISC-V host program (no bespoke sim) --")
 
         # --- ASYNC ORACLE through bwrap: a REAL submission, real spike L2=pass via the simjob broker;
         #     oracle stays out-of-box. (Verilator L3 is covered by readiness_check; here spike is enough
@@ -162,7 +264,7 @@ def main(argv=None):
         try:
             # submit (async) from INSIDE the sandbox, then poll to a real verdict
             rc, out, err = _run(ws, bundle,
-                                'python3 simjob.py submit --sim spike --capsules A1_mvin_mvout', timeout=60)
+                                f'python3 simjob.py submit --sim {_broker_sim()} --capsules {_probe_capsule()}', timeout=60)
             import json as _json
             jid = None
             try:

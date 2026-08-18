@@ -94,7 +94,17 @@ def _list(a) -> int:
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Async oracle runner (spike/verilator/vcs) for your submission.")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("submit"); s.add_argument("--sim", choices=["spike", "verilator", "vcs"], required=True)
+    # The accepted set is the BROKER's derived allowlist, not a baked ladder: a target that declares no
+    # bespoke sim grades on its contract-resolved tier and accepts only the neutral "contract" token.
+    # Baking the chipyard ladder here left such a target's agent unable to submit ANY oracle job.
+    # NO client-side allowlist. This shim runs INSIDE the sandbox, where the broker module is not
+    # granted, so any mirror of its allowlist silently falls back to one target's ladder and rejects a
+    # legitimate request before it ever reaches the channel. Validation is the BROKER's job -- it runs
+    # OUTSIDE the sandbox, is the trust boundary, and already fails closed on an unknown sim with a
+    # visible "rejected" response. Keeping a second, drifting copy here bought nothing and cost a
+    # whole target its in-sandbox oracle.
+    s = sub.add_parser("submit")
+    s.add_argument("--sim", required=True)
     s.add_argument("--capsules", default="all"); s.add_argument("--debug", nargs="*", default=[])
     s.add_argument("--workers", type=int, default=1); s.set_defaults(fn=_submit)
     p = sub.add_parser("poll"); p.add_argument("--job-id", required=True, dest="job_id"); p.set_defaults(fn=_poll)

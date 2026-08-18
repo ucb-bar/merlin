@@ -104,6 +104,50 @@ def _veril_acquire(n_slots: int) -> Path | None:
     return None
 
 
+def _sim_via() -> str:
+    """This target's declared simulator route, from its own descriptor (empty = in-process RTL model)."""
+    import yaml
+
+    def _find(node):
+        if isinstance(node, dict):
+            v = node.get("sim_via")
+            if isinstance(v, str):
+                return v.strip()
+            for x in node.values():
+                r = _find(x)
+                if r is not None:
+                    return r
+        elif isinstance(node, list):
+            for x in node:
+                r = _find(x)
+                if r is not None:
+                    return r
+        return None
+    try:
+        import _common as _C
+        d = yaml.safe_load((_C.EXP / "target_experiment.yaml").read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 -- an unreadable descriptor means "no bespoke sim", fail closed
+        return ""
+    return _find(d) or ""
+
+
+def _allowed_sims() -> tuple[str, ...]:
+    """The sim names a request may name — STILL a closed allowlist (this is load-bearing isolation:
+    an agent must not be able to make the broker run something arbitrary), but DERIVED rather than
+    baked to one target's ladder.
+
+    A chipyard target selects along the spike/verilator/vcs ladder. A target that declares no bespoke
+    sim grades on its own contract-resolved tier, where ``--sim`` does not apply at all
+    (``agent_selfcheck._adapters``) -- so the only accepted token is the neutral sentinel below, and it
+    is NOT forwarded to the self-check. Without this, such a target's agent could reach no oracle from
+    inside the sandbox while every gate reported the sandbox healthy.
+    """
+    return ("spike", "verilator", "vcs") if _sim_via() == "chipyard" else (_NEUTRAL_SIM,)
+
+
+_NEUTRAL_SIM = "contract"   # "grade on whatever tier this target's contract resolves to"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--ws", required=True)
@@ -159,7 +203,7 @@ def main(argv=None):
                 r = json.loads(req.read_text()) if req.exists() else {}
                 sim = r.get("sim")
                 caps = _valid_capsules(str(r.get("capsules", "all")))
-                if sim not in ("spike", "verilator", "vcs") or caps is None:
+                if sim not in _allowed_sims() or caps is None:
                     (ch / f"simresp_{jid}.json").write_text(json.dumps(
                         {"error": "rejected: bad sim or capsule (constrained runner)", "all_pass": False}))
                     (ch / f"simerr_{jid}").write_text("rejected"); claimed.add(jid); continue
@@ -170,12 +214,14 @@ def main(argv=None):
                         continue                            # global verilator budget full; try later
                 workers = max(1, min(int(r.get("workers", 1)), 2 if sim == "verilator" else 8))
                 capspec = "all" if caps == ["all"] else ",".join(caps)
-                ncaps = 20 if caps == ["all"] else len(caps)
+                ncaps = len(_valid_capsules("all") or []) if caps == ["all"] else len(caps)
                 to = (vpc * ncaps) if sim == "verilator" else 900
                 resp_tmp = ch / f"simtmp_{jid}.json"
                 argv2 = [PY, str(SELFCHECK), "--submission", str(ws / "submission"),
-                         "--sim", sim, "--capsules", capspec, "--workers", str(workers),
+                         "--capsules", capspec, "--workers", str(workers),
                          "--timeout", str(to), "--out", str(resp_tmp)]
+                if sim != _NEUTRAL_SIM:      # --sim is meaningless where the contract picks the tier
+                    argv2[4:4] = ["--sim", sim]
                 (ch / f"simrun_{jid}").write_text("running")
                 proc = subprocess.Popen(["timeout", str(to + 120)] + argv2, cwd=str(ws),
                                         env=_sim_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
