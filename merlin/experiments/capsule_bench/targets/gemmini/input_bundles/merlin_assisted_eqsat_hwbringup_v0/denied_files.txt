@@ -1,0 +1,13 @@
+merlin/python/merlin/targetgen/rtl/
+merlin/targets/gemmini/contracts/rtl_facts/
+merlin/python/merlin/runtime/reference.py
+merlin/python/merlin/runtime/simulator.py
+merlin/python/merlin/targetgen/generate/runtime_adapter.py
+merlin/python/merlin/xdsl_dialects/lowering/
+out/artifacts/targets/gemmini/merlin_native_v0/
+out/artifacts/targets/gemmini/hand_smoke_oot/
+out/artifacts/targets/gemmini/agent_spec_v0_mlir_oot/
+out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot/
+merlin/contract/capsules/hidden/
+experiments/capsule_bench/targets/gemmini/input_bundles/grader_private_v0/
+experiments/capsule_bench/targets/gemmini/runs/

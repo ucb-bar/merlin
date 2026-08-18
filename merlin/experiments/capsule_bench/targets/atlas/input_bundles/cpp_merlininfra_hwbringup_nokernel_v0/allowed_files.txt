@@ -1,0 +1,13 @@
+merlin/contract/
+merlin/contract/capsules/atlas/isa/
+merlin/contract/capsules/atlas/layers/
+merlin/contract/capsules/atlas/model_slices/
+experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/isa_include/atlas_isa_green_card.md
+experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/isa_include/isa_definition.py
+experiments/capsule_bench/targets/atlas/task/
+third_party/llvm-install/
+experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0
+experiments/capsule_bench/targets/atlas/scripts/agent_selfcheck.py
+merlin/python/merlin/targetgen/generate/mlir_scaffold.py
+merlin/python/merlin/targetgen/generate/llvm_plan.py
+merlin/python/merlin/targetgen/generate/target_repo.py
