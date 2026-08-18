@@ -34,3 +34,19 @@ qwen.qwen3-coder-next:        [0.60, 1.44, 0.060, 0.75]
 qwen:                         [0.60, 1.44, 0.060, 0.75]   # substring fallback
 deepseek.v3.2:                [0.74, 2.22, 0.074, 0.93]
 deepseek:                     [0.74, 2.22, 0.074, 0.93]   # substring fallback
+
+# --- OpenAI / Codex, for the NOTIONAL figure only -------------------------------------------------
+# The Codex arms run on a ChatGPT SEAT: no per-token billing, so these rates never produce metered
+# spend. They exist so a seat run can report what the same traffic WOULD have cost, which is the only
+# way to compare a subscription model's economics against a metered one. `experiment_tokens` puts the
+# result in `subscription_notional_usd` and leaves `estimated_cost_usd` empty, so no aggregator can
+# sum it into the budget.
+#
+# gpt-5.6-sol list price as of 2026-08-18: $5.00 input / $30.00 output per 1M tokens, cached input at
+# 10% ($0.50). Cache-write has no separate published rate, so it is charged at the input rate — the
+# conservative choice for a notional figure. Sources: layer3labs.io/guides/gpt-5-6-api-pricing,
+# tldl.io/resources/openai-api-pricing, devtk.ai OpenAI API pricing guide 2026. ESTIMATE: aet's own
+# bundled snapshot is marked `verified: false` placeholders and prices this ~20x too low, so it must
+# not be used for a quoted figure.
+gpt-5.6-sol: [5.00, 30.00, 0.50, 5.00]
+gpt-5.6:     [5.00, 30.00, 0.50, 5.00]   # substring fallback for the family
