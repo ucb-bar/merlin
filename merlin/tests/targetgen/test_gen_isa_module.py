@@ -13,7 +13,7 @@ import json
 from merlin.targetgen.rtl.gen_isa_module import generate
 from merlin.targetgen.rtl.facts import load_facts
 from merlin.targetgen.target_experiment import load_capability_manifest
-from merlin.targetgen import rocc_decode as RD
+from merlin.targetgen.rocc import decode as RD
 
 
 def _generated_ns() -> dict:

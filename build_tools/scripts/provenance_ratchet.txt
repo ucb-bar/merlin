@@ -1,0 +1,38 @@
+# Verdict-claiming reports that pre-date the hardware-provenance convention.
+#
+# THIS LIST MAY ONLY SHRINK. A new entry means a new result nobody can attribute to a hardware revision,
+# which is the failure the convention exists to prevent; regenerate the artifact with a provenance block
+# instead. Entries leave the list when their producer is updated and the artifact is regenerated.
+#
+# These are K1 board cross-framework baselines. They record a board and a date but not the revision of the
+# toolchains or the board image they ran against, so a later divergence between two of them cannot be
+# attributed. They are kept because deleting measured data to satisfy a new gate would be worse; they are
+# listed rather than exempted so the debt is visible and countable.
+out/artifacts/measurements/k1_spacemit/bitvla/cross_framework_v1_20260708T001347Z_2493c29/baseline_result.json
+out/artifacts/measurements/k1_spacemit/bitvla/cross_framework_v1_20260708T022046Z_1beb2be/baseline_result.json
+out/artifacts/measurements/k1_spacemit/bitvla/cross_framework_v1_20260709T221848Z_08a2b2e/baseline_result.json
+out/artifacts/measurements/k1_spacemit/bitvla/cross_framework_v1_20260720T224431Z_84aec1a/baseline_result.json
+out/artifacts/measurements/k1_spacemit/openvla/cross_framework_v1_20260708T055848Z_5883c86/baseline_result.json
+out/artifacts/measurements/k1_spacemit/openvla/cross_framework_v1_20260708T055912Z_5883c86/baseline_result.json
+out/artifacts/measurements/k1_spacemit/rdt2/cross_framework_v1_20260709T220318Z_e4e9a1c/baseline_result.json
+out/artifacts/measurements/k1_spacemit/rdt/cross_framework_v1_20260709T221717Z_08a2b2e/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260706T152837Z_a32e4dd/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260707T014028Z_86e6153/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260707T014227Z_43bc4be/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260707T015032Z_e581332/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260707T021916Z_6961778/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260707T022014Z_f1ff704/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260707T233324Z_b512c14/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260708T042819Z_5883c86/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260709T040104Z_1e09251/baseline_result.json
+out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260706T002531Z_6d61a62/baseline_result.json
+out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260706T044327Z_6b5c16d/baseline_result.json
+out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260706T062054Z_7299567/baseline_result.json
+out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260706T173650Z_dae1a8a/baseline_result.json
+out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260706T212037Z_768e474/baseline_result.json
+out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260706T212545Z_768e474/baseline_result.json
+out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260707T013848Z_25f1a3f/baseline_result.json
+out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260707T021742Z_6961778/baseline_result.json
+out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260707T021908Z_6961778/baseline_result.json
+out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260708T042753Z_5883c86/baseline_result.json
+out/artifacts/measurements/k1_spacemit/xr0/cross_framework_v1_20260708T004147Z_f23b8ae/baseline_result.json

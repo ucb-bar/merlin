@@ -18,7 +18,7 @@ target's paths at import: every path is resolved *from the ``target`` argument* 
 Every fact carries ``evidence`` (the exact RTL/source token it came from). The result is cached to a
 per-target ``facts.json`` keyed by the hashes of its inputs; re-extraction is a no-op cache hit.
 ``validate(...)`` cross-checks the facts against the target's hand-curated ``target_contract.yaml`` +
-``rocc_decode`` — a disagreement is *surfaced*, not silently reconciled.
+``rocc.decode`` — a disagreement is *surfaced*, not silently reconciled.
 
 Deterministic, no LLM: the hardware is the source of truth. (Extraction still needs mlc to KNOW the
 target's RTL — a novel accelerator registers its RTL with mlc first; that is mlc's coverage, not a
@@ -593,7 +593,7 @@ def main(argv: list[str] | None = None) -> int:
         contract = yaml.safe_load(target_contract_path(a.target).read_text())
         rocc_class = None
         try:
-            from .. import rocc_decode  # RoCC classifier for this target; best-effort cross-check
+            from ..rocc import decode as rocc_decode  # RoCC classifier; best-effort cross-check
             rocc_class = rocc_decode.funct_class_for(a.target)
         except Exception:  # noqa: BLE001 — no classifier for this target: skip that cross-check
             pass

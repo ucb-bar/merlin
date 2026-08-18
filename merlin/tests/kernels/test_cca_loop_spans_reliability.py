@@ -82,3 +82,65 @@ def test_linked_f32_fixture_is_reliable_but_unlinked_dtype_fixtures_are_not():
         stream = rvv.decode_text((_DATA / name).read_text())
         assert stream.spans_reliable() is False, f"{name} is an unlinked object"
         assert cca.lift_asm(stream, op="matmul", source="expert").envelope.calls_in_loop is None
+
+
+# The same relocated loop, but its back-edge is the COMPRESSED form. `rv64gcv` includes the C
+# extension, so this is what -O2 actually emits for a tight loop -- the uncompressed `bne` above is
+# the exception, not the rule.
+_COMPRESSED_BACKEDGE = """\
+0000000080002000 <k>:
+80002000: 0207ec07 	vle32.v	v24, (a5)
+80002004: b3c7dc57 	vfmacc.vf	v24, fa5, v28
+80002008: f8fd     	c.bnez	a5, 0x80002000 <k>
+"""
+
+# An inner reduction loop whose back-edge is compressed, wrapped in an outer loop that spills the
+# accumulator. The accumulator is resident in the REDUCTION: the spill is outside it.
+#
+# This is the shape that made the missing compressed forms consequential rather than cosmetic. With
+# `c.bnez` unrecognized the inner span does not exist, `_fma_loop` falls back to the enclosing loop,
+# the spill pair inside THAT loop is attributed to the reduction, and a resident kernel is reported as
+# round-tripping its accumulator through memory every step.
+_COMPRESSED_INNER_LOOP = """\
+0000000080002000 <k>:
+80002000: 02010427 	vs1r.v	v8, (sp)
+80002004: 0207ec07 	vle32.v	v24, (a5)
+80002008: b3c7dc57 	vfmacc.vf	v24, fa5, v28
+8000200c: f8fd     	c.bnez	a5, 0x80002004 <k+0x4>
+80002010: 02010407 	vl1re32.v	v8, (sp)
+80002014: fed896e3 	bne	a7, a3, 0x80002000 <k>
+"""
+
+
+class TestCompressedBranchesAreBranches:
+    """A compressed back-edge is still a back-edge; missing it silently mis-scopes every loop query."""
+
+    def test_a_compressed_back_edge_produces_a_span(self):
+        stream = rvv.decode_text(_COMPRESSED_BACKEDGE)
+        assert stream.loop_spans() == [(0x80002000, 0x80002008)]
+        assert stream.has_loop()
+
+    def test_it_agrees_with_the_uncompressed_spelling_of_the_same_loop(self):
+        # The two differ only in encoding, so no loop-scoped answer may depend on which one was used.
+        compressed = rvv.decode_text(_COMPRESSED_BACKEDGE).loop_spans()
+        plain = rvv.decode_text(_RELOCATED).loop_spans()
+        assert len(compressed) == len(plain) == 1
+        assert compressed[0][0] == plain[0][0]
+
+    def test_the_reduction_loop_is_found_inside_an_enclosing_loop(self):
+        stream = rvv.decode_text(_COMPRESSED_INNER_LOOP)
+        spans = sorted(stream.loop_spans())
+        assert (0x80002004, 0x8000200C) in spans, "the compressed inner back-edge is missing"
+        assert (0x80002000, 0x80002014) in spans
+
+    def test_residency_is_judged_on_the_reduction_not_the_enclosing_loop(self):
+        # The payoff: a resident kernel must not be reported as spilling because the only loop the
+        # decoder could see was the one that legitimately spills around the reduction.
+        got = cca.lift_asm(rvv.decode_text(_COMPRESSED_INNER_LOOP), op="matmul", source="t")
+        assert got.compute.accumulator_resident is True
+
+    def test_a_register_indirect_compressed_jump_resolves_to_no_target(self):
+        # `c.jr ra` is matched as a branch and then declined for having no static target, which is the
+        # correct outcome -- a return is not a back-edge.
+        stream = rvv.decode_text("0000000080002000 <k>:\n80002000: 8082     \tc.jr\tra\n")
+        assert stream.loop_spans() == [] and stream.spans_reliable()

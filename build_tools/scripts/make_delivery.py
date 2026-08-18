@@ -29,6 +29,7 @@ a final manual step if that is how it is being sent.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -573,6 +574,110 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
     return res, ship, (board(True) if debug else None)
 
 
+def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, sdk_dir=None,
+                 debug: bool = False, unit: str, config: str):
+    """Build an image that routes contractions to a MATRIX EXTENSION, and gate it honestly.
+
+    The problem this solves: the shipped image contains instructions no functional simulator we have can
+    execute, so the usual spike gate cannot run at all. Shipping it ungated is not an option — an image
+    that is never graded is exactly how a scalar package once went out computing ``w8a8_cos 0.9176``.
+
+    So it is gated by its own TWIN. ``matrix_scalar_tile`` rebuilds the same module with a scalar
+    stand-in in place of the unit's datapath: same bundle, same features, same routing, same pack, same
+    descriptor ABI, same requant epilogue — only the tile body differs. The twin runs on spike and is
+    graded against the same references. What makes that a statement about the SHIPPED binary rather than
+    about a lookalike is that both carry the same ``build_hash`` (a digest of ``model.o`` + the weights),
+    and this REFUSES to package them if they ever differ.
+
+    What the twin cannot speak for is the datapath, and nothing here pretends otherwise: that half comes
+    from the unit's RTL certification and is named as such in the manifest. The split is the honest one —
+    the routing, the pack, the ABI and the epilogue are proven here on every shipped byte, and the
+    arithmetic of the unit itself is proven on the hardware, once, against a frozen corpus.
+    """
+    from merlin.kernels.decode import opu as unit_audit
+    from merlin.llvmlower import opu_shim
+    from merlin.llvmlower.impr_features import OPU_MATMUL_NAME
+
+    pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
+    tune = dict(rvv_schedule=pkg.schedule_text,
+                cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=vlen)
+    refs = {"fp32": np.load(bundle / "golden.npy")}
+    if (bundle / "golden_w8a8.npy").is_file():
+        refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
+    cpus = zm.image_cpus(brd, harts)
+    routing = zm.MatrixRouting(unit=unit, config=config)
+
+    def build(*, stand_in: bool, dbg: bool, where: str):
+        return zm.build_app(
+            bundle, work / where, board=brd.name, backend="rvv", rvv_hart=0, cpus=cpus,
+            int8_compute=True, features=frozenset([PEROP_BLOCK_NAME, OPU_MATMUL_NAME]),
+            n_harts=harts, sdk_dir=sdk_dir, debug=dbg, matrix=routing,
+            matrix_scalar_tile=stand_in, **tune)
+
+    ship_where, twin_where = f"board_h{harts}", f"twin_h{harts}"
+    ship = build(stand_in=False, dbg=False, where=ship_where)
+    twin = build(stand_in=True, dbg=False, where=twin_where)
+
+    # What has to match is the LOWERING -- the model object and the weights -- because that is what the
+    # twin's grade is a statement about. The image-level `build_hash` deliberately folds in the app
+    # configuration as well, and the twin's app genuinely differs: it compiles the shim with the
+    # stand-in selected. Comparing that instead would reject a correct pair, which is exactly what it
+    # did the first time this ran.
+    def lowering_digest(where: str) -> str:
+        h = hashlib.sha256()
+        h.update((work / where / "model.o").read_bytes())
+        h.update((work / where / "cgen" / "weights.bin").read_bytes())
+        return h.hexdigest()[:16]
+
+    ship_lowering, twin_lowering = lowering_digest(ship_where), lowering_digest(twin_where)
+    if ship_lowering != twin_lowering:
+        raise RuntimeError(
+            f"the stand-in twin lowers to {twin_lowering} against the shipped image's {ship_lowering}; "
+            "they are not the same lowering, so grading the twin would say nothing about what ships")
+
+    # The anti-cheat, in both directions. An image carrying NONE of the unit's instructions computes
+    # correct answers on the host core and passes every numerical check, which is the most comfortable
+    # way for a matrix-unit delivery to be wrong; and a twin that carries them is not a stand-in.
+    encodings = opu_shim.derive_encodings(opu_shim.load_contract(unit)).encodings
+    counts = {k: int(v) for k, v in
+              sorted((unit_audit.audit_object(ship["elf"], encodings).counts or {}).items()) if v}
+    if not counts:
+        raise RuntimeError(f"the shipped image contains NONE of {unit}'s instructions")
+    # Count by VALUE, not by key: the audit returns an entry per instruction whether or not it occurs,
+    # so a clean image comes back as `{OPMACC: 0, ...}` -- a dict that is perfectly truthy and made this
+    # reject its own correct twin the first time it ran.
+    twin_counts = {k: int(v) for k, v in
+                   (unit_audit.audit_object(twin["elf"], encodings).counts or {}).items() if v}
+    if twin_counts:
+        raise RuntimeError(f"the stand-in twin contains the unit's instructions ({twin_counts}), "
+                           "so it is not a stand-in")
+
+    res = zm.run_on_spike(twin["elf"], harts=cpus, mem_bytes=twin["ram_bytes"],
+                          timeout=timeout, vlen=vlen)
+    res.update(zm._gate(res["prefix"], refs))
+    res["backend"] = "matrix"
+    # The twin's identity, so the recipient's grade.py can tell "this console came from the documented
+    # stand-in" apart from "this package is inconsistent" -- the same mechanism a UART board's HTIF twin
+    # already uses.
+    res["build_hash"] = twin["build_hash"]
+    res["matrix"] = {
+        "unit": unit, "config": config, "unit_instruction_counts": counts,
+        # What actually matches between the two images. The image-level build_hash folds in the app
+        # configuration, which legitimately differs -- the twin compiles the shim with the stand-in.
+        "lowering_digest": ship_lowering,
+        "twin_build_hash": twin["build_hash"],
+        # NOT the shipped image's cost. The stand-in replaces the unit with a scalar loop, so this is
+        # the price of NOT having the unit; quoting it as the accelerated image's cycles would invert
+        # the result it is evidence for.
+        "twin_spike_cycles": res["metrics"].get("cycles"),
+        "gated_via": "scalar stand-in twin on spike; it shares this image's LOWERING (see "
+                     "lowering_digest) but not its app configuration. That covers the routing, the "
+                     "K-major pack, the descriptor ABI and the requant epilogue. The DATAPATH is not "
+                     "covered here -- it is certified on the unit's own RTL against a frozen corpus.",
+    }
+    return res, ship, (build(stand_in=False, dbg=True, where=f"board_h{harts}_dbg") if debug else None)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--board", required=True, help="Zephyr board (e.g. chipyard_kodiak)")
@@ -587,6 +692,18 @@ def main(argv=None) -> int:
                          "instructions). The point is a heterogeneous SoC: a chip may bring up more "
                          "cores than it attaches vector units to, and a scalar image is the only way "
                          "to use the extra ones. Slower per core, but it is the whole machine.")
+    ap.add_argument("--matrix-harts", default="",
+                    help="comma-separated hart counts to ALSO build with contractions ROUTED TO A "
+                         "MATRIX EXTENSION (needs --matrix-unit/--matrix-config). Those images carry "
+                         "instructions no simulator here can execute, so each is graded through a "
+                         "scalar stand-in twin built from the same lowering — see build_matrix.")
+    ap.add_argument("--matrix-unit", default=None,
+                    help="the matrix extension to route to, named as a block in the unit contract. "
+                         "Required by --matrix-harts and deliberately not defaulted: a default would "
+                         "make this script about one particular accelerator.")
+    ap.add_argument("--matrix-config", default=None,
+                    help="the elaborated hardware configuration to derive the tile geometry from. "
+                         "Required by --matrix-harts.")
     ap.add_argument("--timeout", type=int, default=14400)
     ap.add_argument("--no-spike-models", default="",
                     help="comma-separated models to build+audit WITHOUT simulating, while the rest "
@@ -652,7 +769,14 @@ def main(argv=None) -> int:
         return 2
     hart_list = [int(h) for h in a.harts.split(",") if h.strip()]
     scalar_hart_list = [int(h) for h in a.scalar_harts.split(",") if h.strip()]
-    if any(h > brd.harts for h in scalar_hart_list):
+    matrix_hart_list = [int(h) for h in a.matrix_harts.split(",") if h.strip()]
+    if matrix_hart_list and not (a.matrix_unit and a.matrix_config):
+        print("[make_delivery] --matrix-harts needs --matrix-unit and --matrix-config: the unit and "
+              "its elaborated configuration are what the tile geometry is derived from, and guessing "
+              "either produces a shim that is wrong on the second beat of a load",
+              file=sys.stderr)
+        return 2
+    if any(h > brd.harts for h in matrix_hart_list + scalar_hart_list):
         print(f"[make_delivery] refusing a scalar image over more than {brd.harts} harts",
               file=sys.stderr)
         return 2
@@ -742,6 +866,9 @@ def main(argv=None) -> int:
             if brd.flow == boards.FLOW_BAREMETAL and harts != 1:
                 continue
             todo.append((model, bundle, harts, "scalar"))
+        # MATRIX-EXTENSION images: the same model with its contractions routed to the unit.
+        for harts in matrix_hart_list:
+            todo.append((model, bundle, harts, "matrix"))
 
     def _one(item):
         model, bundle, harts, backend = item
@@ -762,7 +889,11 @@ def main(argv=None) -> int:
             return ({"console": "", "metrics": {}, "outputs": None, "backend": backend},
                     board_build, dbg_build)
         print(f"  [{tag}] building + simulating in {work}", flush=True)
-        if brd.flow == boards.FLOW_BAREMETAL:
+        if backend == "matrix":
+            out = build_matrix(bundle, brd, harts, vlen=brd.vlen, work=work, timeout=a.timeout,
+                               sdk_dir=a.sdk_dir, debug=a.debug,
+                               unit=a.matrix_unit, config=a.matrix_config)
+        elif brd.flow == boards.FLOW_BAREMETAL:
             out = build_baremetal(bundle, brd, work=work, timeout=a.timeout, sdk_dir=a.sdk_dir)
         else:
             out = build_one(bundle, brd, harts, vlen=brd.vlen, work=work, timeout=a.timeout,
@@ -796,7 +927,8 @@ def main(argv=None) -> int:
     for model in models:
         outputs = {}
         for harts, backend in ([(h, "rvv") for h in hart_list]
-                               + [(h, "scalar") for h in scalar_hart_list]):
+                               + [(h, "scalar") for h in scalar_hart_list]
+                               + [(h, "matrix") for h in matrix_hart_list]):
             got = done.get((model, repo_root() / f"out/artifacts/recaptures/{model}_{a.dtype}_full",
                             harts, backend))
             if got is None:
@@ -812,7 +944,7 @@ def main(argv=None) -> int:
             # would let a silently-scalar image ship as if it had been vectorized.
             rep = elf_audit.audit(dest / elf_name, brd,
                                   ram_bytes=board_build["ram_bytes"],
-                                  require_vector=(backend == "rvv"))
+                                  require_vector=(backend in ("rvv", "matrix")))
             audits[elf_name] = rep.to_dict()
             if not rep.ok:
                 problems += [f"{elf_name}: {p}" for p in rep.problems]
@@ -832,8 +964,17 @@ def main(argv=None) -> int:
                 **({"gate_build_hash": res["build_hash"]}
                    if res.get("build_hash") and res["build_hash"] != board_build.get("build_hash")
                    else {}),
+                # A matrix-extension image is graded through its scalar stand-in twin, so the gate
+                # covers the routing, the pack, the ABI and the epilogue on this exact lowering while
+                # saying nothing about the unit's datapath -- which is certified on the unit's own RTL.
+                # Recorded rather than implied: "gate_ok" alone would read as a full verdict.
+                **({"matrix": res["matrix"]} if res.get("matrix") else {}),
                 "ram_bytes": board_build["ram_bytes"],
-                "spike_cycles": res["metrics"].get("cycles"),
+                # A matrix image was never simulated -- nothing here can execute its instructions -- so
+                # it has no spike cycle count. Its twin's is recorded inside "matrix", named for what it
+                # is, rather than sitting in this field where it would read as the image's own cost.
+                "spike_cycles": (None if res.get("matrix")
+                                 else res["metrics"].get("cycles")),
                 "spike_vlen": res.get("vlen"), "gate_ok": bool(res.get("ok")),
                 "tier_ok": res.get("tier_ok"), "cos": res.get("cos"), "rel": res.get("rel"),
                 "upload_estimate_s": rep.facts.get("upload_estimate_s"),
@@ -1537,13 +1678,45 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
     # thing a recipient must not have to discover on the bench is which of these we never checked.
     # `UNGATED:` is a marker for the manifest (it is how --refresh finds and replaces the line); it is
     # not prose, so it does not belong in the sentence a person reads.
+    # A matrix-unit image is the one row in this table whose evidence is split, and the split has to be
+    # stated where it will be read rather than only in manifest.json. Nobody should have to infer from a
+    # `matrix` field that the number beside it came from a stand-in.
+    matrix_bins = [b for b in manifest["binaries"] if b.get("matrix")]
+    matrix_doc = ""
+    if matrix_bins:
+        units = sorted({b["matrix"]["unit"] for b in matrix_bins})
+        matrix_doc = f"""
+## The matrix-unit images, and exactly what backs them
+
+`{"`, `".join(b["elf"] for b in matrix_bins)}` route their contractions to **{", ".join(units)}**
+instead of running them on the vector unit. They carry instructions no simulator we have can execute, so
+unlike every other binary here they were **not** run before shipping. Their evidence is in two halves,
+and both are real:
+
+- **Everything around the unit** — the routing, the K-major operand pack, the descriptor ABI and the
+  requant epilogue — is graded on a *scalar stand-in twin*: the same module rebuilt with a scalar loop
+  in place of the unit's datapath. The twin shares this image's lowering (`lowering_digest` in
+  `manifest.json`; the image-level `build_hash` differs because the twin's app compiles the shim
+  differently), and it grades bit-exact against the same references as everything else here.
+- **The unit's own arithmetic** is certified separately, on the unit's RTL, against a frozen corpus of
+  shapes that includes the ones this model actually produces.
+
+Two things follow. `spike_cycles` is `null` for these rows on purpose — the shipped image was never
+simulated; the twin's cycle count is recorded inside `matrix` and is the price of *not* having the unit,
+so it is not a speed figure for this binary. And `expected_console.txt` beside these ELFs is the twin's,
+so its `METRIC build_hash` line names `twin_build_hash`, not the shipped image's — `grade.py` knows.
+
+If the run faults, the first thing worth checking is whether your part actually has the unit: an image
+built for it will not run on one without it.
+"""
+
     problems_doc = ("" if not manifest.get("problems") else
                     "\n### What we did NOT verify in this package\n\n"
                     + "\n".join(f"- {_strip_marker(p)}" for p in manifest["problems"]) + "\n")
     hart_counts = sorted({b["harts"] for b in manifest["binaries"]})
     rows = "\n".join(
         f"| `{b['elf']}` | {b['model']} | {b['harts']} | "
-        f"{'RVV' if b.get('backend', 'rvv') == 'rvv' else 'scalar'} | "
+        f"{ {'rvv': 'RVV', 'scalar': 'scalar', 'matrix': 'RVV + matrix unit'}.get(b.get('backend', 'rvv'), b.get('backend')) } | "
         f"{'**diagnostic**' if b.get('debug') else 'plain'} | "
         f"{b['ram_bytes'] // 2**20} MB | {_upload_note(b['upload_estimate_s'])} | "
         f"{_verdict(b)} |"
@@ -1812,7 +1985,7 @@ warns if the log's `build_hash` is not one of ours.
 
 What that does *not* cover: your clock, your DRAM timing, your vector unit's actual VLEN, and anything
 about wall-clock performance. spike is functional — it proves correctness, never speed.
-{problems_doc}
+{matrix_doc}{problems_doc}
 Merlin commit `{manifest['merlin_commit']}`.
 """
 

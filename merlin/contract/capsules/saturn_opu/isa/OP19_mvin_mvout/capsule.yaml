@@ -1,0 +1,32 @@
+name: OP19_mvin_mvout
+kind: isa
+source_role: handauthored_compiler_test
+source_reference: 'load an int8 tile and store it back: the movement path with no
+  accumulate'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: movement
+  attributes:
+    out: Y0
+    src: X
+    semantic: mvin_mvout
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes: []
+  modes:
+    movement: true
+required_oracle_tiers:
+- L3
+vcs: optional
+firesim: optional

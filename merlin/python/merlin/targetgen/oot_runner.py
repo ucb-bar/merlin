@@ -378,7 +378,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     from ..runtime.backends import base as _bk
     from ..runtime.reference import reference_outputs, outputs_match
     from ..runtime.simulator import simulate
-    from .eval.gemmini_suite import toolchain_shas   # target-ok: toolchain-SHA util from the reference suite; pending relocation to a target-neutral home (OV11)
+    from .provenance import toolchain_shas
 
     interface_mlir = Path(interface_mlir)
     rung = interface_mlir.stem.split(".")[0]
@@ -402,7 +402,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     failure: dict[str, Any] | None = None
     status = "pass"
     cb: dict[str, Any] | None = None
-    shas = toolchain_shas()
+    shas = toolchain_shas(target)
 
     # input artifact
     inp = paths.generated / "input.interface.mlir"
@@ -490,8 +490,8 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         # K7/K8: oracle (skip-if-unavailable)
         if gem.available(simulator):
             try:
-                res = oot_compile.run_on_oracle(cb, p.stdout, simulator=simulator,
-                                                workdir=paths.generated, timeout=timeout, inputs=inputs)
+                res = oot_compile.run_on_oracle(cb, p.stdout, simulator=simulator, target=target,
+                                                workdir=paths.generated, timeout=timeout)
             except Exception as e:
                 raise CertFailure("oracle_rtl", FailureCategory.TOOL_CRASH,
                                   f"oracle {simulator} invocation failed: {str(e)[-800:]}") from e

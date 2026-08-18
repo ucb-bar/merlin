@@ -81,12 +81,25 @@ def discovered_targets() -> list[str]:
     reference home ``merlin/targets/<t>/`` (a reference target such as gemmini ships its residual
     beside its committed ``target_contract.yaml``). A name is reported once; the reference base — the
     one ``target_base`` resolves to when it exists — wins on any overlap, so ``manifest_for`` loads the
-    same file this set advertises."""
+    same file this set advertises.
+
+    Genuinely OUT-OF-TREE packages are included too, via ``target_registry.external_targets()`` (which
+    honours ``MERLIN_TARGET_PATH`` and the freshly-generated home). Scanning only the two in-tree roots
+    made eviction self-defeating: a target moved out of the tree kept its contract and its backend but
+    silently lost its manifest, and with it ``kind``, ``sim_via`` and ``endpoint_kind`` — so the very
+    step that removes a target from core would quietly break oracle selection for it."""
     names: dict[str, None] = {}
     for root in (_artifacts_dir() / "targets", _targets_dir()):
         if root.is_dir():
             for p in root.glob("*/contracts/residual.yaml"):
                 names[p.parent.parent.name] = None
+    try:
+        from .target_registry import external_targets
+    except Exception:  # noqa: BLE001 — registry unavailable: report the in-tree set, never fail discovery
+        return sorted(names)
+    for name, base in (external_targets() or {}).items():
+        if (Path(base) / "contracts" / "residual.yaml").is_file():
+            names[name] = None
     return sorted(names)
 
 
@@ -114,6 +127,18 @@ def manifest_for(name: str) -> dict[str, Any]:
         # grounds endpoint_kind from them. Empty {} when no introspect serves the target (family default).
         from .rtl import mlc_bridge as _mb
         facts = _mb.simt_facts(facts_target)
+    elif facts_source == "spatial":
+        # A spatial tensor tile (a cluster x cell accumulator grid driven by a command buffer, with no
+        # opcode decode at all). Its facts come from the OuterProductUnit state manifest + hw.mlir rather
+        # than a RoCC decode table, and they carry a DIFFERENT shape than facts.json -- which
+        # ``derive_manifest`` already recognises by its ``tile_dim`` field. The only thing missing was a
+        # way to LOAD them here, and without it such a target's contract could be derived once by hand and
+        # never regenerated: deriving it from the residual alone silently drops the tile geometry and
+        # collapses the named fp8 datapaths to an unnamed float width, which is a quietly weaker contract
+        # rather than a failure. Empty {} when mlc or the OPU artifacts are unavailable, so the deriver
+        # falls back to the family default instead of a fabricated tile.
+        from .rtl import spatial_introspect as _si
+        facts = _si.build_fact_bundle(facts_target)
     return derive_manifest({"target": name}, facts, residual=residual)
 
 

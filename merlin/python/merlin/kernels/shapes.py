@@ -41,13 +41,26 @@ _NAMED: dict[str, int] = {
 _GENERIC_AS: dict[int, str] = {0: "linalg.matmul", 1: "linalg.batch_matmul"}
 
 
-def _shape_of(value) -> "list[int] | None":
+def _shaped(value) -> "tuple[list[int], str] | None":
+    """``(shape, dtype)`` of a shaped operand, or None when it is not one.
+
+    The dtype is kept rather than dropped: it is the other half of a legality question (a unit that
+    computes int8 and not fp32 rejects on element type, never on extents) and it names the
+    accumulator, which is what decides whether a reduction overflows.
+    """
     from ..common.mlir_query import type_shape_dtype
     try:
-        shape, _ = type_shape_dtype(value.type)
+        shape, dtype = type_shape_dtype(value.type)
     except Exception:  # noqa: BLE001 — a non-shaped operand is simply not a contraction operand
         return None
-    return list(shape) if shape and all(int(d) > 0 for d in shape) else None
+    if not shape or not all(int(d) > 0 for d in shape):
+        return None
+    return list(shape), str(dtype)
+
+
+def _shape_of(value) -> "list[int] | None":
+    got = _shaped(value)
+    return None if got is None else got[0]
 
 
 def _iterator_types(op) -> "list[str] | None":
@@ -80,11 +93,11 @@ def _generic_contraction(op) -> "ContractionShape | None":
     n_par = len(its) - 1
     if n_par < 2:
         return None
-    ins = [s for s in (_shape_of(v) for v in op.operands) if s is not None]
-    outs = [s for s in (_shape_of(v) for v in getattr(op, "results", ())) if s is not None]
+    ins = [s for s in (_shaped(v) for v in op.operands) if s is not None]
+    outs = [s for s in (_shaped(v) for v in getattr(op, "results", ())) if s is not None]
     if len(ins) < 3 or not outs:
         return None
-    out = outs[0]
+    out, out_dtype = outs[0]
     if len(out) != n_par:
         return None
     op_class = _GENERIC_AS.get(n_par - 2)
@@ -96,38 +109,48 @@ def _generic_contraction(op) -> "ContractionShape | None":
     # from a reduce-with-broadcast generic that merely shares the iterator-type signature — without
     # it bitvla reported 33 "contractions" where `linalg-specialize-generic-ops` finds 19, and the
     # 14 phantoms (parallel (1, 32)) dragged the derived M block down to 1.
-    a = ins[0]
+    a, a_dtype = ins[0]
     if len(a) != n_par:
         return None
     return ContractionShape(op=op_class, parallel=tuple(int(d) for d in out),
-                            reduction=(int(a[-1]),))
+                            reduction=(int(a[-1]),),
+                            dtypes=(a_dtype, ins[1][1], out_dtype))
 
 
 def _named_contraction(op, name: str) -> "ContractionShape | None":
-    outs = [s for s in (_shape_of(v) for v in getattr(op, "results", ())) if s is not None]
-    ins = [s for s in (_shape_of(v) for v in op.operands) if s is not None]
+    outs = [s for s in (_shaped(v) for v in getattr(op, "results", ())) if s is not None]
+    ins = [s for s in (_shaped(v) for v in op.operands) if s is not None]
     if not outs or not ins:
         return None
-    out, a = outs[0], ins[0]
+    (out, out_dtype), (a, a_dtype) = outs[0], ins[0]
     batch = _NAMED[name]
     if len(out) != batch + 2 or len(a) != batch + 2:
         return None
+    # A named contraction always has a second shaped input (the RHS); when the printed form hides it
+    # the dtype triple stays SHORT rather than repeating the LHS, so a consumer sees "not observed"
+    # instead of a fabricated weight dtype.
+    dtypes = (a_dtype, ins[1][1], out_dtype) if len(ins) > 1 else ()
     return ContractionShape(op=name, parallel=tuple(int(d) for d in out),
-                            reduction=(int(a[-1]),))
+                            reduction=(int(a[-1]),), dtypes=dtypes)
 
 
-def contraction_shapes(src: "str | Path | Any") -> list[ContractionShape]:
-    """Every contraction in ``src`` (a path, MLIR text, or a parsed module), shapes included.
+def observe_contractions(src: "str | Path | Any") -> "list[tuple[Any, ContractionShape]]":
+    """Every contraction in ``src`` as ``(op, shape)`` pairs, in program order.
 
-    Returns an EMPTY list rather than raising when the module cannot be parsed — a shape observer
-    that fails must degrade to "I observed nothing", which makes the caller fall back to the
-    shape-blind realization instead of failing a build over an unreadable capture."""
+    The op handle is returned alongside the shape because a caller that wants more than extents — its
+    ``prov.*`` provenance, its indexing maps, its position — would otherwise have to walk the module a
+    second time and re-derive which ops the classification accepted, and the two walks could disagree.
+    :func:`contraction_shapes` is the shape-only projection of this.
+
+    Returns an EMPTY list rather than raising when the module cannot be parsed — a shape observer that
+    fails must degrade to "I observed nothing", which makes the caller fall back to the shape-blind
+    realization instead of failing a build over an unreadable capture."""
     from ..common import mlir_query as mq
     try:
         module = mq.parse(src)   # accepts an already-parsed module, MLIR text, or a path
     except Exception:  # noqa: BLE001
         return []
-    found: list[ContractionShape] = []
+    found: list[tuple[Any, ContractionShape]] = []
     for op in mq.walk(module):
         name = mq.op_name(op)
         try:
@@ -140,5 +163,10 @@ def contraction_shapes(src: "str | Path | Any") -> list[ContractionShape]:
         except Exception:  # noqa: BLE001
             continue
         if cs is not None:
-            found.append(cs)
+            found.append((op, cs))
     return found
+
+
+def contraction_shapes(src: "str | Path | Any") -> list[ContractionShape]:
+    """Every contraction in ``src`` (a path, MLIR text, or a parsed module), shapes included."""
+    return [cs for _, cs in observe_contractions(src)]

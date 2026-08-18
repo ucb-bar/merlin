@@ -121,6 +121,41 @@ def test_fma_fails_closed_without_an_rs3_field():
         tc.transcode_text(struct.pack("<I", w32))
 
 
+def test_transcode_fence_places_ordering_bits_in_the_immediate_field():
+    """A fence must survive the re-map, or a kernel cannot order its stores before it finishes.
+
+    Its I-type immediate carries the ordering bits {fm,pred,succ} rather than an address, but the
+    transcoder re-maps fields and not meanings, so it belongs in the immediate field like every other
+    I-type form. Asserted on a SYNTHETIC target so this proves the general rule, not one device.
+    """
+    fact = {**MUON_FACT, "opcodes": {**MUON_FACT["opcodes"], "MISC_MEM": 0x0F}}
+    m = isa_model_from_encoding("synth", fact)
+    tc = FixedFormatTranscoder(m)
+    # rv32 `fence iorw, iorw` = 0x0ff0000f: imm[11:0] = 0x0FF, rd = rs1 = 0, f3 = 0.
+    word = tc.transcode_text(struct.pack("<I", 0x0FF0000F))[0]
+    rec = isa_disasm.disassemble(m, [word])[0]
+    assert rec["mnemonic"] == "MISC_MEM"
+    assert rec["operands"]["imm24"] == 0x0FF, "the ordering bits must survive intact"
+    assert rec["operands"]["rd"] == 0 and rec["operands"]["rs1"] == 0
+    assert rec["operands"]["f3"] == 0
+    # `fence.i` is the same opcode with f3=1; it must not be mistaken for a shift-amount form (that
+    # special case is guarded on OP_IMM, and this asserts the guard holds).
+    fence_i = tc.transcode_text(struct.pack("<I", 0x0000100F))[0]
+    assert isa_disasm.disassemble(m, [fence_i])[0]["operands"]["f3"] == 1
+
+
+def test_fence_fails_closed_when_the_target_declares_no_misc_mem():
+    """A target whose derived decoder has no MISC_MEM must be refused, not sent a fence anyway.
+
+    Nothing target-specific gates this: `encode` compares against the DERIVED opcode table, so leaving
+    MISC_MEM out of the fact is enough to make the refusal happen.
+    """
+    m = isa_model_from_encoding("synth", MUON_FACT)          # MUON_FACT declares no MISC_MEM
+    tc = FixedFormatTranscoder(m)
+    with pytest.raises(TranscodeError, match="not in the target's derived opcode table"):
+        tc.transcode_text(struct.pack("<I", 0x0FF0000F))
+
+
 def test_transcode_fails_closed_on_auipc():
     m = isa_model_from_encoding("synth", MUON_FACT)
     tc = FixedFormatTranscoder(m)

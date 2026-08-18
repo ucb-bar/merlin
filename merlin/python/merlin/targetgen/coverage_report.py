@@ -9,15 +9,20 @@ import json
 from pathlib import Path
 from typing import Any
 
-# LAST-RESORT reference vocabulary (the RoCC/systolic instruction classes + gemmini corpus mode tags),
-# used ONLY when a target's ISA vocabulary cannot be derived AND no trace was observed — so a bare
-# no-target aggregate call is still meaningful. A real graded run derives the class universe from the
-# TARGET's own ISA + the decoded traces (see _isa_class_vocabulary / aggregate), so atlas MXU classes and
-# radiance SIMT classes are counted, never silently dropped against a gemmini-shaped list.
-_FALLBACK_CLASSES = ["CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
-                     "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV"]
-_FALLBACK_MODES = ["i8", "relu", "acc_scale", "k_accumulate", "resident_reuse",
-                   "conv2d", "movement", "padded_edge"]
+# BASELINE axes: always reported, so a 0 is an explicit "not covered" row rather than an absent one.
+# These are gemmini's (the ISA the bench was written against) and they are NOT the vocabulary — a
+# self-hosted-ISA or command-buffer target names its classes and modes differently, and a corpus may
+# declare a mode no gemmini capsule has (radiance's `rmsnorm`). The axes actually reported are these
+# UNIONED with the target's own ISA (see `_isa_class_vocabulary`), what the capsules declare, and what
+# the traces contain; see `_axes` and `aggregate`. Counting only the baseline is how a mode could be
+# declared, graded, and silently absent from its own coverage report.
+BASELINE_CLASSES = ["CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
+                    "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV"]
+BASELINE_MODES = ["i8", "relu", "acc_scale", "k_accumulate", "resident_reuse",
+                  "conv2d", "movement", "padded_edge"]
+#: Back-compat aliases for the baseline sets (their former names).
+ALL_CLASSES = BASELINE_CLASSES
+ALL_MODES = BASELINE_MODES
 TIERS = ["L0", "L1", "L2", "L3", "L4", "L5"]
 
 
@@ -149,6 +154,10 @@ def _isa_class_vocabulary(target: str | None) -> list[str]:
         out.append(name)
     out += list(cst.values())
     return [c for c in dict.fromkeys(out) if c]
+def _axes(baseline: list[str], observed) -> list[str]:
+    """Baseline axes first (stable report order), then anything else observed, sorted."""
+    extra = sorted(set(observed) - set(baseline))
+    return [*baseline, *extra]
 
 
 def aggregate(results: list[dict], capsules: list[dict] | None = None,
@@ -168,14 +177,15 @@ def aggregate(results: list[dict], capsules: list[dict] | None = None,
     universe_modes: set[str] = set()
     for _c in capsules:
         universe_modes |= {m for m, on in ((_c.get("expected") or {}).get("modes") or {}).items() if on}
-    classes = sorted(universe_classes) or list(_FALLBACK_CLASSES)
-    modes = sorted(universe_modes) or list(_FALLBACK_MODES)
 
     by_kind: dict[str, int] = {}
     by_label: dict[str, int] = {}
     by_tier_reached = {t: 0 for t in TIERS}
-    mode_cov = {m: 0 for m in modes}
-    class_cov = {c: 0 for c in classes}
+    # BASELINE axes unioned with what this target's ISA/traces/capsules exercised, so a corpus-declared
+    # mode or a self-hosted-ISA class is reported (not silently filtered on the gemmini baseline) while a
+    # baseline axis still shows an explicit not-covered 0.
+    mode_cov = {m: 0 for m in _axes(BASELINE_MODES, universe_modes)}
+    class_cov = {c: 0 for c in _axes(BASELINE_CLASSES, universe_classes)}
     # Heavy-oracle availability is tracked per heavy oracle tier; the substrate NAME for each tier is
     # DERIVED from the canonical tier->simulator map (single source of truth in capsule_runner), never
     # hardcoded as vcs/firesim here — so a target whose ladder names its heavy oracles differently is
@@ -228,11 +238,15 @@ def render_markdown(cov: dict, results: list[dict]) -> str:
         L.append(f"| {t} | {cov['by_tier_reached'].get(t, 0)} |")
     L += ["", "## Instruction-class coverage (explicit not-covered rows)", "",
           "| class | capsules exercising |", "|---|---|"]
-    for c, n in cov["instruction_class_coverage"].items():
+    # Iterate the AGGREGATE's own axes, not the baseline list: a class or mode this corpus contributed
+    # is in the counts, and rendering only the baseline would drop it from the report it belongs to.
+    for c in _axes(BASELINE_CLASSES, cov["instruction_class_coverage"]):
+        n = cov["instruction_class_coverage"].get(c, 0)
         mark = "" if n else "  _(not covered)_"
         L.append(f"| {c} | {n}{mark} |")
     L += ["", "## Mode coverage", "", "| mode | passing capsules |", "|---|---|"]
-    for m, n in cov["mode_coverage"].items():
+    for m in _axes(BASELINE_MODES, cov.get("mode_coverage") or {}):
+        n = cov["mode_coverage"].get(m, 0)
         mark = "" if n else "  _(not covered)_"
         L.append(f"| {m} | {n}{mark} |")
     L += ["", "## Heavy-oracle availability (honest)", "",

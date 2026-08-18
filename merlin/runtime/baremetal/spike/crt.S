@@ -50,13 +50,74 @@ _start:
 # board with no host the UART backend PRINTS the cause instead. That is the difference between a
 # reported fault and an unexplained hang on hardware we cannot attach a debugger to.
 # Assumes sp is valid, which it is for any trap after startup (sp is set a few instructions in).
+#
+# Before exiting it reports WHERE. `mcause` alone says a store faulted; it does not say which store,
+# and on a wild-store bug that is the entire question. `mepc` (the faulting instruction) maps straight
+# to a symbol through `objdump`, and `mtval` is the address that was actually accessed -- so a fault
+# that used to need a whole-program memref trace to localise becomes two numbers. Printed before the
+# exit word, and each field is emitted separately so a console that dies partway still carries the
+# fields that made it out.
 _merlin_trap:
-  csrr  a0, mcause
+  csrr  s0, mcause            # saved in callee-saved regs: the calls below clobber t0-t2/a0
+  csrr  s1, mepc
+  csrr  s2, mtval
+  la    a0, _trap_msg
+  call  htif_puts
+  mv    a0, s0
+  call  htif_putd
+  la    a0, _trap_at
+  call  htif_puts
+  mv    a0, s1
+  call  _merlin_put_hex
+  la    a0, _trap_val
+  call  htif_puts
+  mv    a0, s2
+  call  _merlin_put_hex
+  la    a0, _trap_end
+  call  htif_puts
+  mv    a0, s0
   li    t0, 0x800             # not an `ori` immediate (I-type is -2048..2047)
   or    a0, a0, t0
   call  htif_exit
 6:
   j     6b
+
+# 64-bit hex through the console ABI, which has no unsigned printer (htif_putd is signed decimal, and
+# an address with the top bit set comes back negative through it).
+_merlin_put_hex:
+  addi  sp, sp, -32
+  sd    ra, 24(sp)
+  sd    s3, 16(sp)
+  sd    s4, 8(sp)
+  mv    s3, a0
+  li    s4, 60
+7:
+  srl   t0, s3, s4
+  andi  t0, t0, 0xf
+  la    t1, _trap_digits
+  add   t1, t1, t0
+  lbu   a0, 0(t1)
+  call  htif_putc
+  addi  s4, s4, -4
+  bgez  s4, 7b
+  ld    ra, 24(sp)
+  ld    s3, 16(sp)
+  ld    s4, 8(sp)
+  addi  sp, sp, 32
+  ret
+
+  .section .rodata
+_trap_msg:
+  .asciz "\nTRAP mcause="
+_trap_at:
+  .asciz " mepc=0x"
+_trap_val:
+  .asciz " mtval=0x"
+_trap_end:
+  .asciz "\n"
+_trap_digits:
+  .asciz "0123456789abcdef"
+  .section .text.init
 
   .data
   .globl boot_ready

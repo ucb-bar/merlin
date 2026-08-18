@@ -23,7 +23,7 @@ sys.path.insert(0, str(C.REPO / "merlin" / "python"))
 import run_agent_experiment as RAE  # noqa: E402
 from merlin.targetgen import capsule_grade as CGRADE  # noqa: E402
 from merlin.targetgen import trace_check as TCK  # noqa: E402
-from merlin.targetgen import rocc_decode as RD  # noqa: E402
+from merlin.targetgen.rocc import decode as RD  # noqa: E402  (was targetgen.rocc_decode before the move)
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
 from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402
@@ -40,6 +40,35 @@ CANARIES = [
     "merlin/python/merlin/runtime/CANARY_FORBIDDEN.txt",
 ]
 G0 = f"{_TGT}/agent_spec_v0_mlir_oot/certification/g0_matmul/lowered.llvm.mlir"
+
+
+def _bundle_id_for(arm: str) -> str:
+    """Resolve *arm*'s bundle id for the ACTIVE target, not gemmini's.
+
+    ``run_agent_experiment.ARM_BUNDLE`` still names the gemmini-era ``*_public_v0``
+    ids, so on a target that ships ``*_hwbringup_v0`` (saturn_opu) every check here
+    died on a missing manifest — i.e. the pre-spend gate could not run at all for
+    any target but one. Resolve against what the target actually ships: keep the
+    declared id when it exists, else take the unique ``<arm>_*`` bundle, excluding
+    the CIRCT variant (a different arm that shares this one's stem).
+
+    Fails closed with the candidates listed, because a gate that silently picks
+    the wrong arm's bundle is worse than one that stops.
+    """
+    declared = RAE.ARM_BUNDLE[arm]
+    if (C.BUNDLES / declared / "input_bundle_manifest.yaml").is_file():
+        return declared
+    others = {v for k, v in RAE.ARM_BUNDLE.items() if k != arm}
+    candidates = sorted(
+        d.name for d in C.BUNDLES.iterdir()
+        if d.is_dir() and d.name.startswith(f"{arm}_") and d.name not in others
+        and "rtlchecks" not in d.name and (d / "input_bundle_manifest.yaml").is_file())
+    if len(candidates) == 1:
+        return candidates[0]
+    raise SystemExit(
+        f"preflight: cannot resolve a bundle for arm {arm!r} under {C.BUNDLES} — "
+        f"declared {declared!r} is absent and candidates are {candidates}. "
+        f"Name one explicitly rather than letting the gate guess.")
 
 
 def check_canary_isolation() -> dict:
@@ -69,6 +98,7 @@ def check_canary_isolation() -> dict:
     _te_masks = _surfaces(load_target_experiment(C.EXP / "target_experiment.yaml")) \
         if (C.EXP / "target_experiment.yaml").is_file() else []
     for arm in ("raw_baseline", "merlin_assisted"):
+        RAE.ARM_BUNDLE[arm] = _bundle_id_for(arm)
         bundle = RAE._load_bundle(arm)
         with tempfile.TemporaryDirectory(dir="/tmp") as td:
             ws = Path(td) / "workspace"
@@ -221,6 +251,7 @@ def check_freeze_enforcement() -> dict:
 def check_bundle_hash_repro() -> dict:
     out = {}
     for arm in ("raw_baseline", "merlin_assisted"):
+        RAE.ARM_BUNDLE[arm] = _bundle_id_for(arm)
         bundle = RAE._load_bundle(arm)
         h1 = {e["path"]: C.hash_tree(C.REPO / e["path"])["sha256"] for e in bundle.get("allowed", [])
               if (C.REPO / e["path"]).is_dir()}

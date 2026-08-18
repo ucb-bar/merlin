@@ -47,7 +47,7 @@ ORACLE_MODULES: tuple[str, ...] = (
     "merlin/python/merlin/targetgen/rtl/mlc_bridge.py",   # mlc arc cosim + DRAM readback (the oracle bridge)
 )
 GRADER_MODULES: tuple[str, ...] = (
-    "merlin/python/merlin/targetgen/rocc_decode.py",     # raw command-trace decoder (grader internal)
+    "merlin/python/merlin/targetgen/rocc/decode.py",     # raw command-trace decoder (grader internal)
     "merlin/python/merlin/targetgen/trace_check.py",     # trace gate
     "merlin/python/merlin/targetgen/capsule_grade.py",   # the grader
     "merlin/python/merlin/targetgen/capsule_golden.py",  # golden generation

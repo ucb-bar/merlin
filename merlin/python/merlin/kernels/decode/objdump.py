@@ -4,7 +4,7 @@ Turns an object file into a list of ``RawInsn`` by **structured field-splitting*
 ``llvm-objdump`` output — no semantic regex (we do not guess meaning from mnemonic substrings;
 that happens in the per-target semantic decoders, from explicit operands). Reusable by every
 riscv-based target (RVV, Gemmini RoCC, scalar); a per-ISA decoder (``decode/rvv.py``,
-``targetgen/rocc_decode.py``, …) consumes these ``RawInsn`` and lifts its own facet.
+``targetgen/rocc/decode.py``, …) consumes these ``RawInsn`` and lifts its own facet.
 """
 from __future__ import annotations
 

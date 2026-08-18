@@ -554,7 +554,7 @@ def _granted_merlin_tools(arm: str) -> set:
             if ln.strip().startswith(("merlin/", "experiments/"))}
 
 
-def bwrap_cmd(inner: str, ws: Path, bundle: dict) -> str:
+def bwrap_cmd(inner: str, ws: Path, bundle: dict, extra_binds: list[str] | None = None) -> str:
     """bwrap argv (deny-by-default) + claude runtime binds + TOOLCHAIN binds (the legit build+sim tools,
     bound back over the /scratch* masks) + the DERIVED answer-mask pass + toolchain env. The mask set now
     comes from the shared descriptor-driven answer surface (goldens/hidden/prior/oracle/grader/memory) and
@@ -564,6 +564,10 @@ def bwrap_cmd(inner: str, ws: Path, bundle: dict) -> str:
     from merlin.targetgen.sandbox import bwrap as _BW
     from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as _surfaces
     parts = RX.bwrap_argv(ws, bundle) + claude_runtime_binds() + TC.toolchain_binds()
+    # Per-driver runtime binds (e.g. the Codex CLI's package dir + an isolated
+    # CODEX_HOME) go in BEFORE the mask pass, so a bind can never re-expose an
+    # answer surface: masking is applied last and therefore wins.
+    parts += list(extra_binds or [])
     parts = _BW.apply_answer_masks(parts, _surfaces(_te()))
     payload = f"{TC.sandbox_env(ws)} {inner}"
     # Single-quote the whole payload for the OUTER `bash -c`, escaping any embedded single quotes (the
@@ -797,6 +801,16 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
                 raise SystemExit(f"--driver opencode is not available yet: {e}")
             return _OA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
                                  subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL)
+        if drv == "codex":
+            try:
+                import codex_agent as _CA
+            except ImportError as e:
+                raise SystemExit(f"--driver codex is not available: {e}")
+            # effort is threaded through: codex takes it as a config override, and an
+            # arm that silently ran at a different reasoning effort is a different arm.
+            return _CA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
+                                 subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL,
+                                 effort=effort)
         inner = (f'claude --print --model {model} --effort {effort} '
                  f'--permission-mode bypassPermissions --add-dir {ws} '
                  f'--output-format stream-json --verbose < {ws_task}')
@@ -1037,9 +1051,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--effort", default="high")
     # AGENT DRIVER (Claude-Code-like interfaces). auto (default) preserves today's behavior: route by model
     # id — the Bedrock Converse loop for a non-Anthropic id, else the claude CLI.
-    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode"], default="auto",
+    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode", "codex"],
+                    default="auto",
                     help="agent driver: auto (route by model id), converse (Bedrock Converse loop), "
-                         "claudecode (claude CLI; Bedrock via --provider bedrock), opencode (OpenCode CLI)")
+                         "claudecode (claude CLI; Bedrock via --provider bedrock), opencode (OpenCode CLI), "
+                         "codex (Codex CLI; ChatGPT auth = subscription_notional cost, never metered)")
     ap.add_argument("--subagent-model", default="",
                     help="delegate/subagent model (alias or Bedrock id) for tier-within-agent; default per "
                          "driver (Anthropic: sonnet; non-Anthropic: qwen-coder)")

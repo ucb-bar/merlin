@@ -131,6 +131,7 @@ selfcheck_out/
 !/out/artifacts/targets/rvv/impr_tuned_*/**
 # hand-authored reference baselines for other targets that tests load (keep suite reproducible)
 !/out/artifacts/targets/gemmini/hand_v0/**
+!/out/artifacts/targets/radiance/hand_v0/**
 !/out/artifacts/targets/saturn_vec/hand_v0/**
 !/out/artifacts/targets/muon/reference_v0/**
 # hand-owned capability RESIDUAL side-inputs (the intent+prose the RTL facts can't ground) that

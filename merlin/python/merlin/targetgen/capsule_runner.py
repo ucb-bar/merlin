@@ -35,7 +35,7 @@ import yaml
 from aet.core.run_paths import RunPaths
 
 from . import capsule_golden as CG
-from . import rocc_decode as RD
+from .rocc import decode as RD
 from . import trace_check as TCK
 from .contract import compile as oot_compile
 from .contract import schemas
@@ -94,11 +94,11 @@ class OracleUnavailable(Exception):
 
 def _spike_verilator_adapter(sim: str, target: str) -> Callable:
     def run(cb, llvm_text, workdir, timeout):
-        from ..runtime.backends import base as _bk
-        gem = _bk.get_backend(target)  # this target's backend owns the sim-availability probe
-        if not gem.available(sim):
+        from ..runtime.backends import base as _backends
+        backend = _backends.get_backend(target)
+        if not backend.available(sim):
             raise OracleUnavailable(f"{sim} not available")
-        return oot_compile.run_on_oracle(cb, llvm_text, simulator=sim,
+        return oot_compile.run_on_oracle(cb, llvm_text, simulator=sim, target=target,
                                          workdir=workdir, timeout=timeout)
     return run
 
@@ -450,8 +450,10 @@ def default_adapters() -> dict[str, Callable]:
     """Back-compat gemmini-only default (L2/L3 spike/verilator). DO NOT use as an unrouted fallback — a
     non-gemmini target would be mis-graded. New callers use :func:`oracle_adapters` (self-routing) or
     :func:`_resolve_oracle_adapters`. Retained only for the explicitly-gemmini perf-bench script."""
-    return {"L2": _spike_verilator_adapter("spike", "gemmini"),      # target-ok: explicitly gemmini-only back-compat
-            "L3": _spike_verilator_adapter("verilator", "gemmini")}  # target-ok: explicitly gemmini-only back-compat
+    # target-ok: this function IS the explicitly-single-target back-compat entry point (see the
+    # docstring); the name is its subject, not an assumption leaking into a shared path.
+    return {"L2": _spike_verilator_adapter("spike", "gemmini"),
+            "L3": _spike_verilator_adapter("verilator", "gemmini")}
 
 
 def qa_loop_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
@@ -736,7 +738,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     bespoke sim), else honestly ``unavailable`` — arc is never assumed."""
     from ..runtime.reference import reference_outputs
     from ..runtime.simulator import simulate
-    from .eval.gemmini_suite import toolchain_shas
+    from .provenance import toolchain_shas
 
     # The effective target comes from the config (authoritative — cfg.target drives the run) when one is
     # supplied, else the explicit ``target`` argument. If NEITHER is given we refuse to run rather than
@@ -1275,7 +1277,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         "status": status, "contract_version": CONTRACT_VERSION,
         "tiers": {t: r.to_dict() for t, r in tiers.items()},
         "trace_check": trace_check_res, "numeric": numeric,
-        "failure": failure, "toolchain_shas": toolchain_shas(),
+        "failure": failure, "toolchain_shas": toolchain_shas(eff_target),
     }
     # Advisory RTL-executability smoke (never a gate): record it as its own field when one ran, so a
     # reader sees the RTL-legality backstop verdict without it ever touching the pass/fail status.

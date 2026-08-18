@@ -11,7 +11,7 @@ recorded as UNKNOWN (fail-closed), never dropped.
 """
 from __future__ import annotations
 
-from merlin.targetgen import rocc_decode as RD
+from merlin.targetgen.rocc import decode as RD
 
 # Canonical emitter form the certified native path (gemmini_codegen_mlir.py) produces.
 _CANON_MVIN = (

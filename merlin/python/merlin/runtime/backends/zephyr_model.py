@@ -33,6 +33,8 @@ from __future__ import annotations
 import os
 import struct
 import subprocess
+from collections.abc import Callable
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from merlin.common.paths import runtime_dir
@@ -366,10 +368,43 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     return out
 
 
+@dataclass(frozen=True)
+class MatrixRouting:
+    """Which matrix extension a build routes contractions to, and in which configuration.
+
+    Carried as one object so the tile edge has exactly ONE source. The alternative -- deriving the edge
+    here from the caller's ``vlen`` and again at object-build time from the config's Scala -- is two
+    statements of the same fact that can disagree, and the disagreement would be silent: the selector
+    would choose contractions for a geometry the compiled kernel does not have.
+
+    ``select`` overrides the default tile-filling decision, which is the seam the cost model and the
+    e-graph plug into. Nothing here decides profitability on its own.
+    """
+
+    unit: str                                       # a block in llvmlower/opu_shim.CONTRACT_PATH
+    config: str                                     # the elaborated hardware configuration
+    select: "Callable[[Any], bool] | None" = None
+
+    def tile_edge(self) -> int:
+        """The edge, read from this configuration's own declaration.
+
+        Through the contract's own accessor rather than re-resolving the paths here: this used to rebuild
+        them, which meant two places had to agree about where a unit's configs live -- and when the contract
+        grew a second declaration site they stopped agreeing.
+        """
+        from ...llvmlower import opu_shim
+        return opu_shim.load_contract(self.unit).geometry(self.config)[0]
+
+    def selector(self) -> "Callable[[Any], bool]":
+        from ...llvmlower.passes_opu import tile_filling_selector
+        return self.select if self.select is not None else tile_filling_selector(self.tile_edge())
+
+
 def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = False,
                          features: "frozenset[str] | None" = None,
                          blocking: bool = True, harts: int = 1,
-                         vlen: int | None = None) -> tuple[Path, frozenset[str]]:
+                         vlen: int | None = None,
+                         matrix: "MatrixRouting | None" = None) -> tuple[Path, frozenset[str]]:
     """``(prepared_mlir, concrete_features)`` — everything that must happen to a captured module
     before ``lower_model_file``, shared by every whole-model backend.
 
@@ -394,6 +429,22 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     prepared = _prepare_model_mlir(mlir_path, work, int8_compute=int8_compute,
                                    tag_vec_ranks=_lanes is not None,
                                    vec_lanes=_lanes or _VEC_RANK_LANES)
+    # MATRIX-UNIT ROUTING, before the register blocking below: a contraction that has become a call is no
+    # longer on the vector path, so the block table must be derived from the IR that remains. Doing it the
+    # other way round would tag ops that no longer exist and leave the routed ones double-claimed.
+    from ...llvmlower.impr_features import OPU_MATMUL_NAME
+    if OPU_MATMUL_NAME in features:
+        if matrix is None:
+            # Silently not routing would be indistinguishable from a feature that did nothing, and the
+            # model would grade correctly while reporting a capability it never used.
+            raise ValueError(
+                f"feature {OPU_MATMUL_NAME!r} is enabled but no `matrix=` routing was supplied, so the "
+                "unit and configuration to route to are unknown; pass MatrixRouting(unit=..., config=...)")
+        from ...llvmlower.passes_opu import rewrite_prepared_file
+        routed = rewrite_prepared_file(prepared, work, select=matrix.selector())
+        print(f"[matrix] routed {routed.count} contraction(s) to {matrix.unit} "
+              f"({matrix.config}) across {len(routed.signatures)} signature(s)"
+              + (f"; declined: {[why for _w, why in routed.skipped]}" if routed.skipped else ""))
     if not blocking:
         return prepared, features
     from ...llvmlower import perop_blocks as _pb
@@ -1153,7 +1204,9 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
               features: "frozenset[str] | None" = None,
               n_harts: int = 1, iters: int = 1, warmup: int = 0,
               omp_threads: int | None = None, vlen: int | None = None,
-              sdk_dir: str | Path | None = None, debug: bool = False) -> dict:
+              sdk_dir: str | Path | None = None, debug: bool = False,
+              matrix: "MatrixRouting | None" = None,
+              matrix_scalar_tile: bool = False) -> dict:
     """Lower the model, generate the Zephyr app, and build ``zephyr.elf``.
 
     ``backend``: ``"rvv"`` (vector tile / Saturn) or ``"scalar"`` (scalar tile). The
@@ -1234,7 +1287,7 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
         prepared, features = prepare_for_lowering(model_dir / "model.mlir", work,
                                                  int8_compute=int8_compute, features=features,
                                                  blocking=True, harts=n_harts,
-                                                 vlen=vlen)
+                                                 vlen=vlen, matrix=matrix)
         # A DEBUG image interleaves a mark between the top-level ops of @forward. Two things come out
         # of it: a per-op cost table at the end of a successful run, and -- the reason it is here at
         # all -- a continuously published "which op are we in", which the heartbeat prints while the
@@ -1323,7 +1376,37 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
 
     archive = work / "libmerlinmodel.a"
     archive.unlink(missing_ok=True)
-    _run([ar, "rcs", archive, work / "model.o", work / "weights_blob.o"])
+    # The matrix-unit shim, when the rewrite routed anything to one, goes into the SAME archive as the
+    # model object -- so it is covered by the --whole-archive the generated CMakeLists already applies and
+    # no CMake change is needed. Built from the SIDECAR the rewrite wrote: the symbols the module actually
+    # calls are the ones that must be defined, and a set reconstructed here could drift into a link error.
+    matrix_objs: list[Path] = []
+    matrix_build = None
+    from ...llvmlower.passes_opu import load_sidecar as _load_matrix_sidecar
+    matrix_sigs = _load_matrix_sidecar(work)
+    if matrix_sigs:
+        if matrix is None:
+            raise ZephyrModelError(
+                f"{len(matrix_sigs)} matrix-unit signature(s) were routed but no `matrix=` routing is "
+                "available to build them against; the image would not link")
+        from ...llvmlower import opu_shim
+        # A routed contraction is an opaque `call` by the time the parallel transform schedule runs, so
+        # that schedule -- which matches `linalg.matmul`/`linalg.batch_matmul` -- cannot split it. On a
+        # chip with a matrix unit per core, the ONLY place the other units can be reached from is inside
+        # the kernel's own tile loop, so a multi-hart image compiles that loop with OpenMP. A serial
+        # object on such a chip is not an error and not a wrong answer: it uses one unit, silently.
+        matrix_build = opu_shim.build_object(
+            matrix_sigs, work / "matrix", unit=matrix.unit, config=matrix.config,
+            cc=clang, cflags=["--target=riscv64-unknown-elf", *cflags],
+            scalar_tile=matrix_scalar_tile, parallel_tiles=n_harts > 1)
+        matrix_objs = [matrix_build.object_path]
+        print(f"[matrix] linked {len(matrix_sigs)} entry point(s) for {matrix.unit} "
+              f"({matrix.config}, tile edge {matrix_build.tile_edge}, "
+              f"{'SCALAR STAND-IN' if matrix_build.scalar_tile else 'device instructions'}, "
+              f"{matrix_build.scratch_bytes} B pack scratch, "
+              f"tile loop {'parallel over ' + str(n_harts) + ' hart(s)' if matrix_build.parallel_tiles
+                           else 'serial — ONE unit will be used'})")
+    _run([ar, "rcs", archive, work / "model.o", work / "weights_blob.o", *matrix_objs])
 
     # 4. emit the Zephyr application tree.
     app = work / "app"
@@ -1600,6 +1683,13 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
             sumval = struct.unpack("<f", struct.pack("<I", int(l.split()[1]) & 0xFFFFFFFF))[0]
     res = {"outputs": flat, "prefix": flat, "argmax": argmax, "sum": sumval,
            "metrics": metrics, "console": console}
+    # `PROF <id> <ticks> <hits>` from an op_profile build. The K1 path already reads these; this one
+    # dropped them on the floor, so a Zephyr/FireSim console carried per-op cycles that no caller could
+    # reach -- which is why the vector unit had no measured rate while the matrix unit had one.
+    from ...llvmlower import op_profile as _op_profile          # `op_profile` is a parameter name here
+    prof = _op_profile.parse_prof_lines(console)
+    if prof:
+        res["op_prof"] = prof
     if iter_cycles:
         res["iter_cycles"] = iter_cycles
         res["sustained"] = _sustained_stats(iter_cycles)
@@ -1730,6 +1820,32 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
     return out
 
 
+def _check_firesim_workload(firesim_root: str, workload: str) -> None:
+    """Fail closed when the shared ``config_runtime.yaml`` names a different workload than the one we
+    stage into.
+
+    ``FIRESIM_WORKLOAD_NAME`` only tells the RUNNER where to put the ELF. What FireSim boots comes from
+    ``workload.workload_name`` in ``config_runtime.yaml``, and when the two disagree the simulator loads
+    whatever binary the other workload last left behind -- with no error anywhere, because from
+    FireSim's side nothing is wrong. That cost a 63-minute FPGA run whose uartlog turned out to be a
+    months-old image for a different accelerator, trapping on its first custom instruction.
+
+    The queue path is immune (the daemon is passed ``--workload`` and writes a per-job config), so this
+    is checked only where the shared file is actually consulted.
+    """
+    import yaml
+    cfg = Path(firesim_root) / "deploy" / "config_runtime.yaml"
+    if not cfg.is_file():
+        return
+    declared = ((yaml.safe_load(cfg.read_text()) or {}).get("workload", {}) or {}).get("workload_name")
+    want = f"{workload}.json"
+    if declared != want:
+        raise RuntimeError(
+            f"{cfg} declares workload_name={declared!r} but this run stages into {workload!r}. FireSim "
+            f"would boot the binary belonging to {declared!r}, not ours. Set workload_name to {want!r} "
+            f"(and restore it afterwards), or run through the queue, which manages its own config.")
+
+
 def run_on_firesim(elf: str | Path, *, reference: np.ndarray | None = None,
                    references: dict | None = None,
                    timeout: int = 900, queue: bool = True,
@@ -1775,6 +1891,10 @@ def run_on_firesim(elf: str | Path, *, reference: np.ndarray | None = None,
     if queue:
         os.environ["FIRESIM_QUEUE"] = "1"
         os.environ.setdefault("FIRESIM_QUEUE_TIMEOUT", str(timeout))
+    else:
+        # Without the queue the shared config_runtime.yaml is what FireSim reads, so it has to agree
+        # with where we stage. See _check_firesim_workload.
+        _check_firesim_workload(fr, os.environ["FIRESIM_WORKLOAD_NAME"])
     try:
         from modelblaster.validation.firesim_runner import run_firesim  # type: ignore
     except ModuleNotFoundError:

@@ -67,7 +67,12 @@ def emit_command_buffer(module) -> dict[str, Any]:
 
     weights = {c["operands"]["src"] for c in commands if c["opcode"] == "RES_PACK"}
     output_names = [s.data for s in create.outputs] if create.outputs is not None else []
-    outputs_set = set(output_names)
+    # Vector-family destinations are RESULTS too — a vector workload declares no create.outputs, so also
+    # collect VECTOR_MAP/VREDUCE dsts by role, else such a result is mislabelled an input and silently
+    # not read back. The matmul path names its result through create.outputs; union covers both engines.
+    produced = {c["operands"]["dst"] for c in commands
+                if c["opcode"] in ("VECTOR_MAP", "VREDUCE") and "dst" in c["operands"]}
+    outputs_set = set(output_names) | produced
     tensors: dict[str, Any] = {}
     table = create.tensors.data if create.tensors is not None else {}
     for name, spec in table.items():

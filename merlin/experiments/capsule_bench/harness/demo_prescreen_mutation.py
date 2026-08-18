@@ -110,7 +110,8 @@ def prescreen_verdict(mlir: str, capsule: dict, fc: str | None):
 def verilator_verdict(cb: dict, mlir: str, gold_flat, timeout: int):
     t0 = time.perf_counter()
     try:
-        r = COMPILE.run_on_oracle(cb, mlir, simulator="verilator", timeout=timeout)
+        r = COMPILE.run_on_oracle(cb, mlir, simulator="verilator", target=C.TARGET,
+                                  timeout=timeout)
     except Exception as e:
         return "fail", round(time.perf_counter() - t0, 1), f"sim error: {type(e).__name__}: {str(e)[:80]}"
     sim_s = (r.get("timing") or {}).get("sim_active_s", round(time.perf_counter() - t0, 1))

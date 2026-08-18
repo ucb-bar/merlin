@@ -77,11 +77,112 @@ typedef struct {
   void *descriptor;
 } merlin_unranked_memref_t;
 
+/* Each descriptor is indexed by ITS OWN rank, and a disagreement is refused rather than computed through.
+ *
+ * The strides of a ranked descriptor start at `2 + 1 + rank` words, so indexing the DESTINATION's strides
+ * with the SOURCE's rank reads past them into whatever follows — in a real image, the adjacent
+ * descriptor's `allocated`/`aligned` POINTER, which then gets multiplied by the element size and added to
+ * the base. That is a defensive fix for a real hazard the previous code had, and it makes the precondition
+ * upstream MLIR merely asserts into something this reports.
+ *
+ * WHAT IT IS NOT: it is NOT the explanation for the whole-model store fault on spike. That fault was
+ * traced to this function — on deepjscc int8 the destination offset accumulates to 0xc0595c80, an arena
+ * POINTER rather than a stride, and multiplying by a 4-byte element size gives exactly the 0x301657200 the
+ * commit trace shows before mcause 7 — but the guard below does NOT fire on that run, so the two unranked
+ * descriptors agree on rank and something else puts a pointer where a stride belongs. At the faulting
+ * iteration the loaded strides are 1 and the loaded index is 0, i.e. the values being read are sane and
+ * the pointer entered the accumulator at an earlier dimension; the loop reaches i = 11, so the rank is at
+ * least 12 while this function's scratch index array is sized 16 and its comment assumes 6-D. Both facts
+ * are recorded because they bound where to look next, not because they are the answer.
+ *
+ * The counters exist because refusing is still a wrong answer — the copy did not happen — and a run that
+ * silently skipped copies would grade badly with no explanation. Refusing beats storing: a skipped copy is
+ * a bad number, a wild store is a dead image or memory corrupted somewhere else entirely. */
+unsigned long long g_merlin_memref_rank_mismatch = 0ULL;
+long long g_merlin_memref_bad_src_rank = -1;
+long long g_merlin_memref_bad_dst_rank = -1;
+unsigned long long merlin_memref_rank_mismatches(void) { return g_merlin_memref_rank_mismatch; }
+
+/* The per-dimension counter below is a fixed-size stack array, so a rank larger than it holds would be
+ * written straight past its end -- a stack smash inside the one function this file exists to make safe,
+ * and one whose damage would land on whatever the compiler placed next. The bound is checked rather than
+ * commented about: the previous note said "memrefs in this model are <= 6-D" while the trace helper next
+ * to it already capped its own loop at 16, and the runtime has since logged a rank of 11. Which model is
+ * being run is not this function's business to assume. */
+#define MERLIN_MEMREF_MAX_RANK 16
+unsigned long long g_merlin_memref_rank_too_large = 0ULL;
+long long g_merlin_memref_worst_rank = -1;
+unsigned long long merlin_memref_ranks_too_large(void) { return g_merlin_memref_rank_too_large; }
+
+/* OPT-IN DESCRIPTOR TRACE (-DMERLIN_MEMREF_TRACE), off by default so a normal build is byte-identical.
+ *
+ * This exists because the alternative is inferring descriptor contents from a spike commit trace, which is
+ * how two wrong hypotheses got as far as being implemented. Printing what memrefCopy was actually handed --
+ * rank, sizes, strides, bases -- answers directly which field holds a pointer.
+ *
+ * The console is reached through WEAK references: on a bare-metal image htif_puts/htif_putd resolve to the
+ * harness, and in the host shared object they are absent and the calls are skipped. That keeps one file
+ * building for both without a second copy or a build-system change. */
+#ifdef MERLIN_MEMREF_TRACE
+__attribute__((weak)) void htif_puts(const char *s);
+__attribute__((weak)) void htif_putd(long v);
+
+static void trace_desc(const char *tag, int64_t rank, void **desc) {
+  if (!htif_puts || !htif_putd)
+    return;
+  int64_t *rest = (int64_t *)(desc + 2);
+  htif_puts(tag);
+  htif_puts(" rank ");
+  htif_putd((long)rank);
+  /* The descriptor's own ADDRESS. Without it there is no way to tell a wrong pointer being passed from a
+   * right pointer whose contents are stale -- and the observed corruption (words 6..9 replaced by what
+   * looks like an adjacent descriptor) is consistent with either. */
+  htif_puts(" at ");
+  htif_putd((long)(uintptr_t)desc);
+  htif_puts(" aligned ");
+  htif_putd((long)(uintptr_t)desc[1]);
+  htif_puts(" off ");
+  htif_putd((long)rest[0]);
+  htif_puts(" sizes");
+  for (int64_t i = 0; i < rank && i < 16; i++) {
+    htif_puts(" ");
+    htif_putd((long)rest[1 + i]);
+  }
+  htif_puts(" strides");
+  for (int64_t i = 0; i < rank && i < 16; i++) {
+    htif_puts(" ");
+    htif_putd((long)rest[1 + rank + i]);
+  }
+  htif_puts("\n");
+}
+#endif
+
 void memrefCopy(int64_t elem_size, merlin_unranked_memref_t *src_u,
                 merlin_unranked_memref_t *dst_u) {
   int64_t rank = src_u->rank;
+  int64_t d_rank = dst_u->rank;
+  if (rank != d_rank) {
+    if (g_merlin_memref_rank_mismatch == 0ULL) {
+      g_merlin_memref_bad_src_rank = rank;
+      g_merlin_memref_bad_dst_rank = d_rank;
+    }
+    ++g_merlin_memref_rank_mismatch;
+    return;
+  }
+  if (rank > MERLIN_MEMREF_MAX_RANK) {
+    /* Same policy as the mismatch above: refuse and count. A skipped copy is a bad number; writing past
+     * `idx` is corruption somewhere else entirely, which is far harder to trace back to here. */
+    if (rank > g_merlin_memref_worst_rank)
+      g_merlin_memref_worst_rank = rank;
+    ++g_merlin_memref_rank_too_large;
+    return;
+  }
   void **sdesc = (void **)src_u->descriptor;
   void **ddesc = (void **)dst_u->descriptor;
+#ifdef MERLIN_MEMREF_TRACE
+  trace_desc("MEMREF src", rank, sdesc);
+  trace_desc("MEMREF dst", d_rank, ddesc);
+#endif
   char *s_aligned = (char *)sdesc[1];
   char *d_aligned = (char *)ddesc[1];
   int64_t *s_rest = (int64_t *)(sdesc + 2); /* offset, sizes[rank], strides[rank] */
@@ -90,7 +191,7 @@ void memrefCopy(int64_t elem_size, merlin_unranked_memref_t *src_u,
   char *d_base = d_aligned + d_rest[0] * elem_size;
   int64_t *sizes = s_rest + 1;
   int64_t *s_strides = s_rest + 1 + rank;
-  int64_t *d_strides = d_rest + 1 + rank;
+  int64_t *d_strides = d_rest + 1 + d_rank;   /* the DESTINATION's own rank */
 
   if (rank == 0) {
     memcpy(d_base, s_base, (size_t)elem_size);
@@ -101,7 +202,7 @@ void memrefCopy(int64_t elem_size, merlin_unranked_memref_t *src_u,
   for (int64_t i = 0; i < rank; i++)
     total *= sizes[i];
 
-  int64_t idx[16] = {0}; /* MLIR memrefs in this model are <= 6-D */
+  int64_t idx[MERLIN_MEMREF_MAX_RANK] = {0};   /* bounded above, not assumed */
   for (int64_t lin = 0; lin < total; lin++) {
     int64_t s_off = 0, d_off = 0;
     for (int64_t i = 0; i < rank; i++) {

@@ -1,0 +1,43 @@
+name: OP17_requant_saturating
+kind: isa
+source_role: handauthored_compiler_test
+source_reference: full-range operands over a long reduction, so the narrowing saturates
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 255
+  - 8
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 8
+  - 255
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue:
+    - acc_scale
+    output_dtype: i32
+    acc_scale: 0.5
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+  acc_scale: 0.5
+expected:
+  instruction_classes: []
+  modes:
+    relu: false
+    acc_scale: true
+    i8: false
+required_oracle_tiers:
+- L3
+vcs: optional
+firesim: optional

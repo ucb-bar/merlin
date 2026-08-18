@@ -162,7 +162,10 @@ def test_shape_observer_reads_named_and_generic_contractions():
     }
     """
     got = contraction_shapes(named)
-    assert got == [ContractionShape("linalg.matmul", (8, 344), (128,))]
+    # The observer also keeps the element types it reads, positionally (lhs, rhs, out): they are the
+    # other half of a legality question, and a policy that only saw extents could not tell an int8
+    # contraction from an f32 one of the same size.
+    assert got == [ContractionShape("linalg.matmul", (8, 344), (128,), ("f32", "f32", "f32"))]
 
     generic = """
     builtin.module {
@@ -185,7 +188,8 @@ def test_shape_observer_reads_named_and_generic_contractions():
       }
     }
     """
-    assert contraction_shapes(generic) == [ContractionShape("linalg.matmul", (8, 344), (128,))]
+    assert contraction_shapes(generic) == [
+        ContractionShape("linalg.matmul", (8, 344), (128,), ("i8", "i8", "i32"))]
 
 
 def test_shape_observer_degrades_to_empty_on_unreadable_input():

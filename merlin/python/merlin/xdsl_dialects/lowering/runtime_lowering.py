@@ -118,7 +118,8 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
         if arg in names:
             tensors[names[arg]] = _shape_str(arg.type)
     # The function's RETURN values are the model's output tensors — declare them (with shape)
-    # and name them explicitly so the engine surfaces exactly these, not every commit.
+    # and name them explicitly so the engine surfaces exactly these, not every commit. A vector-family
+    # result reaches here through the return, so this covers both the matmul and the vector engine.
     ret_ops = [o for o in src_block.ops if o.name == "func.return"]
     output_names: list[str] = []
     for operand in (ret_ops[0].operands if ret_ops else []):
@@ -169,6 +170,13 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
                 attrs["requant_shift"] = op.requant_shift
             if op.output_dtype is not None:
                 attrs["output_dtype"] = op.output_dtype
+        elif opcode == "VECTOR_MAP":
+            # The destination was named and declared in the pre-pass above (the tensor table is
+            # already frozen into the create op by this point).
+            args = {"lhs": names[op.lhs], "rhs": names[op.rhs], "dst": names[op.out]}
+            attrs = {"combine": op.combine}
+            if op.activation is not None:
+                attrs["activation"] = op.activation
         elif opcode == "EVICT":
             args = {"handle": names[op.handle]}
             attrs = {}

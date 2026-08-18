@@ -81,6 +81,11 @@ class ComputeUnit:
     requant: dict[str, Any] | None = None  # opaque {ref: <out-of-tree lowering id>}; not interpreted
     contains: tuple[str, ...] = ()
     semantic_capabilities: tuple[SemanticCapability, ...] = ()
+    #: How SOFTWARE drives this unit (a ``families.ENDPOINT_KINDS`` token), independent of ``kind``.
+    #: None means "not declared" and defers to the target, then to the family default — see
+    #: :func:`resolve_exposure`. This is a PER-UNIT axis on purpose: a hybrid target has two units with
+    #: two different exposures at once, and a single target-wide endpoint cannot express that.
+    exposure: str | None = None
 
     def supports_dtype(self, fmt_name: str) -> bool:
         return fmt_name in self.dtypes
@@ -129,6 +134,12 @@ def _unit(raw: dict[str, Any]) -> ComputeUnit:
         raise ValueError(f"compute unit {raw.get('name')!r}: scaling {scaling!r} not in "
                          f"{sorted(qf.SCALE_KINDS)}")
     name = raw["name"]
+    exposure = raw.get("exposure")
+    if exposure is not None:
+        from . import families                  # lazy: families is a sibling registry, not a dependency
+        if exposure not in families.ENDPOINT_KINDS:
+            raise ValueError(f"compute unit {raw.get('name')!r}: exposure {exposure!r} not in "
+                             f"{list(families.ENDPOINT_KINDS)}")
     return ComputeUnit(
         name=name,
         kind=kind,
@@ -139,7 +150,29 @@ def _unit(raw: dict[str, Any]) -> ComputeUnit:
         requant=raw.get("requant"),
         contains=tuple(raw.get("contains", ()) or ()),
         semantic_capabilities=tuple(_sem_cap(s, name) for s in raw.get("semantic_capabilities", ()) or ()),
+        exposure=exposure,
     )
+
+
+def resolve_exposure(unit: ComputeUnit, *, target_endpoint_kind: str | None = None) -> str:
+    """How software drives ``unit``: the unit's own declaration, else the target's, else its family's.
+
+    The precedence is the same FACTS > residual > family-default shape the target-wide ``endpoint_kind``
+    already uses, which is what makes this change inert for existing targets: a single-unit target that
+    declares no per-unit exposure resolves to exactly what it resolved to before.
+
+    The reason this is per-unit at all is that a datapath class does not imply a software exposure. A
+    spatial tensor tile is driven by one-hot command ports *inside* a vector unit, but software issues
+    vector instructions to reach it — so its family default (``command_buffer``) describes the datapath
+    correctly and the exposure wrongly. Letting the class imply the exposure makes a hybrid target
+    inexpressible, which is a taxonomy failure rather than a missing special case.
+    """
+    if unit.exposure is not None:
+        return unit.exposure
+    if target_endpoint_kind is not None:
+        return target_endpoint_kind
+    from . import families
+    return families.family_profile(unit.kind).endpoint_kind_default
 
 
 def compute_units(contract: dict[str, Any]) -> list[ComputeUnit]:
@@ -178,6 +211,9 @@ def effective(unit: ComputeUnit, all_units: list[ComputeUnit]) -> ComputeUnit:
         name=unit.name, kind=unit.kind, dtypes=tuple(dtypes), ops=tuple(ops),
         accumulate=tuple(accum), scaling=unit.scaling, requant=unit.requant, contains=unit.contains,
         semantic_capabilities=tuple(sem),
+        # Composition unions CAPABILITY (what can be computed), not exposure: how software drives this
+        # unit is a property of this unit, and inheriting a child's would silently retarget the parent.
+        exposure=unit.exposure,
     )
 
 

@@ -11,8 +11,6 @@ Sections (each is an independent pass/fail; a failure does not abort the rest):
                            correct bundles; agg_ab_results runs
   E. anti-cheat gate     — verify_no_cheat.py PASS (delegated)
   F. bundle integrity    — all 6 bundles exist, parse, and every API a prompt names actually imports
-  G. ARR coverage        — the independent eligibility oracle is live for the target: non-empty
-                           capability map, oracle discriminates, corpus capsules carry `semantic` tags
 
 Exit 0 = GO. Non-zero = NO-GO.  Usage: readiness_check.py
 """
@@ -39,12 +37,28 @@ _TE = load_target_experiment(EXP / "target_experiment.yaml")
 PY = str(REPO / ".venv/bin/python")
 SCRIPTS = EXP / "scripts"
 BUNDLES = EXP / "input_bundles"
-results: list[tuple[str, bool, str]] = []
+#: (name, verdict, detail) where verdict is True=pass, False=fail, None=not applicable.
+results: list[tuple[str, bool | None, str]] = []
 
 
 def _ok(name: str, cond: bool, detail: str = ""):
     results.append((name, bool(cond), detail))
     print(f"  [{'PASS' if cond else 'FAIL'}] {name}" + (f"  — {detail}" if detail else ""))
+
+
+def _na(name: str, why: str):
+    """Record a check that does not apply to THIS target's endpoint.
+
+    Distinct from a failure, and the distinction is the whole point: a tool that refuses because the
+    hardware has no such capability is behaving correctly, and counting it as a FAIL leaves only two ways
+    to reach GO -- both wrong. Either the check gets deleted (and then a target that DOES have the
+    capability stops being checked), or something is generated to satisfy it (a decode table for a
+    machine with no decode, which is a fabrication that would go on to be graded against).
+
+    An N/A must be DERIVED from the target's own facts, never asserted per target.
+    """
+    results.append((name, None, why))
+    print(f"  [ N/A] {name}" + (f"  — {why}" if why else ""))
 
 
 def section(t):
@@ -67,21 +81,6 @@ def test_starter_kit():
             _ok("parse_interface on a real capsule", False, f"{type(e).__name__}: {e}")
     else:
         _ok("parse_interface on a real capsule", False, "no interface.mlir found in corpus")
-
-    # FULL-corpus discovery — enumerate EVERY capsule the grader will load (the target's own corpus +
-    # its sibling categories). This is the abc7 guard: if any capsule fails schema/interface validation,
-    # discover_capsules RAISES and the whole graded round aborts having graded ZERO capsules. The gate
-    # must catch that here (per-target, from the descriptor) rather than report GO while the corpus is
-    # undiscoverable. Runs the SAME loader the grader uses; no target literal (roots come from the descriptor).
-    try:
-        from merlin.targetgen.capsule_common import discover_capsules
-        roots = [REPO / _TE.corpus_rel()] + [REPO / s for s in _TE.corpus_siblings()]
-        total = sum(len(discover_capsules(r)) for r in roots if r.is_dir())
-        _ok("full corpus discovers (every capsule loads + validates)", total > 0,
-            f"{total} capsules across {sum(1 for r in roots if r.is_dir())} categories")
-    except Exception as e:
-        _ok("full corpus discovers (every capsule loads + validates)", False,
-            f"{type(e).__name__}: {str(e)[:160]}")
 
     # cmdbuf builder: schema-valid when populated, rejects empty
     try:
@@ -123,6 +122,29 @@ def test_starter_kit():
 # ---- B. CIRCT generators --------------------------------------------------------------------------
 def test_generators():
     section("B. CIRCT RTL-facts generators (generate + import + flag)")
+    # These three generators all read the instruction-decode body of the facts artifact. Whether the
+    # target HAS one is a fact about the target, so ask the facts rather than the target's name: an
+    # ISA-less endpoint (a command-buffer spatial tile driven over one-hot op ports) has no opcode, no
+    # funct field and no decode table by construction, and `facts.decode_body` is the single place that
+    # distinction is made -- the same call the generators themselves make.
+    try:
+        from merlin.targetgen.rtl import facts as _facts
+        _facts.decode_body(_facts.load_facts(TARGET), TARGET, needs="the RTL-facts generators")
+    except NotImplementedError as e:
+        why = str(e).split(". ")[0][:90]
+        for name in ("gen_isa_module generates", "gen_rtl_digest generates",
+                     "gen_numeric_facts generates", "generated numeric checker"):
+            _na(name, why)
+        return
+    except _facts.FactsEmpty as e:
+        # NOT N/A. An empty facts artifact means the extractor never found the RTL, so every derived fact
+        # is absent -- the opposite verdict from "this endpoint has no decode table". Reporting it as N/A
+        # would let a target whose facts were never extracted read as ready for the arms that are supposed
+        # to be GROUNDED in those facts. Both this repo's newest two targets are in exactly that state.
+        _ok("the RTL-facts artifact carries facts", False, str(e).split(" — ")[0][:110])
+        return
+    except Exception:      # noqa: BLE001 — any OTHER problem is the generators' to report, below
+        pass
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
         for mod, out in [("gen_isa_module", f"{TARGET}_isa.py"),
@@ -130,26 +152,11 @@ def test_generators():
                          ("gen_numeric_facts", "numeric_facts.py")]:
             # These RTL-facts generators require an explicit --target (the gemmini default was retired
             # in the target-generalization work); pass the active target so they run for any target.
-            # Run the generator against the SAME merlin this gate loaded in-process (the one _common
-            # bootstrapped onto sys.path), not whatever the bare venv resolves — otherwise, in a git
-            # worktree whose .venv points at the main checkout, the subprocess silently tests the main
-            # tree's stale merlin while the in-process oracle checks test the worktree's (the shadowing
-            # trap). Propagate its path so the gate's verdict reflects the code that will actually run.
-            import os as _os
-            import merlin as _merlin
-            _mp = str(Path(_merlin.__file__).resolve().parents[1])
-            _env = dict(_os.environ, PYTHONPATH=_os.pathsep.join(
-                [_mp, _os.environ.get("PYTHONPATH", "")]).rstrip(_os.pathsep))
             r = subprocess.run([PY, "-m", f"merlin.targetgen.rtl.{mod}",
                                 "--target", TARGET, "--out", str(td / out)],
-                               cwd=str(REPO), capture_output=True, text=True, env=_env)  # noqa: F821
-            # gen_isa_module / gen_rtl_digest emit a RoCC command-ISA artifact; on a SIMT / self-hosted
-            # target they honestly report "n/a: ..." (return 0, no file) instead of crashing — that is a
-            # PASS (the tool applies correctly to its endpoint), same as a RoCC target writing the file.
-            na = "n/a:" in (r.stdout or "")
-            note = "n/a for this endpoint (RoCC command-ISA generator)" if na \
-                else (r.stderr.strip().splitlines() or [""])[-1][:80]
-            _ok(f"{mod} generates", r.returncode == 0 and ((td / out).exists() or na), note)
+                               cwd=str(REPO), capture_output=True, text=True)
+            _ok(f"{mod} generates", r.returncode == 0 and (td / out).exists(),
+                (r.stderr.strip().splitlines() or [""])[-1][:80])
         # the generated numeric checker flags a narrow accumulator
         try:
             sys.path.insert(0, str(td))
@@ -157,15 +164,8 @@ def test_generators():
             findings = nf.check_numeric_shapes(
                 {"tensors": {"acc": {"dtype": "i8"}},
                  "commands": [{"opcode": "MATMUL", "operands": {"dst": "acc"}}]})
-            # The narrow-accumulator flag only applies to a target whose RTL facts DERIVE an accumulator
-            # width. gen_numeric_facts fail-closes ACC_WIDTH_BITS=None (never bakes a default) for a
-            # SIMT / no-datapath target (e.g. radiance) — so it legitimately flags nothing: n/a, not a fail.
-            if getattr(nf, "ACC_WIDTH_BITS", None) is None:
-                _ok("generated numeric checker flags narrow accumulator", True,
-                    "n/a (no derived accumulator datapath — SIMT/non-mesh target)")
-            else:
-                _ok("generated numeric checker flags narrow accumulator", bool(findings),
-                    (findings or ["—"])[0][:70])
+            _ok("generated numeric checker flags narrow accumulator", bool(findings),
+                (findings or ["—"])[0][:70])
         except Exception as e:
             _ok("generated numeric checker", False, f"{type(e).__name__}: {e}")
         finally:
@@ -205,17 +205,12 @@ def test_harness():
                         "--experiment", "realistic", "--repeats", "3", "--condition", "both", "--dry-run"],
                        cwd=str(REPO), capture_output=True, text=True)
     out = r.stdout
-    # The exact run count is the TARGET's OWN launcher business (its arm set + --condition handling vary
-    # per target — that is why the hardcoded gemmini "18 + nokernel" spuriously NO-GO'd a single-condition
-    # ladder). The gate verifies the matrix is WELL-FORMED, not a fixed size: the dry-run returns 0, emits
-    # a NON-EMPTY set of FRESH (unique) run-ids, and covers the target's OWN declared conditions.
-    conds = C.experiment_conditions()
-    ids = [ln.split("run-id=", 1)[1].split()[0] for ln in out.splitlines() if "run-id=" in ln]
-    fresh = len(ids) > 0 and len(ids) == len(set(ids))
-    conds_present = all(c in out for c in conds)
-    _ok("launch_ab_batch dry-run: non-empty matrix of fresh unique ids covering the target's conditions",
-        r.returncode == 0 and fresh and conds_present,
-        f"n_runs={len(ids)}, fresh_unique={fresh}, conditions={conds}, all_present={conds_present}")
+    n_runs = out.count("run-id=")
+    has_nk = "nokernel" in out and "_nk_" in out
+    has_kern = "_hwbringup_v0" in out
+    _ok("launch_ab_batch dry-run = 18 runs, both conditions, fresh ids",
+        r.returncode == 0 and n_runs == 18 and has_nk and has_kern,
+        f"n_runs={n_runs}, nokernel={has_nk}, kernels={has_kern}")
     r2 = subprocess.run([PY, str(SCRIPTS / "agg_ab_results.py"), "--tag", "abc4"],
                         cwd=str(REPO), capture_output=True, text=True)
     _ok("agg_ab_results runs", r2.returncode == 0, (r2.stdout.strip().splitlines() or [""])[0][:70])
@@ -231,6 +226,179 @@ def test_verify_no_cheat():
 
 
 # ---- F. bundle integrity --------------------------------------------------------------------------
+def test_corpus_fits_the_endpoint():
+    """H. The capsules must be gradeable ON THIS MACHINE.
+
+    Every other section checks that a tool RUNS. None of them checks that the corpus the arms will be
+    graded against is one this target can satisfy, and that gap is not hypothetical: a target pointed at
+    another target's corpus reaches GO with every tool working and then scores zero for a reason no
+    per-capsule verdict explains -- the capsules demand instruction classes the hardware does not have.
+
+    Derived, not asserted per target: a capsule's `expected.instruction_classes` names an INSTRUCTION,
+    and whether this target has instructions at all is the same question section B asks of its facts.
+    A command-buffer machine driven over one-hot op ports has none by construction.
+    """
+    section("H. corpus fits the endpoint (capsules are gradeable on this machine)")
+    # Scope: the roots the GRADE resolves, not the single directory the descriptor names. Reading only
+    # the declared one under-counts -- for one target 21 capsules against the 28 section I actually grades
+    # -- so a capsule in a sibling category could demand a class this endpoint lacks and never be looked
+    # at here. Same under-scoping the A/B drivers had; graded_roots() is the one resolution both use.
+    roots = [r for r in _TE.graded_roots() if r.is_dir()]
+    caps = sorted({c for r in roots for c in r.rglob("capsule.yaml")})
+    if not caps:
+        _ok("the graded capsule roots have capsules", False,
+            f"none under {[str(r) for r in roots] or _TE.capsule_corpus}")
+        return
+    demanded: set[str] = set()
+    for cap in caps:
+        try:
+            spec = yaml.safe_load(cap.read_text()) or {}
+        except Exception:  # noqa: BLE001
+            continue
+        demanded.update((spec.get("expected") or {}).get("instruction_classes") or [])
+
+    # Settle the trivial case BEFORE probing the facts: a corpus that demands no instruction classes
+    # cannot demand one the endpoint lacks, whatever the facts say. (Probing first turned this into an
+    # N/A for the two targets whose facts artifact is empty, which is less true than the plain answer.)
+    # Note what a trivial pass here does NOT mean: a capsule declaring `instruction_classes: []` cannot
+    # FAIL a coverage check either, so this row says the corpus asks for nothing, not that it is rigorous.
+    if not demanded:
+        _ok("the corpus demands no instruction classes this endpoint lacks", True,
+            f"{len(caps)} capsule(s), none declaring instruction_classes "
+            f"(so none can fail coverage either)")
+        return
+
+    has_isa = True
+    try:
+        from merlin.targetgen.rtl import facts as _facts
+        _facts.decode_body(_facts.load_facts(TARGET), TARGET, needs="the corpus's instruction classes")
+    except NotImplementedError:
+        has_isa = False
+    except Exception:  # noqa: BLE001 — cannot tell; do not manufacture a verdict either way
+        _na("corpus instruction classes match the target's vocabulary",
+            "the target's facts could not be loaded, so this cannot be decided")
+        return
+    _ok("the corpus demands no instruction classes this endpoint lacks", has_isa,
+        f"{len(caps)} capsule(s) demand {len(demanded)} instruction class(es) "
+        + (f"e.g. {sorted(demanded)[:4]}" if has_isa else
+           f"({sorted(demanded)[:4]}...) but this target has no instruction decode at all -- it is a "
+           f"{(_TE.sim_via or 'arc')}-graded command endpoint. The corpus at "
+           f"{', '.join(r.name for r in roots)} belongs to another target; this one needs its own "
+           f"(contract/capsules/generate_corpus.py + a profile)"))
+
+
+def test_graded_path_is_the_declared_one():
+    """I. The suite the RUN grades on, exercised — not the one the descriptor names.
+
+    Every other section reads `capsule_corpus`. The grade does not: it reads whatever roots the launcher
+    hands `grade_agent_run`, and while those two were allowed to differ a GO verdict could not see the
+    difference. Measured, before this was wired: the public phase resolved to the shared parent of every
+    target's corpus (which does not even load -- a sibling target's capsule fails the schema) and the
+    hidden phase to ANOTHER target's five hidden capsules.
+
+    So this resolves the roots the way the launcher now does and grades a DELIBERATELY EMPTY submission
+    through them. An empty package must fail, and it must fail against a non-zero denominator: that one
+    assertion catches both an empty suite (0/0 reads as a pass) and a grader that passes anything. The
+    good half -- a real submission passing -- is what the run itself measures; it cannot be faked here
+    without shipping an answer key, which is the one thing this bench must not contain.
+    """
+    section("I. the graded path (resolved roots + a submission that must FAIL)")
+    import tempfile
+
+    from merlin.targetgen import capsule_grade as CG
+    from merlin.targetgen import capsule_runner as CR
+
+    pub_roots, hid_roots = _TE.graded_roots(), _TE.hidden_roots()
+    contract = str(REPO / "merlin/contract")
+    try:
+        n_pub = len(CR.discover_capsules(pub_roots, labels={"public", "dev"}, contract=contract))
+        n_hid = len(CR.discover_capsules(hid_roots, labels={"hidden"}, contract=contract)) if hid_roots else 0
+    except Exception as exc:  # noqa: BLE001
+        _ok("the resolved capsule roots load", False,
+            f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]} "
+            f"(roots={[str(r) for r in pub_roots]})")
+        return
+    _ok("the public grade resolves to a non-empty suite", n_pub > 0,
+        f"{n_pub} capsule(s) over {len(pub_roots)} root(s): "
+        + ", ".join(r.name for r in pub_roots))
+    _ok("the hidden grade resolves to its OWN capsules", n_hid > 0,
+        f"{n_hid} capsule(s) at {hid_roots[0].name if hid_roots else '(none declared)'}"
+        if hid_roots else "no hidden/ beside this corpus — the hidden phase would score 0/0")
+
+    if not n_pub:
+        return
+    # Straight at the SUITE, not through `grade()`. `grade()` builds and integrity-scans the package
+    # first and returns early when that fails, so an empty submission never reaches a capsule -- which
+    # would have made this check pass for the wrong reason (0 graded, 0 passed, "fails" ✓). Package
+    # integrity is its own plane and section A already covers it; what is under test here is that the
+    # resolved suite is real and that nothing in it passes without a submission.
+    caps = CR.discover_capsules(pub_roots, labels={"public", "dev"}, contract=contract)
+    with tempfile.TemporaryDirectory() as td:
+        pkg, runs = Path(td) / "submission", Path(td) / "runs"
+        pkg.mkdir(parents=True)
+        # A WELL-FORMED but empty submission: it satisfies the package contract (so it reaches the
+        # capsules) and implements nothing (so it can only fail them). A malformed one would be rejected
+        # at the contract plane and never reach a capsule, which would make this pass for the wrong
+        # reason -- 0 graded, 0 passed, "fails" -- i.e. exactly the vacuity it exists to detect.
+        tool = pkg / "tool.py"
+        tool.write_text("import sys\nsys.exit(2)\n", encoding="utf-8")
+        (pkg / "manifest.yaml").write_text(yaml.safe_dump({
+            "artifact_type": "mlir_oot_target_backend", "target": TARGET, "language": "python",
+            "authoring": {"mode": "hand_curated"}, "integrity_exempt": True,
+            "entrypoints": {"tool": "tool.py"},
+            "commands": {k: {"argv": ["python3", "tool.py", k]} for k in
+                         ("parse", "lower_interface_to_target",
+                          "emit_command_buffer", "lower_target_to_llvm")},
+        }, sort_keys=False), encoding="utf-8")
+        try:
+            res = CR.run_suite(caps, pkg, runs_root=runs, contract=contract,
+                               oracle_adapters={}, target=TARGET, no_oracle=True, timeout=120)
+        except Exception as exc:  # noqa: BLE001
+            _ok("the resolved suite runs against a submission", False,
+                f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]}")
+            return
+    passed = [r for r in res if r.get("passed") or r.get("functional_pass")]
+    _ok("every resolved capsule is graded, and an empty submission passes none of them",
+        len(res) == n_pub and not passed,
+        f"graded {len(res)}/{n_pub}, passed {len(passed)}"
+        + (f" — {[r.get('capsule') for r in passed][:4]}" if passed else ""))
+
+
+def test_contract_provenance():
+    """J. The capability contract the tooling READS is the one the descriptor DECLARES.
+
+    `hardware_spec.target_contract` was parsed and dropped -- no field on TargetExperiment held it -- so
+    what everything actually read was whatever `target_registry.resolve(target)` found by name, and the
+    descriptor's declaration was decoration. That is invisible in both directions and both directions
+    happened here: for one target the registry resolved NOTHING while the declared file sat on disk (so
+    three of its four STARTER_PROMPT.md silently failed to render, which then failed the anti-cheat gate
+    on their absence), and for another the two paths resolve to genuinely DIFFERENT contracts -- one
+    naming its fp8 datapaths, the other carrying the fail-closed `unnamed_float_datapaths` derivation.
+    Which is authoritative is the contract owner's call, so a mismatch FAILS here rather than being
+    silently decided: an agent told the wrong thing about its hardware is the run-invalidating version of
+    a result attributed to the wrong device.
+    """
+    section("J. contract provenance (the contract read == the contract declared)")
+    from merlin.targetgen.target_experiment import declared_vs_resolved_contract
+    declared, resolved, verdict = declared_vs_resolved_contract(_TE)
+    rel = (lambda p: str(Path(p).relative_to(REPO)) if p else "(none)")
+    if verdict == "mismatch":
+        _ok("the declared contract is the one in use", False,
+            f"descriptor declares {rel(declared)} but the tooling reads {rel(resolved)} — "
+            f"decide which is authoritative; they differ in content")
+    elif verdict == "none":
+        _ok("the target has a capability contract", False,
+            "no contract declared and none resolves — every derived fact would be missing")
+    elif verdict == "stale_declaration":
+        _ok("the declared contract exists", False,
+            f"descriptor declares {_TE.declared_contract}, which is not there; the tooling silently "
+            f"reads {rel(resolved)} instead")
+    else:
+        _ok("the declared contract is the one in use", True,
+            {"agree": f"both resolve to {rel(resolved or declared)}",
+             "declared_only": f"registry resolves none; using the declared {rel(declared)}"}[verdict])
+
+
 def test_bundles():
     section("F. bundle integrity (6 bundles parse; prompt APIs import)")
     # conditions DERIVED from the target's materialized bundles (gemmini kernel+nokernel; atlas
@@ -305,17 +473,59 @@ def test_oracles_endtoend():
             ok, why = False, (pr.stderr or pr.stdout or "probe produced no output")[-120:]
         _ok(f"program oracle runnable now ({why})", ok, why[:80])
         try:
+            # What a graded round actually needs: every tier the CORPUS will require must resolve to an
+            # adapter, and a bespoke sim the target DECLARES must actually contribute one.
+            #
+            # The old form asserted `{"L2","L3"} <= adapters` and `"program_oracle" in module` for all of
+            # them. That is one endpoint's wiring written as if it were the general rule, and no
+            # command-buffer target can satisfy it however well wired — its graded tier is the arc cosim,
+            # which lives in a different module by design. Worse, it fails for the RIGHT target for the
+            # WRONG reason: saturn_opu's real blocker is that it declares `sim_via: opu_cosim` and no
+            # adapter is registered under that name, so oracle_adapters quietly returns the arc default
+            # and the declared oracle is simply absent. Say THAT.
             ad = CR.oracle_adapters(TARGET, sim_via)
             mods = {t: getattr(fn, "__module__", "") for t, fn in ad.items()}
-            # The graded tiers L2+L3 must resolve to the target's CONTRACT-ROUTED oracle — the same
-            # oracle module for both tiers (consistent wiring). That module is program_oracle for a
-            # program-oracle (external_backend) target and the bespoke sim oracle (e.g. the SIMT
-            # cyclotron adapter) for a bespoke-sim target — both are valid; we assert resolution +
-            # consistency, not a specific module name (which would be target-overfit).
-            graded = {t: mods.get(t, "") for t in ("L2", "L3")}
-            routed = all(graded.values()) and len(set(graded.values())) == 1
-            _ok("oracle_adapters routes L2+L3 to the contract oracle (the graded-round wiring)",
-                routed, str(mods))
+            try:
+                from merlin.targetgen import corpus_spec as _CS
+                need = list(_CS.derive_binding(_TE).tiers)
+            except Exception:  # noqa: BLE001 — no corpus binding yet; the adapter set is its own floor
+                need = sorted(ad)
+            missing = [t for t in need if t not in ad]
+            # `derive_binding` falls back to the adapter keys when the datapath declares no
+            # `required_oracle_tiers`, and then this check compares a set against itself. Say so, or a
+            # PASS here reads as "the corpus's demands are met" when nothing demanded anything.
+            #
+            # ASK THE CAPSULES, do not infer it from `need == adapters`. That equality holds just as
+            # readily when the corpus declares exactly the tiers this target has — which is the healthy
+            # case — so inferring from it reported a correctly-declaring corpus as vacuous, and the
+            # vacuity was then chased as if it were real.
+            declared: set[str] = set()
+            for cap_yaml in {p for r in _TE.graded_roots() for p in Path(r).rglob("capsule.yaml")}:
+                try:
+                    declared.update(yaml.safe_load(cap_yaml.read_text()).get("required_oracle_tiers") or [])
+                except Exception:  # noqa: BLE001
+                    continue
+            self_derived = not declared
+            _ok("every tier the corpus requires resolves to an adapter",
+                bool(ad) and not missing,
+                f"need={need} have={sorted(ad)}" + (f" MISSING={missing}" if missing else "")
+                + (" (tiers self-derived from the adapter set — the corpus declares none)"
+                   if self_derived else ""))
+            # An external_backend endpoint is graded by the PROGRAM oracle, and "resolves to an adapter"
+            # would be satisfied by the arc default it must NOT be using. That check is kept, but routed
+            # from the contract's endpoint kind rather than assumed for every non-chipyard target.
+            endpoint_kind, _ = CR._endpoint_of(TARGET)
+            if endpoint_kind == "external_backend":
+                _ok("the program oracle owns the graded tiers (external_backend endpoint)",
+                    bool(mods) and all("program_oracle" in m for m in mods.values()), str(mods))
+            if sim_via:
+                # `_sim_engine_adapters` returns {} for an unknown engine, which is indistinguishable in
+                # the result from a target that declared nothing -- so compare against the arc-only set.
+                bespoke = {t for t in ad if t not in CR.oracle_adapters(TARGET, "")}
+                _ok(f"the declared sim ({sim_via}) contributes a real adapter", bool(bespoke),
+                    str(sorted(bespoke)) if bespoke
+                    else f"no adapter registered for sim_via={sim_via!r}; grading falls back to the arc "
+                         f"default ({sorted(mods.values())}), so the declared oracle never runs")
         except Exception as e:  # noqa: BLE001
             _ok("oracle_adapters resolves the program-oracle ladder", False, f"{type(e).__name__}: {e}")
         return
@@ -331,9 +541,9 @@ def test_oracles_endtoend():
     # run would. (.compat_lib omission is exactly what made abc8's C++ build fail.)
     env["LD_LIBRARY_PATH"] = f"{_compat}:{CE}/lib:{CE}/riscv-tools/lib:" + env.get("LD_LIBRARY_PATH", "")
 
-    def _grade(sub, sim, to, cap="A1_mvin_mvout"):
+    def _grade(sub, sim, to):
         r = subprocess.run([PY, str(SCRIPTS / "agent_selfcheck.py"), "--submission", str(sub),
-                            "--sim", sim, "--capsules", cap, "--workers", "1", "--timeout", str(to)],
+                            "--sim", sim, "--capsules", "A1_mvin_mvout", "--workers", "1", "--timeout", str(to)],
                            cwd=str(SCRIPTS), env=env, capture_output=True, text=True, timeout=to + 120)
         try:
             return _json.loads(r.stdout)
@@ -359,17 +569,11 @@ def test_oracles_endtoend():
         _ok("spike RUNS to a real L2=pass on the reference backend",
             sp.get("all_pass") and sp.get("n_capsules") == 1 and c.get("barrier_status") == "pass",
             f"n={sp.get('n_passed')}/{sp.get('n_capsules')} {sp.get('error','')[:50]}")
-        # Probe a COMPUTE capsule for the L3 cert — a movement-only capsule (A1) tops out below L3, so it can
-        # never certify verilator's numerical tier. agent_selfcheck reports the reached tier on its
-        # per-capsule as barrier_tier/barrier_status (there is NO "tiers" map — the same field the spike
-        # check above reads); the old `tiers["L3"]` read was a field-name bug that always yielded None.
-        t0 = _time.time(); ve = _grade(ref, "verilator", 900, cap="A2_single_tile_matmul"); dt = _time.time() - t0
+        t0 = _time.time(); ve = _grade(ref, "verilator", 900); dt = _time.time() - t0
         cv = (ve.get("per_capsule") or [{}])[0]
-        l3 = (ve.get("all_pass") and ve.get("n_capsules") == 1
-              and cv.get("barrier_tier") == "L3" and cv.get("barrier_status") == "pass")
+        l3 = ve.get("all_pass") and ve.get("n_capsules") == 1 and (cv.get("tiers") or {}).get("L3") == "pass"
         _ok("verilator RUNS to a real L3=pass (not 0-capsules / timeout)", l3,
-            f"{dt:.0f}s n={ve.get('n_passed')}/{ve.get('n_capsules')} "
-            f"barrier={cv.get('barrier_tier')}/{cv.get('barrier_status')}")
+            f"{dt:.0f}s n={ve.get('n_passed')}/{ve.get('n_capsules')} L3={(cv.get('tiers') or {}).get('L3')}")
         if l3:
             (SCRIPTS / ".oracle_timing.json").write_text(_json.dumps(
                 {"verilator_per_capsule_s": round(dt, 1), "config": "GemminiRocketConfig",
@@ -384,89 +588,23 @@ def test_oracles_endtoend():
         subprocess.run(["pkill", "-9", "-f", "simulator-chipyard"], capture_output=True)
 
 
-# ---- G. ARR coverage readiness ---------------------------------------------------------------------
-def test_arr_readiness():
-    """The ARR pipeline must be LIVE for the launch target before a run — otherwise the run emits a
-    phantom coverage (denominator empty ⇒ vacuous 1.0). Confirms three things, target-agnostically:
-    (1) the target's capability contract yields a NON-EMPTY semantic-capability map (the independent
-    ARR denominator exists); (2) the eligibility oracle DISCRIMINATES (a declared family+dtype is
-    eligible, an out-of-closure dtype is not — so the denominator is meaningful, not all-true);
-    (3) the corpus capsules carry `semantic` annotations (so the per-axis generalization breakdown is
-    computable). No agent, no spend."""
-    section("G. ARR coverage readiness (independent eligibility oracle live for the target)")
-    from merlin.targetgen import eligibility as EL
-    from merlin.targetgen.eligibility import RegionDescriptor
-
-    cap_map = EL.capability_map_for_target(TARGET)
-    fams = sorted(cap_map)
-    _ok(f"{TARGET} declares a non-empty semantic-capability map (ARR denominator exists)",
-        bool(cap_map), f"families: {', '.join(fams) or '(none)'}")
-    if not cap_map:
-        return
-
-    fam = "contraction" if "contraction" in cap_map else fams[0]
-    cap = cap_map[fam]
-    dt = (list(cap.dtypes) or [None])[0]
-    contractionish = fam in ("contraction", "attention")
-    pos = RegionDescriptor(source="readiness/pos", family=fam, in_dtype=dt,
-                           weight_dtype=(dt if contractionish else None),
-                           m=16, k=(16 if contractionish else None),
-                           n=(16 if contractionish else None), rank=2)
-    neg = RegionDescriptor(source="readiness/neg", family=fam, in_dtype="__not_a_real_dtype__",
-                           weight_dtype=("__not_a_real_dtype__" if contractionish else None),
-                           m=16, k=(16 if contractionish else None),
-                           n=(16 if contractionish else None), rank=2)
-    vp, vn = EL.is_eligible(pos, cap_map), EL.is_eligible(neg, cap_map)
-    _ok("eligibility oracle DISCRIMINATES (in-closure eligible, out-of-closure rejected)",
-        vp.eligible and not vn.eligible,
-        f"{fam}/{dt}→{vp.eligible}; {fam}/bogus-dtype→{vn.eligible} ({vn.reason})")
-
-    # Per-family annotation is required on op/layer/slice capsules (they carry ONE semantic_family for the
-    # generalization axes). Whole-model capsules (kind == "model") legitimately span many families and carry
-    # no single family — they are graded per-region via the coverage_certificate, so they are exempt here.
-    # The corpus is the target-experiment's resolved corpus + its sibling categories (derived, not a
-    # hardcoded per-target path — the shared corpus lives in isa/ + layers/ + model_slices/).
-    roots = [_TE.capsule_corpus] + [REPO / s.rstrip("/") for s in _TE.corpus_siblings()]
-    cap_files = sorted({p for r in roots for p in r.rglob("capsule.yaml")})
-    annotated = missing = model = 0
-    for cf in cap_files:
-        try:
-            doc = yaml.safe_load(cf.read_text(encoding="utf-8")) or {}
-        except Exception:
-            doc = {}
-        if doc.get("kind") == "model":
-            model += 1
-            continue
-        if isinstance(doc.get("semantic"), dict) and doc["semantic"].get("semantic_family"):
-            annotated += 1
-        else:
-            missing += 1
-    need = annotated + missing
-    if annotated == 0:
-        # Target has not adopted ARR annotation — advisory (per-axis breakdown simply unavailable), not a
-        # regression that should NO-GO an otherwise-ready run (e.g. the gemmini ladder does not use ARR).
-        _ok(f"{TARGET} corpus `semantic` annotation (advisory: ARR per-axis breakdown unavailable)",
-            True, f"0/{need} family capsules annotated (+{model} whole-model)")
-    else:
-        # Once annotation is adopted it must be COMPLETE — a partially annotated corpus silently drops the
-        # unannotated capsules from the per-axis ARR, which reads as coverage the run never measured.
-        _ok(f"{TARGET} family capsules carry `semantic` annotations (per-axis ARR computable)",
-            missing == 0, f"{annotated}/{need} annotated (+{model} whole-model exempt)")
-
-
 def main() -> int:
     sys.path.insert(0, str(REPO / "merlin" / "python"))
     print("READINESS CHECK — exercising all tooling (no agent launched)")
     for fn in (test_starter_kit, test_generators, test_circt_gate, test_harness,
-               test_oracles_endtoend, test_verify_no_cheat, test_bundles, test_arr_readiness):
+               test_oracles_endtoend, test_verify_no_cheat, test_corpus_fits_the_endpoint,
+               test_graded_path_is_the_declared_one, test_contract_provenance, test_bundles):
         try:
             fn()
         except Exception as e:
             _ok(f"{fn.__name__} (uncaught)", False, f"{type(e).__name__}: {e}")
-    n_pass = sum(1 for _, ok, _ in results if ok)
-    n = len(results)
-    print(f"\n{'='*60}\nREADINESS: {n_pass}/{n} checks passed")
-    go = n_pass == n
+    n_pass = sum(1 for _, ok, _ in results if ok is True)
+    n_fail = sum(1 for _, ok, _ in results if ok is False)
+    n_na = sum(1 for _, ok, _ in results if ok is None)
+    n = n_pass + n_fail
+    print(f"\n{'='*60}\nREADINESS: {n_pass}/{n} checks passed"
+          + (f" ({n_na} N/A for this endpoint)" if n_na else ""))
+    go = n_fail == 0
     print("🟢 GO — all tooling verified; ready for an A/B run pending your approval."
           if go else "🔴 NO-GO — resolve the FAILs above before launching.")
     return 0 if go else 1

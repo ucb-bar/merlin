@@ -162,6 +162,26 @@ def _fixed_format_encoding_block(te) -> str:
     return "\n".join(out)
 
 
+def _cmdbuf_opcodes() -> list[str]:
+    """The command buffer's legal `opcode` values, READ FROM THE SCHEMA that validation uses.
+
+    Rendered into the prompt rather than restated in prose so the two cannot drift: if the enum grows, an
+    agent is told about the new opcode by the same file that will accept it. Returns [] when the schema is
+    unavailable or stops declaring a closed enum, so the prompt simply omits the sentence rather than
+    asserting a vocabulary it could not confirm.
+    """
+    import json
+    from ..common.paths import repo_root
+    path = repo_root() / "merlin" / "contract" / "schemas" / "command_buffer.schema.json"
+    try:
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        enum = (((schema.get("properties") or {}).get("commands") or {}).get("items") or {}) \
+            .get("properties", {}).get("opcode", {}).get("enum")
+    except Exception:  # noqa: BLE001 — a prompt must render even if the schema moved
+        return []
+    return [str(v) for v in enum] if isinstance(enum, list) else []
+
+
 def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn", inst_width: int = 32) -> str:
     """A CONCRETE, derived one-liner describing what the 4th-entrypoint artifact must be — derived from
     the fact bundle + the codegen ENDPOINT (never a gemmini literal). A RoCC ``inline_asm_insn`` target
@@ -198,10 +218,22 @@ def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn", inst_width: i
         cats = (f.get("op_categories", {}) or {}).get("value") or []
         dts = [d.get("name") for d in ((f.get("dtypes", {}) or {}).get("value") or []) if d.get("name")]
         line = f"a command stream driving the discovered {geo} outer-product accumulator tile".rstrip()
-        if cats:
-            line += f" with the {{{', '.join(cats)}}} command set"
         if dts:
             line += f" over the {', '.join(dts)} datapaths"
+        # TWO VOCABULARIES, and conflating them is a wasted round. `op_categories` are the unit's one-hot
+        # RTL PORTS, read off `io_op_<cat>_` names -- they describe the hardware. The command buffer is a
+        # target-INDEPENDENT ABI whose `opcode` enum is closed and lives in the schema; that is what the
+        # agent emits, and what the arc oracle consumes. Naming only the ports (as this line used to) reads
+        # as an instruction to emit `"opcode": "macc"`, which the schema rejects -- while the mapping
+        # between the two was stated nowhere. Both are rendered, each labelled, and the ABI side is read
+        # from the schema so it cannot drift from what validation will accept.
+        if cats:
+            line += (f". The unit's op ports are {{{', '.join(cats)}}} -- that is the HARDWARE's command "
+                     f"set, which the backend drives; it is not what you write in the buffer")
+        opcodes = _cmdbuf_opcodes()
+        if opcodes:
+            line += (f". The buffer's own `opcode` values are the ABI's: {{{', '.join(opcodes)}}} "
+                     f"(closed enum, validated)")
         return line
     lo = f.get("legal_opcodes", {})
     dim = f.get("mesh_dim", {})

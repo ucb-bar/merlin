@@ -78,3 +78,45 @@ def test_register_derives_routes_into_agnostic_core():
                                         backend="gemmini", evidence=[]))
     loc = action_catalog.seam_location(a.target_seam, backend="gemmini", oot_package="/pkg")
     assert loc["seam_file"].startswith("/pkg/")   # OOT-relative, agent's own middle-end
+
+
+class TestAnEmptyLeverListIsNotAFinding:
+    """`derived_levers() == []` has two causes and the list cannot tell them apart."""
+
+    def _profile(self, **kw):
+        from merlin.targetgen.rtl_backend import TargetProfile
+        base = dict(target="t", legal_opcodes=None, memory_map=None, dim=None)
+        base.update(kw)
+        return TargetProfile(**base)
+
+    def test_nothing_discovered_is_reported_as_unknown(self):
+        # MEASURED on the spatial tensor tile: every field comes back None and derived_levers() returns
+        # [], which reads as "this accelerator exposes no structural levers" when in fact nothing was
+        # read. A caller acting on that reports a bare target instead of a missing capability.
+        from merlin.targetgen import rtl_backend as RB
+        prof = self._profile()
+        assert RB.derived_levers(prof) == []
+        assert prof.discovered_nothing
+        gaps = RB.lever_derivation_gaps(prof)
+        assert gaps and "UNKNOWN" in gaps[0]
+
+    def test_a_read_target_with_no_such_structure_is_not_an_unknown(self):
+        # Discovery ran (opcodes were grounded) and found no mesh and no accumulator. That is a fact
+        # about the hardware, and must not be reported the same way as silence.
+        from merlin.targetgen import rtl_backend as RB
+        prof = self._profile(legal_opcodes=(0x7B,))
+        assert not prof.discovered_nothing
+        gaps = RB.lever_derivation_gaps(prof)
+        assert not any("UNKNOWN" in g for g in gaps)
+
+    def test_a_discovered_mesh_yields_a_dataflow_lever_and_no_mesh_gap(self):
+        from merlin.targetgen import rtl_backend as RB
+        prof = self._profile(dim=16)
+        assert "spatial.dataflow" in RB.derived_levers(prof)
+        assert not any("mesh dimension" in g for g in RB.lever_derivation_gaps(prof))
+
+    def test_a_discovered_accumulator_yields_a_residency_lever(self):
+        from merlin.targetgen import rtl_backend as RB
+        prof = self._profile(memory_map={"accum_mem": "h"})
+        assert "spatial.accumulator_resident" in RB.derived_levers(prof)
+        assert not any("accumulator memory" in g for g in RB.lever_derivation_gaps(prof))

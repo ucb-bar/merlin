@@ -99,7 +99,16 @@ if HAS_XDSL:
 
     @dataclass(frozen=True)
     class TargetSpec:
-        """The op/type classes a reference target contributes to the rebuild loop."""
+        """The op/type classes a reference target contributes to the rebuild loop.
+
+        ``op_properties`` lets a target dialect require facts that only its own contract can
+        supply. The two in-tree reference targets need none, but a SIMT target does: Radiance
+        carries ``compiler_obligations: [must_map_to_warps]`` and
+        ``capabilities.simt.lanes_per_warp``, and an obligation with nowhere to be recorded is not
+        an obligation. The rebuild loop merges whatever the package declared and never interprets
+        it, so core stays target-blind: it is the package that reads its contract and fails closed
+        when the fact is missing.
+        """
 
         name: str
         dialect_module: Any
@@ -112,6 +121,13 @@ if HAS_XDSL:
         # Optional non-matmul vector-lane ops — None when the target lowers neither.
         vector_map_op: type | None = None
         vector_reduce_op: type | None = None
+        op_properties: dict[str, dict[str, Any]] | None = None
+        # Optional: only targets whose dialect plan covers interface.elementwise supply one.
+        elementwise_op: type | None = None
+
+        def extra(self, kind: str) -> dict[str, Any]:
+            """Contract-derived properties this target requires on the ``kind`` op ('matmul', …)."""
+            return dict((self.op_properties or {}).get(kind, {}))
 
     def _specs() -> dict[str, "TargetSpec"]:
         # The ONE built-in REFERENCE target is toy_npu (the sanctioned neutral example). Other reference
@@ -179,6 +195,7 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
             scale = value_map[op.scale] if op.scale is not None else None
             if op.dequant_axis is not None:
                 props["dequant_axis"] = op.dequant_axis
+            props.update(spec.extra("pack"))
             # A target's pack op may or may not carry the optional dequant-scale operand (generated
             # dialects predating it have only `src`). Match its arity; a dequant pack against a
             # scale-less pack op is an honest LoweringError, not a silent drop.
@@ -197,7 +214,8 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
         elif isinstance(op, i.MatmulOp):
             new = spec.matmul_op(
                 operands=[value_map[op.lhs], value_map[op.rhs]],
-                result_types=[spec.accumulator_type(op.acc.type.element)])
+                result_types=[spec.accumulator_type(op.acc.type.element)],
+                properties=spec.extra("matmul"))
             value_map[op.acc] = new.acc
         elif isinstance(op, i.CommitOp):
             props = {"epilogue": op.epilogue}
@@ -205,11 +223,13 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
                 val = getattr(op, key)
                 if val is not None:
                     props[key] = val
+            props.update(spec.extra("commit"))
             new = spec.commit_op(operands=[value_map[op.acc]],
                                  result_types=[op.out.type], properties=props)
             value_map[op.out] = new.out
         elif isinstance(op, i.ResidentEvictOp):
-            new = spec.evict_op(operands=[value_map[op.handle]])
+            new = spec.evict_op(operands=[value_map[op.handle]],
+                                properties=spec.extra("evict"))
         elif isinstance(op, i.VectorMapOp):
             if spec.vector_map_op is None:
                 raise LoweringError(f"target {spec.name!r} does not lower interface.vector_map")
@@ -225,6 +245,26 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
             new = spec.vector_reduce_op(operands=[value_map[op.src]],
                                         result_types=[op.out.type],
                                         properties={"reduce": op.reduce})
+            value_map[op.out] = new.out
+        elif isinstance(op, i.ElementwiseOp):
+            if "interface.elementwise" not in table:
+                raise LoweringError(
+                    f"target {target!r}'s dialect plan does not lower interface.elementwise, so this "
+                    "payload cannot descend to it. Coverage is read from the plan, never assumed "
+                    "from the dialect happening to have the op.")
+            if spec.elementwise_op is None:
+                raise LoweringError(
+                    f"target {target!r} has no elementwise op, so interface.elementwise cannot be "
+                    "lowered. A dialect plan that maps interface.elementwise must come with a "
+                    "target op for it (SPEC_OPS['elementwise']) — a declared capability the dialect "
+                    "cannot express is the gap this check exists to surface.")
+            props = {"combine": op.combine}
+            if op.activation is not None:
+                props["activation"] = op.activation
+            props.update(spec.extra("elementwise"))
+            new = spec.elementwise_op(
+                operands=[value_map[op.lhs], value_map[op.rhs]],
+                result_types=[op.out.type], properties=props)
             value_map[op.out] = new.out
         elif op.name == "func.return":
             ret_op = op
