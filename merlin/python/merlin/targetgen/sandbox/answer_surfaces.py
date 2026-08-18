@@ -118,11 +118,34 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
         origin = "example" if examples_dir in g.parents else "golden"
         out.append(AnswerSurface(f"{origin}:{g.relative_to(root)}", g, "file", origin))
 
+    # EVERY hidden-capsule dir in the contract tree, not only this target's own.
+    #
+    # `te.hidden_corpus()` is the corpus's own `hidden/` sibling, and masking only
+    # that left every OTHER target's hidden dir — including the shared legacy one —
+    # readable wherever a bind exposes the capsules tree. Measured on saturn_opu:
+    # the hidden GOLDENS were masked (they are enumerated file-by-file above, so
+    # answer values did not leak), but the hidden capsule DIRECTORIES stayed
+    # listable and their `capsule.yaml` inputs readable from all three
+    # merlin-family bundles and not from raw_baseline — so the held-out test set
+    # was enumerable for three of four arms, which both weakens the hidden grade
+    # as a generalization check and makes a merlin-vs-baseline hidden comparison
+    # asymmetric. A hidden set belonging to another target is no less an answer
+    # surface, so the rule is: no `hidden/` under the contract tree is readable by
+    # any arm. Derived by walking, so a new target's hidden dir is covered the
+    # day it appears.
+    hidden_dirs: dict[Path, str] = {}
     hidden_rel = te.hidden_corpus()
     if hidden_rel:
         hp = root / hidden_rel.rstrip("/")
         if hp.is_dir():
-            out.append(AnswerSurface("hidden-capsules", hp, "dir", "hidden"))
+            hidden_dirs[hp] = "hidden-capsules"
+    capsules_root = root / "merlin/contract/capsules"
+    if capsules_root.is_dir():
+        for hp in capsules_root.rglob("hidden"):
+            if hp.is_dir() and hp not in hidden_dirs:
+                hidden_dirs[hp] = f"hidden-capsules:{hp.relative_to(root)}"
+    for hp, label in sorted(hidden_dirs.items()):
+        out.append(AnswerSurface(label, hp, "dir", "hidden"))
 
     tgt_root = artifacts_dir() / "targets" / te.target
     for name in te.prior_backends:

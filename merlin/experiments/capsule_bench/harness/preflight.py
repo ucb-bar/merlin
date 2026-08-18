@@ -112,7 +112,14 @@ def check_canary_isolation() -> dict:
         with tempfile.TemporaryDirectory(dir="/tmp") as td:
             ws = Path(td) / "workspace"
             RAE.assemble_workspace(bundle, ws)
-            argv = RAE.bwrap_argv(ws, bundle) + ["bash", "-c", probe]
+            # The FULL isolation argv — deny-by-default base PLUS the derived answer
+            # masks — because that is what a real agent runs under. Probing the base
+            # alone tested a weaker sandbox than the experiment uses, and so reported
+            # a leak for every surface that masking is responsible for hiding.
+            from merlin.targetgen.sandbox import bwrap as _BW
+            from merlin.targetgen.target_experiment import load_target_experiment
+            _te = load_target_experiment(C.EXP / "target_experiment.yaml")
+            argv = _BW.full_argv(_te, ws, bundle) + ["bash", "-c", probe]
             r = subprocess.run(argv, capture_output=True, text=True, timeout=120)
             reachable = [ln for ln in r.stdout.splitlines() if ln.startswith("REACHABLE")]
             grep_hits = [ln for ln in r.stdout.splitlines() if "CANARY" in ln and not ln.startswith("REACHABLE")]

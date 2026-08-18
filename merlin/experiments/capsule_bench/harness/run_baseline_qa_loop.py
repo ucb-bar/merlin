@@ -490,8 +490,15 @@ def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
         except Exception:  # noqa: BLE001 — no/invalid descriptor ⇒ probe the default tree only
             pass
         roots_sh = " ".join(sorted(roots))
+        # Probe the hidden capsule DIRS too, not only golden/expected files. Masking
+        # goldens file-by-file left the hidden test set enumerable — its capsule.yaml
+        # inputs readable — while this self-test still reported OK, because it only
+        # ever looked for answer VALUES. A readable held-out test set is its own
+        # integrity problem, so it is a LEAK here.
         script = (f'for f in $(find {roots_sh} \\( -name "golden.*" -o -name "expected_command_buffer*" \\) '
-                  f'2>/dev/null); do test -s "$f" && echo "LEAK:$f"; done; echo DONE')
+                  f'2>/dev/null); do test -s "$f" && echo "LEAK:$f"; done; '
+                  f'for f in $(find {roots_sh} -path "*/hidden/*" -name "capsule.yaml" 2>/dev/null); '
+                  f'do test -s "$f" && echo "LEAK:$f"; done; echo DONE')
         out = subprocess.run(["bash", "-c", bwrap_cmd(script, ws, bundle)],
                              capture_output=True, text=True).stdout
         leaked = [ln[len("LEAK:"):] for ln in out.splitlines() if ln.startswith("LEAK:")]
