@@ -77,3 +77,33 @@ def test_collect_finds_the_runs_that_exist_on_disk():
     if not have_dirs:
         pytest.skip("no capsule-bench run directories on this machine")
     assert n_found > 0, "run directories exist but collect() found none — the run root is wrong again"
+
+
+def test_scores_are_ranked_by_count_not_by_string():
+    """`passed` is written as "20/20"; ranking those lexicographically puts "5/20" above "20/20".
+
+    That is not hypothetical: the by-model table reported gpt-5.6-sol's best public score as 5/20 across
+    two runs where one scored 20/20, because "5" > "2" as a character. A comparison table whose headline
+    number is the WORSE of two runs is worse than no table.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("agg_by_model", HARNESS / "agg_by_model.py")
+    mod = importlib.util.module_from_spec(spec)
+    import sys as _s
+    _s.argv = ["x"]
+    _s.path.insert(0, str(HARNESS))
+    spec.loader.exec_module(mod)
+
+    lo = mod._score({"public_dev": {"passed": "5/20"}}, "public_dev")
+    hi = mod._score({"public_dev": {"passed": "20/20"}}, "public_dev")
+    assert lo["n"] == 5 and hi["n"] == 20, "the printed score must be parsed into a count"
+    assert hi["n"] > lo["n"], "20/20 must outrank 5/20"
+    assert lo["passed"] == "5/20" and hi["passed"] == "20/20", "the printed form is preserved"
+
+    rows = [{"run_id": "r_lo", "model": "m", "arm": "a", "public": lo, "hidden": {"n": 5, "passed": "5/5"},
+             "billing_mode": "subscription_notional", "cost_usd": None, "codex": {},
+             "first_failure_planes": {}, "tokens_total": 1, "tool_calls": 1, "n_rounds": 1},
+            {"run_id": "r_hi", "model": "m", "arm": "a", "public": hi, "hidden": {"n": 5, "passed": "5/5"},
+             "billing_mode": "subscription_notional", "cost_usd": None, "codex": {},
+             "first_failure_planes": {}, "tokens_total": 1, "tool_calls": 1, "n_rounds": 1}]
+    assert mod.by_model(rows)["m"]["best_public"] == "20/20"

@@ -102,10 +102,25 @@ def _first_planes(man: dict) -> dict:
 
 
 def _score(man: dict, key: str) -> dict:
+    """The block's score as NUMBERS as well as its printed form.
+
+    ``passed`` is written as the string "20/20", and comparing those lexicographically ranks "5/20"
+    above "20/20" because "5" > "2". Parse it once here so every consumer compares counts."""
     blk = man.get(key)
     if not isinstance(blk, dict):
-        return {"passed": None, "total": None}
-    return {"passed": blk.get("passed"), "total": blk.get("n_capsules") or blk.get("total")}
+        return {"passed": None, "n": None, "total": None}
+    raw = blk.get("passed")
+    n = total = None
+    if isinstance(raw, str) and "/" in raw:
+        a, _, b = raw.partition("/")
+        try:
+            n, total = int(a.strip()), int(b.strip())
+        except ValueError:
+            n = total = None
+    elif isinstance(raw, int):
+        n = raw
+    return {"passed": raw, "n": n,
+            "total": total if total is not None else (blk.get("n_capsules") or blk.get("total"))}
 
 
 def collect(tag: str | None, arm_filter: str | None) -> list[dict]:
@@ -159,7 +174,7 @@ def by_model(rows: list[dict]) -> dict:
     for r in rows:
         m = out.setdefault(r["model"], {
             "model": r["model"], "n_runs": 0, "runs": [],
-            "best_public": None, "best_hidden": None,
+            "best_public": None, "best_hidden": None, "best_public_n": -1, "best_hidden_n": -1,
             "metered_cost_usd": 0.0, "unpriced_runs": 0,
             "notional_cost_usd": 0.0, "unknown_billing_cost_usd": 0.0,
             "subscription_notional_runs": 0, "unknown_billing_runs": 0,
@@ -169,9 +184,13 @@ def by_model(rows: list[dict]) -> dict:
         m["n_runs"] += 1
         m["runs"].append(r["run_id"])
         for k, sk in (("best_public", "public"), ("best_hidden", "hidden")):
-            p = (r[sk] or {}).get("passed")
-            if p is not None and (m[k] is None or p > m[k]):
-                m[k] = p
+            blk = r[sk] or {}
+            n = blk.get("n")
+            if n is None:
+                continue
+            if m[k] is None or n > m[k + "_n"]:
+                m[k] = blk.get("passed")          # keep the printed "20/20" form
+                m[k + "_n"] = n                   # rank on the COUNT, never the string
         bm = r["billing_mode"]
         if bm == "subscription_notional":
             m["subscription_notional_runs"] += 1
@@ -201,7 +220,8 @@ def markdown(models: dict, rows: list[dict], arm: str | None) -> str:
         m = models[name]
         rd = [r["n_rounds"] for r in rows if r["model"] == name and r["n_rounds"]]
         if m["subscription_notional_runs"] == m["n_runs"]:
-            cost = f"${m['notional_cost_usd']:.2f} notional (subscription)"
+            cost = (f"${m['notional_cost_usd']:.2f} notional (subscription)"
+                    if m["notional_cost_usd"] else "subscription — not billed per token")
         elif m["unpriced_runs"] == m["n_runs"]:
             cost = "unpriced (cost unavailable - not $0)"
         elif m["unknown_billing_runs"] == m["n_runs"]:
