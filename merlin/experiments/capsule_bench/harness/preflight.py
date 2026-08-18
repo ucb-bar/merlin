@@ -42,6 +42,27 @@ CANARIES = [
 G0 = f"{_TGT}/agent_spec_v0_mlir_oot/certification/g0_matmul/lowered.llvm.mlir"
 
 
+def bundles_to_check() -> list[str]:
+    """Every input bundle the ACTIVE target ships, in sorted order.
+
+    The gate used to canary a hardcoded ``("raw_baseline", "merlin_assisted")``
+    pair read through ``ARM_BUNDLE``, which had two consequences: it broke on any
+    target whose bundle ids differ, and it silently left other bundles — the
+    CIRCT arm's, and any arm added later — with NO canary or hash coverage at all.
+    Enumerating the directory instead means a new arm is covered the moment its
+    bundle exists, which is the property a fairness gate has to have.
+    """
+    if not C.BUNDLES.is_dir():
+        return []
+    return sorted(d.name for d in C.BUNDLES.iterdir()
+                  if d.is_dir() and (d / "input_bundle_manifest.yaml").is_file())
+
+
+def load_bundle_by_id(bundle_id: str) -> dict:
+    """Read a bundle manifest by id, bypassing the arm->id map entirely."""
+    return yaml.safe_load((C.BUNDLES / bundle_id / "input_bundle_manifest.yaml").read_text())
+
+
 def _bundle_id_for(arm: str) -> str:
     """Resolve *arm*'s bundle id for the ACTIVE target, not gemmini's.
 
@@ -86,9 +107,8 @@ def check_canary_isolation() -> dict:
     probe = ("for p in " + " ".join(f'"{p}"' for p in abspaths) +
              '; do if [ -r "$p" ]; then echo "REACHABLE $p"; fi; done; '
              'grep -rlI CANARY . 2>/dev/null | head -3')
-    for arm in ("raw_baseline", "merlin_assisted"):
-        RAE.ARM_BUNDLE[arm] = _bundle_id_for(arm)
-        bundle = RAE._load_bundle(arm)
+    for bundle_id in bundles_to_check():
+        bundle = load_bundle_by_id(bundle_id)
         with tempfile.TemporaryDirectory(dir="/tmp") as td:
             ws = Path(td) / "workspace"
             RAE.assemble_workspace(bundle, ws)
@@ -96,7 +116,7 @@ def check_canary_isolation() -> dict:
             r = subprocess.run(argv, capture_output=True, text=True, timeout=120)
             reachable = [ln for ln in r.stdout.splitlines() if ln.startswith("REACHABLE")]
             grep_hits = [ln for ln in r.stdout.splitlines() if "CANARY" in ln and not ln.startswith("REACHABLE")]
-            out["per_bundle"][arm] = {"reachable_canaries": reachable, "grep_hits": grep_hits,
+            out["per_bundle"][bundle_id] = {"reachable_canaries": reachable, "grep_hits": grep_hits,
                                       "isolated": not reachable and not grep_hits, "stderr": r.stderr[-200:]}
     # unsandboxed control: without bwrap the canaries ARE reachable by absolute path
     ctrl = ("for p in " + " ".join(f'"{p}"' for p in abspaths) +
@@ -106,9 +126,28 @@ def check_canary_isolation() -> dict:
     return out
 
 
+def reference_package() -> Path | None:
+    """The target's known-good reference package, or None when it ships none.
+
+    The end-to-end negative fixtures mutate a VALID package so that "one injected
+    defect makes grading fail closed" is a real statement. Synthesizing a package
+    instead would satisfy the assertions vacuously — a garbage package also scores
+    zero — so when the target has no reference package the honest outcome is that
+    this class is UNVERIFIED, not that it passed.
+    """
+    path = C.REPO / f"{_TGT}/agent_spec_v1_mlir_oot"
+    return path if path.is_dir() else None
+
+
 def _mk_pkg_with(text_file: dict, base=None) -> Path:
     """Copy the known-good package and inject a file (for integrity/contract negative fixtures)."""
-    base = base or f"{_TGT}/agent_spec_v1_mlir_oot"
+    if base is None:
+        ref = reference_package()
+        if ref is None:
+            raise FileNotFoundError(
+                f"no reference package at {_TGT}/agent_spec_v1_mlir_oot; "
+                f"the end-to-end negative fixtures need a valid package to mutate")
+        base = ref.relative_to(C.REPO)
     import shutil
     d = Path(tempfile.mkdtemp(dir="/tmp", prefix="negfix_"))
     shutil.copytree(C.REPO / base, d / "pkg", ignore=shutil.ignore_patterns("build", "__pycache__"))
@@ -126,6 +165,17 @@ def check_negative_fixtures() -> dict:
     contract = str(C.REPO / "merlin/contract")
 
     # --- end-to-end through capsule_grade (no-oracle; integrity/contract run first, fail fast) ---
+    # Needs a valid reference package to mutate; when the target ships none this
+    # class is recorded UNVERIFIED rather than crashing the gate or reading as a pass.
+    if reference_package() is None:
+        res["grader_endtoend"].append({
+            "case": "import_merlin_injected", "unavailable": True,
+            "reason": f"target ships no reference package ({_TGT}/agent_spec_v1_mlir_oot)"})
+        res["grader_endtoend"].append({
+            "case": "missing_manifest", "unavailable": True,
+            "reason": f"target ships no reference package ({_TGT}/agent_spec_v1_mlir_oot)"})
+        return _negatives_without_package(res, contract)
+
     # (1) import-merlin injected -> integrity FORBIDDEN_PATTERN
     pkg = _mk_pkg_with({"mlir_oot/CANARY_import.py": "import merlin.runtime.reference\n"})
     g = CGRADE.grade(str(pkg), capsules_root=str(C.REPO / "merlin/contract/capsules"),
@@ -143,8 +193,25 @@ def check_negative_fixtures() -> dict:
                                    "integrity_status": g2["integrity_status"],
                                    "fails_closed": g2["functional_pass"] == 0})
 
+    return _negatives_without_package(res, contract)
+
+
+def _negatives_without_package(res: dict, contract: str) -> dict:
+    """The negative fixtures that need no reference package: trace, numeric, schema.
+
+    Each group reports its own availability. The trace negatives decode a RoCC
+    trace, which a target without a command ISA cannot do — that is a legitimate
+    N/A for such an endpoint, and it must be visible as one rather than crashing
+    the gate or being silently absent from the verdict.
+    """
     # --- component: trace_check negatives (the gate the grader calls) ---
-    real = RD.decode_file(C.REPO / G0, target=TARGET)  # a valid g0 matmul trace
+    try:
+        real = RD.decode_file(C.REPO / G0, target=TARGET)  # a valid g0 matmul trace
+    except Exception as exc:  # noqa: BLE001 - a gate reports, it does not crash
+        res["trace"].append({"case": "trace_negatives", "unavailable": True,
+                             "reason": f"cannot decode a reference trace for {TARGET}: "
+                                       f"{type(exc).__name__}: {exc}"})
+        return _negatives_numeric_and_schema(res, contract)
     common = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST", "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
     empty = {"source": "x", "abi": {"custom_opcode": "0x7b", "funct3": "0x3"},
              "instructions": [{"index": 0, "class": "FENCE"}, {"index": 1, "class": "FENCE"}]}
@@ -165,6 +232,11 @@ def check_negative_fixtures() -> dict:
     r = TCK.check(bad, {"instruction_classes": common})
     res["trace"].append({"case": "unknown_funct", "status": r["status"], "fails_closed": r["status"] == "fail"})
 
+    return _negatives_numeric_and_schema(res, contract)
+
+
+def _negatives_numeric_and_schema(res: dict, contract: str) -> dict:
+    """Numeric-compare and command-buffer-schema negatives; target-independent."""
     # --- component: numeric mismatch fails even if shapes ok ---
     exp_out = {"Y0": [[1, 2], [3, 4]]}
     nrep = CG.compare(exp_out, {"Y0": [[1, 2], [3, 5]]}, {"compare": "exact_int"})
@@ -193,15 +265,14 @@ def check_freeze_enforcement() -> dict:
 
 def check_bundle_hash_repro() -> dict:
     out = {}
-    for arm in ("raw_baseline", "merlin_assisted"):
-        RAE.ARM_BUNDLE[arm] = _bundle_id_for(arm)
-        bundle = RAE._load_bundle(arm)
+    for bundle_id in bundles_to_check():
+        bundle = load_bundle_by_id(bundle_id)
         h1 = {e["path"]: C.hash_tree(C.REPO / e["path"])["sha256"] for e in bundle.get("allowed", [])
               if (C.REPO / e["path"]).is_dir()}
         h2 = {e["path"]: C.hash_tree(C.REPO / e["path"])["sha256"] for e in bundle.get("allowed", [])
               if (C.REPO / e["path"]).is_dir()}
-        out[arm] = {"reproducible": h1 == h2, "n_paths": len(h1)}
-        (C.BUNDLES / RAE.ARM_BUNDLE[arm] / "bundle_lock.yaml").write_text(
+        out[bundle_id] = {"reproducible": h1 == h2, "n_paths": len(h1)}
+        (C.BUNDLES / bundle_id / "bundle_lock.yaml").write_text(
             yaml.safe_dump({"allowed_tree_sha256": h1}, sort_keys=True))
     return out
 
@@ -319,10 +390,15 @@ def main() -> int:
     # ---- evaluate checklist ----
     canary_ok = R["canary"]["bwrap_available"] and all(
         b["isolated"] for b in R["canary"]["per_bundle"].values())
-    neg_ok = (all(c["fails_closed"] for c in R["negative"]["grader_endtoend"])
-              and all(c["fails_closed"] for c in R["negative"]["trace"])
-              and all(c["fails_closed"] for c in R["negative"]["numeric"])
-              and all(c["fails_closed"] for c in R["negative"]["cb_schema"]))
+    # A case that could not RUN is not a case that passed. Count them separately so
+    # a GO can never be read as covering an anti-cheat class that never executed.
+    neg_groups = ("grader_endtoend", "trace", "numeric", "cb_schema")
+    neg_cases = [c for g in neg_groups for c in R["negative"].get(g, [])]
+    neg_unavailable = [c for c in neg_cases if c.get("unavailable")]
+    neg_ran = [c for c in neg_cases if not c.get("unavailable")]
+    neg_ok = bool(neg_ran) and all(c.get("fails_closed") for c in neg_ran)
+    R["negative"]["unavailable_cases"] = [
+        {"case": c.get("case"), "reason": c.get("reason")} for c in neg_unavailable]
     freeze_ok = R["freeze"]["tamper_detected"]
     bundle_ok = all(b["reproducible"] for b in R["bundle_hash"].values())
     tokens_ok = R["tokens"].get("available") is True
@@ -333,7 +409,10 @@ def main() -> int:
         ("bwrap available + isolates (canaries invisible in both agent bundles)", canary_ok),
         ("unsandboxed control leaks canaries (proves bwrap is mandatory, now enforced)", unsandboxed_demo),
         ("bwrap mandatory for real runs (launcher refuses --sandbox none without override)", True),
-        ("negative grader/trace/integrity/numeric/cb fixtures all fail closed", neg_ok),
+        (f"negative fixtures that RAN all fail closed ({len(neg_ran)} ran)", neg_ok),
+        (f"every negative-fixture class was exercised "
+         f"({len(neg_unavailable)} unverified: {[c['case'] for c in neg_unavailable]})",
+         not neg_unavailable),
         ("freeze tamper detected (hash changes → hidden-phase recheck refuses)", freeze_ok),
         ("input-bundle tree hashes reproduce + bundle_lock.yaml written", bundle_ok),
         ("token/cost captured on a REAL claude stream-json (not synthetic)", tokens_ok),
@@ -368,10 +447,16 @@ def main() -> int:
           "### End-to-end through capsule_grade", "", "| case | functional_pass | integrity | fails_closed |",
           "|---|---|---|---|"]
     for c in R["negative"]["grader_endtoend"]:
-        L.append(f"| {c['case']} | {c['functional_pass']} | {c['integrity_status']} | {c['fails_closed']} |")
+        if c.get("unavailable"):
+            L.append(f"| {c['case']} | — | UNVERIFIED | {c.get('reason', '')} |")
+        else:
+            L.append(f"| {c['case']} | {c['functional_pass']} | {c['integrity_status']} | {c['fails_closed']} |")
     L += ["", "### trace_check / numeric / cb-schema (the gates the grader composes)", "",
           "| case | result | fails_closed |", "|---|---|---|"]
     for c in R["negative"]["trace"] + R["negative"]["numeric"] + R["negative"]["cb_schema"]:
+        if c.get("unavailable"):
+            L.append(f"| {c['case']} | UNVERIFIED: {c.get('reason', '')} | — |")
+            continue
         st = c.get("status") or ("raised" if c.get("fails_closed") else "passed")
         L.append(f"| {c['case']} | {st} | {c['fails_closed']} |")
     L += ["", "## C. Freeze enforcement", "",
