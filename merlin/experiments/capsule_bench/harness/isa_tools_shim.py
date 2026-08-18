@@ -30,6 +30,24 @@ import time
 from pathlib import Path
 
 
+def _text_of(arg: str) -> str:
+    """`--file` accepts EITHER a path or the ISA text itself.
+
+    `Path(arg).is_file()` raises rather than returning False once the argument exceeds NAME_MAX
+    (OSError errno 36), and on an embedded NUL (ValueError) -- so the inline-text branch it guarded
+    was unreachable for exactly the inputs it exists to serve. Measured live: an atlas agent passed a
+    ~2 KB `.insn`/`.word` listing and the tool died in argument handling, which reads as the agent's
+    tool call failing rather than as a harness defect.
+    """
+    try:
+        p = Path(arg)
+        if p.is_file():
+            return p.read_text()
+    except (OSError, ValueError):
+        pass
+    return arg
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Derived ISA dev tools (assembler/disassembler/linter/debugger).")
     ap.add_argument("cmd", choices=["asm", "disasm", "lint", "debug"])
@@ -49,7 +67,7 @@ def main(argv=None):
     ap.add_argument("--timeout", type=int, default=300)
     a = ap.parse_args(argv)
 
-    text = Path(a.file).read_text() if Path(a.file).is_file() else a.file
+    text = _text_of(a.file)
     if a.cmd == "debug":
         regions = []
         for spec in (a.region or []):
