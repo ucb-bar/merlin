@@ -27,6 +27,7 @@ import shlex
 import signal
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import model_tiers as _MT
@@ -75,7 +76,9 @@ def _system_prompt(te) -> str:
         f"worked example under `{t}/example_kernel/`). Derive EVERY opcode, encoding, field-layout and the "
         "command-buffer schema from them — never invent an encoding.\n"
         "USE MERLIN'S FRAMEWORK AS AN AUTHORING AID — but SHIP A SELF-CONTAINED PACKAGE. The granted "
-        "oot_starterkit (on PYTHONPATH) shows the correct patterns: read its guide (`cat "
+        "oot_starterkit is READ-ONLY REFERENCE SOURCE, never an importable dependency: it is on the "
+        "path so you can READ it, and importing it from `merlin.*` at runtime is an integrity "
+        "FAIL. Read its guide (`cat "
         "oot_starterkit/AGENT.md`, `cat oot_starterkit/scaffold/README.md`) and its modules — "
         "`parse_interface` (parses the fixed merlin_iface grammar — mirror it, don't hand-roll a worse "
         "parser), `CommandBufferBuilder` (emits a SCHEMA-VALID command_buffer.json — mirror it so you PASS "
@@ -126,7 +129,26 @@ def _parse_run_error(stdout: str) -> str | None:
     return None
 
 
-def _capture(cmd: list, env: dict, timeout: int, cwd: str) -> tuple[int, str, str]:
+# A round is killed when the agent produces NOTHING for this long, independently of the wall-clock
+# round timeout. Measured: a stalled agent held a 4h round open having emitted nothing for 28 min.
+# Overridable per deployment via MERLIN_OPENCODE_STALL_S; 0 disables the detector.
+_STALL_SECONDS = int(os.environ.get("MERLIN_OPENCODE_STALL_S", "900"))
+_POLL_SECONDS = 10
+
+
+class AgentStalled(subprocess.TimeoutExpired):
+    """The agent process is alive but has emitted NOTHING for `stall_seconds`.
+
+    Measured: a GLM-5 round read its task files, emitted ``step_start``, and then produced zero
+    bytes for 28 minutes while the process stayed healthy. A wall-clock cap alone cannot tell that
+    apart from slow progress, so with a generous round timeout the run burns the WHOLE budget
+    doing nothing. Inactivity is the signal that separates the two. Subclasses TimeoutExpired so
+    every existing caller keeps working; the type distinguishes a stall from an honest overrun.
+    """
+
+
+def _capture(cmd: list, env: dict, timeout: int, cwd: str,
+             stall_seconds: int = _STALL_SECONDS) -> tuple[int, str, str]:
     """Run ``cmd`` capturing stdout to a FILE (opencode truncates a piped stream at 64 KiB and still exits 0,
     cutting the JSON mid-stream). stdin=DEVNULL because ``run`` blocks on an open stdin pipe.
 
@@ -139,25 +161,54 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str) -> tuple[int, str, st
     rc=124 round result."""
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".out", prefix="oc_out_", delete=False)
     tmp.close()
-    try:
-        with open(tmp.name, "w") as out:
-            p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.PIPE,
-                                 text=True, cwd=cwd, env=env, start_new_session=True)
-            try:
-                _out, stderr = p.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(os.getpgid(p.pid), signal.SIGKILL)   # whole tree: bash -> bwrap -> opencode
-                except (ProcessLookupError, PermissionError):
-                    p.kill()
-                p.wait()
-                raise
-        return p.returncode, Path(tmp.name).read_text(), (stderr or "")
-    finally:
+    errf = tempfile.NamedTemporaryFile(mode="w", suffix=".err", prefix="oc_err_", delete=False)
+    errf.close()
+
+    def _reap(proc):
+        """Kill the whole tree: bash -> bwrap -> opencode."""
         try:
-            os.unlink(tmp.name)
-        except OSError:
-            pass
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
+        proc.wait()
+
+    try:
+        # stderr goes to a FILE, not a pipe: an orphaned grandchild holding a pipe open is exactly what
+        # hung the post-timeout reap before, and a file also lets the poll loop below run without ever
+        # risking a full-pipe deadlock.
+        with open(tmp.name, "w") as out, open(errf.name, "w") as err:
+            p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=err,
+                                 text=True, cwd=cwd, env=env, start_new_session=True)
+            deadline = time.monotonic() + timeout
+            last_size, last_change = -1, time.monotonic()
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    _reap(p)
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+                try:
+                    p.wait(timeout=min(_POLL_SECONDS, remaining))
+                    break                                   # exited on its own
+                except subprocess.TimeoutExpired:
+                    pass
+                # Progress is BYTES PRODUCED, not liveness: a stalled agent stays healthy indefinitely.
+                try:
+                    size = os.path.getsize(tmp.name) + os.path.getsize(errf.name)
+                except OSError:
+                    size = last_size
+                now = time.monotonic()
+                if size != last_size:
+                    last_size, last_change = size, now
+                elif stall_seconds and (now - last_change) >= stall_seconds:
+                    _reap(p)
+                    raise AgentStalled(cmd, int(now - last_change))
+        return p.returncode, Path(tmp.name).read_text(), Path(errf.name).read_text()
+    finally:
+        for _f in (tmp.name, errf.name):
+            try:
+                os.unlink(_f)
+            except OSError:
+                pass
 
 
 def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
@@ -328,8 +379,11 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     rc = 0
     try:
         code, stdout, stderr = _capture(cmd, env, timeout, str(ws))
-    except subprocess.TimeoutExpired:
-        emit({"type": "result", "subtype": "error", "is_error": True, "result": "opencode run timed out"})
+    except subprocess.TimeoutExpired as _te:
+        _why = ("agent stalled: no output for "
+                f"{getattr(_te, 'timeout', '?')}s while the process stayed alive"
+                if isinstance(_te, AgentStalled) else "opencode run timed out")
+        emit({"type": "result", "subtype": "error", "is_error": True, "result": _why})
         tf.close()
         try:
             os.unlink(cfgf.name)
