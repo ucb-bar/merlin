@@ -209,3 +209,29 @@ def test_narrow_extents_survive_a_sweep_that_also_covers_the_tile():
     entries = GC.expand_sweeps(profile, _binding(16))
     shapes = {(e["M"], e["N"]) for e in entries}
     assert (1, 1) in shapes and (1, 16) in shapes and (16, 1) in shapes
+
+
+# ---------------------------------------------------------------------------
+# A generated capsule must LOAD
+# ---------------------------------------------------------------------------
+
+
+def test_the_sweep_provenance_role_is_a_registered_one():
+    """`source_role: derived_sweep` has to be in the capsule schema's vocabulary.
+
+    It was not. The sweep feature shipped with tests asserting the role string and no test loading a
+    generated capsule, so the first corpus actually built from sweeps produced 30 capsules that the
+    contract validator rejected — a corpus that generates and cannot be graded. Checking the schema
+    directly (rather than a built corpus) keeps this hermetic while still failing if the vocabularies
+    drift apart again.
+    """
+    import json
+
+    from merlin.common.paths import repo_root
+    schema = json.loads((repo_root() / "merlin/contract/schemas/capsule.schema.json").read_text())
+    assert "derived_sweep" in schema["properties"]["source_role"]["enum"]
+
+
+def test_every_generated_entry_carries_that_role():
+    entries = GC.expand_sweeps(_sweep_profile(), _binding(16))
+    assert {e["source_role"] for e in entries} == {"derived_sweep"}

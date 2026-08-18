@@ -10,7 +10,8 @@
     "kind": {"type": "string", "enum": ["isa", "layer", "model_slice", "model"]},
     "source_role": {
       "type": "string",
-      "enum": ["behavioral_specimen", "pytorch_model_slice", "handauthored_compiler_test", "uplifted_from_bareMetalC", "spec_derived"]
+      "enum": ["behavioral_specimen", "pytorch_model_slice", "handauthored_compiler_test", "uplifted_from_bareMetalC", "spec_derived", "derived_sweep"],
+      "description": "where this capsule came from. derived_sweep = expanded from a profile's declared tile-relative sweep, so its shapes track the target's geometry rather than being written down; the sweep's prose is carried in source_reference along with the tile the extents resolved against"
     },
     "source_reference": {"type": "string", "description": "bareMetalC path / torch module slice / ISA section / local spec id"},
     "label": {"type": "string", "enum": ["public", "dev", "hidden"]},
