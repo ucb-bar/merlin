@@ -22,3 +22,4 @@ merlin/python/merlin/kernels/microkernel.py
 merlin/python/merlin/targetgen/rtl_backend.py
 merlin/python/merlin/targetgen/contraction_egraph.py
 merlin/python/merlin/targetgen/persistent_equivalence.py
+merlin/python/merlin/common/

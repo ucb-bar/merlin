@@ -10,3 +10,4 @@ merlin/python/merlin/targetgen/synthesize/
 merlin/python/merlin/targetgen/generate/
 merlin/python/merlin/xdsl_dialects/
 merlin/python/merlin/targetgen/contract/interface_emit.py
+merlin/python/merlin/common/

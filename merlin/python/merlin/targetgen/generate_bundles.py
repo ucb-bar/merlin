@@ -27,8 +27,17 @@ _CPP_DENY_AGN = [f"{_PY}targetgen/rtl/{m}.py" for m in
     f"{_PY}targetgen/oot_starterkit/", f"{_PY}targetgen/synthesize/", f"{_PY}xdsl_dialects/",
     f"{_PY}targetgen/generate/xdsl.py", f"{_PY}targetgen/generate/runtime_adapter.py",
     f"{_PY}runtime/reference.py", f"{_PY}runtime/simulator.py", f"{_PY}xdsl_dialects/lowering/"]
+# Shared, answer-free INFRASTRUCTURE every granted merlin tool imports. `targetgen/rtl/facts.py` opens
+# with `from merlin.common.paths import artifacts_dir, targets_dir`, so without this grant the arm-4
+# RTL-facts generators die in the sandbox with ModuleNotFoundError: No module named 'merlin.common'.
+# Measured across three live runs (codex 6 hits, codex2 6, nemotron 5): every model tried the granted
+# generators, failed, and either worked around them or stopped reaching for them — so the arm-4
+# treatment was partly unavailable to all of them and the arm-4-vs-arm-3 contrast was understated.
+# merlin/common holds path/yaml/schema helpers; it is not an oracle, a grader or an answer surface
+# (answer_surfaces lists neither), so granting it widens no moat.
+_INFRA_ALLOW = [f"{_PY}common/"]
 # arm3 adds the xDSL authoring kit + the CCA compiler-modification spine.
-_XDSL_ALLOW = [f"{_PY}targetgen/synthesize/", f"{_PY}targetgen/generate/", f"{_PY}xdsl_dialects/",
+_XDSL_ALLOW = _INFRA_ALLOW + [f"{_PY}targetgen/synthesize/", f"{_PY}targetgen/generate/", f"{_PY}xdsl_dialects/",
                f"{_PY}targetgen/contract/interface_emit.py", f"{_PY}targetgen/contract/linalg_iface.py",
                f"{_PY}targetgen/oot_starterkit/"] + [
     f"{_PY}kernels/{m}.py" for m in ("cca", "cca_compare", "cca_contract", "action_catalog", "microkernel")] + [

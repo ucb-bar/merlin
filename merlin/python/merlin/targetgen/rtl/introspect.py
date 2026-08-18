@@ -23,12 +23,23 @@ from pathlib import Path
 from typing import Any
 from merlin.common.paths import ext_path
 
-DEFAULT_CHIPYARD = f"{ext_path("chipyard")}"
 CONFIG = "GemminiRocketConfig"
 
 
-def find_artifacts(chipyard_root: str | Path = DEFAULT_CHIPYARD,
+def default_chipyard() -> str:
+    """The external sim checkout, resolved WHEN NEEDED rather than at import.
+
+    Resolving it at module scope made importing this module require the external checkout: inside the
+    agent sandbox `.env` is not reachable, so `ext_path` raised KeyError during import and took down
+    every consumer with it -- including `gen_isa_module`, which an arm-4 agent is granted and which only
+    needs the COMMITTED rtl_facts for most work. A missing external path should fail the call that
+    actually needs the checkout, not the import of anything that mentions it."""
+    return f"{ext_path('chipyard')}"
+
+
+def find_artifacts(chipyard_root: str | Path | None = None,
                    config: str = CONFIG) -> dict[str, Path]:
+    chipyard_root = default_chipyard() if chipyard_root is None else chipyard_root
     base = Path(chipyard_root) / "sims/verilator/generated-src" / \
         f"chipyard.harness.TestHarness.{config}"
     return {"fir": base / f"chipyard.harness.TestHarness.{config}.fir",
@@ -181,7 +192,7 @@ def _src_sha(path: str) -> str:
     return proc.stdout.strip() or "unknown"
 
 
-def dump_facts(out_path: str | Path, *, chipyard_root: str | Path = DEFAULT_CHIPYARD,
+def dump_facts(out_path: str | Path, *, chipyard_root: str | Path | None = None,
                config: str = CONFIG) -> dict[str, Any]:
     """Extract facts and write a REPRODUCIBLE rtl_facts.yaml (facts + generator version + source
     SHAs + extraction method). This makes RTL-fact extraction a recorded, attributable input —
@@ -212,7 +223,8 @@ def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Extract structure-only RTL facts -> rtl_facts.yaml.")
     ap.add_argument("--out", default="rtl_facts.yaml")
-    ap.add_argument("--chipyard", default=DEFAULT_CHIPYARD)
+    ap.add_argument("--chipyard", default=None,
+                    help="external sim checkout (default: resolved from .env when needed)")
     ap.add_argument("--config", default=CONFIG)
     args = ap.parse_args()
     rec = dump_facts(args.out, chipyard_root=args.chipyard, config=args.config)

@@ -95,7 +95,7 @@ def isa_scala_path(target: str, chipyard_root: str | Path | None = None) -> Path
     ``generators/<t>/src/main/scala/<t>/<T>ISA.scala`` — DERIVED from the target name, not a hardcoded
     ``GemminiISA.scala`` (gemmini resolves the identical file it always did). Returns the path whether
     or not it exists; callers gate on ``.is_file()``."""
-    root = Path(chipyard_root) if chipyard_root is not None else Path(V1.DEFAULT_CHIPYARD)
+    root = Path(chipyard_root) if chipyard_root is not None else Path(V1.default_chipyard())
     cap = target[:1].upper() + target[1:]
     return root / "generators" / target / "src" / "main" / "scala" / target / f"{cap}ISA.scala"
 
@@ -463,7 +463,7 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
     loud error, never a silent gemmini fallback."""
     if target is None:
         raise ValueError("build_facts requires an explicit target (no default is assumed)")
-    chipyard_root = V1.DEFAULT_CHIPYARD if chipyard_root is None else chipyard_root
+    chipyard_root = V1.default_chipyard() if chipyard_root is None else chipyard_root
     hw_path = _soc_hw_path(target) if hw_path is None else Path(hw_path)
     isa_path = isa_scala_path(target, chipyard_root) if isa_path is None else Path(isa_path)
 

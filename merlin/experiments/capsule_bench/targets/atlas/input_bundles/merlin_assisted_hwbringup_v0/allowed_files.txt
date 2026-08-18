@@ -19,3 +19,4 @@ merlin/python/merlin/kernels/cca_contract.py
 merlin/python/merlin/kernels/action_catalog.py
 merlin/python/merlin/kernels/microkernel.py
 merlin/python/merlin/targetgen/rtl_backend.py
+merlin/python/merlin/common/

@@ -50,6 +50,19 @@ def rtl_facts_path(target: str, *, explicit: str | Path | None = None) -> Path:
         return Path(env)
     return rtl_cache_dir(target) / "facts.json"
 
+def _committed_facts_path(target: str):
+    """The reviewed, in-tree RTL-facts artifact for ``target``, or None when it ships none.
+
+    Derived from the targets root -- no per-target literal -- so a new target is covered by dropping its
+    facts file in the same place."""
+    from merlin.common.paths import targets_dir
+    try:
+        p = targets_dir() / target / "contracts" / "rtl_facts" / "facts.json"
+    except Exception:  # noqa: BLE001 - no targets root here means no committed artifact
+        return None
+    return p if p.is_file() else None
+
+
 
 def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
     """Resolve the facts artifact and GUARANTEE it exists, REGENERATING it from the RTL into the
@@ -71,6 +84,19 @@ def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
         raise FileNotFoundError(
             f"RTL facts override does not exist: {p} (explicit=/$MERLIN_RTL_FACTS is used as-is and "
             "is never regenerated over)")
+    # Cache cold: prefer the COMMITTED, reviewed artifact before regenerating from RTL.
+    #
+    # `rtl_facts_path` points at a PURGEABLE cache under out/artifacts/cache/. The agent sandbox grants
+    # the committed pin (merlin/targets/<t>/contracts/rtl_facts/) but not that cache, and /scratch is
+    # tmpfs-masked -- so inside the box the cache always misses and every arm-4 RTL tool fell through to
+    # a live CIRCT extraction that needs the external chipyard checkout, which the sandbox deliberately
+    # does not expose. Net effect: `gen_isa_module` and friends were granted to arm-4 and could not run,
+    # for every model, on every target. The committed artifact is the provenance-carrying one anyway
+    # (hardware_pins reviews it); the cache is a regeneration convenience, so falling back to the commit
+    # is both correct and what makes the grant mean something.
+    committed = _committed_facts_path(target)
+    if committed is not None and committed.is_file():
+        return committed
     if target in _REGENERATING:
         raise RuntimeError(f"re-entrant RTL-facts regeneration for target {target!r}")
     _warn_if_degraded(target)
