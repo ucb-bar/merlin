@@ -76,6 +76,10 @@ ITEM_MCP_TOOL_CALL = "mcp_tool_call"
 ITEM_WEB_SEARCH = "web_search"
 _TOOL_ITEMS = (ITEM_COMMAND_EXECUTION, ITEM_FILE_CHANGE, ITEM_MCP_TOOL_CALL, ITEM_WEB_SEARCH)
 
+# How this driver's runs are billed, DECLARED so the cost ledger asks the driver instead of guessing
+# from the model id. ChatGPT auth consumes a subscription seat: any USD figure downstream is notional.
+BILLING_MODE = "subscription_notional"
+
 #: Default model when no mapping applies. The ChatGPT-auth account's own default;
 #: an API-only slug (e.g. a ``-codex-max`` alias) fails the request outright, so
 #: the fallback must be a slug this auth mode accepts.
@@ -565,7 +569,7 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "wall_s": round(time.monotonic() - started, 3),
         # ChatGPT-auth runs consume a subscription, not metered dollars. Any USD
         # figure downstream is notional and must not enter a money budget.
-        "billing_mode": "subscription_notional",
+        "billing_mode": BILLING_MODE,
         "codex_home": home_info,
         "artifacts": {"raw": str(raw_path), "timestamped": str(stamped_path),
                       "stderr": str(stderr_path), "prompt": str(prompt_path),

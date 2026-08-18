@@ -11,6 +11,11 @@ Anthropic apples-to-apples mapping (dedupe assistant events by message.id):
     tok_out    = output_tokens                                  (DECODE, incl. thinking)
 Per-model $ projection prices each model at its own rate (the CLI may route some turns to a cheaper
 model); cache-write 1.25x, cache-read 0.10x surcharges live only in the dollar projection.
+
+Billing mode is a PARAMETER, not an inference from the model id. A seat-billed run (a ChatGPT/Codex
+subscription) is not charged per token, so its dollar figure is reported as ``subscription_notional_usd``
+with ``estimated_cost_usd: null`` — money spent and money the same traffic WOULD have cost metered are
+different quantities and must never share a field. An unknown model yields no dollar figure at all.
 """
 from __future__ import annotations
 
@@ -34,6 +39,11 @@ _RATES = {  # (in_per_tok, out_per_tok)
 }
 _CACHE_WRITE_MULT = 1.25
 _CACHE_READ_MULT = 0.10
+
+# The two billing modes a transcript can come from. METERED = charged per token (an API key); the
+# notional mode = a subscription seat, where per-token dollars are a projection and never a spend.
+METERED = "metered"
+SUBSCRIPTION_NOTIONAL = "subscription_notional"
 
 
 def _load_price_overrides() -> dict[str, tuple[float, float]]:
@@ -67,7 +77,14 @@ def _load_price_overrides() -> dict[str, tuple[float, float]]:
 _OVERRIDES: dict[str, tuple[float, float]] | None = None
 
 
-def _rate(model: str) -> tuple[float, float]:
+def _rate(model: str) -> tuple[float, float] | None:
+    """USD-per-token ``(in, out)`` for ``model``, or ``None`` when this repo has no price for it.
+
+    Returning ``None`` rather than a default is the fail-closed rule. The previous "conservative"
+    fallback priced ANY unrecognized id at opus rates, which turned one ``gpt-5.6-sol`` run into a
+    $17.21 "estimate" — a number with no provider behind it. An unpriced model now produces no dollar
+    figure and a stated reason.
+    """
     global _OVERRIDES
     if _OVERRIDES is None:
         _OVERRIDES = _load_price_overrides()
@@ -78,17 +95,23 @@ def _rate(model: str) -> tuple[float, float]:
     for k, v in _RATES.items():
         if k in m:
             return v
-    return _RATES["opus"]  # conservative default
+    return None
 
 
-def parse_transcript(path: str | Path) -> dict:
-    """Parse a stream-json JSONL transcript → token/cost/tool-call summary (honest if absent)."""
+def parse_transcript(path: str | Path, *, billing_mode: str = METERED) -> dict:
+    """Parse a stream-json JSONL transcript → token/cost/tool-call summary (honest if absent).
+
+    ``billing_mode`` comes from the DRIVER that produced the transcript (see the harness's
+    ``_billing_mode``), because how a run is billed is a property of the account/CLI, not of the
+    model string.
+    """
     p = Path(path)
     if not p.is_file():
         return {"available": False, "reason": f"transcript not found: {p}"}
     seen: set[str] = set()
     by_model: dict[str, dict] = defaultdict(
-        lambda: {"input": 0, "cache_create": 0, "cache_read": 0, "output": 0, "messages": 0})
+        lambda: {"input": 0, "cache_create": 0, "cache_read": 0, "output": 0, "reasoning": 0,
+                 "messages": 0})
     tool_calls = 0
     thinking_blocks = 0
     any_usage = False
@@ -123,6 +146,9 @@ def parse_transcript(path: str | Path) -> dict:
         m["cache_create"] += int(u.get("cache_creation_input_tokens", 0) or 0)
         m["cache_read"] += int(u.get("cache_read_input_tokens", 0) or 0)
         m["output"] += int(u.get("output_tokens", 0) or 0)
+        # Reasoning tokens are a SUBSET of output (the provider bills them inside it); carried
+        # alongside so effort is visible, never added into any total.
+        m["reasoning"] += int(u.get("reasoning_output_tokens", 0) or 0)
         m["messages"] += 1
 
     if not any_usage:
@@ -133,23 +159,47 @@ def parse_transcript(path: str | Path) -> dict:
     tok_in = sum(m["input"] + m["cache_create"] for m in by_model.values())
     tok_cached = sum(m["cache_read"] for m in by_model.values())
     tok_out = sum(m["output"] for m in by_model.values())
+    tok_reason = sum(m["reasoning"] for m in by_model.values())
     cost = 0.0
+    unpriced: list[str] = []
     for model, m in by_model.items():
-        rin, rout = _rate(model)
+        rate = _rate(model)
+        if rate is None:
+            unpriced.append(model)
+            continue
+        rin, rout = rate
         cost += m["input"] * rin
         cost += m["cache_create"] * rin * _CACHE_WRITE_MULT
         cost += m["cache_read"] * rin * _CACHE_READ_MULT
         cost += m["output"] * rout
-    return {
+    rec = {
         "available": True,
         "tokens_input": tok_in, "tokens_cached": tok_cached, "tokens_output": tok_out,
         "tokens_total": tok_in + tok_cached + tok_out,
         "tool_calls": tool_calls, "thinking_blocks": thinking_blocks,
         "unique_messages": sum(m["messages"] for m in by_model.values()),
-        "estimated_cost_usd": round(cost, 4),
+        "billing_mode": billing_mode,
         "tokens_native_by_model": {k: dict(v) for k, v in by_model.items()},
         "n_events": n_events,
     }
+    if tok_reason:
+        rec["tokens_reasoning"] = tok_reason      # subset of tokens_output; not added to any total
+    if unpriced:
+        # No rate for a model that actually ran ⇒ no dollar figure, with the gap named.
+        rec["estimated_cost_usd"] = None
+        rec["cost_unavailable_reason"] = ("no price entry for model(s): "
+                                          + ", ".join(sorted(unpriced)))
+    elif billing_mode != METERED:
+        # A seat is not billed per token. Report what the traffic WOULD have cost, labelled notional,
+        # and leave the spend field empty so no aggregator can sum it into a budget.
+        rec["estimated_cost_usd"] = None
+        rec["subscription_notional_usd"] = round(cost, 4)
+        rec["cost_unavailable_reason"] = (
+            f"{billing_mode}: a subscription seat is not billed per token; the notional figure is "
+            "what the same traffic would have cost metered, not money spent")
+    else:
+        rec["estimated_cost_usd"] = round(cost, 4)
+    return rec
 
 
 def write_cost_yaml(summary: dict, out: str | Path, *, wall_time_seconds=None,
@@ -166,8 +216,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=None)
     ap.add_argument("--wall", type=float, default=None)
     ap.add_argument("--model", default=None)
+    ap.add_argument("--billing-mode", default=METERED,
+                    choices=[METERED, SUBSCRIPTION_NOTIONAL],
+                    help="how the run is billed (a subscription seat reports notional dollars only)")
     a = ap.parse_args(argv)
-    s = parse_transcript(a.transcript)
+    s = parse_transcript(a.transcript, billing_mode=a.billing_mode)
     if a.out:
         write_cost_yaml(s, a.out, wall_time_seconds=a.wall, model=a.model)
         print(f"wrote {a.out}: available={s.get('available')}")

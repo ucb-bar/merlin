@@ -58,6 +58,7 @@ def emit_to_aet(
     seed: int = 0,
     transcript_paths=None,
     save_trajectory: bool = True,
+    billing_mode: str = "metered",
 ) -> bool:
     """Feed one completed run's telemetry into the shared aet store (additive; never destructive).
 
@@ -69,6 +70,11 @@ def emit_to_aet(
     All metadata (``method``=arm, ``model``, ``target``, ``suite``, ``run_id``) comes from the run
     record — nothing target-specific is baked in here. Returns ``True`` on success, ``False`` on any
     soft failure (aet absent, no transcript, parse/log error) after warning.
+
+    ``billing_mode`` guards the shared spend store: a subscription-seat run (a ChatGPT/Codex account)
+    is not charged per token, so it logs **cost 0** and keeps its projection in the
+    ``cost.subscription_notional_usd`` metric. Otherwise the list-price estimate below would enter
+    ``aet spend`` as real money and consume a budget ceiling nobody is actually being billed against.
     """
     run_dir = Path(run_dir)
     transcripts = _resolve_transcripts(run_dir, transcript_paths)
@@ -103,6 +109,9 @@ def emit_to_aet(
             est = result.estimated_cost_usd()  # PriceTable.from_env(); per-turn × list price
             if est is not None:
                 cost, cost_is_estimate = est, True
+        notional = None
+        if billing_mode != "metered":
+            notional, cost, cost_is_estimate = cost, 0.0, False
 
         logger = EvalRunLogger.start(
             project=project, suite=suite, target=target, method=method, seed=seed,
@@ -125,6 +134,9 @@ def emit_to_aet(
         if per_model:
             logger.log_model_usage(per_model)
         logger.log_cost(cost, model=result.model or model)
+        if notional is not None:
+            logger.log_param("billing_mode", billing_mode)
+            logger.log_metric("cost.subscription_notional_usd", round(notional, 4))
         logger.log_agent_turns(result.num_turns)
         if result.session_id:
             logger.log_session_id(result.session_id)
@@ -134,6 +146,8 @@ def emit_to_aet(
             _save_trajectory(run_dir, result, run_id=run_id, model=result.model or model, suite=suite)
 
         cost_note = " (per-turn ESTIMATE; transcript truncated, no result event)" if cost_is_estimate else ""
+        if notional is not None:
+            cost_note = f" ({billing_mode}: ${notional:.4f} notional, not billed)"
         _warn(f"recorded run {run_id} → {run_dir}/logs "
               f"(cost=${cost:.4f}{cost_note}, turns={result.num_turns}, tools={result.tool_call_count})")
         return True

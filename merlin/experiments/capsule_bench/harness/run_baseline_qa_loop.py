@@ -655,6 +655,26 @@ def _driver_for(model: str) -> str:
     return "converse" if _BA.is_converse_model(model) else "claudecode"
 
 
+_DRIVER_MODULES = {"codex": "codex_agent", "opencode": "opencode_agent",
+                   "converse": "bedrock_agent"}   # 'claudecode' drives the claude CLI directly
+
+
+def _billing_mode(model: str) -> str:
+    """How the run that ``model`` produces is BILLED — asked of the driver, never inferred from the
+    model id. A driver module declares ``BILLING_MODE``; anything that does not is metered (an API
+    key charged per token). This is what keeps a subscription-seat run from reporting a dollar spend:
+    a Codex round once landed ``estimated_cost_usd: 17.2103`` in the ledger, priced at opus rates for
+    a model no price table knows, on an account that is not billed per token at all."""
+    mod_name = _DRIVER_MODULES.get(_driver_for(model))
+    if not mod_name:
+        return ET.METERED
+    try:
+        import importlib
+        return getattr(importlib.import_module(mod_name), "BILLING_MODE", ET.METERED)
+    except ImportError:
+        return ET.METERED
+
+
 def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
                  bundle: dict, rnd: int, timeout: int, arm: str = "raw_baseline") -> tuple[int, Path]:
     # TASK.md must live INSIDE the bound workspace: run_dir is under runs/ which bwrap tmpfs-masks,
@@ -1276,7 +1296,7 @@ def main(argv: list[str] | None = None) -> int:
             round_brief.write(run_dir, ws, rnd)
         except Exception as _e:  # noqa: BLE001
             print(f"[round {rnd}] round_brief skipped: {type(_e).__name__}: {_e}")
-        rsum = ET.parse_transcript(tpath)
+        rsum = ET.parse_transcript(tpath, billing_mode=_billing_mode(a.model))
         audit = audit_transcript(tpath, arm)
         rounds_summary.append({"round": rnd, "agent_rc": rc,
                                "all_pass": verdict.get("all_pass"),
@@ -1290,7 +1310,10 @@ def main(argv: list[str] | None = None) -> int:
                                "tokens_cached": rsum.get("tokens_cached"),
                                "tokens_input": rsum.get("tokens_input"),
                                "thinking_blocks": rsum.get("thinking_blocks"),
+                               "tokens_reasoning": rsum.get("tokens_reasoning"),
                                "estimated_cost_usd": rsum.get("estimated_cost_usd"),
+                               "billing_mode": rsum.get("billing_mode"),
+                               "subscription_notional_usd": rsum.get("subscription_notional_usd"),
                                "answer_access_clean": audit["clean"],
                                "audit_hits": audit["hits"]})
         active_wall_s += time.time() - _rstart
@@ -1464,7 +1487,7 @@ def main(argv: list[str] | None = None) -> int:
         ftp = run_dir / "rounds" / "finalize.transcript.jsonl"
         if ftp.exists():
             out.write(ftp.read_text())
-    summ = ET.parse_transcript(combined)
+    summ = ET.parse_transcript(combined, billing_mode=_billing_mode(a.model))
     # active-vs-waiting split (cumulative across resume-invocations): wall = active work + rate-limit
     # sleeps; active_wall_s is time actually DOING work (agent rounds + oracle grading + finalize).
     active_wall_s = round(active_wall_s, 3)
@@ -1492,7 +1515,8 @@ def main(argv: list[str] | None = None) -> int:
     if AB.aet_sink_enabled():
         AB.emit_to_aet(run_dir=run_dir, run_id=a.run_id, method=arm, model=a.model,
                        target=_te().target, suite="capsule-bench",
-                       transcript_paths=[combined])
+                       transcript_paths=[combined],
+                       billing_mode=_billing_mode(a.model))
 
     # capture the final submission and run the OFFICIAL public+hidden record
     wsub = ws / "submission"

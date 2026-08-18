@@ -39,6 +39,17 @@ def _score(pkg, capsules, runs_root, labels, no_oracle):
                     oracle_adapters=adapters, timeout=900, target=C.TARGET, no_oracle=no_oracle)
 
 
+
+def _cost_phrase(proc: dict) -> str:
+    """Render the money field so a notional figure can never be read as a spend."""
+    if proc.get("estimated_cost_usd") is not None:
+        return f"cost=${proc['estimated_cost_usd']}"
+    notional = proc.get("subscription_notional_usd")
+    if notional is not None:
+        return f"cost=n/a ({proc.get('billing_mode') or 'notional'}: ${notional} notional)"
+    return f"cost=n/a ({proc.get('cost_unavailable_reason') or 'no usage metadata'})"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-dir", required=True)
@@ -120,7 +131,13 @@ def main(argv: list[str] | None = None) -> int:
                     "tokens_total": ctt.get("tokens_total"),
                     "tokens_input": ctt.get("tokens_input"),
                     "tokens_output": ctt.get("tokens_output"),
+                    "tokens_reasoning": ctt.get("tokens_reasoning"),
                     "estimated_cost_usd": ctt.get("estimated_cost_usd"),
+                    # A subscription-seat run has no per-token spend; its dollars are notional and
+                    # kept in their own field so nothing sums them into a money budget.
+                    "billing_mode": ctt.get("billing_mode"),
+                    "subscription_notional_usd": ctt.get("subscription_notional_usd"),
+                    "cost_unavailable_reason": ctt.get("cost_unavailable_reason"),
                     "tool_calls": ctt.get("tool_calls"),
                     "metrics_available": ctt.get("available")},
         "iterations": len(list((run_dir / "iterations").glob("iteration_*"))),
@@ -141,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
           f"passed={manifest['public_dev']['passed']} highest_tier={manifest['public_dev']['highest_tier']}",
           f"- hidden: {manifest['hidden']['passed']} (after freeze {frozen['submission_sha256'][:12] if frozen['submission_sha256'] else 'n/a'})",
           f"- process: wall={manifest['process']['wall_time_seconds']}s "
-          f"tokens={manifest['process']['tokens_total']} cost=${manifest['process']['estimated_cost_usd']} "
+          f"tokens={manifest['process']['tokens_total']} {_cost_phrase(manifest['process'])} "
           f"tool_calls={manifest['process']['tool_calls']} (available={manifest['process']['metrics_available']})",
           f"- oracle_mode: {manifest['oracle_mode']}",
           f"- gradeable: {manifest['gradeable']}"
