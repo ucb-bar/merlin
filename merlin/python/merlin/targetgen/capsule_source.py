@@ -501,6 +501,11 @@ def _fused_capsule_yaml(entry: dict, binding, art, names: list[str]) -> dict:
                            "atol": _tol(binding)[0], "rtol": _tol(binding)[1]},
         "expected": {"instruction_classes": [], "modes": dict(entry.get("modes", {}))},
         "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+        # Same per-target tier declaration the direct-MLIR builders carry (corpus_spec.build): a capsule
+        # authored through a different source must not silently lose it, or the same tier that is honestly
+        # N/A for the rest of the corpus fails forever on this one.
+        **({"inapplicable_oracle_tiers": dict(binding.inapplicable_tiers)}
+           if getattr(binding, "inapplicable_tiers", None) else {}),
         "pytorch_ref": {"op": entry["op"], "dtype": idt, "loader": "capsule.pytorch.py"},
         "linalg_mlir": "capsule.interface.mlir",
     }
@@ -752,6 +757,11 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
                            "atol": _tol(binding)[0], "rtol": _tol(binding)[1]},
         "expected": {"instruction_classes": []},
         "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+        # Same per-target tier declaration the direct-MLIR builders carry (corpus_spec.build): a capsule
+        # authored through a different source must not silently lose it, or the same tier that is honestly
+        # N/A for the rest of the corpus fails forever on this one.
+        **({"inapplicable_oracle_tiers": dict(binding.inapplicable_tiers)}
+           if getattr(binding, "inapplicable_tiers", None) else {}),
         "gate": gate,
         "pytorch_ref": {"op": "model", "dtype": idt, "loader": "capsule.pytorch.py"},
         "linalg_mlir": "capsule.interface.mlir",

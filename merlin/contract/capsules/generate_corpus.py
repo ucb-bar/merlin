@@ -152,11 +152,37 @@ def _det_fp8(D, name, shape, salt, fmt_token, d_fp8):
     return raw, vals
 
 
+def _operand_decoder(D, fmt, *, flush_subnormals: bool):
+    """Decode a raw operand code the way the DATAPATH decodes it, exactly.
+
+    By default that is the format's own exact value. A datapath that admits only NORMAL operands sees
+    zero wherever the operand's exponent field is zero, and a reference model that decodes those codes
+    to their tiny nonzero value is modelling different hardware — every later add carries the
+    difference. Whether the target does that is a measured property of its compute unit, declared in
+    its profile's ``datapath`` block (``subnormal_operand_flush``); nothing here assumes it.
+
+    The subnormal test is DERIVED from the format descriptor the refmodel hands back (the exponent
+    field, located by the format's own ``mant_bits``/``exp_bits``), so it holds for any exponent /
+    mantissa split rather than one hardcoded byte layout.
+    """
+    if not flush_subnormals:
+        return lambda raw: D.decode_float_exact(int(raw), fmt)
+    exp_mask = (1 << fmt.exp_bits) - 1
+
+    def decode(raw):
+        raw = int(raw)
+        if ((raw >> fmt.mant_bits) & exp_mask) == 0:     # exponent field zero => subnormal (or zero)
+            return Fraction(0)
+        return D.decode_float_exact(raw, fmt)
+    return decode
+
+
 def _float_golden(entry, binding):
     """A capsule's fp8->bf16 golden + input provenance from the specir refmodel (independent of the RTL)."""
     D, fp_reduce = _specir()
     fmt_token = binding.operand_dtype                    # e.g. "fp8_e4m3" — DERIVED, not assumed
     FP8, BF16 = _specir_fp8(D, fmt_token), D.BF16
+    dec = _operand_decoder(D, FP8, flush_subnormals=binding.subnormal_operand_flush)
     salt, dim = entry["name"], binding.tile_dim
     prov, outputs = {}, {}
 
@@ -174,8 +200,7 @@ def _float_golden(entry, binding):
         out = [[0] * n for _ in range(m)]
         for i in range(m):
             for j in range(n):
-                prods = [rnd(D.decode_float_exact(a_raw[i * k + p], FP8)
-                             * D.decode_float_exact(w_raw[p * n + j], FP8)) for p in range(k)]
+                prods = [rnd(dec(a_raw[i * k + p]) * dec(w_raw[p * n + j])) for p in range(k)]
                 out[i][j] = fp_reduce(prods, BF16, order="index_sequential", cadence="per_step", rm="rne")
         return out
 
@@ -201,7 +226,7 @@ def _float_golden(entry, binding):
         M = entry.get("M", entry.get("M_tiles", 1) * dim)
         N = entry.get("N", entry.get("N_tiles", 1) * dim)
         x = reg(entry.get("src", "X"), (M, N))
-        outputs[entry.get("out", "Y0")] = floats([[rnd(D.decode_float_exact(x[i * N + j], FP8))
+        outputs[entry.get("out", "Y0")] = floats([[rnd(dec(x[i * N + j]))
                                                    for j in range(N)] for i in range(M)])
     elif op == "resident_reuse":
         K = entry.get("K_tiles", 1) * dim
@@ -859,6 +884,11 @@ def _write_capsule(entry, binding, out_root):
             "oracle_provenance": {
                 "engine": "specir.oracle.dtypes + specir.oracle.refmodel.fp_reduce",
                 "datapath": "acc <- round_bf16(acc + round_bf16(a*w)); k index_sequential; per_step; rne",
+                # How the datapath decodes an operand code. A unit that admits only normal operands
+                # reads a zero exponent field as zero; the golden decodes it the same way, so the two
+                # references implement ONE datapath (see the target's profile ``datapath`` block).
+                "operand_decode": ("subnormal_flush_to_zero" if eb.subnormal_operand_flush
+                                   else "exact"),
                 "operand_dtype": eb.cap_dtype(eb.operand_dtype),
                 "accum_dtype": eb.cap_dtype(eb.accum_dtype), "output_dtype": "bf16",
                 "note": "INDEPENDENT of the target RTL (not self-oracle); specir refmodel is the reference.",

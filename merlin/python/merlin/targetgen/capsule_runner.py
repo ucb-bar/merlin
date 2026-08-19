@@ -1205,8 +1205,21 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         except Exception:  # noqa: BLE001 — SIMT backend absent -> no MuonUnavailable to catch
             _muon_unavail = ()
         _ORACLE_UNAVAILABLE = (OracleUnavailable, _POUnavailable) + _muon_unavail
+        # Tiers the CAPSULE declares cannot corroborate a result for this target (see
+        # corpus_spec._inapplicable_tiers). A tier whose model disagrees with the RTL about the machine
+        # itself — not about precision — grades a correct kernel as wrong on every capsule, so running it
+        # produces a permanent red the agent can neither fix nor learn from. It is reported the way L0/L1
+        # already are for a float datapath: skipped + not_applicable, carrying the declared reason. It is
+        # never reported as a pass, and a REQUIRED tier can never be declared inapplicable (that raises at
+        # generation time), so this cannot be used to switch off a failing mandatory oracle.
+        _inapplicable = capsule.get("inapplicable_oracle_tiers") or {}
         for tier in sorted(set(cfg.oracle_tiers) | set(adapters or {})):
             mand = tier in required
+            if tier in _inapplicable and not mand:
+                tiers[tier] = TierResult(tier, "skipped", mand, not_applicable=True,
+                                         reason=str(_inapplicable[tier]),
+                                         derived_from_rtl=tier in cfg.rtl_tiers)
+                continue
             adapter = (adapters or {}).get(tier)
             if adapter is None:
                 if mand:

@@ -63,6 +63,16 @@ class CorpusBinding:
     rtol: float | None = None
     scaling: str | None = None  # compute-unit SCALE_KIND (block_e8m0 -> the MX numeric regime) or None
     requant_output_dtype: str | None = None   # narrow output an acc_scale epilogue requants to (e.g. i8)
+    # Does the compute unit admit SUBNORMAL operands, or does it see zero where the operand's exponent
+    # field is zero? A measured property of the datapath, declared per target in the profile's
+    # ``datapath`` block; the float golden engine decodes operands the same way the hardware does.
+    subnormal_operand_flush: bool = False
+    # Oracle tiers that CANNOT corroborate a result for this target, each with the reason. A tier whose
+    # model disagrees with the RTL about the machine itself (not about precision) grades a correct kernel
+    # as wrong every time; running it anyway turns the ladder into noise. Declared per target in the
+    # profile's ``datapath`` block, carried into every capsule, and honoured by the runner as an honest
+    # ``skipped``/not_applicable — never as a pass.
+    inapplicable_tiers: dict[str, str] = field(default_factory=dict)
     # instruction-class source: a callable (op, output_dtype, epilogue, movement) -> [class,...]
     classes_for: Callable[..., list[str]] = field(default=lambda **_: [])
 
@@ -110,6 +120,27 @@ def _tile_dim(target: str, contract: dict) -> int:
     except Exception:  # noqa: BLE001 — no facts for this target -> software-tiling default (no hw mesh)
         pass
     return _DEFAULT_SW_TILE
+
+
+def _inapplicable_tiers(datapath: dict, required) -> dict[str, str]:
+    """``{tier: reason}`` for the oracle tiers this target declares CANNOT corroborate a result.
+
+    Each entry must carry a non-empty reason — a tier switched off without one is indistinguishable from
+    a tier switched off because it was failing. A tier that is both REQUIRED and inapplicable is a
+    contradiction in the declaration and raises rather than resolving silently either way."""
+    raw = datapath.get("inapplicable_oracle_tiers") or {}
+    if not isinstance(raw, dict):
+        raise ValueError("datapath.inapplicable_oracle_tiers must be a {tier: reason} mapping, "
+                         f"got {type(raw).__name__}")
+    out: dict[str, str] = {}
+    for tier, reason in raw.items():
+        if not str(reason or "").strip():
+            raise ValueError(f"inapplicable oracle tier {tier!r} declares no reason; a tier is only "
+                             f"skippable with the reason it cannot corroborate a result")
+        if tier in set(required or ()):
+            raise ValueError(f"oracle tier {tier!r} is declared BOTH required and inapplicable")
+        out[str(tier)] = str(reason).strip()
+    return out
 
 
 def _accum_dtype(contract: dict, operand: str) -> str:
@@ -214,6 +245,8 @@ def derive_binding(te, datapath: dict) -> CorpusBinding:
         rtol=datapath.get("rtol"),
         scaling=(scaling if scaling and scaling != "none" else None),
         requant_output_dtype=datapath.get("requant_output_dtype"),
+        subnormal_operand_flush=bool(datapath.get("subnormal_operand_flush", False)),
+        inapplicable_tiers=_inapplicable_tiers(datapath, tiers),
         classes_for=_classes_source(te, c),
     )
 
@@ -686,4 +719,9 @@ def build(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     op = entry.get("op", "matmul")
     if op not in BUILDERS:
         raise ValueError(f"no corpus builder for op {op!r} (have {sorted(BUILDERS)})")
-    return BUILDERS[op](entry, binding)
+    cap, mlir = BUILDERS[op](entry, binding)
+    # Stamped once here rather than in each builder, so every capsule a target emits carries the same
+    # declaration and a new builder cannot silently forget it.
+    if binding.inapplicable_tiers:
+        cap["inapplicable_oracle_tiers"] = dict(binding.inapplicable_tiers)
+    return cap, mlir
