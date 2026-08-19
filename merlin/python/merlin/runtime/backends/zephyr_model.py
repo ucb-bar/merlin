@@ -254,7 +254,50 @@ DRAM_END = 0x80000000 + 16 * 1024**3    # FireSim WithExtMemSize = 16 GB at 0x80
 EXT_MAX_WEIGHTS = DRAM_END - EXT_WEIGHTS_BASE - (256 * 1024 * 1024)   # ~14.75 GB
 
 
-def _ram_for_weights(weights_bytes: int, activation_bytes: int | None = None) -> int:
+#: What one heap allocation looks like in the emitted LLVM IR. The lowered model reaches the C library
+#: through this symbol, so a call to it is an allocation the arena has to hold.
+_ALLOC_SYMBOL = "@malloc("
+
+
+def allocation_bytes(ll_path: str | Path) -> tuple[int, int]:
+    """``(total_constant_bytes, dynamic_calls)`` requested by the lowered model's allocations.
+
+    WHY THE SUM AND NOT THE PEAK. :func:`mlir_query.activation_peak_bytes` reports LIVE bytes and says
+    itself that it is a lower bound. Whether the live figure is the one that has to fit depends on the
+    allocator underneath, and one of ours does not reclaim at all (the bare-metal arena's ``free`` is a
+    no-op), so there the arena must hold every byte ever requested. Sizing to the sum is the bound that
+    holds under both, and it is derived from the IR that will actually run rather than assumed.
+
+    Parsed STRUCTURALLY -- ``partition`` on the call, then on the argument's type -- not by pattern. The
+    IR spells the same call several ways (``call``, ``tail call``, with and without ``noalias``, with a
+    trailing attribute group), and a pattern narrow enough to be readable silently misses one spelling,
+    which here would under-report the requirement and produce an image that dies in its tail.
+
+    ``dynamic_calls`` counts allocations whose size is a value rather than a literal. They are REPORTED,
+    never assumed to be zero: their bytes are genuinely unknown at build time, and a caller that needs a
+    guarantee has to know the answer is incomplete.
+    """
+    total = dynamic = 0
+    for line in Path(ll_path).read_text(errors="replace").splitlines():
+        _, sym, rest = line.partition(_ALLOC_SYMBOL)
+        if not sym:
+            continue
+        args, close, _ = rest.partition(")")
+        if not close:
+            continue
+        # `i64 1024`, and also `i64 noundef 1024` -- the parameter attributes clang inserts sit BETWEEN
+        # the type and the value, so the size is the last token, not the second one. Reading the second
+        # token classified an attributed call as dynamic, which under-reports the requirement.
+        tokens = args.split()
+        if len(tokens) < 2 or not tokens[0].startswith("i") or not tokens[-1].isdigit():
+            dynamic += 1
+            continue
+        total += int(tokens[-1])
+    return total, dynamic
+
+
+def _ram_for_weights(weights_bytes: int, activation_bytes: int | None = None,
+                     allocation_bytes_total: int | None = None) -> int:
     """RAM-region size to hold the weights blob (linked into .data) plus an activation
     arena (the leftover, claimed by ARENA_SIZE=-1). Headroom scales with the model
     (30% of weights + 128 MB) rather than a fat fixed floor, so small models stay at the
@@ -262,18 +305,38 @@ def _ram_for_weights(weights_bytes: int, activation_bytes: int | None = None) ->
     at the stock `ram0` size and an over-large region wedges the boot (no uartlog). Models
     that genuinely need more grow the region; rounded up to 16 MB.
 
-    ``activation_bytes`` (from :func:`mlir_query.activation_peak_bytes`) replaces the ASSUMPTION
-    that 128 MB of headroom covers the model's working set. It does not always: whisper_tiny's
-    encoder attention peaks at 210 MB live, and the weights-scaled formula alone gives it a 288 MB
-    region of which the image takes 125 MB — a 163 MB arena for a 210 MB working set, i.e. a
-    provisioning failure on a board with enough physical DRAM (measured 336 MB total demand vs a
-    512 MB SoC). The headroom is therefore ``max(weights-scaled, measured peak + 128 MB)``: strictly
-    >= the old value for every model, so nothing that boots today gets a smaller region, and the
-    measured peak is only ever a lower bound (bufferization copies + allocator fragmentation are
-    not in it), which is why the 128 MB slack is kept on top rather than replaced."""
+    TWO ESTIMATES OF THE SAME QUANTITY, and the measured one wins.
+
+    ``activation_bytes`` (from :func:`mlir_query.activation_peak_bytes`) is LIVE bytes inferred from the
+    MLIR. It exists because a flat 128 MB of headroom does not always cover a model's working set:
+    whisper_tiny's encoder attention peaks at 210 MB live where the weights-scaled formula left it a
+    163 MB arena, i.e. a provisioning failure on a board with enough physical DRAM.
+
+    ``allocation_bytes_total`` (from :func:`allocation_bytes`) is what the EMITTED IR actually asks the
+    heap for, summed. It is the better number wherever it exists, in both directions:
+
+    * It is an UPPER bound on live bytes -- every live byte was allocated -- so it cannot under-provision
+      the way a liveness estimate can when bufferization inserts copies the estimate never saw.
+    * It prices only what comes out of the arena. The MLIR estimate prices tensors that never become heap
+      allocations at all, and it can therefore be enormously PESSIMISTIC: measured on a 12-layer Gemma
+      section, the estimate said 2827 MB while the emitted IR's allocations total 1533 MB -- an estimate
+      larger than the sum of every allocation the program makes, which is impossible for real arena
+      demand. Sizing from it asked for a 4416 MB region on a 4096 MB design and refused to build a model
+      that fits in 3136 MB.
+
+    So when the measured total is available it REPLACES the estimate rather than joining it in the max.
+    That is deliberately not monotone with the older formula: a model whose estimate was pessimistic gets
+    a smaller region, which is the whole point. The 128 MB slack stays on top of whichever number is used,
+    because neither covers allocator fragmentation and because an allocation whose size is computed rather
+    than literal is not in the measured total (:func:`allocation_bytes` reports how many).
+
+    A shortfall is not silent, which is what makes this safe to tighten: the image links a malloc guard
+    that prints ``FAIL alloc bytes=<n> op=<id>`` and terminates in the protocol, so a returned log names
+    the allocation that did not fit."""
     headroom = (weights_bytes * 3) // 10 + 128 * 1024 * 1024
-    if activation_bytes:
-        headroom = max(headroom, int(activation_bytes) + 128 * 1024 * 1024)
+    demand = int(allocation_bytes_total or 0) or int(activation_bytes or 0)
+    if demand:
+        headroom = max(headroom, demand + 128 * 1024 * 1024)
     total = weights_bytes + headroom
     align = 16 * 1024 * 1024
     total = ((total + align - 1) // align) * align
@@ -1320,6 +1383,11 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
                                parallel=(backend != "rvv" and n_harts > 1),
                                parallel_harts=(n_harts if n_harts > 1
                                                and backend == "rvv" else None))
+    # What this lowering will ask the heap for, read off the IR that is about to be compiled. Measured
+    # here rather than estimated later: the file exists for exactly this build, and the number decides the
+    # region size below.
+    alloc_total, alloc_dynamic = allocation_bytes(res.ll_path)
+
     _run([clang, "--target=riscv64-unknown-elf", *cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 
@@ -1348,6 +1416,7 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     # it by literal. Keeps ram0 compact (code + arena), so big fp32 models link.
     external = ram_bytes_override is None and weights_size > LINK_LIMIT
     weights_base = None
+    peak = None                       # measured only on the path that sizes the region from it
     if external:
         if weights_size > EXT_MAX_WEIGHTS:
             raise ZephyrModelError(
@@ -1371,8 +1440,8 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
             # "Could not build linalg op" signature), which then read as a broken build rather than a
             # race. Serializing the whole parse-adjacent surface is what makes concurrency usable.
             with IR_LOCK:
-                peak = activation_peak_bytes(model_dir / "model.mlir")
-            ram_bytes = _ram_for_weights(weights_size, peak)
+                peak = int(activation_peak_bytes(model_dir / "model.mlir") or 0) or None
+            ram_bytes = _ram_for_weights(weights_size, peak, alloc_total)
 
     archive = work / "libmerlinmodel.a"
     archive.unlink(missing_ok=True)
@@ -1479,23 +1548,36 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
                     f"\t\t\tcompatible = \"zephyr,memory-region\", \"mmio-sram\";\n"
                     f"\t\t\treg = <{hex(b_hi)} {hex(b_lo)} {hex(s_hi)} {hex(s_lo)}>;\n"
                     f"\t\t\tzephyr,memory-region = \"WEIGHTS\";\n\t\t}};\n\t}};\n}};\n")
-    elif ram_bytes > DEFAULT_RAM_BYTES:
-        # Grow the region past the DTS default, but never past what the chip HAS: a region larger than
-        # physical DRAM is a boot that dies before main() with no console output at all.
-        if ram_bytes > brd.dram_bytes:
+    def _region_overlay(size: int) -> str:
+        """The ram0 override for a region of ``size``, or "" at the DTS default.
+
+        A function rather than a literal because the region may have to be CORRECTED after the link: the
+        arena is the leftover after the image, and the image's size is not known until it exists.
+        """
+        if size <= DEFAULT_RAM_BYTES:
+            return ""
+        # Never past what the chip HAS: a region larger than physical DRAM is a boot that dies before
+        # main() with no console output at all.
+        if size > brd.dram_bytes:
             raise ZephyrModelError(
-                f"{brd.name}: this model needs a {ram_bytes / 2**20:.0f} MB region but the board has "
+                f"{brd.name}: this model needs a {size / 2**20:.0f} MB region but the board has "
                 f"{brd.dram_bytes / 2**20:.0f} MB of DRAM. Shrink the model (a smaller capture), or "
                 f"correct the board descriptor if the real DRAM is larger.")
-        overlay += (f"&{brd.ram_label} {{\n\treg = <{hex(brd.dram_base)} "
-                    f"{hex(ram_bytes)}>;\n}};\n")
+        return (f"&{brd.ram_label} {{\n\treg = <{hex(brd.dram_base)} "
+                f"{hex(size)}>;\n}};\n")
+
     # Keyed on the board we actually BUILD (`build_board`), not on this descriptor's name: a chip with
     # no Zephyr port of its own is built against a generic port, and testing the descriptor name here
     # silently skipped this overlay for exactly those boards.
-    if brd.build_board.startswith("chipyard"):
-        cpu_overlay = _chipyard_cpu_overlay(cpus)
-        if cpu_overlay:
-            overlay += ("\n" if overlay else "") + cpu_overlay
+    cpu_overlay = (_chipyard_cpu_overlay(cpus) if brd.build_board.startswith("chipyard") else "")
+    overlay_base = overlay
+
+    def _overlay_for(size: int) -> str:
+        """The whole overlay for a region of ``size``. Assembled from parts so the region can change."""
+        text = overlay_base + ("" if external else _region_overlay(size))
+        return text + (("\n" if text else "") + cpu_overlay if cpu_overlay else "")
+
+    overlay = _overlay_for(ram_bytes)
 
     # Build identity, part two: the app configuration. Two images with identical compute but a
     # different Kconfig, device tree or link are different images -- they take different code paths on
@@ -1511,34 +1593,64 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
 
     _h.update(prj_conf_text.encode())
     _h.update(cmakelists_text.encode())
-    _h.update(overlay.encode())
     _h.update(brd.build_board.encode())
-    # The harness itself, hashed with an EMPTY identity so the hash is not an input to itself. This is
-    # what makes iters/warmup/rvv_hart/console part of the identity too.
-    _h.update(_harness("").encode())
-    build_hash = _h.hexdigest()[:16]
-    (app / "src" / "main.c").write_text(_harness(build_hash))
-    (app / "CMakeLists.txt").write_text(_cmake(build_hash))
-
-    # 5. configure + build.
+    # The OVERLAY and the harness are folded in per build pass rather than here, because a corrected
+    # region changes both -- and an image linked for a different region is a different image, which is
+    # exactly what this hash exists to distinguish.
+    # 5. configure + build. Possibly TWICE, because the region and the image are circular: the arena is
+    #    whatever is left of the region after the image, and the image's size is not known until it has
+    #    been linked. The first pass sizes the region from the weights plus the measured allocation
+    #    demand; if the linked image turns out to be larger than the weights by more than the slack --
+    #    on a 1.5 GB model the code, the .bss and the per-hart stacks came to 150 MB, and the arena
+    #    landed 17 MB short of what the model asks for -- the region is corrected to the MEASURED image
+    #    plus that demand and the app is rebuilt. Bounded at one correction: the image does not change
+    #    size when the region does (only the linker script's region length does), so one pass settles it.
     build_dir = work / "build"
     env = _tool_env()
-    # Pass the overlay EXPLICITLY. Zephyr's automatic discovery matches `boards/<BOARD>.overlay`
-    # against the board being built, so writing it under this descriptor's name meant that for any
-    # board built through a generic port (build_board != name) the overlay was silently IGNORED --
-    # taking the DRAM-size override and the CPU-disable overlay with it, with no warning and a
-    # successful build. Naming one file and pointing cmake at it cannot miss that way.
-    extra = []
-    if overlay:
-        overlay_file = app / "merlin.overlay"
-        overlay_file.write_text(overlay)
-        extra.append(f"-DEXTRA_DTC_OVERLAY_FILE={overlay_file}")
-    _run([build_tool("cmake") or "cmake", "-B", build_dir, "-G", "Ninja",
-          f"-DBOARD={brd.build_board}", *extra, "-S", app], env=env)
-    _run([build_tool("ninja") or "ninja", "-C", build_dir], env=env)
     elf = build_dir / "zephyr" / "zephyr.elf"
-    if not elf.is_file():
-        raise ZephyrModelError(f"build produced no elf at {elf}")
+
+    def _emit_and_build() -> str:
+        h = _hashlib.sha256(_h.digest())
+        h.update(overlay.encode())
+        # The harness with an EMPTY identity, so the hash is not an input to itself. This is what makes
+        # iters/warmup/rvv_hart/console and the linked region part of the identity too.
+        h.update(_harness("").encode())
+        bh = h.hexdigest()[:16]
+        (app / "prj.conf").write_text(prj_conf_text)
+        (app / "src" / "main.c").write_text(_harness(bh))
+        (app / "CMakeLists.txt").write_text(_cmake(bh))
+        # Pass the overlay EXPLICITLY. Zephyr's automatic discovery matches `boards/<BOARD>.overlay`
+        # against the board being built, so writing it under this descriptor's name meant that for any
+        # board built through a generic port (build_board != name) the overlay was silently IGNORED --
+        # taking the DRAM-size override and the CPU-disable overlay with it, with no warning and a
+        # successful build. Naming one file and pointing cmake at it cannot miss that way.
+        extra = []
+        if overlay:
+            overlay_file = app / "merlin.overlay"
+            overlay_file.write_text(overlay)
+            extra.append(f"-DEXTRA_DTC_OVERLAY_FILE={overlay_file}")
+        _run([build_tool("cmake") or "cmake", "-B", build_dir, "-G", "Ninja",
+              f"-DBOARD={brd.build_board}", *extra, "-S", app], env=env)
+        _run([build_tool("ninja") or "ninja", "-C", build_dir], env=env)
+        if not elf.is_file():
+            raise ZephyrModelError(f"build produced no elf at {elf}")
+        return bh
+
+    build_hash = _emit_and_build()
+    demand = alloc_total + 128 * 1024 * 1024
+    if not external and alloc_total:
+        from ..elf_audit import read_elf as _read_elf
+        image = sum(sg.memsz for sg in _read_elf(elf)[1])
+        if ram_bytes - image < demand:
+            align = 16 * 1024 * 1024
+            grown = ((image + demand + align - 1) // align) * align
+            print(f"[zephyr_model] region {ram_bytes / 2**20:.0f} MB leaves "
+                  f"{(ram_bytes - image) / 2**20:.0f} MB of arena for a model that asks for "
+                  f"{alloc_total / 2**20:.0f} MB; the linked image measures {image / 2**20:.0f} MB. "
+                  f"Relinking for {grown / 2**20:.0f} MB.", flush=True)
+            ram_bytes = grown
+            overlay = _overlay_for(ram_bytes)
+            build_hash = _emit_and_build()
     out = {"elf": elf, "app_dir": app, "build_dir": build_dir, "backend": backend,
            "ram_bytes": ram_bytes, "build_hash": build_hash, **info}
     # What the matrix-unit shim in this image actually is, for a caller that has to state it: the tile
@@ -1547,6 +1659,12 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     # an image carrying instructions derived from the wrong revision links and runs.
     if matrix_build is not None:
         out["matrix_build"] = matrix_build.to_dict()
+    # The memory arithmetic, so a caller can verify the region it got rather than trusting the formula
+    # that produced it. `allocation_bytes_total` is the requirement under an allocator that never
+    # reclaims; `allocation_dynamic_calls` says how much of the answer is unknown at build time.
+    out["allocation_bytes_total"] = alloc_total
+    out["allocation_dynamic_calls"] = alloc_dynamic
+    out["activation_peak_bytes"] = peak
     # The per-op table has to travel WITH the image. A debug run emits a thousand `PROF <id> ...` lines
     # and an `ALIVE ... op=<id>` naming where it stopped, and every one of those ids is meaningless
     # without the mapping from id to op name, family and shape. Shipping the trace without the table is
