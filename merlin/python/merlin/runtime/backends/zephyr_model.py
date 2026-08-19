@@ -1541,6 +1541,12 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
         raise ZephyrModelError(f"build produced no elf at {elf}")
     out = {"elf": elf, "app_dir": app, "build_dir": build_dir, "backend": backend,
            "ram_bytes": ram_bytes, "build_hash": build_hash, **info}
+    # What the matrix-unit shim in this image actually is, for a caller that has to state it: the tile
+    # edge and alignment it was built for, whether the tile loop can reach more than one unit, and WHICH
+    # REVISION of the unit's sources the encodings were derived from. The last one is the whole point --
+    # an image carrying instructions derived from the wrong revision links and runs.
+    if matrix_build is not None:
+        out["matrix_build"] = matrix_build.to_dict()
     # The per-op table has to travel WITH the image. A debug run emits a thousand `PROF <id> ...` lines
     # and an `ALIVE ... op=<id>` naming where it stopped, and every one of those ids is meaningless
     # without the mapping from id to op name, family and shape. Shipping the trace without the table is

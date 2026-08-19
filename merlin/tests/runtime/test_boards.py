@@ -509,3 +509,29 @@ def test_the_cpu_count_is_one_rule_bounded_by_the_board():
     assert zm.image_cpus(two, 3) == 2, "clamped: declaring a hart the chip lacks is an unbounded spin"
     # A vector hart index beyond the fan-out still needs a CPU of its own.
     assert zm.image_cpus(three, 1, rvv_hart=2) == 3
+
+
+def test_a_second_configuration_of_a_board_keeps_the_port_and_states_its_own_facts():
+    """A hardware CONFIGURATION is a descriptor, not a fork of the code.
+
+    The two-core matrix-unit configuration is the same silicon family and the same Zephyr port as the
+    tapeout chip, and differs in three facts that each have their own silent failure: the core count
+    (a CPU the design lacks is an unbounded spin in `z_smp_init`), the DRAM (a region larger than the
+    design has dies before `main` with nothing printed), and which harts carry vectors (fanning vector
+    work onto a scalar hart traps and never reaches the barrier). Pinning them here is what stops a
+    later edit from quietly giving one configuration another's facts.
+    """
+    two = boards.board("kodiak_opu_2core")
+    chip = boards.board("chipyard_kodiak")
+    # Built against the SAME Zephyr board -- the port is unchanged, only the facts we hand it move.
+    assert two.build_board == chip.name
+    assert two.harts == 2 and two.n_vector_harts == 2, "both cores carry a vector unit here"
+    assert two.dram_bytes == 4 * 1024 * 1024 * 1024
+    assert two.vlen == 512, "under-declaring this overruns Zephyr's per-thread vector save area"
+    # The port's own bring-up facts are shared, because they belong to the port and the link.
+    assert (two.console, two.fpu_sharing, two.zephyr_vector_ext) == (
+        chip.console, chip.fpu_sharing, chip.zephyr_vector_ext)
+    assert (two.loader, two.loader_baud) == (chip.loader, chip.loader_baud)
+    # No image may declare a CPU this design does not have.
+    assert zm.image_cpus(two, 1) == 2
+    assert zm.image_cpus(two, 3) == 2

@@ -243,6 +243,28 @@ BOARDS: dict[str, Board] = {
         notes="Kodiak tapeout. DTS says ram0=256MB and MP_MAX_NUM_CPUS=2; the chip has 512MB and 3 "
               "working cores, 2 of them vector. Vector config matches the chip's own q8_gemm_minmax "
               "sample: Zephyr-managed V state, no FPU_SHARING."),
+    # The SAME Zephyr port, describing a DIFFERENT elaborated SoC: the two-core configuration that puts
+    # a matrix unit on BOTH cores. It is its own descriptor rather than an override of the one above
+    # because three of the facts differ and each has its own failure mode -- the core count (an image
+    # that starts a CPU the design does not have hangs in z_smp_init with nothing printed), the DRAM
+    # (that configuration declares four times as much, and a region larger than the design has dies
+    # before main), and which harts carry vectors (here all of them, where the tapeout chip has one
+    # scalar core). `zephyr_board` keeps the port: the Zephyr side is unchanged, so the image is built
+    # against the same board files, and only the facts we pass it move.
+    #
+    # It is deliberately NOT called a chip. No bitstream of this configuration exists -- it does not
+    # route on the U250 -- so nothing built for it has been executed on hardware of this shape, and the
+    # delivery README has to say so rather than inheriting the confidence of the one-core builds.
+    "kodiak_opu_2core": Board(
+        name="kodiak_opu_2core", zephyr_board="chipyard_kodiak",
+        dram_bytes=4 * 1024 * 1024 * 1024, harts=2, vlen=512, console=CONSOLE_HTIF,
+        fpu_sharing=False, zephyr_vector_ext=True, tick_hz=100,
+        loader=LOADER_PYUARTSI, loader_baud=57_600,
+        notes="Two-core Kodiak configuration with a matrix unit on each core: 2 vector-capable harts, "
+              "4 GB of DRAM at 0x80000000, vLen=512 (so the unit's logical tile edge is VLMAX at "
+              "SEW=8, i.e. 64 -- the same edge as the one-core configuration). Built against the "
+              "chipyard_kodiak Zephyr port, whose facts (HTIF console, Zephyr-managed vector state, "
+              "no FPU_SHARING, pyuartsi loader) this configuration shares. No bitstream of it exists."),
     # gemmelos: NOT a Zephyr target. github.com/Rakanic/gemmelos-bringup is a fork of
     # ucb-bar/Baremetal-IDE -- a bare-metal CMake SDK with no RTOS (grep -ri zephyr returns nothing) --
     # covering two chips selected by -DCHIP=. Facts below come from its platform/<chip>/*.ld and

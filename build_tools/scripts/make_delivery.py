@@ -352,7 +352,8 @@ if __name__ == "__main__":
 #: Honest status per model — shipped verbatim in the README, because a number nobody qualified is worse
 #: than no number.
 STATUS = {
-    "spectformer": "VERIFIED. Bit-exact against the W8A8 reference on spike (1 and 3 harts) and on a "
+    "spectformer": "VERIFIED. Bit-exact against the W8A8 reference on spike, at every hart count of "
+                   "every VECTOR image we have shipped, and on a "
                    "SpacemiT K1 board (real RVV silicon): w8a8_rel = 0.0. A failure here is about the "
                    "board, not about us — which is why this is the one to run first.",
     "deepjscc": "VERIFIED: w8a8_cos = 1.0, rel = 0.0, on both the vector and the scalar image, at "
@@ -574,6 +575,38 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
     return res, ship, (board(True) if debug else None)
 
 
+def _matrix_facts(matrix_build: dict | None) -> dict:
+    """The shippable facts about a matrix-unit shim: its geometry, and which revision it came from.
+
+    A SUBSET, chosen rather than forwarded whole. The build's own record carries absolute paths inside our
+    checkouts (the shim object, the Scala it read, the dirty files in the hardware tree); a delivery goes to
+    someone outside this host, so it gets the facts and not our directory layout. What is kept is what a
+    recipient can act on: the tile edge and alignment the kernel was compiled for, whether its tile loop can
+    reach more than one unit, the revision the encodings were derived from, and the digest of the bytes that
+    were actually read -- which is the part a dirty checkout changes while the commit still looks right.
+    """
+    if not isinstance(matrix_build, dict):
+        return {}
+    out: dict = {k: matrix_build.get(k) for k in
+                 ("tile_edge", "alignment_bytes", "scratch_bytes", "parallel_tiles")}
+    prov = matrix_build.get("provenance") or {}
+    for pin, got in (prov.get("hardware_pins") or {}).items():
+        obs = got.get("observed") or {}
+        out["unit_revision"] = {
+            "pin": pin, "commit": obs.get("commit"), "branch": obs.get("branch"),
+            "repo": obs.get("remote"), "verified": bool(got.get("ok")),
+            # A dirty hardware checkout is not automatically wrong -- it is wrong when the dirty files are
+            # ones this build READ, which is what `drift` distinguishes and `source_digest` pins exactly.
+            "dirty_files": obs.get("dirty_files"), "drift": list(got.get("drift") or ()),
+        }
+        break
+    if prov.get("source_digest"):
+        out["unit_source_digest"] = prov["source_digest"]
+    if matrix_build.get("gaps"):
+        out["shim_gaps"] = list(matrix_build["gaps"])
+    return out
+
+
 def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, sdk_dir=None,
                  debug: bool = False, unit: str, config: str, simulate: bool = True):
     """Build an image that routes contractions to a MATRIX EXTENSION, and gate it honestly.
@@ -669,6 +702,13 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
     res["build_hash"] = twin["build_hash"]
     res["matrix"] = {
         "unit": unit, "config": config, "unit_instruction_counts": counts,
+        # The GEOMETRY the shipped kernel was compiled for, and the revision of the unit's sources the
+        # instruction encodings were derived from. Both come from the build that produced this ELF rather
+        # than being re-derived here, so the package cannot state an edge the binary does not have.
+        # Recorded because an image built for the wrong edge, or from a revision whose funct6 slots have
+        # since moved, links and runs and emits a NEIGHBOURING instruction -- there is no link error to
+        # catch it, and a reader with only `unit` and `config` cannot tell.
+        **_matrix_facts(ship.get("matrix_build")),
         # What actually matches between the two images. The image-level build_hash folds in the app
         # configuration, which legitimately differs -- the twin compiles the shim with the stand-in.
         "lowering_digest": ship_lowering,
@@ -677,10 +717,23 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
         # the price of NOT having the unit; quoting it as the accelerated image's cycles would invert
         # the result it is evidence for.
         "twin_spike_cycles": res["metrics"].get("cycles"),
-        "gated_via": "scalar stand-in twin on spike; it shares this image's LOWERING (see "
-                     "lowering_digest) but not its app configuration. That covers the routing, the "
-                     "K-major pack, the descriptor ABI and the requant epilogue. The DATAPATH is not "
-                     "covered here -- it is certified on the unit's own RTL against a frozen corpus.",
+        # Whether the stand-in twin was actually RUN. Without this the package cannot tell its two
+        # honest stories apart, and the README asserted the wrong one: with --no-spike(-backends) the
+        # twin is built and audited but never graded, and text claiming it "grades bit-exact" would be a
+        # verdict nobody produced.
+        "twin_simulated": bool(simulate),
+        "gated_via": ("scalar stand-in twin on spike; it shares this image's LOWERING (see "
+                      "lowering_digest) but not its app configuration. That covers the routing, the "
+                      "K-major pack, the descriptor ABI and the requant epilogue. The DATAPATH is not "
+                      "covered here -- it is certified on the unit's own RTL against a frozen corpus."
+                      if simulate else
+                      "NOTHING was graded here. The stand-in twin was built and audited -- it shares "
+                      "this image's lowering_digest and carries none of the unit's instructions -- but "
+                      "it was not simulated, because a whole-model scalar stand-in costs hours of "
+                      "spike. What this package establishes about these images is structural: the "
+                      "routing happened, the shipped ELF carries the unit's instructions and the twin "
+                      "does not, and both lower to the same bytes. Any numerical evidence is external "
+                      "and named in this package's notes."),
     }
     return res, ship, (build(stand_in=False, dbg=True, where=f"board_h{harts}_dbg") if debug else None)
 
@@ -716,6 +769,13 @@ def main(argv=None) -> int:
                     help="comma-separated models to build+audit WITHOUT simulating, while the rest "
                          "keep their gate. For the case where one model's functional run costs hours "
                          "and its evidence comes from elsewhere (FireSim), but the others are cheap.")
+    ap.add_argument("--no-spike-backends", default="",
+                    help="comma-separated BACKENDS (rvv|scalar|matrix) to build+audit without "
+                         "simulating, while every other image keeps its gate. --no-spike-models cannot "
+                         "express this: a matrix image's gate is a scalar stand-in of the whole model, "
+                         "which costs hours on spike, while the RVV image of the SAME model costs "
+                         "minutes — so naming the model would throw away the cheap gate to skip the "
+                         "expensive one.")
     ap.add_argument("--no-spike", action="store_true",
                     help="build and audit the board ELFs but do not simulate them. Use when the "
                          "lowering is already validated on stronger evidence (e.g. FireSim on the "
@@ -731,6 +791,11 @@ def main(argv=None) -> int:
                          "stack high-water marks, and turns a fault into one greppable FAIL line "
                          "carrying the build hash. For a board we cannot attach to, this is what "
                          "makes ONE returned console log a diagnosis instead of a new question.")
+    ap.add_argument("--note", action="append", default=[],
+                    help="a sentence the recipient must read, recorded in the manifest and rendered "
+                         "near the top of the README. For the facts that belong to THIS package and "
+                         "cannot be derived from a board descriptor or a build — chiefly which "
+                         "hardware it has and has not been executed on. Repeatable.")
     ap.add_argument("--out", default=None, help="destination dir (default: an out/artifacts product)")
     ap.add_argument("--refresh", action="store_true",
                     help="do not build anything: recompute --out's manifest summary, re-render its "
@@ -773,6 +838,11 @@ def main(argv=None) -> int:
     if unknown:
         print(f"[make_delivery] --no-spike-models names models not in --models: {sorted(unknown)}",
               file=sys.stderr)
+        return 2
+    no_spike_backends = {b.strip() for b in a.no_spike_backends.split(",") if b.strip()}
+    if not no_spike_backends <= {"rvv", "scalar", "matrix"}:
+        print(f"[make_delivery] --no-spike-backends: unknown backend(s) "
+              f"{sorted(no_spike_backends - {'rvv', 'scalar', 'matrix'})}", file=sys.stderr)
         return 2
     hart_list = [int(h) for h in a.harts.split(",") if h.strip()]
     scalar_hart_list = [int(h) for h in a.scalar_harts.split(",") if h.strip()]
@@ -883,7 +953,7 @@ def main(argv=None) -> int:
         work = Path(tempfile.mkdtemp(prefix=f"delivery_{model}_{backend}_h{harts}_"))
         # A scalar image has no vector gate to run and no RVV package to apply; it is built and
         # audited, never simulated, and the package says so rather than implying a gate.
-        if a.no_spike or model in no_spike_models:
+        if a.no_spike or model in no_spike_models or backend in no_spike_backends:
             print(f"  [{tag}] building (no simulation) in {work}", flush=True)
             if backend == "matrix":
                 # A matrix image is not a `backend=` variant of the ordinary build: it needs the routing,
@@ -1155,13 +1225,17 @@ def main(argv=None) -> int:
         "board": {"name": brd.name, "dram_bytes": brd.dram_bytes, "harts": brd.harts,
                   "vlen": brd.vlen, "console": brd.console, "notes": brd.notes},
         "dtype": a.dtype, "binaries": binaries, "problems": problems,
+        # Facts about THIS package that no descriptor and no build can state, chiefly which hardware its
+        # binaries have and have not run on. Free text because that is what it is; recorded here and
+        # rendered in the README so it cannot be a thing we only said in an email.
+        "notes": list(a.note),
         "vector_probe": probe_report,
         "firesim_evidence": firesim_evidence or None,
         "merlin_commit": _git_sha(),
         # State what actually happened to THESE binaries. A package whose provenance line claims a
         # simulation it skipped is worse than one that admits the gap: the reader cannot tell which
         # of our claims to trust.
-        "validated_on": _provenance(a.no_spike, no_spike_models),
+        "validated_on": _provenance(a.no_spike, no_spike_models, no_spike_backends),
     }
     (dest / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     (dest / "README.md").write_text(_readme(brd, manifest, debug=a.debug))
@@ -1475,20 +1549,26 @@ def _git_sha() -> str:
         return "unknown"
 
 
-def _provenance(no_spike: bool, no_spike_models: set) -> str:
+def _provenance(no_spike: bool, no_spike_models: set, no_spike_backends: set = frozenset()) -> str:
     """One line saying what actually happened to the binaries in THIS package.
 
     A package whose provenance claims a simulation it skipped is worse than one that admits the gap:
     the reader cannot tell which of our claims to trust. A mixed package says so, and names which
     models are the exception rather than averaging the two stories together.
+
+    The exception can be a BACKEND rather than a model, and the two cases are not interchangeable: a
+    matrix-unit image of a model whose RVV image was simulated here leaves this line true of most of the
+    package and false of one row, so the row is named.
     """
     rtl = ("FireSim (our own Saturn RTL, whole model, bit-exact vs the W8A8 reference)")
     if no_spike:
         return f"{rtl}; these binaries were built and ELF-audited but NOT simulated"
     spike = "spike (functional, at the board's VLEN)"
-    if no_spike_models:
-        return (f"{spike} — EXCEPT {', '.join(sorted(no_spike_models))}, which was built and "
-                f"ELF-audited but not simulated; its evidence is {rtl}")
+    exceptions = [*sorted(no_spike_models),
+                  *(f"the {b} images" for b in sorted(no_spike_backends))]
+    if exceptions:
+        return (f"{spike} — EXCEPT {', '.join(exceptions)}: built and ELF-audited but not "
+                f"simulated, with that evidence coming from {rtl}")
     return spike
 
 
@@ -1606,6 +1686,13 @@ bug and we would want the log.
 """
 
 
+#: A board's OWN bring-up history, keyed by descriptor name -- deliberately not by Zephyr port and not
+#: defaulted. The text addresses a conversation ("your table", "your trap logs") that a second
+#: configuration built against the same port was never part of, so inheriting it would put words in a
+#: recipient's mouth about runs they never did.
+HISTORY_DOC = {"chipyard_kodiak": KODIAK_VSTATE_DOC}
+
+
 SUPERSEDED_DOC = """\
 ## If you tried our earlier binaries and saw nothing
 
@@ -1681,9 +1768,16 @@ clock, DRAM extent, stack usage and the whole op trace in one go.
 
 
 def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
-    loader = LOADER_DOC.get(brd.name, LOADER_DOC["default"])
+    # This descriptor's own loader line, else the one for the PORT it is built against, else generic. The
+    # middle step is what a second configuration of a known board needs: how you load an image belongs to
+    # the port and the link, not to how many cores the design has, so a descriptor that shares
+    # `zephyr_board` with a documented one would otherwise ship the generic paragraph and read as a
+    # different, unsupported flow.
+    loader = (LOADER_DOC.get(brd.name)
+              or LOADER_DOC.get(brd.zephyr_board or "")
+              or LOADER_DOC["default"])
     # Each board gets the explanation of ITS last failure, not a generic one.
-    superseded_doc = SUPERSEDED_DOC if brd.sdk_chip else KODIAK_VSTATE_DOC
+    superseded_doc = SUPERSEDED_DOC if brd.sdk_chip else HISTORY_DOC.get(brd.name, "")
     debug_doc = DEBUG_DOC if any(b.get("debug") for b in manifest["binaries"]) else ""
     # Say what was actually checked for THIS board's console. Claiming a `.htif` check on a board whose
     # console is its own UART is both wrong and exactly the kind of detail that erodes trust in the
@@ -1706,26 +1800,101 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
     matrix_doc = ""
     if matrix_bins:
         units = sorted({b["matrix"]["unit"] for b in matrix_bins})
-        matrix_doc = f"""
-## The matrix-unit images, and exactly what backs them
-
-`{"`, `".join(b["elf"] for b in matrix_bins)}` route their contractions to **{", ".join(units)}**
-instead of running them on the vector unit. They carry instructions no simulator we have can execute, so
-unlike every other binary here they were **not** run before shipping. Their evidence is in two halves,
-and both are real:
-
+        # The geometry these binaries were COMPILED for, stated where a reader will see it. `unit` and
+        # `config` alone do not tell anyone what the kernel assumes, and the tile edge is the one number
+        # that has to match the design: a kernel built for a different edge does not fail to link, it
+        # computes the wrong thing on the second beat of a load.
+        geom = sorted({(b["matrix"].get("config"), b["matrix"].get("tile_edge"))
+                       for b in matrix_bins})
+        geom_lines = "\n".join(
+            f"- **{cfg}** — logical tile edge **{edge}**" for cfg, edge in geom if cfg) or ""
+        parallel = sorted({b["harts"] for b in matrix_bins if b["matrix"].get("parallel_tiles")})
+        serial = sorted({b["harts"] for b in matrix_bins
+                         if b["matrix"].get("parallel_tiles") is False})
+        reach = []
+        if parallel:
+            reach.append(f"the {', '.join(f'{h}-hart' for h in parallel)} image(s) compile the kernel's "
+                         f"tile loop with OpenMP, so the tiles are split across harts and one unit per "
+                         f"hart is reached")
+        if serial:
+            reach.append(f"the {', '.join(f'{h}-hart' for h in serial)} image(s) run that loop serially, "
+                         f"which uses exactly ONE unit — correct, and half the machine on a chip that "
+                         f"has one per core")
+        reach_line = ("\n\nWhich units get used is a property of the image, not of the chip: "
+                      + "; ".join(reach) + ".") if reach else ""
+        rev = next((b["matrix"]["unit_revision"] for b in matrix_bins
+                    if b["matrix"].get("unit_revision")), None)
+        # A pin that did NOT verify is the sentence that must not be dropped: the encodings and the tile
+        # geometry were read from a tree carrying uncommitted changes, so the revision alone does not
+        # describe them, and only the source digest does. Saying "derived from revision X" and stopping
+        # there is how a result gets attributed to a revision that cannot reproduce it.
+        drift_line = ("" if not rev or rev.get("verified") else
+                      "\n\n**One caveat on that revision, and it is ours, not yours:** the sources this "
+                      "was read from carry changes that are not committed anywhere ("
+                      + "; ".join(rev.get("drift") or ["unspecified drift"])
+                      + "). So the commit above does not fully describe what these binaries were built "
+                        "from; what does is `unit_source_digest` in `manifest.json`, which is a digest of "
+                        "the exact bytes read. Ask us for those sources if you need to rebuild this "
+                        "yourself.")
+        rev_line = ("" if not rev else
+                    f"\n\nThe instruction encodings were derived from the unit's own RTL at "
+                    f"`{(rev.get('commit') or '')[:12]}` (`{rev.get('branch')}`), cross-checked against "
+                    f"the header its author maintains; the build refuses to emit if those two disagree. "
+                    f"`manifest.json` carries the full revision and a digest of the exact bytes read."
+                    + drift_line)
+        # Which of the two twin stories is true of THIS package. Both are honest; asserting the graded
+        # one when nothing ran is not, and it is the failure mode a reader cannot check.
+        twin_ran = all(b["matrix"].get("twin_simulated") for b in matrix_bins)
+        twin_bullet = ("""\
 - **Everything around the unit** — the routing, the K-major operand pack, the descriptor ABI and the
   requant epilogue — is graded on a *scalar stand-in twin*: the same module rebuilt with a scalar loop
   in place of the unit's datapath. The twin shares this image's lowering (`lowering_digest` in
   `manifest.json`; the image-level `build_hash` differs because the twin's app compiles the shim
-  differently), and it grades bit-exact against the same references as everything else here.
-- **The unit's own arithmetic** is certified separately, on the unit's RTL, against a frozen corpus of
-  shapes that includes the ones this model actually produces.
-
+  differently), and it grades bit-exact against the same references as everything else here.""" if twin_ran
+                       else """\
+- **Everything around the unit** — the routing, the K-major operand pack, the descriptor ABI and the
+  requant epilogue — is covered STRUCTURALLY here, not numerically. We build the *scalar stand-in twin*
+  (the same module with a scalar loop in place of the unit's datapath), check that it lowers to the same
+  bytes as the shipped image (`lowering_digest` in `manifest.json`) and that it carries none of the
+  unit's instructions while the shipped image carries them — but we did **not** run it: a whole-model
+  scalar stand-in costs hours of functional simulation. So no number in this package was produced by
+  executing this model's matrix path; where such a number exists it comes from hardware, and this
+  package's notes say which.""")
+        # The console note only applies where a console exists. Saying "`expected_console.txt` beside
+        # these ELFs is the twin's" in a package that shipped no such file sends the reader looking for
+        # it, which is how a correct package reads as an incomplete one.
+        twin_console_note = ("""\
 Two things follow. `spike_cycles` is `null` for these rows on purpose — the shipped image was never
 simulated; the twin's cycle count is recorded inside `matrix` and is the price of *not* having the unit,
 so it is not a speed figure for this binary. And `expected_console.txt` beside these ELFs is the twin's,
-so its `METRIC build_hash` line names `twin_build_hash`, not the shipped image's — `grade.py` knows.
+so its `METRIC build_hash` line names `twin_build_hash`, not the shipped image's — `grade.py` knows."""
+                             if twin_ran else """\
+So there is no `expected_console.txt` for these rows and `spike_cycles` is `null`: we would rather ship
+no reference than one we did not produce. `grade.py` still scores the console YOU send back against the
+same references, which is the comparison that matters — the W8A8 golden is in this package.""")
+        matrix_doc = f"""
+## The matrix-unit images, and exactly what backs them
+
+`{"`, `".join(b["elf"] for b in matrix_bins)}` route their contractions to **{", ".join(units)}**
+instead of running them on the vector unit, in this configuration:
+
+{geom_lines}
+{reach_line}{rev_line}
+
+We check the routing really happened, in both directions, before shipping: the parsed instruction fields
+of every function in the shipped ELF are compared against the encodings derived above, and the shipped
+image must contain them while its stand-in twin must contain none. The counts are in `manifest.json`
+under `matrix.unit_instruction_counts`.
+
+They carry instructions no simulator we have can execute, so
+unlike every other binary here they were **not** run before shipping. Their evidence is in two halves,
+and both are real:
+
+{twin_bullet}
+- **The unit's own arithmetic** is certified separately, on the unit's RTL, against a frozen corpus of
+  shapes that includes the ones this model actually produces.
+
+{twin_console_note}
 
 If the run faults, the first thing worth checking is whether your part actually has the unit: an image
 built for it will not run on one without it.
@@ -1774,7 +1943,10 @@ targets, and shipping that untested would waste your bench time. If you want it,
 ours to do next — say so and we will build against your dispatch.""")
     # A scalar image is a different ISA for a different set of harts, not a slower build of the same
     # thing. Someone looking at two files that differ by one word in the name needs that said.
-    scalar_bins = [b for b in manifest["binaries"] if b.get("backend", "rvv") != "rvv"]
+    # `== "scalar"`, not `!= "rvv"`. A matrix-unit image is neither of those things, and under the old
+    # test it pulled in the section below -- telling the recipient that a binary full of vector AND
+    # matrix instructions "contains no vector instructions at all".
+    scalar_bins = [b for b in manifest["binaries"] if b.get("backend", "rvv") == "scalar"]
     if scalar_bins:
         n_vec = brd.n_vector_harts
         scalar_section = """\
@@ -1868,15 +2040,25 @@ functional simulator, and it is where a multicore split gets its first honest te
     else:
         firesim_doc = ""
     simulated = any(b.get("spike_cycles") is not None for b in manifest["binaries"])
+    # WHICH binaries were run, and how the simulated image differed from the shipped one -- both of which
+    # depend on the package. Saying "the image" in a package where only some rows were gated overstates
+    # the gate, and the "linked with a host-assisted console instead of your UART" clause is simply false
+    # of a board whose own console IS the host-assisted one: there, the simulated image is the shipped one.
+    gated = [b for b in manifest["binaries"] if b.get("spike_cycles") is not None]
+    which = ("Ran every binary here" if len(gated) == len(manifest["binaries"]) else
+             "Ran " + ", ".join(f"`{b['elf']}`" for b in gated))
+    same_image = (" That is the same image you have, console and all."
+                  if brd.console == CONSOLE_HTIF else
+                  " That simulated image differs from the one you have in exactly one way: spike provides"
+                  " a debug host, so it was linked with the host-assisted console instead of your UART.")
     sim_line = ("""\
-- Ran the image on spike at **%d-bit** vectors and gated the output against the W8A8 reference. That
-  simulated image differs from the one you have in exactly one way: spike provides a debug host, so it
-  was linked with the host-assisted console instead of your UART. Both share a `build_hash` — a digest
+- %s on spike at **%d-bit** vectors and gated the output against the W8A8 reference.%s
+  Simulated and shipped share a `build_hash` — a digest
   of the lowered model object plus the weights — so the computation is byte-for-byte the same, and the
   packager refuses to ship the pair if those hashes disagree. Two consequences for the log you send
   back: your run prints two extra `METRIC` lines (`console`, `chip_freq_hz`) that the reference does
   not, and `METRIC cycles` will differ because it is a different chip. Grading reads the `OUT` line, so
-  neither affects PASS/FAIL.""" % (brd.vlen or 128) if simulated else """\
+  neither affects PASS/FAIL.""" % (which, brd.vlen or 128, same_image) if simulated else """\
 - **Did NOT run these exact binaries through a functional simulator.** The lowering they were built
   from is validated on stronger evidence — the same models, same schedule, executing our own Saturn
   RTL on an FPGA, bit-exact against the W8A8 reference (see above). What is specific to these
@@ -1930,18 +2112,33 @@ back interleaved character-by-character, that is an older probe — tell us and 
     # is what a NARROWER unit violates, and the save-area width is what a WIDER one overruns.
     _built_vlen, _save_bits, _built_vlen, _save_bits, _built_vlen, _built_vlen, _built_vlen)
                  if probe else "*(not included in this package)*")
+    # The instruction-mix check, described as what it checked HERE. Listing a scalar image's property in a
+    # package with no scalar image reads as boilerplate, and boilerplate is where a real omission hides.
+    mix_check = "real vector instructions in every vector image"
+    if scalar_bins:
+        mix_check += ", and *zero* of them in a scalar one"
+    if matrix_bins:
+        mix_check += (", plus the matrix unit's own instructions in every matrix image and none in its "
+                      "stand-in twin, compared as parsed instruction fields against encodings derived "
+                      "from the unit's RTL")
     identity_line = ("- Confirmed 1-hart and %d-hart outputs are bit-identical." % max(hart_counts)
                      if len(hart_counts) > 1 else
                      "- Single-hart images only (see above), so there is no hart-split to check.")
+    # The package's own caveats, first thing after the summary. A note that arrives in an email beside a
+    # zip is a note that gets lost from the zip; this is the same sentence, inside the artifact.
+    notes_doc = ("" if not manifest.get("notes") else
+                 "\n> **Read this first.**\n>\n"
+                 + "\n".join(f"> - {n}" for n in manifest["notes"]) + "\n")
+    isa_line = ("RVV + matrix unit" if matrix_bins else "RVV")
     return f"""\
-# Merlin int8 RVV binaries for `{brd.name}`
+# Merlin int8 {isa_line} binaries for `{brd.name}`
 
 Compiled by the Merlin flow (model2MLIR capture -> int8 W8A8 lowering -> certified RVV schedule ->
 {image}). **Each binary is self-contained**: inputs and weights are baked in, so there is no
 filesystem, no host I/O, no arguments, and nothing to install on the board.
 
 We have no access to this board — you running these is the first time they touch the real chip.
-
+{notes_doc}
 ## What we built for
 
 | fact | value | where it came from |
@@ -2000,7 +2197,7 @@ warns if the log's `build_hash` is not one of ours.
 
 - Built for `{brd.name}` with the board's own facts, and audited the ELF against them: every LOAD
   segment inside your DRAM, entry point in range, {console_check}, and the expected instruction mix —
-  real vector instructions in an RVV image, and *zero* in a scalar one (see `elf_audit.json`).
+  {mix_check} (see `elf_audit.json`).
 {sim_line}
 {identity_line}
 
