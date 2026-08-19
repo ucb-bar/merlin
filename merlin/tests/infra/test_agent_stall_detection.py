@@ -131,3 +131,26 @@ def test_a_process_blocked_on_io_still_counts_as_stalled(oc):
     """CPU must not become a blanket amnesty: a hang burns none, which is the whole point."""
     with pytest.raises(oc.AgentStalled):
         _run(oc, "exec python3 -c 'import time; time.sleep(120)'", timeout=120, stall=6)
+
+
+def test_a_killed_round_keeps_the_record_of_what_it_did(oc):
+    """A round killed on the wall clock must still report its actions and tokens.
+
+    Measured: a live GLM-5 round worked for 40 minutes, was cut off at the round timeout, and left a
+    two-line transcript reporting tool_calls=0 and no usage. The tokens were spent and the actions
+    happened; discarding the stream made the round unbudgetable and made the agent look idle.
+    """
+    script = "printf 'line-one\\n'; printf 'line-two\\n'; sleep 120"
+    with pytest.raises(subprocess.TimeoutExpired) as ei:
+        _run(oc, script, timeout=8, stall=0)          # stall detector off: this is a WALL-CLOCK kill
+    exc = ei.value
+    assert hasattr(exc, "partial_stdout"), "the partial stream must be attached to the exception"
+    assert "line-one" in exc.partial_stdout and "line-two" in exc.partial_stdout, \
+        "output produced before the kill must survive the capture files being cleaned up"
+
+
+def test_a_stalled_round_also_keeps_its_partial_stream(oc):
+    """Same guarantee on the inactivity path, which is the other way a round dies."""
+    with pytest.raises(oc.AgentStalled) as ei:
+        _run(oc, "printf 'seen-before-stall\\n'; sleep 200", timeout=200, stall=6)
+    assert "seen-before-stall" in (getattr(ei.value, "partial_stdout", "") or "")

@@ -206,11 +206,26 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
             pgid = os.getpgid(p.pid)
             last_size, last_change = -1, time.monotonic()
             last_cpu = _tree_cpu_seconds(pgid)
+            def _with_partial(exc):
+                """Attach whatever the run produced before it was killed.
+
+                The stream is this driver's ONLY record of a round: the transcript is reconstructed from
+                it after the process exits, and ``finally`` below deletes the capture files. So a round
+                killed on the wall clock used to report tool_calls=0 and no usage at all -- a live GLM-5
+                round spent 40 minutes working and left a two-line transcript. The work is not
+                recoverable, but the record of it is."""
+                try:
+                    exc.partial_stdout = Path(tmp.name).read_text(errors="replace")
+                    exc.partial_stderr = Path(errf.name).read_text(errors="replace")
+                except OSError:
+                    exc.partial_stdout = exc.partial_stderr = ""
+                return exc
+
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     _reap(p)
-                    raise subprocess.TimeoutExpired(cmd, timeout)
+                    raise _with_partial(subprocess.TimeoutExpired(cmd, timeout))
                 try:
                     p.wait(timeout=min(_POLL_SECONDS, remaining))
                     break                                   # exited on its own
@@ -230,7 +245,7 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
                     last_size, last_cpu, last_change = size, max(cpu, last_cpu), now
                 elif stall_seconds and (now - last_change) >= stall_seconds:
                     _reap(p)
-                    raise AgentStalled(cmd, int(now - last_change))
+                    raise _with_partial(AgentStalled(cmd, int(now - last_change)))
         return p.returncode, Path(tmp.name).read_text(), Path(errf.name).read_text()
     finally:
         for _f in (tmp.name, errf.name):
@@ -447,7 +462,21 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         _why = ("agent stalled: no output for "
                 f"{getattr(_te, 'timeout', '?')}s while the process stayed alive"
                 if isinstance(_te, AgentStalled) else "opencode run timed out")
-        emit({"type": "result", "subtype": "error", "is_error": True, "result": _why})
+        # Salvage the round's record before reporting the kill. A timed-out round did real work and its
+        # actions and token usage are in the stream captured so far; discarding them reported the round as
+        # though the agent had done nothing, which is both false and unbudgetable -- the tokens were spent.
+        _partial = getattr(_te, "partial_stdout", "") or ""
+        _recovered = _parse_run_stream(_partial, mid, rnd, emit) if _partial else 0
+        if _recovered == 0 and _partial:
+            _sid = _parse_session_id(_partial)
+            if _sid:                                    # the session store outlives the killed process
+                try:
+                    _ec, _eo, _ = _capture([opencode_bin, "export", _sid], env, 120, str(ws))
+                    _export_to_transcript(json.loads(_eo) if _ec == 0 else {}, mid, rnd, emit)
+                except Exception:  # noqa: BLE001 — salvage is best-effort; never mask the timeout
+                    pass
+        emit({"type": "result", "subtype": "error", "is_error": True,
+              "result": _why, "recovered_actions": _recovered})
         tf.close()
         try:
             os.unlink(cfgf.name)
