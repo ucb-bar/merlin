@@ -113,6 +113,13 @@ def resolve_model(model: str) -> str:
             mapping[alias.strip()] = slug.strip()
     if raw in mapping:
         return mapping[raw]
+    # A model reached through the LiteLLM bridge keeps the proxy's model_name -- it is NOT a Codex slug
+    # and must not fall through to DEFAULT_CODEX_MODEL, which would silently run OpenAI's default model
+    # while the manifest claimed the run measured nemotron.
+    import agent_bridge as _BR
+    bridged = _BR.bridged_name(raw, "codex")
+    if bridged:
+        return bridged
     if raw.startswith("gpt-") or raw.startswith("codex-") or raw.startswith("o3"):
         return raw
     return DEFAULT_CODEX_MODEL

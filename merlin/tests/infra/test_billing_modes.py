@@ -36,23 +36,36 @@ _CLAUDE_USAGE = {"input_tokens": 1000, "cache_creation_input_tokens": 0,
 
 
 # --------------------------------------------------------------------------- unpriced models
+#: A model that is genuinely absent from every price table. These tests used to name gpt-5.6-sol, which
+#: WAS unpriced when they were written and has since been given a rate -- so they began asserting that a
+#: priced model is unpriced, and failed for a reason that had nothing to do with the behaviour under
+#: test. The subject here is "a model we have no rate for", so the fixture has to be a model no table can
+#: ever acquire, not whichever real model happened to be unpriced on the day.
+_UNPRICED = "vendor.model-that-no-price-table-carries"
+
+
 def test_an_unknown_model_yields_no_dollar_figure_and_names_the_gap(tmp_path):
-    s = ET.parse_transcript(_transcript(tmp_path, "gpt-5.6-sol", _CLAUDE_USAGE))
+    s = ET.parse_transcript(_transcript(tmp_path, _UNPRICED, _CLAUDE_USAGE))
     assert s["available"] is True
     assert s["estimated_cost_usd"] is None
-    assert "gpt-5.6-sol" in s["cost_unavailable_reason"]
+    assert _UNPRICED in s["cost_unavailable_reason"]
     assert "subscription_notional_usd" not in s, "an unpriced model has no notional figure either"
 
 
 def test_rate_returns_none_rather_than_defaulting_to_the_priciest_model():
-    assert ET._rate("gpt-5.6-sol") is None
+    assert ET._rate(_UNPRICED) is None
     assert ET._rate("") is None
     assert ET._rate("claude-opus-4-8") == ET._RATES["opus"]
 
 
+def test_a_priced_model_does_get_a_rate():
+    """The complement of the above: the table is consulted, not ignored."""
+    assert ET._rate("gpt-5.6-sol") is not None, "gpt-5.6-sol carries a seat rate; it must be found"
+
+
 def test_tokens_are_still_accounted_when_the_price_is_unknown(tmp_path):
     """Losing the dollars must not lose the tokens — the token ledger is the primary record."""
-    s = ET.parse_transcript(_transcript(tmp_path, "gpt-5.6-sol", _CLAUDE_USAGE))
+    s = ET.parse_transcript(_transcript(tmp_path, _UNPRICED, _CLAUDE_USAGE))
     assert (s["tokens_input"], s["tokens_output"]) == (1000, 100)
 
 

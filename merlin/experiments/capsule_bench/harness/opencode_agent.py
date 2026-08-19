@@ -387,6 +387,8 @@ def opencode_runtime_binds(data_home: Path) -> list[str]:
 # Values are per-model overrides keyed by the BARE provider model id. A model absent here keeps
 # opencode's registry defaults -- this never invents a window, it only stops us reserving one we do not
 # use. ``OPENCODE_MAX_OUTPUT_TOKENS`` overrides the output ask for a one-off.
+import agent_bridge as _BR
+
 _DEFAULT_MAX_OUTPUT = int(os.environ.get("OPENCODE_MAX_OUTPUT_TOKENS",
                                         str(_BR.DEFAULT_MAX_OUTPUT)))
 
@@ -413,8 +415,6 @@ def _window_config(mid: str) -> tuple[dict, dict]:
 # N tokens"), not from a vendor page. Owned by agent_bridge so the opencode, codex and claude paths all
 # budget against the SAME number -- a per-driver copy is how one arm ends up with a different effective
 # window than another arm of the same campaign.
-import agent_bridge as _BR
-
 _CONTEXT_WINDOWS: dict[str, int] = _BR.CONTEXT_WINDOWS
 
 

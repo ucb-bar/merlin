@@ -32,6 +32,12 @@ MODELS = {
     "qwen-coder": "qwen.qwen3-coder-next",
     "nova-pro": "us.amazon.nova-pro-v1:0",
     "nova-lite": "us.amazon.nova-lite-v1:0",  # Haiku-tier: cheap/fast, the mechanical/background pick
+    # OpenAI on Bedrock. gpt-5.6-sol is ALSO codex-cli's own model on the ChatGPT seat, and having both
+    # routes is what makes the harness comparison clean: the exact model that scored 20/20 through
+    # codex-cli can be re-run through opencode and the claude CLI, so a harness effect is measured
+    # against a known-good result instead of inferred. The codex driver resolves its own slug
+    # (codex_agent.resolve_model) and is unaffected by this entry.
+    "gpt-5.6-sol": "openai.gpt-5.6-sol",
 }
 
 # Aliases that cannot drive an agentic tool loop (the model rejects toolConfig).
