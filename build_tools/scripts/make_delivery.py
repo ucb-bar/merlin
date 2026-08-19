@@ -371,6 +371,23 @@ STATUS = {
                   "IR is exact on x86. The 1-hart and N-hart runs ARE bit-identical, so it is useful "
                   "for bring-up and timing. Do not treat its output as an accuracy result — the cause "
                   "is ours to fix, not yours to debug.",
+    "gemma2_2b_section12": "A SECTION of the model, not the whole of it, and the first thing to know "
+                           "about it: 12 of Gemma 2 2B's 26 decoder layers, from the real pretrained "
+                           "`google/gemma-2-2b-it` weights at sequence length 128, int8. The whole "
+                           "model does not fit -- its image needs 7916 MB of DRAM, which is 193% of "
+                           "this design's 4 GB. This section's images are linked for the regions in the "
+                           "DRAM table above, every one of them inside 4 GB. SECOND thing to "
+                           "know, because it changes how you feed it: the image enters at the "
+                           "hidden state that has already been multiplied by the embedding scale, NOT "
+                           "at token ids. The embedding table is a 2250 MB fp32 gather (the int8 "
+                           "quantizer only converts linear layers), and with it in the image no layer "
+                           "count fits at all -- but a gather does no arithmetic, so nothing that "
+                           "would have run on the matrix unit is missing. The embedded inputs are the "
+                           "real embedding rows for a drawn set of token ids, and the goldens beside "
+                           "them are references for THIS section, not for the full model. Not "
+                           "simulated: a functional simulator cannot run 196e9 MACs in a usable time, "
+                           "so its evidence is the ELF audit, the routing record and the instruction "
+                           "audit -- see the matrix-unit section.",
     "whisper_tiny": "RE-EXPORTED SMALLER since the last package, because its problem was never the "
                     "code — it was the upload. Its token-embedding table was still fp32 (torchao's "
                     "default filter matches nn.Linear only), 76 MB of a 117 MB bundle, with the TIED "
@@ -459,6 +476,16 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
                  "console_provenance": ship.get("console_provenance", {})}, None
 
 
+#: Keys `zephyr_model.build_app` returns that describe an image's MEMORY DEMAND. Forwarded explicitly by
+#: every wrapper, because a wrapper that hand-picks its return silently drops them -- and then the arena
+#: check downstream compares against zero and passes an image it never examined.
+MEMORY_KEYS = ("allocation_bytes_total", "allocation_dynamic_calls", "activation_peak_bytes")
+
+
+def _keep_memory(b: dict) -> dict:
+    return {k: b[k] for k in MEMORY_KEYS if b.get(k) is not None}
+
+
 def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
                      backend: str = "rvv", debug: bool = False):
     """Build the board image and return its facts, without running it anywhere.
@@ -507,7 +534,7 @@ def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
                          sdk_dir=sdk_dir, debug=debug)
         return {"elf": b["elf"], "ram_bytes": b["ram_bytes"],
                 "build_hash": b.get("build_hash", ""), "backend": backend,
-                "op_profile_table": b.get("op_profile_table")}
+                "op_profile_table": b.get("op_profile_table"), **_keep_memory(b)}
     b = zm.build_app(bundle, work, board=brd.name, backend="rvv", rvv_hart=0,
                      cpus=zm.image_cpus(brd, harts), n_harts=harts, int8_compute=True,
                      rvv_schedule=pkg.schedule_text,
@@ -515,7 +542,7 @@ def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
                      features=frozenset([PEROP_BLOCK_NAME]), vlen=brd.vlen, sdk_dir=sdk_dir,
                      debug=debug)
     return {"elf": b["elf"], "ram_bytes": b["ram_bytes"], "build_hash": b.get("build_hash", ""),
-            "op_profile_table": b.get("op_profile_table")}
+            "op_profile_table": b.get("op_profile_table"), **_keep_memory(b)}
 
 
 def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, sdk_dir=None,
@@ -578,6 +605,163 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
     # The debug twin is NOT re-simulated: same model, same lowering, same references, instrumentation
     # only, and re-gating it would burn hours of spike to re-establish an answer we already have.
     return res, ship, (board(True) if debug else None)
+
+
+def _bundle_spec(entry: str, dtype: str):
+    """``(label, bundle_dir)`` for one ``--models`` entry.
+
+    Two forms, because a bundle directory and the name a package calls a model are not the same thing.
+    ``spectformer`` keeps the convention (``recaptures/<name>_<dtype>_full``). ``label:directory`` names the
+    directory explicitly, which is what a bundle that is not the whole model needs -- a section of a model
+    too large to fit is a legitimate deliverable and its directory says which section, while the label is
+    what the recipient reads in a filename. Guessing between them is the alternative, and a guess that
+    picks the wrong directory ships someone else's weights under this model's name.
+    """
+    from merlin.common.artifacts import recaptures_dir
+
+    label, sep, where = entry.partition(":")
+    label = label.strip()
+    if sep:
+        return label, recaptures_dir() / where.strip()
+    return label, recaptures_dir() / f"{label}_{dtype}_full"
+
+
+#: Link rates worth quoting against a board's own declared loader baud. Not a guess about hardware: these
+#: are the rates the loader sections above quote for these links (pyuartsi passes the baud straight to
+#: pyserial and its own `Baudrate` enum reaches 4 Mbaud). Rendered only when faster than what the board
+#: descriptor declares, and always as arithmetic on the SAME byte count the audit measured.
+FASTER_BAUDS = (921_600, 4_000_000)
+
+#: Above this, the upload is the first thing a recipient must be told about an image -- not a column in a
+#: table. A harness timeout of ten minutes is common, and an image whose upload alone outlasts it is
+#: reported as a failure that no rebuild can fix.
+UPLOAD_PROMINENCE_S = 30 * 60
+
+
+def _duration(seconds: float) -> str:
+    """A duration a person can act on. Hours for a wait measured in hours, minutes below that -- "0.0 h"
+    for a four-minute upload is the kind of rendering that makes a reader distrust every other number."""
+    if seconds < 90 * 60:
+        return f"{seconds / 60:.0f} min"
+    return f"{seconds / 3600:.1f} h"
+
+
+#: Beyond this the honest verdict is not "budget for it" but "not over this link". A day of wire time per
+#: attempt is not a schedule problem, it is a different delivery path.
+UPLOAD_IMPRACTICAL_S = 6 * 3600
+
+
+def _upload_doc(brd, manifest: dict) -> str:
+    """The upload cost of the largest image, stated where someone decides whether to start.
+
+    A 1.5 GB image on a 57600-baud serial link is 74 hours of wire time before the first instruction
+    executes, and the loader polls with no timeout -- so from the outside that is indistinguishable from a
+    hang, and a recipient can lose days to it. The number was in a table column and in a warning field,
+    which is not where a decision gets made.
+
+    The byte count is not recomputed here: ``upload_estimate_s`` was derived from it by dividing by the
+    loader's rate, so multiplying back gives the same bytes the ELF audit measured, for any package -- one
+    built before this section existed included.
+    """
+    rows = [b for b in manifest["binaries"] if b.get("upload_estimate_s")]
+    if not rows:
+        return ""
+    worst = max(rows, key=lambda b: b["upload_estimate_s"])
+    secs = float(worst["upload_estimate_s"])
+    if secs < UPLOAD_PROMINENCE_S:
+        return ""
+    rate = brd.loader_bytes_per_s
+    payload = int(worst.get("upload_bytes") or round(secs * rate))
+    alts = "\n".join(
+        f"- at **{b} baud**: {_duration(payload / (b / 10.0))} ({b / brd.loader_baud:.0f}x faster)"
+        for b in FASTER_BAUDS if b > brd.loader_baud)
+    smallest = min(rows, key=lambda b: b["upload_estimate_s"])
+    verdict = (f"""**Over the documented {brd.loader_baud}-baud link the largest images here are not
+practical.** Treat them as images for a faster link, or for a cycle-accurate or functional run of this
+design where the loader is not on a serial wire at all. Nothing faster than this link is documented for
+this board in the material we have."""
+               if secs >= UPLOAD_IMPRACTICAL_S else
+               f"""It is a wait, not a wall: budget for it and raise any timeout in your harness past it.
+Nothing faster than this link is documented for this board in the material we have, so the lever that
+matters is the baud above.""")
+    # Only point at the smallest image when it is MATERIALLY cheaper. In a package where everything is
+    # within a factor of two of 74 hours, "start with the smallest" reads as advice and carries none.
+    small_s = float(smallest["upload_estimate_s"])
+    if smallest is not worst and small_s < UPLOAD_IMPRACTICAL_S and small_s < secs / 2:
+        verdict += (f"\n\nIf what you want first is a quick confirmation that your silicon and our "
+                    f"compiler agree, start with `{smallest['elf']}` — the smallest image here, "
+                    f"{_duration(small_s)} on the same link.")
+    return f"""
+## Before you start: the upload is the long pole
+
+The largest binary here is `{worst['elf']}`, and your loader has to send **{payload / 2**20:.0f} MB** of
+it. At the **{brd.loader_baud} baud** your own scripts use, `{brd.loader}` moves about
+**{rate / 1024:.1f} KB/s**, so the upload alone is **{_duration(secs)}** before a single instruction
+executes. The loader polls for completion with no timeout, so from the outside that is indistinguishable
+from a hang. Please do not read it as one.
+
+{alts}
+
+{verdict}
+"""
+
+
+def _routing_facts(build_dir: Path) -> dict:
+    """What the rewrite actually routed in THIS image, read from the sidecar it wrote.
+
+    The package would otherwise have to take the routing on faith, or quote a number measured on a
+    different build. The two facts that matter to a reader are the coverage (every distinct contraction
+    signature routed, nothing skipped) and the arithmetic behind it, because "the matrix unit is used"
+    is compatible with one small GEMM out of a hundred going through it.
+    """
+    from merlin.llvmlower.passes_opu import SIDECAR_NAME
+
+    f = Path(build_dir) / SIDECAR_NAME
+    if not f.is_file():
+        return {}
+    got = json.loads(f.read_text())
+    routed = got.get("routed") or []
+
+    def _macs(r):
+        return int(r.get("b") or 1) * int(r["m"]) * int(r["n"]) * int(r["k"])
+
+    widest = max(routed, key=_macs, default=None)
+    out = {"routed_contractions": int(got.get("count") or len(routed)),
+           "distinct_signatures": len(got.get("signatures") or {}),
+           # NOT a count: the reasons are the point. An empty list is the claim "nothing was left behind".
+           "skipped": [f"{d.get('what')}: {d.get('why')}" for d in (got.get("skipped") or [])],
+           "macs_routed": sum(_macs(r) for r in routed)}
+    if widest is not None:
+        out["widest_routed"] = {"fqn": widest.get("fqn"),
+                                "shape": [widest.get("b"), widest["m"], widest["n"], widest["k"]],
+                                "macs": _macs(widest)}
+    return out
+
+
+def _memory_facts(build: dict, rep) -> dict:
+    """The image's memory arithmetic: region, image, arena, and what the model will ASK the arena for.
+
+    The arena is not a field in any config -- it is the leftover of the linked region after the image, and
+    it is what a model allocates out of at run time. So the only way to know it is large enough is to
+    subtract, which is what this does, and to compare against the SUM the lowered code requests rather
+    than against a liveness peak: one of our allocators never reclaims, and `activation_peak_bytes` says
+    of itself that it is a lower bound. A flat peak-plus-slack came 27 MB short on a big model, and that
+    shortfall arrives at the END of a run -- after the upload, after the layers, on hardware someone
+    waited hours for.
+    """
+    region = int(build.get("ram_bytes") or 0)
+    image = int(round(float(rep.facts.get("image_memsz_mb") or 0.0) * 2**20))
+    need = int(build.get("allocation_bytes_total") or 0)
+    arena = region - image
+    out = {"region_mb": round(region / 2**20, 1), "image_memsz_mb": round(image / 2**20, 1),
+           "arena_mb": round(arena / 2**20, 1),
+           "allocation_total_mb": round(need / 2**20, 1),
+           "allocation_dynamic_calls": int(build.get("allocation_dynamic_calls") or 0)}
+    if build.get("activation_peak_bytes"):
+        out["activation_peak_mb"] = round(int(build["activation_peak_bytes"]) / 2**20, 1)
+    if need and arena < need:
+        out["arena_short_mb"] = round((need - arena) / 2**20, 1)
+    return out
 
 
 def _matrix_facts(matrix_build: dict | None) -> dict:
@@ -727,6 +911,8 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
         # since moved, links and runs and emits a NEIGHBOURING instruction -- there is no link error to
         # catch it, and a reader with only `unit` and `config` cannot tell.
         **_matrix_facts(ship.get("matrix_build")),
+        # What was routed, from this image's own sidecar rather than from a number measured elsewhere.
+        "routing": _routing_facts(work / ship_where),
         # What actually matches between the two images. The image-level build_hash folds in the app
         # configuration, which legitimately differs -- the twin compiles the shim with the stand-in.
         "lowering_digest": ship_lowering,
@@ -764,7 +950,12 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--board", required=True, help="Zephyr board (e.g. chipyard_kodiak)")
     ap.add_argument("--models", default="spectformer,deepjscc,lstmnetvit",
-                    help="comma-separated workload names")
+                    help="comma-separated workloads. Either a name, whose bundle is "
+                         "`recaptures/<name>_<dtype>_full`, or `label:directory` naming the bundle "
+                         "directory explicitly — which is what a bundle that is not the whole model "
+                         "needs (a section of a model too big to fit is a legitimate deliverable, and "
+                         "its directory should say which section while the label stays readable in a "
+                         "filename).")
     ap.add_argument("--harts", default="1,3", help="comma-separated hart counts, one binary each")
     ap.add_argument("--dram-mb", type=int, default=None, help="the board's REAL DRAM")
     ap.add_argument("--vlen", type=int, default=None, help="the board's REAL vector length")
@@ -855,6 +1046,9 @@ def main(argv=None) -> int:
         overrides["vlen"] = a.vlen
     brd = boards.board(a.board, **overrides)
     models = [m.strip() for m in a.models.split(",") if m.strip()]
+    # label -> bundle directory, resolved ONCE. Everything downstream keys off the label.
+    bundles = dict(_bundle_spec(m, a.dtype) for m in models)
+    models = list(bundles)
     no_spike_models = {m.strip() for m in a.no_spike_models.split(",") if m.strip()}
     unknown = no_spike_models - set(models)
     if unknown:
@@ -942,7 +1136,7 @@ def main(argv=None) -> int:
     binaries, audits, problems = [], {}, list(probe_problems)
     todo = []                                     # (model, bundle, harts) -- one image each
     for model in models:
-        bundle = repo_root() / f"out/artifacts/recaptures/{model}_{a.dtype}_full"
+        bundle = bundles[model]
         if not (bundle / "model.mlir").is_file():
             problems.append(f"{model}: no bundle at {bundle}")
             continue
@@ -1042,8 +1236,7 @@ def main(argv=None) -> int:
         for harts, backend in ([(h, "rvv") for h in hart_list]
                                + [(h, "scalar") for h in scalar_hart_list]
                                + [(h, "matrix") for h in matrix_hart_list]):
-            got = done.get((model, repo_root() / f"out/artifacts/recaptures/{model}_{a.dtype}_full",
-                            harts, backend))
+            got = done.get((model, bundles[model], harts, backend))
             if got is None:
                 continue
             res, board_build, dbg_build = got
@@ -1059,8 +1252,22 @@ def main(argv=None) -> int:
                                   ram_bytes=board_build["ram_bytes"],
                                   require_vector=(backend in ("rvv", "matrix")))
             audits[elf_name] = rep.to_dict()
+            mem = _memory_facts(board_build, rep)
+            audits[elf_name]["memory"] = mem
             if not rep.ok:
                 problems += [f"{elf_name}: {p}" for p in rep.problems]
+            # An arena smaller than the sum the model requests does not ship. It is not a warning: the
+            # image would run, print its stages, and die in its tail on a machine somebody waited hours
+            # for, and a package is the wrong place to discover that.
+            if mem.get("arena_short_mb"):
+                problems.append(
+                    f"{elf_name}: NOT SHIPPED — its linked region leaves a {mem['arena_mb']:.0f} MB "
+                    f"arena while the lowered model requests {mem['allocation_total_mb']:.0f} MB in "
+                    f"total, i.e. {mem['arena_short_mb']:.0f} MB short. Grow the region (the board has "
+                    f"{brd.dram_bytes // 2**20} MB) or shrink the model.")
+                (dest / elf_name).unlink(missing_ok=True)
+                del audits[elf_name]
+                continue
             if res["console"]:
                 (dest / f"{model}_h{harts}{suffix}.expected_console.txt").write_text(res["console"])
             if res["outputs"] is not None:
@@ -1083,6 +1290,10 @@ def main(argv=None) -> int:
                 # Recorded rather than implied: "gate_ok" alone would read as a full verdict.
                 **({"matrix": res["matrix"]} if res.get("matrix") else {}),
                 "ram_bytes": board_build["ram_bytes"],
+                # Region/image/arena and the total the lowered model requests. On a design whose DRAM the
+                # image nearly fills, this is the first thing a reader needs and the last thing they can
+                # reconstruct from the ELF alone.
+                "memory": mem,
                 # A matrix image was never simulated -- nothing here can execute its instructions -- so
                 # it has no spike cycle count. Its twin's is recorded inside "matrix", named for what it
                 # is, rather than sitting in this field where it would read as the image's own cost.
@@ -1091,6 +1302,9 @@ def main(argv=None) -> int:
                 "spike_vlen": res.get("vlen"), "gate_ok": bool(res.get("ok")),
                 "tier_ok": res.get("tier_ok"), "cos": res.get("cos"), "rel": res.get("rel"),
                 "upload_estimate_s": rep.facts.get("upload_estimate_s"),
+                # The bytes the loader actually sends, so a later re-render does not have to reconstruct
+                # them from the estimate and the rate.
+                "upload_bytes": rep.facts.get("upload_bytes"),
             })
             cyc = res["metrics"].get("cycles")
             print(f"  {elf_name}: cycles={cyc:,} gate={res.get('tier_ok')} "
@@ -1105,8 +1319,22 @@ def main(argv=None) -> int:
                 drep = elf_audit.audit(dest / dbg_name, brd, ram_bytes=dbg_build["ram_bytes"],
                                        require_vector=(backend == "rvv"))
                 audits[dbg_name] = drep.to_dict()
+                dmem = _memory_facts(dbg_build, drep)
+                audits[dbg_name]["memory"] = dmem
                 if not drep.ok:
                     problems += [f"{dbg_name}: {q}" for q in drep.problems]
+                # The same arena floor as the plain image, checked on ITS OWN numbers: the instrumented
+                # build is a bigger image (the profile table, the per-op marks), so it has less of the
+                # region left over, and it is the one someone runs when the plain one misbehaves. Passing
+                # its sibling's check would be a guess about the wrong binary.
+                if dmem.get("arena_short_mb"):
+                    problems.append(
+                        f"{dbg_name}: NOT SHIPPED — its arena is {dmem['arena_mb']:.0f} MB against the "
+                        f"{dmem['allocation_total_mb']:.0f} MB the model requests, "
+                        f"{dmem['arena_short_mb']:.0f} MB short.")
+                    (dest / dbg_name).unlink(missing_ok=True)
+                    del audits[dbg_name]
+                    continue
                 # The op-id -> op-name table for this model. A debug run prints ~1000 `PROF <id> ...`
                 # lines and an `ALIVE ... op=<id>`; without this file every one of those ids is an
                 # unreadable integer, which makes the trace worthless to whoever mails it back.
@@ -1115,6 +1343,7 @@ def main(argv=None) -> int:
                     shutil.copy2(tbl, dest / f"{model}_h{harts}{suffix}.op_table.json")
                 binaries.append({
                     "model": model, "elf": dbg_name, "harts": harts, "dtype": a.dtype,
+                    "memory": dmem,
                     "backend": backend, "debug": True,
                     "build_hash": dbg_build.get("build_hash", ""),
                     "ram_bytes": dbg_build["ram_bytes"],
@@ -1878,6 +2107,25 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
                        for b in matrix_bins})
         geom_lines = "\n".join(
             f"- **{cfg}** — logical tile edge **{edge}**" for cfg, edge in geom if cfg) or ""
+        # Coverage, per image, from its own sidecar. "The unit is used" is compatible with one small GEMM
+        # out of a hundred going through it, so the number that matters is how much of the model's
+        # arithmetic went there and whether anything was left behind.
+        cover = []
+        for b in matrix_bins:
+            r = b["matrix"].get("routing") or {}
+            if not r:
+                continue
+            w = r.get("widest_routed") or {}
+            left = ("nothing was left behind" if not r.get("skipped")
+                    else "NOT everything was routed: " + "; ".join(r["skipped"]))
+            cover.append(
+                f"- `{b['elf']}`: **{r['routed_contractions']} contraction(s)** routed across "
+                f"**{r['distinct_signatures']} distinct signature(s)**, "
+                f"**{r['macs_routed'] / 1e9:.2f}e9 MACs** on the unit — {left}"
+                + (f". Widest routed shape `{w.get('shape')}` ({w.get('fqn')}), "
+                   f"{w.get('macs', 0) / 1e9:.2f}e9 MACs." if w else "."))
+        cover_lines = ("\n\nWhat went to the unit, read from each image's own routing record:\n\n"
+                       + "\n".join(cover)) if cover else ""
         parallel = sorted({b["harts"] for b in matrix_bins if b["matrix"].get("parallel_tiles")})
         serial = sorted({b["harts"] for b in matrix_bins
                          if b["matrix"].get("parallel_tiles") is False})
@@ -1949,6 +2197,7 @@ same references, which is the comparison that matters — the W8A8 golden is in 
 instead of running them on the vector unit, in this configuration:
 
 {geom_lines}
+{cover_lines}
 {reach_line}{rev_line}
 
 We check the routing really happened, in both directions, before shipping: the parsed instruction fields
@@ -2010,7 +2259,17 @@ more useful signal for you than either run alone. %s%s""" % (", ".join("`%s`" % 
 Every binary here runs on one hart. We did not ship a multi-hart bare-metal image because dispatching
 your second hart goes through your own thread-lib rather than the OpenMP runtime our multicore lowering
 targets, and shipping that untested would waste your bench time. If you want it, that integration is
-ours to do next — say so and we will build against your dispatch.""")
+ours to do next — say so and we will build against your dispatch.""" if hart_counts == [1] else """\
+## One hart count here, and what that costs you
+
+Every binary in this package fans out over **%d** harts. Elsewhere we ship one binary per hart count
+precisely so you can diff their outputs — the same computation split differently must come out
+bit-identical, and any difference at all is vector/SMP state on the SoC rather than rounding. That is the
+single most useful check you can run, and this package cannot give it to you: each image here is about
+%d MB, so the pair would double an upload that is already the longest part of the job. If you want the
+1-hart companion of any of these, say so and we will build it — it is a rebuild, not a redesign.""" % (
+                        hart_counts[0],
+                        max(b["ram_bytes"] for b in manifest["binaries"]) // 2**20))
     # A scalar image is a different ISA for a different set of harts, not a slower build of the same
     # thing. Someone looking at two files that differ by one word in the name needs that said.
     # `== "scalar"`, not `!= "rvv"`. A matrix-unit image is neither of those things, and under the old
@@ -2191,6 +2450,31 @@ back interleaved character-by-character, that is an older probe — tell us and 
         mix_check += (", plus the matrix unit's own instructions in every matrix image and none in its "
                       "stand-in twin, compared as parsed instruction fields against encodings derived "
                       "from the unit's RTL")
+    # How each image divides the DRAM it was linked for. Stated because the arena is not a field anyone can
+    # look up -- it is the leftover after the image -- and because on a design an image nearly fills, "does
+    # it fit" is the first question and the one a recipient cannot answer from the ELF alone.
+    mem_rows = [(b, b["memory"]) for b in manifest["binaries"] if b.get("memory")]
+    memory_doc = ""
+    if mem_rows:
+        rows_mem = "\n".join(
+            f"| `{b['elf']}` | {m['region_mb']:.0f} MB | {m['image_memsz_mb']:.0f} MB | "
+            f"{m['arena_mb']:.0f} MB | {m['allocation_total_mb']:.0f} MB |"
+            for b, m in mem_rows)
+        dyn = sum(m.get("allocation_dynamic_calls", 0) for _, m in mem_rows)
+        memory_doc = f"""
+### How each image uses your DRAM
+
+| file | linked region | image (MemSiz) | arena left | the model asks for |
+|---|---:|---:|---:|---:|
+{rows_mem}
+
+The last column is the **sum** of every heap allocation the lowered model makes, not its peak live
+footprint. That is the figure the arena has to cover: our other runtime's allocator never reclaims, so
+sizing to a liveness peak is only safe on one of the two, and the peak our analysis reports is documented
+as a lower bound. The packager refuses to ship an image whose arena is below that sum.{
+    "" if not dyn else f" ({dyn} allocation(s) in these images take a computed size rather than a constant one, so that column is a lower bound on the requirement; the margin above covers them.)"}
+"""
+    upload_doc = _upload_doc(brd, manifest)
     identity_line = ("- Confirmed 1-hart and %d-hart outputs are bit-identical." % max(hart_counts)
                      if len(hart_counts) > 1 else
                      "- Single-hart images only (see above), so there is no hart-split to check.")
@@ -2215,12 +2499,13 @@ We have no access to this board — you running these is the first time they tou
 |---|---|---|
 | DRAM | {brd.dram_bytes // 2**20} MB at `{hex(brd.dram_base)}` | your chip — {'the linker scripts in your repo declare less' if baremetal else 'the DTS in your repo declares less'} |
 | harts on the chip | {brd.harts} | your chip |
-| harts these binaries use | {', '.join(str(h) for h in hart_counts)} | {'single-hart only — see below' if len(hart_counts) == 1 else 'one binary per count'} |
+| harts these binaries use | {', '.join(str(h) for h in hart_counts)} | {'one hart count only — see below' if len(hart_counts) == 1 else 'one binary per count'} |
 | vector length | {vlen} bits{'' if brd.vlen else ' (assumed — the V minimum, since nothing declares it)'} | {'stated in your repo' if brd.vlen else 'NOT declared anywhere in the board files'} |
 | console | {brd.console} | {'derived from your SDK headers' if brd.sdk_chip else ('your `chip_config.h` / SIMS platform' if baremetal else 'board DT')} |
 
 **If any of those is wrong, tell us** — a mismatch is the most likely cause of a silent hang, and each
 one is a one-line rebuild on our side. In particular we would like to know `vlenb` on the real chip.
+{memory_doc}
 
 {superseded_doc}## The binaries
 
@@ -2235,6 +2520,7 @@ embedded weights blob costs minutes per attempt.
 
 {probe_doc}
 
+{upload_doc}
 ## Run one
 
 {loader}

@@ -198,3 +198,114 @@ def test_the_loader_section_does_not_name_models_a_package_may_not_ship():
     doc = md.LOADER_DOC["chipyard_kodiak"]
     for model in md.STATUS:
         assert model not in doc, f"the loader doc names {model}"
+
+
+# --------------------------------------------------------------------------- memory and bundles
+def test_an_image_whose_arena_is_short_is_reported_as_short():
+    """The arena is the leftover of the linked region after the image, so the only way to know it is big
+    enough is to subtract. An image that is short does not ship: it would run, print its stages, and die in
+    its tail on a machine somebody waited hours for."""
+    md = _load_packager()
+
+    class _Rep:
+        facts = {"image_memsz_mb": 1500.0}
+
+    short = md._memory_facts({"ram_bytes": 3000 * 2**20, "allocation_bytes_total": 2000 * 2**20}, _Rep())
+    assert short["arena_mb"] == 1500.0
+    assert short["arena_short_mb"] == 500.0
+    ok = md._memory_facts({"ram_bytes": 3600 * 2**20, "allocation_bytes_total": 2000 * 2**20}, _Rep())
+    assert "arena_short_mb" not in ok
+
+
+def test_a_bundle_directory_can_be_named_explicitly():
+    """A bundle that is not the whole model is a legitimate deliverable, and its directory should say which
+    section while the label stays readable in a filename. Guessing between the two conventions is how a
+    package ships someone else's weights under this model's name."""
+    md = _load_packager()
+    label, where = md._bundle_spec("a_label:a_directory", "int8")
+    assert label == "a_label"
+    assert where.name == "a_directory"
+    label, where = md._bundle_spec("plain", "int8")
+    assert (label, where.name) == ("plain", "plain_int8_full")
+
+
+def test_the_readme_states_what_actually_went_to_the_unit():
+    """"The matrix unit is used" is compatible with one small GEMM out of a hundred going through it."""
+    md = _load_packager()
+    b = _matrix_binary(matrix={"routing": {
+        "routed_contractions": 110, "distinct_signatures": 9, "skipped": [],
+        "macs_routed": 195_890_000_000,
+        "widest_routed": {"fqn": "lm_head", "shape": [1, 128, 256000, 2304], "macs": 7.5e10}}})
+    brd, man = _manifest([b])
+    txt = md._readme(brd, man)
+    assert "110 contraction(s)" in txt
+    assert "9 distinct signature(s)" in txt
+    assert "195.89e9 MACs" in txt
+    assert "nothing was left behind" in txt
+
+
+def test_a_skipped_contraction_is_named_rather_than_averaged_away():
+    md = _load_packager()
+    b = _matrix_binary(matrix={"routing": {
+        "routed_contractions": 3, "distinct_signatures": 1,
+        "skipped": ["sym_x: init is not provably zero"], "macs_routed": 10}})
+    brd, man = _manifest([b])
+    txt = md._readme(brd, man)
+    assert "NOT everything was routed" in txt
+    assert "init is not provably zero" in txt
+
+
+def test_a_multi_hour_upload_is_stated_in_the_run_instructions():
+    """A 1.5 GB image on a 57600-baud link is days of wire time, and the loader polls with no timeout, so
+    from outside it looks exactly like a hang. That belongs where someone decides whether to start, not in
+    a table column and a warning field."""
+    md = _load_packager()
+    b = _matrix_binary(upload_estimate_s=266_220, upload_bytes=1533 * 2**20)
+    brd, man = _manifest([b])
+    txt = md._readme(brd, man)
+    assert "the upload is the long pole" in txt
+    assert "74." in txt, "the hours must be stated as a number"
+    assert "are not\npractical" in txt, "past a day of wire time the verdict is not 'budget for it'"
+    # And it appears before the loader command, not after it.
+    assert txt.index("the upload is the long pole") < txt.index("## Run one")
+
+
+def test_a_long_but_workable_upload_is_not_called_impractical():
+    """A 40-minute upload is a wait to budget for. Calling it impractical spends the phrase where it is not
+    true, and then it carries no weight where it is."""
+    md = _load_packager()
+    brd, man = _manifest([_matrix_binary(upload_estimate_s=2400, upload_bytes=13 * 2**20)])
+    txt = md._readme(brd, man)
+    assert "the upload is the long pole" in txt
+    assert "not\npractical" not in txt
+    assert "40 min" in txt
+    # And a sub-hour alternative reads as minutes, not as "0.0 h".
+    assert "0.0 h" not in txt
+
+
+def test_a_short_upload_does_not_get_its_own_section():
+    md = _load_packager()
+    brd, man = _manifest([_matrix_binary(upload_estimate_s=120)])
+    txt = md._readme(brd, man)
+    assert "the upload is the long pole" not in txt
+
+
+def test_a_wrapper_that_hand_picks_its_return_still_carries_the_memory_demand():
+    """The build-only wrapper dropped these, so the arena check downstream compared against zero and
+    passed an image it never examined. An unchecked arena is worse than an unsized one: it reads as
+    verified."""
+    md = _load_packager()
+    kept = md._keep_memory({"elf": "x", "allocation_bytes_total": 7, "allocation_dynamic_calls": 1,
+                            "activation_peak_bytes": None})
+    assert kept == {"allocation_bytes_total": 7, "allocation_dynamic_calls": 1}
+
+
+def test_no_start_small_advice_when_every_image_costs_the_same_days():
+    """"Start with the smallest" is advice when the smallest is cheap and noise when it is 73.9 hours
+    against 74.0. Advice that carries nothing teaches a reader to skip the paragraph."""
+    md = _load_packager()
+    a = _matrix_binary(elf="a.elf", upload_estimate_s=266_000, upload_bytes=1533 * 2**20)
+    b = _matrix_binary(elf="b.elf", upload_estimate_s=266_220, upload_bytes=1533 * 2**20)
+    brd, man = _manifest([a, b])
+    txt = md._readme(brd, man)
+    assert "start with `a.elf`" not in txt
