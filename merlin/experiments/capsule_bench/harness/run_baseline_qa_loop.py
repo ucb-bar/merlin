@@ -841,8 +841,10 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
                 import opencode_agent as _OA
             except ImportError as e:  # Phase 3 not landed yet
                 raise SystemExit(f"--driver opencode is not available yet: {e}")
+            # effort threads here for the same reason it does for codex below — see that comment.
             return _OA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
-                                 subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL)
+                                 subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL,
+                                 effort=effort)
         if drv == "codex":
             try:
                 import codex_agent as _CA

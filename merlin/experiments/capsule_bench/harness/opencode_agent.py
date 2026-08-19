@@ -357,9 +357,15 @@ def opencode_runtime_binds(data_home: Path) -> list[str]:
 
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
-              **_ignored) -> tuple[int, Path]:
+              effort: str = "", **_ignored) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via the opencode CLI. Returns (rc, transcript_path) — the same contract
-    as ``launch_agent``'s claude path."""
+    as ``launch_agent``'s claude path.
+
+    ``effort`` is the arm's reasoning effort and MUST be threaded, for the reason the claude and codex
+    paths already state: an arm that silently ran at a different reasoning effort is a different arm. It
+    was previously absorbed by ``**_ignored``, so every opencode run in a campaign executed at the
+    provider default while the claude and codex arms of the SAME campaign ran at the declared effort —
+    a comparison between models that was partly a comparison between reasoning budgets."""
     import run_baseline_qa_loop as _R  # bwrap_cmd — the same integrity wrapper the claude path uses
     opencode_bin = os.environ.get("OPENCODE_BIN", "opencode")
     mid = _provider_model(model)
@@ -399,7 +405,12 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
            "submission --sim spike --capsules all` with your bash tool after each build to grade against the "
            "real oracle (goldens withheld), and iterate until capsules pass. Begin now.")
     run_cmd = [opencode_bin, "run", "--format", "json", "--agent", agent_name, "-m", mid,
-               "--dir", str(ws), "--auto", msg]
+               "--dir", str(ws)]
+    # opencode spells reasoning effort `--variant` (provider-specific: high / max / minimal). Passing it is
+    # what makes an opencode arm comparable to the codex and claude arms of the same campaign.
+    if (effort or "").strip():
+        run_cmd += ["--variant", effort.strip()]
+    run_cmd += ["--auto", msg]
 
     # Same integrity wrapper as the claude path: bwrap when requested, else raw (cwd=ws). At bwrap the
     # run gets an isolated data home (see opencode_runtime_binds) so it neither starts without state nor
