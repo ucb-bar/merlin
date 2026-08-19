@@ -189,30 +189,39 @@ def _decode_output(raw: bytes, shape: list[int], dtype: str, physical: dict | No
     return arr
 
 
-def _resolve_out_spec(target: str, cb: dict | None, bundle: dict) -> dict:
-    """The output tensor spec ``{base, shape, dtype, physical}`` — from the cb (generation-declared) or
-    the program's own golden. The output DRAM base is the harness-owned address (stamped by
-    ``capsule_dram.inject_bases``, the same map the agent's kernel was told to store to). A missing base is
-    an actionable grading error (the layout could not be applied), NOT a bare ``KeyError``. Shared by the
-    cosim and functional runners so both read the result from the same physical layout."""
-    out_spec = None
-    if cb:
-        outs = [t for t in (cb.get("tensors") or {}).values() if t.get("role") == "output"]
-        if outs:
-            t = outs[0]
-            if t.get("base") is None:
-                raise OracleUnavailable(
-                    f"{target}: output tensor has no DRAM base — the harness DRAM layout was not applied "
-                    f"(capsule_dram.inject_bases); cannot read the result back")
-            out_spec = {"base": int(t["base"]), "shape": list(t["shape"]),
-                        "dtype": t.get("dtype", "bf16"), "physical": t.get("physical")}
-    if out_spec is None and bundle.get("output"):
+def _resolve_out_specs(target: str, cb: dict | None, bundle: dict) -> dict[str, dict]:
+    """EVERY output tensor spec, ``{name: {base, shape, dtype, physical}}`` — from the cb
+    (generation-declared) or the program's own golden, in declaration order.
+
+    A command buffer may declare more than one output: an interface module with two commit ops (one
+    resident weight, two activations) produces two result tensors, and capturing only the first reports
+    the second as never written no matter what the kernel did. Each output DRAM base is the harness-owned
+    address (stamped by ``capsule_dram.inject_bases``, the same map the agent's kernel was told to store
+    to). A missing base is an actionable grading error (the layout could not be applied), NOT a bare
+    ``KeyError``. Target-agnostic: the names and layouts are whatever the emitting backend declared."""
+    specs: dict[str, dict] = {}
+    for name, t in ((cb or {}).get("tensors") or {}).items():
+        if t.get("role") != "output":
+            continue
+        if t.get("base") is None:
+            raise OracleUnavailable(
+                f"{target}: output tensor {name!r} has no DRAM base — the harness DRAM layout was not "
+                f"applied (capsule_dram.inject_bases); cannot read the result back")
+        specs[name] = {"base": int(t["base"]), "shape": list(t["shape"]),
+                       "dtype": t.get("dtype", "bf16"), "physical": t.get("physical")}
+    if not specs and bundle.get("output"):
         o = bundle["output"]
-        out_spec = {"base": int(o["base"]), "shape": list(o["shape"]),
-                    "dtype": o["dtype"], "physical": o.get("physical")}
-    if out_spec is None:
+        specs[_output_name(cb)] = {"base": int(o["base"]), "shape": list(o["shape"]),
+                                   "dtype": o["dtype"], "physical": o.get("physical")}
+    if not specs:
         raise OracleUnavailable(f"{target}: no output tensor declared in cb or program golden")
-    return out_spec
+    return specs
+
+
+def _resolve_out_spec(target: str, cb: dict | None, bundle: dict) -> dict:
+    """The FIRST output tensor spec ``{base, shape, dtype, physical}``. A runner that captures one memory
+    region reads this; the cosim path captures every declared output via :func:`_resolve_out_specs`."""
+    return next(iter(_resolve_out_specs(target, cb, bundle).values()))
 
 
 def _out_nbytes(out_spec: dict) -> int:
@@ -281,14 +290,14 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
     if not res.halted:
         raise ProgramDidNotHalt(f"{target} program did not halt within {max_cycles} cycles")
 
-    # resolve the output tensor spec from the cb (generation-declared) or the program's own golden.
-    out_spec = _resolve_out_spec(target, cb, bundle)
-    nbytes = _out_nbytes(out_spec)
-    raw = bytes(res.slave.captured(out_spec["base"], nbytes))
-    logical = _decode_output(raw, out_spec["shape"], out_spec["dtype"], out_spec["physical"])
-
-    oname = _output_name(cb)
-    return {"outputs": {oname: logical.tolist()}, "cycles": int(res.cycles),
+    # resolve EVERY output tensor spec from the cb (generation-declared) or the program's own golden and
+    # read each one back: a module that commits twice has two results, and capturing only the first
+    # grades the second as never written whatever the kernel did.
+    outputs = {}
+    for name, spec in _resolve_out_specs(target, cb, bundle).items():
+        raw = bytes(res.slave.captured(spec["base"], _out_nbytes(spec)))
+        outputs[name] = _decode_output(raw, spec["shape"], spec["dtype"], spec["physical"]).tolist()
+    return {"outputs": outputs, "cycles": int(res.cycles),
             "oracle": f"{target}-arc-arcilator-cosim"}
 
 
