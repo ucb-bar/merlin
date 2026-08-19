@@ -73,7 +73,7 @@ def _unpack(buf, shape, strides):
 
 
 def _build(signatures, tmp_path: Path, *, edge: int, align: int = _ALIGN,
-           scratch_bytes: int | None = None) -> ctypes.CDLL:
+           scratch_bytes: int | None = None, padded: bool = False) -> ctypes.CDLL:
     src = emit_translation_unit(_TABLE, signatures, spec=_SPEC, alignment_bytes=align,
                                scratch_bytes=scratch_bytes)
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -82,6 +82,10 @@ def _build(signatures, tmp_path: Path, *, edge: int, align: int = _ALIGN,
     so = tmp_path / "opu_shim.so"
     cmd = ["cc", "-O1", "-fPIC", "-shared", "-Wall", "-Werror",
            "-DOPU_SCALAR_TILE", f"-DOPU_TILE_EDGE={edge}", str(c), "-o", str(so)]
+    if padded:
+        # The device default. Forced on WITH the stand-in so the partial-N path is actually compiled
+        # on a host: it is off by default there, which is why nothing ever exercised it.
+        cmd.insert(-3, "-DMERLIN_OPU_PAD_PARTIAL_N=1")
     got = subprocess.run(cmd, capture_output=True, text=True)
     if got.returncode != 0:
         pytest.fail(f"the emitted translation unit did not compile cleanly:\n{got.stderr[-3000:]}")
@@ -433,7 +437,7 @@ class TestTheTileLoopIsParallel:
     """
 
     @staticmethod
-    def _build_omp(signatures, tmp_path: Path, *, edge: int):
+    def _build_omp(signatures, tmp_path: Path, *, edge: int, padded: bool = False):
         src = emit_translation_unit(_TABLE, signatures, spec=_SPEC, alignment_bytes=_ALIGN)
         tmp_path.mkdir(parents=True, exist_ok=True)
         c = tmp_path / "opu_shim_omp.c"
@@ -441,6 +445,8 @@ class TestTheTileLoopIsParallel:
         so = tmp_path / "opu_shim_omp.so"
         cmd = ["cc", "-O1", "-fPIC", "-shared", "-Wall", "-Werror", "-fopenmp",
                "-DOPU_SCALAR_TILE", f"-DOPU_TILE_EDGE={edge}", str(c), "-o", str(so)]
+        if padded:
+            cmd.insert(-3, "-DMERLIN_OPU_PAD_PARTIAL_N=1")
         got = subprocess.run(cmd, capture_output=True, text=True)
         if got.returncode != 0:
             pytest.skip(f"no working OpenMP host compiler: {got.stderr[-400:]}")
@@ -454,6 +460,46 @@ class TestTheTileLoopIsParallel:
         a, b = _operands(m, n, k)
         got = _call(lib, "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
         np.testing.assert_array_equal(got, _expected(a, b))
+
+    @pytest.mark.parametrize("m,n,k", [(196, 196, 256), (196, 132, 64), (256, 65, 96), (196, 1000, 64)])
+    def test_the_padded_tail_is_not_raced(self, tmp_path, m, n, k):
+        """The partial-N pad, compiled ON, under real threads.
+
+        Every shape here has `n % 64 != 0`, so there is exactly one short column block -- and several row
+        blocks, every one of which needs it. Under `collapse(2)` those padded tiles land on different
+        threads at the same time, so anything the pad path writes to shared state shows up as a wrong
+        answer here. It did: `bpad`/`biaspad`/`cpad` were file-scope statics written from inside the
+        region. This test could not have caught it before, because the host build had the whole padded
+        branch preprocessed away by `OPU_SCALAR_TILE`.
+        """
+        lib = self._build_omp({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path, edge=64, padded=True)
+        # OVERSUBSCRIBE deliberately. At the machine's natural thread count this passed 120/120 on an
+        # idle host while a genuinely aliasing build failed under load -- so the default count does not
+        # test what this test is for. Far more threads than cores forces the interleavings, and it is
+        # also the case that catches a per-thread buffer whose index is bounded and clamped: measured
+        # 59/60 runs wrong before the fix, 0/60 after.
+        try:
+            lib.omp_set_num_threads(ctypes.c_int(32))
+        except AttributeError:
+            pass                     # not libgomp; the default count still exercises the path
+        a, b = _operands(m, n, k)
+        for _ in range(8):
+            got = _call(lib, "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
+            np.testing.assert_array_equal(got, _expected(a, b))
+
+    def test_padding_does_not_change_the_answer(self, tmp_path):
+        """Padded and unpadded builds agree bit-for-bit on a shape with a short tail.
+
+        The pad exists for a device erratum, not for arithmetic, so turning it on must be invisible in
+        the result. Serial on both sides, so this isolates the pad from the threading.
+        """
+        m, n, k = 196, 196, 256
+        a, b = _operands(m, n, k)
+        pad = _call(_build({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "pad", edge=64, padded=True),
+                    "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
+        raw = _call(_build({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "raw", edge=64),
+                    "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
+        np.testing.assert_array_equal(pad, raw)
 
     def test_it_is_the_same_answer_as_the_serial_build(self, tmp_path):
         """Bit-identical to the unparallelised object, which is the certified one."""

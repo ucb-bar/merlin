@@ -158,6 +158,12 @@ def emit_microkernel(encodings: Mapping[str, Any], spec: KernelSpec, *,
             acc.insn_r(md, _x(row_reg), vc),
         ])
 
+    # Bound for the partial-N tail scratch below. It is a CAP, not an assumption: the emitted guard falls
+    # back to the direct (unpadded) call when k exceeds it, so a deeper contraction still compiles and runs
+    # -- it just does not get the tail workaround. 9216 covers the deepest reduction we lower today
+    # (Gemma's ffn down, k=9216) at 9216*64 = 576 KiB of .bss, which fits the 512 MB part comfortably.
+    pad_k_max = 9216
+
     fused = _fused(spec.row_vreg)
     fused_alt = _fused(spec.row_vreg_alt) if spec.row_vreg_alt is not None else None
 
@@ -282,6 +288,107 @@ static void {spec.func_name}_tile(int32_t *c, const int8_t *at, const int8_t *b,
  * form appears only under -fopenmp. Both loops are collapsed there because splitting only the outer one
  * hands out `ceil(m/tile)` pieces -- 4 for a 196-row activation, which divides badly over 2 or 3 cores --
  * while the collapsed space is `ceil(m/tile) * ceil(n/tile)`, e.g. 64 for 196x1024. */
+
+/* PARTIAL-N-TILE WORKAROUND for the taped-out unit.
+ *
+ * MEASURED on the part with the frozen 47-case corpus: every case with `n % tile == 0` passes (16 of 16)
+ * and every case with a partial N tile fails (0 of 31) -- a perfect predictor over all 47 -- and the first
+ * wrong output is exactly the first element of the tail (workload_im2col n=196, first_bad=192 = 3*64,
+ * reproduced independently at k=32 and k=768). M tails are unaffected. The identical images are bit-exact
+ * on the FPGA revision, whose bitstream is 128 commits ahead of the taped-out one, so the two revisions
+ * disagree about what a short VL means for the matrix ops. Which revisions those are is recorded in the
+ * pin registry and in the measurement artifact, not named here: this file must not carry a target
+ * literal. The silicon is not ours to fix.
+ *
+ * So never hand the unit a short N: copy the tail's B panel into a tile-wide ZERO-PADDED scratch, run the
+ * tile at full width, and copy back only the `nl` columns that exist. Padding columns accumulate against
+ * zeroed weights so they cannot perturb the real ones, and the copy is paid on the tail tile only.
+ *
+ * OPU_SCALAR_TILE keeps the direct path: that build has no such unit, it is what the unit tests compile,
+ * and correctness there is defined by the reference rather than by this erratum. */
+/* Default: ON for a real unit, OFF for the scalar stand-in, whose reference has no such erratum.
+ * But it must be POSSIBLE to force it on together with the stand-in. Coupling the two meant the padded
+ * path -- and therefore its concurrency -- was compiled by no test on any host, which is exactly how a
+ * data race in it survived review: `TestTheTileLoopIsParallel` built the parallel loop with the padded
+ * branch preprocessed away. */
+#ifndef MERLIN_OPU_PAD_PARTIAL_N
+# ifndef OPU_SCALAR_TILE
+#  define MERLIN_OPU_PAD_PARTIAL_N 1
+# endif
+#endif
+
+#ifdef MERLIN_OPU_PAD_PARTIAL_N
+/* The cap is DERIVED, not written down. A literal here would be a VLEN-512 fact baked into a kernel
+ * whose whole point is that it reads its tile edge from the hardware at run time: the buffers below are
+ * sized by it, so a wider unit would silently stop being padded and fall back to the direct path that
+ * the partial-N erratum makes wrong. `__riscv_v_min_vlen` is defined by the compiler from the `-march`
+ * the caller passed (`rv64gcv_zvl512b` here, from the board descriptor's vlen), so this tracks the
+ * target with no literal and no plumbing. The scalar stand-in has no V at all and supplies its edge
+ * directly, which is also what lets the fixtures sweep the tail alignments. */
+#ifndef MERLIN_OPU_TILE_CAP
+# if defined(__riscv_v_min_vlen)
+#  define MERLIN_OPU_TILE_CAP (__riscv_v_min_vlen / {spec.operand_bits})
+# elif defined(OPU_TILE_EDGE)
+#  define MERLIN_OPU_TILE_CAP OPU_TILE_EDGE
+# else
+#  error "cannot derive MERLIN_OPU_TILE_CAP: no __riscv_v_min_vlen and no OPU_TILE_EDGE"
+# endif
+#endif
+/* The pad buffers are split by WHO WRITES THEM, because the previous arrangement raced.
+ *
+ * B and bias padding depend only on the TAIL COLUMN BLOCK, which is identical for every row block.
+ * They are therefore padded ONCE, before the parallel region, and are read-only inside it. That is a
+ * correctness fix first: these were being written from inside an `omp parallel for collapse(2)`
+ * region, where every row block `i` shares the same tail column `j`, so concurrent threads
+ * overwrote each other's pad and the result was silently wrong rather than a crash. It is also less
+ * work -- the old placement re-padded the identical B panel ceil(m/tile) times.
+ *
+ * The C staging buffer cannot be shared: it is a per-tile OUTPUT. It is a STACK LOCAL, which makes it
+ * per-thread by construction with no bound to get wrong. A slab indexed by `omp_get_thread_num()` was
+ * tried and is a trap: it needs a compile-time thread bound, and any clamp on that index SILENTLY
+ * ALIASES two threads onto one buffer -- measured, 59 of 60 runs wrong at 64 threads, every wrong
+ * element in the tail column block. 16 KB of frame is affordable on both paths (bare-metal reserves
+ * 256 KB, a Zephyr OMP worker ~8 MB) and it is entered on the tail column only. */
+static int8_t  merlin_opu_bpad[{pad_k_max} * MERLIN_OPU_TILE_CAP] __attribute__((aligned(64)));
+static int32_t merlin_opu_biaspad[MERLIN_OPU_TILE_CAP] __attribute__((aligned(64)));
+
+/* Pad the single tail column block. Returns 0 if it cannot be padded, in which case the caller runs
+ * every tile direct -- the pre-padding behaviour, preserved exactly. Called OUTSIDE the region. */
+static int {spec.func_name}_pad_tail(const int8_t *b, const int32_t *bias,
+                                     size_t n, size_t k, size_t nl, size_t tile)
+{{
+  if (tile > MERLIN_OPU_TILE_CAP || k > {pad_k_max}) return 0;
+  /* Plain copy/zero loops. clang's loop-idiom pass would turn these into memcpy/memset CALLS, which
+   * this freestanding object cannot link -- but the shipping build already compiles with
+   * `-ffreestanding -fno-builtin` (zephyr_model RVV_CFLAGS), under which no libcall is emitted.
+   * Verified both ways: at plain `-O2` the object needs memcpy+memset, with the real flags it needs
+   * nothing. So this is the caller's flags to get right, not something to obfuscate here. */
+  for (size_t kk = 0; kk < k; ++kk) {{
+    const int8_t *src = b + kk * n;
+    int8_t *dst = merlin_opu_bpad + kk * tile;
+    for (size_t j = 0; j < nl; ++j) dst[j] = src[j];
+    for (size_t j = nl; j < tile; ++j) dst[j] = 0;
+  }}
+  if (bias) {{
+    for (size_t j = 0; j < nl; ++j) merlin_opu_biaspad[j] = bias[j];
+    for (size_t j = nl; j < tile; ++j) merlin_opu_biaspad[j] = 0;
+  }}
+  return 1;
+}}
+
+static void {spec.func_name}_tile_padded(int32_t *c, const int8_t *at, const int32_t *bias,
+                                         size_t m, size_t n, size_t k,
+                                         size_t ml, size_t nl, size_t tile)
+{{
+  int32_t cpad[MERLIN_OPU_TILE_CAP * MERLIN_OPU_TILE_CAP] __attribute__((aligned(64)));
+  {spec.func_name}_tile(cpad, at, merlin_opu_bpad,
+                        bias ? merlin_opu_biaspad : (const int32_t *)0,
+                        m, tile, k, ml, tile);
+  for (size_t r = 0; r < ml; ++r)
+    for (size_t j = 0; j < nl; ++j) c[r * n + j] = cpad[r * tile + j];
+}}
+#endif
+
 void {spec.func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32_t *bias,
                       size_t m, size_t n, size_t k)
 {{
@@ -295,12 +402,31 @@ void {spec.func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32
 #endif
   if (tile == 0) return;                      /* no vector unit: nothing this kernel can do */
 
+#ifdef MERLIN_OPU_PAD_PARTIAL_N
+  /* There is at most ONE partial column block and every row block shares it, so it is padded here --
+   * before any parallel region -- and read-only inside. `padded == 0` means it could not be padded, in
+   * which case every tile runs direct, exactly as it did before padding existed. */
+  const size_t tail = n % tile;
+  int padded = 0;
+  if (tail) {{
+    padded = {spec.func_name}_pad_tail(b + (n - tail),
+                                       bias ? bias + (n - tail) : (const int32_t *)0,
+                                       n, k, tail, tile);
+  }}
+#endif
+
 #ifdef _OPENMP
 #pragma omp parallel for collapse(2) schedule(static)
   for (size_t i = 0; i < m; i += tile) {{
     for (size_t j = 0; j < n; j += tile) {{
       const size_t ml = (m - i) < tile ? (m - i) : tile;
       const size_t nl = (n - j) < tile ? (n - j) : tile;
+#ifdef MERLIN_OPU_PAD_PARTIAL_N
+      if (nl < tile && padded) {{
+        {spec.func_name}_tile_padded(c + i * n + j, at + i, bias, m, n, k, ml, nl, tile);
+        continue;
+      }}
+#endif
       {spec.func_name}_tile(c + i * n + j, at + i, b + j, bias ? bias + j : (const int32_t *)0,
                             m, n, k, ml, nl);
     }}
@@ -310,6 +436,12 @@ void {spec.func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32
     const size_t ml = (m - i) < tile ? (m - i) : tile;
     for (size_t j = 0; j < n; j += tile) {{
       const size_t nl = (n - j) < tile ? (n - j) : tile;
+#ifdef MERLIN_OPU_PAD_PARTIAL_N
+      if (nl < tile && padded) {{
+        {spec.func_name}_tile_padded(c + i * n + j, at + i, bias, m, n, k, ml, nl, tile);
+        continue;
+      }}
+#endif
       {spec.func_name}_tile(c + i * n + j, at + i, b + j, bias ? bias + j : (const int32_t *)0,
                             m, n, k, ml, nl);
     }}

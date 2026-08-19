@@ -34,6 +34,8 @@ class _Enc:
 
 _TABLE = {"ACC": _Enc(0x57, 2, 40), "BCAST": _Enc(0x57, 6, 44), "READOUT": _Enc(0x57, 6, 46)}
 _SPEC = KernelSpec(accumulate="ACC", broadcast="BCAST", readout="READOUT")
+#: Call sites of the tile body clang may inline: the direct path and the partial-N padded tail.
+_TILE_CALL_SITES = 2
 
 def _compile(src: str, tmp_path: Path, *, link: bool = True) -> Path:
     """Compile and (by default) LINK, because residency is scoped to a loop.
@@ -49,8 +51,13 @@ def _compile(src: str, tmp_path: Path, *, link: bool = True) -> Path:
     c = tmp_path / "k.c"
     c.write_text(src, encoding="utf-8")
     obj = tmp_path / "k.o"
+    # `-ffreestanding -fno-builtin` are not decoration: they are what the shipping build uses
+    # (zephyr_model.RVV_CFLAGS). Without them clang turns the kernel's copy/zero loops into memcpy and
+    # memset CALLS, and this fixture links the object ALONE with no libc -- so the link failed on a
+    # dependency the real build never has. Compile the way the product compiles.
     proc = subprocess.run([toolchain.clang(), "--target=riscv64-unknown-elf", "-march=rv64gcv",
-                           "-mabi=lp64d", "-O2", "-c", str(c), "-o", str(obj)],
+                           "-mabi=lp64d", "-O2", "-ffreestanding", "-fno-builtin",
+                           "-c", str(c), "-o", str(obj)],
                           capture_output=True, text=True)
     if proc.returncode != 0:
         pytest.fail(f"compile failed:\n{proc.stderr[-2000:]}")
@@ -127,11 +134,17 @@ class TestResidencyIsReadFromTheStream:
     def test_the_emitted_kernel_is_resident(self, resident_stream):
         got = CM.stream_facts(resident_stream, _TABLE, accumulate="ACC", readout="READOUT")
         assert got.accumulator_resident is True
-        # THREE static accumulates: the loop is unrolled by two so the left-operand register rotates
-        # (KernelSpec.row_vreg_alt), plus the peeled odd step. Still far fewer than k, which is the point
-        # -- the reduction is a loop, so expecting one accumulate per step is what the linear
-        # "between first and last accumulate" rule assumed and why it could never judge a looping kernel.
-        assert got.accumulates == 3 and got.readouts >= 1
+        # THREE static accumulates PER INLINED TILE INSTANCE: the loop is unrolled by two so the
+        # left-operand register rotates (KernelSpec.row_vreg_alt), plus the peeled odd step. The tile body
+        # now has TWO call sites -- the direct path and the partial-N padded tail -- and clang inlines
+        # both, so the whole-object count is 3 per instance rather than 3 outright.
+        #
+        # What matters is the INVARIANT, not the constant: the count is a small multiple of 3 and is
+        # independent of k. That is what says the reduction is a LOOP; expecting one accumulate per k step
+        # is exactly the assumption of the old linear "between first and last accumulate" rule, and why it
+        # could never judge a looping kernel.
+        assert got.accumulates % 3 == 0 and 0 < got.accumulates <= 3 * _TILE_CALL_SITES, got
+        assert got.readouts >= 1
         assert got.reduction_is_loop is True
         # One accumulator bank regardless of how many operand registers rotate.
         assert got.matrix_registers_used == 1
