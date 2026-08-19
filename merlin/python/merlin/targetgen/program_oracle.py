@@ -200,15 +200,21 @@ def _resolve_out_specs(target: str, cb: dict | None, bundle: dict) -> dict[str, 
     to). A missing base is an actionable grading error (the layout could not be applied), NOT a bare
     ``KeyError``. Target-agnostic: the names and layouts are whatever the emitting backend declared."""
     specs: dict[str, dict] = {}
-    for name, t in ((cb or {}).get("tensors") or {}).items():
-        if t.get("role") != "output":
-            continue
+    declared = [(n, t) for n, t in ((cb or {}).get("tensors") or {}).items()
+                if t.get("role") == "output"]
+    for name, t in declared:
+        # An output the submission declared but gave no address to cannot be captured. That is not a
+        # tool error: it is exactly the "you never wrote this output" verdict the numeric compare
+        # reports, and reporting it there names the tensor. So it is skipped, not raised on — unless NO
+        # declared output has an address, which really is a layout failure the caller must hear about.
         if t.get("base") is None:
-            raise OracleUnavailable(
-                f"{target}: output tensor {name!r} has no DRAM base — the harness DRAM layout was not "
-                f"applied (capsule_dram.inject_bases); cannot read the result back")
+            continue
         specs[name] = {"base": int(t["base"]), "shape": list(t["shape"]),
                        "dtype": t.get("dtype", "bf16"), "physical": t.get("physical")}
+    if declared and not specs:
+        raise OracleUnavailable(
+            f"{target}: no declared output tensor has a DRAM base — the harness DRAM layout was not "
+            f"applied (capsule_dram.inject_bases); cannot read the result back")
     if not specs and bundle.get("output"):
         o = bundle["output"]
         specs[_output_name(cb)] = {"base": int(o["base"]), "shape": list(o["shape"]),
