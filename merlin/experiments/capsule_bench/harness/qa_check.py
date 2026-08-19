@@ -57,6 +57,28 @@ def _is_ascii_letter(ch: str) -> bool:
     return len(ch) == 1 and (("a" <= ch <= "z") or ("A" <= ch <= "Z"))
 
 
+#: Words that introduce a position IN SOURCE TEXT rather than a value. Deliberately narrow and
+#: fail-closed: ``row``, ``offset``, ``byte`` and ``index`` are NOT here, because "first mismatch at
+#: row 3" is a position in the GOLDEN OUTPUT and leaking it would be exactly what this scrub exists to
+#: prevent. Only positions in a file the agent itself wrote are safe.
+_POSITION_WORDS = frozenset({"line", "lines", "col", "column"})
+
+
+def _preceding_word(emitted: str) -> str:
+    """The alphabetic word immediately before the trailing whitespace of *emitted*, lowercased.
+
+    ``'File "x.py", line '`` -> ``'line'``. Empty when the run is not preceded by a bare word, which is
+    the common case for a value (``expected 42``, ``cos 0.9997`` -> ``expected`` / ``cos``, neither of
+    which is a position word, so both still scrub)."""
+    j = len(emitted)
+    while j and emitted[j - 1].isspace():
+        j -= 1
+    k = j
+    while k and emitted[k - 1].isalpha():
+        k -= 1
+    return emitted[k:j].lower()
+
+
 def _is_path_like(emitted: str) -> bool:
     """Does the token just before a ':' look like a file path? Trailing identifier-ish run containing a
     '.' or '/' -- i.e. ``input.interface.mlir`` or ``mlir_oot/gemmini_opt.py``, never a bare number."""
@@ -130,6 +152,14 @@ def _scrub_numbers(text: str) -> str:
                 # not a place. The line is kept when the ':' follows a path-like token; the column is
                 # kept because it follows a line we just kept.
                 keep = at_source_location or _is_path_like(emitted[:-1])
+            if not keep and before == " ":
+                # The OTHER spelling of a source location, the one a Python traceback uses:
+                #   File ".../gemmini_opt.py", line 412
+                # MEASURED on a live re-run: every traceback the agent received still arrived as
+                # ``line #`` after the rest of this scrub was fixed, so it was told its own compiler
+                # raised but never where. A line number in a traceback is a position in the AGENT'S OWN
+                # source -- it cannot carry a golden value any more than the column above can.
+                keep = _preceding_word(emitted) in _POSITION_WORDS
             at_source_location = bool(keep and before == ":")
             out.append(text[start:i] if keep else "#")
             continue

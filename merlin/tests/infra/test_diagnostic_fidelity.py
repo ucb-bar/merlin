@@ -10,6 +10,7 @@ Two measured defects, both of which made a model look stubborn when it was simpl
 
 The leak guard these protect is real and stays: a bare number can echo a golden value and must scrub.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -85,3 +86,58 @@ def test_long_stderr_keeps_the_head():
 def test_long_stderr_keeps_the_tail():
     err = ("filler line\n" * 200) + "FINAL: the real cause"
     assert _stderr_excerpt(err).endswith("FINAL: the real cause")
+
+
+# --- multi-round token accounting -------------------------------------------------------------------
+def test_result_events_accumulate_across_rounds(tmp_path):
+    """A multi-round loop concatenates one transcript per round, so the file carries one ``result`` event
+    per round. Taking the last one reported a 6-round claude run at 15% of its real tokens while tool
+    calls counted every round -- the derived per-action metrics were nonsense."""
+    from merlin.targetgen import experiment_tokens as ET
+
+    def result(inp, out, cost):
+        return json.dumps({"type": "result", "total_cost_usd": cost,
+                           "modelUsage": {"m": {"inputTokens": inp, "outputTokens": out}}})
+
+    p = tmp_path / "t.jsonl"
+    p.write_text("\n".join([result(100, 10, 1.0), result(200, 20, 2.0), result(300, 30, 3.0)]))
+    s = ET.parse_transcript(p, trust_cli_cost=True)
+    assert s["usage_source"] == "result_event"
+    assert s["tokens_input"] == 600, "input must be the sum of all three rounds"
+    assert s["tokens_output"] == 60
+    assert s["estimated_cost_usd"] == 6.0, "cost must sum too"
+
+
+def test_single_result_event_is_unchanged(tmp_path):
+    from merlin.targetgen import experiment_tokens as ET
+    p = tmp_path / "t.jsonl"
+    p.write_text(json.dumps({"type": "result", "total_cost_usd": 1.5,
+                             "modelUsage": {"m": {"inputTokens": 100, "outputTokens": 10}}}))
+    s = ET.parse_transcript(p, trust_cli_cost=True)
+    assert (s["tokens_input"], s["tokens_output"], s["estimated_cost_usd"]) == (100, 10, 1.5)
+
+
+# ---------------------------------------------------------------- traceback positions
+
+def test_a_traceback_line_number_survives():
+    """MEASURED on a live re-run: after the rest of the scrub was fixed, every Python traceback the
+    agent received still arrived as ``line #``, so it was told its own compiler raised but never where.
+    A line number in a traceback is a position in the AGENT'S OWN source and cannot carry a golden."""
+    s = 'parse rc=1:   File "/x/submission/mlir_oot/gemmini_opt.py", line 412\n    cmd = c.get("n")'
+    assert "line 412" in qa_check._scrub_numbers(s)
+
+
+def test_a_column_word_survives_too():
+    assert "column 17" in qa_check._scrub_numbers("error at column 17 of the module")
+
+
+def test_a_position_in_the_GOLDEN_still_scrubs():
+    """The narrow word list is the point: a position in the golden output is a leak, not a diagnostic.
+    ``row``/``index``/``offset`` are deliberately absent from _POSITION_WORDS."""
+    for s in ("first mismatch at row 3", "mismatch at index 7", "diverges at offset 128"):
+        assert "#" in qa_check._scrub_numbers(s), s
+
+
+def test_values_still_scrub_next_to_a_bare_word():
+    assert qa_check._scrub_numbers("expected 42, actual 17") == "expected #, actual #"
+    assert qa_check._scrub_numbers("cos 0.9997") == "cos #"
