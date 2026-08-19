@@ -1,0 +1,12 @@
+allowed_tree_sha256:
+  merlin/contract/: d41298202cd10ee21b8911f2199ab6a0462b30596e7c8024a8fdbf07e0267d63
+  merlin/contract/capsules/atlas/isa/: f9ffa1100ff01e59614c6ef4e1424ee30208d4f4eb93b16d1e5065e8cb70423a
+  merlin/contract/capsules/atlas/layers/: 61f46f7fed0699aab411f0d52515b38e65bf9a145b9f3f5857bd9f0bbc936bed
+  merlin/contract/capsules/atlas/model_slices/: 4b5d7ec6b2630f8873524bbd806e57d0f82fac355ed8a76b7e399e550a60c38c
+  merlin/python/merlin/common/: b846e3cb21680aaadae52b4e18da0e89552e63ddaf1159c4b3b37afd3ab91eed
+  merlin/python/merlin/targetgen/generate/: 308b316826cbc93f72e6072253aff603494b095cd53e39412277cf1cf06aaec3
+  merlin/python/merlin/targetgen/oot_starterkit/: 6a227c722f295287abc605a60e4fdaa693d10344ce3e810ff6138d6ea034da6a
+  merlin/python/merlin/targetgen/rtl/: a7d92d8dc8a82fd8f1a79c41fa08988dbaff784a59be6c2495ef188c15cba73c
+  merlin/python/merlin/targetgen/synthesize/: 38ae86099853c5a18cf0a584a1430fe6c9231e5858f61729b515df822be0290e
+  merlin/python/merlin/xdsl_dialects/: 3b8a3f3bfe3ee363a8ab99516166b63ebe32095a2c9e09c3bbea666eb3a585db
+  third_party/llvm-install/: 95bfc5318ac13a12f6fb80a9060c1484e2bc8dfb237dc59dfcd2e425c146d7eb

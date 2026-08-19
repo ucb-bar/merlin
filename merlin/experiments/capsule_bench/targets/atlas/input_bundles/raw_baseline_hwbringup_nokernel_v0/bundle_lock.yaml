@@ -1,0 +1,6 @@
+allowed_tree_sha256:
+  merlin/contract/: d41298202cd10ee21b8911f2199ab6a0462b30596e7c8024a8fdbf07e0267d63
+  merlin/contract/capsules/atlas/isa/: f9ffa1100ff01e59614c6ef4e1424ee30208d4f4eb93b16d1e5065e8cb70423a
+  merlin/contract/capsules/atlas/layers/: 61f46f7fed0699aab411f0d52515b38e65bf9a145b9f3f5857bd9f0bbc936bed
+  merlin/contract/capsules/atlas/model_slices/: 4b5d7ec6b2630f8873524bbd806e57d0f82fac355ed8a76b7e399e550a60c38c
+  third_party/llvm-install/: 95bfc5318ac13a12f6fb80a9060c1484e2bc8dfb237dc59dfcd2e425c146d7eb
