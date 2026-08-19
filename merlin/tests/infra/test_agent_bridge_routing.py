@@ -177,3 +177,41 @@ def test_a_bridged_round_is_metered_whatever_the_driver_declares(BR, monkeypatch
     assert R._billing_mode("nemotron") == ET.METERED, "bridged codex traffic is real Bedrock spend"
     # the seat model still reports as a seat
     assert R._billing_mode("gpt-5.6-sol") != ET.METERED
+
+
+# ---------------------------------------------------------------- harness naming
+
+def test_the_driver_name_and_the_wiring_name_route_identically(BR):
+    """The harness identifier travels under two spellings and both must reach the same decision.
+
+    ``run_baseline_qa_loop._driver_for`` returns ``"claudecode"``; the runtime wiring in this module
+    uses ``"claude"``. While ``bridged_name`` branched only on ``"claude"`` and fell through to
+    ``return name`` for anything else, an Opus round under ``--driver claudecode`` was routed through
+    the proxy: it ran natively on the subscription but recorded ``bridged: true``, and ``_trust_cli_cost``
+    then DISCARDED the claude CLI's own authoritative cost and re-derived it from a rate table. A native
+    run mislabelled and mispriced is exactly the defect that would invalidate the Opus control cell.
+    """
+    for model in ("opus", "nemotron", "glm5", "gpt-5.6-sol"):
+        assert BR.bridged_name(model, "claudecode") == BR.bridged_name(model, "claude"), model
+
+
+def test_native_opus_under_claude_code_is_not_bridged(BR):
+    """Opus on the claude CLI is the native pairing — the control run depends on it staying native."""
+    assert BR.bridged_name("opus", "claudecode") is None
+    assert BR.bridged_name("opus", "claude") is None
+
+
+def test_a_direct_to_bedrock_harness_never_bridges(BR):
+    """opencode and converse both reach Bedrock themselves; putting a proxy in that path would be a
+    silent extra hop that the run record would then describe as bridged."""
+    for harness in ("opencode", "converse"):
+        for model in ("opus", "nemotron", "glm5"):
+            assert BR.bridged_name(model, harness) is None, (harness, model)
+
+
+def test_an_unknown_harness_fails_closed(BR):
+    """The old fallthrough guessed, and guessing is what produced the mislabelled Opus round. A harness
+    nobody has declared a routing rule for must raise, not silently return a proxy name."""
+    import pytest
+    with pytest.raises(ValueError, match="unknown harness"):
+        BR.bridged_name("opus", "some-new-cli")

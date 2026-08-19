@@ -144,6 +144,14 @@ def _vendor(model: str) -> str:
     return head if head in _known_vendors() else "native"
 
 
+#: The harness identifier travels under two spellings: ``_driver_for`` in the QA loop returns
+#: ``"claudecode"`` while the runtime wiring here uses ``"claude"``. They must resolve to one routing
+#: decision, so normalise rather than branch on the raw string.
+_HARNESS_ALIASES = {"claudecode": "claude", "claude_code": "claude", "claude-code": "claude",
+                    "codex_cli": "codex", "codex-cli": "codex"}
+_KNOWN_HARNESSES = {"claude", "codex", "opencode", "converse"}
+
+
 def bridged_name(model: str, harness: str, *, force: bool | None = None) -> str | None:
     """Proxy ``model_name`` to use for (*model*, *harness*), or None to take the harness's native path.
 
@@ -163,15 +171,21 @@ def bridged_name(model: str, harness: str, *, force: bool | None = None) -> str 
         return None                       # proxy does not serve it; nothing to route
     if force:
         return name
+    harness = _HARNESS_ALIASES.get(harness, harness)
     vendor = _vendor(model)
-    if harness == "opencode":
-        return None                       # natively multi-provider
+    if harness in ("opencode", "converse"):
+        return None                       # both reach Bedrock directly; no proxy in the path
     if harness == "codex":
         # codex-cli reaches its own catalogue on the subscription seat; everything else needs Responses.
         return None if vendor in ("native", "openai") else name
     if harness == "claude":
         return None if vendor == "anthropic" else name
-    return name
+    raise ValueError(
+        f"bridged_name: unknown harness {harness!r} (known: {sorted(_KNOWN_HARNESSES)}). "
+        "Refusing to guess -- the previous fallthrough returned a proxy name for ANY harness string it "
+        "did not recognise, so an Opus run under the 'claudecode' driver (the name _driver_for returns, "
+        "vs the 'claude' this function branched on) was routed through the proxy, recorded "
+        "bridged: true, and had the claude CLI's own authoritative cost discarded and re-derived.")
 
 
 def context_window(model: str) -> int | None:
