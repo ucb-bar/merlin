@@ -123,6 +123,107 @@ def _score(man: dict, key: str) -> dict:
             "total": total if total is not None else (blk.get("n_capsules") or blk.get("total"))}
 
 
+def _conformance(d: Path) -> dict:
+    """The arm-4 conformance flags, as the LAST round recorded them plus whether they EVER held.
+
+    These explained more of the 2026-08 comparison than the score did: the run that scored 20/20 used the
+    RTL-derived tooling every round, and the run that scored 0/20 while passing the numeric and trace
+    tiers on 17 capsules never touched it and hand-wrote the encoder those tools generate. A table with
+    only pass/fail hides the one variable that separated them."""
+    st = _y(d / "qa_loop_state.yaml")
+    rounds = st.get("rounds") or []
+    keys = ("no_regex_ok", "isa_tools_used", "cca_used", "full_selfcheck")
+    ever, last = {k: False for k in keys}, {k: None for k in keys}
+    for r in rounds:
+        checks = ((r.get("conformance") or {}).get("checks") or {})
+        for k in keys:
+            if checks.get(k):
+                ever[k] = True
+            if k in checks:
+                last[k] = checks.get(k)
+    return {"last_round": last, "ever": ever,
+            "conformant_rounds": sum(1 for r in rounds
+                                     if (r.get("conformance") or {}).get("conformant"))}
+
+
+def _tier_reach(d: Path) -> dict:
+    """PARTIAL CREDIT: how far each GRADED capsule got, not just whether it passed.
+
+    ``0/20`` is the same number for a run that never parsed and a run whose numeric and trace tiers passed
+    on most capsules and that lost only on the hardware encoding. The ladder already knows the difference;
+    this surfaces it.
+
+    The graded set comes from ``score_capsule.json::per_capsule``, which is the grader's own record of what
+    it scored. Walking the result files instead counts every capsule directory left under the run -- for one
+    codex run that was 143 entries against a 20-capsule public set, because a wider grading pass had written
+    123 more with empty tier blocks."""
+    score = d / "grading_public" / "score_capsule.json"
+    if not score.is_file():
+        return {}
+    try:
+        per = (json.loads(score.read_text()).get("per_capsule") or [])
+    except Exception:  # noqa: BLE001 — a run killed mid-write leaves this truncated
+        return {}
+    reach: dict = {}
+    for c in per:
+        tiers = c.get("tiers") or {}
+        passed = [t for t, v in tiers.items()
+                  if (v.get("status") if isinstance(v, dict) else v) == "pass"]
+        top = max(passed) if passed else "none"
+        reach[top] = reach.get(top, 0) + 1
+    return reach
+
+
+def _behaviour(d: Path) -> dict:
+    """How the run was SPENT: reconnaissance before the first edit, and how much it rewrote afterwards.
+
+    Measured across the campaign: the 20/20 run read for 33 of its 45 actions then made 4 edits; the runs
+    that scored zero read for ~9% of their actions and one of them made 114 edits inside a single file.
+    That contrast is invisible in tokens and tool-call totals, which were similar or larger for the runs
+    that failed."""
+    acts: list[str] = []
+    rounds = d / "rounds"
+    if not rounds.is_dir():
+        return {}
+    # Codex records actions as completed ITEMS in its own event stream; the CLI-style drivers record them
+    # as tool_use blocks. Reading only one shape reported the codex runs as making zero edits, which is
+    # both false and exactly backwards from the point the table exists to make.
+    codex_streams = sorted(rounds.glob("*.codex_events.timestamped.jsonl"))
+    if codex_streams:
+        for f in codex_streams:
+            for line in f.read_text(errors="ignore").splitlines():
+                try:
+                    ev = json.loads(line).get("event") or {}
+                except Exception:  # noqa: BLE001 — truncated last line on a killed round
+                    continue
+                if ev.get("type") != "item.completed":
+                    continue
+                t = (ev.get("item") or {}).get("type")
+                if t == "command_execution":
+                    acts.append("bash")
+                elif t == "file_change":
+                    acts.append("edit")
+    else:
+        for f in sorted(rounds.glob("round_*.transcript.jsonl")):
+            for line in f.read_text(errors="ignore").splitlines():
+                try:
+                    ev = json.loads(line)
+                except Exception:  # noqa: BLE001 — a killed round leaves a truncated last line
+                    continue
+                for blk in (ev.get("message", {}) or {}).get("content", []) or []:
+                    if isinstance(blk, dict) and blk.get("type") == "tool_use":
+                        acts.append(str(blk.get("name")))
+    if not acts:
+        return {}
+    writes = {"write", "edit", "patch", "apply_patch"}
+    first = next((i for i, n in enumerate(acts) if n in writes), None)
+    n_write = sum(1 for n in acts if n in writes)
+    return {"actions": len(acts), "recon_before_first_write": first,
+            "recon_fraction": round(first / len(acts), 3) if first is not None else None,
+            "writes": n_write, "invalid_calls": sum(1 for n in acts if n == "invalid"),
+            "distinct_tools": len(set(acts))}
+
+
 def collect(tag: str | None, arm_filter: str | None) -> list[dict]:
     """One record per run directory under the active target's capsule-bench run root."""
     audit_p = C.REPORTS / "full_suite_audit.json"
@@ -167,6 +268,9 @@ def collect(tag: str | None, arm_filter: str | None) -> list[dict]:
                 # reading it the table printed $0.00 notional for runs that cost $5-8 of equivalent
                 # traffic, which reads as "free" rather than "not billed per token".
                 "notional_usd": ct.get("subscription_notional_usd"),
+                "conformance": _conformance(d),
+                "tier_reach": _tier_reach(d),
+                "behaviour": _behaviour(d),
                 "codex": _codex_facts(d),
                 "billing_mode": billing_mode(env, _codex_facts(d)),
             })
@@ -256,6 +360,47 @@ def markdown(models: dict, rows: list[dict], arm: str | None) -> str:
         L.append(f"| `{r['run_id']}` | `{r['model']}` | {(r['public'] or {}).get('passed')} | "
                  f"{(r['hidden'] or {}).get('passed')} | {r.get('highest_tier') or '—'} | "
                  f"{r['n_rounds']} | {(r['tokens_total'] or 0):,} | {c} |")
+    # PARTIAL CREDIT. Two runs can both read 0/20 while one never parsed and the other passed the numeric
+    # and trace tiers on most capsules and lost only on the hardware encoding. The ladder already knows the
+    # difference, so print it rather than let a single pass/fail number flatten it.
+    L += ["", "## how far capsules got (highest tier reached, summed over runs)", ""]
+    for r in sorted(rows, key=lambda x: str(x.get("model"))):
+        reach = r.get("tier_reach") or {}
+        if reach:
+            L.append(f"- `{r['run_id']}` ({r.get('model')}): "
+                     + ", ".join(f"{k}={v}" for k, v in sorted(reach.items())))
+
+    # CONFORMANCE. On this arm these flags separated the runs more sharply than the score did: the 20/20
+    # run used the RTL-derived tooling every round; a 0/20 run that reached the simulator never touched it.
+    L += ["", "## arm conformance (did the run use the RTL-derived tooling it was given?)", "",
+          "| run | model | rounds conformant | isa_tools | cca | no-regex | full self-check |",
+          "|---|---|---|---|---|---|---|"]
+    def _m(v):
+        return {True: "yes", False: "no", None: "—"}.get(v, str(v))
+    for r in sorted(rows, key=lambda x: str(x.get("model"))):
+        c = r.get("conformance") or {}
+        ever = c.get("ever") or {}
+        if not ever:
+            continue
+        L.append(f"| `{r['run_id']}` | `{r.get('model')}` | {c.get('conformant_rounds', 0)} | "
+                 f"{_m(ever.get('isa_tools_used'))} | {_m(ever.get('cca_used'))} | "
+                 f"{_m(ever.get('no_regex_ok'))} | {_m(ever.get('full_selfcheck'))} |")
+
+    # HOW THE RUN WAS SPENT. Token and tool-call totals were similar or larger for the runs that failed;
+    # what differed was the shape -- how long they investigated before editing, and how much they rewrote.
+    L += ["", "## how the run was spent", "",
+          "| run | model | actions | recon before 1st write | writes | invalid calls | distinct tools |",
+          "|---|---|---|---|---|---|---|"]
+    for r in sorted(rows, key=lambda x: str(x.get("model"))):
+        b = r.get("behaviour") or {}
+        if not b:
+            continue
+        frac = b.get("recon_fraction")
+        L.append(f"| `{r['run_id']}` | `{r.get('model')}` | {b.get('actions')} | "
+                 f"{b.get('recon_before_first_write')}"
+                 f"{f' ({frac:.0%})' if isinstance(frac, float) else ''} | "
+                 f"{b.get('writes')} | {b.get('invalid_calls')} | {b.get('distinct_tools')} |")
+
     L += ["", "## where capsules die (first failure plane, summed over runs)", ""]
     for name in sorted(models):
         planes = models[name]["planes"]
