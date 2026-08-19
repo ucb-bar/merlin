@@ -98,7 +98,8 @@ def _rate(model: str) -> tuple[float, float] | None:
     return None
 
 
-def parse_transcript(path: str | Path, *, billing_mode: str = METERED) -> dict:
+def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
+                     trust_cli_cost: bool = True) -> dict:
     """Parse a stream-json JSONL transcript → token/cost/tool-call summary (honest if absent).
 
     ``billing_mode`` comes from the DRIVER that produced the transcript (see the harness's
@@ -117,6 +118,12 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED) -> dict:
     any_usage = False
     n_events = 0
     result_usage: dict | None = None      # authoritative, SUBAGENT-INCLUSIVE per-model usage (result event)
+    # The CLI's own total_cost_usd is authoritative ONLY when the CLI is billing the model it thinks it
+    # is running. Drive a foreign model through it (an agentic harness pointed at a proxy) and the figure
+    # is priced against the CLI's own catalogue: a nemotron round on Bedrock, whose real cost is cents,
+    # was reported by the claude CLI as $21.68 -- enough to trip a campaign's spend cap and terminate a
+    # healthy run for a reason that never happened. Callers driving a bridged model pass
+    # trust_cli_cost=False so the dollars come from tokens x the real model's rate instead.
     result_cost = None                    # the CLI's true total_cost_usd
     for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
         line = line.strip()
@@ -196,7 +203,7 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED) -> dict:
     # when the authoritative totals come from the result event. It is a SUBSET of output, never added in.
     tok_reason = sum(m["reasoning"] for m in stream_by_model.values())
     unpriced: list[str] = []
-    if usage_source == "result_event" and result_cost is not None:
+    if usage_source == "result_event" and result_cost is not None and trust_cli_cost:
         cost = float(result_cost)                 # the CLI's authoritative, subagent-inclusive total
     else:
         cost = 0.0

@@ -784,6 +784,20 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
     shutil.copy(ws_task, run_dir / "TASK.md")  # archive the exact task served, for the record
 
 
+def _trust_cli_cost(model: str) -> bool:
+    """False when the round reached its model through the bridge.
+
+    A CLI prices what it believes it ran. Pointed at the proxy it bills a foreign model at its own
+    catalogue's rates, which is both a wrong artifact and an active hazard: the inflated figure counts
+    against --max-spend-usd and kills a run that has spent almost nothing.
+    """
+    try:
+        import agent_bridge as _BR
+        return not _BR.bridged_name(model, _driver_for(model))
+    except Exception:
+        return True
+
+
 def _driver_for(model: str) -> str:
     """Resolve which agent driver handles ``model``. ``--driver`` (the ``_DRIVER`` global) is authoritative
     when set to a concrete driver; ``auto`` (the default, behavior-preserving) routes by model id — the
@@ -1551,7 +1565,8 @@ def main(argv: list[str] | None = None) -> int:
                       f"will RESUME it (finish manifest.yaml + CLI + target artifact first).")
             except Exception as _e:  # noqa: BLE001
                 print(f"[round {rnd}] resume-note skipped: {type(_e).__name__}: {_e}")
-        rsum = ET.parse_transcript(tpath, billing_mode=_billing_mode(a.model))
+        rsum = ET.parse_transcript(tpath, billing_mode=_billing_mode(a.model),
+                                   trust_cli_cost=_trust_cli_cost(a.model))
         audit = audit_transcript(tpath, arm)
         # dev-conformance FLAG (never a grade gate): did the agent develop the way this arm mandates?
         try:
@@ -1768,7 +1783,8 @@ def main(argv: list[str] | None = None) -> int:
         ftp = run_dir / "rounds" / "finalize.transcript.jsonl"
         if ftp.exists():
             out.write(ftp.read_text())
-    summ = ET.parse_transcript(combined, billing_mode=_billing_mode(a.model))
+    summ = ET.parse_transcript(combined, billing_mode=_billing_mode(a.model),
+                               trust_cli_cost=_trust_cli_cost(a.model))
     # active-vs-waiting split (cumulative across resume-invocations): wall = active work + rate-limit
     # sleeps; active_wall_s is time actually DOING work (agent rounds + oracle grading + finalize).
     active_wall_s = round(active_wall_s, 3)
