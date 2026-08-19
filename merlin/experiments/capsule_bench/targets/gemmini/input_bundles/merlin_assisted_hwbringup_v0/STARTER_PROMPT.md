@@ -33,7 +33,7 @@ the **compile-time verification that C++/MLIR has and that hand-rolled regex thr
 
 The ONLY substantial code you write is the target *lowering algorithm* + the RoCC encoding table. Parse,
 verify, cmdbuf serialization, im2col/tiling are provided. Run any tool with
-`/path/to/merlin/.venv/bin/python`.
+the repo's `.venv/bin/python` (the interpreter that has `xdsl` + `merlin`).
 
 ## B. Spend FEW tokens — derive once, don't spelunk
 1. **Do NOT crawl the RTL repo.** Read `gemmini/README.md` + the ISA header **once**, plus the **one example

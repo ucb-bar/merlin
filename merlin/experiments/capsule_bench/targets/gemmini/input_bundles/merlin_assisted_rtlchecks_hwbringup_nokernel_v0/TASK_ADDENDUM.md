@@ -10,11 +10,20 @@ and what you must build.
   patterns), `merlin.targetgen.{synthesize,generate}`, and `merlin.targetgen.contract.interface_emit`
   are **available to import at runtime** — importing them is expected and legitimate (it is the
   framework, not the answer).
-- **Run your tool with the Python that has the framework installed:**
-  `/path/to/merlin/.venv/bin/python` (has `xdsl` + `merlin`). Set your
-  `manifest.yaml` `commands[*].argv` to invoke your tool with **that interpreter**, e.g.
-  `["/path/to/merlin/.venv/bin/python", "{tool}", "{input_mlir}", "{output_json}"]`.
-  (The system `python3` does NOT have xdsl — using it will fail at runtime.)
+- **Do NOT put an interpreter in your manifest.** The harness runs a `language: python` tool with the
+  interpreter that has `xdsl` + `merlin` installed, automatically. Declare the tool once as a BARE path
+  relative to your package and reference it as `{tool}`:
+  ```yaml
+  entrypoints:
+    tool: mlir_oot/gemmini_opt.py        # ONE key: `tool`. A bare path, no interpreter.
+  commands:
+    parse:
+      argv: ["{tool}", "parse", "{input_mlir}"]
+  ```
+  `entrypoints` takes exactly one key — `tool`. The four operations live under `commands`, not under
+  `entrypoints`. Your manifest must validate against `merlin/contract/schemas/manifest.schema.json`
+  (read it — it is the authority, and a manifest that fails it is REJECTED before any capsule is
+  graded, which reports as `n_capsules=0` rather than as a compiler error).
 
 ## What you MUST build (the point of this arm)
 A **proper xDSL backend**: define your input + Gemmini **target dialect** (IRDL ops/types with verifiers)

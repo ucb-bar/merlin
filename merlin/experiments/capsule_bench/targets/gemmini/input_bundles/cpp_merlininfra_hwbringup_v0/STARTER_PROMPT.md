@@ -11,7 +11,7 @@ tools, or the oracle. The real work — defining your dialect(s) and writing the
    package skeleton from a dialect plan you give it — a target-dialect ODS skeleton (empty ops/types you
    fill in), the `gemmini-opt` driver wiring the 4 entrypoints, and the CMake to build against the provided
    LLVM/MLIR-23. `generate.target_repo` lays out the package; `generate.llvm_plan` helps the LLVM/RoCC
-   lowering. Run tools with `/path/to/merlin/.venv/bin/python`.
+   lowering. Run tools with the repo's `.venv/bin/python` (the interpreter that has `xdsl` + `merlin`).
 2. **Define your OWN input + target dialects in C++.** There is **no pre-built `merlin_iface` dialect** here
    — you write the dialect/parsing for the frozen input grammar yourself (it's a small, regular MLIR
    grammar; see the contract docs). Register your dialects in your tool, parse the capsule, lower through
