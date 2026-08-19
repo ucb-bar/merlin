@@ -44,4 +44,6 @@ preflight:
   smoke_program: MatmulProgram
 
 answer_surfaces:
-  prior_backends: []  # no prior atlas backends to hide yet
+  # The reference backend is a WORKING atlas compiler, so it is an answer key: an agent that reads it is
+  # copying the solution rather than deriving it. Listing it here is what makes the sandbox mask it.
+  prior_backends: [agent_spec_v1_mlir_oot]
