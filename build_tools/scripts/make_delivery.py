@@ -638,6 +638,20 @@ FASTER_BAUDS = (921_600, 4_000_000)
 UPLOAD_PROMINENCE_S = 30 * 60
 
 
+def _upload_payload(brd, b: dict) -> int:
+    """Bytes the loader sends for one image.
+
+    Recorded by newer packages; for one built before that, reconstructed from the estimate, which was
+    derived by dividing exactly these bytes by the loader's rate. Never the linked region: that is DRAM
+    the image is allowed to use, not bytes that cross the wire, and quoting it as an upload figure
+    overstated a 1.5 GB image by more than a factor of two.
+    """
+    got = b.get("upload_bytes")
+    if got:
+        return int(got)
+    return int(round(float(b.get("upload_estimate_s") or 0) * brd.loader_bytes_per_s))
+
+
 def _duration(seconds: float) -> str:
     """A duration a person can act on. Hours for a wait measured in hours, minutes below that -- "0.0 h"
     for a four-minute upload is the kind of rendering that makes a reader distrust every other number."""
@@ -671,7 +685,7 @@ def _upload_doc(brd, manifest: dict) -> str:
     if secs < UPLOAD_PROMINENCE_S:
         return ""
     rate = brd.loader_bytes_per_s
-    payload = int(worst.get("upload_bytes") or round(secs * rate))
+    payload = _upload_payload(brd, worst)
     alts = "\n".join(
         f"- at **{b} baud**: {_duration(payload / (b / 10.0))} ({b / brd.loader_baud:.0f}x faster)"
         for b in FASTER_BAUDS if b > brd.loader_baud)
@@ -1988,7 +2002,7 @@ channel was wrong.
 """
 
 
-DEBUG_DOC = r"""\
+DEBUG_DOC = r"""
 ## Every binary here comes in two builds
 
 Look at the `build` column above. For each model and hart count there are **two** ELFs:
@@ -2269,7 +2283,7 @@ single most useful check you can run, and this package cannot give it to you: ea
 %d MB, so the pair would double an upload that is already the longest part of the job. If you want the
 1-hart companion of any of these, say so and we will build it — it is a rebuild, not a redesign.""" % (
                         hart_counts[0],
-                        max(b["ram_bytes"] for b in manifest["binaries"]) // 2**20))
+                        max(_upload_payload(brd, b) for b in manifest["binaries"]) // 2**20))
     # A scalar image is a different ISA for a different set of harts, not a slower build of the same
     # thing. Someone looking at two files that differ by one word in the name needs that said.
     # `== "scalar"`, not `!= "rvv"`. A matrix-unit image is neither of those things, and under the old
