@@ -135,6 +135,88 @@ def _operand_fields(cls, base: int) -> dict[str, list[int | None]]:
     return fields, touched
 
 
+def _declared_operands(cls) -> set:
+    """Operand attributes the format classes in ``cls``'s MRO declare in their OWN annotations."""
+    out = set()
+    for base in getattr(cls, "__mro__", (cls,)):
+        for attr in getattr(base, "__annotations__", {}) or {}:
+            if attr in _OPERAND_ATTRS:
+                out.add(attr)
+    return out
+
+
+def _canonical_placements(entries: list[dict]) -> dict:
+    """The ONE bit placement each operand attribute uses across the whole ISA, where it is unambiguous.
+
+    Instruction formats in a family place a given operand in the same word bits (a decoder reads one field
+    for it). So when every format that encodes ``rd`` linearly agrees on its bits, that placement IS the
+    ISA's placement, derived — not assumed. An attribute whose formats DISAGREE yields nothing, and the
+    caller then repairs nothing (fail closed rather than guess)."""
+    seen: dict = {}
+    for e in entries:
+        for attr, bits in (e.get("fields") or {}).items():
+            if any(b is None or b == -1 for b in bits):
+                continue                                # only fully-linear placements are evidence
+            seen.setdefault(attr, set()).add(tuple(bits))
+    return {a: list(v.pop()) for a, v in seen.items() if len(v) == 1}
+
+
+def _repair_dropped_operands(entries: list[dict], classes: dict) -> list[dict]:
+    """Restore an operand its shipped encoder DECLARES but never packs, and report what was restored.
+
+    A shipped encoder can carry a field-packing bug: the atlas ``IType.to_bytecode`` assigns ``rd`` and
+    then immediately overwrites it with ``imm``, so ``rd`` reaches no word bit while ``imm``'s low bits
+    reach two. The functional simulator hides this (it reads the decoded object, not the word); the RTL
+    decoder does not, and merlin's ``--fix-itype-rd`` shim already corrects the same bug on the program
+    path. Deriving the encoder from the unrepaired model yields an assembler that CANNOT write the
+    instruction that sets up an address register — most of a kernel's scalar prologue — and that reports
+    the immediate as unpackable, because the stolen bits look like an aliased field.
+
+    The repair wraps the op's own encoder (place the declared operand at the placement the REST of this
+    ISA uses for it, after clearing those bits) and then RE-PROBES through it, so the resulting field map
+    is self-consistent: the operand appears, and the operand that was stealing its bits goes back to being
+    linear. Evidence-driven and self-disabling — an operand is restored only when its format declares it,
+    the probe found it packed nowhere, and every other format in the ISA agrees on where it lives. The
+    moment the shipped encoder is fixed the probe finds the field and nothing is repaired. Each repair is
+    recorded in ``entry['repaired']`` so a consumer can surface it rather than silently trust a patch."""
+    canon = _canonical_placements(entries)
+    for e in entries:
+        cls = classes.get(e["mnemonic"])
+        if cls is None:
+            continue
+        dropped = sorted(a for a in _declared_operands(cls) - set(e.get("fields") or {})
+                         if canon.get(a))
+        if not dropped:
+            continue
+        orig = cls.to_bytecode
+        placements = {a: canon[a] for a in dropped}
+
+        def _repaired(self, _orig=orig, _pl=placements):
+            word = int(_orig(self)) & 0xFFFFFFFF
+            for attr, bits in _pl.items():
+                for b in bits:
+                    word &= ~(1 << b)                  # the stolen bits belong to this operand
+                val = int(getattr(self, attr, 0) or 0)
+                for i, b in enumerate(bits):
+                    if val >> i & 1:
+                        word |= 1 << b
+            return word
+
+        cls.to_bytecode = _repaired
+        try:
+            base = _base_word(cls)
+            if base is None:
+                continue
+            fields, touched = _operand_fields(cls, base)
+            e["fixed_mask"], e["fixed_value"] = _fixed_signature_from_touched(base, touched)
+            if fields:
+                e["fields"] = fields
+            e["repaired"] = dropped
+        finally:
+            cls.to_bytecode = orig                     # never leave the shared ISA module mutated
+    return entries
+
+
 def _fixed_signature_from_touched(base: int, touched: int) -> tuple[int, int]:
     """FIXED opcode/funct signature (mask, value): the variable bits are EVERY word bit any operand can move
     (``touched``, aliased bits included), the complement is fixed. A word decodes to this op iff
@@ -378,6 +460,7 @@ def main() -> int:
     by_class: dict[str, list] = {}
     by_mnem: dict[str, dict] = {}
     asm_from_classes: dict[str, str] = {}          # asm-syntax token -> class name, from each op's own ClassVar
+    op_classes: dict = {}                          # mnemonic -> op class, for the dropped-operand repair pass
     for name, obj in vars(mod).items():
         if name.startswith("_") or not inspect.isclass(obj) or not hasattr(obj, "opcode"):
             continue
@@ -406,9 +489,19 @@ def main() -> int:
                 entry["fields"] = fields
         by_class.setdefault(sem, []).append(entry)
         by_mnem[name] = {"class": sem, **entry}
+        op_classes[name] = obj
         am = _asm_mnemonic_of(obj)                   # the op's OWN assembler syntax (e.g. vmatmul.mxu0)
         if am:
             asm_from_classes[am] = name
+
+    # Restore any operand the shipped encoder declares but never packs (a field-packing bug in the model
+    # would otherwise reach merlin as 'this instruction has no such operand'). Runs over ALL entries at
+    # once because the repair's evidence is cross-format: where the rest of the ISA puts that operand.
+    # ``by_mnem`` is rebuilt afterwards since its entries are copies made before this pass.
+    _repair_dropped_operands([e for ents in by_class.values() for e in ents], op_classes)
+    for sem, ents in by_class.items():
+        for e in ents:
+            by_mnem[e["mnemonic"]] = {"class": sem, **e}
 
     # the assembler-mnemonic -> class map (the model's own ISA spec), best-effort — lets an example kernel
     # written in assembler syntax be mapped back to semantic classes. DISCOVERED from the loaded ISA module
