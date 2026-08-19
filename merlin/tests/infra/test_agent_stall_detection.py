@@ -38,6 +38,10 @@ def oc():
         sys.path.pop(0)
 
 
+def _sh_quote(text):
+    return "'" + text.replace("'", "'\\''") + "'"
+
+
 def _run(oc, script, *, timeout, stall):
     return oc._capture(["bash", "-c", script], dict(os.environ), timeout, ".", stall_seconds=stall)
 
@@ -86,3 +90,44 @@ def test_the_whole_process_tree_dies_on_a_stall(oc):
         _run(oc, f"echo start; bash -c 'exec -a {mark} sleep 200' & sleep 200", timeout=200, stall=6)
     time.sleep(2)
     assert alive() == 0, "a stalled tree left orphans behind"
+
+
+def test_a_buffered_worker_that_prints_nothing_yet_is_not_killed(oc):
+    """The regression this file exists for the second time.
+
+    opencode block-buffers stdout when it is redirected to a FILE, so a round doing real but quiet work
+    shows a byte count that does not move. Measured on a live GLM-5 run: the agent wrote three source
+    files and ran selfchecks while its transcript sat at 109 bytes, and a bytes-only detector killed 4 of
+    its 6 rounds. This child is the same shape -- it burns CPU and produces output, but nothing reaches
+    the file until it exits.
+
+    It must outlive TWO polls: the first poll sees the file appear (0 bytes vs the -1 sentinel) and
+    counts that as progress, so only the second flat poll can trip the detector. A shorter child exits
+    inside the first interval and proves nothing -- the first version of this test did exactly that.
+    """
+    burn = (
+        "import sys, time\n"
+        "end = time.monotonic() + 35\n"
+        "n = 0\n"
+        "while time.monotonic() < end:\n"
+        "    n += sum(i * i for i in range(20000))\n"
+        "print('done', n)\n"
+    )
+    t0 = time.monotonic()
+    rc, out, _ = _run(oc, f"exec python3 -c {_sh_quote(burn)}", timeout=120, stall=5)
+    assert rc == 0, "a working agent must not be killed just because its stdout is still buffered"
+    assert "done" in out
+    assert time.monotonic() - t0 >= 30, "the child must have been allowed to run to completion"
+
+
+def test_cpu_progress_is_read_for_the_process_group_only(oc):
+    """The CPU signal must not be satisfied by unrelated load elsewhere on this shared host."""
+    mine = os.getpgid(0)
+    assert oc._tree_cpu_seconds(mine) > 0.0, "this test's own group has certainly burned CPU"
+    assert oc._tree_cpu_seconds(0x7FFFFFF0) == 0.0, "a group with no processes must report no CPU"
+
+
+def test_a_process_blocked_on_io_still_counts_as_stalled(oc):
+    """CPU must not become a blanket amnesty: a hang burns none, which is the whole point."""
+    with pytest.raises(oc.AgentStalled):
+        _run(oc, "exec python3 -c 'import time; time.sleep(120)'", timeout=120, stall=6)

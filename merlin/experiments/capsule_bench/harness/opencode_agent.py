@@ -129,15 +129,47 @@ def _parse_run_error(stdout: str) -> str | None:
     return None
 
 
-# A round is killed when the agent produces NOTHING for this long, independently of the wall-clock
+# A round is killed when the agent makes NO PROGRESS for this long, independently of the wall-clock
 # round timeout. Measured: a stalled agent held a 4h round open having emitted nothing for 28 min.
 # Overridable per deployment via MERLIN_OPENCODE_STALL_S; 0 disables the detector.
 _STALL_SECONDS = int(os.environ.get("MERLIN_OPENCODE_STALL_S", "900"))
 _POLL_SECONDS = 10
+# Progress must clear this much CPU to count. opencode block-buffers stdout when it is redirected to a
+# file, so a quiet round can do real work while the byte count stands still (measured: a GLM-5 round wrote
+# three source files and ran selfchecks while its transcript sat at 109 bytes for 15 min). CPU is the
+# signal that separates that from a hang: a process blocked on a socket burns none, a working agent burns
+# plenty. Small enough that idle poll jitter cannot reach it, large enough that real work always does.
+_CPU_EPSILON_S = 1.0
+_CLK_TCK = os.sysconf("SC_CLK_TCK")
+
+
+def _tree_cpu_seconds(pgid: int) -> float:
+    """Total CPU (user+sys) burned by every live process in `pgid`, in seconds.
+
+    Read structurally from /proc, never pattern-matched: the comm field is parenthesised and may itself
+    contain spaces and ')', so split at the LAST ')' and index the remainder positionally (utime/stime are
+    fields 14/15 one-based, i.e. offsets 11/12 after that split). A process that exits between the listdir
+    and the read simply contributes nothing.
+    """
+    total = 0.0
+    try:
+        pids = [d for d in os.listdir("/proc") if d.isdigit()]
+    except OSError:
+        return 0.0
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/stat") as fh:
+                rest = fh.read().rpartition(")")[2].split()
+            if int(rest[2]) != pgid:          # field 5 (pgrp), 3rd after the comm split
+                continue
+            total += (int(rest[11]) + int(rest[12])) / _CLK_TCK
+        except (OSError, ValueError, IndexError):
+            continue
+    return total
 
 
 class AgentStalled(subprocess.TimeoutExpired):
-    """The agent process is alive but has emitted NOTHING for `stall_seconds`.
+    """The agent process is alive but has made NO PROGRESS for `stall_seconds`.
 
     Measured: a GLM-5 round read its task files, emitted ``step_start``, and then produced zero
     bytes for 28 minutes while the process stayed healthy. A wall-clock cap alone cannot tell that
@@ -180,7 +212,9 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
             p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=err,
                                  text=True, cwd=cwd, env=env, start_new_session=True)
             deadline = time.monotonic() + timeout
+            pgid = os.getpgid(p.pid)
             last_size, last_change = -1, time.monotonic()
+            last_cpu = _tree_cpu_seconds(pgid)
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -191,14 +225,18 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
                     break                                   # exited on its own
                 except subprocess.TimeoutExpired:
                     pass
-                # Progress is BYTES PRODUCED, not liveness: a stalled agent stays healthy indefinitely.
+                # Progress is WORK DONE, not liveness: a stalled agent stays healthy indefinitely. Two
+                # independent signals, because either one alone is wrong: bytes miss a quiet round whose
+                # output is still sitting in opencode's stdio buffer, and CPU alone would miss an agent
+                # spinning without accomplishing anything. Either advancing means the round is alive.
                 try:
                     size = os.path.getsize(tmp.name) + os.path.getsize(errf.name)
                 except OSError:
                     size = last_size
+                cpu = _tree_cpu_seconds(pgid)
                 now = time.monotonic()
-                if size != last_size:
-                    last_size, last_change = size, now
+                if size != last_size or cpu - last_cpu >= _CPU_EPSILON_S:
+                    last_size, last_cpu, last_change = size, max(cpu, last_cpu), now
                 elif stall_seconds and (now - last_change) >= stall_seconds:
                     _reap(p)
                     raise AgentStalled(cmd, int(now - last_change))
