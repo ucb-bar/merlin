@@ -74,17 +74,22 @@ If your `tools/pyuartsi` is the pinned submodule (`c1bbb3a`), invoke it as `pyth
 The `57600` above is what your own `scripts/run_experiments.py` uses, and it is what the upload column
 in the table below assumes. At that rate the loader moves about **5.6 KB/s**, so the biggest model spends
 **hours** on the wire before a single instruction executes — with `--fesvr` polling `tohost` in a loop
-that has no timeout, so from the outside that is indistinguishable from a hang. We think this, not the
-compiled code, is why `whisper_tiny` came back FAIL on every hart count.
+that has no timeout, so from the outside that is indistinguishable from a hang — an image whose UPLOAD
+alone outlasts your harness timeout is reported as a failure that no rebuild can fix.
 
 `pyuartsi`'s serial layer takes the baud straight through to pyserial, and its own `Baudrate` enum goes
 to 4000000. At **921600** the same image is ~16x quicker. If a higher rate is not reliable on your
-setup, please tell us what is and we will quote honest numbers against it — and start with `deepjscc`,
-whose upload is about a megabyte at any baud.
+setup, please tell us what is and we will quote honest numbers against it, and start with the smallest
+image in the table.
 
-(Two corrections to what we sent last time, both ours: we quoted upload times computed from `MemSiz` at
-921600 baud. Your loader transmits only `SHT_PROGBITS` sections — so the byte count was too *high* — and
-you run it at 57600 — so the rate was 16x too *optimistic*. The table below fixes both.)""",
+### Keep the loader attached for the WHOLE run
+
+This board's console is HTIF, which is not a self-contained UART: the image writes a word and waits for a
+host to acknowledge it, and on this link that host is `pyuartsi --fesvr` itself. So stay attached, at the
+baud you loaded with, until `DONE`. If you load and detach, the image will appear to hang in its very
+first print — no banner, no `STAGE`, no fault — while it is in fact computing correctly and waiting for
+someone to read it. That failure looks exactly like a dead image and it is the one we would most like you
+not to spend a day on.""",
     "gemmelos_bearly25": """\
 **Output comes out of UART0 at 115200 baud, 8 data bits, 2 stop bits** — the same console your own
 `printf` uses on a `PLATFORM=CHIP` build. Open that terminal first, then load:
@@ -685,6 +690,19 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
         raise RuntimeError(f"the stand-in twin contains the unit's instructions ({twin_counts}), "
                            "so it is not a stand-in")
 
+    # The DIAGNOSTIC build, audited the same way and for the same reason. It is the image someone falls
+    # back to when the plain one misbehaves on hardware nobody has run, so a diagnostic build that lost
+    # the routing is the worst outcome available: it would run, print a clean trace, grade correctly on
+    # the host core, and prove nothing about the unit. Built here rather than by the caller so the audit
+    # cannot be skipped by whoever asks for it.
+    dbg = build(stand_in=False, dbg=True, where=f"board_h{harts}_dbg") if debug else None
+    dbg_counts = {} if dbg is None else {
+        k: int(v) for k, v in
+        sorted((unit_audit.audit_object(dbg["elf"], encodings).counts or {}).items()) if v}
+    if dbg is not None and not dbg_counts:
+        raise RuntimeError(f"the diagnostic build of this image contains NONE of {unit}'s instructions, "
+                           "so the build someone falls back to on a bad run would not exercise the unit")
+
     if simulate:
         res = zm.run_on_spike(twin["elf"], harts=cpus, mem_bytes=twin["ram_bytes"],
                               timeout=timeout, vlen=vlen)
@@ -722,6 +740,10 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
         # twin is built and audited but never graded, and text claiming it "grades bit-exact" would be a
         # verdict nobody produced.
         "twin_simulated": bool(simulate),
+        # The diagnostic build's own counts, beside the shipped image's. Equal is the expected answer and
+        # the two are separate binaries, so stating one and implying the other is exactly the gap this
+        # closes.
+        **({"debug_unit_instruction_counts": dbg_counts} if dbg is not None else {}),
         "gated_via": ("scalar stand-in twin on spike; it shares this image's LOWERING (see "
                       "lowering_digest) but not its app configuration. That covers the routing, the "
                       "K-major pack, the descriptor ABI and the requant epilogue. The DATAPATH is not "
@@ -735,7 +757,7 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
                       "does not, and both lower to the same bytes. Any numerical evidence is external "
                       "and named in this package's notes."),
     }
-    return res, ship, (build(stand_in=False, dbg=True, where=f"board_h{harts}_dbg") if debug else None)
+    return res, ship, dbg
 
 
 def main(argv=None) -> int:
@@ -1690,7 +1712,17 @@ bug and we would want the log.
 #: defaulted. The text addresses a conversation ("your table", "your trap logs") that a second
 #: configuration built against the same port was never part of, so inheriting it would put words in a
 #: recipient's mouth about runs they never did.
-HISTORY_DOC = {"chipyard_kodiak": KODIAK_VSTATE_DOC}
+KODIAK_UPLOAD_DOC = """\
+### Two corrections to the upload times we sent last time
+
+Both ours. We quoted them from `MemSiz` at 921600 baud. Your loader transmits only `SHT_PROGBITS`
+sections — so the byte count was too *high* — and you run it at 57600 — so the rate was 16x too
+*optimistic*. The table below fixes both. We think this, not the compiled code, is why `whisper_tiny`
+came back FAIL on every hart count: at that baud its upload alone outlasts any reasonable timeout.
+
+"""
+
+HISTORY_DOC = {"chipyard_kodiak": KODIAK_VSTATE_DOC + KODIAK_UPLOAD_DOC}
 
 
 SUPERSEDED_DOC = """\
@@ -1760,11 +1792,48 @@ result shape), so the trace reads as "this much time in that operator" rather th
 `op=<id>` field in `ALIVE` uses the same ids, which is what makes a stalled run point at a specific
 operator instead of at the model as a whole.
 
-If you only have time for one thing: run **`deepjscc` at 1 hart, `_debug`**. It is the smallest image
-here, uploads in a couple of minutes, and its log answers vector width, per-hart vector state, real
-clock, DRAM extent, stack usage and the whole op trace in one go.
-
 """
+
+
+def _debug_tail(manifest: dict, brd=None) -> str:
+    """Which diagnostic build to run first, named from THIS package.
+
+    The paragraph this replaces recommended a model by name, which was right for the package it was
+    written against and wrong for every other one -- including packages that do not contain that model at
+    all. The recommendation is a property of the set: the cheapest instrumented image to get on the wire,
+    because its log answers vector width, per-hart vector state, DRAM extent, stack usage and the op trace
+    in one upload.
+    """
+    dbg = [b for b in manifest["binaries"] if b.get("debug")]
+    if not dbg:
+        return ""
+    first = min(dbg, key=lambda b: (b.get("upload_estimate_s") or 0, b["ram_bytes"]))
+    out = (f"\n**Start with `{first['elf']}`.** On silicon nobody has run yet, run the instrumented "
+           f"build BEFORE the plain one: if it faults or stalls, its log says where, and if it completes "
+           f"you have both the answer and the whole trace. It is the cheapest image here to get on the "
+           f"wire, and its log answers vector width, per-hart vector state, DRAM extent, stack usage and "
+           f"the per-op trace in one go.\n")
+    # A diagnostic build of a matrix image must still BE one. Stated with its own counts, because it is a
+    # separate binary from the plain image and the fallback nobody would think to re-check.
+    # Where the diagnostic output GOES, said next to the instruction to run it. A host-assisted console
+    # only reaches the operator while the loader is still attached, and a detached run of the very image
+    # that exists to explain itself explains nothing: no banner, no STAGE, no fault -- indistinguishable
+    # from a dead image, on hardware where "dead image" is the expected first hypothesis.
+    if brd is not None and brd.console == CONSOLE_HTIF:
+        out += ("\nNone of those lines reach you unless the loader stays attached. This board's console is "
+                "HTIF: the image writes a word and waits for a host to acknowledge it, and your loader "
+                "(`--fesvr`) is that host. Load and detach and you will see nothing at all -- not even the "
+                "banner -- from an image that is running correctly. Stay attached until `DONE`.\n")
+    mx = [b for b in manifest["binaries"]
+          if b.get("matrix") and b["matrix"].get("debug_unit_instruction_counts")]
+    if mx:
+        pairs = ", ".join(f"`{b['matrix']['debug_unit_instruction_counts']}`" for b in mx[:1])
+        out += (f"\nThe instrumented build of a matrix-unit image is still a matrix-unit image, and we "
+                f"audit it separately rather than assuming it: it carries the unit's instructions in the "
+                f"same counts as the binary it shadows ({pairs}), and the packager refuses to ship a "
+                f"diagnostic build that lost the routing. So falling back to `_debug` when a matrix run "
+                f"misbehaves does not quietly move the work off the unit.\n")
+    return out
 
 
 def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
@@ -1778,7 +1847,8 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
               or LOADER_DOC["default"])
     # Each board gets the explanation of ITS last failure, not a generic one.
     superseded_doc = SUPERSEDED_DOC if brd.sdk_chip else HISTORY_DOC.get(brd.name, "")
-    debug_doc = DEBUG_DOC if any(b.get("debug") for b in manifest["binaries"]) else ""
+    debug_doc = (DEBUG_DOC + _debug_tail(manifest, brd)
+                 if any(b.get("debug") for b in manifest["binaries"]) else "")
     # Say what was actually checked for THIS board's console. Claiming a `.htif` check on a board whose
     # console is its own UART is both wrong and exactly the kind of detail that erodes trust in the
     # rest of the list.

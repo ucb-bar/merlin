@@ -150,3 +150,51 @@ def test_a_configuration_does_not_inherit_another_boards_bring_up_history():
     txt = md._readme(brd, man)
     assert "Your trap logs" not in txt
     assert md.HISTORY_DOC["chipyard_kodiak"] not in txt
+
+
+def test_the_diagnostic_build_of_a_matrix_image_is_audited_and_named():
+    """The `_debug` build is the one someone falls back to when the plain image misbehaves. A diagnostic
+    build that lost the routing would run, print a clean trace, grade correctly on the host core and prove
+    nothing about the unit -- so its counts are recorded separately from the shipped image's and stated."""
+    md = _load_packager()
+    ship = _matrix_binary(matrix={"debug_unit_instruction_counts": {"ACC": 3}})
+    dbg = _matrix_binary(elf="m_h2_matrix_debug.elf", debug=True)
+    dbg.pop("matrix")
+    brd, man = _manifest([ship, dbg])
+    txt = md._readme(brd, man)
+    assert "m_h2_matrix_debug.elf" in txt
+    assert "refuses to ship a diagnostic build that lost the routing" in txt
+
+
+def test_the_first_binary_to_run_is_named_from_this_package():
+    """The recommendation used to name a model by hand, which is wrong for every package that does not
+    contain it. It is a property of the set: the cheapest instrumented image to get on the wire."""
+    md = _load_packager()
+    big = _matrix_binary(elf="big_debug.elf", debug=True, upload_estimate_s=9000)
+    small = _matrix_binary(elf="small_debug.elf", debug=True, upload_estimate_s=60)
+    brd, man = _manifest([_matrix_binary(), big, small])
+    txt = md._readme(brd, man)
+    assert "Start with `small_debug.elf`" in txt
+    assert "deepjscc" not in txt
+
+
+def test_a_host_assisted_console_says_to_stay_attached_where_the_debug_lines_are_explained():
+    """HTIF is not a self-contained UART: the loader is the host that services it. A detached run of the
+    image that exists to explain itself prints nothing at all -- no banner, no STAGE, no fault -- which is
+    indistinguishable from a dead image on silicon where "dead image" is the first hypothesis."""
+    md = _load_packager()
+    dbg = _matrix_binary(elf="m_h2_matrix_debug.elf", debug=True)
+    dbg.pop("matrix")
+    brd, man = _manifest([_matrix_binary(), dbg])
+    assert brd.console == md.CONSOLE_HTIF
+    txt = md._readme(brd, man)
+    assert "Stay attached until `DONE`" in txt
+
+
+def test_the_loader_section_does_not_name_models_a_package_may_not_ship():
+    """It documents the LINK, and it is now shared by more than one configuration of the same port. Naming
+    one package's models there recommends a binary the recipient does not have."""
+    md = _load_packager()
+    doc = md.LOADER_DOC["chipyard_kodiak"]
+    for model in md.STATUS:
+        assert model not in doc, f"the loader doc names {model}"
