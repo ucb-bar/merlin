@@ -38,8 +38,27 @@ typedef void (*kmpc_micro1_t)(int32_t *, int32_t *, void *);
 typedef void (*kmpc_micro2_t)(int32_t *, int32_t *, void *, void *);
 typedef void (*kmpc_micro3_t)(int32_t *, int32_t *, void *, void *, void *);
 typedef void (*kmpc_micro4_t)(int32_t *, int32_t *, void *, void *, void *, void *);
+typedef void (*kmpc_micro5_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *);
+typedef void (*kmpc_micro6_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *);
+typedef void (*kmpc_micro7_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *);
+typedef void (*kmpc_micro8_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *, void *);
+typedef void (*kmpc_micro9_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *, void *, void *);
+typedef void (*kmpc_micro10_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *);
+typedef void (*kmpc_micro11_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *);
+typedef void (*kmpc_micro12_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *);
+typedef void (*kmpc_micro13_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *);
+typedef void (*kmpc_micro14_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *);
+typedef void (*kmpc_micro15_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *);
+typedef void (*kmpc_micro16_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *);
 
-#define MERLIN_OMP_MAX_SHARED 4
+/* 16, not 4. The MLIR OpenMP lowering passes exactly ONE shared arg (a captured struct),
+ * which is why 4 sufficed for every model region. The OPU tile loop is different: it is C
+ * emitted by the compiler backend and compiled by clang, whose OpenMP codegen passes every
+ * captured variable SEPARATELY -- the `collapse(2)` region passes 8. At 4 this panicked with
+ * `fork argc 8 > 4` on the first routed contraction, so the 2-core OPU path had never once
+ * executed. 16 leaves room for wider signatures (bias/requant variants capture more) while
+ * keeping the loud failure for anything past it. */
+#define MERLIN_OMP_MAX_SHARED 16
 
 /* ---- pool state --------------------------------------------------------------------- */
 
@@ -149,7 +168,7 @@ static int omp_task_nthreads;
  * ONLY because workers are pinned 1:1 — a third reason pinning is required, alongside the
  * v.c V-state bug. Zephyr has no portable __thread here, and a lookup by k_current_get()
  * would be a search on the hot path; a hart-indexed table is O(1) and exact. */
-static int8_t omp_gtid_of_hart[MERLIN_OMP_MAX_THREADS];
+static int8_t omp_gtid_of_hart[MERLIN_OMP_MAX_HARTS];
 static int omp_master_cpu = -1;
 
 /* Per-hart TEAM state — the thread's id within the team currently executing on that hart, the
@@ -167,15 +186,20 @@ static int omp_master_cpu = -1;
  * region runs inline on the encountering thread as a team of one. Worksharing then needs the
  * CURRENT team (size 1, tid 0), which is why these are per-hart and saved/restored around the
  * nested call rather than read from the global omp_task_nthreads. */
-static int8_t omp_tid_of_hart[MERLIN_OMP_MAX_THREADS];
-static int8_t omp_team_of_hart[MERLIN_OMP_MAX_THREADS];
-static int8_t omp_depth_of_hart[MERLIN_OMP_MAX_THREADS];
+static int8_t omp_tid_of_hart[MERLIN_OMP_MAX_HARTS];
+static int8_t omp_team_of_hart[MERLIN_OMP_MAX_HARTS];
+static int8_t omp_depth_of_hart[MERLIN_OMP_MAX_HARTS];
 
+/* Bounded by HARTS, not by threads. Bounding a hart index by the thread count silently ALIASES: a
+ * 2-thread image on a 3-core chip whose vector units sit on harts 0 and 2 mapped hart 2 onto slot 0,
+ * so the worker and the master both claimed tid 0 -- half the tiles computed twice and half not at
+ * all, a wrong answer rather than a fault. MERLIN_OMP_MAX_HARTS is exactly the bound the discovery
+ * pass already uses for this reason (see its comment above). */
 static inline int omp_self_cpu(void)
 {
 	int cpu = (int)arch_curr_cpu()->id;
 
-	return (cpu < 0 || cpu >= MERLIN_OMP_MAX_THREADS) ? 0 : cpu;
+	return (cpu < 0 || cpu >= MERLIN_OMP_MAX_HARTS) ? 0 : cpu;
 }
 
 static inline int omp_self_gtid(void)
@@ -318,6 +342,42 @@ static void omp_call_micro(void *fn, int argc, void **a, int32_t gtid)
 		break;
 	case 4:
 		((kmpc_micro4_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3]);
+		break;
+	case 5:
+		((kmpc_micro5_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4]);
+		break;
+	case 6:
+		((kmpc_micro6_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4], a[5]);
+		break;
+	case 7:
+		((kmpc_micro7_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4], a[5], a[6]);
+		break;
+	case 8:
+		((kmpc_micro8_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+		break;
+	case 9:
+		((kmpc_micro9_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]);
+		break;
+	case 10:
+		((kmpc_micro10_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9]);
+		break;
+	case 11:
+		((kmpc_micro11_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10]);
+		break;
+	case 12:
+		((kmpc_micro12_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10], a[11]);
+		break;
+	case 13:
+		((kmpc_micro13_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10], a[11], a[12]);
+		break;
+	case 14:
+		((kmpc_micro14_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10], a[11], a[12], a[13]);
+		break;
+	case 15:
+		((kmpc_micro15_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10], a[11], a[12], a[13], a[14]);
+		break;
+	case 16:
+		((kmpc_micro16_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10], a[11], a[12], a[13], a[14], a[15]);
 		break;
 	default:
 		/* Fail loudly: silently running the region with the wrong argument count would
