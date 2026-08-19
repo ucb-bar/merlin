@@ -180,6 +180,77 @@ pins:
       not on a branch, so `branch` is informational and the sha is the fact. Shares a checkout root
       with radiance_muon_rtl (the same chipyard tree), which is why both are verified by CONTENT.
 
+  atlas_npu:
+    description: >-
+      The atlas NPU generator revision an atlas capsule verdict is measured against. Everything the
+      compiler derives about this target comes out of this tree: the systolic mesh edge the emitter
+      tiles to, the MXU/VPU/DMA parameters, and the RTL the arc cosim (L3) and the Verilator sim (L4)
+      are elaborated from. A different revision can change a verdict without anything in merlin moving.
+    repo_canonical: https://github.com/ucb-bar/atlas-npu
+    commit: "569b7c317889a93427e9d27dff266f7cfd57b787"
+    branch: master
+    root_env: MERLIN_EXT_ATLAS_NPU
+    requires_paths:
+      - src/main/scala/atlas/common/SystolicArrayParams.scala
+      - src/main/scala/atlas/common/MxuParams.scala
+      - src/main/scala/atlas/mxu/sa/PE.scala
+      - src/main/scala/atlas/mxu/sa/SystolicArray.scala
+    used_by:
+      - mesh geometry + ISA fact extraction for the atlas capsule corpus (targetgen/isa_model.py)
+      - the L3 arc cosim and L4 Verilator program oracles (targetgen/program_oracle.py)
+    notes: >-
+      This checkout carries UNCOMMITTED edits to the systolic sources (PE/SystolicArray/PEMesh/
+      SystolicArrayParams) that add a configurable FMA pipeline depth. Their own comments state the
+      cut-set is strictly feed-forward, so the change is bit-exact and adds latency only — that claim is
+      RECORDED here, not independently verified, and it is exactly why `verify` reports drift on the
+      sources this reads: the declared commit does not describe the bytes. Any atlas verdict produced
+      from this tree must carry the source digest alongside the commit.
+
+  atlas_fp_units:
+    description: >-
+      The fp8/bf16 arithmetic units the atlas MXU instantiates — a separate repository with its own
+      revision, pinned separately for the same reason gemmini_rtl is pinned apart from chipyard. This is
+      where the datapath's numeric contract lives, including the one property the capsule goldens had to
+      be corrected for: E4M3Mul treats an operand whose EXPONENT FIELD IS ZERO as zero (`aZero := aExp
+      === 0.U`), so a subnormal fp8 operand reaches the multiplier as a signed zero. The unit's own
+      header states the contract outright ("Clean ML contract: no NaN, Inf, subnormals").
+    repo_canonical: git@github.com:ucb-ee194-tapeout/sp26-fp-units.git
+    commit: "9a0cc09c41ab918a3548580185f39cca8d559e0d"
+    branch: HEAD
+    root_env: MERLIN_EXT_ATLAS_NPU
+    path: dependencies/sp26-fp-units
+    requires_paths:
+      - src/main/scala/sp26-fp-units/E4M3Mul.scala
+      - src/main/scala/sp26-fp-units/E4M3ProdAddBF16.scala
+      - src/main/scala/sp26-fp-units/E4M3FMA.scala
+    used_by:
+      - the fp8 operand-decode + bf16 accumulate contract the atlas capsule goldens model
+    notes: >-
+      E4M3Mul (the subnormal-flush source) is UNMODIFIED here; the accumulate/FMA files carry the same
+      uncommitted pipelining edits as atlas_npu, declared bit-exact by their own comments. `verify`
+      reports drift accordingly.
+
+  atlas_npu_model:
+    description: >-
+      The atlas model project: the shipped ISA definition merlin probes to derive encodings, the
+      assembler/operand layout the program oracle runs in the model venv, and the fast functional core
+      the L2 tier would use. Not RTL, but a verdict-bearing input — the encodings a kernel is graded on
+      are read out of this tree.
+    repo_canonical: git@github.com:ucb-ee194-tapeout/npu_model.git
+    commit: "11598ece27a4eed6638d74c5f212694bd8f45cab"
+    branch: HEAD
+    root_env: MERLIN_EXT_NPU_MODEL
+    requires_paths:
+      - npu_model/configs/isa_definition.py
+      - npu_model/isa.py
+    used_by:
+      - ISA fact minting for the atlas reference package (out/artifacts/targets/atlas/gen_isa_facts.py)
+      - operand layout + assembly for the program oracle (targetgen/oracle_helpers/npu_emit.py)
+    notes: >-
+      Detached HEAD is normal (it is checked out inside the atlas-npu tree, not on a branch), so the sha
+      is the fact. Clean at the time of pinning apart from one untracked test file, which nothing reads.
+
+
 # BUILT ARTIFACTS — identified by their CONTENTS, because they have no revision of their own.
 #
 # A pin answers "which checkout was this read from". An FPGA bitstream, a compiled simulator and a packaged
