@@ -75,6 +75,10 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
 
 ARENA_BASE = 0xC0000000           # arena lives here (literal-addressed, in -m memory)
 DRAM_BASE = 0x80000000
+#: Reserve ahead of the weights blob for everything that is NOT the model's static I/O: code,
+#: rodata, the stack and the runtime's own tables. The model-dependent part (embedded inputs + the
+#: static output buffer) is added on top, from `c_runtime.generate`'s `static_io_bytes`.
+_CODE_RESERVE_FIXED = 64 * 1024 * 1024
 
 
 def _layout(arena_bytes: int, weights_bytes: int, *, dram_base: int = DRAM_BASE,
@@ -105,7 +109,7 @@ def _layout(arena_bytes: int, weights_bytes: int, *, dram_base: int = DRAM_BASE,
     end = dram_base + dram_bytes
     if arena_base + arena_bytes > end:
         raise RuntimeError(
-            f"does not fit: code {code_reserve / 2**20:.0f} MB + weights "
+            f"does not fit: code+static-I/O reserve {code_reserve / 2**20:.0f} MB + weights "
             f"{weights_bytes / 2**20:.1f} MB + arena {arena_bytes / 2**20:.0f} MB exceeds the board's "
             f"{dram_bytes / 2**20:.0f} MB at {hex(dram_base)}. Shrink the arena or the model.")
     return {"arena_base": arena_base, "weights_base": weights_base,
@@ -120,7 +124,8 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
           console: str = "htif", sdk_dir: str | Path | None = None,
           sdk_chip: str | None = None, chip_freq_hz: int | None = None,
           matrix: "Any | None" = None, matrix_scalar_tile: bool = False,
-          stack_bytes: int = 0x40000, op_profile: bool = False) -> dict:
+          stack_bytes: int = 0x40000, op_profile: bool = False,
+          code_reserve: int | None = None) -> dict:
     """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
 
     Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
@@ -211,8 +216,17 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     # 2. generate the data-driven runtime artifacts (arg table, call, weights.bin, io)
     cgen = work / "cgen"
     info = c_runtime.generate(model_dir, cgen, inputs_npz)
+    # The region ahead of the weights blob holds code, the stack, and the harness's STATIC I/O
+    # storage -- and that last term is a property of the model, not a constant: `static float
+    # OUT[MERLIN_OUT_ELEMS]` is 125 MiB of .bss for a 128x256000 logits output, four times what a
+    # 64 MB reserve leaves. Deriving it from `static_io_bytes` is the difference between a correct
+    # map and a link that fails with "section .weights VMA overlaps section .bss", which names
+    # neither the reserve nor the buffer that outgrew it. Only the packed (`dram_bytes`) map uses
+    # this; the spike map puts the blob at 0x2_0000_0000 with nothing in between.
+    reserve = int(code_reserve) if code_reserve else _CODE_RESERVE_FIXED + int(
+        info.get("static_io_bytes", 0))
     lay = _layout(arena_bytes, info["weights_bytes"], dram_base=dram_base,
-                  dram_bytes=dram_bytes)
+                  dram_bytes=dram_bytes, code_reserve=reserve)
 
     # 3. weights.bin -> binary blob object (placed at the absolute weights address)
     _run([ld, "-r", "-b", "binary", "-o", work / "weights_blob.o", "weights.bin"],

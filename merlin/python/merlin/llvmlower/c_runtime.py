@@ -112,6 +112,7 @@ def generate(model_dir: str | Path, out_dir: str | Path,
     # arg table: weights -> (offset in blob); inputs/buffers/lifted -> embedded arrays.
     rows = []          # (kind, offset, rank, dims, elem_size, dtype)
     io_decls = []      # embedded C arrays
+    static_io_bytes = 0  # bytes of STATIC storage the harness needs for the model's I/O (see below)
     embedded: set[int] = set()   # arg positions that GOT an embedded array (see the ptr table below)
     n_in = 0           # positional input counter (loaders with a single tuple)
     li = 0             # lifted-constant counter
@@ -142,6 +143,7 @@ def generate(model_dir: str | Path, out_dir: str | Path,
         else:
             arr = np.ascontiguousarray(inputs[f"in{n_in}"]); n_in += 1
         io_decls.append(f"static {C_OF[dt]} merlin_in_{i}[] = {{{_embed_array(arr, dt)}}};")
+        static_io_bytes += int(arr.nbytes)
         embedded.add(i)
         rows.append(("MERLIN_INPUT", i, len(shape), shape, elem, dt))
     # output row (last)
@@ -185,5 +187,12 @@ def generate(model_dir: str | Path, out_dir: str | Path,
     (out_dir / "model_gen.h").write_text("\n".join(h) + "\n")
     (out_dir / "model_io.h").write_text("\n".join(io) + "\n")
     (out_dir / "model_call.c").write_text("\n".join(call_c) + "\n")
+    # ``static_io_bytes`` is what the harness spends on the model's I/O in STATIC storage: every
+    # embedded input array plus `static <T> OUT[MERLIN_OUT_ELEMS]` in model_main.c. A caller that has
+    # to place things in a real board's address map needs it, because it is not a small constant --
+    # a 256000-wide logits vector at sequence length 128 is 125 MiB of .bss on its own, and a
+    # code-region reserve chosen without it puts the weights blob inside .bss, which surfaces only as
+    # a linker "section .weights VMA overlaps section .bss" and reads as anything but a sizing error.
     return {"n_args": len(rows), "out_shape": out_shape, "out_dt": out_dt,
-            "weights_bytes": len(blob)}
+            "weights_bytes": len(blob),
+            "static_io_bytes": static_io_bytes + int(np.prod(out_shape)) * DT_BYTES[out_dt]}
