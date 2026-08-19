@@ -79,12 +79,18 @@ def audit(arm_bundle: str) -> int:
     RX.assemble_workspace(bundle, ws)
     viol = RX.assert_isolation(ws, bundle)
 
-    def block(paths: list[str]) -> str:
-        return "\n".join(f'if head -c1 "{p}" >/dev/null 2>&1; then echo "R::{p}"; '
-                         f'else echo "X::{p}"; fi' for p in paths)
-
-    inner = "echo ===DENY===\n" + block(deny) + "\necho ===ALLOW===\n" + block(allow)
-    out = subprocess.run(["bash", "-c", _BW.wrap(te, ws, inner, bundle)],
+    # The probe reads its path list from STDIN, not from its own text. Inlining one `if` per path made
+    # the inner script grow with the answer surface, and a single argv string is capped at 128 KiB on
+    # Linux — declaring one more directory surface (a reference backend is ~400 files) pushed
+    # `bash -c <bwrap …>` past the cap and the whole audit died with "Argument list too long" instead of
+    # reporting a verdict. Feeding the list through stdin keeps the command constant-size however many
+    # surfaces the target declares.
+    probe = ("""while IFS= read -r __p; do
+  case "$__p" in ===*) echo "$__p"; continue;; esac
+  if head -c1 "$__p" >/dev/null 2>&1; then echo "R::$__p"; else echo "X::$__p"; fi
+done""")
+    feed = "\n".join(["===DENY===", *deny, "===ALLOW===", *allow]) + "\n"
+    out = subprocess.run(["bash", "-c", _BW.wrap(te, ws, probe, bundle)], input=feed,
                          capture_output=True, text=True, cwd=str(repo)).stdout
     section, leaks, blocked = None, [], []
     for ln in out.splitlines():

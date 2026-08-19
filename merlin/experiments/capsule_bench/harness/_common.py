@@ -78,6 +78,9 @@ try:
 except Exception:  # noqa: BLE001
     TARGET = None
 TARGET = TARGET or EXP.name.split("_")[0]              # fallback: the dir-name stem before _capsule_bench
+#: The SELECTED target's descriptor file itself. Exported so a harness script can load the descriptor
+#: (answer surfaces, oracle routing) instead of re-deriving its path from EXP and guessing the filename.
+DESCRIPTOR = _desc
 RUNS = runs_root(TARGET, "capsule-bench")              # runs/<target>/capsule-bench
 REPORTS = reports_root("capsule-bench", TARGET)        # artifacts/capsule-bench/<target>
 BUNDLES = EXP / "input_bundles"

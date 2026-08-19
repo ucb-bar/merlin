@@ -179,12 +179,44 @@ def main(argv=None):
         for label, p in masks.items():
             # CONTENT-level check: goldens are /dev/null-overlaid (present but empty/unreadable), denied
             # dirs are empty tmpfs. "masked" = cannot read any bytes / dir holds no real files.
-            if str(p).endswith("hidden") or "capsules/hidden" in str(p):
+            if Path(p).is_dir():
                 inner = f'test "$(find "{p}" -type f 2>/dev/null | wc -l)" = "0" && echo masked || echo VISIBLE'
             else:
                 inner = f'if head -c1 "{p}" >/dev/null 2>&1 && test -s "{p}"; then echo VISIBLE; else echo masked; fi'
             rc, out, _ = _run(ws, bundle, inner, timeout=60)
             _ok(f"masked: {label}", out.endswith("masked"), out)
+
+        # EVERY surface the ACTIVE descriptor declares, on top of the fixed probes above. The fixed list
+        # names a handful of known paths; this asks the same registry the sandbox masks FROM
+        # (answer_surfaces) what this target's surfaces actually are, so a newly declared one — a prior
+        # reference backend, a per-target hidden set — is PROVEN masked the day it is declared rather
+        # than trusted. A declared-but-unmasked answer key is worse than an undeclared one: the
+        # descriptor claims cover that does not exist. Checked in ONE sandbox entry (there are hundreds
+        # of surfaces; one bwrap per path would make the gate too slow to run before every launch).
+        from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as _surfaces
+        from merlin.targetgen.target_experiment import load_target_experiment
+        _declared = _surfaces(load_target_experiment(C.DESCRIPTOR))
+        if _declared:
+            _probe = (
+                'while IFS= read -r p; do\n'
+                '  if [ -d "$p" ]; then\n'
+                '    if [ "$(find "$p" -type f 2>/dev/null | wc -l)" = "0" ]; then s=masked; else s=VISIBLE; fi\n'
+                '  elif head -c1 "$p" >/dev/null 2>&1 && [ -s "$p" ]; then s=VISIBLE; else s=masked; fi\n'
+                '  echo "$s|$p"\n'
+                "done <<'__SURFACES__'\n"
+                + "\n".join(str(s.path) for s in _declared)
+                + "\n__SURFACES__\n")
+            rc, out, err = _run(ws, bundle, _probe, timeout=300)
+            verdicts = dict((ln.split("|", 1)[1], ln.split("|", 1)[0])
+                            for ln in out.splitlines() if "|" in ln)
+            by_origin: dict[str, list] = {}
+            for s in _declared:
+                by_origin.setdefault(s.origin, []).append(s)
+            for origin, surfs in sorted(by_origin.items()):
+                # A surface with NO verdict line is not a pass: the probe never reached it.
+                leaked = [s.label for s in surfs if verdicts.get(str(s.path)) != "masked"]
+                _ok(f"masked: every declared {origin} surface ({len(surfs)})", not leaked,
+                    "all masked" if not leaked else f"VISIBLE: {', '.join(leaked[:4])}")
 
         # --- TOOLS: must work ---
         print("\n-- tools (must work) --")
