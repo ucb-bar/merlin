@@ -1,0 +1,55 @@
+# LiteLLM proxy — the scaffold-swap bridge for capsule-bench.
+#
+# WHY THIS EXISTS
+# The campaign wants to separate "which model" from "which agentic harness". opencode is natively
+# multi-provider, but the two harnesses we want to compare against are each locked to one wire protocol:
+#
+#   codex-cli 0.147.0  speaks ONLY the OpenAI Responses API   (wire_api="chat" was removed; the binary
+#                      contains exactly one endpoint string, /v1/responses)
+#   claude 2.1.234     speaks the Anthropic Messages API      (redirectable via ANTHROPIC_BASE_URL)
+#
+# This proxy exposes both shapes over the same Bedrock-backed models, so the SAME model can be driven by
+# three different harnesses and the harness becomes the only variable.
+#
+# ⚠️ The bridge is itself a confound until proven otherwise. Every campaign that uses it must also run the
+# proxy-vs-direct control (the same model through opencode-direct and through the proxy); if those two
+# diverge, the experiment is measuring LiteLLM. See proxy_canary.py.
+#
+# Auth: AWS_BEARER_TOKEN_BEDROCK from .env, inherited from the launching environment. No key is written
+# into this file, which is tracked.
+
+model_list:
+  # ---- open models under test -------------------------------------------------------------------
+  - model_name: nemotron
+    litellm_params:
+      model: bedrock/nvidia.nemotron-super-3-120b
+      aws_region_name: us-east-1
+    model_info:
+      # MEASURED from the provider's own 400, not a vendor page.
+      max_input_tokens: 131072
+      max_output_tokens: 8000
+
+  - model_name: glm5
+    litellm_params:
+      model: bedrock/zai.glm-5
+      aws_region_name: us-east-1
+    model_info:
+      max_input_tokens: 202752
+      max_output_tokens: 8000
+
+  # ---- the control ------------------------------------------------------------------------------
+  # gpt-5.6-sol is ALSO on Bedrock, which is what makes the scaffold comparison clean: the exact model
+  # that scored 20/20 through codex-cli can be re-run through opencode and through this proxy, so any
+  # harness effect is measured against a known-good result rather than inferred.
+  - model_name: gpt-5.6-sol
+    litellm_params:
+      model: bedrock/openai.gpt-5.6-sol
+      aws_region_name: us-east-1
+
+litellm_settings:
+  drop_params: true          # a harness may send a param a given model does not accept; do not 400 on it
+  request_timeout: 1800
+  num_retries: 3
+
+general_settings:
+  master_key: os.environ/MERLIN_PROXY_KEY

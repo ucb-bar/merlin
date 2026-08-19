@@ -200,7 +200,7 @@ def usage_to_claude_shape(usage: dict) -> tuple[dict, bool]:
 #: The frozen per-experiment Codex config. Deliberately minimal: the user's own
 #: config.toml carries per-project trust levels and notice state that have nothing
 #: to do with the experiment and would differ between machines.
-_FROZEN_CONFIG = 'model = {model}\nmodel_reasoning_effort = {effort}\n'
+_FROZEN_CONFIG = 'model = {model}\nmodel_reasoning_effort = {effort}\n{provider}'
 
 
 def real_codex_home() -> Path:
@@ -227,8 +227,15 @@ def prepare_codex_home(dest: Path, *, model: str, effort: str) -> dict:
     reason that has nothing to do with the treatment.
     """
     dest.mkdir(parents=True, exist_ok=True)
-    config = _FROZEN_CONFIG.format(model=json.dumps(model),
-                                  effort=json.dumps(effort or "high"))
+    # A non-OpenAI model reaches codex-cli only through the LiteLLM bridge: codex 0.147 speaks the
+    # Responses API and nothing else, so the provider block points it at our proxy and declares the
+    # measured context window (without it codex budgets against fallback metadata). Empty for a native
+    # model, which keeps the existing gpt-5.6-sol arms byte-identical to their previous runs.
+    import agent_bridge as _BR
+    provider = _BR.codex_config_fragment(model)
+    config = _FROZEN_CONFIG.format(model=json.dumps(_BR.codex_model_name(model)),
+                                  effort=json.dumps(effort or "high"),
+                                  provider=provider)
     config_path = dest / "config.toml"
     config_path.write_text(config)
     auth = real_codex_home() / "auth.json"
@@ -241,6 +248,7 @@ def prepare_codex_home(dest: Path, *, model: str, effort: str) -> dict:
         "auth_present": auth.is_file(),
         "auth_copied": False,  # bind-mounted read-only; never written to disk here
         "isolated_from_real_home": True,
+        "bridge": _BR.record(model, harness="codex"),
     }
 
 

@@ -27,6 +27,7 @@ import json
 import os
 import re
 import shutil
+import shlex
 import signal
 import subprocess
 import sys
@@ -832,6 +833,14 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
         # sandbox agentic loop (incl. the self_check tool wired to the shim above) + a compatible transcript;
         # 'opencode' drives the provider-agnostic OpenCode CLI; 'claudecode'/Anthropic uses the claude CLI.
         drv = _driver_for(model)
+        # A (model, harness) pairing that needs the bridge needs the proxy running. Started here rather
+        # than by the launcher so EVERY entry point (launch_ab_batch, chia_ab_batch, watchdog resume, a
+        # bare run) gets it, and idempotently so concurrent arms of one campaign share one instance.
+        import agent_bridge as _BR
+        if _BR.bridged_name(model, drv):
+            _pi = _BR.start_proxy(run_dir / "logs" / "litellm_proxy.log")
+            (run_dir / "bridge.json").write_text(json.dumps(
+                {**_BR.record(model, harness=drv), "proxy_started": _pi}, indent=1))
         if drv == "converse":
             import bedrock_agent as _BA
             return _BA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
@@ -855,9 +864,22 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
             return _CA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
                                  subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL,
                                  effort=effort)
-        inner = (f'claude --print --model {model} --effort {effort} '
+        # claudecode. The claude CLI speaks the Anthropic Messages API, so a NON-Anthropic model reaches
+        # it only through the LiteLLM bridge (ANTHROPIC_BASE_URL -> our proxy -> Bedrock). This is what
+        # makes the harness the experimental variable instead of a fixed property of the model: nemotron
+        # and glm5 can now be driven by the same harness that drives opus. An Anthropic model returns an
+        # empty env here and takes its existing native/Bedrock path unchanged.
+        import agent_bridge as _BR
+        _bridge_env = _BR.claude_env(model)
+        _cli_model = _BR.claude_model_name(model)
+        inner = (f'claude --print --model {_cli_model} --effort {effort} '
                  f'--permission-mode bypassPermissions --add-dir {ws} '
                  f'--output-format stream-json --verbose < {ws_task}')
+        if _bridge_env:
+            # Exported INSIDE the sandbox: bwrap keeps the network namespace (loopback reaches the
+            # proxy) but not the environment.
+            _exports = " ".join(f"{k}={shlex.quote(v)}" for k, v in _bridge_env.items())
+            inner = f"env {_exports} {inner}"
         cmd = bwrap_cmd(inner, ws, bundle) if sandbox == "bwrap" else inner
         tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
         tpath.parent.mkdir(parents=True, exist_ok=True)

@@ -367,6 +367,57 @@ def opencode_runtime_binds(data_home: Path) -> list[str]:
             "--setenv", "XDG_DATA_HOME", str(data_home)]
 
 
+# ---------------------------------------------------------------------------------------------------
+# Context-window budgeting.
+#
+# MEASURED (gemmini arm-4, 2026-08-19): opencode asks the provider for its registry ``limit.output``
+# tokens of completion on EVERY step. For nemotron-super-3-120b that registry value is 32_000 against a
+# 131_072 window, so the largest prompt the session can ever send is 99_072 tokens -- 24% of the window
+# is reserved for output that never arrives (the measured completion is 200-400 tokens/step). The round
+# then dies on a provider 400 ("maximum context length is 131072 ... you requested 32000 output tokens
+# and your prompt contains at least 99073 input tokens") rather than compacting, because opencode's
+# auto-compaction threshold is computed against ``limit.context`` and not against the usable
+# ``context - output`` budget. Two rounds of the nemotron campaign and six steps of its smoke died here.
+#
+# Both are configuration, not code: declare a realistic per-model ``limit.output``, and give compaction
+# an explicit ``reserved`` buffer at least as large as that output ask so it triggers BEFORE the
+# provider refuses. ``prune`` additionally drops superseded tool output, which is where the context
+# actually goes (a full 20-capsule self-check returns 20-50 KB and is re-sent every subsequent step).
+#
+# Values are per-model overrides keyed by the BARE provider model id. A model absent here keeps
+# opencode's registry defaults -- this never invents a window, it only stops us reserving one we do not
+# use. ``OPENCODE_MAX_OUTPUT_TOKENS`` overrides the output ask for a one-off.
+_DEFAULT_MAX_OUTPUT = int(os.environ.get("OPENCODE_MAX_OUTPUT_TOKENS",
+                                        str(_BR.DEFAULT_MAX_OUTPUT)))
+
+
+def _window_config(mid: str) -> tuple[dict, dict]:
+    """Return (models_override, compaction_config) for the provider/model id ``mid``.
+
+    ``models_override`` is the ``provider.<id>.models`` fragment that re-declares ``limit`` so the
+    output reservation stops eating the prompt budget. It is emitted ONLY when we can state the
+    context window as a fact -- never guessed -- so an unknown model is left on registry defaults.
+    """
+    prov, _, bare = mid.partition("/")
+    ctx = _CONTEXT_WINDOWS.get(bare)
+    out = min(_DEFAULT_MAX_OUTPUT, (ctx // 8) if ctx else _DEFAULT_MAX_OUTPUT)
+    # Compaction must fire while a full completion still fits, so reserve the output ask plus headroom
+    # for the compaction call itself.
+    compaction = {"auto": True, "prune": True, "reserved": max(out * 2, 16000)}
+    if not ctx:
+        return {}, compaction
+    return {prov: {"models": {bare: {"limit": {"context": ctx, "output": out}}}}}, compaction
+
+
+# Context windows MEASURED from the provider's own 400 response ("This model's maximum context length is
+# N tokens"), not from a vendor page. Owned by agent_bridge so the opencode, codex and claude paths all
+# budget against the SAME number -- a per-driver copy is how one arm ends up with a different effective
+# window than another arm of the same campaign.
+import agent_bridge as _BR
+
+_CONTEXT_WINDOWS: dict[str, int] = _BR.CONTEXT_WINDOWS
+
+
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
               effort: str = "", **_ignored) -> tuple[int, Path]:
@@ -400,6 +451,12 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
           "variant_passed": (effort or "").strip() or None,
           "sandbox": sandbox,
           "delegate_model": _delegate,
+          "context_window": _CONTEXT_WINDOWS.get(mid.partition("/")[2]),
+          "max_output_tokens": _window_config(mid)[0].get(mid.partition("/")[0], {})
+                               .get("models", {}).get(mid.partition("/")[2], {})
+                               .get("limit", {}).get("output"),
+          "compaction": _window_config(mid)[1],
+          "task_tool_offered": bool(sub),
           "workspace_instruction_files": {n: (ws / n).stat().st_size
                                           for n in ("TASK.md", "AGENTS.md", "CLAUDE.md", "AGENT.md")
                                           if (ws / n).is_file()}})
@@ -408,11 +465,22 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     # NOT covered by --auto, so it must be allowed here). Tier-within-agent: register a cheaper subagent when
     # one is configured + distinct, so opencode can delegate to it via its own subagent mechanism.
     agent_name = "merlinbench"
+    _models_override, _compaction = _window_config(mid)
     cfg: dict = {
         "$schema": "https://opencode.ai/config.json",
         "agent": {agent_name: {"mode": "primary", "prompt": _system_prompt(te), "model": mid}},
         "permission": {"edit": "allow", "bash": "allow", "webfetch": "allow", "external_directory": "allow"},
+        # See _window_config: stop reserving a completion budget we never spend, and compact before the
+        # provider refuses rather than after.
+        "compaction": _compaction,
     }
+    if _models_override:
+        cfg["provider"] = _models_override
+    if not sub:
+        # `task` delegates to a subagent. With no delegate configured it is a tool with nothing behind
+        # it: the GLM relaunch wedged with a `task` call left in `running` forever, zero open sockets and
+        # no further session parts. Offer a tool only when it is wired.
+        cfg["agent"][agent_name]["tools"] = {"task": False}
     # (resolved above, before the init record, so that record can state it)
     # A delegate is attached ONLY when the caller asks for one. It used to default to the non-Anthropic
     # tier's subagent, so a run nominally measuring one model silently had a SECOND, different model

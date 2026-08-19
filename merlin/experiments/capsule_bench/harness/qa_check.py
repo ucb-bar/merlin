@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -41,8 +40,54 @@ PILOT_PUBLIC = C.EXP / "scripts" / "pilot_capsules"
 
 # Allowed (answer-free) numeric fields. Everything else in the numeric block is dropped.
 _SAFE_NUMERIC = {"status", "policy", "mismatch_count"}
-# Strip any stray numeric literals from free-text detail so a value can never leak through.
-_NUM = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+# Process-exit metadata is NOT capsule data and must survive the numeric scrub. MEASURED (gemmini arm-4,
+# 2026-08-19): 19 of nemotron's 20 capsules received a failure_detail of exactly 26 characters,
+# "emit_command_buffer rc=#:", for six consecutive rounds. The underlying fact was ``rc=0`` — the agent's
+# compiler was exiting CLEANLY and emitting nothing — and that single digit was the whole diagnostic. The
+# blanket scrub turned an actionable message into one that merely looks like information. Same class of
+# bug as the tier label, which already has a carve-out below; a return code cannot echo a golden value.
+_RC_KEYS = ("rc", "returncode", "return_code", "exitcode", "exit_code", "status")
+
+
+def _scrub_numbers(text: str) -> str:
+    """Collapse every numeric literal to '#', EXCEPT a process return code (``rc=0``).
+
+    Structural, not pattern-matched (repo convention: a too-narrow regex silently drops valid input).
+    Walks the string once, collapsing runs of digits — with an optional sign and decimal part — into a
+    single '#', and passes through the integer that directly follows an allowlisted ``<key>=``.
+    """
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        # A digit run starts here (possibly signed). Decide whether it is an exempt return code by
+        # looking BACKWARDS at what was just emitted: an allowlisted key followed by '='.
+        start = i
+        if ch == "-" and i + 1 < n and text[i + 1].isdigit():
+            i += 1
+        if text[i].isdigit():
+            while i < n and text[i].isdigit():
+                i += 1
+            if i < n and text[i] == "." and i + 1 < n and text[i + 1].isdigit():
+                i += 1
+                while i < n and text[i].isdigit():
+                    i += 1
+            emitted = "".join(out)
+            keep = False
+            if emitted.endswith("="):
+                key = emitted[:-1]
+                # take the trailing identifier-ish run before '='
+                j = len(key)
+                while j and (key[j - 1].isalnum() or key[j - 1] == "_"):
+                    j -= 1
+                keep = key[j:].lower() in _RC_KEYS
+            out.append(text[start:i] if keep else "#")
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def _redact_detail(detail: str | None) -> str | None:
@@ -54,7 +99,7 @@ def _redact_detail(detail: str | None) -> str | None:
     # disassembler / instruction_trace.json and check each op's operands" — runs past ~240 chars. Cutting it
     # left the agent told WHERE (the encoding) but not the self-inspection METHOD. 800 fits the full hint
     # while still bounding a pathological dump.
-    return _NUM.sub("#", detail)[:800]
+    return _scrub_numbers(detail)[:800]
 
 
 def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
