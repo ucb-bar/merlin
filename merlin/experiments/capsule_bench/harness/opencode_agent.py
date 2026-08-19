@@ -46,54 +46,39 @@ def _provider_model(model: str) -> str:
 
 
 def _system_prompt(te) -> str:
-    """The opencode `primary` agent prompt — same ISA-grounding + framework mandate + integrity rules as the
-    Converse driver, phrased for opencode's NATIVE tools (its edit/write tools for files, its bash tool to
-    build/grade). Kept separate from bedrock_agent's Converse-tool-specific prompt on purpose."""
-    t = te.target
+    """The opencode `primary` agent prompt: DRIVER MECHANICS ONLY.
+
+    Every arm of a campaign must receive the same instructions, or the comparison is between prompts
+    rather than between models. The claude driver pipes TASK.md and nothing else; the codex driver adds
+    only its kickoff line and deliberately authors no instruction file. This prompt used to add ~2 KB of
+    strategy on top of TASK.md, and measurement showed each addition pushed toward the failure mode the
+    open models actually exhibited:
+
+      * "a LIMITED number of tool turns" — there is no such cap anywhere in this driver; the pressure was
+        invented, and a model that believes its turns are scarce stops investigating.
+      * "START WRITING files ... do not over-explore" — the run that scored 20/20 spent 33 of its 45
+        actions reading before its first edit. The runs told not to explore wrote early and thrashed
+        (one made 114 edits inside a single 40 KB file and converged on nothing).
+      * "Do NOT run the RTL-facts GENERATORS" — this arm's own bundle manifest grants them
+        ("ALLOWED (CIRCT arm only): RTL-facts generators gen_isa_module/gen_rtl_digest/gen_numeric_facts")
+        and TASK.md's starter plan tells the agent to use them. The submissions show the cost: the two
+        runs that ran the generators shipped a byte-identical derived encoder, and the run that obeyed
+        this line shipped a hand-written substitute that used 1 where the RTL-derived mesh dimension is 16.
+
+    So the strategy is gone. What remains is what a driver legitimately owns: which of ITS tools performs
+    the actions TASK.md describes. Everything about the task -- the entrypoints, the manifest contract, the
+    grounding material, the integrity rules, the self-check loop -- lives in TASK.md, which every driver
+    reads."""
     return (
-        "You are an autonomous compiler engineer with a LIMITED number of tool turns. Build the target "
-        "backend under `submission/` (manifest.yaml + the entrypoint tool + supporting modules) in your "
-        "workspace. Read TASK.md first, then START WRITING files with your edit/write tool — do not "
-        "over-explore. Get `submission/manifest.yaml` + the tool existing and PARSING as early as possible.\n"
-        "MANIFEST FORMAT: manifest.yaml MUST include ALL required top-level keys — `artifact_type`, "
-        "`target`, `language`, `authoring`, `integrity_exempt`, `entrypoints`, `commands` — or the whole "
-        "package is REJECTED at the contract gate before any capsule grades (n_capsules=0). In particular "
-        "include an `authoring:` block with `mode: agent_generated_from_rtl_facts` (it is schema-required and "
-        "easy to forget). The `entrypoints.tool` field must be the BARE script path relative to the package "
-        f"(e.g. `mlir_oot/{t}_opt.py`) and each command's argv references it as `{{tool}}` — do NOT put "
-        "`python3` in the tool field or bake the interpreter/path into argv, or the build fails with `tool "
-        "missing`. The harness runs a Python tool through the interpreter for you.\n"
-        "CORRECTNESS SIGNAL: you get NO golden values. After every build, run this with your bash tool:\n"
-        "  `python3 agent_selfcheck.py --submission submission --sim spike --capsules all`\n"
-        "It grades your current submission against the REAL oracle and returns per-capsule pass/fail + the "
-        "NUMERIC DIFF (how far off each capsule is), goldens withheld. Read the diff, fix your "
-        "encoding/lowering, rebuild, self-check again — iterate until capsules pass. Between rounds also read "
-        "`qa/verdict.json` in your workspace (the official grader verdict; for this arm it carries an advisory "
-        "`rtl_checks` block — FileCheck over your emitted MLIR + decoded trace — to localize structural "
-        "mistakes).\n"
-        "GROUNDING: READ (do not regenerate) the shipped ISA spec — the green-card and isa_definition — "
-        f"mounted read-only at `{t}/isa_include/` (the hwbringup set is at `{t}/`, RTL under `{t}/rtl/`, a "
-        f"worked example under `{t}/example_kernel/`). Derive EVERY opcode, encoding, field-layout and the "
-        "command-buffer schema from them — never invent an encoding.\n"
-        "USE MERLIN'S FRAMEWORK AS AN AUTHORING AID — but SHIP A SELF-CONTAINED PACKAGE. The granted "
-        "oot_starterkit is READ-ONLY REFERENCE SOURCE, never an importable dependency: it is on the "
-        "path so you can READ it, and importing it from `merlin.*` at runtime is an integrity "
-        "FAIL. Read its guide (`cat "
-        "oot_starterkit/AGENT.md`, `cat oot_starterkit/scaffold/README.md`) and its modules — "
-        "`parse_interface` (parses the fixed merlin_iface grammar — mirror it, don't hand-roll a worse "
-        "parser), `CommandBufferBuilder` (emits a SCHEMA-VALID command_buffer.json — mirror it so you PASS "
-        "the command_buffer_schema plane), `dialect`/`verify`/`transforms`. ⚠️ INTEGRITY (hard fail before "
-        "ANY capsule grades): your SHIPPED package under `submission/` must be SELF-CONTAINED — it must NOT "
-        "`import merlin` / `from merlin` (a non-exempt package that imports the harness/reference fails the "
-        "integrity scan). So COPY (vendor) the small starterkit pieces you use INTO `submission/` and import "
-        "them locally (e.g. `from .oot_starterkit_vendored import parse_interface`), or reimplement them — "
-        f"NEVER import them from `merlin.*` at runtime. Your OWN code is the {t}-SPECIFIC lowering.\n"
-        "Consult the CCA seam menu as an authoring reference (READ "
-        "`merlin/python/merlin/kernels/cca_contract.py` + `action_catalog.py` — the what-to-build "
-        f"checklist). Browse the full RTL at `{t}/rtl/` to confirm a datapath/encoding detail. Do NOT run the "
-        "RTL-facts GENERATORS or FileCheck directly (they need masked simulator access; FileCheck runs "
-        "grader-side and returns in the verdict) — use the shipped fact files. Do NOT read golden.yaml / "
-        "expected_* files — they are withheld and access is logged.")
+        "You are an autonomous compiler engineer working in this workspace.\n"
+        "TASK.md is your specification and is authoritative: read it first and follow it. If a prior "
+        "round left `qa/verdict.json`, read that too -- it is the official grader verdict for your last "
+        "submission.\n"
+        "Tool mapping for this environment: use your edit/write tools to create and change files, and "
+        "your bash tool to run commands (builds, the self-check, and any tooling TASK.md points you at). "
+        "Nothing in TASK.md is disabled here.\n"
+        "Work until the task's own success criterion is met."
+    )
 
 
 def _parse_session_id(stdout: str) -> str | None:
@@ -387,7 +372,11 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "agent": {agent_name: {"mode": "primary", "prompt": _system_prompt(te), "model": mid}},
         "permission": {"edit": "allow", "bash": "allow", "webfetch": "allow", "external_directory": "allow"},
     }
-    sub = _MT.resolve(subagent_model) if subagent_model else _MT.resolve(_MT.NON_ANTHROPIC_TIER.subagent)
+    # A delegate is attached ONLY when the caller asks for one. It used to default to the non-Anthropic
+    # tier's subagent, so a run nominally measuring one model silently had a SECOND, different model
+    # available to it (qwen-coder alongside glm5/nemotron) while the codex and claude arms had none. That
+    # is a third variable in a two-variable comparison; the capability stays, the default does not.
+    sub = _MT.resolve(subagent_model) if subagent_model else ""
     if sub and _provider_model(sub) != mid:
         cfg["agent"]["delegate"] = {"mode": "subagent", "model": _provider_model(sub),
                                     "prompt": "Focused sub-agent: do EXACTLY the delegated task, then reply "
