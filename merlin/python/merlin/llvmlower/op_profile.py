@@ -123,6 +123,31 @@ def _op_name(line: str) -> str:
     return tok.rstrip(":")
 
 
+def _callee(line: str) -> str | None:
+    """Symbol a top-level ``call`` invokes (e.g. ``@merlin_opu_gemm_i8_1``), else ``None``.
+
+    Recorded because ``mlir_op`` cannot tell two calls apart. Every routed matrix-unit entry point
+    reaches the table as an indistinguishable ``call`` row, so the only way to attribute the routed
+    region was to COUNT call rows and match that against the number of contractions the router
+    reported. That is inference, not measurement: it is silently wrong the moment anything else in
+    ``@forward`` lowers to a call, and it cannot separate one entry point from another when a model
+    routes several distinct signatures. Both print forms are handled -- the pretty
+    ``call @sym(%a, %b)`` and the generic ``"func.call"(%a) <{callee = @sym}>`` -- because which one
+    a consumer sees depends on who last round-tripped the module (see :func:`_op_name`).
+    """
+    body = line.strip()
+    eq = body.find(" = ")
+    if eq >= 0 and body.startswith("%"):
+        body = body[eq + 3:]
+    head, _, rest = body.partition(" ")
+    if head.split("(", 1)[0].rstrip(":") not in ("call", "func.call", '"func.call"'):
+        return None
+    for tok in rest.replace("(", " ").replace("{", " ").split():
+        if tok.startswith("@"):
+            return tok.split(")")[0].rstrip(",}>:")
+    return None
+
+
 def _result_type(line: str) -> str | None:
     """Best-effort result type: the last ``tensor<...>`` / ``memref<...>`` on the line."""
     for kind in ("tensor<", "memref<", "vector<"):
@@ -196,6 +221,7 @@ def find_forward_ops(mlir_text: str) -> tuple[int, int, list[dict]]:
                     "line": i,
                     "mlir_op": _op_name(line),      # dialect op, e.g. linalg.generic
                     "result_type": _result_type(line),
+                    "callee": _callee(line),        # the routed entry point, when this op is a call
                     # `prov.op`/`prov.family`/... land as op/family/region_id/aten/module below:
                     # the SEMANTIC identity (softmax, rms_norm, ...) the capture recorded.
                     **{k.split(".", 1)[1]: _attr_value(line, k) for k in _PROV_KEYS},

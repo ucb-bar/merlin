@@ -99,3 +99,62 @@ def test_no_forward_raises():
     import pytest
     with pytest.raises(opf.OpProfileError):
         opf.find_forward_ops("module { func.func @other() { func.return } }")
+
+
+# ---------------------------------------------------------------------------------------------------
+# Which call is it?
+#
+# The table used to record every top-level call as a bare `mlir_op: "call"`, so a routed matrix-unit
+# entry point was indistinguishable from any other call. Attributing the routed region then meant
+# counting call rows and trusting that the count matched what the router reported -- inference that
+# breaks silently as soon as @forward contains a second kind of call, and that cannot separate two
+# routed signatures from each other at all.
+# ---------------------------------------------------------------------------------------------------
+
+
+def test_a_call_row_records_the_symbol_it_invokes():
+    mlir = """
+func.func @forward(%arg0: tensor<4x4xi8>) -> tensor<4x4xi32> {
+  %0 = call @merlin_opu_gemm_i8_1(%arg0) : (tensor<4x4xi8>) -> tensor<4x4xi32>
+  return %0 : tensor<4x4xi32>
+}
+"""
+    _, _, ops = opf.find_forward_ops(mlir)
+    assert len(ops) == 1
+    assert ops[0]["callee"] == "@merlin_opu_gemm_i8_1"
+
+
+def test_two_routed_entry_points_are_told_apart():
+    """Counting rows cannot do this; the symbol can."""
+    mlir = """
+func.func @forward(%arg0: tensor<4x4xi8>) -> tensor<4x4xi32> {
+  %0 = call @merlin_opu_gemm_i8_1(%arg0) : (tensor<4x4xi8>) -> tensor<4x4xi32>
+  %1 = call @merlin_opu_gemm_i8_6(%arg0) : (tensor<4x4xi8>) -> tensor<4x4xi32>
+  return %1 : tensor<4x4xi32>
+}
+"""
+    _, _, ops = opf.find_forward_ops(mlir)
+    assert [o["callee"] for o in ops] == ["@merlin_opu_gemm_i8_1", "@merlin_opu_gemm_i8_6"]
+
+
+def test_a_non_call_op_has_no_callee():
+    mlir = """
+func.func @forward(%arg0: tensor<4x4xf32>) -> tensor<4x4xf32> {
+  %0 = linalg.fill ins(%arg0 : tensor<4x4xf32>) outs(%arg0 : tensor<4x4xf32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+"""
+    _, _, ops = opf.find_forward_ops(mlir)
+    assert ops[0]["callee"] is None
+
+
+def test_the_qualified_spelling_is_accepted_too():
+    """`call` and `func.call` both occur depending on who last round-tripped the module."""
+    mlir = """
+func.func @forward(%arg0: tensor<4x4xi8>) -> tensor<4x4xi32> {
+  %0 = func.call @merlin_opu_gemm_i8_2(%arg0) : (tensor<4x4xi8>) -> tensor<4x4xi32>
+  return %0 : tensor<4x4xi32>
+}
+"""
+    _, _, ops = opf.find_forward_ops(mlir)
+    assert ops[0]["callee"] == "@merlin_opu_gemm_i8_2"
