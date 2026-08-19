@@ -224,6 +224,31 @@ def _behaviour(d: Path) -> dict:
             "distinct_tools": len(set(acts))}
 
 
+def _sink_check(d: Path) -> dict:
+    """Cross-check the run's own token accounting against the aet sink it wrote.
+
+    Two surfaces report this campaign's spend and they have disagreed: this table read a GLM-5 run at
+    $28.19 over 46.4 M tokens while ``aet spend`` reported the same run as unpriced with zero tokens. The
+    sink was present and correct -- the disagreement was in how the other tool grouped the model -- but a
+    silent disagreement between two cost surfaces is how a wrong dollar figure ends up quoted.
+
+    So the check is local and does not depend on the other tool: read the sink's own
+    ``gen_ai.usage.input_tokens`` and compare it to the input tokens this run recorded. A missing sink, or
+    a sink that disagrees by more than a rounding margin, is reported rather than averaged away."""
+    logs = d / "logs" / "metrics.jsonl"
+    if not logs.is_file():
+        return {"sink_present": False}
+    total = 0
+    for line in logs.read_text(errors="ignore").splitlines():
+        try:
+            m = json.loads(line)
+        except Exception:  # noqa: BLE001 — a killed run truncates the last line
+            continue
+        if m.get("name") == "gen_ai.usage.input_tokens":
+            total += int(m.get("value") or 0)
+    return {"sink_present": True, "sink_input_tokens": total}
+
+
 def collect(tag: str | None, arm_filter: str | None) -> list[dict]:
     """One record per run directory under the active target's capsule-bench run root."""
     audit_p = C.REPORTS / "full_suite_audit.json"
@@ -268,6 +293,7 @@ def collect(tag: str | None, arm_filter: str | None) -> list[dict]:
                 # reading it the table printed $0.00 notional for runs that cost $5-8 of equivalent
                 # traffic, which reads as "free" rather than "not billed per token".
                 "notional_usd": ct.get("subscription_notional_usd"),
+                "sink": _sink_check(d),
                 "conformance": _conformance(d),
                 "tier_reach": _tier_reach(d),
                 "behaviour": _behaviour(d),
@@ -408,6 +434,21 @@ def markdown(models: dict, rows: list[dict], arm: str | None) -> str:
     metered = sum(m["metered_cost_usd"] for m in models.values())
     notional = sum(m["notional_cost_usd"] for m in models.values())
     unknown = sum(m["unknown_billing_cost_usd"] for m in models.values())
+    # RECONCILIATION. Every run's telemetry sink is compared against the run's own accounting, so a
+    # missing or disagreeing sink is visible before a dollar figure is quoted from either surface.
+    bad = []
+    for r in rows:
+        sk = r.get("sink") or {}
+        if not sk.get("sink_present"):
+            bad.append((r["run_id"], "no aet sink written (MERLIN_AET_SINK unset?)"))
+            continue
+        own, sink = r.get("tokens_input") or 0, sk.get("sink_input_tokens") or 0
+        if own and sink and abs(own - sink) > max(1000, 0.01 * own):
+            bad.append((r["run_id"], f"sink {sink:,} vs run {own:,} input tokens"))
+    L += ["", "## telemetry reconciliation", ""]
+    L += ([f"- ⚠️ `{rid}`: {why}" for rid, why in bad] if bad
+          else ["- every run wrote a sink and its token totals agree with the run's own accounting"])
+
     L += ["", "## spend", "",
           f"- metered (counts against the budget ceiling): **${metered:.2f}**",
           f"- notional (subscription; tokens real, dollars not billed per-token): ${notional:.2f}",

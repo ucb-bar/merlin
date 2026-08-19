@@ -93,3 +93,42 @@ def test_conformance_reports_whether_the_tooling_was_ever_used(agg, tmp_path):
     assert c["ever"]["isa_tools_used"] is True, "used in any round counts as used"
     assert c["ever"]["cca_used"] is False
     assert c["conformant_rounds"] == 1
+
+
+def test_a_missing_or_disagreeing_sink_is_reported(agg, tmp_path):
+    """Two cost surfaces disagreed once: this table read a run at $28.19 over 46.4M tokens while the other
+    reported it unpriced with zero. The data was fine and the grouping was not -- but a silent
+    disagreement between cost surfaces is how a wrong dollar figure gets quoted."""
+    import json as _j
+    missing = tmp_path / "nosink"
+    missing.mkdir()
+    assert agg._sink_check(missing) == {"sink_present": False}
+
+    ok = tmp_path / "withsink"
+    (ok / "logs").mkdir(parents=True)
+    (ok / "logs" / "metrics.jsonl").write_text("\n".join(
+        _j.dumps({"name": "gen_ai.usage.input_tokens", "value": v}) for v in (1000, 2000)))
+    got = agg._sink_check(ok)
+    assert got["sink_present"] is True and got["sink_input_tokens"] == 3000
+
+
+def test_the_reconciliation_section_names_the_offending_run(agg):
+    """The report must name which run is unreconciled, not just say something is wrong."""
+    def _row(rid, tokens_in, sink):
+        return {"run_id": rid, "model": "m", "arm": "a", "tokens_input": tokens_in, "sink": sink,
+                "public": {"passed": "0/20", "n": 0, "total": 20},
+                "hidden": {"passed": "0/5", "n": 0, "total": 5},
+                "converged": False, "n_rounds": 1, "tool_calls": 0, "wall_s": 0, "active_wall_s": 0,
+                "rate_limit_wait_s": 0, "tokens_total": tokens_in, "tokens_output": 0,
+                "tokens_cached": 0, "tokens_by_model": {}, "cost_usd": 0.0, "notional_usd": None,
+                "billing_mode": "metered", "codex": {}, "highest_tier": None, "oracle_mode": None,
+                "gradeable": True, "integrity_status": "clean", "first_failure_planes": {},
+                "bundle_id": None, "driver": "opencode", "provider": "bedrock",
+                "conformance": {}, "tier_reach": {}, "behaviour": {}}
+    rows = [_row("clean", 3000, {"sink_present": True, "sink_input_tokens": 3000}),
+            _row("nosink", 10, {"sink_present": False}),
+            _row("skewed", 1_000_000, {"sink_present": True, "sink_input_tokens": 10})]
+    md = agg.markdown(agg.by_model(rows), rows, None)
+    assert "nosink" in md and "skewed" in md, "an unreconciled run must be named"
+    section = md[md.index("## telemetry reconciliation"):]
+    assert "clean" not in section.split("##")[1], "a reconciled run should not be flagged"
