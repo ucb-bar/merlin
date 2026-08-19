@@ -120,11 +120,11 @@ def _run_claude(model: str, ws: Path, *, force: bool) -> tuple[bool, str]:
     env = dict(os.environ)
     if force:
         env["MERLIN_FORCE_BRIDGE"] = "1"
-    env.update({k: v for k, v in BR.claude_env(model).items() if v} or {})
+    env.update({k: v for k, v in BR.claude_env(model, force=force).items() if v} or {})
     home = Path(tempfile.mkdtemp(prefix="canary_cc_"))
     env["CLAUDE_CONFIG_DIR"] = str(home)
     cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose",
-           "--model", BR.claude_model_name(model), "--dangerously-skip-permissions", TASK]
+           "--model", BR.claude_model_name(model, force=force), "--dangerously-skip-permissions", TASK]
     try:
         r = subprocess.run(cmd, cwd=str(ws), env=env, capture_output=True, text=True, timeout=900)
     except subprocess.TimeoutExpired:
@@ -152,7 +152,7 @@ def check_agency(models: list[str]) -> list[tuple[str, bool, str]]:
 def check_control(model: str) -> list[tuple[str, bool, str]]:
     """The same model+harness native vs forced-through-proxy. Only meaningful for a natively-served pair."""
     out = []
-    for harness, fn in (("codex", _run_codex),):
+    for harness, fn in (("claude", _run_claude),):
         if BR.bridged_name(model, harness):
             out.append((f"control {harness}+{model}", True, "skipped: no native path for this pairing"))
             continue
@@ -175,7 +175,7 @@ def check_control(model: str) -> list[tuple[str, bool, str]]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", default="nemotron,glm5")
-    ap.add_argument("--control-model", default="gpt-5.6-sol")
+    ap.add_argument("--control-model", default="opus")
     ap.add_argument("--skip-control", action="store_true")
     ap.add_argument("--skip-agency", action="store_true")
     a = ap.parse_args()

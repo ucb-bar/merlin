@@ -460,6 +460,92 @@ def markdown(models: dict, rows: list[dict], arm: str | None) -> str:
     return "\n".join(L)
 
 
+
+# ------------------------------------------------------------------------------------------------
+# harness x model
+#
+# Every capsule-bench number before 2026-08-19 described a (model, HARNESS) PAIR, not a model: the open
+# models were only ever driven by opencode and gpt-5.6-sol only ever by codex-cli, so a difference
+# between them could not be attributed to either factor. With agent_bridge any model can be driven by
+# any harness, and this is the view that separates them: rows are models, columns are harnesses, and
+# reading DOWN a column isolates the model while reading ACROSS a row isolates the harness.
+
+def by_cell(rows: list[dict]) -> dict:
+    """Group per-run records by (model, driver). The key is the experimental CELL, not the model."""
+    out: dict[str, dict] = {}
+    for r in rows:
+        key = f"{r['model']}::{r.get('driver') or UNKNOWN_MODEL}"
+        c = out.setdefault(key, {"model": r["model"], "harness": r.get("driver"), "runs": [],
+                                 "best_passed": 0, "n_capsules": None, "best_tier": None,
+                                 "metered_usd": 0.0, "notional_usd": 0.0, "tool_calls": 0,
+                                 "tokens_total": 0, "bridged": None})
+        c["runs"].append(r["run_id"])
+        # _score parses "20/20" into n (count passed) and total. Reading `passed` here would take the
+        # raw STRING and compare it as an int -- which is how a 20/20 codex cell rendered as 0/20.
+        pub = r.get("public") or {}
+        got, tot = pub.get("n"), pub.get("total")
+        if isinstance(got, int):
+            c["best_passed"] = max(c["best_passed"], got)
+        if isinstance(tot, int):
+            c["n_capsules"] = tot
+        tier = r.get("highest_tier")
+        if tier and (c["best_tier"] is None or str(tier) > str(c["best_tier"])):
+            c["best_tier"] = tier
+        c["tool_calls"] += r.get("tool_calls") or 0
+        c["tokens_total"] += r.get("tokens_total") or 0
+        if r.get("billing_mode") == "subscription_notional":
+            c["notional_usd"] += r.get("notional_usd") or 0.0
+        else:
+            c["metered_usd"] += r.get("cost_usd") or 0.0
+        # provenance: was this cell reached through the LiteLLM bridge?
+        bj = C.RUNS
+        c["bridged"] = c["bridged"] if c["bridged"] is not None else _bridge_of(r["run_id"])
+    return out
+
+
+def _bridge_of(run_id: str) -> bool | None:
+    """Read the run's bridge.json, written whenever a (model, harness) pairing needed the proxy."""
+    for sub in AAR.RUN_DIRS:
+        p = C.RUNS / sub / run_id / "bridge.json"
+        if p.is_file():
+            try:
+                return bool(json.loads(p.read_text()).get("bridged"))
+            except Exception:
+                return None
+    return False
+
+
+def matrix_markdown(cells: dict) -> str:
+    """The harness x model table, plus the two readings that make it evidence."""
+    models = sorted({c["model"] for c in cells.values()})
+    harnesses = sorted({c["harness"] for c in cells.values() if c["harness"]})
+    L = ["## Harness x model", "",
+         "Rows are models, columns are harnesses. Reading DOWN a column holds the harness fixed and",
+         "varies the model; reading ACROSS a row holds the model fixed and varies the harness. A cell",
+         "marked (b) was reached through the LiteLLM bridge, which carries its own caveats (no prompt",
+         "caching, a different system-prompt preamble) -- see agent_bridge.", "",
+         "| model | " + " | ".join(harnesses) + " |",
+         "|---|" + "---|" * len(harnesses)]
+    for m in models:
+        cs = []
+        for h in harnesses:
+            c = cells.get(f"{m}::{h}")
+            if not c:
+                cs.append("—"); continue
+            n = c["n_capsules"] or "?"
+            tier = c["best_tier"] or "none"
+            mark = " (b)" if c["bridged"] else ""
+            cs.append(f"{c['best_passed']}/{n} @{tier}{mark}")
+        L.append(f"| `{m}` | " + " | ".join(cs) + " |")
+    L += ["", "### Cost and effort per cell", "",
+          "| cell | runs | actions | tokens | metered | notional |", "|---|---|---|---|---|---|"]
+    for k in sorted(cells):
+        c = cells[k]
+        L.append(f"| `{k}` | {len(c['runs'])} | {c['tool_calls']} | {c['tokens_total']:,} | "
+                 f"${c['metered_usd']:.2f} | ${c['notional_usd']:.2f} |")
+    return "\n".join(L) + "\n"
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--tag", default=None, help="filter run-ids by substring")
@@ -469,12 +555,13 @@ def main(argv=None) -> int:
 
     rows = collect(a.tag, a.arm)
     models = by_model(rows)
+    cells = by_cell(rows)
     out_dir = Path(a.out_dir) if a.out_dir else C.REPORTS
     out_dir.mkdir(parents=True, exist_ok=True)
     payload = {"target": C.TARGET, "arm_filter": a.arm, "tag_filter": a.tag,
-               "n_runs": len(rows), "models": models, "runs": rows}
+               "n_runs": len(rows), "models": models, "cells": cells, "runs": rows}
     (out_dir / "by_model.json").write_text(json.dumps(payload, indent=2))
-    md = markdown(models, rows, a.arm)
+    md = markdown(models, rows, a.arm) + "\n" + matrix_markdown(cells)
     (out_dir / "by_model.md").write_text(md)
     print(f"wrote {out_dir / 'by_model.json'}")
     print(f"wrote {out_dir / 'by_model.md'}")

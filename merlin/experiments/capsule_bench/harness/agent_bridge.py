@@ -66,7 +66,7 @@ DEFAULT_MAX_OUTPUT = int(os.environ.get("MERLIN_MAX_OUTPUT_TOKENS", "8000"))
 #: Models the proxy serves. These are the ``model_name`` entries in proxy/litellm_config.yaml -- keep the
 #: two in sync. Being listed here makes a model REACHABLE through the bridge; it does not by itself route
 #: anything (see :func:`bridged_name`).
-SERVED = ("nemotron", "glm5", "gpt-5.6-sol")
+SERVED = ("nemotron", "glm5", "opus")
 
 
 def _proxy_name(model: str) -> str | None:
@@ -233,14 +233,14 @@ def start_proxy(log_path: Path, *, wait_s: int = 90) -> dict:
 CODEX_PROVIDER_ID = "merlinproxy"
 
 
-def codex_config_fragment(model: str) -> str:
+def codex_config_fragment(model: str, *, force: bool | None = None) -> str:
     """The ``config.toml`` fragment routing codex-cli at the proxy, or "" for a native model.
 
     Declaring ``model_context_window`` matters: without it codex logs "Model metadata for `<model>` not
     found. Defaulting to fallback metadata", and its own context management then budgets against the
     wrong number -- the same class of defect that made opencode reserve 32 K of nemotron's window.
     """
-    name = bridged_name(model, "codex")
+    name = bridged_name(model, "codex", force=force)
     if not name:
         return ""
     lines = [f'model_provider = "{CODEX_PROVIDER_ID}"']
@@ -260,19 +260,19 @@ def codex_config_fragment(model: str) -> str:
     return "\n".join(lines)
 
 
-def codex_model_name(model: str) -> str:
+def codex_model_name(model: str, *, force: bool | None = None) -> str:
     """What to pass to ``codex --model``: the proxy's model_name when bridged, else the native id."""
-    return bridged_name(model, "codex") or model
+    return bridged_name(model, "codex", force=force) or model
 
 
-def claude_env(model: str) -> dict:
+def claude_env(model: str, *, force: bool | None = None) -> dict:
     """Environment overrides pointing the ``claude`` CLI at the proxy, or {} for a native model.
 
     ``ANTHROPIC_BASE_URL`` redirects the Messages API; the token is the proxy's master key, NOT an
     Anthropic credential. CLAUDE_CODE_USE_BEDROCK must be OFF on this path -- Bedrock mode speaks the
     Bedrock runtime directly and would bypass the bridge (and only works for Anthropic models anyway).
     """
-    name = bridged_name(model, "claude")
+    name = bridged_name(model, "claude", force=force)
     if not name:
         return {}
     key = proxy_key()
@@ -285,8 +285,8 @@ def claude_env(model: str) -> dict:
     }
 
 
-def claude_model_name(model: str) -> str:
-    return bridged_name(model, "claude") or _MT.resolve(model)
+def claude_model_name(model: str, *, force: bool | None = None) -> str:
+    return bridged_name(model, "claude", force=force) or _MT.resolve(model)
 
 
 def sandbox_binds() -> list[str]:

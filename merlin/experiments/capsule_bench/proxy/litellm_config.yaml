@@ -38,12 +38,18 @@ model_list:
       max_output_tokens: 8000
 
   # ---- the control ------------------------------------------------------------------------------
-  # gpt-5.6-sol is ALSO on Bedrock, which is what makes the scaffold comparison clean: the exact model
-  # that scored 20/20 through codex-cli can be re-run through opencode and through this proxy, so any
-  # harness effect is measured against a known-good result rather than inferred.
-  - model_name: gpt-5.6-sol
+  # NOT gpt-5.6-sol: ``openai.gpt-5.6-sol`` appears in this account's Bedrock catalogue but is not
+  # enabled on it ("is not available for this account"), so codex-cli's own model cannot be reached a
+  # second way. Probed 2026-08-19; a listing is not an entitlement.
+  #
+  # Opus is the control instead, and it is a better one: it is invocable on Bedrock, it has a known
+  # baseline on this exact bench (19/20 L3-certified via the claude CLI), and BOTH harnesses reach it
+  # natively -- so claude-vs-opencode on Opus measures the harness with no bridge in the path at all.
+  # It is listed here only for the separate proxy-vs-direct control (same harness, same model, once
+  # native and once forced through this proxy), which is what shows the bridge is faithful.
+  - model_name: opus
     litellm_params:
-      model: bedrock/openai.gpt-5.6-sol
+      model: bedrock/us.anthropic.claude-opus-4-6-v1
       aws_region_name: us-east-1
 
 litellm_settings:
