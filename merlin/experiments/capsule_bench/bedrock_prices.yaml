@@ -12,8 +12,13 @@
 # Keys match case-insensitively as a substring of the inference-profile id (e.g. "zai.glm-5").
 
 # GLM-5 (Z.ai) on Bedrock — ESTIMATE (confirm against Bedrock pricing / the account bill).
-zai.glm-5: [0.60, 2.20, 0.06, 0.75]
-glm:       [0.60, 2.20, 0.06, 0.75]   # substring fallback for any glm-* profile id
+# RAISED 2026-08-19 from [0.60, 2.20] after litellm's own model_prices DB — an independent source the
+# proxy already consults — reported 1.00 / 3.20 for this same profile id. The two disagreed by 66% on
+# input, and the file's stated policy is to take the HIGHER figure so a budget check over-reports rather
+# than under-reports. Nemotron was cross-checked the same way and AGREED exactly (0.15 / 0.65), which is
+# why only this entry moved. Reconcile both against the account bill before quoting either as measured.
+zai.glm-5: [1.00, 3.20, 0.10, 1.25]
+glm:       [1.00, 3.20, 0.10, 1.25]   # substring fallback for any glm-* profile id
 
 # (Nova micro/lite/pro are already verified in aet's built-in table; Anthropic models likewise. Add any
 # other Bedrock model the experiments use here so cost is estimated from ONE place, never fabricated.)

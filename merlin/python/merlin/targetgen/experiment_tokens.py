@@ -117,7 +117,8 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
     thinking_blocks = 0
     any_usage = False
     n_events = 0
-    result_usage: dict | None = None      # authoritative, SUBAGENT-INCLUSIVE per-model usage (result event)
+    result_usage: dict = {}               # authoritative, SUBAGENT-INCLUSIVE per-model usage, SUMMED
+                                          # across every result event in the file (one per round)
     # The CLI's own total_cost_usd is authoritative ONLY when the CLI is billing the model it thinks it
     # is running. Drive a foreign model through it (an agentic harness pointed at a proxy) and the figure
     # is priced against the CLI's own catalogue: a nemotron round on Bedrock, whose real cost is cents,
@@ -139,11 +140,25 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
             # every delegated sub-agent / background tier — and the true cost. Streamed `assistant` usage is
             # a partial streaming artifact (its output_tokens is far too low) and NEVER includes the subagent
             # tiers, so prefer this when present. (The fallback below covers a truncated run with no result.)
+            # ACCUMULATE, never assign. A multi-round loop concatenates one round transcript per round
+            # into a single file, so a finished run carries ONE result event PER ROUND. Overwriting kept
+            # only the last round's usage while tool_calls kept accumulating below, which reported a
+            # 6-round claude run as 7.6 M tokens / $4.61 when its rounds summed to 50.1 M / $30.38, and
+            # made every derived per-action metric meaningless (2 output tokens per action). Codex is
+            # unaffected -- it has no result event and uses the streamed fallback.
             mu = evt.get("modelUsage")
             if isinstance(mu, dict) and mu:
-                result_usage = mu
+                for model, one in mu.items():
+                    if not isinstance(one, dict):
+                        continue
+                    acc = result_usage.setdefault(model, {})
+                    for k, v in one.items():
+                        if isinstance(v, (int, float)) and not isinstance(v, bool):
+                            acc[k] = acc.get(k, 0) + v
+                        else:
+                            acc.setdefault(k, v)
             if evt.get("total_cost_usd") is not None:
-                result_cost = evt.get("total_cost_usd")
+                result_cost = (result_cost or 0.0) + evt["total_cost_usd"]
             continue
         if evt.get("type") != "assistant":
             continue
