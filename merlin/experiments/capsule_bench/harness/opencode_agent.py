@@ -116,8 +116,14 @@ def _parse_run_error(stdout: str) -> str | None:
 
 # A round is killed when the agent makes NO PROGRESS for this long, independently of the wall-clock
 # round timeout. Measured: a stalled agent held a 4h round open having emitted nothing for 28 min.
-# Overridable per deployment via MERLIN_OPENCODE_STALL_S; 0 disables the detector.
-_STALL_SECONDS = int(os.environ.get("MERLIN_OPENCODE_STALL_S", "900"))
+#
+# The threshold is generous ON PURPOSE. Progress is now bytes OR CPU, so anything the agent does locally
+# -- building, self-checking, writing files -- keeps the round alive. The only thing left for this timer
+# to catch is a model call that is genuinely wedged, and while waiting on one the process burns no CPU and
+# emits nothing, which is indistinguishable from a long turn. Raising reasoning effort makes long turns
+# the normal case, so a tight bound here would kill working rounds; the wall-clock round timeout still
+# bounds the damage either way. Overridable via MERLIN_OPENCODE_STALL_S; 0 disables the detector.
+_STALL_SECONDS = int(os.environ.get("MERLIN_OPENCODE_STALL_S", "1800"))
 _POLL_SECONDS = 10
 # Progress must clear this much CPU to count. opencode block-buffers stdout when it is redirected to a
 # file, so a quiet round can do real work while the byte count stands still (measured: a GLM-5 round wrote
@@ -281,7 +287,7 @@ def _parse_run_stream(stdout: str, mid: str, rnd: int, emit) -> int:
     ``state.output``); ``step-finish`` parts carry token usage. Emits claude-compatible events (assistant +
     user/tool_result) so parse_transcript / audit_transcript / conformance consume them like every driver.
     Returns the number of tool calls seen."""
-    tok = {"input": 0, "output": 0, "cread": 0, "cwrite": 0}
+    tok = {"input": 0, "output": 0, "cread": 0, "cwrite": 0, "reasoning": 0}
     n_tools = 0
     for line in stdout.splitlines():
         line = line.strip()
@@ -316,10 +322,16 @@ def _parse_run_stream(stdout: str, mid: str, rnd: int, emit) -> int:
             tok["output"] += t.get("output", 0) or 0
             tok["cread"] += c.get("read", 0) or 0
             tok["cwrite"] += c.get("write", 0) or 0
+            # Reasoning is reported separately by providers that bill it separately. Bedrock bills a
+            # model's thinking as ordinary OUTPUT, so this stays 0 there and the thinking is already
+            # inside output_tokens -- recording it anyway is what makes that distinction visible instead
+            # of a silent zero that reads as "this model did not think".
+            tok["reasoning"] += t.get("reasoning", 0) or 0
     # one usage-bearing assistant event so token/cost accounting sees the round's totals
     emit({"type": "assistant", "message": {"id": f"opencode_{rnd}_usage", "model": mid, "content": [],
           "usage": {"input_tokens": tok["input"], "output_tokens": tok["output"],
-                    "cache_read_input_tokens": tok["cread"], "cache_creation_input_tokens": tok["cwrite"]}}})
+                    "cache_read_input_tokens": tok["cread"], "cache_creation_input_tokens": tok["cwrite"],
+                    "reasoning_tokens": tok["reasoning"]}}})
     return n_tools
 
 
@@ -361,7 +373,21 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     def emit(obj: dict) -> None:
         tf.write(json.dumps(obj) + "\n"); tf.flush()
 
-    emit({"type": "system", "subtype": "init", "model": mid, "round": rnd, "driver": "opencode"})
+    sub = _MT.resolve(subagent_model) if subagent_model else ""
+    _delegate = _provider_model(sub) if (sub and _provider_model(sub) != mid) else None
+    # What this round ACTUALLY ran with, not what the launcher intended. environment.yaml records the
+    # requested effort, and for every opencode run before the effort fix it recorded `high` while the round
+    # executed at the provider default -- an artifact asserting something untrue about its own run. The
+    # codex driver already writes a record of this shape; matching it makes an opencode run auditable from
+    # its own transcript.
+    emit({"type": "system", "subtype": "init", "model": mid, "round": rnd, "driver": "opencode",
+          "effort_requested": effort or None,
+          "variant_passed": (effort or "").strip() or None,
+          "sandbox": sandbox,
+          "delegate_model": _delegate,
+          "workspace_instruction_files": {n: (ws / n).stat().st_size
+                                          for n in ("TASK.md", "AGENTS.md", "CLAUDE.md", "AGENT.md")
+                                          if (ws / n).is_file()}})
 
     # opencode config: our system prompt as the primary agent + allow-all permissions (external_directory is
     # NOT covered by --auto, so it must be allowed here). Tier-within-agent: register a cheaper subagent when
@@ -372,11 +398,11 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "agent": {agent_name: {"mode": "primary", "prompt": _system_prompt(te), "model": mid}},
         "permission": {"edit": "allow", "bash": "allow", "webfetch": "allow", "external_directory": "allow"},
     }
+    # (resolved above, before the init record, so that record can state it)
     # A delegate is attached ONLY when the caller asks for one. It used to default to the non-Anthropic
     # tier's subagent, so a run nominally measuring one model silently had a SECOND, different model
     # available to it (qwen-coder alongside glm5/nemotron) while the codex and claude arms had none. That
     # is a third variable in a two-variable comparison; the capability stays, the default does not.
-    sub = _MT.resolve(subagent_model) if subagent_model else ""
     if sub and _provider_model(sub) != mid:
         cfg["agent"]["delegate"] = {"mode": "subagent", "model": _provider_model(sub),
                                     "prompt": "Focused sub-agent: do EXACTLY the delegated task, then reply "
