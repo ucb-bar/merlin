@@ -96,6 +96,14 @@ def _run_codex(model: str, ws: Path, *, force: bool) -> tuple[bool, str]:
     (home / "config.toml").write_text(
         f'model = {json.dumps(BR.codex_model_name(model))}\n'
         'approval_policy = "never"\nsandbox_mode = "danger-full-access"\n' + frag)
+    # The NATIVE codex path authenticates against the ChatGPT seat, whose credential lives in the real
+    # CODEX_HOME. Without it the native leg fails for lack of auth and the control "passes" only because
+    # both legs failed the same way -- which is exactly what it must not do. The harness bind-mounts this
+    # file read-only; here a symlink is enough and equally avoids copying a secret into the artifact tree.
+    if not frag:
+        real_auth = Path(os.environ.get("CODEX_HOME_REAL") or (Path.home() / ".codex")) / "auth.json"
+        if real_auth.is_file():
+            (home / "auth.json").symlink_to(real_auth)
     cmd = ["codex", "exec", "--json", "--skip-git-repo-check", "-C", str(ws), TASK]
     try:
         r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=900)
@@ -155,8 +163,11 @@ def check_control(model: str) -> list[tuple[str, bool, str]]:
             body = (ws / "probe.txt").read_text().strip() if (ws / "probe.txt").is_file() else ""
             shutil.rmtree(ws, ignore_errors=True)
             res["bridged" if mode else "native"] = (ok and EXPECT in body, note)
-        same = res["native"][0] == res["bridged"][0]
-        out.append((f"control {harness}+{model} native==bridged", same,
+        # BOTH legs must succeed AND agree. Equality alone is not a control: two failures agree
+        # perfectly and prove nothing, which is how a missing seat credential once produced a green
+        # "native==bridged" from native=(False,...) bridged=(False,...).
+        both_ok = res["native"][0] and res["bridged"][0]
+        out.append((f"control {harness}+{model} native and bridged both succeed", both_ok,
                     f"native={res['native']} bridged={res['bridged']}"))
     return out
 
