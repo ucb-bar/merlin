@@ -158,3 +158,22 @@ def test_served_models_match_the_proxy_config(BR):
     cfg = yaml.safe_load(BR.proxy_config_path().read_text())
     names = {e["model_name"] for e in cfg["model_list"]}
     assert set(BR.SERVED) <= names, f"SERVED has entries the proxy does not define: {set(BR.SERVED)-names}"
+
+
+# ---------------------------------------------------------------- billing
+
+def test_a_bridged_round_is_metered_whatever_the_driver_declares(BR, monkeypatch):
+    """Billing follows the ACCOUNT the traffic was bought on, not the CLI that drove it.
+
+    The codex driver declares subscription_notional because it normally runs on a ChatGPT seat. Bridged,
+    it is spending our Bedrock key per token -- and booking that as notional hides real money from
+    --max-spend-usd and from the campaign budget. The mirror of the same class of error as trusting a
+    CLI's own total_cost_usd for a model it does not bill.
+    """
+    import run_baseline_qa_loop as R
+    from merlin.targetgen import experiment_tokens as ET
+
+    monkeypatch.setattr(R, "_DRIVER", "codex", raising=False)
+    assert R._billing_mode("nemotron") == ET.METERED, "bridged codex traffic is real Bedrock spend"
+    # the seat model still reports as a seat
+    assert R._billing_mode("gpt-5.6-sol") != ET.METERED

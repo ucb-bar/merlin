@@ -818,7 +818,20 @@ def _billing_mode(model: str) -> str:
     key charged per token). This is what keeps a subscription-seat run from reporting a dollar spend:
     a Codex round once landed ``estimated_cost_usd: 17.2103`` in the ledger, priced at opus rates for
     a model no price table knows, on an account that is not billed per token at all."""
-    mod_name = _DRIVER_MODULES.get(_driver_for(model))
+    # A driver's declared BILLING_MODE describes ITS OWN account. A bridged round does not use that
+    # account: it is our Bedrock key, charged per token, whichever CLI happens to be driving it. The
+    # codex driver declares subscription_notional because it normally runs on a ChatGPT seat, so a
+    # bridged codex round was booking real Bedrock spend as notional -- money that is never counted
+    # against --max-spend-usd or the campaign budget. This is the mirror of trusting a CLI's own
+    # total_cost_usd for a model it does not bill, and it under-reports instead of over-reporting.
+    drv = _driver_for(model)
+    try:
+        import agent_bridge as _BR
+        if _BR.bridged_name(model, drv):
+            return ET.METERED
+    except Exception:
+        pass
+    mod_name = _DRIVER_MODULES.get(drv)
     if not mod_name:
         return ET.METERED
     try:
