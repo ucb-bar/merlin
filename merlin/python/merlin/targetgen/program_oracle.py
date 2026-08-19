@@ -430,8 +430,10 @@ def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | Non
                          fix_itype_rd=fix_itype_rd, workdir=workdir, timeout=timeout)
     words = bundle["words"]
     preload = _bundle_preload(bundle, cb)
-    out_spec = _resolve_out_spec(target, cb, bundle)
-    nbytes = _out_nbytes(out_spec)
+    # EVERY declared output, exactly as the cosim path captures them (a module with two commit ops has
+    # two results; reading only the first reports the second as never written however correct the kernel
+    # is). The runner already takes a LIST of out_bases and keys its result by str(base).
+    specs = _resolve_out_specs(target, cb, bundle)
 
     # The emitted kernel + the cb tensor bases address DRAM at the target's real region base (its ISA
     # memory map), but the functional model's DRAM aperture is 0-based. Derive that base from the target's
@@ -445,7 +447,7 @@ def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | Non
     req = {
         "words": [int(w) & 0xFFFFFFFF for w in words],
         "preload": [{"base": int(b), "b64": base64.b64encode(d).decode()} for b, d in preload],
-        "out_bases": [[int(out_spec["base"]), int(nbytes)]],
+        "out_bases": [[int(s["base"]), _out_nbytes(s)] for s in specs.values()],
         "max_cycles": int(max_cycles),
         "dram_base": reloc_base,
     }
@@ -455,13 +457,15 @@ def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | Non
             f"{target} program did not halt within {max_cycles} instructions (functional)")
 
     outmap = res.get("outputs") or {}
-    key = str(int(out_spec["base"]))                    # the CLI keys outputs by str(base)
-    if key not in outmap:
-        raise OracleUnavailable(
-            f"{target}: functional runner returned no output at base {out_spec['base']}")
-    raw = base64.b64decode(outmap[key])
-    logical = _decode_output(raw, out_spec["shape"], out_spec["dtype"], out_spec["physical"])
-    return {"outputs": {_output_name(cb): logical.tolist()}, "cycles": int(res.get("cycles") or 0),
+    outputs = {}
+    for name, spec in specs.items():
+        key = str(int(spec["base"]))                    # the CLI keys outputs by str(base)
+        if key not in outmap:
+            raise OracleUnavailable(
+                f"{target}: functional runner returned no output {name!r} at base {spec['base']}")
+        outputs[name] = _decode_output(base64.b64decode(outmap[key]), spec["shape"], spec["dtype"],
+                                       spec["physical"]).tolist()
+    return {"outputs": outputs, "cycles": int(res.get("cycles") or 0),
             "oracle": f"{target}-functional"}
 
 
@@ -725,19 +729,26 @@ def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: d
                          fix_itype_rd=fix_itype_rd, workdir=Path(workdir), timeout=timeout)
     words = bundle["words"]
     preload = _bundle_preload(bundle, cb)
-    out_spec = _resolve_out_spec(target, cb, bundle)
-    nbytes = _out_nbytes(out_spec)
+    # EVERY declared output, in declaration order — a module that commits twice has two results, and
+    # reading only the first grades the second as never written whatever the kernel did (the same defect
+    # the cosim path carried). The wrapper's ``reads`` is already a list of regions, so this needs no
+    # change on the sim side; the returned regions come back in the order they were requested.
+    specs = _resolve_out_specs(target, cb, bundle)
     res = runner.run_program(words, preload=preload,
-                             reads=[(int(out_spec["base"]), int(nbytes))],
+                             reads=[(int(s["base"]), _out_nbytes(s)) for s in specs.values()],
                              max_cycles=max_cycles, timeout=timeout)
     if not res.get("halted"):
         raise ProgramDidNotHalt(f"{target} program did not halt within {max_cycles} cycles (verilator)")
     outs = res.get("outputs") or []
-    if not outs:
-        raise OracleUnavailable(f"{target}: verilator oracle returned no output at base {out_spec['base']}")
-    raw = bytes(outs[0])
-    logical = _decode_output(raw, out_spec["shape"], out_spec["dtype"], out_spec["physical"])
-    return {"outputs": {_output_name(cb): logical.tolist()}, "cycles": int(res.get("cycles") or 0),
+    if len(outs) < len(specs):
+        raise OracleUnavailable(
+            f"{target}: verilator oracle returned {len(outs)} region(s) for {len(specs)} declared "
+            f"output(s) {sorted(specs)} — cannot read every result back")
+    outputs = {}
+    for raw, (name, spec) in zip(outs, specs.items()):
+        outputs[name] = _decode_output(bytes(raw), spec["shape"], spec["dtype"],
+                                       spec["physical"]).tolist()
+    return {"outputs": outputs, "cycles": int(res.get("cycles") or 0),
             "oracle": f"{target}-verilator-rtl"}
 
 
