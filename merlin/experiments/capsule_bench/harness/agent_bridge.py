@@ -61,6 +61,13 @@ CONTEXT_WINDOWS: dict[str, int] = {
 
 #: The completion budget to ask for. MEASURED output is 200-400 tokens/step; the registry default of
 #: 32_000 removed 24% of nemotron's window for a completion that never arrives.
+# Transport-resilience knobs for the bridged codex provider (codex-cli 0.147.0 fields).
+# Defaults are 5 retries / 300000 ms idle; a bridged round wants more headroom, see
+# codex_config_fragment for why.
+REQUEST_MAX_RETRIES = 8
+STREAM_MAX_RETRIES = 12
+STREAM_IDLE_TIMEOUT_MS = 900_000
+
 DEFAULT_MAX_OUTPUT = int(os.environ.get("MERLIN_MAX_OUTPUT_TOKENS", "8000"))
 
 #: Models the proxy serves. These are the ``model_name`` entries in proxy/litellm_config.yaml -- keep the
@@ -255,6 +262,14 @@ def codex_config_fragment(model: str, *, force: bool | None = None) -> str:
         f'base_url = "{PROXY_BASE}/v1"',
         'wire_api = "responses"',
         f'env_key = "{PROXY_KEY_ENV}"',
+        # Transport resilience. A bridged round rides a Bedrock capacity error ("We're currently
+        # experiencing high demand") or an SSE stall the way a native round never does, and codex's
+        # defaults give up after five reconnects and 300 s of silence -- short enough that a transient
+        # provider hiccup ends the round with rc=1 and an empty usage record. These are the CLI's own
+        # per-provider knobs; raising them costs nothing when the provider is healthy.
+        f"request_max_retries = {REQUEST_MAX_RETRIES}",
+        f"stream_max_retries = {STREAM_MAX_RETRIES}",
+        f"stream_idle_timeout_ms = {STREAM_IDLE_TIMEOUT_MS}",
         "",
     ]
     return "\n".join(lines)

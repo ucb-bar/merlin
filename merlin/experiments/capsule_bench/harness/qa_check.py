@@ -51,14 +51,48 @@ _SAFE_NUMERIC = {"status", "policy", "mismatch_count"}
 _RC_KEYS = ("rc", "returncode", "return_code", "exitcode", "exit_code", "status")
 
 
+def _is_ascii_letter(ch: str) -> bool:
+    """True for a-zA-Z only. ``str.isalpha`` would also accept digits' unicode cousins and letters from
+    scripts that cannot appear in an MLIR token, which is a wider door than this needs."""
+    return len(ch) == 1 and (("a" <= ch <= "z") or ("A" <= ch <= "Z"))
+
+
+def _is_path_like(emitted: str) -> bool:
+    """Does the token just before a ':' look like a file path? Trailing identifier-ish run containing a
+    '.' or '/' -- i.e. ``input.interface.mlir`` or ``mlir_oot/gemmini_opt.py``, never a bare number."""
+    j = len(emitted)
+    while j and not emitted[j - 1].isspace() and emitted[j - 1] not in "\"'(),":
+        j -= 1
+    tok = emitted[j:]
+    return ("." in tok or "/" in tok) and any(_is_ascii_letter(c) for c in tok)
+
+
 def _scrub_numbers(text: str) -> str:
-    """Collapse every numeric literal to '#', EXCEPT a process return code (``rc=0``).
+    """Collapse numeric VALUES to '#', while leaving numbers that carry STRUCTURE intact.
+
+    A golden value is a bare number: ``expected 42``, ``cos 0.9997``, ``[1, 2, 3]``. A shape, a dtype, a
+    capsule name and a tier label are not values — they are tokens that happen to contain digits, and the
+    agent already holds every one of them (shapes and dtypes come from ``capsule.yaml``, which the bundle
+    grants; the capsule name rides UNREDACTED in the sibling ``capsule`` field of the same record). So the
+    two rules are:
+
+      * a digit run touching an ASCII letter on either side is structure — keep it;
+      * a digit run directly after an allowlisted ``<key>=`` is process metadata — keep it;
+      * anything else is a candidate value — collapse it to '#'.
+
+    MEASURED (gemmini arm-4, 2026-08-19): the blanket scrub handed Nemotron this parse error —
+
+        %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<#x#xi#>
+
+    The shape and the element type ARE the diagnostic for a compiler task, and both were destroyed to
+    protect values that were never in the string. Under the rule above the same error now reads
+    ``tensor<16x16xi8>`` while ``expected 42, actual 17`` still scrubs to ``expected #, actual #``.
 
     Structural, not pattern-matched (repo convention: a too-narrow regex silently drops valid input).
-    Walks the string once, collapsing runs of digits — with an optional sign and decimal part — into a
-    single '#', and passes through the integer that directly follows an allowlisted ``<key>=``.
+    Walks the string once, deciding each digit run from the characters immediately around it.
     """
     out: list[str] = []
+    at_source_location = False       # the previous kept run was a `:line`, so `:col` may follow
     i, n = 0, len(text)
     while i < n:
         ch = text[i]
@@ -75,6 +109,8 @@ def _scrub_numbers(text: str) -> str:
                 while i < n and text[i].isdigit():
                     i += 1
             emitted = "".join(out)
+            before = text[start - 1] if start else ""
+            after = text[i] if i < n else ""
             keep = False
             if emitted.endswith("="):
                 key = emitted[:-1]
@@ -83,8 +119,22 @@ def _scrub_numbers(text: str) -> str:
                 while j and (key[j - 1].isalnum() or key[j - 1] == "_"):
                     j -= 1
                 keep = key[j:].lower() in _RC_KEYS
+            if not keep:
+                # Structure, not a value: the run is part of a token that also contains letters --
+                # ``i8``, ``bf16``, ``16x16``, ``A0_config_smoke``, ``L2``, ``vlen256``. A golden value
+                # never touches a letter; it sits alone between separators.
+                keep = _is_ascii_letter(before) or _is_ascii_letter(after)
+            if not keep and before == ":":
+                # A source location: ``input.interface.mlir:12:5``. The line and column of the agent's
+                # OWN input cannot echo a golden value, and without them a parse error names a file but
+                # not a place. The line is kept when the ':' follows a path-like token; the column is
+                # kept because it follows a line we just kept.
+                keep = at_source_location or _is_path_like(emitted[:-1])
+            at_source_location = bool(keep and before == ":")
             out.append(text[start:i] if keep else "#")
             continue
+        if ch != ":":
+            at_source_location = False
         out.append(ch)
         i += 1
     return "".join(out)

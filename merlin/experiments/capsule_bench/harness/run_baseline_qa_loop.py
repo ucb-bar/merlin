@@ -1165,6 +1165,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE", ""),
                     help="AWS profile (~/.aws) for --provider bedrock; else the env-var cred chain")
     ap.add_argument("--max-rounds", type=int, default=12)
+    ap.add_argument("--min-rounds", type=int, default=0,
+                    help="OPT-IN (0 = disabled, the default). Refuse the agent's READY_FOR_BARRIER "
+                         "self-declaration before round N unless it is actually passing. A model that "
+                         "writes the marker while scoring zero has not converged, it has given up: GLM-5 "
+                         "did exactly that in four consecutive runs, once after only two rounds, leaving "
+                         "ten of its twelve rounds unspent. Declining the marker deletes it (the agent "
+                         "must re-declare) and returns the loop to the agent with the same failing "
+                         "verdict. Never overrides a genuine all_pass, which always ends the loop.")
     ap.add_argument("--plateau-rounds", type=int, default=0,
                     help="OPT-IN (0 = disabled, the default — never cut a productive run). When set to N, "
                          "stop early (not converged) after N consecutive rounds with NO progress: neither "
@@ -1643,6 +1651,16 @@ def main(argv: list[str] | None = None) -> int:
         # realistic (abc2): the agent self-paces — it self-checks via the tool and drops READY_FOR_BARRIER
         # when it believes it's done. Break to the verilator barrier on that marker OR on spike all-pass.
         ready = _EXPERIMENT == "realistic" and (ws / "submission" / READY_MARKER).exists()
+        # A marker dropped at zero is a surrender, not a convergence, and it silently forfeits the rest
+        # of the round budget. --min-rounds declines it: remove the marker so the next round must earn
+        # it again, and hand the agent back the same failing verdict. An honest all_pass is never
+        # touched -- only the self-declaration is, and only while the run is still failing.
+        if ready and not verdict.get("all_pass") and rnd - 1 < a.min_rounds:
+            (ws / "submission" / READY_MARKER).unlink(missing_ok=True)
+            print(f"[round {rnd-1}] agent dropped {READY_MARKER} at "
+                  f"{verdict.get('n_passed')}/{verdict.get('n_capsules')} — DECLINED "
+                  f"(--min-rounds {a.min_rounds}); marker cleared, continuing", flush=True)
+            ready = False
         if verdict.get("all_pass") or ready:
             if ready:
                 print(f"[round {rnd-1}] agent dropped {READY_MARKER} — proceeding to verilator barrier")

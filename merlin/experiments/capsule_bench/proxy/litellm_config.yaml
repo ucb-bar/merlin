@@ -57,5 +57,29 @@ litellm_settings:
   request_timeout: 1800
   num_retries: 3
 
+# Absorb provider-side capacity errors HERE rather than letting them reach the CLI. Bedrock answers a
+# busy pool with "We're currently experiencing high demand, which may cause temporary errors"; the
+# driving CLI sees only a broken SSE stream, retries a handful of times, then ends the round with a
+# non-zero exit and no usage record. Retrying inside the proxy is invisible to the harness, so a
+# transient throttle costs seconds instead of a round.
+#
+# RateLimitErrorRetries is deliberately the largest: it is the only class here that is both common and
+# certain to clear on its own. Auth and bad-request failures are NOT retried -- they are configuration
+# errors and retrying them only delays the report.
+router_settings:
+  retry_policy:
+    RateLimitErrorRetries: 8
+    InternalServerErrorRetries: 5
+    TimeoutErrorRetries: 3
+    ContentPolicyViolationErrorRetries: 0
+    AuthenticationErrorRetries: 0
+    BadRequestErrorRetries: 0
+  allowed_fails_policy:
+    # Do not cool a deployment down for being throttled -- we have exactly one deployment per model, so
+    # a cooldown converts a transient 429 into a hard outage for the rest of the run.
+    RateLimitErrorAllowedFails: 1000
+    AuthenticationErrorAllowedFails: 0
+  cooldown_time: 30
+
 general_settings:
   master_key: os.environ/MERLIN_PROXY_KEY

@@ -154,3 +154,58 @@ def test_a_stalled_round_also_keeps_its_partial_stream(oc):
     with pytest.raises(oc.AgentStalled) as ei:
         _run(oc, "printf 'seen-before-stall\\n'; sleep 200", timeout=200, stall=6)
     assert "seen-before-stall" in (getattr(ei.value, "partial_stdout", "") or "")
+
+
+# ---------------------------------------------------------------- the wedge (socket signal)
+
+def test_socket_count_is_read_for_the_process_group_only(oc, tmp_path):
+    """The third progress signal must scope to the agent's tree, like the CPU one."""
+    import subprocess as sp
+    p = sp.Popen(["python3", "-c", "import socket,time\n"
+                                   "s=socket.socket(); s.bind(('127.0.0.1',0)); s.listen(1)\n"
+                                   "time.sleep(6)"], start_new_session=True)
+    try:
+        import os
+        import time
+        time.sleep(1.5)
+        pgid = os.getpgid(p.pid)
+        assert oc._tree_socket_count(pgid) >= 1, "a process holding a socket must be counted"
+        assert oc._tree_socket_count(999999) == 0, "an unrelated pgid contributes nothing"
+    finally:
+        p.kill(); p.wait()
+
+
+def test_a_wedged_process_is_killed_despite_a_cpu_trickle(oc, tmp_path):
+    """The measured wedge: alive, no sockets, no output, and just enough CPU to defeat the epsilon.
+
+    A GLM-5 relaunch sat like this for 95 minutes -- 0.49 s of CPU per minute across 42 idle threads,
+    two tool calls stuck in `running`, zero open sockets -- and the byte+CPU detector re-armed at every
+    poll. Zero sockets plus a CPU rate below a fraction of one core is what separates it from real local
+    work such as a compile.
+    """
+    script = (
+        "import time\n"
+        "end = time.time() + 90\n"
+        "while time.time() < end:\n"
+        "    x = 0\n"
+        "    for _ in range(20000):\n"     # a trickle: far below one core, no sockets, no output
+        "        x += 1\n"
+        "    time.sleep(1.0)\n"
+    )
+    with pytest.raises(oc.AgentStalled):
+        oc._capture(["python3", "-c", script], dict(os.environ), timeout=120,
+                    cwd=str(tmp_path), stall_seconds=25)
+
+
+def test_a_busy_local_build_is_not_mistaken_for_a_wedge(oc, tmp_path):
+    """A compile holds no socket and prints nothing, but it burns a real core -- that is progress."""
+    script = (
+        "import time\n"
+        "end = time.time() + 30\n"
+        "x = 0\n"
+        "while time.time() < end:\n"       # saturate one core: no sockets, no output, genuinely working
+        "    x += 1\n"
+    )
+    rc, out, err = oc._capture(["python3", "-c", script], dict(os.environ), timeout=90,
+                               cwd=str(tmp_path), stall_seconds=20)
+    assert rc == 0, "a CPU-bound local build must not be killed as a stall"

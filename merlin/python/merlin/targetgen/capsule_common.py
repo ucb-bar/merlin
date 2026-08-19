@@ -28,6 +28,22 @@ def _flat(nested) -> list:
     return out
 
 
+def _stderr_excerpt(stderr: str, limit: int = 400) -> str:
+    """An excerpt of a failing tool's stderr that keeps BOTH ends.
+
+    ``stderr[-400:]`` is the obvious choice and it is wrong for the commonest case. A one-line parser
+    error prefixed by a long absolute path gets its head cut, so the reader is handed ``seError: /scratch/
+    .../input.interface.mlir`` -- the exception TYPE gone and the path kept, which is exactly backwards.
+    A Python traceback wants its tail; a compiler diagnostic wants its head. Keep both and mark the gap.
+    """
+    stderr = stderr or ""
+    if len(stderr) <= limit:
+        return stderr
+    head = limit // 2
+    tail = limit - head - 20
+    return f"{stderr[:head]}\n  [... {len(stderr) - head - tail} chars elided ...]\n{stderr[-tail:]}"
+
+
 def _cat(name: str):
     """Resolve a FailureCategory by name, tolerant to the enum's membership."""
     from aet.core.failures import FailureCategory
@@ -118,19 +134,35 @@ def run_entrypoints(pkg, package_dir: str | Path, capsule: dict, paths, *,
 
     p = run_entrypoint(pkg, "parse", inp, timeout=timeout)
     if p.returncode != 0:
-        raise CertFailure("parse", _cat("TOOL_CRASH"), f"parse rc={p.returncode}: {p.stderr[-400:]}")
+        raise CertFailure("parse", _cat("TOOL_CRASH"), f"parse rc={p.returncode}: {_stderr_excerpt(p.stderr)}")
 
     p = run_entrypoint(pkg, "lower_interface_to_target", inp, timeout=timeout)
     if p.returncode != 0 or not p.stdout.strip():
         raise CertFailure("interface_to_target", _cat("ELABORATION_ERROR"),
-                          f"lower_interface_to_target rc={p.returncode}: {p.stderr[-400:]}")
+                          f"lower_interface_to_target rc={p.returncode}: {_stderr_excerpt(p.stderr)}")
     (paths.generated / "lowered.target.mlir").write_text(p.stdout, encoding="utf-8")
 
     cb_path = paths.generated / "command_buffer.json"
     p = run_entrypoint(pkg, "emit_command_buffer", inp, cb_path, timeout=timeout)
-    if p.returncode != 0 or not cb_path.exists():
+    if p.returncode != 0:
         raise CertFailure("target_to_command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
-                          f"emit_command_buffer rc={p.returncode}: {p.stderr[-400:]}")
+                          f"emit_command_buffer rc={p.returncode}: {_stderr_excerpt(p.stderr)}")
+    if not cb_path.exists():
+        # Exit 0 and no output file. Reporting this as "rc=0: <empty stderr>" tells the agent
+        # nothing -- worse, rc=0 reads as success, so the message contradicts itself. One package
+        # spent twelve rounds and 215 self-checks against exactly that blank string. The cause is
+        # nearly always the manifest argv template: it omits {output_json}, so the tool prints the
+        # buffer to stdout and the path the runner reads is never written. Say so, and name it.
+        _argv = " ".join(pkg.manifest.get("commands", {})
+                         .get("emit_command_buffer", {}).get("argv", []) or ["<undeclared>"])
+        _hint = ("your manifest argv for emit_command_buffer does not reference {output_json}, so "
+                 "nothing is written to the path the runner reads"
+                 if "{output_json}" not in _argv else
+                 "the argv does reference {output_json}, so the tool exited before writing it")
+        raise CertFailure("target_to_command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
+                          f"emit_command_buffer exited 0 but wrote no file at the output path it "
+                          f"was given ({cb_path.name}). Declared argv: {_argv} -- {_hint}. The "
+                          f"runner reads the FILE, never stdout. stderr: {_stderr_excerpt(p.stderr, 200)!r}")
     try:
         cb = json.loads(cb_path.read_text(encoding="utf-8"))
         schemas.validate_command_buffer(cb, contract=contract)
@@ -143,6 +175,6 @@ def run_entrypoints(pkg, package_dir: str | Path, capsule: dict, paths, *,
     p = run_entrypoint(pkg, "emit_target_artifact", inp, timeout=timeout)
     if p.returncode != 0 or not p.stdout.strip():
         raise CertFailure("emit_target_artifact", _cat("ELABORATION_ERROR"),
-                          f"emit_target_artifact rc={p.returncode}: {p.stderr[-400:]}")
+                          f"emit_target_artifact rc={p.returncode}: {_stderr_excerpt(p.stderr)}")
     (paths.generated / fourth_output_name).write_text(p.stdout, encoding="utf-8")
     return pkg, cb, p.stdout

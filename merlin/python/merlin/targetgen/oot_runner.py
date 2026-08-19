@@ -152,7 +152,20 @@ def load_package(package_dir: str | Path, *, contract: str | Path | None = None)
     if not man_path.is_file():
         raise CertFailure("contract", FailureCategory.STRUCTURAL_INVARIANT_VIOLATION,
                           f"no manifest.yaml in package {d}")
-    manifest = yaml.safe_load(man_path.read_text(encoding="utf-8"))
+    # The manifest is AGENT-AUTHORED, so a syntax error in it is an ordinary grading outcome, not an
+    # internal error. Unguarded, `yaml.safe_load` raised straight through `capsule_grade.grade` and
+    # killed the whole run: one agent wrote `author:(opencode agent)` (no space after the colon) and a
+    # 12-round campaign arm died on round 1 with a ScannerError traceback the agent never saw. The
+    # schema check below was already wrapped; the PARSE has to be too, or a malformed file is a lost
+    # run instead of feedback the agent can act on.
+    try:
+        manifest = yaml.safe_load(man_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise CertFailure("contract", FailureCategory.STRUCTURAL_INVARIANT_VIOLATION,
+                          f"manifest.yaml is not valid YAML: {e}") from e
+    if not isinstance(manifest, dict):
+        raise CertFailure("contract", FailureCategory.STRUCTURAL_INVARIANT_VIOLATION,
+                          f"manifest.yaml must be a mapping, got {type(manifest).__name__}")
     try:
         schemas.validate_manifest(manifest, contract=contract)
     except schemas.ContractViolation as e:

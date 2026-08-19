@@ -79,6 +79,8 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
            "--model", a.model, "--effort", a.effort,
            "--max-rounds", str(a.max_rounds), "--max-rate-limit-waits", str(a.max_rate_limit_waits),
            "--round-timeout", str(a.round_timeout)]
+    if getattr(a, "min_rounds", 0):
+        cmd += ["--min-rounds", str(a.min_rounds)]
     cmd += extra
     # Agent driver + optional tier-within-agent models (default "" -> the per-driver default tier).
     if getattr(a, "driver", "auto") != "auto":
@@ -180,6 +182,9 @@ def main(argv=None):
     ap.add_argument("--aws-region", default="us-east-1", help="AWS region for --provider bedrock")
     ap.add_argument("--aws-profile", default="", help="AWS profile (~/.aws) for --provider bedrock")
     ap.add_argument("--max-rounds", type=int, default=12)
+    ap.add_argument("--min-rounds", type=int, default=0,
+                    help="Decline a READY_FOR_BARRIER self-declaration before round N while the run is "
+                         "still failing (0 = disabled). Passed through to the arm driver.")
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
     ap.add_argument("--round-timeout", type=int, default=14400, help="per-round agent wall cap (s); large = effectively no timeout")
     ap.add_argument("--max-spend-usd", type=float, default=0.0,

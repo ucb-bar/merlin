@@ -133,6 +133,51 @@ _POLL_SECONDS = 10
 _CPU_EPSILON_S = 1.0
 _CLK_TCK = os.sysconf("SC_CLK_TCK")
 
+# A WEDGED process defeats both signals above. MEASURED (GLM-5 relaunch, 2026-08-19): 99 tool calls, then
+# 95 minutes with no new session part, two tool calls left forever in `running`, and **zero open sockets**
+# -- while still burning 0.49 s of CPU per minute across 42 idle threads. That trickle clears
+# _CPU_EPSILON_S at every poll, so the detector re-armed forever and the round burned its whole budget.
+#
+# Zero sockets is the fact that separates it: an agent between provider calls is either holding a
+# connection or doing local work, and local work is not free. So a tree with NO sockets counts as making
+# progress only if it is genuinely busy -- above a fraction of one core. 0.008 cores (the wedge) is not;
+# a compile or a simulator run is far above.
+_BUSY_CPU_FRACTION = float(os.environ.get("MERLIN_OPENCODE_BUSY_CPU", "0.10"))
+
+
+def _tree_socket_count(pgid: int) -> int:
+    """Open socket file descriptors across every live process in `pgid`.
+
+    Read structurally from /proc/<pid>/fd: a socket fd's link target is ``socket:[<inode>]``. Counting
+    fds (not parsing /proc/net/tcp) keeps this free of a second format to track, and the only thing the
+    caller needs is whether the tree is talking to anything at all. A process that exits mid-scan simply
+    contributes nothing.
+    """
+    total = 0
+    try:
+        pids = [d for d in os.listdir("/proc") if d.isdigit()]
+    except OSError:
+        return 0
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/stat") as fh:
+                rest = fh.read().rpartition(")")[2].split()
+            if int(rest[2]) != pgid:
+                continue
+        except (OSError, ValueError, IndexError):
+            continue
+        try:
+            fd_dir = f"/proc/{pid}/fd"
+            for fd in os.listdir(fd_dir):
+                try:
+                    if os.readlink(f"{fd_dir}/{fd}").startswith("socket:"):
+                        total += 1
+                except OSError:
+                    continue
+        except OSError:
+            continue
+    return total
+
 
 def _tree_cpu_seconds(pgid: int) -> float:
     """Total CPU (user+sys) burned by every live process in `pgid`, in seconds.
@@ -205,6 +250,7 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
             deadline = time.monotonic() + timeout
             pgid = os.getpgid(p.pid)
             last_size, last_change = -1, time.monotonic()
+            last_poll = time.monotonic()
             last_cpu = _tree_cpu_seconds(pgid)
             def _with_partial(exc):
                 """Attach whatever the run produced before it was killed.
@@ -241,7 +287,16 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
                     size = last_size
                 cpu = _tree_cpu_seconds(pgid)
                 now = time.monotonic()
-                if size != last_size or cpu - last_cpu >= _CPU_EPSILON_S:
+                # Third signal: a tree with no open sockets is only "working" if it is actually busy.
+                # See _tree_socket_count -- a wedged agent trickles just enough CPU to defeat the epsilon
+                # forever while talking to nobody and producing nothing.
+                elapsed = max(now - last_poll, 1e-6)
+                cpu_rate = (cpu - last_cpu) / elapsed
+                busy = cpu - last_cpu >= _CPU_EPSILON_S
+                if busy and _tree_socket_count(pgid) == 0 and cpu_rate < _BUSY_CPU_FRACTION:
+                    busy = False              # alive, connected to nothing, and not doing local work
+                last_poll = now
+                if size != last_size or busy:
                     last_size, last_cpu, last_change = size, max(cpu, last_cpu), now
                 elif stall_seconds and (now - last_change) >= stall_seconds:
                     _reap(p)
@@ -350,8 +405,8 @@ def _parse_run_stream(stdout: str, mid: str, rnd: int, emit) -> int:
     return n_tools
 
 
-def opencode_runtime_binds(data_home: Path) -> list[str]:
-    """bwrap args giving opencode a WRITABLE, ISOLATED data home inside the sandbox.
+def opencode_runtime_binds(data_home: Path, config_path: Path | None = None) -> list[str]:
+    """bwrap args giving opencode a WRITABLE, ISOLATED data home + a READABLE config inside the sandbox.
 
     The launcher resolves through the already-bound ``~/.nvm``, but opencode keeps its state under
     ``~/.local/share/opencode``, which nothing binds -- so inside the box it starts with no data dir.
@@ -361,10 +416,27 @@ def opencode_runtime_binds(data_home: Path) -> list[str]:
     So the run gets its own directory and ``XDG_DATA_HOME`` points at it (verified: opencode honours the
     variable and creates ``<home>/opencode`` there). These binds are passed to ``bwrap_cmd`` as
     ``extra_binds``, which are applied BEFORE the answer-mask pass, so masking still wins.
+
+    ``config_path`` MUST be bound too. It is written with ``tempfile`` -- i.e. under ``$TMPDIR`` or
+    ``/tmp`` -- and bwrap tmpfs-hides BOTH ``/tmp`` and ``/scratch*``, so inside the box the file simply
+    does not exist. opencode then prints
+
+        ! agent "merlinbench" not found. Falling back to default agent
+
+    to stderr, which this driver does not persist, and runs with its OWN defaults. VERIFIED against every
+    opencode run in this repo's history: the session logs record ``agent=build`` (plus ``title`` /
+    ``explore`` / ``general``) and never once ``agent=merlinbench``. So no sandboxed opencode run has ever
+    received our system prompt, our per-model ``limit.output``, our compaction settings, or our tool
+    denials -- and the default agent set is where the ``task`` subagent comes from. Binding the config
+    read-only is what makes any of those settings real.
     """
     data_home.mkdir(parents=True, exist_ok=True)
-    return ["--bind", str(data_home), str(data_home),
-            "--setenv", "XDG_DATA_HOME", str(data_home)]
+    binds = ["--bind", str(data_home), str(data_home),
+             "--setenv", "XDG_DATA_HOME", str(data_home)]
+    if config_path is not None:
+        binds += ["--ro-bind", str(config_path), str(config_path),
+                  "--setenv", "OPENCODE_CONFIG", str(config_path)]
+    return binds
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -477,9 +549,21 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     if _models_override:
         cfg["provider"] = _models_override
     if not sub:
-        # `task` delegates to a subagent. With no delegate configured it is a tool with nothing behind
-        # it: the GLM relaunch wedged with a `task` call left in `running` forever, zero open sockets and
-        # no further session parts. Offer a tool only when it is wired.
+        # `task` delegates to a subagent. With no delegate configured it is a tool with nothing behind it,
+        # and calling it WEDGES the round: measured twice, on two different models (GLM-5 and Opus), as a
+        # `task` part left in `running` forever with zero open sockets and no further session parts.
+        #
+        # It has to be disabled in BOTH places. opencode 1.18 marks the per-agent `tools` map
+        # "@deprecated Use 'permission' field instead" and ignores it -- a run whose config carried
+        # `agent.merlinbench.tools = {"task": false}` still called `task` and still wedged. The
+        # TOP-LEVEL `tools` map is the live one; the per-agent entry stays for older opencode builds.
+        # `permission` is the mechanism opencode 1.18 actually honours. Both `tools` maps are set too,
+        # but neither works on its own: a run whose config carried the top-level AND per-agent
+        # tools={"task": false} still called `task` and still wedged, because the per-agent map is
+        # "@deprecated Use 'permission' field instead" and the top-level one did not take either.
+        cfg["permission"]["task"] = "deny"
+        cfg["agent"][agent_name]["permission"] = {"task": "deny"}
+        cfg["tools"] = {"task": False}
         cfg["agent"][agent_name]["tools"] = {"task": False}
     # (resolved above, before the init record, so that record can state it)
     # A delegate is attached ONLY when the caller asks for one. It used to default to the non-Anthropic
@@ -519,7 +603,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         env["XDG_DATA_HOME"] = str(data_home)     # also for the outer process, so both agree
         inner = " ".join(shlex.quote(c) for c in run_cmd)
         cmd = ["bash", "-c", _R.bwrap_cmd(inner, ws, bundle,
-                                          extra_binds=opencode_runtime_binds(data_home))]
+                                          extra_binds=opencode_runtime_binds(data_home,
+                                                                             Path(cfgf.name)))]
     else:
         cmd = run_cmd
 

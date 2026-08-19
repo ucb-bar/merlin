@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import sys
 
+import pytest
+
 from merlin.common.paths import merlin_dir
 
 _H = merlin_dir() / "experiments" / "capsule_bench" / "harness"
@@ -109,3 +111,33 @@ def test_actionable_hint_is_not_truncated():
             "each op's operands against your intent.")
     out = qa._redact_detail(hint)
     assert "Decode your OWN emitted artifact" in out
+
+
+# ---------------------------------------------------------------- agent-authored manifest
+
+def test_a_malformed_manifest_is_graded_not_crashed(tmp_path):
+    """A syntax error in the AGENT's manifest is an ordinary verdict, not an internal error.
+
+    MEASURED: an agent wrote ``author:(opencode agent)`` -- no space after the colon -- and the
+    unguarded ``yaml.safe_load`` in load_package raised straight through capsule_grade.grade, killing a
+    12-round campaign arm on round 1 with a traceback the agent never saw. The schema check below it was
+    already wrapped; the parse was not, so a malformed file cost a whole run instead of producing
+    feedback the agent could act on.
+    """
+    from merlin.targetgen.oot_runner import CertFailure, load_package
+
+    (tmp_path / "manifest.yaml").write_text(
+        "entrypoints:\n  tool: t.py\nauthor:(opencode agent)\ngenerated_by_agent: true\n")
+    with pytest.raises(CertFailure) as ei:
+        load_package(tmp_path)
+    assert "not valid YAML" in str(ei.value)
+
+
+def test_a_non_mapping_manifest_is_graded_not_crashed(tmp_path):
+    """A manifest that parses but is not a mapping must also fail closed, not AttributeError later."""
+    from merlin.targetgen.oot_runner import CertFailure, load_package
+
+    (tmp_path / "manifest.yaml").write_text("just a string\n")
+    with pytest.raises(CertFailure) as ei:
+        load_package(tmp_path)
+    assert "must be a mapping" in str(ei.value)
