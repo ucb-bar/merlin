@@ -334,11 +334,25 @@ def _needs_interpreter(pkg: Package, argv: list[str]) -> bool:
 
 def run_entrypoint(pkg: Package, name: str, input_mlir: Path,
                    output_json: Path | None = None, *, timeout: int = 600) -> subprocess.CompletedProcess:
-    """Invoke one entrypoint as a subprocess (never imports the package)."""
+    """Invoke one entrypoint as a subprocess (never imports the package).
+
+    Runs FROM THE PACKAGE ROOT, like the build steps and like :func:`_resolve_argv` already documents
+    ("Steps run with cwd=pkg.directory"). This used to inherit the CALLER's cwd, which made an
+    entrypoint's exit status depend on who invoked it: the self-check runs from the workspace root
+    (where a ``submission/``-prefixed path happens to resolve) while the grader runs from elsewhere
+    (where it does not). The same submission then self-reported passes and graded 0 — the agent spent
+    a round optimising against a signal that could not predict its own grade. An explicit cwd makes a
+    misrooted path fail identically in both, so the feedback is truthful and early.
+
+    Paths are absolutised first, so pinning the cwd cannot break a caller that passed them relative.
+    """
+    input_mlir = Path(input_mlir).resolve()
+    output_json = Path(output_json).resolve() if output_json is not None else None
     argv = _resolve_argv(pkg, name, input_mlir, output_json)
     if _needs_interpreter(pkg, argv):
         argv = [sys.executable, *argv]
-    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(argv, cwd=str(pkg.directory), capture_output=True, text=True,
+                          timeout=timeout)
 
 
 # --------------------------------------------------------------------------- certification
