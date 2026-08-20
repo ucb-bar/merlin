@@ -166,6 +166,14 @@ def main(argv=None):
     # barrier = the deepest resolved RTL tier: chipyard maps from --sim; any other target uses its
     # single contract-derived tier (atlas -> L3 program oracle), so read it from the adapters.
     barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" else max(adapters) if adapters else "L3"
+    # REPORT the engine that actually ran, not the --sim flag. --sim selects a tier only for a chipyard
+    # target's spike/verilator/vcs ladder; every other target is contract-routed (oracle_adapters), so the
+    # flag is inert and echoing it told the agent it was iterating on "spike" while a SIMT core's cyclotron
+    # + RTL tiers did the work. A wrong engine name invites reasoning about the wrong machine (RoCC/RISC-V
+    # semantics for a SIMT GPU), and SIM_TIER maps spike->L2 while the note printed the resolved L3 --
+    # internally inconsistent on top of being wrong. Label only; tier SELECTION is unchanged.
+    if _sim_via != "chipyard":
+        sim = f"{_sim_via or 'contract-routed'} [{','.join(sorted(adapters))}]"
     # subset selection (operator-side capsule dirs)
     want = None if a.capsules == "all" else set(s.strip() for s in a.capsules.split(",") if s.strip())
     import tempfile
