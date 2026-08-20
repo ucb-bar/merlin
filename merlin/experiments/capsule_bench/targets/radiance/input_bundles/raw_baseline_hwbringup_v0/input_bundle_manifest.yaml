@@ -35,8 +35,6 @@ allowed:
 denied:
 - path: merlin/
   reason: Merlin internals (no tools for the raw arm)
-- path: merlin/contract/capsules/radiance/hidden/
-  reason: hidden capsules + goldens
 - path: experiments/capsule_bench/targets/radiance/input_bundles/grader_private_v0/
   reason: grader-private
 - path: experiments/capsule_bench/targets/radiance/runs/

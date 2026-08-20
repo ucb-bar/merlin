@@ -71,7 +71,7 @@ allowed:
 denied:
 - path: merlin/python/merlin/targetgen/rtl/
   reason: CIRCT RTL generators (CIRCT arm only)
-- path: merlin/targets/radiance/contracts/rtl_facts/
+- path: merlin/targets/muon/contracts/rtl_facts/
   reason: RTL facts (CIRCT arm only)
 - path: merlin/python/merlin/runtime/reference.py
   reason: oracle-callable route
@@ -81,8 +81,6 @@ denied:
   reason: oracle-callable route
 - path: merlin/python/merlin/xdsl_dialects/lowering/
   reason: oracle-callable route
-- path: merlin/contract/capsules/radiance/hidden/
-  reason: hidden capsules + goldens
 - path: experiments/capsule_bench/targets/radiance/input_bundles/grader_private_v0/
   reason: grader-private
 - path: experiments/capsule_bench/targets/radiance/runs/

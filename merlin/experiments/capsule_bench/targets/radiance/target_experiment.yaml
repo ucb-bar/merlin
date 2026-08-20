@@ -23,6 +23,13 @@
 # tight). Status: prototype, not RTL-certified (requires_human_review).
 target: radiance
 
+# This experiment target is served by the MUON core package (the SIMT core inside RadianceMuonConfig),
+# so its contracts/ — and therefore the rtl_facts / irdl bundle pins the CIRCT arm is granted — live
+# under merlin/targets/muon, NOT merlin/targets/radiance (which does not exist). Declared because it
+# cannot be inferred from the target name: inferring it produced a bundle that claimed to grant the
+# CIRCT arm its RTL-extracted facts while pointing at a path that can never exist.
+backend_package_dir: merlin/targets/muon
+
 rtl:
   via: mlc            # facts via muon_introspect (RadianceMuonConfig RTL); arc-matmul discovery is N/A (SIMT)
 
