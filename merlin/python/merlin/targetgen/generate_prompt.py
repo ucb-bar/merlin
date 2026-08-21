@@ -57,51 +57,147 @@ def _is_simt_mlir(manifest) -> bool:
     return str(fourth or "").endswith(".mlir")
 
 
+def _kernel_abi(target: str) -> dict:
+    """The target's declared ``kernel_abi`` block (symbol / signature / arg_order), or ``{}`` — the source
+    of truth for the emitted kernel's entry symbol and argument model. No target literal."""
+    try:
+        from .target_registry import load_contract
+        return dict(load_contract(target).get("kernel_abi") or {})
+    except Exception:  # noqa: BLE001 — no contract / no declared ABI
+        return {}
+
+
+def _kernel_symbol(target: str) -> str:
+    """The emitted kernel entry symbol: a target's declared ``kernel_abi.symbol`` (e.g. merlin_kernel_body)
+    wins over the generic ``{target}_kernel`` default."""
+    return _kernel_abi(target).get("symbol") or f"{target}_kernel"
+
+
+def _kernel_takes_args_struct(target: str) -> bool:
+    """True when the kernel receives ONE args-struct pointer (operands at ``arg->args[i]``) rather than one
+    ``!llvm.ptr`` per operand — DERIVED from the declared ``kernel_abi`` (never a target literal)."""
+    abi = _kernel_abi(target)
+    return ("arg->args" in str(abi.get("arg_order") or "")
+            or ("_arg_t" in str(abi.get("signature") or "") and "*" in str(abi.get("signature") or "")))
+
+
 def _simt_mlir_emit_framing() -> str:
     """The 4th-artifact one-liner for a SIMT core graded on the MLIR thesis path: an LLVM-dialect MLIR module
     (a compiler LOWERING the agent's xDSL passes build), compiled fork-free — NOT C/C++ source, NOT a
     ``.word``/``.insn`` self-hosted stream."""
     return ("an LLVM-dialect MLIR module (`builtin.module` with `llvm.func @<kernel>`) — a COMPILER LOWERING "
-            "your xDSL passes produce — which the runner compiles FORK-FREE (stock LLVM rv32 + the target's "
-            "RTL-derived Muon re-encode, no vendor fork) and runs on the cosim; NOT C/C++ source, NOT "
-            "`.word`/`.insn` assembler, NOT a self-hosted kernel")
+            "your xDSL passes produce — which the runner compiles FORK-FREE (mlir-translate → STOCK clang, no "
+            "vendor/forked toolchain) and runs on the cosim; NOT C/C++ source, NOT `.word`/`.insn` assembler, "
+            "NOT a self-hosted kernel")
 
 
-def _simt_mlir_grounding(target: str) -> str:
+def _simt_mlir_grounding(te, manifest=None) -> str:
     """The LLVM-dialect MLIR kernel contract for a SIMT core on the fork-free thesis path (replaces the .word
-    self-hosted grounding). The agent emits ONLY the kernel FUNCTION as verified LLVM-dialect IR: the runner
-    OWNS the harness (embeds the cb operands, calls the kernel, prints OUT/DONE) and the SIMT runtime OWNS the
-    warps/barriers, so the kernel is plain scalar compute over pointer operands. Mirrors the gemmini
-    LLVM-dialect contract (the SAME shared ``llvmlower``→stock-LLVM front), minus the RoCC ``.insn`` — the
-    reference emitter (:func:`merlin.runtime.backends.muon_codegen_mlir.emit_kernel_mlir`) emits this shape."""
-    sym = f"{target}_kernel"
+    self-hosted grounding). DERIVED from the target's contract — NO target literal: the kernel SYMBOL + ARG
+    MODEL from ``kernel_abi``, and whether the COMPILER owns the SIMT execution from ``compiler_obligations``.
+    Two shapes, because SIMT cores split on who maps the work onto the machine:
+
+      * BSP-managed (no reconvergence/cta-grid obligation, no declared kernel_abi — e.g. radiance): the runner
+        owns the harness and the runtime spawns warps around a PLAIN SCALAR kernel over one pointer PER
+        operand; the agent writes no thread-id logic.
+      * COMPILER-managed (``must_insert_reconvergence`` / ``must_map_to_cta_grid``, e.g. vortex): the emitted
+        kernel READS its coordinate from the identity CSRs, MAPS its slice of the iteration space onto the
+        machine, and brackets divergent control in the ISA's split/join — the SIMT mapping IS the compiler
+        work under test. Its ABI is the DECLARED ``kernel_abi`` (e.g. one args-struct pointer, operands at
+        ``arg->args[i]``)."""
+    target = te if isinstance(te, str) else getattr(te, "target", "")
+    from .target_registry import load_contract
+    try:
+        contract = load_contract(target)
+    except Exception:  # noqa: BLE001 — no contract -> the default BSP/pointer-arg shape
+        contract = {}
+    kabi = contract.get("kernel_abi") or {}
+    obligations = [str(o) for o in (contract.get("compiler_obligations") or [])]
+    sym = kabi.get("symbol") or f"{target}_kernel"
+    arg_order = str(kabi.get("arg_order") or "")
+    signature = str(kabi.get("signature") or "")
+    args_struct = ("arg->args" in arg_order) or ("_arg_t" in signature and "*" in signature)
+    agent_simt = any(o in obligations for o in ("must_insert_reconvergence", "must_map_to_cta_grid"))
+
+    if not agent_simt and not args_struct:
+        # --- BSP-managed, pointer-per-operand (radiance): runtime spawns warps around a plain scalar kernel ---
+        skeleton = (
+            "module {\n"
+            f"  llvm.func @{sym}(%W: !llvm.ptr, %L: !llvm.ptr, %O: !llvm.ptr) {{\n"
+            "    // O = L @ W  (row-major; M, K, N come from the interface). Emit the loads\n"
+            "    // (llvm.getelementptr + llvm.load), the multiply-accumulate (llvm.fmul / llvm.fadd), and the\n"
+            "    // stores (llvm.store) — or lower scf/arith loops to this. Your xDSL passes BUILD this IR.\n"
+            "    llvm.return\n"
+            "  }\n"
+            "}\n")
+        return (
+            f"**Your 4th artifact is an LLVM-dialect MLIR module (`submission/lowered.llvm.mlir`) defining "
+            f"`llvm.func @{sym}` — a COMPILER LOWERING, not a hand kernel.** The runner compiles it FORK-FREE via "
+            "the SHARED `llvmlower` front (MLIR → LLVM IR → STOCK clang rv32 object), then re-encodes it to the "
+            "target's own ISA and runs it on the cosim. Contract:\n"
+            f"1. Emit ONE `builtin.module` containing `llvm.func @{sym}(...)`. Every argument is `!llvm.ptr`, in "
+            "the ABI order **[weight] ++ [lhs in command order] ++ [outputs in command order]** (the generic "
+            "kernel_abi); pointees are row-major f32.\n"
+            "2. The function COMPUTES the op (loads → multiply-accumulate → stores into the output pointers) and "
+            "`llvm.return`s. It is plain scalar compute over the pointer operands — the SIMT warps / barriers / "
+            "scheduling are the RUNTIME's (the fork-free BSP spawns warps around your kernel), so you do NOT write "
+            "`mu_schedule`, barriers, or thread-id logic.\n"
+            "3. Emit NO prints, NO `.insn`/`.word`, NO DRAM base map, NO halt — the runner owns the harness (it "
+            "embeds the operands, calls your kernel, and prints the `OUT`/`DONE` protocol) and the BSP owns "
+            "boot/halt. A kernel that writes its output pointers and returns is complete.\n"
+            "4. BUILD the module with your xDSL pass pipeline (typed IR, `verify()`-checked) — NEVER by string "
+            "assembly and NEVER with regex; this is checked on your submission.\n"
+            "\nThe module skeleton (structure is mandatory; the reference backend emits this shape):\n"
+            "```mlir\n" + skeleton + "```\n\n")
+
+    # --- COMPILER-managed SIMT with a declared kernel_abi (vortex): the compiler maps the work + reconverges ---
+    if args_struct:
+        arg_line = (f"one args-struct pointer `%arg: !llvm.ptr`. The device address of the i-th operand is "
+                    f"`arg->args[i]` (the granted ABI header gives the exact struct layout); operands are in "
+                    f"`merlin.arg_table` order (**{arg_order}**). Read each address, then use ordinary loads/"
+                    "stores at it.")
+        sig_note = f"the declared kernel ABI is `{signature}`" if signature else ""
+    else:
+        arg_line = ("one `!llvm.ptr` per operand, in `merlin.arg_table` order (weights, then inputs, then "
+                    "outputs).")
+        sig_note = ""
     skeleton = (
-        "module {\n"
-        f"  llvm.func @{sym}(%W: !llvm.ptr, %L: !llvm.ptr, %O: !llvm.ptr) {{\n"
-        "    // O = L @ W  (row-major; M, K, N come from the interface). Emit the loads\n"
-        "    // (llvm.getelementptr + llvm.load), the multiply-accumulate (llvm.fmul / llvm.fadd), and the\n"
-        "    // stores (llvm.store) — or lower scf/arith loops to this. Your xDSL passes BUILD this IR.\n"
+        "module attributes {\n"
+        "    // declare BOTH: the operand order the harness binds to, and the block count your mapping assumes\n"
+        "    merlin.arg_table = ...,  merlin.grid = 64 : i64\n"
+        "} {\n"
+        f"  llvm.func @{sym}(%arg: !llvm.ptr) {{\n"
+        "    // 1) read THIS coordinate's identity from the CTA CSRs (thread_id/block_id/... — see the spec's\n"
+        "    //    CSR map), via `csrr` in llvm.inline_asm; 2) load each operand's device address from\n"
+        "    //    arg->args[i]; 3) map THIS coordinate's slice of the iteration space and compute; 4) bracket\n"
+        "    //    any per-thread-divergent control in split/join (see the reconvergence contract). Then:\n"
         "    llvm.return\n"
         "  }\n"
         "}\n")
     return (
         f"**Your 4th artifact is an LLVM-dialect MLIR module (`submission/lowered.llvm.mlir`) defining "
         f"`llvm.func @{sym}` — a COMPILER LOWERING, not a hand kernel.** The runner compiles it FORK-FREE via "
-        "the SHARED `llvmlower` front (MLIR → LLVM IR → STOCK clang rv32 object), then re-encodes it to the "
-        "target's own ISA and runs it on the cosim. Contract:\n"
-        f"1. Emit ONE `builtin.module` containing `llvm.func @{sym}(...)`. Every argument is `!llvm.ptr`, in "
-        "the ABI order **[weight] ++ [lhs in command order] ++ [outputs in command order]** (the generic "
-        "kernel_abi); pointees are row-major f32.\n"
-        "2. The function COMPUTES the op (loads → multiply-accumulate → stores into the output pointers) and "
-        "`llvm.return`s. It is plain scalar compute over the pointer operands — the SIMT warps / barriers / "
-        "scheduling are the RUNTIME's (the fork-free BSP spawns warps around your kernel), so you do NOT write "
-        "`mu_schedule`, barriers, or thread-id logic.\n"
-        "3. Emit NO prints, NO `.insn`/`.word`, NO DRAM base map, NO halt — the runner owns the harness (it "
-        "embeds the operands, calls your kernel, and prints the `OUT`/`DONE` protocol) and the BSP owns "
-        "boot/halt. A kernel that writes its output pointers and returns is complete.\n"
-        "4. BUILD the module with your xDSL pass pipeline (typed IR, `verify()`-checked) — NEVER by string "
-        "assembly and NEVER with regex; this is checked on your submission.\n"
-        "\nThe module skeleton (structure is mandatory; the reference backend emits this shape):\n"
+        "the SHARED `llvmlower` front (MLIR → LLVM IR → STOCK clang object) and runs it on the cosim. Unlike a "
+        "BSP-managed SIMT core, **your compiler OWNS the SIMT execution** — that mapping is the work under "
+        f"test (`compiler_obligations`: {', '.join(obligations) or '—'}). Contract:\n"
+        f"1. Emit ONE `builtin.module` containing `llvm.func @{sym}(...)`" + (f" — {sig_note}" if sig_note else "")
+        + f". Its argument is {arg_line}\n"
+        "2. The kernel runs ONCE PER (block, thread) coordinate the hardware launches. READ this coordinate's "
+        "identity from the identity CSRs (a `csrr` inline-asm — the spec's CSR map gives the numbers); identity "
+        "is NOT passed in. MAP this coordinate's slice of the iteration space onto the frozen machine geometry "
+        "and compute it — do NOT assume one coordinate per output element.\n"
+        "3. Divergence is NOT automatic: a branch whose predicate differs across threads in a warp is silently "
+        "WRONG unless bracketed by the ISA's split/join (see the reconvergence contract in the ISA spec). "
+        "Uniform control flow and fully-predicated branch-free code need neither.\n"
+        "4. Emit NO prints and NO halt instruction — the kernel is a CALLEE that `llvm.return`s (the harness "
+        "calls it per coordinate and owns boot/print/teardown). Respect the memory model for host-visible "
+        "stores (see the spec's memory section). Also declare the `merlin.arg_table` (operand order) and "
+        "`merlin.grid = <N> : i64` (block count) module attributes — a module with no `merlin.grid` is "
+        "rejected.\n"
+        "5. Derive EVERY custom instruction + CSR encoding from the shipped ISA definition + spec sheet (do NOT "
+        "invent one — verify with `isa_tools`). BUILD the module with your xDSL pass pipeline (typed IR, "
+        "`verify()`-checked) — NEVER by string assembly and NEVER with regex; this is checked on your submission.\n"
+        "\nThe module skeleton (structure is mandatory):\n"
         "```mlir\n" + skeleton + "```\n\n")
 
 
@@ -125,11 +221,26 @@ def _isa_spec_block(te) -> str:
     for h in headers:
         lines.append(f"- `{h}`")
     if hw:
-        lines += [f"- `{hw}/` (also mounted as `{te.target}/`) — RTL + ISA headers + README + a WORKED",
-                  "  example kernel under `example_kernel/`. Translate the example's real instructions into",
-                  "  your emitted encoding using the exact field layout the ISA definition specifies; the",
-                  "  legal-opcode values in the ISA facts below are DECODE GATES, not the instruction",
-                  "  semantics — take semantics + field packing from these files, never from the value list."]
+        # Describe ONLY what the bundle actually ships — a hardcoded "RTL + README + example kernel" list
+        # misdirects the agent to hunt for files that aren't there. Probe the hwbringup dir.
+        from merlin.common.paths import merlin_dir
+        hwdir = merlin_dir() / str(hw)
+        parts = []
+        if (hwdir / "isa_include").is_dir():
+            parts.append("the machine-readable ISA taxonomy under `isa_include/` (what `isa_tools` reads)")
+        example = sorted((hwdir / "example_kernel").glob("*.S")) if (hwdir / "example_kernel").is_dir() else []
+        if example:
+            parts.append("a WORKED example kernel under `example_kernel/`")
+        if next((p for p in (hwdir / "README.md", hwdir / "README") if p.is_file()), None):
+            parts.append("a README")
+        detail = "; ".join(parts) if parts else "the shared hardware-spec sheet"
+        lines.append(f"- `{hw}/` (also mounted as `{te.target}/`) — {detail}.")
+        if example:
+            lines += ["  Translate the example's real instructions into your emitted encoding using the exact",
+                      "  field layout the ISA definition specifies."]
+        lines += ["  The legal-opcode values in the ISA facts below are DECODE GATES, not the instruction",
+                  "  semantics — take semantics + field packing from the shipped ISA definition / spec sheet,",
+                  "  never from the value list."]
     lines.append(_fixed_format_encoding_block(te))
     return "\n".join(l for l in lines if l) + "\n\n"
 
@@ -376,11 +487,11 @@ def prompt_slots(te, manifest) -> dict:
     return {
         "target": target,
         "tool_stem": f"{target}-opt",                 # not "gemmini-opt"
-        "kernel_symbol": f"{target}_kernel",          # not "gemmini_kernel"
+        "kernel_symbol": _kernel_symbol(target),      # declared kernel_abi.symbol > "{target}_kernel"
         # The 4th artifact defines a kernel SYMBOL only when it is a code module (.insn / upstream / an
         # external kernel); a command_buffer endpoint's artifact IS the command buffer (no module symbol).
         "emit_symbol_note": ("" if manifest.endpoint_kind == "command_buffer"
-                             else f"; the emitted module defines `{target}_kernel`"),
+                             else f"; the emitted module defines `{_kernel_symbol(target)}`"),
         "endpoint_kind": manifest.endpoint_kind,
         "endpoint_desc": ("emit an LLVM-dialect MLIR kernel lowering (compiled fork-free)" if _mlir
                           else _ENDPOINT_DESC.get(manifest.endpoint_kind, _ENDPOINT_DESC["inline_asm_insn"])),
@@ -398,7 +509,7 @@ def prompt_slots(te, manifest) -> dict:
         "hwbringup_set": te.hwbringup_set,
         # SIMT-MLIR target: ground the agent in the LLVM-dialect kernel contract (a compiler lowering compiled
         # fork-free), NOT the self-hosted-ISA .word spec. Otherwise: name the shipped real ISA files.
-        "isa_spec": _simt_mlir_grounding(target) if _mlir else _isa_spec_block(te),
+        "isa_spec": _simt_mlir_grounding(te, manifest) if _mlir else _isa_spec_block(te),
         # DRAM address contract (self-hosted-ISA external_backend only): declare every tensor + base so the
         # emitted .word kernel and the program oracle agree on operand/result addresses (the atlas 0/11
         # output-base bug). A SIMT-MLIR kernel takes pointer operands from the runner harness — no DRAM map.
@@ -673,10 +784,17 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str,
             # A SIMT-MLIR target emits an LLVM-dialect kernel LOWERING (compiled fork-free), not a self-hosted
             # word stream to assemble/lint. The mandate is that your xDSL passes BUILD the `llvm.func @<kernel>`
             # module (verified IR) that the shared llvmlower front compiles — the runner owns the harness.
+            _sym = _kernel_symbol(target)
+            if _kernel_takes_args_struct(target):
+                _how = ("one args-struct pointer — operands at `arg->args[i]` in `merlin.arg_table` order; read "
+                        "your coordinate from the CSRs and reconverge divergent control per the ISA spec")
+                _tail = "no prints, no `.insn`/`.word`"
+            else:
+                _how = "pointer operands in [weight]++[lhs]++[out] order"
+                _tail = "no prints, no `.insn`/`.word`, no `mu_schedule`"
             L.append(f"{n}. Emit `{art}` per the LLVM-dialect MLIR contract above: your xDSL pass pipeline BUILDS "
-                     f"the `builtin.module` with `llvm.func @{target}_kernel(...)` (pointer operands in "
-                     "[weight]++[lhs]++[out] order) that COMPUTES the op and `llvm.return`s — no prints, no "
-                     "`.insn`/`.word`, no `mu_schedule`. Verify the module parses/`verify()`s before self_check.")
+                     f"the `builtin.module` with `llvm.func @{_sym}(...)` ({_how}) that COMPUTES the op and "
+                     f"`llvm.return`s — {_tail}. Verify the module parses/`verify()`s before self_check.")
             n += 1
         else:
             L.append(f"{n}. Before every self_check, run `python isa_tools.py lint` and `disasm` on {art} and "
