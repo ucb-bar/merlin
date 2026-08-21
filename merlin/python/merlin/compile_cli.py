@@ -201,7 +201,7 @@ def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
 def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: str | None,
                 auto_capture: bool, timeout: int, harts: int = 1, iters: int = 1,
                 warmup: int = 0, kernel_backend: str | None = None,
-                mesh_target: str | None = None) -> dict:
+                mesh_target: str | None = None, mesh_package: str | None = None) -> dict:
     """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
 
     ``kernel_backend='mesh'`` + ``mesh_target`` runs the model's matmul LAYERS on that target's
@@ -253,12 +253,21 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         from .runtime.dispatch_runtime import run_model
 
         res = run_model(bundle, work, int8_compute=pkg.is_int8,
-                        kernel_backend=kernel_backend, mesh_target=mesh_target)
+                        kernel_backend=kernel_backend, mesh_target=mesh_target,
+                        mesh_package=mesh_package)
         if kernel_backend == "mesh":
-            from .runtime import dispatch_runtime as _dr
-            out["mesh_execution"] = {"target": mesh_target,
-                                     "matmul_layers_on_mesh": getattr(_dr.execute, "mesh_ran", None),
-                                     "matmul_layers_host_fallback": getattr(_dr.execute, "mesh_fell_back", None)}
+            # Read the counters off THIS run's result. They used to be function attributes on a
+            # module-global (`_dr.execute.mesh_ran`), which concurrent grades clobber -- and a model
+            # verdict now depends on them. `UNKNOWN` rather than None when absent: None reads as "zero
+            # layers ran", when what it means is "nobody could tell".
+            from .common.provenance import UNKNOWN as _UNKNOWN
+            out["mesh_execution"] = {
+                "target": mesh_target,
+                "matmul_layers_on_mesh": res.get("mesh_ran", _UNKNOWN),
+                "matmul_layers_host_fallback": res.get("mesh_fell_back", _UNKNOWN),
+                # coverage, NOT a gate: matmuls the classifier never routed (e.g. batched attention
+                # generics), so a row can say "15 of 19 layers on the mesh" instead of implying 19.
+                "matmul_layers_unrouted": res.get("mesh_unrouted_matmuls", _UNKNOWN)}
         out["status"] = "ran"
         out["n_kernels"] = res.get("n_kernels")
         if refs:
@@ -960,7 +969,7 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
     if run == "mesh":
         out = compile_rvv(workload, dtype, run="host", verify=verify, package=package,
                           auto_capture=auto_capture, timeout=timeout,
-                          kernel_backend="mesh", mesh_target=target)
+                          kernel_backend="mesh", mesh_target=target, mesh_package=mesh_package)
     else:
         out = compile_rvv(workload, dtype, run=run, verify=verify, package=package,
                           auto_capture=auto_capture, timeout=timeout)

@@ -34,6 +34,7 @@ import yaml
 
 from aet.core.run_paths import RunPaths
 
+from ..common.provenance import UNKNOWN as PROV_UNKNOWN
 from . import capsule_golden as CG
 from .rocc import decode as RD
 from . import trace_check as TCK
@@ -908,7 +909,9 @@ def _encoding_divergence_hint(trace_check_res: dict | None, oracle_graded: bool,
     return (concrete + hint) if concrete else hint
 
 
-def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int) -> dict:
+def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int,
+                         package_dir=None, required=(), paths=None, run_id: str = "",
+                         cfg=None, contract=None, eff_target: str = "") -> dict:
     """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
     (``compile_model``): route each op across the target's compute units (matmul/systolic -> the mesh, the
     rest -> the vector/scalar lane), compile the functional whole model (the scalar/RVV reference,
@@ -920,7 +923,10 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     from pathlib import Path as _P
     attrs = (capsule.get("operation") or {}).get("attributes") or {}
     model, dtype = attrs.get("model"), attrs.get("compile_dtype", "fp32")
-    run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN", "host")
+    # The target's OWN mesh is the oracle whenever we have a target. `host` runs merlin's x86 dispatch
+    # runtime, which is OUR compiler -- a useful diagnostic, never evidence about the submission, so a host
+    # run is recorded advisory and finalized as `not_gradeable_no_oracle` below (never `pass`).
+    run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or ("mesh" if target else "host")
     # MERLIN_MESH_VERIFY additionally EXECUTES each mesh-routed matmul as a single systolic tile on the
     # target's real mesh oracle (compile_model mesh_verify) — proving the matmul layers run ON the mesh, not
     # just that a routing plan was produced. Off by default (the oracle build/run is heavy); the whole-model
@@ -930,11 +936,27 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                     "operation": {"op": "model", "model": model, "dtype": dtype, "run": run_where,
                                   "target": target},
                     "contract_version": CONTRACT_VERSION}
+    def _bail(detail: str, category: str = "NOT_RUN_IS_NOT_PASS") -> dict:
+        """An honest un-run row: every required tier recorded `unavailable` WITH ITS REASON, then the
+        shared finalizer. `tiers: {}` would read as 'no tiers apply here' when it means 'nothing ran'."""
+        _req = set(required or capsule.get("required_oracle_tiers") or ())
+        _t = {x: TierResult(x, "unavailable", True, reason=detail) for x in sorted(_req)}
+        _fail = {"plane": "model", "category": category, "detail": detail}
+        _extra = {k: result.pop(k) for k in ("operation",) if k in result}
+        if paths is None:
+            result.update(status="incomplete", numeric={"status": "skipped"},
+                          failure=_fail, tiers={k: v.to_dict() for k, v in _t.items()}, **_extra)
+            return result
+        return _finalize_capsule_result(
+            name=capsule["name"], capsule=capsule, status="incomplete", failure=_fail, tiers=_t,
+            trace_check_res={"status": "skipped", "violations": [],
+                             "reason": "the whole model did not run"},
+            numeric={"status": "skipped"}, required=_req, no_oracle=False,
+            eff_target=eff_target or (target or ""), paths=paths, run_id=run_id, cfg=cfg,
+            contract=contract, extra=_extra)
+
     if not model:
-        result.update(status="incomplete",
-                      failure={"plane": "model", "category": "RUNNER_CRASH",
-                               "detail": "model capsule missing operation.attributes.model"})
-        return result
+        return _bail("model capsule missing operation.attributes.model", category="RUNNER_CRASH")
     # the captured linalg (visible grounding) drives the per-op mesh routing when present
     linalg_mlir = None
     cdir = capsule.get("__dir__")
@@ -944,19 +966,16 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
             linalg_mlir = lp.read_text(encoding="utf-8")
     try:
         from ..compile_cli import compile_model
+        # `mesh_package` is the SUBMISSION under test. Without it the mesh path would resolve
+        # `_default_oot_package(target)` -- i.e. the promoted package -- and quietly certify a different
+        # compiler than the one being graded, the same class of bug this rung exists to close.
         out = compile_model(model, dtype, target=target, run=run_where, verify=True, package=None,
                             auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir,
-                            mesh_verify=mesh_verify)
+                            mesh_verify=mesh_verify, mesh_package=package_dir)
     except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
-        result.update(status="incomplete",
-                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": f"whole-model compile/run unavailable: {str(e)[:300]}"})
-        return result
+        return _bail(f"whole-model compile/run unavailable: {str(e)[:300]}")
     except Exception as e:  # noqa: BLE001
-        result.update(status="incomplete",
-                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": f"whole-model grade error: {type(e).__name__}: {str(e)[:300]}"})
-        return result
+        return _bail(f"whole-model grade error: {type(e).__name__}: {str(e)[:300]}")
     st, gate = out.get("status"), (out.get("verify") or {}).get("gate_ok")
     engine = f"merlin-compile model --target {target} --run {run_where} --verify"
     if out.get("routing_plan") is not None:                   # per-op mesh routing for the target
@@ -973,26 +992,98 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     _cos = max(float(_v.get("fp32_cos", 0.0)), float(_v.get("w8a8_cos", 0.0)))
     _quant = dtype in ("int8", "i8", "fp8", "fp8_e4m3")
     _quant_floor = float(os.environ.get("MERLIN_MODEL_QUANT_COS", "0.90") or "0.90")
+    mx = out.get("mesh_execution") or {}
+    ran = mx.get("matmul_layers_on_mesh")
+    fell = mx.get("matmul_layers_host_fallback")
+    numeric: dict
     if st == "verified" and gate:
-        result.update(status="pass", numeric={"status": "pass", "engine": engine, "gate": out.get("verify")})
+        numeric = {"status": "pass", "engine": engine, "gate": out.get("verify")}
+        status = "pass"
     elif _quant and st == "run_mismatch" and _cos >= _quant_floor:
-        result.update(status="pass",
-                      numeric={"status": "pass", "engine": engine, "gate": _v,
-                               "quant_tolerance": {"cos": _cos, "floor": _quant_floor, "dtype": dtype}},
-                      note=(f"quantized ({dtype}) whole-model output within quant tolerance of the fp32 "
-                            f"golden (cos {_cos:.4f} >= floor {_quant_floor}); the drop vs fp32 is expected "
-                            f"quantization error, not a codegen defect."))
+        numeric = {"status": "pass", "engine": engine, "gate": _v,
+                   "quant_tolerance": {"cos": _cos, "floor": _quant_floor, "dtype": dtype}}
+        status = "pass"
+        result["note"] = (f"quantized ({dtype}) whole-model output within quant tolerance of the fp32 "
+                          f"golden (cos {_cos:.4f} >= floor {_quant_floor}); the drop vs fp32 is expected "
+                          f"quantization error, not a codegen defect.")
     elif st == "not_run":
-        result.update(status="incomplete",
-                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": out.get("reason", "whole-model run toolchain unavailable")})
+        numeric = {"status": "skipped", "engine": engine}
+        status = "incomplete"
+        result["failure"] = {"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                             "detail": out.get("reason", "whole-model run toolchain unavailable")}
     else:
-        result.update(status="fail",
-                      numeric={"status": "fail", "engine": engine, "gate": out.get("verify"),
-                               "model_status": st},
-                      failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
-                               "detail": f"the whole model did not verify (status={st}, gate_ok={gate})"})
-    return result
+        numeric = {"status": "fail", "engine": engine, "gate": out.get("verify"), "model_status": st}
+        status = "fail"
+        result["failure"] = {"plane": "model", "category": "FUNCTIONAL_MISMATCH",
+                             "detail": f"the whole model did not verify (status={st}, gate_ok={gate})"}
+
+    # L0/L1 interpret a COMMAND BUFFER; a whole-model capsule has none, so they are honestly N/A rather
+    # than "did not run" -- the same idiom the integer L0/L1 floor uses on a float datapath. That leaves
+    # L2 as the only live required tier, which is exactly what should decide a whole-model verdict.
+    # The capsule's own `required_oracle_tiers` is the authority on what must certify it. Defaulting to
+    # an empty set would make NO tier mandatory, so every fail-closed gate below would be vacuous.
+    _required = set(required or capsule.get("required_oracle_tiers") or ())
+    tiers: dict = {}
+    for _t in ("L0", "L1"):
+        tiers[_t] = TierResult(_t, "skipped", _t in _required, not_applicable=True,
+                               reason="no command buffer for a whole-model capsule")
+    if run_where == "host":
+        # Our own engine is not an oracle for the submission: record it, withhold the verdict.
+        result["host_reference"] = {"run": "host", "engine": engine, "gate": out.get("verify"),
+                                    "status": st}
+        numeric = {"status": "skipped", "engine": engine,
+                   "reason": "host dispatch-runtime reference is advisory; not an oracle for the submission"}
+        tiers["L2"] = TierResult("L2", "skipped", "L2" in _required,
+                                 reason="host reference run: the target mesh did not execute this model")
+        status = "pass"                       # the finalizer converts this to not_gradeable_no_oracle
+        _no_oracle = True
+    else:
+        _no_oracle = False
+        if ran is None or ran is PROV_UNKNOWN:
+            tiers["L2"] = TierResult("L2", "unavailable", "L2" in _required,
+                                     reason="mesh execution counters unavailable — the target mesh could "
+                                            "not be reached (no OOT package, or the oracle failed to run)")
+        elif not ran:
+            tiers["L2"] = TierResult("L2", "skipped", "L2" in _required,
+                                     reason="no matmul layer executed on the target mesh (every layer fell "
+                                            "back to the host)")
+        elif fell:
+            tiers["L2"] = TierResult("L2", "fail", "L2" in _required,
+                                     reason=f"{fell} mesh-routed layer(s) fell back to the host")
+        else:
+            tiers["L2"] = TierResult("L2", "pass" if numeric["status"] == "pass" else "fail",
+                                     "L2" in _required,
+                                     reason=f"{ran} matmul layer(s) executed on the target mesh",
+                                     evidence="mesh_execution")
+
+    extra = {k: result.pop(k) for k in ("routing_plan", "coverage_certificate", "mesh_execution",
+                                        "host_reference", "note", "operation")
+             if k in result}
+    if paths is None:                          # standalone/diagnostic call — no run dir to finalize into
+        # Without a run dir we cannot call the finalizer, but we must still apply its gates or this branch
+        # re-creates the exact fail-open the rung exists to close. Same two rules, same order.
+        if status == "pass":
+            _ran_required = [t for t in _required
+                             if tiers.get(t) is not None
+                             and not tiers[t].not_applicable and tiers[t].status == "pass"]
+            if not _ran_required:
+                status = "not_gradeable_no_oracle" if _no_oracle else "incomplete"
+                result.setdefault("failure", {
+                    "plane": "not_gradeable_no_oracle" if _no_oracle else "oracle_unavailable",
+                    "category": "NOT_GRADEABLE_NO_ORACLE" if _no_oracle else "NOT_RUN_IS_NOT_PASS",
+                    "detail": ("host dispatch-runtime reference only: the target mesh did not execute "
+                               "this model, so the numeric verdict is withheld") if _no_oracle else
+                              (f"no runnable required oracle tier certified this whole-model capsule "
+                               f"(required={sorted(_required)})")})
+        result.update(status=status, numeric=numeric,
+                      tiers={t: r.to_dict() for t, r in tiers.items()}, **extra)
+        return result
+    return _finalize_capsule_result(
+        name=capsule["name"], capsule=capsule, status=status, failure=result.get("failure"),
+        tiers=tiers, trace_check_res={"status": "skipped", "violations": [],
+                                      "reason": "no per-op instruction trace for a whole-model capsule"},
+        numeric=numeric, required=_required, no_oracle=_no_oracle, eff_target=eff_target or (target or ""),
+        paths=paths, run_id=run_id, cfg=cfg, contract=contract, extra=extra)
 
 
 def _merge_match_policy(force: dict | None, capsule: dict | None) -> dict | None:
@@ -1065,8 +1156,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
     # same capsule_result.json shape so downstream reporting is uniform.
     if capsule.get("kind") == "model":
-        result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout)
-        (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        # Hand the SUBMISSION and the run context down: the model grade now builds real TierResults and
+        # shares `_finalize_capsule_result`, so it is subject to the same not_run_is_not_pass gate, the
+        # same fail-open guard and the same schema validation as every op capsule. It used to return
+        # here with `tiers: {}` and a row that did not validate.
+        result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout,
+                                      package_dir=package_dir, required=required, paths=paths,
+                                      run_id=run_id, cfg=cfg, contract=contract, eff_target=eff_target)
         # Persist the ARR coverage certificate as its own durable artifact (not only inside
         # capsule_result.json) so the report/grader can read it back per compilation.
         cert = result.get("coverage_certificate")
@@ -1614,6 +1710,30 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                    "detail": f"{type(e).__name__}: {e}",
                    "traceback": _traceback.format_exc()}
 
+    return _finalize_capsule_result(
+        name=name, capsule=capsule, status=status, failure=failure, tiers=tiers,
+        trace_check_res=trace_check_res, numeric=numeric, required=required, no_oracle=no_oracle,
+        eff_target=eff_target, paths=paths, run_id=run_id, cfg=cfg, contract=contract,
+        executability=executability)
+
+
+def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: dict | None,
+                             tiers: dict, trace_check_res: dict, numeric: dict, required, no_oracle: bool,
+                             eff_target: str, paths: "RunPaths", run_id: str, cfg, contract,
+                             executability: dict | None = None,
+                             extra: dict | None = None) -> dict:
+    """The shared tail of every capsule grade: fail-closed gates, the result row, and self-validation.
+
+    Lifted out of :func:`run_capsule` so the whole-model path shares the SAME invariants rather than a
+    second copy of them. A model capsule used to return before any of this ran, which is precisely how it
+    could report ``pass`` with an empty ``tiers`` block, no ``trace_check``, and a row that does not
+    validate against ``capsule_result.schema.json`` -- with nothing to notice, because the validator sits
+    on the far side of that early return.
+
+    ``extra`` merges whole-model-only top-level keys (routing plan, coverage certificate, mesh execution,
+    op coverage) without giving them a say in the status.
+    """
+    executability = executability or {}
     # not_run_is_not_pass: a mandatory tier that did not pass closed (unavailable/skipped/absent) makes
     # the capsule incomplete — never a silent pass. A tier that is honestly N/A for this capsule's
     # datatype (``not_applicable``; the integer L0/L1 floor on a float datapath) is the ONE exception —
@@ -1698,6 +1818,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     }
     # Advisory RTL-executability smoke (never a gate): record it as its own field when one ran, so a
     # reader sees the RTL-legality backstop verdict without it ever touching the pass/fail status.
+    if extra:
+        result.update(extra)
     if executability:
         result["executability"] = executability
     (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
