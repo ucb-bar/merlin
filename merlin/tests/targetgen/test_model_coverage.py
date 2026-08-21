@@ -72,3 +72,30 @@ def test_terminators_and_init_ops_are_not_counted_as_regions():
     assert not MC._is_region_op(_Op("arith.constant"))
     assert MC._is_region_op(_Op("linalg.matmul"))
     assert MC._is_region_op(_Op("linalg.generic"))
+
+
+def test_a_unit_declaring_ops_but_no_semantic_block_still_has_capabilities():
+    """A generated contract may describe a unit fully in ops/dtypes and omit ``semantic_capabilities``.
+    That omission must not read as "accelerates nothing" — it made a systolic MXU score 0% routable on six
+    real models. Families derive from the unit's OWN ops via the canonical router; an op with no known
+    family contributes nothing (fail closed), and an explicit block always wins."""
+    from merlin.targetgen import compute_units as cu
+
+    derived = cu.compute_units({"compute_units": [
+        {"kind": "systolic", "name": "u", "ops": ["matmul"], "dtypes": ["bf16"]}]})
+    caps = {c.family: c for c in derived[0].semantic_capabilities}
+    assert sorted(caps) == ["contraction"]
+    assert caps["contraction"].dtypes == ("bf16",)
+
+    unknown_op = cu.compute_units({"compute_units": [
+        {"kind": "systolic", "name": "u", "ops": ["not_a_known_op"], "dtypes": ["bf16"]}]})
+    assert unknown_op[0].semantic_capabilities == ()          # fail closed, never guessed
+
+    no_ops = cu.compute_units({"compute_units": [
+        {"kind": "systolic", "name": "u", "ops": [], "dtypes": ["bf16"]}]})
+    assert no_ops[0].semantic_capabilities == ()
+
+    explicit = cu.compute_units({"compute_units": [
+        {"kind": "systolic", "name": "u", "ops": ["matmul"], "dtypes": ["bf16"],
+         "semantic_capabilities": [{"family": "movement", "dtypes": ["bf16"]}]}]})
+    assert [c.family for c in explicit[0].semantic_capabilities] == ["movement"]
