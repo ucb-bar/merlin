@@ -10,6 +10,7 @@ Plus the **whole-model dialect plane** that brings real model2MLIR modules into 
 
 - One module per synthetic-workload stage (`contract_facts.py`, `schedule_decisions.py`, `interface_lowering.py`, `target_lowering.py`, `runtime_lowering.py`, `emit_command_buffer.py`), the workload builder (`input_workload.py`), cross-op analyses (`analyses.py`), and the orchestrator (`pipeline.py`).
 - The whole-model dialect plane: `outline.py`, `dispatch_program.py`, `schedule_dispatch.py` (multicore partitioning), `passes.py`.
+- Specialization opportunity analyses over whole-model IR: `gather_specialization.py` (tables indexed by an input's VALUE, e.g. an embedding lookup). These REPORT, they do not rewrite — see its docstring on why input specialization must never be applied silently.
 
 ## What does not belong here
 
