@@ -816,6 +816,86 @@ def _check_gate(sel: ChampionSelection) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------- promotion
 
 
+class MaterializeRefused(PublishError):
+    """The submission or its score is not fit to install as a target's compiler."""
+
+
+def _score_is_honest(score: dict) -> tuple[bool, str]:
+    """Whether a capsule score may be used to justify installing a compiler.
+
+    Mirrors the suite-level vacuous-pass guard: an empty or ungradeable run must never read as evidence.
+    A row with no ``tiers`` is the specific shape that let four whole-model capsules report ``pass``
+    without executing, so it is refused here too rather than trusted a second time.
+    """
+    if score.get("integrity_status") not in (None, "clean"):
+        return False, f"integrity_status={score.get('integrity_status')!r} (want 'clean')"
+    if score.get("gradeable") is False:
+        return False, "the run reported gradeable=false"
+    rows = score.get("per_capsule") or []
+    if not rows:
+        return False, "no per-capsule rows — nothing was graded"
+    passed = [r for r in rows if r.get("status") == "pass"]
+    if not passed:
+        return False, "no capsule passed"
+    hollow = [r.get("capsule") for r in passed if not (r.get("tiers") or {})]
+    if hollow:
+        return False, (f"{len(hollow)} capsule(s) report pass with no tier evidence "
+                       f"({', '.join(str(h) for h in hollow[:4])}) — a pass with an empty tier map is "
+                       f"not evidence a compiler ran")
+    return True, f"{len(passed)}/{len(rows)} passed with tier evidence"
+
+
+def materialize_package(target: str, source: str | Path, *, package_id: str = "agent_spec_v1_mlir_oot",
+                        certified_by_run: str = "", score_path: str | Path | None = None,
+                        artifacts_root: str | Path | None = None, force: bool = False) -> Path:
+    """Install a run's submission as ``out/artifacts/targets/<target>/<package_id>/`` and return its path.
+
+    Deliberately does NOT set ``status:``. ``_STATUS_RANK`` knows only rtl_certified / k1_verified /
+    spike_verified; a functional-tier verdict is none of those, and claiming one would both overstate the
+    evidence and silently win :func:`select_champion`. ``publication.champion`` is written ``false`` for
+    the same reason -- ranking ties break on directory name, so a new package would otherwise displace an
+    existing champion just by sorting earlier.
+    """
+    import shutil
+    from ..common import provenance as PROV
+
+    src_dir = Path(source)
+    if not (src_dir / "manifest.yaml").is_file():
+        raise MaterializeRefused(f"{src_dir} carries no manifest.yaml — not an OOT backend package")
+    if score_path:
+        import json as _json
+        score = _json.loads(Path(score_path).read_text(encoding="utf-8"))
+        ok, detail = _score_is_honest(score)
+        if not ok:
+            raise MaterializeRefused(f"refusing to install {target} compiler from {src_dir}: {detail}")
+        evidence = {"n_passed": score.get("n_passed"), "n_capsules": score.get("n_capsules"),
+                    "labels_graded": score.get("labels_graded"), "detail": detail}
+    else:
+        evidence = {"detail": "no score supplied — installed unverified"}
+
+    dst = _targets_root(artifacts_root) / target / package_id
+    if dst.exists():
+        if not force:
+            raise MaterializeRefused(f"{dst} already exists — pass force=True to replace it")
+        shutil.rmtree(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src_dir, dst, ignore=shutil.ignore_patterns("__pycache__", ".git", "build"))
+
+    man = load_yaml(dst / "manifest.yaml")
+    source_package_id = man.get("package_id")
+    man["package_id"] = package_id
+    pub = man.get("publication") if isinstance(man.get("publication"), dict) else {}
+    pub.update(champion=False, certification="functional_tier", certified_by_run=certified_by_run)
+    man["publication"] = pub
+    man["provenance"] = PROV.record(sources=[str(src_dir)],
+                                    extra={"installed_from_run": certified_by_run})
+    man["promotion"] = {"from": str(src_dir), "source_package_id": source_package_id,
+                        "promoted_by": "merlin-target-publish materialize",
+                        "score": str(score_path) if score_path else None, "evidence": evidence}
+    write_yaml(dst / "manifest.yaml", man)   # the module's own writer, not a raw dump
+    return dst
+
+
 def promote(target: str, package_id: str, *, gate: bool = True,
             artifacts_root: str | Path | None = None) -> None:
     """Promote ``package_id`` to be the single champion for ``target`` (manifest-only edit in out/).
@@ -1245,6 +1325,17 @@ def main(argv: list[str] | None = None) -> int:
     p_prom.add_argument("--artifacts-root")
     p_prom.add_argument("--no-gate", action="store_true")
 
+    p_mat = sub.add_parser("materialize",
+                           help="install a run's submission as the target's OOT backend package")
+    p_mat.add_argument("--target", required=True)
+    p_mat.add_argument("--from", dest="source", required=True,
+                       help="the run's submission/ directory (manifest.yaml + the backend tree)")
+    p_mat.add_argument("--package-id", default="agent_spec_v1_mlir_oot")
+    p_mat.add_argument("--certified-by-run", default="")
+    p_mat.add_argument("--score", help="score_capsule.json justifying the install (checked, not trusted)")
+    p_mat.add_argument("--artifacts-root")
+    p_mat.add_argument("--force", action="store_true")
+
     p_idx = sub.add_parser("index", help="publish the landing page to the repo's default branch")
     p_idx.add_argument("--target", required=True)
     p_idx.add_argument("--remote", help="override the resolved remote")
@@ -1276,6 +1367,12 @@ def main(argv: list[str] | None = None) -> int:
                                 config=args.config, artifacts_root=args.artifacts_root,
                                 branch=args.branch, confirm_push=args.confirm_push)
             _print_result(res)
+            return 0
+        if args.cmd == "materialize":
+            dst = materialize_package(args.target, args.source, package_id=args.package_id,
+                                      certified_by_run=args.certified_by_run, score_path=args.score,
+                                      artifacts_root=args.artifacts_root, force=args.force)
+            print(f"installed {args.target} backend -> {dst}")
             return 0
         if args.cmd == "promote":
             promote(args.target, args.champion, gate=not args.no_gate,
