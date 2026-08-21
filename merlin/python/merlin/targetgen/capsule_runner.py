@@ -700,6 +700,33 @@ def _absent_outputs(nrep: dict) -> list[str]:
             and str(d.get("reason", "")).startswith(("missing", "length"))]
 
 
+def _unwritten_output_detail(nrep: dict, sim_name: str) -> str | None:
+    """A precise detail when a declared output was READ BACK but holds one constant value, else None.
+
+    Sibling of :func:`_absent_output_detail`, for the case that one misses: there the output key is
+    absent from the readback; here it is present and uniformly the buffer's untouched fill, so the
+    generic "does not compute the declared operation" is technically true and useless. Measured cost of
+    not having this: twelve capsules reported ``functional_mismatch`` for six consecutive rounds with
+    ``observed: 0.0`` and ``max_rel_error: 1.0``, while the mismatch COUNT was a function of the
+    golden's zero distribution rather than of the kernel -- so the number could not move no matter what
+    was emitted, and the agent spent six rounds tuning numerics against an unwritable signal.
+
+    Reveals no golden value: only that the observed side is constant, which the agent can compute from
+    its own readback."""
+    names = nrep.get("outputs_never_written") or []
+    if not names:
+        return None
+    po = nrep.get("per_output") or {}
+    got = {n: (po.get(n) or {}).get("observed_constant") for n in names}
+    shown = ", ".join(f"{n} (all {got[n]})" for n in names)
+    return (f"on {sim_name}, output(s) {shown} came back as a SINGLE CONSTANT value while the expected "
+            f"result varies — the store never landed, so what was compared is the buffer's untouched "
+            f"fill, not a computed result. This is a WRITEBACK failure, not a numeric one: the mismatch "
+            f"count here is set by the reference's own value distribution and will NOT move if you only "
+            f"change arithmetic. Decode your emitted artifact and confirm the result is actually stored "
+            f"to this output's base address (and that any DMA/commit is awaited before readback).")
+
+
 def _absent_output_detail(nrep: dict, sim_name: str, expected: dict, observed: dict) -> str | None:
     """A precise failure detail when the kernel dropped a declared output, else None. Turns the baffling
     "1024 mismatches, 0 error" into "you never wrote Y1" — the exact class of silent no-op the generic
@@ -1108,7 +1135,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                              else "your command buffer does not compute the declared operation"),
                                      evidence="numeric_report.yaml")
             if nrep["status"] != "pass":
-                _absent_cb = _absent_output_detail(nrep, "command_buffer", gold, ref)
+                _absent_cb = (_absent_output_detail(nrep, "command_buffer", gold, ref)
+                              or _unwritten_output_detail(nrep, "command_buffer"))
                 raise CertFailure("numeric_golden", _cat("FUNCTIONAL_MISMATCH"),
                                   _absent_cb or ("your command buffer does not compute the declared operation "
                                   f"(first divergence at index {(nrep['first_mismatch'] or {}).get('index')})"))
@@ -1390,7 +1418,12 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # _encoding_divergence_hint adds that the cheap tiers agreed, so the defect is in the encoding.
             # A DROPPED declared output (kernel never wrote it) gets a precise, distinct detail so the
             # agent isn't left with the baffling "N mismatches, 0 error" of a store that never fired.
-            _absent_detail = (_absent_output_detail(onrep, sim_name, gold, res["outputs"])
+            # A store that never landed is named precisely, in BOTH of its shapes: the output missing
+            # from the readback entirely (_absent_output_detail) and the output read back as a single
+            # untouched constant (_unwritten_output_detail). Without the second, a writeback failure is
+            # reported as a numeric mismatch whose count cannot move -- measured at six wasted rounds.
+            _absent_detail = ((_absent_output_detail(onrep, sim_name, gold, res["outputs"])
+                               or _unwritten_output_detail(onrep, sim_name))
                               if independent_float else None)
             _mismatch_reason = _absent_detail or (
                 f"on {sim_name}, your emitted artifact does not compute the declared operation within tolerance"

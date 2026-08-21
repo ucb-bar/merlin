@@ -466,7 +466,23 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
                     first = {"output": name, "index": idx, "expected": a, "observed": b}
         rep["per_output"][name] = {"status": "pass" if mism == 0 else "fail",
                                    "mismatch_count": mism, "max_abs_error": maxabs,
-                                   "max_rel_error": maxrel}
+                                   "max_rel_error": maxrel,
+                                   "n_elements": len(ef),
+                                   "saturated": bool(mism and mism == len(ef))}
+        if mism:
+            # DISTINCT FAILURE CLASS: the kernel never wrote this output, so what was compared is the
+            # buffer's initial fill, not a computed result. Calling that a numeric mismatch is actively
+            # misleading -- a measured run spent six rounds chasing "functional_mismatch" on 12 capsules
+            # whose observed output was uniformly 0.0 while the emitted artifact changed underneath, and
+            # the mismatch COUNT could not move because it was a function of the golden's zero
+            # distribution rather than of the kernel. Detected from the observed values alone: no target
+            # fact, no dtype assumption, no fill constant baked in -- "every observed element is the same
+            # value, the expected values are not, and that value is what an untouched buffer holds."
+            uniq = {float(x) for x in of}
+            if len(uniq) == 1 and len({float(x) for x in ef}) > 1:
+                rep["per_output"][name]["failure_class"] = "output_never_written"
+                rep["per_output"][name]["observed_constant"] = next(iter(uniq))
+                rep.setdefault("outputs_never_written", []).append(name)
         if mism:
             rep["status"] = "fail"
             rep["max_abs_error"] = max(rep["max_abs_error"], maxabs)
@@ -475,6 +491,10 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
                 rep["first_mismatch"] = first
         total_mismatch += mism
     rep["mismatch_count"] = total_mismatch
+    # Surface the distinct class at the TOP level too, so a caller reading only the summary sees "the
+    # kernel wrote nothing" rather than a large mismatch count that looks like ordinary numeric drift.
+    if rep.get("outputs_never_written"):
+        rep["failure_class"] = "output_never_written"
     return rep
 
 
