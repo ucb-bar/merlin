@@ -81,9 +81,23 @@ def datapath_policy() -> dict:
         dp = (yaml.safe_load(prof.read_text()) or {}).get("datapath") or {}
     compare = dp.get("compare", "tolerance_float")
     exact = compare in ("exact_int", "exact")
+    # ⚠️ The operand/accumulator tokens are DERIVED from the target, never literals. They used to be
+    # hardcoded "i8"/"i32", which is both a baked ISA constant and the thing that collapsed the dtype
+    # axis on every integer target: whatever dtype a probe asked for, it was materialized as i8, so an
+    # integer target with several declared formats could never have more than one of them tested.
+    operand = accum = None
+    try:
+        from merlin.targetgen import corpus_spec as _CS
+        from merlin.targetgen.target_experiment import load_target_experiment as _lte
+        b = _CS.derive_binding(_lte(C.DESCRIPTOR), dp)
+        operand, accum = b.cap_dtype(b.operand_dtype), b.cap_dtype(b.accum_dtype)
+    except Exception:  # noqa: BLE001 — fall back to the profile's own declaration
+        operand, accum = dp.get("operand_dtype"), dp.get("accum_dtype")
     return {"compare": compare, "exact": exact,
-            "operand_dtype": "i8" if exact else None,      # float path keeps the probe's own dtype
-            "acc_dtype": "i32" if exact else "f32"}
+            # On an exact datapath the operand dtype is fixed by the hardware; on a float one the probe's
+            # own declared dtype stands, which is what makes the dtype axis mean something.
+            "operand_dtype": operand if exact else None,
+            "acc_dtype": accum or ("f32" if not exact else None)}
 
 
 def _round_dtype(x: np.ndarray, dt: str) -> np.ndarray:
@@ -104,7 +118,14 @@ def _iface_header() -> str:
             f'merlin_iface.abi_version = "0.1"}} {{\n')
 
 
-def _write_capsule(probe, iface, *, inputs, out, op, op_attrs, ct) -> Path:
+def _write_capsule(probe, iface, *, inputs, out, op, op_attrs, ct, out_dtype=None) -> Path:
+    """``out_dtype`` overrides the capsule's numeric-policy dtype for an op that does NOT accumulate.
+
+    Movement is the identity on values: its output dtype is the OPERAND dtype, and the shipped movement
+    capsule declares exactly that. Declaring the accumulator width instead made every movement probe
+    fail against a reference backend that passes the shipped capsule -- a 0/5 that measured this
+    materializer rather than the compiler, which is the trap this module's own docstring warns about.
+    """
     pol = datapath_policy()
     cdir = OUTDIR / probe.name.replace(".", "_")
     cdir.mkdir(parents=True, exist_ok=True)
@@ -116,8 +137,10 @@ def _write_capsule(probe, iface, *, inputs, out, op, op_attrs, ct) -> Path:
         "interface_mlir": "capsule.interface.mlir",
         "inputs": [{"name": nm, "role": role, "shape": sh, "dtype": ct} for nm, role, sh, _ in inputs],
         "operation": {"op": op, "attributes": op_attrs},
-        "numeric_policy": ({"compare": pol["compare"], "dtype": pol["acc_dtype"]} if pol["exact"] else
-                           {"compare": "tolerance_float", "dtype": "f32", "atol": 0.03125, "rtol": 0.015625}),
+        "numeric_policy": ({"compare": pol["compare"], "dtype": out_dtype or pol["acc_dtype"]}
+                           if pol["exact"] else
+                           {"compare": "tolerance_float", "dtype": out_dtype or "f32",
+                            "atol": 0.03125, "rtol": 0.015625}),
         "expected": {"instruction_classes": [], "modes": {}},
         "required_oracle_tiers": ["L0", "L1", "L2"], "vcs": "optional",
     }, sort_keys=False))
@@ -236,8 +259,113 @@ def materialize_attention(probe, seed):
                           op_attrs={"q": "Q", "k": "K", "out": "Y0", "output_dtype": "f32"})
 
 
+def materialize_movement(probe, seed):
+    """A load->store movement probe: data motion with no arithmetic.
+
+    Cheap to add because both halves already exist -- ``merlin_iface.movement`` is in the interface
+    grammar (``corpus_spec.build_movement`` emits it) and ``capsule_golden._recompute_golden`` handles
+    ``movement`` on the exact-integer path. Without it, ``movement`` was a family gemmini and atlas both
+    DECLARE and no probe could ever test.
+    """
+    d = probe.descriptor
+    pol = datapath_policy()
+    ct = pol["operand_dtype"] or GRADEABLE_DTYPE.get(d.in_dtype)
+    if ct is None:
+        return None
+    m = int(d.m or 0) or NORM_C
+    n = int(d.n or 0) or NORM_C
+    rng = np.random.default_rng(seed)
+    if pol["exact"]:
+        X = Y = None                       # grader materializes the leaf and recomputes the golden
+    else:
+        X = _round_dtype(rng.standard_normal((m, n)), d.in_dtype)
+        Y = X.astype(np.float32)           # movement is the identity on values, by definition
+    iface = (_iface_header()
+             + f'  %X = merlin_iface.tensor {{name = "X", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
+             + f'  %Y0 = merlin_iface.movement %X {{name = "Y0"}} : (tensor<{m}x{n}x{ct}>) -> tensor<{m}x{n}x{ct}>\n}}\n')
+    return _write_capsule(probe, iface, inputs=[("X", "input", [m, n], X)], out=Y,
+                          op="movement", ct=ct, out_dtype=ct,   # identity: out dtype == operand dtype
+                          op_attrs={"src": "X", "out": "Y0", "output_dtype": ct})
+
+
+def materialize_elementwise_map(probe, seed):
+    """An elementwise combine probe (``add``/``mul``) — arithmetic with no reduction.
+
+    ``elementwise_map`` is DECLARED by every target audited so far and had no materializer, so it was a
+    family that could be claimed and never tested. The combine set is taken from the interface dialect's
+    own ``KNOWN_COMBINES`` rather than invented here: accepting an op the runtime has no VECTOR_MAP
+    implementation for would verify at the interface tier and then compute nothing at the runtime tier.
+    """
+    d = probe.descriptor
+    pol = datapath_policy()
+    ct = pol["operand_dtype"] or GRADEABLE_DTYPE.get(d.in_dtype)
+    if ct is None:
+        return None
+    combine = (getattr(d, "combine", None) or "add")
+    if combine not in ("add", "mul"):
+        return None                        # not expressible by the runtime's VECTOR_MAP — fail closed
+    m = int(d.m or 0) or NORM_C
+    n = int(d.n or 0) or NORM_C
+    rng = np.random.default_rng(seed)
+    if pol["exact"]:
+        # No _recompute_golden entry for an elementwise combine on the exact-integer path, so a probe
+        # here would be graded against a golden that does not exist. Skip rather than manufacture one --
+        # the skip is recorded by name and reason, which is the honest report.
+        return None
+    A = _round_dtype(rng.standard_normal((m, n)), d.in_dtype)
+    B = _round_dtype(rng.standard_normal((m, n)), d.in_dtype)
+    Af, Bf = A.astype(np.float32), B.astype(np.float32)
+    Y = (Af + Bf) if combine == "add" else (Af * Bf)
+    iface = (_iface_header()
+             + f'  %A = merlin_iface.tensor {{name = "A", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
+             + f'  %B = merlin_iface.tensor {{name = "B", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
+             + f'  %Y0 = merlin_iface.vector_map %A, %B {{name = "Y0", op = "{combine}", '
+               f'output_dtype = "{ct}"}} : (tensor<{m}x{n}x{ct}>, tensor<{m}x{n}x{ct}>) '
+               f'-> tensor<{m}x{n}x{ct}>\n}}\n')
+    return _write_capsule(probe, iface,
+                          inputs=[("A", "input", [m, n], A), ("B", "input", [m, n], B)],
+                          out=Y, op="vector_map", ct=ct, out_dtype=ct,
+                          op_attrs={"lhs": "A", "rhs": "B", "out": "Y0", "op": combine,
+                                    "output_dtype": ct})
+
+
+def materialize_reduction(probe, seed):
+    """A row-wise reduction probe (``sum``) — the shape-changing family.
+
+    Reduction is the one declared family whose output RANK differs from its input, which is why it is
+    worth testing separately from ``elementwise_map``: a backend can get every same-shape op right and
+    still have no correct readback path for a reduced result. ``sum`` is the dialect's only legal reduce
+    (``KNOWN_REDUCE``); anything else is refused rather than silently lowered as a sum.
+    """
+    d = probe.descriptor
+    pol = datapath_policy()
+    ct = pol["operand_dtype"] or GRADEABLE_DTYPE.get(d.in_dtype)
+    if ct is None:
+        return None
+    kind = (getattr(d, "reduce", None) or "sum")
+    if kind != "sum":
+        return None
+    if pol["exact"]:
+        return None                        # same reason as elementwise: no exact-int golden entry
+    m = int(d.m or 0) or NORM_C
+    n = int(d.n or 0) or NORM_C
+    rng = np.random.default_rng(seed)
+    X = _round_dtype(rng.standard_normal((m, n)), d.in_dtype)
+    Y = X.astype(np.float32).sum(axis=1, keepdims=True)      # [m, n] -> [m, 1]
+    iface = (_iface_header()
+             + f'  %X = merlin_iface.tensor {{name = "X", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
+             + f'  %Y0 = merlin_iface.vector_reduce %X {{name = "Y0", op = "sum", '
+               f'output_dtype = "{ct}"}} : (tensor<{m}x{n}x{ct}>) -> tensor<{m}x1x{ct}>\n}}\n')
+    return _write_capsule(probe, iface, inputs=[("X", "input", [m, n], X)],
+                          out=Y, op="vector_reduce", ct=ct, out_dtype=ct,
+                          op_attrs={"src": "X", "out": "Y0", "op": "sum", "output_dtype": ct})
+
+
 FAMILY_MAT = {"contraction": materialize_contraction, "normalization": materialize_normalization,
-              "softmax": materialize_softmax, "attention": materialize_attention}
+              "softmax": materialize_softmax, "attention": materialize_attention,
+              "movement": materialize_movement,
+              "elementwise_map": materialize_elementwise_map,
+              "reduction": materialize_reduction}
 
 
 def grade(cdir: Path, adapters, pkg: Path) -> str:
@@ -248,6 +376,38 @@ def grade(cdir: Path, adapters, pkg: Path) -> str:
     return "pass" if res.get("status") == "pass" or l2 == "pass" else "fail"
 
 
+def _write_splits() -> int:
+    """Persist this target's leave-one-family-out splits: for each semantic family present in the
+    corpus, the capsules that would be WITHHELD and the ones the compiler would be built on.
+
+    Whole-model capsules are never held out -- they are the integration test that a family-holdout
+    compiler still runs an end-to-end model.
+    """
+    from merlin.targetgen import generalization_splits as GS
+
+    caps_root = C.REPO / "merlin" / "contract" / "capsules"
+    own = caps_root / TARGET
+    roots = [own] if own.is_dir() else [caps_root / d for d in
+                                        ("isa", "layers", "model_slices", "model", "hidden")]
+    caps = []
+    for r in roots:
+        if r.is_dir():
+            for f in sorted(r.rglob("capsule.yaml")):
+                c = yaml.safe_load(f.read_text()) or {}
+                if c.get("name"):
+                    caps.append(c)
+    man = GS.manifest(caps, target=TARGET)
+    out = C.REPORTS / "leave_one_family_out.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(man, indent=1))
+    splits = man.get("splits") or []
+    print(f"{TARGET}: {len(caps)} capsules, families {GS.families_present(caps)}")
+    for s in splits:
+        print(f"  hold out {s['held_out_family']:16s} -> {s['n_holdout']:3d} held / {s['n_dev']:3d} dev")
+    print(f"wrote {out}")
+    return 0 if splits else 1
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--max-dim", type=int, default=MAX_DIM_DEFAULT)
@@ -255,7 +415,14 @@ def main(argv=None) -> int:
     ap.add_argument("--package", default=None,
                     help="backend package to measure (default: the target's derived reference backend). "
                          "Point it at a run's frozen submission/ to measure THAT compiler's recall.")
+    ap.add_argument("--splits", action="store_true",
+                    help="write the leave-one-family-out manifest for this target and exit (no grading, "
+                         "no spend). The splits module has always been able to compute these; nothing "
+                         "consumed it, so the strongest generalization question -- 'here is a capability "
+                         "family you were never shown, can you still lower it?' -- was never asked.")
     a = ap.parse_args(argv)
+    if a.splits:
+        return _write_splits()
     pkg = Path(a.package) if a.package else default_package()
     if pkg is None or not (pkg / "manifest.yaml").is_file():
         print(f"no backend package to measure under {PKG_ROOT} (pass --package)", file=sys.stderr)

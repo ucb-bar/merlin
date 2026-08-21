@@ -1,0 +1,28 @@
+# Known generalization-coverage holes, one per line, as target:kind:family.
+#
+# This list MAY ONLY SHRINK. It exists so check_semantic_coverage.py can land on a tree that is not
+# yet clean without blocking every commit -- not as a place to park new findings. Adding a line is a
+# reviewed decision; a NEW finding that is not listed fails the gate.
+#
+# ⚠️ Resolving an entry means producing the missing EVIDENCE or the missing CAPSULE. Deleting a
+# declared family to silence a line makes the number look better by measuring less, which is the exact
+# failure this gate exists to prevent.
+
+# missing_declaration: the target's own evidence shows this family and the contract omits it, which SHRINKS the ARR denominator and flatters recall. Resolve by declaring it, as atlas and gemmini now do.
+mx_gemmini:missing_declaration:elementwise_map
+mx_gemmini:missing_declaration:movement
+# capsule_without_semantic_block: a hand-authored capsule the generator does not emit; it needs the same backfill gemmini's frozen capsules received.
+mx_gemmini:capsule_without_semantic_block:MH0_mxfp8_hidden
+mx_gemmini:capsule_without_semantic_block:MH1_mxfp4_hidden
+mx_gemmini:capsule_without_semantic_block:MH2_mxfp6_hidden
+# unsupported_declaration: radiance declares this family but its facts.json is EMPTY and its compute_units name only matmul/elementwise, so nothing grounds the claim. Resolve by extracting radiance RTL facts (the deriver will then corroborate or refute it), NOT by deleting the family to make the gate green.
+radiance:unsupported_declaration:attention
+# undetermined_declaration: no evidence rung can decide this family for the target. It is excluded from BOTH sides of ARR, so it does not move the score; it stays here until an evidence source exists.
+radiance:undetermined_declaration:movement
+radiance:unsupported_declaration:normalization
+radiance:undetermined_declaration:reduction
+radiance:unsupported_declaration:softmax
+radiance:undetermined_declaration:synchronization
+# no_contract: target has no resolvable contract in this checkout, so nothing can be measured for it. Not a coverage hole -- a missing target package.
+saturn_opu:no_contract:-
+saturn_opu_rvv:no_contract:-

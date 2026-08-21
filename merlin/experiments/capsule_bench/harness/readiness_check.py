@@ -570,7 +570,10 @@ def test_oracles_endtoend():
     try:
         # FROM-CLEAN C++ build: copy the ref, wipe its build dir, grade -> forces cmake CONFIGURE (the step
         # where libidn bites). A prebuilt backend skips configure and would mask the abc8 blocker.
-        clean = Path(_tf.mkdtemp(dir="/tmp", prefix="clean_cpp_")) / "sub"
+        # tempfile already honours TMPDIR and falls back to /tmp; hardcoding dir="/tmp" overrode a
+        # correctly-set TMPDIR and put this full C++ tree copy + cmake configure on the root
+        # filesystem, which is the small, nearly-full one on this host.
+        clean = Path(_tf.mkdtemp(prefix="clean_cpp_")) / "sub"
         import shutil as _sh
         _sh.copytree(ref, clean, symlinks=True)
         for bd in clean.rglob("build"):
@@ -605,7 +608,7 @@ def test_oracles_endtoend():
                  "measured_by": "readiness_check"}))
             _ok("wrote .oracle_timing.json (T_obs for the driver timeout)", True, f"T_obs={dt:.0f}s")
         # NEGATIVE: an empty submission must produce 0 capsules / error -> the abc7 signature is caught
-        empt = Path(_tf.mkdtemp(dir="/tmp")) / "sub"; empt.mkdir(parents=True)
+        empt = Path(_tf.mkdtemp()) / "sub"; empt.mkdir(parents=True)   # honours TMPDIR
         ne = _grade(empt, "spike", 60)
         _ok("empty submission -> NO-GO signal (0 capsules / error)",
             ne.get("n_capsules", 0) == 0 or "error" in ne, str(ne.get("error", ""))[:50])
@@ -613,12 +616,69 @@ def test_oracles_endtoend():
         subprocess.run(["pkill", "-9", "-f", "simulator-chipyard"], capture_output=True)
 
 
+# ---- K. semantic coverage is MEASURABLE (not: is the score good) ----------------------------------
+def test_semantic_coverage_measurable():
+    """Can this target's Acceleratable Region Recall mean anything at all?
+
+    Deliberately checks measurability, never the value. Gating on ``ARR >= x`` would make the rational
+    response to a hard family "delete it from the contract", which is exactly the incentive the whole
+    apparatus exists to defeat. What must hold is that the denominator is grounded, non-empty, and that
+    the corpus can raise a violation when the compiler falls back on work the hardware can do.
+    """
+    section("K. semantic coverage measurable (ARR denominator)")
+    from merlin.targetgen import capability_probes as _cp
+    from merlin.targetgen import coverage_report as _cr
+    from merlin.targetgen import eligibility as _el
+    import yaml as _yaml
+
+    cap = _el.capability_map_for_target(C.TARGET)
+    _ok("target declares semantic capabilities", bool(cap),
+        f"{sorted(cap)}" if cap else "none declared -> every region ineligible, ARR undefined, the "
+                                     "target is outside the measurement entirely")
+    if not cap:
+        return
+
+    probes = _cp.synthesize(cap)
+    per_fam = {f for p in probes for f in [p.descriptor.resolved_family()] if f}
+    _ok("every declared family is probeable", per_fam >= set(cap),
+        f"{len(probes)} probes over {sorted(per_fam)}"
+        + (f"; UNPROBED: {sorted(set(cap) - per_fam)}" if set(cap) - per_fam else ""))
+
+    # The denominator must be non-empty on THIS target's own corpus. Graded with an empty outcome so
+    # this measures the denominator, not the compiler: n_eligible must be > 0 whatever the compiler did.
+    caps = {}
+    # A target that owns a capsule subdirectory uses it; the one predating that convention occupies the
+    # shared kind directories at the root. Resolved from the tree, never from a target-name table.
+    _caps_root = REPO / "merlin" / "contract" / "capsules"
+    roots = [_caps_root / C.TARGET] if (_caps_root / C.TARGET).is_dir() else \
+        [_caps_root / d for d in ("isa", "layers", "model_slices", "model", "hidden")]
+    for r in roots:
+        if r.is_dir():
+            for f in sorted(r.rglob("capsule.yaml")):
+                c = _yaml.safe_load(f.read_text()) or {}
+                if c.get("name"):
+                    caps[c["name"]] = c
+    cov = _cr._acceleratable_coverage([{"capsule": n, "tiers": {}} for n in caps], caps, C.TARGET)
+    _ok("ARR denominator is non-empty", cov["n_eligible"] > 0,
+        f"n_eligible={cov['n_eligible']} of {len(caps)} capsules"
+        + (f", n_undetermined={cov['n_undetermined']}" if cov.get("n_undetermined") else ""))
+    _ok("must_accelerate can actually fire", bool(cov["must_accelerate_violations"]),
+        f"{len(cov['must_accelerate_violations'])} capsule(s) would violate if the compiler accelerated "
+        f"nothing — a corpus where this is 0 passes vacuously whatever the compiler does")
+    undet = cov.get("n_undetermined", 0)
+    frac = undet / max(len(caps), 1)
+    _ok("undetermined regions bounded", frac <= 0.25,
+        f"{undet}/{len(caps)} ({frac:.0%}) of the corpus is in families no evidence source could decide; "
+        f"an ARR computed over the remainder should not be quoted alone")
+
+
 def main() -> int:
     sys.path.insert(0, str(REPO / "merlin" / "python"))
     print("READINESS CHECK — exercising all tooling (no agent launched)")
     for fn in (test_starter_kit, test_generators, test_circt_gate, test_harness,
                test_oracles_endtoend, test_verify_no_cheat, test_corpus_fits_the_endpoint,
-               test_graded_path_is_the_declared_one, test_contract_provenance, test_bundles):
+               test_graded_path_is_the_declared_one, test_contract_provenance, test_bundles,
+               test_semantic_coverage_measurable):
         try:
             fn()
         except Exception as e:
