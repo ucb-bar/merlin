@@ -944,9 +944,13 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
             linalg_mlir = lp.read_text(encoding="utf-8")
     try:
         from ..compile_cli import compile_model
+        # `dtype` is the capsule's compile_dtype (an RVV compile mode). The capsule ALSO declares the
+        # exact datapath format in operation.attributes.dtype -- pass that for routing so a demand is
+        # matched against the unit's declared format rather than against a compile-mode token.
+        _attrs = (capsule.get("operation") or {}).get("attributes") or {}
         out = compile_model(model, dtype, target=target, run=run_where, verify=True, package=None,
                             auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir,
-                            mesh_verify=mesh_verify)
+                            mesh_verify=mesh_verify, routing_dtype=_attrs.get("dtype"))
     except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
         result.update(status="incomplete",
                       failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",

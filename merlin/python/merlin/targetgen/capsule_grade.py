@@ -107,14 +107,25 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     # denominator. Counting it as a failure is what made all_pass unreachable and disabled the loop's
     # early exit; counting it as a pass would be a phantom certification. It stays in `results` so the
     # skip is auditable, and its count is reported separately.
+    # A capsule DEFERRED by its own gate (a whole-model capstone waiting on the op suite) is likewise in
+    # neither bucket. It never ran a tier, so scoring it as a failure is not a measurement of the
+    # submission -- and because the loop's ONLY early exit is a genuine all_pass, a permanently-deferred
+    # capsule makes all_pass unreachable and forces every run to buy its entire round budget. Measured:
+    # a 28-capsule grade of {pass 14, fail 12, not_graded 1, gated 2} could never reach all_pass no
+    # matter what the agent did. The gate fraction it is waiting on is reported separately, as OP
+    # COVERAGE -- it is not a verdict on the model.
     ungraded = [r for r in results if r.get("status") == "not_graded"]
-    graded = [r for r in results if r.get("status") != "not_graded"]
+    deferred = [r for r in results if r.get("status") == "gated"]
+    graded = [r for r in results if r.get("status") not in ("not_graded", "gated")]
     n_pass = sum(1 for r in graded if r["status"] == "pass")
     score["n_capsules"] = len(graded)
     score["n_passed"] = n_pass
     score["n_not_graded_ineligible"] = len(ungraded)
+    score["n_gated_deferred"] = len(deferred)
     if ungraded:
         score["not_graded_ineligible"] = sorted(r.get("capsule") for r in ungraded)
+    if deferred:
+        score["gated_deferred"] = sorted(r.get("capsule") for r in deferred)
     score["functional_pass"] = int(n_pass == len(graded) and len(graded) > 0)
     # Structure-only smoke bookkeeping (honest, never a numeric pass): a capsule is structurally clean
     # when it did not FAIL a structural tier — status `pass` OR `not_gradeable_no_oracle` (numeric verdict
