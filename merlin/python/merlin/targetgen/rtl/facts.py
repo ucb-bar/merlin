@@ -186,6 +186,21 @@ def decode_body(facts: dict[str, Any], target: str, *, needs: str) -> dict[str, 
     """
     body = facts.get("facts") if isinstance(facts, dict) else None
     if isinstance(body, dict) and body:
+        # Non-empty is not the same as DECODE-shaped, which is what this function's name promises and what
+        # every caller goes on to read (each looks up the ``funct_decode_table`` interface). A self-hosted
+        # ISA core carries a populated body with no decode table at all; returning it sent each generator
+        # off to fail in its own way -- and the readiness gate, whose N/A verdict keys on the refusal
+        # RAISED HERE ("the single place that distinction is made"), reported a target with perfectly good
+        # facts as three broken generators. Refuse structurally, by the interfaces the body declares.
+        if not any(i.get("name") == "funct_decode_table"
+                   for i in (body.get("interfaces") or []) if isinstance(i, dict)):
+            declared = sorted(i.get("name") for i in (body.get("interfaces") or [])
+                              if isinstance(i, dict) and i.get("name"))
+            raise NotImplementedError(
+                f"{target}: these RTL facts carry no instruction-decode body, so {needs} cannot be "
+                f"derived. The endpoint declares {declared or 'no interfaces'} and no RoCC "
+                f"funct_decode_table — a capability this class of target does not have, not a missing "
+                f"input. Artifact: {rtl_facts_path(target)}")
         return body
     if isinstance(body, dict):          # present but EMPTY -> nothing was extracted; see FactsEmpty
         inputs = (facts.get("inputs") or {}) if isinstance(facts, dict) else {}
