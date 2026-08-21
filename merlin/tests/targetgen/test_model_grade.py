@@ -66,6 +66,21 @@ def test_a_model_whose_layers_ran_on_the_mesh_and_matched_passes(monkeypatch):
         "L0/L1 interpret a command buffer; a whole model has none — N/A, not 'did not run'"
 
 
+def test_a_passing_model_verdict_records_the_tree_that_produced_it(monkeypatch):
+    """A result that claims a hardware verdict must say which revision it came from; a result attributed
+    to the wrong device is worse than no result, because it gets cited. A WITHHELD verdict makes no
+    hardware claim, so it carries no stamp."""
+    _mesh(monkeypatch, ran=15, fell=0)
+    r = R._grade_model_capsule(_CAP, target="radiance", timeout=60)
+    assert r["status"] == "pass"
+    assert r["provenance"], "a mesh pass is a hardware claim and must be attributable"
+
+    monkeypatch.setattr(cc, "compile_rvv",
+                        lambda *a, **k: {"status": "verified", "verify": {"gate_ok": True}})
+    withheld = R._grade_model_capsule(_CAP, timeout=60)          # host -> no hardware claim
+    assert "provenance" not in withheld
+
+
 def test_no_layer_on_the_mesh_is_not_a_pass(monkeypatch):
     """Every layer fell back to the host: the target never ran this model, so there is nothing to certify."""
     _mesh(monkeypatch, ran=0, fell=0)

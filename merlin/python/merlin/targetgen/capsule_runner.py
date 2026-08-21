@@ -1059,6 +1059,16 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     extra = {k: result.pop(k) for k in ("routing_plan", "coverage_certificate", "mesh_execution",
                                         "host_reference", "note", "operation")
              if k in result}
+    # A verdict that claims the hardware ran something records WHICH tree produced it. Only stamped when
+    # the mesh actually executed: a withheld verdict has no hardware claim to attribute.
+    if tiers.get("L2") is not None and tiers["L2"].status == "pass":
+        try:
+            from ..common import provenance as _PROV
+            extra["provenance"] = _PROV.record(
+                sources=[str(package_dir)] if package_dir else (),
+                extra={"mesh_target": target, "layers_on_mesh": ran})
+        except Exception as _e:                     # noqa: BLE001 — never fail a grade on bookkeeping
+            extra["provenance"] = {"error": f"{type(_e).__name__}: {_e}"}
     if paths is None:                          # standalone/diagnostic call — no run dir to finalize into
         # Without a run dir we cannot call the finalizer, but we must still apply its gates or this branch
         # re-creates the exact fail-open the rung exists to close. Same two rules, same order.
