@@ -43,43 +43,81 @@ _ELEM_DTYPE: dict[str, str] = {
     "f32": "fp32", "f16": "fp16", "bf16": "bf16", "i8": "int8", "i4": "int4",
 }
 
+#: Weights-manifest dtype spelling (torch names) -> quant-format registry name. Unlisted spellings are
+#: DROPPED rather than mapped to a nearby width: a wrong precision silently flips an eligibility verdict.
+_MANIFEST_DTYPE: dict[str, str] = {
+    "float32": "fp32", "float16": "fp16", "bfloat16": "bf16",
+    "int8": "int8", "int4": "int4",
+    "float8_e4m3fn": "fp8_e4m3", "float8_e5m2": "fp8_e5m2",
+}
+
 
 @dataclass
 class CoverageReport:
-    """Per (model, target) region accounting. ``routed + fallback + unclassified == n_regions``."""
+    """Per (model, target) region accounting, split so that each fraction has an explicit denominator.
+
+    FAMILY coverage is the primary number and is dtype-agnostic: of the regions we could name, how many
+    are in a family this target supports at all. PRECISION is reported separately, because a capture's
+    element types do NOT express a model's quantization -- an ``int8`` capture carries int8 element types on
+    a small minority of its regions and an ``fp8`` capture carries none at all, since the quantization lives
+    in the sidecar weights manifest. Gating on the element type therefore measures the capture's
+    annotations, not the hardware fit, and reads as a confident percentage while doing so.
+
+    ``family_supported + family_unsupported + unclassified == n_regions``.
+    """
 
     model: str
     target: str
     n_regions: int = 0
-    routed: int = 0
-    fallback: int = 0
+    family_supported: int = 0
+    family_unsupported: int = 0
     unclassified: int = 0
+    # precision, over the family_supported subset only
+    precision_known: int = 0
+    dtype_ok: int = 0
+    dtype_blocked: int = 0
     by_family: Counter = field(default_factory=Counter)
     by_op: Counter = field(default_factory=Counter)
     unclassified_ops: Counter = field(default_factory=Counter)
-    fallback_families: Counter = field(default_factory=Counter)
+    unsupported_families: Counter = field(default_factory=Counter)
+    by_precision: Counter = field(default_factory=Counter)
 
     @property
-    def routed_fraction(self) -> float:
-        """Routed as a share of CLASSIFIED regions — the honest denominator. Reporting over all regions
-        would let a model full of unnameable regions look well covered."""
-        classified = self.routed + self.fallback
-        return (self.routed / classified) if classified else 0.0
+    def family_fraction(self) -> float:
+        """The PRIMARY metric: family-supported as a share of CLASSIFIED regions. Regions we could not name
+        stay out of the denominator — a model full of unnameable regions must not read as well covered."""
+        classified = self.family_supported + self.family_unsupported
+        return (self.family_supported / classified) if classified else 0.0
 
     @property
     def classified_fraction(self) -> float:
         return ((self.n_regions - self.unclassified) / self.n_regions) if self.n_regions else 0.0
 
+    @property
+    def precision_fraction(self) -> float | None:
+        """Of the family-supported regions whose precision the capture ACTUALLY expressed, how many are in
+        a format the target accepts. ``None`` when no precision was expressed at all — the honest answer
+        there is "unknown", not 0% and not 100%."""
+        judged = self.dtype_ok + self.dtype_blocked
+        return (self.dtype_ok / judged) if judged else None
+
     def to_dict(self) -> dict:
         return {
             "model": self.model, "target": self.target, "n_regions": self.n_regions,
-            "routed": self.routed, "fallback": self.fallback, "unclassified": self.unclassified,
-            "routed_fraction_of_classified": round(self.routed_fraction, 4),
+            "family_supported": self.family_supported,
+            "family_unsupported": self.family_unsupported,
+            "unclassified": self.unclassified,
+            "family_fraction_of_classified": round(self.family_fraction, 4),
             "classified_fraction": round(self.classified_fraction, 4),
+            "precision_known": self.precision_known,
+            "dtype_ok": self.dtype_ok, "dtype_blocked": self.dtype_blocked,
+            "precision_fraction_of_judged": (None if self.precision_fraction is None
+                                             else round(self.precision_fraction, 4)),
             "by_family": dict(self.by_family.most_common()),
             "by_op": dict(self.by_op.most_common()),
             "unclassified_ops": dict(self.unclassified_ops.most_common()),
-            "fallback_families": dict(self.fallback_families.most_common()),
+            "unsupported_families": dict(self.unsupported_families.most_common()),
+            "by_precision": dict(self.by_precision.most_common()),
         }
 
 
@@ -115,7 +153,38 @@ def _is_region_op(op) -> bool:
     return _short_op(name) not in ("yield", "index", "init_tensor")
 
 
-def regions_from_module(module) -> tuple[RegionDescriptor, ...]:
+def weight_precisions(manifest_path: str | Path) -> dict[str, str]:
+    """Owning-module fqn -> quant-format name, read from a capture's WEIGHTS manifest.
+
+    This is where a capture's real precision lives. The IR does not carry it: an ``int8`` capture types only
+    a minority of its regions as ``i8`` and an ``fp8`` capture carries no fp8 element type at all, while
+    ``prov.orig_dtype`` is the pre-quantization torch dtype (``float32`` in every variant). The manifest
+    entries are ``{weight: "a.b.c.weight", dtype: "int8"}``, and regions carry ``prov.fqn`` as the OWNING
+    module (``a.b.c``), so the join is the weight name minus its trailing component.
+
+    Only formats the registry knows are kept; anything else is dropped rather than mapped to a guess.
+    """
+    import json
+
+    out: dict[str, str] = {}
+    doc = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    entries = doc.values() if isinstance(doc, dict) else doc
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        weight, dtype = entry.get("weight"), entry.get("dtype")
+        if not isinstance(weight, str) or not isinstance(dtype, str):
+            continue
+        name = _MANIFEST_DTYPE.get(dtype)
+        if name is None:
+            continue
+        owner = weight.rpartition(".")[0]
+        if owner:
+            out[owner] = name
+    return out
+
+
+def regions_from_module(module, *, precisions: dict[str, str] | None = None) -> tuple[RegionDescriptor, ...]:
     """Describe every computation-carrying linalg region in a parsed model module.
 
     Family resolution order: the op's own NAME first (structural — ``linalg.matmul`` is a contraction
@@ -130,8 +199,14 @@ def regions_from_module(module) -> tuple[RegionDescriptor, ...]:
         family = sf.from_op(short)
         if family is None:  # unnamed region: fall back to whatever provenance the capture stamped
             family = sf.from_prov(_attr_str(op, "prov.family"), _attr_str(op, "prov.op"))
-        out.append(RegionDescriptor(source=short, op=short, family=family,
-                                    in_dtype=_elem_dtype(op)))
+        # Precision from the weights manifest when we have one, joined on the region's owning module.
+        # Element type is the FALLBACK, not the authority: it under-reports quantization badly.
+        precision = None
+        if precisions:
+            precision = precisions.get(_attr_str(op, "prov.fqn") or "")
+        if precision is None:
+            precision = _elem_dtype(op)
+        out.append(RegionDescriptor(source=short, op=short, family=family, in_dtype=precision))
     return tuple(out)
 
 
@@ -149,11 +224,22 @@ def coverage_for(regions: tuple[RegionDescriptor, ...], target: str, *,
             rep.unclassified_ops[region.op or "?"] += 1
             continue
         rep.by_family[family] += 1
+        rep.by_precision[region.in_dtype or "<unexpressed>"] += 1
+        if family not in cap_map:
+            rep.family_unsupported += 1
+            rep.unsupported_families[family] += 1
+            continue
+        rep.family_supported += 1
+        # Precision is judged ONLY where the capture expressed one. Asking is_eligible with a None dtype
+        # returns eligible (a None want is "not applicable"), so folding the unexpressed case into dtype_ok
+        # would manufacture precision coverage out of missing metadata.
+        if region.in_dtype is None:
+            continue
+        rep.precision_known += 1
         if is_eligible(region, cap_map).eligible:
-            rep.routed += 1
+            rep.dtype_ok += 1
         else:
-            rep.fallback += 1
-            rep.fallback_families[family] += 1
+            rep.dtype_blocked += 1
     return rep
 
 

@@ -22,38 +22,67 @@ def _regions():
 
 @pytest.mark.parametrize("target", ["radiance", "gemmini"])
 def test_buckets_partition_every_region(target):
-    """routed + fallback + unclassified == n_regions, for any target. A region that silently belonged to
-    no bucket would make every fraction meaningless."""
+    """family_supported + family_unsupported + unclassified == n_regions, for any target. A region that
+    silently belonged to no bucket would make every fraction meaningless."""
     rep = MC.coverage_for(_regions(), target, model="synthetic")
     assert rep.n_regions == 4
-    assert rep.routed + rep.fallback + rep.unclassified == rep.n_regions
+    assert rep.family_supported + rep.family_unsupported + rep.unclassified == rep.n_regions
 
 
 def test_unnamed_region_is_unclassified_not_assumed():
-    """A region whose family cannot be resolved counts as unclassified — never folded into routed or
-    fallback. Folding it either way is how a coverage number stops being evidence."""
+    """A region whose family cannot be resolved counts as unclassified — never folded into supported or
+    unsupported. Folding it either way is how a coverage number stops being evidence."""
     rep = MC.coverage_for(_regions(), "radiance", model="synthetic")
     assert rep.unclassified == 1
     assert rep.unclassified_ops["generic"] == 1
     assert "generic" not in rep.by_family
 
 
-def test_routed_fraction_excludes_unclassified_from_its_denominator():
-    """The reported fraction is over CLASSIFIED regions: a capture full of unnameable regions must not
-    read as well covered."""
+def test_family_fraction_excludes_unclassified_from_its_denominator():
+    """The primary fraction is over CLASSIFIED regions: a capture full of unnameable regions must not read
+    as well covered."""
     rep = MC.coverage_for(_regions(), "radiance", model="synthetic")
-    assert rep.routed + rep.fallback == 3
-    assert rep.routed_fraction == pytest.approx(rep.routed / 3)
+    assert rep.family_supported + rep.family_unsupported == 3
+    assert rep.family_fraction == pytest.approx(rep.family_supported / 3)
     assert rep.classified_fraction == pytest.approx(3 / 4)
 
 
-def test_dtype_outside_a_targets_declared_formats_falls_back():
-    """gemmini declares int8 only, so an fp32 contraction is fallback, not routed — the dtype wall is real
-    and must not be papered over by a None dtype defaulting to eligible."""
+def test_family_coverage_is_dtype_agnostic():
+    """gemmini declares contraction (int8 only), so an fp32 contraction is family-SUPPORTED and separately
+    precision-blocked. Conflating the two is what made a dtype wall look like a missing family."""
     rep = MC.coverage_for(_regions(), "gemmini", model="synthetic")
-    assert rep.routed == 1                      # the int8 contraction only
-    assert rep.fallback_families["contraction"] == 1
-    assert rep.fallback_families["softmax"] == 1
+    assert rep.family_supported == 2            # both contractions, whatever their dtype
+    assert rep.unsupported_families["softmax"] == 1
+    assert rep.dtype_ok == 1                    # only the int8 one clears the precision gate
+    assert rep.dtype_blocked == 1
+
+
+def test_unexpressed_precision_is_never_counted_as_accepted():
+    """is_eligible treats a None dtype as not-applicable and returns eligible, so a region whose precision
+    the capture never expressed must be excluded from the precision numbers entirely — otherwise missing
+    metadata manufactures coverage. With nothing judged, the fraction is None, not 0% and not 100%."""
+    regions = (RegionDescriptor(source="matmul", op="matmul", family="contraction", in_dtype=None),)
+    rep = MC.coverage_for(regions, "gemmini", model="synthetic")
+    assert rep.family_supported == 1
+    assert rep.precision_known == 0
+    assert rep.dtype_ok == 0 and rep.dtype_blocked == 0
+    assert rep.precision_fraction is None
+
+
+def test_manifest_precision_join_and_unknown_formats_are_dropped(tmp_path):
+    """Precision comes from the weights manifest, joined on the region's OWNING module (the weight name
+    minus its trailing component). A dtype the registry does not know is dropped, not mapped to a guess."""
+    import json
+
+    manifest = tmp_path / "m.safetensors.manifest.json"
+    manifest.write_text(json.dumps({
+        "0": {"weight": "m.enc.layer0.weight", "dtype": "int8"},
+        "1": {"weight": "m.enc.layer1.weight", "dtype": "float8_e4m3fn"},
+        "2": {"weight": "m.enc.layer2.weight", "dtype": "complex128"},
+        "3": {"nonsense": True},
+    }))
+    got = MC.weight_precisions(manifest)
+    assert got == {"m.enc.layer0": "int8", "m.enc.layer1": "fp8_e4m3"}
 
 
 def test_short_op_splits_on_the_dialect_separator():
