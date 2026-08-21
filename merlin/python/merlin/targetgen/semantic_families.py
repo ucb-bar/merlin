@@ -154,6 +154,11 @@ _OP_FAMILY: dict[str, str] = {
     # dtype conversion are all per-element maps, and an index generator is a map over the index
     # (out[i] = f(i)). Measured across six captured models: without these, 1222 of 12013 regions were
     # UNCLASSIFIED, so a coverage number could not say whether they were opportunities or scalar work.
+    # A contract names its unit's ops with the family word itself ("elementwise", beside "matmul").
+    # `movement` and `reduce` are already keys here for the same reason; `elementwise` was missing,
+    # so a unit declaring [matmul, elementwise] and no explicit semantic_capabilities block derived
+    # ONLY {contraction} -- dropping elementwise from its own capability denominator.
+    "elementwise": "elementwise_map",
     "bitwise": "elementwise_map",
     "compare": "elementwise_map",
     "dtype_cast": "elementwise_map",

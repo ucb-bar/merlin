@@ -159,3 +159,19 @@ def test_a_unit_declaring_ops_but_no_semantic_block_still_has_capabilities():
         {"kind": "systolic", "name": "u", "ops": ["matmul"], "dtypes": ["bf16"],
          "semantic_capabilities": [{"family": "movement", "dtypes": ["bf16"]}]}]})
     assert [c.family for c in explicit[0].semantic_capabilities] == ["movement"]
+
+
+def test_a_contract_naming_its_ops_with_family_words_keeps_all_of_them():
+    """A contract names a unit's ops the way the hardware describes them -- "elementwise" beside
+    "matmul". `movement` and `reduce` already resolved; `elementwise` did not, so a unit declaring
+    [matmul, elementwise] with no explicit semantic_capabilities block derived ONLY contraction and
+    dropped elementwise from its own capability denominator. Every coverage fraction computed against
+    that map was then measuring a narrower target than the contract describes."""
+    from merlin.targetgen import compute_units as cu
+    from merlin.targetgen import semantic_families as sf
+
+    assert sf.from_op("elementwise") == "elementwise_map"
+    derived = cu.compute_units({"compute_units": [
+        {"kind": "simt", "name": "u", "ops": ["matmul", "elementwise"], "dtypes": ["fp32"]}]})
+    assert sorted(c.family for c in derived[0].semantic_capabilities) == \
+        ["contraction", "elementwise_map"]
