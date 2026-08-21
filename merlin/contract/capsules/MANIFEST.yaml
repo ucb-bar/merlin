@@ -1,14 +1,18 @@
 # Capsule corpus provenance — which capsules are deterministically regenerable vs hand-authored.
 #
 # `generated` capsules are emitted by generate_corpus.py (re-run is byte-stable). `hand_authored`
-# capsules have no generator yet — movement (A1), conv (B3/B4), and the held-out hidden set — and are
-# the frozen source-of-record. ALL capsules stay committed regardless: they are graded, versioned
-# benchmark INPUTS (agents are scored against exact goldens), not regenerated on the fly. This file is
-# rewritten by generate_corpus.py; do not hand-edit. See AGENT.md.
+# capsules have no generator yet — movement (A1) and conv (B3/B4) — and are the frozen
+# source-of-record. Public capsules stay committed: they are graded, versioned benchmark INPUTS (the
+# op/shape/dtype an agent compiles against), not regenerated on the fly.
+#
+# HOLDOUTS ARE COUNTED, NEVER NAMED. This file is tracked and sits inside the `merlin/contract/` tree
+# every arm is granted read-only, so naming a held-out capsule handed the agent under test the op
+# family it was being generalization-tested on. `held_out` therefore carries counts only; the holdout
+# specification lives in the untracked `profiles/<target>.hidden.yaml` sidecars.
+#
+# This file is rewritten by generate_corpus.py; do not hand-edit. See AGENT.md.
 generated_by: merlin/contract/capsules/generate_corpus.py
 generated:
-- hidden/GH0_softmax_bf16_hidden
-- hidden/GH1_conv2d_i8_hidden
 - isa/A0_config_smoke
 - isa/A2_single_tile_matmul
 - isa/A3_k_accumulation
@@ -44,11 +48,9 @@ generated:
 - model_slices/GF4_add_bf16_pt
 - model_slices/GF5_gelu_bf16_pt
 hand_authored:
-- hidden/H0_matmul_hidden
-- hidden/H1_acc_scale_hidden
-- hidden/H2_k_accum_hidden
-- hidden/H3_movement_hidden
-- hidden/H4_conv_hidden
 - isa/A1_mvin_mvout
 - layers/B3_conv2d_im2col_i8
 - layers/B4_conv2d_relu_i8
+held_out:
+  n_generated: 6
+  n_hand_authored: 5

@@ -10,7 +10,8 @@ gets a correct, complete mask from its ``target_experiment.yaml`` with zero copi
 
 The set has six origins, all derived:
   * ``golden``        — every ``golden.yaml`` under the declared capsule corpus + its sibling corpora
-  * ``hidden``        — the hidden-capsule dir (the corpus's ``hidden/`` sibling)
+  * ``hidden``        — the hidden-capsule dir (the corpus's ``hidden/`` sibling) + the holdout
+                        SPECIFICATION sidecars (``capsules/profiles/*.hidden.yaml``)
   * ``prior_backend`` — the reference exemplars the descriptor's ``answer_surfaces.prior_backends`` names
   * ``oracle``        — the reference/simulator/runtime-backend modules (the DECLARED registry below)
   * ``grader``        — the decoder/grader/golden-gen modules (the DECLARED registry below)
@@ -168,6 +169,17 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
         if hp.is_dir():
             out.append(AnswerSurface(f"hidden-capsules:{hp.relative_to(root)}", hp, "dir", "hidden"))
 
+    # The holdout SPECIFICATION, not just its directory. A capsule's op + dtype + exact shape is an
+    # answer to the generalization question even when the golden values stay masked, and the spec used
+    # to live in the tracked ``profiles/<target>.yaml`` inside the same broad ``merlin/contract/`` grant.
+    # It now lives in an untracked ``profiles/<target>.hidden.yaml`` sidecar; masking it here as well
+    # means a checkout that still carries one (or a target that grows a new sidecar) is covered without
+    # relying on .gitignore. Derived by glob, never a per-target hand-list.
+    prof_dir = caps_root / "profiles"
+    if prof_dir.is_dir():
+        for hp in sorted(prof_dir.glob("*.hidden.yaml")):
+            out.append(AnswerSurface(f"hidden-spec:{hp.relative_to(root)}", hp, "file", "hidden"))
+
     tgt_root = artifacts_dir() / "targets" / te.target
     for name in te.prior_backends:
         bp = tgt_root / name
@@ -212,6 +224,10 @@ def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
         _hidden_rels += [d.relative_to(repo_root()).as_posix() for d in _caps.rglob("hidden") if d.is_dir()]
     for _hr in _hidden_rels:
         answer.append("/".join(Path(_hr).parts[-2:]))
+    # ...and the holdout SPECIFICATION sidecars, matching the filesystem mask. The ".hidden.yaml"
+    # suffix identifies every one of them, so a new target's sidecar is covered the day it appears.
+    if (_caps / "profiles").is_dir():
+        answer.append(".hidden.yaml")
     for rel in ORACLE_MODULES:
         # "merlin/runtime/reference" etc. — drop the merlin/python prefix + the .py suffix
         frag = rel[len("merlin/python/"):] if rel.startswith("merlin/python/") else rel

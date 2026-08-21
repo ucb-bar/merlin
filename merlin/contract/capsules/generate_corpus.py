@@ -39,6 +39,27 @@ HERE = Path(__file__).resolve().parent
 PROFILES = HERE / "profiles"
 
 
+def load_profile(target: str, *, include_holdouts: bool = True) -> dict:
+    """The target's capsule profile: the tracked public half plus the UNTRACKED holdout sidecar.
+
+    The holdout spec (op + dtype + exact shape) is an answer, not a contract: the tracked profile lives
+    inside the ``merlin/contract/`` tree every arm is granted read-only, so a holdout declared there is
+    readable by the agent under test. It therefore lives in ``profiles/<target>.hidden.yaml``, which is
+    gitignored and masked by :mod:`merlin.targetgen.sandbox.answer_surfaces`. When the sidecar is absent
+    -- a public clone, or a sandbox where it is masked -- this returns the public profile unchanged and
+    the run simply emits no hidden capsules, which is the correct behaviour rather than an error.
+
+    ``include_holdouts=False`` for any caller whose OUTPUT is public: a published artifact that
+    enumerates the holdouts leaks them just as the profile did.
+    """
+    prof = yaml.safe_load((PROFILES / f"{target}.yaml").read_text())
+    side = PROFILES / f"{target}.hidden.yaml"
+    if include_holdouts and side.is_file():
+        held = yaml.safe_load(side.read_text()) or {}
+        prof["capsules"] = list(prof.get("capsules") or []) + list(held.get("capsules") or [])
+    return prof
+
+
 # ------------------------------------------------------------------------------------------------
 # deterministic local-path scrub (tracked-file hygiene — no /tmp, /scratch, /home paths ever ship).
 # The m2m capture externalizes weights to a NON-deterministic temp dir and stamps its ABSOLUTE path into
@@ -1213,7 +1234,7 @@ def generate_target(target: str) -> list[Path]:
     descriptor = _descriptor_for(target)
     _ensure_contract_on_path(descriptor)
     te = load_target_experiment(descriptor)
-    profile = yaml.safe_load((PROFILES / f"{target}.yaml").read_text())
+    profile = load_profile(target)
     binding = CS.derive_binding(te, profile.get("datapath", {}))
     out_root = Path(te.capsule_corpus).parent                 # target's corpus root, derived (no move)
     # `sweeps:` (if any) expand into the same flat entries `capsules:` holds, so
@@ -1244,6 +1265,11 @@ def update_provenance_manifest(written, cap_root=None) -> Path:
 
     Scoped to the SHARED corpus (``<category>/<capsule>``, rel-depth 2). A target with its own nested
     corpus (``atlas/<category>/<capsule>``) carries its own provenance and is deliberately untouched.
+
+    HOLDOUTS ARE COUNTED, NEVER NAMED. This file is tracked and sits inside the ``merlin/contract/``
+    tree every arm is granted read-only, so listing a ``hidden/<capsule>`` path told the agent under
+    test the op family of a held-out capsule. The generated/hand_authored split is provenance about
+    the PUBLIC corpus; the holdouts contribute only a count, which reveals nothing.
     """
     root = Path(cap_root) if cap_root else Path(__file__).resolve().parent
     man_path = root / "MANIFEST.yaml"
@@ -1257,6 +1283,9 @@ def update_provenance_manifest(written, cap_root=None) -> Path:
             return None
         return str(r) if len(r.parts) == 2 else None
 
+    def _held(rel: str) -> bool:
+        return rel.split("/", 1)[0] == "hidden"
+
     for d in written or []:
         rel = _rel(d)
         if rel:
@@ -1266,9 +1295,14 @@ def update_provenance_manifest(written, cap_root=None) -> Path:
     hand |= (on_disk - gen - hand)          # never seen by a generator -> frozen source-of-record
     gen &= on_disk; hand &= on_disk         # drop entries whose capsule is gone
 
+    # Split the holdouts back out: they are counted here, never named (see the docstring).
+    held_gen, held_hand = {r for r in gen if _held(r)}, {r for r in hand if _held(r)}
+    gen -= held_gen; hand -= held_hand
+
     man["generated_by"] = "merlin/contract/capsules/generate_corpus.py"
     man["generated"] = sorted(gen)
     man["hand_authored"] = sorted(hand)
+    man["held_out"] = {"n_generated": len(held_gen), "n_hand_authored": len(held_hand)}
     head = man_path.read_text(encoding="utf-8").split("generated_by:")[0] if man_path.is_file() else ""
     man_path.write_text(head + yaml.safe_dump(man, sort_keys=False), encoding="utf-8")
     return man_path
@@ -1280,7 +1314,9 @@ def build_comparison_manifest(targets: list[str]) -> dict:
     on atlas vs fp16 on radiance). Keyed by ``comparison_group`` when the profile declares one, else by op."""
     groups: dict[str, list[dict]] = {}
     for t in targets:
-        prof = yaml.safe_load((PROFILES / f"{t}.yaml").read_text())
+        # public half only: this manifest is a published artifact, and one that names the holdouts
+        # leaks exactly what splitting them out of the profile was meant to stop.
+        prof = load_profile(t, include_holdouts=False)
         for e in prof["capsules"]:
             if e.get("kind") == "model" or e.get("op") == "model":
                 continue

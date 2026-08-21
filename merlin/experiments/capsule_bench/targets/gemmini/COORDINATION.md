@@ -110,7 +110,7 @@ address/stride → wrong output → numeric fail), which is a stronger guarantee
 
 **CONTRACT REFINEMENT (both arms must adopt):** `B0_quantized_linear_i8` is K=32 (two K-tiles) but
 previously declared modes `{i8, acc_scale}` only — so the accumulate check never fired on the one
-K>16 pilot capsule (inconsistent with `H2_k_accum_hidden`, which declares `k_accumulate: true`). Fixed
+K>16 pilot capsule (inconsistent with the held-out K-accumulation capsule, which declares `k_accumulate: true`). Fixed
 in `merlin/contract/capsules/generate_corpus.py` (B0 `modes += k_accumulate:True`) and the two generated
 B0 files. Effect: B0's trace must now show an accumulate-onto PRELOAD for the 2nd K-tile. This is free
 for a correct WS K-tiling backend (the raw_baseline rb_pilot_0002 submission already satisfied it).

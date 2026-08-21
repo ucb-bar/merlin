@@ -31,7 +31,9 @@ GRANTED = [
 # Real answer surfaces. Each MUST trip it.
 ANSWERS = [
     "merlin/contract/capsules/isa/A2_single_tile_matmul/golden.yaml",
-    "merlin/contract/capsules/hidden/H0_matmul_hidden/capsule.yaml",
+    # A holdout path. The token under test is the trailing "capsules/hidden" pair, so the capsule
+    # name is immaterial to the assertion — and naming a real one would publish a holdout.
+    "merlin/contract/capsules/hidden/PLACEHOLDER_hidden/capsule.yaml",
     "merlin/python/merlin/runtime/reference.py",
     "merlin/targets/gemmini/backend/gemmini.py",
     "merlin/targets/muon/sim_oracle.py",

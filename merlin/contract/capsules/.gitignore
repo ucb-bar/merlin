@@ -10,6 +10,13 @@ expected_instruction_coverage.yaml
 # entire hidden/ subtree (any target, at any depth) stays untracked and local-only.
 hidden/
 
+# The held-out capsule SPECIFICATION (op + dtype + exact shape) is itself an answer: the tracked
+# profile sits inside the `merlin/contract/` grant every arm gets read-only, so a holdout specified
+# there is readable by the agent under test. The spec lives in an untracked sidecar next to the
+# public profile; generate_corpus.py loads it when present and emits no hidden capsules when it is
+# absent (which is what a public clone should do).
+profiles/*.hidden.yaml
+
 # Whole-model capsule weights (externalized safetensors) — large regenerable binaries produced by
 # model2MLIR at generation time; never tracked (the linalg interface + capsule.yaml stay the contract).
 capsule.weights.safetensors

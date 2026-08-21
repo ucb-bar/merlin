@@ -82,16 +82,6 @@ capsules:
 - {cat: model_slices, name: CT1_attention_qk, kind: model_slice, op: attention_qk, M_tiles: 1, K_tiles: 1,
    q: Q, k: K, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'attention Q @ K^T scores, fp8 -> bf16', label: public, modes: {}}
-- {cat: hidden, name: HT0_matmul_hidden, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
-   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
-   source_reference: hidden single-tile matmul, label: hidden, modes: {}}
-- {cat: hidden, name: HT1_scale_hidden, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
-   lhs: A0, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.25,
-   source_role: handauthored_compiler_test, source_reference: hidden matmul + bf16 scale, label: hidden,
-   modes: {acc_scale: true}}
-- {cat: hidden, name: HT2_k_accum_hidden, kind: isa, op: matmul, M_tiles: 1, K_tiles: 2, N_tiles: 1,
-   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
-   source_reference: hidden K=64 accumulate, label: hidden, modes: {k_accumulate: true}}
 # --- Fused ops mined from atlas-npu/baremetal (smolvla_rms_norm, fused_silu_gate, softmax,
 # fused_attention): the VPU/norm/activation algorithms run in bf16 alongside the fp8 MXU matmuls, so they
 # are PyTorch-sourced (the m2m linalg is the interface the atlas backend compiles).
@@ -115,10 +105,6 @@ capsules:
    operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'small_llama fp8 — whole-model capstone', label: public,
    gate: {after_op_pass_fraction: 0.8}}
-# --- Hidden fused holdout.
-- {cat: hidden, name: AHF0_rmsnorm_bf16_hidden, kind: model_slice, op: rmsnorm, operand_dtype: bf16,
-   source: pytorch, M: 24, K: 32, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
-   source_reference: hidden PyTorch RMSNorm bf16 (unseen 24x32), label: hidden, modes: {}}
 # --- More VPU/activation/reduction ops mined from atlas-npu/baremetal (smolvla_gelu_tanh, smolvla_silu,
 # smolvla_elementwise_*, smolvla_reduction_sum, smolvla_rope_frequency).
 - {cat: model_slices, name: AF4_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,

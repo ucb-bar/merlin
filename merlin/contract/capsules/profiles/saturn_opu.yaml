@@ -156,14 +156,3 @@ capsules:
    source_reference: 'the classifier head: M=1 at a large N, a vecmat over the widest output',
    label: public}
 
-# ---- hidden: the same load-bearing properties, different shapes, so a corpus-fitted submission fails
-- {cat: hidden, name: OPH0_narrow_m_hidden, kind: isa, op: matmul, M: 1, N: 48, K: 96,
-   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
-   source_reference: 'hidden M=1 at a different N and K', label: hidden}
-- {cat: hidden, name: OPH1_tail_hidden, kind: isa, op: matmul, M: 19, N: 35, K: 41,
-   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
-   source_reference: 'hidden ragged tile in every dimension at once', label: hidden}
-- {cat: hidden, name: OPH2_requant_hidden, kind: isa, op: matmul, M: 9, N: 7, K: 130,
-   lhs: A0, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.125,
-   source_role: handauthored_compiler_test,
-   source_reference: 'hidden requant on a ragged shape with a long reduction', label: hidden}
