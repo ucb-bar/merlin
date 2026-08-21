@@ -21,6 +21,7 @@ correctness gates before any success is reported. This CLI only ORCHESTRATES the
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import sys
 import tempfile
@@ -366,6 +367,17 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     out["status"] = "not_run"
     out["reason"] = f"run mode {run!r} not supported for rvv (use none|k1|spike|zephyr|verilator)"
     return out
+
+
+@functools.lru_cache(maxsize=None)
+def mesh_datapath(target: str) -> tuple[str, str, bool]:
+    """``(operand_dtype, accum_dtype, is_integer)`` the target's own compute unit declares.
+
+    Derived from the target contract via :func:`_mesh_tile_binding`, never assumed: addressing an fp32
+    SIMT mesh as int8 would quantize operands the datapath never asked to have quantized.
+    """
+    b = _mesh_tile_binding(target, None, None)
+    return b.operand_dtype, b.accum_dtype, bool(b.integer)
 
 
 def _default_oot_package(target: str) -> str | None:

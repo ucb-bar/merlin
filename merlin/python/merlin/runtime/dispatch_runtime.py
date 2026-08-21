@@ -604,7 +604,13 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             b = np.ascontiguousarray(env[id(op.operands[mroute["b"]])])
             mesh_out = None
             if a.ndim == 2 and b.ndim == 2 and a.shape[1] == b.shape[0]:   # a plain 2-D contraction
-                if mroute["in_dtype"] == "i8":       # already int8 — pass through, NO boundary quant
+                from ..compile_cli import mesh_datapath
+                op_dt, acc_dt, is_int = mesh_datapath(mesh_target)
+                if not is_int:
+                    # A float mesh takes the operands as they are. Quantizing here would inject error
+                    # into a datapath that declared a float format, and then dequantize it back out.
+                    qa, qb, scale = a.astype(np.float64).tolist(), b.astype(np.float64).tolist(), 1.0
+                elif mroute["in_dtype"] == "i8":     # already int8 — pass through, NO boundary quant
                     qa, qb, scale = a.astype(np.int64).tolist(), b.astype(np.int64).tolist(), 1.0
                 else:                                # f32 -> per-tensor symmetric int8 at the mesh boundary
                     af, bf = a.astype(np.float64), b.astype(np.float64)
@@ -613,8 +619,8 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     qa = np.clip(np.rint(af / sa), -127, 127).astype(np.int64).tolist()
                     qb = np.clip(np.rint(bf / sb), -127, 127).astype(np.int64).tolist()
                     scale = sa * sb
-                mesh_out = run_matmul_on_mesh(mesh_target, qa, qb, operand_dtype="int8",
-                                              accum_dtype="i32", package=mesh_package)
+                mesh_out = run_matmul_on_mesh(mesh_target, qa, qb, operand_dtype=op_dt,
+                                              accum_dtype=acc_dt, package=mesh_package)
                 if mesh_out is not None:
                     om = np.array(mesh_out, np.float64) * scale
                     env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])
