@@ -128,6 +128,26 @@ def main(argv=None):
     while True:
         if (ch / "STOP").exists():
             break
+        # honor cancels FIRST — a stale full-suite verilator job otherwise holds its slot for hours
+        # (the sole cycle-exact oracle wedges) with the agent unable to free it. Kills a RUNNING job
+        # (releasing its slot) or voids a QUEUED one; the shim reports state 'canceled'.
+        for csent in sorted(ch.glob("simcancel_*")):
+            jid = csent.name[len("simcancel_"):]
+            if jid in running:
+                j = running.pop(jid)
+                j["proc"].kill()
+                if j["slot"]:
+                    j["slot"].unlink(missing_ok=True)
+            elif (ch / f"simdone_{jid}").exists() or (ch / f"simerr_{jid}").exists():
+                csent.unlink(missing_ok=True)   # finished before the cancel landed — result stands
+                continue
+            else:
+                claimed.add(jid)                # queued: never launch it
+            (ch / f"simresp_{jid}.json").write_text(json.dumps(
+                {"state": "canceled", "all_pass": False, "error": None,
+                 "note": "canceled on request; the simulator slot is free for your next submit"}, indent=2))
+            (ch / f"simcanceled_{jid}").write_text("ok")
+            csent.unlink(missing_ok=True)
         # reap finished
         for jid, j in list(running.items()):
             if j["proc"].poll() is None:
@@ -170,7 +190,10 @@ def main(argv=None):
                         continue                            # global verilator budget full; try later
                 workers = max(1, min(int(r.get("workers", 1)), 2 if sim == "verilator" else 8))
                 capspec = "all" if caps == ["all"] else ",".join(caps)
-                ncaps = 20 if caps == ["all"] else len(caps)
+                # 'all' = the ACTUAL public-set size, not a legacy literal: under-counting (20 vs a
+                # 37-capsule corpus) under-budgets the wall-clock cap and kills the job mid-suite.
+                ncaps = (sum(1 for _ in PUBLIC_CAPSULES.glob("*/capsule.yaml")) or 20) \
+                    if caps == ["all"] else len(caps)
                 to = (vpc * ncaps) if sim == "verilator" else 900
                 resp_tmp = ch / f"simtmp_{jid}.json"
                 argv2 = [PY, str(SELFCHECK), "--submission", str(ws / "submission"),

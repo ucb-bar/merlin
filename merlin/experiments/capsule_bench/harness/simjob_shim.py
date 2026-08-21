@@ -12,12 +12,14 @@ self-check uses, so goldens never enter the box.
 Subcommands (same channel, simjob_* prefixes):
   submit  --sim {spike|verilator|vcs} --capsules <csv|all> [--debug NAME...] [--workers N]
             -> prints {"job_id","state":"queued","n_capsules"} and returns immediately
-  poll    --job-id ID        -> {"job_id","state":queued|running|done|error, "result": <redacted|null>}
+  poll    --job-id ID        -> {"job_id","state":queued|running|done|error|canceled, "result": <redacted|null>}
   wait    --job-id ID [--timeout S]   -> poll-loop (bounded; default short so a turn can't hang), prints result
+  cancel  --job-id ID        -> kill a queued/running job (frees its simulator slot for your next submit)
   list                        -> this workspace's jobs + states
 
 Verilator is slow (minutes/capsule): prefer `submit` a few per-capsule jobs, then `poll` — do NOT
-`wait` on a big verilator batch.
+`wait` on a big verilator batch. A stale full-suite job holds a simulator slot for hours: `cancel` it
+as soon as its result no longer matters (e.g. you changed the submission).
 """
 from __future__ import annotations
 import argparse
@@ -39,10 +41,14 @@ def _read(p: Path):
 
 
 def _state(jid: str) -> tuple[str, dict | None]:
+    if (CH / f"simcanceled_{jid}").exists():
+        return "canceled", _read(CH / f"simresp_{jid}.json")
     if (CH / f"simerr_{jid}").exists():
         return "error", _read(CH / f"simresp_{jid}.json")
     if (CH / f"simdone_{jid}").exists():
         return "done", _read(CH / f"simresp_{jid}.json")
+    if (CH / f"simcancel_{jid}").exists():
+        return "cancel_requested", None
     if (CH / f"simrun_{jid}").exists():
         return "running", None
     if (CH / f"simreq_{jid}.json").exists():
@@ -54,7 +60,7 @@ def _submit(a) -> int:
     CH.mkdir(parents=True, exist_ok=True)
     jid = f"{os.getpid()}_{int(time.time() * 1000) % 1000000}"
     caps = [c.strip() for c in a.capsules.split(",") if c.strip()] if a.capsules != "all" else "all"
-    n = len(caps) if isinstance(caps, list) else 20
+    n = len(caps) if isinstance(caps, list) else "all"   # the broker knows the real 'all' count, not us
     (CH / f"simreq_{jid}.json").write_text(json.dumps({
         "sim": a.sim, "capsules": a.capsules, "debug": a.debug or [],
         "workers": a.workers, "submitted_at": int(time.time())}))
@@ -82,6 +88,20 @@ def _wait(a) -> int:
     return 0
 
 
+def _cancel(a) -> int:
+    """Request cancellation: drop a sentinel the broker honors on its next poll tick. Kills a RUNNING
+    job (freeing its simulator slot) or voids a QUEUED one; a job already done/error is left as-is."""
+    st, _ = _state(a.job_id)
+    if st in ("done", "error", "canceled", "unknown"):
+        print(json.dumps({"job_id": a.job_id, "state": st,
+                          "note": "nothing to cancel (job already finished or unknown)"}))
+        return 0
+    (CH / f"simcancel_{a.job_id}").write_text("cancel")
+    print(json.dumps({"job_id": a.job_id, "state": "cancel_requested",
+                      "note": "the broker honors this on its next tick; poll to confirm 'canceled'"}))
+    return 0
+
+
 def _list(a) -> int:
     jobs = {}
     for req in sorted(CH.glob("simreq_*.json")) if CH.is_dir() else []:
@@ -100,6 +120,7 @@ def main(argv=None):
     p = sub.add_parser("poll"); p.add_argument("--job-id", required=True, dest="job_id"); p.set_defaults(fn=_poll)
     w = sub.add_parser("wait"); w.add_argument("--job-id", required=True, dest="job_id")
     w.add_argument("--timeout", type=int, default=120); w.set_defaults(fn=_wait)
+    c = sub.add_parser("cancel"); c.add_argument("--job-id", required=True, dest="job_id"); c.set_defaults(fn=_cancel)
     ls = sub.add_parser("list"); ls.set_defaults(fn=_list)
     a = ap.parse_args(argv)
     return a.fn(a)
