@@ -198,7 +198,18 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                     return out
                 return [float(v)]
             return _fl(c)
-        return [float(v) for row in t.to_list() for v in row]
+
+        def _fl2(v):                                     # rank-AGNOSTIC flatten of the fallback operand
+            if isinstance(v, (list, tuple)):
+                out: list[float] = []
+                for e in v:
+                    out.extend(_fl2(e))
+                return out
+            return [float(v)]
+        # The old two-level comprehension raised TypeError(float() of list) on a rank-3 operand, so a
+        # batched capsule could not reach its shape check at all. Row-major flat is what gets embedded
+        # either way, so flatten at any rank.
+        return _fl2(t.to_list())
 
     # --- linalg-interface fused op (softmax/layernorm/geglu/rope/attention_full) ----------------------
     # A capsule whose interface is the m2m linalg module directly (the agent compiles standard-dialect
@@ -257,6 +268,45 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                        TensorArg(k, n, d, _vals(canon0, k, kt), "f32")]
             out_args = [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
             return in_args, out_args
+        if op in ("MATMUL_BATCHED", "BATCHED_MATMUL"):
+            # Batched contraction. The schema admits BOTH spellings and leaves ``operands`` a free-form
+            # string->string map, so derive the ROLES from the cb's OWN declarations instead of guessing key
+            # names (a lowering may spell them lhs/weight/out where the generic matmul path spells them
+            # lhs/rhs/dst -- both are schema-valid, and key-name guessing is exactly the brittleness this
+            # repo forbids): the operand naming a ``role == "output"`` tensor is the destination (cross-checked
+            # against the declared ``params.outputs``), the remaining operands are leaves, ordered by the cb's
+            # declared ``params.arg_order`` -- the same weight-first kernel ABI the other branches emit.
+            # Batch folds into ROWS via _shape2d: TensorArg is a flat row-major buffer plus a (rows, cols)
+            # descriptor, and prod(leading dims) x last dim is the SAME bytes as the rank-N operand, which is
+            # all this harness embeds -- the kernel does its own addressing and the runner stamps DRAM bases
+            # from shape x dtype. Without this branch a schema-valid batched command matched no branch and
+            # fell through to `return None`, surfacing as "no canonical_inputs" (see the message at the
+            # caller) -- blaming the agent's artifact for an operand rule the harness never had. Two batched
+            # capsules were ungradeable by construction on the RTL plane because of it.
+            named = [v for v in o.values() if v]
+            declared_out = [n for n in ((cb.get("params") or {}).get("outputs") or []) if n]
+            by_role = [v for v in named if (all_tensors.get(v) or {}).get("role") == "output"]
+            out = by_role[0] if by_role else (declared_out[0] if declared_out else None)
+            if not out:
+                return None
+            leaves = [v for v in named if v != out and v in env0]
+            _order = [n for n in ((cb.get("params") or {}).get("arg_order") or []) if n in leaves]
+            leaves = _order + [n for n in leaves if n not in _order]
+            if not leaves:
+                return None
+            in_args = []
+            for nm in leaves:
+                t = env0[nm]
+                r, c = _shape2d(list(t.shape))
+                vals = _vals(canon0, nm, t)
+                if len(vals) != r * c:                   # fail closed on an operand/shape disagreement
+                    return None
+                in_args.append(TensorArg(nm, r, c, vals, "f32"))
+            oshape = (all_tensors.get(out) or {}).get("shape")
+            if not oshape:
+                return None
+            orows, ocols = _shape2d(list(oshape))
+            return in_args, [TensorArg(out, orows, ocols, [0.0] * (orows * ocols), "f32")]
         if op == "RMSNORM":
             _cmds = cb.get("commands", [])
             rms = [cc for cc in _cmds if (cc.get("opcode") or "").upper() == "RMSNORM"]

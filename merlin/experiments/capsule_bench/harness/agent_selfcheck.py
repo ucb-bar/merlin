@@ -171,6 +171,14 @@ def main(argv=None):
     # barrier = the deepest resolved RTL tier: chipyard maps from --sim; any other target uses its
     # single contract-derived tier (atlas -> L3 program oracle), so read it from the adapters.
     barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" else max(adapters) if adapters else "L3"
+    # REPORT the engine that actually ran, not the --sim flag. --sim selects a tier only for a chipyard
+    # target's spike/verilator/vcs ladder; every other target is contract-routed (oracle_adapters), so the
+    # flag is inert and echoing it told the agent it was iterating on "spike" while a SIMT core's cyclotron
+    # + RTL tiers did the work. A wrong engine name invites reasoning about the wrong machine (RoCC/RISC-V
+    # semantics for a SIMT GPU), and SIM_TIER maps spike->L2 while the note printed the resolved L3 --
+    # internally inconsistent on top of being wrong. Label only; tier SELECTION is unchanged.
+    if _sim_via != "chipyard":
+        sim = f"{_sim_via or 'contract-routed'} [{','.join(sorted(adapters))}]"
     # subset selection (operator-side capsule dirs)
     want = None if a.capsules == "all" else set(s.strip() for s in a.capsules.split(",") if s.strip())
     import tempfile
@@ -257,23 +265,24 @@ def main(argv=None):
         name = d.get("capsule", cr.parent.name)
         if want and name not in want:
             continue
-        tiers = {t: (v or {}).get("status") for t, v in (d.get("tiers") or {}).items()}
+        tier_objs = {t: (v or {}) for t, v in (d.get("tiers") or {}).items()}
+        tiers = {t: v.get("status") for t, v in tier_objs.items()}
         bar = tiers.get(barrier_tier)
-        bar_used = barrier_tier
-        if bar is None and not _declared_ran:
-            # The declared barrier never ran for ANY capsule, so scoring against it marks EVERY capsule
-            # failed no matter what the grade said. Measured on atlas: the barrier resolved to L4 (the
-            # lexicographic max of a wider adapter set) while its results carry only {L0 skipped, L1
-            # skipped, L2 pass} -- so 110 consecutive self-checks reported 0/11 while the operator grade
-            # of the same submission was 10/11. An agent told it fails everything cannot converge; it
-            # rewrites working code. Fall back to the deepest tier that actually produced a verdict.
-            # This can only reclassify a capsule the grade RAN and PASSED: `status == "pass"` is still
-            # required below, and a 'skipped' tier is never treated as a barrier.
-            ran = [k for k, v in tiers.items() if v not in (None, "skipped")]
-            if ran:
-                bar_used = max(ran)
-                bar = tiers.get(bar_used)
-        passed = (d.get("status") == "pass") and (bar == "pass")
+        # Gate on the barrier tier ONLY when the capsule's own contract makes it mandatory, and only when
+        # it actually produced a verdict. `barrier_tier` above is the DEEPEST resolved adapter tier, which
+        # for a corpus that requires [L0,L1,L2] while also shipping an OPTIONAL cycle-accurate cert is a
+        # tier the grade explicitly does not require: the driver derives exactly this distinction
+        # (run_baseline_qa_loop._cycle_accurate_checkpoint_enabled) and SKIPS the barrier, so demanding it
+        # here reported FAIL for capsules the authoritative grade counts as PASS. Measured: five attention
+        # capsules numerically exact at the mandatory functional tier (zero mismatch) with the optional
+        # cert tier `unavailable` were shown to the agent as failures, and it spent a round re-deriving
+        # them. `status` already enforces every mandatory tier (not_run_is_not_pass), so dropping a
+        # NON-mandatory conjunct cannot manufacture a pass -- and a non-mandatory tier that ran and FAILED
+        # still gates, so an explicitly requested cert failure is never reported as success.
+        bar_mandatory = bool(tier_objs.get(barrier_tier, {}).get("mandatory"))
+        bar_did_not_run = bar in (None, "unavailable", "skipped")
+        passed = (d.get("status") == "pass") and (
+            bar == "pass" or (bar_did_not_run and not bar_mandatory))
         npass += int(passed)
         # numeric diagnostics — keep ALL stats; redact ONLY the golden expected value
         num = dict(d.get("numeric") or {})
@@ -300,8 +309,11 @@ def main(argv=None):
         console_tail = None
         for lg in (cr.parent / "artifacts").glob("*_console.log") if (cr.parent / "artifacts").is_dir() else []:
             console_tail = lg.read_text()[-800:]
-        row = {"capsule": name, "pass": passed, "barrier_tier": bar_used,
-               "barrier_declared": barrier_tier, "barrier_status": bar}
+        row = {"capsule": name, "pass": passed, "barrier_tier": barrier_tier, "barrier_status": bar,
+               # say WHETHER the barrier gates this capsule, so an `unavailable` optional cert tier beside
+               # `pass: true` reads as "not required here", not as an unexplained contradiction to chase.
+               "barrier_gates": bar_mandatory,
+               "required_tiers": sorted(t for t, v in tier_objs.items() if v.get("mandatory"))}
         if not passed:
             # FULL debug detail ONLY for a FAILING capsule (the one you are working). A passing capsule's
             # diff stats / trace dump / console tail are noise that re-inflates the agent's context every
@@ -341,8 +353,11 @@ def main(argv=None):
                    "copied to ./selfcheck_out/. The diff stats (mismatch_count, magnitudes) are YOUR "
                    "output measured against the operation's own definition, which you can reproduce from "
                    "the declared inputs — there is no answer key; the reference output values are withheld "
-                   "so you debug from your own intent, as in real bring-up. 'done' = all public pass on "
-                   "verilator/VCS; cycles are not a criterion. (Movement ops legitimately have 0 matmuls.)"}
+                   "so you debug from your own intent, as in real bring-up. 'done' = every public capsule "
+                   "passes its own MANDATORY tiers (see per_capsule.required_tiers); a tier reported "
+                   "`unavailable` with barrier_gates=false is OPTIONAL for that capsule and does NOT hold "
+                   "it back -- do not spend rounds on it. Cycles are not a criterion. (Movement ops "
+                   "legitimately have 0 matmuls.)"}
     txt = json.dumps(out, indent=2)
     print(txt)
     if a.out:

@@ -13,8 +13,47 @@ from .commandbuffer import materialize_inputs
 from .tensor import Tensor
 
 
+#: Opcodes this reference engine has a definition for. An opcode outside this set (and outside
+#: :data:`NO_NUMERIC_EFFECT`) is NOT silently skipped: a buffer whose result depends on it cannot be
+#: recomputed here, and dropping it produced an EMPTY output map that downstream read as "the kernel never
+#: wrote its output" — indistinguishable from a real dropped store, and unfixable by any submission.
+#: Fail closed instead (see :class:`UnmodeledOp`).
+MODELED_OPCODES = frozenset({
+    "RES_PACK", "MATMUL_RESIDENT", "MATMUL", "COMMIT", "VECTOR_MAP", "VREDUCE",
+})
+
+#: Opcodes with NO effect on committed values, correctly ignored here rather than "unmodeled". ``EVICT``
+#: frees a resident-store handle and counts an eviction — residency is a performance optimization that by
+#: definition does not change results, and this naive path keeps no resident store to free. Listing them
+#: explicitly is what lets an opcode the engine genuinely cannot evaluate raise instead of being dropped.
+NO_NUMERIC_EFFECT = frozenset({"EVICT"})
+
+
+class UnmodeledOp(ValueError):
+    """The command buffer uses an opcode this integer reference engine has no definition for.
+
+    Raised so a caller can tell "I cannot check this" apart from "the buffer is wrong" — the first is a
+    property of THIS engine's op vocabulary (grade the artifact on the hardware oracle instead), the
+    second is a defect in the submission. Conflating them fails correct work.
+    """
+
+    def __init__(self, opcodes: list[str]) -> None:
+        self.opcodes = list(opcodes)
+        super().__init__(
+            f"the integer reference engine models {sorted(MODELED_OPCODES)} and has no definition for "
+            f"{sorted(set(opcodes))}")
+
+
 def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[str, list]:
-    """Recompute committed outputs from leaf inputs via a naive (non-resident) path."""
+    """Recompute committed outputs from leaf inputs via a naive (non-resident) path.
+
+    Raises :class:`UnmodeledOp` when the buffer uses an opcode outside :data:`MODELED_OPCODES`, rather
+    than skipping it and returning a silently incomplete output map.
+    """
+    _known = MODELED_OPCODES | NO_NUMERIC_EFFECT
+    unmodeled = [c["opcode"] for c in cb.get("commands", []) if c.get("opcode") not in _known]
+    if unmodeled:
+        raise UnmodeledOp(unmodeled)
     env: dict[str, Tensor] = materialize_inputs(cb, inputs)
     resident_source: dict[str, str] = {}
     resident_dequant: dict[str, tuple[str, str, int]] = {}   # pack dst -> (i8 src, scale, axis)
