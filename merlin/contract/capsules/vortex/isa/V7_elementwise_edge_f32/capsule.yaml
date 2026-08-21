@@ -1,0 +1,54 @@
+name: V7_elementwise_edge_f32
+kind: isa
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: A
+  role: input
+  shape:
+  - 7
+  - 9
+  dtype: f32
+- name: B
+  role: input
+  shape:
+  - 7
+  - 9
+  dtype: f32
+- name: Y
+  role: output
+  shape:
+  - 7
+  - 9
+  dtype: f32
+operation:
+  op: elementwise
+  attributes:
+    lhs: A
+    rhs: B
+    out: Y
+    output_dtype: f32
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    f32: true
+    elementwise: true
+    padded_edge: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: "63 elements \u2014 coprime with every warp/thread count, so the last group\
+  \ is partial"
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  rtol: 0.0
+  atol: 2.1591162635559158e-07

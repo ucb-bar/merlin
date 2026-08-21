@@ -1,0 +1,50 @@
+name: V15_divergent_nested_i8
+kind: isa
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A
+  role: input
+  shape:
+  - 8
+  - 8
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 8
+  - 8
+  dtype: i32
+operation:
+  op: elementwise
+  attributes:
+    lhs: A
+    out: Y
+    output_dtype: i32
+    loop: unbounded_data_dependent
+    recurrence: collatz_visited_sum
+    control_flow: nested
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  - SPLIT
+  - JOIN
+  - PRED
+  modes:
+    i8: true
+    elementwise: true
+    divergent: true
+    nested_control_flow: true
+required_oracle_tiers:
+- L2
+- L3
+notes: 'an scf.if inside an unbounded scf.while: two levels of divergence that must
+  compose, which V10''s branchless loop body never forces'
+numeric_policy:
+  compare: exact_int
+  dtype: i32

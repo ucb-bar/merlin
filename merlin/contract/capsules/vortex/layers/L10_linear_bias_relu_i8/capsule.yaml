@@ -1,0 +1,62 @@
+name: L10_linear_bias_relu_i8
+kind: layer
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: A
+  role: input
+  shape:
+  - 16
+  - 64
+  dtype: i8
+- name: W
+  role: weight
+  shape:
+  - 64
+  - 64
+  dtype: i8
+- name: BIAS
+  role: bias
+  shape:
+  - 64
+  dtype: i32
+- name: Y
+  role: output
+  shape:
+  - 16
+  - 64
+  dtype: i32
+operation:
+  op: linear
+  attributes:
+    lhs: A
+    weight: W
+    out: Y
+    output_dtype: i32
+    k: 64
+    epilogue:
+    - bias
+    - relu
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    i8: true
+    k_accumulate: true
+    bias: true
+    relu: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: 'linear + bias + relu: a THREE-op fused chain, and the corpus''s only broadcast
+  along the fast axis (one bias value per output column, not per row)'
+numeric_policy:
+  compare: exact_int
+  dtype: i32

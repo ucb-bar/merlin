@@ -1,0 +1,56 @@
+name: L7_linear_tile_reuse_i8
+kind: layer
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: A
+  role: input
+  shape:
+  - 64
+  - 64
+  dtype: i8
+- name: W
+  role: weight
+  shape:
+  - 64
+  - 64
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 64
+  - 64
+  dtype: i32
+operation:
+  op: linear
+  attributes:
+    lhs: A
+    weight: W
+    out: Y
+    output_dtype: i32
+    k: 64
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  - SMEM_LD
+  - SMEM_ST
+  - BARRIER
+  modes:
+    i8: true
+    k_accumulate: true
+    shared_mem: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: "64x64x64: maximum operand reuse per tile, sized so both tiles fit the 16 KB\
+  \ scratchpad \u2014 the capsule where using shared memory should pay off"
+numeric_policy:
+  compare: exact_int
+  dtype: i32

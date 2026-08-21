@@ -1,0 +1,64 @@
+name: C8_mlp_ffn_f32
+kind: model_slice
+source_role: handauthored_compiler_test
+label: public
+source_reference: mlp.ffn
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: f32
+- name: W1
+  role: weight
+  shape:
+  - 16
+  - 32
+  dtype: f32
+- name: W2
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: f32
+- name: Y
+  role: output
+  shape:
+  - 16
+  - 16
+  dtype: f32
+operation:
+  op: mlp
+  attributes:
+    x: X
+    w1: W1
+    w2: W2
+    out: Y
+    output_dtype: f32
+    activation: gelu_tanh
+    hidden: 32
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    f32: true
+    k_accumulate: true
+    gelu: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: 'transformer FFN Y=gelu(X@W1)@W2: the corpus''s first two-matmul chain, composing
+  linear (L4/C-proj) and gelu (L9) through a live S x H intermediate'
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  rtol: 0.0
+  atol: 0.0005143931639575066

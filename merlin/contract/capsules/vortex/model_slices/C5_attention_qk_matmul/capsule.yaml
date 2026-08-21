@@ -1,0 +1,54 @@
+name: C5_attention_qk_matmul
+kind: model_slice
+source_role: handauthored_compiler_test
+label: public
+source_reference: attn.q@k^T
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 16
+  - 16
+  dtype: i32
+operation:
+  op: attention_qk
+  attributes:
+    lhs: A
+    weight: W
+    out: Y
+    output_dtype: i32
+    k: 16
+    weight_layout: transposed_nk
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    i8: true
+    k_accumulate: true
+    transposed: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: "QK^T as a genuine transposed contraction \u2014 K is NOT pre-transposed for\
+  \ the backend"
+numeric_policy:
+  compare: exact_int
+  dtype: i32

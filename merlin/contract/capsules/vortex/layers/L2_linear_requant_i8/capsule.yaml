@@ -1,0 +1,54 @@
+name: L2_linear_requant_i8
+kind: layer
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A
+  role: input
+  shape:
+  - 16
+  - 64
+  dtype: i8
+- name: W
+  role: weight
+  shape:
+  - 64
+  - 64
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 16
+  - 64
+  dtype: i8
+operation:
+  op: linear
+  attributes:
+    lhs: A
+    weight: W
+    out: Y
+    output_dtype: i8
+    k: 64
+    epilogue:
+    - requant
+    requant_shift: 9
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    i8: true
+    k_accumulate: true
+    requant: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: 'the quantized output path: i32 acc -> arithmetic shift -> saturate to i8'
+numeric_policy:
+  compare: exact_int
+  dtype: i8

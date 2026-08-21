@@ -1,0 +1,53 @@
+name: V3_matmul_f32
+kind: isa
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: A
+  role: input
+  shape:
+  - 8
+  - 16
+  dtype: f32
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 8
+  dtype: f32
+- name: Y
+  role: output
+  shape:
+  - 8
+  - 8
+  dtype: f32
+operation:
+  op: matmul
+  attributes:
+    lhs: A
+    weight: W
+    out: Y
+    output_dtype: f32
+    k: 16
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    f32: true
+    k_accumulate: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: 'the float reduction: reassociation is legal, so grading is tolerance-based'
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  rtol: 0.0
+  atol: 1.1405882714202827e-05

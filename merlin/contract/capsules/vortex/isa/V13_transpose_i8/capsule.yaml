@@ -1,0 +1,51 @@
+name: V13_transpose_i8
+kind: isa
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A
+  role: input
+  shape:
+  - 32
+  - 16
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 16
+  - 32
+  dtype: i32
+operation:
+  op: movement
+  attributes:
+    lhs: A
+    out: Y
+    output_dtype: i32
+    kind: transpose
+    permutation:
+    - 1
+    - 0
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  - SMEM_LD
+  - SMEM_ST
+  - BARRIER
+  modes:
+    i8: true
+    movement: true
+    shared_mem: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: 'pure data movement, non-square so the two directions cannot be confused: the
+  corpus''s only test of memory coalescing'
+numeric_policy:
+  compare: exact_int
+  dtype: i32

@@ -1,0 +1,50 @@
+name: C7_attention_softmax_f32
+kind: model_slice
+source_role: handauthored_compiler_test
+label: public
+source_reference: attn.softmax(qk)
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: A
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: f32
+- name: Y
+  role: output
+  shape:
+  - 16
+  - 16
+  dtype: f32
+operation:
+  op: softmax
+  attributes:
+    lhs: A
+    out: Y
+    output_dtype: f32
+    axis: 1
+    k: 16
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    f32: true
+    softmax: true
+    reduction: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: 'the slice a systolic engine cannot express: two opposite reductions, a broadcast,
+  and a transcendental'
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  rtol: 0.0
+  atol: 3.9339083741669195e-06

@@ -1,0 +1,76 @@
+name: L6_conv2d_f32
+kind: layer
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 8
+  - 8
+  - 4
+  dtype: f32
+- name: W
+  role: weight
+  shape:
+  - 3
+  - 3
+  - 4
+  - 8
+  dtype: f32
+- name: Y
+  role: output
+  shape:
+  - 1
+  - 6
+  - 6
+  - 8
+  dtype: f32
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y
+    output_dtype: f32
+    ci: 4
+    kh: 3
+    kw: 3
+    co: 8
+    stride:
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    k: 36
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    f32: true
+    conv2d: true
+    k_accumulate: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: the same conv as the NAMED linalg op (float-export form), so neither spelling
+  is assumed
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  rtol: 0.0
+  atol: 4.9323227375641686e-05

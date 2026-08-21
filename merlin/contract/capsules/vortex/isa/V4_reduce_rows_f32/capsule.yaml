@@ -1,0 +1,47 @@
+name: V4_reduce_rows_f32
+kind: isa
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: A
+  role: input
+  shape:
+  - 8
+  - 16
+  dtype: f32
+- name: Y
+  role: output
+  shape:
+  - 8
+  dtype: f32
+operation:
+  op: reduce
+  attributes:
+    lhs: A
+    out: Y
+    output_dtype: f32
+    axis: 1
+    k: 16
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    f32: true
+    reduction: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: a rank-REDUCING reduction (rank 2 -> rank 1); no matmul structure to match
+  on
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  rtol: 0.0
+  atol: 1.9922364017577613e-05

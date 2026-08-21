@@ -1,0 +1,74 @@
+name: L3_conv2d_im2col_i8
+kind: layer
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 8
+  - 8
+  - 4
+  dtype: i8
+- name: W
+  role: weight
+  shape:
+  - 3
+  - 3
+  - 4
+  - 8
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 1
+  - 6
+  - 6
+  - 8
+  dtype: i32
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y
+    output_dtype: i32
+    ci: 4
+    kh: 3
+    kw: 3
+    co: 8
+    stride:
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    k: 36
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    i8: true
+    conv2d: true
+    k_accumulate: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: conv2d as a 7-loop linalg.generic (quantized-export form); im2col is one legal
+  lowering
+numeric_policy:
+  compare: exact_int
+  dtype: i32
