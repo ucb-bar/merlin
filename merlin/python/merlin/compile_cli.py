@@ -370,6 +370,7 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     return out
 
 
+_MESH_NTILE_WIDTH: dict[tuple, int] = {}   # N-tile width a target's backend accepts
 _MESH_PKG_CACHE: dict[str, object] = {}
 _MESH_PKG_LOCK = threading.Lock()
 
@@ -616,7 +617,8 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
 def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | None = None,
                        accum_dtype: str | None = None, simulator: str | None = None,
                        package: str | None = None, epilogue: list | None = None,
-                       acc_scale: float | None = None, timeout: int = 900) -> list | None:
+                       acc_scale: float | None = None, timeout: int = 900,
+                       _padded: bool = False) -> list | None:
     """Execute ``A @ W`` on the target's mesh oracle with the REAL operand values INJECTED (not
     materialized-from-name), and return the mesh's output tensor (nested list) — or ``None`` when this
     target has no reachable mesh path. ``A`` / ``W`` are the layer's real activations / weights.
@@ -661,13 +663,51 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
     # path. Derived from the contract's sim_via + the _SIM_ORACLES registry — never a target-name branch.
     so = _SIM_ORACLES.get(_bespoke_sim_via(target))
     if so is not None and so.exclusive:
-        return _matmul_via_bespoke_sim(target, mlir, A, W, package=package, timeout=timeout)
-    if endpoint in (None, "inline_asm_insn", "upstream_target"):
-        return _matmul_via_oot_cert(target, mlir, A, W, simulator=simulator, package=package, timeout=timeout)
-    if endpoint == "external_backend":
-        return _matmul_via_program_oracle(target, mlir, A, W, model_ext=model_ext,
-                                          package=package, timeout=timeout)
-    return None                                  # no mesh-execution path derived for this endpoint kind
+        out = _matmul_via_bespoke_sim(target, mlir, A, W, package=package, timeout=timeout)
+    elif endpoint in (None, "inline_asm_insn", "upstream_target"):
+        out = _matmul_via_oot_cert(target, mlir, A, W, simulator=simulator, package=package,
+                                   timeout=timeout)
+    elif endpoint == "external_backend":
+        out = _matmul_via_program_oracle(target, mlir, A, W, model_ext=model_ext,
+                                         package=package, timeout=timeout)
+    else:
+        return None                              # no mesh-execution path derived for this endpoint kind
+    if out is not None or _padded:
+        return out
+    # The backend refused this extent. On a target that declares no scratchpad capacity fact there is
+    # nothing to derive a tile size FROM, and inventing one would be a target literal in disguise. Find
+    # the width this backend accepts by halving, then run the layer as N-tiles of that width: splitting
+    # along N is exact, because C[:, a:b] is A @ W[:, a:b]. Costs a few refused probes ONCE per target.
+    D = int(getattr(binding, "tile_dim", 0) or 0)
+    if D <= 0 or N <= D:
+        return None
+    key = (target, operand_dtype or "", accum_dtype or "")
+    width = _MESH_NTILE_WIDTH.get(key)
+    if width is None:
+        w = N
+        while w > D:
+            w = max(D, (w // 2 // D) * D or D)
+            probe = run_matmul_on_mesh(target, A, [row[:w] for row in W],
+                                       operand_dtype=operand_dtype, accum_dtype=accum_dtype,
+                                       simulator=simulator, package=package, timeout=timeout,
+                                       epilogue=epilogue, acc_scale=acc_scale, _padded=True)
+            if probe is not None:
+                width = w
+                break
+        if width is None:
+            return None                          # even a single tile-dim-wide slice is refused
+        _MESH_NTILE_WIDTH[key] = width
+    cols: list[list] = []
+    for a in range(0, N, width):
+        b = min(a + width, N)
+        piece = run_matmul_on_mesh(target, A, [row[a:b] for row in W],
+                                   operand_dtype=operand_dtype, accum_dtype=accum_dtype,
+                                   simulator=simulator, package=package, timeout=timeout,
+                                   epilogue=epilogue, acc_scale=acc_scale, _padded=True)
+        if piece is None:
+            return None                          # a tile the discovered width should have covered
+        cols.append(piece)
+    return [sum((c[r] for c in cols), []) for r in range(M)]
 
 
 def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout) -> list | None:
