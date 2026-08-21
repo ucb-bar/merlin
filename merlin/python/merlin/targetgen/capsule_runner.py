@@ -687,6 +687,70 @@ def _match_by_policy(a: dict, b: dict, policy: dict | None) -> bool:
     return True
 
 
+def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], list[dict]]:
+    """Partition op capsules into (to grade, not-gradeable-on-this-target).
+
+    Ineligibility is decided by the target's OWN declared capability, so this adds no new judgement --
+    it acts on the verdict :mod:`eligibility` already computes. Fails OPEN in every uncertain case
+    (no capability map, an undetermined verdict, any exception): a capsule is only withheld when the
+    contract positively says the family/dtype/rank is not supported. Withholding on doubt would let a
+    suite shrink itself into a better score, which is the opposite of the point.
+    """
+    try:
+        from . import coverage_report as _cr, eligibility as _el
+        cmap = _el.capability_map_for_target(target)
+    except Exception:                                     # noqa: BLE001 - never block a grade
+        return op_caps, []
+    if not cmap:
+        return op_caps, []
+    keep, withheld = [], []
+    for c in op_caps:
+        try:
+            region = _cr._capsule_region(c)
+            v = _el.is_eligible(region, cmap)
+        except Exception:                                 # noqa: BLE001
+            keep.append(c); continue
+        if getattr(v, "undetermined", False) or getattr(v, "eligible", True):
+            keep.append(c); continue
+        # WITHHOLD ONLY ON A HARD STRUCTURAL FACT: an operand dtype or rank that appears in NO declared
+        # capability at all. Then no datapath on the device can hold the operands and no composition can
+        # rescue it, whatever family the op belongs to -- which also covers a capsule whose family our
+        # taxonomy cannot name (pooling, whole-model), where withholding on the family verdict alone
+        # would drop it for OUR ignorance rather than the hardware's limits.
+        #
+        # A merely UNDECLARED FAMILY is graded. Families compose -- attention on a systolic array is a
+        # contraction plus a transposing movement -- so "no capability for family X" is not proof the
+        # device cannot do X. Measured: a float target PASSED two capsules its contract calls ineligible
+        # on family grounds; withholding those would have hidden a contract under-declaration, which is a
+        # finding we want, not noise to suppress.
+        # Compare dtypes through eligibility's OWN alias-aware check, never by string equality: the
+        # contract spells the format `int8` while a capsule region reports `i8`, so a raw `!=` reads a
+        # native-dtype capsule as having no datapath at all and withholds it for a spelling difference.
+        dt = getattr(region, "in_dtype", None)
+        rk = getattr(region, "rank", None)
+        all_dtypes = tuple({x for cap in cmap.values() for x in (getattr(cap, "dtypes", ()) or ())})
+        ranks = {int(x) for cap in cmap.values() for x in (getattr(cap, "ranks", ()) or ())}
+        dtype_absent = bool(dt is not None and all_dtypes and not _el._dtype_ok(dt, all_dtypes))
+        rank_absent = bool(rk is not None and ranks and int(rk) not in ranks)
+        hard = dtype_absent or rank_absent
+        if not hard:
+            keep.append(c); continue
+        # State the fact that ACTUALLY triggered withholding. eligibility's reason describes its own
+        # family verdict, which can read "unrecognized semantic family" for a capsule withheld purely
+        # because its dtype has no datapath -- true but misleading about the cause, and it would send
+        # someone to fix the taxonomy when the hardware is the constraint.
+        why = (f"operand dtype {dt!r} is in no capability this target declares" if dtype_absent
+               else f"operand rank {rk} is in no capability this target declares")
+        withheld.append({
+            "capsule": c.get("name"), "kind": c.get("kind"), "label": c.get("label"),
+            "status": "not_graded", "ineligible": True,
+            "failure": {"plane": "capability", "category": "NOT_GRADED",
+                        "detail": f"not graded on this target: {why} "
+                                  f"(eligibility also reports: {getattr(v, 'reason', '') or 'ineligible'})"},
+        })
+    return keep, withheld
+
+
 def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
     """Whether a graded op-capsule result belongs in the whole-model gate's denominator.
 
@@ -1199,7 +1263,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                               or _unwritten_output_detail(nrep, "command_buffer"))
                 raise CertFailure("numeric_golden", _cat("FUNCTIONAL_MISMATCH"),
                                   _absent_cb or ("your command buffer does not compute the declared operation "
-                                  f"(first divergence at index {(nrep['first_mismatch'] or {}).get('index')})"))
+                                  f"(first divergence at index={(nrep['first_mismatch'] or {}).get('index')})"))
 
             l1_ok = _match_by_policy(ref, sim, policy)
             tiers["L1"] = TierResult("L1", "pass" if l1_ok else "fail", mandatory=True,
@@ -1688,7 +1752,24 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     from .capsule_source import model_gate_satisfied
     op_caps = [c for c in capsules if c.get("kind") != "model"]
     model_caps = [c for c in capsules if c.get("kind") == "model"]
-    op_results = _run_all(op_caps)
+
+    # DO NOT GRADE what this target provably cannot do. A capsule outside the contract's declared
+    # capability can never pass, so grading it (a) spends oracle time on a foregone conclusion, (b)
+    # misdirects the agent onto unreachable work, and (c) -- the expensive one -- makes ``all_pass``
+    # UNREACHABLE, which disables the loop's early exit and turns every run into a fixed-price purchase
+    # of its full round budget. Measured: an int8 target scored 22/22 on everything it declares at round
+    # 00, then ran 20 rounds because 15 out-of-scope capsules kept all_pass false; a float target had 9
+    # reachable failures and burned the same 20 rounds with 4 out-of-scope capsules doing the same thing.
+    #
+    # They are NOT dropped -- silently shrinking a suite is how a target scores better than it deserves.
+    # Each is reported as ``not_graded`` with the derived reason, counted in neither numerator nor
+    # denominator, and visible in the result list.
+    op_caps, ungradeable = _split_ineligible(op_caps, target)
+    op_results = _run_all(op_caps) + ungradeable
+    if ungradeable:
+        print(f"  {len(ungradeable)} capsule(s) NOT GRADED — outside this target's declared capability: "
+              f"{', '.join(r['capsule'] for r in ungradeable[:6])}"
+              f"{' ...' if len(ungradeable) > 6 else ''}", flush=True)
     if not model_caps:
         return op_results
     # The gate denominator answers "how much of what this device CAN do is working?" -- two independent

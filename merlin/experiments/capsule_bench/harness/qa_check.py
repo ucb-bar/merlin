@@ -48,7 +48,12 @@ _SAFE_NUMERIC = {"status", "policy", "mismatch_count"}
 # compiler was exiting CLEANLY and emitting nothing — and that single digit was the whole diagnostic. The
 # blanket scrub turned an actionable message into one that merely looks like information. Same class of
 # bug as the tier label, which already has a carve-out below; a return code cannot echo a golden value.
-_RC_KEYS = ("rc", "returncode", "return_code", "exitcode", "exit_code", "status")
+_RC_KEYS = ("rc", "returncode", "return_code", "exitcode", "exit_code", "status",
+            # A POSITION is not a value. "first divergence at index=2" tells the agent WHERE its
+            # output diverged; the expected/observed values stay scrubbed. Withholding the index
+            # left the one actionable bit of a numeric failure unreadable -- a target whose only
+            # reachable failure read "250 wrong somewhere" for 11 rounds and never moved.
+            "index", "at index", "first_divergence_index")
 
 
 def _is_ascii_letter(ch: str) -> bool:

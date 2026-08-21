@@ -1414,9 +1414,30 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     # the blob's section so Zephyr's default linker won't pull it into the image .data; a
     # snippet diverts it to the WEIGHTS region at a fixed high address, and main.c addresses
     # it by literal. Keeps ram0 compact (code + arena), so big fp32 models link.
-    external = ram_bytes_override is None and weights_size > LINK_LIMIT
-    weights_base = None
+    # DECIDE ON THE LINKED FOOTPRINT, NOT THE BLOB SIZE. medany constrains the whole ram0 span
+    # (code + weights + activation arena), so a blob that fits LINK_LIMIT on its own can still push
+    # the region past the window once the arena is added -- and then linked mode is chosen for an
+    # image that cannot work. MEASURED on gemma2_2b_int8_section12: 1462 MiB of weights sat under the
+    # 1900 MiB threshold, linked mode was selected, the arena took ram0 to ~3.7 GiB, and the image
+    # never reached its first op in 30 min (silent -- no fault, which is what made it expensive to
+    # find). The SAME bundle forced external, ram0 a compact 1 GiB and the blob at EXT_WEIGHTS_BASE,
+    # reaches op 0 in 8 minutes. Comparing the computed region is strictly safer than comparing the
+    # blob: it can only move builds from linked to external, and external is the mode that works at
+    # every size tested (1034 MiB and 2485 MiB regions both execute).
+    from ...common.ir_lock import IR_LOCK
+    from ...common.mlir_query import activation_peak_bytes
     peak = None                       # measured only on the path that sizes the region from it
+    linked_region = None
+    if ram_bytes_override is not None:
+        external = False
+    else:
+        # Same lock rationale as the sizing parse below: three concurrent build_app calls produced a
+        # bogus ParseError on valid IR, which read as a broken build rather than a race.
+        with IR_LOCK:
+            peak = int(activation_peak_bytes(model_dir / "model.mlir") or 0) or None
+        linked_region = _ram_for_weights(weights_size, peak, alloc_total)
+        external = linked_region > LINK_LIMIT
+    weights_base = None
     if external:
         if weights_size > EXT_MAX_WEIGHTS:
             raise ZephyrModelError(
@@ -1429,19 +1450,10 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
         # Size ram0 to the in-image weights blob + activation-arena headroom (default 256 MB
         # is too small for multi-hundred-MB int8/fp8 blobs). ARENA_SIZE=-1 claims the
         # leftover. Spike gets a matching -m; FireSim DRAM is fixed by the bitstream.
-        from ...common.ir_lock import IR_LOCK
-        from ...common.mlir_query import activation_peak_bytes
-        if ram_bytes_override is not None:
-            ram_bytes = ram_bytes_override
-        else:
-            # This is the OTHER in-process MLIR parse in this function, and it is easy to miss because
-            # it sizes memory rather than generating code. It still needs the lock: with three
-            # concurrent build_app calls it produced a bogus ParseError on valid IR (the same
-            # "Could not build linalg op" signature), which then read as a broken build rather than a
-            # race. Serializing the whole parse-adjacent surface is what makes concurrency usable.
-            with IR_LOCK:
-                peak = int(activation_peak_bytes(model_dir / "model.mlir") or 0) or None
-            ram_bytes = _ram_for_weights(weights_size, peak, alloc_total)
+        # `linked_region` was already computed above to MAKE the linked/external decision; reusing it
+        # is what keeps the decision and the sizing from disagreeing (recomputing invites a future
+        # edit to change one and not the other).
+        ram_bytes = ram_bytes_override if ram_bytes_override is not None else linked_region
 
     archive = work / "libmerlinmodel.a"
     archive.unlink(missing_ok=True)

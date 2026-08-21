@@ -103,33 +103,42 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
             except Exception:
                 pass
 
-    n_pass = sum(1 for r in results if r["status"] == "pass")
-    score["n_capsules"] = len(results)
+    # A capsule withheld as outside the target's declared capability is in NEITHER the numerator nor the
+    # denominator. Counting it as a failure is what made all_pass unreachable and disabled the loop's
+    # early exit; counting it as a pass would be a phantom certification. It stays in `results` so the
+    # skip is auditable, and its count is reported separately.
+    ungraded = [r for r in results if r.get("status") == "not_graded"]
+    graded = [r for r in results if r.get("status") != "not_graded"]
+    n_pass = sum(1 for r in graded if r["status"] == "pass")
+    score["n_capsules"] = len(graded)
     score["n_passed"] = n_pass
-    score["functional_pass"] = int(n_pass == len(results) and len(results) > 0)
+    score["n_not_graded_ineligible"] = len(ungraded)
+    if ungraded:
+        score["not_graded_ineligible"] = sorted(r.get("capsule") for r in ungraded)
+    score["functional_pass"] = int(n_pass == len(graded) and len(graded) > 0)
     # Structure-only smoke bookkeeping (honest, never a numeric pass): a capsule is structurally clean
     # when it did not FAIL a structural tier — status `pass` OR `not_gradeable_no_oracle` (numeric verdict
     # withheld under --no-oracle). `gradeable` says whether this run had a numeric oracle at all.
-    n_not_gradeable = sum(1 for r in results if r["status"] == "not_gradeable_no_oracle")
+    n_not_gradeable = sum(1 for r in graded if r["status"] == "not_gradeable_no_oracle")
     # Fail-closed on an empty suite: if NO capsule matched the requested labels at this root, nothing was
     # graded. `all([])` is vacuously True, so numeric_all_exact / trace_all_pass would read as a phantom
     # pass and `gradeable` as True — the exact vacuous-pass trap that made a mis-rooted hidden phase
     # (n_capsules:0) look green. Report the boolean flags as null and gradeable False, never a pass.
-    _empty = len(results) == 0
+    _empty = len(graded) == 0
     score["gradeable"] = (not no_oracle) and not _empty
     score["n_not_gradeable_no_oracle"] = n_not_gradeable
     score["n_structural_pass"] = n_pass + n_not_gradeable
-    score["structural_pass"] = bool(not _empty and (n_pass + n_not_gradeable) == len(results))
+    score["structural_pass"] = bool(not _empty and (n_pass + n_not_gradeable) == len(graded))
     score["numeric_all_exact"] = None if _empty else all(
-        r.get("numeric", {}).get("status") == "pass" for r in results)
+        r.get("numeric", {}).get("status") == "pass" for r in graded)
     score["trace_all_pass"] = None if _empty else all(
-        r.get("trace_check", {}).get("status") == "pass" for r in results)
+        r.get("trace_check", {}).get("status") == "pass" for r in graded)
     if _empty:
         score["note"] = ("no capsules matched the requested labels at this root — nothing graded; "
                          "flags are null (not a pass). Check the capsules root / labels.")
 
-    pub = [r for r in results if r.get("label") in ("public", "dev")]
-    hid = [r for r in results if r.get("label") == "hidden"]
+    pub = [r for r in graded if r.get("label") in ("public", "dev")]
+    hid = [r for r in graded if r.get("label") == "hidden"]
     if pub:
         score["public_passed"] = f"{sum(1 for r in pub if r['status']=='pass')}/{len(pub)}"
     if hid:
@@ -137,10 +146,12 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
 
     tiers = ["L0", "L1", "L2", "L3", "L4", "L5"]
     for t in tiers:
+        # over GRADED only: a withheld capsule has no tiers, so counting it in the denominator would
+        # make tier_reached never reach the total and silently force highest_tier to None.
         score["tier_reached"][t] = sum(
-            1 for r in results if r.get("tiers", {}).get(t, {}).get("status") == "pass")
+            1 for r in graded if r.get("tiers", {}).get(t, {}).get("status") == "pass")
     for t in reversed(tiers):
-        if score["tier_reached"][t] == len(results) and len(results) > 0:
+        if score["tier_reached"][t] == len(graded) and len(graded) > 0:
             score["highest_tier"] = t
             break
 

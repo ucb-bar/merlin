@@ -108,3 +108,23 @@ def test_no_detail_when_the_output_was_genuinely_computed():
     from merlin.targetgen.capsule_runner import _unwritten_output_detail
     rep = _cmp({"Y0": [1.0, 2.0, 3.0]}, {"Y0": [1.0, 9.0, 3.0]})
     assert _unwritten_output_detail(rep, "sim") is None
+
+
+def test_a_shape_error_is_named_not_folded_into_the_value_count():
+    """mismatch_count for a length error is |len delta| + 1, which is not a count of wrong values. An
+    8-element output emitted as 512 reads as '505 mismatches'; the next round, correct shape and every
+    value wrong, reads as '5'. Both were misread as value counts on a real run."""
+    rep = _cmp({"Y0": [1.0] * 8}, {"Y0": [1.0] * 512})
+    po = rep["per_output"]["Y0"]
+    assert po["failure_class"] == "output_shape_mismatch"
+    assert po["n_expected"] == 8 and po["n_observed"] == 512
+    assert rep["outputs_wrong_shape"] == ["Y0"]
+    assert rep["mismatch_count"] == 505          # documents the ambiguous legacy number
+
+
+def test_correct_shape_all_values_wrong_is_not_confused_with_near_success():
+    rep = _cmp({"Y0": [0.00128] * 8}, {"Y0": [24183284.0] * 5 + [0.00128] * 3})
+    po = rep["per_output"]["Y0"]
+    assert po["mismatch_count"] == 5 and po["n_elements"] == 8
+    assert "failure_class" not in po or po.get("failure_class") != "output_shape_mismatch"
+    assert po["saturated"] is False               # 5 of 8, not pinned -- but 62% wrong, not near-passing
