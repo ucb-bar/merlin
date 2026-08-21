@@ -4,63 +4,145 @@
   "title": "Capsule + instruction coverage aggregate (capsule_bench_v0)",
   "description": "Aggregated coverage across all capsule_result.json. Records explicit 'not covered' accounting; nothing is implied covered.",
   "type": "object",
-  "required": ["total", "by_kind", "by_label", "instruction_class_coverage"],
+  "required": [
+    "total",
+    "by_kind",
+    "by_label",
+    "instruction_class_coverage"
+  ],
   "properties": {
-    "total": {"type": "integer", "minimum": 0},
+    "total": {
+      "type": "integer",
+      "minimum": 0
+    },
     "by_kind": {
       "type": "object",
       "properties": {
-        "isa": {"type": "integer"},
-        "layer": {"type": "integer"},
-        "model_slice": {"type": "integer"}
+        "isa": {
+          "type": "integer"
+        },
+        "layer": {
+          "type": "integer"
+        },
+        "model_slice": {
+          "type": "integer"
+        }
       },
       "additionalProperties": true
     },
     "by_label": {
       "type": "object",
       "properties": {
-        "public": {"type": "integer"},
-        "dev": {"type": "integer"},
-        "hidden": {"type": "integer"}
+        "public": {
+          "type": "integer"
+        },
+        "dev": {
+          "type": "integer"
+        },
+        "hidden": {
+          "type": "integer"
+        }
       },
       "additionalProperties": true
     },
     "by_tier_reached": {
       "type": "object",
       "description": "how many capsules PASSED at each tier",
-      "additionalProperties": {"type": "integer"}
+      "additionalProperties": {
+        "type": "integer"
+      }
     },
     "mode_coverage": {
       "type": "object",
-      "additionalProperties": {"type": "integer"}
+      "additionalProperties": {
+        "type": "integer"
+      }
     },
     "instruction_class_coverage": {
       "type": "object",
       "description": "instruction class -> count of capsules exercising it; classes with 0 are explicit 'not covered' rows",
-      "additionalProperties": {"type": "integer"}
+      "additionalProperties": {
+        "type": "integer"
+      }
     },
     "unavailable": {
       "type": "object",
       "properties": {
-        "vcs": {"type": "integer"},
-        "firesim": {"type": "integer"}
+        "vcs": {
+          "type": "integer"
+        },
+        "firesim": {
+          "type": "integer"
+        }
       },
       "additionalProperties": true
     },
     "acceleratable_coverage": {
       "type": "object",
-      "description": "Acceleratable Region Recall (suite-level): each capsule scored as a region — eligible (independent oracle over the target's semantic_capabilities) vs accelerated (passed on a real emitted-artifact tier). recall/precision are null when there is no eligible work. false_fallback lists eligible capsules the compiler did not accelerate (the emit-layer gap).",
+      "description": "Acceleratable Region Recall (suite-level): each capsule scored as a region \u2014 eligible (independent oracle over the target's semantic_capabilities) vs accelerated (passed on a real emitted-artifact tier). recall/precision are null when there is no eligible work. false_fallback lists eligible capsules the compiler did not accelerate (the emit-layer gap).",
       "properties": {
-        "denominator_source": {"type": "string"},
-        "n_eligible": {"type": "integer"},
-        "n_accelerated": {"type": "integer"},
-        "n_eligible_accelerated": {"type": "integer"},
-        "false_fallback": {"type": "array", "items": {"type": "string"}},
-        "must_accelerate_violations": {"type": "array", "items": {"type": "string"}, "description": "eligible capsules declared must_accelerate that did not reach the accelerator — the fallback escape hatch cannot hide an emit-layer gap"},
-        "must_accelerate_pass": {"type": "boolean"},
-        "acceleratable_region_recall": {"type": ["number", "null"]},
-        "acceleration_precision": {"type": ["number", "null"]},
-        "per_capsule": {"type": "array", "items": {"type": "object"}}
+        "denominator_source": {
+          "type": "string"
+        },
+        "n_eligible": {
+          "type": "integer"
+        },
+        "n_accelerated": {
+          "type": "integer"
+        },
+        "n_eligible_accelerated": {
+          "type": "integer"
+        },
+        "false_fallback": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "must_accelerate_violations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "eligible capsules declared must_accelerate that did not reach the accelerator \u2014 the fallback escape hatch cannot hide an emit-layer gap"
+        },
+        "must_accelerate_pass": {
+          "type": "boolean"
+        },
+        "acceleratable_region_recall": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "acceleration_precision": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "per_capsule": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "n_undetermined": {
+          "type": "integer",
+          "description": "regions whose family no evidence source could decide; in neither numerator nor denominator"
+        },
+        "n_unclassified": {
+          "type": "integer",
+          "description": "regions this taxonomy has no family name for; a vocabulary gap, NOT a statement that the hardware cannot do the work"
+        },
+        "undetermined_capsules": {
+          "type": "array",
+          "description": "names of the undetermined regions"
+        },
+        "unclassified_capsules": {
+          "type": "array",
+          "description": "names of the unclassified regions"
+        }
       },
       "additionalProperties": true
     }

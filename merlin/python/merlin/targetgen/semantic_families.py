@@ -128,6 +128,19 @@ _OP_FAMILY: dict[str, str] = {
     "sum": "reduction",
     "max": "reduction",
     "argmax": "reduction",
+    # Pooling is a reduction over a sliding window -- structurally the same reduce this table already
+    # names for the bare `max`/`sum` it is built from. Missing these spellings sent every pooling capsule
+    # to `family = None` ("unrecognized semantic family, fail-closed"), where it was indistinguishable in
+    # the aggregate from a region the HARDWARE cannot do. Measured: 3 of one target's 5 unclassified
+    # capsules were maxpool2d / avgpool2d / global_average, all carrying must_accelerate: true -- graded
+    # work the eligibility oracle could not name.
+    "maxpool2d": "reduction",
+    "avgpool2d": "reduction",
+    "maxpool": "reduction",
+    "avgpool": "reduction",
+    "global_average": "reduction",
+    "global_avg_pool": "reduction",
+    "adaptive_avg_pool2d": "reduction",
     # elementwise_map: per-element maps (activations, bias, rotary, scaling, requant)
     "add": "elementwise_map",
     "mul": "elementwise_map",

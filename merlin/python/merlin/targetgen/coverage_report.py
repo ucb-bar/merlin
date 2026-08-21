@@ -98,6 +98,8 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
     per_capsule: list[dict] = []
     n_eligible = n_eligible_accelerated = n_accelerated = n_accel_eligible = 0
     n_undetermined = 0
+    n_unclassified = 0
+    unclassified_capsules: list[str] = []
     undetermined_capsules: list[str] = []
     false_fallback: list[str] = []
     must_accelerate_violations: list[str] = []
@@ -136,6 +138,15 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         if is_undetermined:
             n_undetermined += 1
             undetermined_capsules.append(r["capsule"])
+        # UNCLASSIFIED is a THIRD state, distinct from both. `undetermined` means the evidence could not
+        # decide whether this target supports the family; `unclassified` means OUR taxonomy could not name
+        # the family at all, so eligibility failed closed on an op it has no entry for. Folding the latter
+        # into the ineligible bucket makes "we do not have a word for this" read as "the hardware cannot
+        # do it" -- the same defect in the denominator that the undetermined bucket already exists to
+        # prevent. Reported separately; it is a gap in the vocabulary, not a fact about the device.
+        if family is None:
+            n_unclassified += 1
+            unclassified_capsules.append(r["capsule"])
         if violated:
             must_accelerate_violations.append(r["capsule"])
         if accelerated:
@@ -163,6 +174,13 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         # of the corpus and should not be quoted alone -- the gate bounds it.
         "n_undetermined": n_undetermined,
         "undetermined_capsules": undetermined_capsules,
+        # Regions our own taxonomy could not NAME (eligibility failed closed on an op with no family
+        # entry). Reported apart from `undetermined` because the two have opposite owners: an
+        # undetermined family is a gap in the target's evidence, an unclassified one is a gap in our
+        # vocabulary. Neither is a statement that the hardware cannot do the work, and folding either
+        # into the ineligible count would make it read as exactly that.
+        "n_unclassified": n_unclassified,
+        "unclassified_capsules": unclassified_capsules,
         "n_accelerated": n_accelerated,
         "n_eligible_accelerated": n_eligible_accelerated,
         "false_fallback": false_fallback,
@@ -295,6 +313,32 @@ def render_markdown(cov: dict, results: list[dict]) -> str:
         n = cov["mode_coverage"].get(m, 0)
         mark = "" if n else "  _(not covered)_"
         L.append(f"| {m} | {n}{mark} |")
+    # Acceleratable Region Recall. It was computed into coverage.json and rendered NOWHERE, so the
+    # report a human actually reads never mentioned the headline generalization metric -- and never
+    # showed the two buckets that say how much of the corpus the ratio was computed over.
+    arr = cov.get("acceleratable_coverage") or {}
+    if arr:
+        _r = arr.get("acceleratable_region_recall")
+        _p = arr.get("acceleration_precision")
+        _n_e, _n_u, _n_c = arr.get("n_eligible", 0), arr.get("n_undetermined", 0), arr.get("n_unclassified", 0)
+        L += ["", "## Acceleratable Region Recall", "",
+              f"- eligible regions (the denominator): **{_n_e}**",
+              f"- of those, accelerated: **{arr.get('n_eligible_accelerated', 0)}**",
+              f"- **ARR = {'n/a' if _r is None else f'{_r:.3f}'}**  ·  "
+              f"precision = {'n/a' if _p is None else f'{_p:.3f}'}",
+              "",
+              f"- undetermined (evidence could not decide the family): **{_n_u}**",
+              f"- unclassified (this taxonomy has no name for the op): **{_n_c}**", ""]
+        if _n_u or _n_c:
+            L += [f"> {_n_u + _n_c} region(s) are in NEITHER the numerator nor the denominator. "
+                  f"Undetermined is a gap in the target's evidence; unclassified is a gap in our "
+                  f"vocabulary. Neither says the hardware cannot do the work, and the recall above is "
+                  f"computed over the remainder — do not quote it alone.", ""]
+        if arr.get("must_accelerate_violations"):
+            L += [f"> **must_accelerate violated** on {len(arr['must_accelerate_violations'])} capsule(s): "
+                  f"{', '.join(arr['must_accelerate_violations'][:8])} — an ELIGIBLE region that fell back.",
+                  ""]
+
     L += ["", "## Heavy-oracle availability (honest)", "",
           f"- VCS (L4) recorded unavailable on **{cov['unavailable']['vcs']}** capsules",
           f"- FireSim (L5) recorded unavailable on **{cov['unavailable']['firesim']}** capsules",
