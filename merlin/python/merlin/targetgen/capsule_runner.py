@@ -780,11 +780,27 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                     "operation": {"op": "model", "model": model, "dtype": dtype, "run": run_where,
                                   "target": target},
                     "contract_version": CONTRACT_VERSION}
+    def _bail(detail: str, category: str = "NOT_RUN_IS_NOT_PASS") -> dict:
+        """An honest un-run row: every required tier recorded `unavailable` WITH ITS REASON, then the
+        shared finalizer. `tiers: {}` would read as 'no tiers apply here' when it means 'nothing ran'."""
+        _req = set(required or capsule.get("required_oracle_tiers") or ())
+        _t = {x: TierResult(x, "unavailable", True, reason=detail) for x in sorted(_req)}
+        _fail = {"plane": "model", "category": category, "detail": detail}
+        _extra = {k: result.pop(k) for k in ("operation",) if k in result}
+        if paths is None:
+            result.update(status="incomplete", numeric={"status": "skipped"},
+                          failure=_fail, tiers={k: v.to_dict() for k, v in _t.items()}, **_extra)
+            return result
+        return _finalize_capsule_result(
+            name=capsule["name"], capsule=capsule, status="incomplete", failure=_fail, tiers=_t,
+            trace_check_res={"status": "skipped", "violations": [],
+                             "reason": "the whole model did not run"},
+            numeric={"status": "skipped"}, required=_req, no_oracle=False,
+            eff_target=eff_target or (target or ""), paths=paths, run_id=run_id, cfg=cfg,
+            contract=contract, extra=_extra)
+
     if not model:
-        result.update(status="incomplete",
-                      failure={"plane": "model", "category": "RUNNER_CRASH",
-                               "detail": "model capsule missing operation.attributes.model"})
-        return result
+        return _bail("model capsule missing operation.attributes.model", category="RUNNER_CRASH")
     # the captured linalg (visible grounding) drives the per-op mesh routing when present
     linalg_mlir = None
     cdir = capsule.get("__dir__")
@@ -801,15 +817,9 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                             auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir,
                             mesh_verify=mesh_verify, mesh_package=package_dir)
     except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
-        result.update(status="incomplete",
-                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": f"whole-model compile/run unavailable: {str(e)[:300]}"})
-        return result
+        return _bail(f"whole-model compile/run unavailable: {str(e)[:300]}")
     except Exception as e:  # noqa: BLE001
-        result.update(status="incomplete",
-                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": f"whole-model grade error: {type(e).__name__}: {str(e)[:300]}"})
-        return result
+        return _bail(f"whole-model grade error: {type(e).__name__}: {str(e)[:300]}")
     st, gate = out.get("status"), (out.get("verify") or {}).get("gate_ok")
     engine = f"merlin-compile model --target {target} --run {run_where} --verify"
     if out.get("routing_plan") is not None:                   # per-op mesh routing for the target

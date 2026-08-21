@@ -260,7 +260,7 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
             # module-global (`_dr.execute.mesh_ran`), which concurrent grades clobber -- and a model
             # verdict now depends on them. `UNKNOWN` rather than None when absent: None reads as "zero
             # layers ran", when what it means is "nobody could tell".
-            from ..common.provenance import UNKNOWN as _UNKNOWN
+            from .common.provenance import UNKNOWN as _UNKNOWN
             out["mesh_execution"] = {
                 "target": mesh_target,
                 "matmul_layers_on_mesh": res.get("mesh_ran", _UNKNOWN),
