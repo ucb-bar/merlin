@@ -687,6 +687,31 @@ def _match_by_policy(a: dict, b: dict, policy: dict | None) -> bool:
     return True
 
 
+def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
+    """Whether a graded op-capsule result belongs in the whole-model gate's denominator.
+
+    True unless the capsule is provably ineligible for this target -- i.e. the contract declares no
+    capability covering its family/dtype, so no compiler could ever make it pass. Fails OPEN (counts the
+    capsule) whenever eligibility cannot be decided: an undetermined region must not be silently dropped
+    from a gate, which would make the gate easier to satisfy than the evidence warrants.
+    """
+    name = result.get("capsule")
+    cap = next((c for c in capsules if c.get("name") == name), None)
+    if cap is None:
+        return True
+    try:
+        from . import coverage_report as _cr, eligibility as _el
+        cmap = _el.capability_map_for_target(target)
+        if not cmap:
+            return True
+        verdict = _el.is_eligible(_cr._capsule_region(cap), cmap)
+    except Exception:                                     # noqa: BLE001 - a gate must not crash a grade
+        return True
+    if getattr(verdict, "undetermined", False):
+        return True
+    return bool(getattr(verdict, "eligible", True))
+
+
 def _absent_outputs(nrep: dict) -> list[str]:
     """Outputs the kernel DECLARED (present in the interface/golden) but never wrote — or wrote at the
     wrong length — extracted from :func:`capsule_golden.compare`'s ``per_output``. These structural
@@ -1628,8 +1653,21 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     op_results = _run_all(op_caps)
     if not model_caps:
         return op_results
+    # The gate fraction is over what the HARDWARE CAN DO, not over everything graded. A capsule the
+    # target provably cannot accelerate must not be able to block the whole-model capsules behind it.
+    # Measured: an int8 systolic target graded 12 bf16 capsules its contract declares no capability for
+    # ("input dtype 'bf16' not in contraction formats ['int8']"). They can never pass, so the best
+    # reachable fraction was 23/35 = 0.66 against a 0.8 gate -- the whole-model capsules were
+    # MATHEMATICALLY unreachable, and nothing said so. Excluding the ineligible makes the gate mean
+    # "the ops this device can do are working", which is what it was for.
     graded = [r for r in op_results if r.get("status") in ("pass", "fail")]
-    frac = (sum(1 for r in graded if r.get("status") == "pass") / len(graded)) if graded else 0.0
+    eligible = [r for r in graded if _gate_counts(r, capsules, target)]
+    denom = eligible or graded          # fall back rather than divide by zero if nothing is classifiable
+    frac = (sum(1 for r in denom if r.get("status") == "pass") / len(denom)) if denom else 0.0
+    if len(eligible) != len(graded):
+        print(f"  model gate: {len(graded) - len(eligible)} graded op capsule(s) excluded from the gate "
+              f"denominator as ineligible for this target (the hardware declares no capability for them)",
+              flush=True)
     model_results = []
     for c in model_caps:
         if model_gate_satisfied(c, frac):
