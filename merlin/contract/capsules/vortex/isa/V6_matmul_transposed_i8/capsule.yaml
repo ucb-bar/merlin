@@ -1,0 +1,53 @@
+name: V6_matmul_transposed_i8
+kind: isa
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A
+  role: input
+  shape:
+  - 8
+  - 16
+  dtype: i8
+- name: W
+  role: weight
+  shape:
+  - 8
+  - 16
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 8
+  - 8
+  dtype: i32
+operation:
+  op: matmul
+  attributes:
+    lhs: A
+    weight: W
+    out: Y
+    output_dtype: i32
+    k: 16
+    weight_layout: transposed_nk
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    i8: true
+    k_accumulate: true
+    transposed: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: 'weight stored (n,k) and contracted along its fast axis: catches a hardcoded
+  layout'
+numeric_policy:
+  compare: exact_int
+  dtype: i32

@@ -36,6 +36,13 @@ class RunnerConfig:
     # (integer capsules -> exact). A float target (SIMT) sets {compare: float, atol: ...} so its
     # oracle-output comparison is tolerant regardless of the per-capsule policy.
     force_match_policy: dict | None = None
+    # The ordered CLI stages the runner invokes for THIS target. A command-driven target (systolic RoCC /
+    # spatial command-buffer) includes ``emit_command_buffer``; a programmable core (SIMT) that executes a
+    # compiled kernel and reads operands from the capsule's declared input table omits it (``cb`` is then
+    # None). Declared per-target via ``runner.entrypoints`` in the contract; default = the full command
+    # sequence, so existing targets are unchanged.
+    entrypoints: tuple[str, ...] = (
+        "parse", "lower_interface_to_target", "emit_command_buffer", "emit_target_artifact")
 
 
 def runner_config_from_manifest(m) -> RunnerConfig:
@@ -44,6 +51,8 @@ def runner_config_from_manifest(m) -> RunnerConfig:
     tiers; RTL tiers / perf fields / trace gate ride the manifest (which already merged family defaults)."""
     fourth = m.fourth_output_name or ENDPOINT_ARTIFACT.get(m.endpoint_kind, "lowered.llvm.mlir")
     tier_sim = dict(m.tier_sim)
+    _default_entry = ("parse", "lower_interface_to_target", "emit_command_buffer", "emit_target_artifact")
+    _declared_entry = ((getattr(m, "contract", None) or {}).get("runner") or {}).get("entrypoints")
     return RunnerConfig(
         target=m.target,
         suite=m.suite,
@@ -55,4 +64,5 @@ def runner_config_from_manifest(m) -> RunnerConfig:
         perf_fields=tuple(m.perf_fields),
         trace_gate=m.trace_gate,
         force_match_policy=getattr(m, "force_match_policy", None),
+        entrypoints=tuple(_declared_entry) if _declared_entry else _default_entry,
     )

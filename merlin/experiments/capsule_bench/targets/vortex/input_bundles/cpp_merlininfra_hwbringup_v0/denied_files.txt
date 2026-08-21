@@ -1,0 +1,17 @@
+merlin/python/merlin/targetgen/rtl/gen_iface_irdl.py
+merlin/python/merlin/targetgen/rtl/gen_isa_module.py
+merlin/python/merlin/targetgen/rtl/gen_rtl_digest.py
+merlin/python/merlin/targetgen/rtl/gen_numeric_facts.py
+merlin/python/merlin/targetgen/oot_starterkit/
+merlin/python/merlin/targetgen/synthesize/
+merlin/python/merlin/xdsl_dialects/
+merlin/python/merlin/targetgen/generate/xdsl.py
+merlin/python/merlin/targetgen/generate/runtime_adapter.py
+merlin/python/merlin/runtime/reference.py
+merlin/python/merlin/runtime/simulator.py
+merlin/python/merlin/xdsl_dialects/lowering/
+merlin/targets/vortex/contracts/irdl/
+merlin/targets/vortex/contracts/rtl_facts/
+merlin/contract/capsules/vortex/hidden/
+experiments/capsule_bench/targets/vortex/input_bundles/grader_private_v0/
+experiments/capsule_bench/targets/vortex/runs/

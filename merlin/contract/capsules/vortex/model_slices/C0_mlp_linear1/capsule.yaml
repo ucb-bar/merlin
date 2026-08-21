@@ -1,0 +1,52 @@
+name: C0_mlp_linear1
+kind: model_slice
+source_role: handauthored_compiler_test
+label: public
+source_reference: mlp.fc1
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: A
+  role: input
+  shape:
+  - 16
+  - 64
+  dtype: i8
+- name: W
+  role: weight
+  shape:
+  - 64
+  - 64
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 16
+  - 64
+  dtype: i32
+operation:
+  op: linear
+  attributes:
+    lhs: A
+    weight: W
+    out: Y
+    output_dtype: i32
+    k: 64
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    i8: true
+    k_accumulate: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: 'first MLP linear: the plain (seq, d_model) x (d_model, d_model) projection'
+numeric_policy:
+  compare: exact_int
+  dtype: i32

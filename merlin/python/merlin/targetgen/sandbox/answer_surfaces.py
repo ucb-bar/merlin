@@ -73,12 +73,48 @@ class AnswerSurface:
     origin: str         # golden | hidden | prior_backend | oracle | grader | memory | example
 
 
+def claude_config_dir() -> Path:
+    """The experimenter's Claude Code config dir — ``$CLAUDE_CONFIG_DIR``, else ``~/.claude``.
+
+    The ROOT has to be derived too, not just the project slug. This module already knew that a stale
+    hard-coded slug was the past cheat gap, and derived it from the repo — but it hard-coded the root as
+    ``~/.claude``, which is the same bug one level up. On a host that relocates the config
+    (``CLAUDE_CONFIG_DIR=/scratch/.../claude_config_dir/.claude``) the mask pointed at a path that does
+    not even exist, so the REAL memory was masked only by the blanket ``/scratch`` tmpfs — and would have
+    been exposed the moment anything bound the real config dir back in (which crediting the agent's
+    ``claude`` CLI requires).
+    """
+    env = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+    return Path(env) if env else Path(os.path.expanduser("~/.claude"))
+
+
+def _slug(path: Path) -> str:
+    """Claude Code's project-dir slug: the absolute path with ``/`` replaced by ``-``."""
+    return str(path).replace("/", "-")
+
+
+def experimenter_memory_dirs() -> list[Path]:
+    """EVERY Claude Code memory dir that could hold notes about this repo.
+
+    A session rooted at a PARENT of the repo gets its own project slug, and its memory is just as much
+    an answer surface — here the workspace root and the repo each have one. Masking only the repo's slug
+    leaves the sibling readable. Only existing dirs are returned; the caller masks what is there.
+    """
+    root = repo_root()
+    projects = claude_config_dir() / "projects"
+    out: list[Path] = []
+    for base in (root, *root.parents):
+        mem = projects / _slug(base) / "memory"
+        if mem.is_dir():
+            out.append(mem)
+        if str(base) == "/":
+            break
+    return out
+
+
 def experimenter_memory_dir() -> Path:
-    """The experimenter's Claude Code memory dir for THIS repo. Claude Code slugifies the project path
-    by replacing ``/`` with ``-``; deriving it from the CURRENT repo (never hard-coding) is what keeps
-    the mask honest across repo moves — a stale hard-coded slug is precisely the past cheat gap."""
-    return Path(os.path.expanduser(
-        f"~/.claude/projects/{str(repo_root()).replace('/', '-')}/memory"))
+    """The memory dir for THIS repo's own slug (back-compat; prefer :func:`experimenter_memory_dirs`)."""
+    return claude_config_dir() / "projects" / _slug(repo_root()) / "memory"
 
 
 def golden_files(te: TargetExperiment) -> list[Path]:
@@ -149,9 +185,10 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
             out.append(AnswerSurface(f"grader:{Path(rel).name}", p,
                                      "dir" if p.is_dir() else "file", "grader"))
 
-    mem = experimenter_memory_dir()
-    if mem.is_dir():
-        out.append(AnswerSurface("experimenter-memory", mem, "dir", "memory"))
+    # Every memory dir, not just the repo's own slug — a session rooted at a parent directory has its
+    # own slug and its own notes, and masking one while leaving the other readable is not a mask.
+    for mem in experimenter_memory_dirs():
+        out.append(AnswerSurface(f"experimenter-memory:{mem.parent.name}", mem, "dir", "memory"))
 
     return out
 

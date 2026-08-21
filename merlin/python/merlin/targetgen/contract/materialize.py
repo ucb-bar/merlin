@@ -147,6 +147,66 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
     return sorted(written)
 
 
+def _materialize_signature(roots, tier_ceiling) -> str:
+    """A cheap fingerprint of the materialization inputs (source files + tier ceiling), so a fresh cache
+    is REUSED instead of destructively rebuilt on every call — the rebuild raced a parallel grader
+    reading the shared per-target cache."""
+    import hashlib
+    h = hashlib.sha256()
+    h.update(str(tier_ceiling).encode())
+    for r in roots:
+        rp = Path(r)
+        if not rp.exists():
+            continue
+        for f in sorted(rp.rglob("*")):
+            if f.is_file():
+                st = f.stat()
+                h.update(f"{f}\0{st.st_size}\0{st.st_mtime_ns}\0".encode())
+    return h.hexdigest()
+
+
+def _materialize_public_locked(base: Path, target: str, tier_ceiling, roots) -> Path:
+    """Concurrency-safe materialize of the per-target public cache. Arms grade IN PARALLEL against this
+    shared dir, so the old ``rmtree(dest); copy`` raced — one arm wiped the tree mid-read of another
+    (``FileNotFoundError`` on a capsule.yaml). Instead: hold a cross-process lock, REUSE the cache when
+    the corpus is unchanged, and otherwise build into a temp dir and swap it in atomically (so a reader
+    never observes a half-populated or vanished tree)."""
+    import fcntl, os, tempfile
+    base.mkdir(parents=True, exist_ok=True)
+    # Namespace the cache by CEILING, not target alone: the QA loop grades the loop-ceiling view (e.g.
+    # L2) while the cycle-accurate checkpoint grades the FULL-ladder view (e.g. L3) — in parallel. One
+    # shared dir keyed only by target made each caller flip the signature and rebuild over the other's
+    # live tree; worse, the checkpoint silently graded the LOOP-capped copy, so a required cycle-exact
+    # tier was never mandatory at its own checkpoint (an L3 numeric mismatch read back status=pass).
+    cache_key = f"{target}-{tier_ceiling}"
+    dest = base / cache_key
+    sig = _materialize_signature(roots, tier_ceiling)
+    stamp = dest / ".materialize.sig"
+    with open(base / (cache_key + ".lock"), "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            if stamp.is_file() and stamp.read_text(encoding="utf-8") == sig:
+                return dest                                   # fresh — reuse, never rmtree under a reader
+        except OSError:
+            pass
+        tmp = Path(tempfile.mkdtemp(prefix=cache_key + ".tmp-", dir=str(base)))
+        try:
+            materialize_public_capsules(tmp, tier_ceiling=tier_ceiling, corpus_roots=roots)
+            (tmp / ".materialize.sig").write_text(sig, encoding="utf-8")
+            old = None
+            if dest.exists():
+                old = base / f"{cache_key}.old-{os.getpid()}"
+                os.replace(dest, old)                         # move current aside (same fs, atomic)
+            os.replace(tmp, dest)                             # swap the fresh tree in
+            tmp = None
+            if old is not None:
+                shutil.rmtree(old, ignore_errors=True)
+        finally:
+            if tmp is not None:
+                shutil.rmtree(tmp, ignore_errors=True)        # swap failed: drop the temp build
+    return dest
+
+
 def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     """The public-capsule set to grade / self-check against for a target — DERIVED from its descriptor's
     ``capsule_corpus`` (+ sibling corpora), materialized into a per-target cache and returned. This is the
@@ -165,10 +225,11 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     if tier_ceiling is None:
         loop = _CR.qa_loop_adapters(te.target, te.sim_via) or {"L2": None}
         tier_ceiling = max(loop, key=lambda t: _TIER_ORDER.index(t) if t in _TIER_ORDER else -1)
-    dest = cache_dir("capsule_bench_public") / te.target
-    shutil.rmtree(dest, ignore_errors=True)   # rematerialize fresh (cheap; tracks corpus edits)
-    materialize_public_capsules(dest, tier_ceiling=tier_ceiling, corpus_roots=roots)
-    return dest
+    # NOTE: arms grade IN PARALLEL against this shared per-target cache; a naive rmtree+recopy on every
+    # call raced a concurrent grader reading it (capsule.yaml vanished mid-read -> FileNotFoundError).
+    # Materialize under a cross-process lock, reuse when the corpus is unchanged, else swap a fresh tree
+    # in atomically.
+    return _materialize_public_locked(cache_dir("capsule_bench_public"), te.target, tier_ceiling, roots)
 
 
 def main(argv: list[str] | None = None) -> int:

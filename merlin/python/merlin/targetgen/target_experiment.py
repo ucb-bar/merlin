@@ -29,6 +29,10 @@ class TargetExperiment:
     # agent's compiler needs — only chipyard-sim targets have one; arc/cyclotron targets omit it. A path
     # relative to the experiment dir. Genuinely per-target setup, so declared (not derived).
     curated_harness: str | None
+    # OPTIONAL: the kernel-ABI header(s) the agent's emitted module must satisfy — a shared CONSTANT for
+    # all arms (the descriptor's ``hardware_spec.runtime_abi``). Granted to every arm like isa_headers:
+    # an ABI is setup the compiler targets, not assistance. Bundle-convention path STRINGS.
+    runtime_abi: tuple[str, ...]
     capsule_corpus: Path               # the corpus the arms author against + are graded on (resolved)
     sim_via: str                       # how the simulator runs (e.g. "chipyard")
     rtl_via: str                       # how RTL facts are obtained (e.g. "mlc" — DERIVED, not declared)
@@ -111,6 +115,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         isa_headers=tuple(hw.get("isa_headers") or []),
         hwbringup_set=hw.get("hwbringup_set"),
         curated_harness=hw.get("curated_harness"),
+        runtime_abi=tuple(hw.get("runtime_abi") or []),
         capsule_corpus=root / doc["capsule_corpus"] if doc.get("capsule_corpus") else None,
         sim_via=str((doc.get("toolchain") or {}).get("sim_via", "")),
         rtl_via=str((doc.get("rtl") or {}).get("via", "mlc")),
@@ -123,9 +128,10 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
 
 
 def shared_spec_paths(te: TargetExperiment) -> set[str]:
-    """The shared hardware-spec path strings the descriptor makes authoritative — the ISA headers + the
-    hwbringup set EVERY arm's bundle must grant (a constant input, not assistance)."""
-    paths = set(te.isa_headers)
+    """The shared hardware-spec path strings the descriptor makes authoritative — the ISA headers, the
+    hwbringup set, and the runtime-ABI header(s) EVERY arm's bundle must grant (a constant input, not
+    assistance — the task tells the agent to read the ABI header, so an ungranted one is a broken run)."""
+    paths = set(te.isa_headers) | set(te.runtime_abi)
     if te.hwbringup_set:
         paths.add(te.hwbringup_set)
     return paths

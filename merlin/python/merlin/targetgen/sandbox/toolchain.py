@@ -27,12 +27,51 @@ from merlin.targetgen.target_experiment import TargetExperiment
 # --------------------------------------------------------------------------- universal toolchain
 _REPO = repo_root()
 UV_PYTHON = os.path.expanduser("~/.local/share/uv")          # the cpython the .venv symlinks point at
-VENV = str(_REPO / ".venv")                                  # third-party deps (xdsl, numpy, jsonschema…)
-LLVM = str(_REPO / "third_party" / "llvm-install")           # clang + mlir-opt/translate
+
+
+def _resolve_venv() -> str:
+    """The venv carrying the third-party deps (xdsl, numpy, jsonschema…) the sandbox python needs.
+    ``MERLIN_VENV`` (env/.env) wins; else ``<repo>/.venv``; else the LAUNCHING interpreter's own venv —
+    a git worktree checkout has no ``.venv`` of its own, and silently binding the missing path handed the
+    agent a bare system python (no xdsl) while every probe read the dangling dir."""
+    v = env("MERLIN_VENV")
+    if v and Path(v).is_dir():
+        return v
+    p = _REPO / ".venv"
+    if p.is_dir():
+        return str(p)
+    import sys
+    if sys.prefix != sys.base_prefix:                        # launched from a venv -> same deps as the launcher
+        return sys.prefix
+    return str(p)                                            # missing -> bind skipped (fail-soft)
+
+
+def _resolve_llvm() -> str:
+    """The LLVM/MLIR install root whose ``bin/`` carries mlir-opt/mlir-translate (the advertised local
+    self-check: translate the emitted module + assemble it). ``MERLIN_LLVM_INSTALL`` (env/.env) wins; else
+    ``<repo>/third_party/llvm-install``; else DERIVE from ``MERLIN_MLIR_TRANSLATE`` — the same build the
+    grading oracle translates with, so the agent self-checks against the identical toolchain."""
+    v = env("MERLIN_LLVM_INSTALL")
+    if v and Path(v).is_dir():
+        return v
+    p = _REPO / "third_party" / "llvm-install"
+    if p.is_dir():
+        return str(p)
+    t = env("MERLIN_MLIR_TRANSLATE")
+    if t:
+        root = Path(t).parent.parent                         # <root>/bin/mlir-translate -> <root>
+        if (root / "bin").is_dir():
+            return str(root)
+    return str(p)                                            # missing -> bind skipped (fail-soft)
+
+
+VENV = _resolve_venv()                                       # third-party deps (xdsl, numpy, jsonschema…)
+LLVM = _resolve_llvm()                                       # mlir-opt/translate (+ the LLVM bintools)
 COMPAT_LIB = str(_REPO / ".compat_lib")                      # libidn.so.11 -> .12 shim the conda cmake needs
 RESOLVE_DIR = "/run/systemd/resolve"                         # /etc/resolv.conf -> here; else DNS fails in bwrap
 # clang-23 = the ABI's MERLIN_CLANG (rv64_compiler). LLVM-23 ABI-matched to llvm-install; bind ONLY the
-# compiler bin + resource dir (NOT src/python_packages, which carry backend lowerings).
+# compiler bin + resource dir (NOT src/python_packages, which carry backend lowerings). Fail-soft: on a
+# host without this install the binds/exports are skipped and the sandbox's PATH clang serves.
 CLANG_INSTALL = env("MERLIN_CLANG_INSTALL",
                     "/scratch2/agustin/merlin/build/host-merlin-release/install")
 CLANG_BIN = CLANG_INSTALL + "/bin"
@@ -67,7 +106,14 @@ class SimToolchain:
 
 
 def _chipyard() -> SimToolchain:
-    ch = ext_path("chipyard")                                # honors .env MERLIN_EXT_CHIPYARD
+    try:
+        ch = ext_path("chipyard")                            # honors .env MERLIN_EXT_CHIPYARD
+    except KeyError:
+        ch = None                                            # unset on a non-chipyard host (e.g. a pure-SIMT
+                                                             # vortex run): fall through to the /nonexistent
+                                                             # placeholders so this module still imports. A real
+                                                             # systolic (gemmini) run sets the var and binds real
+                                                             # paths; SIM_TOOLCHAINS is built eagerly at import.
     conda = str(ch / ".conda-env") if ch else "/nonexistent/chipyard/.conda-env"
     verilator = str(ch / "sims" / "verilator") if ch else "/nonexistent/chipyard/sims/verilator"
     return SimToolchain(
@@ -144,6 +190,28 @@ def toolchain_binds(te: TargetExperiment) -> list[str]:
     return binds
 
 
+def toolchain_plan(te: TargetExperiment):
+    """``(mounts, unsetenv)`` binding the legit toolchain back over the /scratch* masks — the structured,
+    BACKEND-NEUTRAL form of :func:`toolchain_binds` (see :mod:`.plan`): the same list renders to bwrap
+    flags or docker mounts. Universal tools + the descriptor's sim family + the curated harness; nothing
+    here is an answer surface. Appended AFTER the base plan + claude runtime so these re-appear over the
+    /scratch tmpfs."""
+    from merlin.targetgen.sandbox.plan import Mount
+    sim = _sim(te)
+    mounts: list[Mount] = []
+    universal = (UV_PYTHON, VENV, LLVM, CLANG_BIN, CLANG_RESOURCE, COMPAT_LIB, RESOLVE_DIR)
+    harness = curated_harness_dir(te)
+    for p in (*universal, *sim.bind_paths, *([harness] if harness else ())):
+        if Path(p).exists():
+            mounts.append(Mount("ro", str(p), str(p)))
+    # defence-in-depth: mask every experimenter memory dir here too (also chmod-000 locked). The derived
+    # answer-mask pass treats them as already-hidden and adds no redundant mask.
+    from merlin.targetgen.sandbox.answer_surfaces import experimenter_memory_dirs
+    for mem in experimenter_memory_dirs():
+        mounts.append(Mount("hide", str(mem)))
+    return mounts, tuple(NESTED_SESSION_VARS)
+
+
 def sandbox_env(te: TargetExperiment, ws: Path) -> str:
     """Shell ``export``s prepended to the in-sandbox command. PYTHONPATH points at the WORKSPACE's curated
     merlin pkg (the repo editable-install path is masked), so only granted modules import. PATH/LD are
@@ -154,8 +222,11 @@ def sandbox_env(te: TargetExperiment, ws: Path) -> str:
     parts = [
         # venv FIRST so python3 is the 3.13 venv (xdsl/merlin deps), not conda's 3.10.
         f'export PATH={path}:$PATH; ',
-        f'export MERLIN_CLANG={MERLIN_CLANG}; ',
     ]
+    # Only export the ABI clang when the install actually exists on this host — a dead path here sends
+    # every MERLIN_CLANG consumer to a nonexistent binary when the sandbox's PATH clang would have worked.
+    if Path(MERLIN_CLANG).exists():
+        parts.append(f'export MERLIN_CLANG={MERLIN_CLANG}; ')
     for k, v in sim.env_extra.items():
         parts.append(f'export {k}={v}; ')
     # NOTE: do NOT put {LLVM}/lib on LD_LIBRARY_PATH — it shadows system libLLVM and breaks the host C/C++

@@ -1,0 +1,153 @@
+# Declarative per-target experiment SETUP — the RARE non-derivable exception (see the derive-first rule).
+#
+# Vortex (SIMT GPGPU) sibling of the radiance/gemmini capsule_bench targets. Same 4-arm ladder, same
+# contract, same QA loop; only the SETUP differs. This descriptor holds the irreducible setup a run
+# needs: where the target spec comes from, which hardware-spec files every arm gets, which capsule
+# corpus to grade against, and how to run the simulator. Resolved by MERLIN_TARGET_EXPERIMENT.
+target: vortex
+
+# --- Target facts: RTL is the ground truth; NO Vortex software is granted ------------------------
+# This experiment asks whether Merlin shortens compiler BRING-UP for a new hardware target. Vortex
+# happens to ship a mature software stack (an LLVM fork, PoCL, an intrinsics header, a spawn runtime) —
+# but a target being brought up does NOT have one, so granting any of it would measure the wrong thing.
+# The RTL is therefore the ground truth, exactly as in gemmini's `via: mlc`, and the only text input is
+# a spec sheet WE author (see hardware_spec.isa_spec). See `answer_surfaces.denied_target_software`.
+rtl:
+  via: mlc
+  # Every Vortex path in this descriptor is relative to the CHECKOUT, whose location is machine-specific
+  # and therefore lives in the environment (`MERLIN_EXT_VORTEX`, else `VORTEX_HOME`) — never here.
+  root_env: MERLIN_EXT_VORTEX
+  # The HW-dialect import of the Vortex RTL that mlc-style discovery mines (decoder comb.icmp fan-out
+  # for the legal CUSTOM0 opcode/funct set, module params for geometry). Produced by hw/syn/circt.
+  hw_dialect: build/hw/syn/circt/build_Vortex/Vortex-sv2v.mlir
+  sources: hw/rtl
+
+# The shared hardware spec given to ALL arms (a correct backend needs SOME statement of the target's
+# ISA — that is physics, not assistance). Paths are repo-relative (as radiance's descriptor grants them).
+hardware_spec:
+  # A spec sheet WE author for this experiment — prose + encoding tables, NOT compilable code. It is the
+  # analog of gemmini's architecture README. The DENIED surface is the vendor's ready-made intrinsics/
+  # runtime (vx_intrinsics.h + spawn loop), which would hand over the work-distribution model that is
+  # precisely the compiler work under test — see answer_surfaces.denied_target_software. Contents: CUSTOM0
+  # opcode + funct3 table with operand
+  # semantics (tmc/wspawn/split/join/barrier/pred), the identity/geometry CSR map, the split/join
+  # reconvergence contract, the memory/fence model, and the kernel entry convention.
+  isa_spec: experiments/capsule_bench/targets/vortex/contracts/hwbringup_vortex_v0/VORTEX_ISA_SPEC.md
+  # The directory the bundle generator grants to EVERY arm — the shared floor. Holds the spec sheet above
+  # plus the isa_include/ taxonomy below and a worked example_kernel. The analog of gemmini's / radiance's
+  # hwbringup set.
+  hwbringup_set: experiments/capsule_bench/targets/vortex/contracts/hwbringup_vortex_v0
+  # A mnemonic->role TAXONOMY of the CUSTOM0 surface (isa_definition.py + isa_patterns.py), parity with
+  # radiance's isa_include/. It carries the SAME funct3/funct7 encoding table already granted in the spec
+  # sheet above — NOT the denied vendor intrinsics (`vx_intrinsics.h`, which pre-wrap the ops as ready C
+  # inline asm AND carry the spawn/work-distribution runtime). merlin's IsaModel introspects it so the
+  # granted `isa_tools.py` asm/disasm/lint can verify the agent's CUSTOM0 encodings (advertised to the
+  # assisted arms in the task). No work-distribution model is handed over; the mapping of work onto the
+  # machine remains the compiler work under test.
+  isa_headers:
+    - experiments/capsule_bench/targets/vortex/contracts/hwbringup_vortex_v0/isa_include/isa_definition.py
+  # Build-time geometry the kernel must respect. Frozen per experiment so every arm compiles for the
+  # SAME machine (otherwise cycle comparisons across arms are meaningless). Restated in the spec sheet;
+  # the config file itself is listed here as the provenance of these numbers, not as an agent input.
+  config:
+    provenance: hw/VX_config.toml     # checkout-relative (rtl.root_env); where WE read these from
+    # THE single source of truth for the machine. Every consumer below must be built from this exact
+    # macro string: the simx driver, the rtlsim driver, the HW-dialect import used for RTL facts, and
+    # any arc model derived from it. A consumer built from a different string is not comparable.
+    macro: >-
+      -DVX_CFG_NUM_CLUSTERS=2 -DVX_CFG_NUM_CORES=2 -DVX_CFG_SOCKET_SIZE=2
+      -DVX_CFG_NUM_WARPS=8 -DVX_CFG_NUM_THREADS=8 -DVX_CFG_L2_ENABLE
+    frozen:
+      # XLEN=64 is Vortex's own build default; it is what the simx/rtlsim drivers + libvortex2.a were
+      # built with. The kernel ABI therefore is rv64imafd / lp64d, NOT rv32 — see `toolchain.compiler`.
+      XLEN: 64
+      NUM_CLUSTERS: 2
+      NUM_CORES: 2          # PER CLUSTER -> 4 cores total
+      SOCKET_SIZE: 2        # NUM_SOCKETS = NUM_CORES / SOCKET_SIZE = 1 socket per cluster
+      NUM_WARPS: 8
+      NUM_THREADS: 8
+      L2_ENABLE: true
+      FPU_TYPE: STD
+    # 2 clusters x 2 cores x 8 warps x 8 threads = 256 threads. Multi-core is deliberate: a 1x1 machine
+    # cannot exercise cross-core behaviour, and this benchmark is about how a compiler maps work onto the
+    # machine. L2_ENABLE is NOT optional here: with multiple cores and no shared coherence point, dirty
+    # per-core dcache data is not flushed before the host reads results back (simx masks it, rtlsim
+    # exposes it as 0xBAADF00D poison from an L2-less build).
+  # Curated bare-metal harness the agent's emitted kernel links against — BOARD SUPPORT ONLY: linker
+  # script, crt/startup, the host-side launch (runs outside the graded kernel), and the Merlin runtime
+  # ABI. It carries NO compute kernels and NO work-distribution runtime: the agent's kernel must do its
+  # own thread/warp mapping from raw CUSTOM0 ops and identity CSRs, because that mapping IS the compiler
+  # problem under test. The Vortex analog of gemmini's harness_curated. Repo-relative.
+  curated_harness: experiments/capsule_bench/targets/vortex/contracts/harness_curated/vortex-baremetal
+  # The kernel ABI the annotation pass targets — a shared constant for all arms. Deliberately NOT
+  # merlin's memref-descriptor C runtime: a Vortex kernel is bare-metal device code launched per
+  # (block, thread) by the KMU; identity comes from CTA CSRs, and the contract is a flat block of device
+  # addresses declared in the curated harness's own header. Anything the standard lowerings would emit
+  # for a host runtime (memrefCopy, malloc, printf) must NOT survive into the module; the link checks it.
+  runtime_abi:
+    - experiments/capsule_bench/targets/vortex/contracts/harness_curated/vortex-baremetal/include/merlin_vortex_abi.h
+
+# The capsule corpus the arms author against and are graded on. Target-namespaced like radiance/atlas;
+# sibling families (layers/model_slices) and the hidden set are discovered beside it (globbed).
+capsule_corpus: merlin/contract/capsules/vortex/isa
+
+# Prior backends / reference exemplars the agent must NOT read or copy (denied answer surfaces).
+answer_surfaces:
+  prior_backends: []          # none yet; populate as reference Vortex backends are minted
+  # THE central deny surface for this experiment. Vortex ships a mature compiler/software stack; a target
+  # under bring-up does not. Granting any of it would convert "bring up a compiler from the hardware"
+  # into "use the vendor SDK" — the wrong measurement. All of it is denied to EVERY arm. CHECKOUT-RELATIVE
+  # (resolved under `rtl.root_env`), so these keep naming real files wherever the checkout lives.
+  denied_target_software:
+    # -- ISA / programming-model headers: hand over the encodings AND the SIMT programming model.
+    - sw/kernel/include/vx_intrinsics.h   # CUSTOM0 ops pre-wrapped as C inline asm
+    - sw/kernel/include/vx_spawn.h        # NDRange grid launch = the work-distribution answer
+    - sw/kernel/src                       # vx_spawn implementation (scheduling logic)
+    # -- Compiler infrastructure proper.
+    - tools/llvm-vortex                   # the Vortex LLVM fork (+xvortex auto-inserts reconvergence)
+    - tools/pocl                          # OpenCL stack (a whole alternative compiler)
+    - tools/chipstar                      # HIP stack
+    - tools/mesa-vortex
+    # -- Ready-made compute kernels (the answers).
+    - tests/regression                    # bare-metal C kernels (sgemm, conv, ...)
+    - tests/opencl
+    - tests/hip
+    - tests/kernel
+
+# How the simulator runs. Vortex ships its own two-tier simulator ladder; no chipyard involved. The
+# bespoke sim engine `vortex` is registered by the target package's plugin.backend (targets/vortex/
+# backend), so capsule_runner.oracle_adapters("vortex") routes to vortex_oracle's simx(L2)/rtlsim(L3).
+toolchain:
+  sim_via: vortex
+  # NOT ci/blackbox.sh — that rebuilds Vortex's own test kernels. `targetgen/vortex_oracle.py` drives the
+  # real path directly: llvm-dialect MLIR -> mlir-translate -> stock clang -> link against the curated
+  # harness -> vxbin.py -> the generic host driver, parsing the OUT/METRIC/DONE console protocol.
+  runner: merlin.targetgen.vortex_oracle
+  compiler:
+    # STOCK LLVM — no fork. Vortex's SIMT ops are `.insn r CUSTOM0` inline asm and its identity reads are
+    # `csrr`, both expressible on an upstream RISC-V target. The width follows the frozen XLEN=64 above.
+    target: riscv64
+    march: rv64imafd
+    mabi: lp64d
+  tiers:
+    # L0/L1 are structural (no simulator). L2 is the DEFAULT numeric oracle; L3 is the expensive
+    # cycle-exact tier, required only for the capsules that declare it.
+    L2:
+      name: simx
+      driver: --driver=simx
+      fidelity: cycle_approximate     # functionally complete; fast enough to grade every capsule
+      derived_from_rtl: false
+    L3:
+      name: rtlsim
+      driver: --driver=rtlsim
+      fidelity: cycle_exact           # Verilator on the real RTL
+      derived_from_rtl: true
+      budget_note: "seconds-to-minutes per capsule at the frozen 8w x 8t geometry"
+
+# Perf metrics recorded per capsule. DIAGNOSTIC ONLY — they never gate pass/fail (same rule as gemmini),
+# but they are the whole point of the cross-arm comparison: which compiler optimizes better for the HW.
+perf:
+  fields: [cycles, instrs, ipc, flops, gflops, pct_fp_peak]
+  # Vortex FP peak at the frozen geometry: cores x warps-issued-per-cycle x threads x 2 flop/FMA
+  # = 4 x 1 x 8 x 2 = 64. Recorded as a utilization denominator only.
+  peak_flops_per_cycle: 64

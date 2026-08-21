@@ -1,0 +1,4 @@
+merlin/
+merlin/contract/capsules/vortex/hidden/
+experiments/capsule_bench/targets/vortex/input_bundles/grader_private_v0/
+experiments/capsule_bench/targets/vortex/runs/

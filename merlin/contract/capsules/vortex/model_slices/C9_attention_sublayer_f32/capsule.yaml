@@ -1,0 +1,66 @@
+name: C9_attention_sublayer_f32
+kind: model_slice
+source_role: handauthored_compiler_test
+label: public
+source_reference: attn.sublayer
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: Q
+  role: input
+  shape:
+  - 12
+  - 16
+  dtype: f32
+- name: K
+  role: input
+  shape:
+  - 12
+  - 16
+  dtype: f32
+- name: V
+  role: input
+  shape:
+  - 12
+  - 16
+  dtype: f32
+- name: Y
+  role: output
+  shape:
+  - 12
+  - 16
+  dtype: f32
+operation:
+  op: attention_sublayer
+  attributes:
+    q: Q
+    k: K
+    v: V
+    out: Y
+    output_dtype: f32
+    weight_layout: transposed_nk
+    residual: true
+    norm: rmsnorm
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    f32: true
+    softmax: true
+    rmsnorm: true
+    reduction: true
+    k_accumulate: true
+    transposed: true
+    divergent: false
+required_oracle_tiers:
+- L2
+notes: 'attention sublayer Y=rmsnorm(softmax(Q@K^T)@V + Q) at 12x16: attention + residual
+  + norm, the heaviest composition; L2 only (a naive mapping exceeds the rtlsim wall)'
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  rtol: 0.0
+  atol: 0.00013237824427588814

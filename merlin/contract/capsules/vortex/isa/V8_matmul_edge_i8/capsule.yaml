@@ -1,0 +1,52 @@
+name: V8_matmul_edge_i8
+kind: isa
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: A
+  role: input
+  shape:
+  - 5
+  - 13
+  dtype: i8
+- name: W
+  role: weight
+  shape:
+  - 13
+  - 7
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 5
+  - 7
+  dtype: i32
+operation:
+  op: matmul
+  attributes:
+    lhs: A
+    weight: W
+    out: Y
+    output_dtype: i32
+    k: 13
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    i8: true
+    k_accumulate: true
+    padded_edge: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: 'all three dims prime: no tiling divides evenly, K=13 defeats a fixed unroll'
+numeric_policy:
+  compare: exact_int
+  dtype: i32

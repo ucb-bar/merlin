@@ -1,0 +1,16 @@
+capsule: C1_mlp_activation_linear2
+simt_classes:
+- CTA_CSR
+- GMEM_LD
+- GMEM_ST
+rationale: 'CTA_CSR proves the kernel is COORDINATE-AWARE rather than a scalar loop
+  over the whole tensor: under KMU dispatch the hardware launches every (block, thread)
+  coordinate and the runner-owned startup sets the thread mask, so a correct kernel
+  body emits no tmc/wspawn at all -- what it must do is read thread_id/block_id. GMEM_LD/ST
+  prove it moves the operands. Mapping-specific classes are deliberately NOT required.'
+simt_classes_advisory:
+- TMC
+- WSPAWN
+rationale_advisory: ADVISORY ONLY. tmc/wspawn appear only if the backend sub-distributes
+  work WITHIN a launched coordinate; that is a legal mapping choice, so their absence
+  is reported, never failed. The cycle count is where the difference shows.

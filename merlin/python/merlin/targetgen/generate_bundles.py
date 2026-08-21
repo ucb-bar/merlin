@@ -46,6 +46,10 @@ def _shared_allow(te: TargetExperiment) -> list[dict]:
            {"path": te.corpus_rel(), "mode": "ro", "note": "capsule corpus"}]
     out += [{"path": s, "mode": "ro"} for s in te.corpus_siblings()]
     out += [{"path": h, "mode": "ro", "note": "ISA header (shared hardware spec)"} for h in te.isa_headers]
+    # The kernel-ABI header(s) the task tells the agent to read ("granted with the harness — it is the
+    # whole contract"): a shared constant for ALL arms, like the ISA headers.
+    out += [{"path": h, "mode": "ro", "note": "runtime ABI header (shared constant, ALL arms)"}
+            for h in te.runtime_abi]
     out += [{"path": f"experiments/{exp}/task/", "mode": "ro"},
             {"path": "third_party/llvm-install/", "mode": "ro", "note": "LLVM/MLIR 23 toolchain"}]
     if te.hwbringup_set:

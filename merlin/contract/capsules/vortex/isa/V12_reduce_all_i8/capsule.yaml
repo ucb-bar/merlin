@@ -1,0 +1,53 @@
+name: V12_reduce_all_i8
+kind: isa
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: A
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 1
+  dtype: i32
+operation:
+  op: reduce
+  attributes:
+    lhs: A
+    out: Y
+    output_dtype: i32
+    axis: all
+    reduce_op: sum
+    k: 256
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  - SHFL_DOWN
+  - SHFL_BFLY
+  - BARRIER
+  - SMEM_LD
+  - SMEM_ST
+  modes:
+    i8: true
+    reduction: true
+    cross_thread: true
+    shared_mem: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: 'the same whole-tensor reduction in exact integers: no tolerance, so every
+  lane the cross-lane tree misses shows up in the answer'
+numeric_policy:
+  compare: exact_int
+  dtype: i32

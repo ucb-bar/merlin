@@ -37,21 +37,42 @@ from . import rtl_check_compiler as CC
 from . import rtl_checks as RC
 from .rtl.facts import load_facts
 from .corpora import capsule_corpus_roots
-from merlin.common.paths import ext_path, repo_root
+from merlin.common.paths import env, ext_path, repo_root
 
 _REPO = repo_root()
 # RTL facts are the generated artifact (regenerated from the RTL on demand by load_facts); the
 # resolver defaults to gemmini but honors $MERLIN_RTL_FACTS. General callers should pass target=.
 _CAPSULE_ROOTS = capsule_corpus_roots()   # canonical + perf corpus, resolved by the corpus locator
-_FILECHECK_CANDIDATES = [
-    str(_REPO / "third_party/llvm-build/bin/FileCheck"),
-    f"{ext_path("chipyard")}/.conda-env/riscv-tools/bin/FileCheck",
-]
 _COMPUTE_CLASSES = {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"}
 
 
+def _ext_filecheck(name: str, suffix: str) -> str | None:
+    """A FileCheck candidate under the optional external toolchain root ``name`` (e.g. chipyard's
+    riscv-tools), or ``None`` when that root is not configured — evaluated lazily so an unset
+    ``MERLIN_EXT_<NAME>`` never breaks import on a target that doesn't use that toolchain."""
+    try:
+        return f"{ext_path(name)}{suffix}"
+    except KeyError:
+        return None
+
+
+def _filecheck_candidates() -> list[str]:
+    """FileCheck binaries to try, most-specific first — built lazily and target-agnostically:
+    the repo's own LLVM build; the LLVM build that co-supplies ``mlir-translate`` (the CIRCT/mlc RTL
+    path — FileCheck and mlir-translate are co-built LLVM tools); and chipyard's riscv-tools (the
+    RoCC/systolic path). Only resolvable candidates are included; unset toolchains are skipped."""
+    cands = [str(_REPO / "third_party/llvm-build/bin/FileCheck")]
+    mt = env("MERLIN_MLIR_TRANSLATE")
+    if mt:
+        cands.append(str(Path(mt).parent / "FileCheck"))
+    chip = _ext_filecheck("chipyard", "/.conda-env/riscv-tools/bin/FileCheck")
+    if chip:
+        cands.append(chip)
+    return cands
+
+
 def find_filecheck() -> str | None:
-    for c in _FILECHECK_CANDIDATES:
+    for c in _filecheck_candidates():
         if Path(c).is_file():
             return c
     return shutil.which("FileCheck")

@@ -1,0 +1,51 @@
+name: V2_matmul_i8
+kind: isa
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: A
+  role: input
+  shape:
+  - 8
+  - 16
+  dtype: i8
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 8
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 8
+  - 8
+  dtype: i32
+operation:
+  op: matmul
+  attributes:
+    lhs: A
+    weight: W
+    out: Y
+    output_dtype: i32
+    k: 16
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    i8: true
+    k_accumulate: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: a K-reduction with exact integer accumulation; the one capsule graded on RTL
+numeric_policy:
+  compare: exact_int
+  dtype: i32

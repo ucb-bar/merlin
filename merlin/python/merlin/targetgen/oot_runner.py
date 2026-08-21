@@ -185,7 +185,7 @@ def usable_cmake() -> str:
 _usable_cmake = usable_cmake
 
 
-def build_package(pkg: Package, *, timeout: int = 1800) -> None:
+def build_package(pkg: Package, *, timeout: int | None = None) -> None:
     """If the manifest declares a build block (C++ packages), run configure + build.
 
     Runs each step FROM THE PACKAGE ROOT (cwd=pkg.directory) with the toolchain env exported, so a
@@ -198,6 +198,13 @@ def build_package(pkg: Package, *, timeout: int = 1800) -> None:
     if not build:
         return
     import os, shlex, shutil
+    if timeout is None:
+        # env override: grant more build headroom on a loaded host (heavy CPU contention slows the
+        # package build) without threading a param through qa_check/grade. Defaults to 1800s.
+        try:
+            timeout = int(os.environ.get("MERLIN_OOT_BUILD_TIMEOUT", "1800"))
+        except ValueError:
+            timeout = 1800
     from .contract import toolchain as mlir_tc
     mlir_dir = str(mlir_tc.mlir_cmake_dir())
     llvm_dir = str(mlir_tc.mlir_install() / "lib" / "cmake" / "llvm")

@@ -1,0 +1,25 @@
+capsule: V12_reduce_all_i8
+simt_classes:
+- CTA_CSR
+- GMEM_LD
+- GMEM_ST
+rationale: 'CTA_CSR proves the kernel is COORDINATE-AWARE rather than a scalar loop
+  over the whole tensor: under KMU dispatch the hardware launches every (block, thread)
+  coordinate and the runner-owned startup sets the thread mask, so a correct kernel
+  body emits no tmc/wspawn at all -- what it must do is read thread_id/block_id. GMEM_LD/ST
+  prove it moves the operands. Mapping-specific classes are deliberately NOT required.'
+simt_classes_advisory:
+- TMC
+- WSPAWN
+- SHFL_DOWN
+- SHFL_BFLY
+- BARRIER
+- SMEM_LD
+- SMEM_ST
+rationale_advisory: 'ADVISORY ONLY. tmc/wspawn appear only if the backend sub-distributes
+  work WITHIN a launched coordinate; that is a legal mapping choice, so their absence
+  is reported, never failed. The cycle count is where the difference shows. ALSO:
+  ADVISORY ONLY, as V11. This is the EXACT member of the pair: integer accumulation
+  over 256 elements cannot overflow i32 and carries no tolerance at all, so a lane
+  dropped from the cross-lane tree changes the result and nothing can absorb it. V11''s
+  float bound is necessarily loose because a whole-tensor sum cancels.'

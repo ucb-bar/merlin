@@ -1,0 +1,51 @@
+name: V14_elementwise_add_i32
+kind: isa
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+source_torch: capsule.torch.py
+inputs:
+- name: A
+  role: input
+  shape:
+  - 8
+  - 8
+  dtype: i32
+- name: B
+  role: input
+  shape:
+  - 8
+  - 8
+  dtype: i32
+- name: Y
+  role: output
+  shape:
+  - 8
+  - 8
+  dtype: i32
+operation:
+  op: elementwise
+  attributes:
+    lhs: A
+    rhs: B
+    out: Y
+    output_dtype: i32
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  modes:
+    i32: true
+    elementwise: true
+    divergent: false
+required_oracle_tiers:
+- L2
+- L3
+notes: 'the only capsule with FOUR-BYTE INPUTS: every other integer capsule takes
+  i8, so a load path hardcoded to lb+extsi passes them all and fails only here'
+numeric_policy:
+  compare: exact_int
+  dtype: i32

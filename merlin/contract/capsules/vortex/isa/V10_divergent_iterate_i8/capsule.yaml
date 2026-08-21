@@ -1,0 +1,48 @@
+name: V10_divergent_iterate_i8
+kind: isa
+source_role: handauthored_compiler_test
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A
+  role: input
+  shape:
+  - 8
+  - 8
+  dtype: i8
+- name: Y
+  role: output
+  shape:
+  - 8
+  - 8
+  dtype: i32
+operation:
+  op: elementwise
+  attributes:
+    lhs: A
+    out: Y
+    output_dtype: i32
+    loop: unbounded_data_dependent
+    recurrence: collatz
+expected:
+  instruction_classes:
+  - CTA_CSR
+  - GMEM_LD
+  - GMEM_ST
+  - TMC
+  - WSPAWN
+  - SPLIT
+  - JOIN
+  - PRED
+  modes:
+    i8: true
+    elementwise: true
+    divergent: true
+required_oracle_tiers:
+- L2
+- L3
+notes: 'unbounded data-dependent loop (Collatz step count): the one capsule that cannot
+  be rewritten branchlessly, so divergence handling is forced'
+numeric_policy:
+  compare: exact_int
+  dtype: i32

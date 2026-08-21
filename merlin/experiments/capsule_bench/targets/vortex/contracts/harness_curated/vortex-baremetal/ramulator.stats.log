@@ -1,0 +1,89 @@
+Frontend:
+  impl: GEM5
+
+MemorySystem:
+  impl: GenericDRAM
+  total_num_other_requests: 0
+  total_num_write_requests: 64
+  total_num_read_requests: 88
+  memory_system_cycles: 5653
+  DRAM:
+    impl: HBM2
+  AddrMapper:
+    impl: RoBaRaCoCh
+
+
+  Controller:
+    impl: Generic
+    id: Channel 0
+    avg_read_latency_0: 33.5454559
+    read_queue_len_avg_0: 0.246064037
+    write_queue_len_0: 1396
+    queue_len_0: 2787
+    num_other_reqs_0: 0
+    num_write_reqs_0: 32
+    read_latency_0: 1476
+    priority_queue_len_avg_0: 0
+    row_hits_0: 64
+    priority_queue_len_0: 0
+    row_misses_0: 3
+    row_conflicts_0: 9
+    read_row_misses_0: 3
+    queue_len_avg_0: 0.493012547
+    read_row_conflicts_core_0: 9
+    read_row_hits_0: 32
+    write_queue_len_avg_0: 0.246948525
+    read_row_conflicts_0: 9
+    write_row_misses_0: 0
+    write_row_conflicts_0: 0
+    read_queue_len_0: 1391
+    write_row_hits_0: 32
+    read_row_hits_core_0: 32
+    read_row_misses_core_0: 3
+    num_read_reqs_0: 44
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+    RowPolicy:
+      impl: OpenRowPolicy
+
+
+
+  Controller:
+    impl: Generic
+    id: Channel 1
+    read_queue_len_avg_1: 0.250309557
+    priority_queue_len_1: 0
+    write_queue_len_1: 1428
+    num_write_reqs_1: 32
+    row_hits_1: 64
+    row_misses_1: 3
+    avg_read_latency_1: 34.0909081
+    queue_len_avg_1: 0.50291878
+    read_queue_len_1: 1415
+    read_row_misses_1: 3
+    priority_queue_len_avg_1: 0
+    read_row_hits_1: 32
+    queue_len_1: 2843
+    read_row_conflicts_1: 9
+    num_read_reqs_1: 44
+    num_other_reqs_1: 0
+    row_conflicts_1: 9
+    write_row_hits_1: 32
+    write_queue_len_avg_1: 0.252609223
+    write_row_misses_1: 0
+    write_row_conflicts_1: 0
+    read_row_hits_core_0: 32
+    read_row_misses_core_0: 3
+    read_latency_1: 1500
+    read_row_conflicts_core_0: 9
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+    RowPolicy:
+      impl: OpenRowPolicy
+
+
+
