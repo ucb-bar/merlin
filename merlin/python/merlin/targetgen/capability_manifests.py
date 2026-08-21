@@ -493,6 +493,27 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
     for req in ("compiler_obligations", "hardware_promises", "runtime_promises", "legality"):
         manifest.setdefault(req, [])
 
+    # --- semantic capability: derived from this target's OWN evidence, every run ---
+    # The ARR denominator is a claim about hardware, and a claim nothing checks is an assertion. So the
+    # facts are produced HERE, while the contract is being derived, and recorded beside the declaration
+    # rather than replacing it: a derivation bug must never be able to silently move the denominator,
+    # and a target whose evidence is thin (empty RTL facts) must not have its reviewed families deleted.
+    # `capability_evidence` is what the gate reads; `semantic_capabilities_unknown` is what keeps an
+    # undecidable family out of BOTH sides of the ratio instead of flattering one of them.
+    try:
+        from . import capability_derive as _cd
+        from . import eligibility as _el
+
+        derived = _cd.derive(name, manifest, facts)
+        manifest.update(derived.to_dict())
+        manifest["capability_evidence"] = {
+            "drift": _cd.reconcile(_el.capability_map_from_contract(manifest), derived),
+            "derived_families": derived.families(),
+            "undetermined_families": sorted(derived.unknown),
+        }
+    except Exception as exc:  # noqa: BLE001 — never block contract derivation on the audit
+        manifest["capability_evidence"] = {"error": f"{type(exc).__name__}: {exc}"}
+
     return validate(manifest)
 
 

@@ -33,16 +33,46 @@ def _ratio(num: int, den: int):
 
 def _capsule_region(cap: dict):
     """A :class:`merlin.targetgen.eligibility.RegionDescriptor` for a capsule spec — its declared
-    ``semantic.semantic_family`` (or, when omitted, the family derived from ``operation.op``) at its
-    numeric-policy dtype."""
+    ``semantic.semantic_family`` (or, when omitted, the family derived from ``operation.op``) at the
+    dtypes, rank and layout of its ACTUAL OPERANDS.
+
+    ⚠️ The operand dtypes come from ``inputs[]`` selected by ``role``, NOT from ``numeric_policy.dtype``.
+    That field is the ACCUMULATOR/compare dtype, and reading it as the operand dtype silently disabled
+    this whole metric: a gemmini matmul presented ``i32`` against a contract declaring ``int8``, so EVERY
+    gemmini capsule was judged ineligible, ``n_eligible`` was 0 and ARR reported ``None`` — the target's
+    core capability excluded from its own denominator while an incidental ``movement`` capsule counted.
+    Radiance only escaped by coincidence (it accumulates in f32 and also declares fp32 as an operand
+    format), so its fp16 and MX capsules were being judged as f32/bf16 and the dtype axis was unenforced
+    on every target. ``inputs[]`` is also the source
+    :func:`merlin.targetgen.capsule_golden._recompute_golden` picks operands from, so the eligibility
+    oracle and the golden engine now agree on what the operands are.
+
+    ``rank``/``batch``/``layout`` are populated for the same reason: :class:`SemanticCapability` declares
+    ``ranks``, ``batch`` and ``layouts``, and a descriptor that leaves them unset can never exercise them
+    — gemmini's ``ranks: [2]`` was dead on this path.
+    """
     from . import eligibility as _el
     from . import semantic_families as _sf
 
     sem = cap.get("semantic") or {}
     op = (cap.get("operation") or {}).get("op")
     fam = sem.get("semantic_family") or _sf.from_op(op)
-    dtype = (cap.get("numeric_policy") or {}).get("dtype")
-    return _el.RegionDescriptor(source=cap.get("name", ""), op=op, family=fam, in_dtype=dtype)
+
+    def _by_role(role: str) -> dict:
+        for spec in cap.get("inputs") or []:
+            if spec.get("role") == role:
+                return spec
+        return {}
+
+    act, wgt = _by_role("input"), _by_role("weight")
+    shape = act.get("shape") or []
+    rank = len(shape) or None
+    # A leading extent on a rank>=3 operand is the batch. Rank 1/2 operands are unbatched by definition,
+    # and reporting batch=1 there is a fact, not a default.
+    batch = int(shape[0]) if rank and rank >= 3 else 1
+    return _el.RegionDescriptor(source=cap.get("name", ""), op=op, family=fam,
+                                in_dtype=act.get("dtype"), weight_dtype=wgt.get("dtype"),
+                                rank=rank, batch=batch, layout=act.get("layout"))
 
 
 def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str | None) -> dict:
@@ -57,14 +87,18 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
 
     sim_tiers = tuple(_TIER_SIM)                      # tiers that run the emitted artifact on a simulator
     cap_map: dict = {}
+    undetermined: frozenset = frozenset()
     if target:
         try:
             cap_map = _el.capability_map_for_target(target)
         except Exception:  # noqa: BLE001 — no resolvable contract -> honest empty denominator
             cap_map = {}
+        undetermined = _el.undetermined_families_for_target(target)
 
     per_capsule: list[dict] = []
     n_eligible = n_eligible_accelerated = n_accelerated = n_accel_eligible = 0
+    n_undetermined = 0
+    undetermined_capsules: list[str] = []
     false_fallback: list[str] = []
     must_accelerate_violations: list[str] = []
     # G0-G5 breakdown: recall per generalization axis (the axis each capsule PROBES)
@@ -78,9 +112,11 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         override = sem.get("eligible", "auto")
         if isinstance(override, bool):
             eligible, family, reason = override, desc.resolved_family(), "author override"
+            is_undetermined = False
         else:
-            v = _el.is_eligible(desc, cap_map)
+            v = _el.is_eligible(desc, cap_map, undetermined=undetermined)
             eligible, family, reason = v.eligible, v.family, v.reason
+            is_undetermined = v.undetermined
         accelerated = any(r.get("tiers", {}).get(t, {}).get("status") == "pass" for t in sim_tiers)
         must = bool(sem.get("must_accelerate"))
         axis = sem.get("generalization_axis", "unspecified")
@@ -95,7 +131,11 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         violated = must and eligible and not accelerated
         per_capsule.append({"capsule": r["capsule"], "semantic_family": family, "eligible": eligible,
                             "accelerated": accelerated, "must_accelerate": must,
-                            "must_accelerate_violated": violated, "reason": reason})
+                            "must_accelerate_violated": violated, "reason": reason,
+                            "undetermined": is_undetermined})
+        if is_undetermined:
+            n_undetermined += 1
+            undetermined_capsules.append(r["capsule"])
         if violated:
             must_accelerate_violations.append(r["capsule"])
         if accelerated:
@@ -117,6 +157,12 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
     return {
         "denominator_source": "semantic_capabilities (independent eligibility oracle)",
         "n_eligible": n_eligible,
+        # Regions whose family no evidence source could decide. In NEITHER the numerator nor the
+        # denominator: scoring them either way would move ARR for a reason that is about our evidence,
+        # not about the compiler. A large count means the recall below is computed over a small slice
+        # of the corpus and should not be quoted alone -- the gate bounds it.
+        "n_undetermined": n_undetermined,
+        "undetermined_capsules": undetermined_capsules,
         "n_accelerated": n_accelerated,
         "n_eligible_accelerated": n_eligible_accelerated,
         "false_fallback": false_fallback,

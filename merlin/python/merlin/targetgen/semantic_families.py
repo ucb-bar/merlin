@@ -63,6 +63,29 @@ _PROV_FAMILY: dict[str, str] = {
     "synchronization": "synchronization",
 }
 
+# --- shared ISA semantic-class -> canonical family ---------------------------------------------
+# The closed class vocabulary a target declares in ``encoding.semantic_class`` (and that the RoCC trace
+# decoder speaks). Closed and target-agnostic, exactly like _PROV_FAMILY above. Classes that are pure
+# plumbing (configuration, cache maintenance) map to NOTHING rather than to a family: configuring the
+# datapath is not a computation, and letting CONFIG license ``elementwise_map`` would manufacture a
+# capability out of a setup instruction.
+_ISA_CLASS_FAMILY: dict[str, str] = {
+    # reduce-over-k products, and the preload/loop scaffolding that only exists to feed one
+    "COMPUTE_PRELOADED": "contraction",
+    "COMPUTE_ACCUMULATE": "contraction",
+    "PRELOAD": "contraction",
+    "LOOP_WS": "contraction",
+    "LOOP_CONV": "contraction",
+    # data motion without arithmetic
+    "MVIN": "movement",
+    "MVOUT": "movement",
+    "LOAD": "movement",
+    "STORE": "movement",
+    # ordering / visibility
+    "FENCE": "synchronization",
+    # CONFIG / CONFIG_EX / CONFIG_LD / CONFIG_ST / FLUSH: plumbing, deliberately absent
+}
+
 # --- routing OpDemand.op / prov.op -> canonical family -----------------------------------------
 # When only an op name is available (no family tag), pin it structurally. Softmax/normalization ops
 # resolve to their composite so eligibility can ask for the fused capability or the primitives.
@@ -75,6 +98,9 @@ _OP_FAMILY: dict[str, str] = {
     "fused_matmul_bias": "contraction",
     "gemv_batched": "contraction",
     "k_chain": "contraction",
+    # a weight-stationary matmul that REUSES the resident weight across calls -- the reuse is a
+    # scheduling property, the payload is still a reduce-over-k product.
+    "resident_reuse": "contraction",
     "patch_embed": "contraction",
     "conv2d": "contraction",
     "conv1d": "contraction",
@@ -136,6 +162,22 @@ _OP_FAMILY: dict[str, str] = {
 }
 
 
+def from_isa_class(isa_class: str | None) -> str | None:
+    """Canonical family for a SHARED ISA semantic-class name; ``None`` if unrecognized.
+
+    ⚠️ Scope: this table covers only the **shared, closed** class vocabulary a target declares in its
+    contract's ``encoding.semantic_class`` — the same human-owned vocabulary the compiler and the trace
+    decoder both speak. It is emphatically NOT a place to map a target's own instruction mnemonics: a
+    target that names its reduction ``VREDSUM_BF`` must be classified from the STRUCTURE of that
+    instruction (its typed operands and its behaviour — see the ISA role census), never from the letters
+    in its name, or we are back to the string-matching this repo exists to avoid. Unrecognized returns
+    ``None`` so the caller records UNKNOWN rather than guessing.
+    """
+    if not isa_class:
+        return None
+    return _ISA_CLASS_FAMILY.get(isa_class.strip().upper())
+
+
 def from_prov(prov_family: str | None, prov_op: str | None = None) -> str | None:
     """Canonical family for a captured op's ``prov.family`` (with ``prov.op`` as a tiebreaker).
 
@@ -177,7 +219,7 @@ def check() -> list[str]:
         for p in parts:
             if p not in PRIMITIVES:
                 problems.append(f"composite {comp!r} references non-primitive {p!r}")
-    for src, fam in {**_PROV_FAMILY, **_OP_FAMILY}.items():
+    for src, fam in {**_PROV_FAMILY, **_OP_FAMILY, **_ISA_CLASS_FAMILY}.items():
         if fam not in FAMILIES:
             problems.append(f"mapping {src!r} -> {fam!r} is not a declared family")
     return problems

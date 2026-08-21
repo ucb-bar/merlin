@@ -157,8 +157,21 @@ def required_role_slots(*, op: str = "matmul", output_dtype: str | None = None,
     map) and the static linter (which checks slot presence by ROLE — robust to a target having several
     classes per role). A movement/copy op needs only a memory op; a matmul needs load, stationary-weight
     push, the systolic multiply, and the accumulator read-out, plus any epilogue role."""
-    if movement or op in ("movement", "copy"):
+    from . import semantic_families as _sf
+
+    family = _sf.from_op(op)
+    if movement or family == "movement":
         return [("memory",)]                              # dequant load + store, no MXU
+    # FAIL CLOSED unless the op's family actually CONTAINS a contraction. This used to fall straight
+    # through to the systolic sequence for EVERY op, so a softmax/rmsnorm/gelu capsule was told it must
+    # exercise MXUMatMul -- a fabricated requirement, and the direction of error that running it cannot
+    # catch (the kernel is simply marked non-conformant). Membership comes from the closed vocabulary's
+    # own decomposition, not a list here: `attention` decomposes to (contraction, reduction,
+    # elementwise_map), so an attention capsule DOES owe the systolic sequence, while `softmax` and
+    # `normalization` decompose to (reduction, elementwise_map) and owe nothing. An op the vocabulary
+    # does not recognise owes nothing either -- the caller records that rather than inventing a demand.
+    if "contraction" not in _sf.primitives_of(family or ""):
+        return []
     slots: list[tuple[str, ...]] = [
         ("memory",),                                      # load operands
         ("weight_load",),                                 # push stationary weight

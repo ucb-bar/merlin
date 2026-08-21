@@ -67,6 +67,13 @@ class SemanticCapability:
     arbitrary_mnk: bool = True            # M/N/K need not be tile multiples (tails handled)
     batch: bool = True                    # batch dimensions supported
     layouts: tuple[str, ...] = ()         # legal layout tags (coarse); () = unconstrained
+    #: Families this one is only available FUSED WITH — () means it is available standalone.
+    #: A systolic mesh whose only elementwise hardware is the readout epilogue (requant/relu on the
+    #: accumulator pop) can run ``elementwise_map`` as a contraction epilogue and CANNOT run a standalone
+    #: ``gelu``. Declaring it standalone makes every elementwise region eligible, so the target carries a
+    #: permanent false_fallback no compiler change can clear; omitting the family entirely hides real
+    #: hardware. This field is how a capability says "yes, but only attached to that".
+    composed_with: tuple[str, ...] = ()
     notes: str = ""
 
 
@@ -115,6 +122,7 @@ def _sem_cap(raw: dict[str, Any], unit_name: str) -> SemanticCapability:
         transpose=bool(raw.get("transpose", True)),
         arbitrary_mnk=bool(raw.get("arbitrary_mnk", True)),
         batch=bool(raw.get("batch", True)),
+        composed_with=tuple(raw.get("composed_with", ()) or ()),
         layouts=tuple(raw.get("layouts", ()) or ()),
         notes=raw.get("notes", "") or "",
     )
@@ -233,11 +241,20 @@ def datatype_tokens(unit: ComputeUnit) -> set[str]:
 
 def _merge_caps(a: SemanticCapability, b: SemanticCapability) -> SemanticCapability:
     """Union two same-family capabilities into the most-permissive combined capability (a target is
-    capable of a family if ANY of its units is): union dtypes/layouts/ranks, OR the boolean flags."""
+    capable of a family if ANY of its units is): union dtypes/layouts/ranks, OR the boolean flags.
+
+    ``composed_with`` is the one field that INTERSECTS rather than unions. It is a restriction, not a
+    capability: if one unit runs the family standalone and another only as an epilogue, the TARGET runs
+    it standalone, so the restriction must not survive the merge. Unioning it would let one unit's
+    limitation constrain another unit's freedom; an empty intersection correctly means "standalone".
+    """
     def _u(x: tuple, y: tuple) -> tuple:
         out = list(x)
         out += [v for v in y if v not in out]
         return tuple(out)
+
+    def _i(x: tuple, y: tuple) -> tuple:
+        return tuple(v for v in x if v in y)
 
     notes = "; ".join(n for n in (a.notes, b.notes) if n)
     return SemanticCapability(
@@ -248,6 +265,7 @@ def _merge_caps(a: SemanticCapability, b: SemanticCapability) -> SemanticCapabil
         arbitrary_mnk=a.arbitrary_mnk or b.arbitrary_mnk,
         batch=a.batch or b.batch,
         layouts=_u(a.layouts, b.layouts),
+        composed_with=_i(a.composed_with, b.composed_with),
         notes=notes,
     )
 

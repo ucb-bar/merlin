@@ -54,6 +54,11 @@ class EligibilityVerdict:
     eligible: bool
     family: str | None
     reason: str
+    #: The evidence could not DECIDE this family — distinct from "the hardware cannot do it". An
+    #: undetermined region belongs in neither the ARR numerator nor its denominator: counting it
+    #: ineligible would flatter recall by shrinking the denominator, and counting it eligible would
+    #: deflate recall by demanding work the hardware may not support. It is reported as unmeasured.
+    undetermined: bool = False
 
 
 def _dtype_ok(want: str | None, allowed: tuple[str, ...]) -> bool:
@@ -86,13 +91,24 @@ def _family_support(family: str, cap_map: dict[str, SemanticCapability]):
     return None, None
 
 
-def is_eligible(region: RegionDescriptor, cap_map: dict[str, SemanticCapability]) -> EligibilityVerdict:
-    """Can the hardware described by ``cap_map`` execute ``region``? Pure declarative check."""
+def is_eligible(region: RegionDescriptor, cap_map: dict[str, SemanticCapability],
+                *, undetermined: "frozenset[str] | tuple[str, ...] | None" = None) -> EligibilityVerdict:
+    """Can the hardware described by ``cap_map`` execute ``region``? Pure declarative check.
+
+    ``undetermined`` names families for which no evidence source could reach a verdict (see
+    :mod:`merlin.targetgen.capability_derive`). Such a family is NOT silently treated as unsupported:
+    that would shrink the ARR denominator and flatter recall. It returns a verdict flagged
+    ``undetermined`` so the caller can report it as unmeasured instead of scoring it either way.
+    """
     family = region.resolved_family()
     if family is None:
         return EligibilityVerdict(False, None, "unrecognized semantic family (fail-closed)")
     caps, how = _family_support(family, cap_map)
     if how is None:
+        if undetermined and family in undetermined:
+            return EligibilityVerdict(False, family,
+                                      f"UNDETERMINED: no evidence source could decide family "
+                                      f"{family!r} for this target", undetermined=True)
         return EligibilityVerdict(False, family,
                                   f"target declares no capability for family {family!r}")
     for c in caps:
@@ -116,6 +132,13 @@ def is_eligible(region: RegionDescriptor, cap_map: dict[str, SemanticCapability]
             return EligibilityVerdict(False, family,
                                       f"layout {region.layout!r} not in {c.family} legal layouts "
                                       f"{list(c.layouts)}")
+        # A capability available only FUSED cannot execute the region standalone. ``how == "direct"``
+        # means the region asked for this family on its own; reached via ``primitives`` it is already
+        # part of the composite that licenses it, which is exactly the fused form.
+        if c.composed_with and how == "direct" and family == c.family:
+            return EligibilityVerdict(False, family,
+                                      f"{c.family} is available only fused with "
+                                      f"{list(c.composed_with)} on this target, not standalone")
     return EligibilityVerdict(True, family, f"eligible ({how})")
 
 
@@ -134,3 +157,27 @@ def capability_map_for_target(target_name: str) -> dict[str, SemanticCapability]
     from merlin.targetgen import target_registry as tr
 
     return capability_map_from_contract(tr.load_contract(target_name))
+
+
+def undetermined_families_from_contract(contract: dict) -> frozenset[str]:
+    """Families the contract records as UNDECIDABLE from the evidence available when it was derived
+    (``semantic_capabilities_unknown``), written by :mod:`merlin.targetgen.capability_derive`.
+
+    Absent key == nothing undetermined, which is the honest reading for a contract that predates the
+    deriver: it made no claim either way, so nothing is excused from the denominator."""
+    out = set()
+    for entry in contract.get("semantic_capabilities_unknown") or []:
+        fam = entry.get("family") if isinstance(entry, dict) else entry
+        if fam:
+            out.add(str(fam))
+    return frozenset(out)
+
+
+def undetermined_families_for_target(target_name: str) -> frozenset[str]:
+    """:func:`undetermined_families_from_contract` for a named target."""
+    from merlin.targetgen import target_registry as tr
+
+    try:
+        return undetermined_families_from_contract(tr.load_contract(target_name))
+    except Exception:  # noqa: BLE001 — no resolvable contract: nothing is excused
+        return frozenset()
