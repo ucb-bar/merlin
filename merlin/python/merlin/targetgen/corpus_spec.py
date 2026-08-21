@@ -73,6 +73,11 @@ class CorpusBinding:
     # profile's ``datapath`` block, carried into every capsule, and honoured by the runner as an honest
     # ``skipped``/not_applicable — never as a pass.
     inapplicable_tiers: dict[str, str] = field(default_factory=dict)
+    # Corpus-wide defaults for the per-capsule generalization-intent block (``must_accelerate``,
+    # ``generalization_axis``, ``eligible``). Authorial, not derivable — declared once in the profile's
+    # ``datapath.semantic_defaults`` so a target states its posture in one place instead of repeating it
+    # on every entry; a capsule's own ``semantic:`` overrides it.
+    semantic_defaults: dict = field(default_factory=dict)
     # instruction-class source: a callable (op, output_dtype, epilogue, movement) -> [class,...]
     classes_for: Callable[..., list[str]] = field(default=lambda **_: [])
 
@@ -247,6 +252,7 @@ def derive_binding(te, datapath: dict) -> CorpusBinding:
         requant_output_dtype=datapath.get("requant_output_dtype"),
         subnormal_operand_flush=bool(datapath.get("subnormal_operand_flush", False)),
         inapplicable_tiers=_inapplicable_tiers(datapath, tiers),
+        semantic_defaults=dict(datapath.get("semantic_defaults") or {}),
         classes_for=_classes_source(te, c),
     )
 
@@ -714,6 +720,59 @@ BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
 }
 
 
+#: Capsule kind -> the generalization axis it probes. A fact about what the capsule tests, not an
+#: opinion about it, so it is derived rather than re-typed on every entry.
+_AXIS_BY_KIND: dict[str, str] = {"isa": "seen", "layer": "composition",
+                                 "model_slice": "composition", "model": "model"}
+
+
+def _semantic_block(entry: dict, binding: CorpusBinding) -> dict:
+    """The capsule's generalization-intent block: half derived, half authorial.
+
+    ``semantic_family`` is DERIVED from the op — the same mapping the eligibility oracle and the
+    leave-one-family-out splitter already fall back to, so a generated capsule and a graded capsule can
+    never disagree about which family they belong to.
+
+    ``must_accelerate`` / ``generalization_axis`` are NOT derivable: they are the author's claim about
+    what this capsule is for, so they come from the profile entry (or the profile's
+    ``datapath.semantic_defaults``). ⚠️ ``must_accelerate`` defaults to FALSE on purpose. It is the
+    strongest assertion in the block — an eligible region that falls back is a hard failure — and
+    defaulting it true would turn every generated capsule into a gate the moment this lands.
+
+    Emitting this here is what stops a corpus regeneration from silently deleting the annotation:
+    before, the 40 radiance blocks were hand-written and ``_write_capsule`` dumps the dict wholesale,
+    so a regen would have zeroed the only working generalization annotation in the repo.
+    """
+    from merlin.targetgen import semantic_families as _sf
+
+    defaults = dict(getattr(binding, "semantic_defaults", None) or {})
+    # ⚠️ NOT ``entry["semantic"]`` -- a profile entry already uses that key for a free-form op-semantics
+    # label ("quantized_linear", "matmul_mxu0") that flows into ``operation.attributes.semantic``.
+    # Reusing it here would collide with 12 existing entries across gemmini and atlas and crash the
+    # generator, so the generalization-intent override gets a key of its own.
+    raw = entry.get("generalization")
+    authored = dict(raw) if isinstance(raw, dict) else {}
+    fam = authored.get("semantic_family") or _sf.from_op(entry.get("op", "matmul"))
+    block: dict = {}
+    if fam:
+        block["semantic_family"] = fam
+    # The axis follows the capsule KIND, which is a fact about what the capsule tests rather than an
+    # opinion: an ``isa`` capsule exercises a primitive the corpus has SEEN, a ``model_slice`` exercises
+    # a COMPOSITION of primitives, and a whole ``model`` is the end-to-end integration case. Deriving it
+    # keeps 40 annotations from having to be re-typed and keeps a new capsule from being mislabelled.
+    kind = entry.get("kind", "isa")
+    axis = authored.get("generalization_axis") or defaults.get("generalization_axis") \
+        or _AXIS_BY_KIND.get(kind, "seen")
+    block["generalization_axis"] = axis
+    # A whole-model capsule spans families by construction, is never held out (see
+    # generalization_splits), and is expected to contain regions the target cannot run -- so it must
+    # never carry must_accelerate, whatever the corpus default says.
+    must_default = False if kind == "model" else bool(defaults.get("must_accelerate", False))
+    block["must_accelerate"] = bool(authored.get("must_accelerate", must_default))
+    block["eligible"] = authored.get("eligible", defaults.get("eligible", "auto"))
+    return block
+
+
 def build(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """Dispatch an abstract capsule entry to its op builder -> (capsule dict, interface MLIR)."""
     op = entry.get("op", "matmul")
@@ -724,4 +783,7 @@ def build(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     # declaration and a new builder cannot silently forget it.
     if binding.inapplicable_tiers:
         cap["inapplicable_oracle_tiers"] = dict(binding.inapplicable_tiers)
+    sem = _semantic_block(entry, binding)
+    if sem:
+        cap["semantic"] = sem
     return cap, mlir

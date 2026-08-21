@@ -41,9 +41,8 @@ required_oracle_tiers:
 - L2
 vcs: optional
 firesim: optional
-verilator: optional
 semantic:
   semantic_family: normalization
-  must_accelerate: true
-  fallback_allowed: false
   generalization_axis: composition
+  must_accelerate: true
+  eligible: auto

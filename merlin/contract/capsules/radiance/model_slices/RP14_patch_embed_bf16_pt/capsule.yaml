@@ -43,7 +43,6 @@ required_oracle_tiers:
 - L2
 vcs: optional
 firesim: optional
-verilator: optional
 pytorch_ref:
   op: patch_embed
   dtype: bf16
@@ -51,6 +50,6 @@ pytorch_ref:
 linalg_mlir: capsule.interface.mlir
 semantic:
   semantic_family: contraction
-  must_accelerate: true
-  fallback_allowed: false
   generalization_axis: composition
+  must_accelerate: true
+  eligible: auto

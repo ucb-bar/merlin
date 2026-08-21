@@ -7,29 +7,48 @@
 # rewritten by generate_corpus.py; do not hand-edit. See AGENT.md.
 generated_by: merlin/contract/capsules/generate_corpus.py
 generated:
-  - isa/A0_config_smoke
-  - isa/A2_single_tile_matmul
-  - isa/A3_k_accumulation
-  - isa/A4_acc_scale_i8
-  - isa/A5_relu_epilogue
-  - isa/A6_resident_reuse
-  - isa/A7_edge_padding
-  - layers/B0_quantized_linear_i8
-  - layers/B1_linear_relu_i8
-  - layers/B2_linear_acc_scale_relu_i8
-  - model_slices/C0_mlp_linear1
-  - model_slices/C1_mlp_activation_linear2
-  - model_slices/C2_attention_q_projection
-  - model_slices/C3_attention_k_projection
-  - model_slices/C4_attention_v_projection
-  - model_slices/C5_attention_qk_matmul
-  - model_slices/C6_attention_pv_matmul
+- hidden/GH0_softmax_bf16_hidden
+- hidden/GH1_conv2d_i8_hidden
+- isa/A0_config_smoke
+- isa/A2_single_tile_matmul
+- isa/A3_k_accumulation
+- isa/A4_acc_scale_i8
+- isa/A5_relu_epilogue
+- isa/A6_resident_reuse
+- isa/A7_edge_padding
+- isa/GS0_matmul_spec
+- layers/B0_quantized_linear_i8
+- layers/B1_linear_relu_i8
+- layers/B2_linear_acc_scale_relu_i8
+- layers/GC0_conv2d_i8
+- model/M0_small_llama_gemmini
+- model/M1_lstmnetvit_gemmini
+- model_slices/C0_mlp_linear1
+- model_slices/C1_mlp_activation_linear2
+- model_slices/C2_attention_q_projection
+- model_slices/C3_attention_k_projection
+- model_slices/C4_attention_v_projection
+- model_slices/C5_attention_qk_matmul
+- model_slices/C6_attention_pv_matmul
+- model_slices/C7_attention_qk_i8
+- model_slices/GC1_depthwise_bf16_pt
+- model_slices/GC2_maxpool_bf16_pt
+- model_slices/GC3_avgpool_bf16_pt
+- model_slices/GC4_global_avg_bf16_pt
+- model_slices/GC5_fused_matmul_bias_bf16_pt
+- model_slices/GC6_bias_add_bf16_pt
+- model_slices/GF0_rmsnorm_bf16_pt
+- model_slices/GF1_softmax_bf16_pt
+- model_slices/GF2_attn_full_bf16_pt
+- model_slices/GF3_geglu_bf16_pt
+- model_slices/GF4_add_bf16_pt
+- model_slices/GF5_gelu_bf16_pt
 hand_authored:
-  - isa/A1_mvin_mvout
-  - layers/B3_conv2d_im2col_i8
-  - layers/B4_conv2d_relu_i8
-  - hidden/H0_matmul_hidden
-  - hidden/H1_acc_scale_hidden
-  - hidden/H2_k_accum_hidden
-  - hidden/H3_movement_hidden
-  - hidden/H4_conv_hidden
+- hidden/H0_matmul_hidden
+- hidden/H1_acc_scale_hidden
+- hidden/H2_k_accum_hidden
+- hidden/H3_movement_hidden
+- hidden/H4_conv_hidden
+- isa/A1_mvin_mvout
+- layers/B3_conv2d_im2col_i8
+- layers/B4_conv2d_relu_i8

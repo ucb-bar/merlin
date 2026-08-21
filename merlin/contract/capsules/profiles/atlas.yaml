@@ -1,8 +1,23 @@
 datapath:
+  # Corpus-wide generalization posture, matching radiance. must_accelerate is the strongest claim a
+  # capsule can make -- an ELIGIBLE region that falls back is a hard failure -- and it was absent here,
+  # so every atlas coverage certificate passed VACUOUSLY: with no capsule asserting it, no violation
+  # could ever be raised and the CPU-fallback escape hatch was wide open. Whole-model capsules are
+  # exempted structurally in corpus_spec, not by an exception list.
+  semantic_defaults: {must_accelerate: true}
   compare: tolerance_float
   atol: 0.25
   rtol: 0.02
-  required_oracle_tiers: [L0, L1, L3]
+  # L4 is the program-driven Verilator sim of the atlas RTL top -- the first truly RTL-CERTIFIED tier
+  # (L3's arc cosim is the RTL-DERIVED functional gold, not elaborated Verilog). It was already wired and
+  # already fails a capsule on mismatch, but it was ADDITIVE, so atlas effectively graded on the cosim
+  # alone while gemmini requires two independent oracles (spike + verilator). Requiring it closes that gap.
+  #
+  # ⚠️ OPERATIONAL COST, stated rather than discovered: the L4 adapter exists only when the target
+  # registers a vsim via MERLIN_EXT_ATLAS_VSIM. Without it there is no L4 adapter and not_run_is_not_pass
+  # reports every capsule `incomplete` -- never a pass. That is fail-closed on purpose: a checkout that
+  # cannot run the certifying tier should not be able to claim a certified result.
+  required_oracle_tiers: [L0, L1, L3, L4]
   # This datapath admits only NORMAL fp8 operands: an operand whose exponent field is zero reaches the
   # multiplier array as zero, in the MXU and in the XLU's fp8->bf16 unpack alike. Measured on the arc
   # cosim, not assumed: the movement capsule AT1_mvin_mvout does no arithmetic at all, its 30 divergent

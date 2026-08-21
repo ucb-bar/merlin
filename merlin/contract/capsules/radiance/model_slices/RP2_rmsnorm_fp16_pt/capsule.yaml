@@ -41,14 +41,13 @@ required_oracle_tiers:
 - L2
 vcs: optional
 firesim: optional
-verilator: optional
+semantic:
+  semantic_family: normalization
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
 pytorch_ref:
   op: rmsnorm
   dtype: fp16
   loader: capsule.pytorch.py
 linalg_mlir: capsule.linalg.mlir
-semantic:
-  semantic_family: normalization
-  must_accelerate: true
-  fallback_allowed: false
-  generalization_axis: composition

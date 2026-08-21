@@ -46,7 +46,6 @@ required_oracle_tiers:
 - L2
 vcs: optional
 firesim: optional
-verilator: optional
 pytorch_ref:
   op: attention_full
   dtype: fp16
@@ -54,6 +53,6 @@ pytorch_ref:
 linalg_mlir: capsule.interface.mlir
 semantic:
   semantic_family: attention
-  must_accelerate: true
-  fallback_allowed: false
   generalization_axis: composition
+  must_accelerate: true
+  eligible: auto

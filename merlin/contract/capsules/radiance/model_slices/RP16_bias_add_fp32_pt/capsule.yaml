@@ -38,7 +38,6 @@ required_oracle_tiers:
 - L2
 vcs: optional
 firesim: optional
-verilator: optional
 pytorch_ref:
   op: bias_add
   dtype: f32
@@ -46,6 +45,6 @@ pytorch_ref:
 linalg_mlir: capsule.interface.mlir
 semantic:
   semantic_family: elementwise_map
-  must_accelerate: true
-  fallback_allowed: false
   generalization_axis: composition
+  must_accelerate: true
+  eligible: auto

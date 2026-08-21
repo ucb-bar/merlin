@@ -15,7 +15,17 @@ datapath:
   compare: tolerance_float
   atol: 0.03125
   rtol: 0.015625
-  required_oracle_tiers: [L0, L1, L3]
+  # L2 is cyclotron -- radiance's runner declares `sim_via: cyclotron` with
+  # `tier_sim: {L2: cyclotron, L3: verilator}`, and cyclotron grades the emitted kernel ELF directly.
+  # This said [L0, L1, L3] while all 40 shipped capsules require [L0, L1, L2], so a corpus regeneration
+  # would have moved radiance OFF its functional gate onto an optional Verilator tier -- a grading
+  # regression disguised as a routine regen. The capsules were right; this line was stale.
+  required_oracle_tiers: [L0, L1, L2]
+  # Corpus-wide generalization posture. must_accelerate is the strongest claim a capsule can make (an
+  # ELIGIBLE region that falls back is a hard failure), so it is stated once here rather than defaulted
+  # on: radiance asserts that every non-model capsule it ships must reach the accelerator. Whole-model
+  # capsules are exempted structurally in corpus_spec, not by an exception list.
+  semantic_defaults: {must_accelerate: true}
 
 capsules:
 - {cat: isa, name: R0_gemm_fp32, kind: isa, op: matmul, operand_dtype: f32,

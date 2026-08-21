@@ -822,6 +822,101 @@ def _entry_regime(entry, binding):
 
 # ------------------------------------------------------------------------------------------------
 def _write_capsule(entry, binding, out_root):
+    """Write one capsule, then GUARANTEE it carries its generalization-intent block.
+
+    The stamp is a post-step rather than something each writer does, because there are four writers
+    (direct-MLIR, pytorch-sourced, spec-sourced, whole-model) and three of them build their capsule dict
+    themselves and return early. Stamping inside ``corpus_spec.build`` alone left 14 of atlas's 33
+    capsules unannotated -- exactly the silent-gap failure mode this block exists to close -- so it is
+    applied here, at the one point every path must pass through.
+    """
+    written = _write_capsule_inner(entry, binding, out_root)
+    if not written:
+        return written
+    d = Path(written) if not isinstance(written, Path) else written
+    capf = d / "capsule.yaml" if d.is_dir() else None
+    if capf is None or not capf.exists():
+        return written
+    cap = yaml.safe_load(capf.read_text()) or {}
+    dirty = False
+    if not (cap.get("semantic") or {}).get("generalization_axis"):
+        _, eb = _entry_regime(entry, binding)
+        cap["semantic"] = CS._semantic_block(entry, eb)
+        dirty = True
+    dirty = _backfill_required_classes(cap, binding) or dirty
+    if dirty:
+        capf.write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
+    _write_capsule_readme(entry, cap, d)
+    return written
+
+
+def _write_capsule_readme(entry: dict, cap: dict, d: Path) -> None:
+    """Write the capsule's ``README.md`` -- the 5th of the five files a capsule is DEFINED to have.
+
+    The generator only ever emitted four of them, so every generated capsule was incomplete by the
+    corpus's own definition and the materialized public view failed its own completeness check the moment
+    a capsule arrived without a hand-written README. Derived from the profile entry and the capsule, so it
+    cannot go stale: the prose is the entry's ``comment`` when it has one, otherwise a sentence built from
+    the op, the source it was authored from, and the operand shapes/dtypes. Never overwrites a README that
+    is already there -- the hand-written ones are the frozen source-of-record."""
+    rd = d / "README.md"
+    if rd.exists():
+        return
+    name = cap.get("name") or entry.get("name", "")
+    prose = (entry.get("comment") or "").strip()
+    if not prose:
+        op = (cap.get("operation") or {}).get("op") or entry.get("op") or "unknown"
+        ops = ", ".join(f"{i.get('name')}{list(i.get('shape') or [])}:{i.get('dtype')}"
+                        for i in (cap.get("inputs") or []) if i.get("name"))
+        src = cap.get("source_reference") or entry.get("source_reference") or ""
+        prose = f"{name}: {op}" + (f" over {ops}" if ops else "")
+        prose += f", authored from {src}." if src else "."
+    line = " ".join(f"{k}={v}" for k, v in (
+        ("kind", cap.get("kind") or entry.get("kind")),
+        ("label", cap.get("label") or entry.get("label")),
+        ("op", (cap.get("operation") or {}).get("op") or entry.get("op")),
+        ("modes", (cap.get("expected") or {}).get("modes", {})),
+    ) if v is not None)
+    rd.write_text(f"# {name}\n\n{prose}\n\n{line}\n", encoding="utf-8")
+
+
+def _backfill_required_classes(cap: dict, binding) -> bool:
+    """Fill an EMPTY ``expected.instruction_classes`` from the target's own derived taxonomy.
+
+    The source-backed writers (pytorch / spec / model) build their capsule dict themselves and leave this
+    empty, so a contraction authored in PyTorch shipped with no coverage requirement at all while the
+    direct-MLIR twin next to it carried the full systolic sequence -- the L1 coverage assertion silently
+    did not apply to exactly the frontend-faithful capsules the generalization corpus is made of.
+
+    Derived, never hardcoded: the slots come from the op's family in the closed vocabulary and are mapped
+    to class names through THIS target's role census. Fail-closed at every step -- an op that owes no
+    contraction, an undecidable taxonomy, or a role the target does not have all leave the list empty
+    rather than inventing a demand. Only ever fills an empty list; never edits an authored one."""
+    exp = cap.get("expected")
+    if not isinstance(exp, dict) or exp.get("instruction_classes"):
+        return False
+    op = (cap.get("operation") or {}).get("op")
+    if not op:
+        return False
+    attrs = (cap.get("operation") or {}).get("attributes", {}) or {}
+    modes = exp.get("modes", {}) or {}
+    from merlin.targetgen import isa_taxonomy as IT
+    tax = IT.taxonomy_for_target(binding.target)   # {} when the target ships no ISA definition
+    if not tax or not tax.get("by_class"):
+        return False
+    want = IT.required_classes_for_op(
+        tax, op=op,
+        output_dtype=attrs.get("output_dtype") or (cap.get("numeric_policy") or {}).get("dtype"),
+        epilogue=tuple(attrs.get("epilogue", []) or []),
+        movement=op in ("movement", "copy") or bool(modes.get("movement")),
+    )
+    if not want:
+        return False
+    exp["instruction_classes"] = list(want)
+    return True
+
+
+def _write_capsule_inner(entry, binding, out_root):
     regime, eb = _entry_regime(entry, binding)
     # Whole-model capsule: a small representative network lowered end-to-end via model2MLIR, graded vs its
     # host torch-eager output, GATED so it runs only after the op suite proves itself. Additive: skipped
@@ -1127,7 +1222,56 @@ def generate_target(target: str) -> list[Path]:
     written = [w for w in (_write_capsule(e, binding, out_root) for e in entries) if w]
     for d in written:                                         # tracked-file hygiene: no local paths ship
         _scrub_capsule_dir(d)
+    # Record provenance for what we just emitted. The MANIFEST header has always CLAIMED the generator
+    # rewrites it, but no writer existed, so it drifted silently as soon as the corpus grew.
+    update_provenance_manifest(written)
     return written
+
+
+def update_provenance_manifest(written, cap_root=None) -> Path:
+    """Rewrite ``MANIFEST.yaml``'s generated/hand_authored split from what this run actually emitted.
+
+    The file's own header has always claimed the generator rewrites it, but no writer existed, so it was
+    hand-maintained and silently drifted the moment the corpus grew -- 19 capsules appeared on disk that
+    it never listed, and the only thing that noticed was a test telling you to "re-run generate_corpus.py",
+    which did not do it.
+
+    MERGE, never replace. A path this run emitted is ``generated``; everything else on disk keeps whatever
+    classification it already had, defaulting to ``hand_authored`` for a capsule with no generator. That
+    ordering matters: rebuilding the split from scratch would reclassify the frozen hand-authored
+    source-of-record (A1, B3/B4, the held-out hidden set) as generated the first time a run happened to
+    emit something at the same path.
+
+    Scoped to the SHARED corpus (``<category>/<capsule>``, rel-depth 2). A target with its own nested
+    corpus (``atlas/<category>/<capsule>``) carries its own provenance and is deliberately untouched.
+    """
+    root = Path(cap_root) if cap_root else Path(__file__).resolve().parent
+    man_path = root / "MANIFEST.yaml"
+    man = yaml.safe_load(man_path.read_text(encoding="utf-8")) if man_path.is_file() else {}
+    gen, hand = set(man.get("generated") or []), set(man.get("hand_authored") or [])
+
+    def _rel(d):
+        try:
+            r = Path(d).resolve().relative_to(root)
+        except ValueError:
+            return None
+        return str(r) if len(r.parts) == 2 else None
+
+    for d in written or []:
+        rel = _rel(d)
+        if rel:
+            gen.add(rel); hand.discard(rel)
+    on_disk = {str(rel) for c in root.rglob("capsule.yaml")
+               if len((rel := c.parent.relative_to(root)).parts) == 2}
+    hand |= (on_disk - gen - hand)          # never seen by a generator -> frozen source-of-record
+    gen &= on_disk; hand &= on_disk         # drop entries whose capsule is gone
+
+    man["generated_by"] = "merlin/contract/capsules/generate_corpus.py"
+    man["generated"] = sorted(gen)
+    man["hand_authored"] = sorted(hand)
+    head = man_path.read_text(encoding="utf-8").split("generated_by:")[0] if man_path.is_file() else ""
+    man_path.write_text(head + yaml.safe_dump(man, sort_keys=False), encoding="utf-8")
+    return man_path
 
 
 def build_comparison_manifest(targets: list[str]) -> dict:

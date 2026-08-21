@@ -41,6 +41,7 @@ required_oracle_tiers:
 - L0
 - L1
 - L3
+- L4
 vcs: optional
 firesim: optional
 inapplicable_oracle_tiers:
@@ -51,3 +52,8 @@ inapplicable_oracle_tiers:
     the barriers and every output reads back zero). The core also treats VMEM as byte-addressed
     where the RTL treats it as word-addressed, and reads the fp8->bf16 unpack scale
     as a divisor where the RTL reads a biased exponent. Graded on the RTL tiers instead.'
+semantic:
+  semantic_family: attention
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto

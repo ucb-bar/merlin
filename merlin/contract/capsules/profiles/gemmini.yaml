@@ -1,4 +1,10 @@
 datapath:
+  # Corpus-wide generalization posture, matching radiance. must_accelerate is the strongest claim a
+  # capsule can make -- an ELIGIBLE region that falls back is a hard failure -- and it was absent here,
+  # so every gemmini coverage certificate passed VACUOUSLY: with no capsule asserting it, no violation
+  # could ever be raised and the CPU-fallback escape hatch was wide open. Whole-model capsules are
+  # exempted structurally in corpus_spec, not by an exception list.
+  semantic_defaults: {must_accelerate: true}
   compare: exact_int
   requant_output_dtype: i8
   required_oracle_tiers:

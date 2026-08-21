@@ -42,10 +42,9 @@ required_oracle_tiers:
 - L2
 vcs: optional
 firesim: optional
-verilator: optional
-spec_ref: radiance:op.matmul
 semantic:
   semantic_family: contraction
-  must_accelerate: true
-  fallback_allowed: false
   generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+spec_ref: radiance:op.matmul
