@@ -713,7 +713,7 @@ def suite_for(target: str, *, dtype: str = "i8xi8_i32") -> str:
     return _config_for_target(target, None, dtype).suite
 
 
-def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: bool,
+def _encoding_divergence_hint(trace_check_res: dict | None, oracle_graded: bool,
                               cb: dict | None = None, capsule: dict | None = None,
                               trace: dict | None = None) -> str:
     """A mandatory hardware/oracle tier failed while the cheap tiers already passed (numeric fails raise
@@ -736,7 +736,7 @@ def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: b
         except Exception:  # noqa: BLE001 — the localizer is advisory; never let it break the failure path
             concrete = ""
     findings = (trace_check_res or {}).get("violations") or []
-    if independent_float:
+    if oracle_graded:
         hint = (" Decode your OWN emitted artifact (the disassembler / instruction_trace.json) and verify "
                 "every op fires with the operands you intend — a config/compute op that silently no-ops "
                 "produces wrong output only on hardware, never in a cheap check.")
@@ -875,7 +875,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     (cb -> flops) feeds the SIMT gflops/pct_fp_peak. ``oracle_adapters`` is the per-target oracle set: the
     L0/L1 math floor always runs; RTL tiers grade only if an adapter is present + available (arc or a
     bespoke sim), else honestly ``unavailable`` — arc is never assumed."""
-    from ..runtime.reference import reference_outputs
+    from ..runtime.reference import UnmodeledOp, reference_outputs
     from ..runtime.simulator import simulate
     from .provenance import toolchain_shas
 
@@ -983,6 +983,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             cb["mx_operands"] = _mxops
 
         _vals = CG.canonical_input_values(capsule, capsule_dir)
+        if not _vals:
+            # No golden.yaml ships operands for this capsule, so its golden is RECOMPUTED on
+            # materialize_capsule_leaves — attach that SAME stimulus. Without it a program-oracle target
+            # has nothing to build its kernel harness from and fails closed ("could not derive harness
+            # operands from the command buffer (no canonical_inputs)"), so the capsule reported
+            # `missing from observed` for EVERY submission, correct or not — ungradeable by construction
+            # rather than failed on merit. The golden and the device must see one stimulus.
+            _vals = CG.materialized_input_values(capsule)
         if _vals:
             cb["canonical_inputs"] = _vals
             # POSITIONAL FALLBACK for interface grammars whose operands are UNNAMED. The merlin_iface
@@ -1017,6 +1025,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # the model can index. Bases the agent DECLARED are left untouched (inject_bases only fills gaps).
         _dram.inject_bases(cb, capsule, base=dram_base_for(eff_target) + _dram.DEFAULT_BASE)
 
+        # Does the numeric verdict ride the HARDWARE oracle (tolerance vs this capsule's golden) instead
+        # of the cheap integer reference? True for a float datapath with an independent golden, and set
+        # below when the cheap engines turn out to have no definition for an opcode in the buffer. Either
+        # way there is no usable integer cross-check, so the oracle comparison IS the verdict.
+        oracle_graded = independent_float
         if independent_float:
             # The integer reference/simulate engines cannot execute a float (fp8/bf16) datapath, so the
             # integer L0-reference / L1-sim numeric floor is INAPPLICABLE — skipped honestly (not failed),
@@ -1031,7 +1044,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                "declared operation within tolerance"}
             tiers["L0"] = TierResult(
                 "L0", "skipped", mandatory="L0" in required, not_applicable=True,
-                reason="integer reference not applicable to float datapath; graded vs independent "
+                reason="integer reference not applicable to float datapath; graded vs the "
                        f"golden ({gsource}) at the RTL oracle")
             tiers["L1"] = TierResult(
                 "L1", "skipped", mandatory="L1" in required, not_applicable=True,
@@ -1046,6 +1059,27 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             try:
                 ref = reference_outputs(cb)
                 sim = simulate(cb)["outputs"]
+            except UnmodeledOp as ue:
+                # THIS ENGINE cannot check the buffer — its op vocabulary has no definition for an opcode
+                # the result depends on. That is a limit of the cheap tier, NOT a defect in the submission,
+                # so it is skipped honestly (not_applicable) and correctness is graded where the op DOES
+                # execute: the hardware oracle, against this capsule's golden. Distinguishing this from a
+                # malformed buffer matters — the engine used to drop such an op silently and return an empty
+                # output map, which surfaced as "your kernel never wrote its output" and could not be fixed
+                # by any submission, correct or not.
+                ref = sim = None
+                oracle_graded = True
+                numeric = {"status": "skipped", "policy": policy.get("compare"), "golden_source": gsource,
+                           "note": f"cheap integer tiers N/A ({ue}); correctness is graded by running your "
+                                   "artifact on the RTL oracle and checking it computes the declared "
+                                   "operation within tolerance"}
+                tiers["L0"] = TierResult(
+                    "L0", "skipped", mandatory="L0" in required, not_applicable=True,
+                    reason=f"integer reference has no definition for {sorted(set(ue.opcodes))}; "
+                           f"graded vs the golden ({gsource}) at the RTL oracle")
+                tiers["L1"] = TierResult(
+                    "L1", "skipped", mandatory="L1" in required, not_applicable=True,
+                    reason=f"integer simulate has no definition for {sorted(set(ue.opcodes))}")
             except (ValueError, KeyError, IndexError, TypeError) as ce:
                 raise CertFailure(
                     "command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
@@ -1053,6 +1087,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     f"({type(ce).__name__}: {ce}); check operand ranks/shapes and that each command's op "
                     f"is one the reference interpreter models (e.g. a windowed op lowered to a 2D matmul)"
                 ) from ce
+        if not oracle_graded and ref is not None:
             nrep = CG.compare(gold, ref, capsule["numeric_policy"], golden_source=gsource)
             numeric = {"status": nrep["status"], "policy": nrep["policy"],
                        "max_abs_diff": nrep["max_abs_error"], "max_rel_error": nrep["max_rel_error"],
@@ -1274,10 +1309,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     cycle_accurate=tier in cfg.rtl_tiers, evidence=f"{_sim_name}_console.log",
                     timing=_tm, gflops=_cg, pct_fp_peak=_cp)
                 continue
-            if independent_float:
-                # Float grade: the RTL program-oracle output vs the INDEPENDENT golden.yaml (tolerance_float).
-                # There is no integer reference/simulate to cross-check against — this comparison IS the
-                # numeric verdict, recorded as the honest numeric report + evidence.
+            if oracle_graded:
+                # Float grade: the RTL program-oracle output vs the capsule's golden (tolerance_float) —
+                # the independent golden.yaml when it ships one, otherwise the recomputed golden, stamped
+                # either way by ``gsource``. There is no integer reference/simulate to cross-check against —
+                # this comparison IS the numeric verdict, recorded as the honest numeric report + evidence.
                 onrep = CG.compare(gold, res["outputs"], policy, golden_source=gsource)
                 okt = onrep["status"] == "pass"
                 # The numeric verdict must ride the MANDATORY/gold tier, not an additive one: otherwise an
@@ -1319,10 +1355,10 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # A DROPPED declared output (kernel never wrote it) gets a precise, distinct detail so the
             # agent isn't left with the baffling "N mismatches, 0 error" of a store that never fired.
             _absent_detail = (_absent_output_detail(onrep, sim_name, gold, res["outputs"])
-                              if independent_float else None)
+                              if oracle_graded else None)
             _mismatch_reason = _absent_detail or (
                 f"on {sim_name}, your emitted artifact does not compute the declared operation within tolerance"
-                if independent_float
+                if oracle_graded
                 else f"on {sim_name}, your emitted artifact does not compute the declared operation")
             # ``oracle`` may be a rich dict (gemmini spike/verilator: {derived_from_rtl, ...}) OR a plain
             # provenance string (the arc / program cosim returns e.g. "atlas-arc-arcilator-cosim"); default
@@ -1347,7 +1383,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             if not okt and mand:
                 raise CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"),
                                   _mismatch_reason + _encoding_divergence_hint(
-                                      trace_check_res, independent_float,
+                                      trace_check_res, oracle_graded,
                                       cb=cb, capsule=capsule, trace=decoded_trace))
 
     except CertFailure as cf:

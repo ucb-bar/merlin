@@ -318,6 +318,26 @@ def canonical_input_values(capsule: dict, capsule_dir: str | Path | None = None)
     return out
 
 
+def materialized_input_values(capsule: dict) -> dict[str, dict]:
+    """The capsule's DETERMINISTIC leaf operands, in the :func:`canonical_input_values` shape.
+
+    The stimulus a RECOMPUTED golden was evaluated on. A capsule that ships no ``golden.yaml`` has no
+    recorded operands, so :func:`canonical_input_values` is empty and the runner previously attached
+    nothing — leaving a program-oracle target with no operands to build its kernel harness from, which
+    fails a CORRECT backend on an output it was never given the inputs to compute. The golden and the
+    device must run on ONE stimulus; this exposes the recompute path's own so the runner can attach it.
+
+    Element type follows the declared leaf dtype (an integer leaf stays integral) so a consumer that
+    embeds these operands emits the same literals the Tensor engine reduced over.
+    """
+    out: dict[str, dict] = {}
+    for name, t in materialize_capsule_leaves(capsule).items():
+        integral = str(t.dtype).startswith(("i", "u"))
+        vals = [int(v) if integral else float(v) for v in t.data]
+        out[name] = {"shape": list(t.shape), "values": vals}
+    return out
+
+
 def _flatten_row_major(x: object) -> list:
     """Flatten an arbitrarily-nested list to a single row-major list of scalars; a non-list passes through
     as a 1-element list. Idempotent on an already-flat list."""
