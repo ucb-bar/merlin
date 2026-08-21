@@ -437,9 +437,18 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
             continue
         of = _flat(observed[name])
         if len(ef) != len(of):
+            # A SHAPE error, not a value error -- and the two must not be conflated in one number. The
+            # count below is |len delta| + 1, which is not a count of diverging elements at all: an
+            # 8-element output emitted as 512 reads as "505 mismatches", indistinguishable from 505 wrong
+            # values, and a later round that FIXES the shape and still has every value wrong reads as
+            # "5 mismatches" -- looking like near-success when it is 5 of 8 wrong. Both were misread that
+            # way on a real run. Name the class and carry both lengths so the number is interpretable.
             rep["status"] = "fail"
             rep["per_output"][name] = {"status": "fail",
-                                       "reason": f"length {len(of)} != {len(ef)}"}
+                                       "reason": f"length {len(of)} != {len(ef)}",
+                                       "failure_class": "output_shape_mismatch",
+                                       "n_expected": len(ef), "n_observed": len(of)}
+            rep.setdefault("outputs_wrong_shape", []).append(name)
             total_mismatch += abs(len(ef) - len(of)) + 1
             continue
         mism = 0
