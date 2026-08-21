@@ -687,6 +687,31 @@ def _match_by_policy(a: dict, b: dict, policy: dict | None) -> bool:
     return True
 
 
+def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
+    """Whether a graded op-capsule result belongs in the whole-model gate's denominator.
+
+    True unless the capsule is provably ineligible for this target -- i.e. the contract declares no
+    capability covering its family/dtype, so no compiler could ever make it pass. Fails OPEN (counts the
+    capsule) whenever eligibility cannot be decided: an undetermined region must not be silently dropped
+    from a gate, which would make the gate easier to satisfy than the evidence warrants.
+    """
+    name = result.get("capsule")
+    cap = next((c for c in capsules if c.get("name") == name), None)
+    if cap is None:
+        return True
+    try:
+        from . import coverage_report as _cr, eligibility as _el
+        cmap = _el.capability_map_for_target(target)
+        if not cmap:
+            return True
+        verdict = _el.is_eligible(_cr._capsule_region(cap), cmap)
+    except Exception:                                     # noqa: BLE001 - a gate must not crash a grade
+        return True
+    if getattr(verdict, "undetermined", False):
+        return True
+    return bool(getattr(verdict, "eligible", True))
+
+
 def _absent_outputs(nrep: dict) -> list[str]:
     """Outputs the kernel DECLARED (present in the interface/golden) but never wrote — or wrote at the
     wrong length — extracted from :func:`capsule_golden.compare`'s ``per_output``. These structural
@@ -1666,15 +1691,31 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     op_results = _run_all(op_caps)
     if not model_caps:
         return op_results
-    # An op capsule that CRASHED the runner (``error``) counts in the denominator: it produced no passing
-    # artifact, which is a failure to deliver one, not an absence of evidence about the submission. Leaving
-    # it out made a crashier failure mode UNLOCK this gate — measured across three graded rounds whose op
-    # passes were identical at 25/36, where 5 crashes shrank the denominator to 31 (0.806, gate open) while
-    # rounds with 0 and 2 crashes scored 0.694 and 0.735 (gate closed). The capstone swung on how the
-    # submission failed rather than on how much of the suite it passed. ``not_gradeable_no_oracle`` stays
-    # excluded — there the ORACLE was absent, so the suite genuinely learned nothing about the submission.
+    # The gate denominator answers "how much of what this device CAN do is working?" -- two independent
+    # ways of getting it wrong, both measured, both guarded here.
+    #
+    # 1. A CRASHED op capsule (``error``) COUNTS. It produced no passing artifact, which is a failure to
+    #    deliver one, not an absence of evidence. Leaving it out let a crashier failure mode UNLOCK the
+    #    gate: across three rounds with identical 25/36 op passes, 5 crashes shrank the denominator to 31
+    #    (0.806, open) while rounds with 0 and 2 crashes scored 0.694 and 0.735 (closed). The capstone
+    #    swung on HOW the submission failed rather than on how much of the suite it passed.
+    #    ``not_gradeable_no_oracle`` stays excluded -- there the ORACLE was absent, so the suite genuinely
+    #    learned nothing about the submission.
+    # 2. An INELIGIBLE op capsule does NOT count. An int8 systolic target graded 12 bf16 capsules its
+    #    contract declares no capability for ("input dtype 'bf16' not in contraction formats ['int8']").
+    #    They can never pass, so the best reachable fraction was 23/35 = 0.66 against a 0.8 gate: the
+    #    whole-model capsules were MATHEMATICALLY unreachable and the only report was a repeated "gated".
+    #
+    # The two do not cancel: a crashed ELIGIBLE capsule still counts, so the crash loophole stays shut,
+    # while a capsule the hardware cannot do is out either way.
     graded = [r for r in op_results if r.get("status") in ("pass", "fail", "error")]
-    frac = (sum(1 for r in graded if r.get("status") == "pass") / len(graded)) if graded else 0.0
+    eligible = [r for r in graded if _gate_counts(r, capsules, target)]
+    denom = eligible or graded          # fall back rather than divide by zero if nothing is classifiable
+    frac = (sum(1 for r in denom if r.get("status") == "pass") / len(denom)) if denom else 0.0
+    if len(eligible) != len(graded):
+        print(f"  model gate: {len(graded) - len(eligible)} graded op capsule(s) excluded from the gate "
+              f"denominator as ineligible for this target (the hardware declares no capability for them)",
+              flush=True)
     model_results = []
     for c in model_caps:
         if model_gate_satisfied(c, frac):
