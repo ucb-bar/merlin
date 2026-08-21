@@ -1039,11 +1039,50 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -
                                run_dir / "_qa_work" / f"runs_{rnd:02d}",
                                {"public", "dev"}, no_oracle, timeout)
         out.write_text(json.dumps(verdict, indent=2))
+        _write_stage_ledger(run_dir, rnd, cand, run_dir / "_qa_work" / f"runs_{rnd:02d}", verdict)
     # hand the redacted verdict to the agent for the next round
     qa_dir = ws / "qa"
     qa_dir.mkdir(exist_ok=True)
     (qa_dir / "verdict.json").write_text(json.dumps(verdict, indent=2))
     return verdict
+
+
+def _write_stage_ledger(run_dir, rnd: int, cand, runs_root, verdict) -> None:
+    """Record per-round artifact fingerprints beside the verdict — OUT OF BAND.
+
+    Answers "did the agent's edit reach what was graded?" from bytes, so a plateau is one line instead of
+    an investigation. Written into the run dir (a sandbox-DENIED path) and never into the agent's
+    ``qa/verdict.json``: telling the agent its edit was inert is feedback, and feedback defines an arm.
+
+    Never raises. This is diagnostics — it must not be able to fail a round that otherwise graded fine.
+    """
+    try:
+        from merlin.targetgen import stage_ledger as SL
+
+        led_dir = run_dir / "rounds"
+        led_dir.mkdir(parents=True, exist_ok=True)
+        prev_p = led_dir / f"round_{rnd - 1:02d}.stage_ledger.json"
+        prev = json.loads(prev_p.read_text()) if rnd and prev_p.is_file() else None
+
+        # Per-capsule emit dirs, found by SHAPE at any depth: a dir named for the emit output whose
+        # PARENT is a graded capsule dir (it holds the capsule's own result/manifest). Depth and the
+        # intervening dir names are never assumed -- no target, no suite, and no generated-root literal --
+        # so a target that lays its run tree out differently is still discovered, and one that lays it out
+        # unrecognizably simply yields none rather than a wrong answer.
+        marks = ("capsule_result.json", "run_manifest.yaml")
+        roots = {d.parent.name: d for d in Path(runs_root).rglob("generated")
+                 if d.is_dir() and any((d.parent / m).is_file() for m in marks)}
+        led = SL.build(submission_dir=cand, emitted_roots=roots, previous=prev)
+        led["round"] = rnd
+        led["failing_and_frozen"] = SL.failing_and_frozen(led, verdict)
+        (led_dir / f"round_{rnd:02d}.stage_ledger.json").write_text(json.dumps(led, indent=2))
+        print(f"  {SL.summarize(led)}", flush=True)
+        if led["failing_and_frozen"]:
+            print(f"  stage_ledger: FAILING AND FROZEN ({len(led['failing_and_frozen'])}): "
+                  f"{', '.join(led['failing_and_frozen'][:10])}"
+                  f"{' ...' if len(led['failing_and_frozen']) > 10 else ''}", flush=True)
+    except Exception as e:                                    # noqa: BLE001 - diagnostics never gate
+        print(f"  stage_ledger: unavailable ({type(e).__name__}: {e})", flush=True)
 
 
 _PASS_LINE = ("Baseline pilot passes all required public/dev pilot capsules and is ready for "
