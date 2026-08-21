@@ -693,7 +693,17 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     # 2. runner-owned EXTERN-kernel harness main (operands from the cb) -> STOCK clang rv32 -> main.o
     main_c = muon_harness.external_main_from_cb(cb, kernel_symbol=kernel_symbol, model=model)
     if main_c is None:
-        raise MuonError("could not derive harness operands from the command buffer (no canonical_inputs)")
+        # Say WHICH of the two causes it was. "no canonical_inputs" was asserted unconditionally, so a
+        # command buffer that carried perfectly good operands but used an opcode the harness has no operand
+        # rule for was reported as missing its stimulus -- pointing the reader at the artifact when the gap
+        # was in this harness. Name the opcodes so the real gap is actionable either way.
+        _ops = sorted({(c.get("opcode") or "?") for c in (cb.get("commands") or [])})
+        if not (cb.get("canonical_inputs") or {}):
+            raise MuonError(f"could not derive harness operands: the command buffer carries no "
+                            f"canonical_inputs (commands: {_ops})")
+        raise MuonError(f"could not derive harness operands: canonical_inputs ARE present, but this "
+                        f"harness has no operand rule for the command shape {_ops} — a TOOLING gap, not "
+                        f"a defect in the submitted artifact")
     (work / "main.c").write_text(main_c, encoding="utf-8")
     mobj_rv = work / "main.o"
     mc = subprocess.run([str(clang), *cflags, "-c", str(work / "main.c"), "-o", str(mobj_rv)],
