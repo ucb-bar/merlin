@@ -216,6 +216,26 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
                          "instruction_class_coverage": cov["instruction_class_coverage"],
                          "mode_coverage": cov["mode_coverage"], "unavailable": cov["unavailable"],
                          "acceleratable_coverage": cov["acceleratable_coverage"]}
+
+    # PROVENANCE. This score asserts a hardware result -- N of M capsules passed on named oracle tiers --
+    # so it must record WHICH hardware revision produced it. A result attributed to the wrong device is
+    # worse than no result, because it gets cited. Pins for these targets already existed; nothing emitted
+    # the block, and the gate could not see the score to complain, so every bench verdict on every target
+    # was unattributable. Never fatal: a grade that ran must still report its numbers, with the
+    # provenance gap visible rather than the whole grade lost.
+    try:
+        from merlin.common import provenance as _P
+        _pins = {}
+        for _name in _P.load_pins():
+            try:
+                _pins[_name] = _P.verify(_name)
+            except Exception:                                 # noqa: BLE001 - checkout absent is a gap
+                continue
+        score["provenance"] = _P.record(pins=_pins or None,
+                                        extra={"target": target, "n_capsules": score.get("n_capsules"),
+                                               "n_passed": score.get("n_passed")})
+    except Exception as _e:                                   # noqa: BLE001
+        score["provenance"] = {"unavailable": f"{type(_e).__name__}: {_e}"}
     return score
 
 
