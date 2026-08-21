@@ -19,7 +19,8 @@ _spec.loader.exec_module(cp)
 
 
 def test_a_capsule_score_is_a_verdict_claim():
-    assert cp._claims_a_verdict({"n_passed": 14, "n_capsules": 26}) is True
+    assert cp._claims_a_verdict({"task": "atlas-mlir-oot-capsule", "functional_pass": 0,
+                                 "n_passed": 14, "n_capsules": 26}) is True
 
 
 def test_an_empty_suite_asserts_nothing():
@@ -29,7 +30,8 @@ def test_an_empty_suite_asserts_nothing():
 
 def test_a_zero_score_over_a_real_suite_still_claims():
     """Failing on real hardware is still a statement about that hardware."""
-    assert cp._claims_a_verdict({"n_passed": 0, "n_capsules": 26}) is True
+    assert cp._claims_a_verdict({"task": "t", "functional_pass": 0,
+                                 "n_passed": 0, "n_capsules": 26}) is True
 
 
 def test_the_explicit_boolean_shapes_still_work():
@@ -39,7 +41,7 @@ def test_the_explicit_boolean_shapes_still_work():
 
 
 def test_malformed_counts_do_not_raise():
-    assert cp._claims_a_verdict({"n_passed": 1, "n_capsules": "many"}) is False
+    assert cp._claims_a_verdict({"task": "t", "n_passed": 1, "n_capsules": "many"}) is False
     assert cp._claims_a_verdict("not a dict") is False
 
 
