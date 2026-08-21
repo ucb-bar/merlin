@@ -42,12 +42,29 @@ def mlc_dir() -> Path | None:
 
 
 def circt_opt_bin() -> Path | None:
-    """mlc's prebuilt ``circt-opt`` (used to lower CIRCT custom syntax to generic MLIR)."""
+    """The ``circt-opt`` used to lower a target's CIRCT custom syntax to generic MLIR for mlc's discover
+    pass. Resolved most-specific first: an explicit ``MERLIN_CIRCT_OPT`` override; mlc's own prebuilt
+    copy under ``$MERLIN_MLC_DIR/third_party/circt/build/bin`` (populated on some checkouts); then the
+    external CIRCT build ``$MERLIN_EXT_CIRCT/build/bin`` — the sibling build that actually exists on hosts
+    where mlc's third_party copy is empty (see .env); then PATH. ``None`` if none resolve (fail closed)."""
+    import shutil
+    from ...common.paths import env, ext_path
+    override = env("MERLIN_CIRCT_OPT")
+    if override and Path(override).is_file():
+        return Path(override)
+    cands: list[Path] = []
     d = mlc_dir()
-    if d is None:
-        return None
-    b = d / "third_party" / "circt" / "build" / "bin" / "circt-opt"
-    return b if b.exists() else None
+    if d is not None:
+        cands.append(d / "third_party" / "circt" / "build" / "bin" / "circt-opt")
+    try:
+        cands.append(ext_path("circt") / "build" / "bin" / "circt-opt")
+    except KeyError:
+        pass
+    for b in cands:
+        if b.exists():
+            return b
+    found = shutil.which("circt-opt")
+    return Path(found) if found else None
 
 
 def mlc_available() -> tuple[bool, str]:
@@ -56,7 +73,8 @@ def mlc_available() -> tuple[bool, str]:
     if d is None:
         return False, "MERLIN_MLC_DIR unset/invalid (no mlc/ package) — set it in .env"
     if circt_opt_bin() is None:
-        return False, f"circt-opt not built under {d}/third_party/circt/build/bin"
+        return False, ("circt-opt not found (looked at $MERLIN_CIRCT_OPT, "
+                       f"{d}/third_party/circt/build/bin, $MERLIN_EXT_CIRCT/build/bin, and PATH)")
     try:
         import mlc.discover.irgraph  # noqa: F401
         import mlc.discover.decode  # noqa: F401

@@ -23,7 +23,17 @@ from pathlib import Path
 from typing import Any
 from merlin.common.paths import ext_path
 
-DEFAULT_CHIPYARD = f"{ext_path("chipyard")}"
+def _default_chipyard() -> str:
+    """The chipyard root default for the RoCC introspect helpers, or a /nonexistent placeholder when
+    MERLIN_EXT_CHIPYARD is unset — so this module still IMPORTS on a non-chipyard host (e.g. a pure-SIMT
+    vortex facts regen that imports this module transitively). A RoCC caller passes the real root."""
+    try:
+        return f"{ext_path('chipyard')}"
+    except KeyError:
+        return "/nonexistent/chipyard"
+
+
+DEFAULT_CHIPYARD = _default_chipyard()
 CONFIG = "GemminiRocketConfig"
 
 

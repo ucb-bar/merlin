@@ -49,12 +49,17 @@ def _git_sha(path: str) -> str:
 
 
 def toolchain_shas() -> dict[str, str]:
-    cy = str(gemmini.chipyard_root())
-    return {
-        "merlin": _git_sha("."),
-        "chipyard": _git_sha(cy),
-        "gemmini": _git_sha(cy + "/generators/gemmini"),
-    }
+    # merlin is always recorded; chipyard/gemmini are a GEMMINI-only toolchain (a non-gemmini target — a
+    # SIMT core graded on its own sim — has no chipyard checkout), so record them only when resolvable
+    # rather than crashing the shared runner's provenance step. Fail-soft, never fabricated.
+    shas = {"merlin": _git_sha(".")}
+    try:
+        cy = str(gemmini.chipyard_root())
+    except Exception:  # noqa: BLE001 — chipyard unset/absent for non-gemmini targets
+        return shas
+    shas["chipyard"] = _git_sha(cy)
+    shas["gemmini"] = _git_sha(cy + "/generators/gemmini")
+    return shas
 
 
 CODEGEN_BACKENDS = ("legacy_c", "mlir_inline_asm_rocc")
