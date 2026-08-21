@@ -977,8 +977,43 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     _cos = max(float(_v.get("fp32_cos", 0.0)), float(_v.get("w8a8_cos", 0.0)))
     _quant = dtype in ("int8", "i8", "fp8", "fp8_e4m3")
     _quant_floor = float(os.environ.get("MERLIN_MODEL_QUANT_COS", "0.90") or "0.90")
+    # FAIL CLOSED ON AN UNEXERCISED TIER. A whole-model capsule declares required_oracle_tiers like any
+    # other, but this function never entered the tier ladder, so those tiers were dead metadata and a
+    # capsule could report `pass` with `tiers == {}` -- a verdict backed by no oracle at all. Worse, the
+    # functional gate here is the HOST x86 run unless mesh execution was requested, so "pass" could mean
+    # "the CPU computed the model correctly", which is not a statement about the accelerator.
+    #
+    # Record what actually ran, and refuse to call it a pass when nothing the capsule DECLARED ran. The
+    # accelerator evidence is `mesh_execution` (per-tile on-mesh certification); a routing plan is a plan,
+    # not an execution, and is never counted as a tier.
+    declared = [str(x) for x in (capsule.get("required_oracle_tiers") or [])]
+    mesh_exec = out.get("mesh_execution") or {}
+    n_tiles = int(mesh_exec.get("n_tiles") or 0) if isinstance(mesh_exec, dict) else 0
+    exercised: dict[str, str] = {}
+    if n_tiles:
+        # The mesh oracle is this target's RTL tier; name it from the capsule's own declaration rather
+        # than assuming a tier label, so a target with a different ladder is described correctly.
+        _rtl = [x for x in declared if x not in ("L0", "L1")]
+        exercised[_rtl[-1] if _rtl else "L3"] = "pass" if mesh_exec.get("ok") else "fail"
+    result["tiers"] = exercised
+    result["op_coverage"] = {"note": "the op-pass fraction this capsule was gated on is OP COVERAGE, "
+                                     "not a verdict on the model"}
+    unexercised = [x for x in declared if x not in exercised]
+
+    if declared and not exercised:
+        result.update(status="incomplete",
+                      numeric={"status": "not_compared", "engine": engine},
+                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": f"declares required oracle tiers {declared} and ran NONE of them "
+                                         f"(the functional gate here is the {run_where} reference, not the "
+                                         f"accelerator); a whole-model verdict backed by no declared tier "
+                                         f"is reported UNKNOWN, never a pass"})
+        return result
+
     if st == "verified" and gate:
         result.update(status="pass", numeric={"status": "pass", "engine": engine, "gate": out.get("verify")})
+        if unexercised:
+            result["tiers_unexercised"] = unexercised
     elif _quant and st == "run_mismatch" and _cos >= _quant_floor:
         result.update(status="pass",
                       numeric={"status": "pass", "engine": engine, "gate": _v,
