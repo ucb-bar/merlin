@@ -50,7 +50,7 @@
     },
     "commands": {
       "type": "object",
-      "required": ["parse", "lower_interface_to_target", "emit_command_buffer", "lower_target_to_llvm"],
+      "required": ["parse", "lower_interface_to_target", "lower_target_to_llvm"],
       "additionalProperties": {
         "type": "object",
         "required": ["argv"],

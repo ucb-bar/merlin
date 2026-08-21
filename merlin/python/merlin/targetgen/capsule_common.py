@@ -75,13 +75,21 @@ def make_run_paths(runs_root: str | Path, run_id: str, *, suite: str, target: st
 
 
 def run_entrypoints(pkg, package_dir: str | Path, capsule: dict, paths, *,
-                    contract: str | Path | None, timeout: int, fourth_output_name: str):
-    """Shared ABI front half: build the package (if needed) and run the 4 contract entrypoints
-    (parse -> lower_interface_to_target -> emit_command_buffer -> lower_target_to_llvm), writing the
-    standard artifacts and validating the command buffer. Returns ``(pkg, cb, fourth_text)`` where
-    ``fourth_text`` is the lower_target_to_llvm stdout (written to ``fourth_output_name`` — the target
-    dialect chooses LLVM-dialect MLIR vs a SIMT kernel). Raises CertFailure on any plane failure.
-    The oracle tiers (L2+) are the caller's, since they diverge per target.
+                    contract: str | Path | None, timeout: int, fourth_output_name: str,
+                    entrypoints: tuple[str, ...] = ("parse", "lower_interface_to_target",
+                                                    "emit_command_buffer", "emit_target_artifact")):
+    """Shared ABI front half: build the package (if needed) and run the target's ordered contract
+    entrypoints, writing the standard artifacts and validating the command buffer WHEN there is one.
+
+    ``entrypoints`` is the target's stage set (``RunnerConfig.entrypoints``, declared per-target in the
+    contract's ``runner.entrypoints``; default = the full command sequence, so callers that omit it are
+    unchanged). ``emit_command_buffer`` runs only for a COMMAND-DRIVEN target — a programmable core (SIMT)
+    executes a compiled kernel and reads its operands from the capsule's declared input table, so it has
+    no command stream: that stage is omitted and ``cb`` is None, and the caller hands the sim-oracle
+    adapter the capsule instead. Returns ``(pkg, cb, fourth_text)`` (``cb`` None when no command buffer);
+    ``fourth_text`` is the 4th entrypoint's stdout (written to ``fourth_output_name`` — the target dialect
+    chooses LLVM-dialect MLIR vs a SIMT kernel). Raises CertFailure on any plane failure. The oracle tiers
+    (L2+) are the caller's, since they diverge per target.
     """
     from .oot_runner import (CertFailure, build_package, integrity_scan, load_package,
                              run_entrypoint)
@@ -111,17 +119,22 @@ def run_entrypoints(pkg, package_dir: str | Path, capsule: dict, paths, *,
                           f"lower_interface_to_target rc={p.returncode}: {p.stderr[-400:]}")
     (paths.generated / "lowered.target.mlir").write_text(p.stdout, encoding="utf-8")
 
-    cb_path = paths.generated / "command_buffer.json"
-    p = run_entrypoint(pkg, "emit_command_buffer", inp, cb_path, timeout=timeout)
-    if p.returncode != 0 or not cb_path.exists():
-        raise CertFailure("target_to_command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
-                          f"emit_command_buffer rc={p.returncode}: {p.stderr[-400:]}")
-    try:
-        cb = json.loads(cb_path.read_text(encoding="utf-8"))
-        schemas.validate_command_buffer(cb, contract=contract)
-    except (json.JSONDecodeError, schemas.ContractViolation) as e:
-        raise CertFailure("command_buffer_schema", _cat("PROTOCOL_VIOLATION"),
-                          f"command_buffer.json invalid: {e}") from e
+    # A command buffer exists only for a COMMAND-DRIVEN target. A programmable core executes a compiled
+    # kernel and has no command stream, so demanding one would fail every capsule at a plane the target
+    # cannot satisfy; `cb` is then None and the caller feeds the adapter the capsule's operand table.
+    cb = None
+    if "emit_command_buffer" in entrypoints:
+        cb_path = paths.generated / "command_buffer.json"
+        p = run_entrypoint(pkg, "emit_command_buffer", inp, cb_path, timeout=timeout)
+        if p.returncode != 0 or not cb_path.exists():
+            raise CertFailure("target_to_command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
+                              f"emit_command_buffer rc={p.returncode}: {p.stderr[-400:]}")
+        try:
+            cb = json.loads(cb_path.read_text(encoding="utf-8"))
+            schemas.validate_command_buffer(cb, contract=contract)
+        except (json.JSONDecodeError, schemas.ContractViolation) as e:
+            raise CertFailure("command_buffer_schema", _cat("PROTOCOL_VIOLATION"),
+                              f"command_buffer.json invalid: {e}") from e
 
     # the 4th entrypoint: emit the target's codegen artifact (RoCC LLVM / SIMT kernel / ...). The
     # resolver aliases the legacy name lower_target_to_llvm, so packages using either spelling work.

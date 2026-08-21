@@ -247,6 +247,21 @@ def register_sim_oracle(sim_via: str, *, adapters: Callable[[str], dict],
     _SIM_ORACLES[sim_via] = _SimOracle(adapters=adapters, available=available, exclusive=exclusive)
 
 
+def _ensure_sim_oracles_loaded() -> None:
+    """Load OOT-package backends so their ``plugin.backend`` registrations (``register_sim_oracle`` /
+    ``register_simt_introspect``) are present BEFORE routing consults ``_SIM_ORACLES``. Without this a
+    plugin-registered EXCLUSIVE sim (a self-hosted SIMT core onboarded as a target PACKAGE, not a
+    built-in like cyclotron) is missed, and routing silently falls through to the arc/program-oracle
+    default — which grades the wrong artifact for a SIMT kernel. Idempotent + cheap (base re-scans only
+    when ``MERLIN_TARGET_PATH`` changes); the lazy import avoids a runtime<->targetgen circular dep.
+    Target-agnostic: it triggers the seam, it does not know any target name."""
+    try:
+        from ..runtime.backends import base as _bk
+        _bk._ensure_oot_discovered()
+    except Exception:  # noqa: BLE001 — discovery failure must never break a target with no plugin sim
+        pass
+
+
 def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
     """The oracle adapters per tier for a target. The mlc ARC model is the DEFAULT RTL tier (works for
     ANY mlc target, no bespoke sim); a target that DECLARES a bespoke sim (``sim_via``) additionally gets
@@ -267,6 +282,7 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
     engine is resolved first; only when no exclusive sim is declared does the endpoint select the oracle."""
     if sim_via is None:                                              # unspecified -> derive from contract
         sim_via = _bespoke_sim_via(target)
+    _ensure_sim_oracles_loaded()                                    # load plugin-registered sim oracles first
     so = _SIM_ORACLES.get(sim_via)
     if so is not None and so.exclusive:                             # self-hosted SIMT: replaces arc/program default
         return so.adapters(target)
@@ -326,6 +342,7 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
     from .rtl import mlc_bridge
     if sim_via is None:
         sim_via = _bespoke_sim_via(target)
+    _ensure_sim_oracles_loaded()                      # load plugin-registered sim oracles first
     so = _SIM_ORACLES.get(sim_via)
     if so is not None and so.exclusive:               # self-hosted SIMT: its own sim carries the grade
         return so.available(target)
@@ -726,7 +743,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     try:
         # shared front half: build + the 4 contract entrypoints (parse/target/cb/artifact), validated.
         pkg, cb, llvm_text = run_entrypoints(pkg, package_dir, capsule, paths, contract=contract,
-                                             timeout=timeout, fourth_output_name=cfg.fourth_output_name)
+                                             timeout=timeout, fourth_output_name=cfg.fourth_output_name,
+                                             entrypoints=cfg.entrypoints)
 
         # --- golden + L0/L1 -----------------------------------------------------------------
         # The golden is the INDEPENDENT oracle's answer. For an integer capsule (gemmini / exact_int /
@@ -735,7 +753,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # specir_refmodel_fp8_bf16), the integer engine cannot reproduce the float datapath, so the golden
         # is READ from golden.yaml — resolved by policy+source, never a target name.
         capsule_dir = capsule.get("__dir__")
-        independent_float = CG.is_independent_float_golden(capsule, capsule_dir)
+        # "ships an independent golden.yaml" (float OR exact-int) — a SIMT corpus provides offline goldens
+        # for every dtype, so grade the oracle output against them instead of recomputing on the integer
+        # Tensor engine (which cannot model the target's ops). Superset of the old float-only check; the
+        # per-capsule numeric_policy still selects exact-int vs tolerance-float in CG.compare.
+        independent_float = CG.is_independent_golden(capsule, capsule_dir)
         gsource = CG.golden_source(capsule, capsule_dir)
         gold = CG.golden(capsule, capsule_dir)
 
@@ -746,7 +768,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         _raws = CG.canonical_input_raws(capsule, capsule_dir)
         if _raws:
             import base64 as _b64
-            for _tname, _tspec in (cb.get("tensors") or {}).items():
+            for _tname, _tspec in ((cb or {}).get("tensors") or {}).items():
                 if _tspec.get("role") in ("input", "weight", "bias") and _tname in _raws:
                     _tspec["preload_b64"] = _b64.b64encode(_raws[_tname]).decode()
 
@@ -754,7 +776,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # path) can embed them and run the emitted kernel on the SAME operands the independent golden used.
         # Generic + additive: empty for integer capsules, ignored by adapters that grade the command buffer.
         _vals = CG.canonical_input_values(capsule, capsule_dir)
-        if _vals:
+        if _vals and cb is not None:
             cb["canonical_inputs"] = _vals
 
         # Stamp the HARNESS-owned canonical DRAM layout onto every cb tensor (inputs+output), matched by
@@ -769,7 +791,10 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # 0-based target like gemmini, keeping the base at DEFAULT_BASE unchanged), and the L2 oracle
         # relocates by that same base — so a submission that omits a base still grades against a layout
         # the model can index. Bases the agent DECLARED are left untouched (inject_bases only fills gaps).
-        _dram.inject_bases(cb, capsule, base=dram_base_for(eff_target) + _dram.DEFAULT_BASE)
+        # cb is None for a programmable core (no command buffer): the harness reads operands from the
+        # capsule's declared input table, not a cb-declared DRAM base, so there is nothing to inject.
+        if cb is not None:
+            _dram.inject_bases(cb, capsule, base=dram_base_for(eff_target) + _dram.DEFAULT_BASE)
 
         if independent_float:
             # The integer reference/simulate engines cannot execute a float (fp8/bf16) datapath, so the
@@ -906,7 +931,10 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             import time as _time
             _adapter_t0 = _time.perf_counter()
             try:
-                res = adapter(cb, llvm_text, paths.generated, timeout)
+                # cb is None for a programmable core (no command buffer): hand the adapter the capsule,
+                # whose declared input table the sim-oracle turns into the host launch plan (seeds).
+                oracle_workload = cb if cb is not None else capsule
+                res = adapter(oracle_workload, llvm_text, paths.generated, timeout)
             except _ORACLE_UNAVAILABLE as e:
                 tiers[tier] = TierResult(tier, "unavailable", mand, reason=str(e),
                                          derived_from_rtl=tier in cfg.rtl_tiers)
@@ -925,10 +953,19 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 # as a functional fault with actionable feedback; mislabeling it tool_crash reads as an
                 # unfixable infra problem and wastes every round (the atlas flat-0/11 pattern).
                 _trapped = ("*** FAILED ***" in _msg) and not _did_not_halt
+                # A subprocess-level WALL-CLOCK timeout (the sim PROCESS exceeded its time budget) is NOT a
+                # tool_crash: the kernel compiled, linked, and STARTED running. It is a too-slow kernel
+                # (excessive per-thread compute / an oversized grid / an unbounded loop) or host load —
+                # actionable on speed, not an unfixable infra fault. Distinct from _did_not_halt, which is the
+                # SIMULATOR reporting the CYCLE cap. Mislabeling it tool_crash made the agent read a
+                # compile/infra crash and stop iterating on kernel speed.
+                _timed_out = ("timed out" in _msg.lower()) and not _did_not_halt and not _trapped
                 tiers[tier] = TierResult(
                     tier, "fail", mand,
                     reason=(f"did not halt (ran to the cycle cap): {_msg[-240:]}" if _did_not_halt
                             else f"kernel faulted at runtime: {_msg[-260:]}" if _trapped
+                            else f"{_sim} timed out (compiled+ran, exceeded the wall-clock budget): {_msg[-220:]}"
+                            if _timed_out
                             else f"{_sim} crash: {_msg[-300:]}"),
                     derived_from_rtl=tier in cfg.rtl_tiers)
                 if mand:
@@ -946,6 +983,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                           "memory-movement instruction uses a valid, in-range DRAM address "
                                           "(derive it from the passed pointer args / the declared DRAM "
                                           f"layout, never a baked 0 or a guessed address): {_msg[-300:]}") from e
+                    if _timed_out:
+                        raise CertFailure(_sim, _cat("TIMEOUT"),
+                                          f"the emitted kernel compiled, linked, and STARTED running on "
+                                          f"{_sim}, but the sim did not finish within its wall-clock time "
+                                          "budget — this is a TIMEOUT, not a compile/tool crash. It is a "
+                                          "too-slow kernel (excessive per-thread compute, an oversized grid, "
+                                          "or an unbounded loop) or host load; reduce redundant work so the "
+                                          f"kernel completes in budget: {_msg[-280:]}") from e
                     raise CertFailure(_sim, _cat("TOOL_CRASH"),
                                       f"{_sim} invocation failed: {_msg[-400:]}") from e
                 continue

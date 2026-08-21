@@ -1,0 +1,100 @@
+# GENERATED capability manifest for vortex (merlin.targetgen.capability_manifests). Provenance-tagged; requires_human_review. Regenerable.
+capabilities:
+  ops:
+  - matmul
+  - elementwise
+  simt:
+    clusters: 2
+    cores_per_cluster: 2
+    lanes_per_warp: 8
+    total_threads: 256
+    warps_per_core: 8
+compiler_obligations:
+- must_map_to_cta_grid
+- must_insert_reconvergence
+- must_respect_l2_coherence
+compute_units:
+- accumulate:
+  - acc: f32
+    in: fp32
+    weight: fp32
+  - acc: i32
+    in: int8
+    weight: int8
+  dtypes:
+  - fp32
+  - int8
+  kind: simt
+  name: simt_core
+  ops:
+  - matmul
+  - elementwise
+  requant:
+    ref: none
+  scaling: none
+# A SIMT core emits a compiled KERNEL (read by the exclusive simx/rtlsim sim oracle), not a RoCC
+# `.insn`/command stream — so its endpoint is external_backend (cf. capsule_runner._grade routing and
+# rtl_check_compiler: external_backend => the kernel-instruction-stream RTL check, NOT the RoCC trace).
+# inline_asm_insn (the default) misrouted the isa_tools broker to rocc_decode -> KeyError('readout_bits').
+endpoint_kind: external_backend
+family: simt
+# Registration shim (evicted from core, like gemmini's): base._oot_backend_modules loads
+# targets/vortex/backend/__init__.py because this declares plugin.backend, and that module registers
+# the SIMT introspect (G2) + the simx/rtlsim sim oracle (G3) through the public seams.
+plugin:
+  backend: backend
+features:
+- simt
+- custom0_isa
+- kmu_cta_dispatch
+- shared_memory
+- multicore_l2
+hardware_promises:
+- ieee_float
+- hardware_cta_dispatch
+kernel_abi:
+  arg_order: the capsule's `inputs[]` order, as flat device addresses in `arg->args[]`
+  signature: void merlin_kernel_body(const merlin_vx_kernel_arg_t* arg)
+  symbol: merlin_kernel_body
+legality:
+- divergent control flow requires explicit split/join reconvergence
+memory_model:
+  coherence_point: l2
+  resident: false
+  shared_memory: true
+name: vortex
+provenance: 'vortexgpgpu/vortex. ISA: CUSTOM0 (opcode 0x0B) is TWO families keyed by funct7 — funct7=0 funct3 0-5,7 = tmc/wspawn/split/join/barrier/pred/wsync; funct7=1 funct3 0-7 = vote_all/any/uni/ballot + shfl_up/down/bfly/idx (funct3 alone is ambiguous: 0 is tmc under funct7=0 and vote_all under funct7=1). From sw/kernel/include/vx_intrinsics.h (`.insn r` inline asm) and cross-checked against the decoder''s comb.icmp-eq fan-out in the HW-dialect import (hw/syn/circt -> Vortex-sv2v.mlir: 24 distinct 7-bit equality compares in @Vortex, 21 of them the RISC-V opcode map including CUSTOM0 0x0B and CUSTOM1 0x2B). CTA identity/geometry CSRs (thread_id.x 0xCD3, block_id.x 0xCD6, block_dim.x 0xCD9, ...) from the generated hw/VX_types.vh. Hardware CTA dispatch (KMU) per sw/kernel/src/vx_start.S. Geometry from hw/VX_config.toml. Functionally verified on the simx driver; NOT RTL-certified.'
+requires_human_review: true
+runner:
+  dtype: mixed_i8_f32
+  # The 4th entrypoint (emit_target_artifact) emits an LLVM-dialect MLIR module the oracle compiles
+  # FORK-FREE (mlir-translate -> stock clang). Naming it explicitly (a) keeps the runner + prompt in
+  # lockstep (the runner already grades lowered.llvm.mlir via its default) and (b) marks this the SIMT-MLIR
+  # thesis path (generate_prompt._is_simt_mlir): emit a compiler LOWERING, not a self-hosted .word/.insn
+  # kernel -> the runner owns the harness (pointer operands from the args struct) and the BSP owns boot/halt,
+  # so the .word DRAM-base map and halt-instruction contracts do NOT apply.
+  fourth_output_name: lowered.llvm.mlir
+  # The bespoke sim engine key capsule_runner._bespoke_sim_via resolves; the backend shim registers our
+  # simx(L2)/rtlsim(L3) adapters under this name, exclusive so it wins over the program-oracle default.
+  sim_via: vortex
+  # No emit_command_buffer: a programmable SIMT core executes a compiled kernel and reads operands from
+  # the capsule's declared input table (the host fills from the deterministic per-operand seed), so there
+  # is no command stream. RunnerConfig reads this; run_entrypoints returns cb=None and the adapter gets
+  # the capsule.
+  entrypoints: [parse, lower_interface_to_target, emit_target_artifact]
+  perf_fields:
+  - instrs
+  - ipc
+  - flops
+  - gflops
+  - pct_fp_peak
+  suite: vortex-capsule-bench
+  tier_sim:
+    L2: simx
+    L3: rtlsim
+runtime:
+  default_backend: simulator
+runtime_promises:
+- metrics
+status: prototype
+version: '0.1'

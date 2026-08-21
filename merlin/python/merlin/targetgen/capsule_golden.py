@@ -184,6 +184,16 @@ def is_independent_float_golden(capsule: dict, capsule_dir: str | Path | None = 
     return float_policy and golden_source(capsule, capsule_dir) != "merlin_tensor_int"
 
 
+def is_independent_golden(capsule: dict, capsule_dir: str | Path | None = None) -> bool:
+    """True iff the capsule ships an INDEPENDENT ``golden.yaml`` (``golden_source`` != ``merlin_tensor_int``),
+    REGARDLESS of compare policy. A target whose corpus is generated with offline goldens for every dtype
+    (a SIMT core shipping ``vortex_corpus_exact_int`` / ``vortex_corpus_binary64``) grades the oracle
+    output against that answer key rather than recomputing on the integer Tensor engine — which does not
+    model the target's ops. Superset of :func:`is_independent_float_golden`; still False for a gemmini
+    capsule (``merlin_tensor_int`` / no ``golden.yaml``), which keeps the byte-identical recompute path."""
+    return golden_source(capsule, capsule_dir) != "merlin_tensor_int"
+
+
 # --------------------------------------------------------------------------------------------
 # golden dispatch
 # --------------------------------------------------------------------------------------------
@@ -197,11 +207,11 @@ def golden(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, li
     RECOMPUTED on the Tensor engine exactly as before (byte-identical integer path)."""
     if capsule_dir is None:
         capsule_dir = capsule.get("__dir__")
-    if is_independent_float_golden(capsule, capsule_dir):
+    if is_independent_golden(capsule, capsule_dir):
         outs = (_load_golden_yaml(capsule_dir) or {}).get("outputs")
         if not outs:
             raise ValueError(
-                f"independent float golden declared (golden_source="
+                f"independent golden declared (golden_source="
                 f"{golden_source(capsule, capsule_dir)!r}) but golden.yaml has no 'outputs' "
                 f"({Path(capsule_dir) / 'golden.yaml' if capsule_dir else '<no dir>'})")
         return outs
