@@ -59,6 +59,11 @@ def _tracked(staged: bool) -> list[Path]:
     return [_ROOT / line for line in got.stdout.splitlines() if line.strip()]
 
 
+# Directories this gate could not read (a live run's chmod-000 answer surface, most often). Surfaced in
+# the summary so "no findings" never silently means "could not look".
+_UNREADABLE: list[str] = []
+
+
 def _scan_out() -> list[Path]:
     """Verdict-bearing report candidates under the generated-output root.
 
@@ -92,6 +97,9 @@ def _scan_out() -> list[Path]:
                 elif entry.suffix in _REPORT_SUFFIXES:
                     found.append(entry)
         except OSError:
+            # Unreadable directory (commonly a run's chmod-000 answer surface). Recorded, not silent:
+            # a report this gate could not examine must be visible, never counted as "clean".
+            _UNREADABLE.append(str(d))
             continue
     return found
 
@@ -134,8 +142,20 @@ def main(argv: list[str] | None = None) -> int:
     allow = _ratcheted()
     checked = 0
     candidates = _tracked(staged) if staged else (_tracked(False) + _scan_out())
+    unreadable: list[str] = []
     for path in candidates:
-        if path.suffix not in _REPORT_SUFFIXES or not path.is_file():
+        if path.suffix not in _REPORT_SUFFIXES:
+            continue
+        # A candidate can become unreadable BETWEEN the scan and this stat: an experiment locks its
+        # answer surfaces with chmod 000 at launch, and this gate deliberately scans the same
+        # ``out/artifacts`` tree those surfaces live in. Crashing there takes out the pre-commit and
+        # Stop hooks for as long as a run holds the lock. Fail CLOSED but stay alive: record the path as
+        # unexamined and surface it, so an unreadable report is visible rather than silently uncounted.
+        try:
+            if not path.is_file():
+                continue
+        except OSError:
+            unreadable.append(str(path))
             continue
         try:
             rel = path.relative_to(_ROOT).as_posix()
@@ -186,6 +206,15 @@ def main(argv: list[str] | None = None) -> int:
                                   if got.forbidden_present else [])])
             notes.append(f"pin {name}: DRIFT — {detail}")
 
+    # Surface what could not be examined. A gate that says OK while it silently skipped reports is the
+    # failure mode this whole convention exists to prevent, so the count is always printed when non-zero.
+    skipped = len(unreadable) + len(_UNREADABLE)
+    if skipped:
+        notes.append(f"{skipped} path(s) NOT EXAMINED (unreadable — commonly a live run's chmod-000 "
+                     f"answer surface): " + ", ".join(
+                         [Path(x).name for x in (_UNREADABLE + unreadable)][:5])
+                     + (" ..." if skipped > 5 else ""))
+
     for n in notes:
         print(f"  {n}")
     if problems:
@@ -193,7 +222,8 @@ def main(argv: list[str] | None = None) -> int:
         for p in problems:
             print(f"  - {p}")
         return 1
-    print(f"provenance: OK ({checked} verdict-claiming report(s) checked)"
+    print(f"provenance: OK ({checked} verdict-claiming report(s) checked"
+          + (f", {skipped} unreadable" if skipped else "") + ")"
           + (" [stop-hook]" if stop_hook else ""))
     return 0
 
