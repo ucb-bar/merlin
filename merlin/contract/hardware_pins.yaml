@@ -53,8 +53,19 @@ pins:
 
   saturn_tapeout:
     description: >-
-      The saturn revision this tapeout uses. It does NOT contain the outer-product unit; no
-      OuterProductUnit, no OuterProductSequencer, no opuInsns.
+      A saturn revision WITHOUT the outer-product unit: no OuterProductUnit, no OuterProductSequencer,
+      no opuInsns. Kept as the negative control for the hazard this whole file exists for — a result
+      claiming an OPU verdict must never be attributed to a revision that cannot execute one.
+
+      NAMING CORRECTION. This pin used to open "the saturn revision this tapeout uses", and read as an
+      assertion that the tapeout therefore has no OPU. MEASUREMENT REFUTES THAT READING. The taped-out
+      Kodiak executes OPMACC without trapping: an absent opcode faults into the handler, and instead
+      the OPU-routed spectformer image ran to DONE, bit-exact (cos 1.0, max_rel 0.0, 1000/1000), and
+      beat its own RVV control on the same part —
+      out/artifacts/measurements/zephyr_kodiak_silicon/spectformer_int8/opu_2core_v1_20260819T220019Z_9ccddc2.
+      So the silicon does contain an outer-product unit, and either this commit is not the revision the
+      part was built from or the unit reached it by another route. Which one cannot be determined from
+      this repo. This pin therefore describes A REVISION and never a verdict about the physical part.
     repo_canonical: https://github.com/ucb-bar/saturn-vectors.git
     commit: 249340a6ec64a2cb7dc6dbe7fd90e2fad2497bfa
     branch: null                      # reachable from master and several opu-* branches; not pinned to one
@@ -68,9 +79,16 @@ pins:
       - src/main/scala/exu/OuterProductUnit.scala
     used_by: []
     notes: >-
-      Recorded so that nothing claims an OPU result against it. Any OPU work targeting this tapeout
-      requires the unit to be brought onto this base first, at which point the hazard above must be
-      re-checked rather than assumed to carry over.
+      Recorded so that nothing claims an OPU result against it. Any OPU work built on this base needs
+      the unit brought onto it first, at which point the sequencer hazard above must be re-checked
+      rather than assumed to carry over.
+
+      EXPECTED TO REPORT DRIFT, PERMANENTLY — do not chase it. This pin shares root_env and path with
+      saturn_opu_int8 ($MERLIN_CHIPYARD/generators/saturn) while forbidding the exact files that pin
+      requires, so a single checkout cannot satisfy both, and the OPU work needs the other one. Do NOT
+      "fix" the drift by switching that checkout: other sessions build from it, and provenance is
+      deliberately incapable of mutating a tree. Verify this pin in a separate git worktree if a
+      verification is ever actually needed.
 
   radiance_muon_rtl:
     description: >-
