@@ -1151,21 +1151,78 @@ def _fact_bundle_uncached(target: str) -> dict:
     return target_fact_bundle(target)
 
 
+def render_simt_fact_bundle(target: str, bundle: dict | None = None) -> str:
+    """Render a SIMT fact bundle as an agent-facing ISA brief (Markdown).
+
+    The systolic renderer asks three systolic-shaped questions — legal opcodes (a RoCC funct decode), mesh
+    DIM, operand/accumulator capacity — none of which a SIMT core has. Routing a SIMT target through it
+    printed "unavailable" three times and a nonsensical "5/4 fields grounded" header while the bundle
+    held every fact the agent needs (execution geometry, register budget, shared-memory capacity, FP
+    datapath, and the core's own instruction encoding + classes). An arm told its ISA facts are
+    unavailable cannot derive its lowering from them, which is the whole point of the RTL-checks arm.
+
+    Every line is DERIVED from the bundle and carries its provenance; an underived field is stated as
+    unavailable, never invented. Field-driven, so a SIMT introspect that grows a fact surfaces it here
+    without editing this function.
+    """
+    b = bundle or _simt_fact_bundle(target)
+    f = b.get("fields") or {}
+    n_total = len(f) or 1
+    lines = [f"# Target ISA facts: {b.get('target', target)}",
+             f"_Derived by {b.get('method')}. {b.get('n_derived', 0)}/{n_total} fields grounded; "
+             f"ungrounded = unavailable, not guessed._", ""]
+    if b.get("rtl_present") is False:
+        lines += ["> RTL module hierarchy was not present for this extraction: geometry comes from the "
+                  "target's own config + ISA docs. Treat the encoding/classes as authoritative and the "
+                  "geometry as declared-not-elaborated.", ""]
+
+    #: (bundle field, heading, the sub-keys worth surfacing) — the SIMT analog of the systolic triple.
+    _SHAPE = (
+        ("simt", "Execution geometry",
+         ("lanes_per_warp", "warps_per_core", "cores", "threads_per_core")),
+        ("registers", "Register budget", ("arch_max", "compiler_limit", "config")),
+        ("shared_memory", "Shared memory", ("bytes_per_cluster",)),
+        ("fp_datapath", "FP datapath",
+         ("dtype", "flop_per_fma", "peak_flops_per_cycle", "clock_hz", "peak_gflops")),
+        ("isa", "Instruction encoding",
+         ("encoding_bits", "max_src_operands", "max_dst_operands", "predicated_execution",
+          "address_spaces")),
+    )
+    for key, heading, subkeys in _SHAPE:
+        spec = f.get(key) or {}
+        val = spec.get("value")
+        if not spec.get("derived") or not isinstance(val, dict):
+            lines.append(f"- **{heading}**: unavailable")
+            continue
+        shown = ", ".join(f"{k}={val[k]}" for k in subkeys if val.get(k) is not None)
+        lines.append(f"- **{heading}**: {shown or 'derived (no scalar fields)'}")
+        if key == "isa":
+            classes = list(val.get("instruction_classes") or [])
+            if classes:
+                lines.append(f"  - **instruction classes** ({len(classes)}): `{classes}`")
+        ev = val.get("evidence") or spec.get("evidence")
+        if ev:
+            lines.append(f"  - source: {spec.get('source')} — {ev}")
+    return "\n".join(lines) + "\n"
+
+
 def render_fact_bundle_for(target: str, bundle: dict | None = None) -> str:
     """KIND-routed sibling of :func:`fact_bundle_for` for RENDERING — the render half of the same seam.
 
     Routes ``target``'s kind to the matching bundle renderer: ``opu`` (spatial) ->
-    :func:`render_spatial_fact_bundle`; everything else (systolic/vector/scalar ``circt_static``, and the
-    default when no kind resolves) -> :func:`render_fact_bundle`. SIMT has no dedicated renderer today, so
-    it degrades honestly through the systolic renderer (TODO: a muon brief renderer). BYTE-IDENTICAL to
-    :func:`render_fact_bundle` for gemmini and every current ``circt_static`` caller — the same reasoning
-    as ``fact_bundle_for``: gemmini resolves ``kind='systolic'`` -> ``fact_extractor='circt_static'`` ->
-    the ``return render_fact_bundle(...)`` fall-through, on the same ``bundle`` object."""
+    :func:`render_spatial_fact_bundle`; ``simt`` -> :func:`render_simt_fact_bundle`; everything else
+    (systolic/vector/scalar ``circt_static``, and the default when no kind resolves) ->
+    :func:`render_fact_bundle`. BYTE-IDENTICAL to :func:`render_fact_bundle` for gemmini and every current
+    ``circt_static`` caller — the same reasoning as ``fact_bundle_for``: gemmini resolves
+    ``kind='systolic'`` -> ``fact_extractor='circt_static'`` -> the ``return render_fact_bundle(...)``
+    fall-through, on the same ``bundle`` object."""
     from ..families import family_profile, known_kinds
     kind = _resolve_kind(target)
     extractor = family_profile(kind).fact_extractor if kind in known_kinds() else "circt_static"
     if extractor == "opu":
         return render_spatial_fact_bundle(target, bundle)
+    if kind == "simt":
+        return render_simt_fact_bundle(target, bundle)
     return render_fact_bundle(target, bundle)
 
 
