@@ -19,12 +19,29 @@ Usage: selfcheck_broker.py --ws <workspace> [--poll 0.5]
 from __future__ import annotations
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 SELFCHECK = Path(__file__).resolve().parent / "agent_selfcheck.py"
+
+
+def _should_stop(ch: Path, orig_ppid: int) -> str | None:
+    """Why the broker must exit now, or None to keep serving.
+
+    Checked BEFORE each request and while one is in flight. Two conditions, both observed to matter:
+    the driver's STOP sentinel (previously only tested between batches, so a ~10-minute self-check kept
+    running after the round ended), and the death of the QA loop that started us — an orphaned broker
+    was seen reparented to init, still spawning self-checks and RTL sims to answer requests whose
+    channel no one was reading any more.
+    """
+    if (ch / "STOP").exists():
+        return "STOP"
+    if os.getppid() != orig_ppid:
+        return "parent exited"
+    return None
 
 
 def main(argv=None):
@@ -35,42 +52,79 @@ def main(argv=None):
     ws = Path(a.ws)
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
+    orig_ppid = os.getppid()
     seen: set[str] = set()
     while True:
-        if (ch / "STOP").exists():
+        why = _should_stop(ch, orig_ppid)
+        if why:
+            print(f"[broker] exiting: {why}", file=sys.stderr)
             break
-        for req in sorted(ch.glob("req_*.json")):
-            if req.name in seen:
-                continue
-            seen.add(req.name)
-            rid = req.stem[len("req_"):]
-            resp = ch / f"resp_{rid}.json"
-            try:
-                r = json.loads(req.read_text())
-            except Exception:
-                resp.write_text(json.dumps({"error": "broker: unreadable request"}))
-                (ch / f"done_{rid}").write_text("err")
-                continue
-            to = int(r.get("timeout", 1800))
-            argv2 = [sys.executable, str(SELFCHECK),
-                     "--submission", str(ws / "submission"),
-                     "--sim", str(r.get("sim", "spike")),
-                     "--capsules", str(r.get("capsules", "all")),
-                     "--workers", str(r.get("workers", 8)),
-                     "--timeout", str(to),
-                     "--out", str(resp)]
-            try:
-                # run the REAL self-check OUTSIDE the sandbox (oracle available); cwd=ws so the agent's
-                # own artifacts land in <ws>/selfcheck_out/ (visible to the agent through the bind mount).
-                p = subprocess.run(argv2, cwd=str(ws), capture_output=True, text=True, timeout=to + 180)
-                if not resp.exists():
-                    resp.write_text(p.stdout or json.dumps({"error": (p.stderr or "")[-300:]}))
-            except subprocess.TimeoutExpired:
-                resp.write_text(json.dumps({"error": "broker: self-check timed out"}))
-            except Exception as e:
-                resp.write_text(json.dumps({"error": f"broker: {type(e).__name__}: {str(e)[:200]}"}))
+        # FIFO by ARRIVAL TIME. The previous ``sorted(glob)`` ordered by FILENAME, and a request is named
+        # req_<requester-pid>_<nonce>, so service order followed pid values rather than arrival: a request
+        # could be deferred behind every newly-arrived lower-sorting name and never claimed at all. That
+        # was measured — an agent spent the remainder of its round waiting on a request submitted 10
+        # minutes earlier while a later one was served, then ended the round with 3.5h of its budget
+        # unused. Oldest-first also means the request the agent is actually blocked on is the one served.
+        pending = sorted((p for p in ch.glob("req_*.json") if p.name not in seen),
+                         key=lambda p: p.stat().st_mtime)
+        if not pending:
+            time.sleep(a.poll)
+            continue
+        # Serve ONE request per pass, then re-check STOP/parent: a self-check can run for minutes, and
+        # draining a whole batch first is what let work continue after the round was over.
+        req = pending[0]
+        seen.add(req.name)
+        rid = req.stem[len("req_"):]
+        resp = ch / f"resp_{rid}.json"
+        try:
+            r = json.loads(req.read_text())
+        except Exception:
+            resp.write_text(json.dumps({"error": "broker: unreadable request"}))
+            (ch / f"done_{rid}").write_text("err")
+            continue
+        to = int(r.get("timeout", 1800))
+        argv2 = [sys.executable, str(SELFCHECK),
+                 "--submission", str(ws / "submission"),
+                 "--sim", str(r.get("sim", "spike")),
+                 "--capsules", str(r.get("capsules", "all")),
+                 "--workers", str(r.get("workers", 8)),
+                 "--timeout", str(to),
+                 "--out", str(resp)]
+        try:
+            # Run the REAL self-check OUTSIDE the sandbox (oracle available); cwd=ws so the agent's own
+            # artifacts land in <ws>/selfcheck_out/ (visible to the agent through the bind mount).
+            # Popen + poll rather than subprocess.run so STOP / parent-death is honored WHILE a long check
+            # is in flight; run() blocked until completion and left RTL sims running past the round.
+            deadline = time.monotonic() + to + 180
+            # Spool the child's streams to FILES, not pipes: a poll loop that never drains a PIPE
+            # deadlocks as soon as the child fills the buffer, and a full-corpus self-check is chatty.
+            log_out, log_err = ch / f".out_{rid}", ch / f".err_{rid}"
+            aborted = False
+            with log_out.open("w") as fo, log_err.open("w") as fe:
+                proc = subprocess.Popen(argv2, cwd=str(ws), stdout=fo, stderr=fe, text=True)
+                while proc.poll() is None:
+                    why = _should_stop(ch, orig_ppid)
+                    if why or time.monotonic() > deadline:
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=30)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()                 # a wedged RTL sim does not get to outlive us
+                            proc.wait(timeout=30)
+                        resp.write_text(json.dumps(
+                            {"error": f"broker: self-check aborted ({why or 'timed out'})"}))
+                        (ch / f"done_{rid}").write_text("err")
+                        aborted = True
+                        break
+                    time.sleep(a.poll)
+            if not aborted and not resp.exists():
+                out = log_out.read_text()[-20000:] if log_out.exists() else ""
+                err = log_err.read_text()[-300:] if log_err.exists() else ""
+                resp.write_text(out or json.dumps({"error": err}))
+        except Exception as e:
+            resp.write_text(json.dumps({"error": f"broker: {type(e).__name__}: {str(e)[:200]}"}))
+        if not (ch / f"done_{rid}").exists():
             (ch / f"done_{rid}").write_text("ok")
-        time.sleep(a.poll)
 
 
 if __name__ == "__main__":
