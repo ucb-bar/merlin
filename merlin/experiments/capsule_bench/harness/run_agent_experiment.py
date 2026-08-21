@@ -140,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", default="opus")
     ap.add_argument("--effort", default="high")
     ap.add_argument("--task", default=str(C.EXP / "task" / "TASK.md"))
-    ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap")
+    ap.add_argument("--sandbox", choices=["bwrap", "docker", "none"], default="bwrap")
     ap.add_argument("--allow-unsandboxed", action="store_true",
                     help="permit a real (non-dummy) run with --sandbox none (NOT for trusted results)")
     ap.add_argument("--dummy-agent", action="store_true",
@@ -154,8 +154,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # A real (non-dummy) run MUST be sandboxed: without bwrap the agent can read any absolute path
     # (incl. denied /scratch* dirs), so workspace assembly alone does not isolate.
-    if not a.dummy_agent and a.sandbox != "bwrap" and not a.allow_unsandboxed:
-        print("REFUSING: a real run requires --sandbox bwrap (or explicit --allow-unsandboxed). "
+    if not a.dummy_agent and a.sandbox not in ("bwrap", "docker") and not a.allow_unsandboxed:
+        print("REFUSING: a real run requires --sandbox bwrap|docker (or explicit --allow-unsandboxed). "
               "Workspace assembly alone does not hide denied absolute paths.", file=sys.stderr)
         return 4
 
@@ -224,6 +224,10 @@ def main(argv: list[str] | None = None) -> int:
                f'< {run_dir / "TASK.md"}')
         if a.sandbox == "bwrap":
             cmd = _bwrap_wrap(cmd, ws, bundle)
+        elif a.sandbox == "docker":
+            from merlin.targetgen.sandbox import docker as _DK
+            from merlin.targetgen.target_experiment import load_target_experiment
+            cmd = _DK.wrap(load_target_experiment(os.environ["MERLIN_TARGET_EXPERIMENT"]), ws, cmd, bundle)
         with open(transcript, "w") as tf, open(run_dir / "claude_stderr.log", "w") as ef:
             proc = subprocess.run(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef)
             exit_code = proc.returncode

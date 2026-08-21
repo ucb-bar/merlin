@@ -190,7 +190,7 @@ def main(argv=None):
                     help="info-set axis: 'kernels' (hwbringup + example kernels) vs 'no-kernels' "
                          "(RTL+ISA+README only — tests the CIRCT-shines-without-kernels hypothesis). "
                          "'both' expands the cross-product (run-id gets _nk for the no-kernels cell).")
-    ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap",
+    ap.add_argument("--sandbox", choices=["bwrap", "docker", "none"], default="bwrap",
                     help="bwrap (default, now that claude 2.1.185 runs under it): true filesystem allow-list "
                          "— only granted bundle files + the legit toolchain visible, all answers masked "
                          "(proven by test_sandbox.py 18/18 per arm). 'none' = legacy reachable-fs + audit.")
