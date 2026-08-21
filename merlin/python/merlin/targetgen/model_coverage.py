@@ -51,6 +51,12 @@ _MANIFEST_DTYPE: dict[str, str] = {
     "float8_e4m3fn": "fp8_e4m3", "float8_e5m2": "fp8_e5m2",
 }
 
+#: Storage width per format, used only to pick the quantized payload out of a parametrization that also
+#: carries its fp32 scale. Narrowest wins, so the metadata never masks the quantization.
+_FORMAT_BITS: dict[str, int] = {
+    "int4": 4, "fp8_e4m3": 8, "fp8_e5m2": 8, "int8": 8, "fp16": 16, "bf16": 16, "fp32": 32,
+}
+
 
 @dataclass
 class CoverageReport:
@@ -175,12 +181,56 @@ def weight_precisions(manifest_path: str | Path) -> dict[str, str]:
         weight, dtype = entry.get("weight"), entry.get("dtype")
         if not isinstance(weight, str) or not isinstance(dtype, str):
             continue
+        owner, _, leaf = weight.rpartition(".")
+        # A module owns several tensors -- the operand, plus a bias and often a scale -- and only the
+        # OPERAND's precision decides whether a contraction can run on a mesh. Keying every tensor by its
+        # owner let a module's fp32 bias overwrite its int8 weight (last write wins), which collapsed 67
+        # int8 tensors to a single int8 module and made a quantized capture look like an fp32 one.
+        if leaf != "weight":
+            continue
         name = _MANIFEST_DTYPE.get(dtype)
         if name is None:
             continue
-        owner = weight.rpartition(".")[0]
         if owner:
             out[owner] = name
+    return out
+
+
+def storage_precisions(manifest_path: str | Path) -> dict[str, str]:
+    """Owning-module fqn -> the precision a weight is STORED at, which is not what the mesh sees.
+
+    A quantized capture keeps its narrow tensor behind a torch parametrization
+    (``<module>.parametrizations.weight.original0``) and materializes ``<module>.weight`` by dequantizing it
+    at forward time. So a capture named ``_int8`` can hold 67 int8 tensors while every contraction still
+    presents fp32 operands: the quantization is storage, and the compute graph dequantizes before the GEMM.
+
+    Keeping the two apart is the difference between "this accelerator cannot run this model" and "this
+    capture does not offer this accelerator anything to run" -- the second is a capture-pipeline gap, and
+    reporting it as the first would blame the backend for it.
+    """
+    import json
+
+    marker = ".parametrizations."
+    out: dict[str, str] = {}
+    doc = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    entries = doc.values() if isinstance(doc, dict) else doc
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        weight, dtype = entry.get("weight"), entry.get("dtype")
+        if not isinstance(weight, str) or not isinstance(dtype, str) or marker not in weight:
+            continue
+        name = _MANIFEST_DTYPE.get(dtype)
+        if name is None:
+            continue
+        module = weight.split(marker, 1)[0]
+        # A parametrization holds the quantized PAYLOAD plus its scale/zero-point, so several tensors map to
+        # one module. Keep the NARROWEST: the narrow one is the quantization, the wide ones are its
+        # metadata. Last-write-wins let an fp32 scale overwrite an int8 payload and reported 1 int8 module
+        # where the capture has 67 -- the same collision as keying compute precision by owner.
+        prior = out.get(module)
+        if prior is None or _FORMAT_BITS.get(name, 99) < _FORMAT_BITS.get(prior, 99):
+            out[module] = name
     return out
 
 
@@ -241,6 +291,40 @@ def coverage_for(regions: tuple[RegionDescriptor, ...], target: str, *,
         else:
             rep.dtype_blocked += 1
     return rep
+
+
+def route_model(regions: tuple[RegionDescriptor, ...], target: str) -> dict:
+    """Split an unseen model's regions across ``target``'s lanes via the ordinary router.
+
+    This is the whole-model question the capsule verdict cannot answer: of everything the model actually
+    contains, how much lands on the accelerator and how much the scalar/vector lane must carry. It reuses
+    :func:`merlin.targetgen.routing.route_plan`, so a stress test and a real compilation agree on lane
+    assignment by construction instead of by a second implementation that can drift.
+
+    Counts, not verdicts: a region on the scalar/RVV lane is a correct outcome (a matmul-only mesh should
+    not claim a norm), and the ratio between the lanes IS the result. Regions with no resolvable family are
+    reported separately — they never became demands, so they are absent from the router's own totals and
+    would otherwise vanish from the accounting.
+    """
+    from merlin.targetgen.routing import OpDemand, route_plan
+
+    demands, unnamed = [], 0
+    for region in regions:
+        if region.resolved_family() is None:
+            unnamed += 1
+            continue
+        demands.append(OpDemand(op=region.op or "", in_fmt=region.in_dtype or "",
+                                weight_fmt=region.weight_dtype, site=region.source or ""))
+    plan = route_plan(demands, target)
+    return {
+        "target": target,
+        "n_regions": len(regions),
+        "mesh": len(plan["mesh"]),
+        "in_contract_fallback": len(plan["fallback"]),
+        "scalar_rvv": len(plan["scalar_rvv"]),
+        "unnamed": unnamed,
+        "mesh_fraction_of_demands": (len(plan["mesh"]) / len(demands)) if demands else 0.0,
+    }
 
 
 def load_module(path: str | Path):

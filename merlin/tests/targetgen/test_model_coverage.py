@@ -85,6 +85,37 @@ def test_manifest_precision_join_and_unknown_formats_are_dropped(tmp_path):
     assert got == {"m.enc.layer0": "int8", "m.enc.layer1": "fp8_e4m3"}
 
 
+def test_compute_precision_is_not_masked_by_a_modules_other_tensors(tmp_path):
+    """A module owns an operand plus a bias/scale. Keying every tensor by its owner let an fp32 bias
+    overwrite an int8 weight, which made a quantized capture read as fp32."""
+    import json
+
+    manifest = tmp_path / "m.safetensors.manifest.json"
+    manifest.write_text(json.dumps({
+        "0": {"weight": "m.fc.weight", "dtype": "int8"},
+        "1": {"weight": "m.fc.bias", "dtype": "float32"},
+    }))
+    assert MC.weight_precisions(manifest) == {"m.fc": "int8"}
+
+
+def test_storage_precision_is_distinct_from_compute_precision(tmp_path):
+    """A quantized capture keeps its narrow tensor behind a torch parametrization and materializes the
+    module's weight by dequantizing it, so STORAGE can be int8 while every contraction still presents fp32
+    operands. The two must not be conflated: one says the accelerator cannot run the model, the other says
+    the capture never offered it anything to run. The narrowest parametrization tensor wins, so an fp32
+    scale cannot mask the int8 payload beside it."""
+    import json
+
+    manifest = tmp_path / "m.safetensors.manifest.json"
+    manifest.write_text(json.dumps({
+        "0": {"weight": "m.fc.parametrizations.weight.original0", "dtype": "int8"},
+        "1": {"weight": "m.fc.parametrizations.weight.scale", "dtype": "float32"},
+        "2": {"weight": "m.fc.weight", "dtype": "float32"},
+    }))
+    assert MC.storage_precisions(manifest) == {"m.fc": "int8"}
+    assert MC.weight_precisions(manifest) == {"m.fc": "fp32"}
+
+
 def test_short_op_splits_on_the_dialect_separator():
     assert MC._short_op("linalg.matmul") == "matmul"
     assert MC._short_op("matmul") == "matmul"
