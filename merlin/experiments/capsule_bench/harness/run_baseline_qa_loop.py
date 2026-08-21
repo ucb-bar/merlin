@@ -473,6 +473,18 @@ def bwrap_cmd(inner: str, ws: Path, bundle: dict) -> str:
     return " ".join(parts) + " bash -c '" + payload.replace("'", "'\\''") + "'"
 
 
+def docker_cmd(inner: str, ws: Path, bundle: dict) -> str:
+    """docker run (host-mount model) rendering the SAME MountPlan the isolation proof covers, plus the
+    toolchain env + inner — the second isolation backend for hosts where bwrap's unprivileged user
+    namespace is AppArmor-blocked (Ubuntu 24.04+ ``kernel.apparmor_restrict_unprivileged_userns=1``, and
+    here bwrap is not even installed). The masks (goldens/hidden/prior/oracle/grader/memory) and the legit
+    tool binds are IDENTICAL to bwrap's — only the renderer differs (both proven by test_sandbox_isolation
+    replaying one shared MountPlan). Docker inherits no host env, so the nested-session vars are absent by
+    construction rather than stripped."""
+    from merlin.targetgen.sandbox import docker as _DK
+    return _DK.wrap(_te(), ws, inner, bundle)
+
+
 def _corpus_probe_paths() -> tuple[Path, Path]:
     """A (golden.yaml, capsule.interface.mlir) pair from the DECLARED capsule corpus for the masking
     self-test — derived from the descriptor, not a hardcoded capsule id, so any target's corpus works.
@@ -493,7 +505,7 @@ def _corpus_probe_paths() -> tuple[Path, Path]:
 def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
     """Confirm the agent's view withholds answers. bwrap: probe the masked golden. none: confirm the
     COPIED workspace has no golden.yaml and no hidden capsules anywhere under it."""
-    if sandbox == "bwrap":
+    if sandbox in ("bwrap", "docker"):
         # Search the agent's VIEW (the bound corpus trees) for ANY readable golden/expected file —
         # independent of golden_files(), so a golden the mask FAILED to enumerate is STILL caught (the past
         # leak was exactly such a miss). Masked answers appear as empty /dev/null overlays (test -s false);
@@ -509,7 +521,8 @@ def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
         roots_sh = " ".join(sorted(roots))
         script = (f'for f in $(find {roots_sh} \\( -name "golden.*" -o -name "expected_command_buffer*" \\) '
                   f'2>/dev/null); do test -s "$f" && echo "LEAK:$f"; done; echo DONE')
-        out = subprocess.run(["bash", "-c", bwrap_cmd(script, ws, bundle)],
+        _wrap = bwrap_cmd if sandbox == "bwrap" else docker_cmd
+        out = subprocess.run(["bash", "-c", _wrap(script, ws, bundle)],
                              capture_output=True, text=True).stdout
         leaked = [ln[len("LEAK:"):] for ln in out.splitlines() if ln.startswith("LEAK:")]
         return {"pilot_golden_visible_to_agent": "LEAK" if leaked else "OK",
@@ -678,7 +691,7 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
     # agent gets a REDACTED on-demand self-check (numeric diff, no goldens) without the oracle ever entering
     # its sandbox. Started BEFORE the backend split so BOTH the claude CLI and the Bedrock Converse agent
     # get the identical mid-round feedback loop.
-    broker = _start_selfcheck_broker(ws) if sandbox == "bwrap" else None
+    broker = _start_selfcheck_broker(ws) if sandbox in ("bwrap", "docker") else None
     try:
         # Route to the selected driver (explicit --driver, or auto-by-model-id). A non-Anthropic model can't
         # drive the claude CLI (Anthropic API only) → the Bedrock Converse backend runs the same masked-
@@ -699,7 +712,8 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
         inner = (f'claude --print --model {model} --effort {effort} '
                  f'--permission-mode bypassPermissions --add-dir {ws} '
                  f'--output-format stream-json --verbose < {ws_task}')
-        cmd = bwrap_cmd(inner, ws, bundle) if sandbox == "bwrap" else inner
+        cmd = (bwrap_cmd(inner, ws, bundle) if sandbox == "bwrap"
+               else docker_cmd(inner, ws, bundle) if sandbox == "docker" else inner)
         tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
         tpath.parent.mkdir(parents=True, exist_ok=True)
         epath = run_dir / "rounds" / f"round_{rnd:02d}.stderr.log"
@@ -898,7 +912,8 @@ def finalize_report(ws: Path, run_dir: Path, model: str, effort: str, sandbox: s
         inner = (f'claude --print --model {model} --effort {effort} '
                  f'--permission-mode bypassPermissions --add-dir {ws} '
                  f'--output-format stream-json --verbose < {ws / "FINALIZE.md"}')
-        cmd = bwrap_cmd(inner, ws, bundle) if sandbox == "bwrap" else inner
+        cmd = (bwrap_cmd(inner, ws, bundle) if sandbox == "bwrap"
+               else docker_cmd(inner, ws, bundle) if sandbox == "docker" else inner)
         try:
             with open(tpath, "w") as tf, open(epath, "w") as ef:
                 rc = subprocess.run(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef,
@@ -972,7 +987,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--qa-timeout", type=int, default=900)
     # Default sandbox=none: bwrap crashes the Bun-based `claude` binary in this environment. Isolation
     # under "none" is enforced by a golden-masked COPIED workspace + a post-run transcript audit.
-    ap.add_argument("--sandbox", choices=["bwrap", "none"], default="none")
+    ap.add_argument("--sandbox", choices=["bwrap", "docker", "none"], default="none")
     ap.add_argument("--no-oracle", action="store_true", help="QA = L0+trace only (fast dev)")
     ap.add_argument("--skip-hidden", action="store_true")
     ap.add_argument("--experiment", choices=["full", "realistic"], default="full",
@@ -1139,7 +1154,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[resume] reusing existing workspace + submission at {ws}")
         denied_names = [Path(d["path"]).name for d in bundle.get("denied", [])]
         viol, copy_report = [], None
-    elif a.sandbox == "bwrap":
+    elif a.sandbox in ("bwrap", "docker"):
         denied_names = RX.assemble_workspace(bundle, ws)
         viol = RX.assert_isolation(ws, bundle)
         copy_report = None
@@ -1429,8 +1444,18 @@ def main(argv: list[str] | None = None) -> int:
                 _glog = None
         else:
             _glog = None
+        # Grade against the CHECKPOINT-ceiling capsule view, not the loop-capped one. The loop's pilot
+        # subset caps required_oracle_tiers to the loop tier (e.g. L2), so grading it here left the
+        # cycle-exact tier NON-mandatory at its own checkpoint: an L3 numeric mismatch recorded
+        # tiers.L3=fail but status=pass / numeric=pass (riding L2) / failure=null — the agent's fix-round
+        # verdict then carried no plane, no category, no detail. An explicit operator subset still wins.
+        if PILOT_SUBSET is not None:
+            _ck_caps = PILOT_SUBSET
+        else:
+            from merlin.targetgen.contract.materialize import public_capsules_for as _pub
+            _ck_caps = _pub(_te_ck, tier_ceiling=max(adapters)) if adapters else _pilot_subset()
         try:
-            _CG.grade(str(vcand), capsules_root=str(_pilot_subset()), runs_root=str(vruns),
+            _CG.grade(str(vcand), capsules_root=str(_ck_caps), runs_root=str(vruns),
                       labels={"public", "dev"}, contract=str(C.REPO / "merlin/contract"),
                       oracle_adapters=adapters, timeout=_verilator_per_capsule_timeout(),
                       max_workers=_CG.default_grade_workers(), target=_te().target)
@@ -1447,7 +1472,17 @@ def main(argv: list[str] | None = None) -> int:
         for name, info in sorted(red.items()):
             l3 = (info.get("tiers") or {}).get("L3")
             npass += int(l3 == "pass")
-            per.append({"capsule": name, "l3_status": l3, "failure_plane": info.get("failure_plane")})
+            # Full redacted feedback — the SAME answer-free fields the loop verdict carries (redaction
+            # parity via _per_capsule_from_results): the bare l3_status+plane pair left the agent
+            # iterating on the cycle-exact tier with no category, no detail, no mismatch count.
+            per.append({"capsule": name, "l3_status": l3,
+                        "tiers": info.get("tiers") or {},
+                        "numeric_status": info.get("numeric_status"),
+                        "mismatch_count": info.get("mismatch_count"),
+                        "failure_plane": info.get("failure_plane"),
+                        "failure_category": info.get("failure_category"),
+                        "failure_detail": info.get("failure_detail"),
+                        "tier_cycles": info.get("tier_cycles") or {}})
         nc = len(red) or 20
         return {"attempt": attempt, "all_pass": npass == nc and nc > 0, "n_passed": npass,
                 "n_capsules": nc, "per_capsule": per}
@@ -1487,8 +1522,13 @@ def main(argv: list[str] | None = None) -> int:
             (ws / "qa" / "verdict.json").write_text(json.dumps(
                 {"stage": "verilator_checkpoint", "attempt": vatt, "all_pass": False,
                  "n_passed": vv["n_passed"], "n_capsules": vv["n_capsules"],
-                 "note": "CYCLE-ACCURATE (verilator/L3) results — fix the capsules failing at L3, then "
-                         "re-run agent_selfcheck (spike) clean before declaring READY again.",
+                 "note": "CYCLE-ACCURATE (verilator/L3) results — THIS tier is the pass/fail barrier for "
+                         "capsules that require it: a numeric_status of 'pass' from the fast functional "
+                         "tier does NOT clear a capsule whose l3_status is 'fail'. Fix the capsules "
+                         "failing at L3 by failure_plane/failure_category/failure_detail, then re-run "
+                         "the self-check clean before declaring READY again. tier_cycles are DIAGNOSTIC "
+                         "ONLY — cycle counts / throughput NEVER gate pass/fail; do not optimize for "
+                         "speed while correctness fails.",
                  "per_capsule": vv["per_capsule"]}, indent=2))
             (ws / "submission" / READY_MARKER).unlink(missing_ok=True)
             _fr = time.time()

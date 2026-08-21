@@ -52,12 +52,13 @@ from merlin.targetgen import capsule_runner as CR        # tier adapters
 # the PUBLIC capsule set (with goldens — operator-side; output is redacted before the agent sees it),
 # DERIVED per-target from the descriptor's capsule_corpus (atlas fp8/L3, gemmini i8/L2) — no committed
 # gemmini leak. Falls back to the legacy committed set if the descriptor can't be resolved.
-def _public_capsules() -> Path:
+def _public_capsules(tier_ceiling: str | None = None) -> Path:
     try:
         import _common as _C
         from merlin.targetgen.contract.materialize import public_capsules_for
         from merlin.targetgen.target_experiment import load_target_experiment
-        return public_capsules_for(load_target_experiment(_C.EXP / "target_experiment.yaml"))
+        return public_capsules_for(load_target_experiment(_C.EXP / "target_experiment.yaml"),
+                                   tier_ceiling=tier_ceiling)
     except Exception:  # noqa: BLE001 — keep the self-check usable without a resolvable descriptor
         return _HERE / "full_public_capsules"
 
@@ -174,14 +175,21 @@ def main(argv=None):
     # Subset filtering that ACTUALLY limits the grade: CG.grade runs EVERY capsule under capsules_root, so
     # the `want` output-filter below alone would still grade all 20 (a "1-capsule verilator" check = ~1hr).
     # Build a temp capsules_root symlinking only the requested capsule dirs -> grade runs just the subset.
-    caps_root = PUBLIC_CAPSULES
+    # Grade the capsule view materialized at the BARRIER tier the self-check actually runs. The default
+    # view is capped at the LOOP tier (e.g. L2), which left the deeper tier non-mandatory here: an L3
+    # numeric mismatch read back per-capsule `pass` in the self-check, then `fail` at the checkpoint —
+    # the pass<->fail flip the agent could not explain. Falls back to the default view if the ceiling-
+    # matched materialization is unavailable.
+    _bar_caps = _public_capsules(tier_ceiling=barrier_tier)
+    caps_src = _bar_caps if _bar_caps.is_dir() else PUBLIC_CAPSULES
+    caps_root = caps_src
     if want:
         caps_root = Path(tempfile.mkdtemp(prefix="selfcheck_caps_"))
-        missing = [n for n in sorted(want) if not (PUBLIC_CAPSULES / n / "capsule.yaml").exists()]
+        missing = [n for n in sorted(want) if not (caps_src / n / "capsule.yaml").exists()]
         if missing:
             print(json.dumps({"error": f"unknown capsule(s): {missing}"})); return 2
         for n in sorted(want):                          # copy (not symlink): rglob won't recurse symlinked dirs
-            shutil.copytree(PUBLIC_CAPSULES / n, caps_root / n)
+            shutil.copytree(caps_src / n, caps_root / n)
 
     # build + run + compare (parallel); CG.grade handles the agent's 4 entrypoints + the tier ladder
     try:

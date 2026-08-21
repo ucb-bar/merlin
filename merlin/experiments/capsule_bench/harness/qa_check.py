@@ -170,10 +170,16 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
                      "(schema/language/L0/L1/trace planes); never hardcode outputs."),
         }
     else:
+        # The loop gate grades the FAST tier ladder only (the loop adapters); the slower cycle-exact
+        # tier is graded separately at the checkpoint. Say so explicitly: an `all_pass: true` here read
+        # as "done" while the cycle-exact tier still failed 29/37 — the agent had no way to know this
+        # verdict's tier scope, and per-capsule `numeric_status: pass` reinforced the misread.
+        graded_tiers = sorted(_loop_adapters) if _loop_adapters else []
         verdict = {
             "qa_gate": "capsule_bench_v0_pilot",
             "gradeable": True,
             "labels_graded": score.get("labels_graded"),
+            "tier_scope": graded_tiers,
             "all_pass": bool(n_caps > 0 and n_pass == n_caps),
             "n_passed": n_pass,
             "n_capsules": n_caps,
@@ -182,7 +188,11 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
             "first_failure_planes": score.get("first_failure_planes", {}),
             "per_capsule": per_capsule,
             "note": ("This is a QA pass/fail signal only. It contains NO reference output values — there is no answer key. "
-                     "Fix failures by capsule + failure_plane + trace_violations; never hardcode outputs."),
+                     "Fix failures by capsule + failure_plane + trace_violations; never hardcode outputs. "
+                     f"TIER SCOPE: this verdict grades ONLY the fast loop tiers {graded_tiers or '(structural)'} — "
+                     "`all_pass`/`numeric_status` here say NOTHING about any higher cycle-exact tier a capsule "
+                     "requires; that tier is graded separately at the checkpoint and is the real convergence "
+                     "barrier. tier_cycles are DIAGNOSTIC ONLY — cycle counts never gate pass/fail."),
         }
     # top-level integrity failure (K0/K1 fail-closed)
     if "failure" in score:
