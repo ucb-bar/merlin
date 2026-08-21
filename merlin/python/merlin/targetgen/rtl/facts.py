@@ -198,6 +198,30 @@ class FactsEmpty(RuntimeError):
     """
 
 
+def facts_body(facts: dict[str, Any], target: str, *, needs: str) -> dict[str, Any]:
+    """The body of a facts artifact (``facts["facts"]``) for a consumer that does NOT read a decode table.
+
+    Same fail-closed contract as :func:`decode_body` for an EMPTY body (a missing input, worth fixing) and
+    for a non-dict artifact -- it only drops the decode-shape requirement. A numeric-shape checker is
+    derived from ``datapaths``/``memories`` and never looks at an opcode, so demanding a
+    ``funct_decode_table`` of it refuses a target whose facts are entirely sufficient for the job.
+    """
+    body = facts.get("facts") if isinstance(facts, dict) else None
+    if isinstance(body, dict) and body:
+        return body
+    if isinstance(body, dict):          # present but EMPTY -> nothing was extracted; see FactsEmpty
+        inputs = (facts.get("inputs") or {}) if isinstance(facts, dict) else {}
+        raise FactsEmpty(
+            f"{target}: the RTL-facts artifact is EMPTY (facts: {{}}), so {needs} cannot be derived — "
+            f"the extractor produced no facts (inputs: hw_mlir={inputs.get('hw_mlir')!r} "
+            f"hw_sha={inputs.get('hw_sha')!r}). This is a MISSING INPUT: re-run introspection with the "
+            f"RTL reachable (MERLIN_MLC_DIR / the design's hw.mlir). Artifact: {rtl_facts_path(target)}")
+    shape = sorted(facts) if isinstance(facts, dict) else type(facts).__name__
+    raise NotImplementedError(
+        f"{target}: this RTL-facts artifact carries no facts body, so {needs} cannot be derived. "
+        f"The artifact holds {shape}.")
+
+
 def decode_body(facts: dict[str, Any], target: str, *, needs: str) -> dict[str, Any]:
     """The decode-shaped body of a facts artifact (``facts["facts"]``), or a clear refusal.
 

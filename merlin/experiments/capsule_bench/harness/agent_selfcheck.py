@@ -279,7 +279,21 @@ def main(argv=None):
         # them. `status` already enforces every mandatory tier (not_run_is_not_pass), so dropping a
         # NON-mandatory conjunct cannot manufacture a pass -- and a non-mandatory tier that ran and FAILED
         # still gates, so an explicitly requested cert failure is never reported as success.
-        bar_mandatory = bool(tier_objs.get(barrier_tier, {}).get("mandatory"))
+        # WHICH tier this capsule is held to. When the declared barrier ran for NO capsule in the corpus
+        # it is not a real bar (a descriptor/adapter mismatch: atlas resolved L4 while every result
+        # carries only L0/L1/L2), and scoring against it fails everything regardless of merit -- an agent
+        # told it fails everything cannot converge, it rewrites working code. Fall back to the deepest
+        # tier that actually produced a verdict. Guarded by `_declared_ran`, so where the target genuinely
+        # produces the declared tier a capsule that never reached it still fails.
+        bar_used = barrier_tier
+        if bar is None and not _declared_ran:
+            ran = [k for k, v in tiers.items() if v not in (None, "skipped")]
+            if ran:
+                bar_used = max(ran)
+                bar = tiers.get(bar_used)
+        # WHETHER a tier that did not run is allowed to pass: only if this capsule does not require it.
+        # Keyed on the tier actually used, so the flag describes the bar the row reports.
+        bar_mandatory = bool(tier_objs.get(bar_used, {}).get("mandatory"))
         bar_did_not_run = bar in (None, "unavailable", "skipped")
         passed = (d.get("status") == "pass") and (
             bar == "pass" or (bar_did_not_run and not bar_mandatory))
@@ -309,7 +323,7 @@ def main(argv=None):
         console_tail = None
         for lg in (cr.parent / "artifacts").glob("*_console.log") if (cr.parent / "artifacts").is_dir() else []:
             console_tail = lg.read_text()[-800:]
-        row = {"capsule": name, "pass": passed, "barrier_tier": barrier_tier, "barrier_status": bar,
+        row = {"capsule": name, "pass": passed, "barrier_tier": bar_used, "barrier_status": bar,
                # say WHETHER the barrier gates this capsule, so an `unavailable` optional cert tier beside
                # `pass: true` reads as "not required here", not as an unexplained contradiction to chase.
                "barrier_gates": bar_mandatory,

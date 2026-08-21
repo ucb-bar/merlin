@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse, json
 from pathlib import Path
 
-from .facts import decode_body, load_facts
+from .facts import facts_body, load_facts
 
 _TMPL = '''"""GENERATED from RTL facts by gen_numeric_facts — numeric-SHAPE sanity (NOT a numeric oracle)."""
 from __future__ import annotations
@@ -66,7 +66,9 @@ def _bits(dt: str):
 
 
 def generate(facts: dict) -> str:
-    f = decode_body(facts, str(facts.get("target") or "target"), needs="a numeric-shape checker")
+    # A numeric-shape checker is derived from datapath/memory facts and never reads an opcode, so it
+    # must NOT demand a decode table: requiring one refused targets whose facts fully sufficed.
+    f = facts_body(facts, str(facts.get("target") or "target"), needs="a numeric-shape checker")
     dps = {d["name"]: d for d in f.get("datapaths", [])}
     acc = next((m for m in f.get("memories", []) if m.get("name") == "accumulator"), {})
     # DERIVE every value from the target's RTL facts; when a fact is absent, emit ``None`` and let the
