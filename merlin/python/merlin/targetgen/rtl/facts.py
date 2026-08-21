@@ -76,13 +76,47 @@ def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
     _warn_if_degraded(target)
     _REGENERATING.add(target)
     try:
-        from .circt_introspect import dump_facts  # function-local: circt_introspect imports this module
-        dump_facts(p, target=target)
+        _dump_facts_for_kind(p, target)
     finally:
         _REGENERATING.discard(target)
     if not p.is_file():
         raise RuntimeError(f"RTL-facts regeneration produced no artifact at {p}")
     return p
+
+
+def _dump_facts_for_kind(p, target: str) -> None:
+    """Extract ``target``'s facts with the extractor ITS OWN family declares, and write the artifact.
+
+    Regeneration used to call the systolic CIRCT extractor for every target, whatever its kind. On a core
+    with no RoCC decoder that extractor finds nothing and writes a well-formed artifact with an EMPTY
+    facts body -- which then reads as "the RTL was never extracted" and fails the pre-spend readiness
+    gate, while the target's OWN extractor derives its geometry, capacities and instruction encoding
+    perfectly well. The arms that are supposed to be GROUNDED in RTL facts were being handed nothing.
+
+    Kind-routed like :func:`~.mlc_bridge.fact_bundle_for` and :func:`~.mlc_bridge.render_fact_bundle_for`
+    already are, so this is the same seam applied to PRODUCTION rather than to reading and rendering.
+    Unchanged for every ``circt_static`` family (systolic/vector/scalar): they resolve to the same
+    ``dump_facts`` call as before.
+    """
+    import json as _json
+    from ..families import family_profile, known_kinds
+    # Same function-local mlc_bridge import _warn_if_degraded already uses (mlc_bridge reads this module,
+    # so a module-level import would be circular). Kind comes from the target's DECLARED identity.
+    from .mlc_bridge import _resolve_kind
+    kind = _resolve_kind(target)
+    extractor = family_profile(kind).fact_extractor if kind in known_kinds() else "circt_static"
+    if extractor == "simt_config":
+        from .mlc_bridge import simt_facts
+        body = simt_facts(target)
+        if not body:
+            raise RuntimeError(
+                f"no SIMT introspect served {target!r}, so its facts artifact would be empty; register "
+                f"an introspect for it rather than writing a body that reads as un-extracted RTL")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(_json.dumps(body, indent=2), encoding="utf-8")
+        return
+    from .circt_introspect import dump_facts      # function-local: circt_introspect imports this module
+    dump_facts(p, target=target)
 
 
 def _warn_if_degraded(target: str) -> None:
