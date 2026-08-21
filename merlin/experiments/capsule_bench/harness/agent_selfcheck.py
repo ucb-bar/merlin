@@ -242,9 +242,24 @@ def main(argv=None):
         name = d.get("capsule", cr.parent.name)
         if want and name not in want:
             continue
-        tiers = {t: (v or {}).get("status") for t, v in (d.get("tiers") or {}).items()}
+        tier_objs = {t: (v or {}) for t, v in (d.get("tiers") or {}).items()}
+        tiers = {t: v.get("status") for t, v in tier_objs.items()}
         bar = tiers.get(barrier_tier)
-        passed = (d.get("status") == "pass") and (bar == "pass")
+        # Gate on the barrier tier ONLY when the capsule's own contract makes it mandatory, and only when
+        # it actually produced a verdict. `barrier_tier` above is the DEEPEST resolved adapter tier, which
+        # for a corpus that requires [L0,L1,L2] while also shipping an OPTIONAL cycle-accurate cert is a
+        # tier the grade explicitly does not require: the driver derives exactly this distinction
+        # (run_baseline_qa_loop._cycle_accurate_checkpoint_enabled) and SKIPS the barrier, so demanding it
+        # here reported FAIL for capsules the authoritative grade counts as PASS. Measured: five attention
+        # capsules numerically exact at the mandatory functional tier (zero mismatch) with the optional
+        # cert tier `unavailable` were shown to the agent as failures, and it spent a round re-deriving
+        # them. `status` already enforces every mandatory tier (not_run_is_not_pass), so dropping a
+        # NON-mandatory conjunct cannot manufacture a pass -- and a non-mandatory tier that ran and FAILED
+        # still gates, so an explicitly requested cert failure is never reported as success.
+        bar_mandatory = bool(tier_objs.get(barrier_tier, {}).get("mandatory"))
+        bar_did_not_run = bar in (None, "unavailable", "skipped")
+        passed = (d.get("status") == "pass") and (
+            bar == "pass" or (bar_did_not_run and not bar_mandatory))
         npass += int(passed)
         # numeric diagnostics — keep ALL stats; redact ONLY the golden expected value
         num = dict(d.get("numeric") or {})
@@ -271,7 +286,11 @@ def main(argv=None):
         console_tail = None
         for lg in (cr.parent / "artifacts").glob("*_console.log") if (cr.parent / "artifacts").is_dir() else []:
             console_tail = lg.read_text()[-800:]
-        row = {"capsule": name, "pass": passed, "barrier_tier": barrier_tier, "barrier_status": bar}
+        row = {"capsule": name, "pass": passed, "barrier_tier": barrier_tier, "barrier_status": bar,
+               # say WHETHER the barrier gates this capsule, so an `unavailable` optional cert tier beside
+               # `pass: true` reads as "not required here", not as an unexplained contradiction to chase.
+               "barrier_gates": bar_mandatory,
+               "required_tiers": sorted(t for t, v in tier_objs.items() if v.get("mandatory"))}
         if not passed:
             # FULL debug detail ONLY for a FAILING capsule (the one you are working). A passing capsule's
             # diff stats / trace dump / console tail are noise that re-inflates the agent's context every
@@ -311,8 +330,11 @@ def main(argv=None):
                    "copied to ./selfcheck_out/. The diff stats (mismatch_count, magnitudes) are YOUR "
                    "output measured against the operation's own definition, which you can reproduce from "
                    "the declared inputs — there is no answer key; the reference output values are withheld "
-                   "so you debug from your own intent, as in real bring-up. 'done' = all public pass on "
-                   "verilator/VCS; cycles are not a criterion. (Movement ops legitimately have 0 matmuls.)"}
+                   "so you debug from your own intent, as in real bring-up. 'done' = every public capsule "
+                   "passes its own MANDATORY tiers (see per_capsule.required_tiers); a tier reported "
+                   "`unavailable` with barrier_gates=false is OPTIONAL for that capsule and does NOT hold "
+                   "it back -- do not spend rounds on it. Cycles are not a criterion. (Movement ops "
+                   "legitimately have 0 matmuls.)"}
     txt = json.dumps(out, indent=2)
     print(txt)
     if a.out:
