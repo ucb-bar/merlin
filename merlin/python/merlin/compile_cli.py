@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import threading
 import json
 import sys
 import tempfile
@@ -367,6 +368,30 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     out["status"] = "not_run"
     out["reason"] = f"run mode {run!r} not supported for rvv (use none|k1|spike|zephyr|verilator)"
     return out
+
+
+_MESH_PKG_CACHE: dict[str, object] = {}
+_MESH_PKG_LOCK = threading.Lock()
+
+
+def _built_mesh_package(pkg_dir: str, timeout: int):
+    """The loaded+scanned+built package for ``pkg_dir``, built at most once per process.
+
+    The whole-model mesh path calls this once per matmul layer. Rebuilding per layer is pure waste and
+    turns one broken build into a per-layer storm of identical failures.
+    """
+    key = str(Path(pkg_dir).resolve())
+    with _MESH_PKG_LOCK:
+        hit = _MESH_PKG_CACHE.get(key)
+    if hit is not None:
+        return hit
+    from .targetgen.oot_runner import build_package, integrity_scan, load_package
+    obj = load_package(pkg_dir, contract=None)     # the same sequence run_entrypoints does when pkg is None
+    integrity_scan(obj)
+    build_package(obj)
+    with _MESH_PKG_LOCK:
+        _MESH_PKG_CACHE[key] = obj
+    return obj
 
 
 @functools.lru_cache(maxsize=None)
@@ -725,10 +750,14 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | N
         capsule = {"name": "mesh_layer", "kind": "op", "interface_mlir": "capsule.interface.mlir",
                    "operation": {"op": "matmul", "attributes": {}}, "__dir__": str(cdir),
                    "required_oracle_tiers": ["L2"]}
-        paths = make_run_paths(runs_root(target, "mesh_bsim"), "mesh_layer", suite="mesh",
-                               target=target, dtype="prog", benchmark="mesh_layer")
+        # A run id per LAYER SHAPE: `mesh_layer` was hardcoded, so every layer of a model wrote into one
+        # run dir and overwrote the last, leaving nothing to attribute a failure to afterwards.
+        _rid = f"mesh_layer_{len(A)}x{len(A[0]) if A else 0}x{len(W[0]) if W else 0}"
+        paths = make_run_paths(runs_root(target, "mesh_bsim"), _rid, suite="mesh",
+                               target=target, dtype="prog", benchmark=_rid)
         try:
-            _pkg, cb, kernel_text = CC.run_entrypoints(None, pkg, capsule, paths, contract=None,
+            _built = _built_mesh_package(pkg, timeout)     # built once per process, not once per layer
+            _pkg, cb, kernel_text = CC.run_entrypoints(_built, pkg, capsule, paths, contract=None,
                                                        timeout=timeout, fourth_output_name="kernel.cpp")
         except Exception:                             # noqa: BLE001 — package can't emit this kernel: honest None
             return None

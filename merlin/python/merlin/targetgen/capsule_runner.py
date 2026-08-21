@@ -1734,6 +1734,10 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
     op coverage) without giving them a say in the status.
     """
     executability = executability or {}
+    # `toolchain_shas` was a function-local import inside run_capsule; lifting this block to module level
+    # took it out of scope. Import it here rather than at module level to keep the provenance import lazy,
+    # as the original call site did.
+    from .provenance import toolchain_shas
     # not_run_is_not_pass: a mandatory tier that did not pass closed (unavailable/skipped/absent) makes
     # the capsule incomplete — never a silent pass. A tier that is honestly N/A for this capsule's
     # datatype (``not_applicable``; the integer L0/L1 floor on a float datapath) is the ONE exception —
