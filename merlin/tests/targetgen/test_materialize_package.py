@@ -111,3 +111,31 @@ def test_materialize_will_not_silently_replace_an_installed_compiler(tmp_path):
     with pytest.raises(PB.MaterializeRefused):
         PB.materialize_package("radiance", src, artifacts_root=tmp_path / "artifacts")
     PB.materialize_package("radiance", src, artifacts_root=tmp_path / "artifacts", force=True)
+
+def test_installing_a_package_does_not_take_the_champion_slot(tmp_path):
+    """`select_champion`'s last tie-break is the directory NAME, so installing `agent_spec_v1_mlir_oot`
+    beside `hand_v0` — neither carrying a ranked certification status — handed the champion slot to the
+    new package purely because "a" sorts before "h". Every consumer that asks for the champion would have
+    been silently redirected to a different compiler. An explicit `champion: false` now demotes."""
+    art = tmp_path / "artifacts"
+    (art / "targets" / "radiance" / "hand_v0").mkdir(parents=True)
+    (art / "targets" / "radiance" / "hand_v0" / "manifest.yaml").write_text(
+        yaml.safe_dump({"package_id": "hand_v0"}), encoding="utf-8")
+
+    src = tmp_path / "submission"
+    src.mkdir()
+    (src / "manifest.yaml").write_text(yaml.safe_dump({"package_id": "x"}), encoding="utf-8")
+    PB.materialize_package("radiance", src, artifacts_root=art)
+
+    assert PB.select_champion("radiance", artifacts_root=art).package_id == "hand_v0"
+
+
+def test_a_declined_package_still_wins_when_it_is_the_only_one(tmp_path):
+    """Demotion must not mean 'never selectable' — a target whose sole package is an install still has
+    to resolve to it."""
+    art = tmp_path / "artifacts"
+    src = tmp_path / "submission"
+    src.mkdir()
+    (src / "manifest.yaml").write_text(yaml.safe_dump({"package_id": "x"}), encoding="utf-8")
+    PB.materialize_package("radiance", src, artifacts_root=art)
+    assert PB.select_champion("radiance", artifacts_root=art).package_id == "agent_spec_v1_mlir_oot"

@@ -170,7 +170,13 @@ def _rank_key(pkg_dir: Path, manifest: dict[str, Any]) -> tuple:
     status = str(manifest.get("status", ""))
     cycles = _oracle_cycles(manifest)
     lineage = manifest.get("lineage") if isinstance(manifest.get("lineage"), dict) else {}
+    # An explicit `champion: false` demotes. Only `true` was ever consulted, so a package that declared
+    # itself NOT the champion still competed on the ordinary ranking -- whose last tie-break is the
+    # directory name, which is no basis for redirecting every consumer to a different compiler.
+    pub = manifest.get("publication") if isinstance(manifest.get("publication"), dict) else {}
+    declined = 1 if pub.get("champion") is False else 0
     return (
+        declined,
         _STATUS_RANK.get(status, _DEFAULT_STATUS_RANK),
         cycles if cycles is not None else float("inf"),
         -int(manifest.get("version", 0) or 0),
@@ -219,8 +225,9 @@ def select_champion(target: str, *, artifacts_root: str | Path | None = None,
 
     If ``package_id`` is given, that package is selected. Otherwise, if exactly one package is
     flagged ``publication.champion: true`` it wins; failing that, packages are ranked
-    deterministically: ``rtl_certified`` > ``spike_verified`` > other, then fewer oracle cycles,
-    then higher lineage version/depth, then newer timestamp, then package_id.
+    deterministically: a package declaring ``publication.champion: false`` sorts last, then
+    ``rtl_certified`` > ``spike_verified`` > other, then fewer oracle cycles, then higher lineage
+    version/depth, then newer timestamp, then package_id.
 
     ``dtype_strategy`` (e.g. ``"int8_w8a8"``) restricts the candidates to packages carrying that
     knob. Without it, an int8 caller can be handed the globally best package even when that
