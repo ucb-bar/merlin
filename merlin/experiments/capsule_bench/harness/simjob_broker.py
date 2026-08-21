@@ -125,8 +125,13 @@ def main(argv=None):
 
     running: dict[str, dict] = {}          # jid -> {proc, slot, resp_tmp, sim}
     claimed: set[str] = set()
+    # STOP alone does not bound this broker's life: the sentinel is written by the driver, so if the
+    # driver dies first nobody ever writes it and the broker polls forever -- while HOLDING sim slots and
+    # child simulators. Three sibling brokers were found orphaned to init hours after their run ended,
+    # spawned for a round that never started. Exit when the process that started us is gone.
+    orig_ppid = os.getppid()
     while True:
-        if (ch / "STOP").exists():
+        if (ch / "STOP").exists() or os.getppid() != orig_ppid:
             break
         # reap finished
         for jid, j in list(running.items()):

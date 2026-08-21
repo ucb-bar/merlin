@@ -18,6 +18,7 @@ Channel (under ``<ws>/.isa_channel/``):
 from __future__ import annotations
 import argparse
 import json
+import os
 import sys
 import tempfile
 import time
@@ -292,8 +293,13 @@ def main(argv=None):
     ch = Path(a.ws) / ".isa_channel"
     ch.mkdir(parents=True, exist_ok=True)
     seen: set[str] = set()
+    # STOP alone does not bound this broker's life: the sentinel is written by the driver, so if the
+    # driver dies first nobody ever writes it and the broker polls forever. Three sibling brokers were
+    # found orphaned to init hours after their run ended, spawned for a round that never started. Exit
+    # when the process that started us is gone.
+    orig_ppid = os.getppid()
     while True:
-        if (ch / "STOP").exists():
+        if (ch / "STOP").exists() or os.getppid() != orig_ppid:
             break
         for req_f in sorted(ch.glob("req_*.json")):
             if req_f.name in seen:
