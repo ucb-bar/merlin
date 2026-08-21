@@ -120,6 +120,53 @@ def audit(target: str) -> list[dict]:
                                        "a runnable capsule, so the claim is never tested; declare it in "
                                        "unmaterializable_families with a reason if that is intended"})
 
+    # 3b. The resolved corpus must not contain capsules this target STRUCTURALLY cannot execute.
+    #
+    # Corpus roots are discovered by directory layout and filtered by label -- never by capability -- so a
+    # generic capsule dropped into a shared root is silently adopted as graded work. Measured: one target
+    # reads the shared top-level roots (every other target is namespaced under its own name), so 12 bf16
+    # capsules added to a shared model_slices/ directory entered its graded suite. It cannot execute them
+    # (its contract declares one integer format), so they could never pass -- and because the agent loop's
+    # only early exit is a genuine all_pass, they made all_pass UNREACHABLE and turned every run into a
+    # fixed-price purchase of its full round budget: 20 rounds, ~12 hours, for a suite that was already
+    # complete at round 0.
+    #
+    # Relocating the directory does not fix it: the shared root MIXES in-scope and out-of-scope capsules,
+    # so the layout cannot express the distinction. Catching it here does, and it fires the moment such a
+    # capsule is added rather than after a run has paid for it.
+    #
+    # Uses the runner's OWN withholding rule, imported rather than reimplemented, so the gate and the
+    # grader can never drift on what "cannot execute" means.
+    try:
+        from merlin.targetgen.capsule_runner import _split_ineligible
+        from merlin.targetgen.target_experiment import load_target_experiment
+        desc = (repo_root() / "merlin/experiments/capsule_bench/targets" / target / "target_experiment.yaml")
+        if desc.is_file():
+            te = load_target_experiment(str(desc))
+            import yaml as _y
+            corpus = []
+            for r in [Path(te.capsule_corpus)] + [Path(s) for s in te.corpus_siblings()]:
+                if not r.is_dir():
+                    continue
+                try:
+                    subs = sorted(r.iterdir())
+                except PermissionError:
+                    continue
+                for d in subs:
+                    f = d / "capsule.yaml"
+                    if f.is_file():
+                        corpus.append(_y.safe_load(f.read_text()))
+            op = [c for c in corpus if c.get("kind") != "model"]
+            _, withheld = _split_ineligible(op, target)
+            for w in withheld:
+                findings.append({"target": target, "kind": "corpus_contains_unexecutable",
+                                 "family": w.get("capsule"),
+                                 "detail": "in this target's RESOLVED corpus but structurally impossible "
+                                           "for it, so it can never pass and keeps all_pass unreachable: "
+                                           + str((w.get("failure") or {}).get("detail", ""))})
+    except Exception:  # noqa: BLE001 - a corpus we cannot resolve is reported by the checks above
+        pass
+
     # 4/5/6. the corpus
     caps = _load_capsules(target)
     if not caps:

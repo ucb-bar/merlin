@@ -26,3 +26,32 @@ radiance:undetermined_declaration:synchronization
 # no_contract: target has no resolvable contract in this checkout, so nothing can be measured for it. Not a coverage hole -- a missing target package.
 saturn_opu:no_contract:-
 saturn_opu_rvv:no_contract:-
+
+# corpus_contains_unexecutable — capsules in a target's RESOLVED corpus that it structurally cannot
+# execute. Recorded 2026-08-21 after two runs paid for them: they can never pass, and because the agent
+# loop's only early exit is a genuine all_pass, they make all_pass unreachable and turn every run into a
+# fixed-price purchase of its whole round budget (measured: 20 rounds / ~12 h on a suite already complete
+# at round 0). They are now WITHHELD from grading, so this list tracks corpus hygiene, not run damage.
+#
+# The 12 bf16 entries below belong to a float Gemmini configuration; this elaboration declares one integer
+# format (FIRRTL: scratchpad UInt<8>). They are not wrong capsules, they are in the wrong target's
+# resolved corpus -- one target reads the SHARED top-level roots while every other is namespaced under its
+# own name, so anything added there is silently adopted. Relocating cannot fix it: the shared
+# model_slices/ root MIXES in-scope i8 capsules (C0-C7) with these, so the layout cannot express the
+# distinction. Resolve by giving these a target that declares bf16, or by making corpus membership
+# explicit per capsule.
+gemmini:corpus_contains_unexecutable:GC1_depthwise_bf16_pt
+gemmini:corpus_contains_unexecutable:GC2_maxpool_bf16_pt
+gemmini:corpus_contains_unexecutable:GC3_avgpool_bf16_pt
+gemmini:corpus_contains_unexecutable:GC4_global_avg_bf16_pt
+gemmini:corpus_contains_unexecutable:GC5_fused_matmul_bias_bf16_pt
+gemmini:corpus_contains_unexecutable:GC6_bias_add_bf16_pt
+gemmini:corpus_contains_unexecutable:GF0_rmsnorm_bf16_pt
+gemmini:corpus_contains_unexecutable:GF1_softmax_bf16_pt
+gemmini:corpus_contains_unexecutable:GF2_attn_full_bf16_pt
+gemmini:corpus_contains_unexecutable:GF3_geglu_bf16_pt
+gemmini:corpus_contains_unexecutable:GF4_add_bf16_pt
+gemmini:corpus_contains_unexecutable:GF5_gelu_bf16_pt
+# rank-limited: a batched/4-D contraction on a target whose declared contraction ranks exclude it.
+atlas:corpus_contains_unexecutable:AF12_gemv_batched_bf16_pt
+radiance:corpus_contains_unexecutable:RP14_patch_embed_bf16_pt

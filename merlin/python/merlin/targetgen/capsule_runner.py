@@ -735,11 +735,18 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
         hard = dtype_absent or rank_absent
         if not hard:
             keep.append(c); continue
+        # State the fact that ACTUALLY triggered withholding. eligibility's reason describes its own
+        # family verdict, which can read "unrecognized semantic family" for a capsule withheld purely
+        # because its dtype has no datapath -- true but misleading about the cause, and it would send
+        # someone to fix the taxonomy when the hardware is the constraint.
+        why = (f"operand dtype {dt!r} is in no capability this target declares" if dtype_absent
+               else f"operand rank {rk} is in no capability this target declares")
         withheld.append({
             "capsule": c.get("name"), "kind": c.get("kind"), "label": c.get("label"),
             "status": "not_graded", "ineligible": True,
             "failure": {"plane": "capability", "category": "NOT_GRADED",
-                        "detail": f"not graded on this target: {getattr(v, 'reason', '') or 'ineligible'}"},
+                        "detail": f"not graded on this target: {why} "
+                                  f"(eligibility also reports: {getattr(v, 'reason', '') or 'ineligible'})"},
         })
     return keep, withheld
 
