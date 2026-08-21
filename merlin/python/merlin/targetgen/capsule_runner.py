@@ -1535,7 +1535,14 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     op_results = _run_all(op_caps)
     if not model_caps:
         return op_results
-    graded = [r for r in op_results if r.get("status") in ("pass", "fail")]
+    # An op capsule that CRASHED the runner (``error``) counts in the denominator: it produced no passing
+    # artifact, which is a failure to deliver one, not an absence of evidence about the submission. Leaving
+    # it out made a crashier failure mode UNLOCK this gate — measured across three graded rounds whose op
+    # passes were identical at 25/36, where 5 crashes shrank the denominator to 31 (0.806, gate open) while
+    # rounds with 0 and 2 crashes scored 0.694 and 0.735 (gate closed). The capstone swung on how the
+    # submission failed rather than on how much of the suite it passed. ``not_gradeable_no_oracle`` stays
+    # excluded — there the ORACLE was absent, so the suite genuinely learned nothing about the submission.
+    graded = [r for r in op_results if r.get("status") in ("pass", "fail", "error")]
     frac = (sum(1 for r in graded if r.get("status") == "pass") / len(graded)) if graded else 0.0
     model_results = []
     for c in model_caps:
