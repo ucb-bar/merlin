@@ -253,6 +253,14 @@ capsules:
    source_role: pytorch_model_slice,
    source_reference: hidden MX flash attention (mxfp4, unseen Skv=64/Dv=32 shape), label: hidden, modes: {}}
 # PyTorch-sourced hidden holdouts (source: pytorch) — unseen shapes/ops for the frontend-faithful path.
+# Held-out REDUCTION. The contract declares `reduction` under simt_cluster's semantic_capabilities, but
+# no capsule -- public or hidden -- has ever exercised it, so the corpus cannot say whether the compiler
+# generalizes over a family it claims. Authored hidden so it measures transfer rather than becoming more
+# training signal.
+- {cat: hidden, name: RPH4_reduce_sum_fp32_hidden, kind: model_slice, op: reduce_sum, operand_dtype: f32,
+   source: pytorch, M: 24, K: 48, src: X, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: hidden PyTorch row-sum reduction (unseen 24x48 shape), label: hidden, modes: {}}
 - {cat: hidden, name: RPH0_rmsnorm_fp16_hidden, kind: model_slice, op: rmsnorm, operand_dtype: fp16,
    source: pytorch, M: 24, K: 32, src: X, gamma: G, out: Y0, eps: 1.0e-05,
    source_role: pytorch_model_slice,
