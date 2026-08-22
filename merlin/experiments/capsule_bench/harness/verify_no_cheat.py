@@ -377,12 +377,20 @@ def check_holdout_not_specified() -> tuple[bool, list[str]]:
                            f"report a pass this check cannot substantiate; run before the answer-lock"]
         return True, ["(no holdout capsules on disk — nothing to check)"]
     bad = []
+    scanned = 0
     for f in _granted_readable_files():
+        scanned += 1
         txt = f.read_text(errors="ignore")
         for n in sorted(names):
             if n in txt:
                 bad.append(f"{f.relative_to(REPO)} names holdout capsule {n!r}")
-    return (not bad), bad
+    if bad:
+        return False, bad
+    # SAY WHAT WAS EXAMINED. A bare (True, []) is indistinguishable from the vacuous pass this check was
+    # just fixed to stop reporting -- the reader cannot tell a real scan from one that found nothing to
+    # scan. State the size of both sides, so the pass carries its own evidence.
+    return True, [f"{len(names)} holdout capsule name(s) checked against {scanned} readable granted "
+                  f"file(s) — none present"]
 
 
 CHECKS = [
