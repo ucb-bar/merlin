@@ -84,12 +84,26 @@ def _adapter(simulator: str) -> Callable:
         # compiler quality. The toolchain stamp says so explicitly and rides into the capsule result, so a
         # score that includes them stays decomposable rather than silently overstating the backend by the
         # size of the MX set (which is what an earlier 40/40 on this corpus did).
+        # Gate on `mx_operands` ALONE. It is attached by the grading runner from the capsule's own golden
+        # (capsule_golden.mx_operands returns None for a non-MX golden), so it is authoritative about
+        # whether THIS CAPSULE is block-scaled.
+        #
+        # The previous condition also required `is_mx_cb(cb)`, which inspects the dtype string the AGENT
+        # wrote into its command buffer -- so the agent's spelling chose the grading path. Measured live:
+        # one arm spelled the operand `f8E4M3FN` and another `mxfp8` for the SAME capsule
+        # (R5_mx_tile_mxfp8); only the first matched, so the second silently took the fork-free path and
+        # failed a capsule it could not win. Worse, the registry says `f8E4M3FN` is per-tensor OCP fp8 and
+        # NOT block-scaled at all, while `mxfp8` is exactly `mx_block`/`block_e8m0` -- so the string test
+        # was matching the wrong formats in both directions.
         _mxprog = None
-        if _mx.is_mx_cb(cb) and cb.get("mx_operands"):
+        if cb.get("mx_operands"):
             try:
                 _mxprog = _mx.emit_mx_kernel(cb["mx_operands"], _mx.mx_output_name(cb))
-            except Exception:  # noqa: BLE001 — emitter fails closed (e.g. fp6/fp4 flash); grade normally
+            except Exception as _mxe:  # noqa: BLE001 — emitter fails closed (e.g. fp6/fp4 flash)
+                # Do NOT swallow this silently: a fall-through here grades the submission on operands it
+                # cannot use, which is the failure this whole branch exists to prevent. Record why.
                 _mxprog = None
+                _mx_refusal = f"{type(_mxe).__name__}: {_mxe}"
         if _mxprog is not None:
             _elf, _tc = muon.compile_for_oracle(_mxprog, workdir, target=target)
             elf, toolchain = _elf, f"mx-reference-kernel(not-the-submission;{_tc})"

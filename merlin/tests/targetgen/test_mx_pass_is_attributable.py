@@ -54,13 +54,17 @@ def test_the_mx_branch_precedes_the_artifact_branch():
     tree = ast.parse(src)
     mx_line = mlir_line = None
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr == "is_mx_cb" and mx_line is None:
+        # the MX gate is the assignment of _mxprog; it keys off the golden-derived mx_operands bundle
+        # rather than any dtype the agent wrote (see test_mx_route_is_spelling_independent).
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "_mxprog" for t in node.targets):
+            if mx_line is None:
                 mx_line = node.lineno
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             if node.func.attr == "is_mlir_artifact" and mlir_line is None:
                 mlir_line = node.lineno
     assert mx_line is not None, "the MX route disappeared from the oracle adapter"
     assert mlir_line is not None, "the MLIR artifact branch disappeared"
     assert mx_line < mlir_line, (
-        "is_mx_cb must be tested before is_mlir_artifact, or an MLIR submission skips the MX reference "
+        "the MX route must be decided before is_mlir_artifact, or an MLIR submission skips the reference "
         "kernel and the capsule becomes unwinnable again")

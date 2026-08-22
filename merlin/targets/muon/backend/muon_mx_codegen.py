@@ -27,8 +27,21 @@ _DTYPE = {"fp8": "FP8", "fp6": "FP6", "fp4": "FP4"}
 def is_mx_cb(cb: dict) -> bool:
     """True when any operand tensor is a microscaling float (fp8 E4M3/E5M2, fp6 E3M2, fp4 E2M1) — the block
     scaled MX-PE datapath, which needs the co-model kernel rather than the fp32 LLVM-dialect nest."""
+    from merlin.common import quant_formats as _qf
     for t in (cb.get("tensors") or {}).values():
         dt = str(t.get("dtype", ""))
+        # DERIVED: the format registry knows which formats are block-scaled (kind "mx_block", scale
+        # "block_e8m0"). The prefix test below misses every `mxfp8`/`mxfp6`/`mxfp4` spelling -- the one
+        # the capsules themselves are named after -- and matches `f8E4M3FN`, which the registry classes as
+        # per-tensor OCP fp8 and not block-scaled at all. Kept as a union so nothing that resolved before
+        # stops resolving; the registry is what actually decides.
+        try:
+            _f = _qf.get(dt)
+        except Exception:  # noqa: BLE001 — unknown spelling: fall through to the legacy prefixes
+            _f = None
+        if _f is not None and (getattr(_f, "kind", None) == "mx_block"
+                               or getattr(getattr(_f, "scale", None), "kind", None) == "block_e8m0"):
+            return True
         if dt.startswith("f8E") or dt.startswith("f6E") or dt.startswith("f4E"):
             return True
     return False
