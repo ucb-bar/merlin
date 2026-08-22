@@ -633,7 +633,8 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
                        accum_dtype: str | None = None, simulator: str | None = None,
                        package: str | None = None, epilogue: list | None = None,
                        acc_scale: float | None = None, timeout: int = 900,
-                       _tiled: bool = False) -> list | None:
+                       _tiled: bool = False,
+                       _rescaled: bool = False) -> list | None:
     """Execute ``A @ W`` on the target's mesh oracle with the REAL operand values INJECTED (not
     materialized-from-name), and return the mesh's output tensor (nested list) — or ``None`` when this
     target has no reachable mesh path. ``A`` / ``W`` are the layer's real activations / weights.
@@ -689,6 +690,33 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
         return None                              # no mesh-execution path derived for this endpoint kind
     if out is not None or _tiled:
         return out          # already a tile of a split layer: do not recurse further
+
+    # The datapath has a magnitude floor: a layer whose operands are small is refused, and one doubling
+    # of either operand flips it. Retry once with both operands rescaled to a power of two near 1.0 and
+    # the result divided back. Exact -- a power-of-two factor moves only the exponent -- so this changes
+    # which layers run and not what they compute.
+    if not _rescaled:
+        try:
+            import math as _math
+            _amax = max((abs(v) for row in A for v in row), default=0.0)
+            _wmax = max((abs(v) for row in W for v in row), default=0.0)
+            if _amax > 0.0 and _wmax > 0.0:
+                _i = -int(_math.floor(_math.log2(_amax)))
+                _j = -int(_math.floor(_math.log2(_wmax)))
+                if _i or _j:
+                    _sa, _sw = 2.0 ** _i, 2.0 ** _j
+                    _As = [[v * _sa for v in row] for row in A]
+                    _Ws = [[v * _sw for v in row] for row in W]
+                    _scaled = run_matmul_on_mesh(
+                        target, _As, _Ws, operand_dtype=operand_dtype, accum_dtype=accum_dtype,
+                        simulator=simulator, package=package, timeout=timeout, epilogue=epilogue,
+                        acc_scale=acc_scale, _rescaled=True)
+                    if _scaled is not None:
+                        _inv = 1.0 / (_sa * _sw)
+                        return [[v * _inv for v in row] for row in _scaled]
+        except Exception:                             # noqa: BLE001 — rescale is an optimisation, not a gate
+            pass
+
     # The backend refused this extent. On a target that declares no scratchpad capacity fact there is
     # nothing to derive a tile size FROM, and inventing one would be a target literal in disguise. Find
     # the width this backend accepts by halving, then run the layer as N-tiles of that width: splitting
