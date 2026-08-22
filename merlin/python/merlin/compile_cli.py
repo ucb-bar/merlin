@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import itertools
 import threading
 import json
 import sys
@@ -383,6 +384,7 @@ def _refuse(reason: str):
     return None
 
 
+_MESH_RUN_SEQ = itertools.count()      # one run dir per mesh-layer invocation
 _MESH_NTILE_WIDTH: dict[tuple, int] = {}   # N-tile width a target's backend accepts
 _MESH_PKG_CACHE: dict[str, object] = {}
 _MESH_PKG_LOCK = threading.Lock()
@@ -844,7 +846,12 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | N
                    "required_oracle_tiers": ["L2"]}
         # A run id per LAYER SHAPE: `mesh_layer` was hardcoded, so every layer of a model wrote into one
         # run dir and overwrote the last, leaving nothing to attribute a failure to afterwards.
-        _rid = f"mesh_layer_{len(A)}x{len(A[0]) if A else 0}x{len(W[0]) if W else 0}"
+        # Unique per INVOCATION, not per shape. A model repeats shapes -- small_llama has two 8x128x128
+        # layers and two 8x344x128 -- and a shape-keyed id put each repeat in the first one's directory,
+        # where it collided with the previous run's artifacts and the oracle exited 1. The original bug
+        # was a single hardcoded "mesh_layer" for every layer; keying by shape fixed only distinct shapes.
+        _rid = (f"mesh_layer_{len(A)}x{len(A[0]) if A else 0}x{len(W[0]) if W else 0}"
+                f"_{next(_MESH_RUN_SEQ)}")
         paths = make_run_paths(runs_root(target, "mesh_bsim"), _rid, suite="mesh",
                                target=target, dtype="prog", benchmark=_rid)
         try:
