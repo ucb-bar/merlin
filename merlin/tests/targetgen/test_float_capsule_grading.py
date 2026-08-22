@@ -27,13 +27,18 @@ ATLAS_AT2 = CAPS / "atlas/isa/AT2_single_tile_matmul"          # fp8-e4m3 in / b
 GEMMINI_A2 = CAPS / "isa/A2_single_tile_matmul"                # i8 x i8 -> i32, recomputed golden
 
 
-def _atlas_config() -> RunnerConfig:
-    """An atlas-shaped grading config: the external_backend program oracle is the RTL tier (L3), no RoCC
-    trace gate, output equality is tolerance_float. Mirrors what the atlas harness threads into run_capsule."""
+def _atlas_config(capsule=None) -> RunnerConfig:
+    """An atlas-shaped grading config: the external_backend program oracle is the RTL tier, no RoCC trace
+    gate, output equality is tolerance_float. Mirrors what the atlas harness threads into run_capsule.
+
+    The oracle ladder follows the capsule's own mandatory tiers for the same reason `_oracle_returning`
+    does -- a config that names a fixed tier grades a corpus that has since moved on."""
+    tiers = tuple(t for t in (capsule or {}).get("required_oracle_tiers", ["L3"])
+                  if t not in ("L0", "L1")) or ("L3",)
     return RunnerConfig(
         target="atlas", suite="atlas-capsule-bench", dtype="fp8_e4m3",
-        fourth_output_name="kernel.S", tier_sim={"L3": "atlas-arc"},
-        rtl_tiers=frozenset({"L3"}), oracle_tiers=("L3",), perf_fields=(), trace_gate=None)
+        fourth_output_name="kernel.S", tier_sim={t: "atlas-arc" for t in tiers},
+        rtl_tiers=frozenset(tiers), oracle_tiers=tiers, perf_fields=(), trace_gate=None)
 
 
 # --------------------------------------------------------------------------------------------
@@ -99,10 +104,19 @@ def _stub_front_half(monkeypatch):
     return cb
 
 
-def _oracle_returning(outputs):
+def _oracle_returning(outputs, capsule=None):
+    """Supply an oracle for every MANDATORY tier the capsule declares, not a hardcoded one.
+
+    Hardcoding {"L3": ...} made this test read the corpus of the day it was written: when AT2 later
+    declared L4 mandatory as well, the run correctly came back `incomplete` ("mandatory tier L4 did not
+    run") and the test failed -- reporting a corpus change as a grading defect. The tiers under test are
+    the ones the capsule asks for, so derive them; the integer floor (L0/L1) is skipped as N/A on a float
+    datapath and needs no adapter.
+    """
     def run(cb, llvm_text, workdir, timeout):
         return {"outputs": copy.deepcopy(outputs), "cycles": 123, "oracle": "atlas-arc-test"}
-    return {"L3": run}
+    tiers = [t for t in (capsule or {}).get("required_oracle_tiers", ["L3"]) if t not in ("L0", "L1")]
+    return {t: run for t in tiers or ["L3"]}
 
 
 def test_float_run_capsule_grades_pass(tmp_path, monkeypatch):
@@ -111,7 +125,7 @@ def test_float_run_capsule_grades_pass(tmp_path, monkeypatch):
     gold = CG.golden(cap)
 
     res = CR.run_capsule(cap, "unused-package", runs_root=tmp_path, run_id="AT2_pass",
-                         config=_atlas_config(), oracle_adapters=_oracle_returning(gold))
+                         config=_atlas_config(cap), oracle_adapters=_oracle_returning(gold, cap))
 
     assert res["status"] == "pass", res.get("failure")
     # integer floor is honestly skipped (N/A for float), not failed.
@@ -134,7 +148,7 @@ def test_float_run_capsule_grades_fail_on_mismatch(tmp_path, monkeypatch):
     bad["Y0"][0][0] += 100.0                                    # outside tolerance
 
     res = CR.run_capsule(cap, "unused-package", runs_root=tmp_path, run_id="AT2_fail",
-                         config=_atlas_config(), oracle_adapters=_oracle_returning(bad))
+                         config=_atlas_config(cap), oracle_adapters=_oracle_returning(bad, cap))
 
     assert res["status"] == "fail"
     assert res["tiers"]["L3"]["status"] == "fail"
