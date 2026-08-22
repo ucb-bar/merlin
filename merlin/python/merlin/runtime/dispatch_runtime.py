@@ -646,6 +646,18 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             except Exception:                                  # noqa: BLE001
                 _why = "no reason recorded"
             mesh_counts.setdefault("mesh_fallback_shapes", []).append(f"{_sh}: {_why}")
+            # Capture the operands HERE, where they are already numpy arrays, rather than deeper in the
+            # oracle path where an earlier attempt to do it failed silently. A layer that fails inside a
+            # model and runs standalone differs only in the values it was handed.
+            try:
+                import tempfile as _tf
+                _n = len(mesh_counts["mesh_fallback_shapes"])
+                _p = Path(_tf.gettempdir()) / f"fallback_operands_{_n}.npz"
+                np.savez_compressed(_p, A=a, W=b)
+                mesh_counts.setdefault("mesh_fallback_operands", []).append(str(_p))
+            except Exception as _oe:                   # noqa: BLE001
+                mesh_counts.setdefault("mesh_fallback_operands", []).append(
+                    f"capture failed: {type(_oe).__name__}: {_oe}")
             execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
         model = kernel_model(symbol)
         args, keep = [], []

@@ -893,8 +893,16 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | N
                                      A=_np.asarray(A, dtype=_np.float64),
                                      W=_np.asarray(W, dtype=_np.float64),
                                      operand_dtype=str(operand_dtype), accum_dtype=str(accum_dtype))
-            except Exception:                         # noqa: BLE001
-                _dump = None
+            except Exception as _de:                  # noqa: BLE001
+                # Say WHY the diagnostic write failed. Swallowing this is the same mistake the reason
+                # recording exists to fix: the operand dump silently never appeared and the next run was
+                # spent discovering that, not diagnosing the layer.
+                try:
+                    _dump.write_text(f"{type(_e).__name__}: {_e}\n\n"
+                                     f"[operand dump failed: {type(_de).__name__}: {_de}]",
+                                     encoding="utf-8")
+                except Exception:                     # noqa: BLE001
+                    _dump = None
             return _refuse(f'the oracle raised {type(_e).__name__}: {str(_e)[:1500]}'
                            f'{f" [full: {_dump}]" if _dump else ""}')
         outs = res.get("outputs") or {}
