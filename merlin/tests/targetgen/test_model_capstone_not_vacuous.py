@@ -178,3 +178,61 @@ def test_an_ungrounded_capstone_records_why():
             continue
         assert sem.get("not_asserted_reason"), \
             f"{t}/{cap['name']}: must_accelerate withheld with no reason recorded"
+
+
+# --- the tier verdict must follow the tiles, and a failing tier must not pass --------------------
+
+def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3")):
+    """Drive the tier-derivation block with a synthetic mesh_execution record."""
+    from merlin import compile_cli as CCLI
+    from merlin.targetgen import capsule_runner as CR
+
+    capsule = {"name": "M_probe", "kind": "model",
+               "operation": {"op": "model", "attributes": {"model": "probe", "compile_dtype": "int8",
+                                                           "dtype": "i8"}},
+               "required_oracle_tiers": list(declared),
+               "semantic": {"semantic_family": "contraction", "must_accelerate": True}}
+    out = {"status": "verified", "verify": {"gate_ok": True}, "mesh_execution": mesh_exec}
+    # `_grade_model_capsule` imports compile_model INSIDE the function, so the module attribute is what
+    # has to move.
+    real = CCLI.compile_model
+    CCLI.compile_model = lambda *a, **k: out
+    try:
+        return CR._grade_model_capsule(capsule, target="gemmini", timeout=1)
+    finally:
+        CCLI.compile_model = real
+
+
+def test_a_tier_passes_when_every_tile_passed():
+    r = _grade_with({"n_tiles": 15, "n_passed": 15, "n_failed": 0,
+                     "n_unavailable": 0, "n_unsynthesizable": 0})
+    assert r["tiers"] == {"L3": "pass"}, r["tiers"]
+    assert r["status"] == "pass", r
+
+
+def test_a_tier_that_ran_and_failed_is_not_a_pass():
+    """The contradiction this guards: `status: pass` printed beside `tiers: {L3: fail}`, with the
+    flattering half being the one a reader takes away."""
+    r = _grade_with({"n_tiles": 15, "n_passed": 14, "n_failed": 1,
+                     "n_unavailable": 0, "n_unsynthesizable": 0})
+    assert r["tiers"] == {"L3": "fail"}, r["tiers"]
+    assert r["status"] == "fail", r
+    assert r["failure"]["category"] == "FUNCTIONAL_MISMATCH"
+
+
+@pytest.mark.parametrize("key", ["n_unavailable", "n_unsynthesizable"])
+def test_an_unrun_tile_is_not_counted_as_a_pass(key):
+    """NOT-RUN-IS-NOT-PASS at tile granularity: a layer the oracle could not run leaves the model's
+    accelerator claim unproven, so the tier cannot pass on the strength of the tiles that did run."""
+    r = _grade_with({"n_tiles": 15, "n_passed": 14, "n_failed": 0,
+                     "n_unavailable": 0, "n_unsynthesizable": 0, key: 1})
+    assert r["tiers"] == {"L3": "fail"}, r["tiers"]
+    assert r["status"] == "fail", r
+
+
+def test_no_tiles_at_all_is_reported_unknown_not_failed():
+    """Distinct from a failing tier: nothing ran, so there is no verdict to report either way."""
+    r = _grade_with({"n_tiles": 0, "n_passed": 0, "n_failed": 0})
+    assert r["tiers"] == {}
+    assert r["status"] == "incomplete"
+    assert r["failure"]["category"] == "NOT_RUN_IS_NOT_PASS"

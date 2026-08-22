@@ -101,6 +101,7 @@
         "semantic_family": {"type": "string", "enum": ["contraction", "reduction", "elementwise_map", "movement", "synchronization", "attention", "normalization", "softmax"]},
         "eligible": {"oneOf": [{"type": "boolean"}, {"type": "string", "enum": ["auto"]}]},
         "must_accelerate": {"type": "boolean"},
+        "not_asserted_reason": {"type": "string", "description": "why must_accelerate is NOT asserted: the demand could not be grounded in the target's own capabilities, so no acceleration is required of a submission. Recorded rather than left implicit — an absent must_accelerate reads identically whether the author decided against it or the derivation failed."},
         "fallback_allowed": {"type": "boolean"},
         "generalization_axis": {"type": "string", "enum": ["seen", "shape", "layout", "dtype", "surface", "composition", "fusion", "model", "kernel"]}
       },

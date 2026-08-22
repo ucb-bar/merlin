@@ -62,3 +62,9 @@ linalg_mlir: capsule.interface.mlir
 semantic:
   fallback_allowed: true
   generalization_axis: model
+  semantic_family: contraction
+  must_accelerate: false
+  eligible: auto
+  not_asserted_reason: the accelerator demand could not be derived from this model's
+    linalg against this target's declared capabilities and role census, so must_accelerate
+    is withheld rather than asserted ungrounded

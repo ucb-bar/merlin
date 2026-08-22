@@ -1008,12 +1008,43 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     if n_tiles:
         # The mesh oracle is this target's RTL tier; name it from the capsule's own declaration rather
         # than assuming a tier label, so a target with a different ladder is described correctly.
+        #
+        # The verdict comes from the per-tile COUNTS. Reading a boolean `ok` key -- which this dict does
+        # not carry -- made every on-mesh execution record "fail", including one where all 15 layers
+        # passed on the oracle. A tile that was unavailable or unsynthesizable is NOT a pass either, so
+        # the tier passes only when every tile is accounted for and every one of them passed.
+        _passed = int(mesh_exec.get("n_passed") or 0)
+        _failed = int(mesh_exec.get("n_failed") or 0)
+        _unavail = int(mesh_exec.get("n_unavailable") or 0)
+        _unsynth = int(mesh_exec.get("n_unsynthesizable") or 0)
+        _ok = mesh_exec.get("ok")
+        _tier_ok = bool(_ok) if _ok is not None else (
+            _failed == 0 and _unavail == 0 and _unsynth == 0 and _passed == n_tiles)
         _rtl = [x for x in declared if x not in ("L0", "L1")]
-        exercised[_rtl[-1] if _rtl else "L3"] = "pass" if mesh_exec.get("ok") else "fail"
+        exercised[_rtl[-1] if _rtl else "L3"] = "pass" if _tier_ok else "fail"
     result["tiers"] = exercised
     result["op_coverage"] = {"note": "the op-pass fraction this capsule was gated on is OP COVERAGE, "
                                      "not a verdict on the model"}
     unexercised = [x for x in declared if x not in exercised]
+
+    # A tier that RAN AND FAILED is not a pass, whatever the host-side numeric gate says. The guard below
+    # only refuses the case where nothing ran at all, so a failing accelerator tier still reported
+    # `status: pass` beside `tiers: {L3: fail}` -- the two halves of the same result contradicting each
+    # other, with the flattering half being the one anybody reads.
+    _failed_tiers = sorted(t for t, v in exercised.items() if v != "pass")
+    if _failed_tiers:
+        result.update(status="fail",
+                      numeric={"status": "not_compared", "engine": engine},
+                      failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
+                               "detail": f"declared oracle tier(s) {_failed_tiers} RAN and did not pass "
+                                         f"(on-mesh execution: {mesh_exec.get('n_passed')} of "
+                                         f"{n_tiles} tile(s) passed, {mesh_exec.get('n_failed')} failed, "
+                                         f"{mesh_exec.get('n_unavailable')} unavailable, "
+                                         f"{mesh_exec.get('n_unsynthesizable')} unsynthesizable); a "
+                                         f"whole-model verdict cannot be a pass over a failing tier"})
+        if unexercised:
+            result["tiers_unexercised"] = unexercised
+        return result
 
     if declared and not exercised:
         result.update(status="incomplete",

@@ -135,6 +135,16 @@ def test_atlas_asm_mnemonics_and_reference_kernel_classes_derive():
         assert "MXUMatMul" in classes, f"{k.name}: matmul class missing from {classes}"
 
 
+def _atlas_binding():
+    """The same per-target binding the corpus generator uses (carries the class deriver)."""
+    import yaml as _y
+    from merlin.targetgen import corpus_spec as _CS
+    from merlin.targetgen.target_experiment import load_target_experiment as _lte
+    prof = merlin_dir() / "contract/capsules/profiles/atlas.yaml"
+    datapath = (_y.safe_load(prof.read_text()) or {}).get("datapath") or {}
+    return _CS.derive_binding(_lte(_ATLAS), datapath)
+
+
 def test_committed_atlas_corpus_matches_the_live_derivation():
     """The atlas capsules' expected.instruction_classes must EQUAL the live derivation — so the corpus is
     derived-and-enforced (never silently re-hardcoded, and an ISA change surfaces as drift here)."""
@@ -152,9 +162,25 @@ def test_committed_atlas_corpus_matches_the_live_derivation():
         modes = (doc.get("expected") or {}).get("modes", {}) or {}
         movement = op in ("movement", "copy") or bool(modes.get("movement"))
         out_dt = attrs.get("output_dtype") or (doc.get("numeric_policy") or {}).get("dtype", "bf16")
+        got = (doc.get("expected") or {}).get("instruction_classes")
+
+        if doc.get("kind") == "model":
+            # A WHOLE-MODEL capsule is derived differently, and must be — ``model`` is not a semantic
+            # family and never will be, so ``required_classes_for_op(op="model")`` correctly yields
+            # nothing. Its demand comes from the MODEL's own captured linalg crossed with this target's
+            # capabilities and role census. Re-deriving it the same way the generator does keeps the
+            # derived-and-enforced property for the capstone instead of exempting the one capsule the
+            # whole suite builds toward.
+            from merlin.targetgen.capsule_source import model_accelerator_demand
+            lin = cy.parent / str(doc.get("linalg_mlir") or doc.get("interface_mlir") or "")
+            if not lin.is_file():
+                continue
+            _fam, want = model_accelerator_demand(lin.read_text(), _atlas_binding())
+            assert got == want, f"{cy.parent.name}: corpus classes {got} != model-derived {want}"
+            continue
+
         want = IT.required_classes_for_op(tax, op=op, output_dtype=out_dt,
                                           epilogue=tuple(attrs.get("epilogue", []) or []), movement=movement)
-        got = (doc.get("expected") or {}).get("instruction_classes")
         assert got == want, f"{cy.parent.name}: corpus classes {got} != derived {want}"
         # the fabricated taxonomy must be gone
         assert not ({"CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"} & set(got or []))
