@@ -621,7 +621,7 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
                        accum_dtype: str | None = None, simulator: str | None = None,
                        package: str | None = None, epilogue: list | None = None,
                        acc_scale: float | None = None, timeout: int = 900,
-                       _padded: bool = False) -> list | None:
+                       _tiled: bool = False) -> list | None:
     """Execute ``A @ W`` on the target's mesh oracle with the REAL operand values INJECTED (not
     materialized-from-name), and return the mesh's output tensor (nested list) — or ``None`` when this
     target has no reachable mesh path. ``A`` / ``W`` are the layer's real activations / weights.
@@ -675,8 +675,8 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
                                          package=package, timeout=timeout)
     else:
         return None                              # no mesh-execution path derived for this endpoint kind
-    if out is not None or _padded:
-        return out
+    if out is not None or _tiled:
+        return out          # already a tile of a split layer: do not recurse further
     # The backend refused this extent. On a target that declares no scratchpad capacity fact there is
     # nothing to derive a tile size FROM, and inventing one would be a target literal in disguise. Find
     # the width this backend accepts by halving, then run the layer as N-tiles of that width: splitting
@@ -700,7 +700,7 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
             probe = run_matmul_on_mesh(target, A, [row[:w] for row in W],
                                        operand_dtype=operand_dtype, accum_dtype=accum_dtype,
                                        simulator=simulator, package=package, timeout=timeout,
-                                       epilogue=epilogue, acc_scale=acc_scale, _padded=True)
+                                       epilogue=epilogue, acc_scale=acc_scale, _tiled=True)
             if probe is not None:
                 width = w
                 break
@@ -714,7 +714,7 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
         piece = run_matmul_on_mesh(target, A, [row[a:b] for row in W],
                                    operand_dtype=operand_dtype, accum_dtype=accum_dtype,
                                    simulator=simulator, package=package, timeout=timeout,
-                                   epilogue=epilogue, acc_scale=acc_scale, _padded=True)
+                                   epilogue=epilogue, acc_scale=acc_scale, _tiled=True)
         if piece is None:
             return None                          # a tile the discovered width should have covered
         cols.append(piece)
@@ -735,7 +735,7 @@ def _mesh_rows(target, A, W, *, operand_dtype, accum_dtype, simulator, package, 
         probe = run_matmul_on_mesh(target, A[:height], W, operand_dtype=operand_dtype,
                                    accum_dtype=accum_dtype, simulator=simulator, package=package,
                                    timeout=timeout, epilogue=epilogue, acc_scale=acc_scale,
-                                   _padded=True)
+                                   _tiled=True)
         if probe is not None:
             break
     else:
@@ -745,7 +745,7 @@ def _mesh_rows(target, A, W, *, operand_dtype, accum_dtype, simulator, package, 
         piece = run_matmul_on_mesh(target, A[a:a + height], W, operand_dtype=operand_dtype,
                                    accum_dtype=accum_dtype, simulator=simulator, package=package,
                                    timeout=timeout, epilogue=epilogue, acc_scale=acc_scale,
-                                   _padded=True)
+                                   _tiled=True)
         if piece is None:
             return None
         rows.extend(piece)
