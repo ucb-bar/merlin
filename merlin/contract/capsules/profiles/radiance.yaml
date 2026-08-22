@@ -253,6 +253,13 @@ capsules:
    source_role: pytorch_model_slice,
    source_reference: hidden MX flash attention (mxfp4, unseen Skv=64/Dv=32 shape), label: hidden, modes: {}}
 # PyTorch-sourced hidden holdouts (source: pytorch) — unseen shapes/ops for the frontend-faithful path.
+# Held-out MOVEMENT. Declared under simt_cluster's semantic_capabilities and never exercised. A load->
+# store capsule computes nothing, which is exactly the point: the datapath's only job is to carry the
+# operand without corrupting it, and the corpus had no capsule that checked that at all.
+- {cat: hidden, name: RPH5_movement_fp32_hidden, kind: model_slice, op: movement, operand_dtype: f32,
+   M: 24, N: 48, src: X, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: hidden load-store movement (unseen 24x48 shape), label: hidden, modes: {movement: true}}
 # Held-out REDUCTION. The contract declares `reduction` under simt_cluster's semantic_capabilities, but
 # no capsule -- public or hidden -- has ever exercised it, so the corpus cannot say whether the compiler
 # generalizes over a family it claims. Authored hidden so it measures transfer rather than becoming more
