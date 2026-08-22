@@ -307,6 +307,31 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
             "oracle": f"{target}-arc-arcilator-cosim"}
 
 
+def derive_cycle_budget(cb: dict, *, floor: int = 20000, per_element: int = 64) -> int:
+    """A halt budget sized to THIS program's declared work, read off the command buffer's own tensor
+    extents — not a fixed cap.
+
+    The default 20000 is a constant chosen for tile-sized programs. A real model layer is much larger: a
+    32x352x128 matmul needs far more than that, so the oracle stopped it mid-flight and raised
+    ``ProgramDidNotHalt`` — which callers collapsed into "no reachable oracle", i.e. a correct program on a
+    working oracle was reported as a missing oracle. The budget must therefore GROW with the work.
+
+    Derived from the total element count the buffer declares (every element must at minimum be moved once,
+    and a contraction's work is monotone in operand size), scaled by ``per_element`` for slack and floored
+    at the original constant so small programs are unaffected. This is a HANG backstop, not a performance
+    model — over-budgeting a healthy program costs nothing because it halts on its own, while the wall-clock
+    ``timeout`` remains the outer backstop. Opcode-agnostic by construction: it reads tensor shapes only,
+    never a command spelling."""
+    total = 0
+    for spec in (cb.get("tensors") or {}).values():
+        shape = spec.get("shape") or []
+        n = 1
+        for d in shape:
+            n *= max(1, int(d))
+        total += n
+    return max(int(floor), int(floor) + per_element * total)
+
+
 def program_oracle_adapter(target: str, *, model_ext: str) -> Callable:
     """An oracle adapter (the ``run(cb, fourth_text, workdir, timeout)`` shape ``capsule_runner`` expects)
     for an ``external_backend`` target. ``fourth_text`` is the agent's emitted ``kernel.S``."""
@@ -316,7 +341,8 @@ def program_oracle_adapter(target: str, *, model_ext: str) -> Callable:
         if fourth_text:
             ks.write_text(fourth_text)
         return run_program_oracle(target, model_ext=model_ext, cb=cb, kernel_s=ks,
-                                  workdir=wd, timeout=timeout)
+                                  workdir=wd, timeout=timeout,
+                                  max_cycles=derive_cycle_budget(cb))
     return run
 
 

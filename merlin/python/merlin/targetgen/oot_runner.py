@@ -548,8 +548,13 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         # K7/K8: oracle (skip-if-unavailable)
         if gem.available(simulator):
             try:
+                # The SAME operands the reference and the simulator were given. Without this the
+                # device materialized every leaf from its name while K5 above compared reference and
+                # simulate over the INJECTED values, so any caller injecting real operands failed the
+                # three-way gate by construction -- and the failure was attributed to the target.
                 res = oot_compile.run_on_oracle(cb, p.stdout, simulator=simulator, target=target,
-                                                workdir=paths.generated, timeout=timeout)
+                                                workdir=paths.generated, timeout=timeout,
+                                                inputs=inputs)
             except Exception as e:
                 raise CertFailure("oracle_rtl", FailureCategory.TOOL_CRASH,
                                   f"oracle {simulator} invocation failed: {str(e)[-800:]}") from e

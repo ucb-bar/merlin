@@ -160,3 +160,89 @@ def test_whole_model_matmuls_on_gemmini_mesh_bit_exact():
     assert res["exact"] is True                       # int mesh reproduces the f32 reference bit-for-bit
     assert res["n_mesh"] == 2 and res["n_scalar"] == 2
     assert all(layer["oracle"] == "ok" for layer in res["per_layer"])
+
+
+# --- the same run, for ANY target, with its datapath READ off the target -------------------------
+#
+# The test above pins one target by name and hands the call that target's dtypes ("i8"/"i32") and its
+# simulator ("spike") as literals. That is legitimate for a named regression, but it means the whole-model
+# claim was only ever exercised on one device, and adding a second one meant copying the test. The
+# parametrized form below derives the datapath instead, so a target enters the whole-model claim by
+# existing rather than by being named here.
+#
+# The exactness assertion is derived too, and this is the part a copied test would have got wrong: an
+# INTEGER mesh reproduces the small-integer reference bit-for-bit, a FLOAT mesh cannot be asked to. The
+# expectation follows the target's own datapath rather than the first target's.
+_WHOLE_MODEL_TARGETS = ("gemmini", "atlas")
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("target", _WHOLE_MODEL_TARGETS)
+def test_whole_model_matmuls_run_on_any_targets_mesh(target):
+    from merlin import compile_cli
+    from merlin.runtime.dispatch_runtime import mesh_datapath
+
+    from merlin.compile_cli import _mesh_tile_binding
+    from merlin.targetgen.capsule_runner import _TIER_SIM, oracle_adapters
+
+    try:
+        op_dt, acc_dt, integer, _spelling = mesh_datapath(target)
+    except Exception as e:                                   # noqa: BLE001 — unresolvable target
+        pytest.skip(f"{target}: no derivable mesh datapath ({type(e).__name__}: {e})")
+
+    # The cheapest tier this target actually resolves, through the shared tier->simulator map. Naming a
+    # simulator instead is what limited the original test to one device: the call defaults to the RTL
+    # simulator, so a target whose functional tier is the cheap one simply reported "no reachable oracle".
+    tiers = sorted(oracle_adapters(target) or {})
+    sim = _TIER_SIM.get(tiers[0]) if tiers else None
+
+    # Size the layers to the target's OWN tile edge. A fixed 4x4 is below one tile on a wider mesh, and a
+    # generated package is entitled to reject a sub-tile shape (measured: one divides by a bank count that
+    # is 0 there). The claim under test is "a whole model runs on this mesh", not "on a 4x4".
+    edge = _mesh_tile_binding(target, None, None).tile_dim
+    res = compile_cli.run_whole_model_on_mesh(
+        target, _vecblock("add", True, m=edge, k=edge), in_fmt=op_dt, weight_fmt=op_dt,
+        operand_dtype=op_dt, accum_dtype=acc_dt, simulator=sim,
+        ref_target=_REF_TARGET, seed=0, timeout=3600)
+
+    if res["status"] == "oracle_unavailable":
+        pytest.skip(f"{target}: {res.get('reason', 'mesh oracle unavailable')}")
+    assert res["status"] == "pass", res
+    assert res["n_mesh"] == 2 and res["n_scalar"] == 2
+    assert all(layer["oracle"] == "ok" for layer in res["per_layer"]), res["per_layer"]
+    if integer:
+        assert res["exact"] is True, \
+            f"{target}: an integer mesh must reproduce the small-integer reference bit-for-bit"
+
+    # The report must name the executor that ACTUALLY ran, not the one requested. Two of the three
+    # dispatch paths ignore ``simulator`` (a self-hosted-ISA target runs on its mlc-derived cosim, an
+    # exclusive bespoke sim on its own engine), so recording the request as the device named a simulator
+    # that never ran -- measured: atlas reported "spike" for work done on its arc cosim.
+    assert res["mesh_executors"], f"{target}: layers ran but no executor was recorded: {res}"
+    for lay in res["per_layer"]:
+        assert lay["executed_on"], f"{target}: layer {lay['index']} ran with no executor recorded: {lay}"
+        assert lay["path"], f"{target}: layer {lay['index']} ran with no dispatch path recorded: {lay}"
+    # and the executor identity is the device's, not the bare request token
+    assert all(e != res["simulator_requested"] or lay["path"] == "oot_cert"
+               for e, lay in zip(res["mesh_executors"], res["per_layer"])), res
+
+
+def test_an_unreachable_mesh_records_no_executor():
+    """FAIL-CLOSED report shape: a run whose layers never reach an oracle must report an EMPTY executor
+    list, never the requested simulator. Naming the request there is what let a skipped run read as a run
+    on the named device."""
+    from merlin import compile_cli
+    from merlin.targetgen import mesh_program_run as mp
+
+    called: list = []
+
+    def _never(lhs, rhs, step):
+        called.append(step.index)
+        raise mp.MeshLayerUnavailable(step.index, step.m, step.k, step.n)
+
+    mod = _vecblock("add", True)
+    prog = _program(mod)
+    with pytest.raises(mp.MeshLayerUnavailable):
+        mp.run_whole_model_program(prog, _seed_leaves(prog), mesh_exec=_never)
+    assert called, "the injected executor was never reached"
+    assert hasattr(compile_cli, "run_whole_model_on_mesh")

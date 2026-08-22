@@ -30,7 +30,8 @@ def llvm_mlir_to_object(lowered_mlir_text: str, workdir: Path) -> Path:
     return Path(codegen.compile_ll(workdir / "kernel.ll", workdir / "kernel.o", "riscv"))
 
 
-def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str) -> Path:
+def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
+             inputs: dict | None = None) -> Path:
     """Build the runner-owned harness from ``cb`` and link it with the package object -> ELF.
 
     Orchestration only: the harness TEXT comes from ``target``'s declared harness ABI and the BUILD
@@ -40,7 +41,21 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str) -> Pa
     """
     from merlin.runtime.backends import base as _backends
     recipe = _backends.harness_build_recipe(target)
-    harness = _backends.harness_renderer(target)(cb, target=target)
+    # ``inputs`` INJECTS the caller's real operands into the device harness. A renderer written before
+    # this parameter existed still works and still materializes from names -- but silently doing that
+    # while the reference and simulator use injected data produces a guaranteed three-way mismatch that
+    # reads as a functional failure of the TARGET, so an injecting caller is told instead.
+    _render = _backends.harness_renderer(target)
+    if inputs:
+        import inspect
+        if "inputs" not in inspect.signature(_render).parameters:
+            raise NotImplementedError(
+                f"backend for target {target!r} declares a render_harness that cannot take `inputs`, so "
+                f"the device would compute on name-materialized operands while the reference and the "
+                f"simulator use the injected ones. Add an `inputs` parameter to its render_harness.")
+        harness = _render(cb, target=target, inputs=inputs)
+    else:
+        harness = _render(cb, target=target)
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
     # Linker load address DERIVED from the RTL memory map (platform DRAM base), reusing the curated
     # script's proven section layout but replacing its BAKED origin — so the base is a HW fact, not a
@@ -56,15 +71,17 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str) -> Pa
 
 
 def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
-                           workdir: str | Path | None = None, *, target: str) -> Path:
+                           workdir: str | Path | None = None, *, target: str,
+                           inputs: dict | None = None) -> Path:
     """Full package-lowered-MLIR -> rv64 ELF (object + runner harness + link)."""
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_compile_"))
     obj = llvm_mlir_to_object(lowered_mlir_text, work)
-    return link_elf(cb, obj, work, target=target)
+    return link_elf(cb, obj, work, target=target, inputs=inputs)
 
 
 def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str, target: str,
-                  workdir: str | Path | None = None, timeout: int = 600) -> dict[str, Any]:
+                  workdir: str | Path | None = None, timeout: int = 600,
+                  inputs: dict | None = None) -> dict[str, Any]:
     """Compile the package's lowered MLIR + run on ``simulator``; return outputs/metrics/console.
 
     ``timing`` splits the work: ``build_s`` (ELF compile/link) and ``sim_active_s`` (the simulator
@@ -76,7 +93,7 @@ def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
     backend = _backends.get_backend(target)
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_run_"))
     _t0 = time.perf_counter()
-    elf = compile_lowered_to_elf(cb, lowered_mlir_text, work, target=target)
+    elf = compile_lowered_to_elf(cb, lowered_mlir_text, work, target=target, inputs=inputs)
     _t1 = time.perf_counter()
     console = backend.run_elf(elf, simulator=simulator, timeout=timeout)
     _t2 = time.perf_counter()

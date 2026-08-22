@@ -16,27 +16,67 @@ from pathlib import Path
 
 
 def _encode_operand(values, dtype: str) -> bytes | None:
-    """Encode a nested-list operand to raw device bytes for the cb's DECLARED dtype (derived from the dtype
-    token, not the target). Returns None for a dtype with no registered byte codec here — fail closed."""
+    """Encode a nested-list operand to raw device bytes for the cb's DECLARED dtype.
+
+    DERIVED FROM THE FORMAT REGISTRY, not from the spelling: the registry knows each format's kind,
+    element width, exponent and mantissa bits, so one dispatch covers every integer width, every IEEE
+    float, and every OCP fp code -- including formats nobody has written a branch for.
+
+    It used to be four hardcoded name comparisons with a fallback that imported
+    ``merlin.targetgen.rtl.fp8_codec.encode_bytes``. That module path does not exist and neither does that
+    function, so the fallback raised ModuleNotFoundError into a bare ``except`` and returned None for
+    EVERY float format. Fail-closed reporting then turned that into "no reachable oracle", so the whole
+    float-datapath mesh path looked unavailable rather than unimplemented, on every target that uses it.
+
+    Returns ``None`` (fail closed) for a format with no derivable byte encoding -- a sub-byte format,
+    whose packing is a layout decision this function must not guess at.
+    """
     import numpy as np
+
+    from merlin.common import quant_formats as qf
+
     a = np.array(values, dtype=np.float64)
-    if dtype in ("i8", "int8"):
-        return np.clip(np.rint(a), -128, 127).astype("<i1").tobytes()
-    if dtype in ("u8", "uint8"):
-        return np.clip(np.rint(a), 0, 255).astype("<u1").tobytes()
-    if dtype in ("i32", "int32"):
-        return np.rint(a).astype("<i4").tobytes()
-    if dtype in ("f32", "float32"):
-        return a.astype("<f4").tobytes()
-    try:                                             # fp8 / bf16 / fp16 via the derived float codec
-        from merlin.targetgen.rtl.fp8_codec import encode_bytes as _fp_encode
-        return _fp_encode(a, dtype)
-    except Exception:                                # noqa: BLE001 — no codec for this dtype: fail closed
+    if not qf.has(dtype):
         return None
+    f = qf.get(dtype)
+    bits = int(f.element_bits or 0)
+    if bits % 8 or bits == 0:
+        return None                                  # sub-byte: packing is not this function's call
+
+    if f.kind == "int_affine":
+        lo, hi = ((-(2 ** (bits - 1)), 2 ** (bits - 1) - 1) if f.signed else (0, 2 ** bits - 1))
+        code = "<i" if f.signed else "<u"
+        return np.clip(np.rint(a), lo, hi).astype(f"{code}{bits // 8}").tobytes()
+
+    if f.kind == "float_ieee":
+        if bits == 32:
+            return a.astype("<f4").tobytes()
+        if bits == 64:
+            return a.astype("<f8").tobytes()
+        if bits == 16 and int(f.exp_bits or 0) == 5:
+            return a.astype("<f2").tobytes()         # IEEE half
+        if bits == 16 and int(f.exp_bits or 0) == 8:
+            # bfloat16 is the top half of the fp32 word, round-to-nearest-even on the dropped half.
+            u = a.astype("<f4").view("<u4").astype(np.uint32)
+            rounded = (u + 0x7FFF + ((u >> 16) & 1)) >> 16
+            return rounded.astype("<u2").tobytes()
+        return None
+
+    if f.kind == "fp_ocp":
+        from merlin.targetgen.fp8_codec import ocp_encode
+        eb, mb = int(f.exp_bits or 0), int(f.mant_bits or 0)
+        if not eb or bits != 8:
+            return None
+        flat = [ocp_encode(float(v), eb, mb) for v in a.reshape(-1)]
+        return bytes(bytearray(flat))
+
+    return None
 
 
 def matmul_on_program_oracle(target: str, interface_mlir: str, A, W, *, model_ext: str,
-                             package: str | None, timeout: int = 900) -> list | None:
+                             package: str | None, timeout: int = 900,
+                             dtype_hint: str | None = None,
+                             observed: dict | None = None) -> list | None:
     """Emit the target's matmul kernel from ``interface_mlir`` via its generated package, inject ``A``/``W``
     onto the command buffer, run the mlc-derived program oracle, and return the output tensor (nested list)
     or ``None`` (fail closed). Target-agnostic — the target only enters as the parameter that selects its own
@@ -45,7 +85,7 @@ def matmul_on_program_oracle(target: str, interface_mlir: str, A, W, *, model_ex
         return None
     from . import capsule_common as CC
     from . import program_oracle as PO
-    from .benchharness import runs_root
+    from ..benchharness import runs_root
     from .capsule_common import make_run_paths
 
     with tempfile.TemporaryDirectory(prefix="mesh_prog_") as td:
@@ -59,8 +99,23 @@ def matmul_on_program_oracle(target: str, interface_mlir: str, A, W, *, model_ex
                    "required_oracle_tiers": ["L3"]}
         paths = make_run_paths(runs_root(target, "mesh_prog"), "mesh_layer", suite="mesh",
                                target=target, dtype="prog", benchmark="mesh_layer")
+        # The emitted-artifact name is the TARGET's, not a constant: a self-hosted-ISA target emits an
+        # assembly kernel where a RoCC target emits LLVM-dialect MLIR. Read it from the same runner config
+        # the grader uses rather than naming one.
+        from .capsule_runner import _config_for_target
         try:
-            _pkg, cb, kernel_text = CC.run_entrypoints(None, package, capsule, paths, timeout=timeout)
+            _fourth = _config_for_target(target, None, dtype_hint or "int8").fourth_output_name
+        except Exception:                            # noqa: BLE001 — no runner config: cannot emit here
+            return None
+        try:
+            _pkg, cb, kernel_text = CC.run_entrypoints(None, package, capsule, paths, contract=None,
+                                                       timeout=timeout, fourth_output_name=_fourth)
+        except (TypeError, AttributeError, ImportError, NameError):
+            # OUR bug, not the target's. These were swallowed into the same `None` as a genuine
+            # unavailability, and the caller reports None as "no reachable oracle in this env" -- so a
+            # wrong call signature here presented as a missing oracle and this path never ran at all
+            # on any target that uses it. Re-raised so a defect in the runner is attributed to the runner.
+            raise
         except Exception:                            # noqa: BLE001 — package can't emit this kernel: honest None
             return None
         if cb is None or not kernel_text:
@@ -77,10 +132,21 @@ def matmul_on_program_oracle(target: str, interface_mlir: str, A, W, *, model_ex
                 tspec["preload_b64"] = base64.b64encode(raw).decode()
 
         run = PO.program_oracle_adapter(target, model_ext=model_ext)
+        odir = tdp / "oracle"
+        odir.mkdir(parents=True, exist_ok=True)      # the adapter writes the emitted kernel into it
         try:
-            res = run(cb, kernel_text, tdp / "oracle", timeout)
+            res = run(cb, kernel_text, odir, timeout)
+        except PO.ProgramDidNotHalt:
+            # A VERDICT about the program, not an absent oracle. ``ProgramDidNotHalt`` subclasses
+            # ``OracleUnavailable``, so catching the parent first reported "no reachable oracle" for a
+            # program that ran and hung -- and the caller turned that into a skip. Re-raise so it is
+            # attributed to the artifact; the cycle budget itself now scales with the declared work
+            # (``derive_cycle_budget``), so reaching this means a genuine hang.
+            raise
         except PO.OracleUnavailable:
             return None
+        if observed is not None and res.get("oracle"):
+            observed["oracle"] = res["oracle"]
         outs = res.get("outputs") or {}
         return next(iter(outs.values()), None)
 

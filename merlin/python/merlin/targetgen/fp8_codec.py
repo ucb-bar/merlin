@@ -166,6 +166,17 @@ def _ocp_fpx_encode(v: float, exp_bits: int, mant_bits: int) -> int:
     return sign | (((e_used + bias) & ((1 << exp_bits) - 1)) << mant_bits) | (mant & mant_max)
 
 
+def ocp_encode(v: float, exp_bits: int, mant_bits: int) -> int:
+    """Encode one value to an OCP fp code of ANY (exp_bits, mant_bits) width — the public form of the
+    generic encoder the named e4m3/fp6/fp4 helpers below are thin wrappers over.
+
+    Exposed because a caller that knows a format only through the quant-format registry has its
+    ``exp_bits``/``mant_bits`` and no reason to know which named helper corresponds. Without this, such a
+    caller either name-matches formats (which is how e5m2 gets encoded as e4m3) or gives up.
+    """
+    return _ocp_fpx_encode(v, exp_bits, mant_bits)
+
+
 def fp6_e3m2_decode(code: int) -> float:
     """Decode a 6-bit FP6 E3M2 code (1 sign | 3 exp | 2 mant, bias 3) to a Python float."""
     return _ocp_fpx_decode(code, exp_bits=3, mant_bits=2)

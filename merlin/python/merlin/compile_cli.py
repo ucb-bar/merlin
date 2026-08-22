@@ -44,6 +44,33 @@ def _bundle_dir(workload: str, dtype: str):
     return resolve(workload, dtype).root
 
 
+def ir_scalar_dtype(bundle: "Path") -> str | None:
+    """The dtype the bundle's IR ACTUALLY carries, read off ``model.mlir`` — the fact that decides which
+    scalar/RVV datapath is correct.
+
+    A bundle's NAME states how the model was quantized; it does not state what the compiled IR contains.
+    A weight-only fake-quant capture stores fp8/int8 weights but emits f32 tensors end to end, so the
+    correct scalar package for it is the f32 one — choosing by the name instead asks for a datapath the IR
+    has no operands for. Returns ``None`` when no known element type dominates, so the caller fails closed
+    rather than guessing.
+
+    Selection is by PRESENCE of the narrowest datapath, not by majority. Every weight-only capture is
+    mostly f32 by count -- an int8 bundle measures 46 i8 tensors against 1190 f32 ones -- so a majority vote
+    hands back f32 and silently drops the int8 datapath the i8 operands require. One tensor of a narrow type
+    means the narrow datapath is needed; only a bundle with none of them is an f32 model.
+
+    Structural, not pattern-matched: it counts occurrences of each known tensor element-type spelling.
+    (No regex — see the repo's no-regex rule.)"""
+    mlir = bundle / "model.mlir"
+    if not mlir.is_file():
+        return None
+    text = mlir.read_text(encoding="utf-8", errors="replace")
+    # spelling in the IR -> the --dtype token that selects its datapath, narrowest datapath first
+    present = [tok for tok in _IR_ELEMENT_ORDER
+               if text.count(f"x{_IR_ELEMENT_SPELLING[tok]}>")]
+    return present[0] if present else None
+
+
 def _ensure_bundle(workload: str, dtype: str, *, auto_capture: bool) -> Path:
     """Resolve the RVV capture bundle, auto-capturing via model2MLIR if absent (and allowed)."""
     bundle = _bundle_dir(workload, dtype)
@@ -114,11 +141,26 @@ def _capture_python(m2m_dir: Path, workload: str) -> Path:
 #: set: fp32, int8_w8a8, bf16_f32acc, fp16_f32acc). "fp16"/"fp8" matched nothing, so
 #: ``select_champion`` raised and the fallback below handed back ``hand_v0`` — an **fp32**
 #: package — which is exactly the cross-datatype substitution the paragraph above forbids.
+#: NOTE ``fp8`` is deliberately ABSENT. A dtype only belongs here when the SCALAR/RVV lane has a
+#: datapath for it, and it does not for fp8: the widening rewrite that gives narrow floats an f32
+#: accumulator (``passes_xdsl.lower_bf16_matmul_f32acc``) is typed on the xDSL builtin float types,
+#: which have no fp8 member at all, and every fp8 recapture's ``model.mlir`` is 100% f32 (the bundles
+#: are weight-only fake-quant, so the fp8 never reaches the IR). fp8 IS a real MESH operand format --
+#: it travels as ``operation.attributes.dtype`` through ``routing_dtype`` and executes on the target's
+#: matrix unit -- but that is a different lane from the one this map configures. Mapping it to a
+#: strategy string no package can legally declare produced "no package declares dtype_strategy='fp8'",
+#: which reads as a missing artifact and sent readers off to mint a package that cannot exist.
 _DTYPE_STRATEGY = {"int8": "int8_w8a8", "fp32": "fp32", "fp16": "fp16_f32acc",
-                   "bf16": "bf16_f32acc", "fp8": "fp8"}
+                   "bf16": "bf16_f32acc"}
+
+#: MLIR tensor element-type spelling for each ``--dtype`` token, used to read a bundle's ACTUAL IR dtype
+#: back off ``model.mlir`` (:func:`ir_scalar_dtype`). Keys must stay a subset of ``_DTYPE_STRATEGY``.
+_IR_ELEMENT_SPELLING = {"int8": "i8", "fp32": "f32", "fp16": "f16", "bf16": "bf16"}
+#: narrowest datapath first — the first spelling PRESENT in the IR decides (see :func:`ir_scalar_dtype`).
+_IR_ELEMENT_ORDER = ("int8", "fp16", "bf16", "fp32")
 
 
-def default_package(dtype: str) -> str:
+def default_package(dtype: str, *, bundle: "Path | None" = None) -> str:
     """The package `merlin-compile` uses when `--package` is not given.
 
     Resolves the CERTIFIED CHAMPION for this datatype via ``targetgen.publish.select_champion``
@@ -128,11 +170,34 @@ def default_package(dtype: str) -> str:
     unused. Falls back to the hand baseline only when no package of this dtype is certified, and
     says so.
     """
+    from .rvvgen.tuning_agent import _DTYPE_STRATEGIES
     from .targetgen.publish import PublishError, select_champion
     strategy = _DTYPE_STRATEGY.get(dtype)
+    if strategy is None and bundle is not None:
+        # The requested dtype names how the model was QUANTIZED; it does not name what the compiled IR
+        # carries, and only the latter decides which scalar datapath is correct. A weight-only fp8 capture
+        # emits f32 tensors end to end, so the f32 package IS its datapath -- not a cross-datatype
+        # substitution but the derived one. Read it off the bundle rather than refusing.
+        derived = ir_scalar_dtype(bundle)
+        if derived is not None and derived in _DTYPE_STRATEGY:
+            print(f"[merlin-compile] --dtype {dtype} has no scalar/RVV datapath; the bundle's IR carries "
+                  f"{derived}, so the scalar lane uses the {derived} package. ({dtype} remains the MESH "
+                  f"operand format, routed and executed on the matrix unit.)", flush=True)
+            dtype, strategy = derived, _DTYPE_STRATEGY[derived]
     if strategy is None:
-        raise SystemExit(f"[merlin-compile] no dtype_strategy known for --dtype {dtype}; add one "
-                         f"to _DTYPE_STRATEGY together with a package that declares it")
+        raise SystemExit(
+            f"[merlin-compile] --dtype {dtype} has no scalar/RVV datapath (known: "
+            f"{', '.join(sorted(_DTYPE_STRATEGY))}). If {dtype} is a MESH operand format, it belongs in "
+            f"the capsule's operation.attributes.dtype (threaded as routing_dtype and executed on the "
+            f"matrix unit), and the scalar lane should declare the dtype its IR actually carries. Only "
+            f"add it here alongside a lowering that gives {dtype} a scalar datapath.")
+    if strategy not in _DTYPE_STRATEGIES:
+        # A map entry naming a strategy the knob validator rejects can never be satisfied by ANY package.
+        # Diagnose it as the configuration error it is rather than as a missing artifact.
+        raise SystemExit(
+            f"[merlin-compile] _DTYPE_STRATEGY maps --dtype {dtype} to dtype_strategy {strategy!r}, which "
+            f"is not a strategy packages may declare ({', '.join(sorted(_DTYPE_STRATEGIES))}); no package "
+            f"can ever satisfy it. Fix the map, or add {strategy!r} to rvvgen.tuning_agent.")
     try:
         sel = select_champion("rvv", dtype_strategy=strategy)
         return str(sel.package_dir)
@@ -221,7 +286,7 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         timeout = max(timeout, timeout * passes)
 
     bundle = _ensure_bundle(workload, dtype, auto_capture=auto_capture)
-    pkg_dir = package or default_package(dtype)
+    pkg_dir = package or default_package(dtype, bundle=bundle)
     pkg = load_rvv_package(pkg_dir)
     work = Path(tempfile.mkdtemp(prefix=f"merlin_compile_{workload}_{dtype}_"))
     out: dict = {"tool": "merlin-compile", "target": "rvv", "workload": workload, "dtype": dtype,
@@ -369,10 +434,23 @@ def _default_oot_package(target: str) -> str | None:
     target literals."""
     from .common.artifacts import artifacts_dir
     base = artifacts_dir() / "targets" / target
+    # Selected by KIND, not merely by the presence of a manifest. ``out/artifacts/targets/<target>/`` also
+    # holds CODEGEN packages (schedules/knobs/dialects, e.g. a hand-curated ``hand_v0``), whose manifest is
+    # a different artifact entirely. Returning one of those as an OOT backend does not fail cleanly: it
+    # gets as far as the package loader and dies on "manifest schema violation: 'artifact_type' is a
+    # required property", which reads like a corrupt backend rather than a directory that was never one.
     for pkg_id in ("agent_spec_v1_mlir_oot", "reference_v0"):
         cand = base / pkg_id
-        if (cand / "manifest.yaml").is_file():
-            return str(cand)
+        mf = cand / "manifest.yaml"
+        if not mf.is_file():
+            continue
+        try:
+            from .common.yaml import load_yaml
+            if not str((load_yaml(mf) or {}).get("artifact_type", "")).strip():
+                continue                     # not an OOT backend manifest — keep looking
+        except Exception:                    # noqa: BLE001 — unreadable manifest: let the loader report it
+            pass
+        return str(cand)
     return None
 
 
@@ -443,6 +521,82 @@ def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str 
     return CS.derive_binding(te, datapath)
 
 
+def _accum_rel_tolerance(accum_dtype: str, k: int) -> float | None:
+    """Relative tolerance for a K-deep accumulation in ``accum_dtype``, DERIVED from that format's mantissa
+    width in the quant-format registry rather than picked. A bf16 accumulator carries 7 mantissa bits, so a
+    352-deep reduction CANNOT be bit-exact against an f32 reference and a bit-exact gate there would report
+    a correct mesh as broken. An integer accumulator does not round: it gets 0.0, i.e. bit-exact.
+
+    Returns ``None`` when the format cannot be resolved — the caller must fail closed rather than pick a
+    tolerance, because both defaults are wrong in one direction (too tight condemns a good mesh, too loose
+    passes a broken one)."""
+    from .common import quant_formats as QF
+    try:
+        f = QF.get(accum_dtype)
+    except KeyError:
+        # Not a registry format. An MLIR integer spelling (iN) is still unambiguous: integer accumulation
+        # is exact, so it gates bit-exact. Anything else is genuinely unresolved.
+        body = accum_dtype[1:] if accum_dtype[:1] == "i" else ""
+        return 0.0 if body.isdigit() else None
+    if f.kind == "int_affine":
+        return 0.0
+    mant = int(f.mant_bits or 0)
+    if not mant:
+        return None
+    return (2.0 ** -mant) * max(1.0, float(k) ** 0.5) * 8.0
+
+
+def _certify_tile_via_executor(target, mlir, *, m, k, n, binding, timeout) -> dict:
+    """Certify one mesh tile on a target whose endpoint is NOT the OOT-cert path, by EXECUTING it through
+    the shared endpoint-aware executor (``run_matmul_on_mesh``) with injected operands and gating the
+    device's output against the mathematical reference.
+
+    ``_mesh_verify`` used to call ``oot_runner.certify`` for every target regardless of endpoint kind, so a
+    self-hosted-ISA target (``external_backend``) was graded on the RoCC/OOT path it has no backend for and
+    every tile came back ``oracle_unavailable`` with "no registered backend" -- while the very same target's
+    whole-model run executed fine through the endpoint-aware dispatcher. The oracle choice is now made in
+    ONE place for both.
+
+    Returns a ``certify``-shaped record so the caller's loop is unchanged. Honest about strength: this is a
+    TWO-way gate (reference == oracle), not the OOT path's three-way (reference == simulate == oracle)."""
+    import numpy as np
+
+    rng = np.random.default_rng(0xA71A5)
+    A = np.rint(rng.standard_normal((m, k)) * 3).clip(-8, 7).astype(np.float32)
+    W = np.rint(rng.standard_normal((k, n)) * 3).clip(-8, 7).astype(np.float32)
+    obs: dict = {}
+    try:
+        got = run_matmul_on_mesh(target, A.tolist(), W.tolist(),
+                                 operand_dtype=binding.operand_dtype, accum_dtype=binding.accum_dtype,
+                                 package=None, timeout=timeout, observed=obs)
+    except Exception as e:  # noqa: BLE001 — an executor failure is recorded, never a fake pass
+        return {"status": "fail", "oracle": {"kind": obs.get("path"), "result": "error"},
+                "failure": {"detail": f"{type(e).__name__}: {str(e)[-300:]}"}}
+    if got is None:
+        return {"status": "fail", "oracle": {"kind": obs.get("path"), "result": "skipped"},
+                "failure": {"detail": f"no reachable mesh oracle for endpoint path {obs.get('path')!r}"}}
+    ref = A @ W
+    dev = np.asarray(got, dtype=np.float32)
+    if dev.shape != ref.shape:
+        return {"status": "fail", "oracle": {"kind": obs.get("oracle"), "result": "ran"},
+                "failure": {"detail": f"device returned {dev.shape}, reference is {ref.shape}"}}
+    rtol = _accum_rel_tolerance(binding.accum_dtype, k)
+    if rtol is None:
+        return {"status": "fail", "oracle": {"kind": obs.get("oracle"), "result": "ran"},
+                "failure": {"detail": f"cannot derive a numeric gate for accumulator dtype "
+                                      f"{binding.accum_dtype!r}: refusing to pick a tolerance"}}
+    ok = (np.array_equal(dev, ref) if rtol == 0.0
+          else bool(np.allclose(dev, ref, rtol=rtol, atol=rtol * float(np.abs(ref).max() or 1.0))))
+    rec = {"status": "pass" if ok else "fail",
+           "oracle": {"kind": obs.get("oracle"), "result": "ran", "cycles": None},
+           "gate": {"kind": "reference==oracle", "rtol": rtol,
+                    "exact": bool(np.array_equal(dev, ref))}}
+    if not ok:
+        rec["failure"] = {"detail": f"tile {m}x{k}x{n} diverged from the reference: "
+                                    f"max abs err {float(np.abs(dev - ref).max())} (rtol {rtol})"}
+    return rec
+
+
 def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) -> dict:
     """Execute each mesh-routed matmul as a single systolic tile on the target's REAL mesh oracle.
 
@@ -459,6 +613,7 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
     import tempfile
     from .targetgen import oot_runner
     from .targetgen import corpus_spec as CS
+    from .targetgen.capsule_runner import _bespoke_sim_via, _endpoint_of, _SIM_ORACLES
     from .benchharness import runs_root
 
     pkg_dir = package or _default_oot_package(target)
@@ -469,14 +624,24 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
         out["reason"] = (f"no default OOT backend package for target {target!r}; pass --mesh-package "
                          f"to name one")
         return out
-    # Build the OOT backend ONCE up front so a broken build is a single honest not_run, not a per-tile
-    # storm. certify re-runs an incremental (no-op) build per tile — harmless.
-    try:
-        oot_runner.build_package(oot_runner.load_package(pkg_dir), timeout=timeout)
-    except Exception as e:  # noqa: BLE001 — a build failure is honest not_run, never a fake mesh pass
-        out["status"] = "not_run"
-        out["reason"] = f"OOT backend build failed: {type(e).__name__}: {str(e)[-400:]}"
-        return out
+    # WHICH oracle certifies a tile follows the target's DERIVED endpoint, the same decision
+    # ``run_matmul_on_mesh`` makes -- not an assumption that every target is the RoCC/OOT one. A
+    # self-hosted-ISA target graded on the OOT path reports "no registered backend" for every tile
+    # while its whole-model run executes fine, which is the same fact stated as an unavailability.
+    _so = _SIM_ORACLES.get(_bespoke_sim_via(target))
+    _endpoint, _ = _endpoint_of(target)
+    _via_oot = not (_so is not None and _so.exclusive) and _endpoint in (
+        None, "inline_asm_insn", "upstream_target")
+    out["certified_via"] = "oot_cert" if _via_oot else "endpoint_executor"
+    if _via_oot:
+        # Build the OOT backend ONCE up front so a broken build is a single honest not_run, not a per-tile
+        # storm. certify re-runs an incremental (no-op) build per tile — harmless.
+        try:
+            oot_runner.build_package(oot_runner.load_package(pkg_dir), timeout=timeout)
+        except Exception as e:  # noqa: BLE001 — a build failure is honest not_run, never a fake mesh pass
+            out["status"] = "not_run"
+            out["reason"] = f"OOT backend build failed: {type(e).__name__}: {str(e)[-400:]}"
+            return out
 
     # Real RTL oracle by default (verilator); MERLIN_MESH_SIM can select spike (functional bootstrap) or
     # verilator (cycle-accurate RTL). The whole point of on-hardware validation is the RTL, not the ISS.
@@ -522,14 +687,24 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
             rec.update(status="synth_error", reason=f"{type(e).__name__}: {str(e)[-300:]}")
             out["per_tile"].append(rec)
             continue
+        # ``sim`` is only the simulator the OOT path was ASKED for; the endpoint executor runs on the
+        # target's own oracle and ignores it, so record it only where it is the truth and let the
+        # executor stamp ``oracle_kind`` with what actually ran.
         rec.update(M=M, K=K, N=N, layer_extent=layer_extent, n_subtiles=n_subtiles,
                    operand_dtype=binding.cap_dtype(binding.operand_dtype),
-                   output_dtype=binding.cap_dtype(binding.accum_dtype), sim=sim)
-        with tempfile.TemporaryDirectory(prefix="mesh_tile_") as td:
-            iface = Path(td) / f"{entry['name']}.interface.mlir"
-            iface.write_text(mlir, encoding="utf-8")
-            res = oot_runner.certify(pkg_dir, iface, runs_root=str(rr), run_id=entry["name"],
-                                     simulator=sim, target=target, timeout=timeout)
+                   output_dtype=binding.cap_dtype(binding.accum_dtype))
+        if _via_oot:
+            rec["sim"] = sim
+        if _via_oot:
+            with tempfile.TemporaryDirectory(prefix="mesh_tile_") as td:
+                iface = Path(td) / f"{entry['name']}.interface.mlir"
+                iface.write_text(mlir, encoding="utf-8")
+                res = oot_runner.certify(pkg_dir, iface, runs_root=str(rr), run_id=entry["name"],
+                                         simulator=sim, target=target, timeout=timeout)
+        else:
+            res = _certify_tile_via_executor(target, mlir, m=M, k=K, n=N, binding=binding,
+                                             timeout=timeout)
+            rec["gate"] = res.get("gate")
         oracle = res.get("oracle") or {}
         out["n_tiles"] += 1
         rec.update(oracle_kind=oracle.get("kind"), oracle_result=oracle.get("result"),
@@ -555,12 +730,18 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
         out["status"] = "verified"
     else:
         out["status"] = "partial"
+    _gate_note = ("the emitted kernel's output is gated (bit-exact int / tolerance float) against the "
+                  "command buffer's reference == simulate == oracle three-way"
+                  if _via_oot else
+                  "the device's output is gated against the mathematical reference with the operands "
+                  "INJECTED (reference == oracle, a two-way gate: this endpoint has no separate simulate "
+                  "leg), at a tolerance derived from the accumulator format's mantissa width")
     out["note"] = (
         "each mesh-routed matmul LAYER is verified by EXECUTING its capacity-fit tile on the target mesh "
-        f"oracle (simulator={sim}): the tile is the largest D-aligned unit whose weight+activation working "
+        f"oracle ({'simulator=' + sim if _via_oot else 'via the endpoint-derived executor'}): the tile is "
+        "the largest D-aligned unit whose weight+activation working "
         "set fits the target's DERIVED scratchpad capacity (n_subtiles = how many tile it into the layer); "
-        "the emitted kernel's output is gated (bit-exact int / tolerance float) against the command buffer's "
-        "reference == simulate == oracle three-way. A fit tile that certifies proves the layer runs on the "
+        f"{_gate_note}. A fit tile that certifies proves the layer runs on the "
         "mesh once tiled. The remaining gap is the single SPLICED image (all layers' mesh kernels + the "
         "scalar/RVV remainder co-scheduled in one binary with activations handed between layers) — see "
         "compile_model's docstring.")
@@ -570,7 +751,8 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
 def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | None = None,
                        accum_dtype: str | None = None, simulator: str | None = None,
                        package: str | None = None, epilogue: list | None = None,
-                       acc_scale: float | None = None, timeout: int = 900) -> list | None:
+                       acc_scale: float | None = None, timeout: int = 900,
+                       observed: dict | None = None) -> list | None:
     """Execute ``A @ W`` on the target's mesh oracle with the REAL operand values INJECTED (not
     materialized-from-name), and return the mesh's output tensor (nested list) — or ``None`` when this
     target has no reachable mesh path. ``A`` / ``W`` are the layer's real activations / weights.
@@ -615,16 +797,26 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
     # path. Derived from the contract's sim_via + the _SIM_ORACLES registry — never a target-name branch.
     so = _SIM_ORACLES.get(_bespoke_sim_via(target))
     if so is not None and so.exclusive:
-        return _matmul_via_bespoke_sim(target, mlir, A, W, package=package, timeout=timeout)
+        if observed is not None:
+            observed["path"] = "bespoke_sim"
+        return _matmul_via_bespoke_sim(target, mlir, A, W, package=package, timeout=timeout,
+                                       observed=observed)
     if endpoint in (None, "inline_asm_insn", "upstream_target"):
-        return _matmul_via_oot_cert(target, mlir, A, W, simulator=simulator, package=package, timeout=timeout)
+        if observed is not None:
+            observed["path"] = "oot_cert"
+        return _matmul_via_oot_cert(target, mlir, A, W, simulator=simulator, package=package,
+                                    timeout=timeout, observed=observed)
     if endpoint == "external_backend":
+        if observed is not None:
+            observed["path"] = "program_oracle"
         return _matmul_via_program_oracle(target, mlir, A, W, model_ext=model_ext,
-                                          package=package, timeout=timeout)
+                                          package=package, timeout=timeout,
+                                          operand_dtype=binding.operand_dtype, observed=observed)
     return None                                  # no mesh-execution path derived for this endpoint kind
 
 
-def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout) -> list | None:
+def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
+                         observed: dict | None = None) -> list | None:
     """Systolic/RoCC path: certify the matmul through the target's generated OOT package on its ELF/mesh
     oracle, with the real operands injected (``inputs`` -> the package harness's ``materialize_inputs``)."""
     import os
@@ -641,12 +833,19 @@ def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout) -> 
         res = oot_runner.certify(pkg, iface, runs_root=str(runs_root(target, "mesh_run")),
                                  run_id="mesh_layer", simulator=sim, target=target, timeout=timeout,
                                  inputs={"A0": A, "W": W})
+    if observed is not None:
+        # the cert reports its oracle as a record ({kind, derived_from_rtl, ...}); the simulator that ran
+        # it is the other half of the identity, so label with both when the record is present.
+        _orc = res.get("oracle")
+        _kind = _orc.get("kind") if isinstance(_orc, dict) else _orc
+        observed["oracle"] = f"{target}-{_kind}-{sim}" if _kind else f"{target}-{sim}"
     if res.get("status") != "pass":
         return None
     return (res.get("oracle_outputs") or {}).get("Y0")
 
 
-def _matmul_via_program_oracle(target, mlir, A, W, *, model_ext, package, timeout) -> list | None:
+def _matmul_via_program_oracle(target, mlir, A, W, *, model_ext, package, timeout,
+                               operand_dtype=None, observed: dict | None = None) -> list | None:
     """Self-hosted-ISA (external_backend) path: emit the target's kernel from the interface through its
     generated OOT package (target-agnostic ``run_entrypoints``), inject the real operands onto the command
     buffer's leaf tensors, and run on the target's mlc-DERIVED arc cosim via the generic program oracle.
@@ -657,10 +856,11 @@ def _matmul_via_program_oracle(target, mlir, A, W, *, model_ext, package, timeou
     from .targetgen import mesh_program_run
     return mesh_program_run.matmul_on_program_oracle(
         target, mlir, A, W, model_ext=model_ext, package=package or _default_oot_package(target),
-        timeout=timeout)
+        timeout=timeout, dtype_hint=operand_dtype, observed=observed)
 
 
-def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | None:
+def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout,
+                            observed: dict | None = None) -> list | None:
     """Exclusive bespoke-sim path: a self-hosted SIMT core (endpoint ``external_backend``) graded on the
     kernel its OWN generated package emits, by its OWN declared bespoke oracle (e.g. cyclotron via the muon
     backend) — NOT the arc command-buffer program oracle, which would grade the wrong artifact for a SIMT
@@ -726,6 +926,8 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | N
             res = run(cb, kernel_text, tdp / "oracle", timeout)
         except Exception:                             # noqa: BLE001 — oracle unavailable / run failure: fail closed
             return None
+        if observed is not None:
+            observed["oracle"] = res.get("oracle") or CR._bespoke_sim_via(target)
         outs = res.get("outputs") or {}
         return outs.get("Y0") or next(iter(outs.values()), None)
 
@@ -805,29 +1007,41 @@ def run_whole_model_on_mesh(target: str, module, *, in_fmt: str = "f32",
 
     def _mesh_exec(lhs, rhs, step):
         la, ra = np.asarray(lhs), np.asarray(rhs)
+        # ``obs`` records the executor that ACTUALLY ran this layer. The requested ``simulator`` is only a
+        # preference and two of the three dispatch paths ignore it (a self-hosted-ISA target runs on its
+        # mlc-derived cosim, an exclusive bespoke sim on its own engine) -- so reporting the request as
+        # though it were the device named a simulator that never ran. Report what executed.
+        obs: dict = {}
         got = run_matmul_on_mesh(target, la.tolist(), ra.tolist(),
                                  operand_dtype=operand_dtype, accum_dtype=accum_dtype,
-                                 simulator=simulator, package=package, timeout=timeout)
+                                 simulator=simulator, package=package, timeout=timeout, observed=obs)
         # extents read from the actual operands (a fused op's matmul sub-ops carry the sub-op shapes, not
         # the enclosing step's), so the per-layer log is honest for attention/geglu as well as plain matmuls.
         per_layer.append({"index": step.index, "m": int(la.shape[0]), "k": int(la.shape[1]),
                           "n": int(ra.shape[1]), "unit": step.unit,
-                          "oracle": "ok" if got is not None else "unavailable"})
+                          "oracle": "ok" if got is not None else "unavailable",
+                          "executed_on": obs.get("oracle"), "path": obs.get("path")})
         return got
 
     base = {"target": target, "ref_target": ref_target, "ref_kind": ref_kind,
             "n_steps": len(program.steps), "n_mesh": program.n_mesh(),
             "n_scalar": program.n_scalar(), "output_id": program.output, "per_layer": per_layer,
-            "simulator": simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")}
+            "simulator_requested": simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")}
+    def _executors() -> list:
+        """The DISTINCT executors the mesh layers actually ran on (empty when no layer reached one)."""
+        return sorted({e for e in (lay.get("executed_on") for lay in per_layer) if e})
+
     try:
         spliced = mp.run_whole_model_program(program, seed_leaves, mesh_exec=_mesh_exec)
     except mp.MeshLayerUnavailable as e:
-        return {**base, "status": "oracle_unavailable", "reason": str(e)}
+        return {**base, "status": "oracle_unavailable", "reason": str(e),
+                "mesh_executors": _executors()}
 
     spliced_final = spliced["outputs"][program.output]
     exact = bool(np.array_equal(spliced_final, ref_final))
     match = bool(np.allclose(spliced_final, ref_final, rtol=1e-4, atol=1e-4))
     return {**base, "status": "pass" if match else "fail", "exact": exact, "match": match,
+            "mesh_executors": _executors(),
             "note": "single co-scheduled whole-model run: matmul layers executed on the real mesh oracle, "
                     "scalar/vector lane inline, activations handed between lanes; gated vs the whole-model "
                     "engine reference. Residual: host-driven multi-kernel, not yet one fused address-space "
