@@ -867,10 +867,16 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | N
                 tspec["preload_b64"] = base64.b64encode(raw).decode()
         try:
             res = run(cb, kernel_text, tdp / "oracle", timeout)
-        except Exception:                             # noqa: BLE001 — oracle unavailable / run failure: fail closed
-            return None
+        except Exception as _e:                       # noqa: BLE001 — oracle unavailable / run failure
+            # This exit swallowed the oracle's own exception, so an oracle that CRASHED and an oracle that
+            # was simply absent reached the caller identically -- and a layer dying here looked exactly
+            # like a backend that cannot emit the extent.
+            return _refuse(f'the oracle raised {type(_e).__name__}: {str(_e)[:200]}')
         outs = res.get("outputs") or {}
-        return outs.get("Y0") or next(iter(outs.values()), None)
+        got = outs.get("Y0") or next(iter(outs.values()), None)
+        if got is None:
+            return _refuse(f'the oracle ran but produced no output tensor (keys: {sorted(outs)})')
+        return got
 
 
 def run_whole_model_on_mesh(target: str, module, *, in_fmt: str = "f32",
