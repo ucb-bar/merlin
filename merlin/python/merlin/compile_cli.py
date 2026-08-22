@@ -679,9 +679,16 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
     # the width this backend accepts by halving, then run the layer as N-tiles of that width: splitting
     # along N is exact, because C[:, a:b] is A @ W[:, a:b]. Costs a few refused probes ONCE per target.
     D = int(getattr(binding, "tile_dim", 0) or 0)
-    if D <= 0 or N <= D:
+    if D <= 0:
         return None
-    key = (target, operand_dtype or "", accum_dtype or "")
+    _rows_kw = dict(operand_dtype=operand_dtype, accum_dtype=accum_dtype, simulator=simulator,
+                    package=package, timeout=timeout, epilogue=epilogue, acc_scale=acc_scale, M=M)
+    if N <= D:
+        return _mesh_rows(target, A, W, **_rows_kw)      # nothing to split along N
+    # Keyed by K as well: the accepted width is bounded by the WORKING SET (K*w + M*K), so a width
+    # discovered at K=128 is too wide at K=344 and its tiles are refused in turn. Measured: caching
+    # without K left 4 of 15 small_llama layers on the host for exactly that reason.
+    key = (target, operand_dtype or "", accum_dtype or "", K)
     width = _MESH_NTILE_WIDTH.get(key)
     if width is None:
         w = N
@@ -695,7 +702,8 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
                 width = w
                 break
         if width is None:
-            return None                          # even a single tile-dim-wide slice is refused
+            # Even one tile-dim-wide column is refused, so the M*K term is what does not fit.
+            return _mesh_rows(target, A, W, **_rows_kw)
         _MESH_NTILE_WIDTH[key] = width
     cols: list[list] = []
     for a in range(0, N, width):
@@ -708,6 +716,37 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
             return None                          # a tile the discovered width should have covered
         cols.append(piece)
     return [sum((c[r] for c in cols), []) for r in range(M)]
+
+
+def _mesh_rows(target, A, W, *, operand_dtype, accum_dtype, simulator, package, timeout,
+               epilogue, acc_scale, M):
+    """Run a refused layer as row blocks. The working set is ``K*N + M*K``; N-tiling shrinks the first
+    term and M-tiling the second, so a layer whose N is already at or below the tile dim (a projection
+    down to a couple of columns, say) can only be helped by splitting M. Exact: C[a:b, :] is A[a:b, :] @ W.
+    """
+    if M <= 1:
+        return None
+    height = M
+    while height > 1:
+        height = max(1, height // 2)
+        probe = run_matmul_on_mesh(target, A[:height], W, operand_dtype=operand_dtype,
+                                   accum_dtype=accum_dtype, simulator=simulator, package=package,
+                                   timeout=timeout, epilogue=epilogue, acc_scale=acc_scale,
+                                   _padded=True)
+        if probe is not None:
+            break
+    else:
+        return None
+    rows: list = []
+    for a in range(0, M, height):
+        piece = run_matmul_on_mesh(target, A[a:a + height], W, operand_dtype=operand_dtype,
+                                   accum_dtype=accum_dtype, simulator=simulator, package=package,
+                                   timeout=timeout, epilogue=epilogue, acc_scale=acc_scale,
+                                   _padded=True)
+        if piece is None:
+            return None
+        rows.extend(piece)
+    return rows
 
 
 def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout) -> list | None:
