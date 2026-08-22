@@ -142,6 +142,24 @@
         "unclassified_capsules": {
           "type": "array",
           "description": "names of the unclassified regions"
+        },
+        "by_family": {
+          "type": "object",
+          "description": "per-semantic-family denominator: which families the recall was computed over. A headline ARR is a claim about these rows, not about everything the device can compute.",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "fused_only_families": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "families this target can run ONLY fused behind another (e.g. an accumulator-readout epilogue). Standalone regions of them are ineligible BY HARDWARE and never enter the denominator."
+        },
+        "n_fused_only_ineligible": {
+          "type": "integer",
+          "description": "regions ruled ineligible specifically because their family is fused-only on this target"
         }
       },
       "additionalProperties": true

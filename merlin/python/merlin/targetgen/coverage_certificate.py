@@ -16,6 +16,16 @@ direction — a region routed to the accelerator that the oracle says is *not* e
 
 This module consumes the routing output (numerator) and the eligibility oracle (denominator); it is NOT
 the oracle, so it may legitimately reference both.
+
+⚠️ BOTH SIDES OF THE RATIO ARE BUILT FROM THE ROUTING DEMANDS, so a contraction the matcher never
+recognised is in neither. It is not a false fallback and not an ineligible acceleration; it is simply
+absent, and the recall it never entered reads high because of it. Measured on ``spectformer_int8_full``:
+16 ``linalg.generic`` ops are attention's Q·Kᵀ and scores·V — 157.4 MMAC against 1702.2 MMAC of matched
+work, so **8.5% of that model's contraction MACs were invisible to every number here**. ``linalg_mlir``
+therefore lets the certificate price what the demands could not see and report it as
+``denominator_completeness``, alongside a recall LOWER BOUND that charges the whole unmatched mass to
+the denominator. The two bracket the truth; quoting only the upper one is the error this block exists
+to stop.
 """
 from __future__ import annotations
 
@@ -48,12 +58,63 @@ def _ratio(num: int, den: int):
     return (num / den) if den else None
 
 
-def build(plan: dict, cap_map: dict, *, target: str | None = None) -> dict:
+def denominator_completeness(linalg_mlir: str | None) -> dict | None:
+    """Price the contraction work the ROUTING DEMANDS could not see, from the module itself.
+
+    ``None`` when there is no module to read. On a module that will not parse this returns an ``error``
+    entry rather than nothing: a certificate that silently omits the completeness block is
+    indistinguishable from one whose denominator is provably complete, which is the direction that
+    flatters us.
+    """
+    if not linalg_mlir:
+        return None
+    try:
+        from merlin.common import mlir_query as _mq
+        from merlin.common.ir_lock import IR_LOCK
+        from merlin.xdsl_dialects.lowering.contraction_coverage import contraction_coverage
+        with IR_LOCK:                     # xDSL's parser is not thread-safe; see common.ir_lock
+            rep = contraction_coverage(_mq.parse(linalg_mlir))
+    except Exception as exc:              # noqa: BLE001 — advisory, but the gap must stay visible
+        return {"error": f"{type(exc).__name__}: {exc}",
+                "note": "denominator completeness UNKNOWN — the module could not be priced, so the "
+                        "recall below is an upper bound with no stated floor"}
+
+    caveats: list[str] = []
+    if rep.unlowered:
+        caveats.append(
+            f"{len(rep.unlowered)} contraction(s) worth {rep.unlowered_macs} MAC "
+            f"({rep.unlowered_share:.1%} of all contraction MACs) stayed linalg.generic, so they never "
+            f"became routing demands and appear in NEITHER side of the recall above")
+    if rep.unpriceable:
+        caveats.append(
+            f"{len(rep.unpriceable)} contraction(s) could not be priced (no derivable loop extents), so "
+            f"even the lower bound below is optimistic — they are counted as ops, never as work")
+    return {
+        "matched_contraction_macs": rep.lowered_macs,
+        "unmatched_contraction_macs": rep.unlowered_macs,
+        "unmatched_contraction_share": rep.unlowered_share,
+        "n_unmatched_contractions": len(rep.unlowered),
+        "n_unpriceable_contractions": len(rep.unpriceable),
+        "unpriceable_result_types": list(rep.unpriceable),
+        "unmatched": [{"result_type": u.result_type,
+                       "loop_extents": {str(d): e for d, e in u.loop_extents},
+                       "macs": u.macs} for u in rep.unlowered],
+        "generic_labels": dict(rep.labels),
+        "caveats": caveats,
+    }
+
+
+def build(plan: dict, cap_map: dict, *, target: str | None = None,
+          linalg_mlir: str | None = None) -> dict:
     """Build the coverage certificate from a ``route_plan`` result and a capability map.
 
     ``plan`` is the dict returned by :func:`merlin.targetgen.routing.route_plan_on` / ``route_plan``
     (needs ``results`` + the ``mesh``/``fallback``/``scalar_rvv`` buckets). ``cap_map`` is the
     independent denominator from :func:`merlin.targetgen.eligibility.capability_map_for_target`.
+
+    ``linalg_mlir`` is the module those demands were derived FROM. Pass it and the certificate also
+    reports what the demands missed; omit it and the completeness block is absent, which is itself
+    reported (``denominator_completeness: null``) rather than read as "nothing was missed".
     """
     dec = _decision_map(plan)
     regions: list[dict] = []
@@ -97,6 +158,11 @@ def build(plan: dict, cap_map: dict, *, target: str | None = None) -> dict:
     false_fallback = sum(1 for reg in regions
                          if reg["target_eligible"] and reg["decision"] != "accelerator")
 
+    # Work the matcher never turned into a demand. A MAC is a multiply AND an add, so it is 2 flops on
+    # the same scale `_flops` uses -- mixing the two units would understate the correction by half.
+    completeness = denominator_completeness(linalg_mlir)
+    unmatched_flops = 2 * int(completeness.get("unmatched_contraction_macs") or 0) if completeness else 0
+
     return {
         "target": target,
         "denominator_source": "semantic_capabilities (independent eligibility oracle)",
@@ -108,17 +174,27 @@ def build(plan: dict, cap_map: dict, *, target: str | None = None) -> dict:
         "accelerated_ineligible_count": accelerated_ineligible,
         "eligible_flops": eligible_flops,
         "accelerated_eligible_flops": accelerated_eligible_flops,
+        "unmatched_contraction_flops": unmatched_flops,
+        "denominator_completeness": completeness,
         "metrics": {
-            # the headline ARR numbers for this single compilation (None == no eligible work)
+            # the headline ARR numbers for this single compilation (None == no eligible work).
+            # Both are computed over the regions the matcher PRODUCED, which is why the bound below
+            # exists -- see the module docstring.
             "acceleratable_region_recall": _ratio(n_eligible_accelerated, n_eligible),
             "acceleratable_flop_recall": _ratio(accelerated_eligible_flops, eligible_flops),
+            # The same recall with every unmatched contraction charged to the denominator: the floor
+            # under the number above, on the assumption (deliberately the unflattering one) that all of
+            # that work was eligible and none of it was accelerated. True recall lies between the two;
+            # they coincide exactly when the matcher missed nothing.
+            "acceleratable_flop_recall_lower_bound":
+                _ratio(accelerated_eligible_flops, eligible_flops + unmatched_flops),
             "acceleration_precision": _ratio(n_accelerated - accelerated_ineligible, n_accelerated),
         },
         "regions": regions,
     }
 
 
-def for_target(plan: dict, target: str) -> dict:
+def for_target(plan: dict, target: str, *, linalg_mlir: str | None = None) -> dict:
     """Convenience: load the target's declared capability map and build the certificate."""
     cap_map = _el.capability_map_for_target(target)
-    return build(plan, cap_map, target=target)
+    return build(plan, cap_map, target=target, linalg_mlir=linalg_mlir)

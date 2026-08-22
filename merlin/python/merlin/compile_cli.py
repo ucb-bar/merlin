@@ -984,7 +984,12 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
                 # ARR coverage certificate: the compiler's routing decisions (numerator) scored against
                 # the target's INDEPENDENT eligibility oracle (denominator). Empty capability map (target
                 # declares no semantic_capabilities yet) yields an honest all-ineligible certificate.
-                out["coverage_certificate"] = _cert.for_target(plan, target)
+                #
+                # The module goes in too, because both sides of that ratio are built from `demands` and a
+                # contraction the matcher never matched is in neither -- it is absent, and its absence
+                # raises the recall. With the module the certificate also prices what the demands missed
+                # and states a recall FLOOR beside the headline figure.
+                out["coverage_certificate"] = _cert.for_target(plan, target, linalg_mlir=linalg_mlir)
             except Exception as e:  # noqa: BLE001 — certificate is advisory; never mask routing/functional
                 out["coverage_certificate"] = {"error": f"{type(e).__name__}: {e}"}
             if mesh_verify:

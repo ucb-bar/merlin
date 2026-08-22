@@ -34,6 +34,12 @@ from merlin.targetgen import rtl_backend as RB
 from merlin.targetgen.rtl import mlc_bridge as B
 
 RUNGS = ["raw_baseline", "cpp_merlininfra", "merlin_assisted", "merlin_assisted_rtlchecks"]
+# Arms that are NOT rungs of that ladder: a modality variant granted beside arm-3 rather than
+# above it, so it carries no monotonic tool-count obligation and stays out of the gradient test.
+# Listed explicitly rather than read back from the generator -- an expectation derived from the
+# code under test asserts nothing, and this set going stale is exactly how the fifth arm shipped
+# with the bundle-set assertion still naming four.
+SIDE_ARMS = ["merlin_assisted_eqsat"]
 # The C++ scaffold generators that arm-3 (xDSL) legitimately RETIRES when it swaps modality.
 CPP_SCAFFOLD = {
     "merlin/python/merlin/targetgen/generate/llvm_plan.py",
@@ -58,7 +64,7 @@ def _bundles(target):
 @pytest.mark.parametrize("target", ["atlas", "radiance", "mx_gemmini"])
 def test_four_arms_generated_for_any_target(target):
     b = _bundles(target)
-    assert set(b) == {f"{r}_hwbringup_v0" for r in RUNGS}
+    assert set(b) == {f"{r}_hwbringup_v0" for r in RUNGS + SIDE_ARMS}
     assert b["merlin_assisted_hwbringup_v0"]["task"] == f"{target}-mlir-oot-capsule"
 
 
@@ -85,7 +91,7 @@ def test_tool_blocks_are_target_agnostic():
     (the experiment-dir-relative scripts/task/corpus paths) legitimately differs."""
     a, r = _bundles("atlas"), _bundles("radiance")
     tools = lambda m: {p for p in _paths(m) if p.startswith("merlin/python/")}
-    for rung in RUNGS:
+    for rung in RUNGS + SIDE_ARMS:
         assert tools(a[f"{rung}_hwbringup_v0"]) == tools(r[f"{rung}_hwbringup_v0"]), rung
 
 
