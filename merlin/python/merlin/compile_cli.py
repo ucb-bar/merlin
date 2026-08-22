@@ -881,9 +881,18 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | N
             # Dump the WHOLE thing: the first 200 chars of this exception are a cyclotron diagnostic
             # banner ("rename pool: ... (limit 256)") that is well under its own limit and says nothing
             # about the failure, so a truncated reason reads as an explanation while withholding one.
-            _dump = Path(tempfile.gettempdir()) / f"mesh_refusal_{next(_MESH_RUN_SEQ)}.txt"
+            _seq = next(_MESH_RUN_SEQ)
+            _dump = Path(tempfile.gettempdir()) / f"mesh_refusal_{_seq}.txt"
             try:
                 _dump.write_text(f"{type(_e).__name__}: {_e}", encoding="utf-8")
+                # Dump the OPERANDS too. A layer that fails inside a model and succeeds standalone differs
+                # only in the values it was handed, so without them every hypothesis costs a full model
+                # run to test. With them the case replays in seconds.
+                import numpy as _np
+                _np.savez_compressed(Path(tempfile.gettempdir()) / f"mesh_refusal_{_seq}.npz",
+                                     A=_np.asarray(A, dtype=_np.float64),
+                                     W=_np.asarray(W, dtype=_np.float64),
+                                     operand_dtype=str(operand_dtype), accum_dtype=str(accum_dtype))
             except Exception:                         # noqa: BLE001
                 _dump = None
             return _refuse(f'the oracle raised {type(_e).__name__}: {str(_e)[:1500]}'
