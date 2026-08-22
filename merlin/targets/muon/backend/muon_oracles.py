@@ -66,8 +66,34 @@ def _adapter(simulator: str) -> Callable:
         # LLVM + RTL-derived transcode) and record which toolchain produced the graded ELF, so the experiment
         # measures fork-free coverage and never hides a fork fallback (MERLIN_MUON_FORKFREE_ONLY fails closed).
         from . import muon_harness as _mh
+        from . import muon_mx_codegen as _mx
         target = cb.get("target", "radiance")
-        if muon.is_mlir_artifact(kernel_src):
+        # A block-scaled MX capsule is graded on the HARNESS's reference MX kernel, whatever the artifact.
+        #
+        # This branch used to exist only inside program_from_cb, i.e. only on the inline-SOURCE path. An
+        # agent that emits LLVM-dialect MLIR -- the thesis path -- went to compile_mlir_forkfree instead,
+        # whose operand derivation (args_from_cb) has no MX branch: it embeds the decoded element codes as
+        # plain f32 and DROPS the E8M0 block scales. Those scales are corpus-seeded from the capsule-name
+        # salt and exist only in the golden, so the declared operation is not computable from what the
+        # kernel receives. Measured on R5: a plain f32 matmul of the embedded operands lands 252/256
+        # elements outside tolerance (max_rel 68), and applying the row/column scales still leaves 159
+        # outside -- the golden comes from mlc's mx_ref hardware semantics, not a rescale. Every MX capsule
+        # therefore failed for every MLIR submission, identically, in every round, on both arms.
+        #
+        # ⚠️ These passes measure the REFERENCE KERNEL, not the submission, so they must never be read as
+        # compiler quality. The toolchain stamp says so explicitly and rides into the capsule result, so a
+        # score that includes them stays decomposable rather than silently overstating the backend by the
+        # size of the MX set (which is what an earlier 40/40 on this corpus did).
+        _mxprog = None
+        if _mx.is_mx_cb(cb) and cb.get("mx_operands"):
+            try:
+                _mxprog = _mx.emit_mx_kernel(cb["mx_operands"], _mx.mx_output_name(cb))
+            except Exception:  # noqa: BLE001 — emitter fails closed (e.g. fp6/fp4 flash); grade normally
+                _mxprog = None
+        if _mxprog is not None:
+            _elf, _tc = muon.compile_for_oracle(_mxprog, workdir, target=target)
+            elf, toolchain = _elf, f"mx-reference-kernel(not-the-submission;{_tc})"
+        elif muon.is_mlir_artifact(kernel_src):
             # THESIS PATH: the agent emitted an LLVM-dialect MLIR kernel (a compiler lowering). Build it
             # fork-free (stock LLVM rv32 + RTL-derived Muon re-encode + runner-owned external-kernel harness);
             # this path is fork-free by construction (never clang-muon), so the toolchain stamp is "fork-free".

@@ -67,6 +67,11 @@ class TierResult:
     timing: dict | None = None        # {build_s, sim_active_s, oracle_wait_s} — active vs waiting
     gflops: float | None = None       # perf (SIMT); None -> omitted so systolic output is unchanged
     pct_fp_peak: float | None = None
+    toolchain: str | None = None      # WHICH PROGRAM was graded, as reported by the adapter. A block-
+                                      # scaled MX capsule is graded on the harness's own reference MX
+                                      # kernel rather than the submission, so a pass there measures the
+                                      # fixture. Recording it keeps a score decomposable instead of
+                                      # silently overstating the backend by the size of the MX set.
     not_applicable: bool = False      # tier honestly N/A for this capsule's datatype (e.g. the integer
                                       # L0/L1 floor on a float datapath) — a legitimate skip, not a
                                       # not_run_is_not_pass violation (unlike an unavailable RTL oracle)
@@ -84,6 +89,11 @@ class TierResult:
             d["gflops"] = self.gflops
         if self.pct_fp_peak is not None:
             d["pct_fp_peak"] = self.pct_fp_peak
+        # WHICH PROGRAM was graded. Rides only when the adapter reported one, so existing output is
+        # unchanged. This is what separates "the submission passed" from "the harness fixture passed":
+        # a block-scaled MX capsule is graded on the reference MX kernel, not the submitted backend.
+        if self.toolchain:
+            d["toolchain"] = self.toolchain
         return d
 
 
@@ -1219,6 +1229,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         return result
 
     tiers: dict[str, TierResult] = {}
+    # WHICH PROGRAM each tier actually graded, keyed by tier (see TierResult.toolchain). Declared out here
+    # so it survives an exception raised inside the tier loop.
+    _tier_toolchain: dict[str, str] = {}
     trace_check_res = {"status": "skipped", "violations": []}
     decoded_trace: dict | None = None            # kept for the advisory divergence localizer (D2)
     numeric = {"status": "skipped"}
@@ -1532,6 +1545,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             _adapter_t0 = _time.perf_counter()
             try:
                 res = adapter(cb, llvm_text, paths.generated, timeout)
+                # Which program the adapter actually built. Captured here because the branches below each
+                # construct their own TierResult and `res` is not in scope after them; applied in one place
+                # once the loop is done.
+                if isinstance(res, dict) and res.get("toolchain"):
+                    _tier_toolchain[tier] = str(res["toolchain"])
             except _PODidNotHalt as e:
                 # The oracle RAN and returned a verdict: the program never halted. That is the AGENT's
                 # bug, not a missing oracle — record it as a tier FAIL (not "unavailable") so the
@@ -1755,6 +1773,15 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         failure = {"plane": "runner_internal", "category": "RUNNER_CRASH",
                    "detail": f"{type(e).__name__}: {e}",
                    "traceback": _traceback.format_exc()}
+
+    # Stamp each tier with the program the adapter built. Done here rather than at each construction site:
+    # the branches above each build their own TierResult and `res` is out of scope after them. A block-
+    # scaled MX capsule is graded on the harness's reference MX kernel, so this is what separates "the
+    # submission passed" from "the fixture passed" in a finished score.
+    from dataclasses import replace as _dc_replace
+    for _t, _tc in _tier_toolchain.items():
+        if _t in tiers and getattr(tiers[_t], "toolchain", None) is None:
+            tiers[_t] = _dc_replace(tiers[_t], toolchain=_tc)
 
     return _finalize_capsule_result(
         name=name, capsule=capsule, status=status, failure=failure, tiers=tiers,
