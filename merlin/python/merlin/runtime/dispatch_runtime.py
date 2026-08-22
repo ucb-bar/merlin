@@ -640,7 +640,12 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     else f"rank{a.ndim}x{b.ndim}"
             except Exception:                                  # noqa: BLE001
                 _sh = "unknown"
-            mesh_counts.setdefault("mesh_fallback_shapes", []).append(_sh)
+            try:
+                from ..compile_cli import _MESH_REFUSAL
+                _why = _MESH_REFUSAL.get("reason") or "no reason recorded"
+            except Exception:                                  # noqa: BLE001
+                _why = "no reason recorded"
+            mesh_counts.setdefault("mesh_fallback_shapes", []).append(f"{_sh}: {_why}")
             execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
         model = kernel_model(symbol)
         args, keep = [], []

@@ -373,6 +373,16 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     return out
 
 
+_MESH_REFUSAL: dict = {}      # diagnostic only: why the last mesh attempt returned None
+
+
+def _refuse(reason: str):
+    """Record why a mesh attempt is giving up, then give up. Diagnostic only -- callers still
+    just see None, which stays the fail-closed contract."""
+    _MESH_REFUSAL["reason"] = reason
+    return None
+
+
 _MESH_NTILE_WIDTH: dict[tuple, int] = {}   # N-tile width a target's backend accepts
 _MESH_PKG_CACHE: dict[str, object] = {}
 _MESH_PKG_LOCK = threading.Lock()
@@ -811,7 +821,7 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | N
 
     pkg = package or _default_oot_package(target)
     if pkg is None:
-        return None
+        return _refuse('no OOT package resolved for this target')
     so = CR._SIM_ORACLES.get(CR._bespoke_sim_via(target))
     if so is None or not so.exclusive:
         return None
@@ -841,10 +851,10 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | N
             _built = _built_mesh_package(pkg, timeout)     # built once per process, not once per layer
             _pkg, cb, kernel_text = CC.run_entrypoints(_built, pkg, capsule, paths, contract=None,
                                                        timeout=timeout, fourth_output_name="kernel.cpp")
-        except Exception:                             # noqa: BLE001 — package can't emit this kernel: honest None
-            return None
+        except Exception as _e:                       # noqa: BLE001 — package can't emit this kernel
+            return _refuse(f'run_entrypoints raised {type(_e).__name__}: {str(_e)[:160]}')
         if cb is None or not kernel_text:
-            return None
+            return _refuse('the package emitted no command buffer or kernel text')
         # INJECT the real operands onto the cb's leaf tensors (encoded for each tensor's declared dtype);
         # the muon harness decodes ``preload_b64`` and embeds THESE values instead of the materialized ones.
         operands = {"A0": A, "W": W}
@@ -852,7 +862,8 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | N
             if tspec.get("role") in ("input", "weight", "bias") and tname in operands:
                 raw = MP._encode_operand(operands[tname], tspec.get("dtype", "f32"))
                 if raw is None:
-                    return None
+                    return _refuse(f'operand {tname!r} could not be encoded for dtype '
+                                   f'{tspec.get("dtype", "f32")!r} (non-finite or out of range?)')
                 tspec["preload_b64"] = base64.b64encode(raw).decode()
         try:
             res = run(cb, kernel_text, tdp / "oracle", timeout)
