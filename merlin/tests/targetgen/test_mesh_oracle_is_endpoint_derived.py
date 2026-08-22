@@ -151,3 +151,65 @@ def test_an_unresolvable_accumulator_refuses_to_pick_a_tolerance():
     from merlin.compile_cli import _accum_rel_tolerance
 
     assert _accum_rel_tolerance("not_a_format", 8) is None
+
+
+def test_the_float_tolerance_is_tight_enough_to_reject_a_broken_mesh():
+    """A derived bound still has to be a GATE. An earlier version returned 1.17 (117%) for a bf16
+    accumulator at k=352, which accepts essentially any output; the measured max relative error on that
+    exact layer was 0.067, so the bound must sit above the measurement and far below 1."""
+    from merlin.compile_cli import _accum_rel_tolerance
+
+    bound = _accum_rel_tolerance("bf16", 352)
+    assert bound > 0.067, "the bound must cover the error real bf16 accumulation produces"
+    assert bound < 0.25, f"a {bound:.0%} tolerance is not a gate — it accepts a broken mesh"
+
+
+# --------------------------------------------------------------------------- accumulator reference
+def test_the_reference_accumulates_in_the_targets_declared_format():
+    """Gating a narrow-float mesh against an f32 product condemns a correct device.
+
+    Measured on a 32x352x128 fp8xbf16 layer: 796 of 4096 elements differ from the f32 product by up to 22
+    — and the device reproduces a sequential bf16 accumulation BIT-FOR-BIT on every element. The mesh was
+    exact; the reference was wrong."""
+    import numpy as np
+
+    from merlin.compile_cli import _reference_in_accum_format
+
+    rng = np.random.default_rng(0xA71A5)
+    A = np.rint(rng.standard_normal((32, 352)) * 3).clip(-8, 7).astype(np.float32)
+    W = np.rint(rng.standard_normal((352, 128)) * 3).clip(-8, 7).astype(np.float32)
+
+    bf16_ref = _reference_in_accum_format(A, W, "bf16")
+    assert bf16_ref is not None, "bf16 is a declared accumulator format and must be modelled"
+    n_diff = int((bf16_ref != A @ W).sum())
+    assert n_diff > 0, "a bf16 accumulator cannot equal the f32 product at this depth"
+    # every difference must be rounding-sized, not structural
+    assert float(np.abs(bf16_ref - A @ W).max()) < 64.0
+
+
+def test_an_exact_accumulator_needs_no_model():
+    """An integer accumulator does not round, and f32 IS the product — modelling either would only add a
+    way to be wrong. Both fall through to the plain reference."""
+    import numpy as np
+
+    from merlin.compile_cli import _reference_in_accum_format
+
+    A = np.ones((4, 4), dtype=np.float32)
+    W = np.ones((4, 4), dtype=np.float32)
+    assert _reference_in_accum_format(A, W, "i32") is None
+    assert _reference_in_accum_format(A, W, "fp32") is None
+    assert _reference_in_accum_format(A, W, "not_a_format") is None
+
+
+def test_the_strongest_gate_is_tried_first():
+    """Bit-exact against the declared accumulator beats a tolerance, and the record must say which gate
+    carried the verdict — otherwise a tolerance pass is indistinguishable from an exact one."""
+    import inspect
+
+    from merlin import compile_cli
+
+    src = inspect.getsource(compile_cli._certify_tile_via_executor)
+    assert src.index("_reference_in_accum_format") < src.index("_accum_rel_tolerance"), \
+        "the exact gate must be attempted before falling back to a tolerance"
+    assert "bit-exact vs" in src and "tolerance" in src, \
+        "the record must name which gate produced the verdict"

@@ -527,6 +527,12 @@ def _accum_rel_tolerance(accum_dtype: str, k: int) -> float | None:
     352-deep reduction CANNOT be bit-exact against an f32 reference and a bit-exact gate there would report
     a correct mesh as broken. An integer accumulator does not round: it gets 0.0, i.e. bit-exact.
 
+    The bound is the format's unit roundoff ``2**-(mant_bits+1)`` grown by ``sqrt(k)`` — the random-walk
+    growth of a k-deep sequential sum — with a small safety factor. CALIBRATED, not guessed: a 32x352x128
+    fp8xbf16 layer measured 6.7% max relative error on the large elements against an f32 reference, versus
+    the 7.3% this predicts before the safety factor. An earlier version used ``2**-mant_bits`` and a factor
+    of 8, which returned 117% for that same layer — a gate that wide accepts anything.
+
     Returns ``None`` when the format cannot be resolved — the caller must fail closed rather than pick a
     tolerance, because both defaults are wrong in one direction (too tight condemns a good mesh, too loose
     passes a broken one)."""
@@ -543,7 +549,48 @@ def _accum_rel_tolerance(accum_dtype: str, k: int) -> float | None:
     mant = int(f.mant_bits or 0)
     if not mant:
         return None
-    return (2.0 ** -mant) * max(1.0, float(k) ** 0.5) * 8.0
+    return (2.0 ** -(mant + 1)) * max(1.0, float(k) ** 0.5) * 1.5
+
+
+def _reference_in_accum_format(A, W, accum_dtype: str):
+    """``A @ W`` accumulated in the TARGET's declared accumulator format — the reference a mesh should be
+    gated against, rather than an f32 one it was never going to reproduce.
+
+    A narrow-float accumulator rounds every partial sum, so an f32 reference disagrees with a perfectly
+    correct device by design: a 32x352x128 fp8xbf16 layer measured 796 of 4096 elements differing, max
+    absolute error 22, purely from bf16 rounding. Rounding the running sum to the accumulator's format
+    after each MAC reproduced that same device output BIT-FOR-BIT on all 4096 elements — so the mesh was
+    exact all along and the reference was wrong.
+
+    Returns ``None`` when the format cannot be resolved, or for an integer accumulator (exact: the plain
+    product is already the right reference). Assumes sequential k-order accumulation, which is why the
+    caller treats a mismatch here as "not bit-exact" and falls back to the tolerance gate rather than a
+    failure -- another device may reduce in a different order and still be correct."""
+    import numpy as np
+
+    from .common import quant_formats as QF
+    try:
+        f = QF.get(accum_dtype)
+    except KeyError:
+        return None
+    if f.kind == "int_affine":
+        return None
+    mant, exp = int(f.mant_bits or 0), int(f.exp_bits or 0)
+    if mant == 10 and exp == 5:                      # IEEE half
+        rnd = lambda x: x.astype("<f2").astype(np.float32)          # noqa: E731
+    elif mant == 7 and exp == 8:                     # bfloat16: top half of the f32 word, RNE
+        def rnd(x):
+            u = np.asarray(x, dtype=np.float32).view(np.uint32).astype(np.uint64)
+            return (((u + 0x7FFF + ((u >> 16) & 1)) >> 16).astype(np.uint32) << 16
+                    ).astype(np.uint32).view(np.float32)
+    elif mant == 23 and exp == 8:                    # f32: the product already is the reference
+        return None
+    else:
+        return None
+    acc = np.zeros((A.shape[0], W.shape[1]), dtype=np.float32)
+    for i in range(A.shape[1]):
+        acc = rnd(acc + np.outer(A[:, i], W[i, :]))
+    return acc
 
 
 def _certify_tile_via_executor(target, mlir, *, m, k, n, binding, timeout) -> dict:
@@ -580,6 +627,16 @@ def _certify_tile_via_executor(target, mlir, *, m, k, n, binding, timeout) -> di
     if dev.shape != ref.shape:
         return {"status": "fail", "oracle": {"kind": obs.get("oracle"), "result": "ran"},
                 "failure": {"detail": f"device returned {dev.shape}, reference is {ref.shape}"}}
+    # STRONGEST GATE FIRST: bit-exact against the target's own declared accumulator. Only if the device
+    # reduces in a different order (or the format is unresolvable) do we fall back to a tolerance against
+    # the f32 product, and the record says which gate carried the verdict.
+    acc_ref = _reference_in_accum_format(A, W, binding.accum_dtype)
+    if acc_ref is not None and np.array_equal(dev, acc_ref):
+        return {"status": "pass",
+                "oracle": {"kind": obs.get("oracle"), "result": "ran", "cycles": None},
+                "gate": {"kind": f"bit-exact vs {binding.accum_dtype} accumulation", "rtol": 0.0,
+                         "exact": True,
+                         "f32_max_abs_err": float(np.abs(dev - ref).max())}}
     rtol = _accum_rel_tolerance(binding.accum_dtype, k)
     if rtol is None:
         return {"status": "fail", "oracle": {"kind": obs.get("oracle"), "result": "ran"},
@@ -589,8 +646,9 @@ def _certify_tile_via_executor(target, mlir, *, m, k, n, binding, timeout) -> di
           else bool(np.allclose(dev, ref, rtol=rtol, atol=rtol * float(np.abs(ref).max() or 1.0))))
     rec = {"status": "pass" if ok else "fail",
            "oracle": {"kind": obs.get("oracle"), "result": "ran", "cycles": None},
-           "gate": {"kind": "reference==oracle", "rtol": rtol,
-                    "exact": bool(np.array_equal(dev, ref))}}
+           "gate": {"kind": "reference==oracle (f32, tolerance)", "rtol": rtol,
+                    "exact": bool(np.array_equal(dev, ref)),
+                    "accum_exact": False if acc_ref is not None else None}}
     if not ok:
         rec["failure"] = {"detail": f"tile {m}x{k}x{n} diverged from the reference: "
                                     f"max abs err {float(np.abs(dev - ref).max())} (rtol {rtol})"}
