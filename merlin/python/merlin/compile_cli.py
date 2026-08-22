@@ -878,7 +878,16 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout) -> list | N
             # This exit swallowed the oracle's own exception, so an oracle that CRASHED and an oracle that
             # was simply absent reached the caller identically -- and a layer dying here looked exactly
             # like a backend that cannot emit the extent.
-            return _refuse(f'the oracle raised {type(_e).__name__}: {str(_e)[:200]}')
+            # Dump the WHOLE thing: the first 200 chars of this exception are a cyclotron diagnostic
+            # banner ("rename pool: ... (limit 256)") that is well under its own limit and says nothing
+            # about the failure, so a truncated reason reads as an explanation while withholding one.
+            _dump = Path(tempfile.gettempdir()) / f"mesh_refusal_{next(_MESH_RUN_SEQ)}.txt"
+            try:
+                _dump.write_text(f"{type(_e).__name__}: {_e}", encoding="utf-8")
+            except Exception:                         # noqa: BLE001
+                _dump = None
+            return _refuse(f'the oracle raised {type(_e).__name__}: {str(_e)[:1500]}'
+                           f'{f" [full: {_dump}]" if _dump else ""}')
         outs = res.get("outputs") or {}
         got = outs.get("Y0") or next(iter(outs.values()), None)
         if got is None:
