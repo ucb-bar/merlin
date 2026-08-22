@@ -94,6 +94,15 @@ def _manifest(arm: str, cond: str) -> dict:
     return yaml.safe_load(p.read_text()) if p.is_file() else {}
 
 
+def _materialized(arm: str, cond: str) -> bool:
+    """True iff this arm ships a bundle for the active target+condition. An arm named in ``MERLIN_ARMS``
+    but not materialized for THIS target (e.g. a newer treatment not yet built for every target) is not
+    launchable here, so the fairness checks skip it rather than fail — mirroring how ``CONDITIONS`` is
+    itself derived from the target's materialized bundles. This never weakens the gate: an arm with no
+    bundle cannot be run, and any arm that IS launched has a manifest and is still fully checked."""
+    return (BUNDLES / f"{arm}_{cond}" / "input_bundle_manifest.yaml").is_file()
+
+
 def _allowed(m: dict) -> list[str]:
     return [e["path"] for e in m.get("allowed", []) if isinstance(e, dict)]
 
@@ -121,10 +130,11 @@ def check_moat() -> tuple[bool, list[str]]:
         # The eqsat moat, checked in both directions: arm5 must HAVE the seam (else its treatment is
         # absent and a null result means nothing), and no other arm may reach it (else the comparison
         # is against an arm that also had it).
-        eqsat = _manifest(EQSAT_ARM, cond)
-        for tok in EQSAT_PATHS:
-            if not _has(_allowed(eqsat), tok):
-                probs.append(f"{EQSAT_ARM}_{cond}: eqsat arm must ALLOW {tok} — it is the treatment")
+        if _materialized(EQSAT_ARM, cond):
+            eqsat = _manifest(EQSAT_ARM, cond)
+            for tok in EQSAT_PATHS:
+                if not _has(_allowed(eqsat), tok):
+                    probs.append(f"{EQSAT_ARM}_{cond}: eqsat arm must ALLOW {tok} — it is the treatment")
         for other in ("raw_baseline", "merlin_assisted", CIRCT_ARM, "cpp_merlininfra"):
             man = _manifest(other, cond)
             for tok in EQSAT_PATHS:
@@ -137,6 +147,8 @@ def check_kit_parity() -> tuple[bool, list[str]]:
     probs = []
     for cond in CONDITIONS:
         for arm in MERLIN_ARMS:
+            if not _materialized(arm, cond):
+                continue
             if not _has(_allowed(_manifest(arm, cond)), "oot_starterkit"):
                 probs.append(f"{arm}_{cond}: starter kit (oot_starterkit) not in allowed — prompt references it")
     return (not probs), probs
@@ -155,6 +167,8 @@ def check_grant_consistency() -> tuple[bool, list[str]]:
     probs = []
     for arm in MERLIN_ARMS:
         for cond in CONDITIONS:
+            if not _materialized(arm, cond):
+                continue
             bdir = BUNDLES / f"{arm}_{cond}"
             prompt = (bdir / "STARTER_PROMPT.md")
             if not prompt.is_file():
@@ -337,9 +351,30 @@ def _scan_root(root: Path, seen: set) -> list[Path]:
     return out
 
 
+def _holdout_dirs_present() -> list[Path]:
+    """Every ``hidden/`` directory that EXISTS, whether or not its contents can be listed.
+
+    A preflighted run answer-locks the holdout store (chmod 000), which is correct -- but it also makes
+    the store unreadable to this check, and an unreadable directory yields no names. Existence survives
+    the lock even when listing does not, so the two cases can be told apart.
+    """
+    caps = REPO / "merlin/contract/capsules"
+    return [d for d in caps.glob("*/hidden") if d.is_dir()] if caps.is_dir() else []
+
+
 def check_holdout_not_specified() -> tuple[bool, list[str]]:
     names = _holdout_names()
     if not names:
+        present = _holdout_dirs_present()
+        if present:
+            # FAIL CLOSED. The store exists and could not be read -- almost certainly because the
+            # preflight answer-locked it, which is exactly when this check runs. Passing here would make
+            # the check's success indistinguishable from its blindness, and it is the check that exists to
+            # stop a held-out spec reaching the granted tree. Run it before the lock, or from a grader
+            # context that can read the store.
+            return False, [f"{len(present)} holdout store(s) exist but could not be read "
+                           f"({', '.join(str(x.relative_to(REPO)) for x in present)}) — refusing to "
+                           f"report a pass this check cannot substantiate; run before the answer-lock"]
         return True, ["(no holdout capsules on disk — nothing to check)"]
     bad = []
     for f in _granted_readable_files():
