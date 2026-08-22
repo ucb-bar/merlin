@@ -177,8 +177,9 @@ _WHOLE_MODEL_TARGETS = ("gemmini", "atlas")
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize("sizing", ["tile_edge", "sub_tile"])
 @pytest.mark.parametrize("target", _WHOLE_MODEL_TARGETS)
-def test_whole_model_matmuls_run_on_any_targets_mesh(target):
+def test_whole_model_matmuls_run_on_any_targets_mesh(target, sizing):
     from merlin import compile_cli
     from merlin.runtime.dispatch_runtime import mesh_datapath
 
@@ -196,10 +197,15 @@ def test_whole_model_matmuls_run_on_any_targets_mesh(target):
     tiers = sorted(oracle_adapters(target) or {})
     sim = _TIER_SIM.get(tiers[0]) if tiers else None
 
-    # Size the layers to the target's OWN tile edge. A fixed 4x4 is below one tile on a wider mesh, and a
-    # generated package is entitled to reject a sub-tile shape (measured: one divides by a bank count that
-    # is 0 there). The claim under test is "a whole model runs on this mesh", not "on a 4x4".
+    # BOTH sizings must work. Sizing to the target's own tile edge is the easy case. The sub-tile case is
+    # the one that matters: a real model layer does not get to choose its M -- every matmul of an 8-token
+    # sequence has M=8 against a 16- or 32-wide mesh -- and a generated package is entitled to reject a
+    # sub-tile extent. This test previously ran ONLY at the tile edge, which made it pass while the same
+    # defect took down every layer of every real model, silently, via a host fallback. The boundary now
+    # pads to the tile edge and slices back.
     edge = _mesh_tile_binding(target, None, None).tile_dim
+    if sizing == "sub_tile":
+        edge = 4
     res = compile_cli.run_whole_model_on_mesh(
         target, _vecblock("add", True, m=edge, k=edge), in_fmt=op_dt, weight_fmt=op_dt,
         operand_dtype=op_dt, accum_dtype=acc_dt, simulator=sim,
