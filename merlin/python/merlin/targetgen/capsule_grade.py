@@ -107,14 +107,25 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     # denominator. Counting it as a failure is what made all_pass unreachable and disabled the loop's
     # early exit; counting it as a pass would be a phantom certification. It stays in `results` so the
     # skip is auditable, and its count is reported separately.
+    # A capsule DEFERRED by its own gate (a whole-model capstone waiting on the op suite) is likewise in
+    # neither bucket. It never ran a tier, so scoring it as a failure is not a measurement of the
+    # submission -- and because the loop's ONLY early exit is a genuine all_pass, a permanently-deferred
+    # capsule makes all_pass unreachable and forces every run to buy its entire round budget. Measured:
+    # a 28-capsule grade of {pass 14, fail 12, not_graded 1, gated 2} could never reach all_pass no
+    # matter what the agent did. The gate fraction it is waiting on is reported separately, as OP
+    # COVERAGE -- it is not a verdict on the model.
     ungraded = [r for r in results if r.get("status") == "not_graded"]
-    graded = [r for r in results if r.get("status") != "not_graded"]
+    deferred = [r for r in results if r.get("status") == "gated"]
+    graded = [r for r in results if r.get("status") not in ("not_graded", "gated")]
     n_pass = sum(1 for r in graded if r["status"] == "pass")
     score["n_capsules"] = len(graded)
     score["n_passed"] = n_pass
     score["n_not_graded_ineligible"] = len(ungraded)
+    score["n_gated_deferred"] = len(deferred)
     if ungraded:
         score["not_graded_ineligible"] = sorted(r.get("capsule") for r in ungraded)
+    if deferred:
+        score["gated_deferred"] = sorted(r.get("capsule") for r in deferred)
     score["functional_pass"] = int(n_pass == len(graded) and len(graded) > 0)
     # Structure-only smoke bookkeeping (honest, never a numeric pass): a capsule is structurally clean
     # when it did not FAIL a structural tier — status `pass` OR `not_gradeable_no_oracle` (numeric verdict
@@ -205,6 +216,26 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
                          "instruction_class_coverage": cov["instruction_class_coverage"],
                          "mode_coverage": cov["mode_coverage"], "unavailable": cov["unavailable"],
                          "acceleratable_coverage": cov["acceleratable_coverage"]}
+
+    # PROVENANCE. This score asserts a hardware result -- N of M capsules passed on named oracle tiers --
+    # so it must record WHICH hardware revision produced it. A result attributed to the wrong device is
+    # worse than no result, because it gets cited. Pins for these targets already existed; nothing emitted
+    # the block, and the gate could not see the score to complain, so every bench verdict on every target
+    # was unattributable. Never fatal: a grade that ran must still report its numbers, with the
+    # provenance gap visible rather than the whole grade lost.
+    try:
+        from merlin.common import provenance as _P
+        _pins = {}
+        for _name in _P.load_pins():
+            try:
+                _pins[_name] = _P.verify(_name)
+            except Exception:                                 # noqa: BLE001 - checkout absent is a gap
+                continue
+        score["provenance"] = _P.record(pins=_pins or None,
+                                        extra={"target": target, "n_capsules": score.get("n_capsules"),
+                                               "n_passed": score.get("n_passed")})
+    except Exception as _e:                                   # noqa: BLE001
+        score["provenance"] = {"unavailable": f"{type(_e).__name__}: {_e}"}
     return score
 
 

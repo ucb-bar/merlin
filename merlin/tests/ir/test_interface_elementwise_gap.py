@@ -19,9 +19,13 @@ Two boundaries were deliberately NOT crossed:
 
 * `linalg.sub` is not expressible. The runtime's VECTOR_MAP implements add and mul; lowering a
   subtract as an add would be a miscompile, so it fails closed.
-* A fused matmul-plus-elementwise payload is refused. Materializing it means deciding whether the
-  combine folds into the commit epilogue or becomes its own dispatch — a scheduling question with a
-  measurable answer, not one to guess at inside a rebuild loop.
+* A fused matmul-plus-elementwise payload was refused here while the question "does the combine fold
+  into the commit epilogue, or become its own dispatch?" was open. It is now ANSWERED, in the
+  conservative direction: its own dispatch. The rebuild loop emits the combine as an
+  ``interface.vector_map`` threaded through the same value map as the matmuls, and the commit's
+  epilogue stays empty — nothing is fused by accident, which is what the refusal was protecting.
+  Refusing outright is what made a residual add between two matmul layers — a whole model's actual
+  shape — unlowerable, and with it the whole-model-on-mesh and multi-layer-chain tests.
 """
 from __future__ import annotations
 
@@ -204,8 +208,15 @@ def test_the_command_buffer_declares_its_result_and_computes_the_right_answer(de
     assert np.array_equal(got, lhs + rhs)
 
 
-def test_a_fused_matmul_and_elementwise_payload_is_refused():
-    """Real workload, unmade decision — refused rather than fused by accident."""
+def test_a_fused_matmul_and_elementwise_payload_becomes_its_own_dispatch():
+    """Real workload, decision made: the combine is a SEPARATE dispatch, never folded into the commit.
+
+    This replaces an assertion that the same module was refused. The refusal was correct while the
+    fusion question was open and the vector lane did not exist on this path; it is wrong now that it
+    does, because the shape it refuses — a residual add consuming a matmul result — is what every
+    whole model is made of. What the refusal actually guarded against was fusing the combine into the
+    commit epilogue by accident, so that is what this asserts instead: the epilogue stays empty and
+    the combine is its own VECTOR_MAP."""
     from xdsl.dialects import tensor as tensor_d
     from xdsl.dialects.builtin import FunctionType, IntegerType, ModuleOp, TensorType
     from xdsl.dialects.func import FuncOp, ReturnOp
@@ -228,6 +239,15 @@ def test_a_fused_matmul_and_elementwise_payload_is_refused():
     module = ModuleOp([FuncOp("fused", FunctionType.from_lists([t, t, t], [t]), Region([block]))])
 
     assert set(compile_core.payload_classes(module)) >= {"matmul", "elementwise"}
-    with pytest.raises(LoweringError) as exc:
-        lower_module(module, target="toy_npu")
-    assert "mixed payload" in str(exc.value) and "fusion" in str(exc.value)
+    res = lower_module(module, target="toy_npu")
+
+    names = [op.name for op in res.interface_module.walk()]
+    assert "interface.matmul" in names and "interface.vector_map" in names
+    # The combine is its OWN dispatch, in order after the commit -- not folded into it.
+    assert [c["opcode"] for c in res.command_buffer["commands"]] == [
+        "RES_PACK", "MATMUL_RESIDENT", "COMMIT", "VECTOR_MAP", "EVICT"]
+    # The guard's real concern: an accidental fusion would show up as a non-empty commit epilogue.
+    commits = [op for op in res.interface_module.walk() if op.name == "interface.commit"]
+    assert commits and all(len(op.properties["epilogue"]) == 0 for op in commits), \
+        "the combine must not have been folded into the commit epilogue"
+    assert LoweringError is not None  # imported above; the refusal path is gone, not the error type

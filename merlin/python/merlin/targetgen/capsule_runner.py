@@ -966,12 +966,16 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
             linalg_mlir = lp.read_text(encoding="utf-8")
     try:
         from ..compile_cli import compile_model
-        # `mesh_package` is the SUBMISSION under test. Without it the mesh path would resolve
-        # `_default_oot_package(target)` -- i.e. the promoted package -- and quietly certify a different
-        # compiler than the one being graded, the same class of bug this rung exists to close.
+        # `mesh_package` is the SUBMISSION under test. Without it the mesh path resolves
+        # `_default_oot_package(target)` -- the promoted package -- and quietly certifies a different
+        # compiler than the one being graded.
+        # `routing_dtype` is the capsule's declared datapath format: `dtype` here is an RVV compile mode,
+        # so routing a demand against it matches a compile-mode token rather than the unit's real format.
+        _attrs = (capsule.get("operation") or {}).get("attributes") or {}
         out = compile_model(model, dtype, target=target, run=run_where, verify=True, package=None,
                             auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir,
-                            mesh_verify=mesh_verify, mesh_package=package_dir)
+                            mesh_verify=mesh_verify, mesh_package=package_dir,
+                            routing_dtype=_attrs.get("dtype"))
     except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
         return _bail(f"whole-model compile/run unavailable: {str(e)[:300]}")
     except Exception as e:  # noqa: BLE001
@@ -995,6 +999,14 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     mx = out.get("mesh_execution") or {}
     ran = mx.get("matmul_layers_on_mesh")
     fell = mx.get("matmul_layers_host_fallback")
+    # Two mesh evidence sources exist and a whole-model verdict must accept either: the per-tile
+    # CERTIFICATION path reports n_tiles/ok, the whole-model EXECUTION path reports layers on the mesh.
+    n_tiles = int(mx.get("n_tiles") or 0) if isinstance(mx, dict) else 0
+    tiles_ok = bool(mx.get("ok")) if n_tiles else False
+    # Name the mesh tier from the capsule's OWN declaration rather than assuming "L2": a target whose
+    # ladder differs would otherwise be described with a label it does not use.
+    _declared = [str(x) for x in (capsule.get("required_oracle_tiers") or [])]
+    _mesh_tier = next((x for x in reversed(_declared) if x not in ("L0", "L1")), "L2")
     numeric: dict
     if st == "verified" and gate:
         numeric = {"status": "pass", "engine": engine, "gate": out.get("verify")}
@@ -1033,31 +1045,46 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                                     "status": st}
         numeric = {"status": "skipped", "engine": engine,
                    "reason": "host dispatch-runtime reference is advisory; not an oracle for the submission"}
-        tiers["L2"] = TierResult("L2", "skipped", "L2" in _required,
-                                 reason="host reference run: the target mesh did not execute this model")
+        tiers[_mesh_tier] = TierResult(_mesh_tier, "skipped", _mesh_tier in _required,
+                                       reason="host reference run: the target mesh did not execute this model")
         status = "pass"                       # the finalizer converts this to not_gradeable_no_oracle
         _no_oracle = True
     else:
         _no_oracle = False
-        if ran is None or ran is PROV_UNKNOWN:
-            tiers["L2"] = TierResult("L2", "unavailable", "L2" in _required,
+        if not ran and n_tiles:
+            # per-tile certification evidence (mesh_verify), not whole-model execution
+            tiers[_mesh_tier] = TierResult(_mesh_tier, "pass" if tiles_ok else "fail",
+                                           _mesh_tier in _required,
+                                           reason=f"{n_tiles} mesh tile(s) certified",
+                                           evidence="mesh_execution")
+        elif ran is None or ran is PROV_UNKNOWN:
+            tiers[_mesh_tier] = TierResult(_mesh_tier, "unavailable", _mesh_tier in _required,
                                      reason="mesh execution counters unavailable — the target mesh could "
                                             "not be reached (no OOT package, or the oracle failed to run)")
         elif not ran:
-            tiers["L2"] = TierResult("L2", "skipped", "L2" in _required,
+            tiers[_mesh_tier] = TierResult(_mesh_tier, "skipped", _mesh_tier in _required,
                                      reason="no matmul layer executed on the target mesh (every layer fell "
                                             "back to the host)")
         elif fell:
-            tiers["L2"] = TierResult("L2", "fail", "L2" in _required,
+            tiers[_mesh_tier] = TierResult(_mesh_tier, "fail", _mesh_tier in _required,
                                      reason=f"{fell} mesh-routed layer(s) fell back to the host")
         else:
-            tiers["L2"] = TierResult("L2", "pass" if numeric["status"] == "pass" else "fail",
-                                     "L2" in _required,
+            tiers[_mesh_tier] = TierResult(_mesh_tier, "pass" if numeric["status"] == "pass" else "fail",
+                                     _mesh_tier in _required,
                                      reason=f"{ran} matmul layer(s) executed on the target mesh",
                                      evidence="mesh_execution")
 
+    # The gate fraction is OP COVERAGE, not a model verdict; say so on the row rather than letting a
+    # reader infer one from the other. And name the declared tiers that never ran.
+    result["op_coverage"] = {"note": "the op-pass fraction this capsule was gated on is OP COVERAGE, "
+                                     "not a verdict on the model"}
+    _unexercised = [t for t in _declared
+                    if tiers.get(t) is None or tiers[t].status not in ("pass", "fail")]
+    if _unexercised:
+        result["tiers_unexercised"] = _unexercised
     extra = {k: result.pop(k) for k in ("routing_plan", "coverage_certificate", "mesh_execution",
-                                        "host_reference", "note", "operation")
+                                        "host_reference", "note", "operation", "op_coverage",
+                                        "tiers_unexercised")
              if k in result}
     # A verdict that claims the hardware ran something records WHICH tree produced it. Only stamped when
     # the mesh actually executed: a withheld verdict has no hardware claim to attribute.

@@ -78,8 +78,17 @@ def _materializable_families() -> set[str]:
 
 
 def _targets_with_profiles() -> list[str]:
+    """Targets that declare a corpus profile.
+
+    A held-out spec lives in a ``<target>.hidden.yaml`` SIDECAR (its op/dtype/shape is itself an answer,
+    so it is untracked and kept out of the grant every arm reads). The sidecar is not a target: taking
+    ``Path.stem`` of it yields ``"radiance.hidden"`` and the audit then reports a missing contract for a
+    target that does not exist, burying the real findings under one per sidecar.
+    """
     d = repo_root() / "merlin" / "contract" / "capsules" / "profiles"
-    return sorted(p.stem for p in d.glob("*.yaml")) if d.is_dir() else []
+    if not d.is_dir():
+        return []
+    return sorted(p.stem for p in d.glob("*.yaml") if not p.stem.endswith(".hidden"))
 
 
 def audit(target: str) -> list[dict]:

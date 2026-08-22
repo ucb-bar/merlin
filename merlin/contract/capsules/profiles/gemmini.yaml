@@ -408,13 +408,6 @@ capsules:
 - {cat: model_slices, name: GC6_bias_add_bf16_pt, kind: model_slice, op: bias_add, operand_dtype: bf16,
    source: pytorch, M: 16, N: 16, out: Y0, comparison_group: bias_add, source_role: pytorch_model_slice,
    source_reference: 'PyTorch bias add bf16', label: public, modes: {}}
-# --- Hidden fused holdouts.
-- {cat: hidden, name: GH0_softmax_bf16_hidden, kind: model_slice, op: softmax, operand_dtype: bf16,
-   source: pytorch, M: 24, K: 24, out: Y0, source_role: pytorch_model_slice,
-   source_reference: hidden PyTorch softmax bf16 (unseen 24x24), label: hidden, modes: {}}
-- {cat: hidden, name: GH1_conv2d_i8_hidden, kind: layer, op: conv2d, Himg: 10, Wimg: 10, ci: 4, N: 16,
-   kh: 3, kw: 3, source_role: uplifted_from_bareMetalC,
-   source_reference: hidden im2col conv2d int8 (unseen 10x10x4 -> 16), label: hidden}
 # --- Second whole-model capstone (GATED): lstmnetvit int8 — broader layer types (conv patch-embed,
 # spatial-reduction attention, depthwise MixFFN, PixelShuffle+upsample, LSTM head) beyond small_llama.
 - {cat: model, name: M1_lstmnetvit_gemmini, kind: model, op: model, model: lstmnetvit,

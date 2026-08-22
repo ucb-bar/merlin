@@ -1114,7 +1114,7 @@ def _summarize_route_plan(plan: dict) -> dict:
 def compile_model(workload: str, dtype: str, *, target: str | None, run: str, verify: bool,
                   package: str | None, auto_capture: bool, timeout: int,
                   linalg_mlir: str | None = None, mesh_verify: bool = False,
-                  mesh_package: str | None = None) -> dict:
+                  mesh_package: str | None = None, routing_dtype: str | None = None) -> dict:
     """Target-aware whole-model compile. Routes each op across the target's compute units (matmul/systolic
     tiles -> the mesh, norms/activations/elementwise -> the vector/scalar lane) via
     ``routing.route_plan``, then compiles the functional whole model (the scalar/RVV reference, numerically
@@ -1151,7 +1151,14 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
         try:
             from .targetgen import capsule_source as CSRC
             from .targetgen import routing as _routing
-            demands = CSRC.model_op_demands(linalg_mlir, dtype)
+            # Route on the EXACT registry format name, not the compile-mode token. `dtype` here is a
+            # compile mode (one of _RVV_DTYPES: "int8", "fp8", ...) chosen for the RVV lowering; a
+            # target declares its datapath with the precise format ("fp8_e4m3"). Feeding the compile
+            # token to the router made every fp8 demand carry in_fmt="fp8" while the unit declared
+            # "fp8_e4m3", so a whole model routed 0 of its 15 contractions to a mesh that supports every
+            # one of them. Threading the exact name is also the SAFE fix: an "fp8" -> "fp8_e4m3" alias
+            # would route e5m2 data onto an e4m3 unit, which is why the registry omits that alias.
+            demands = CSRC.model_op_demands(linalg_mlir, routing_dtype or dtype)
             plan = _routing.route_plan(demands, target)
             out["routing_plan"] = _summarize_route_plan(plan)
             try:
@@ -1159,7 +1166,12 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
                 # ARR coverage certificate: the compiler's routing decisions (numerator) scored against
                 # the target's INDEPENDENT eligibility oracle (denominator). Empty capability map (target
                 # declares no semantic_capabilities yet) yields an honest all-ineligible certificate.
-                out["coverage_certificate"] = _cert.for_target(plan, target)
+                #
+                # The module goes in too, because both sides of that ratio are built from `demands` and a
+                # contraction the matcher never matched is in neither -- it is absent, and its absence
+                # raises the recall. With the module the certificate also prices what the demands missed
+                # and states a recall FLOOR beside the headline figure.
+                out["coverage_certificate"] = _cert.for_target(plan, target, linalg_mlir=linalg_mlir)
             except Exception as e:  # noqa: BLE001 — certificate is advisory; never mask routing/functional
                 out["coverage_certificate"] = {"error": f"{type(e).__name__}: {e}"}
             if mesh_verify:

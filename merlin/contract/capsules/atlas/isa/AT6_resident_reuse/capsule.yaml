@@ -66,6 +66,7 @@ inapplicable_oracle_tiers:
     where the RTL treats it as word-addressed, and reads the fp8->bf16 unpack scale
     as a divisor where the RTL reads a biased exponent. Graded on the RTL tiers instead.'
 semantic:
+  semantic_family: contraction
   generalization_axis: seen
   must_accelerate: true
   eligible: auto

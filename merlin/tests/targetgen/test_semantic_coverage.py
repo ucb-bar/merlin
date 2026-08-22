@@ -292,3 +292,211 @@ def test_eligibility_does_not_depend_on_routing():
             imported.update(f"{base}.{a.name}" for a in node.names)
     assert not any("routing" in m for m in imported), \
         f"eligibility oracle must not import routing (ARR would be trivially 1.0); imports={sorted(imported)}"
+
+
+# --- the ARR denominator reads OPERAND dtypes, never the accumulator ------------------------------
+
+def _cap(rel: str) -> dict:
+    import yaml
+    return yaml.safe_load((repo_root() / "merlin" / "contract" / "capsules" / rel / "capsule.yaml").read_text())
+
+
+def test_capsule_region_reads_operand_dtype_not_the_accumulator():
+    """``numeric_policy.dtype`` is the ACCUMULATOR dtype. Reading it as the operand dtype disabled ARR
+    on every target: a gemmini matmul presented ``i32`` against a contract declaring ``int8``, so every
+    gemmini capsule was ineligible and ARR reported ``None``; radiance escaped only because it
+    accumulates in f32 and also declares fp32 as an operand format, so its fp16/MX capsules were judged
+    as f32/bf16 and the dtype axis was unenforced everywhere."""
+    gem = _cap("isa/A2_single_tile_matmul")
+    assert gem["numeric_policy"]["dtype"] == "i32", "fixture drifted: this capsule accumulates in i32"
+    r = cov._capsule_region(gem)
+    assert r.in_dtype == "i8" and r.weight_dtype == "i8", (r.in_dtype, r.weight_dtype)
+
+    mx = _cap("radiance/isa/R5_mx_tile_mxfp8")
+    assert cov._capsule_region(mx).in_dtype == "mxfp8"          # was reported as the bf16 accumulator
+    assert cov._capsule_region(_cap("radiance/isa/R1_gemm_fp16")).in_dtype == "fp16"   # was f32
+
+
+def test_capsule_region_populates_rank_and_batch():
+    """``SemanticCapability`` declares ``ranks`` and ``batch``; a descriptor that leaves them unset can
+    never exercise them, so gemmini's ``ranks: [2]`` was dead on the corpus path."""
+    r = cov._capsule_region(_cap("isa/A2_single_tile_matmul"))
+    assert r.rank == 2 and r.batch == 1
+
+
+def test_gemmini_denominator_is_not_empty():
+    """The regression that matters: an ARR of ``None`` is a metric that measures nothing, and that is
+    what gemmini reported for every capsule it ships."""
+    caps = {}
+    for sub in ("isa", "layers", "model_slices"):
+        for f in sorted((repo_root() / "merlin" / "contract" / "capsules" / sub).rglob("capsule.yaml")):
+            import yaml
+            c = yaml.safe_load(f.read_text())
+            caps[c["name"]] = c
+    results = [{"capsule": n, "tiers": {"L2": {"status": "pass"}}} for n in caps]
+    out = cov._acceleratable_coverage(results, caps, "gemmini")
+    assert out["n_eligible"] > 0, "gemmini declares contraction+movement; its denominator cannot be empty"
+    assert out["acceleratable_region_recall"] is not None
+
+
+# --- capability DERIVATION: the denominator is evidence, not assertion ---------------------------
+
+def test_isa_class_vocabulary_is_shared_and_refuses_mnemonics():
+    """``from_isa_class`` maps the SHARED, closed class vocabulary a contract declares. It must NOT be
+    a place to name-match a target's own mnemonics: atlas calls its reduction ``VREDSUM_BF``, and
+    classifying that by its letters is exactly the string-matching this repo exists to avoid."""
+    assert sf.from_isa_class("MVIN") == "movement"
+    assert sf.from_isa_class("COMPUTE_ACCUMULATE") == "contraction"
+    assert sf.from_isa_class("FENCE") == "synchronization"
+    # plumbing licenses nothing -- configuring a datapath is not a computation
+    assert sf.from_isa_class("CONFIG") is None and sf.from_isa_class("FLUSH") is None
+    # a target-specific mnemonic must fall through, not be guessed at
+    assert sf.from_isa_class("VREDSUM_BF") is None
+    assert sf.check() == []
+
+
+def test_composed_with_blocks_standalone_and_intersects_on_merge():
+    """A systolic mesh whose only elementwise hardware is the readout requant can fuse it onto a
+    contraction and cannot run a standalone gelu. Declaring it standalone gives the target a permanent
+    false_fallback no compiler change can clear."""
+    epi = cu.SemanticCapability(family="elementwise_map", dtypes=("int8",),
+                                composed_with=("contraction",))
+    v = el.is_eligible(el.RegionDescriptor(op="gelu", in_dtype="int8"), {"elementwise_map": epi})
+    assert not v.eligible and "only fused" in v.reason
+
+    # ...but a unit that runs it standalone wins the merge: composed_with INTERSECTS, it does not union,
+    # or one unit's limitation would constrain another unit's freedom.
+    free = cu.SemanticCapability(family="elementwise_map", dtypes=("int8",))
+    merged = cu._merge_caps(epi, free)
+    assert merged.composed_with == ()
+    assert el.is_eligible(el.RegionDescriptor(op="gelu", in_dtype="int8"),
+                          {"elementwise_map": merged}).eligible
+
+
+def test_undetermined_is_neither_eligible_nor_ineligible():
+    """A family no evidence source could decide must not be scored either way: counting it ineligible
+    shrinks the denominator and flatters recall; counting it eligible demands work the hardware may not
+    support. It is reported as unmeasured."""
+    r = el.RegionDescriptor(op="rmsnorm", in_dtype="int8")
+    plain = el.is_eligible(r, {})
+    assert not plain.eligible and not plain.undetermined
+
+    undet = el.is_eligible(r, {}, undetermined={"normalization"})
+    assert not undet.eligible and undet.undetermined
+    assert "UNDETERMINED" in undet.reason
+
+
+def test_derivation_grounds_each_target_in_its_own_evidence():
+    """Every declared family should trace to something the target itself carries. The deriver is the
+    auditor, not the author -- it never rewrites the declaration."""
+    from merlin.targetgen import capability_derive as cd
+    from merlin.targetgen import target_registry as trg
+
+    for target in ("gemmini", "atlas"):
+        contract = trg.load_contract(target)
+        derived = cd.derive(target, contract, {})
+        assert derived.families(), f"{target}: no family derived from its own evidence"
+        for fam, ev in derived.supported.items():
+            assert ev.evidence, f"{target}/{fam}: derived without recording what was observed"
+            assert ev.source in ("isa_role", "isa_class", "rtl_facts", "unit_intent"), ev.source
+        # the declaration and the evidence must agree -- drift is an error, not a note
+        drift = cd.reconcile(el.capability_map_from_contract(contract), derived)
+        assert not [d for d in drift if d["kind"] == "missing_declaration"], \
+            f"{target}: hardware evidence the contract hides SHRINKS the ARR denominator: {drift}"
+
+
+def test_generated_capsules_carry_their_generalization_block():
+    """A capsule with no ``semantic`` block can never raise a ``must_accelerate`` violation, so its
+    coverage certificate passes vacuously. It was hand-authored (and a regeneration deleted it); it is
+    now stamped at the one point every writer passes through."""
+    import yaml
+    caps = repo_root() / "merlin" / "contract" / "capsules"
+    for sub in ("isa", "atlas", "radiance"):
+        for f in sorted((caps / sub).rglob("capsule.yaml")):
+            c = yaml.safe_load(f.read_text()) or {}
+            sem = c.get("semantic") or {}
+            assert sem.get("generalization_axis"), f"{c.get('name')}: no generalization block"
+            fam, op = sem.get("semantic_family"), (c.get("operation") or {}).get("op")
+            derived = sf.from_op(op)
+            if fam and derived:
+                assert fam == derived, f"{c.get('name')}: declares {fam!r}, op derives {derived!r}"
+
+
+# --- a headline recall must say WHICH families it is a claim about --------------------------------
+
+def test_recall_reports_its_per_family_denominator():
+    """``ARR = 1.000`` reads as "the compiler covers this device". On a target whose only standalone
+    families are contraction and movement it is a claim about those two, and the report has to say so.
+
+    Measured on the shipped corpus: 22 eligible regions = 21 contraction + 1 movement, while 4
+    elementwise, 2 attention, 3 reduction, 1 normalization and 1 softmax region sit outside the
+    denominator entirely. Every one of those exclusions is correct; quoting the ratio without them is
+    not."""
+    import yaml
+    caps = {}
+    for sub in ("isa", "layers", "model_slices"):
+        d = repo_root() / "merlin" / "contract" / "capsules" / sub
+        if not d.is_dir():
+            continue
+        for f in sorted(d.rglob("capsule.yaml")):
+            c = yaml.safe_load(f.read_text())
+            caps[c["name"]] = c
+    results = [{"capsule": n, "tiers": {"L2": {"status": "pass"}}} for n in caps]
+    arr = cov._acceleratable_coverage(results, caps, "gemmini")
+
+    by_fam = arr["by_family"]
+    assert by_fam, "a recall with no per-family breakdown cannot be read for what it claims"
+    # the denominator is exactly the families that contributed to it
+    contributing = {f for f, b in by_fam.items() if b["n_eligible"]}
+    assert sum(by_fam[f]["n_eligible"] for f in contributing) == arr["n_eligible"]
+    assert "contraction" in contributing
+    # families present in the corpus but outside the denominator must still appear, at zero
+    assert set(by_fam) - contributing, "excluded families must be visible, not omitted"
+
+
+def test_a_fused_only_family_is_named_as_a_hardware_exclusion():
+    """A family the device runs ONLY as an epilogue is real hardware whose standalone regions are
+    correctly ineligible. That exclusion is invisible in the ratio, so it is reported by name — the
+    alternative is a reader inferring the compiler covers an elementwise lane that does not exist."""
+    import yaml
+    caps = {}
+    for sub in ("isa", "layers", "model_slices"):
+        d = repo_root() / "merlin" / "contract" / "capsules" / sub
+        if not d.is_dir():
+            continue
+        for f in sorted(d.rglob("capsule.yaml")):
+            c = yaml.safe_load(f.read_text())
+            caps[c["name"]] = c
+    results = [{"capsule": n, "tiers": {"L2": {"status": "pass"}}} for n in caps]
+    arr = cov._acceleratable_coverage(results, caps, "gemmini")
+    assert "elementwise_map" in arr["fused_only_families"], \
+        "the mesh's readout epilogue is not a standalone elementwise engine; the contract says so"
+    assert arr["n_fused_only_ineligible"] >= 1, \
+        "regions excluded by that hardware fact must be counted, not merely implied"
+
+
+def test_the_rendered_report_carries_the_family_table_and_the_caveat():
+    """coverage.json is not what a human reads. The markdown is."""
+    from merlin.targetgen import coverage_report as cr
+    doc = cr.render_markdown({
+        "total": 1, "by_kind": {}, "by_label": {}, "by_tier_reached": {},
+        "instruction_class_coverage": {}, "mode_coverage": {},
+        "unavailable": {"vcs": 0, "firesim": 0},
+        "acceleratable_coverage": {
+            "n_eligible": 3, "n_eligible_accelerated": 3,
+            "acceleratable_region_recall": 1.0, "acceleration_precision": 1.0,
+            "n_undetermined": 0, "n_unclassified": 0,
+            "by_family": {
+                "contraction": {"n_regions": 3, "n_eligible": 3, "n_eligible_accelerated": 3,
+                                "recall": 1.0},
+                "elementwise_map": {"n_regions": 2, "n_eligible": 0, "n_eligible_accelerated": 0,
+                                    "recall": None},
+            },
+            "fused_only_families": ["elementwise_map"],
+            "n_fused_only_ineligible": 2,
+        },
+    }, [])
+    assert "| semantic family | regions | eligible | accelerated | recall |" in doc
+    assert "| elementwise_map | 2 | 0 | 0 | n/a |" in doc
+    assert "ONLY fused behind another family" in doc
+    assert "not about everything the device can compute" in doc

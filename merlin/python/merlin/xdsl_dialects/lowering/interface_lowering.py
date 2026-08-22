@@ -123,6 +123,17 @@ def _lower_vector_map(op, value_map, i):
     return i.VectorMapOp(operands=[lhs, rhs], result_types=[op.results[0].type], properties=props)
 
 
+def _is_vector_lane_op(op) -> bool:
+    """Does the interface rebuild materialize this op as an ``interface.vector_map``?
+
+    Consulted by BOTH the payload-completeness check and the rebuild loop below, for the reason
+    :func:`unaccounted_ops` states about its own pair: two op-name lists that must agree will drift.
+    They already did here — the loop grew an elementwise branch while the check still counted only
+    matmuls, so every mixed payload looked like a dropped computation.
+    """
+    return op.name in _ELEMENTWISE_COMBINE or op.name == "linalg.max"
+
+
 def support_ops(block, payload: set) -> set:
     """Ops in ``block`` whose results feed ONLY the payload — safely consumed by materialization.
 
@@ -191,17 +202,28 @@ def _check_payload_complete(fn, src_block, payload: list) -> None:
               "elementwise epilogue, grid loop) has to be expressed as an interface op before it can "
               "descend. Failing here instead of compiling a different program.")
 
-    # An epilogue would be caught above, but a payload whose RESULTS are not the matmul results is a
-    # second way to lose computation (the rebuilt return carries commits of the matmuls, in order).
+    # An epilogue would be caught above, but a payload whose RESULTS are not returned is a second way
+    # to lose computation (the rebuilt return carries the materialized payload results, in order).
+    #
+    # "Which results" is the TERMINAL ones: payload ops whose results no other payload op consumes.
+    # Comparing against every payload result instead is wrong the moment the payload composes — a
+    # two-layer chain returns only the last layer, and a matmul feeding an elementwise combine returns
+    # only the combine. For a set of independent matmuls the terminal set IS all of them, so this is
+    # the same check that shipped, stated in the form that survives composition.
     terminator = src_block.last_op
     if terminator is not None:
         returned = list(terminator.operands)
-        expected = [mm.results[0] for mm in payload]
+        payload_set = set(payload)
+        expected = [res for op in payload
+                    if not any(use.operation in payload_set
+                               for r in op.results for use in r.uses)
+                    for res in op.results]
         if returned != expected:
             raise LoweringError(
                 f"function @{fn.sym_name.data} returns {len(returned)} value(s) that are not exactly "
-                f"the {len(expected)} matmul result(s), in order — interface materialization returns "
-                "the commits of the matmuls it found, so the difference would be dropped.")
+                f"the {len(expected)} terminal payload result(s), in order — interface materialization "
+                "returns the rebuilt results of the payload it found, so the difference would be "
+                "dropped.")
 
 
 def _lower_elementwise_to_interface(fn, src_block, elementwise: list):
@@ -307,18 +329,17 @@ def lower_to_interface(module):
     elementwise = find_elementwise(module)
     if not matmuls and not elementwise:
         raise LoweringError("no matmul or elementwise payload to materialize")
-    if matmuls and elementwise:
-        # A fused shape (elementwise epilogue on a matmul) is a real workload, but materializing it
-        # means deciding whether the combine folds into the commit or stays a separate dispatch —
-        # a scheduling question with a measurable answer, not a detail to guess at here.
-        raise LoweringError(
-            f"mixed payload: {len(matmuls)} matmul(s) and {len(elementwise)} elementwise op(s). "
-            "Materializing both together needs a fusion decision (fold the combine into the commit "
-            "epilogue, or emit it as its own dispatch) that the schedule stage does not make yet; "
-            "split the kernel or wait for that decision to exist.")
-    if elementwise:
+    if elementwise and not matmuls:
+        # Elementwise-only: its own materializer, deliberately not folded into the matmul path.
         return _lower_elementwise_to_interface(fn, src_block, elementwise)
-    _check_payload_complete(fn, src_block, matmuls)
+    # A MIXED payload (a residual add or gating multiply between matmul layers — what a whole model
+    # actually looks like) descends through the rebuild loop below, whose vector-lane branch emits
+    # each combine as an interface.vector_map threaded through the same value map as the matmuls.
+    # That branch is still here; it was the pre-loop refusal in front of it that made every mixed
+    # workload unreachable, and with it gemmini's whole-model-on-mesh baseline and the two- and
+    # three-layer chain tests.
+    payload = list(matmuls) + [op for op in src_block.ops if _is_vector_lane_op(op)]
+    _check_payload_complete(fn, src_block, payload)
 
     arg_types = [a.type for a in src_block.args]
     blk = Block(arg_types=arg_types)

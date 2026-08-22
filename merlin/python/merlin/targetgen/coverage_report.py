@@ -95,9 +95,19 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
             cap_map = {}
         undetermined = _el.undetermined_families_for_target(target)
 
+    # Families this target can run ONLY fused behind another (a mesh whose only elementwise hardware is
+    # the accumulator readout epilogue). Such a family is real hardware, but a STANDALONE region of it is
+    # correctly ineligible -- so it silently never enters the denominator, and a reader who sees a high
+    # recall assumes a coverage the number does not claim. Derived from the capability map, never named.
+    fused_only = sorted(f for f, c in cap_map.items() if getattr(c, "composed_with", ()))
+    n_fused_only_ineligible = 0
+    by_family: dict[str, dict[str, int]] = {}
+
     per_capsule: list[dict] = []
     n_eligible = n_eligible_accelerated = n_accelerated = n_accel_eligible = 0
     n_undetermined = 0
+    n_unclassified = 0
+    unclassified_capsules: list[str] = []
     undetermined_capsules: list[str] = []
     false_fallback: list[str] = []
     must_accelerate_violations: list[str] = []
@@ -136,6 +146,28 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         if is_undetermined:
             n_undetermined += 1
             undetermined_capsules.append(r["capsule"])
+        # UNCLASSIFIED is a THIRD state, distinct from both. `undetermined` means the evidence could not
+        # decide whether this target supports the family; `unclassified` means OUR taxonomy could not name
+        # the family at all, so eligibility failed closed on an op it has no entry for. Folding the latter
+        # into the ineligible bucket makes "we do not have a word for this" read as "the hardware cannot
+        # do it" -- the same defect in the denominator that the undetermined bucket already exists to
+        # prevent. Reported separately; it is a gap in the vocabulary, not a fact about the device.
+        if family is None:
+            n_unclassified += 1
+            unclassified_capsules.append(r["capsule"])
+        # Per-family denominator, so "ARR = 1.000" can be read as the coverage it actually asserts
+        # rather than as coverage of everything the target can do.
+        fb = by_family.setdefault(family or "unclassified",
+                                  {"n_regions": 0, "n_eligible": 0, "n_eligible_accelerated": 0})
+        fb["n_regions"] += 1
+        if eligible:
+            fb["n_eligible"] += 1
+            if accelerated:
+                fb["n_eligible_accelerated"] += 1
+        # Ineligible SPECIFICALLY because the family is fused-only -- decided structurally from the
+        # capability, never by matching the verdict's prose.
+        if not eligible and family in cap_map and getattr(cap_map[family], "composed_with", ()):
+            n_fused_only_ineligible += 1
         if violated:
             must_accelerate_violations.append(r["capsule"])
         if accelerated:
@@ -163,8 +195,22 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         # of the corpus and should not be quoted alone -- the gate bounds it.
         "n_undetermined": n_undetermined,
         "undetermined_capsules": undetermined_capsules,
+        # Regions our own taxonomy could not NAME (eligibility failed closed on an op with no family
+        # entry). Reported apart from `undetermined` because the two have opposite owners: an
+        # undetermined family is a gap in the target's evidence, an unclassified one is a gap in our
+        # vocabulary. Neither is a statement that the hardware cannot do the work, and folding either
+        # into the ineligible count would make it read as exactly that.
+        "n_unclassified": n_unclassified,
+        "unclassified_capsules": unclassified_capsules,
         "n_accelerated": n_accelerated,
         "n_eligible_accelerated": n_eligible_accelerated,
+        # Which families the recall was actually computed over. A target may declare three families and
+        # have only two of them reachable standalone, in which case the headline ratio is a statement
+        # about those two and nothing else.
+        "by_family": {f: {**b, "recall": _ratio(b["n_eligible_accelerated"], b["n_eligible"])}
+                      for f, b in sorted(by_family.items())},
+        "fused_only_families": fused_only,
+        "n_fused_only_ineligible": n_fused_only_ineligible,
         "false_fallback": false_fallback,
         "must_accelerate_violations": must_accelerate_violations,
         "must_accelerate_pass": not must_accelerate_violations,
@@ -295,6 +341,49 @@ def render_markdown(cov: dict, results: list[dict]) -> str:
         n = cov["mode_coverage"].get(m, 0)
         mark = "" if n else "  _(not covered)_"
         L.append(f"| {m} | {n}{mark} |")
+    # Acceleratable Region Recall. It was computed into coverage.json and rendered NOWHERE, so the
+    # report a human actually reads never mentioned the headline generalization metric -- and never
+    # showed the two buckets that say how much of the corpus the ratio was computed over.
+    arr = cov.get("acceleratable_coverage") or {}
+    if arr:
+        _r = arr.get("acceleratable_region_recall")
+        _p = arr.get("acceleration_precision")
+        _n_e, _n_u, _n_c = arr.get("n_eligible", 0), arr.get("n_undetermined", 0), arr.get("n_unclassified", 0)
+        L += ["", "## Acceleratable Region Recall", "",
+              f"- eligible regions (the denominator): **{_n_e}**",
+              f"- of those, accelerated: **{arr.get('n_eligible_accelerated', 0)}**",
+              f"- **ARR = {'n/a' if _r is None else f'{_r:.3f}'}**  ·  "
+              f"precision = {'n/a' if _p is None else f'{_p:.3f}'}",
+              "",
+              f"- undetermined (evidence could not decide the family): **{_n_u}**",
+              f"- unclassified (this taxonomy has no name for the op): **{_n_c}**", ""]
+        _bf = arr.get("by_family") or {}
+        if _bf:
+            L += ["| semantic family | regions | eligible | accelerated | recall |",
+                  "|---|---|---|---|---|"]
+            for _f, _b in _bf.items():
+                _fr = _b.get("recall")
+                L.append(f"| {_f} | {_b['n_regions']} | {_b['n_eligible']} | "
+                         f"{_b['n_eligible_accelerated']} | "
+                         f"{'n/a' if _fr is None else f'{_fr:.3f}'} |")
+            L.append("")
+        _fo = arr.get("fused_only_families") or []
+        if _fo:
+            L += [f"> This target runs {', '.join(_fo)} ONLY fused behind another family (the "
+                  f"accumulator-readout epilogue, not a standalone engine), so "
+                  f"{arr.get('n_fused_only_ineligible', 0)} standalone region(s) of it are ineligible "
+                  f"BY HARDWARE and never enter the denominator. The recall above is a claim about the "
+                  f"families in the table, not about everything the device can compute.", ""]
+        if _n_u or _n_c:
+            L += [f"> {_n_u + _n_c} region(s) are in NEITHER the numerator nor the denominator. "
+                  f"Undetermined is a gap in the target's evidence; unclassified is a gap in our "
+                  f"vocabulary. Neither says the hardware cannot do the work, and the recall above is "
+                  f"computed over the remainder — do not quote it alone.", ""]
+        if arr.get("must_accelerate_violations"):
+            L += [f"> **must_accelerate violated** on {len(arr['must_accelerate_violations'])} capsule(s): "
+                  f"{', '.join(arr['must_accelerate_violations'][:8])} — an ELIGIBLE region that fell back.",
+                  ""]
+
     L += ["", "## Heavy-oracle availability (honest)", "",
           f"- VCS (L4) recorded unavailable on **{cov['unavailable']['vcs']}** capsules",
           f"- FireSim (L5) recorded unavailable on **{cov['unavailable']['firesim']}** capsules",

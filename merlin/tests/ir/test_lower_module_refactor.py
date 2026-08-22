@@ -175,25 +175,29 @@ def test_epilogue_is_rejected_not_dropped():
     assert "silently drop" in msg and "linalg.transpose" in msg, msg
 
 
-def test_guard_is_what_rejects_it_and_the_drop_was_real():
-    """Neutralize the guard and the SAME module compiles clean with the transpose gone.
+def test_the_drop_is_caught_twice_over():
+    """Neutralize the pre-check and the rebuild loop still refuses — two independent guards.
 
-    This is the evidence that the guard is load-bearing: without it the module descends, every
-    stage verifies, a command buffer is emitted, and the epilogue has vanished.
+    This test used to assert the opposite: that without ``_check_payload_complete`` the module
+    descends, every stage verifies, a command buffer is emitted, and the epilogue has silently
+    vanished. That WAS the state, and it is what made the pre-check load-bearing. It no longer is:
+    the rebuild loop grew an explicit fail-closed arm for payload ops it does not lower, so the
+    transpose is now named at the loop as well as at the pre-check.
+
+    Keeping the test rather than deleting it keeps the property under watch from the inside. If the
+    loop's arm is ever softened back into a silent skip, this goes green-by-way-of-compiling and the
+    assertion below is what notices.
     """
-    from merlin.xdsl_dialects.lowering import interface_lowering, lower_module
+    from merlin.xdsl_dialects.lowering import LoweringError, interface_lowering, lower_module
 
     real = interface_lowering._check_payload_complete
     interface_lowering._check_payload_complete = lambda *a, **k: None
     try:
-        res = lower_module(_epilogue_module(), target="saturn")
+        with pytest.raises(LoweringError) as exc:
+            lower_module(_epilogue_module(), target="saturn")
     finally:
         interface_lowering._check_payload_complete = real
-
-    for mod in res.modules():
-        mod.verify()                                    # all six verify — that is the danger
-    assert res.command_buffer["commands"]               # and a command buffer was produced
-    assert "linalg.transpose" not in {op.name for op in res.interface_module.walk()}
+    assert "linalg.transpose" in str(exc.value), str(exc.value)
 
 
 def test_multiple_functions_are_rejected():

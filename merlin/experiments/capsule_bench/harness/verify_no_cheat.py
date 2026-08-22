@@ -1,7 +1,7 @@
 """Static anti-cheat gate — MUST pass before any A/B launch (the plan's "nothing ships until this passes").
 
 This proves, WITHOUT running an agent, that the shipped tooling cannot leak the answer and that the
-arm contrast is honest. Five checks:
+arm contrast is honest. The checks:
 
   1. NO ANSWER CONTENT in any shipped tool/scaffold/prompt: no golden values, no `reference_outputs`,
      no per-capsule expected command buffers, no hidden-capsule names. (static grep over source)
@@ -14,6 +14,9 @@ arm contrast is honest. Five checks:
      baseline arm gets NO merlin tooling at all (the control stays a control).
   5. AUDIT REGRESSION: the hardened transcript_tooling_audit still PASSES the existing abc4 arms
      (no false-positive that would wrongly disqualify a clean run).
+
+  7. HOLDOUT NOT SPECIFIED: no file in the granted `merlin/contract/` tree names a held-out capsule
+     (derived from the holdout store on disk, so a new target is covered the day it appears).
 
 Exit 0 = safe to launch. Non-zero = DO NOT launch.  Usage: verify_no_cheat.py
 """
@@ -263,6 +266,90 @@ def check_workload_constants() -> tuple[bool, list[str]]:
     return (not probs), probs
 
 
+
+# ---- check 7: the held-out set is not SPECIFIED anywhere the agent can read ----------------------
+# Derived on BOTH sides: read the holdout NAMES off disk (the grader can see them; the agent
+# cannot), and read the SCAN SCOPE off the bundle manifests, so the check covers exactly what
+# the sandbox actually binds read-only rather than one hardcoded tree. This is the gate
+# that was missing when the holdout roster lived in the tracked `capsules/MANIFEST.yaml` and the full
+# holdout spec -- op, dtype, exact shape -- lived in the tracked `capsules/profiles/<target>.yaml`,
+# both inside the broad `merlin/contract/` grant every arm receives. A name match is not the only way
+# to leak a holdout, but it is the way we actually leaked one, and it costs nothing to keep closed.
+# The holdout stores themselves: they are the source of the names, and they are masked in the sandbox.
+_HOLDOUT_STORE_PARTS = ("hidden",)
+
+
+def _holdout_names() -> set[str]:
+    """Every held-out capsule name on disk, across ALL targets -- the grader can see them, the agent
+    cannot. Derived by walking, so a new target's holdouts are covered the day they appear."""
+    caps = REPO / "merlin/contract/capsules"
+    return {c.parent.name for c in caps.rglob("hidden/*/capsule.yaml")} if caps.is_dir() else set()
+
+
+def _granted_roots() -> list[Path]:
+    """The union of every path any bundle grants read-only -- DERIVED from the bundle manifests, not a
+    hardcoded tree. The leak this check exists for lived under ``merlin/contract/``, but the merlin arms
+    are additionally granted parts of ``merlin/python/`` and the target's own contract dir, and a scan
+    scoped to one hardcoded root would be blind to a holdout name landing in any of them. Bundle paths
+    are repo-relative, except that the harness spells the experiment dir without the ``merlin/`` prefix."""
+    roots: set[Path] = set()
+    for man in sorted(BUNDLES.glob("*/input_bundle_manifest.yaml")):
+        try:
+            m = yaml.safe_load(man.read_text()) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        for a in m.get("allowed") or []:
+            rel = str(a.get("path") or "").strip("/")
+            if not rel:
+                continue
+            for cand in (REPO / rel, REPO / "merlin" / rel):
+                if cand.exists():
+                    roots.add(cand)
+                    break
+    # never let one granted root subsume the scan of another; dedupe nested roots for speed only
+    return sorted(roots)
+
+
+def _granted_readable_files() -> list[Path]:
+    """Files under any granted root that are NOT themselves masked answer surfaces."""
+    out, seen = [], set()
+    for root in _granted_roots():
+        out.extend(_scan_root(root, seen))
+    return out
+
+
+def _scan_root(root: Path, seen: set) -> list[Path]:
+    out = []
+    for f in ([root] if root.is_file() else root.rglob("*")):
+        if not f.is_file() or "__pycache__" in f.parts or f in seen:
+            continue
+        try:
+            rel = f.relative_to(REPO)
+        except ValueError:
+            continue
+        if any(part in _HOLDOUT_STORE_PARTS for part in rel.parts):
+            continue                       # the holdout dir itself — masked
+        if f.name.endswith(".hidden.yaml"):
+            continue                       # the holdout spec sidecar — masked, and untracked
+        if f.suffix in (".yaml", ".yml", ".json", ".md", ".py", ".mlir", ".txt", ".h", ".c", ".cpp"):
+            seen.add(f)
+            out.append(f)
+    return out
+
+
+def check_holdout_not_specified() -> tuple[bool, list[str]]:
+    names = _holdout_names()
+    if not names:
+        return True, ["(no holdout capsules on disk — nothing to check)"]
+    bad = []
+    for f in _granted_readable_files():
+        txt = f.read_text(errors="ignore")
+        for n in sorted(names):
+            if n in txt:
+                bad.append(f"{f.relative_to(REPO)} names holdout capsule {n!r}")
+    return (not bad), bad
+
+
 CHECKS = [
     ("1. no answer-content in shipped tools/prompts", check_answer_content),
     ("2. moat separation (RTL facts = CIRCT arm only)", check_moat),
@@ -270,6 +357,7 @@ CHECKS = [
     ("4. kit parity (both merlin arms; baseline none)", check_kit_parity),
     ("5. audit no-regression on abc4", check_audit_regression),
     ("6. no workload-specific constants in submissions", check_workload_constants),
+    ("7. held-out set not specified in the granted tree", check_holdout_not_specified),
 ]
 
 

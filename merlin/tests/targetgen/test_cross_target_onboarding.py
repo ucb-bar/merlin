@@ -86,7 +86,10 @@ def test_radiance_onboards_end_to_end_from_manifest(monkeypatch):
     assert s["tool_stem"] == "radiance-opt" and s["kernel_symbol"] == "radiance_kernel"  # derived, not gemmini
     assert "gemmini" not in s["endpoint_desc"].lower() and "rocc" not in s["endpoint_desc"].lower()
 
-    assert len(generate_bundles(te)) == 4                          # the 4-arm ladder generates for radiance
+    # 4 ladder rungs + the eqsat modality arm added in 6c5c4274. Asserted as a count of the arms
+    # this target actually generates, which is the property under test: onboarding a target from
+    # its manifest alone yields the whole roster, not a subset.
+    assert len(generate_bundles(te)) == 5
 
 
 def test_core_generators_carry_no_hardcoded_target_name():

@@ -112,12 +112,36 @@ def _ratcheted() -> set[str]:
 
 
 def _claims_a_verdict(payload: object) -> bool:
-    """True when a report asserts a hardware result, i.e. when attribution matters."""
+    """True when a report asserts a hardware result, i.e. when attribution matters.
+
+    Two shapes qualify. The first is an explicit boolean claim (``certified`` / ``correct`` / ``passed``).
+
+    The second is a CAPSULE SCORE, which asserts a hardware result without ever using those words: it
+    says N of M capsules passed on named oracle tiers. Keying only on the booleans made the primary
+    result artifact of the whole capsule bench -- ``score_capsule.json`` -- structurally invisible to this
+    gate, on every target. The mechanism existed and pointed away from the thing it should have been
+    checking, which is worse than not having it: the reports looked gated and were not.
+
+    A score is recognised by its own field shape, not by filename, so a renamed or relocated score is
+    still caught. It counts as a claim only when it actually graded something -- an empty suite asserts
+    nothing about any hardware.
+    """
     if not isinstance(payload, dict):
         return False
     for key in ("certified", "correct", "passed"):
         if payload.get(key) is True:
             return True
+    # A capsule SCORE is identified by its own field shape (`functional_pass`/`task` beside the counts),
+    # not by filename, so a renamed or relocated score is still caught. Deliberately NOT every artifact
+    # carrying pass counts: a per-round QA verdict has the same counts but is an intermediate written
+    # every round inside a run dir, and the run's final score is what gets published and cited. Demanding
+    # a block on each round would flag hundreds of historical files and train people to bypass the gate.
+    if ("n_passed" in payload and "n_capsules" in payload
+            and ("functional_pass" in payload or "task" in payload)):
+        try:
+            return int(payload.get("n_capsules") or 0) > 0
+        except (TypeError, ValueError):
+            return False
     return False
 
 
