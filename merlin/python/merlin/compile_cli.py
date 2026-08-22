@@ -269,7 +269,10 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                 "matmul_layers_host_fallback": res.get("mesh_fell_back", _UNKNOWN),
                 # coverage, NOT a gate: matmuls the classifier never routed (e.g. batched attention
                 # generics), so a row can say "15 of 19 layers on the mesh" instead of implying 19.
-                "matmul_layers_unrouted": res.get("mesh_unrouted_matmuls", _UNKNOWN)}
+                "matmul_layers_unrouted": res.get("mesh_unrouted_matmuls", _UNKNOWN),
+                # which layers the mesh could not take, by extent -- a count alone cannot distinguish
+                # "one shape the backend refuses" from "four unrelated capability gaps".
+                "fallback_shapes": res.get("mesh_fallback_shapes", [])}
         out["status"] = "ran"
         out["n_kernels"] = res.get("n_kernels")
         if refs:

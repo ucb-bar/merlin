@@ -632,6 +632,15 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             # a layer the mesh could not run at this shape (non-2D or cert-fail) falls back to the host
             # kernel and is NOT counted as mesh-executed — honest accounting, never a faked mesh result.
             mesh_counts["mesh_fell_back"] = mesh_counts.get("mesh_fell_back", 0) + 1
+            # Name the layer, not just the count. "4 layers fell back" gives a reader nothing to act on;
+            # the SHAPES say whether the cause is one extent the backend cannot take or four different
+            # ones, which is the difference between a tiling gap and a capability gap.
+            try:
+                _sh = f"{a.shape[0]}x{a.shape[1]}x{b.shape[1]}" if (a.ndim == 2 and b.ndim == 2) \
+                    else f"rank{a.ndim}x{b.ndim}"
+            except Exception:                                  # noqa: BLE001
+                _sh = "unknown"
+            mesh_counts.setdefault("mesh_fallback_shapes", []).append(_sh)
             execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
         model = kernel_model(symbol)
         args, keep = [], []
