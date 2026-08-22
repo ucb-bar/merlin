@@ -944,14 +944,14 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         _fail = {"plane": "model", "category": category, "detail": detail}
         _extra = {k: result.pop(k) for k in ("operation",) if k in result}
         if paths is None:
-            result.update(status="incomplete", numeric={"status": "skipped"},
+            result.update(status="incomplete", numeric={"status": "not_compared"},
                           failure=_fail, tiers={k: v.to_dict() for k, v in _t.items()}, **_extra)
             return result
         return _finalize_capsule_result(
             name=capsule["name"], capsule=capsule, status="incomplete", failure=_fail, tiers=_t,
             trace_check_res={"status": "skipped", "violations": [],
                              "reason": "the whole model did not run"},
-            numeric={"status": "skipped"}, required=_req, no_oracle=False,
+            numeric={"status": "not_compared"}, required=_req, no_oracle=False,
             eff_target=eff_target or (target or ""), paths=paths, run_id=run_id, cfg=cfg,
             contract=contract, extra=_extra)
 
@@ -1019,7 +1019,7 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                           f"golden (cos {_cos:.4f} >= floor {_quant_floor}); the drop vs fp32 is expected "
                           f"quantization error, not a codegen defect.")
     elif st == "not_run":
-        numeric = {"status": "skipped", "engine": engine}
+        numeric = {"status": "not_compared", "engine": engine}
         status = "incomplete"
         result["failure"] = {"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
                              "detail": out.get("reason", "whole-model run toolchain unavailable")}
@@ -1043,7 +1043,7 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         # Our own engine is not an oracle for the submission: record it, withhold the verdict.
         result["host_reference"] = {"run": "host", "engine": engine, "gate": out.get("verify"),
                                     "status": st}
-        numeric = {"status": "skipped", "engine": engine,
+        numeric = {"status": "not_compared", "engine": engine,
                    "reason": "host dispatch-runtime reference is advisory; not an oracle for the submission"}
         tiers[_mesh_tier] = TierResult(_mesh_tier, "skipped", _mesh_tier in _required,
                                        reason="host reference run: the target mesh did not execute this model")
@@ -1082,6 +1082,13 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                     if tiers.get(t) is None or tiers[t].status not in ("pass", "fail")]
     if _unexercised:
         result["tiers_unexercised"] = _unexercised
+    # If no DECLARED tier certified this model, the numeric verdict is withheld whatever the functional
+    # gate said. The gate compared our own reference run against the golden; that is a real comparison,
+    # but not of the artifact under test, and reporting it as `pass` beside an `incomplete` status invites
+    # exactly the reading this whole change removes.
+    if not any(tiers.get(t) is not None and tiers[t].status == "pass" for t in _required):
+        numeric = {**numeric, "status": "not_compared"}
+
     extra = {k: result.pop(k) for k in ("routing_plan", "coverage_certificate", "mesh_execution",
                                         "host_reference", "note", "operation", "op_coverage",
                                         "tiers_unexercised")
@@ -1110,8 +1117,10 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                     "category": "NOT_GRADEABLE_NO_ORACLE" if _no_oracle else "NOT_RUN_IS_NOT_PASS",
                     "detail": ("host dispatch-runtime reference only: the target mesh did not execute "
                                "this model, so the numeric verdict is withheld") if _no_oracle else
-                              (f"no runnable required oracle tier certified this whole-model capsule "
-                               f"(required={sorted(_required)})")})
+                              (f"declares required oracle tiers {sorted(_required)} and ran NONE of them "
+                               f"(the functional gate here is the {run_where} reference, not the "
+                               f"accelerator); a whole-model verdict backed by no declared tier is "
+                               f"reported UNKNOWN, never a pass")})
         result.update(status=status, numeric=numeric,
                       tiers={t: r.to_dict() for t, r in tiers.items()}, **extra)
         return result

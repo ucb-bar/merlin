@@ -41,7 +41,7 @@ def test_a_host_reference_run_never_passes_a_model_capsule(monkeypatch):
                         lambda *a, **k: {"status": "verified", "verify": {"gate_ok": True}})
     r = R._grade_model_capsule(_CAP, timeout=60)          # no target -> host
     assert r["status"] == "not_gradeable_no_oracle"
-    assert r["numeric"]["status"] == "skipped"
+    assert r["numeric"]["status"] == "not_compared"
     assert r["host_reference"]["status"] == "verified", "the diagnostic is recorded, not discarded"
 
 

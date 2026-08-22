@@ -29,12 +29,28 @@ def _grade(monkeypatch, capsule, out):
     return CR._grade_model_capsule(capsule, target="gemmini", timeout=10)
 
 
+def _statuses(r):
+    """Tier -> status, from the rich per-tier objects the merged row carries.
+
+    The row is the same shape an op capsule produces, which is what capsule_result.schema.json requires
+    and what routes it through the shared fail-closed gates. A tier that is honestly NOT APPLICABLE to a
+    whole model (L0/L1 interpret a command buffer; a model has none) is reported as such rather than
+    omitted, so `passed()` below asks the question that matters: did any declared tier actually certify?
+    """
+    return {t: (v or {}).get("status") for t, v in (r.get("tiers") or {}).items()}
+
+
+def _passed(r):
+    """The tiers that actually certified — the guarantee, independent of how the row is shaped."""
+    return {t: v for t, v in _statuses(r).items() if v == "pass"}
+
+
 def test_no_declared_tier_ran_is_never_a_pass(monkeypatch):
     """The core case: the host run verified the numbers, but no declared oracle tier executed."""
     r = _grade(monkeypatch, _capsule(["L0", "L1", "L2", "L3"]),
                {"status": "verified", "verify": {"gate_ok": True}})
     assert r["status"] == "incomplete"                    # NOT pass
-    assert r["tiers"] == {}
+    assert _passed(r) == {}, "no tier certified this model"
     assert r["numeric"]["status"] == "not_compared"       # no comparison is not a passing comparison
     assert r["failure"]["category"] == "NOT_RUN_IS_NOT_PASS"
     assert "ran NONE of them" in r["failure"]["detail"]
@@ -45,15 +61,16 @@ def test_a_tier_that_actually_ran_can_pass(monkeypatch):
                {"status": "verified", "verify": {"gate_ok": True},
                 "mesh_execution": {"n_tiles": 15, "ok": True}})
     assert r["status"] == "pass"
-    assert r["tiers"] == {"L3": "pass"}                   # the declared RTL tier, named from the capsule
-    assert r.get("tiers_unexercised") == ["L0", "L1", "L2"]   # honest about what did NOT run
+    assert _passed(r) == {"L3": "pass"}                   # the declared RTL tier, named from the capsule
+    assert set(r.get("tiers_unexercised") or []) == {"L0", "L1", "L2"}  # honest about what did NOT run
 
 
 def test_a_failing_mesh_execution_is_recorded_as_a_failing_tier(monkeypatch):
     r = _grade(monkeypatch, _capsule(["L0", "L1", "L3", "L4"]),
                {"status": "verified", "verify": {"gate_ok": True},
                 "mesh_execution": {"n_tiles": 15, "ok": False}})
-    assert r["tiers"] == {"L4": "fail"}                   # last non-structural declared tier
+    assert _statuses(r).get("L4") == "fail"               # last non-structural declared tier
+    assert _passed(r) == {}, "a failing mesh run certifies nothing"
 
 
 def test_a_routing_plan_alone_is_not_a_tier(monkeypatch):
@@ -61,7 +78,7 @@ def test_a_routing_plan_alone_is_not_a_tier(monkeypatch):
     r = _grade(monkeypatch, _capsule(["L0", "L1", "L2", "L3"]),
                {"status": "verified", "verify": {"gate_ok": True},
                 "routing_plan": {"n_mesh_ops": 15}})
-    assert r["status"] == "incomplete" and r["tiers"] == {}
+    assert r["status"] == "incomplete" and _passed(r) == {}
 
 
 def test_zero_tiles_is_not_an_exercised_tier(monkeypatch):
@@ -69,7 +86,7 @@ def test_zero_tiles_is_not_an_exercised_tier(monkeypatch):
     r = _grade(monkeypatch, _capsule(["L0", "L1", "L3", "L4"]),
                {"status": "verified", "verify": {"gate_ok": True},
                 "mesh_execution": {"n_tiles": 0, "ok": True}})
-    assert r["status"] == "incomplete" and r["tiers"] == {}
+    assert r["status"] == "incomplete" and _passed(r) == {}
 
 
 def test_the_op_pass_fraction_is_labelled_op_coverage(monkeypatch):
