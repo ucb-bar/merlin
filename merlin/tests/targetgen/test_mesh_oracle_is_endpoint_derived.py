@@ -213,3 +213,42 @@ def test_the_strongest_gate_is_tried_first():
         "the exact gate must be attempted before falling back to a tolerance"
     assert "bit-exact vs" in src and "tolerance" in src, \
         "the record must name which gate produced the verdict"
+
+
+# --------------------------------------------------------------------------- sub-tile extents
+def test_a_sub_tile_extent_is_padded_to_the_mesh_edge():
+    """A real model layer does not get to choose its M.
+
+    Every matmul layer of an 8-token sequence has M=8, against a tile edge of 32 (atlas) or 16 (gemmini).
+    The generated package is entitled to reject a sub-tile extent, so the mesh refused all 15 layers and
+    the dispatch runtime fell back to the host kernel for every one — a whole model reporting "on mesh"
+    while running entirely on the CPU. The boundary now rounds up to the tile edge and slices back;
+    zero-padding is exact for a contraction."""
+    import inspect
+
+    from merlin import compile_cli
+
+    src = inspect.getsource(compile_cli.run_matmul_on_mesh)
+    assert "_padded" in src and "_unpad" in src, "the mesh boundary must pad sub-tile extents"
+    # and the result must come back at the extent the caller asked for, not the padded one
+    assert "_m_true" in src and "_n_true" in src
+
+
+def test_padding_a_contraction_does_not_change_it():
+    """The arithmetic claim the padding rests on, checked directly."""
+    import numpy as np
+
+    rng = np.random.default_rng(7)
+    M, K, N, D = 8, 130, 30, 32
+    A = np.rint(rng.standard_normal((M, K)) * 2).astype(np.float32)
+    W = np.rint(rng.standard_normal((K, N)) * 2).astype(np.float32)
+
+    def up(x):
+        return ((x + D - 1) // D) * D
+
+    Ap = np.zeros((up(M), up(K)), dtype=np.float32)
+    Ap[:M, :K] = A
+    Wp = np.zeros((up(K), up(N)), dtype=np.float32)
+    Wp[:K, :N] = W
+    assert np.array_equal((Ap @ Wp)[:M, :N], A @ W), \
+        "zero padding must leave every retained output element untouched"

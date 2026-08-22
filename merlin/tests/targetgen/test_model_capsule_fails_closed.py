@@ -41,9 +41,11 @@ def test_no_declared_tier_ran_is_never_a_pass(monkeypatch):
 
 
 def test_a_tier_that_actually_ran_can_pass(monkeypatch):
+    # the TILE certification lives under its own key; `mesh_execution` is the separate record of what
+    # happened to the model's own layers (they shared one key, and the tile record clobbered the model one)
     r = _grade(monkeypatch, _capsule(["L0", "L1", "L2", "L3"]),
                {"status": "verified", "verify": {"gate_ok": True},
-                "mesh_execution": {"n_tiles": 15, "ok": True}})
+                "mesh_tile_verification": {"n_tiles": 15, "ok": True}})
     assert r["status"] == "pass"
     assert r["tiers"] == {"L3": "pass"}                   # the declared RTL tier, named from the capsule
     assert r.get("tiers_unexercised") == ["L0", "L1", "L2"]   # honest about what did NOT run
@@ -52,7 +54,7 @@ def test_a_tier_that_actually_ran_can_pass(monkeypatch):
 def test_a_failing_mesh_execution_is_recorded_as_a_failing_tier(monkeypatch):
     r = _grade(monkeypatch, _capsule(["L0", "L1", "L3", "L4"]),
                {"status": "verified", "verify": {"gate_ok": True},
-                "mesh_execution": {"n_tiles": 15, "ok": False}})
+                "mesh_tile_verification": {"n_tiles": 15, "ok": False}})
     assert r["tiers"] == {"L4": "fail"}                   # last non-structural declared tier
 
 

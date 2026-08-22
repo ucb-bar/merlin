@@ -421,6 +421,79 @@ def _classify_mesh_matmul(kfn, accept: tuple[str, ...] = ("f32",)) -> dict | Non
     return {"a": arg_ids[id(a_val)], "b": arg_ids[id(b_val)], "in_dtype": ea}
 
 
+#: the canonical 2-D contraction iterator signature: (i, j) parallel over a k reduction.
+_MATMUL_ITERS = ("parallel", "parallel", "reduction")
+
+
+def _is_widening_mac_body(gen) -> bool:
+    """True when a ``linalg.generic`` body is a (widening) multiply-accumulate: optional operand
+    extensions, then one multiply, one add, and the yield.
+
+    Structural, over the IR's own op vocabulary — not a pattern match on text. Accepts the integer
+    (``muli``/``addi``) and float (``mulf``/``addf``) spellings alike, so the same check covers a
+    quantized i8xi8->i32 contraction and an f32 one."""
+    blocks = getattr(getattr(gen, "body", None), "blocks", None)
+    if not blocks:
+        return False
+    names = [o.name for o in blocks[0].ops]
+    if not names or names[-1] != "linalg.yield":
+        return False
+    core = [n for n in names[:-1] if not n.startswith("arith.ext")]
+    return core in (["arith.muli", "arith.addi"], ["arith.mulf", "arith.addf"])
+
+
+def _classify_mesh_contraction(kfn, accept: tuple[str, ...] = ("f32",)) -> dict | None:
+    """The ``linalg.generic`` form of :func:`_classify_mesh_matmul`.
+
+    Quantization rewrites every ``linalg.matmul`` into a generic — measured on an int8 whole model, 0 of
+    325 outlined kernels still return a ``linalg.matmul``, and the matmul-only classifier therefore routed
+    NOTHING to the mesh: 0 layers on the accelerator, 0 recorded as fallbacks, and a capstone that read as
+    a pass. A quantized contraction is exactly what an integer mesh exists for, so it must be recognised.
+
+    Requires the canonical matmul indexing maps, not merely the right iterator shape: a transposed or
+    otherwise permuted contraction has the same iterators and computes something else, and routing it to
+    the mesh would silently produce the wrong answer. Fails closed when the maps cannot be read."""
+    from xdsl.dialects.builtin import TensorType
+    block = kfn.body.blocks[0]
+    arg_ids = {id(a): i for i, a in enumerate(block.args)}
+    ret = next((o for o in block.ops if o.name == "func.return"), None)
+    if ret is None or len(ret.operands) != 1:
+        return None
+    gen = getattr(ret.operands[0], "owner", None)
+    if gen is None or getattr(gen, "name", None) != "linalg.generic" or len(gen.inputs) != 2:
+        return None
+    if tuple(str(getattr(a, "data", a)).rsplit(".", 1)[-1].lower()
+             for a in gen.iterator_types) != _MATMUL_ITERS:
+        return None
+    if not _is_widening_mac_body(gen):
+        return None
+
+    a_val, b_val = gen.inputs[0], gen.inputs[1]
+
+    def _et(v):
+        t = v.type
+        return str(t.element_type) if isinstance(t, TensorType) and len(t.get_shape()) == 2 else None
+
+    ea, eb = _et(a_val), _et(b_val)
+    if ea is None or ea != eb or ea not in accept:
+        return None
+    if isinstance(gen.results[0].type, TensorType) and len(gen.results[0].type.get_shape()) != 2:
+        return None
+    if id(a_val) not in arg_ids or id(b_val) not in arg_ids:
+        return None
+
+    # the maps must be exactly (d0,d2), (d2,d1) -> (d0,d1)
+    try:
+        maps = [m.data for m in gen.indexing_maps]
+        got = tuple(tuple(str(r) for r in mp.results) for mp in maps)
+    except Exception:                                        # noqa: BLE001 — unreadable maps: fail closed
+        return None
+    if got != (("d0", "d2"), ("d2", "d1"), ("d0", "d1")):
+        return None
+    return {"a": arg_ids[id(a_val)], "b": arg_ids[id(b_val)], "in_dtype": ea,
+            "via": "generic"}
+
+
 def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             entry: str = "forward", cache_dir: str | Path | None = None,
             tap=None, qinner: dict | None = None,
@@ -493,7 +566,9 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         kfns = {op.sym_name.data: op for op in module.walk()
                 if op.name == "func.func" and "$kernel_" in op.sym_name.data}
         for sym, kfn in kfns.items():
-            route = _classify_mesh_matmul(kfn, _accept)      # 2-D matmul in a format this mesh takes
+            # a bare linalg.matmul, or the linalg.generic a quantization rewrite leaves behind
+            route = (_classify_mesh_matmul(kfn, _accept)
+                     or _classify_mesh_contraction(kfn, _accept))
             if route is not None:
                 mesh_routes[sym] = route
         execute.last_mesh_routed = len(mesh_routes)

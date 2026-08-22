@@ -321,7 +321,11 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                         kernel_backend=kernel_backend, mesh_target=mesh_target)
         if kernel_backend == "mesh":
             from .runtime import dispatch_runtime as _dr
+            # THIS MODEL's own layers: how many of its matmuls reached the accelerator and how many
+            # fell back to the host kernel. Distinct from the synthetic tile certification below, which
+            # proves that tiles OF THESE SHAPES run -- a much weaker claim about a different artifact.
             out["mesh_execution"] = {"target": mesh_target,
+                                     "matmul_layers_routed": getattr(_dr.execute, "last_mesh_routed", None),
                                      "matmul_layers_on_mesh": getattr(_dr.execute, "mesh_ran", None),
                                      "matmul_layers_host_fallback": getattr(_dr.execute, "mesh_fell_back", None)}
         out["status"] = "ran"
@@ -837,6 +841,30 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
     # output can feed the next mesh layer (the int8 chain handoff); tell the binding that narrow dtype.
     requant_out = (operand_dtype or "i8") if (epilogue and "acc_scale" in epilogue) else None
     binding = _mesh_tile_binding(target, operand_dtype, accum_dtype, requant_output_dtype=requant_out)
+
+    # PAD TO THE MESH TILE EDGE. A generated package is entitled to reject a sub-tile extent, and a real
+    # model is full of them: every matmul layer of an 8-token sequence has M=8 against a tile edge of 32
+    # (atlas) or 16 (gemmini), so the mesh refused all 15 layers and the dispatch runtime silently fell
+    # back to the host kernel for every one -- a whole model that reported "on mesh" while running
+    # entirely on the CPU. Zero-padding is EXACT for a contraction: the padded rows of A and columns of W
+    # contribute 0 to every retained output element, and the K padding multiplies zeros against zeros.
+    # The result is sliced back to the true extent, so callers see the shape they asked for.
+    _D = int(binding.tile_dim or 1)
+
+    def _up(x):
+        return ((int(x) + _D - 1) // _D) * _D if _D > 1 else int(x)
+
+    _m_true, _n_true = M, N                      # the extent the caller asked for, restored on the way out
+    _Mp, _Kp, _Np = _up(M), _up(K), _up(N)
+    _padded = (_Mp, _Kp, _Np) != (M, K, N)
+    if _padded:
+        import numpy as _np
+        _A = _np.zeros((_Mp, _Kp), dtype=_np.float64)
+        _A[:M, :K] = _np.asarray(A, dtype=_np.float64)
+        _W = _np.zeros((_Kp, _Np), dtype=_np.float64)
+        _W[:K, :N] = _np.asarray(W, dtype=_np.float64)
+        A, W = _A.tolist(), _W.tolist()
+        M, K, N = _Mp, _Kp, _Np
     entry = {"name": "mesh_layer", "op": "matmul", "kind": "op",
              "source_role": "mesh_layer_real_operands",
              "source_reference": f"whole-model matmul layer {M}x{K}x{N} on the mesh with real operands",
@@ -853,23 +881,30 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
     # but the arc command-buffer program oracle grades the WRONG artifact for a SIMT kernel, so the bespoke
     # executor must take precedence. Only when no exclusive sim is declared does the endpoint kind pick the
     # path. Derived from the contract's sim_via + the _SIM_ORACLES registry — never a target-name branch.
+    def _unpad(out):
+        """Slice the padded mesh result back to the extent the caller asked for."""
+        if out is None or not _padded:
+            return out
+        return [row[:_n_true] for row in out[:_m_true]]
+
     so = _SIM_ORACLES.get(_bespoke_sim_via(target))
     if so is not None and so.exclusive:
         if observed is not None:
             observed["path"] = "bespoke_sim"
-        return _matmul_via_bespoke_sim(target, mlir, A, W, package=package, timeout=timeout,
-                                       observed=observed)
+        return _unpad(_matmul_via_bespoke_sim(target, mlir, A, W, package=package, timeout=timeout,
+                                              observed=observed))
     if endpoint in (None, "inline_asm_insn", "upstream_target"):
         if observed is not None:
             observed["path"] = "oot_cert"
-        return _matmul_via_oot_cert(target, mlir, A, W, simulator=simulator, package=package,
-                                    timeout=timeout, observed=observed)
+        return _unpad(_matmul_via_oot_cert(target, mlir, A, W, simulator=simulator, package=package,
+                                           timeout=timeout, observed=observed))
     if endpoint == "external_backend":
         if observed is not None:
             observed["path"] = "program_oracle"
-        return _matmul_via_program_oracle(target, mlir, A, W, model_ext=model_ext,
-                                          package=package, timeout=timeout,
-                                          operand_dtype=binding.operand_dtype, observed=observed)
+        return _unpad(_matmul_via_program_oracle(target, mlir, A, W, model_ext=model_ext,
+                                                 package=package, timeout=timeout,
+                                                 operand_dtype=binding.operand_dtype,
+                                                 observed=observed))
     return None                                  # no mesh-execution path derived for this endpoint kind
 
 
@@ -1211,12 +1246,18 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
     correct across every op) and attaches the per-op mesh-routing plan. An op that no unit supports is an
     honest scalar/RVV fallback, never a silent drop. ``target=None`` degrades to the plain RVV flow.
 
-    ``mesh_verify=True`` goes one step past the PLAN and actually EXECUTES the matmul layers on the mesh:
-    for each mesh-routed matmul it synthesizes a single ``DxD`` systolic-tile ``merlin_iface`` capsule and
-    runs it through the existing ``oot_runner.certify`` accelerator path on the target's real mesh oracle,
-    gated bit-exact (int) / within-tolerance (float). The aggregate lands in ``out["mesh_execution"]``
-    (``n_tiles``/``n_passed``/``n_unavailable``/``per_tile``); an unavailable oracle is reported honestly,
-    never a fake pass. This proves the matmul layers RUN correctly on the mesh.
+    ``mesh_verify=True`` goes one step past the PLAN and certifies a SYNTHESIZED tile per mesh-routed
+    matmul: a single ``DxD`` systolic-tile ``merlin_iface`` capsule run on the target's real mesh oracle,
+    gated bit-exact against the declared accumulator (tolerance fallback). The aggregate lands in
+    ``out["mesh_tile_verification"]`` (``n_tiles``/``n_passed``/``n_unavailable``/``per_tile``); an
+    unavailable oracle is reported honestly, never a fake pass.
+
+    READ THESE TWO KEYS AS DIFFERENT CLAIMS. ``mesh_tile_verification`` says "a tile of this layer's shape
+    executes correctly on the mesh". ``out["mesh_execution"]`` says what happened to THIS MODEL: how many
+    of its matmul layers the dispatch runtime actually got onto the accelerator
+    (``matmul_layers_on_mesh``) versus fell back to the host kernel for (``matmul_layers_host_fallback``).
+    The tile record was previously written to the same key and clobbered the model record, so a capstone
+    could report "15 tiles passed" over a model that ran 0 of its 15 layers on the mesh.
 
     WHOLE-MODEL ON MESH (``run_whole_model_on_mesh``): past per-tile certification, that entrypoint runs a
     whole model co-scheduled across the lanes on the REAL oracle — each matmul LAYER executes on the target
@@ -1265,7 +1306,11 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
             except Exception as e:  # noqa: BLE001 — certificate is advisory; never mask routing/functional
                 out["coverage_certificate"] = {"error": f"{type(e).__name__}: {e}"}
             if mesh_verify:
-                out["mesh_execution"] = _mesh_verify(plan, target=target, package=mesh_package,
+                # SEPARATE KEY. This used to overwrite out["mesh_execution"] -- the record of what
+                # happened to the MODEL -- with the synthetic tile certification, so a capstone reported
+                # "15 tiles passed" while the model itself ran 0 of its 15 matmul layers on the mesh and
+                # fell back to the host for every one. Two different claims cannot share one key.
+                out["mesh_tile_verification"] = _mesh_verify(plan, target=target, package=mesh_package,
                                                      timeout=timeout)
         except Exception as e:  # noqa: BLE001 — a routing failure must not mask the functional result
             out["routing_plan"] = {"error": f"{type(e).__name__}: {e}"}

@@ -182,8 +182,13 @@ def test_an_ungrounded_capstone_records_why():
 
 # --- the tier verdict must follow the tiles, and a failing tier must not pass --------------------
 
-def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3")):
-    """Drive the tier-derivation block with a synthetic mesh_execution record."""
+def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3"), *, on_mesh=15, fallback=0):
+    """Drive the tier-derivation block with a synthetic TILE-certification record.
+
+    The tile record lives under ``mesh_tile_verification``; ``mesh_execution`` is the separate record of
+    what happened to the MODEL's own layers. They shared a key once, and the tile record clobbered the
+    model one — so these tests supply both, with the model fully on the mesh unless a case says otherwise.
+    """
     from merlin import compile_cli as CCLI
     from merlin.targetgen import capsule_runner as CR
 
@@ -192,7 +197,11 @@ def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3")):
                                                            "dtype": "i8"}},
                "required_oracle_tiers": list(declared),
                "semantic": {"semantic_family": "contraction", "must_accelerate": True}}
-    out = {"status": "verified", "verify": {"gate_ok": True}, "mesh_execution": mesh_exec}
+    out = {"status": "verified", "verify": {"gate_ok": True},
+           "mesh_tile_verification": mesh_exec,
+           "mesh_execution": {"target": "gemmini", "matmul_layers_routed": on_mesh + fallback,
+                              "matmul_layers_on_mesh": on_mesh,
+                              "matmul_layers_host_fallback": fallback}}
     # `_grade_model_capsule` imports compile_model INSIDE the function, so the module attribute is what
     # has to move.
     real = CCLI.compile_model
@@ -236,3 +245,104 @@ def test_no_tiles_at_all_is_reported_unknown_not_failed():
     assert r["tiers"] == {}
     assert r["status"] == "incomplete"
     assert r["failure"]["category"] == "NOT_RUN_IS_NOT_PASS"
+
+
+# --------------------------------------------------------------------------- model vs tile evidence
+def _model_capsule(tmp_path, **semantic):
+    import yaml
+    d = tmp_path / "M0_probe"
+    d.mkdir(parents=True, exist_ok=True)
+    cap = {"name": "M0_probe", "kind": "model", "label": "public",
+           "source_role": "pytorch_model_slice", "source_reference": "probe",
+           "operation": {"op": "model", "attributes": {"model": "probe", "compile_dtype": "fp32",
+                                                       "dtype": "fp32", "out": "Y0"}},
+           "numeric_policy": {"compare": "tolerance_float", "dtype": "f32", "atol": 0.1, "rtol": 0.1},
+           "expected": {"instruction_classes": []},
+           "required_oracle_tiers": ["L3"],
+           "semantic": {"generalization_axis": "model", **semantic},
+           "__dir__": str(d)}
+    (d / "capsule.yaml").write_text(yaml.safe_dump(cap), encoding="utf-8")
+    return cap
+
+
+def _fake_compile(monkeypatch, *, on_mesh, fallback, tiles_pass=15):
+    """A compile_model whose MODEL ran `on_mesh` layers on the accelerator while its synthesized TILE
+    certification is perfect — the exact shape that used to read as a pass."""
+    def _cm(*a, **k):
+        return {"status": "verified",
+                "verify": {"gate_ok": True, "fp32_cos": 1.0, "ok": True},
+                "mesh_execution": {"target": k.get("target"), "matmul_layers_routed": on_mesh + fallback,
+                                   "matmul_layers_on_mesh": on_mesh,
+                                   "matmul_layers_host_fallback": fallback},
+                "mesh_tile_verification": {"n_tiles": tiles_pass, "n_passed": tiles_pass, "n_failed": 0,
+                                           "n_unavailable": 0, "n_unsynthesizable": 0, "per_tile": []}}
+    import merlin.compile_cli as _cc
+    monkeypatch.setattr(_cc, "compile_model", _cm)
+
+
+def test_a_model_that_never_reached_the_mesh_cannot_pass(tmp_path, monkeypatch):
+    """The defect this exists for: atlas routed 15 matmul layers, the dispatch runtime fell back to the
+    host kernel on all 15, and the capstone still reported `pass` with `lane: mesh` -- because the tile
+    record ("15 of 15 passed") had overwritten the model record under the same key."""
+    from merlin.targetgen.capsule_runner import _grade_model_capsule
+
+    _fake_compile(monkeypatch, on_mesh=0, fallback=15)
+    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto",
+                         semantic_family="contraction")
+    res = _grade_model_capsule(cap, target="probe_target", timeout=1)
+    assert res["status"] == "fail", res
+    assert res["failure"]["category"] == "FALLBACK_ON_ELIGIBLE_REGION"
+    assert "0 matmul" in res["failure"]["detail"] and "15 fell back" in res["failure"]["detail"]
+
+
+def test_a_partial_fallback_is_also_a_failure(tmp_path, monkeypatch):
+    """must_accelerate means EVERY eligible region accelerates; 14 of 15 is still a fallback."""
+    from merlin.targetgen.capsule_runner import _grade_model_capsule
+
+    _fake_compile(monkeypatch, on_mesh=14, fallback=1)
+    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto",
+                         semantic_family="contraction")
+    res = _grade_model_capsule(cap, target="probe_target", timeout=1)
+    assert res["status"] == "fail", res
+    assert res["failure"]["category"] == "FALLBACK_ON_ELIGIBLE_REGION"
+
+
+def test_a_model_fully_on_the_mesh_is_not_blocked(tmp_path, monkeypatch):
+    """The guard must not reject the case it exists to certify."""
+    from merlin.targetgen.capsule_runner import _grade_model_capsule
+
+    _fake_compile(monkeypatch, on_mesh=15, fallback=0)
+    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto",
+                         semantic_family="contraction")
+    res = _grade_model_capsule(cap, target="probe_target", timeout=1)
+    assert res["status"] == "pass", res
+
+
+def test_missing_per_layer_accounting_is_incomplete_not_pass(tmp_path, monkeypatch):
+    """No accounting is not evidence of acceleration."""
+    from merlin.targetgen.capsule_runner import _grade_model_capsule
+
+    def _cm(*a, **k):
+        return {"status": "verified", "verify": {"gate_ok": True, "fp32_cos": 1.0, "ok": True},
+                "mesh_execution": {"target": k.get("target")},        # no counts at all
+                "mesh_tile_verification": {"n_tiles": 15, "n_passed": 15, "n_failed": 0,
+                                           "n_unavailable": 0, "n_unsynthesizable": 0, "per_tile": []}}
+    import merlin.compile_cli as _cc
+    monkeypatch.setattr(_cc, "compile_model", _cm)
+    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto",
+                         semantic_family="contraction")
+    res = _grade_model_capsule(cap, target="probe_target", timeout=1)
+    assert res["status"] == "incomplete", res
+    assert res["failure"]["category"] == "NOT_RUN_IS_NOT_PASS"
+
+
+def test_the_two_mesh_records_never_share_a_key():
+    """Two different claims under one key is how the model record got clobbered by the tile record."""
+    import inspect
+
+    from merlin import compile_cli
+
+    src = inspect.getsource(compile_cli.compile_model)
+    assert 'out["mesh_tile_verification"] = _mesh_verify(' in src, \
+        "the synthesized-tile record must not be written to the model-execution key"
+    assert 'out["mesh_execution"] = _mesh_verify(' not in src

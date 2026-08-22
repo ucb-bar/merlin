@@ -194,10 +194,31 @@ def test_run_matmul_on_mesh_injects_real_operands(monkeypatch):
     monkeypatch.setattr(oot_runner, "certify", fake_certify)
     A = [[1, 2], [3, 4]]
     W = [[5, 6], [7, 8]]
+    D = CC._mesh_tile_binding("gemmini", "int8", "i32").tile_dim
+    # the oracle answers at the PADDED extent; the caller must still get its own 2x2 back
+    padded_out = [[42 if r == c else 0 for c in range(D)] for r in range(D)]
+    seen.clear()
+
+    def fake_certify_padded(pkg, iface, **kw):
+        seen["inputs"] = kw.get("inputs")
+        seen["mlir"] = iface.read_text(encoding="utf-8")
+        return {"status": "pass", "oracle_outputs": {"Y0": padded_out}}
+
+    monkeypatch.setattr(oot_runner, "certify", fake_certify_padded)
     out = CC.run_matmul_on_mesh("gemmini", A, W, operand_dtype="int8", accum_dtype="i32")
-    assert out == [[42, 0], [0, 42]]                          # the mesh output is returned
-    assert seen["inputs"] == {"A0": A, "W": W}                # REAL operands injected, keyed to the iface
-    assert "16x16" not in seen["mlir"] and "2x2" in seen["mlir"]   # built at the operands' real shape
+
+    # PADDED TO THE TILE EDGE, then sliced back. A package is entitled to reject a sub-tile extent, and a
+    # real model is full of them (every matmul layer of an 8-token sequence has M=8 against a 16- or
+    # 32-wide mesh), so building at the operands' raw shape meant the mesh refused the layer and the
+    # runtime silently fell back to the host. Zero-padding is exact for a contraction.
+    assert out == [[42, 0], [0, 42]]                          # sliced back to the caller's extent
+    assert seen["inputs"]["A0"][0][:2] == [1.0, 2.0]          # real operands in the top-left...
+    assert seen["inputs"]["A0"][1][:2] == [3.0, 4.0]
+    assert seen["inputs"]["W"][0][:2] == [5.0, 6.0]
+    assert len(seen["inputs"]["A0"]) == D and len(seen["inputs"]["A0"][0]) == D
+    assert all(v == 0.0 for v in seen["inputs"]["A0"][0][2:])  # ...zeros everywhere else
+    assert all(v == 0.0 for v in seen["inputs"]["A0"][2])
+    assert f"{D}x{D}" in seen["mlir"]                         # built at the padded, tile-aligned extent
 
 
 def test_run_matmul_on_mesh_none_without_package(monkeypatch):

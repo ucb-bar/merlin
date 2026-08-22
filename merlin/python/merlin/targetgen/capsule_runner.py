@@ -982,8 +982,10 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         result["routing_plan"] = out["routing_plan"]
     if out.get("coverage_certificate") is not None:           # ARR certificate (numerator×independent oracle)
         result["coverage_certificate"] = out["coverage_certificate"]
-    if out.get("mesh_execution") is not None:                 # per-tile on-mesh EXECUTION for the target
+    if out.get("mesh_execution") is not None:                 # THIS MODEL's layers: on-mesh vs host
         result["mesh_execution"] = out["mesh_execution"]
+    if out.get("mesh_tile_verification") is not None:         # synthesized tiles of the routed shapes
+        result["mesh_tile_verification"] = out["mesh_tile_verification"]
     # A quantized whole model diverges from the fp32 golden BY DESIGN (int8/fp8 rounding). When the strict
     # gate rejects it only on that expected drop, accept it if the cosine similarity to the golden still
     # clears a quant floor (MERLIN_MODEL_QUANT_COS, default 0.90) — reasonable quantization error is a pass,
@@ -999,10 +1001,11 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     # "the CPU computed the model correctly", which is not a statement about the accelerator.
     #
     # Record what actually ran, and refuse to call it a pass when nothing the capsule DECLARED ran. The
-    # accelerator evidence is `mesh_execution` (per-tile on-mesh certification); a routing plan is a plan,
-    # not an execution, and is never counted as a tier.
+    # accelerator evidence is `mesh_tile_verification` (per-tile on-mesh certification); a routing plan is
+    # a plan, not an execution, and is never counted as a tier.
     declared = [str(x) for x in (capsule.get("required_oracle_tiers") or [])]
-    mesh_exec = out.get("mesh_execution") or {}
+    mesh_exec = out.get("mesh_tile_verification") or {}
+    model_exec = out.get("mesh_execution") or {}
     n_tiles = int(mesh_exec.get("n_tiles") or 0) if isinstance(mesh_exec, dict) else 0
     exercised: dict[str, str] = {}
     if n_tiles:
@@ -1045,6 +1048,32 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         if unexercised:
             result["tiers_unexercised"] = unexercised
         return result
+
+    # MUST_ACCELERATE IS ABOUT THIS MODEL, NOT ABOUT TILES OF ITS SHAPES. Certifying a synthesized tile
+    # proves the shape is runnable; it says nothing about whether the model's own layer reached the
+    # device. Measured: atlas routed 15 matmul layers and the dispatch runtime fell back to the host
+    # kernel on all 15, while the tile record read "15 of 15 passed" -- so a run with ZERO layers on the
+    # accelerator reported `pass` with `lane: mesh`, which is exactly the CPU-only pass this flag exists
+    # to forbid. The two records now live under separate keys and this checks the model one.
+    if (capsule.get("semantic") or {}).get("must_accelerate") and model_exec:
+        _on = model_exec.get("matmul_layers_on_mesh")
+        _fb = int(model_exec.get("matmul_layers_host_fallback") or 0)
+        if _on is None:
+            result.update(status="incomplete",
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": "capsule declares must_accelerate but the run recorded no "
+                                             "per-layer mesh accounting; cannot confirm the model "
+                                             "reached the accelerator"})
+            return result
+        if int(_on) == 0 or _fb:
+            result.update(status="fail",
+                          numeric={"status": "not_compared", "engine": engine},
+                          failure={"plane": "model", "category": "FALLBACK_ON_ELIGIBLE_REGION",
+                                   "detail": f"capsule declares must_accelerate but only {_on} matmul "
+                                             f"layer(s) executed on the {target} mesh and {_fb} fell back "
+                                             f"to the host kernel; the numeric gate therefore measures "
+                                             f"the HOST, not the accelerator"})
+            return result
 
     if declared and not exercised:
         result.update(status="incomplete",
