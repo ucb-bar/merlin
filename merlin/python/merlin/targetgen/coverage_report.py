@@ -65,14 +65,41 @@ def _capsule_region(cap: dict):
         return {}
 
     act, wgt = _by_role("input"), _by_role("weight")
+    in_dtype, weight_dtype = act.get("dtype"), wgt.get("dtype")
+    # A WHOLE-MODEL capsule's ``inputs[]`` is the model's ENTRY tensor -- a token-id vector, i64 -- which
+    # is not the dtype of anything the accelerator computes on. Reading it as the operand dtype ruled
+    # every capstone ineligible ("input dtype 'i64' not in contraction formats"), and an ineligible region
+    # cannot raise a must_accelerate violation, so a submission that ran the entire network on the CPU
+    # passed the one capsule the whole suite builds toward. The model's real operand dtype is the one it
+    # declares for compilation, and it is already carried on the capsule for exactly this purpose (it is
+    # what routing is threaded with, too). Same defect as reading numeric_policy.dtype above, one level up.
     shape = act.get("shape") or []
     rank = len(shape) or None
     # A leading extent on a rank>=3 operand is the batch. Rank 1/2 operands are unbatched by definition,
     # and reporting batch=1 there is a fact, not a default.
     batch = int(shape[0]) if rank and rank >= 3 else 1
+    layout = act.get("layout")
+    if cap.get("kind") == "model":
+        # Every axis below is read off ``inputs[]``, which for a whole model is the network's ENTRY
+        # tensor -- and none of its properties describe the regions the accelerator would run. Measured,
+        # both directions of the same mistake: a language model enters on i64 token ids, so the dtype
+        # axis reported "input dtype 'i64' not in contraction formats"; a vision model enters on an NCHW
+        # image, so the rank axis reported "rank 4 not in contraction legal ranks [2]". Either verdict
+        # makes the capstone INELIGIBLE, and an ineligible region is allowed to fall back -- so the one
+        # capsule the whole suite builds toward passed a submission that ran the model on the CPU.
+        #
+        # The dtype it computes IN is declared on the capsule (the same token routing is threaded with).
+        # Rank, batch and layout are NOT single-valued for a composition and nothing on the capsule
+        # declares them, so they are left unset rather than guessed: an unset axis is not exercised,
+        # which keeps the region in the denominator instead of excusing it from the measurement.
+        attrs = (cap.get("operation") or {}).get("attributes") or {}
+        declared = attrs.get("dtype")
+        if declared:
+            in_dtype = weight_dtype = declared
+        rank, batch, layout = None, 1, None
     return _el.RegionDescriptor(source=cap.get("name", ""), op=op, family=fam,
-                                in_dtype=act.get("dtype"), weight_dtype=wgt.get("dtype"),
-                                rank=rank, batch=batch, layout=act.get("layout"))
+                                in_dtype=in_dtype, weight_dtype=weight_dtype,
+                                rank=rank, batch=batch, layout=layout)
 
 
 def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str | None) -> dict:

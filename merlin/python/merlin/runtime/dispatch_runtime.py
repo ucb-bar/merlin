@@ -374,11 +374,30 @@ def _compile_kernel_so(args: tuple) -> str:
     return so_path
 
 
-def _classify_mesh_matmul(kfn) -> dict | None:
+def mesh_datapath(target: str) -> tuple[str, str, bool, str]:
+    """``(operand_dtype, accum_dtype, integer, operand_mlir_spelling)`` for ``target``'s mesh, DERIVED.
+
+    The mesh boundary below used to be written as ``operand_dtype="int8", accum_dtype="i32"`` with an
+    element-type filter of exactly ``("f32", "i8")``. Both are facts about ONE target's datapath, and on a
+    float-datapath accelerator they are wrong in the two ways that cancel out into silence: the filter
+    never classifies an fp8 layer, so no layer is ever routed, so the hardcoded dtypes are never reached
+    and never observed to be wrong. The whole model runs on the host and the run looks clean.
+    """
+    from ..compile_cli import _mesh_tile_binding
+    from ..targetgen.corpus_spec import dtype_info
+    b = _mesh_tile_binding(target, None, None)
+    info = dtype_info(b.operand_dtype)
+    return b.operand_dtype, b.accum_dtype, bool(b.integer), str(info[1])
+
+
+def _classify_mesh_matmul(kfn, accept: tuple[str, ...] = ("f32",)) -> dict | None:
     """Like xnnpack's classify_matmul_kernel but for the MESH route: a plain 2-D ``linalg.matmul`` whose two
-    ``ins`` are kernel block args, element type f32 OR i8 (the int8 systolic datapath). Returns
-    ``{"a", "b", "in_dtype"}`` (so the route knows to quantize an f32 layer at the mesh boundary but pass an
-    already-int8 layer through untouched), else None."""
+    ``ins`` are kernel block args, with an element type this target's mesh can take.
+
+    ``accept`` is derived from the target's own declared operand format (plus ``f32``, the host lane's
+    spelling, which the boundary converts). It was the literal pair ``("f32", "i8")``, which silently
+    routed nothing at all on any target whose datapath is not int8. Returns ``{"a", "b", "in_dtype"}`` so
+    the boundary knows whether the layer arrives already in the mesh's format or needs converting."""
     from xdsl.dialects.builtin import TensorType
     block = kfn.body.blocks[0]
     arg_ids = {id(a): i for i, a in enumerate(block.args)}
@@ -395,7 +414,7 @@ def _classify_mesh_matmul(kfn) -> dict | None:
         return str(t.element_type) if isinstance(t, TensorType) and len(t.get_shape()) == 2 else None
 
     ea, eb = _et(a_val), _et(b_val)
-    if ea is None or ea != eb or ea not in ("f32", "i8"):
+    if ea is None or ea != eb or ea not in accept:
         return None
     if id(a_val) not in arg_ids or id(b_val) not in arg_ids:
         return None                                          # an operand is computed inside the kernel
@@ -459,17 +478,22 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
     # --- mesh routing: run each matmul kernel on the target accelerator MESH (real activations) ----------
     # Same structural classifier picks the plain matmul kernels; each is executed on the target's mesh
     # oracle via operand injection (run_matmul_on_mesh) with the LIVE activation/weight arrays, and the
-    # mesh output threads forward — so the whole model runs with its matmul layers on the RTL systolic
-    # array. f32 operands are quantized to int8 at the boundary (the mesh is an int8 datapath; the drop is
-    # expected quantization error, covered by the whole-model quant tolerance).
+    # mesh output threads forward — so the whole model runs with its matmul layers on the real systolic
+    # array. A layer that does not already arrive in the mesh's own operand format is converted at the
+    # boundary: quantized for an integer datapath (the drop is expected quantization error, covered by the
+    # whole-model tolerance), cast for a float one. Which of those applies is DERIVED from the target.
     mesh_routes: dict[str, dict] = {}
+    mesh_dp: tuple[str, str, bool, str] | None = None
     if kernel_backend == "mesh":
         if not mesh_target:
             raise DispatchRuntimeError("kernel_backend='mesh' requires mesh_target=<target>")
+        mesh_dp = mesh_datapath(mesh_target)
+        # The host lane materializes f32; the mesh may also take its own format directly.
+        _accept = ("f32", mesh_dp[3]) if mesh_dp[3] != "f32" else ("f32",)
         kfns = {op.sym_name.data: op for op in module.walk()
                 if op.name == "func.func" and "$kernel_" in op.sym_name.data}
         for sym, kfn in kfns.items():
-            route = _classify_mesh_matmul(kfn)               # f32 OR i8 2-D matmul (mesh route)
+            route = _classify_mesh_matmul(kfn, _accept)      # 2-D matmul in a format this mesh takes
             if route is not None:
                 mesh_routes[sym] = route
         execute.last_mesh_routed = len(mesh_routes)
@@ -582,17 +606,30 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             a = np.ascontiguousarray(env[id(op.operands[mroute["a"]])])
             b = np.ascontiguousarray(env[id(op.operands[mroute["b"]])])
             mesh_out = None
+            op_dt, acc_dt, integer, mesh_et = mesh_dp or mesh_datapath(mesh_target)
             if a.ndim == 2 and b.ndim == 2 and a.shape[1] == b.shape[0]:   # a plain 2-D contraction
-                if mroute["in_dtype"] == "i8":       # already int8 — pass through, NO boundary quant
-                    qa, qb, scale = a.astype(np.int64).tolist(), b.astype(np.int64).tolist(), 1.0
-                else:                                # f32 -> per-tensor symmetric int8 at the mesh boundary
+                if mroute["in_dtype"] == mesh_et:    # already in the mesh's format — no boundary convert
+                    qa, qb, scale = a.tolist(), b.tolist(), 1.0
+                elif integer:
+                    # f32 -> per-tensor symmetric integer at the mesh boundary. The clip bound comes from
+                    # the datapath's own width, not from a literal 127: a narrower or wider integer mesh
+                    # would otherwise be fed operands saturated to some other unit's range.
+                    from ..targetgen.corpus_spec import dtype_info as _di
+                    _bits = int(_di(op_dt)[2]) * 8
+                    lim = float(2 ** (_bits - 1) - 1)
                     af, bf = a.astype(np.float64), b.astype(np.float64)
-                    sa = float(np.abs(af).max()) / 127.0 or 1.0
-                    sb = float(np.abs(bf).max()) / 127.0 or 1.0
-                    qa = np.clip(np.rint(af / sa), -127, 127).astype(np.int64).tolist()
-                    qb = np.clip(np.rint(bf / sb), -127, 127).astype(np.int64).tolist()
+                    sa = float(np.abs(af).max()) / lim or 1.0
+                    sb = float(np.abs(bf).max()) / lim or 1.0
+                    qa = np.clip(np.rint(af / sa), -lim, lim).astype(np.int64).tolist()
+                    qb = np.clip(np.rint(bf / sb), -lim, lim).astype(np.int64).tolist()
                     scale = sa * sb
-                mesh_out = run_matmul_on_mesh(mesh_target, qa, qb, operand_dtype="int8", accum_dtype="i32")
+                else:
+                    # Float datapath: the mesh takes the values themselves. Rounding to its format is the
+                    # ORACLE's job -- doing it here would grade the target against our idea of its
+                    # rounding rather than against the hardware's.
+                    qa, qb, scale = a.astype(np.float64).tolist(), b.astype(np.float64).tolist(), 1.0
+                mesh_out = run_matmul_on_mesh(mesh_target, qa, qb,
+                                              operand_dtype=op_dt, accum_dtype=acc_dt)
                 if mesh_out is not None:
                     om = np.array(mesh_out, np.float64) * scale
                     env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])

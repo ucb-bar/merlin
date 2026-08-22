@@ -706,6 +706,83 @@ def resolve_model_loader(entry: dict, m2m_dir: str | Path | None = None) -> Path
     return root / "workloads" / name / "loader.py"
 
 
+def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, list[str]]:
+    """What a whole-model capstone OWES the accelerator: its semantic family and instruction classes.
+
+    Both DERIVED, and from two independent places: the family comes from the MODEL's own captured linalg
+    (which ops it actually contains), the classes from THIS TARGET's role census. Neither is authored, so
+    adding a target or swapping the model changes the demand without editing anything here.
+
+    WHY IT EXISTS. A model capsule shipped ``instruction_classes: []`` with ``must_accelerate: false``,
+    which together mean a submission that runs the entire network on the CPU and returns the right numbers
+    PASSES the capstone. That is precisely the vacuity that was removed from the op capsules and never
+    from the thing the whole suite builds toward -- and the capstone is the one result anybody quotes.
+
+    Returns ``(family, classes)``. FAIL CLOSED at every step: a model whose ops the vocabulary cannot name,
+    a target that declares no matching capability, or a taxonomy with no role census all yield
+    ``(None, [])``, and the caller must then leave ``must_accelerate`` off rather than assert a demand it
+    could not ground. An ungrounded demand fails a conformant submission, which is the one direction
+    running the capsule cannot detect.
+    """
+    from merlin.targetgen import eligibility as _el
+    from merlin.targetgen import semantic_families as _sf
+
+    target = getattr(binding, "target", None)
+    if not target or not linalg_mlir:
+        return None, []
+    try:
+        cap_map = _el.capability_map_for_target(target)
+    except Exception:                       # noqa: BLE001 — no contract yet: demand nothing
+        return None, []
+    if not cap_map:
+        return None, []
+
+    in_fmt = binding.cap_dtype(binding.operand_dtype)
+    try:
+        demands = model_op_demands(linalg_mlir, in_fmt)
+    except Exception:                       # noqa: BLE001 — unreadable capture: demand nothing
+        return None, []
+
+    # Ops of the model this target's hardware is declared able to run. Asked of the eligibility oracle,
+    # the same independent denominator ARR uses -- not of routing, which is the thing under test.
+    eligible_ops: list[str] = []
+    for d in demands:
+        if d.op in eligible_ops:
+            continue
+        desc = _el.RegionDescriptor(source=d.site or d.op, op=d.op, in_dtype=d.in_fmt,
+                                    weight_dtype=d.weight_fmt, m=d.m, k=d.k, n=d.n)
+        if _el.is_eligible(desc, cap_map).eligible:
+            eligible_ops.append(d.op)
+    if not eligible_ops:
+        return None, []
+
+    # The capsule's family is the one the accelerator is actually FOR. A model is a composition and the
+    # closed vocabulary has no name for it, so naming the family it owes -- rather than adding a bogus
+    # ``model`` entry to the vocabulary -- is what lets the eligibility oracle resolve the capsule at all,
+    # and therefore what lets must_accelerate mean anything. Contraction when present (every declared
+    # matrix unit exists for it); otherwise the first eligible family, in program order.
+    families = [f for f in (_sf.from_op(op) for op in eligible_ops) if f]
+    if not families:
+        return None, []
+    family = "contraction" if "contraction" in families else families[0]
+
+    # Classes come from the binding's OWN deriver -- the same callable every op capsule is built with, so
+    # the capstone and the op capsules can never disagree about what this target's contraction sequence
+    # is. (It resolves three regimes: a declared matrix unit, a self-hosted ISA taxonomy, or a RoCC
+    # encoding map. Reaching past it to one of those directly is how the capstone came out empty on a
+    # target whose op capsules carry the full eight-class sequence.)
+    classes: list[str] = []
+    for op in eligible_ops:
+        try:
+            got = binding.classes_for(op=op, output_dtype=in_fmt)
+        except Exception:                   # noqa: BLE001 — an underivable class list demands nothing
+            continue
+        for c in got or ():
+            if c not in classes:
+                classes.append(c)
+    return family, classes
+
+
 def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSource | None" = None):
     """Materialize a whole-model capsule: the model is lowered end-to-end via model2MLIR (the linalg IS
     the interface), weights are externalized alongside, and the golden is the host torch-eager output.
@@ -742,6 +819,12 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         shutil.copyfile(wsrc, d / "capsule.weights.safetensors")
         linalg = linalg.replace(str(wsrc), "capsule.weights.safetensors")
 
+    # What this model owes the accelerator, derived from its own captured linalg and this target's role
+    # census. Without it the capstone is vacuous: no required classes and no must_accelerate means a
+    # submission that ran the whole network on the CPU and got the right numbers PASSES the one capsule
+    # the entire suite builds toward.
+    _model_family, _model_classes = model_accelerator_demand(linalg, binding)
+
     cap = {
         "name": entry["name"], "kind": "model", "source_role": "pytorch_model_slice",
         "source_reference": entry.get("source_reference", f"whole model {entry.get('model', '')}"),
@@ -755,7 +838,7 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         # on an integer-datapath target (whose op capsules grade exact_int).
         "numeric_policy": {"compare": "tolerance_float", "dtype": "f32",
                            "atol": _tol(binding)[0], "rtol": _tol(binding)[1]},
-        "expected": {"instruction_classes": []},
+        "expected": {"instruction_classes": _model_classes},
         "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
         # Same per-target tier declaration the direct-MLIR builders carry (corpus_spec.build): a capsule
         # authored through a different source must not silently lose it, or the same tier that is honestly
@@ -765,6 +848,22 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         "gate": gate,
         "pytorch_ref": {"op": "model", "dtype": idt, "loader": "capsule.pytorch.py"},
         "linalg_mlir": "capsule.interface.mlir",
+        # A model capsule carried no semantic block, so the eligibility oracle could not resolve it
+        # (`model` is not a family and never will be -- a model is a composition). Naming the family it
+        # OWES is what makes it resolvable, and therefore what gives must_accelerate something to bite on:
+        # an eligible region that falls back to the CPU is a hard failure. Only asserted when the demand
+        # was actually grounded; an ungrounded assertion would fail a conformant submission.
+        "semantic": {
+            **({"semantic_family": _model_family} if _model_family else {}),
+            "generalization_axis": "model",
+            "must_accelerate": bool(_model_family and _model_classes),
+            "eligible": "auto",
+            **({} if (_model_family and _model_classes) else {
+                "not_asserted_reason":
+                    "the accelerator demand could not be derived from this model's linalg against this "
+                    "target's declared capabilities and role census, so must_accelerate is withheld "
+                    "rather than asserted ungrounded"}),
+        },
     }
     prov = {nm: {"shape": _shape_of(art.inputs[i]), "decoded": _flatten(art.inputs[i])}
             for i, nm in enumerate(in_names)}

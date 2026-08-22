@@ -58,18 +58,38 @@ class RouteResult:
     gap: str | None                 # honest reason when unroutable
 
 
+def _fmt_ok(want: str | None, allowed) -> bool:
+    """Is format ``want`` covered by ``allowed``, comparing FORMATS rather than spellings?
+
+    A quant format has several legal names (``i8``/``int8``, ``fp8_e4m3``/``e4m3``/``f8E4M3FN``) and the
+    registry knows they denote one format. Routing compared the raw strings, so which spelling a caller
+    happened to hold decided whether a layer was legal on the unit. Measured on a whole model: passing the
+    capsule's declared datapath format ``i8`` against a contract declaring ``int8`` routed 0 of 15
+    contractions to a mesh that supports every one of them, and the coverage certificate then reported a
+    perfectly real-looking ARR of 0.0 -- an alias artifact presented as a compiler deficiency.
+
+    This is the SAME predicate the eligibility oracle uses, deliberately: the two sides of that ratio must
+    agree on what a format is, or the ratio measures spelling. It is not a widening -- an alias resolves
+    through the registry, so a format the unit does not declare is still refused (e5m2 does not become
+    legal on an e4m3 unit).
+    """
+    from merlin.targetgen.eligibility import _dtype_ok
+    return _dtype_ok(want, tuple(allowed or ()))
+
+
 def _legal_on(unit: _cu.ComputeUnit, demand: OpDemand) -> tuple[bool, str | None]:
     """Is ``demand`` legal on ``unit``? Returns (legal, accumulator token)."""
     if not unit.supports_op(demand.op):
         return False, None
-    if demand.in_fmt not in unit.dtypes:
+    if not _fmt_ok(demand.in_fmt, unit.dtypes):
         return False, None
-    if demand.weight_fmt is not None and demand.weight_fmt not in unit.dtypes:
+    if demand.weight_fmt is not None and not _fmt_ok(demand.weight_fmt, unit.dtypes):
         return False, None
     if not unit.accumulate:
         return True, None
     for rule in unit.accumulate:
-        if rule.inp == demand.in_fmt and (demand.weight_fmt is None or rule.weight == demand.weight_fmt):
+        if _fmt_ok(demand.in_fmt, (rule.inp,)) and (
+                demand.weight_fmt is None or _fmt_ok(demand.weight_fmt, (rule.weight,))):
             return True, rule.acc
     return False, None
 

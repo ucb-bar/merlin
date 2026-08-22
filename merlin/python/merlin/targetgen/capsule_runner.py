@@ -920,7 +920,13 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     from pathlib import Path as _P
     attrs = (capsule.get("operation") or {}).get("attributes") or {}
     model, dtype = attrs.get("model"), attrs.get("compile_dtype", "fp32")
-    run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN", "host")
+    # Which lane executes the model. The default was the host dispatch runtime unconditionally, so a
+    # capsule that DEMANDS acceleration was graded on a lane that cannot provide it and passed anyway.
+    # Derive it instead: a capsule whose semantic block asserts must_accelerate runs on the mesh lane,
+    # everything else keeps the host lane. The env var still overrides, for a deliberate diagnostic run.
+    _sem = capsule.get("semantic") or {}
+    run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or (
+        "mesh" if _sem.get("must_accelerate") else "host")
     # MERLIN_MESH_VERIFY additionally EXECUTES each mesh-routed matmul as a single systolic tile on the
     # target's real mesh oracle (compile_model mesh_verify) — proving the matmul layers run ON the mesh, not
     # just that a routing plan was produced. Off by default (the oracle build/run is heavy); the whole-model
@@ -935,13 +941,22 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                       failure={"plane": "model", "category": "RUNNER_CRASH",
                                "detail": "model capsule missing operation.attributes.model"})
         return result
-    # the captured linalg (visible grounding) drives the per-op mesh routing when present
+    # The captured linalg (visible grounding) drives the per-op mesh routing when present. Read the name
+    # the CAPSULE DECLARES -- every model capsule ships `linalg_mlir: capsule.interface.mlir`, while this
+    # looked only for `capsule.linalg.mlir`, so it never found one. `linalg_mlir` was therefore always
+    # None, `compile_model`'s `if target and linalg_mlir:` never fired, and the routing plan, the coverage
+    # certificate AND the mesh verification were all skipped on every whole-model capsule ever graded --
+    # silently, because a skipped block leaves no trace in the result.
     linalg_mlir = None
     cdir = capsule.get("__dir__")
     if cdir:
-        lp = _P(cdir) / "capsule.linalg.mlir"
-        if lp.is_file():
-            linalg_mlir = lp.read_text(encoding="utf-8")
+        for _name in (capsule.get("linalg_mlir"), capsule.get("interface_mlir"), "capsule.linalg.mlir"):
+            if not _name:
+                continue
+            lp = _P(cdir) / str(_name)
+            if lp.is_file():
+                linalg_mlir = lp.read_text(encoding="utf-8")
+                break
     try:
         from ..compile_cli import compile_model
         # `dtype` is the capsule's compile_dtype (an RVV compile mode). The capsule ALSO declares the
