@@ -63,6 +63,19 @@ class TargetExperiment:
     # failed to render. Kept as a declaration, deliberately NOT as an override: see
     # :func:`declared_vs_resolved_contract`.
     declared_contract: str | None = None
+    # OPTIONAL: capsule DIRECTORY NAMES this experiment withholds from the PUBLIC graded set. An
+    # experiment CHOICE about scope (which capsules a paid agentic loop is scored on), so declared per
+    # target, never inferred — the library reads it as data and knows nothing about any target's corpus.
+    #
+    # Why the knob exists: a whole-model capsule costs one oracle invocation per matmul layer, and the
+    # cost is the MODEL's, not the compiler's. Measured on radiance: 15 layers ~= 45 min, and the four
+    # model capsules together are 297 layers ~= 15 h per arm per ROUND, which makes a 12-round A/B
+    # unreachable while adding nothing the first model has not already shown. Withholding is honest only
+    # because it is visible: the excluded names land in the run's own manifest and the denominator moves
+    # with them. It is NOT a way to drop capsules a submission fails — see the fail-closed check in
+    # :func:`~merlin.targetgen.contract.materialize.materialize_public_capsules`, which refuses an
+    # exclusion that matches no capsule so a typo cannot quietly widen the set back open.
+    graded_exclude: tuple[str, ...] = ()
 
     def declared_contract_path(self) -> Path | None:
         """The declared contract as an absolute path, if the descriptor names one that exists."""
@@ -182,6 +195,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
             (doc.get("preflight") or {}).get("smoke_program")),
         declared_contract=(lambda s: str(s) if s else None)(hw.get("target_contract")),
         backend_package_dir=(lambda s: str(s) if s else None)(doc.get("backend_package_dir")),
+        graded_exclude=tuple(str(x) for x in ((doc.get("grading") or {}).get("exclude_capsules") or ())),
     )
 
 
