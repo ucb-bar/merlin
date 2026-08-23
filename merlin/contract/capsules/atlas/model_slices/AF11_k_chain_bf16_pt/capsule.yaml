@@ -1,0 +1,71 @@
+name: AF11_k_chain_bf16_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: PyTorch chained matmul bf16 (atlas k_chain)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: bf16
+- name: W
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: bf16
+- name: W2
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: bf16
+operation:
+  op: k_chain
+  attributes:
+    out: Y0
+    arg_order:
+    - A0
+    - W
+    - W2
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L3
+- L4
+vcs: optional
+firesim: optional
+inapplicable_oracle_tiers:
+  L2: 'functional core cannot corroborate an RTL result for this target: the ISA encodes
+    dma.config.chN and dma.wait.chN to the same word, so an assembled program that
+    needs both cannot be decoded back (resolving it as wait leaves the DMA channel
+    unarmed and the kernel stalls at its first VLOAD; resolving it as config deletes
+    the barriers and every output reads back zero). The core also treats VMEM as byte-addressed
+    where the RTL treats it as word-addressed, and reads the fp8->bf16 unpack scale
+    as a divisor where the RTL reads a biased exponent. Graded on the RTL tiers instead.'
+pytorch_ref:
+  op: k_chain
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto

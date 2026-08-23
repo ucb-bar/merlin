@@ -1,0 +1,59 @@
+{
+ "abi_version": "0.1",
+ "target": "gemmini",
+ "tensors": {
+  "W": {
+   "shape": [
+    16,
+    16
+   ],
+   "dtype": "i8",
+   "role": "weight"
+  },
+  "A0": {
+   "shape": [
+    16,
+    16
+   ],
+   "dtype": "i8",
+   "role": "input"
+  }
+ },
+ "commands": [
+  {
+   "opcode": "RES_PACK",
+   "operands": {
+    "src": "W",
+    "dst": "W_res"
+   },
+   "attributes": {
+    "layout": "packed_rhs"
+   }
+  },
+  {
+   "opcode": "MATMUL_RESIDENT",
+   "operands": {
+    "lhs": "A0",
+    "rhs": "W_res",
+    "dst": "acc0"
+   }
+  },
+  {
+   "opcode": "COMMIT",
+   "operands": {
+    "src": "acc0",
+    "dst": "Y0"
+   },
+   "attributes": {
+    "epilogue": [],
+    "output_dtype": "i32"
+   }
+  },
+  {
+   "opcode": "EVICT",
+   "operands": {
+    "handle": "W_res"
+   }
+  }
+ ]
+}
