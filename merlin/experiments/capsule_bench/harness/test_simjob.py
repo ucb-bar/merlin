@@ -42,7 +42,7 @@ def main():
     env = dict(os.environ)
     env["PATH"] = f"{CE}/bin:{CE}/riscv-tools/bin:" + env.get("PATH", "")
     env["LD_LIBRARY_PATH"] = f"{CE}/lib:{CE}/riscv-tools/lib:" + env.get("LD_LIBRARY_PATH", "")
-    with tempfile.TemporaryDirectory(dir="/tmp") as td:
+    with tempfile.TemporaryDirectory() as td:            # honours TMPDIR
         ws = Path(td)
         import shutil
         shutil.copy(HERE / "simjob_shim.py", ws / "simjob.py")

@@ -123,7 +123,7 @@ def main(argv=None):
     smoke = _smoke_prompt(a.arm, is_rtlchecks, golden_rel, facts_rel, capsule)
     print(f"=== LIVE smoke agent — arm={a.arm} target={te.target} sim={sim or 'n/a'} model={a.model} "
           f"(sandbox=bwrap, real driver path) ===")
-    with tempfile.TemporaryDirectory(dir="/tmp") as td:
+    with tempfile.TemporaryDirectory() as td:            # honours TMPDIR; bwrap masks via tmpfs, not a /tmp bind
         ws = Path(td) / "workspace"
         RX.assemble_workspace(bundle, ws)
         (ws / "SMOKE.md").write_text(smoke)

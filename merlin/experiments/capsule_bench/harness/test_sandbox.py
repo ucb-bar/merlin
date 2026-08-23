@@ -49,7 +49,7 @@ def _bwrap(ws: Path, bundle: dict, inner: str) -> str:
     over every file in the legacy ``answer_files()`` list. Two things went wrong with that. It skipped
     the directory surfaces entirely, and — worse — binding a file that the deny-by-default base had
     already tmpfs-hidden RE-CREATES that path inside the tmpfs, so the held-out capsule NAMES
-    (``hidden/H0_matmul_hidden/…``) became listable again even though their contents were empty. A gate
+    (``hidden/<capsule>/…``) became listable again even though their contents were empty. A gate
     that assembles its own weaker sandbox is not evidence about the real one; ``bwrap_cmd`` applies the
     derived answer-mask pass, which skips a surface the base already hides."""
     return QA.bwrap_cmd(inner, ws, bundle)
@@ -155,7 +155,7 @@ def main(argv=None):
     bundle = _load_bundle_by_id(ARM_BUNDLE[a.arm])
     print(f"=== sandbox test — arm={a.arm} bundle={ARM_BUNDLE[a.arm]} ===")
 
-    with tempfile.TemporaryDirectory(dir="/tmp") as td:
+    with tempfile.TemporaryDirectory() as td:            # honours TMPDIR; bwrap masks via tmpfs, not a /tmp bind
         ws = Path(td) / "workspace"
         RX.assemble_workspace(bundle, ws)
 

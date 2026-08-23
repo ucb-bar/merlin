@@ -120,7 +120,7 @@ def check_canary_isolation() -> dict:
     _te = load_target_experiment(C.EXP / "target_experiment.yaml")
     for bundle_id in bundles_to_check():
         bundle = load_bundle_by_id(bundle_id)
-        with tempfile.TemporaryDirectory(dir="/tmp") as td:
+        with tempfile.TemporaryDirectory() as td:        # honours TMPDIR
             ws = Path(td) / "workspace"
             RAE.assemble_workspace(bundle, ws)
             # The FULL isolation argv -- deny-by-default base, the runtime + toolchain binds, and the
@@ -179,7 +179,7 @@ def _mk_pkg_with(text_file: dict, base=None) -> Path:
                 f"no reference package under {_TGT}; the end-to-end negative fixtures need a valid "
                 f"package to mutate")
     import shutil
-    d = Path(tempfile.mkdtemp(dir="/tmp", prefix="negfix_"))
+    d = Path(tempfile.mkdtemp(prefix="negfix_"))
     shutil.copytree(C.REPO / base, d / "pkg", ignore=shutil.ignore_patterns("build", "__pycache__"))
     for rel, content in text_file.items():
         p = d / "pkg" / rel
@@ -219,7 +219,7 @@ def check_negative_fixtures() -> dict:
         _m["integrity_exempt"] = False
         _mf.write_text(yaml.safe_dump(_m, sort_keys=False), encoding="utf-8")
     g = CGRADE.grade(str(pkg), capsules_root=str(C.REPO / "merlin/contract/capsules"),
-                     runs_root=tempfile.mkdtemp(dir="/tmp"), labels={"public"}, contract=contract,
+                     runs_root=tempfile.mkdtemp(), labels={"public"}, contract=contract,
                      oracle_adapters={}, target=TARGET)
     res["grader_endtoend"].append({"case": "import_merlin_injected", "functional_pass": g["functional_pass"],
                                    "integrity_status": g["integrity_status"],
@@ -227,7 +227,7 @@ def check_negative_fixtures() -> dict:
     # (2) missing manifest -> contract fail
     pkg2 = _mk_pkg_with({"manifest.yaml": None})
     g2 = CGRADE.grade(str(pkg2), capsules_root=str(C.REPO / "merlin/contract/capsules"),
-                      runs_root=tempfile.mkdtemp(dir="/tmp"), labels={"public"}, contract=contract,
+                      runs_root=tempfile.mkdtemp(), labels={"public"}, contract=contract,
                       oracle_adapters={}, target=TARGET)
     res["grader_endtoend"].append({"case": "missing_manifest", "functional_pass": g2["functional_pass"],
                                    "integrity_status": g2["integrity_status"],
@@ -306,7 +306,7 @@ def _negatives_numeric_and_schema(res: dict, contract: str) -> dict:
 def check_freeze_enforcement() -> dict:
     """Mutating a frozen submission must change its hash (so the hidden-phase recheck catches it)."""
     import shutil
-    d = Path(tempfile.mkdtemp(dir="/tmp", prefix="freeze_"))
+    d = Path(tempfile.mkdtemp(prefix="freeze_"))
     shutil.copytree(C.REPO / "merlin/contract/schemas", d / "sub")
     h1 = C.hash_tree(d / "sub")["sha256"]
     (d / "sub" / "INJECTED.txt").write_text("post-freeze tamper")
@@ -546,7 +546,7 @@ def _program_oracle_smoke(*, sim_okay: bool, desc: Path) -> dict:
                                         "cannot resolve the model venv that lays out operands + the golden")}
     from merlin.targetgen import program_oracle as PO
     try:
-        with tempfile.TemporaryDirectory(dir="/tmp", prefix="oracle_smoke_") as td:
+        with tempfile.TemporaryDirectory(prefix="oracle_smoke_") as td:
             r = PO.run_program_oracle_smoke(TARGET, model_ext=model_ext, program=program,
                                             workdir=Path(td), timeout=600)
         return {"ok": bool(r["ok"]), "reason": r["reason"], "program": program,
