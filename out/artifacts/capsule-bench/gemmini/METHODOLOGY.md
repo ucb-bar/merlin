@@ -32,7 +32,9 @@ capsule.interface.mlir ──[ agent's 4 entrypoints ]──▶ command_buffer.j
    lowered.llvm.mlir   ─▶ trace: rocc_decode → instruction classes == capsule.expected (+ ordering)
    both                ─▶ L2  spike   : spike_out   == golden == reference == simulate  (ISA exec)
                        ─▶ L3  verilator: rtl_out     == golden == reference == simulate  (cycle-acc RTL)
-                            └─ "done" = all 20 public capsules pass L3
+                            └─ the PASS BAR is L2 (spike). L3 always RUNS and is recorded, but it is
+                               ADVISORY: under bwrap the materializer caps a capsule's
+                               required_oracle_tiers at L2, so a failing L3 does not fail the capsule.
 ```
 
 Two distinct check *kinds* run at distinct *places*: **numerical** (output tensor values, bit-exact vs an
@@ -479,7 +481,15 @@ This decode is *runner-owned* (parity-fair) — every arm's emitted `.insn` stre
 ```
 **`not_run_is_not_pass`**: a mandatory tier that is unavailable/skipped makes the capsule `incomplete`,
 never `pass` — enforced in `run_capsule`, not in any adapter (so a missing sim can never look like success).
-"Converged" = **all 20 public capsules pass L3 (verilator)**.
+**The pass bar is L2 (spike), not L3.** It is set by the run's MATERIALIZED corpus — `materialize.py`
+caps `required_oracle_tiers` at `_DEFAULT_CEILING = "L2"` under bwrap — and the authoritative record of
+what a score means is `<run>/grading_public/runs/<suite>/<capsule>/run_manifest.yaml`
+(`required_oracle_tiers`), never the committed `capsule.yaml`. Verilator still runs on every capsule and
+its verdict is recorded in `tiers.L3`, but it is ADVISORY and does not gate `n_passed`.
+
+⚠️ This distinction is load-bearing, not pedantic: `merlincirct_gemarm4_codex3` scores `20/20` with
+`tier_reached = {L0:20, L1:20, L2:20, L3:1}` — verilator disagreed with the golden on **19 of the 20
+public capsules it passed**. Always report `tier_reached["L3"]` beside any `n_passed`.
 
 **Per-check map — WHERE each check runs · WHAT it checks · HOW / AGAINST WHAT** (the explicit version of
 the top-of-doc diagram; all operator-side in `capsule_runner.run_capsule`, the agent never runs any of it):
@@ -648,8 +658,10 @@ non-terminal barrier). The arms are **nested (C ⊃ B ⊃ A)**, so each adds exa
 are attributable: (B−A) = Merlin framework value, (C−B) = the CIRCT RTL-grounding value. A converging arm
 that used *fewer* rounds did so with *less* budget, not more.
 
-### F.2 The convergence bar is REAL cycle-accurate RTL — the CIRCT gate cannot fake it
-"Converged" = all 20 public capsules pass **L3 (cycle-accurate verilator/VCS RTL)**. The CIRCT arm's
+### F.2 The convergence bar is spike (L2); the RTL tier is recorded but advisory
+"Converged" = all 20 public capsules pass **L2 (spike)**. Cycle-accurate verilator (L3) runs on every
+capsule and is recorded, but the bwrap tier ceiling leaves it out of `required_oracle_tiers`, so it does
+not gate convergence — see §D. The CIRCT arm's
 sim-skip gate is the obvious place an "unfair advantage" could hide, so it is constrained to **skip-on-
 reject only, never skip-as-pass**: it may only *skip* a sim when the structural screen *rejects* the trace
 (a capsule that would fail the sim anyway) — it can never mark a capsule `pass` without the sim running.
