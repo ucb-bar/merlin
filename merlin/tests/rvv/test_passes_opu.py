@@ -376,3 +376,69 @@ class TestTheTileFillingSelector:
     def test_a_nonsense_edge_is_refused(self):
         with pytest.raises(ValueError, match="lane count"):
             PO.tile_filling_selector(0)
+
+
+def _int8_mm(m: int, n: int, k: int) -> str:
+    """`_INT8_MM` at an arbitrary shape, so a routing rule can be tested at the extents that shipped."""
+    return (_INT8_MM.replace("tensor<64x32xi8>", f"tensor<{m}x{k}xi8>")
+                    .replace("tensor<32x16xi8>", f"tensor<{k}x{n}xi8>")
+                    .replace("tensor<64x16xi32>", f"tensor<{m}x{n}xi32>"))
+
+
+class TestTheRoutingRuleIsRecorded:
+    """A selector that overrides the default tile-filling rule must SAY SO in the sidecar.
+
+    A custom `select=` is a legitimate seam — it is where the cost model and the e-graph plug in. What
+    is not legitimate is it being invisible. A whole-model Gemma image was built with a selector that
+    dropped the M requirement; 183 contractions ran at M=8 on a 64-lane unit; and the build log, the
+    sidecar and the measurement artifact all recorded only that 183 contractions had been "routed".
+    Localising that cost 11.6 hours of FireSim time and three runs.
+    """
+
+    def test_the_shape_that_shipped_is_flagged_as_sub_tile(self):
+        # m=8 is Gemma's sequence length; n/k are layer 0's q_proj. The default selector refuses this.
+        mod = _module(_int8_mm(8, 2048, 2304))
+        rw = PO.rewrite_contractions_to_opu(mod, select=_ALL, tile_edge=64)
+        assert rw.count == 1
+        assert len(rw.sub_tile()) == 1
+        rule = rw.to_dict()["routing_rule"]
+        assert rule["fills_default_tile_rule"] is False
+        assert rule["sub_tile_routed"] == 1
+        assert rule["sub_tile_dims"] == ["m"], "M is the dimension that did not fill"
+        assert rule["tile_edge"] == 64
+
+    def test_the_default_selector_would_have_refused_that_shape(self):
+        """The flag and the default rule must agree, or the record means nothing."""
+        mod = _module(_int8_mm(8, 2048, 2304))
+        rw = PO.rewrite_contractions_to_opu(mod, select=PO.tile_filling_selector(64), tile_edge=64)
+        assert rw.count == 0
+        assert rw.to_dict()["routing_rule"]["sub_tile_routed"] == 0
+
+    def test_a_tile_filling_route_is_recorded_as_filling(self):
+        mod = _module(_int8_mm(64, 64, 128))
+        rw = PO.rewrite_contractions_to_opu(mod, select=_ALL, tile_edge=64)
+        assert rw.count == 1 and rw.sub_tile() == ()
+        rule = rw.to_dict()["routing_rule"]
+        assert rule["fills_default_tile_rule"] is True
+        assert rule["sub_tile_dims"] == []
+
+    def test_a_partial_n_is_flagged_on_n_not_m(self):
+        mod = _module(_int8_mm(64, 16, 32))
+        rw = PO.rewrite_contractions_to_opu(mod, select=_ALL, tile_edge=64)
+        assert rw.to_dict()["routing_rule"]["sub_tile_dims"] == ["n"]
+
+    def test_without_an_edge_the_rule_is_UNKNOWN_not_assumed(self):
+        """Fail closed: an unrecorded edge must not read as 'the default rule was satisfied'."""
+        mod = _module(_int8_mm(8, 2048, 2304))
+        rw = PO.rewrite_contractions_to_opu(mod, select=_ALL)
+        assert rw.sub_tile() == (), "no edge means no claim, not a claim of zero"
+        rule = rw.to_dict()["routing_rule"]
+        assert rule["tile_edge"] == "UNKNOWN"
+        assert rule["fills_default_tile_rule"] is None, "must not read as True"
+
+    def test_the_edge_survives_a_decline(self):
+        """A build that routed nothing still records what rule it was judged against."""
+        mod = _module(_int8_mm(8, 2048, 2304))
+        rw = PO.rewrite_contractions_to_opu(mod, select=lambda _s: False, tile_edge=64)
+        assert rw.count == 0
+        assert rw.to_dict()["routing_rule"]["tile_edge"] == 64

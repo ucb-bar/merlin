@@ -120,17 +120,48 @@ class OpuRewrite:
     #: signature actually called. The arity is what tells the C emitter which entry shape to generate.
     signatures: dict[str, tuple[int, ...]] = field(default_factory=dict)
     skipped: tuple[tuple[str, str], ...] = ()      # (what, why)
+    #: The tile edge the decision was made against, when the caller supplied it. Without it the
+    #: sidecar cannot say whether a routed contraction fills a tile, so the field is recorded as
+    #: UNKNOWN rather than assumed — an unrecorded rule is exactly what this class exists to prevent.
+    tile_edge: int | None = None
 
     @property
     def count(self) -> int:
         return len(self.routed)
 
+    def sub_tile(self) -> tuple["Routed", ...]:
+        """Routed contractions that do NOT fill a tile in both parallel dimensions.
+
+        This is the default :func:`tile_filling_selector` rule, evaluated after the fact. A custom
+        selector may legitimately route these — but the artifact must SAY that it did.
+
+        MEASURED, and why this is not bookkeeping: a whole-model Gemma image was built with a
+        selector that dropped the M requirement, so 183 contractions ran at M=8 on a 64-lane unit.
+        Nothing in the build, the sidecar or the measurement recorded that the default rule had been
+        overridden, and the run cost 11.6 hours of FireSim before the output could be graded.
+        """
+        if self.tile_edge is None:
+            return ()
+        e = int(self.tile_edge)
+        return tuple(r for r in self.routed if min(r.m, r.n) < e)
+
     def to_dict(self) -> dict[str, Any]:
+        sub = self.sub_tile()
         return {"count": self.count,
                 "routed": [{"symbol": r.symbol, "b": r.batch, "m": r.m, "n": r.n, "k": r.k,
                             "fqn": r.fqn} for r in self.routed],
                 "signatures": {k: list(v) for k, v in self.signatures.items()},
-                "skipped": [{"what": w, "why": y} for w, y in self.skipped]}
+                "skipped": [{"what": w, "why": y} for w, y in self.skipped],
+                "routing_rule": {
+                    "tile_edge": self.tile_edge if self.tile_edge is not None else "UNKNOWN",
+                    "fills_default_tile_rule": (None if self.tile_edge is None
+                                                else not sub),
+                    "sub_tile_routed": len(sub),
+                    "sub_tile_dims": sorted({d for r in sub
+                                             for d in (("m",) if r.m < int(self.tile_edge or 0) else ())
+                                             + (("n",) if r.n < int(self.tile_edge or 0) else ())}),
+                    "sub_tile_signatures": sorted({r.symbol for r in sub}),
+                }}
 
 
 def zero_initialised(op) -> bool:
@@ -211,7 +242,8 @@ def _signature_key(shape) -> tuple[int, ...]:
 
 
 def rewrite_contractions_to_opu(module, *,
-                               select: Callable[[Any], bool] | None = None) -> OpuRewrite:
+                               select: Callable[[Any], bool] | None = None,
+                               tile_edge: int | None = None) -> OpuRewrite:
     """Replace each selected int8 contraction with a call to the matrix-unit kernel.
 
     Mutates ``module`` in place and returns what it did. ``select`` receives the
@@ -223,14 +255,15 @@ def rewrite_contractions_to_opu(module, *,
     from xdsl.ir import Block, Region
 
     if select is None:
-        return OpuRewrite(skipped=(("all", "no selector supplied, so nothing is routed"),))
+        return OpuRewrite(skipped=(("all", "no selector supplied, so nothing is routed"),),
+                          tile_edge=tile_edge)
 
     candidates = routable_contractions(module)
     chosen = [(op, sh) for op, sh in candidates if select(sh)]
     skipped: list[tuple[str, str]] = []
     if not chosen:
         skipped.append(("all", f"{len(candidates)} routable contraction(s), none selected"))
-        return OpuRewrite(skipped=tuple(skipped))
+        return OpuRewrite(skipped=tuple(skipped), tile_edge=tile_edge)
 
     # One symbol per distinct signature: MLIR function types are monomorphic, so a 256x196/K=768
     # contraction and a 196x1024/K=256 one cannot share a callee.
@@ -285,7 +318,7 @@ def rewrite_contractions_to_opu(module, *,
 
     return OpuRewrite(routed=tuple(routed),
                       signatures={s: k for k, s in symbols.items()},
-                      skipped=tuple(skipped))
+                      skipped=tuple(skipped), tile_edge=tile_edge)
 
 
 #: The access each callee argument has, positionally. Read by :func:`patch_declaration_arg_attrs`.
@@ -375,7 +408,8 @@ def tile_filling_selector(tile_edge: int) -> Callable[[Any], bool]:
 
 
 def rewrite_prepared_file(prepared: "str | Path", work: "str | Path", *,
-                         select: Callable[[Any], bool] | None) -> OpuRewrite:
+                         select: Callable[[Any], bool] | None,
+                         tile_edge: int | None = None) -> OpuRewrite:
     """Rewrite a prepared module ON DISK in place and record what it minted.
 
     This is the seam a whole-model build uses: it reads the module the preparation passes produced,
@@ -392,7 +426,7 @@ def rewrite_prepared_file(prepared: "str | Path", work: "str | Path", *,
 
     prepared, work = Path(prepared), Path(work)
     module = parse_mlir_file(prepared)
-    rewrite = rewrite_contractions_to_opu(module, select=select)
+    rewrite = rewrite_contractions_to_opu(module, select=select, tile_edge=tile_edge)
     if rewrite.count:
         text = patch_declaration_arg_attrs(to_text(module), rewrite)
         missing = unpatched_declarations(text, rewrite)

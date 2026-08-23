@@ -504,10 +504,25 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                 f"feature {OPU_MATMUL_NAME!r} is enabled but no `matrix=` routing was supplied, so the "
                 "unit and configuration to route to are unknown; pass MatrixRouting(unit=..., config=...)")
         from ...llvmlower.passes_opu import rewrite_prepared_file
-        routed = rewrite_prepared_file(prepared, work, select=matrix.selector())
+        routed = rewrite_prepared_file(prepared, work, select=matrix.selector(),
+                                       tile_edge=matrix.tile_edge())
         print(f"[matrix] routed {routed.count} contraction(s) to {matrix.unit} "
               f"({matrix.config}) across {len(routed.signatures)} signature(s)"
               + (f"; declined: {[why for _w, why in routed.skipped]}" if routed.skipped else ""))
+        # A CUSTOM selector may route contractions the default tile-filling rule refuses. That is
+        # allowed -- it is the seam the cost model plugs into -- but it must never be SILENT.
+        # A whole-model Gemma image was built this way: `select=` dropped the M requirement, 183
+        # contractions ran at M=8 on a 64-lane unit, and neither the build log nor the sidecar nor
+        # the measurement said so. The run cost 11.6 hours before the output could be graded.
+        sub = routed.sub_tile()
+        if sub:
+            worst = min(sub, key=lambda r: min(r.m, r.n))
+            print(f"[matrix] WARNING: {len(sub)} of {routed.count} routed contraction(s) do NOT fill "
+                  f"a {matrix.tile_edge()}-lane tile in both parallel dimensions -- the default "
+                  f"tile_filling_selector would refuse them. Smallest: {worst.symbol} "
+                  f"m={worst.m} n={worst.n} k={worst.k} ({worst.fqn or 'unnamed'}). "
+                  f"This build supplied select= explicitly; the sidecar records it under "
+                  f"`routing_rule`.")
     if not blocking:
         return prepared, features
     from ...llvmlower import perop_blocks as _pb
