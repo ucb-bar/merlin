@@ -76,9 +76,22 @@ class TestOverflowIsUnreachable:
         assert worst < 2**31 - 1
         assert worst * 100 < 2**31 - 1, f"corpus worst magnitude {worst} is within 100x of the limit"
 
-    def test_the_longest_corpus_reduction_is_far_below_the_bound(self):
+    def test_the_longest_corpus_reduction_cannot_overflow_at_full_amplitude(self):
+        """The K-only form of the docstring's claim, stated as the property instead of a round margin.
+
+        This used to demand 100x headroom, which was comfortable while the census was spectformer
+        (longest K = 1024, 130x). A decode-shaped model lowers K=9216 -- gemma's ffn down -- and that
+        is 14.4x. Still unreachable, and the amplitude-aware check above is the one that actually
+        bounds the accumulator, but "three orders of magnitude" stopped being true, so the number is
+        asserted rather than the adjective.
+        """
         longest = max(c.resolved(_TILE).k for c in OC.load_corpus())
-        assert longest < OC.ACC_OVERFLOW_UNREACHABLE_ABOVE_K / 100
+        assert longest * (127 * 127) < 2**31 - 1, \
+            f"K={longest} at full int8 amplitude overflows the int32 accumulator"
+        headroom = OC.ACC_OVERFLOW_UNREACHABLE_ABOVE_K / longest
+        assert headroom > 10, (f"longest corpus reduction K={longest} leaves only {headroom:.1f}x of "
+                               "accumulator headroom; the missing saturation stops being a retired "
+                               "hazard well before this reaches 1x")
 
 
 class TestCorpusContents:
@@ -86,6 +99,33 @@ class TestCorpusContents:
         # The historical failure. These must be findable by name, not merely happen to be covered.
         names = {c.name for c in OC.load_corpus()}
         assert {"narrow_m_1", "narrow_n_1", "narrow_both_1"} <= names
+
+    def test_a_decode_shape_is_present_by_name(self):
+        """M below the tile edge at REAL layer widths and depths, not just at n=tile/k=64.
+
+        Every workload_* case is spectformer, whose M is 196 or 256 -- one or more whole tiles. The
+        narrow-M cases are all at one column block and a short reduction. Neither describes a decode
+        shape, where M is the sequence length and N/K are the layer widths, and that is the class
+        gemma 2 2B routed 183 contractions in before its whole-model output came back uncorrelated
+        with golden.
+        """
+        cases = {c.name: c.resolved(_TILE) for c in OC.load_corpus()}
+        assert {"decode_qkv_proj", "decode_ffn_up", "decode_ffn_down_k9216"} <= set(cases)
+        for name in ("decode_qkv_proj", "decode_ffn_up", "decode_ffn_down_k9216"):
+            c = cases[name]
+            assert c.m < _TILE, f"{name} must have a row panel that does not fill a tile"
+            assert c.n > _TILE * 4, f"{name} must span many column blocks, not one"
+            assert c.k >= 2048, f"{name} must carry a real reduction depth"
+
+    def test_the_decode_epilogues_are_covered_at_a_partial_row_panel(self):
+        """The bias init writes every tile row; the readout writes only the live ones. That
+        disagreement is invisible unless M is partial AND an epilogue is on."""
+        cases = {c.name: c for c in OC.load_corpus()}
+        bias = cases["decode_ffn_down_bias"]
+        requant = cases["decode_ffn_down_requant"]
+        assert bias.bias and not bias.requant
+        assert requant.bias and requant.requant
+        assert bias.resolved(_TILE).m < _TILE and requant.resolved(_TILE).m < _TILE
 
     def test_both_asymmetric_orientations_are_present(self):
         # An operand swap in the accumulate is shape-safe on a square tile, which is how one hid.

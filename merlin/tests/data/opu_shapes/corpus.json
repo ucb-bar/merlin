@@ -517,6 +517,61 @@
    "requant": false,
    "seed": 524,
    "amplitude": 8
+  },
+  {
+   "name": "decode_qkv_proj",
+   "m": 8,
+   "n": 2048,
+   "k": 2304,
+   "why": "a decode-shaped QKV projection: M=8 against a tile edge of 64 is a row panel that never fills, held across 32 column blocks at edge 64 and a reduction 9x the corpus baseline",
+   "bias": false,
+   "requant": false,
+   "seed": 530,
+   "amplitude": 8
+  },
+  {
+   "name": "decode_ffn_up",
+   "m": 8,
+   "n": 9216,
+   "k": 2304,
+   "why": "the widest decode projection: 144 column blocks at edge 64 under the same unfilled row panel, so a fault that needs many tile-column iterations to show up has room to",
+   "bias": false,
+   "requant": false,
+   "seed": 531,
+   "amplitude": 8
+  },
+  {
+   "name": "decode_ffn_down_k9216",
+   "m": 8,
+   "n": 2304,
+   "k": 9216,
+   "why": "the DEEPEST reduction any model here lowers, at a partial row panel. K=9216 is also exactly the pad-tail scratch bound, so this is the case that sits on that boundary rather than comfortably inside it",
+   "bias": false,
+   "requant": false,
+   "seed": 532,
+   "amplitude": 8
+  },
+  {
+   "name": "decode_ffn_down_bias",
+   "m": 8,
+   "n": 2304,
+   "k": 9216,
+   "why": "the same shape with the bias broadcast init, which writes every tile row whether or not M fills it -- the init and the readout disagree about how many rows are live, and only a partial row panel can expose that",
+   "bias": true,
+   "requant": false,
+   "seed": 533,
+   "amplitude": 8
+  },
+  {
+   "name": "decode_ffn_down_requant",
+   "m": 8,
+   "n": 2304,
+   "k": 9216,
+   "why": "the same shape with the full epilogue, which reads back only the rows M covers",
+   "bias": true,
+   "requant": true,
+   "seed": 534,
+   "amplitude": 8
   }
  ]
 }

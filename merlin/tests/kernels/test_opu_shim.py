@@ -159,6 +159,37 @@ class TestComputesTheContraction:
             a, b = _operands(8, 8, k)
             np.testing.assert_array_equal(_call(lib, "merlin_opu_gemm_i8_0", a, b), _expected(a, b))
 
+    def test_a_decode_models_real_signatures_agree(self, tmp_path):
+        """The six signatures the rewrite mints for gemma 2 2B at seq 8, at reduced K so the test is
+        quick -- the extents that matter here are M and N, which drive the tiling and the pack.
+
+        Every shape above has M at or above one tile. These have M=8 against edge 32, so the row panel
+        NEVER fills on any tile, on every one of many column blocks. That is the class whose
+        whole-model output came back uncorrelated with golden, and no host test described it: the
+        spectformer signatures are M=196/256, and the narrow-M corpus cases are one column block wide.
+        """
+        # n scaled down from (2048, 1024, 2304, 9216, 256000) so the test stays fast; what is preserved
+        # is that every n spans MANY blocks at edge 32 while m spans none.
+        sigs = {"merlin_opu_gemm_i8_0": (8, 256, 8), "merlin_opu_gemm_i8_1": (8, 128, 8),
+                "merlin_opu_gemm_i8_2": (8, 288, 8), "merlin_opu_gemm_i8_3": (8, 576, 8),
+                "merlin_opu_gemm_i8_4": (8, 288, 8), "merlin_opu_gemm_i8_5": (8, 1024, 8)}
+        lib = _build(sigs, tmp_path, edge=32)
+        for sym, (m, n, k) in sigs.items():
+            a, b = _operands(m, n, k)
+            np.testing.assert_array_equal(_call(lib, sym, a, b), _expected(a, b),
+                                          err_msg=f"{sym} m={m} n={n} k={k}")
+
+    def test_a_partial_row_panel_survives_a_long_reduction(self, tmp_path):
+        """M=8 with K far past the point where the accumulator must be carried across k-steps.
+
+        The narrow-M corpus cases all run K=64. A decode ffn down is K=9216. If the row panel's zero
+        padding were re-established per k-step rather than held, or the accumulator were re-zeroed on a
+        tile boundary, a short reduction would hide it.
+        """
+        lib = _build({"merlin_opu_gemm_i8_0": (8, 64, 2304)}, tmp_path, edge=32)
+        a, b = _operands(8, 64, 2304)
+        np.testing.assert_array_equal(_call(lib, "merlin_opu_gemm_i8_0", a, b), _expected(a, b))
+
     def test_spectformers_real_signatures_agree(self, tmp_path):
         # The five signatures the rewrite actually mints for spectformer, at reduced K so the test is
         # quick -- the extents that matter here are M and N, which drive the tiling and the pack.

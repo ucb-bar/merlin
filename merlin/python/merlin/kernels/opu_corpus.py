@@ -11,8 +11,10 @@ Three properties, each deliberate:
 * **The reference wraps, and the wrap turns out to be unreachable.** The hardware's accumulator has no
   saturation logic (the RTL says so in a ``TODO``), so where it overflows it wraps, and the reference
   matches that. But the bound is derivable: int8 × int8 into int32 cannot exceed the accumulator below
-  ``K ≈ 133,152`` (:data:`ACC_OVERFLOW_UNREACHABLE_ABOVE_K`), which is three orders of magnitude above
-  the longest reduction in the workload census. So the missing saturation is a **retired** hazard on this
+  ``K ≈ 133,152`` (:data:`ACC_OVERFLOW_UNREACHABLE_ABOVE_K`), which is 14.4x the longest reduction in
+  the workload census (``K = 9216``, a decode-shaped ffn down). That margin was three orders of
+  magnitude while the census was spectformer alone; whole-model decode shapes cut it by 9x, so it is
+  now asserted by the gate rather than described. So the missing saturation is a **retired** hazard on this
   datapath rather than an open one, and the corpus contains no wrap case: writing one would need a K no
   model produces, and a case that claims to exercise wrapping while staying inside the range is worse
   than none. The reference's wrap is unit-tested directly on synthetic wide values instead.
@@ -67,20 +69,42 @@ _TILE = "tile"
 def resolve_extent(extent: "int | str", tile: int) -> int:
     """A concrete extent from a number or a ``tile``-relative expression.
 
-    Supports ``tile`` and ``tile/<divisor>``. Anything else raises rather than falling back to a default,
-    because a silently mis-resolved extent produces a corpus that tests a different shape than it claims.
+    Supports ``tile``, ``tile/<divisor>`` and ``tile*<multiplier>``. Anything else raises rather than
+    falling back to a default, because a silently mis-resolved extent produces a corpus that tests a
+    different shape than it claims.
+
+    ``tile*<multiplier>`` exists because without it the corpus could only ever describe extents at or
+    BELOW one tile, and so could not state "several tile columns" or "a long reduction" at all. That
+    was not a cosmetic limit: every narrow-M case here ran at ``n = tile`` and ``k = 64``, i.e. a
+    single column block and the shortest useful reduction, so narrow M combined with many column
+    blocks or a deep accumulation was certified nowhere -- which is exactly the regime a whole-model
+    decode shape puts the unit in (M is the sequence length, N and K are the layer widths).
+
+    Parsed structurally rather than by pattern, per the repo's no-regex rule.
     """
     if isinstance(extent, int):
         return extent
     text = str(extent).strip()
-    head, sep, divisor = text.partition("/")
+    head, sep, rhs = text.partition("/")
+    if not sep:
+        head, sep, rhs = text.partition("*")
+        if head.strip() != _TILE:
+            raise ValueError(f"unsupported extent expression {extent!r}; expected an int, 'tile', "
+                             f"'tile/<divisor>', or 'tile*<multiplier>'")
+        if not sep:
+            return int(tile)
+        try:
+            mul = int(rhs)
+        except ValueError as exc:
+            raise ValueError(f"unsupported multiplier in {extent!r}") from exc
+        if mul < 1:
+            raise ValueError(f"multiplier must be >= 1 in {extent!r}")
+        return int(tile) * mul
     if head.strip() != _TILE:
         raise ValueError(f"unsupported extent expression {extent!r}; expected an int, 'tile', "
-                         f"or 'tile/<divisor>'")
-    if not sep:
-        return int(tile)
+                         f"'tile/<divisor>', or 'tile*<multiplier>'")
     try:
-        d = int(divisor)
+        d = int(rhs)
     except ValueError as exc:
         raise ValueError(f"unsupported divisor in {extent!r}") from exc
     if d < 1:
@@ -346,6 +370,28 @@ _CASES: tuple[Case, ...] = (
          "reduction 8x longer than its twin. Measured on this part, the M=1 shape is the one the cost "
          "model should DECLINE to route (row-serial readout charges a full tile of rows for one live "
          "row), so it is here for correctness, not throughput", seed=524),
+    # --- a DECODE-shaped whole model, which the workload cases above do not reach ---------------
+    # Every workload_* case above comes from spectformer, whose M is 196 or 256 -- one or more whole
+    # tiles. A decode shape inverts that: M is the SEQUENCE LENGTH (8), while N and K are the layer
+    # widths, so the unit runs a permanently partial row panel across hundreds of column blocks and a
+    # reduction up to 36x the corpus's baseline. The nearest existing case, workload_classifier_k256,
+    # is narrow-M (1) over 1000 columns but only K=256. Gemma 2 2B at seq 8 routes 183 contractions in
+    # this class and its whole-model output came back UNCORRELATED with golden (rank corr 0.006),
+    # which is what these cases exist to have caught.
+    Case("decode_qkv_proj", 8, 2048, 2304, "a decode-shaped QKV projection: M=8 against a tile edge of "
+         "64 is a row panel that never fills, held across 32 column blocks at edge 64 and a reduction "
+         "9x the corpus baseline", seed=530),
+    Case("decode_ffn_up", 8, 9216, 2304, "the widest decode projection: 144 column blocks at edge 64 "
+         "under the same unfilled row panel, so a fault that needs many tile-column iterations to "
+         "show up has room to", seed=531),
+    Case("decode_ffn_down_k9216", 8, 2304, 9216, "the DEEPEST reduction any model here lowers, at a "
+         "partial row panel. K=9216 is also exactly the pad-tail scratch bound, so this is the case "
+         "that sits on that boundary rather than comfortably inside it", seed=532),
+    Case("decode_ffn_down_bias", 8, 2304, 9216, "the same shape with the bias broadcast init, which "
+         "writes every tile row whether or not M fills it -- the init and the readout disagree about "
+         "how many rows are live, and only a partial row panel can expose that", bias=True, seed=533),
+    Case("decode_ffn_down_requant", 8, 2304, 9216, "the same shape with the full epilogue, which reads "
+         "back only the rows M covers", bias=True, requant=True, seed=534),
 )
 
 #: The reduction length at which int8 x int8 accumulation could first exceed a signed 32-bit
