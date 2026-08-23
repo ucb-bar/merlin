@@ -20,6 +20,15 @@ import pytest
 
 from merlin.xdsl_dialects import _common
 
+
+def _binding(*, accum_dtype: str, operand_dtype: str = "fp8_e4m3", flush: bool = False):
+    """A minimal CorpusBinding for the numeric-reference tests. Built through the real dataclass (not a
+    stub) so a field added to the datapath contract shows up here rather than being quietly absent."""
+    from merlin.targetgen.corpus_spec import CorpusBinding
+    return CorpusBinding(target="t", tile_dim=16, operand_dtype=operand_dtype, accum_dtype=accum_dtype,
+                         integer=False, tiers=[], compare="tolerance_float",
+                         subnormal_operand_flush=flush)
+
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
 
 
@@ -173,13 +182,13 @@ def test_the_reference_accumulates_in_the_targets_declared_format():
     exact; the reference was wrong."""
     import numpy as np
 
-    from merlin.compile_cli import _reference_in_accum_format
+    from merlin.compile_cli import _reference_on_datapath
 
     rng = np.random.default_rng(0xA71A5)
     A = np.rint(rng.standard_normal((32, 352)) * 3).clip(-8, 7).astype(np.float32)
     W = np.rint(rng.standard_normal((352, 128)) * 3).clip(-8, 7).astype(np.float32)
 
-    bf16_ref = _reference_in_accum_format(A, W, "bf16")
+    bf16_ref = _reference_on_datapath(A, W, _binding(accum_dtype="bf16"))
     assert bf16_ref is not None, "bf16 is a declared accumulator format and must be modelled"
     n_diff = int((bf16_ref != A @ W).sum())
     assert n_diff > 0, "a bf16 accumulator cannot equal the f32 product at this depth"
@@ -192,13 +201,37 @@ def test_an_exact_accumulator_needs_no_model():
     way to be wrong. Both fall through to the plain reference."""
     import numpy as np
 
-    from merlin.compile_cli import _reference_in_accum_format
+    from merlin.compile_cli import _reference_on_datapath
 
     A = np.ones((4, 4), dtype=np.float32)
     W = np.ones((4, 4), dtype=np.float32)
-    assert _reference_in_accum_format(A, W, "i32") is None
-    assert _reference_in_accum_format(A, W, "fp32") is None
-    assert _reference_in_accum_format(A, W, "not_a_format") is None
+    assert _reference_on_datapath(A, W, _binding(accum_dtype="i32")) is None
+    assert _reference_on_datapath(A, W, _binding(accum_dtype="fp32")) is None
+    assert _reference_on_datapath(A, W, _binding(accum_dtype="not_a_format")) is None
+
+
+def test_the_reference_reads_operands_the_way_the_datapath_does():
+    """A datapath that flushes subnormal operands must be MODELLED as flushing them.
+
+    Without this the reference reads an operand the hardware never saw, and grades correct silicon as
+    broken -- which is the same defect in the mirror as feeding the hardware an operand it cannot hold.
+    The fact is declared per target (``subnormal_operand_flush``) and now arrives here on the binding.
+    """
+    import numpy as np
+
+    from merlin.compile_cli import _reference_on_datapath
+    from merlin.runtime.fp8_formats import normal_range
+
+    min_normal, _mx = normal_range("fp8_e4m3")
+    sub = min_normal / 2.0                                # a subnormal the format still represents
+    A = np.full((4, 4), sub, dtype=np.float32)
+    W = np.ones((4, 4), dtype=np.float32)
+
+    flushing = _reference_on_datapath(A, W, _binding(accum_dtype="bf16", flush=True))
+    admitting = _reference_on_datapath(A, W, _binding(accum_dtype="bf16", flush=False))
+    assert flushing is not None and admitting is not None
+    assert float(np.abs(flushing).max()) == 0.0, "a flushing datapath multiplies by zero"
+    assert float(np.abs(admitting).max()) > 0.0, "a datapath that admits subnormals must not zero them"
 
 
 def test_the_strongest_gate_is_tried_first():
@@ -209,7 +242,7 @@ def test_the_strongest_gate_is_tried_first():
     from merlin import compile_cli
 
     src = inspect.getsource(compile_cli._certify_tile_via_executor)
-    assert src.index("_reference_in_accum_format") < src.index("_accum_rel_tolerance"), \
+    assert src.index("_reference_on_datapath") < src.index("_accum_rel_tolerance"), \
         "the exact gate must be attempted before falling back to a tolerance"
     assert "bit-exact vs" in src and "tolerance" in src, \
         "the record must name which gate produced the verdict"

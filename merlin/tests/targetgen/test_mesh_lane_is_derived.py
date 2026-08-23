@@ -43,21 +43,44 @@ def _model_capsule(target: str):
 @pytest.mark.parametrize("target", TARGETS)
 def test_the_mesh_datapath_is_read_off_the_target(target):
     from merlin.runtime.dispatch_runtime import mesh_datapath
-    op_dt, acc_dt, integer, spelling = mesh_datapath(target)
-    assert op_dt and acc_dt and spelling
-    assert isinstance(integer, bool)
+    b = mesh_datapath(target)
+    spelling = b.mlir_dtype(b.operand_dtype)
+    assert b.operand_dtype and b.accum_dtype and spelling
+    assert isinstance(b.integer, bool)
     # the MLIR spelling must be the one the target's own registry entry declares
     from merlin.targetgen.corpus_spec import dtype_info
-    assert spelling == dtype_info(op_dt)[1]
+    assert spelling == dtype_info(b.operand_dtype)[1]
 
 
 def test_two_targets_derive_two_different_datapaths():
     """The regression guard: a single hardcoded pair cannot be right for both."""
     from merlin.runtime.dispatch_runtime import mesh_datapath
     got = {t: mesh_datapath(t) for t in TARGETS}
-    assert len({g[:3] for g in got.values()}) > 1, got
-    assert any(g[2] for g in got.values()) and not all(g[2] for g in got.values()), \
+    assert len({(g.operand_dtype, g.accum_dtype, g.integer) for g in got.values()}) > 1, got
+    assert (any(g.integer for g in got.values()) and not all(g.integer for g in got.values())), \
         "one integer datapath and one float datapath — the boundary cannot treat them alike"
+
+
+def test_the_datapath_carries_the_targets_declared_facts_not_dataclass_defaults():
+    """The regression guard for the bug this whole path was built around.
+
+    ``subnormal_operand_flush`` is derived from RTL, written into the target's profile, and honoured by
+    the capsule golden engine — and the mesh boundary still read ``False``, because the binding it got was
+    derived from a dict holding nothing but two dtypes. The fact was correct everywhere except at the one
+    consumer that feeds the mesh real model operands. Assert the declared block ARRIVES, so a future
+    hand-built datapath dict fails here instead of silently defaulting.
+    """
+    from merlin.runtime.dispatch_runtime import mesh_datapath
+    from merlin.targetgen.corpus_spec import profile_datapath
+    for t in TARGETS:
+        declared = profile_datapath(t)
+        if not declared:
+            continue
+        b = mesh_datapath(t)
+        for field in ("subnormal_operand_flush", "atol", "rtol"):
+            if field in declared:
+                assert getattr(b, field) == declared[field], \
+                    f"{t}: profile declares {field}={declared[field]!r}, binding carries {getattr(b, field)!r}"
 
 
 @pytest.mark.parametrize("target", TARGETS)

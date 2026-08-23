@@ -221,6 +221,53 @@ def _classes_source(te, contract: dict) -> Callable[..., list[str]]:
     return _from_encoding
 
 
+#: Keys of the profile's ``datapath`` block that are CORPUS-AUTHORING choices, not facts about how the
+#: hardware computes. The block mixes the two, and only the second kind may be handed to a caller that did
+#: not ask for it: ``required_oracle_tiers`` is which tiers the graded corpus demands (a tile certification
+#: wants the tiers that actually resolve, which is the fallback), ``semantic_defaults`` is the corpus's
+#: ``must_accelerate`` posture, and ``requant_output_dtype`` is a per-op epilogue handoff the caller passes
+#: when its own chain needs one. ``inapplicable_tiers`` goes with ``required_oracle_tiers`` because the two
+#: are a MATCHED PAIR -- :func:`_inapplicable_tiers` fails closed when a tier is both required and
+#: inapplicable, so taking one without the other is incoherent by construction (atlas declares L2
+#: inapplicable, and L2 is in the tiers that actually resolve). Held back as a DENYLIST, so a numeric
+#: datapath fact added to the profile later reaches every consumer by default -- which is the failure this
+#: whole change is about.
+_DATAPATH_AUTHORING_KEYS = frozenset({"required_oracle_tiers", "inapplicable_oracle_tiers",
+                                      "semantic_defaults", "requant_output_dtype"})
+
+
+def profile_datapath(target: str, *, numeric_only: bool = False) -> dict:
+    """The ``datapath`` block of ``target``'s capsule profile, or ``{}`` when it has no profile.
+
+    ``numeric_only=True`` drops :data:`_DATAPATH_AUTHORING_KEYS`, leaving just the facts about how the
+    device computes -- operand/accumulate formats, tolerances, block scaling, subnormal handling. That is
+    what a caller wants when it is describing HARDWARE rather than generating a corpus. Measured on the
+    three targets: gemmini's binding is bit-identical either way, and atlas/radiance gain only numeric
+    fields, so nothing that already worked changes behaviour.
+
+    This is where a target writes down the numeric facts its manifest does not carry -- tolerances, the
+    requant handoff dtype, inapplicable oracle tiers, and ``subnormal_operand_flush``. The corpus
+    generator has always passed the block into :func:`derive_binding`; every OTHER caller hand-built a
+    dict holding just the two dtypes it happened to care about, so for those callers each of those facts
+    silently took its dataclass default. Atlas declares ``subnormal_operand_flush: true`` and the mesh
+    boundary read ``False`` for exactly that reason. One loader, so a fact declared once arrives
+    everywhere.
+
+    Reads only the TRACKED public profile, never the ``<target>.hidden.yaml`` holdout sidecar: callers
+    here emit run reports, and a report that enumerated the holdouts would leak them.
+    """
+    from merlin.common.paths import merlin_dir
+    from merlin.common.yaml import load_yaml
+    prof = merlin_dir() / "contract" / "capsules" / "profiles" / f"{target}.yaml"
+    if not prof.is_file():
+        return {}
+    block = dict((load_yaml(prof) or {}).get("datapath") or {})
+    if numeric_only:
+        for key in _DATAPATH_AUTHORING_KEYS:
+            block.pop(key, None)
+    return block
+
+
 def derive_binding(te, datapath: dict) -> CorpusBinding:
     """Derive the per-target binding from the descriptor + the profile's ``datapath`` block (compare +
     tolerances + optional requant-output dtype — the numeric contract the manifest does not yet carry)."""

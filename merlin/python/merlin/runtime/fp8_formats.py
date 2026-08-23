@@ -72,6 +72,31 @@ def float_format_params(fmt: str) -> tuple[int, int, int, str]:
     return _FORMATS[canonical_float(fmt)]
 
 
+def normal_range(fmt: str) -> tuple[float, float]:
+    """``(smallest positive NORMAL magnitude, largest finite magnitude)`` for ``fmt``, DERIVED.
+
+    Both bounds come out of the format's own ``(exp_bits, mantissa_bits, bias, scheme)`` — never a
+    tabulated 448 or 65504. The scheme decides how much of the top exponent code the format actually
+    spends: ``ieee`` reserves all-ones for inf/NaN, ``e4m3fn`` spends all of it but the all-ones
+    mantissa (which is why e4m3 reaches 448 and an IEEE reading of the same bits says 240), and
+    ``mx_finite`` has no reservations at all.
+
+    The pair is what a boundary needs to know whether an operand is REPRESENTABLE: below the first
+    value the format is into subnormals (reduced mantissa, or zero outright on a datapath that
+    flushes them), above the second it saturates.
+    """
+    eb, mb, bias, scheme = float_format_params(fmt)
+    top = (1 << eb) - 1                                # all-ones exponent code
+    if scheme == "ieee":                               # reserved for inf/NaN -> the one below it is max
+        emax_code, mant_num = top - 1, (1 << (mb + 1)) - 1
+    elif scheme == "e4m3fn":                           # only all-ones exp AND all-ones mantissa is NaN
+        emax_code, mant_num = top, (1 << (mb + 1)) - 2
+    else:                                              # "mx_finite": every code is a finite value
+        emax_code, mant_num = top, (1 << (mb + 1)) - 1
+    max_finite = (mant_num / float(1 << mb)) * (2.0 ** (emax_code - bias))
+    return 2.0 ** (1 - bias), float(max_finite)
+
+
 def _decode(codes: np.ndarray, fmt: str) -> np.ndarray:
     """Decode integer code patterns to float32 under ``fmt``. Subnormals (exp==0), normals, and the
     scheme's inf/NaN encodings are all handled; the mapping is derived from (exp_bits, mantissa_bits,

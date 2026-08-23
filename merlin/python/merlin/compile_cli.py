@@ -306,7 +306,7 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         _act_quant = bool(pkg.is_int8)
         if not _act_quant and kernel_backend == "mesh" and mesh_target:
             try:
-                _op_dt = mesh_datapath(mesh_target)[0]
+                _op_dt = mesh_datapath(mesh_target).operand_dtype
                 from .common import quant_formats as _qf
                 _act_quant = int(_qf.get(_op_dt).element_bits or 32) <= 8
             except Exception:                        # noqa: BLE001 — undecidable: keep the f32 golden
@@ -342,7 +342,13 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
             out["mesh_execution"] = {"target": mesh_target,
                                      "matmul_layers_routed": getattr(_dr.execute, "last_mesh_routed", None),
                                      "matmul_layers_on_mesh": getattr(_dr.execute, "mesh_ran", None),
-                                     "matmul_layers_host_fallback": getattr(_dr.execute, "mesh_fell_back", None)}
+                                     "matmul_layers_host_fallback": getattr(_dr.execute, "mesh_fell_back", None),
+                                     # How much of what we handed the mesh its operand format could hold.
+                                     # After the boundary's power-of-two scaling this should read zero
+                                     # flushed and zero saturating; a nonzero count is the run telling you
+                                     # the numbers below it are worth less than they look.
+                                     "operand_representability": getattr(_dr.execute, "mesh_operand_repr",
+                                                                         None)}
         out["status"] = "ran"
         out["n_kernels"] = res.get("n_kernels")
         if refs:
@@ -525,12 +531,23 @@ def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str 
 
     ``requant_output_dtype`` (the narrow dtype an ``acc_scale`` epilogue requants the i32 accumulator to,
     e.g. i8) is passed only when the caller needs a requant handoff — an int8 matmul chain commits each
-    layer's accumulator back to i8 so it can feed the next mesh layer."""
+    layer's accumulator back to i8 so it can feed the next mesh layer.
+
+    The caller's pins OVERLAY the target's declared NUMERIC ``datapath`` facts; they do not replace them.
+    This function used to build the dict from nothing but its own arguments, which meant every numeric
+    fact the target declares and this caller does not pin — tolerances, inapplicable tiers,
+    ``subnormal_operand_flush`` — silently took a dataclass default instead of the declared value. The
+    corpus generator got the real block and the mesh path got defaults, from the same deriver.
+
+    ``numeric_only`` because the profile block also holds corpus-AUTHORING choices (which oracle tiers the
+    graded suite demands, its ``must_accelerate`` posture, the requant epilogue's output dtype), and this
+    caller is describing hardware, not generating a corpus. Handing it those too would quietly give every
+    gemmini tile an i8 requant handoff its caller never asked for."""
     from types import SimpleNamespace
     from .targetgen import corpus_spec as CS
     from .targetgen.capsule_runner import _bespoke_sim_via
     te = SimpleNamespace(target=target, sim_via=_bespoke_sim_via(target))
-    datapath: dict = {}
+    datapath: dict = CS.profile_datapath(target, numeric_only=True)
     if operand_dtype:
         datapath["operand_dtype"] = operand_dtype
     if accum_dtype:
@@ -571,27 +588,49 @@ def _accum_rel_tolerance(accum_dtype: str, k: int) -> float | None:
     return (2.0 ** -(mant + 1)) * max(1.0, float(k) ** 0.5) * 1.5
 
 
-def _reference_in_accum_format(A, W, accum_dtype: str):
-    """``A @ W`` accumulated in the TARGET's declared accumulator format — the reference a mesh should be
-    gated against, rather than an f32 one it was never going to reproduce.
+def _reference_on_datapath(A, W, binding):
+    """``A @ W`` as the TARGET's datapath computes it — operands decoded the way its compute unit reads
+    them, then accumulated in its declared accumulator format. The reference a mesh should be gated
+    against, rather than an f32 one it was never going to reproduce.
 
-    A narrow-float accumulator rounds every partial sum, so an f32 reference disagrees with a perfectly
-    correct device by design: a 32x352x128 fp8xbf16 layer measured 796 of 4096 elements differing, max
-    absolute error 22, purely from bf16 rounding. Rounding the running sum to the accumulator's format
-    after each MAC reproduced that same device output BIT-FOR-BIT on all 4096 elements — so the mesh was
-    exact all along and the reference was wrong.
+    Takes the whole ``CorpusBinding`` rather than the accumulator dtype alone, and that is deliberate.
+    Modelled on the accumulator only, this function was right about the half of the datapath it had been
+    handed and silently wrong about the other half: atlas's MXU sees a signed zero wherever an operand's
+    exponent field is zero (``E4M3Mul.scala``: ``aZero := aExp === 0.U``, declared as
+    ``subnormal_operand_flush`` in the target's profile), and a reference that reads the operand at full
+    precision grades that hardware as broken. One object carries the whole datapath, so a field added to
+    it later reaches this model without a signature change.
 
-    Returns ``None`` when the format cannot be resolved, or for an integer accumulator (exact: the plain
-    product is already the right reference). Assumes sequential k-order accumulation, which is why the
-    caller treats a mismatch here as "not bit-exact" and falls back to the tolerance gate rather than a
+    Two halves, both measured. A narrow-float accumulator rounds every partial sum, so an f32 reference
+    disagrees with a perfectly correct device by design: a 32x352x128 fp8xbf16 layer measured 796 of 4096
+    elements differing, max absolute error 22, purely from bf16 rounding — and rounding the running sum
+    after each MAC reproduced that device output BIT-FOR-BIT on all 4096. On the operand side, one atlas
+    capsule's 30 divergent elements were exactly its 30 subnormal codes.
+
+    LIMIT, stated rather than implied: operands are flushed but NOT otherwise rounded into the operand
+    format. Callers feed exactly-representable values (that is what makes a bit-exact gate possible), so
+    rounding would be a no-op here; modelling it would mean writing a round-to-nearest-even encoder whose
+    own correctness nothing checks, and a reference is only worth what its weakest step is worth.
+
+    Returns ``None`` when the accumulator format cannot be resolved, or for an integer accumulator (exact:
+    the plain product is already the right reference). Assumes sequential k-order accumulation, which is
+    why the caller treats a mismatch as "not bit-exact" and falls back to the tolerance gate rather than a
     failure -- another device may reduce in a different order and still be correct."""
     import numpy as np
 
     from .common import quant_formats as QF
     try:
-        f = QF.get(accum_dtype)
+        f = QF.get(binding.accum_dtype)
     except KeyError:
         return None
+    if getattr(binding, "subnormal_operand_flush", False):
+        from .runtime import fp8_formats as FF
+        try:
+            min_normal, _max_finite = FF.normal_range(binding.operand_dtype)
+        except KeyError:                                 # operand format unresolvable: fail closed
+            return None
+        A = np.where(np.abs(A) < min_normal, np.float32(0.0), A).astype(np.float32)
+        W = np.where(np.abs(W) < min_normal, np.float32(0.0), W).astype(np.float32)
     if f.kind == "int_affine":
         return None
     mant, exp = int(f.mant_bits or 0), int(f.exp_bits or 0)
@@ -627,15 +666,30 @@ def _certify_tile_via_executor(target, mlir, *, m, k, n, binding, timeout) -> di
     TWO-way gate (reference == oracle), not the OOT path's three-way (reference == simulate == oracle)."""
     import numpy as np
 
-    # ⚠ STIMULUS LIMITATION, recorded in the result rather than left implicit. These operands are small
-    # INTEGERS, which every operand format here represents EXACTLY -- that is what makes a bit-exact gate
-    # possible, and it is also what this gate cannot see past: an error that only appears on operands
-    # needing the format's mantissa (a real activation/weight distribution) leaves this tile bit-exact.
-    # Measured on atlas: all 15 synthesized tiles certify bit-exact while all 15 REAL model layers diverge
-    # from every datapath model at ~1.5% broadband. Do not read a tile pass as operand-precision coverage.
-    rng = np.random.default_rng(0xA71A5)
-    A = np.rint(rng.standard_normal((m, k)) * 3).clip(-8, 7).astype(np.float32)
-    W = np.rint(rng.standard_normal((k, n)) * 3).clip(-8, 7).astype(np.float32)
+    # The stimulus has to be exactly representable in the operand format -- that is what makes a bit-exact
+    # gate possible at all -- but "exactly representable" does not have to mean "small integers", and while
+    # it did, this gate was structurally incapable of finding the defect it was supposed to find. Small
+    # integers are normal numbers in every format here, so no operand ever landed in the subnormal band,
+    # so a datapath that flushes subnormals to zero certified bit-exact on all 15 synthesized tiles while
+    # all 15 REAL layers of the same model diverged. The blind spot was in the seeds, not in the gate.
+    #
+    # A float datapath now draws from its own format's representable set instead -- a spread from the
+    # smallest subnormal to near the cap, both signs, with distinct rows, distinct columns and A != A^T so
+    # stride/transpose bugs stay visible (corpus_operands, the same synthesis the graded corpus uses). An
+    # integer datapath keeps small integers: they ARE its range, and it has no subnormal band to miss.
+    if binding.integer:
+        rng = np.random.default_rng(0xA71A5)
+        A = np.rint(rng.standard_normal((m, k)) * 3).clip(-8, 7).astype(np.float32)
+        W = np.rint(rng.standard_normal((k, n)) * 3).clip(-8, 7).astype(np.float32)
+        stimulus = "exactly-representable small integers"
+    else:
+        from .targetgen import corpus_operands as CO
+        A = np.asarray(CO.operand_values((m, k), binding.operand_dtype, salt=0xA7),
+                       dtype=np.float32).reshape(m, k)
+        W = np.asarray(CO.operand_values((k, n), binding.operand_dtype, salt=0x5E),
+                       dtype=np.float32).reshape(k, n)
+        stimulus = (f"{binding.operand_dtype} representable spread (subnormal..near-cap, both signs), "
+                    f"distinct rows/cols, asymmetric")
     obs: dict = {}
     try:
         got = run_matmul_on_mesh(target, A.tolist(), W.tolist(),
@@ -655,15 +709,18 @@ def _certify_tile_via_executor(target, mlir, *, m, k, n, binding, timeout) -> di
     # STRONGEST GATE FIRST: bit-exact against the target's own declared accumulator. Only if the device
     # reduces in a different order (or the format is unresolvable) do we fall back to a tolerance against
     # the f32 product, and the record says which gate carried the verdict.
-    acc_ref = _reference_in_accum_format(A, W, binding.accum_dtype)
+    acc_ref = _reference_on_datapath(A, W, binding)
     if acc_ref is not None and np.array_equal(dev, acc_ref):
         return {"status": "pass",
                 "oracle": {"kind": obs.get("oracle"), "result": "ran", "cycles": None},
                 "gate": {"kind": f"bit-exact vs {binding.accum_dtype} accumulation", "rtol": 0.0,
                          "exact": True,
                          "f32_max_abs_err": float(np.abs(dev - ref).max()),
-                         "stimulus": "exactly-representable small integers",
-                         "does_not_cover": "operand-precision error on realistic value distributions"}}
+                         "stimulus": stimulus,
+                         "does_not_cover": ("operand-precision error on realistic value distributions"
+                                            if binding.integer else
+                                            "operand values not exactly representable in "
+                                            f"{binding.operand_dtype} (the format's own rounding)")}}
     rtol = _accum_rel_tolerance(binding.accum_dtype, k)
     if rtol is None:
         return {"status": "fail", "oracle": {"kind": obs.get("oracle"), "result": "ran"},
@@ -675,6 +732,7 @@ def _certify_tile_via_executor(target, mlir, *, m, k, n, binding, timeout) -> di
            "oracle": {"kind": obs.get("oracle"), "result": "ran", "cycles": None},
            "gate": {"kind": "reference==oracle (f32, tolerance)", "rtol": rtol,
                     "exact": bool(np.array_equal(dev, ref)),
+                    "stimulus": stimulus,
                     "accum_exact": False if acc_ref is not None else None}}
     if not ok:
         rec["failure"] = {"detail": f"tile {m}x{k}x{n} diverged from the reference: "

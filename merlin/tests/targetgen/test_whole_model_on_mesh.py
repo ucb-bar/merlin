@@ -187,7 +187,8 @@ def test_whole_model_matmuls_run_on_any_targets_mesh(target, sizing):
     from merlin.targetgen.capsule_runner import _TIER_SIM, oracle_adapters
 
     try:
-        op_dt, acc_dt, integer, _spelling = mesh_datapath(target)
+        _b = mesh_datapath(target)
+        op_dt, acc_dt, integer = _b.operand_dtype, _b.accum_dtype, bool(_b.integer)
     except Exception as e:                                   # noqa: BLE001 — unresolvable target
         pytest.skip(f"{target}: no derivable mesh datapath ({type(e).__name__}: {e})")
 

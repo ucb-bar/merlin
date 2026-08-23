@@ -23,6 +23,7 @@ unrecognized op raises (no silent skips).
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -374,20 +375,107 @@ def _compile_kernel_so(args: tuple) -> str:
     return so_path
 
 
-def mesh_datapath(target: str) -> tuple[str, str, bool, str]:
-    """``(operand_dtype, accum_dtype, integer, operand_mlir_spelling)`` for ``target``'s mesh, DERIVED.
+def mesh_datapath(target: str):
+    """``target``'s mesh datapath as its whole ``corpus_spec.CorpusBinding``, DERIVED.
 
     The mesh boundary below used to be written as ``operand_dtype="int8", accum_dtype="i32"`` with an
     element-type filter of exactly ``("f32", "i8")``. Both are facts about ONE target's datapath, and on a
     float-datapath accelerator they are wrong in the two ways that cancel out into silence: the filter
     never classifies an fp8 layer, so no layer is ever routed, so the hardcoded dtypes are never reached
     and never observed to be wrong. The whole model runs on the host and the run looks clean.
+
+    This RETURNS THE BINDING rather than a hand-picked tuple of four of its fields, and that is the point.
+    The projection it used to perform is how ``subnormal_operand_flush`` -- a property already derived from
+    the target's RTL, already declared in its profile, already honoured by the capsule golden engine -- was
+    dropped on the floor between the deriver and the one consumer that feeds the mesh REAL model operands.
+    The fact existed and was correct; nothing carried it the last few lines. Every lossy projection of a
+    derived-facts object is that same bug waiting to be written again, so the projection is gone: callers
+    take the fields they need off the binding, and a field added later reaches them without a signature
+    change. The MLIR spelling the filter wants is ``b.mlir_dtype(b.operand_dtype)``.
     """
     from ..compile_cli import _mesh_tile_binding
-    from ..targetgen.corpus_spec import dtype_info
-    b = _mesh_tile_binding(target, None, None)
-    info = dtype_info(b.operand_dtype)
-    return b.operand_dtype, b.accum_dtype, bool(b.integer), str(info[1])
+    return _mesh_tile_binding(target, None, None)
+
+
+def boundary_scale(x, fmt: str) -> float:
+    """The power-of-two ``s`` placing ``max|x| / s`` just inside ``fmt``'s largest finite magnitude.
+
+    A power of two is the only scale that is FREE here: it shifts the exponent and leaves the mantissa
+    untouched, so ``x/s`` rounds into ``fmt`` exactly as ``x`` would have, and multiplying the result back
+    afterwards is lossless. Any other factor would inject its own rounding, and we would be grading the
+    device against our arithmetic instead of its own.
+
+    Returns 1.0 for an all-zero or non-finite operand -- there is nothing to place.
+    """
+    from . import fp8_formats as FF
+    mx = float(np.abs(x).max()) if x.size else 0.0
+    if not (mx > 0.0) or not np.isfinite(mx):
+        return 1.0
+    _min_normal, max_finite = FF.normal_range(fmt)
+    return float(2.0 ** math.ceil(math.log2(mx / max_finite)))
+
+
+def _representability(x, fmt: str, *, flush: bool) -> dict:
+    """How much of ``x`` the operand format can actually carry: values below its smallest normal lose
+    mantissa bits (or become zero outright where the datapath flushes them), values above its largest
+    finite saturate. Counted and REPORTED rather than assumed away -- an operand the hardware cannot hold
+    is a silent wrong answer, and the only reason this went unnoticed for so long is that nobody counted."""
+    from . import fp8_formats as FF
+    min_normal, max_finite = FF.normal_range(fmt)
+    ax = np.abs(np.asarray(x, dtype=np.float64))
+    subnormal = int(np.count_nonzero((ax > 0.0) & (ax < min_normal)))
+    return {"n_values": int(ax.size),
+            "n_subnormal": subnormal,
+            "n_flushed_to_zero": subnormal if flush else 0,
+            "n_saturating": int(np.count_nonzero(ax > max_finite))}
+
+
+def float_boundary_operands(a, b, binding) -> tuple[list, list, float, dict]:
+    """Operands for a FLOAT mesh datapath, scaled into the format's normal range, plus the scale to undo
+    afterwards and a representability record.
+
+    Handing the mesh raw model tensors is what made atlas diverge. A typical layer's weights peak around
+    0.088, e4m3's smallest normal is 0.015625, and the MXU flushes a subnormal operand to zero
+    (``E4M3Mul.scala``: ``aZero := aExp === 0.U``) -- so most of two layers' weights arrived at the
+    multiplier as zeros and the model quietly lost 26% of them. Scaling by a power of two first costs
+    nothing and moves the whole tensor into the range the format represents properly.
+
+    Measured over all 15 real atlas layers: mean cos 0.99567 -> 0.99914, worst 0.98765 -> 0.99896, mean
+    rel-L2 0.0901 -> 0.0420. That 0.0420 IS the floor -- a control run with subnormal flushing disabled
+    entirely scores 0.04220, and per-row/per-column scaling scores the same 0.04195 as per-tensor. What is
+    left is e4m3's 3-bit mantissa plus bf16 accumulation, which no boundary can scale away.
+    """
+    from . import fp8_formats as FF
+    fmt = binding.operand_dtype
+    af, bf = np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64)
+    sa, sb = boundary_scale(af, fmt), boundary_scale(bf, fmt)
+
+    # Scaling the operands up scales their products up with them. On a narrow accumulator that trades an
+    # operand underflow for an accumulator overflow, which is strictly worse -- fp16 tops out at 65504,
+    # and a k-deep reduction of two near-cap fp8 operands passes that in a handful of terms. Back off in
+    # whole powers of two (still exact), split between the two operands so neither is pushed back down
+    # further than the other, and let the representability record say what the backoff cost.
+    ma = float(np.abs(af).max()) if af.size else 0.0
+    mb = float(np.abs(bf).max()) if bf.size else 0.0
+    try:
+        _min_acc, max_acc = FF.normal_range(binding.accum_dtype)
+    except KeyError:                                   # integer or unresolvable accumulator: no float cap
+        max_acc = None
+    if max_acc is not None and ma > 0.0 and mb > 0.0:
+        k = max(1, int(af.shape[1])) if af.ndim == 2 else 1
+        headroom = max_acc / 2.0                       # half the range, so the sum has somewhere to land
+        worst = (ma / sa) * (mb / sb) * k
+        if np.isfinite(worst) and worst > headroom:
+            back = math.ceil(math.log2(worst / headroom))
+            sa *= float(2.0 ** ((back + 1) // 2))
+            sb *= float(2.0 ** (back // 2))
+
+    qa, qb = af / sa, bf / sb
+    flush = bool(getattr(binding, "subnormal_operand_flush", False))
+    rec = {"operand_dtype": fmt, "scale_a": sa, "scale_b": sb,
+           "a": _representability(qa, fmt, flush=flush),
+           "b": _representability(qb, fmt, flush=flush)}
+    return qa.tolist(), qb.tolist(), sa * sb, rec
 
 
 def _classify_mesh_matmul(kfn, accept: tuple[str, ...] = ("f32",)) -> dict | None:
@@ -556,13 +644,14 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
     # boundary: quantized for an integer datapath (the drop is expected quantization error, covered by the
     # whole-model tolerance), cast for a float one. Which of those applies is DERIVED from the target.
     mesh_routes: dict[str, dict] = {}
-    mesh_dp: tuple[str, str, bool, str] | None = None
+    mesh_dp = None                                   # the target's CorpusBinding, whole (see mesh_datapath)
     if kernel_backend == "mesh":
         if not mesh_target:
             raise DispatchRuntimeError("kernel_backend='mesh' requires mesh_target=<target>")
         mesh_dp = mesh_datapath(mesh_target)
         # The host lane materializes f32; the mesh may also take its own format directly.
-        _accept = ("f32", mesh_dp[3]) if mesh_dp[3] != "f32" else ("f32",)
+        _mesh_et = mesh_dp.mlir_dtype(mesh_dp.operand_dtype)
+        _accept = ("f32", _mesh_et) if _mesh_et != "f32" else ("f32",)
         kfns = {op.sym_name.data: op for op in module.walk()
                 if op.name == "func.func" and "$kernel_" in op.sym_name.data}
         for sym, kfn in kfns.items():
@@ -574,6 +663,12 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         execute.last_mesh_routed = len(mesh_routes)
         execute.mesh_ran = 0
         execute.mesh_fell_back = 0
+        # What the mesh's operand format could actually hold, summed over every layer it ran. The whole
+        # atlas divergence was invisible because nobody counted this; a run now reports it.
+        execute.mesh_operand_repr = {"operand_dtype": mesh_dp.operand_dtype,
+                                     "subnormal_operand_flush": bool(mesh_dp.subnormal_operand_flush),
+                                     "n_values": 0, "n_subnormal": 0,
+                                     "n_flushed_to_zero": 0, "n_saturating": 0}
 
     def kernel_model(symbol: str):
         if symbol in compiled:
@@ -681,7 +776,9 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             a = np.ascontiguousarray(env[id(op.operands[mroute["a"]])])
             b = np.ascontiguousarray(env[id(op.operands[mroute["b"]])])
             mesh_out = None
-            op_dt, acc_dt, integer, mesh_et = mesh_dp or mesh_datapath(mesh_target)
+            binding = mesh_dp or mesh_datapath(mesh_target)
+            op_dt, acc_dt, integer = binding.operand_dtype, binding.accum_dtype, bool(binding.integer)
+            mesh_et = binding.mlir_dtype(op_dt)
             if a.ndim == 2 and b.ndim == 2 and a.shape[1] == b.shape[0]:   # a plain 2-D contraction
                 if mroute["in_dtype"] == mesh_et:    # already in the mesh's format — no boundary convert
                     qa, qb, scale = a.tolist(), b.tolist(), 1.0
@@ -699,10 +796,17 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     qb = np.clip(np.rint(bf / sb), -lim, lim).astype(np.int64).tolist()
                     scale = sa * sb
                 else:
-                    # Float datapath: the mesh takes the values themselves. Rounding to its format is the
-                    # ORACLE's job -- doing it here would grade the target against our idea of its
-                    # rounding rather than against the hardware's.
-                    qa, qb, scale = a.astype(np.float64).tolist(), b.astype(np.float64).tolist(), 1.0
+                    # Float datapath: the mesh takes the values themselves, but only after a power-of-two
+                    # shift into the range its operand format can actually hold. Rounding TO the format is
+                    # still the ORACLE's job -- doing that here would grade the target against our idea of
+                    # its rounding rather than the hardware's -- and a power of two does not round: it
+                    # moves the exponent and leaves every mantissa bit where it was.
+                    qa, qb, scale, _repr = float_boundary_operands(a, b, binding)
+                    _acc = getattr(execute, "mesh_operand_repr", None)
+                    if _acc is not None:
+                        for side in ("a", "b"):
+                            for key, val in _repr[side].items():
+                                _acc[key] = _acc.get(key, 0) + val
                 mesh_out = run_matmul_on_mesh(mesh_target, qa, qb,
                                               operand_dtype=op_dt, accum_dtype=acc_dt)
                 if mesh_out is not None:
