@@ -42,7 +42,6 @@ entries:
     status: triaged
     owner: targetgen
     items:
-      - merlin/python/merlin/targetgen/capsule_runner.py
       - merlin/python/merlin/targetgen/heavy_oracles.py
       - merlin/python/merlin/targetgen/oot_runner.py
       - merlin/python/merlin/targetgen/baremetalc_corroborate.py
@@ -73,7 +72,6 @@ entries:
     owner: capsule-bench
     items:
       - merlin/python/merlin/targetgen/sandbox/answer_surfaces.py
-      - merlin/python/merlin/targetgen/generate_prompt.py
     surfaced_by: >-
       The overfit-register gate, on merging reconcile/gemmini-feat-v2 into feat/target-generalization for
       the gemmini arm-4 model-comparison campaign. Both modules gained the coupling on that side of the
@@ -102,27 +100,6 @@ entries:
     removal_condition: >-
       A cost-model seam exists (a contract key naming the class, or EVENTS + coefficients read from the
       package) and these callers resolve through it.
-
-  # ---------------------------------------------------------------- reference-target dialect lookup
-  - id: reference-target-dialect-table-in-core
-    kind: target_coupling
-    status: triaged
-    owner: ir
-    items:
-      - merlin/python/merlin/xdsl_dialects/lowering/target_lowering.py
-    why: >-
-      Core still holds an in-tree lookup of reference-target dialect specs. The generic machinery to avoid
-      it already exists — `xdsl_dialects/targets/factory.build_dialect(target, plan=...)` synthesises the
-      IRDL classes from dialect_plan.yaml data, and `lower_to_target(..., spec=...)` lets a caller pass a
-      package's spec — but the built-in table remains as the fallback.
-    blocks: >-
-      A package-declared dialect being the only path.
-    removal_condition: >-
-      Every reference target ships its own dialect.py and lowering.yaml in its package, callers reach the
-      spec through `load_target`/`spec=` rather than the built-in table, and the in-tree table is deleted.
-      NOT via plugin.dialect_module: an earlier version of this entry named that key as the missing link,
-      which was wrong — it points at a package's feasibility prototype, exposes no SPEC_OPS, and wiring it
-      into the dialect loader would fail. The seam this needs already exists and is unrelated to it.
 
   # ---------------------------------------------------------------- run-time concession
   - id: simt-spawn-width-capped-below-declared-hardware
@@ -156,8 +133,6 @@ entries:
       - merlin/python/merlin/kernels/ceiling_drivers/multishape_compare.py
       - merlin/python/merlin/kernels/plots.py
       - merlin/python/merlin/targetgen/rtl/circt_introspect.py
-      - merlin/python/merlin/targetgen/rtl/gen_isa_module.py
-      - merlin/python/merlin/targetgen/rtl/gen_rtl_digest.py
       - merlin/python/merlin/targetgen/rtl_checks.py
       - merlin/python/merlin/targetgen/rtl/spatial_introspect.py
     why: >-
@@ -188,13 +163,11 @@ entries:
       - merlin/python/merlin/kernels/framework_contracts/__init__.py
       - merlin/python/merlin/kernels/ingest/exo.py
       - merlin/python/merlin/kernels/markers.py
-      - merlin/python/merlin/runtime/backends/base.py
       - merlin/python/merlin/runtime/backends/zephyr_model.py
       - merlin/python/merlin/runtime/boards.py
       - merlin/python/merlin/targetgen/corpora.py
       - merlin/python/merlin/targetgen/rtl/introspect.py
       - merlin/python/merlin/targetgen/rtl/mlc_bridge.py
-      - build_tools/scripts/check_repro_env.py
       - build_tools/scripts/firesim_sweep.py
       - build_tools/scripts/make_delivery.py
     why: >-
