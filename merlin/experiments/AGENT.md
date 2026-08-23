@@ -5,8 +5,9 @@ In-repo experiments + benchmark harnesses. They **consume** merlin (add `merlin/
 `sys.path`); **nothing in the library depends on them** (one-way — safe to move/prune).
 
 - Small workstream experiments: `kernel_policy/`, `gemmini_cert/`.
-- Benchmark harnesses: `agent_bench/` (target-agnostic reference scaffold), `gemmini_capsule_bench_v0/`,
-  `gemmini_perf_bench/`, `muon_perf_bench_v0/`, `targetgen_evals/` (import-isolated eval project).
+- Benchmark harnesses: `capsule_bench/` (the multi-target capsule benchmark — six targets, one
+  harness), `agent_bench/` (target-agnostic reference scaffold), `gemmini_perf_bench/`,
+  `muon_perf_bench_v0/`, `targetgen_evals/` (import-isolated; 0 real runs — do not cite it).
 
 ## What lives here (curated inputs only)
 - Task specs, `input_bundles/`, method specs, per-target guides, and the harness drivers that run them.
@@ -14,8 +15,9 @@ In-repo experiments + benchmark harnesses. They **consume** merlin (add `merlin/
 
 ## What does NOT belong here
 - **Reusable library code** → lift into `merlin/python/merlin/`.
-- **Generated output** → `runs/<target>/<suite>/` (runs) or `artifacts/` (products). Never in-tree —
-  the `check_artifact_layout` gate forbids `experiments/*/reports/` and `experiments/*/runs/`.
+- **Generated output** → `out/runs/<target>/<suite>/` (runs) or `out/artifacts/` (products). Never
+  in-tree — the `check_artifact_layout` gate forbids `experiments/*/reports/` and
+  `experiments/*/runs/`. The top-level `runs/`/`artifacts/`/`build/` roots are retired.
 
 ## The rule (consumption direction)
 Experiments **only consume** the library; **nothing in `merlin/python/merlin/` may read an
