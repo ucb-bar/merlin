@@ -29,6 +29,7 @@ from merlin.targetgen import capsule_golden as CG  # noqa: E402
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
 from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402
 from merlin.targetgen.contract import schemas as S  # noqa: E402
+from merlin.targetgen.sandbox import bwrap  # noqa: E402  (grant resolution shared with the binder)
 
 TARGET = C.TARGET
 _TGT = f"out/artifacts/targets/{TARGET}"
@@ -315,16 +316,35 @@ def check_freeze_enforcement() -> dict:
 
 
 def check_bundle_hash_repro() -> dict:
+    """Pin every granted tree's hash, resolving paths exactly as the sandbox binds them.
+
+    The lock must cover what the arm can actually READ, so it resolves through
+    :func:`bwrap.resolve_grant` -- the same function that decides what gets bound. Resolving
+    ``<repo>/<path>`` only (as this did) skipped every grant written in the ``experiments/...``
+    shorthand, which is 17 paths across all five targets: each target's task, ISA headers,
+    hwbringup contracts and self-check script were mounted into the arm and absent from its lock.
+
+    A grant that resolves nowhere is recorded as ``unresolvable`` rather than dropped. Silently
+    omitting it is the failure that hid the gap: a shrinking lock looked like a smaller bundle
+    instead of an unpinned one.
+    """
     out = {}
     for bundle_id in bundles_to_check():
         bundle = load_bundle_by_id(bundle_id)
-        h1 = {e["path"]: C.hash_tree(C.REPO / e["path"])["sha256"] for e in bundle.get("allowed", [])
-              if (C.REPO / e["path"]).is_dir()}
-        h2 = {e["path"]: C.hash_tree(C.REPO / e["path"])["sha256"] for e in bundle.get("allowed", [])
-              if (C.REPO / e["path"]).is_dir()}
-        out[bundle_id] = {"reproducible": h1 == h2, "n_paths": len(h1)}
-        (C.BUNDLES / bundle_id / "bundle_lock.yaml").write_text(
-            yaml.safe_dump({"allowed_tree_sha256": h1}, sort_keys=True))
+        paths = [str(e.get("path", "")).strip("/") for e in bundle.get("allowed", [])]
+        resolved = {p: bwrap.resolve_grant(p, C.REPO) for p in paths if p}
+        unresolvable = sorted(p for p, r in resolved.items() if bwrap.path_kind(r) == "missing")
+
+        def _hash() -> dict:
+            return {p: C.hash_tree(r)["sha256"] for p, r in resolved.items() if r.is_dir()}
+
+        h1, h2 = _hash(), _hash()
+        out[bundle_id] = {"reproducible": h1 == h2, "n_paths": len(h1),
+                          "unresolvable": unresolvable}
+        lock = {"allowed_tree_sha256": h1}
+        if unresolvable:
+            lock["unresolvable_grants"] = unresolvable
+        (C.BUNDLES / bundle_id / "bundle_lock.yaml").write_text(yaml.safe_dump(lock, sort_keys=True))
     return out
 
 

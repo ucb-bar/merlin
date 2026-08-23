@@ -27,6 +27,46 @@ _HIDE_DEST_OPS = ("--tmpfs",)            # single-arg-dest hide ops
 _DEVNULL = "/dev/null"
 
 
+def path_kind(p: Path) -> str:
+    """``dir`` / ``file`` / ``missing`` -- permission-safe.
+
+    A chmod-000 lock makes ``stat()`` raise; treat that as a present dir so a locked answer surface
+    is still masked rather than crashing the binder.
+    """
+    try:
+        if p.is_dir():
+            return "dir"
+        if p.exists():
+            return "file"
+        return "missing"
+    except PermissionError:
+        return "dir"
+
+
+def resolve_grant(rel: str, repo: Path | None = None) -> Path:
+    """Where a bundle's ``allowed``/``denied`` path actually lives on disk.
+
+    Bundle-convention grants are repo-root-relative, with a documented shorthand: an
+    ``experiments/...`` grant "resolves under merlin/". Prefer ``<repo>/<rel>``, fall back to
+    ``<repo>/merlin/<rel>``, so a path that only exists under ``merlin/`` is found rather than
+    silently dropped. Returns the un-prefixed candidate when neither exists, so the caller can
+    report the path as the manifest declared it.
+
+    EVERY consumer of a manifest must resolve through this. It is module-level for that reason: it
+    was previously private to ``base_argv``, so the sandbox bound the ``merlin/``-shorthand paths
+    while the lock writer -- which resolved ``<repo>/<rel>`` only, and skipped what it could not
+    find -- hashed none of them. 17 grants across all five targets (every target's task, ISA
+    headers, hwbringup contracts and self-check script) were mounted into the arm but absent from
+    the lock meant to pin the arm's exact input bytes.
+    """
+    repo = repo or repo_root()
+    p = repo / rel
+    if path_kind(p) != "missing":
+        return p
+    q = repo / "merlin" / rel
+    return q if path_kind(q) != "missing" else p
+
+
 def base_argv(ws: Path, bundle: dict, *, repo: Path | None = None) -> list[str]:
     """Deny-by-default bwrap argv prefix: system RO, /scratch* tmpfs-hidden, ONLY the bundle's allowed
     paths bound RO, denied sub-paths re-masked, workspace writable+last. Target-agnostic — the ``bundle``
@@ -68,26 +108,10 @@ def base_argv(ws: Path, bundle: dict, *, repo: Path | None = None) -> list[str]:
             parts += ["--tmpfs", projects]
 
     def _kind(p: Path) -> str:
-        # permission-safe: a chmod-000 lock makes stat() raise — treat as present-dir so a locked answer
-        # surface is still masked, never crashes the binder.
-        try:
-            if p.is_dir():
-                return "dir"
-            if p.exists():
-                return "file"
-            return "missing"
-        except PermissionError:
-            return "dir"
+        return path_kind(p)
 
     def _resolve_grant(rel: str) -> Path:
-        # Bundle-convention grants are repo-root-relative, with a documented shorthand: an
-        # ``experiments/...`` grant "resolves under merlin/". Prefer <repo>/<rel>, fall back to
-        # <repo>/merlin/<rel>, so a path that only exists under merlin/ is bound (not silently dropped).
-        p = repo / rel
-        if _kind(p) != "missing":
-            return p
-        q = repo / "merlin" / rel
-        return q if _kind(q) != "missing" else p
+        return resolve_grant(rel, repo)
 
     for entry in bundle.get("allowed", []):
         p = _resolve_grant(entry["path"])

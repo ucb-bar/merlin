@@ -61,10 +61,12 @@ def _simt_mlir_emit_framing() -> str:
     """The 4th-artifact one-liner for a SIMT core graded on the MLIR thesis path: an LLVM-dialect MLIR module
     (a compiler LOWERING the agent's xDSL passes build), compiled fork-free — NOT C/C++ source, NOT a
     ``.word``/``.insn`` self-hosted stream."""
+    # Name no ISA here: the re-encode is whatever the TARGET's RTL-derived encoding says, and this
+    # module is shared by every SIMT target. Saying it generically is also more accurate.
     return ("an LLVM-dialect MLIR module (`builtin.module` with `llvm.func @<kernel>`) — a COMPILER LOWERING "
             "your xDSL passes produce — which the runner compiles FORK-FREE (stock LLVM rv32 + the target's "
-            "RTL-derived Muon re-encode, no vendor fork) and runs on the cosim; NOT C/C++ source, NOT "
-            "`.word`/`.insn` assembler, NOT a self-hosted kernel")
+            "own RTL-derived instruction re-encode, no vendor fork) and runs on the cosim; NOT C/C++ source, "
+            "NOT `.word`/`.insn` assembler, NOT a self-hosted kernel")
 
 
 def _simt_mlir_grounding(target: str) -> str:
