@@ -125,6 +125,7 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
           sdk_chip: str | None = None, chip_freq_hz: int | None = None,
           matrix: "Any | None" = None, matrix_scalar_tile: bool = False,
           stack_bytes: int = 0x40000, op_profile: bool = False,
+          prof_heartbeat_cycles: int = 2_000_000_000,
           code_reserve: int | None = None) -> dict:
     """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
 
@@ -238,12 +239,26 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     addr_defs = [f"-DMERLIN_ARENA_BASE_ADDR={hex(lay['arena_base'])}ULL",
                  f"-DMERLIN_ARENA_SIZE_BYTES={hex(arena_bytes)}ULL",
                  f"-DMERLIN_WEIGHTS_BASE_ADDR={hex(lay['weights_base'])}ULL"]
-    # Build identity: the sha256 prefix of the lowered model object plus the weights blob -- exactly
-    # what computes the answer -- printed by the harness as `METRIC build_hash`.
+    # Build identity: the lowered model object plus the weights blob -- what computes the answer --
+    # AND the runtime sources this compiles, printed by the harness as `METRIC build_hash`.
+    #
+    # The runtime half is not bookkeeping. Adding the bare-metal heartbeat to merlin_op_prof.c changed
+    # what the image PRINTS while model.o and weights.bin stayed byte-identical, so the instrumented
+    # image and the silent one reported the SAME build_hash -- and "which binary produced this log?",
+    # the one question this metric exists to answer, could not be answered. The zephyr path already
+    # learned this and folded in its app configuration; this path had the same hole for its C runtime.
+    # `source_digest` is the provenance convention's "bytes actually READ", so a dirty runtime tree
+    # changes the identity even when every commit still looks right.
     import hashlib as _hashlib
+    from ...common.provenance import source_digest as _source_digest
     _hh = _hashlib.sha256()
     for _f in (work / "model.o", cgen / "weights.bin"):
         _hh.update(_f.read_bytes())
+    _rt_srcs = sorted([*rt.glob("*.c"), *rt.glob("*.h"), *h.glob("*.c"), *h.glob("*.h"),
+                       *h.glob("*.S"), runtime_dir() / "abi/mlir_runtime.c"])
+    _hh.update(_source_digest(_rt_srcs).encode("utf-8"))
+    # The instrumentation switches change the emitted code, so they belong in the identity too.
+    _hh.update(f"op_profile={bool(op_profile)} heartbeat={int(prof_heartbeat_cycles)}".encode("utf-8"))
     build_hash = _hh.hexdigest()[:12]
     # Console backend: one of two implementations of the same four-symbol ABI. `uart` needs the
     # target's own MMIO facts, derived from its SDK headers -- never defaulted, because a wrong
@@ -266,7 +281,14 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     # The profiler's console is the harness's own four-symbol ABI, so it needs the harness dir on the
     # include path and the same define the harness is compiled with -- both units must agree, or the
     # dump call compiles out of one side and leaves an undefined symbol on the other.
-    prof_defs = ["-DMERLIN_PROF_BAREMETAL", "-I", str(h)] if op_profile else []
+    # A whole-model FireSim run prints nothing until merlin_run returns, so a slow run and a hung one
+    # look identical from outside. The heartbeat interval is in mcycle ticks (the profiler's own clock on
+    # bare metal); at this rig's ~15 Mcyc/s a 2e9 interval is a line every ~2 minutes of simulated time,
+    # which is frequent enough to localise a stall and rare enough that the HTIF round-trips are noise.
+    prof_defs = (["-DMERLIN_PROF_BAREMETAL",
+                  f"-DMERLIN_PROF_HEARTBEAT_CYCLES={int(prof_heartbeat_cycles)}",
+                  "-I", str(h)]
+                 if op_profile else [])
     units = {
         "model_call.o": (cgen / "model_call.c", inc),
         "merlin_model.o": (rt / "merlin_model.c", inc),

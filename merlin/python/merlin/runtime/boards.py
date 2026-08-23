@@ -265,6 +265,23 @@ BOARDS: dict[str, Board] = {
               "SEW=8, i.e. 64 -- the same edge as the one-core configuration). Built against the "
               "chipyard_kodiak Zephyr port, whose facts (HTIF console, Zephyr-managed vector state, "
               "no FPU_SHARING, pyuartsi loader) this configuration shares. No bitstream of it exists."),
+    # The FireSim elaboration of Kodiak+OPU that actually has a bitstream: ONE Shuttle core.
+    #
+    # Its own descriptor rather than a reuse of firesim_dual_saturn (16 GB, 2 harts, vLen 256) because
+    # two facts differ and each is load-bearing. The DRAM is FireSim's, not Kodiak's: WithFireSimDesignTweaks
+    # carries WithExtMemSize(16 GiB), which OVERRIDES the 4 GB the Kodiak base declares -- so an image built
+    # against the 512 MB tapeout descriptor or the 256 MB chipyard_riscv64 DTS is refused by the region check
+    # for a part that in fact has 16 GiB. And the hart count is ONE: the two-core KodiakOPUConfig does not
+    # route on the U250 (86.36% LUT, 23,531 unroutable signals), so every FireSim measurement of this design
+    # is single-core, and asking Zephyr to start a second CPU the elaboration lacks hangs in z_smp_init with
+    # nothing printed. Multicore for this unit is reachable on the taped-out part, which has two vector harts
+    # AND the outer-product unit -- not here.
+    "firesim_kodiak_opu": Board(
+        name="firesim_kodiak_opu", zephyr_board="chipyard_riscv64",
+        dram_bytes=16 * 1024 * 1024 * 1024, harts=1, vlen=512, console=CONSOLE_HTIF,
+        notes="FireSim alveo_u250_firesim_kodiak_opu_1core: single Shuttle core with the outer-product "
+              "unit, vLen=512/dLen=256 (logical tile edge = VLMAX at SEW=8 = 64), 16 GiB of FireSim DRAM "
+              "rather than Kodiak's own 4 GB. Host-assisted HTIF console, serviced by the FireSim driver."),
     # gemmelos: NOT a Zephyr target. github.com/Rakanic/gemmelos-bringup is a fork of
     # ucb-bar/Baremetal-IDE -- a bare-metal CMake SDK with no RTOS (grep -ri zephyr returns nothing) --
     # covering two chips selected by -DCHIP=. Facts below come from its platform/<chip>/*.ld and

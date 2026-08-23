@@ -89,7 +89,9 @@ static uint32_t merlin_prof_hits[MERLIN_PROF_MAX_OPS];
 static uint64_t merlin_prof_overflow_ticks;
 static uint32_t merlin_prof_overflow_hits;
 static uint64_t merlin_prof_last_t;
+#if !(defined(MERLIN_PROF_BAREMETAL) && defined(MERLIN_PROF_HEARTBEAT_CYCLES))
 static uint64_t merlin_prof_marks;
+#endif
 
 static inline uint64_t merlin_prof_rdtime(void) {
   uint64_t t;
@@ -154,6 +156,38 @@ static void merlin_prof_beat(int32_t id) {
   __asm__ volatile("csrr %0, mstatus" : "=r"(ms));
   printk("ALIVE t=%lld op=%d hart=%d vs=%u\n", (long long)(now_ms / 1000), (int)id,
          arch_curr_cpu()->id, (unsigned)((ms >> 9) & 3));
+}
+#elif defined(MERLIN_PROF_BAREMETAL) && defined(MERLIN_PROF_HEARTBEAT_CYCLES)
+
+/* The same "still running, and here is where" line for the no-RTOS path.
+ *
+ * This existed only under Zephyr, so every bare-metal FireSim run was silent until merlin_run
+ * returned -- and a 12.3 h whole-model run that printed nothing cost a day before we could even say
+ * whether it was progressing. `mcycle` is already the profiler's clock here, so the interval is in
+ * CYCLES rather than ms: there is no k_uptime_get on a bare SoC, and mcycle is the same counter
+ * `METRIC cycles` reports, so a reader can line the beats up against the final total directly.
+ *
+ * Printing between two top-level ops is the same safe point the Zephyr beat chose, and for the same
+ * reason: HTIF's syscall-proxy console is not reentrant, so a timer-driven print corrupts `tohost`.
+ * The first beat is unconditional so that ABSENCE of beats is meaningful rather than ambiguous.
+ */
+static uint64_t merlin_prof_next_beat;
+static uint64_t merlin_prof_marks;
+
+static void merlin_prof_beat(int32_t id) {
+  static int beat_once;
+  uint64_t now = merlin_prof_rdtime();
+  if (beat_once && now < merlin_prof_next_beat)
+    return;
+  beat_once = 1;
+  merlin_prof_next_beat = now + (uint64_t)MERLIN_PROF_HEARTBEAT_CYCLES;
+  htif_puts("ALIVE op=");
+  htif_putd((long)id);
+  htif_puts(" marks=");
+  htif_putd((long)merlin_prof_marks);
+  htif_puts(" cycles=");
+  htif_putd((long)now);
+  htif_putc('\n');
 }
 #else
 #define merlin_prof_beat(id) ((void)0)
