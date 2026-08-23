@@ -383,6 +383,65 @@ merlin_memref_2d_i32 merlin_opu_shim_gemm_i8(
    * cache at these extents, so each line is fetched and evicted repeatedly and the pack costs far more
    * than the bytes it moves. Iterating a block at a time keeps both sides local: the read stays along A's
    * contiguous k, and the writes stay inside BLK output lines until they are finished with. */
+  /* Order the pack against the PREVIOUS call's kernel reads.
+   *
+   * The batched loop below fences between slices for the WAR on this same scratch. The rank-2 path was
+   * left unfenced on the reasoning that it "packs once and never writes the buffer again while a kernel
+   * is reading it" -- true WITHIN one call, false ACROSS calls: every routed entry point shares this one
+   * global buffer, so call N+1's scalar pack stores target bytes call N's kernel is still loading, and on
+   * a decoupled vector machine the scalar core runs ahead of the vector load/store unit.
+   *
+   * MEASURED on the taped-out part: whole-model spectformer graded cos 0.98288649 / rel 1.847e-01 /
+   * max_rel 14.9 with 57 routed calls sharing the scratch -- most values right, a few badly wrong, the
+   * signature of a stale read rather than a geometry error. The identical image is bit-exact on FireSim
+   * (cos 1.0 / rel 0.0), which is why neither the acceptance corpus (pre-transposed operands, never
+   * packs) nor spike (orders memory functionally) nor the FPGA could catch it.
+   *
+   * Placed BEFORE the pack rather than after the call so it also covers the first call after any other
+   * writer of this buffer, and so a fenceless tail cannot be reintroduced by an early return. */
+#ifdef __riscv
+  __asm__ volatile("fence rw, rw" ::: "memory");
+#else
+  __asm__ volatile("" ::: "memory");
+#endif
+#if defined(__riscv) && !defined(MERLIN_OPU_SCALAR_PACK)
+  /* VECTORISED pack, and the loop order is swapped relative to the scalar form below.
+   *
+   * The scalar pack measured 24.79 cycles PER ELEMENT over 4,009,984 elements -- 87% of the whole routed
+   * region, against a kernel that is only 13% of it. Two things cost that much, and the order fixes one
+   * while the vector ops fix the other.
+   *
+   * ORDER: with `kk` innermost the WRITE walks `pack[kk*M + i]` at stride M -- a different line per store.
+   * With `i` innermost the write is CONTIGUOUS along the pack row and the strided side becomes the READ of
+   * A's column. On a machine whose per-line cost dominates, a sequential write stream is what you want,
+   * and blocking keeps the strided reads inside a resident tile.
+   *
+   * VECTOR: `vlse8.v` gathers a whole column segment in one instruction (VLMAX = 64 at e8/m1 for a 512-bit
+   * unit) and `vse8.v` lays it down contiguously, replacing 2*BLK scalar ops per segment with 3.
+   *
+   * vtype is set here and the kernel always issues its own `vsetvli` before using the unit, so leaving a
+   * vtype behind cannot affect it. The scratch is not read by anything until the kernel call below. */
+  for (size_t k0 = 0; k0 < K; k0 += MERLIN_OPU_PACK_BLK) {{
+    const size_t k1 = (K - k0) < MERLIN_OPU_PACK_BLK ? K : k0 + MERLIN_OPU_PACK_BLK;
+    for (size_t i0 = 0; i0 < M; i0 += MERLIN_OPU_PACK_BLK) {{
+      const size_t i1 = (M - i0) < MERLIN_OPU_PACK_BLK ? M : i0 + MERLIN_OPU_PACK_BLK;
+      for (size_t kk = k0; kk < k1; ++kk) {{
+        int8_t *dst = merlin_opu_lhs_pack + kk * M;
+        const int8_t *src = A + (intptr_t)kk * a_st1;
+        size_t i = i0;
+        while (i < i1) {{
+          size_t vl;
+          __asm__ volatile("vsetvli %0, %1, e8, m1, ta, ma" : "=r"(vl) : "r"(i1 - i));
+          __asm__ volatile("vlse8.v v24, (%0), %1"
+                           :: "r"(src + (intptr_t)i * a_st0), "r"((intptr_t)a_st0)
+                           : "memory");
+          __asm__ volatile("vse8.v v24, (%0)" :: "r"(dst + i) : "memory");
+          i += vl;
+        }}
+      }}
+    }}
+  }}
+#else
   for (size_t i0 = 0; i0 < M; i0 += MERLIN_OPU_PACK_BLK) {{
     const size_t i1 = (M - i0) < MERLIN_OPU_PACK_BLK ? M : i0 + MERLIN_OPU_PACK_BLK;
     for (size_t k0 = 0; k0 < K; k0 += MERLIN_OPU_PACK_BLK) {{
@@ -394,6 +453,7 @@ merlin_memref_2d_i32 merlin_opu_shim_gemm_i8(
       }}
     }}
   }}
+#endif
 
   {func}(C, merlin_opu_lhs_pack, B, (const int32_t *)0, M, N, K);
   return ret;
