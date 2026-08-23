@@ -1,11 +1,8 @@
 allowed_tree_sha256:
-  experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0: 0675aadf93c5031c17794b9f27fdd3cc061c194e975d1a4ed5dbb1fa81fe2911
-  experiments/capsule_bench/targets/atlas/task: a9b89c01036281d90000301fad89585c1a539c4d04c50a6e537d45c10ef2e570
+  experiments/capsule_bench/targets/mx_gemmini/contracts/hwbringup_mx_v0: 8403f0b9c966469076358f11943bdb7d24bd058564023e61596ce288509b662d
   merlin/contract: fbec7cdb753395e51898c9e755f2ed01c5fdd811cdd9e63c3749ed0bd3fa2f54
-  merlin/contract/capsules/atlas/isa: c65ad0de08e0b7d39e4867efe9c409be119d21a48840b88f1c10fd0dbf3fd456
-  merlin/contract/capsules/atlas/layers: 0e5f25089a1b84030cedb715edbb69bfc6ce7036a8b12f78299daa87234ac8c8
-  merlin/contract/capsules/atlas/model_slices: ba5e402f409541410903f6a4c0cb106b8371604500365647dd3370cfb16f87f9
-  merlin/python/merlin/common: b846e3cb21680aaadae52b4e18da0e89552e63ddaf1159c4b3b37afd3ab91eed
+  merlin/contract/capsules/mx_gemmini/isa: cd70af1630e431875e2bf2ce8c2325cc24e2cf142c9d6ce635dabb48ccda4118
+  merlin/contract/capsules/mx_gemmini/layers: 7812056a57bd62d489291f580d26427b4e9b65c8e7494af0825db55ab07a0c0f
   merlin/python/merlin/targetgen/generate: 308b316826cbc93f72e6072253aff603494b095cd53e39412277cf1cf06aaec3
   merlin/python/merlin/targetgen/oot_starterkit: 6a227c722f295287abc605a60e4fdaa693d10344ce3e810ff6138d6ea034da6a
   merlin/python/merlin/targetgen/rtl: a7d92d8dc8a82fd8f1a79c41fa08988dbaff784a59be6c2495ef188c15cba73c
@@ -13,4 +10,5 @@ allowed_tree_sha256:
   merlin/python/merlin/xdsl_dialects: b7866e6b597bd13fc1c0e302f24b1f17d2145246c3f66258d8e29e0918295e44
   third_party/llvm-install: 95bfc5318ac13a12f6fb80a9060c1484e2bc8dfb237dc59dfcd2e425c146d7eb
 unresolvable_grants:
-- merlin/targets/atlas/contracts/rtl_facts
+- experiments/capsule_bench/targets/mx_gemmini/task
+- merlin/targets/mx_gemmini/contracts/rtl_facts

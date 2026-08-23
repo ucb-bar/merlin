@@ -1,0 +1,8 @@
+allowed_tree_sha256:
+  experiments/capsule_bench/targets/mx_gemmini/contracts/hwbringup_mx_v0: 8403f0b9c966469076358f11943bdb7d24bd058564023e61596ce288509b662d
+  merlin/contract: fbec7cdb753395e51898c9e755f2ed01c5fdd811cdd9e63c3749ed0bd3fa2f54
+  merlin/contract/capsules/mx_gemmini/isa: cd70af1630e431875e2bf2ce8c2325cc24e2cf142c9d6ce635dabb48ccda4118
+  merlin/contract/capsules/mx_gemmini/layers: 7812056a57bd62d489291f580d26427b4e9b65c8e7494af0825db55ab07a0c0f
+  third_party/llvm-install: 95bfc5318ac13a12f6fb80a9060c1484e2bc8dfb237dc59dfcd2e425c146d7eb
+unresolvable_grants:
+- experiments/capsule_bench/targets/mx_gemmini/task

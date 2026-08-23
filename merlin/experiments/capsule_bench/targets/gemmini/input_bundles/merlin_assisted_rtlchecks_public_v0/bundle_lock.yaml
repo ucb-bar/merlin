@@ -1,14 +1,12 @@
-# Refreshed for the merlin_assisted pilot prep. Tool-dir hashes pin the independent
-# variable; merlin/contract/task are the shared frozen contract (identical for both arms).
-# Denied sub-paths (generate/runtime_adapter.py, xdsl_dialects/lowering/) live INSIDE these
-# allowed trees; the launcher stages them MINUS those sub-paths (see denied_files.txt).
 allowed_tree_sha256:
-  merlin/contract/: 321a66dd7d57b8a16847bbaa746ff61c373137a74521dd184a254b7f00294991
-  merlin/contract/capsules/isa/: 0216c0fecf270a5139c5ef088b5500c496fe902062337d22b89765296eb329e7
-  merlin/contract/capsules/layers/: 76ecded8b478de07d144a3bf5dccb137624e6613fb898c6a8981d1b402f5b4c1
-  merlin/contract/capsules/model_slices/: 7f95e5324a4ec3cea712bb1ddeb685c4449fe703f4bcc517d6779227e89a7d2e
-  experiments/capsule_bench/targets/gemmini/task/: 5e01935eb4212d795fafb4f234f2794638319c30e3805b756cc2b2a154621983
-  merlin/python/merlin/targetgen/generate/: 44419113a4400835df66630727523cb5990b62268f2953a4d421cf23facea00a
-  merlin/python/merlin/targetgen/synthesize/: 9001fde4b9531e68f184904aa0a9438957e4aa0266e6ff302bce16d054cdd1ad
-  merlin/python/merlin/xdsl_dialects/: a269bd756a597ad988090ee9f40330b96ee584c582e3497d63a1d9d2466b2d69
-  third_party/llvm-install/: 213a332cf31b8bfbc31e4245ee094e1d4091167fa1c6fd236df52195013f172a
+  experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0: b37f97856d4872fb155f91ab0268993b36e6ca26068d951c7a106bb7c55d01cb
+  experiments/capsule_bench/targets/gemmini/task: 09fdc68b3a7d2c528b3ab7a0e7f78fd78aead5b96fac202d20927a6c41b1c108
+  merlin/contract: fbec7cdb753395e51898c9e755f2ed01c5fdd811cdd9e63c3749ed0bd3fa2f54
+  merlin/contract/capsules/isa: 75878112e576b7f6d84f3720dc9a4274491a928691a6206d1bf8d0e653fd406d
+  merlin/contract/capsules/layers: 4ebbcdb07303a394485f8b311990287b7ecf118a81f0bcd80034d19f0df52cb3
+  merlin/contract/capsules/model_slices: 50cbc874a72839c3474326a1334276a05a8641506045601a74070a5c425108a5
+  merlin/python/merlin/common: b846e3cb21680aaadae52b4e18da0e89552e63ddaf1159c4b3b37afd3ab91eed
+  merlin/python/merlin/targetgen/generate: 308b316826cbc93f72e6072253aff603494b095cd53e39412277cf1cf06aaec3
+  merlin/python/merlin/targetgen/synthesize: 38ae86099853c5a18cf0a584a1430fe6c9231e5858f61729b515df822be0290e
+  merlin/python/merlin/xdsl_dialects: b7866e6b597bd13fc1c0e302f24b1f17d2145246c3f66258d8e29e0918295e44
+  third_party/llvm-install: 95bfc5318ac13a12f6fb80a9060c1484e2bc8dfb237dc59dfcd2e425c146d7eb
