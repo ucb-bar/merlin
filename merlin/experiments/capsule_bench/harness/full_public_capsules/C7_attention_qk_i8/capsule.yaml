@@ -1,0 +1,52 @@
+name: C7_attention_qk_i8
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: int8 Q@K^T attention scores (bareMetalC attention)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: Q
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+- name: K
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+operation:
+  op: attention_qk
+  attributes:
+    q: Q
+    k: K
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: attention
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
