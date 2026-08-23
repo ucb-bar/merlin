@@ -143,3 +143,46 @@ def test_a_shared_weight_is_refused_not_silently_corrupted(tmp_path):
 
 def test_an_unrewritten_bundle_reports_no_rewrites(tmp_path):
     assert br.read_rewrites(tmp_path) == []
+
+
+# --- the table type must be updated EVERYWHERE the value is typed, not just in the signature ------
+# Retyping only the signature left `tensor.extract %0[...] : tensor<256000x2304xf32>` behind, i.e.
+# IR that does not verify. Caught by comparing the applier's output byte-for-byte against the bundle
+# it reproduces; kept here so it cannot come back.
+
+GATHER_IR = """module {
+  func.func @forward(%0: tensor<256000x2304xf32>, %1: tensor<1x8xi64>) -> tensor<1x8x2304xf32> {
+    %2 = linalg.generic ins(%1 : tensor<1x8xi64>) {
+      ^bb0(%id: i64, %out: f32):
+        %665 = tensor.extract %0[%663, %664] : tensor<256000x2304xf32>
+        linalg.yield %665 : f32
+    }
+    return %2 : tensor<1x8x2304xf32>
+  }
+}
+"""
+
+
+def test_retype_updates_every_occurrence_of_the_table_type():
+    out = br._retype_arg(GATHER_IR, 0, [256000, 2304], [8, 2304], "f32")
+    assert "tensor<256000x2304xf32>" not in out, "a stale table type leaves IR that will not verify"
+    assert out.count("tensor<8x2304xf32>") == 2, "signature AND the extract must be retyped"
+
+
+def test_retype_leaves_a_same_shaped_unrelated_value_alone():
+    ir = GATHER_IR.replace(
+        "    return %2", "    %9 = tensor.empty() : tensor<256000x2304xf32>\n    return %2")
+    out = br._retype_arg(ir, 0, [256000, 2304], [8, 2304], "f32")
+    assert "%9 = tensor.empty() : tensor<256000x2304xf32>" in out
+
+
+def test_retype_refuses_rather_than_writing_unretyped_ir():
+    with pytest.raises(ValueError, match="never appears with type"):
+        br._retype_arg(GATHER_IR, 7, [256000, 2304], [8, 2304], "f32")
+
+
+def test_token_boundaries_are_respected():
+    assert br._mentions_ssa("foo %0[", "%0")
+    assert br._mentions_ssa("%658 = x", "%658")
+    assert not br._mentions_ssa("%6580 = x", "%658"), "%658 must not match %6580"
+    assert br._mentions_ssa("a %658, %6580", "%658")

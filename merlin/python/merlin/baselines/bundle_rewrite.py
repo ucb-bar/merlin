@@ -288,3 +288,199 @@ def _rewrite_safetensors(src: Path, dst: Path, want: set[str]) -> int:
                 out.write(t.tobytes())
                 done += 1
     return done
+
+
+def specialize_gather(src: Path | str, dst: Path | str, func_name: str = "forward") -> RewriteRecord:
+    """Keep only the table rows this bundle's fixed inputs actually select, and renumber the indices.
+
+    A model2MLIR embedding lookup indexes a weight table with the VALUE of an input element, so for a
+    bundle whose inputs are pinned only a handful of rows are ever read. On Gemma 2 2B that is 8 rows
+    of 256000: 2250.0 MiB of table becomes 0.070 MiB, which is what brought the image under the
+    addressing limit that kept the whole model from running at all.
+
+    THIS IS INPUT SPECIALIZATION, NOT DEAD-CODE ELIMINATION. The indices are runtime values this
+    bundle happens to pin, not compile-time constants, so the result is valid FOR THESE INPUTS ONLY.
+    That is recorded as a caveat on the bundle, because a specialized bundle mistaken for a general
+    one produces confident nonsense for any other input.
+
+    SOUNDNESS. Renumbering the stored indices is value-preserving only if the gather is the index
+    tensor's sole consumer -- anything else reading it would silently receive renumbered tokens.
+    :func:`find_gather_specializations` enforces that and reports a rejection instead.
+    """
+    from ..xdsl_dialects.lowering.gather_specialization import (
+        find_gather_specializations, kept_rows)
+    from ..common import mlir_query as mq
+    from ..common.ir_lock import IR_LOCK
+
+    src, dst = Path(src), Path(dst)
+    mlir_text = (src / "model.mlir").read_text()
+    with IR_LOCK:
+        specs, rejections = find_gather_specializations(mq.parse(mlir_text), func_name)
+    if not specs:
+        raise ValueError(
+            f"no specializable gather in {src}"
+            + (f" ({len(rejections)} rejected: {[r.reason for r in rejections]})" if rejections
+               else ""))
+    if len(specs) > 1:
+        raise ValueError(f"{len(specs)} specializable gathers; this applier handles exactly one")
+    spec = specs[0]
+
+    man = json.loads((src / "weights.safetensors.manifest.json").read_text())
+    entry = man.get(str(spec.table_arg))
+    if entry is None or "weight" not in entry:
+        raise ValueError(f"table arg {spec.table_arg} names no weight in the manifest")
+
+    order = json.loads((src / "input_order.json").read_text()) if (
+        src / "input_order.json").is_file() else None
+    with np.load(src / "inputs.npz") as z:
+        inputs = {k: z[k] for k in z.files}
+    idx_key = _input_key_for_arg(man, order, spec.index_arg, inputs)
+    kept, renumbered = kept_rows(spec, np.asarray(inputs[idx_key]).ravel().tolist())
+
+    dst.mkdir(parents=True, exist_ok=True)
+    rows_before = spec.rows
+    _slice_table(src, dst, entry["weight"], kept)
+
+    if "shape" in entry:
+        entry["shape"] = [len(kept)] + list(entry["shape"][1:])
+    (dst / "weights.safetensors.manifest.json").write_text(json.dumps(man, indent=2))
+
+    inputs[idx_key] = np.asarray(renumbered, dtype=inputs[idx_key].dtype).reshape(
+        inputs[idx_key].shape)
+    np.savez(dst / "inputs.npz", **inputs)
+
+    (dst / "model.mlir").write_text(_retype_arg(
+        mlir_text, spec.table_arg, spec.table_shape,
+        [len(kept)] + list(spec.table_shape[1:]), spec.table_dtype))
+
+    for name in ("extra.npz", "input_order.json", "golden.npy", "golden_w8a8.npy",
+                 "region_goldens.npz"):
+        _link_or_copy(src / name, dst / name)
+    if (src / REWRITES_FILE).is_file():
+        shutil.copy2(src / REWRITES_FILE, dst / REWRITES_FILE)
+
+    width = np.dtype(_NP.get(spec.table_dtype.upper(), np.float32)).itemsize
+    trailing = 1
+    for d in spec.table_shape[1:]:
+        trailing *= int(d)
+    rec = RewriteRecord(
+        name="specialize_gather",
+        source_bundle=src.name,
+        soundness=(f"the index tensor (arg {spec.index_arg}) has exactly one consumer, so "
+                   "renumbering the stored ids and keeping only the rows they select is "
+                   "value-preserving; checked by find_gather_specializations"),
+        effect={"table_arg": spec.table_arg, "rows_before": rows_before, "rows_after": len(kept),
+                "table_mib_before": round(rows_before * trailing * width / 2 ** 20, 3),
+                "table_mib_after": round(len(kept) * trailing * width / 2 ** 20, 3),
+                "index_arg": spec.index_arg, "index_arg_consumers": 1,
+                "analysis": "merlin.xdsl_dialects.lowering.gather_specialization"},
+        caveats=[f"VALID FOR THESE ROW INDICES ONLY: {kept}. This is input specialization, not dead "
+                 "code elimination -- any other input selects rows that are no longer present."],
+    )
+    record_rewrite(dst, rec)
+    return rec
+
+
+def _input_key_for_arg(man: dict, order: Any, arg: int, inputs: dict) -> str:
+    """Which `inputs.npz` array feeds `@forward` argument `arg`. Fail closed rather than guess."""
+    entry = man.get(str(arg), {})
+    name = entry.get("name")
+    if name and name in inputs:
+        return name
+    if isinstance(order, list) and name in order:
+        k = f"in{order.index(name)}"
+        if k in inputs:
+            return k
+    if len(inputs) == 1:                    # unambiguous: one input, one index tensor
+        return next(iter(inputs))
+    raise ValueError(
+        f"cannot tell which inputs.npz array feeds arg {arg} (manifest name {name!r}, "
+        f"arrays {sorted(inputs)}); refusing to guess")
+
+
+def _slice_table(src: Path, dst: Path, weight: str, kept: list[int]) -> None:
+    """Rewrite the blob keeping only `kept` rows of `weight`, in order, everything else verbatim."""
+    with open(src / "weights.safetensors", "rb") as f:
+        hlen = struct.unpack("<Q", f.read(8))[0]
+        header = json.loads(f.read(hlen))
+        data_start = 8 + hlen
+        meta = header.pop("__metadata__", None)
+
+        new_header: dict[str, Any] = {}
+        order: list[tuple[str, int, int, dict]] = []
+        off = 0
+        for name, spec in header.items():
+            s, e = spec["data_offsets"]
+            nbytes = e - s
+            shape = list(spec["shape"])
+            if name == weight:
+                shape = [len(kept)] + shape[1:]
+                nbytes = nbytes * len(kept) // spec["shape"][0]
+            new_header[name] = {"dtype": spec["dtype"], "shape": shape,
+                                "data_offsets": [off, off + nbytes]}
+            order.append((name, s, e, spec))
+            off += nbytes
+        if meta is not None:
+            new_header["__metadata__"] = meta
+        blob = json.dumps(new_header, separators=(",", ":")).encode()
+        blob += b" " * ((-len(blob)) % 8)
+
+        with open(dst / "weights.safetensors", "wb") as out:
+            out.write(struct.pack("<Q", len(blob)))
+            out.write(blob)
+            for name, s, e, spec in order:
+                if name != weight:
+                    f.seek(data_start + s)
+                    left = e - s
+                    while left:
+                        chunk = f.read(min(left, 64 << 20))
+                        out.write(chunk)
+                        left -= len(chunk)
+                    continue
+                dt = _NP.get(spec["dtype"])
+                if dt is None:
+                    raise ValueError(f"{name}: unknown safetensors dtype {spec['dtype']!r}")
+                row_bytes = (e - s) // spec["shape"][0]
+                for r in kept:                        # row-at-a-time: the table can be gigabytes
+                    f.seek(data_start + s + r * row_bytes)
+                    out.write(f.read(row_bytes))
+
+
+def _mentions_ssa(line: str, name: str) -> bool:
+    """Does `line` reference SSA value `name` at a token boundary? `%0` must not match `%01`."""
+    i = 0
+    while True:
+        j = line.find(name, i)
+        if j < 0:
+            return False
+        end = j + len(name)
+        if end >= len(line) or not line[end].isdigit():
+            return True
+        i = end
+
+
+def _retype_arg(mlir_text: str, arg: int, old_shape: list[int], new_shape: list[int],
+                dtype: str) -> str:
+    """Give `@forward` argument `arg` its new table type -- EVERYWHERE the value is typed.
+
+    Not just the signature. The gather's own `tensor.extract %0[...] : tensor<256000x2304xf32>`
+    carries the table type too, and retyping only the signature leaves IR that does not verify. That
+    was a real bug here, caught by comparing the output byte-for-byte against the bundle this
+    replaces rather than by eyeballing the diff.
+
+    Retyping is confined to lines that reference the argument at a token boundary, so an unrelated
+    value that happens to share the shape is untouched.
+    """
+    old_t = "tensor<" + "x".join(str(d) for d in old_shape) + f"x{dtype}>"
+    new_t = "tensor<" + "x".join(str(d) for d in new_shape) + f"x{dtype}>"
+    name = f"%{arg}"
+    out, changed = [], 0
+    for line in mlir_text.splitlines():
+        if old_t in line and _mentions_ssa(line, name):
+            line = line.replace(old_t, new_t)
+            changed += 1
+        out.append(line)
+    if not changed:
+        raise ValueError(f"argument {name} never appears with type {old_t}; refusing to write IR "
+                         "whose table type was not updated")
+    return "\n".join(out) + "\n"
