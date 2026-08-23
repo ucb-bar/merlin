@@ -268,8 +268,21 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                        TensorArg(k, n, d, _vals(canon0, k, kt), "f32")]
             out_args = [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
             return in_args, out_args
-        if op in ("MATMUL_BATCHED", "BATCHED_MATMUL"):
-            # Batched contraction. The schema admits BOTH spellings and leaves ``operands`` a free-form
+        _batched_by_rank = (
+            op == "MATMUL"
+            and any(len(getattr(env0.get(v), "shape", ())) == 3 for v in o.values() if v in env0))
+        if op in ("MATMUL_BATCHED", "BATCHED_MATMUL") or _batched_by_rank:
+            # Batched contraction, decided by operand RANK as well as by opcode name.
+            #
+            # This branch already refuses to guess operand KEY names, for the reason stated below. The same
+            # brittleness applied one level up: a rank-3 contraction spelled `MATMUL` matched no branch at
+            # all and was reported as "no operand rule for the command shape ['MATMUL']", while the exact
+            # same computation spelled `MATMUL_BATCHED` was derived fine. Measured on
+            # RP10_gemv_batched_fp16_pt, where the submission emitted MATMUL over A0[2,16,16] @ A1[2,16,1]:
+            # a legal, schema-valid buffer that the harness could not grade because of the word chosen for
+            # the opcode. Rank is the structural fact; the spelling is not.
+            #
+            # The schema admits BOTH spellings and leaves ``operands`` a free-form
             # string->string map, so derive the ROLES from the cb's OWN declarations instead of guessing key
             # names (a lowering may spell them lhs/weight/out where the generic matmul path spells them
             # lhs/rhs/dst -- both are schema-valid, and key-name guessing is exactly the brittleness this
