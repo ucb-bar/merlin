@@ -54,12 +54,20 @@ _ATLAS = "merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml"
 
 
 def test_grading_model_is_derived_from_the_corpus_not_hardcoded_integer():
-    """The certification-model sentence must follow the corpus goldens: gemmini's integer corpus grades
-    exact-integer 3-way; atlas's independent-float (fp8/bf16) corpus grades within a tolerance against the
-    program-oracle and marks the integer self-consistency cross-checks not_applicable. Telling a float-MXU
-    agent the grading is 'exact-integer, no tolerance' would make it build the wrong backend."""
+    """The certification-model sentence must follow the corpus goldens: atlas's independent-float
+    (fp8/bf16) corpus grades within a tolerance against the program-oracle and marks the integer
+    self-consistency cross-checks not_applicable. Telling a float-MXU agent the grading is 'exact-integer,
+    no tolerance' would make it build the wrong backend.
+
+    gemmini's corpus is MIXED — an int8 systolic datapath whose generalization capsules are authored in
+    float through the PyTorch frontend — so it must say the model is decided PER CAPSULE and describe
+    BOTH. Collapsing a mixed corpus to either single sentence (the old any()-float predicate returned
+    whole-corpus float as soon as one float capsule existed) misdescribes the grading for the rest of it.
+    """
     _, gs = _render("gemmini", _GEM)
     assert "exact-integer" in gs["grading_model"] and "no tolerance" in gs["grading_model"]
+    assert "PER CAPSULE" in gs["grading_model"], "a mixed corpus must not claim one grading model"
+    assert "tolerance" in gs["grading_model"] and "not_applicable" in gs["grading_model"]
     try:
         _, as_ = _render("atlas", _ATLAS)
     except Exception as e:  # noqa: BLE001

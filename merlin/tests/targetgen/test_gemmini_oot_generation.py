@@ -40,7 +40,11 @@ def test_manifest_for_gemmini_reproduces_the_curated_contract():
     the residual to the committed reference contract so the two cannot silently drift."""
     m = cm.manifest_for("gemmini")
     curated = _curated()
-    assert set(m) - set(curated) == {"legality"}
+    # ``legality`` plus the per-run capability audit; both are derived, neither is curated (pinning
+    # the audit into the reference contract would let a stale evidence block look authoritative).
+    assert set(m) - set(curated) == {"legality",
+                                     "capability_evidence", "semantic_capabilities_derived",
+        "semantic_capabilities_unknown", "unmapped_observations"}
     assert m["legality"] == []
     for key, val in curated.items():
         assert m[key] == val, f"gemmini.{key} drifted from the curated reference contract"

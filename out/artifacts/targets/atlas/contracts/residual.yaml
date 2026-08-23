@@ -23,6 +23,26 @@ compute_units:
   requant:
     ref: atlas.e4m3_block_requant
   scaling: block_e8m0
+  # The ARR denominator: what the SILICON can execute, independent of what the compiler lowers today.
+  # PROPOSED here and RE-AUDITED on every run by merlin.targetgen.capability_derive against this
+  # target's own evidence -- the structural ISA role census (a role comes from each instruction's typed
+  # operands, never its mnemonic) plus the RTL facts. `capability_evidence.drift` in the derived
+  # contract is that audit; a disagreement is an error, not a note.
+  #   contraction     <- ISA role 'matmul'   (MXUMatMul)
+  #   elementwise_map <- ISA roles 'tensor_compute_unary' / 'tensor_compute_binary' (standalone vector
+  #                      ops) and 'acc_readout_scaled' (the fused requant epilogue)
+  #   movement        <- ISA role 'memory'   (TensorBaseOffset)
+  # reduction and synchronization are deliberately ABSENT rather than denied: the role census cannot
+  # separate a reduction from an elementwise map (both are TensorComputeUnary), so the deriver reports
+  # them UNKNOWN and they are excluded from BOTH sides of the ratio instead of being scored either way.
+  semantic_capabilities:
+  - family: contraction
+    dtypes: [fp8_e4m3, bf16]
+    ranks: [2]
+  - family: elementwise_map
+    dtypes: [fp8_e4m3, bf16]
+  - family: movement
+    dtypes: [fp8_e4m3, bf16]
 facts_source: rtl
 family: tensor_resident
 features:
@@ -63,3 +83,12 @@ runtime_promises:
 - metrics
 status: prototype
 version: '0.1'
+
+# Families this target DECLARES (the hardware has them) but whose probes cannot yet be turned
+# into a runnable capsule. Recorded with a reason rather than left silent: a family that is
+# declared, probed and never graded is an untested claim, and the coverage gate refuses to let
+# one hide as an empty `skipped` list.
+unmaterializable_families:
+  elementwise_map: >-
+    no probe path today: an elementwise capsule is authored through the PyTorch/linalg source with a host-eager golden (needs the m2m venv, so not a deterministic offline probe), and capsule_golden._recompute_golden has no elementwise op, so it cannot be graded at all on an exact-integer datapath.
+    Needs a merlin_iface elementwise mnemonic + a recompute entry.

@@ -315,7 +315,7 @@ def _is_movement_cb(cb: dict) -> bool:
                     and c.get("attributes", {}).get("combine") == "identity" for c in cmds))
 
 
-def _movement_harness_c(cb: dict, *, target: str) -> str:
+def _movement_harness_c(cb: dict, *, target: str, inputs: dict | None = None) -> str:
     """Harness for a pure-movement kernel ``<entry>(src*, dst*)``: embed src, print dst.
 
     The entry symbol, the fence, the includes and the cycle-window metric are read from ``target``'s
@@ -335,7 +335,7 @@ def _movement_harness_c(cb: dict, *, target: str) -> str:
     src, dst = mv["operands"]["lhs"], mv["operands"]["dst"]
     m, n = cb["tensors"][src]["shape"]
     mp, np_ = _ceil_dim(m), _ceil_dim(n)
-    leaves = materialize_inputs(cb)
+    leaves = materialize_inputs(cb, inputs)
     sp = _pad_rowmajor(list(leaves[src].data), m, n, mp, np_)
     decls = [f"static const elem_t T_{src}[{mp * np_}] row_align(1) = "
              f"{{{','.join(str(int(v)) for v in sp)}}};",
@@ -359,10 +359,17 @@ def _movement_harness_c(cb: dict, *, target: str) -> str:
             '  printf("DONE\\n");\n  return 0;\n}\n')
 
 
-def render_harness(cb: dict, *, target: str) -> str:
+def render_harness(cb: dict, *, target: str, inputs: dict | None = None) -> str:
     """Render the runner-owned harness for ``cb`` — the `harness_renderer` capability.
 
     Chooses between the pure-movement and tiled forms itself, because which one applies is a property
     of this target's command vocabulary rather than something the generic path can decide.
+
+    ``inputs`` (name -> nested-list) INJECTS explicit operand values so the DEVICE computes on the same
+    data the reference and the simulator were given. Without it the harness materializes each leaf from
+    its NAME, so a caller injecting real activations got a three-way gate in which the reference and the
+    simulator saw the injected operands and the device saw different ones -- guaranteed to mismatch, and
+    reported as a functional failure of the target.
     """
-    return _movement_harness_c(cb, target=target) if _is_movement_cb(cb) else _harness_c(cb)
+    return (_movement_harness_c(cb, target=target, inputs=inputs) if _is_movement_cb(cb)
+            else _harness_c(cb, inputs))

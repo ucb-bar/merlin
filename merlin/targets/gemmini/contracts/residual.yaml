@@ -99,8 +99,15 @@ compute_units:
     # and mvin/mvout DMA (movement). It has NO general reduction / softmax / attention / normalization
     # hardware, so those families are honestly absent (regions needing them fall back off-mesh).
     semantic_capabilities:
-      - {family: contraction, dtypes: [int8], ranks: [2]}
-      - {family: elementwise_map, dtypes: [int8]}
+      # rank 4 is the im2col convolution path, not an assumption: the RTL funct table carries a
+      # dedicated LOOP_CONV_WS (funct 15) plus LOOP_CONV_WS_CONFIG_1/2/3 (16-18), so a rank-4 conv
+      # region IS acceleratable. Declaring ranks [2] alone made the shipped conv2d capsules score
+      # ineligible and silently left them out of the ARR denominator.
+      - {family: contraction, dtypes: [int8], ranks: [2, 4]}
+      # Epilogue-only: the mesh's readout applies per-channel scaling + requant on the way OUT of
+      # the accumulator, so an elementwise map exists ONLY fused behind a contraction. Declaring it
+      # standalone would make every standalone elementwise region an unclearable false_fallback.
+      - {family: elementwise_map, dtypes: [int8], composed_with: [contraction]}
       - {family: movement, dtypes: [int8]}
 # capabilities is intentionally empty: op/layout support is not pre-declared here. Mesh geometry +
 # scratchpad/accumulator capacities are CIRCT-extracted facts (arrays/memories), read from the fact
@@ -156,3 +163,12 @@ harness_abi:
 # merlin.targetgen.provenance.toolchain_shas so a run record says which hardware revision it belongs to.
 hardware_pins:
   - gemmini_rtl
+
+# Families this target DECLARES (the hardware has them) but whose probes cannot yet be turned
+# into a runnable capsule. Recorded with a reason rather than left silent: a family that is
+# declared, probed and never graded is an untested claim, and the coverage gate refuses to let
+# one hide as an empty `skipped` list.
+unmaterializable_families:
+  elementwise_map: >-
+    no probe path today: an elementwise capsule is authored through the PyTorch/linalg source with a host-eager golden (needs the m2m venv, so not a deterministic offline probe), and capsule_golden._recompute_golden has no elementwise op, so it cannot be graded at all on an exact-integer datapath.
+    Needs a merlin_iface elementwise mnemonic + a recompute entry.

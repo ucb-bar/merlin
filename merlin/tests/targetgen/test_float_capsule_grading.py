@@ -99,10 +99,24 @@ def _stub_front_half(monkeypatch):
     return cb
 
 
-def _oracle_returning(outputs):
+def _oracle_returning(outputs, tiers=("L3",)):
+    """Stub oracle adapters for the given tiers.
+
+    ``tiers`` is a parameter rather than a fixed ``{"L3": ...}`` because the capsule's own
+    ``required_oracle_tiers`` decides which tiers are mandatory, and a tier that is mandatory but has no
+    adapter makes the run ``incomplete`` -- correctly, since a tier that did not run is not a pass. These
+    tests are about the FLOAT GRADING path, so they stub every tier the capsule demands; tier-completeness
+    is covered where it belongs, not by leaving a mandatory oracle absent here."""
     def run(cb, llvm_text, workdir, timeout):
         return {"outputs": copy.deepcopy(outputs), "cycles": 123, "oracle": "atlas-arc-test"}
-    return {"L3": run}
+    return {tier: run for tier in tiers}
+
+
+def _required_tiers(cap, floor=("L0", "L1")):
+    """The capsule's mandatory ORACLE tiers -- what it declares, minus the integer floor it marks
+    not_applicable on a float datapath. Derived from the capsule so these tests follow a change to the
+    target's required ladder instead of pinning yesterday's."""
+    return tuple(t for t in (cap.get("required_oracle_tiers") or ("L3",)) if t not in floor)
 
 
 def test_float_run_capsule_grades_pass(tmp_path, monkeypatch):
@@ -111,7 +125,8 @@ def test_float_run_capsule_grades_pass(tmp_path, monkeypatch):
     gold = CG.golden(cap)
 
     res = CR.run_capsule(cap, "unused-package", runs_root=tmp_path, run_id="AT2_pass",
-                         config=_atlas_config(), oracle_adapters=_oracle_returning(gold))
+                         config=_atlas_config(),
+                         oracle_adapters=_oracle_returning(gold, _required_tiers(cap)))
 
     assert res["status"] == "pass", res.get("failure")
     # integer floor is honestly skipped (N/A for float), not failed.

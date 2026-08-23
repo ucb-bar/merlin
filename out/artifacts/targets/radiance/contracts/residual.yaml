@@ -195,3 +195,18 @@ mx_mmio:
   read_smem: {rs2_off_mask: 0xffffffff, rs2_num_shift: 32}  # funct 28: rs1=dst dram, rs2=(num_bf16<<32)|smem_byte_off
 status: prototype
 version: '0.1'
+
+# Families this target DECLARES (the hardware has them) but whose probes cannot yet be turned
+# into a runnable capsule. Recorded with a reason rather than left silent: a family that is
+# declared, probed and never graded is an untested claim, and the coverage gate refuses to let
+# one hide as an empty `skipped` list.
+unmaterializable_families:
+  elementwise_map: >-
+    no probe path today: an elementwise capsule is authored through the PyTorch/linalg source with a host-eager golden (needs the m2m venv, so not a deterministic offline probe), and capsule_golden._recompute_golden has no elementwise op, so it cannot be graded at all on an exact-integer datapath.
+    Needs a merlin_iface elementwise mnemonic + a recompute entry.
+  reduction: >-
+    no merlin_iface mnemonic and no capsule_golden._recompute_golden entry, so a reduction probe cannot be emitted or graded.
+    Blocked on the same grammar work as elementwise_map.
+  synchronization: >-
+    an ordering/visibility family with no output tensor: there is nothing for a numeric oracle to compare.
+    Coverage for it belongs to the instruction-class trace check, not to a materialized probe.

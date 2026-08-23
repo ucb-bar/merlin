@@ -262,6 +262,52 @@ _GRADE_FLOAT = ("Per capsule the runner certifies the emitted artifact's program
                 "atol/rtol) across the sim tier ladder; the integer `reference(cb) == simulate(cb)` "
                 "self-consistency cross-checks do NOT apply to a float datapath and report `not_applicable` "
                 "— derived from the corpus goldens, not restated:")
+# A corpus may carry BOTH: an int8 systolic target whose generalization capsules are authored in float
+# through the PyTorch frontend grades exact-integer on some capsules and within a tolerance on others.
+# Collapsing that to either single sentence tells the agent the wrong grading model for the rest of the
+# corpus, so the mixed case says so explicitly and names the per-capsule signal that decides it.
+_GRADE_MIXED = ("This corpus is MIXED, so the grading model is decided PER CAPSULE by that capsule's own "
+                "golden, not once for the target: a capsule carrying an INDEPENDENT float `golden` is "
+                "certified against the program oracle within its declared tolerance (its `grade_policy` "
+                "atol/rtol) and its integer `reference(cb) == simulate(cb)` self-consistency cross-checks "
+                "report `not_applicable`; every other capsule is certified exact-integer "
+                "`golden == reference(cb) == simulate(cb) == oracle` with no tolerance. Both apply across "
+                "the sim tier ladder — derived from the corpus goldens, not restated:")
+
+
+def _corpus_golden_regimes(te) -> tuple[bool, bool]:
+    """``(has_float, has_integer)`` over the declared corpus (+ discovered siblings), classified with the
+    SAME per-capsule signal the grader uses. Split out from the old any()-style predicate because a corpus
+    with even one float golden was reported as wholly float, which is wrong for a mixed corpus."""
+    import yaml
+
+    from merlin.common.paths import repo_root
+    from .capsule_golden import is_independent_float_golden
+    root = repo_root()
+    corpora = ([te.capsule_corpus] if te.capsule_corpus else [])
+    corpora += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
+    has_float = has_int = False
+    for corpus in corpora:
+        if not corpus or not corpus.is_dir():
+            continue
+        for capy in sorted(corpus.glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(capy.read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+            if is_independent_float_golden(cap, capy.parent):
+                has_float = True
+            else:
+                has_int = True
+    return has_float, has_int
+
+
+def _grading_model(te) -> str:
+    """The certification sentence for this corpus: float-only, integer-only, or explicitly mixed."""
+    has_float, has_int = _corpus_golden_regimes(te)
+    if has_float and has_int:
+        return _GRADE_MIXED
+    return _GRADE_FLOAT if has_float else _GRADE_INTEGER
 
 
 def _corpus_uses_independent_float_goldens(te) -> bool:
@@ -418,7 +464,7 @@ def prompt_slots(te, manifest) -> dict:
                           else _ENDPOINT_DESC.get(manifest.endpoint_kind, _ENDPOINT_DESC["inline_asm_insn"])),
         # The grading model the runner will actually apply — float-tolerance vs exact-integer — classified
         # from the corpus goldens (never a per-target branch), so the agent is not told the wrong contract.
-        "grading_model": _GRADE_FLOAT if _corpus_uses_independent_float_goldens(te) else _GRADE_INTEGER,
+        "grading_model": _grading_model(te),
         "emit_framing": (_simt_mlir_emit_framing() if _mlir
                          else _emit_framing(bundle, manifest.endpoint_kind, inst_width=_iw)),  # endpoint+width derived
         "isa_facts": render_fact_bundle_for(target, bundle),  # KIND-routed provenance-tagged ISA brief (agent info)
