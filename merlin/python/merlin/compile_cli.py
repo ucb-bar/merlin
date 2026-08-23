@@ -292,19 +292,34 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     out: dict = {"tool": "merlin-compile", "target": "rvv", "workload": workload, "dtype": dtype,
                  "bundle": str(bundle), "package": pkg_dir, "run": run,
                  "harts": harts, "iters": iters}
+    from .runtime.dispatch_runtime import mesh_datapath
+
     refs: dict = {}
     if verify:
         refs["fp32"] = np.load(bundle / "golden.npy")
         w8 = bundle / "golden_w8a8.npy"
-        if pkg.is_int8 and w8.is_file():
+        # WHO quantizes the activations decides which golden is the right yardstick, and it is not
+        # always the scalar package. Routing the contractions to a mesh whose operands are 8-bit
+        # quantizes them there instead, so a run with an f32 scalar package (an fp8 capture's IR is
+        # f32 end to end) still computes W8A8 arithmetic. Gating this on pkg.is_int8 alone left every
+        # fp8 mesh run graded against a weight-only f32 reference its datapath could never reproduce.
+        _act_quant = bool(pkg.is_int8)
+        if not _act_quant and kernel_backend == "mesh" and mesh_target:
+            try:
+                _op_dt = mesh_datapath(mesh_target)[0]
+                from .common import quant_formats as _qf
+                _act_quant = int(_qf.get(_op_dt).element_bits or 32) <= 8
+            except Exception:                        # noqa: BLE001 — undecidable: keep the f32 golden
+                _act_quant = False
+        if _act_quant and w8.is_file():
             refs["w8a8"] = np.load(w8)
-        elif pkg.is_int8:
-            # `golden.npy` in an int8 bundle is a WEIGHT-ONLY-int8 reference (int8 weights, fp32
-            # activations); this package computes W8A8. Grading one against the other measures
-            # activation-quantization error, not correctness, and reads as a large cos drop. Say
-            # so rather than letting the run be silently judged by the wrong yardstick.
+        elif _act_quant:
+            # `golden.npy` in a weight-only bundle is an f32-ACTIVATION reference; this run computes
+            # W8A8. Grading one against the other measures activation-quantization error, not
+            # correctness, and reads as a large cos drop. Say so rather than letting the run be
+            # silently judged by the wrong yardstick.
             out["reference_warning"] = (
-                f"{bundle.name} has no golden_w8a8.npy — an int8 (W8A8) run graded only against "
+                f"{bundle.name} has no golden_w8a8.npy — a W8A8 run graded only against "
                 f"the weight-only golden.npy. A low fp32_cos here is expected quantization "
                 f"divergence, NOT evidence of a defect. Generate the W8A8 reference first.")
             print(f"[merlin-compile] WARNING: {out['reference_warning']}", file=sys.stderr)
