@@ -627,6 +627,12 @@ def _certify_tile_via_executor(target, mlir, *, m, k, n, binding, timeout) -> di
     TWO-way gate (reference == oracle), not the OOT path's three-way (reference == simulate == oracle)."""
     import numpy as np
 
+    # ⚠ STIMULUS LIMITATION, recorded in the result rather than left implicit. These operands are small
+    # INTEGERS, which every operand format here represents EXACTLY -- that is what makes a bit-exact gate
+    # possible, and it is also what this gate cannot see past: an error that only appears on operands
+    # needing the format's mantissa (a real activation/weight distribution) leaves this tile bit-exact.
+    # Measured on atlas: all 15 synthesized tiles certify bit-exact while all 15 REAL model layers diverge
+    # from every datapath model at ~1.5% broadband. Do not read a tile pass as operand-precision coverage.
     rng = np.random.default_rng(0xA71A5)
     A = np.rint(rng.standard_normal((m, k)) * 3).clip(-8, 7).astype(np.float32)
     W = np.rint(rng.standard_normal((k, n)) * 3).clip(-8, 7).astype(np.float32)
@@ -655,7 +661,9 @@ def _certify_tile_via_executor(target, mlir, *, m, k, n, binding, timeout) -> di
                 "oracle": {"kind": obs.get("oracle"), "result": "ran", "cycles": None},
                 "gate": {"kind": f"bit-exact vs {binding.accum_dtype} accumulation", "rtol": 0.0,
                          "exact": True,
-                         "f32_max_abs_err": float(np.abs(dev - ref).max())}}
+                         "f32_max_abs_err": float(np.abs(dev - ref).max()),
+                         "stimulus": "exactly-representable small integers",
+                         "does_not_cover": "operand-precision error on realistic value distributions"}}
     rtol = _accum_rel_tolerance(binding.accum_dtype, k)
     if rtol is None:
         return {"status": "fail", "oracle": {"kind": obs.get("oracle"), "result": "ran"},
