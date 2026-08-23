@@ -41,7 +41,6 @@ generated:
 - model_slices/GC4_global_avg_bf16_pt
 - model_slices/GC5_fused_matmul_bias_bf16_pt
 - model_slices/GC6_bias_add_bf16_pt
-- model_slices/GF0_rmsnorm_bf16_pt
 - model_slices/GF1_softmax_bf16_pt
 - model_slices/GF2_attn_full_bf16_pt
 - model_slices/GF3_geglu_bf16_pt

@@ -347,10 +347,6 @@ capsules:
 # --- Fused ops mined from gemmini-rocc-tests (tiled_matmul_ws_{layernorm,softmax,igelu}, attn_fp8_*).
 # These norm/activation/attention algorithms run in bf16 (the non-accelerator lanes compose with the int8
 # matmul mesh), so they are PyTorch-sourced (source: pytorch) with the m2m linalg as the interface.
-- {cat: model_slices, name: GF0_rmsnorm_bf16_pt, kind: model_slice, op: rmsnorm, operand_dtype: bf16,
-   source: pytorch, M: 16, K: 16, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch RMSNorm bf16 (gemmini-rocc-tests tiled_matmul_ws_layernorm family)',
-   label: public, modes: {}}
 - {cat: model_slices, name: GF1_softmax_bf16_pt, kind: model_slice, op: softmax, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch softmax bf16 (tiled_matmul_ws_softmax family)', label: public, modes: {}}
