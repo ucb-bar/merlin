@@ -118,6 +118,15 @@ class CaptureBundle:
         equivalence (C7) and standalone-section IO (C8) — optional (older bundles lack it)."""
         return self.root / "region_goldens.npz"
 
+    @property
+    def rewrites(self) -> Path:
+        """Record of offline rewrites applied to this bundle (``bundle.rewrites.json``).
+
+        A rewritten bundle that does not say so produces measurements attributed to a model that no
+        longer exists -- see `baselines.bundle_rewrite`, which writes this and explains why it is a
+        sidecar rather than a manifest key. Absent for an unrewritten bundle."""
+        return self.root / "bundle.rewrites.json"
+
     def has_region_goldens(self) -> bool:
         return self.region_goldens.is_file()
 
