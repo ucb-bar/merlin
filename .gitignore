@@ -39,13 +39,18 @@ selfcheck_out/
 /out/**/third_party/**
 /out/**/node_modules/**
 /out/**/.venv/**
+# Same class, observed in the wild: agent submission trees under out/runs/ vendor a whole xdsl
+# checkout (…/submission/mlir_oot/vendor/xdsl/…) and drop QA scratch beside it. Both carry their own
+# README.md/AGENT.md, which the depth-unbounded negations above would otherwise un-ignore.
+/out/**/vendor/**
+/out/**/_qa_work/**
 
 # The generated OOT target packages under out/build/generated/ (minted by merlin.targetgen; the
 # hand-authored source of truth is merlin/targets/<target>/) are fully regenerable. Don't track their
 # empty doc-only skeletons — on a fresh clone they'd be a directory tree of AGENT.md/README.md
 # placeholders describing content that isn't there. out/build/generated/{AGENT,README}.md already
 # document the dir's purpose. Re-ignore the whole per-target subtree.
-/out/build/generated/merlin-target-*/**
+/out/build/generated/*/**
 
 # GUARD (regenerable concern subtrees): recaptures/ (per-model captures), measurements/ (per-run
 # substrate dumps), selfcheck/ and cache/ each grow one fully-regenerable/purgeable subtree per
@@ -57,6 +62,14 @@ selfcheck_out/
 /out/artifacts/measurements/*/**
 /out/artifacts/selfcheck/*/**
 /out/artifacts/cache/*/**
+# Same idiom, four concern roots that were missed: delivery/ (per-bitstream/per-model delivery trees,
+# 26 GB in one of them), publish/ (per-package clone/ trees), runs/ (per-target aet run trees) and
+# model-comparison/ (per-version report products). Each grows nested README.md/AGENT.md that the
+# depth-unbounded negations re-exposed — 428 files were surfacing as untracked before this.
+/out/artifacts/delivery/*/**
+/out/build/publish/*/**
+/out/runs/*/**
+/out/artifacts/model-comparison/*/**
 
 # --- Relocated hand-written reports (were docs/*, moved to their concern in the Phase-3 docs
 #     restructure). These are NOT tool-regenerable, so they stay tracked. Explicit per-file
@@ -103,6 +116,10 @@ selfcheck_out/
 # also re-ignores any stray README.md/AGENT.md dropped inside these raw archive subtrees.)
 /out/artifacts/capsule-bench/gemmini/reports/**
 /out/artifacts/perf-bench/gemmini/reports/**
+/out/artifacts/capsule-bench/gemmini/e2e_smoke/**
+# The leave-one-family-out split definitions NAME held-out capsules (7 of them), so unlike the other
+# aggregated ledgers in this concern root they are an answer key, not part of the results story.
+/out/artifacts/capsule-bench/gemmini/leave_one_family_out.json
 
 # --- dse-guidance case_study GOLDEN: the committed reference the tests + --consume/--meta read.
 #     It's generated analysis (regenerable via `merlin-dse-guidance --case-study`) but tracked as
@@ -155,6 +172,14 @@ selfcheck_out/
 # --- output/ is DELETED/retired: recaptures now live in out/artifacts/recaptures/. Keep this
 #     ignore as a backstop so a stray re-created output/ is never committed. ---
 /output/
+
+# --- Same backstop for the other retired top-level generated roots. CLAUDE.md retires runs/,
+#     artifacts/ and build/ in favour of out/{runs,artifacts,build}/, but only output/ and results/
+#     had a guard — so a re-created /artifacts/ (66 files incl. weight blobs) was surfacing as
+#     untracked. /build/ stayed quiet only by accident, via venv-generated .gitignore files. ---
+/artifacts/
+/runs/
+/build/
 
 # --- Per-target generated scaffolds ---
 /merlin/targets/*/generated/**
@@ -253,3 +278,9 @@ tmp
 **/golden_*.yaml
 **/expected_instruction_coverage.yaml
 **/hidden/
+# Externalized capsule weights are large regenerable binaries AND, for a whole-model capsule, the
+# thing the golden was computed from. The rule existed only in merlin/contract/capsules/.gitignore,
+# so it protected nothing under artifacts/, out/, or harness/full_public_capsules/ — where 11 weight
+# blobs were surfacing as untracked. Make it global, like every other rule in this section.
+**/*.safetensors
+**/*.safetensors.manifest.json
