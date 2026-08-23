@@ -538,11 +538,14 @@ class _DebugHarness:
     image. Grouped in one object so `_main_c`'s f-string stays readable and so the OFF case is
     provably inert (every field is "")."""
 
-    __slots__ = ("decls", "boot", "post_init", "pre_run", "post_run", "stacks")
+    __slots__ = ("decls", "boot", "post_init", "pre_run", "post_run", "post_dump", "stacks")
 
-    def __init__(self, decls="", boot="", post_init="", pre_run="", post_run="", stacks=""):
+    def __init__(self, decls="", boot="", post_init="", pre_run="", post_run="",
+                 post_dump="", stacks=""):
         self.decls, self.boot, self.post_init = decls, boot, post_init
         self.pre_run, self.post_run, self.stacks = pre_run, post_run, stacks
+        #: diagnostics emitted AFTER the answer -- see `_main_c`'s ordering note.
+        self.post_dump = post_dump
 
 
 def _debug_harness(debug: bool, dram_base: int, region_bytes: int, n_harts: int) -> _DebugHarness:
@@ -650,7 +653,8 @@ static void merlin_report_stacks(void)
 """,
         post_run="""  merlin_dbg_running = 0;
   merlin_stage("compute_done");
-  merlin_report_stacks();
+""",
+        post_dump="""  merlin_report_stacks();
   merlin_prof_dump();
 """)
 
@@ -794,14 +798,23 @@ static void merlin_worker(void *a, void *b, void *c) {{
   }}
   uint64_t c1 = rd_mcycle();
 {dbg.post_run}
-  int k = MERLIN_OUT_ELEMS < MERLIN_DUMP_CAP ? MERLIN_OUT_ELEMS : MERLIN_DUMP_CAP;
-  printk("OUT %d", k);
-  for (int i = 0; i < k; i++) {{
-    uint32_t bits;
-    memcpy(&bits, &OUT[i], 4);
-    printk(" %u", (unsigned)bits);
-  }}
-  printk("\\n");
+  /* CHEAPEST DECISIVE EVIDENCE FIRST — the console is the scarce resource on a long run.
+   *
+   * A whole-model FireSim console moves single-digit BYTES PER SECOND, so what is printed and in
+   * what order decides whether a finished computation is gradeable. Measured on the Gemma 2 2B run:
+   * 7.6 B/s, which makes the 4096-number OUT line worth about ninety minutes of wall clock on its
+   * own. Everything below is therefore ordered by evidence-per-byte, so a run truncated at any
+   * point has produced the most it could: the metrics and the whole-tensor checks cost a few dozen
+   * bytes and come first, the OUT sample costs tens of kilobytes and comes after them, and the
+   * per-op profile costs tens of kilobytes more and comes last.
+   *
+   * `cycles` stays PER-INFERENCE whatever MERLIN_ITERS is, so every existing consumer of this
+   * metric keeps comparing like with like (at the default iters=1 it is bit-identical to the
+   * single-shot number this harness always reported). The full series is in the METRIC
+   * iter_cycles lines above; `total_cycles` is the sustained wall for all of them. */
+  printk("METRIC cycles %llu\\n", (unsigned long long)((c1 - c0) / MERLIN_ITERS));
+  printk("METRIC total_cycles %llu\\n", (unsigned long long)(c1 - c0));
+  printk("METRIC iters %d\\n", MERLIN_ITERS);
 
   if (MERLIN_OUT_ELEMS > MERLIN_DUMP_CAP) {{
     int rows = MERLIN_OUT_ELEMS / MERLIN_OUT_LASTDIM;
@@ -819,14 +832,38 @@ static void merlin_worker(void *a, void *b, void *c) {{
     uint32_t sb; memcpy(&sb, &s, 4);
     printk("SUM %u\\n", (unsigned)sb);
   }}
-  /* `cycles` stays PER-INFERENCE whatever MERLIN_ITERS is, so every existing consumer of
-   * this metric keeps comparing like with like (at the default iters=1 it is bit-identical
-   * to the single-shot number this harness always reported). The full series is in the
-   * METRIC iter_cycles lines above; `total_cycles` is the sustained wall for all of them. */
-  printk("METRIC cycles %llu\\n", (unsigned long long)((c1 - c0) / MERLIN_ITERS));
-  printk("METRIC total_cycles %llu\\n", (unsigned long long)(c1 - c0));
-  printk("METRIC iters %d\\n", MERLIN_ITERS);
-  /* Terminal sentinel reused from the ModelBlaster FireSim runner: its
+
+  /* WHOLE-TENSOR BIT-EXACTNESS IN ONE LINE. OUT below is capped at MERLIN_DUMP_CAP elements — on
+   * this model that is 4096 of 2,048,000, i.e. 0.2% of the answer — so on its own it cannot say the
+   * other 99.8% is right. FNV-1a over the output bytes checks all of it for ~20 bytes of console
+   * instead of ~45 KB. It is a bit-exactness check and nothing else: it says identical or not, and
+   * says nothing about HOW far off a mismatch is, which is exactly what the OUT sample is for.
+   * Bytes, not floats, so it is insensitive to how the host chooses to read the tensor. */
+  {{
+    const unsigned char *ob = (const unsigned char *)OUT;
+    uint32_t h = 2166136261u;
+    for (long i = 0; i < (long)MERLIN_OUT_ELEMS * 4; i++) {{
+      h ^= ob[i];
+      h *= 16777619u;
+    }}
+    printk("HASH fnv1a32 %d %u\\n", (int)MERLIN_OUT_ELEMS, (unsigned)h);
+  }}
+
+  int k = MERLIN_OUT_ELEMS < MERLIN_DUMP_CAP ? MERLIN_OUT_ELEMS : MERLIN_DUMP_CAP;
+  printk("OUT %d", k);
+  for (int i = 0; i < k; i++) {{
+    uint32_t bits;
+    memcpy(&bits, &OUT[i], 4);
+    printk(" %u", (unsigned)bits);
+  }}
+  printk("\\n");
+  /* DIAGNOSTICS COME AFTER THE ANSWER, and this ordering is load-bearing on a slow console.
+   * The per-op profile is ~2.5k lines; over a simulated UART that is over an hour of wall clock.
+   * Emitted before the result it starves it: a whole-model Gemma 2 2B FireSim run reached
+   * `STAGE compute_done`, computed every one of its 11,160 ops, and was then killed by the run
+   * cap 2,469 PROF lines into the dump -- eight hours spent, no logits printed, nothing gradeable.
+   * The answer is the product; the profile is commentary. Print the product first. */
+{dbg.post_dump}  /* Terminal sentinel reused from the ModelBlaster FireSim runner: its
    * run_firesim() waits for this marker to know the block is complete. */
   printk("=== MODELBLASTER_WALL_CYCLES === %llu\\n", (unsigned long long)(c1 - c0));
   printk("DONE\\n");
@@ -1791,6 +1828,7 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
     flat = np.array([struct.unpack("<f", struct.pack("<I", b & 0xFFFFFFFF))[0]
                      for b in bits], dtype=np.float32)
     metrics, argmax, sumval = {}, None, None
+    out_hash: dict[str, Any] | None = None
     iter_cycles: list[int] = []
     for l in console.splitlines():
         if l.startswith("METRIC "):
@@ -1817,8 +1855,19 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
             argmax = np.array([int(x) for x in p[2:2 + int(p[1])]], dtype=np.int64)
         elif l.startswith("SUM "):
             sumval = struct.unpack("<f", struct.pack("<I", int(l.split()[1]) & 0xFFFFFFFF))[0]
+        elif l.startswith("HASH "):
+            # `HASH <algo> <elems> <value>` -- a whole-tensor digest. `outputs` above is only the
+            # first MERLIN_DUMP_CAP elements (0.2% of a 2,048,000-element logit tensor), so this is
+            # the only thing in the protocol that speaks for the rest of the answer. The algorithm
+            # is named rather than assumed, so a future image can change it without silently
+            # comparing two different digests.
+            p_ = l.split()
+            if len(p_) >= 4:
+                out_hash = {"algo": p_[1], "elems": int(p_[2]), "value": int(p_[3]) & 0xFFFFFFFF}
     res = {"outputs": flat, "prefix": flat, "argmax": argmax, "sum": sumval,
            "metrics": metrics, "console": console}
+    if out_hash is not None:
+        res["out_hash"] = out_hash
     # `PROF <id> <ticks> <hits>` from an op_profile build. The K1 path already reads these; this one
     # dropped them on the floor, so a Zephyr/FireSim console carried per-op cycles that no caller could
     # reach -- which is why the vector unit had no measured rate while the matrix unit had one.
@@ -1830,6 +1879,21 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
         res["iter_cycles"] = iter_cycles
         res["sustained"] = _sustained_stats(iter_cycles)
     return res
+
+
+def out_hash_fnv1a32(a: np.ndarray) -> int:
+    """The digest the generated harness prints, recomputed host-side over the same bytes.
+
+    Kept beside the C that emits it so the two cannot drift apart: the image hashes
+    ``MERLIN_OUT_ELEMS * 4`` bytes of its little-endian f32 output buffer in memory order, and so
+    does this. It answers one question -- is the WHOLE tensor bit-identical -- for about twenty
+    bytes of console, where dumping the tensor itself costs tens of kilobytes and a run cap.
+    """
+    b = np.ascontiguousarray(a, dtype="<f4").tobytes()
+    h = 2166136261
+    for byte in b:
+        h = ((h ^ byte) * 16777619) & 0xFFFFFFFF
+    return h
 
 
 def _sustained_stats(cycles: list[int]) -> dict[str, Any]:
