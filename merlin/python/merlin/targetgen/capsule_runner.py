@@ -1894,7 +1894,17 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     # directory into the mlc checkout. The suite still scored -- the results are returned in memory --
     # but the trace collection reads from this root, so those 18 capsules contributed no coverage, and a
     # sibling project's tree acquired 18 stray run trees.
+    # Same treatment for every OTHER relative path this suite carries into a worker thread. The runs
+    # root was only the first one to show: the package directory is re-opened per capsule, and inside a
+    # chdir window it raises FileNotFoundError on a directory that is plainly there -- which the runner
+    # records as a RUNNER_CRASH, i.e. as though the submission were broken. Measured: the same 18 of 26
+    # capsules that misplaced their run dirs also "crashed" this way, and since an errored capsule is in
+    # neither the pass nor the fail bucket, they silently left the gate denominator -- the whole-model
+    # capstone then cleared its 0.8 gate on 7/8 instead of on 26 capsules.
     runs_root = str(Path(runs_root).resolve())
+    package_dir = str(Path(package_dir).resolve())
+    if contract is not None and Path(contract).exists():
+        contract = str(Path(contract).resolve())
     pkg = load_package(package_dir, contract=contract)
     integrity_scan(pkg)
     build_package(pkg)
@@ -1945,7 +1955,14 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     # reachable fraction was 23/35 = 0.66 against a 0.8 gate -- the whole-model capsules were
     # MATHEMATICALLY unreachable, and nothing said so. Excluding the ineligible makes the gate mean
     # "the ops this device can do are working", which is what it was for.
-    graded = [r for r in op_results if r.get("status") in ("pass", "fail")]
+    # WHAT COUNTS AS GRADED, for the gate. Previously only pass/fail, which quietly excluded every
+    # capsule that ERRORED -- and an error is not evidence the op suite works, it is the absence of
+    # evidence. Measured: 18 of 26 op capsules died with a runner crash and left the denominator with
+    # them, so the whole-model capstone cleared its 0.8 gate on the surviving 7/8 = 0.88 while two
+    # thirds of the suite had not run. `not_graded` (the hardware cannot) and `gated` (not yet
+    # attempted) stay excluded; those are the two the exclusion was FOR. This matches the definition
+    # the score itself already uses for its denominator.
+    graded = [r for r in op_results if r.get("status") not in ("not_graded", "gated")]
     eligible = [r for r in graded if _gate_counts(r, capsules, target)]
     denom = eligible or graded          # fall back rather than divide by zero if nothing is classifiable
     frac = (sum(1 for r in denom if r.get("status") == "pass") / len(denom)) if denom else 0.0

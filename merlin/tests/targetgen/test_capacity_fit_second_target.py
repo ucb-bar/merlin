@@ -214,3 +214,39 @@ def test_a_capsule_that_chdirs_cannot_relocate_its_siblings(tmp_path, monkeypatc
 
     assert len(set(seen)) == 1, f"the runs root moved mid-suite: {sorted(set(seen))}"
     assert seen[0] == str((tmp_path / "here" / "relative_runs")), seen[0]
+
+
+def test_a_crashed_op_capsule_cannot_leave_the_model_gate_denominator(monkeypatch):
+    """An error is not evidence the op suite works -- it is the absence of evidence.
+
+    The gate counted only pass/fail, so every capsule that died with a runner crash left the
+    denominator with it. Measured on atlas: 18 of 26 op capsules crashed (a relative package path
+    resolved inside another thread's chdir), and the whole-model capstone cleared its 0.8 gate on the
+    surviving 7/8 = 0.88 while two thirds of the suite had not run.
+    """
+    from merlin.targetgen import capsule_runner as CR
+
+    ran: list[str] = []
+    caps = ([{"name": f"ok{i}", "kind": "op"} for i in range(7)]
+            + [{"name": "bad", "kind": "op"}]
+            + [{"name": f"crash{i}", "kind": "op"} for i in range(18)]
+            + [{"name": "M0", "kind": "model", "gate": {"after_op_pass_fraction": 0.8}}])
+
+    def _fake(cap, package_dir, **kw):
+        ran.append(cap["name"])
+        status = ("pass" if cap["name"].startswith("ok")
+                  else "error" if cap["name"].startswith("crash") else "fail")
+        return {"capsule": cap["name"], "status": status, "kind": cap.get("kind"), "tiers": {}}
+
+    monkeypatch.setattr(CR, "load_package", lambda *a, **k: object())
+    monkeypatch.setattr(CR, "integrity_scan", lambda *a, **k: None)
+    monkeypatch.setattr(CR, "build_package", lambda *a, **k: None)
+    monkeypatch.setattr(CR, "_split_ineligible", lambda c, t: (c, []))
+    monkeypatch.setattr(CR, "_gate_counts", lambda r, c, t: True)
+    monkeypatch.setattr(CR, "run_capsule", _fake)
+
+    out = CR.run_suite(caps, "pkg", runs_root="runs", target="gemmini", max_workers=1)
+    m0 = next(r for r in out if r["capsule"] == "M0")
+    assert m0["status"] == "gated", "7 of 26 passing must not clear a 0.8 gate"
+    assert "0.27" in m0["failure"]["detail"], m0["failure"]["detail"]
+    assert "M0" not in ran, "a gated capstone must not have been executed"

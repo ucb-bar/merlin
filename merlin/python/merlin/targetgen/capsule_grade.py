@@ -62,7 +62,12 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     # per-capsule traces back out of this root, and a root that moved under a sibling thread's chdir
     # silently yields an empty coverage dict rather than an error.
     runs_root = str(Path(runs_root).resolve())
-    pkg_dir = Path(package_dir)
+    pkg_dir = Path(package_dir).resolve()
+    if contract is not None and Path(contract).exists():
+        contract = str(Path(contract).resolve())
+    capsules_root = ([str(Path(r).resolve()) for r in capsules_root]
+                     if isinstance(capsules_root, (list, tuple))
+                     else str(Path(capsules_root).resolve()))
 
     score: dict = {
         "task": f"{target}-mlir-oot-capsule", "package": str(pkg_dir),
