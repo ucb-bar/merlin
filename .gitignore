@@ -123,7 +123,11 @@ selfcheck_out/
 
 # --- dse-guidance case_study GOLDEN: the committed reference the tests + --consume/--meta read.
 #     It's generated analysis (regenerable via `merlin-dse-guidance --case-study`) but tracked as
-#     the byte-stable golden. Track the data/source files; keep regenerable binaries untracked. ---
+#     the byte-stable golden. Track the data/source files; keep regenerable binaries untracked.
+#     LOAD-BEARING, measured 2026-08-23: ~100 tests in merlin/tests/dse/test_dse_guidance.py are
+#     skipif-gated on `case_study/dse_contract.json` being present. Untracking this subtree does not
+#     fail those tests -- it SKIPS them, silently, on every fresh clone. It is 12 MB and roughly a
+#     third of the tracked tree; that is the price of the fixture, not an oversight. ---
 !/out/artifacts/dse-guidance/case_study/**
 /out/artifacts/dse-guidance/case_study/**/*.png
 /out/artifacts/dse-guidance/case_study/**/*.svg

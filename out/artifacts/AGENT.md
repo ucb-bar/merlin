@@ -19,5 +19,7 @@ or cross-cutting). See CLAUDE.md "Generated-output convention" and .claude/skill
 
 ## Invariants
 
-- Contents gitignored; only AGENT.md / README.md / .gitkeep tracked.
+- Contents are gitignored EXCEPT the skeletons (AGENT.md / README.md / .gitkeep) and the
+  explicit per-file negations in `.gitignore`. This concern has curated negations -- see the
+  rationale beside them; anything not named there is regenerable and is never committed.
 - Versioned PRODUCTS carry `<name>_v<ver>_<TS>_<sha7>/` + manifest.yaml; analysis/plots/dumps keep descriptive names.
