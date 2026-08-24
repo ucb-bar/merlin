@@ -669,6 +669,14 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                                      "subnormal_operand_flush": bool(mesh_dp.subnormal_operand_flush),
                                      "n_values": 0, "n_subnormal": 0,
                                      "n_flushed_to_zero": 0, "n_saturating": 0}
+        if mesh_dp.integer:
+            # Only the FLOAT boundary counts representability; an integer datapath saturates rather than
+            # underflowing and takes the quantizing branch below. Say that, instead of shipping four
+            # zeroes that read as a clean bill of health this check never issued.
+            execute.mesh_operand_repr = {
+                "operand_dtype": mesh_dp.operand_dtype, "applicable": False,
+                "note": "integer datapath: operands are quantized to the mesh's width at the boundary; "
+                        "the subnormal/saturation accounting applies to a float datapath only"}
 
     def kernel_model(symbol: str):
         if symbol in compiled:

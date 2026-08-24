@@ -67,6 +67,25 @@ def load_capsule(capsule_dir: str | Path, *, contract: str | Path | None = None)
     return cap
 
 
+def tier_status(entry) -> str | None:
+    """The status of one tier record, whichever shape it arrived in.
+
+    An OP capsule records a tier as a dict (``{"status": ..., "cycles": ..., "derived_from_rtl": ...}``);
+    a MODEL capsule records it as a bare ``"pass"``/``"fail"`` string. Both aggregators assumed the dict,
+    which was survivable only while model capsules were always `gated` and so never reached them. The
+    first submission to clear the op gate crashed the grade with ``'str' object has no attribute 'get'``
+    -- AFTER every capsule had been simulated, so the run burned its full wall-clock and wrote no score.
+    One normalizer, used by every reader, rather than each one re-deciding what a tier looks like."""
+    if isinstance(entry, dict):
+        return entry.get("status")
+    return entry if isinstance(entry, str) else None
+
+
+def tier_field(entry, field: str):
+    """A named field of a tier record, or ``None`` when the record is the bare-string form."""
+    return entry.get(field) if isinstance(entry, dict) else None
+
+
 def discover_capsules(root, *, labels: set[str] | None = None,
                       contract: str | Path | None = None) -> list[dict]:
     """Load every capsule under ``root`` (recursively), optionally filtered by label.

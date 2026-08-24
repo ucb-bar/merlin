@@ -23,6 +23,8 @@ import os
 from pathlib import Path
 
 from . import capsule_runner as CR
+from .capsule_common import tier_field as _tier_field
+from .capsule_common import tier_status as _tier_status
 from . import coverage_report as CV
 from .oot_runner import CertFailure, build_package, integrity_scan, load_package
 
@@ -162,7 +164,7 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         # over GRADED only: a withheld capsule has no tiers, so counting it in the denominator would
         # make tier_reached never reach the total and silently force highest_tier to None.
         score["tier_reached"][t] = sum(
-            1 for r in graded if r.get("tiers", {}).get(t, {}).get("status") == "pass")
+            1 for r in graded if _tier_status((r.get("tiers") or {}).get(t)) == "pass")
     for t in reversed(tiers):
         if score["tier_reached"][t] == len(graded) and len(graded) > 0:
             score["highest_tier"] = t
@@ -178,17 +180,26 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     # RTL-ness is DERIVED, never a tier-name literal: each tier record carries `derived_from_rtl`, set
     # from the target's own `cfg.rtl_tiers`, so a target whose RTL tier is L4 (or L2) is described
     # correctly without this code knowing which one it is.
+    # A model capsule records its tier as a bare string, which carries no `derived_from_rtl` flag, so
+    # keying only on the flag counted a whole model that PASSED the RTL tier as cheap-tier-only. Fall
+    # back to the target's own declared rtl_tiers, matched by tier NAME -- still derived (the manifest
+    # says which tiers are RTL for this target), never a literal.
+    from .capsule_runner import _rtl_tiers_of
+    _rtl_names = _rtl_tiers_of(target)
+
+    def _is_rtl_pass(name, rec) -> bool:
+        return _tier_status(rec) == "pass" and bool(_tier_field(rec, "derived_from_rtl")
+                                                    or name in _rtl_names)
+
     _passed = [r for r in graded if r.get("status") == "pass"]
     _rtl_backed = [r for r in _passed
-                   if any(isinstance(t, dict) and t.get("status") == "pass" and t.get("derived_from_rtl")
-                          for t in (r.get("tiers") or {}).values())]
+                   if any(_is_rtl_pass(n, t) for n, t in (r.get("tiers") or {}).items())]
     score["pass_evidence"] = {
         "n_passed": len(_passed),
         "rtl_backed": len(_rtl_backed),
         "cheap_tier_only": len(_passed) - len(_rtl_backed),
-        "rtl_tiers_seen": sorted({t_name for r in graded
-                                  for t_name, t in (r.get("tiers") or {}).items()
-                                  if isinstance(t, dict) and t.get("derived_from_rtl")}),
+        "rtl_tiers_seen": sorted({n for r in graded for n, t in (r.get("tiers") or {}).items()
+                                  if _tier_field(t, "derived_from_rtl") or n in _rtl_names}),
         "note": ("`rtl_backed` counts passes that cleared a tier derived from the target's RTL. When it "
                  "is below `n_passed`, the remainder passed on cheap tiers only and the headline score "
                  "is NOT an RTL result."),
@@ -196,13 +207,13 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
 
     _agg = {"build_s": 0.0, "sim_active_s": 0.0, "oracle_wait_s": 0.0}
     for r in results:
-        l3 = r.get("tiers", {}).get("L3", {})
-        if l3.get("cycles") is not None:
-            score["cycles_diagnostic"][r["capsule"]] = l3["cycles"]
+        _cyc = _tier_field((r.get("tiers") or {}).get("L3"), "cycles")
+        if _cyc is not None:
+            score["cycles_diagnostic"][r["capsule"]] = _cyc
         # active-vs-waiting timing: sum across every tier that actually ran an oracle for this capsule
         cap_tm = {"build_s": 0.0, "sim_active_s": 0.0, "oracle_wait_s": 0.0, "by_tier": {}}
         for t in ("L2", "L3", "L4", "L5"):
-            tm = (r.get("tiers", {}).get(t, {}) or {}).get("timing")
+            tm = _tier_field((r.get("tiers") or {}).get(t), "timing")
             if tm:
                 cap_tm["by_tier"][t] = tm
                 for k in ("build_s", "sim_active_s", "oracle_wait_s"):
@@ -220,8 +231,8 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
             "capsule": r["capsule"], "label": r.get("label"), "status": r["status"],
             "numeric": r.get("numeric", {}).get("status"),
             "trace": r.get("trace_check", {}).get("status"),
-            "tiers": {t: r.get("tiers", {}).get(t, {}).get("status") for t in tiers
-                      if t in r.get("tiers", {})},
+            "tiers": {t: _tier_status((r.get("tiers") or {}).get(t)) for t in tiers
+                      if t in (r.get("tiers") or {})},
         })
 
     # active-vs-waiting rollup: wall is the suite wall-clock (overlapped under parallelism); the sum of
