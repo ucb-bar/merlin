@@ -265,7 +265,11 @@ def _negatives_without_package(res: dict, contract: str) -> dict:
                                            f"{type(exc).__name__}: {exc}"})
             return _negatives_numeric_and_schema(res, contract)
         common = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST", "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
-        empty = {"source": "x", "abi": {"custom_opcode": "0x7b", "funct3": "0x3"},
+        # The ABI rides along from the DECODED trace, never a literal: this negative asserts that a
+        # compute-free trace fails a required-class check, and it must do so for whatever target is
+        # selected. A baked custom_opcode/funct3 here would be one target's encoding asserted as every
+        # target's (and `unknown_funct` below already shows an empty abi is accepted).
+        empty = {"source": "x", "abi": dict(real.get("abi") or {}),
                  "instructions": [{"index": 0, "class": "FENCE"}, {"index": 1, "class": "FENCE"}]}
         cases = [
             ("no_insn_C_compute_proxy", empty, {"instruction_classes": common}, "required class missing"),

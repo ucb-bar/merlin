@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import time
 from pathlib import Path
@@ -44,20 +43,50 @@ FACTS = json.loads((REPO / _TE.rtl_facts_pin / "facts.json").read_text())
 
 
 # ------------------------------------------------------------------------------------- mutators
+_INSN = ".insn r "
+
+
+def _insn_prefix(mlir: str) -> str:
+    """The ``.insn r <opcode>, <funct3>, `` prefix READ from the emitted code, never assumed.
+
+    The pinned facts for several targets carry no ``funct_decode_table``, so there is nothing to
+    derive an opcode from -- and baking one (this file used to carry ``0x7b, 0x3``) makes every
+    mutator below silently a no-op on any target that does not share gemmini's RoCC slot, which
+    reads as "the prescreen accepted the mutation". Taking the encoding from the code under test
+    is exact for whatever target emitted it. Returns "" when the input has no ``.insn`` at all;
+    callers must FAIL CLOSED on that rather than mutate.
+    """
+    for ln in mlir.splitlines():
+        i = ln.find(_INSN)
+        if i < 0:
+            continue
+        fields = [f.strip() for f in ln[i + len(_INSN):].split(",")]
+        if len(fields) >= 3:
+            return f"{_INSN}{fields[0]}, {fields[1]}, "
+    return ""
+
+
 def m_original(mlir: str) -> str:
     return mlir
 
 
 def m_illegal_funct(mlir: str) -> str:
     # COMPUTE_PRELOADED (funct 4) -> funct 99 (outside the RTL legal set {0..25})
-    return re.sub(r"(\.insn r 0x7b, 0x3, )4(,)", r"\g<1>99\g<2>", mlir, count=1)
+    pre = _insn_prefix(mlir)
+    if not pre:
+        raise SystemExit("no `.insn r` in the submission: cannot mutate an encoding that is not there")
+    old, new = f"{pre}4,", f"{pre}99,"
+    return mlir.replace(old, new, 1)
 
 
 def _drop_insn(mlir: str, funct: int) -> str:
-    out = []
-    dropped = False
+    pre = _insn_prefix(mlir)
+    if not pre:
+        raise SystemExit("no `.insn r` in the submission: cannot drop an instruction")
+    needle = f"{pre}{funct},"
+    out, dropped = [], False
     for ln in mlir.splitlines():
-        if not dropped and re.search(rf"\.insn r 0x7b, 0x3, {funct},", ln):
+        if not dropped and needle in ln:
             dropped = True
             continue
         out.append(ln)
@@ -73,11 +102,26 @@ def m_drop_mvout(mlir: str) -> str:
 
 
 def m_swap_compute_operands(mlir: str) -> str:
-    # numerical-only: swap the two operands of the COMPUTE .insn -> structurally valid, wrong math.
-    def repl(mm):
-        return f"{mm.group(1)}{mm.group(3)}, {mm.group(2)}{mm.group(4)}"
-    return re.sub(r"(\.insn r 0x7b, 0x3, 4, x0, \$0, \$1\", \"r,r\" )(%\w+), (%\w+)( :)",
-                  repl, mlir, count=1)
+    """Numerical-only: swap the COMPUTE ``.insn``'s two SSA operands -> valid structure, wrong math.
+
+    Parsed structurally (the operand list is what follows the closing quote of the constraint string
+    and precedes the ` :` type), so it does not depend on the constraint spelling -- a ``"r,r"``-only
+    pattern is exactly the brittleness that has mis-measured conformant backends before.
+    """
+    pre = _insn_prefix(mlir)
+    if not pre:
+        raise SystemExit("no `.insn r` in the submission: cannot swap operands")
+    needle, out, done = f"{pre}4,", [], False
+    for ln in mlir.splitlines():
+        if not done and needle in ln and '"' in ln and " :" in ln:
+            head, _, tail = ln.rpartition('"')
+            operands, sep, rest = tail.partition(" :")
+            names = [n.strip() for n in operands.split(",")]
+            if len(names) == 2 and all(n.startswith("%") for n in names):
+                ln = f'{head}" {names[1]}, {names[0]}{sep}{rest}'
+                done = True
+        out.append(ln)
+    return "\n".join(out) + "\n"
 
 
 MUTATORS = [

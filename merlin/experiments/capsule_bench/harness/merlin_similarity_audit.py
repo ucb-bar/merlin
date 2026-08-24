@@ -74,8 +74,10 @@ def _shared_long_lines(a: str, b: str, minlen: int = 24, k: int = 5) -> list[str
     sb = {ln.strip() for ln in b.splitlines() if len(ln.strip()) >= minlen}
     common = sorted(sa & sb, key=len, reverse=True)
     # drop boilerplate that is legitimately shared (the contract vocabulary)
+    # ``.insn r`` alone is the boilerplate signal -- the opcode that follows is the TARGET's, so
+    # pinning one here made every other target's inline-asm lines read as "distinctive copying".
     boiler = ("artifact_type", "mlir_oot_target_backend", "integrity_exempt", f"{C.TARGET}_kernel",
-              ".insn r 0x7b", "merlin_iface", "command_buffer", "from __future__ import")
+              ".insn r ", "merlin_iface", "command_buffer", "from __future__ import")
     distinctive = [c for c in common if not any(b_ in c for b_ in boiler)]
     return distinctive[:k]
 

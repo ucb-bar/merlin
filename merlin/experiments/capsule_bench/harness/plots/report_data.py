@@ -31,10 +31,13 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from merlin.common.paths import repo_root  # noqa: E402
+import _common as C  # noqa: E402  (the SELECTED target's descriptor; defaults per the harness)
+from merlin.common.paths import repo_root  # noqa: E402  (re-exported for callers of this module)
 
-RUNS = repo_root() / "out" / "runs" / "gemmini" / "capsule-bench" / "merlin_assisted"
-SUITE = "gemmini-capsule-bench"
+# Both ride the descriptor-selected target, never a literal: this module is shared by every target's
+# report, so a baked name here silently renders one target's runs under another target's figures.
+RUNS = C.RUNS / "merlin_assisted"
+SUITE = f"{C.TARGET}-capsule-bench"
 
 # planes where the SUBMISSION's CLI / manifest / packaging is wrong (it never reached the compiler's math)
 CONTRACT_PLANES = {"build", "parse", "interface_to_target", "target_to_command_buffer",
@@ -268,7 +271,7 @@ def _submission(d: Path) -> dict:
     #   monolith   — one catch-all file doing parse, lower, emit and encode together
     #   debris     — abandoned iterations and ad-hoc test scripts left in the frozen submission
     DEBRIS = ("_fixed", "_improved", "_old", "_new", "_v2", "_backup", "test_", "debug_", "scratch")
-    MONO = ("gemmini_opt", "gemmini_backend", "backend", "main")
+    MONO = (f"{C.TARGET}_opt", f"{C.TARGET}_backend", "backend", "main")
     kinds = {"generated": [], "structure": [], "monolith": [], "debris": [], "vendored": []}
     vendored_hashes = _allowed_tool_hashes()
     for f in pys:
@@ -432,7 +435,7 @@ def _canonical_public_set() -> set[str]:
                 continue
             tgts = y.get("targets") or y.get("target")
             tgts = [tgts] if isinstance(tgts, str) else (tgts or [])
-            if not tgts or "gemmini" in tgts:
+            if not tgts or C.TARGET in tgts:
                 names.add(c.name)
     return names
 
