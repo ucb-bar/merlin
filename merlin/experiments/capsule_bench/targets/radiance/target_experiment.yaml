@@ -46,4 +46,11 @@ toolchain:
   sim_via: cyclotron
 
 answer_surfaces:
-  prior_backends: []
+  # Both of these are WORKING radiance compilers sitting in out/artifacts/targets/radiance/, which is
+  # exactly what atlas declares for its own reference package: an agent that reads one is copying the
+  # solution instead of deriving it. The list was empty while both were on disk, so nothing masked
+  # them -- the mask set is DERIVED from this list (sandbox/answer_surfaces.py), so an unlisted
+  # surface is simply not masked. `hand_v0` is the full hand-authored package (backend + dialect +
+  # lowering + derive_facts); `radiance_mlir` is the generated dialect/lowering pair, which answers
+  # the dialect-authoring half of the task on its own.
+  prior_backends: [hand_v0, radiance_mlir]

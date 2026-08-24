@@ -56,8 +56,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.runtime.backends import muon
-from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
+from merlin.runtime.backends.base import (BackendInfo, BackendKind, TargetClass, get_backend,
+                                          register)
 from merlin.runtime.reference import outputs_match, reference_outputs
 from merlin.runtime.commandbuffer import materialize_inputs
 
@@ -67,6 +67,21 @@ HERE = Path(__file__).resolve().parent
 #: subject here — and is what keeps it out of the core, where it would be an overfit.
 TARGET = "radiance"
 BACKEND_NAME = "radiance_simt"
+
+
+def _muon():
+    """The SIMT backend module this package builds on, resolved THROUGH THE REGISTRY.
+
+    It used to be ``from merlin.runtime.backends import muon``. That module was evicted to its own
+    reference package and the import became dead, so plugin discovery caught the ImportError and
+    silently dropped this backend -- ``radiance_simt`` never registered and every test of it skipped
+    rather than failed. There is no importable ``merlin.targets.*`` to point at instead: an evicted
+    backend is reachable only by the registry name its own package registers under, which is exactly
+    the seam ``targetgen/rtl/mlc_bridge.py`` already uses. Resolved lazily (never at import time)
+    because this module is itself loaded DURING backend discovery; a module-level lookup would
+    re-enter the discovery pass that is still loading us.
+    """
+    return get_backend("muon").muon
 
 #: Opcodes this backend can realize honestly today.
 SUPPORTED = ("MATMUL", "COMMIT", "VECTOR_MAP")
@@ -411,7 +426,7 @@ def emit_kernel(cb: dict[str, Any], *, num_warps: int | None = None) -> EmittedK
     if not results:
         raise EmitError("command buffer commits no output; there would be nothing to grade")
 
-    model = muon._model_for(TARGET)
+    model = _muon()._model_for(TARGET)
     # NO FENCE IS EMITTED — a MEASURED decision now, not the missing capability it used to be.
     #
     # These stores ought to be ordered before the warp parks, and the target's own runtime does exactly
@@ -435,9 +450,9 @@ def emit_kernel(cb: dict[str, Any], *, num_warps: int | None = None) -> EmittedK
     # The scaffold already opens with <stdint.h>, so the globals need no include of their own. The
     # manager tail runs on warp 0 after it has waited for every other warp to park, which is the only
     # point in the program where "all the work is done" is true.
-    source = muon.render_simt_runtime(model, num_warps=warps, worker_body="\n".join(body),
-                                      manager_tail=f"{SENTINEL}[0] = 1;",
-                                      globals="\n".join(globals_))
+    source = _muon().render_simt_runtime(model, num_warps=warps, worker_body="\n".join(body),
+                                         manager_tail=f"{SENTINEL}[0] = 1;",
+                                         globals="\n".join(globals_))
     return EmittedKernel(source=source, results=tuple(results), num_warps=warps,
                          warps_declared=declared)
 
@@ -453,7 +468,7 @@ def available() -> bool:
             return False
         if not mlc_bridge.isa_encoding_for(TARGET):
             return False
-        return muon.arc_oracle_available(TARGET)
+        return _muon().arc_oracle_available(TARGET)
     except Exception:  # noqa: BLE001 — an unavailable dependency is an unavailable backend
         return False
 
@@ -464,8 +479,8 @@ def compile_command_buffer(cb: dict[str, Any], workdir: Any, **kw: Any) -> Path:
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
     (work / "kernel.c").write_text(emitted.source, encoding="utf-8")
-    return muon.compile_kernel_forkfree(emitted.source, work, target=TARGET,
-                                        num_warps=emitted.num_warps)
+    return _muon().compile_kernel_forkfree(emitted.source, work, target=TARGET,
+                                           num_warps=emitted.num_warps)
 
 
 def _symbol_address(elf: Path, symbol: str) -> int:
@@ -528,10 +543,10 @@ def _read_back(elf: Path, symbol: str, n_bytes: int, max_cycles: int, timeout: i
     low = address & ~(ARC_READBACK_LINE_BYTES - 1)
     span = (((address - low) + n_bytes + ARC_READBACK_LINE_BYTES - 1)
             // ARC_READBACK_LINE_BYTES * ARC_READBACK_LINE_BYTES)
-    data = muon.run_elf_arc(elf, target=TARGET, base=low, length=span,
-                            max_cycles=max_cycles, timeout=timeout)
+    data = _muon().run_elf_arc(elf, target=TARGET, base=low, length=span,
+                               max_cycles=max_cycles, timeout=timeout)
     if data is None:
-        raise muon.MuonUnavailable("the RTL-arc model went absent mid-run")
+        raise _muon().MuonUnavailable("the RTL-arc model went absent mid-run")
     offset = address - low
     window = data[offset:offset + n_bytes]
     if len(window) != n_bytes:
@@ -542,15 +557,15 @@ def _read_back(elf: Path, symbol: str, n_bytes: int, max_cycles: int, timeout: i
 
 def run_elf(elf: Any, **kw: Any) -> str:
     """Run a device ELF on a console-producing simulator (delegates to the target's runner)."""
-    console, _cycles, _summary = muon.run_elf(elf, simulator=kw.get("simulator", "cyclotron"),
-                                             timeout=kw.get("timeout", 600))
+    console, _cycles, _summary = _muon().run_elf(elf, simulator=kw.get("simulator", "cyclotron"),
+                                                 timeout=kw.get("timeout", 600))
     return console
 
 
 def parse_output(text: str) -> tuple[dict, dict]:
     """Parse the shared console protocol. Present for protocol completeness — the graded path reads
     results back from memory instead, because a console print races across the lanes of a warp."""
-    return muon.parse_output(text, None)
+    return _muon().parse_output(text, None)
 
 
 def run_command_buffer(cb: dict[str, Any], **kw: Any) -> dict[str, Any]:
@@ -562,15 +577,15 @@ def run_command_buffer(cb: dict[str, Any], **kw: Any) -> dict[str, Any]:
     span across buffers whose layout it does not control.
     """
     if not available():
-        raise muon.MuonUnavailable(
+        raise _muon().MuonUnavailable(
             "the SIMT backend needs the stock LLVM tools, the derived ISA encoding fact and the "
             "RTL-arc model (set MERLIN_MLIR_INSTALL / MERLIN_CHIPYARD; build the arc model)")
     own_tmp = kw.get("workdir") is None
     work = Path(tempfile.mkdtemp(prefix="merlin_radiance_")) if own_tmp else Path(kw["workdir"])
     emitted = emit_kernel(cb, num_warps=kw.get("num_warps"))
     (work / "kernel.c").write_text(emitted.source, encoding="utf-8")
-    elf = muon.compile_kernel_forkfree(emitted.source, work, target=TARGET,
-                                       num_warps=emitted.num_warps)
+    elf = _muon().compile_kernel_forkfree(emitted.source, work, target=TARGET,
+                                          num_warps=emitted.num_warps)
 
     cycles = int(kw.get("max_cycles") or ARC_MAX_CYCLES)
     timeout = int(kw.get("timeout") or 900)

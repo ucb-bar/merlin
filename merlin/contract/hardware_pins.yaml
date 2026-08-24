@@ -120,7 +120,7 @@ pins:
       the scratchpad capacity (MU_SMEM_SIZE_BYTES) and the source of the boot/spawn conventions the
       emitted scaffold has to agree with.
     repo_canonical: https://github.com/ucb-bar/radiance-kernels.git
-    commit: "56aad6e1620c452bd131c948f72352dab0754d6e"
+    commit: "399757f6da3b2c75980821b2479e9f1ca732e8ea"
     branch: main
     root_env: MERLIN_RADIANCE_KERNELS
     path: ""
@@ -141,6 +141,12 @@ pins:
       derives IO_BASE_ADDR from it. The capacity comes from the RTL config in `radiance_muon_rtl`; this
       checkout's MU_SMEM_SIZE_BYTES is used only to corroborate it, and a disagreement is refused rather
       than resolved by preference.
+      PIN ADVANCED 56aad6e1620c -> 399757f6da3b after the checkout moved on. Verified by CONTENT before
+      moving it, which is the only thing that licenses the move: all four `requires_paths` are
+      BYTE-IDENTICAL across the range (`git diff 56aad6e..399757f -- <the four>` is empty) and 56aad6e is
+      an ancestor of 399757f, so the derivation reads exactly the bytes it read at the old pin. The commit
+      changed; what this pin is FOR did not. A drift whose sources actually DIFFER is regenerated, never
+      re-pinned.
 
   muon_arc_model:
     description: >-
@@ -151,7 +157,7 @@ pins:
     repo_observed_note: >-
       No upstream is known for this repository; the personal remote above is its only recorded home.
       Written down rather than left implicit, so nobody reproducing this looks for one that does not exist.
-    commit: "0c64b766e731f64b2cf3d1e69bdeccd83947b68c"
+    commit: "a13439e91d0855db11f313a9df29e077c35811a0"
     branch: feature/discover-datapaths
     root_env: MERLIN_MLC_DIR
     path: ""
@@ -172,6 +178,13 @@ pins:
       `provenance.verify("muon_arc_model", checkout=mlc_bridge.mlc_dir())`. Verifying the declared env var
       instead would report drift for a checkout that is present and correct, which is worse than useless:
       it trains people to ignore the check.
+      PIN ADVANCED 0c64b766e731 -> a13439e91d08 after the checkout moved. Unlike the radiance-kernels
+      pin this was NOT a fast-forward -- the branch moved sideways, so the old commit is not an ancestor
+      of the new one and "it only moved forward" licenses nothing here. What licenses it is content:
+      `mlc/backends/cosim_muon.py`, the single SOURCE among the requires_paths, is byte-identical across
+      the two commits and is clean in the working tree. The other two entries are BUILT products whose
+      identity a commit cannot carry at all, which is why the digest requirement above stands regardless
+      of what this field says.
 
   gemmini_rtl:
     description: >-
