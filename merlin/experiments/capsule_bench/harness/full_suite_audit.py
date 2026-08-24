@@ -136,9 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         s = audit_backend(run_id, workers=a.workers, tiers=tiers, timeout=a.timeout)
         if s is not None:
             scores[run_id] = s
-            print(f"   {run_id}: passed={s['n_passed']}/{s['n_capsules']} "
-                  f"public={s.get('public_passed')} hidden={s.get('hidden_passed')} "
-                  f"tier={s.get('highest_tier')} wall={s['_audit_wall_s']}s "
+            print(f"   {run_id}: {s.get('headline')} wall={s['_audit_wall_s']}s "
                   f"speedup={s.get('timing_rollup', {}).get('parallel_speedup')}")
 
     # per-capsule status/cycles per backend
@@ -151,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
         out["backends"][rid] = {
             "language": s.get("_lang"), "passed": f"{s['n_passed']}/{s['n_capsules']}",
             "public_passed": s.get("public_passed"), "hidden_passed": s.get("hidden_passed"),
+            # the qualified form, so a reader of this artifact cannot quote the fraction alone
+            "headline": s.get("headline"), "pass_evidence": s.get("pass_evidence"),
             "highest_tier": s.get("highest_tier"), "audit_wall_s": s.get("_audit_wall_s"),
             "timing_rollup": s.get("timing_rollup"),
             "first_failure_planes": s.get("first_failure_planes"),
@@ -186,14 +186,20 @@ def _write_md(out: dict, scores: dict) -> None:
           f"{out['workers']} parallel workers. Cycle counts are **L3 verilator (cycle-accurate RTL)**. "
           "Backends were built against the 4-capsule pilot only — failures on unimplemented classes "
           "(conv, attention) are expected and reported honestly, not hidden.", ""]
-    md += ["## Headline", "", "| backend | lang | passed (all) | public | hidden | tier | "
+    # `rtl-backed` sits beside the counts on purpose: a table with `public` and `tier` in separate
+    # columns still lets the eye read "20/20" and stop, and the tier column reports the tier EVERY
+    # capsule cleared -- which says nothing about how many cleared the RTL one above it.
+    md += ["## Headline", "", "| backend | lang | passed (all) | public | hidden | tier | rtl-backed | "
            "audit wall(s) | sim_active(s) | oracle_wait(s) | speedup |",
-           "|---|---|---|---|---|---|---|---|---|---|"]
+           "|---|---|---|---|---|---|---|---|---|---|---|"]
     for rid in rids:
         b = out["backends"][rid]
         tr = b.get("timing_rollup") or {}
+        _ev = b.get("pass_evidence") or {}
+        _rtl = ("n/a" if _ev.get("rtl_backed") is None
+                else f"{_ev['rtl_backed']}/{_ev.get('n_passed', '?')}")
         md.append(f"| {rid} | {b['language']} | {b['passed']} | {b['public_passed']} | "
-                  f"{b['hidden_passed']} | {b['highest_tier']} | {b['audit_wall_s']} | "
+                  f"{b['hidden_passed']} | {b['highest_tier']} | {_rtl} | {b['audit_wall_s']} | "
                   f"{tr.get('sim_active_s')} | {tr.get('oracle_wait_s')} | {tr.get('parallel_speedup')} |")
     md += ["", "## Coverage by workload class", "",
            "| class | n | " + " | ".join(rids) + " |",

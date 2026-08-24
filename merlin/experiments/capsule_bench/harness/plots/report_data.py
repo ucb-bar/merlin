@@ -477,6 +477,11 @@ def collect() -> dict:
             "n_hidden": len(hid), "hidden_passed": sum(1 for r in hid if r["status"] == "pass"),
             "pass_bar_tiers": bar,
             "tier_reached": score.get("tier_reached") or {},
+            # What the passes REST ON, carried beside the counts rather than left to be reconstructed
+            # from tier_reached by whoever reads this. `headline` is the quotable form built once in
+            # capsule_grade._headline; `pass_evidence` is the rtl_backed/cheap_tier_only split behind it.
+            "headline": score.get("headline"),
+            "pass_evidence": score.get("pass_evidence") or {},
             "public": pub, "hidden": hid,
             "first_fail_tier": {r["capsule"]: _first_fail_tier(r["tiers"]) for r in pub},
             "kinds": {k: sum(1 for r in pub if r["kind"] == k) for k in {r["kind"] for r in pub}},

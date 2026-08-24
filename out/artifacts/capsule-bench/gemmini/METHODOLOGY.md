@@ -138,6 +138,18 @@ arrives **between** rounds: the agent gets one autonomous attempt, then sees pas
 3 parallel arms is infeasible (CPU storm), and spike already gives the functional pass/fail signal. L3 is
 the bounded checkpoint instead (§5).
 
+> **HOW A SCORE FROM THIS BENCH MAY BE QUOTED.** The round gate is L2; the CORPUS is not — 143 of the 183
+> public capsules declare `required_oracle_tiers` including L3. Those are two different bars, and a run
+> graded at the first one produces a headline indistinguishable from a run graded at the second. It has
+> already happened: one submission travelled as **20/20** while its Verilator tier passed **1 of 20**,
+> beside three siblings whose 20/20 was RTL-clean on all 20.
+>
+> So: **a bare fraction is not a result from this bench.** `capsule_grade` builds the quotable form once,
+> as `score["headline"]` — the fraction plus the tier every capsule cleared plus the `rtl_backed` /
+> `cheap_tier_only` split from `pass_evidence`. Quote `headline`; parse `public_passed`. Nothing may be
+> described as **RTL-certified** unless a `full_suite_audit` L3 pass stands behind it and the report says
+> which run that was.
+
 ### What feedback the agent receives (redacted verdict, all arms)
 Per capsule: `status`, which `tier` failed, `failure_plane` (e.g. `command_buffer` vs `numeric_golden`),
 `failure_category`, **`mismatch_count`**, `trace_violations`, and a human **`failure_detail`** hint (e.g.

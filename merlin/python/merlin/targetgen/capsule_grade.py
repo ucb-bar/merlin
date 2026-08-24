@@ -65,7 +65,7 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         "integrity_exempt": None, "integrity_status": None,
         "labels_graded": sorted(labels),
         "functional_pass": 0, "n_capsules": 0, "n_passed": 0,
-        "public_passed": None, "hidden_passed": None,
+        "public_passed": None, "hidden_passed": None, "headline": None,
         "per_capsule": [], "tier_reached": {}, "first_failure_planes": {},
         "numeric_all_exact": None, "trace_all_pass": None,
         "cycles_diagnostic": {}, "highest_tier": None,
@@ -205,6 +205,14 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
                  "is NOT an RTL result."),
     }
 
+    # THE CITABLE FORM OF THE SCORE. `public_passed` stays a bare "20/20" because consumers parse it as
+    # a fraction (agg_agentic_results._frac does int(total)), and a bare fraction is exactly what gets
+    # quoted -- one gemmini submission travelled as "20/20" while its Verilator tier passed 1 of 20,
+    # indistinguishable in the headline from three siblings that were RTL-clean on all 20. So the
+    # qualification is built ONCE, here, next to the evidence that justifies it, and the renderers print
+    # THIS rather than reassembling a bare fraction each time. Quote `headline`; parse `public_passed`.
+    score["headline"] = _headline(score)
+
     _agg = {"build_s": 0.0, "sim_active_s": 0.0, "oracle_wait_s": 0.0}
     for r in results:
         _cyc = _tier_field((r.get("tiers") or {}).get("L3"), "cycles")
@@ -278,6 +286,29 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     return score
 
 
+def _headline(score: dict) -> str:
+    """The score as it may be QUOTED: never a bare fraction, always with what the passes rest on.
+
+    Reports the RTL-backed share whenever it is below the pass count, and the highest tier every graded
+    capsule reached (``None`` -> stated as such rather than omitted, because an omitted tier reads as a
+    high one). A reader who copies this string cannot accidentally drop the qualification, which is the
+    whole failure this exists to prevent.
+    """
+    ev = score.get("pass_evidence") or {}
+    n_passed, n_caps = score.get("n_passed", 0), score.get("n_capsules", 0)
+    head = score.get("public_passed") or f"{n_passed}/{n_caps}"
+    tier = score.get("highest_tier")
+    bits = [f"tier {tier}" if tier else "no tier cleared by every capsule"]
+    rtl, cheap = ev.get("rtl_backed"), ev.get("cheap_tier_only")
+    if rtl is not None and cheap:
+        bits.append(f"RTL-backed {rtl}/{n_passed} \u2014 the other {cheap} passed on cheap tiers only")
+    elif rtl is not None and n_passed:
+        bits.append(f"RTL-backed {rtl}/{n_passed}")
+    if score.get("hidden_passed"):
+        bits.append(f"hidden {score['hidden_passed']}")
+    return f"{head} ({'; '.join(bits)})"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Grade a backend package through capsule_bench_v0")
     ap.add_argument("--package", required=True)
@@ -321,9 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(score, indent=2), encoding="utf-8")
     print(f"wrote {out}: functional_pass={score['functional_pass']} "
-          f"passed={score['n_passed']}/{score['n_capsules']} "
-          f"public={score.get('public_passed')} hidden={score.get('hidden_passed')} "
-          f"highest_tier={score.get('highest_tier')} integrity={score.get('integrity_status')}")
+          f"score={score.get('headline')} integrity={score.get('integrity_status')}")
     return 0 if score["functional_pass"] == 1 else 1
 
 
