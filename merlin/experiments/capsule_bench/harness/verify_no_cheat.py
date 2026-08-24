@@ -61,8 +61,29 @@ ANSWER_PATTERNS = {
 # not leaking them. (Scanning a cheat-detector for the word "reference_outputs" is a false positive.)
 SCAN_EXEMPT = {"verify_no_cheat.py", "transcript_tooling_audit.py", "preflight.py"}
 
+#: Patterns meaningful over the GRANTED tree as well as the shipped kit -- naming the holdout STORE is
+#: an answer surface no matter which file does it and no matter what the sandbox masks, because the
+#: name itself tells the agent a holdout set exists and what it is called.
+#:
+#: The other three are deliberately NOT here, and the reason is the distinction this check turns on.
+#: ``reference_outputs`` / ``golden.yaml`` are the benchmark's own PUBLIC SPECIFICATION: the contract
+#: documents and the task statement have to name the grading relation and the capsule format or the
+#: task is unstatable. ``merlin_runtime_import`` fires on granted compiler code that imports the
+#: oracle -- but ``merlin/python/merlin/runtime/{reference,simulator}.py`` are themselves masked
+#: answer surfaces, so inside the box that import is a dead pointer, not a route. Applying those
+#: three to the granted tree produced 26 findings, every one of them spec or a dead pointer; a gate
+#: that cries wolf 26 times is a gate somebody turns off.
+_GRANTED_SCAN_PATTERNS = ("hidden_capsule_ref",)
+
 
 def _shipped_files() -> list[Path]:
+    """The tooling SHIPPED INTO a bundle: the starter kit, the RTL generators, each arm's prompt.
+
+    This is the population where every answer pattern is a leak, because these files are copied into
+    the agent's workspace and run there. It is NOT the population the agent can READ -- that is the
+    much larger granted tree, which :func:`_granted_readable_files` derives from the bundles' own
+    ``allowed`` lists and which check 1 now also scans (see ``_GRANTED_SCAN_PATTERNS``).
+    """
     fs = []
     for d in (KIT_DIR, RTL_DIR):
         if d.is_dir():
@@ -72,12 +93,21 @@ def _shipped_files() -> list[Path]:
 
 
 def check_answer_content() -> tuple[bool, list[str]]:
+    bad = _scan_for_patterns(_shipped_files(), ANSWER_PATTERNS)
+    # The granted tree is everything the agent can open. Only the store-naming pattern applies here --
+    # see _GRANTED_SCAN_PATTERNS for why the other three would be noise rather than signal.
+    bad += _scan_for_patterns(_granted_readable_files(),
+                              {k: v for k, v in ANSWER_PATTERNS.items() if k in _GRANTED_SCAN_PATTERNS})
+    return (not bad), bad
+
+
+def _scan_for_patterns(files, patterns) -> list[str]:
     bad = []
-    for f in _shipped_files():
+    for f in files:
         if f.name in SCAN_EXEMPT:
             continue
         txt = f.read_text(errors="ignore")
-        for name, rx in ANSWER_PATTERNS.items():
+        for name, rx in patterns.items():
             for m in rx.finditer(txt):
                 # a generator's _TMPL or a prompt may legitimately say "never import merlin.runtime";
                 # only flag if it's NOT in a negation/instruction context.
@@ -85,7 +115,7 @@ def check_answer_content() -> tuple[bool, list[str]]:
                 if any(w in ctx for w in ("not ", "never", "no ", "deny", "forbid", "without", "cheat")):
                     continue
                 bad.append(f"{f.relative_to(REPO)} :: {name} :: …{txt[m.start():m.start()+50]!r}")
-    return (not bad), bad
+    return bad
 
 
 # ---- checks 2-4: bundle allow/deny separation -----------------------------------------------------
