@@ -58,13 +58,16 @@ This returns a portfolio, so Merlin does not prematurely converge on one abstrac
    keeping candidate lineage.
 3. **MAP-Elites** archive once evolutionary search works.
 
-## Per-session use
+## What each subsystem searches over
 
-- **Session 1 (TargetGen):** grid over op/type variants; evolutionary over `dialect_plan` + verifier
+(The three subsystems and the artifacts named here are defined in
+`docs/design/parallel_workstreams.md`.)
+
+- **TargetGen:** grid over op/type variants; evolutionary over `dialect_plan` + verifier
   conditions; MAP-Elites over dialect families (micro-op / command / resident-object / hw-managed).
-- **Session 2 (Kernel mining):** grid over policy thresholds; evolutionary over `policy_rule`;
+- **Kernel mining:** grid over policy thresholds; evolutionary over `policy_rule`;
   MAP-Elites over optimization families (packing / vectorization / accumulator / dispatch-grouping).
-- **Session 3 (DSE):** grid over HW/interface parameter sweeps; evolutionary over
+- **Design-pressure / DSE:** grid over HW/interface parameter sweeps; evolutionary over
   `interface_candidate`; MAP-Elites over HW/SW contract families.
 
 ## Modules

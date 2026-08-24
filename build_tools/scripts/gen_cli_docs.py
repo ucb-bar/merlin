@@ -22,7 +22,9 @@ HEADER = (
     "# CLI reference\n\n"
     "_Generated from `pyproject.toml [project.scripts]` by "
     "`build_tools/scripts/gen_cli_docs.py` — do not edit by hand; run the generator._\n\n"
-    "These console-scripts are installed by `pip install -e merlin/python`. Each is a thin "
+    "These console-scripts are installed with the package (`uv sync --all-extras`, or "
+    "`pip install -e .` from the repo root -- `merlin/python` is the package DIR, not an "
+    "installable project). Each is a thin "
     "entrypoint over a module in the `merlin` package (no separate `tools/` layer). Run any with `--help`.\n\n"
     "| Command | Backing module |\n|---|---|\n"
 )

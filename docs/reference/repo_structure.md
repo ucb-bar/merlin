@@ -15,14 +15,18 @@ XLA-style: a small root, almost everything under the internal `merlin/` tree.
 ```
 build_tools/   build/dev tooling + measurement/analysis/sweep runners + repo linters (scripts/, cmake, docker)
 docs/          this documentation (incl. generated cli.md = CLI surface)
+examples/      runnable end-to-end examples; examples/triton/run.sh needs no toolchain
 third_party/   hard build/test deps only (no analysis repos)
-out/           the SINGLE generated-output root (gitignored)   ── see CLAUDE.md "Generated-output convention"
+out/           the SINGLE generated-output root (gitignored except the skeletons + curated
+               .gitignore negations named below)   ── see CLAUDE.md "Generated-output convention"
   runs/        aet experiment runs
   artifacts/   all other generated products; artifacts/targets/ = codegen packages
                (replaces retired generated_targets/; tracked baselines/champions via .gitignore negations)
   build/       generated build outputs + buildable OOT codegen repos (build/generated/)
 merlin/
   python/      Python + xDSL compiler plane + workstream packages (the active compiler)
+  contract/    the benchmark contract: capsule corpus, interface grammar, hardware pins
+  prompts/     prompt templates loaded at runtime (product data, bundled into the wheel)
   runtime/     target-independent C runtime substrate (c/ + baremetal/ + abi/)
   targets/     reference targets (toy_npu, saturn, gemmini)
   schemas/     cross-workstream coordination contract

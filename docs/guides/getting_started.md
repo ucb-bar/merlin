@@ -33,7 +33,7 @@ a fabricated pass). So set up only the pieces for the workflow you actually run;
 ## 1. Base install — needed for every workflow
 
 The project uses [uv](https://docs.astral.sh/uv/) (the in-repo `.venv` is Python 3.13; the package
-supports 3.10+). A plain clone is enough — **no `--recursive`**; the multi-GB `third_party/`
+requires 3.11+, per `requires-python` in `pyproject.toml`). A plain clone is enough — **no `--recursive`**; the multi-GB `third_party/`
 submodules are opt-in per task (§5).
 
 ```bash
