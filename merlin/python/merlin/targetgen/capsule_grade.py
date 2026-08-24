@@ -235,13 +235,29 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         if r.get("failure"):
             p = r["failure"]["plane"]
             score["first_failure_planes"][p] = score["first_failure_planes"].get(p, 0) + 1
-        score["per_capsule"].append({
+        entry = {
             "capsule": r["capsule"], "label": r.get("label"), "status": r["status"],
             "numeric": r.get("numeric", {}).get("status"),
             "trace": r.get("trace_check", {}).get("status"),
             "tiers": {t: _tier_status((r.get("tiers") or {}).get(t)) for t in tiers
                       if t in (r.get("tiers") or {})},
-        })
+        }
+        # CARRY THE QUALIFIERS WITH THE VERDICT. The roll-up kept six fields, and every one of them
+        # flatters: status, tier, numeric, trace. Everything that says what the pass RESTS ON --
+        # which contract obligations someone else discharged on the backend's behalf, how many of the
+        # model's own layers reached the accelerator versus fell back to the host, which declared tiers
+        # never ran -- stayed behind in the per-capsule result, several directories down. The score file
+        # is the artifact that gets cited, so a qualifier that does not travel with it does not exist.
+        if r.get("kind") == "model":
+            entry["kind"] = "model"
+            me = r.get("mesh_execution") or {}
+            if me:
+                entry["mesh_execution"] = {k: me.get(k) for k in (
+                    "matmul_layers_on_mesh", "matmul_layers_host_fallback", "status") if k in me}
+            for k in ("contract_obligations", "tiers_unexercised"):
+                if r.get(k):
+                    entry[k] = r[k]
+        score["per_capsule"].append(entry)
 
     # active-vs-waiting rollup: wall is the suite wall-clock (overlapped under parallelism); the sum of
     # active_sim across capsules can exceed wall (that ratio IS the parallel speedup). oracle_wait_s is

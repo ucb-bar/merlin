@@ -4,7 +4,9 @@ Measured on the first attempt to carry the gemmini whole-model certification ove
 
 * the operand-store capacity was read from an RTL fact keyed on one memory ROLE, and the second target
   declares no memories at all in its facts, so the obligation returned ``holds: None`` -- silently
-  undecidable while looking exactly like a target with no problem;
+  undecidable while looking exactly like a target with no problem. It is STILL undecidable there (mlc
+  discovers the SRAMs and refuses to classify them, and the one candidate store that could be summed
+  was refuted by measurement), but it now says so instead of going quiet;
 * the obligation was evaluated inside the RoCC/oot-cert path only, and the second target routes its
   layers through the PROGRAM ORACLE, so nothing was evaluated on its path at all;
 * the element width came from scraping every digit out of the dtype token, and ``fp8_e4m3`` has three
@@ -30,12 +32,18 @@ def test_element_width_comes_from_the_format_not_the_spelling(tok, bits):
 
 
 def test_a_float_format_token_does_not_concatenate_its_digit_runs():
-    """The specific failure: 'fp8_e4m3' -> 843 bits -> a 65536-byte store priced at 624 elements."""
-    assert _dtype_bits("fp8_e4m3") != 843
-    v = capacity_fit("atlas", 1, 4608, 512, "fp8_e4m3", 32)
-    if v["capacity_elems"] is None:
-        pytest.skip("atlas operand store not derivable in this checkout")
-    assert v["capacity_elems"] == 65536, v
+    """The specific failure: 'fp8_e4m3' scraped to 843 bits, pricing a 65536-byte store at 624 elements
+    instead of 65536. Asserted on the arithmetic, since which store a float target declares is a
+    separate question (see the module docstring)."""
+    assert _dtype_bits("fp8_e4m3") == 8
+    from merlin.compile_cli import _operand_store_capacity_elems
+    import merlin.compile_cli as cc
+    real = cc._operand_store_bytes
+    try:
+        cc._operand_store_bytes = lambda _t: 65536
+        assert _operand_store_capacity_elems("any", "fp8_e4m3") == 65536
+    finally:
+        cc._operand_store_bytes = real
 
 
 def test_a_sub_byte_format_is_counted_in_bits():
@@ -47,28 +55,37 @@ def test_a_sub_byte_format_is_counted_in_bits():
     assert _operand_store_capacity_elems("gemmini", "fp4_e2m1") == b * 2
 
 
-@pytest.mark.parametrize("target,expect_bytes", [("gemmini", 262144), ("atlas", 65536)])
-def test_both_targets_derive_an_operand_store(target, expect_bytes):
-    """Two independent sources agree on each: gemmini via mlc's discovered memory MAP, atlas via the
-    descriptor-declared bank-group prefix summed over mlc's discovered memory LIST (and corroborated by
-    its shipped ISA model's num_m_registers x mrf_depth x mrf_width)."""
-    b = _operand_store_bytes(target)
+def test_the_mapped_target_still_derives_its_store():
+    """gemmini's comes from mlc's discovered memory MAP — no label declared anywhere."""
+    b = _operand_store_bytes("gemmini")
     if b is None:
-        pytest.skip(f"{target} RTL discovery unavailable in this checkout")
-    assert b == expect_bytes
+        pytest.skip("gemmini RTL discovery unavailable in this checkout")
+    assert b == 262144
 
 
-def test_the_biggest_memory_is_not_the_operand_store():
-    """Why the label is declared rather than guessed: this device's INSTRUCTION memory (32768 x 4 B =
-    128 KiB) is larger than its operand register file (64 KiB), so 'take the largest SRAM' picks IMEM
-    and prices the obligation at twice the real capacity."""
+def test_an_unclassified_target_reports_undecidable_rather_than_guessing():
+    """atlas: mlc discovers every SRAM and then refuses to classify them. Two candidate stores exist and
+    the tempting one is REFUTED BY MEASUREMENT — a 32x256x256 layer needs 73728 elements against the
+    64 KiB matrix register file and runs unblocked on the arc cosim anyway. So nothing is declared, and
+    the obligation reports itself undecidable. This test exists to keep someone from 'fixing' that by
+    declaring the register file, which would split layers the device handles and, on this bf16
+    accumulator, change the reduction order while doing it."""
+    from merlin.targetgen.rtl import mlc_bridge as mb
+    if not mb.discovered_memories("atlas"):
+        pytest.skip("atlas RTL discovery unavailable in this checkout")
+    assert _operand_store_bytes("atlas") is None
+    assert capacity_fit("atlas", 32, 256, 256, "fp8_e4m3", 32)["holds"] is None
+
+
+def test_the_biggest_memory_is_never_taken_as_the_operand_store():
+    """Why a store is declared or left unknown, never inferred: this device's INSTRUCTION memory
+    (32768 x 4 B = 128 KiB) is its largest SRAM, so 'take the biggest' would answer with IMEM."""
     from merlin.targetgen.rtl import mlc_bridge as mb
     mems = mb.discovered_memories("atlas")
     if not mems:
         pytest.skip("atlas RTL discovery unavailable in this checkout")
     biggest = max(int(m["depth"]) * int(m["row_bytes"]) for m in mems)
-    store = _operand_store_bytes("atlas")
-    assert store is not None and biggest > store, (biggest, store)
+    assert biggest == 131072 and _operand_store_bytes("atlas") != biggest
 
 
 def test_an_undeclared_capacity_stays_unknown_on_every_target():
@@ -102,27 +119,29 @@ def _probe(monkeypatch, target, dtype, m, k, n):
     return obs
 
 
-@pytest.mark.parametrize("target,dtype,path", [
-    ("gemmini", "int8", "oot_cert"),
-    ("atlas", "fp8_e4m3", "program_oracle"),
+@pytest.mark.parametrize("target,dtype,path,holds", [
+    ("gemmini", "int8", "oot_cert", True),          # declares a store: the obligation has a verdict
+    ("atlas", "fp8_e4m3", "program_oracle", None),  # declares none: evaluated, and the answer is unknown
 ])
-def test_the_obligation_is_evaluated_on_every_mesh_path(monkeypatch, target, dtype, path):
+def test_the_obligation_is_evaluated_on_every_mesh_path(monkeypatch, target, dtype, path, holds):
     """It used to live inside the RoCC/oot-cert path. A self-hosted-ISA target leaves through the
     program oracle, so its layers had no obligation evaluated at all -- an oversized layer there
-    declined as 'the oracle returned nothing', which is the failure mode this check exists to end."""
+    declined as 'the oracle returned nothing', which is the failure mode this check exists to end.
+
+    What is asserted is that the obligation is EVALUATED on both paths. Whether it can answer is a
+    separate matter: an undecidable ``holds: None`` is a legitimate outcome, and getting one recorded
+    is the whole difference from the silence this replaced.
+    """
     obs = _probe(monkeypatch, target, dtype, 32, 64, 64)
     if obs.get("path") is None:
         pytest.skip(f"{target} has no reachable mesh path in this checkout")
     assert obs["path"] == path
-    assert obs["capacity_fit_check"]["holds"] is True, obs["capacity_fit_check"]
+    assert "capacity_fit_check" in obs, "no obligation was evaluated on this endpoint"
+    assert obs["capacity_fit_check"]["holds"] is holds, obs["capacity_fit_check"]
 
 
-@pytest.mark.parametrize("target,dtype,exact,accum", [
-    ("gemmini", "int8", True, "i32"),
-    ("atlas", "fp8_e4m3", False, "bf16"),
-])
-def test_an_oversized_layer_is_blocked_and_charged_on_both_targets(monkeypatch, target, dtype,
-                                                                   exact, accum):
+@pytest.mark.parametrize("target,dtype,exact,accum", [("gemmini", "int8", True, "i32")])
+def test_an_oversized_layer_is_blocked_and_charged(monkeypatch, target, dtype, exact, accum):
     obs = _probe(monkeypatch, target, dtype, 32, 512, 512)
     cf = obs.get("capacity_fit")
     if cf is None:
@@ -146,5 +165,17 @@ def test_an_undecidable_obligation_says_so_instead_of_going_quiet(monkeypatch):
     if obs.get("path") is None:
         pytest.skip("no reachable mesh path in this checkout")
     assert "contract_violation" not in obs, "an undecidable obligation must not be charged to anyone"
+    assert obs["capacity_fit_unevaluable"]["holds"] is None
+    assert "UNATTRIBUTED" in obs["capacity_fit_unevaluable"]["detail"]
+
+
+def test_the_unclassified_target_declines_with_the_reason_named(monkeypatch):
+    """End to end on the real target: no declared store, so a decline must carry
+    ``capacity_fit_unevaluable`` -- naming the missing fact -- and must charge nobody."""
+    obs = _probe(monkeypatch, "atlas", "fp8_e4m3", 32, 512, 512)
+    if obs.get("path") is None:
+        pytest.skip("atlas has no reachable mesh path in this checkout")
+    assert "blocked" not in obs, "nothing to block against: no capacity is declared"
+    assert "contract_violation" not in obs
     assert obs["capacity_fit_unevaluable"]["holds"] is None
     assert "UNATTRIBUTED" in obs["capacity_fit_unevaluable"]["detail"]

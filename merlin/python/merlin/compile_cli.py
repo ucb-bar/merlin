@@ -606,15 +606,27 @@ def capacity_fit(target: str, m: int, k: int, n: int, operand_dtype: str | None,
     ``vector::_M_range_check: __n (which is 16384) >= this->size() (which is 16384)``. Compute tiling
     without a residency loop above it.
 
-    Returns ``{"holds", "required_elems", "capacity_elems", "obligation"}``; ``holds`` is None when the
-    target declares no capacity (unknown, never assumed true).
+    WHAT ``required_elems`` MODELS, stated because it is a modelling choice and not a property of the
+    layer: it is the working set of a lowering that keeps the contraction's OPERANDS RESIDENT -- the
+    whole weight tile plus the activation tile at once. A backend that instead STREAMS, DMA-ing one
+    mesh tile at a time from DRAM, has a resident set of a few tiles no matter how large the layer, and
+    satisfies the obligation at every extent. Both kinds are under grade here: one target's generated
+    backend addresses all kt*nt weight tiles as simultaneously resident, and the other's issues a DMA
+    per 32x32 tile. So a ``holds: False`` predicts a decline only for the resident kind, which is why
+    the backend is CHARGED only when the dispatch actually declines -- the predicate alone never
+    convicts. Measured: an extent this predicate called too large for one target's 64 KiB register file
+    ran unblocked on its cosim and returned output, because that backend streams.
+
+    Returns ``{"holds", "required_elems", "capacity_elems", "obligation", "assumes"}``; ``holds`` is
+    None when the target declares no capacity (unknown, never assumed true).
     """
     cap = _operand_store_capacity_elems(target, operand_dtype)
     need = int(k) * int(n) + int(m) * int(k)      # weight tile + activation tile, both resident
     return {"obligation": "capacity_fit",
             "holds": None if not cap else bool(need <= cap),
             "required_elems": need, "capacity_elems": cap,
-            "tile_dim": int(tile_dim or 0)}
+            "tile_dim": int(tile_dim or 0),
+            "assumes": "operands resident (a streaming lowering needs far less and always fits)"}
 
 
 def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str | None,
