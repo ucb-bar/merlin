@@ -254,16 +254,45 @@ def scan_workload_constants(root: Path) -> list[str]:
     return hits
 
 
+#: A run whose submission is kept for the RECORD but is no longer a launch candidate carries this file.
+#: It must state a reason, so retiring a submission is a documented decision and never a quiet deletion.
+_SUPERSEDED_MARKER = "SUPERSEDED.txt"
+
+
+def _superseded_reason(sub: Path) -> str | None:
+    """The reason this submission is retired, or ``None`` if it is still a live candidate."""
+    for where in (sub / _SUPERSEDED_MARKER, sub.parent / _SUPERSEDED_MARKER):
+        if where.is_file():
+            reason = where.read_text(encoding="utf-8", errors="replace").strip()
+            return reason or f"{where.name} present but states no reason"
+    return None
+
+
 def check_workload_constants() -> tuple[bool, list[str]]:
-    """Scan any materialized submission trees for workload-specific constants (empty == nothing to
-    scan yet, which passes — the substantive scan runs post-freeze in grade_agent_run)."""
+    """Scan LIVE submission trees for workload-specific constants (empty == nothing to scan yet, which
+    passes — the substantive scan runs post-freeze in grade_agent_run).
+
+    Scoped to submissions that are still launch candidates. This used to scan every submission the runs
+    tree had ever held, which conflates two different questions: "did a past run cheat?" (a finding, and
+    a permanent one) with "is it safe to launch now?" (this gate). Once any historical run tripped it the
+    gate was red forever, and the only ways out were to delete evidence or to bypass the gate — both
+    worse than the problem. A retired submission is excluded by a ``SUPERSEDED.txt`` that STATES WHY, so
+    the finding stays on disk and in the report instead of disappearing.
+    """
     probs: list[str] = []
+    notes: list[str] = []
     runs = C.RUNS          # out/runs/<target>/capsule-bench — the retired <experiment>/runs never
     if runs.is_dir():      # existed here, so this scan silently covered nothing and always "passed"
         for sub in sorted(runs.glob("*/*/submission")):
-            for h in scan_workload_constants(sub):
-                probs.append(f"{sub.parent.name}: {h}")
-    return (not probs), probs
+            reason = _superseded_reason(sub)
+            hits = scan_workload_constants(sub)
+            if reason is not None:
+                if hits:   # still reported, just not blocking -- the record keeps the finding visible
+                    notes.append(f"{sub.parent.name}: SUPERSEDED ({reason}) — {len(hits)} finding(s) "
+                                 f"retained for the record, not blocking")
+                continue
+            probs.extend(f"{sub.parent.name}: {h}" for h in hits)
+    return (not probs), probs + notes
 
 
 

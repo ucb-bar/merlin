@@ -28,6 +28,45 @@ def capsule_corpus_roots() -> list[Path]:
     return [r for r in roots if r.is_dir()]
 
 
+def graded_capsule_roots(target: str) -> list[Path]:
+    """The roots that make up ``target``'s GRADED suite, or the canonical corpus if it has no descriptor.
+
+    A target's suite is not one directory: the capsules are split by kind into sibling categories
+    (``isa`` / ``layers`` / ``model`` / ``model_slices``), and different targets keep those siblings in
+    different places -- gemmini's sit at the corpus root, atlas's under ``atlas/``. Passing their common
+    parent is NOT the fix, because that parent holds every target's corpus at once; see the warning in
+    :func:`merlin.targetgen.capsule_common.discover_capsules`.
+
+    Measured consequence of getting this wrong: grading the gemmini package against
+    ``merlin/contract/capsules`` pulled in 173 capsules from seven targets, marked 89 of them "outside
+    this target's declared capability", and reported ``1/84`` -- a number that reads like a catastrophic
+    regression and means nothing. The target's own suite is 36.
+
+    ``TargetExperiment.graded_roots()`` is the resolution the A/B launchers and ``readiness_check.py``
+    already use; this exposes it to library callers that have only a target NAME. Honours
+    ``MERLIN_TARGET_EXPERIMENT`` (the same override ``capsule_bench/harness/_common.py`` reads) so a
+    target whose descriptor lives out of tree still resolves.
+    """
+    import os
+
+    from merlin.common.paths import repo_root
+    override = os.environ.get("MERLIN_TARGET_EXPERIMENT", "").strip()
+    desc = Path(override) if override else (
+        repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
+        / "target_experiment.yaml")
+    if not desc.is_file():
+        return capsule_corpus_roots()[:1]                 # no descriptor: the canonical corpus, unsplit
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+        te = load_target_experiment(desc)
+        if str(getattr(te, "target", "")) != target:      # an override naming a DIFFERENT target
+            return capsule_corpus_roots()[:1]
+        roots = [r for r in te.graded_roots() if r.is_dir()]
+    except Exception:                                     # noqa: BLE001 — unreadable descriptor
+        return capsule_corpus_roots()[:1]
+    return roots or capsule_corpus_roots()[:1]
+
+
 def find_capsule(name: str) -> Path | None:
     """Locate a capsule directory by name across the corpus roots (first match wins)."""
     for root in capsule_corpus_roots():

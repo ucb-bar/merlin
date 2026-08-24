@@ -9,9 +9,11 @@ Run this OUTSIDE the agent sandbox (it needs spike/verilator + the hidden capsul
 still only invoked via its 4 CLI entrypoints (subprocess) — never imported.
 
 Usage:
-    python -m merlin.targetgen.capsule_grade --package <pkg_dir> \
-        --capsules merlin/contract/capsules --runs-root <out> [--hidden] [--labels public,dev] \
-        [--score <out.json>] [--no-oracle]
+    python -m merlin.targetgen.capsule_grade --package <pkg_dir> --target <target> \
+        --runs-root <out> [--hidden] [--labels public,dev] [--score <out.json>] [--no-oracle]
+
+Do NOT pass ``--capsules merlin/contract/capsules``: that is the common parent of every target's corpus
+and grades the package against all of them. Omit the flag and the target's own graded roots are used.
 """
 from __future__ import annotations
 
@@ -166,6 +168,32 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
             score["highest_tier"] = t
             break
 
+    # WHAT KIND OF EVIDENCE EACH PASS RESTS ON, stated next to the count rather than left to be
+    # reconstructed from `tier_reached`. A capsule can report `pass` while a hardware tier beside it
+    # reports `fail` -- when that tier was advisory at the time -- and the flattering half is the half
+    # that gets quoted. Measured: one gemmini submission shipped as "20/20" whose Verilator tier passed
+    # exactly 1 of 20, next to three sibling submissions whose 20/20 was RTL-clean on all 20. Both are
+    # "20/20"; they are not the same result, and nothing in the headline said so.
+    #
+    # RTL-ness is DERIVED, never a tier-name literal: each tier record carries `derived_from_rtl`, set
+    # from the target's own `cfg.rtl_tiers`, so a target whose RTL tier is L4 (or L2) is described
+    # correctly without this code knowing which one it is.
+    _passed = [r for r in graded if r.get("status") == "pass"]
+    _rtl_backed = [r for r in _passed
+                   if any(isinstance(t, dict) and t.get("status") == "pass" and t.get("derived_from_rtl")
+                          for t in (r.get("tiers") or {}).values())]
+    score["pass_evidence"] = {
+        "n_passed": len(_passed),
+        "rtl_backed": len(_rtl_backed),
+        "cheap_tier_only": len(_passed) - len(_rtl_backed),
+        "rtl_tiers_seen": sorted({t_name for r in graded
+                                  for t_name, t in (r.get("tiers") or {}).items()
+                                  if isinstance(t, dict) and t.get("derived_from_rtl")}),
+        "note": ("`rtl_backed` counts passes that cleared a tier derived from the target's RTL. When it "
+                 "is below `n_passed`, the remainder passed on cheap tiers only and the headline score "
+                 "is NOT an RTL result."),
+    }
+
     _agg = {"build_s": 0.0, "sim_active_s": 0.0, "oracle_wait_s": 0.0}
     for r in results:
         l3 = r.get("tiers", {}).get("L3", {})
@@ -243,7 +271,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Grade a backend package through capsule_bench_v0")
     ap.add_argument("--package", required=True)
     ap.add_argument("--capsules", default=None,
-                    help="capsules ROOT (a single directory, not a list); default = the contract's own")
+                    help="capsules ROOT override (a single directory); default = the TARGET's own graded "
+                         "roots. Prefer the default: a hand-passed root is how a grade ends up scoring "
+                         "one target's package against another target's corpus.")
     ap.add_argument("--runs-root", required=True)
     ap.add_argument("--target", required=True, help="target being graded (its config/oracle are derived)")
     ap.add_argument("--contract", default=None)
@@ -261,7 +291,14 @@ def main(argv: list[str] | None = None) -> int:
     # defaults also came from string literals; the repo's rule is to ask paths for its roots.
     from merlin.common.paths import data_path
     a.contract = Path(a.contract).resolve() if a.contract else data_path("contract")
-    a.capsules = Path(a.capsules).resolve() if a.capsules else (data_path("contract") / "capsules")
+    # DEFAULT TO THE TARGET'S OWN GRADED ROOTS, not the corpus parent. The parent holds every target's
+    # capsules at once, so it graded the gemmini package against 173 capsules from seven targets, called
+    # 89 of them "outside this target's declared capability", and printed `1/84`. That number reads as a
+    # catastrophic regression and means nothing; the target's real suite is 36. The usage line in this
+    # module's own docstring recommended that parent, while discover_capsules two modules over documents
+    # why it is wrong -- so following the documentation produced the bad grade.
+    from .corpora import graded_capsule_roots
+    a.capsules = [Path(a.capsules).resolve()] if a.capsules else graded_capsule_roots(a.target)
 
     labels = {"hidden"} if a.hidden else set(a.labels.split(","))
     adapters = {} if a.no_oracle else None
