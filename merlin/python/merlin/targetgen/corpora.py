@@ -28,6 +28,34 @@ def capsule_corpus_roots() -> list[Path]:
     return [r for r in roots if r.is_dir()]
 
 
+def descriptor_path(target: str) -> Path:
+    """Where ``target``'s experiment descriptor lives — the per-target convention path, or whatever
+    ``MERLIN_TARGET_EXPERIMENT`` overrides it to. Lives here because this module is the one allowed to
+    know the ``experiments/`` layout; callers elsewhere took the convention path directly and silently
+    ignored the override, so an out-of-tree descriptor resolved for some readers and not others."""
+    import os
+
+    from merlin.common.paths import repo_root
+    override = os.environ.get("MERLIN_TARGET_EXPERIMENT", "").strip()
+    if override:
+        return Path(override)
+    return (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
+            / "target_experiment.yaml")
+
+
+def experiment_for(target: str):
+    """``target``'s parsed descriptor, or None when it ships none / names a different target."""
+    desc = descriptor_path(target)
+    if not desc.is_file():
+        return None
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+        te = load_target_experiment(desc)
+    except Exception:                                     # noqa: BLE001 — unreadable descriptor
+        return None
+    return te if str(getattr(te, "target", "")) == target else None
+
+
 def graded_capsule_roots(target: str, *, hidden: bool = False) -> list[Path]:
     """The roots that make up ``target``'s GRADED suite, or the canonical corpus if it has no descriptor.
 
@@ -52,13 +80,7 @@ def graded_capsule_roots(target: str, *, hidden: bool = False) -> list[Path]:
     ``MERLIN_TARGET_EXPERIMENT`` (the same override ``capsule_bench/harness/_common.py`` reads) so a
     target whose descriptor lives out of tree still resolves.
     """
-    import os
-
-    from merlin.common.paths import repo_root
-    override = os.environ.get("MERLIN_TARGET_EXPERIMENT", "").strip()
-    desc = Path(override) if override else (
-        repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
-        / "target_experiment.yaml")
+    desc = descriptor_path(target)
     if not desc.is_file():
         return [] if hidden else capsule_corpus_roots()[:1]   # no descriptor: canonical corpus, unsplit
     try:

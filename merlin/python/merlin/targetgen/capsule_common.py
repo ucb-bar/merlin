@@ -114,9 +114,16 @@ def discover_capsules(root, *, labels: set[str] | None = None,
 
 def make_run_paths(runs_root: str | Path, run_id: str, *, suite: str, target: str,
                    dtype: str, benchmark: str) -> RunPaths:
-    """Build the per-run RunPaths (via RunSpec) and create its directory scaffold."""
+    """Build the per-run RunPaths (via RunSpec) and create its directory scaffold.
+
+    ``runs_root`` is RESOLVED to an absolute path first. The grader runs capsules on threads and some of
+    them enter a context that chdirs the process into another tree (mlc resolves its arc artifacts
+    relative to its own root), so a run path kept relative is resolved against whatever directory the
+    process happens to be in when a sibling thread writes. Measured: a suite died on
+    ``FileNotFoundError: .../capsule_result.json`` after the capsule had already run, with the directory
+    plainly present on disk — it had been created in one cwd and written from another."""
     spec = RunSpec(project="merlin", suite=suite, method=run_id, seed=0, run_id=run_id,
-                   project_root=Path(runs_root), tracking_mode="local", target=target,
+                   project_root=Path(runs_root).resolve(), tracking_mode="local", target=target,
                    dtype=dtype, benchmark=benchmark)
     paths = RunPaths.from_spec(spec, run_id)
     for dd in (paths.run_path, paths.logs, paths.artifacts_dir, paths.generated, paths.contracts):

@@ -8,6 +8,15 @@ target: atlas
 
 rtl:
   via: mlc            # ISA/memory/DIM DERIVED from atlas's RTL via mlc discovery
+  # Which discovered memory group is the on-chip OPERAND store, as the prefix its banks share. Only the
+  # LABEL is declared — the capacity is still read out of the RTL (mlc discovers 32 `mreg/banks_N_ext`
+  # banks of depth 64 x 32 B = 65536 B). mlc discovers all 39 of this device's SRAMs and then refuses to
+  # classify them ("no memory map discovered"), so without this the `capacity_fit` contract obligation
+  # was undecidable on atlas while being enforced on gemmini. It is not inferable: the instruction memory
+  # (32768 x 4 B = 128 KiB) is LARGER than the operand file, so "the biggest SRAM" picks IMEM.
+  # Corroborated independently by the shipped ISA model, which declares the same 64 KiB matrix register
+  # file as num_m_registers(64) x mrf_depth(32) x mrf_width(32 B) — "32x32 FP8 per register".
+  operand_store: mreg/
 
 # The shared hardware spec given to ALL arms — a constant input (a correct backend needs the target's
 # defined ISA), NOT Merlin assistance. Repo-root-relative bundle-convention path strings: `experiments/...`

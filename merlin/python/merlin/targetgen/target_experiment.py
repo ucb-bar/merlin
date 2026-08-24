@@ -57,6 +57,15 @@ class TargetExperiment:
     # failed to render. Kept as a declaration, deliberately NOT as an override: see
     # :func:`declared_vs_resolved_contract`.
     declared_contract: str | None = None
+    # OPTIONAL: which DISCOVERED memory group is this device's on-chip OPERAND store, given as the name
+    # prefix its sibling banks share. Only the LABEL is declared; the capacity itself stays RTL-derived
+    # (mlc's discovered depth x row_bytes, summed over the group). This exists because mlc classifies a
+    # memory map for some targets and refuses for others -- it discovers atlas's 39 SRAMs and then raises
+    # "no memory map discovered", so the ``capacity_fit`` contract obligation was undecidable there while
+    # being enforced on gemmini. Guessing the operand store from the bank list is not safe (this device's
+    # instruction memory is LARGER than its operand file, so "the biggest one" picks IMEM), so the
+    # descriptor names it and the bytes are still read out of the RTL.
+    operand_store: str | None = None
 
     def declared_contract_path(self) -> Path | None:
         """The declared contract as an absolute path, if the descriptor names one that exists."""
@@ -156,6 +165,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         sim_via=str((doc.get("toolchain") or {}).get("sim_via", "")),
         rtl_via=str((doc.get("rtl") or {}).get("via", "mlc")),
         rtl_repo=(lambda r: str(r) if r else None)((doc.get("rtl") or {}).get("repo")),
+        operand_store=(lambda v: str(v) if v else None)((doc.get("rtl") or {}).get("operand_store")),
         prior_backends=tuple((doc.get("answer_surfaces") or {}).get("prior_backends") or ()),
         path=p,
         preflight_smoke_program=(lambda s: str(s) if s else None)(

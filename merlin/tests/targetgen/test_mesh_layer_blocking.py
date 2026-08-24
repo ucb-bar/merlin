@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.compile_cli import _capacity_fit_tile, _dtype_bytes, _scratchpad_capacity_elems
+from merlin.compile_cli import _capacity_fit_tile, _operand_store_capacity_elems
 
 # (M, K, N, does the whole layer fit on chip?) — measured against the real gemmini oracle: every shape
 # marked True ran, every shape marked False was declined by the mesh.
@@ -18,7 +18,7 @@ _OBSERVED = [(1, 16, 16, True), (1, 16, 512, True), (1, 512, 16, True),
 
 
 def _cap():
-    cap = _scratchpad_capacity_elems("gemmini", _dtype_bytes("int8"))
+    cap = _operand_store_capacity_elems("gemmini", "int8")
     if not cap:
         pytest.skip("gemmini RTL facts declare no scratchpad capacity")
     return cap

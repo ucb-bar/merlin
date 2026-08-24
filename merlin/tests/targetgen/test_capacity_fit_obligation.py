@@ -41,12 +41,22 @@ def test_an_undeclared_capacity_is_unknown_not_satisfied():
 
 
 def test_a_violation_is_charged_to_the_backend_on_the_graded_path():
+    """The check is evaluated by the mesh ENTRY POINT, not inside one endpoint's handler.
+
+    It used to live in the RoCC/oot-cert path, which is where it was first needed. That left every
+    other endpoint unchecked -- a self-hosted-ISA target routes its layers through the program oracle,
+    so its oversized layers declined with no obligation evaluated at all. Asserting it here (rather
+    than inside the handler) is the point: one evaluation covering all three paths. Behavioural
+    coverage of both endpoints lives in ``test_capacity_fit_second_target.py``.
+    """
     import inspect
 
     from merlin import compile_cli
-    src = inspect.getsource(compile_cli._matmul_via_oot_cert)
-    assert "capacity_fit_check" in src, "the obligation must be evaluated before the oracle runs"
+    src = inspect.getsource(compile_cli.run_matmul_on_mesh)
+    assert "capacity_fit_check" in src, "the obligation must be evaluated before any mesh path runs"
     assert "contract_violation" in src, "a decline that the obligation predicted must be named as one"
+    assert "capacity_fit_check" not in inspect.getsource(compile_cli._matmul_via_oot_cert), (
+        "one evaluation at the entry point, not a per-endpoint copy that other endpoints lack")
 
 
 def test_runtime_discharge_is_attributed_not_hidden():
