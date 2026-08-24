@@ -163,6 +163,90 @@ def _decode_preload(tspec: dict | None) -> list[float] | None:
     return [float(x) for x in np.asarray(arr).reshape(-1)]
 
 
+def _rowcol(shape) -> tuple[int, int] | None:
+    """Any rank as (rows, cols), row-major: rank 1 -> (1, n); rank 2 -> as-is; rank N -> (prod(dims[:-1]),
+    dims[-1]). The kernel ABI takes a flat row-major buffer, so folding the leading axes is exact -- the
+    same convention the batched-contraction branch already relies on."""
+    if not shape:
+        return None
+    dims = [int(x) for x in shape]
+    if len(dims) == 1:
+        return 1, dims[0]
+    lead = 1
+    for x in dims[:-1]:
+        lead *= x
+    return lead, dims[-1]
+
+
+def bind_from_declarations(cb: dict, env0: dict, vals) -> tuple[list[TensorArg], list[TensorArg]] | None:
+    """Bind a command's operands from what the command buffer DECLARES -- tensor roles and shapes --
+    instead of from a branch keyed on its opcode.
+
+    Why this exists. Every other rule in ``args_from_cb`` is selected by opcode name, so the set of
+    gradeable capsules is the set of opcodes someone has already written a branch for. That is a closed
+    vocabulary masquerading as a general grader, and it has mis-measured conformant backends twice:
+    ``RP10_gemv_batched_fp16_pt`` spelled a rank-3 contraction ``MATMUL`` and was reported as "no operand
+    rule for the command shape ['MATMUL']" for two full A/B runs, while the identical computation spelled
+    ``MATMUL_BATCHED`` graded fine. The sibling target's oracle has NO opcode literals at all --
+    ``merlin/targets/gemmini`` resolves operands through the cb's own declarations -- which is the proof
+    that the general form works and this one had simply drifted.
+
+    The consequence is not just a missing capsule. A semantic family with no branch here cannot be graded
+    at all, so authoring (say) a reduction or movement capsule would score a correct submission as a
+    failure. That makes the harness, not the compiler, the thing that decides which families the benchmark
+    can measure.
+
+    What it derives, and what it refuses. The output is the operand naming a tensor the cb declares with
+    ``role: output``; its shape must be DECLARED, because inferring a produced shape from the inputs is
+    exactly the per-op knowledge this function exists to avoid. Inputs are the command's remaining
+    operands that name declared tensors, ordered weight-role first to match the ``kernel_abi`` order
+    ``[weight] ++ [lhs] ++ [output]``. Anything it cannot bind from declarations alone, it declines --
+    it never guesses a shape, so a wrong answer cannot be manufactured here.
+    """
+    tensors = cb.get("tensors") or {}
+    cmds = [c for c in (cb.get("commands") or []) if (c.get("operands") or {})]
+    if not tensors or not cmds:
+        return None
+
+    def _role(nm: str) -> str:
+        return str((tensors.get(nm) or {}).get("role", "")).lower()
+
+    # The producing command: the last one naming an output-role tensor. "Last" because a multi-command
+    # buffer commits its result at the end; a single-command buffer is the same rule with one candidate.
+    producer, out_nm = None, None
+    for cmd in cmds:
+        for v in (cmd.get("operands") or {}).values():
+            if v in tensors and _role(v) == "output":
+                producer, out_nm = cmd, v
+    if producer is None:
+        return None
+
+    orc = _rowcol((tensors.get(out_nm) or {}).get("shape"))
+    if orc is None:                       # produced shape not declared -> would require op knowledge
+        return None
+
+    # Inputs: every other operand of the producing command that names a declared, materialized tensor.
+    # Deduplicated (an operand may appear under two keys) while preserving declaration order.
+    seen, ins = set(), []
+    for _k, v in (producer.get("operands") or {}).items():
+        if v == out_nm or v in seen or v not in tensors or v not in env0:
+            continue
+        seen.add(v)
+        ins.append(v)
+    if not ins:
+        return None
+    ins.sort(key=lambda nm: 0 if _role(nm) == "weight" else 1)   # stable: weight-first, else as declared
+
+    in_args = []
+    for nm in ins:
+        rc = _rowcol((tensors.get(nm) or {}).get("shape"))
+        v = vals(nm, env0.get(nm))
+        if rc is None or v is None or len(v) != rc[0] * rc[1]:
+            return None
+        in_args.append(TensorArg(nm, rc[0], rc[1], [float(x) for x in v], "f32"))
+    return in_args, [TensorArg(out_nm, orc[0], orc[1], [0.0] * (orc[0] * orc[1]), "f32")]
+
+
 def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     """Derive the kernel's ``(in_args, out_args)`` from a capsule's COMMAND BUFFER, in the generic
     ``kernel_abi`` order ``[weight] ++ [lhs] ++ [output]``. Input VALUES come from the SAME deterministic
@@ -525,7 +609,10 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                 return in_args, out_args
         return None
     if len(matmuls) != 1:
-        return None
+        # No contraction rule applies. Before declaring the capsule ungradeable, try binding from the cb's
+        # OWN declarations -- roles and shapes -- so a command this file has no branch for is still graded
+        # when it says enough about itself. See :func:`bind_from_declarations`.
+        return bind_from_declarations(cb, env0, lambda nm, t: _vals(canon0, nm, t) if t is not None else None)
     mdst, lhs, rhs = matmuls[0]
     rhs = resident_source.get(rhs, rhs)
     out = next((cout for cout, csrc in commits if csrc == mdst), mdst)
