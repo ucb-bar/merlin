@@ -284,3 +284,19 @@ tmp
 # blobs were surfacing as untracked. Make it global, like every other rule in this section.
 **/*.safetensors
 **/*.safetensors.manifest.json
+
+# targetgen_evals grading rubrics + the declared holdout. A `golden/` DIRECTORY is an answer surface
+# (check_no_answer_keys.py matches it as a path component, as it already did for `hidden/`); the two
+# files the method's own prompt hands it are re-included below as declared stimulus.
+/merlin/experiments/targetgen_evals/datasets/*/golden/**
+!/merlin/experiments/targetgen_evals/datasets/*/golden/expected_contract.yaml
+!/merlin/experiments/targetgen_evals/datasets/*/golden/expected_dialect_features.yaml
+
+# dse-guidance case study: the generated tables are re-included by the negation above, but these two
+# subtrees are session working material (slide triage, positioning memos, one-off validation scripts)
+# that no tool produces or reads -- they are not artifacts.
+/out/artifacts/dse-guidance/case_study/final_presentation_pass/**
+/out/artifacts/dse-guidance/case_study/manual_validation/**
+# Point-in-time agent run notes: addressed to the operator, and they link private vaults / accounts.
+/out/artifacts/perf-bench/*/AUTONOMOUS_RUN_SUMMARY.md
+/out/artifacts/capsule-bench/*/AGENTIC_AB_RUNBOOK.md

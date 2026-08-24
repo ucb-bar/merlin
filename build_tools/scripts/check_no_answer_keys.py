@@ -19,12 +19,28 @@ import subprocess
 import sys
 
 
+#: Filenames that live under a ``golden/`` dir but are handed to the graded method BY ITS OWN PROMPT
+#: (``targetgen_evals/methods/*/prompt.md`` tells it to read both "for reference"), so they are
+#: stimulus, not answers -- and keeping them tracked is what makes the benchmark reproducible from a
+#: clone. Matched by NAME under any dataset, so a second target's dataset behaves identically; the
+#: right long-term fix is to move declared inputs out of ``golden/`` so the directory name means one
+#: thing. This set may only SHRINK. Anything else in a ``golden/`` dir stays an answer key.
+_DECLARED_METHOD_INPUTS = frozenset({"expected_contract.yaml", "expected_dialect_features.yaml"})
+#: The dataset layout those inputs belong to -- every path component must be present, so the
+#: exemption cannot leak to a ``golden/`` dir somewhere else in the tree.
+_EVAL_DATASET_PARTS = ("targetgen_evals", "datasets", "golden")
+
+
 def _is_answer_key(path: str) -> bool:
     """True iff ``path`` is a benchmark answer surface that must not be tracked."""
     parts = path.split("/")
     name = parts[-1]
+    if name in _DECLARED_METHOD_INPUTS and all(seg in parts for seg in _EVAL_DATASET_PARTS):
+        return False
     if "hidden" in parts:                       # the entire held-out subtree, any depth
         return True
+    if "golden" in parts:                       # a golden/ DIRECTORY is an answer surface too -- the
+        return True                             # filename rules below miss `golden/expected_*.yaml`
     if name.endswith(".hidden.yaml"):           # the holdout SPECIFICATION sidecar (op+dtype+shape)
         return True
     if name == "golden.yaml":                   # graded golden output
