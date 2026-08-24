@@ -9,6 +9,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .capsule_common import tier_status as _tier_status
+
 # BASELINE axes: always reported, so a 0 is an explicit "not covered" row rather than an absent one.
 # These are gemmini's (the ISA the bench was written against) and they are NOT the vocabulary — a
 # self-hosted-ISA or command-buffer target names its classes and modes differently, and a corpus may
@@ -154,7 +156,7 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
             v = _el.is_eligible(desc, cap_map, undetermined=undetermined)
             eligible, family, reason = v.eligible, v.family, v.reason
             is_undetermined = v.undetermined
-        accelerated = any(r.get("tiers", {}).get(t, {}).get("status") == "pass" for t in sim_tiers)
+        accelerated = any(_tier_status((r.get("tiers") or {}).get(t)) == "pass" for t in sim_tiers)
         must = bool(sem.get("must_accelerate"))
         axis = sem.get("generalization_axis", "unspecified")
         if eligible:
@@ -323,10 +325,14 @@ def aggregate(results: list[dict], capsules: list[dict] | None = None,
         by_kind[r.get("kind", "unknown")] = by_kind.get(r.get("kind", "unknown"), 0) + 1
         by_label[r.get("label", "unknown")] = by_label.get(r.get("label", "unknown"), 0) + 1
         for t in TIERS:
-            tr = r.get("tiers", {}).get(t)
-            if tr and tr.get("status") == "pass":
+            # via the shared normalizer: a model capsule records a tier as a bare status STRING, an op
+            # capsule as a dict. Reading `.get("status")` off the string raised, and only ever on a
+            # submission good enough to un-gate its model capsules.
+            tr = (r.get("tiers") or {}).get(t)
+            st = _tier_status(tr)
+            if st == "pass":
                 by_tier_reached[t] += 1
-            if t in heavy_tiers and tr and tr.get("status") == "unavailable":
+            if t in heavy_tiers and st == "unavailable":
                 unavail[_TIER_SIM[t]] += 1
         # modes from the capsule's declared expected.modes (only count when the capsule passed)
         cap = cap_by_name.get(r["capsule"])

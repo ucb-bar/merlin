@@ -359,6 +359,9 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                 # which layers the mesh could not take, by extent -- a count alone cannot distinguish
                 # "one shape the backend refuses" from "four unrelated capability gaps".
                 "fallback_shapes": res.get("mesh_fallback_shapes", []),
+                # WHICH layers fell back and why -- a count alone fails the must_accelerate gate without
+                # saying what to fix.
+                "host_fallback_detail": res.get("mesh_fallbacks"),
                 # How much of what we handed the mesh its operand format could hold. After the boundary's
                 # power-of-two scaling this should read zero flushed and zero saturating; a nonzero count
                 # is the run telling you the numbers below it are worth less than they look.

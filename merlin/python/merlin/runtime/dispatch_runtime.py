@@ -685,6 +685,7 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         execute.last_mesh_routed = len(mesh_routes)
         execute.mesh_ran = 0
         execute.mesh_fell_back = 0
+        execute.mesh_fallbacks = []                  # per-layer reasons, so a fallback is actionable
         # What the mesh's operand format could actually hold, summed over every layer it ran. The whole
         # atlas divergence was invisible because nobody counted this; a run now reports it. The SAME dict
         # rides this call's counters, so a reader takes it off the run's own result rather than off a
@@ -693,7 +694,16 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                                      "subnormal_operand_flush": bool(mesh_dp.subnormal_operand_flush),
                                      "n_values": 0, "n_subnormal": 0,
                                      "n_flushed_to_zero": 0, "n_saturating": 0}
+        if mesh_dp.integer:
+            # Only the FLOAT boundary counts representability; an integer datapath saturates rather than
+            # underflowing and takes the quantizing branch below. Say that, instead of shipping four
+            # zeroes that read as a clean bill of health this check never issued.
+            execute.mesh_operand_repr = {
+                "operand_dtype": mesh_dp.operand_dtype, "applicable": False,
+                "note": "integer datapath: operands are quantized to the mesh's width at the boundary; "
+                        "the subnormal/saturation accounting applies to a float datapath only"}
         mesh_counts["mesh_operand_repr"] = execute.mesh_operand_repr
+        mesh_counts["mesh_fallbacks"] = execute.mesh_fallbacks
 
     def kernel_model(symbol: str):
         if symbol in compiled:
@@ -844,9 +854,27 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     if tap is not None:
                         tap(op, [env[id(op.results[0])]])
                     return
-            # a layer the mesh could not run at this shape (non-2D or cert-fail) falls back to the host
-            # kernel and is NOT counted as mesh-executed — honest accounting, never a faked mesh result.
+            # A layer the mesh could not run falls back to the host kernel and is NOT counted as
+            # mesh-executed — honest accounting, never a faked mesh result. RECORD WHY. The count alone
+            # says a model failed its must_accelerate gate without saying what to fix, which is the same
+            # fail-silent shape the rest of this path was built to avoid: a whole-model capsule reported
+            # "35 of 37 layers on the mesh, 2 fell back" and nothing anywhere named the two.
             mesh_counts["mesh_fell_back"] = mesh_counts.get("mesh_fell_back", 0) + 1
+            if not (a.ndim == 2 and b.ndim == 2):
+                _why = f"operand rank {a.ndim}x{b.ndim}: the mesh boundary takes a 2-D contraction"
+            elif a.shape[1] != b.shape[0]:
+                _why = f"inner dims disagree: {a.shape} @ {b.shape}"
+            else:
+                # The oracle path records its OWN refusal reason; prefer it, because "unsynthesizable at
+                # this shape" and "the oracle was unreachable" are different repairs.
+                try:
+                    from ..compile_cli import _MESH_REFUSAL
+                    _recorded = _MESH_REFUSAL.get("reason")
+                except Exception:                                  # noqa: BLE001
+                    _recorded = None
+                _why = _recorded or (f"mesh oracle returned no result for {a.shape} @ {b.shape} "
+                                     f"({op_dt}/{acc_dt}) — unsynthesizable at this shape, or the oracle "
+                                     f"was unreachable")
             # Name the layer, not just the count. "4 layers fell back" gives a reader nothing to act on;
             # the SHAPES say whether the cause is one extent the backend cannot take or four different
             # ones, which is the difference between a tiling gap and a capability gap.
@@ -855,11 +883,6 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     else f"rank{a.ndim}x{b.ndim}"
             except Exception:                                  # noqa: BLE001
                 _sh = "unknown"
-            try:
-                from ..compile_cli import _MESH_REFUSAL
-                _why = _MESH_REFUSAL.get("reason") or "no reason recorded"
-            except Exception:                                  # noqa: BLE001
-                _why = "no reason recorded"
             mesh_counts.setdefault("mesh_fallback_shapes", []).append(f"{_sh}: {_why}")
             # Capture the operands HERE, where they are already numpy arrays, rather than deeper in the
             # oracle path where an earlier attempt to do it failed silently. A layer that fails inside a
@@ -874,6 +897,10 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 mesh_counts.setdefault("mesh_fallback_operands", []).append(
                     f"capture failed: {type(_oe).__name__}: {_oe}")
             execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
+            _fb = getattr(execute, "mesh_fallbacks", None)
+            if _fb is not None and len(_fb) < 64:            # bounded: a diagnostic, not a full trace
+                _fb.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
+                            "reason": _why})
         model = kernel_model(symbol)
         args, keep = [], []
         for o in op.operands:

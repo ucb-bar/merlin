@@ -139,3 +139,43 @@ def test_the_model_not_its_tiles_decides_the_model_capsules_tier():
     # the tile record is reported BESIDE the verdict, as the separate and weaker evidence it is
     assert clean["tile_evidence"]["n_tiles"] == 15
     assert "shapes run, not that this model ran" in clean["tile_evidence"]["note"]
+
+
+# --- the two tier RECORD SHAPES that coexist in one results list ------------------------------------
+
+def test_both_tier_record_shapes_normalize():
+    """An op capsule records a tier as a dict; a model capsule records it as a bare string. Every
+    aggregation assumed the dict, which only ever crashed on a submission good enough to un-gate its
+    model capsules -- after all 36 capsules had been simulated, so the run cost its full wall-clock and
+    wrote no score at all."""
+    from merlin.targetgen.capsule_common import tier_field, tier_status
+    assert tier_status({"status": "pass", "cycles": 318}) == "pass"     # op capsule
+    assert tier_status("pass") == "pass"                                # model capsule
+    assert tier_status(None) is None and tier_status(123) is None
+    assert tier_field({"status": "pass", "cycles": 318}, "cycles") == 318
+    assert tier_field("pass", "cycles") is None, "the string form carries no fields, and must not raise"
+
+
+def test_the_aggregators_do_not_reimplement_the_shape_check():
+    """Both aggregators read the same results list, so both had the same bug. One normalizer."""
+    import inspect
+
+    from merlin.targetgen import capsule_grade, coverage_report
+    for mod in (capsule_grade, coverage_report):
+        src = inspect.getsource(mod)
+        assert "tier_status" in src, f"{mod.__name__} must use the shared normalizer"
+        assert '.get(t, {}).get("status")' not in src, \
+            f"{mod.__name__} still assumes a tier is a dict"
+
+
+def test_a_mixed_results_list_aggregates_without_raising():
+    """The exact shape that crashed: op capsules with dict tiers beside a model capsule with strings."""
+    from merlin.targetgen import coverage_report as CV
+    results = [
+        {"capsule": "A0", "kind": "isa", "label": "public", "status": "pass",
+         "tiers": {"L2": {"status": "pass"}, "L3": {"status": "pass", "derived_from_rtl": True}}},
+        {"capsule": "M0", "kind": "model", "label": "public", "status": "pass",
+         "tiers": {"L3": "pass"}},                                      # <- the bare-string form
+    ]
+    cov = CV.aggregate(results, capsules=[], traces={}, target="gemmini")
+    assert cov["by_tier_reached"]["L3"] == 2, "both shapes must be counted"

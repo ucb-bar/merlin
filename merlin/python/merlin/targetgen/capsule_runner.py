@@ -1071,7 +1071,18 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                   else next((x for x in reversed(_declared) if x not in ("L0", "L1")), "L2"))
     numeric: dict
     if st == "verified" and gate:
-        numeric = {"status": "pass", "engine": engine, "gate": out.get("verify")}
+        # A whole-model PASS must carry the strength of the gate that produced it. The numeric gate has a
+        # per-element ceiling for exactly the failure aggregates hide (a single element 1209% wrong at
+        # cos 0.9999986), but its cosine-only tier bypasses that ceiling for regression outputs which
+        # cannot meet it. Both are legitimate passes; they are not the same claim, and "certified" read
+        # off `status` alone erases the difference.
+        _guarded = _v.get("per_element_guarded")
+        numeric = {"status": "pass", "engine": engine, "gate": out.get("verify"),
+                   "gate_tier": _v.get("tier_ok"),
+                   "per_element_guarded": _guarded,
+                   "evidence": ("per-element-guarded" if _guarded else
+                                "AGGREGATE ONLY — the cosine-only tier carried this verdict; no "
+                                "per-element bound was applied")}
         status = "pass"
     elif _quant and st == "run_mismatch" and _cos >= _quant_floor:
         numeric = {"status": "pass", "engine": engine, "gate": _v,
