@@ -12,7 +12,7 @@ built on, keeping everything target-agnostic (no target-name literal, no regex):
   loader, invokes the worker, and ingests ``linalg.mlir`` + ``golden.json`` + ``inputs.json``.
 
 * :class:`SpecRefSource` — a capsule whose numeric contract + spec-derived golden come from a verification
-  **spec** op in ``specir`` (``/scratch2/agustin/mvp-lhwir/spec``). ``specir`` is pure xDSL (no torch) so it
+  **spec** op in ``specir`` (``$SPECIR_ROOT``). ``specir`` is pure xDSL (no torch) so it
   runs in-process. (Scaffolded here; the fp8-matmul spec path already lives in ``generate_corpus`` and is
   folded in as these are unified.)
 
@@ -30,12 +30,21 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from merlin.common.paths import env as _env, repo_root
+
 
 # ------------------------------------------------------------------------------------------------
 # m2m venv resolution (torch lives there, never in the merlin venv)
 # ------------------------------------------------------------------------------------------------
 def _m2m_dir() -> Path:
-    return Path(os.environ.get("MERLIN_M2M_DIR", "/scratch/agustin/projects/model2MLIR"))
+    """The model2MLIR checkout: ``$MERLIN_M2M_DIR``, else a sibling of this repo.
+
+    model2MLIR is an EXTERNAL repo, so the fallback is a CONVENTION (checked out next to merlin),
+    not one machine's home directory -- callers already treat a non-existent path as "not
+    available" and skip, and that behaviour is preserved.
+    """
+    d = _env("MERLIN_M2M_DIR")
+    return Path(d) if d else repo_root().parent / "model2MLIR"
 
 
 def _m2m_python() -> Path:
@@ -898,7 +907,9 @@ def model_gate_satisfied(cap: dict, op_pass_fraction: float) -> bool:
 # Spec source (specir) — in-process; scaffolded (fp8-matmul spec path currently in generate_corpus)
 # ------------------------------------------------------------------------------------------------
 def _specir_root() -> str:
-    return os.environ.get("SPECIR_ROOT", "/scratch2/agustin/mvp-lhwir/spec")
+    """The specir checkout: ``$SPECIR_ROOT``, else a sibling of this repo (same convention as
+    :func:`_m2m_dir` -- external repo, machine-independent fallback, absent means unavailable)."""
+    return _env("SPECIR_ROOT") or str(repo_root().parent / "spec")
 
 
 class SpecProgramUnavailable(RuntimeError):

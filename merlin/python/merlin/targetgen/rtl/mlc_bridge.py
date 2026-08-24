@@ -30,14 +30,18 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-_DEFAULT_MLC = "/scratch2/agustin/mvp-lhwir/modeling"
-
-
 def mlc_dir() -> Path | None:
-    """The mlc package root from ``.env MERLIN_MLC_DIR`` (default the current sibling checkout), or None
-    if it does not contain an ``mlc/`` package."""
+    """The mlc package root from ``.env MERLIN_MLC_DIR``, or None if unset / not an mlc checkout.
+
+    mlc lives outside this repo and has no in-tree fallback. There used to be a hardcoded default
+    pointing at one machine's checkout, which meant every other clone silently resolved a path that
+    does not exist and reported "no mlc" for the wrong reason -- indistinguishable from an unset
+    variable. Callers already handle None by skipping the mlc-derived facts.
+    """
     from ...common.paths import env
-    d = env("MERLIN_MLC_DIR") or _DEFAULT_MLC
+    d = env("MERLIN_MLC_DIR")
+    if not d:
+        return None
     p = Path(d).expanduser()
     return p if (p / "mlc").is_dir() else None
 

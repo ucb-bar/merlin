@@ -15,7 +15,7 @@
 #   riscv64-unknown-elf-gcc -specs=build_tools/firesim/htif-nano.specs \
 #       -T build_tools/firesim/firesim_baremetal.ld ... -o image.elf
 #
-# DIFFERENCE FROM THE IREE-ERA ORIGINAL (/scratch2/agustin/merlin/build_tools/firesim/
+# DIFFERENCE FROM THE IREE-ERA ORIGINAL (the IREE-era merlin checkout's build_tools/firesim/
 # htif-nano.spec): the original ended its *link: rule with `-dT htif.ld%s`, i.e. it pulled the
 # linker script out of GCC's own startfile search path, which only works when htif.ld has been
 # installed into the sysroot's lib/ next to the specs file.  Merlin keeps its linker scripts in

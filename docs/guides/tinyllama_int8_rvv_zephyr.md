@@ -424,8 +424,8 @@ There is one physical FPGA, so **every run must go through the job queue**, neve
 `firesim` invocation:
 
 ```bash
-/scratch2/agustin/firesim_queue/bin/firesim-queue status      # daemon must be ALIVE
-/scratch2/agustin/firesim_queue/bin/firesim-queue daemon      # start it if not (leave running)
+$MERLIN_EXT_FIRESIM_QUEUE/bin/firesim-queue status      # daemon must be ALIVE
+$MERLIN_EXT_FIRESIM_QUEUE/bin/firesim-queue daemon      # start it if not (leave running)
 ```
 
 `zephyr_model.run_on_firesim()` already defaults to `queue=True`. It resolves ModelBlaster's

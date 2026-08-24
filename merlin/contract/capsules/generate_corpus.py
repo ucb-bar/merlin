@@ -11,7 +11,7 @@ the 5-file capsule dir into the target's own corpus root (``Path(te.capsule_corp
 contract root, atlas under ``atlas/``). Only capsules named in a profile are (over)written; hand-authored
 capsules (e.g. gemmini's movement/conv) are left untouched.
 
-Run:  PYTHONPATH=/scratch2/agustin/mvp-lhwir/spec .venv/bin/python \
+Run:  PYTHONPATH=$SPECIR_ROOT .venv/bin/python \
           merlin/contract/capsules/generate_corpus.py            # all targets with a profile
       ... merlin/contract/capsules/generate_corpus.py --target gemmini
 """

@@ -33,6 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import agent_bridge as BR  # noqa: E402
+from merlin.common.artifacts import cache_dir  # noqa: E402
 
 TASK = "Create a file named probe.txt whose entire contents are the word BRIDGE_OK. Then stop."
 EXPECT = "BRIDGE_OK"
@@ -182,7 +183,9 @@ def main() -> int:
     models = [m for m in a.models.split(",") if m]
 
     BR.proxy_key()
-    log = Path(os.environ.get("MERLIN_PROXY_LOG", "/scratch/agustin/tmp/proxy/proxy.log"))
+    # Default under the generated-output root, not one machine's scratch dir: the old absolute
+    # default silently wrote nowhere (or nothing) on any other checkout.
+    log = Path(os.environ.get("MERLIN_PROXY_LOG") or (cache_dir("proxy") / "proxy.log"))
     info = BR.start_proxy(log)
     print(f"proxy: {info}\n")
 

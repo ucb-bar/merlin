@@ -133,7 +133,7 @@ There is **one** physical FPGA. Every run goes through the job queue; a direct `
 runworkload` collides with whatever is already on the board.
 
 ```bash
-Q=$MERLIN_EXT_FIRESIM_QUEUE           # /scratch2/agustin/firesim_queue on this host
+Q=$MERLIN_EXT_FIRESIM_QUEUE           # set per host; see .env.example
 $Q/bin/firesim-queue status           # active jobs
 $Q/bin/firesim-queue status --all     # including terminal
 $Q/bin/firesim-queue tail <job_id> -f
@@ -183,7 +183,7 @@ bundle name from each job's `stage_from` path.
 ## Reading a run
 
 FireSim writes into the run farm's `default_simulation_dir` (read it from
-`config_runtime.yaml`; `/scratch2/agustin/FIRESIM_RUNS_DIR` here), under `sim_slot_0/`:
+`config_runtime.yaml`; `$FIRESIM_RUNS_DIR` here), under `sim_slot_0/`:
 
 **`uartlog`** — the full console capture, from PCIe/XDMA discovery through the target's own
 output. Merlin's Zephyr app prints markers the tooling parses:

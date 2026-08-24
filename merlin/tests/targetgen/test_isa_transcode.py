@@ -178,7 +178,10 @@ def test_requires_fixed_format_model():
 
 
 def _stock_clang():
-    p = Path("/scratch/agustin/projects/oscar-merlin/third_party/llvm-install/bin/clang")
+    """The in-tree stock clang, resolved from the repo root rather than an absolute path -- this test
+    is skipped when it is absent, so a baked path silently skipped everywhere except one checkout."""
+    from merlin.common.paths import repo_root
+    p = repo_root() / "third_party" / "llvm-install" / "bin" / "clang"
     return str(p) if p.is_file() else None
 
 
