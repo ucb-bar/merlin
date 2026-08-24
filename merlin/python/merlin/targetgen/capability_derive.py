@@ -131,7 +131,11 @@ def _record(out: DerivedCapabilities, ev: FamilyEvidence) -> None:
     out.supported[ev.family] = FamilyEvidence(
         family=prev.family, status="supported", source=prev.source,
         evidence=prev.evidence, dtypes=merged_dtypes,
-        ranks=prev.ranks or ev.ranks, composed_with=merged_comp, unit=prev.unit or ev.unit)
+        # ranks UNION like dtypes. `prev.ranks or ev.ranks` kept only the first rung's ranks, so a
+        # later rung that evidenced a DIFFERENT rank had it silently dropped -- an axis lost inside the
+        # deriver, in the same direction (narrower than the evidence) as the gap this module documents.
+        ranks=tuple(sorted({*prev.ranks, *ev.ranks})),
+        composed_with=merged_comp, unit=prev.unit or ev.unit)
 
 
 def _unit_dtypes(unit: dict) -> tuple[str, ...]:
@@ -277,6 +281,66 @@ DRIFT_KINDS = ("missing_declaration", "overbroad_declaration", "unsupported_decl
                "undetermined_declaration")
 
 
+#: The shape AXES a capability declares, and which direction an error in each one moves ARR. Both are
+#: narrowing axes: a value the hardware has but the contract omits makes every region of that shape
+#: score ineligible, which removes it from the ARR DENOMINATOR and therefore RAISES recall. That is the
+#: direction that flatters us, so it is the one worth naming.
+_SHAPE_AXES = ("ranks", "dtypes")
+
+
+def _axis_findings(fam: str, dec, ev: FamilyEvidence) -> list[dict]:
+    """Audit one family's declared shape axes against the evidence.
+
+    The ladder decides FAMILIES; no rung can currently decide an axis on its own (the funct table
+    carries instruction NAMES and matching them is forbidden, the mlc encoding fact is absent for the
+    reference target, and the declared unit ``ops`` are matmul-only). Silence about that is what let a
+    narrow axis sit unnoticed: gemmini declared ``contraction ranks: [2]`` while its funct table
+    carried a conv loop nest, so every rank-4 conv2d capsule scored ineligible and quietly left the
+    denominator -- caught by a human, invisible to every check. This does not invent the missing rung.
+    It makes the gap SAY SO, in the two directions that matter:
+
+    * ``missing_axis`` -- a rung evidenced a value the contract does not declare. Under-declared, and
+      it shrinks the denominator.
+    * ``unaudited_axis`` -- the contract declares values no rung could confirm. Not an error: it is the
+      REVIEW OBLIGATION the module docstring names, now written down where a report can print it
+      instead of living in one reviewer's memory.
+    """
+    from merlin.targetgen import eligibility as _el   # lazy: eligibility must stay importable alone
+
+    out: list[dict] = []
+    for axis in _SHAPE_AXES:
+        evidenced = tuple(getattr(ev, axis, ()) or ())
+        declared_vals = tuple(getattr(dec, axis, ()) or ())
+        if not declared_vals and not evidenced:
+            continue                       # nothing claimed and nothing seen: the axis is unconstrained
+        if axis == "dtypes":
+            # Compare through the FORMAT REGISTRY, not as strings. The deriver reads the RTL datapath's
+            # spelling (`i8`) and the contract carries the capability vocabulary's (`int8`); the same
+            # format under two names is not a missing axis, and reporting it as one would bury the real
+            # findings in noise. `_dtype_ok` is the alias-aware predicate eligibility already grades with,
+            # so the audit and the oracle agree on what "the same dtype" means.
+            missing = {d for d in evidenced if not _el._dtype_ok(d, declared_vals)}
+            unconfirmed = {d for d in declared_vals if not _el._dtype_ok(d, evidenced)}
+        else:
+            missing = set(evidenced) - set(declared_vals)
+            unconfirmed = set(declared_vals) - set(evidenced)
+        if missing:
+            out.append({"kind": "missing_axis", "family": fam, "axis": axis, "source": ev.source,
+                        "evidence": ev.evidence,
+                        "detail": f"evidence shows {axis} {sorted(missing)} that the contract does not "
+                                  f"declare (declared: {sorted(declared_vals)}); every region of that "
+                                  f"shape scores ineligible and leaves the ARR denominator, which "
+                                  f"RAISES recall"})
+        if unconfirmed:
+            out.append({"kind": "unaudited_axis", "family": fam, "axis": axis,
+                        "source": ev.source if evidenced else "none",
+                        "evidence": ev.evidence if evidenced else "no rung reported this axis",
+                        "detail": f"contract declares {axis} {sorted(unconfirmed)} that no rung could "
+                                  f"confirm; the ladder decides families, not shape axes, so this "
+                                  f"stands on human review rather than on evidence"})
+    return out
+
+
 def reconcile(declared: dict, derived: DerivedCapabilities) -> list[dict]:
     """Compare a declared ``family -> SemanticCapability`` map against derived evidence.
 
@@ -300,6 +364,7 @@ def reconcile(declared: dict, derived: DerivedCapabilities) -> list[dict]:
                         "detail": f"evidence shows this family only fused with "
                                   f"{list(ev.composed_with)}, but it is declared standalone; every "
                                   f"standalone region becomes an unclearable false_fallback"})
+        out.extend(_axis_findings(fam, dec, ev))
     for fam in sorted(declared):
         if fam in derived.supported:
             continue

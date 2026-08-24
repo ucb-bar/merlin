@@ -91,6 +91,32 @@ def test_recall_floor_is_below_the_headline_when_the_matcher_missed_work():
     assert cert["unmatched_contraction_flops"] == 2 * _GENERIC_MACS, "a MAC is two flops, not one"
 
 
+def test_region_recall_has_a_floor_too_not_just_flop_recall():
+    """REGION recall is the number that actually gets quoted, and it was the one with no floor.
+
+    The flop floor existed from the start; the region one did not, so the most-cited figure in the
+    certificate was also the only headline metric with nothing bracketing it. One eligible region was
+    matched and accelerated (recall 1.0) while one contraction stayed a `linalg.generic` and never
+    became a demand -- charge it to the denominator and the floor is 1/2.
+    """
+    cert = cc.build(_plan_one_accelerated_matmul(), _cap_map(), target=None, linalg_mlir=MIXED)
+    m = cert["metrics"]
+    assert m["acceleratable_region_recall"] == 1.0
+    assert m["acceleratable_region_recall_lower_bound"] == 0.5
+    assert m["acceleratable_region_recall_lower_bound"] < m["acceleratable_region_recall"]
+    assert cert["unmatched_contraction_regions"] == 1
+
+
+def test_every_headline_recall_carries_a_bound():
+    """Structural, so a recall added later cannot ship without one: each `*_recall` key has a
+    `*_recall_lower_bound` sibling. A new unbracketed headline is exactly how the last one got in."""
+    m = cc.build(_plan_one_accelerated_matmul(), _cap_map(), target=None, linalg_mlir=MIXED)["metrics"]
+    recalls = [k for k in m if k.endswith("_recall")]
+    assert recalls, "the certificate reports no recall at all -- the metric block moved"
+    missing = [k for k in recalls if f"{k}_lower_bound" not in m]
+    assert not missing, f"recall(s) reported with no lower bound beside them: {missing}"
+
+
 def test_the_two_numbers_coincide_when_nothing_was_missed():
     """A bound that is always pessimistic would be ignored; it must be tight when the matcher is complete."""
     cert = cc.build(_plan_one_accelerated_matmul(), _cap_map(), target=None, linalg_mlir=MATCHED_ONLY)

@@ -244,6 +244,15 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         "must_accelerate_violations": must_accelerate_violations,
         "must_accelerate_pass": not must_accelerate_violations,
         "acceleratable_region_recall": _ratio(n_eligible_accelerated, n_eligible),
+        # The floor under the headline. `n_undetermined` regions are the ones whose family no rung of
+        # the evidence ladder could decide; by design they leave BOTH sides of the ratio, because
+        # scoring them either way would move ARR for a reason about our evidence rather than about the
+        # compiler. That is right for the headline and wrong as the only number reported: every
+        # undecidable region silently shrinks the denominator, and a shrinking denominator RAISES
+        # recall. Charging them all to the denominator does not score them -- it brackets them, so a
+        # target whose evidence is thin reads as a WIDE range instead of a high number.
+        "acceleratable_region_recall_lower_bound":
+            _ratio(n_eligible_accelerated, n_eligible + n_undetermined),
         "acceleration_precision": _ratio(n_accel_eligible, n_accelerated),
         "by_generalization_axis": by_generalization_axis,
         "per_capsule": per_capsule,
@@ -380,13 +389,17 @@ def render_markdown(cov: dict, results: list[dict]) -> str:
     arr = cov.get("acceleratable_coverage") or {}
     if arr:
         _r = arr.get("acceleratable_region_recall")
+        _lo = arr.get("acceleratable_region_recall_lower_bound")
         _p = arr.get("acceleration_precision")
         _n_e, _n_u, _n_c = arr.get("n_eligible", 0), arr.get("n_undetermined", 0), arr.get("n_unclassified", 0)
         L += ["", "## Acceleratable Region Recall", "",
               f"- eligible regions (the denominator): **{_n_e}**",
               f"- of those, accelerated: **{arr.get('n_eligible_accelerated', 0)}**",
-              f"- **ARR = {'n/a' if _r is None else f'{_r:.3f}'}**  ·  "
-              f"precision = {'n/a' if _p is None else f'{_p:.3f}'}",
+              f"- **ARR = {'n/a' if _r is None else f'{_r:.3f}'}**"
+              + ("" if _lo is None or _r is None or abs(_lo - _r) < 1e-9 else
+                 f" _(floor {_lo:.3f} with the {_n_u} undetermined region(s) charged to the"
+                 f" denominator -- the true value is in that range)_")
+              + f"  ·  precision = {'n/a' if _p is None else f'{_p:.3f}'}",
               "",
               f"- undetermined (evidence could not decide the family): **{_n_u}**",
               f"- unclassified (this taxonomy has no name for the op): **{_n_c}**", ""]
