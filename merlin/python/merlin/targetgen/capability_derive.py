@@ -34,16 +34,25 @@ reported and excluded from both sides of the ratio (see
 :func:`merlin.targetgen.eligibility.is_eligible`), because scoring an undecidable family either way
 would move ARR for a reason about our evidence rather than about the compiler.
 
-**Known limit: the ladder decides FAMILIES, not their shape axes.** It answers "can this target
-contract at all", never "over which ranks, dtypes or layouts". So an under-declared axis is
-invisible here and stays invisible until a capsule of that shape is graded: gemmini declared
-``contraction ranks: [2]`` while its own funct table carries ``LOOP_CONV_WS`` (15) and
-``LOOP_CONV_WS_CONFIG_1..3`` (16-18), so every shipped rank-4 conv2d capsule scored ineligible and
-quietly left the ARR denominator -- flattering recall by exactly the regions the mesh handles best.
-A human review caught it; no rung could have. Extending the ladder to the shape axes (ranks from
-the loop-instruction census, dtypes from the input datapaths -- both already in the facts bundle)
-is the natural next rung, and until it exists a narrow axis is a REVIEW obligation, not a
-gate-enforced one.
+**Standing limit: the ladder DECIDES families; the shape axes it only AUDITS.** Every rung below
+answers "can this target contract at all", never "over which ranks, dtypes or layouts". That gap
+once cost a real number: gemmini declared ``contraction ranks: [2]`` while its own funct table
+carries ``LOOP_CONV_WS`` and its config companions, so every shipped rank-4 conv2d capsule scored
+ineligible and quietly left the ARR denominator -- flattering recall by exactly the regions the mesh
+handles best. A human review caught that one; nothing would have caught the next.
+
+:func:`reconcile` now closes the detection half. :func:`_axis_findings` compares each declared axis
+against whatever evidence the rungs did produce and reports ``missing_axis`` (a rung evidenced a
+value the contract omits -- under-declared, and it RAISES recall) or ``unaudited_axis`` (the
+contract declares values no rung could confirm). So a narrow axis is still a review obligation, but
+it is now a PRINTED one rather than one that depends on somebody noticing.
+
+Deciding the axes is blocked on evidence, not on this module. Ranks would need the loop-instruction
+census, and the facts bundle's funct decode table carries instruction NAMES only -- matching them is
+exactly the hardcoding the repo forbids, and the conv and GEMM loop nests each carry six config
+companions, so their structure does not separate them either. Every target's ``compute_units[].ops``
+is matmul-only, so an op-derived rung could only ever answer 2. Promoting the audit to a decision
+needs a new extractor (loop-bound register counting out of the RTL decoder), not a new rung here.
 """
 from __future__ import annotations
 
