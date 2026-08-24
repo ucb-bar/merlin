@@ -346,6 +346,10 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                                      # WHICH layers fell back and why -- a count alone fails the
                                      # must_accelerate gate without saying what to fix.
                                      "host_fallback_detail": getattr(_dr.execute, "mesh_fallbacks", None),
+                                     # layers whose capacity_fit obligation the RUNTIME discharged for
+                                     # the backend; non-empty means this result is runtime+backend
+                                     "capacity_fit_delegated_to_runtime":
+                                         getattr(_dr.execute, "mesh_capacity_fit_delegated", None),
                                      # How much of what we handed the mesh its operand format could hold.
                                      # After the boundary's power-of-two scaling this should read zero
                                      # flushed and zero saturating; a nonzero count is the run telling you
@@ -523,6 +527,35 @@ def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int) -> tuple[
     import math
     n_tiles = math.ceil(M / mt) * math.ceil(K / kt) * math.ceil(N / nt)
     return mt, kt, nt, n_tiles
+
+
+def capacity_fit(target: str, m: int, k: int, n: int, operand_dtype: str | None,
+                 tile_dim: int) -> dict:
+    """Evaluate the ``capacity_fit`` CONTRACT OBLIGATION for one contraction on ``target``.
+
+    ``capacity_fit`` is not a heuristic of ours — it is a predicate the interface contract already
+    names (``xdsl_dialects.contract.KNOWN_PREDICATES``) and already demands, alongside
+    ``rhs_immutable``, on every ``resident_packed_tensor`` requirement. What was missing is anyone
+    evaluating it. A backend that assumes unbounded on-chip storage therefore did not fail its
+    contract; it segfaulted the simulator three layers away, and the result surfaced as a generic
+    "the oracle returned nothing".
+
+    Measured on the gemmini backend under grade: its lowering tiles the ITERATION space into DIM x DIM
+    tiles correctly, but addresses every one of the ``kt*nt`` weight tiles as simultaneously resident
+    (``b_spad = weight_base + (kk*nt + nn)*DIM``). At 512x512 that is 32*32*16 = 16384 scratchpad rows
+    against a 16384-row scratchpad, and spike aborts with
+    ``vector::_M_range_check: __n (which is 16384) >= this->size() (which is 16384)``. Compute tiling
+    without a residency loop above it.
+
+    Returns ``{"holds", "required_elems", "capacity_elems", "obligation"}``; ``holds`` is None when the
+    target declares no capacity (unknown, never assumed true).
+    """
+    cap = _scratchpad_capacity_elems(target, _dtype_bytes(operand_dtype))
+    need = int(k) * int(n) + int(m) * int(k)      # weight tile + activation tile, both resident
+    return {"obligation": "capacity_fit",
+            "holds": None if not cap else bool(need <= cap),
+            "required_elems": need, "capacity_elems": cap,
+            "tile_dim": int(tile_dim or 0)}
 
 
 def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str | None,
@@ -1026,8 +1059,19 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
         _acc = _np.zeros((M, N), dtype=_np.float64)
         _sub_mlir: dict[tuple[int, int, int], str] = {}
         if observed is not None:
+            # ATTRIBUTION. The runtime is discharging an obligation the contract places on the TARGET
+            # BACKEND. Blocking here keeps whole-model work moving, but a result produced this way is
+            # evidence about our runtime plus their backend -- not evidence that their backend handles
+            # a layer this size. Unrecorded, it reads as the latter.
             observed["blocked"] = {"tile": [_mt, _kt, _nt], "n_subtiles": _n_sub,
                                    "capacity_elems": _cap}
+            observed["capacity_fit"] = {
+                **capacity_fit(target, M, K, N, binding.operand_dtype, _D),
+                "discharged_by": "merlin runtime (host-side residency tiling)",
+                "note": "the target backend did not satisfy capacity_fit at this extent; the runtime "
+                        "split the layer so it could run. A whole-model pass resting on this is a "
+                        "statement about the runtime + backend together.",
+            }
         for m0 in range(0, M, _mt):
             for n0 in range(0, N, _nt):
                 for k0 in range(0, K, _kt):
@@ -1047,7 +1091,18 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
 def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
                          observed: dict | None = None) -> list | None:
     """Systolic/RoCC path: certify the matmul through the target's generated OOT package on its ELF/mesh
-    oracle, with the real operands injected (``inputs`` -> the package harness's ``materialize_inputs``)."""
+    oracle, with the real operands injected (``inputs`` -> the package harness's ``materialize_inputs``).
+
+    The ``capacity_fit`` obligation is evaluated BEFORE the oracle runs, so that if the backend then
+    aborts we can say which contract predicate it failed instead of reporting an unreachable oracle."""
+    if observed is not None and A and W:
+        try:
+            observed["capacity_fit_check"] = capacity_fit(
+                target, len(A), len(A[0]), len(W[0]),
+                _mesh_tile_binding(target, None, None).operand_dtype,
+                _mesh_tile_binding(target, None, None).tile_dim)
+        except Exception:                        # noqa: BLE001 — unresolvable target: no obligation known
+            pass
     import os
     import tempfile
     from .benchharness import runs_root
@@ -1075,6 +1130,20 @@ def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
         if observed is not None:
             observed["decline_status"] = res.get("status")
             observed["decline"] = (res.get("failure") or {}).get("detail") or res.get("failure")
+            # ATTRIBUTE IT when the contract already predicted it. A backend whose lowering assumes
+            # unbounded on-chip storage aborts the simulator, and the abort is indistinguishable from an
+            # unreachable oracle unless someone checks the obligation. This is the graded path, so the
+            # violation must be named and charged to the backend rather than absorbed.
+            cf = observed.get("capacity_fit_check")
+            if cf and cf.get("holds") is False:
+                observed["contract_violation"] = {
+                    **cf, "discharged_by": None,
+                    "detail": (f"the target backend does not satisfy the capacity_fit obligation this "
+                               f"interface requires: the contraction needs {cf['required_elems']} "
+                               f"resident elements against a declared capacity of "
+                               f"{cf['capacity_elems']}. The lowering must block for residency, not "
+                               f"only tile the iteration space."),
+                }
         return None
     return (res.get("oracle_outputs") or {}).get("Y0")
 

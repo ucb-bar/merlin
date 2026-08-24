@@ -1070,6 +1070,20 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         _tier = _rtl[-1] if _rtl else (declared[-1] if declared else None)
         if _tier:
             exercised[_tier] = "pass" if (_tile_ok and _model_ok) else "fail"
+    # WHOSE COMPILER PASSED. When the runtime had to discharge a contract obligation the target backend
+    # owes -- residency tiling for `capacity_fit` -- the verdict is about runtime+backend together, and
+    # saying so is the difference between "this compiler handles a 512x512 layer" and "this layer ran".
+    _delegated = (model_exec or {}).get("capacity_fit_delegated_to_runtime") or []
+    if _delegated:
+        result["contract_obligations"] = {
+            "capacity_fit": {
+                "discharged_by": "merlin runtime (host-side residency tiling)",
+                "n_layers": len(_delegated), "layers": _delegated[:8],
+                "detail": ("the target backend did not satisfy capacity_fit at these extents; the "
+                           "runtime split them so the model could run. This verdict is evidence about "
+                           "the runtime AND the backend, not about the backend alone."),
+            }
+        }
     result["tiers"] = exercised
     # The tile record, kept beside the verdict as the SEPARATE and weaker evidence it is: it speaks about
     # synthesized tiles of this model's shapes, never about the model.

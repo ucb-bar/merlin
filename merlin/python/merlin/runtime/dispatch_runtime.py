@@ -664,6 +664,9 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         execute.mesh_ran = 0
         execute.mesh_fell_back = 0
         execute.mesh_fallbacks = []                  # per-layer reasons, so a fallback is actionable
+        # Layers whose capacity_fit obligation the RUNTIME discharged on the backend's behalf. A
+        # whole-model pass that needed this is a statement about runtime+backend, not about the backend.
+        execute.mesh_capacity_fit_delegated = []
         # What the mesh's operand format could actually hold, summed over every layer it ran. The whole
         # atlas divergence was invisible because nobody counted this; a run now reports it.
         execute.mesh_operand_repr = {"operand_dtype": mesh_dp.operand_dtype,
@@ -819,6 +822,13 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 _obs: dict = {}
                 mesh_out = run_matmul_on_mesh(mesh_target, qa, qb,
                                               operand_dtype=op_dt, accum_dtype=acc_dt, observed=_obs)
+                _cf = _obs.get("capacity_fit")
+                if _cf is not None:
+                    _d = getattr(execute, "mesh_capacity_fit_delegated", None)
+                    if _d is not None and len(_d) < 64:
+                        _d.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
+                                   "required_elems": _cf.get("required_elems"),
+                                   "capacity_elems": _cf.get("capacity_elems")})
                 if mesh_out is not None:
                     om = np.array(mesh_out, np.float64) * scale
                     env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])
