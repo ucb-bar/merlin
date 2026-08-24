@@ -1887,6 +1887,14 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     one-time build, so concurrent simulator instances (verilator/VCS) don't collide. Mirrors
     :func:`heavy_oracles.run_vcs_parallel`. ``max_workers == 1`` preserves the original sequential order.
     """
+    # RESOLVE THE RUNS ROOT HERE, while this is still single-threaded. Resolving it per-capsule is not
+    # enough: some capsule paths enter a context that chdirs the process (mlc resolves its arc artifacts
+    # relative to its own root), and a relative root resolved inside that window becomes an absolute path
+    # under the WRONG tree. Measured: of 26 op capsules run with 8 workers, 18 wrote their entire run
+    # directory into the mlc checkout. The suite still scored -- the results are returned in memory --
+    # but the trace collection reads from this root, so those 18 capsules contributed no coverage, and a
+    # sibling project's tree acquired 18 stray run trees.
+    runs_root = str(Path(runs_root).resolve())
     pkg = load_package(package_dir, contract=contract)
     integrity_scan(pkg)
     build_package(pkg)

@@ -179,3 +179,38 @@ def test_the_unclassified_target_declines_with_the_reason_named(monkeypatch):
     assert "contract_violation" not in obs
     assert obs["capacity_fit_unevaluable"]["holds"] is None
     assert "UNATTRIBUTED" in obs["capacity_fit_unevaluable"]["detail"]
+
+
+def test_a_capsule_that_chdirs_cannot_relocate_its_siblings(tmp_path, monkeypatch):
+    """The stronger form of the cwd bug: resolving per-capsule is not enough.
+
+    Some capsule paths enter a context that chdirs the process (mlc resolves its arc artifacts relative
+    to its own root). A relative runs-root resolved INSIDE that window becomes an absolute path under
+    the wrong tree. Measured: of 26 op capsules run with 8 workers, 18 wrote their whole run directory
+    into the mlc checkout -- the suite still scored, because results come back in memory, but the trace
+    collection reads from this root, so those 18 contributed no coverage at all.
+    """
+    from merlin.targetgen import capsule_runner as CR
+
+    seen: list[str] = []
+    (tmp_path / "elsewhere").mkdir()
+    (tmp_path / "here").mkdir()
+
+    def _fake_run_capsule(cap, package_dir, *, runs_root, **kw):
+        seen.append(runs_root)
+        import os
+        os.chdir(tmp_path / "elsewhere")          # the sibling-thread chdir, made deterministic
+        return {"capsule": cap["name"], "status": "pass", "kind": "op", "tiers": {}}
+
+    monkeypatch.setattr(CR, "load_package", lambda *a, **k: object())
+    monkeypatch.setattr(CR, "integrity_scan", lambda *a, **k: None)
+    monkeypatch.setattr(CR, "build_package", lambda *a, **k: None)
+    monkeypatch.setattr(CR, "_split_ineligible", lambda caps, t: (caps, []))
+    monkeypatch.setattr(CR, "run_capsule", _fake_run_capsule)
+    monkeypatch.chdir(tmp_path / "here")
+
+    CR.run_suite([{"name": f"c{i}", "kind": "op"} for i in range(4)], "pkg",
+                 runs_root="relative_runs", target="gemmini", max_workers=1)
+
+    assert len(set(seen)) == 1, f"the runs root moved mid-suite: {sorted(set(seen))}"
+    assert seen[0] == str((tmp_path / "here" / "relative_runs")), seen[0]

@@ -58,6 +58,10 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     ``oracle_unavailable`` plane — so the report is honest and never claims a numeric pass. Graded runs
     (``no_oracle=False``) keep the ``not_run_is_not_pass`` behavior byte-for-byte."""
     labels = labels or {"public", "dev"}
+    # absolute before any threading, for the same reason run_suite does it: this function also reads the
+    # per-capsule traces back out of this root, and a root that moved under a sibling thread's chdir
+    # silently yields an empty coverage dict rather than an error.
+    runs_root = str(Path(runs_root).resolve())
     pkg_dir = Path(package_dir)
 
     score: dict = {
