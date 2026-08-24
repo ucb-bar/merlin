@@ -58,7 +58,7 @@ INLINE_MARKER = "# derived-ok:"
 # ``CUSTOM_OPCODE`` (custom, opcode), ``FUNCT3`` (funct3), ``mesh``, ``scratchpad_bytes`` do. A
 # numeric literal bound to one of these is an assumed constant unless derived (or a marked standard).
 ISA_FACT_TOKENS = frozenset({
-    "opcode", "funct3", "funct5", "funct7", "func3", "func5", "func7", "mesh", "scratchpad",
+    "opcode", "funct3", "funct5", "funct7", "func3", "func5", "func7", "mesh", "scratchpad", "dim", "base",
 })
 # Trivial values that are never a baked opcode / dimension / capacity worth deriving (flags, inits).
 _TRIVIAL_VALUES = frozenset({0, 1})

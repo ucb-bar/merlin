@@ -40,12 +40,12 @@ merlin/python/merlin/targetgen/capsule_runner.py             # gemmini-capsule-b
 merlin/python/merlin/targetgen/baremetalc_corroborate.py     # gemmini bareMetalC corroboration report path (reference tool)
 merlin/python/merlin/kernels/bench_ceiling.py                # saturn-only kernel-ceiling bench (only saturn corpus wired)
 merlin/python/merlin/kernels/build_asm.py                    # saturn-vectors build path (reference corpus)
+merlin/python/merlin/targetgen/publish.py                    # payload/gate/README shaping branches on the package FAMILY (`if target == "rvv"`, _payload_*); not just README text
 
 # ---------------------------------------------------------------- target named only as EXAMPLE help/description text (no control flow)
 merlin/python/merlin/compare/cli.py                          # gemmini named only in --target help ("spike/gemmini/npu are seams"); default is k1
 merlin/python/merlin/kernels/regions.py                      # "(gemmini etc.)" in a registry-entry description
 merlin/python/merlin/targetgen/agent/kernel_slot.py          # gemmini named inside the C output-contract template text
 merlin/python/merlin/targetgen/capability_manifests.py       # "e.g. radiance-mlir" in a generated README string
-merlin/python/merlin/targetgen/publish.py                    # "dialect/lowering/contracts for gemmini" in a generated README string
 merlin/python/merlin/targetgen/rtl/mlc_bridge.py             # get_backend("muon").muon_introspect — the SIMT-introspect fallback resolves the evicted muon reference backend via the registry
 merlin/python/merlin/xdsl_dialects/lowering/passes.py        # "(toynpu/saturn)" in a PassInfo description string

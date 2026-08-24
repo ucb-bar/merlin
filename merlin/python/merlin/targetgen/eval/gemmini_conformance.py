@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
-DIM = 16
+DIM = 16  # derived-ok: default workload shape for this reference suite; callers pass m/k/n
 
 
 def workload(reuse: int = 1, epilogue: tuple[str, ...] = (), *,

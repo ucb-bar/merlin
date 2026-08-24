@@ -61,7 +61,7 @@ def _chipyard_dram_base(target: str) -> int | None:
 # The bare-metal DRAM base used when the RTL memory map cannot be read (build absent). It is the RISC-V
 # platform reset/DRAM base every Rocket/Chipyard-class SoC and spike/fesvr use — a documented default, not
 # a per-target guess; the derived value from the RTL build always wins when available.
-DEFAULT_PLATFORM_DRAM_BASE = 0x80000000
+DEFAULT_PLATFORM_DRAM_BASE = 0x80000000  # derived-ok: RISC-V platform DRAM base; platform_dram_base() prefers the RTL-derived value
 
 
 def platform_dram_base(target: str, sim_via: str | None) -> int:

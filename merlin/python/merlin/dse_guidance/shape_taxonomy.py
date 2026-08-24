@@ -35,11 +35,11 @@ from __future__ import annotations
 import math
 
 # --- geometric thresholds (fixed) ---
-GEMV_MIN_DIM = 4
+GEMV_MIN_DIM = 4  # derived-ok: workload shape-classification threshold, not a hardware fact
 GEMV_RATIO = 8
 SKINNY_RATIO = 4
 SQUARE_LO, SQUARE_HI = 0.5, 2.0
-TINY_DIM = 32
+TINY_DIM = 32  # derived-ok: workload shape-classification threshold, not a hardware fact
 TAIL_TILE = 32
 TAIL_WASTE = 0.10
 SMALL_FRAG_MACS = 1 << 16

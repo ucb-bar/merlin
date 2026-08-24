@@ -44,7 +44,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 ALLOW_FILE = ROOT / "build_tools" / "scripts" / "target_name_allowlist.txt"
-SCAN_ROOTS = ("merlin/python/merlin", "build_tools/scripts")
+SCAN_ROOTS = ("merlin/python/merlin", "merlin/contract", "build_tools/scripts")
 # Path fragments that mark BUILD-GENERATED (gitignored) trees, not source — never scanned.
 EXCLUDE_FRAGMENTS = ("/_data/",)
 INLINE_MARKER = "# target-ok:"

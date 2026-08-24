@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
-DEFAULT_BASE = 0x1000      # start above a small guard region (never address 0)
+DEFAULT_BASE = 0x1000      # start above a small guard region (never address 0)  # derived-ok: our own capsule DRAM layout guard offset, not a target memory map
 DEFAULT_ALIGN = 64         # 64-byte alignment is safe for any vector/tile datapath
 
 

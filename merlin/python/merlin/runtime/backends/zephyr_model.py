@@ -245,7 +245,7 @@ DEFAULT_RAM_BYTES = 256 * 1024 * 1024   # spike/chipyard `ram0` default (0x10000
 # address, referenced by integer-constant base (no far symbol), keeping ram0 compact.
 LINK_LIMIT = 1900 * 1024 * 1024
 EXT_RAM0_BYTES = 0x40000000             # 1 GB ram0 (code + activation arena) in ext mode
-EXT_WEIGHTS_BASE = 0xC0000000           # weights region origin (3 GB), right after ram0
+EXT_WEIGHTS_BASE = 0xC0000000           # weights region origin (3 GB), right after ram0  # derived-ok: this backend's ext-mode layout origin, chosen together with DRAM_END below
 DRAM_END = 0x80000000 + 16 * 1024**3    # FireSim WithExtMemSize = 16 GB at 0x80000000
 # The WEIGHTS region uses a 2-cell DT container (#address/size-cells=2) so its reg can
 # express a 64-bit base+size — handling blobs > 4 GB (tiny 4.1 G, pi05 fp32 13 G), not just

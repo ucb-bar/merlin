@@ -78,7 +78,7 @@ class Board:
     vector_hart_ids: tuple[int, ...] | None = None
     vlen: int | None = None       # hardware vector length in bits; None = unknown, assume the V minimum
     console: str = CONSOLE_HTIF
-    dram_base: int = 0x80000000
+    dram_base: int = 0x80000000  # derived-ok: per-board dataclass default; each board declares its own
     ram_label: str = "ram0"       # DT label the `&<label> { reg = ... }` overlay targets
     fpu_sharing: bool = False
     #: Set CONFIG_RISCV_ISA_EXT_V in the Zephyr config? Not "does the board have vectors" — our

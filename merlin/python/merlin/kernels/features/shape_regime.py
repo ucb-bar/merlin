@@ -16,7 +16,7 @@ _DTYPE_BYTES = {"i8": 1, "u8": 1, "i32": 4, "f16": 2, "bf16": 2, "f32": 4, "f64"
 RESIDENT_BUDGET_BYTES = 131072
 # Arithmetic-intensity cutover (flops/byte) between memory- and compute-bound regimes.
 _AI_CUTOVER = 16.0
-_SKINNY_DIM = 16
+_SKINNY_DIM = 16  # derived-ok: workload shape-classification threshold, not a hardware fact
 _TAIL_DIVISOR = 16
 
 

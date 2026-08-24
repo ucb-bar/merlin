@@ -24,7 +24,7 @@ sys.path.insert(0, str(REPO / "merlin" / "python"))
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 
 # DRAM layout: give each arg a generous, 4 KB-aligned slab inside the harness's 64 MB buffer.
-ARG_BASE = 0x100000   # 1 MB
+ARG_BASE = 0x100000   # 1 MB  # derived-ok: offset inside the harness's own buffer, not a target memory map
 ARG_STRIDE = 0x40000  # 256 KB per arg
 
 
