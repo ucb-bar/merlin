@@ -61,3 +61,13 @@ def test_an_op_capsule_is_not_padded_with_model_only_fields(monkeypatch):
                               "tiers": {"L3": {"status": "pass"}}, "numeric": {"status": "pass"},
                               "trace_check": {"status": "pass"}}])
     assert set(s["per_capsule"][0]) == {"capsule", "label", "status", "numeric", "trace", "tiers"}
+
+
+def test_a_gated_capsule_carries_why(monkeypatch):
+    """'gated' with no reason reads as 'skipped'. What it means is that the op suite did not earn the
+    right to run this capsule, and the fraction it fell short by is the whole content of the verdict."""
+    s = _score(monkeypatch, [{"capsule": "M0", "kind": "model", "label": "public", "status": "gated",
+                              "failure": {"plane": "gate", "category": "GATED",
+                                          "detail": "whole-model capsule deferred: op pass fraction "
+                                                    "0.67 < gate 0.8"}}])
+    assert "0.67 < gate 0.8" in s["per_capsule"][0]["gate_reason"]

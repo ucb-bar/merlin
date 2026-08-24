@@ -257,6 +257,10 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         # model's own layers reached the accelerator versus fell back to the host, which declared tiers
         # never ran -- stayed behind in the per-capsule result, several directories down. The score file
         # is the artifact that gets cited, so a qualifier that does not travel with it does not exist.
+        if r.get("status") == "gated":
+            # WHY it was deferred. "gated" with no reason is uninterpretable in the artifact -- it reads
+            # as "skipped" when what it means is "the op suite did not earn the right to run this".
+            entry["gate_reason"] = (r.get("failure") or {}).get("detail")
         if r.get("kind") == "model":
             entry["kind"] = "model"
             me = r.get("mesh_execution") or {}
