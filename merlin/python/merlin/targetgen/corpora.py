@@ -28,8 +28,13 @@ def capsule_corpus_roots() -> list[Path]:
     return [r for r in roots if r.is_dir()]
 
 
-def graded_capsule_roots(target: str) -> list[Path]:
+def graded_capsule_roots(target: str, *, hidden: bool = False) -> list[Path]:
     """The roots that make up ``target``'s GRADED suite, or the canonical corpus if it has no descriptor.
+
+    ``hidden=True`` returns the holdout roots instead. They are a SEPARATE tree, deliberately excluded
+    from the public roots (``corpus_siblings`` skips ``hidden/``), so a hidden grade that reused the
+    public roots would match nothing and report a 0/0 "pass" that never ran. Empty is a real answer for a
+    target that ships no holdouts, and is returned as empty rather than papered over with a fallback.
 
     A target's suite is not one directory: the capsules are split by kind into sibling categories
     (``isa`` / ``layers`` / ``model`` / ``model_slices``), and different targets keep those siblings in
@@ -55,15 +60,17 @@ def graded_capsule_roots(target: str) -> list[Path]:
         repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
         / "target_experiment.yaml")
     if not desc.is_file():
-        return capsule_corpus_roots()[:1]                 # no descriptor: the canonical corpus, unsplit
+        return [] if hidden else capsule_corpus_roots()[:1]   # no descriptor: canonical corpus, unsplit
     try:
         from merlin.targetgen.target_experiment import load_target_experiment
         te = load_target_experiment(desc)
         if str(getattr(te, "target", "")) != target:      # an override naming a DIFFERENT target
-            return capsule_corpus_roots()[:1]
-        roots = [r for r in te.graded_roots() if r.is_dir()]
+            return [] if hidden else capsule_corpus_roots()[:1]
+        roots = [r for r in (te.hidden_roots() if hidden else te.graded_roots()) if r.is_dir()]
     except Exception:                                     # noqa: BLE001 — unreadable descriptor
-        return capsule_corpus_roots()[:1]
+        return [] if hidden else capsule_corpus_roots()[:1]
+    if hidden:
+        return roots                                      # empty == this target ships no holdouts
     return roots or capsule_corpus_roots()[:1]
 
 

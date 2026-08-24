@@ -908,6 +908,19 @@ def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: b
     return (concrete + hint) if concrete else hint
 
 
+def _rtl_tiers_of(target: str | None) -> frozenset[str]:
+    """The tiers this target counts as RTL-derived, from its capability manifest. Fails soft to an empty
+    set so the caller falls back to the capsule's own declaration rather than guessing a tier name."""
+    if not target:
+        return frozenset()
+    try:
+        from .runner_config import runner_config_from_manifest
+        from .target_experiment import load_capability_manifest
+        return frozenset(runner_config_from_manifest(load_capability_manifest(target)).rtl_tiers)
+    except Exception:                                    # noqa: BLE001 — unresolvable manifest
+        return frozenset()
+
+
 def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int) -> dict:
     """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
     (``compile_model``): route each op across the target's compute units (matmul/systolic -> the mesh, the
@@ -1009,9 +1022,6 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     n_tiles = int(mesh_exec.get("n_tiles") or 0) if isinstance(mesh_exec, dict) else 0
     exercised: dict[str, str] = {}
     if n_tiles:
-        # The mesh oracle is this target's RTL tier; name it from the capsule's own declaration rather
-        # than assuming a tier label, so a target with a different ladder is described correctly.
-        #
         # The verdict comes from the per-tile COUNTS. Reading a boolean `ok` key -- which this dict does
         # not carry -- made every on-mesh execution record "fail", including one where all 15 layers
         # passed on the oracle. A tile that was unavailable or unsynthesizable is NOT a pass either, so
@@ -1021,11 +1031,36 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         _unavail = int(mesh_exec.get("n_unavailable") or 0)
         _unsynth = int(mesh_exec.get("n_unsynthesizable") or 0)
         _ok = mesh_exec.get("ok")
-        _tier_ok = bool(_ok) if _ok is not None else (
+        _tile_ok = bool(_ok) if _ok is not None else (
             _failed == 0 and _unavail == 0 and _unsynth == 0 and _passed == n_tiles)
-        _rtl = [x for x in declared if x not in ("L0", "L1")]
-        exercised[_rtl[-1] if _rtl else "L3"] = "pass" if _tier_ok else "fail"
+
+        # THE MODEL'S OWN LAYERS DECIDE A MODEL CAPSULE'S TIER, not tiles of its shapes. Certifying a
+        # synthesized tile proves the SHAPE is runnable; the capstone is a claim about THIS model, and
+        # the two came apart once already -- a run with all 15 layers on the host reported "15 of 15
+        # tiles passed". When the model ran the mesh lane, its own per-layer accounting must agree:
+        # every routed layer on the accelerator, none fallen back. A host-lane model run has no such
+        # accounting and is left to the tile record alone.
+        _model_ok = True
+        if model_exec:
+            _on = model_exec.get("matmul_layers_on_mesh")
+            _model_ok = (_on is not None and int(_on) > 0
+                         and not int(model_exec.get("matmul_layers_host_fallback") or 0))
+
+        # WHICH tier the mesh oracle corresponds to, DERIVED from the target's own declared RTL tiers.
+        # This was `[x for x in declared if x not in ("L0", "L1")]` with an `"L3"` fallback -- three tier
+        # -name literals standing in for a fact the manifest already carries, which names the wrong tier
+        # confidently on any target whose ladder differs (atlas grades at L3+L4, not L3).
+        _rtl = [t for t in declared if t in _rtl_tiers_of(target)]
+        _tier = _rtl[-1] if _rtl else (declared[-1] if declared else None)
+        if _tier:
+            exercised[_tier] = "pass" if (_tile_ok and _model_ok) else "fail"
     result["tiers"] = exercised
+    # The tile record, kept beside the verdict as the SEPARATE and weaker evidence it is: it speaks about
+    # synthesized tiles of this model's shapes, never about the model.
+    if mesh_exec:
+        result["tile_evidence"] = {"n_tiles": n_tiles, "n_passed": mesh_exec.get("n_passed"),
+                                   "note": "synthesized tiles OF THIS MODEL'S SHAPES — evidence that the "
+                                           "shapes run, not that this model ran"}
     result["op_coverage"] = {"note": "the op-pass fraction this capsule was gated on is OP COVERAGE, "
                                      "not a verdict on the model"}
     unexercised = [x for x in declared if x not in exercised]

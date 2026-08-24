@@ -72,3 +72,32 @@ def test_a_failing_capsule_never_counts_as_evidence():
     graded = [_cap("F0", "fail", {"L3": _rtl("fail")}), _cap("P0", "pass", {"L3": _rtl("pass")})]
     ev = _evidence(graded)
     assert (ev["n_passed"], ev["rtl_backed"]) == (1, 1)
+
+
+# --- the model capsule's own tier attribution -------------------------------------------------------
+
+def test_the_rtl_tier_is_derived_per_target_not_named():
+    """`[x for x in declared if x not in ("L0","L1")]` with an `"L3"` fallback is three tier-name
+    literals standing in for a fact the capability manifest already carries. It names the wrong tier
+    confidently on any target whose ladder differs."""
+    from merlin.targetgen.capsule_runner import _rtl_tiers_of
+    seen = {t: _rtl_tiers_of(t) for t in ("gemmini", "atlas", "radiance")}
+    assert all(seen.values()), f"every target must declare its RTL tiers: {seen}"
+    assert len({frozenset(v) for v in seen.values()}) > 1, \
+        f"the ladders differ between targets, so a single literal cannot be right for all: {seen}"
+    assert _rtl_tiers_of(None) == frozenset(), "no target -> fail soft, never a guessed tier"
+    assert _rtl_tiers_of("definitely_not_a_target") == frozenset()
+
+
+def test_the_model_not_its_tiles_decides_the_model_capsules_tier():
+    """A run with every layer on the host once reported '15 of 15 tiles passed'. The tile record proves
+    the SHAPE runs; the capstone is a claim about THIS model."""
+    import inspect
+
+    from merlin.targetgen import capsule_runner
+    src = inspect.getsource(capsule_runner._grade_model_capsule)
+    assert "_model_ok" in src, "the model's own per-layer accounting must gate the tier"
+    assert "matmul_layers_host_fallback" in src, "a fallen-back layer must not pass the tier"
+    assert "tile_evidence" in src, "the tile record must be reported as separate, weaker evidence"
+    assert '"L3"' not in src.split("_rtl_tiers_of")[-1], \
+        "no tier-name literal may decide which tier the mesh oracle corresponds to"

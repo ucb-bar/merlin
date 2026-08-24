@@ -298,7 +298,8 @@ def main(argv: list[str] | None = None) -> int:
     # module's own docstring recommended that parent, while discover_capsules two modules over documents
     # why it is wrong -- so following the documentation produced the bad grade.
     from .corpora import graded_capsule_roots
-    a.capsules = [Path(a.capsules).resolve()] if a.capsules else graded_capsule_roots(a.target)
+    a.capsules = ([Path(a.capsules).resolve()] if a.capsules
+                  else graded_capsule_roots(a.target, hidden=a.hidden))
 
     labels = {"hidden"} if a.hidden else set(a.labels.split(","))
     adapters = {} if a.no_oracle else None
