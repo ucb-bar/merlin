@@ -81,12 +81,18 @@ def test_a_rank_outside_every_declared_capability_is_withheld():
 
 
 def test_the_measured_corpora_split_as_expected():
-    """gemmini withholds exactly its 12 bf16 capsules (no bf16 datapath anywhere in its contract);
-    atlas, which DOES declare bf16, withholds only the rank-3 capsule."""
+    """gemmini withholds exactly its bf16 capsules (no bf16 datapath anywhere in its contract);
+    atlas, which DOES declare bf16, withholds only the rank-3 capsule.
+
+    The gemmini count is 11, not the 12 it was when this was written: GF0_rmsnorm_bf16_pt was
+    removed in c3fcaa64 because its (1,16) gain operand could hold at most 4 distinct values under
+    the default stimulus alphabet, so a kernel that mis-indexed gamma still passed. Counted from the
+    corpus on disk, so it moves whenever the corpus does -- update it with the reason, not silently.
+    """
     import pathlib as _p, yaml as _y
     from merlin.targetgen.target_experiment import load_target_experiment
     from merlin.common.paths import repo_root as _rr
-    for target, expect in (("gemmini", 12), ("atlas", 1)):
+    for target, expect in (("gemmini", 11), ("atlas", 1)):
         te = load_target_experiment(
             str(_p.Path(_rr()) / f"merlin/experiments/capsule_bench/targets/{target}/target_experiment.yaml"))
         caps = []
