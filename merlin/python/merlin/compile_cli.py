@@ -343,6 +343,9 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                                      "matmul_layers_routed": getattr(_dr.execute, "last_mesh_routed", None),
                                      "matmul_layers_on_mesh": getattr(_dr.execute, "mesh_ran", None),
                                      "matmul_layers_host_fallback": getattr(_dr.execute, "mesh_fell_back", None),
+                                     # WHICH layers fell back and why -- a count alone fails the
+                                     # must_accelerate gate without saying what to fix.
+                                     "host_fallback_detail": getattr(_dr.execute, "mesh_fallbacks", None),
                                      # How much of what we handed the mesh its operand format could hold.
                                      # After the boundary's power-of-two scaling this should read zero
                                      # flushed and zero saturating; a nonzero count is the run telling you

@@ -663,6 +663,7 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         execute.last_mesh_routed = len(mesh_routes)
         execute.mesh_ran = 0
         execute.mesh_fell_back = 0
+        execute.mesh_fallbacks = []                  # per-layer reasons, so a fallback is actionable
         # What the mesh's operand format could actually hold, summed over every layer it ran. The whole
         # atlas divergence was invisible because nobody counted this; a run now reports it.
         execute.mesh_operand_repr = {"operand_dtype": mesh_dp.operand_dtype,
@@ -824,9 +825,24 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     if tap is not None:
                         tap(op, [env[id(op.results[0])]])
                     return
-            # a layer the mesh could not run at this shape (non-2D or cert-fail) falls back to the host
-            # kernel and is NOT counted as mesh-executed — honest accounting, never a faked mesh result.
+            # A layer the mesh could not run falls back to the host kernel and is NOT counted as
+            # mesh-executed — honest accounting, never a faked mesh result. RECORD WHY. The count alone
+            # says a model failed its must_accelerate gate without saying what to fix, which is the same
+            # fail-silent shape the rest of this path was built to avoid: a whole-model capsule reported
+            # "35 of 37 layers on the mesh, 2 fell back" and nothing anywhere named the two.
+            if not (a.ndim == 2 and b.ndim == 2):
+                _why = f"operand rank {a.ndim}x{b.ndim}: the mesh boundary takes a 2-D contraction"
+            elif a.shape[1] != b.shape[0]:
+                _why = f"inner dims disagree: {a.shape} @ {b.shape}"
+            else:
+                _why = (f"mesh oracle returned no result for {a.shape} @ {b.shape} "
+                        f"({op_dt}/{acc_dt}) — unsynthesizable at this shape, or the oracle was "
+                        f"unreachable")
             execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
+            _fb = getattr(execute, "mesh_fallbacks", None)
+            if _fb is not None and len(_fb) < 64:            # bounded: a diagnostic, not a full trace
+                _fb.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
+                            "reason": _why})
         model = kernel_model(symbol)
         args, keep = [], []
         for o in op.operands:

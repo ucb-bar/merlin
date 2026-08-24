@@ -2032,6 +2032,15 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
     out["tiers"] = sorted(t for t in ("w8a8", "fp32") if f"{t}_cos" in out)
     out["tier_ok"] = ("w8a8" if t1 else "fp32" if t2 else
                       "fp32_legacy" if legacy else "fp32_cos_only" if t3 else None)
+    # DID A PER-ELEMENT VETO ACTUALLY APPLY? t3 is cosine-only by design -- a whole-model regression
+    # output legitimately carries high per-element relative error on its many small elements, and no
+    # per-element bound can pass one. But t3 fires for ANY output whose cosine clears 0.9999, including
+    # one where the veto WOULD have been meaningful and WOULD have failed: a measured whole model passed
+    # here at cos 0.99993 with per-element max-rel 2.82 and global rel 0.0148, having failed both t1 and
+    # t2 on exactly those numbers. That is a real pass and also a much weaker one, and a caller quoting
+    # `ok` alone cannot tell the two apart. Stated as a field so a certification can carry its own
+    # strength instead of the reader having to reverse-engineer it from a tier name.
+    out["per_element_guarded"] = bool(t1 or t2 or legacy)
     return out
 
 
