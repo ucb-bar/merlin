@@ -300,3 +300,18 @@ def test_generate_corpus_routes_pytorch_source(tmp_path):
     g = yaml.safe_load((d / "golden.yaml").read_text())
     assert g["golden_source"] == "host_torch_eager"
     assert (d / "capsule.linalg.mlir").exists()
+
+def test_extent_scan_matches_the_op_name_exactly():
+    """`linalg.matmul_transpose_b` also starts with "linalg.matmul". Accepting it recorded the operand
+    types of a TRANSPOSED pair as a plain matmul's (M, K, N) -- and because model_op_demands joins
+    extents positionally, advancing only on prov.op == "matmul", one spurious entry mis-shaped every
+    later layer of the model."""
+    from merlin.targetgen.capsule_source import _matmul_extents
+
+    plain = ("linalg.matmul ins(%a, %b : tensor<8x16xf32>, tensor<16x32xf32>) "
+             "outs(%c : tensor<8x32xf32>)")
+    tb = ("linalg.matmul_transpose_b ins(%a, %b : tensor<8x16xf32>, tensor<32x16xf32>) "
+          "outs(%c : tensor<8x32xf32>)")
+    assert _matmul_extents(plain) == [(8, 16, 32)]
+    assert _matmul_extents(tb) == [], "a transpose-b matmul must not masquerade as a plain one"
+    assert _matmul_extents(plain + "\n" + tb) == [(8, 16, 32)]

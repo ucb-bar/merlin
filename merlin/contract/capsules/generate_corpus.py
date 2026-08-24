@@ -737,6 +737,15 @@ def _simt_golden(entry, binding):
         prov[entry.get("lhs", "A0")] = {"shape": [M, K], "decoded": A.reshape(-1).tolist()}
         prov[entry.get("weight", "W")] = {"shape": [K, N], "decoded": W.reshape(-1).tolist()}
         outputs[entry.get("out", "Y0")] = rnd_out(y)
+    elif op == "movement":
+        # A load->store movement (mvin/mvout) moves data and computes nothing, so the reference is the
+        # operand itself at the OUTPUT format. Its value as a capsule is that it exercises the movement
+        # family the contract declares, on a datapath whose only job is to not corrupt what it carries.
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        X = synth(entry.get("src", "X"), (M, N))
+        prov[entry.get("src", "X")] = {"shape": [M, N], "decoded": X.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(X)
     elif op == "attention_qk":
         M = entry.get("M_tiles", 1) * dim
         Kd = entry.get("K_tiles", 1) * dim

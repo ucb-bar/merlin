@@ -34,6 +34,7 @@ import yaml
 
 from aet.core.run_paths import RunPaths
 
+from ..common.provenance import UNKNOWN as PROV_UNKNOWN
 from . import capsule_golden as CG
 from .rocc import decode as RD
 from . import trace_check as TCK
@@ -66,6 +67,11 @@ class TierResult:
     timing: dict | None = None        # {build_s, sim_active_s, oracle_wait_s} — active vs waiting
     gflops: float | None = None       # perf (SIMT); None -> omitted so systolic output is unchanged
     pct_fp_peak: float | None = None
+    toolchain: str | None = None      # WHICH PROGRAM was graded, as reported by the adapter. A block-
+                                      # scaled MX capsule is graded on the harness's own reference MX
+                                      # kernel rather than the submission, so a pass there measures the
+                                      # fixture. Recording it keeps a score decomposable instead of
+                                      # silently overstating the backend by the size of the MX set.
     not_applicable: bool = False      # tier honestly N/A for this capsule's datatype (e.g. the integer
                                       # L0/L1 floor on a float datapath) — a legitimate skip, not a
                                       # not_run_is_not_pass violation (unlike an unavailable RTL oracle)
@@ -83,6 +89,11 @@ class TierResult:
             d["gflops"] = self.gflops
         if self.pct_fp_peak is not None:
             d["pct_fp_peak"] = self.pct_fp_peak
+        # WHICH PROGRAM was graded. Rides only when the adapter reported one, so existing output is
+        # unchanged. This is what separates "the submission passed" from "the harness fixture passed":
+        # a block-scaled MX capsule is graded on the reference MX kernel, not the submitted backend.
+        if self.toolchain:
+            d["toolchain"] = self.toolchain
         return d
 
 
@@ -869,7 +880,7 @@ def suite_for(target: str, *, dtype: str = "i8xi8_i32") -> str:
     return _config_for_target(target, None, dtype).suite
 
 
-def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: bool,
+def _encoding_divergence_hint(trace_check_res: dict | None, oracle_graded: bool,
                               cb: dict | None = None, capsule: dict | None = None,
                               trace: dict | None = None) -> str:
     """A mandatory hardware/oracle tier failed while the cheap tiers already passed (numeric fails raise
@@ -892,7 +903,7 @@ def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: b
         except Exception:  # noqa: BLE001 — the localizer is advisory; never let it break the failure path
             concrete = ""
     findings = (trace_check_res or {}).get("violations") or []
-    if independent_float:
+    if oracle_graded:
         hint = (" Decode your OWN emitted artifact (the disassembler / instruction_trace.json) and verify "
                 "every op fires with the operands you intend — a config/compute op that silently no-ops "
                 "produces wrong output only on hardware, never in a cheap check.")
@@ -921,7 +932,9 @@ def _rtl_tiers_of(target: str | None) -> frozenset[str]:
         return frozenset()
 
 
-def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int) -> dict:
+def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int,
+                         package_dir=None, required=(), paths=None, run_id: str = "",
+                         cfg=None, contract=None, eff_target: str = "") -> dict:
     """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
     (``compile_model``): route each op across the target's compute units (matmul/systolic -> the mesh, the
     rest -> the vector/scalar lane), compile the functional whole model (the scalar/RVV reference,
@@ -935,11 +948,13 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     model, dtype = attrs.get("model"), attrs.get("compile_dtype", "fp32")
     # Which lane executes the model. The default was the host dispatch runtime unconditionally, so a
     # capsule that DEMANDS acceleration was graded on a lane that cannot provide it and passed anyway.
-    # Derive it instead: a capsule whose semantic block asserts must_accelerate runs on the mesh lane,
-    # everything else keeps the host lane. The env var still overrides, for a deliberate diagnostic run.
-    _sem = capsule.get("semantic") or {}
-    run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or (
-        "mesh" if _sem.get("must_accelerate") else "host")
+    # The target's OWN mesh is the oracle whenever we have a target -- which subsumes must_accelerate,
+    # since a capsule demanding acceleration on a target with no mesh has nothing to run on either way.
+    # `host` runs merlin's x86 dispatch runtime, which is OUR compiler: a useful diagnostic, never
+    # evidence about the submission, so a host run is recorded advisory and finalized as
+    # `not_gradeable_no_oracle` below (never `pass`). The env var still overrides, for a deliberate
+    # diagnostic run.
+    run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or ("mesh" if target else "host")
     # MERLIN_MESH_VERIFY additionally EXECUTES each mesh-routed matmul as a single systolic tile on the
     # target's real mesh oracle (compile_model mesh_verify) — proving the matmul layers run ON the mesh, not
     # just that a routing plan was produced. Off by default (the oracle build/run is heavy); the whole-model
@@ -949,11 +964,27 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                     "operation": {"op": "model", "model": model, "dtype": dtype, "run": run_where,
                                   "target": target},
                     "contract_version": CONTRACT_VERSION}
+    def _bail(detail: str, category: str = "NOT_RUN_IS_NOT_PASS") -> dict:
+        """An honest un-run row: every required tier recorded `unavailable` WITH ITS REASON, then the
+        shared finalizer. `tiers: {}` would read as 'no tiers apply here' when it means 'nothing ran'."""
+        _req = set(required or capsule.get("required_oracle_tiers") or ())
+        _t = {x: TierResult(x, "unavailable", True, reason=detail) for x in sorted(_req)}
+        _fail = {"plane": "model", "category": category, "detail": detail}
+        _extra = {k: result.pop(k) for k in ("operation",) if k in result}
+        if paths is None:
+            result.update(status="incomplete", numeric={"status": "not_compared"},
+                          failure=_fail, tiers={k: v.to_dict() for k, v in _t.items()}, **_extra)
+            return result
+        return _finalize_capsule_result(
+            name=capsule["name"], capsule=capsule, status="incomplete", failure=_fail, tiers=_t,
+            trace_check_res={"status": "skipped", "violations": [],
+                             "reason": "the whole model did not run"},
+            numeric={"status": "not_compared"}, required=_req, no_oracle=False,
+            eff_target=eff_target or (target or ""), paths=paths, run_id=run_id, cfg=cfg,
+            contract=contract, extra=_extra)
+
     if not model:
-        result.update(status="incomplete",
-                      failure={"plane": "model", "category": "RUNNER_CRASH",
-                               "detail": "model capsule missing operation.attributes.model"})
-        return result
+        return _bail("model capsule missing operation.attributes.model", category="RUNNER_CRASH")
     # The captured linalg (visible grounding) drives the per-op mesh routing when present. Read the name
     # the CAPSULE DECLARES -- every model capsule ships `linalg_mlir: capsule.interface.mlir`, while this
     # looked only for `capsule.linalg.mlir`, so it never found one. `linalg_mlir` was therefore always
@@ -972,23 +1003,20 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                 break
     try:
         from ..compile_cli import compile_model
-        # `dtype` is the capsule's compile_dtype (an RVV compile mode). The capsule ALSO declares the
-        # exact datapath format in operation.attributes.dtype -- pass that for routing so a demand is
-        # matched against the unit's declared format rather than against a compile-mode token.
+        # `mesh_package` is the SUBMISSION under test. Without it the mesh path resolves
+        # `_default_oot_package(target)` -- the promoted package -- and quietly certifies a different
+        # compiler than the one being graded.
+        # `routing_dtype` is the capsule's declared datapath format: `dtype` here is an RVV compile mode,
+        # so routing a demand against it matches a compile-mode token rather than the unit's real format.
         _attrs = (capsule.get("operation") or {}).get("attributes") or {}
         out = compile_model(model, dtype, target=target, run=run_where, verify=True, package=None,
                             auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir,
-                            mesh_verify=mesh_verify, routing_dtype=_attrs.get("dtype"))
+                            mesh_verify=mesh_verify, mesh_package=package_dir,
+                            routing_dtype=_attrs.get("dtype"))
     except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
-        result.update(status="incomplete",
-                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": f"whole-model compile/run unavailable: {str(e)[:300]}"})
-        return result
+        return _bail(f"whole-model compile/run unavailable: {str(e)[:300]}")
     except Exception as e:  # noqa: BLE001
-        result.update(status="incomplete",
-                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": f"whole-model grade error: {type(e).__name__}: {str(e)[:300]}"})
-        return result
+        return _bail(f"whole-model grade error: {type(e).__name__}: {str(e)[:300]}")
     st, gate = out.get("status"), (out.get("verify") or {}).get("gate_ok")
     engine = f"merlin-compile model --target {target} --run {run_where} --verify"
     if out.get("routing_plan") is not None:                   # per-op mesh routing for the target
@@ -1007,141 +1035,197 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     _cos = max(float(_v.get("fp32_cos", 0.0)), float(_v.get("w8a8_cos", 0.0)))
     _quant = dtype in ("int8", "i8", "fp8", "fp8_e4m3")
     _quant_floor = float(os.environ.get("MERLIN_MODEL_QUANT_COS", "0.90") or "0.90")
-    # FAIL CLOSED ON AN UNEXERCISED TIER. A whole-model capsule declares required_oracle_tiers like any
-    # other, but this function never entered the tier ladder, so those tiers were dead metadata and a
-    # capsule could report `pass` with `tiers == {}` -- a verdict backed by no oracle at all. Worse, the
-    # functional gate here is the HOST x86 run unless mesh execution was requested, so "pass" could mean
-    # "the CPU computed the model correctly", which is not a statement about the accelerator.
-    #
-    # Record what actually ran, and refuse to call it a pass when nothing the capsule DECLARED ran. The
-    # accelerator evidence is `mesh_tile_verification` (per-tile on-mesh certification); a routing plan is
-    # a plan, not an execution, and is never counted as a tier.
-    declared = [str(x) for x in (capsule.get("required_oracle_tiers") or [])]
-    mesh_exec = out.get("mesh_tile_verification") or {}
-    model_exec = out.get("mesh_execution") or {}
-    n_tiles = int(mesh_exec.get("n_tiles") or 0) if isinstance(mesh_exec, dict) else 0
-    exercised: dict[str, str] = {}
-    if n_tiles:
-        # The verdict comes from the per-tile COUNTS. Reading a boolean `ok` key -- which this dict does
-        # not carry -- made every on-mesh execution record "fail", including one where all 15 layers
-        # passed on the oracle. A tile that was unavailable or unsynthesizable is NOT a pass either, so
-        # the tier passes only when every tile is accounted for and every one of them passed.
-        _passed = int(mesh_exec.get("n_passed") or 0)
-        _failed = int(mesh_exec.get("n_failed") or 0)
-        _unavail = int(mesh_exec.get("n_unavailable") or 0)
-        _unsynth = int(mesh_exec.get("n_unsynthesizable") or 0)
-        _ok = mesh_exec.get("ok")
-        _tile_ok = bool(_ok) if _ok is not None else (
-            _failed == 0 and _unavail == 0 and _unsynth == 0 and _passed == n_tiles)
+    # TWO MESH EVIDENCE SOURCES, AND THEY ARE DIFFERENT CLAIMS. `mesh_execution` records what happened
+    # to THIS MODEL's own layers -- how many the dispatch runtime got onto the accelerator and how many
+    # fell back to the host kernel. `mesh_tile_verification` records a SYNTHESIZED tile at each routed
+    # shape, which proves the SHAPE is runnable and says nothing about this model. They shared one key
+    # once and the tile record clobbered the model one, so a run with all 15 layers on the host reported
+    # "15 of 15 tiles passed". The model's own accounting decides the tier; the tile record is reported
+    # beside it as the weaker, separate evidence it is.
+    mx = out.get("mesh_execution") or {}
+    ran = mx.get("matmul_layers_on_mesh")
+    fell = mx.get("matmul_layers_host_fallback")
+    tile = out.get("mesh_tile_verification") or {}
+    n_tiles = int(tile.get("n_tiles") or 0) if isinstance(tile, dict) else 0
+    # The tile verdict comes from the per-tile COUNTS. Reading a boolean `ok` key -- which this dict does
+    # not carry -- made every certification record "fail", including one where every tile passed on the
+    # oracle. A tile that was unavailable or unsynthesizable is not a pass either, so it passes only when
+    # every tile is accounted for and every one of them passed.
+    _tok = tile.get("ok")
+    if not n_tiles:
+        tiles_ok = False
+    elif _tok is not None:
+        tiles_ok = bool(_tok)
+    else:
+        tiles_ok = (int(tile.get("n_failed") or 0) == 0
+                    and int(tile.get("n_unavailable") or 0) == 0
+                    and int(tile.get("n_unsynthesizable") or 0) == 0
+                    and int(tile.get("n_passed") or 0) == n_tiles)
+    _declared = [str(x) for x in (capsule.get("required_oracle_tiers") or [])]
+    # WHICH tier the mesh oracle corresponds to, DERIVED from the target's own declared RTL tiers rather
+    # than assumed: excluding the literals "L0"/"L1" and falling back to a literal names the wrong tier
+    # confidently on any target whose ladder differs (atlas grades at L3+L4). The literal path survives
+    # only as the last resort for a target whose manifest cannot be resolved.
+    _rtl = [x for x in _declared if x in _rtl_tiers_of(target)]
+    _mesh_tier = (_rtl[-1] if _rtl
+                  else next((x for x in reversed(_declared) if x not in ("L0", "L1")), "L2"))
+    numeric: dict
+    if st == "verified" and gate:
+        numeric = {"status": "pass", "engine": engine, "gate": out.get("verify")}
+        status = "pass"
+    elif _quant and st == "run_mismatch" and _cos >= _quant_floor:
+        numeric = {"status": "pass", "engine": engine, "gate": _v,
+                   "quant_tolerance": {"cos": _cos, "floor": _quant_floor, "dtype": dtype}}
+        status = "pass"
+        result["note"] = (f"quantized ({dtype}) whole-model output within quant tolerance of the fp32 "
+                          f"golden (cos {_cos:.4f} >= floor {_quant_floor}); the drop vs fp32 is expected "
+                          f"quantization error, not a codegen defect.")
+    elif st == "not_run":
+        numeric = {"status": "not_compared", "engine": engine}
+        status = "incomplete"
+        result["failure"] = {"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                             "detail": out.get("reason", "whole-model run toolchain unavailable")}
+    else:
+        numeric = {"status": "fail", "engine": engine, "gate": out.get("verify"), "model_status": st}
+        status = "fail"
+        result["failure"] = {"plane": "model", "category": "FUNCTIONAL_MISMATCH",
+                             "detail": f"the whole model did not verify (status={st}, gate_ok={gate})"}
 
-        # THE MODEL'S OWN LAYERS DECIDE A MODEL CAPSULE'S TIER, not tiles of its shapes. Certifying a
-        # synthesized tile proves the SHAPE is runnable; the capstone is a claim about THIS model, and
-        # the two came apart once already -- a run with all 15 layers on the host reported "15 of 15
-        # tiles passed". When the model ran the mesh lane, its own per-layer accounting must agree:
-        # every routed layer on the accelerator, none fallen back. A host-lane model run has no such
-        # accounting and is left to the tile record alone.
-        _model_ok = True
-        if model_exec:
-            _on = model_exec.get("matmul_layers_on_mesh")
-            _model_ok = (_on is not None and int(_on) > 0
-                         and not int(model_exec.get("matmul_layers_host_fallback") or 0))
+    # L0/L1 interpret a COMMAND BUFFER; a whole-model capsule has none, so they are honestly N/A rather
+    # than "did not run" -- the same idiom the integer L0/L1 floor uses on a float datapath. That leaves
+    # the mesh tier as the only live required tier, which is exactly what should decide a whole-model
+    # verdict. The capsule's own `required_oracle_tiers` is the authority on what must certify it.
+    # Defaulting to an empty set would make NO tier mandatory, so every fail-closed gate below would be
+    # vacuous.
+    _required = set(required or capsule.get("required_oracle_tiers") or ())
+    tiers: dict = {}
+    for _t in ("L0", "L1"):
+        tiers[_t] = TierResult(_t, "skipped", _t in _required, not_applicable=True,
+                               reason="no command buffer for a whole-model capsule")
+    if run_where == "host":
+        # Our own engine is not an oracle for the submission: record it, withhold the verdict.
+        result["host_reference"] = {"run": "host", "engine": engine, "gate": out.get("verify"),
+                                    "status": st}
+        numeric = {"status": "not_compared", "engine": engine,
+                   "reason": "host dispatch-runtime reference is advisory; not an oracle for the submission"}
+        tiers[_mesh_tier] = TierResult(_mesh_tier, "skipped", _mesh_tier in _required,
+                                       reason="host reference run: the target mesh did not execute this model")
+        status = "pass"                       # the finalizer converts this to not_gradeable_no_oracle
+        _no_oracle = True
+    else:
+        _no_oracle = False
+        if ran is not None and ran is not PROV_UNKNOWN:
+            # THE MODEL'S OWN LAYERS DECIDE A MODEL CAPSULE'S TIER, and they decide it whenever they were
+            # counted -- ahead of any tile record. Consulting the tiles first is how a run that put ZERO
+            # layers on the accelerator reported a pass: the tile certification was for the same shapes
+            # and had nothing to say about the model.
+            if not int(ran):
+                tiers[_mesh_tier] = TierResult(_mesh_tier, "skipped", _mesh_tier in _required,
+                                     reason="no matmul layer executed on the target mesh (every layer fell "
+                                            "back to the host)")
+            elif fell:
+                tiers[_mesh_tier] = TierResult(_mesh_tier, "fail", _mesh_tier in _required,
+                                     reason=f"{fell} mesh-routed layer(s) fell back to the host")
+            else:
+                # The model ran clean on the mesh. A tile certification, WHEN ONE WAS RUN, can only
+                # downgrade that -- a shape the oracle could not certify is evidence against the run, and
+                # `status: pass` printed beside a failing tile is the contradiction a reader takes the
+                # flattering half of. It can never create a pass: the model-lane conditions above stay
+                # necessary.
+                _ok = numeric["status"] == "pass" and (tiles_ok or not n_tiles)
+                _why = f"{ran} matmul layer(s) executed on the target mesh"
+                if n_tiles and not tiles_ok:
+                    _why += (f"; {int(tile.get('n_passed') or 0)} of {n_tiles} certified tile(s) passed "
+                             f"({tile.get('n_failed')} failed, {tile.get('n_unavailable')} unavailable, "
+                             f"{tile.get('n_unsynthesizable')} unsynthesizable)")
+                tiers[_mesh_tier] = TierResult(_mesh_tier, "pass" if _ok else "fail",
+                                     _mesh_tier in _required, reason=_why, evidence="mesh_execution")
+        elif n_tiles:
+            # per-tile certification evidence (mesh_verify) and nothing about this model's own layers
+            tiers[_mesh_tier] = TierResult(_mesh_tier, "pass" if tiles_ok else "fail",
+                                           _mesh_tier in _required,
+                                           reason=f"{n_tiles} mesh tile(s) certified at this model's "
+                                                  f"shapes; no per-layer accounting for the model itself",
+                                           evidence="mesh_tile_verification")
+        else:
+            tiers[_mesh_tier] = TierResult(_mesh_tier, "unavailable", _mesh_tier in _required,
+                                     reason="mesh execution counters unavailable — the target mesh could "
+                                            "not be reached (no OOT package, or the oracle failed to run)")
 
-        # WHICH tier the mesh oracle corresponds to, DERIVED from the target's own declared RTL tiers.
-        # This was `[x for x in declared if x not in ("L0", "L1")]` with an `"L3"` fallback -- three tier
-        # -name literals standing in for a fact the manifest already carries, which names the wrong tier
-        # confidently on any target whose ladder differs (atlas grades at L3+L4, not L3).
-        _rtl = [t for t in declared if t in _rtl_tiers_of(target)]
-        _tier = _rtl[-1] if _rtl else (declared[-1] if declared else None)
-        if _tier:
-            exercised[_tier] = "pass" if (_tile_ok and _model_ok) else "fail"
-    result["tiers"] = exercised
     # The tile record, kept beside the verdict as the SEPARATE and weaker evidence it is: it speaks about
     # synthesized tiles of this model's shapes, never about the model.
-    if mesh_exec:
-        result["tile_evidence"] = {"n_tiles": n_tiles, "n_passed": mesh_exec.get("n_passed"),
+    if tile:
+        result["tile_evidence"] = {"n_tiles": n_tiles, "n_passed": tile.get("n_passed"),
                                    "note": "synthesized tiles OF THIS MODEL'S SHAPES — evidence that the "
                                            "shapes run, not that this model ran"}
+    # The gate fraction is OP COVERAGE, not a model verdict; say so on the row rather than letting a
+    # reader infer one from the other. And name the declared tiers that never ran.
     result["op_coverage"] = {"note": "the op-pass fraction this capsule was gated on is OP COVERAGE, "
                                      "not a verdict on the model"}
-    unexercised = [x for x in declared if x not in exercised]
+    _unexercised = [t for t in _declared
+                    if tiers.get(t) is None or tiers[t].status not in ("pass", "fail")]
+    if _unexercised:
+        result["tiers_unexercised"] = _unexercised
+    # A tier that RAN AND FAILED is not a pass, whatever the host-side numeric gate says -- and it is not
+    # an "incomplete" either: something ran and it was wrong, which is a different report from "nothing
+    # ran". The guard below only refuses the nothing-ran case.
+    _failed_tiers = sorted(t for t, r in tiers.items() if r is not None and r.status == "fail")
+    if status == "pass" and _failed_tiers:
+        status = "fail"
+        result["failure"] = {"plane": "model", "category": "FUNCTIONAL_MISMATCH",
+                             "detail": f"declared oracle tier(s) {_failed_tiers} RAN and did not pass "
+                                       f"({'; '.join(tiers[t].reason or '' for t in _failed_tiers)}); a "
+                                       f"whole-model verdict cannot be a pass over a failing tier"}
+    # If no DECLARED tier certified this model, the numeric verdict is withheld whatever the functional
+    # gate said. The gate compared our own reference run against the golden; that is a real comparison,
+    # but not of the artifact under test, and reporting it as `pass` beside an `incomplete` status invites
+    # exactly the reading this whole change removes.
+    if not any(tiers.get(t) is not None and tiers[t].status == "pass" for t in _required):
+        numeric = {**numeric, "status": "not_compared"}
 
-    # A tier that RAN AND FAILED is not a pass, whatever the host-side numeric gate says. The guard below
-    # only refuses the case where nothing ran at all, so a failing accelerator tier still reported
-    # `status: pass` beside `tiers: {L3: fail}` -- the two halves of the same result contradicting each
-    # other, with the flattering half being the one anybody reads.
-    _failed_tiers = sorted(t for t, v in exercised.items() if v != "pass")
-    if _failed_tiers:
-        result.update(status="fail",
-                      numeric={"status": "not_compared", "engine": engine},
-                      failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
-                               "detail": f"declared oracle tier(s) {_failed_tiers} RAN and did not pass "
-                                         f"(on-mesh execution: {mesh_exec.get('n_passed')} of "
-                                         f"{n_tiles} tile(s) passed, {mesh_exec.get('n_failed')} failed, "
-                                         f"{mesh_exec.get('n_unavailable')} unavailable, "
-                                         f"{mesh_exec.get('n_unsynthesizable')} unsynthesizable); a "
-                                         f"whole-model verdict cannot be a pass over a failing tier"})
-        if unexercised:
-            result["tiers_unexercised"] = unexercised
+    extra = {k: result.pop(k) for k in ("routing_plan", "coverage_certificate", "mesh_execution",
+                                        "mesh_tile_verification", "tile_evidence",
+                                        "host_reference", "note", "operation", "op_coverage",
+                                        "tiers_unexercised")
+             if k in result}
+    # A verdict that claims the hardware ran something records WHICH tree produced it. Only stamped when
+    # the mesh actually executed: a withheld verdict has no hardware claim to attribute. The tier is the
+    # one derived above, not a literal -- a target whose ladder does not contain it would never stamp.
+    if tiers.get(_mesh_tier) is not None and tiers[_mesh_tier].status == "pass":
+        try:
+            from ..common import provenance as _PROV
+            extra["provenance"] = _PROV.record(
+                sources=[str(package_dir)] if package_dir else (),
+                extra={"mesh_target": target, "layers_on_mesh": ran})
+        except Exception as _e:                     # noqa: BLE001 — never fail a grade on bookkeeping
+            extra["provenance"] = {"error": f"{type(_e).__name__}: {_e}"}
+    if paths is None:                          # standalone/diagnostic call — no run dir to finalize into
+        # Without a run dir we cannot call the finalizer, but we must still apply its gates or this branch
+        # re-creates the exact fail-open the rung exists to close. Same two rules, same order.
+        if status == "pass":
+            _ran_required = [t for t in _required
+                             if tiers.get(t) is not None
+                             and not tiers[t].not_applicable and tiers[t].status == "pass"]
+            if not _ran_required:
+                status = "not_gradeable_no_oracle" if _no_oracle else "incomplete"
+                result.setdefault("failure", {
+                    "plane": "not_gradeable_no_oracle" if _no_oracle else "oracle_unavailable",
+                    "category": "NOT_GRADEABLE_NO_ORACLE" if _no_oracle else "NOT_RUN_IS_NOT_PASS",
+                    "detail": ("host dispatch-runtime reference only: the target mesh did not execute "
+                               "this model, so the numeric verdict is withheld") if _no_oracle else
+                              (f"declares required oracle tiers {sorted(_required)} and ran NONE of them "
+                               f"(the functional gate here is the {run_where} reference, not the "
+                               f"accelerator); a whole-model verdict backed by no declared tier is "
+                               f"reported UNKNOWN, never a pass")})
+        result.update(status=status, numeric=numeric,
+                      tiers={t: r.to_dict() for t, r in tiers.items()}, **extra)
         return result
-
-    # MUST_ACCELERATE IS ABOUT THIS MODEL, NOT ABOUT TILES OF ITS SHAPES. Certifying a synthesized tile
-    # proves the shape is runnable; it says nothing about whether the model's own layer reached the
-    # device. Measured: atlas routed 15 matmul layers and the dispatch runtime fell back to the host
-    # kernel on all 15, while the tile record read "15 of 15 passed" -- so a run with ZERO layers on the
-    # accelerator reported `pass` with `lane: mesh`, which is exactly the CPU-only pass this flag exists
-    # to forbid. The two records now live under separate keys and this checks the model one.
-    if (capsule.get("semantic") or {}).get("must_accelerate") and model_exec:
-        _on = model_exec.get("matmul_layers_on_mesh")
-        _fb = int(model_exec.get("matmul_layers_host_fallback") or 0)
-        if _on is None:
-            result.update(status="incomplete",
-                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
-                                   "detail": "capsule declares must_accelerate but the run recorded no "
-                                             "per-layer mesh accounting; cannot confirm the model "
-                                             "reached the accelerator"})
-            return result
-        if int(_on) == 0 or _fb:
-            result.update(status="fail",
-                          numeric={"status": "not_compared", "engine": engine},
-                          failure={"plane": "model", "category": "FALLBACK_ON_ELIGIBLE_REGION",
-                                   "detail": f"capsule declares must_accelerate but only {_on} matmul "
-                                             f"layer(s) executed on the {target} mesh and {_fb} fell back "
-                                             f"to the host kernel; the numeric gate therefore measures "
-                                             f"the HOST, not the accelerator"})
-            return result
-
-    if declared and not exercised:
-        result.update(status="incomplete",
-                      numeric={"status": "not_compared", "engine": engine},
-                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": f"declares required oracle tiers {declared} and ran NONE of them "
-                                         f"(the functional gate here is the {run_where} reference, not the "
-                                         f"accelerator); a whole-model verdict backed by no declared tier "
-                                         f"is reported UNKNOWN, never a pass"})
-        return result
-
-    if st == "verified" and gate:
-        result.update(status="pass", numeric={"status": "pass", "engine": engine, "gate": out.get("verify")})
-        if unexercised:
-            result["tiers_unexercised"] = unexercised
-    elif _quant and st == "run_mismatch" and _cos >= _quant_floor:
-        result.update(status="pass",
-                      numeric={"status": "pass", "engine": engine, "gate": _v,
-                               "quant_tolerance": {"cos": _cos, "floor": _quant_floor, "dtype": dtype}},
-                      note=(f"quantized ({dtype}) whole-model output within quant tolerance of the fp32 "
-                            f"golden (cos {_cos:.4f} >= floor {_quant_floor}); the drop vs fp32 is expected "
-                            f"quantization error, not a codegen defect."))
-    elif st == "not_run":
-        result.update(status="incomplete",
-                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": out.get("reason", "whole-model run toolchain unavailable")})
-    else:
-        result.update(status="fail",
-                      numeric={"status": "fail", "engine": engine, "gate": out.get("verify"),
-                               "model_status": st},
-                      failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
-                               "detail": f"the whole model did not verify (status={st}, gate_ok={gate})"})
-    return result
+    return _finalize_capsule_result(
+        name=capsule["name"], capsule=capsule, status=status, failure=result.get("failure"),
+        tiers=tiers, trace_check_res={"status": "skipped", "violations": [],
+                                      "reason": "no per-op instruction trace for a whole-model capsule"},
+        numeric=numeric, required=_required, no_oracle=_no_oracle, eff_target=eff_target or (target or ""),
+        paths=paths, run_id=run_id, cfg=cfg, contract=contract, extra=extra)
 
 
 def _merge_match_policy(force: dict | None, capsule: dict | None) -> dict | None:
@@ -1180,7 +1264,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     (cb -> flops) feeds the SIMT gflops/pct_fp_peak. ``oracle_adapters`` is the per-target oracle set: the
     L0/L1 math floor always runs; RTL tiers grade only if an adapter is present + available (arc or a
     bespoke sim), else honestly ``unavailable`` — arc is never assumed."""
-    from ..runtime.reference import reference_outputs
+    from ..runtime.reference import UnmodeledOp, reference_outputs
     from ..runtime.simulator import simulate
     from .provenance import toolchain_shas
 
@@ -1214,8 +1298,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
     # same capsule_result.json shape so downstream reporting is uniform.
     if capsule.get("kind") == "model":
-        result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout)
-        (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        # Hand the SUBMISSION and the run context down: the model grade now builds real TierResults and
+        # shares `_finalize_capsule_result`, so it is subject to the same not_run_is_not_pass gate, the
+        # same fail-open guard and the same schema validation as every op capsule. It used to return
+        # here with `tiers: {}` and a row that did not validate.
+        result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout,
+                                      package_dir=package_dir, required=required, paths=paths,
+                                      run_id=run_id, cfg=cfg, contract=contract, eff_target=eff_target)
         # Persist the ARR coverage certificate as its own durable artifact (not only inside
         # capsule_result.json) so the report/grader can read it back per compilation.
         cert = result.get("coverage_certificate")
@@ -1226,6 +1315,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         return result
 
     tiers: dict[str, TierResult] = {}
+    # WHICH PROGRAM each tier actually graded, keyed by tier (see TierResult.toolchain). Declared out here
+    # so it survives an exception raised inside the tier loop.
+    _tier_toolchain: dict[str, str] = {}
     trace_check_res = {"status": "skipped", "violations": []}
     decoded_trace: dict | None = None            # kept for the advisory divergence localizer (D2)
     numeric = {"status": "skipped"}
@@ -1288,6 +1380,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             cb["mx_operands"] = _mxops
 
         _vals = CG.canonical_input_values(capsule, capsule_dir)
+        if not _vals:
+            # No golden.yaml ships operands for this capsule, so its golden is RECOMPUTED on
+            # materialize_capsule_leaves — attach that SAME stimulus. Without it a program-oracle target
+            # has nothing to build its kernel harness from and fails closed ("could not derive harness
+            # operands from the command buffer (no canonical_inputs)"), so the capsule reported
+            # `missing from observed` for EVERY submission, correct or not — ungradeable by construction
+            # rather than failed on merit. The golden and the device must see one stimulus.
+            _vals = CG.materialized_input_values(capsule)
         if _vals:
             cb["canonical_inputs"] = _vals
             # POSITIONAL FALLBACK for interface grammars whose operands are UNNAMED. The merlin_iface
@@ -1322,6 +1422,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # the model can index. Bases the agent DECLARED are left untouched (inject_bases only fills gaps).
         _dram.inject_bases(cb, capsule, base=dram_base_for(eff_target) + _dram.DEFAULT_BASE)
 
+        # Does the numeric verdict ride the HARDWARE oracle (tolerance vs this capsule's golden) instead
+        # of the cheap integer reference? True for a float datapath with an independent golden, and set
+        # below when the cheap engines turn out to have no definition for an opcode in the buffer. Either
+        # way there is no usable integer cross-check, so the oracle comparison IS the verdict.
+        oracle_graded = independent_float
         if independent_float:
             # The integer reference/simulate engines cannot execute a float (fp8/bf16) datapath, so the
             # integer L0-reference / L1-sim numeric floor is INAPPLICABLE — skipped honestly (not failed),
@@ -1336,7 +1441,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                "declared operation within tolerance"}
             tiers["L0"] = TierResult(
                 "L0", "skipped", mandatory="L0" in required, not_applicable=True,
-                reason="integer reference not applicable to float datapath; graded vs independent "
+                reason="integer reference not applicable to float datapath; graded vs the "
                        f"golden ({gsource}) at the RTL oracle")
             tiers["L1"] = TierResult(
                 "L1", "skipped", mandatory="L1" in required, not_applicable=True,
@@ -1351,6 +1456,27 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             try:
                 ref = reference_outputs(cb)
                 sim = simulate(cb)["outputs"]
+            except UnmodeledOp as ue:
+                # THIS ENGINE cannot check the buffer — its op vocabulary has no definition for an opcode
+                # the result depends on. That is a limit of the cheap tier, NOT a defect in the submission,
+                # so it is skipped honestly (not_applicable) and correctness is graded where the op DOES
+                # execute: the hardware oracle, against this capsule's golden. Distinguishing this from a
+                # malformed buffer matters — the engine used to drop such an op silently and return an empty
+                # output map, which surfaced as "your kernel never wrote its output" and could not be fixed
+                # by any submission, correct or not.
+                ref = sim = None
+                oracle_graded = True
+                numeric = {"status": "skipped", "policy": policy.get("compare"), "golden_source": gsource,
+                           "note": f"cheap integer tiers N/A ({ue}); correctness is graded by running your "
+                                   "artifact on the RTL oracle and checking it computes the declared "
+                                   "operation within tolerance"}
+                tiers["L0"] = TierResult(
+                    "L0", "skipped", mandatory="L0" in required, not_applicable=True,
+                    reason=f"integer reference has no definition for {sorted(set(ue.opcodes))}; "
+                           f"graded vs the golden ({gsource}) at the RTL oracle")
+                tiers["L1"] = TierResult(
+                    "L1", "skipped", mandatory="L1" in required, not_applicable=True,
+                    reason=f"integer simulate has no definition for {sorted(set(ue.opcodes))}")
             except (ValueError, KeyError, IndexError, TypeError) as ce:
                 raise CertFailure(
                     "command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
@@ -1358,6 +1484,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     f"({type(ce).__name__}: {ce}); check operand ranks/shapes and that each command's op "
                     f"is one the reference interpreter models (e.g. a windowed op lowered to a 2D matmul)"
                 ) from ce
+        if not oracle_graded and ref is not None:
             nrep = CG.compare(gold, ref, capsule["numeric_policy"], golden_source=gsource)
             numeric = {"status": nrep["status"], "policy": nrep["policy"],
                        "max_abs_diff": nrep["max_abs_error"], "max_rel_error": nrep["max_rel_error"],
@@ -1504,6 +1631,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             _adapter_t0 = _time.perf_counter()
             try:
                 res = adapter(cb, llvm_text, paths.generated, timeout)
+                # Which program the adapter actually built. Captured here because the branches below each
+                # construct their own TierResult and `res` is not in scope after them; applied in one place
+                # once the loop is done.
+                if isinstance(res, dict) and res.get("toolchain"):
+                    _tier_toolchain[tier] = str(res["toolchain"])
             except _PODidNotHalt as e:
                 # The oracle RAN and returned a verdict: the program never halted. That is the AGENT's
                 # bug, not a missing oracle — record it as a tier FAIL (not "unavailable") so the
@@ -1591,10 +1723,32 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 # (a required tier must verify output) — there it degrades to honest-unavailable.
                 _sim_name = cfg.tier_sim.get(tier) or tier
                 if mand:
+                    # A mandatory completion-only RTL tier certifies that the emitted kernel RAN to
+                    # completion on cycle-accurate RTL, but cannot itself surface outputs for a numeric
+                    # check. Correctness is still REQUIRED: it passes only when an independent functional
+                    # oracle has ALREADY established a numeric pass on the SAME artifact — L2 (cyclotron)
+                    # and this RTL tier build the identical fork-free ELF (``compile_mlir_forkfree``), and
+                    # tiers are graded in sorted() order so L2 sets ``numeric`` before this runs. So a
+                    # completing RTL run of a numerically-verified ELF is a sound mandatory certificate.
+                    # Fail-closed otherwise: if no functional tier established a numeric pass
+                    # (``numeric.status`` stays "skipped"/"fail"), it degrades to honest-unavailable. The
+                    # agent never sees the golden — correctness is graded against it inside the runner —
+                    # so this does not weaken anti-cheat; it makes the mandatory RTL tier meaningful
+                    # instead of un-satisfiable. (completion_only is produced only by the Muon adapters;
+                    # command-ISA targets surface outputs and never reach this branch.)
+                    if numeric.get("status") == "pass":
+                        tiers[tier] = TierResult(
+                            tier, "pass", mand,
+                            reason="RTL completion cert; correctness verified by the functional tier "
+                                   "on the same fork-free ELF",
+                            cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers,
+                            cycle_accurate=tier in cfg.rtl_tiers, timing=_tm)
+                        continue
                     tiers[tier] = TierResult(
                         tier, "unavailable", mand,
                         reason="RTL cert ran to completion but cannot surface outputs for a mandatory "
-                               "correctness check (use the functional tier as the required gate)",
+                               "correctness check, and no functional tier established a numeric pass "
+                               "(use the functional tier as the required gate)",
                         cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers, timing=_tm)
                     continue
                 _cg = _cp = None
@@ -1612,10 +1766,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     cycle_accurate=tier in cfg.rtl_tiers, evidence=f"{_sim_name}_console.log",
                     timing=_tm, gflops=_cg, pct_fp_peak=_cp)
                 continue
-            if independent_float:
-                # Float grade: the RTL program-oracle output vs the INDEPENDENT golden.yaml (tolerance_float).
-                # There is no integer reference/simulate to cross-check against — this comparison IS the
-                # numeric verdict, recorded as the honest numeric report + evidence.
+            if oracle_graded:
+                # Float grade: the RTL program-oracle output vs the capsule's golden (tolerance_float) —
+                # the independent golden.yaml when it ships one, otherwise the recomputed golden, stamped
+                # either way by ``gsource``. There is no integer reference/simulate to cross-check against —
+                # this comparison IS the numeric verdict, recorded as the honest numeric report + evidence.
                 onrep = CG.compare(gold, res["outputs"], policy, golden_source=gsource)
                 okt = onrep["status"] == "pass"
                 # The numeric verdict must ride the MANDATORY/gold tier, not an additive one: otherwise an
@@ -1660,12 +1815,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # from the readback entirely (_absent_output_detail) and the output read back as a single
             # untouched constant (_unwritten_output_detail). Without the second, a writeback failure is
             # reported as a numeric mismatch whose count cannot move -- measured at six wasted rounds.
+            # Guarded on oracle_graded (a superset of independent_float) so both details also reach a
+            # capsule graded against an independent oracle that is not the float path.
             _absent_detail = ((_absent_output_detail(onrep, sim_name, gold, res["outputs"])
                                or _unwritten_output_detail(onrep, sim_name))
-                              if independent_float else None)
+                              if oracle_graded else None)
             _mismatch_reason = _absent_detail or (
                 f"on {sim_name}, your emitted artifact does not compute the declared operation within tolerance"
-                if independent_float
+                if oracle_graded
                 else f"on {sim_name}, your emitted artifact does not compute the declared operation")
             # ``oracle`` may be a rich dict (gemmini spike/verilator: {derived_from_rtl, ...}) OR a plain
             # provenance string (the arc / program cosim returns e.g. "atlas-arc-arcilator-cosim"); default
@@ -1690,7 +1847,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             if not okt and mand:
                 raise CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"),
                                   _mismatch_reason + _encoding_divergence_hint(
-                                      trace_check_res, independent_float,
+                                      trace_check_res, oracle_graded,
                                       cb=cb, capsule=capsule, trace=decoded_trace))
 
     except CertFailure as cf:
@@ -1703,6 +1860,43 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                    "detail": f"{type(e).__name__}: {e}",
                    "traceback": _traceback.format_exc()}
 
+    # Stamp each tier with the program the adapter built. Done here rather than at each construction site:
+    # the branches above each build their own TierResult and `res` is out of scope after them. A block-
+    # scaled MX capsule is graded on the harness's reference MX kernel, so this is what separates "the
+    # submission passed" from "the fixture passed" in a finished score.
+    from dataclasses import replace as _dc_replace
+    for _t, _tc in _tier_toolchain.items():
+        if _t in tiers and getattr(tiers[_t], "toolchain", None) is None:
+            tiers[_t] = _dc_replace(tiers[_t], toolchain=_tc)
+
+    return _finalize_capsule_result(
+        name=name, capsule=capsule, status=status, failure=failure, tiers=tiers,
+        trace_check_res=trace_check_res, numeric=numeric, required=required, no_oracle=no_oracle,
+        eff_target=eff_target, paths=paths, run_id=run_id, cfg=cfg, contract=contract,
+        executability=executability)
+
+
+def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: dict | None,
+                             tiers: dict, trace_check_res: dict, numeric: dict, required, no_oracle: bool,
+                             eff_target: str, paths: "RunPaths", run_id: str, cfg, contract,
+                             executability: dict | None = None,
+                             extra: dict | None = None) -> dict:
+    """The shared tail of every capsule grade: fail-closed gates, the result row, and self-validation.
+
+    Lifted out of :func:`run_capsule` so the whole-model path shares the SAME invariants rather than a
+    second copy of them. A model capsule used to return before any of this ran, which is precisely how it
+    could report ``pass`` with an empty ``tiers`` block, no ``trace_check``, and a row that does not
+    validate against ``capsule_result.schema.json`` -- with nothing to notice, because the validator sits
+    on the far side of that early return.
+
+    ``extra`` merges whole-model-only top-level keys (routing plan, coverage certificate, mesh execution,
+    op coverage) without giving them a say in the status.
+    """
+    executability = executability or {}
+    # `toolchain_shas` was a function-local import inside run_capsule; lifting this block to module level
+    # took it out of scope. Import it here rather than at module level to keep the provenance import lazy,
+    # as the original call site did.
+    from .provenance import toolchain_shas
     # not_run_is_not_pass: a mandatory tier that did not pass closed (unavailable/skipped/absent) makes
     # the capsule incomplete — never a silent pass. A tier that is honestly N/A for this capsule's
     # datatype (``not_applicable``; the integer L0/L1 floor on a float datapath) is the ONE exception —
@@ -1787,6 +1981,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     }
     # Advisory RTL-executability smoke (never a gate): record it as its own field when one ran, so a
     # reader sees the RTL-legality backstop verdict without it ever touching the pass/fail status.
+    if extra:
+        result.update(extra)
     if executability:
         result["executability"] = executability
     (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
@@ -1883,14 +2079,24 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
               f"{' ...' if len(ungradeable) > 6 else ''}", flush=True)
     if not model_caps:
         return op_results
-    # The gate fraction is over what the HARDWARE CAN DO, not over everything graded. A capsule the
-    # target provably cannot accelerate must not be able to block the whole-model capsules behind it.
-    # Measured: an int8 systolic target graded 12 bf16 capsules its contract declares no capability for
-    # ("input dtype 'bf16' not in contraction formats ['int8']"). They can never pass, so the best
-    # reachable fraction was 23/35 = 0.66 against a 0.8 gate -- the whole-model capsules were
-    # MATHEMATICALLY unreachable, and nothing said so. Excluding the ineligible makes the gate mean
-    # "the ops this device can do are working", which is what it was for.
-    graded = [r for r in op_results if r.get("status") in ("pass", "fail")]
+    # The gate denominator answers "how much of what this device CAN do is working?" -- two independent
+    # ways of getting it wrong, both measured, both guarded here.
+    #
+    # 1. A CRASHED op capsule (``error``) COUNTS. It produced no passing artifact, which is a failure to
+    #    deliver one, not an absence of evidence. Leaving it out let a crashier failure mode UNLOCK the
+    #    gate: across three rounds with identical 25/36 op passes, 5 crashes shrank the denominator to 31
+    #    (0.806, open) while rounds with 0 and 2 crashes scored 0.694 and 0.735 (closed). The capstone
+    #    swung on HOW the submission failed rather than on how much of the suite it passed.
+    #    ``not_gradeable_no_oracle`` stays excluded -- there the ORACLE was absent, so the suite genuinely
+    #    learned nothing about the submission.
+    # 2. An INELIGIBLE op capsule does NOT count. An int8 systolic target graded 12 bf16 capsules its
+    #    contract declares no capability for ("input dtype 'bf16' not in contraction formats ['int8']").
+    #    They can never pass, so the best reachable fraction was 23/35 = 0.66 against a 0.8 gate: the
+    #    whole-model capsules were MATHEMATICALLY unreachable and the only report was a repeated "gated".
+    #
+    # The two do not cancel: a crashed ELIGIBLE capsule still counts, so the crash loophole stays shut,
+    # while a capsule the hardware cannot do is out either way.
+    graded = [r for r in op_results if r.get("status") in ("pass", "fail", "error")]
     eligible = [r for r in graded if _gate_counts(r, capsules, target)]
     denom = eligible or graded          # fall back rather than divide by zero if nothing is classifiable
     frac = (sum(1 for r in denom if r.get("status") == "pass") / len(denom)) if denom else 0.0

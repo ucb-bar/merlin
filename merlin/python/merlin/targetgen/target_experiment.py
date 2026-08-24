@@ -47,6 +47,12 @@ class TargetExperiment:
     # per-target SETUP (which shipped validation program to smoke), so declared, not derived. Only an
     # ``external_backend`` (self-hosted-ISA program-oracle) target needs one; others leave it None.
     preflight_smoke_program: str | None = None
+    # OPTIONAL: repo-relative dir of the BACKEND package whose ``contracts/`` hold this target's
+    # rtl_facts / irdl pins, when it is NOT ``merlin/targets/<target>``. An experiment target can be
+    # served by a differently-named core package; leaving that to be inferred from the target name
+    # yields bundle grants pointing at paths that cannot exist (a CIRCT arm granted nothing while the
+    # manifest claims otherwise). Declared, never inferred; default preserves same-name targets.
+    backend_package_dir: str | None = None
     # OPTIONAL: the contract the descriptor DECLARES as this target's capability manifest, repo-root
     # relative. It was parsed and thrown away before — no field held it — so every descriptor's
     # ``hardware_spec.target_contract`` was dead data, and what the tooling actually read was whatever
@@ -57,6 +63,19 @@ class TargetExperiment:
     # failed to render. Kept as a declaration, deliberately NOT as an override: see
     # :func:`declared_vs_resolved_contract`.
     declared_contract: str | None = None
+    # OPTIONAL: capsule DIRECTORY NAMES this experiment withholds from the PUBLIC graded set. An
+    # experiment CHOICE about scope (which capsules a paid agentic loop is scored on), so declared per
+    # target, never inferred — the library reads it as data and knows nothing about any target's corpus.
+    #
+    # Why the knob exists: a whole-model capsule costs one oracle invocation per matmul layer, and the
+    # cost is the MODEL's, not the compiler's. Measured on radiance: 15 layers ~= 45 min, and the four
+    # model capsules together are 297 layers ~= 15 h per arm per ROUND, which makes a 12-round A/B
+    # unreachable while adding nothing the first model has not already shown. Withholding is honest only
+    # because it is visible: the excluded names land in the run's own manifest and the denominator moves
+    # with them. It is NOT a way to drop capsules a submission fails — see the fail-closed check in
+    # :func:`~merlin.targetgen.contract.materialize.materialize_public_capsules`, which refuses an
+    # exclusion that matches no capsule so a typo cannot quietly widen the set back open.
+    graded_exclude: tuple[str, ...] = ()
 
     def declared_contract_path(self) -> Path | None:
         """The declared contract as an absolute path, if the descriptor names one that exists."""
@@ -78,14 +97,28 @@ class TargetExperiment:
                 return str(d.relative_to(anc))
         return d.name
 
-    # DERIVED target-specific paths (bundle-convention strings) — from ``target``, never hand-listed.
+    # DERIVED target-specific paths (bundle-convention strings) — from the backend package, never
+    # hand-listed.
+    @property
+    def backend_package(self) -> str:
+        """Repo-relative dir of the target's BACKEND package, where its contracts/ live.
+
+        Defaults to ``merlin/targets/<target>`` — true whenever the experiment target and the backend
+        package share a name (gemmini, atlas, ...). It is NOT universally true: an experiment target may
+        be served by a differently-named core package (a SIMT experiment served by its core's package),
+        and assuming otherwise silently produces grant paths that can never exist — a bundle that
+        *looks* like it hands the CIRCT arm its RTL facts while handing it nothing. So the mapping is a
+        DECLARED fact (``backend_package`` in the descriptor) whenever it differs, never inferred."""
+        d = self.backend_package_dir
+        return str(d).rstrip("/") if d else f"merlin/targets/{self.target}"
+
     @property
     def rtl_facts_pin(self) -> str:
-        return f"merlin/targets/{self.target}/contracts/rtl_facts/"
+        return f"{self.backend_package}/contracts/rtl_facts/"
 
     @property
     def irdl_pin(self) -> str:
-        return f"merlin/targets/{self.target}/contracts/irdl/"
+        return f"{self.backend_package}/contracts/irdl/"
 
     def corpus_rel(self) -> str:
         """The capsule corpus as a repo-root-relative string (bundle convention)."""
@@ -161,6 +194,8 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         preflight_smoke_program=(lambda s: str(s) if s else None)(
             (doc.get("preflight") or {}).get("smoke_program")),
         declared_contract=(lambda s: str(s) if s else None)(hw.get("target_contract")),
+        backend_package_dir=(lambda s: str(s) if s else None)(doc.get("backend_package_dir")),
+        graded_exclude=tuple(str(x) for x in ((doc.get("grading") or {}).get("exclude_capsules") or ())),
     )
 
 

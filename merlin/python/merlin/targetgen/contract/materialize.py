@@ -134,7 +134,8 @@ def declared_oracle_tiers(*roots: str | Path) -> set[str]:
 
 def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAULT_CEILING,
                                 contract: str | Path | None = None,
-                                corpus_roots: list[Path] | None = None) -> list[str]:
+                                corpus_roots: list[Path] | None = None,
+                                exclude: tuple[str, ...] | set[str] | None = None) -> list[str]:
     """Derive the sandbox public-capsule view into ``dest``. Returns the capsule names written.
 
     Copies the 5 capsule files verbatim, then rewrites ``capsule.yaml``'s ``required_oracle_tiers``
@@ -143,12 +144,29 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
     ``corpus_roots`` (target-AGNOSTIC): materialize the public capsules found directly under these roots
     (the descriptor's ``capsule_corpus`` + sibling corpora). When omitted, falls back to the legacy
     gemmini-contract discovery (``contract``) for backward compatibility.
+
+    ``exclude`` is the descriptor's ``grading.exclude_capsules`` — capsule DIRECTORY NAMES this
+    experiment withholds from the public graded set (see
+    :attr:`~merlin.targetgen.target_experiment.TargetExperiment.graded_exclude` for why one exists). The
+    names are matched against what the corpus actually holds and an exclusion matching NOTHING raises:
+    a mistyped or stale name would otherwise silently re-admit an expensive capsule, and the failure
+    mode of a *quietly wider* set is a run that blows its wall-clock budget with no signal saying why.
     """
     keep = set(_cap_tiers(tier_ceiling))
     dest = Path(dest)
     written: list[str] = []
     sources = (_public_capsule_dirs_in(corpus_roots) if corpus_roots is not None
                else _public_capsule_dirs(contract))
+    drop = set(exclude or ())
+    if drop:
+        present = {s.name for s in sources}
+        unknown = sorted(drop - present)
+        if unknown:
+            raise ValueError(
+                f"grading.exclude_capsules names {unknown} but the public corpus holds no such "
+                f"capsule(s); it has {sorted(present)}. Refusing to materialize, because an exclusion "
+                f"that matches nothing silently GROWS the graded set back to full size.")
+        sources = [s for s in sources if s.name not in drop]
     for src in sources:
         name = src.name
         d = dest / name
@@ -228,7 +246,8 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     link = base / te.target
     ver = base / f".{te.target}.build.{os.getpid()}.{uuid.uuid4().hex[:8]}"
     shutil.rmtree(ver, ignore_errors=True)
-    materialize_public_capsules(ver, tier_ceiling=tier_ceiling, corpus_roots=roots)
+    materialize_public_capsules(ver, tier_ceiling=tier_ceiling, corpus_roots=roots,
+                                exclude=getattr(te, "graded_exclude", ()))
     tmp_link = base / f".{te.target}.lnk.{os.getpid()}.{uuid.uuid4().hex[:8]}"
     if tmp_link.is_symlink() or tmp_link.exists():
         tmp_link.unlink()

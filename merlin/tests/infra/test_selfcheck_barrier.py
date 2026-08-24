@@ -16,7 +16,8 @@ from __future__ import annotations
 import pytest
 
 
-def score(tiers: dict, status: str, declared: str, declared_ran: bool = False) -> tuple[bool, str]:
+def score(tiers: dict, status: str, declared: str, declared_ran: bool = False,
+          mandatory: bool = True) -> tuple[bool, str]:
     """Mirror of agent_selfcheck's barrier resolution (kept in sync by the tests below).
 
     `declared_ran` is the whole-corpus fact: did the declared tier produce a verdict for ANY capsule?
@@ -29,7 +30,11 @@ def score(tiers: dict, status: str, declared: str, declared_ran: bool = False) -
         if ran:
             used = max(ran)
             bar = tiers.get(used)
-    return (status == "pass") and (bar == "pass"), used
+    # A tier that did not run gates only when THIS capsule requires it; a tier that ran and
+    # FAILED always gates, so an explicitly requested cert failure is never reported as success.
+    bar_did_not_run = bar in (None, "unavailable", "skipped")
+    ok = (status == "pass") and (bar == "pass" or (bar_did_not_run and not mandatory))
+    return ok, used
 
 
 ATLAS = {"L0": "skipped", "L1": "skipped", "L2": "pass"}
@@ -93,8 +98,9 @@ def test_the_helper_matches_the_shipped_implementation():
     """Guard against the mirror above drifting from agent_selfcheck."""
     from merlin.common.paths import repo_root
     src = (repo_root() / "merlin/experiments/capsule_bench/harness/agent_selfcheck.py").read_text()
-    assert 'ran = [k for k, v in tiers.items() if v not in (None, "skipped")]' in src
+    assert 'bar_did_not_run = bar in (None, "unavailable", "skipped")' in src
     assert "bar_used = max(ran)" in src
+    assert 'bar_mandatory = bool(tier_objs.get(bar_used, {}).get("mandatory"))' in src
     # the whole-corpus gate: without it the fallback is a leniency hole
     assert "if bar is None and not _declared_ran:" in src
     assert "_declared_ran = True" in src

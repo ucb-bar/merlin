@@ -227,6 +227,17 @@ module attributes {transform.with_named_sequence} {
 #     multiple of NR=8.
 #   * batch_matmul (B,M,N,K) -> B. Attention carries B=32 heads, far more parallelism than
 #     its N (8..64), and the schedule already tiles B by 1 so whole heads split cleanly.
+def _fuse_post() -> bool:
+    """Whether to run the post-contraction fusion stage.
+
+    Still opt-in (``MERLIN_FUSE_POST``) so the shipping baseline stays byte-identical until the fused
+    build is graded bit-exact on hardware -- but a named predicate rather than an inline environ poke,
+    so a test can drive it and a build can record it.
+    """
+    import os
+    return bool(os.environ.get("MERLIN_FUSE_POST"))
+
+
 PARALLEL_ENTRY = "__transform_parallel_main"
 
 _PARALLEL_DIM_NUM_THREADS = {
@@ -310,13 +321,33 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
           if par else []),
         "transform-interpreter{entry-point=__transform_main}",
         "canonicalize", "cse",
-        # POST-matmul elementwise fusion (env-gated, default OFF -> baseline byte-identical): after the
-        # schedule has tiled/vectorized the matmuls (so the `ops{["linalg.matmul"]}` match already ran),
-        # it is now SAFE to fuse the remaining elementwise generics — collapsing the non-matmul producer
-        # ->consumer chains so they don't each materialize an intermediate to DRAM (the dispatch-overhead
-        # bucket that loses openvla/rdt2 to XNNPACK). cos-gated before any claim.
+        # POST-matmul elementwise fusion + broadcast folding. Runs HERE, after the schedule has already
+        # matched and vectorized the contractions, because fusing earlier folds matmuls into generics and
+        # `ops{["linalg.matmul"]}` then matches nothing (silent 0-vectorization).
+        #
+        # WHY THIS IS THE LOAD-BEARING STAGE, measured on spectformer int8:
+        #   * `linalg-specialize-generic-ops` above recovers the contraction NAMES, but it also un-fuses
+        #     every elementwise generic: 0 -> 567 `linalg.broadcast` and 1569 -> 1952 `tensor.empty`.
+        #     Those broadcasts are 23.8% of on-chip runtime and pure byte traffic -- a 256-element scale
+        #     materialized into all 196,608 positions of a 256x768 temporary just to be divided by.
+        #   * the model writes 977 MB per inference, 761 MB of it f32, so its arithmetic intensity as
+        #     compiled is 1.18 MAC/byte against a machine that balances at 32 -- memory bound by a factor
+        #     of 27, on a workload whose own reuse would put it at 115 MAC/byte.
+        #   * running these passes on the tagged IR takes broadcast 567 -> 245 and tensor.empty 1952 -> 68.
+        #
+        # `linalg-fuse-elementwise-ops` collapses the producer->consumer chains so each line is touched
+        # once instead of once per op in the chain, and the canonicalize/cse after it is NOT incidental:
+        # measured on the tagged IR, fuse alone gives broadcast 277 / empty 1415, and fuse+canonicalize+cse
+        # gives 245 / 68 -- most of the temporary collapse is the cleanup, not the fusion.
+        #
+        # `linalg-fold-into-elementwise` is deliberately NOT here. It reads like exactly the right pass
+        # ("fold transpose and broadcast ops into elementwise") and it is MEASURED INERT on this IR:
+        # fold+fuse+canonicalize+cse is identical to fuse+canonicalize+cse (245/718/68 either way), and
+        # adding it to this stage changed the built image by one instruction. It matches `linalg.elementwise`
+        # CATEGORY ops, while this IR carries `linalg.generic`; reaching it would mean running
+        # `linalg-named-to-category` first. Left out rather than left in as decoration.
         *( ["func.func(linalg-fuse-elementwise-ops)", "canonicalize", "cse"]
-           if __import__("os").environ.get("MERLIN_FUSE_POST") else [] ),
+           if _fuse_post() else [] ),
         "func.func(linalg-generalize-named-ops)",   # remaining (non-vectorized) ops -> loops
         "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
         brop,

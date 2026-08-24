@@ -162,6 +162,21 @@ _OP_FAMILY: dict[str, str] = {
     "logit_softcap": "elementwise_map",
     "embed_scale": "elementwise_map",
     "requant": "elementwise_map",
+    # ...and the per-element spellings a CAPTURED model actually contains beyond the hand corpus. Each is
+    # a spelling of the same primitive, not a new capability: an integer bitwise op, a predicate, and a
+    # dtype conversion are all per-element maps, and an index generator is a map over the index
+    # (out[i] = f(i)). Measured across six captured models: without these, 1222 of 12013 regions were
+    # UNCLASSIFIED, so a coverage number could not say whether they were opportunities or scalar work.
+    # A contract names its unit's ops with the family word itself ("elementwise", beside "matmul").
+    # `movement` and `reduce` are already keys here for the same reason; `elementwise` was missing,
+    # so a unit declaring [matmul, elementwise] and no explicit semantic_capabilities block derived
+    # ONLY {contraction} -- dropping elementwise from its own capability denominator.
+    "elementwise": "elementwise_map",
+    "bitwise": "elementwise_map",
+    "compare": "elementwise_map",
+    "dtype_cast": "elementwise_map",
+    "arange": "elementwise_map",
+    "iota": "elementwise_map",
     # movement: data motion without arithmetic
     "movement": "movement",
     "transpose": "movement",
@@ -169,6 +184,13 @@ _OP_FAMILY: dict[str, str] = {
     "expand": "movement",
     "pack": "movement",
     "copy": "movement",
+    # ...captured-model movement spellings. A constant fill writes a value per element with no arithmetic
+    # on an input, and a gather/embedding lookup moves rows by index -- motion, not compute. `fill` alone
+    # was 1097 of those 1222 unclassified regions, i.e. the single largest hole in the vocabulary, and it
+    # is init code no accelerator needs to claim.
+    "fill": "movement",
+    "index_gather": "movement",
+    "embedding": "movement",
     # synchronization: ordering / visibility
     "barrier": "synchronization",
     "fence": "synchronization",

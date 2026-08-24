@@ -568,6 +568,11 @@ def _matmul_extents(linalg_mlir: str) -> list[tuple[int, int, int]]:
     types can't be read is skipped (its demand falls back to the mesh tile dim)."""
     extents: list[tuple[int, int, int]] = []
     for seg in linalg_mlir.split("linalg.matmul")[1:]:
+        # Exact op name only. `linalg.matmul_transpose_b` also starts with "linalg.matmul", and its ins
+        # types describe a TRANSPOSED operand pair -- so accepting it recorded the wrong (M, K, N) and,
+        # because the caller joins extents positionally, shifted the shape of every later layer.
+        if seg[:1].isalnum() or seg[:1] == "_":
+            continue
         head = seg.split("outs", 1)[0]                       # the ins(...) clause precedes outs(...)
         ts = _tensor_types(head)
         if len(ts) >= 2 and len(ts[0][0]) >= 2 and len(ts[1][0]) >= 2:

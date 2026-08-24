@@ -238,6 +238,12 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
                       for f, b in sorted(by_family.items())},
         "fused_only_families": fused_only,
         "n_fused_only_ineligible": n_fused_only_ineligible,
+        # Families the target DECLARES and no capsule exercises. Distinct from fused_only, where the
+        # exclusion is a hardware fact: here the hardware claim stands and the CORPUS is silent, so the
+        # recall says nothing about them either way. Unnamed, a reader reasonably assumes a declared
+        # family was measured -- which is how "7 of 8 families covered" and "the compiler handles 8
+        # families" become the same sentence to someone reading quickly.
+        "declared_unexercised_families": sorted(set(cap_map) - set(by_family)),
         "false_fallback": false_fallback,
         "must_accelerate_violations": must_accelerate_violations,
         "must_accelerate_pass": not must_accelerate_violations,

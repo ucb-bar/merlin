@@ -8,6 +8,7 @@ target-supplied semantics.
 """
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from .commandbuffer import materialize_inputs, validate_command_buffer
@@ -153,6 +154,106 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             metrics.dispatch_count += batch
             metrics.cycles += batch * base_matmul_cycles(m, kdim, n)
             trace.append({"name": "batched_matmul", "object": dst, "count": batch})
+
+        elif op in ("RMSNORM", "SOFTMAX", "GELU", "SOFTCAP", "ROPE"):
+            # Row-wise vector ops the backends emit as whole-op mnemonics. Without them a CONFORMANT
+            # command buffer dies 'unknown opcode' in the functional tier and the capsule is scored as a
+            # runner crash — a tooling gap masquerading as a submission failure. Semantics match the
+            # golden engine's definitions of the same ops (same eps/theta/half-split conventions), so the
+            # functional tier and the numeric oracle cannot disagree.
+            src, dst = ops["src"], ops["dst"]
+            t = env[src]
+            rows, cols = t.shape
+            src_rows = [[float(v) for v in t.data[r * cols:(r + 1) * cols]] for r in range(rows)]
+            out_rows: list[list[float]] = []
+            if op == "RMSNORM":
+                gname = ops.get("gamma")
+                if gname is None:
+                    raise SimulationError("RMSNORM needs operands src/gamma/dst")
+                g = [float(v) for v in env[gname].data]
+                if len(g) != cols:
+                    raise SimulationError(
+                        f"RMSNORM gamma has {len(g)} element(s), expected {cols}")
+                eps = float(attrs.get("eps", 1e-5))
+                for row in src_rows:
+                    inv = 1.0 / math.sqrt(sum(v * v for v in row) / cols + eps)
+                    out_rows.append([v * inv * g[c] for c, v in enumerate(row)])
+            elif op == "SOFTMAX":
+                for row in src_rows:
+                    mx = max(row)
+                    ex = [math.exp(v - mx) for v in row]
+                    s = sum(ex)
+                    out_rows.append([e / s for e in ex])
+            elif op == "GELU":
+                # tanh-approximation GELU (the form the vector datapath implements).
+                k = math.sqrt(2.0 / math.pi)
+                for row in src_rows:
+                    out_rows.append([0.5 * v * (1.0 + math.tanh(k * (v + 0.044715 * v * v * v)))
+                                     for v in row])
+            elif op == "SOFTCAP":
+                cap = attrs.get("softcap", attrs.get("cap"))
+                if cap is None:
+                    raise SimulationError("SOFTCAP needs a 'softcap' attribute")
+                cap = float(cap)
+                for row in src_rows:
+                    out_rows.append([cap * math.tanh(v / cap) for v in row])
+            else:                                                     # ROPE
+                if cols % 2:
+                    raise SimulationError(
+                        f"ROPE width {cols} is odd; the half-split convention needs an even width")
+                half = cols // 2
+                theta = float(attrs.get("rope_theta", attrs.get("theta", 10000.0)))
+                freq = [theta ** (-(i / half)) for i in range(half)]
+                for p, row in enumerate(src_rows):
+                    cos = [math.cos(p * f) for f in freq]
+                    sin = [math.sin(p * f) for f in freq]
+                    out_rows.append([
+                        row[c] * cos[c % half]
+                        + (-row[c + half] if c < half else row[c - half]) * sin[c % half]
+                        for c in range(cols)])
+            res = Tensor((rows, cols), [v for row in out_rows for v in row], "f32")
+            env[dst] = res
+            outputs[dst] = res.to_list()
+            metrics.bytes_read += t.nbytes
+            metrics.bytes_written += res.nbytes
+            metrics.bytes_moved += t.nbytes + res.nbytes
+            metrics.cycles += len(res.data)
+            trace.append({"name": op.lower(), "object": dst, "count": len(res.data)})
+
+        elif op == "ATTENTION_QK":
+            # S = Q @ K^T for an attention score block: q is [m, d], k is [n, d] (K stored ROW-per-key,
+            # so the contraction is over the trailing head dim of BOTH operands), s is [m, n]. Same
+            # semantics the golden engine computes (``attention_qk``: ``q.matmul(transpose(k))``) and the
+            # same q/k/dst operand contract the backends emit, so the functional tier agrees with the
+            # oracle instead of raising 'unknown opcode' on a conformant command buffer.
+            q, k, dst = ops["q"], ops["k"], ops["dst"]
+            qt, kt = env[q], env[k]
+            (m, d), (n, d2) = qt.shape, kt.shape
+            if d != d2:
+                raise SimulationError(
+                    f"ATTENTION_QK head-dim mismatch: {q}{qt.shape} vs {k}{kt.shape}")
+            # Transpose K [n, d] -> [d, n] so the shared matmul primitive does the contraction.
+            k_t = Tensor((d, n), [kt.data[i * d + j] for j in range(d) for i in range(n)], kt.dtype)
+            t = qt.matmul(k_t)
+            for stage in attrs.get("epilogue", []):
+                if stage == "acc_scale":
+                    t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+                elif stage == "requant":
+                    t = t.requant(int(attrs.get("requant_shift", default_shift)))
+                elif stage == "relu":
+                    t = t.relu()
+                else:
+                    raise SimulationError(f"unknown epilogue stage '{stage}'")
+            if attrs.get("output_dtype", "i32") == "i8":
+                t = t.to_i8()
+            env[dst] = t
+            outputs[dst] = t.to_list()
+            metrics.dispatch_count += 1
+            metrics.bytes_read += qt.nbytes + kt.nbytes
+            metrics.bytes_written += t.nbytes
+            metrics.bytes_moved += qt.nbytes + kt.nbytes + t.nbytes
+            metrics.cycles += base_matmul_cycles(m, d, n)
+            trace.append({"name": "attention_qk", "object": dst, "count": 1})
 
         elif op == "VREDUCE":
             src, dst = env[ops["src"]], ops["dst"]

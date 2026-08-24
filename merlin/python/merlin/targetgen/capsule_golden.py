@@ -16,6 +16,7 @@ torch is present.
 """
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -125,6 +126,125 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor]) -> Tensor:
     return _narrow_to_dtype(t, attrs.get("output_dtype", "i32"))
 
 
+def _rmsnorm(x: Tensor, gamma: Tensor, eps: float) -> Tensor:
+    """Row RMSNorm: ``x * rsqrt(mean(x^2, -1) + eps) * gamma``, gamma broadcast over rows.
+
+    One implementation serves EVERY capsule that declares ``rmsnorm`` (and composes into the fused
+    norm+projection ops) — the oracle stays a general definition of the op rather than a per-capsule
+    answer file. Accumulated in double and returned f32, so the reference is not tied to one device
+    accumulation order (the capsule's tolerance policy absorbs that difference)."""
+    rows, cols = x.shape
+    g = [float(v) for v in gamma.data]
+    if len(g) != cols:
+        raise ValueError(f"rmsnorm: gamma has {len(g)} element(s), expected {cols}")
+    out: list[float] = []
+    for r in range(rows):
+        row = [float(v) for v in x.data[r * cols:(r + 1) * cols]]
+        inv = 1.0 / math.sqrt(sum(v * v for v in row) / cols + eps)
+        out.extend(v * inv * g[c] for c, v in enumerate(row))
+    return Tensor((rows, cols), out, "f32")
+
+
+def _rope_rotate_half(t: Tensor, theta: float) -> Tensor:
+    """Rotary position embedding, HALF-SPLIT ("rotate_half") convention:
+
+        half = d/2;  freq = theta ** -(arange(half)/half);  ang = pos[:, None] * freq[None, :]
+        cos = cat(cos(ang), cos(ang));  sin = cat(sin(ang), sin(ang))
+        out = x * cos + cat(-x[..., half:], x[..., :half]) * sin
+
+    The convention is not arbitrary and must not be guessed: it is the one the corpus's own PyTorch
+    reference slices use, so a fused rope capsule graded here agrees with the independent torch golden
+    of the standalone rope capsule. Row index is the position."""
+    rows, d = t.shape
+    if d % 2:
+        raise ValueError(f"rope: head dim {d} is odd; the half-split convention needs an even width")
+    half = d // 2
+    freq = [theta ** (-(i / half)) for i in range(half)]
+    out: list[float] = []
+    for p in range(rows):
+        row = [float(v) for v in t.data[p * d:(p + 1) * d]]
+        cos = [math.cos(p * f) for f in freq]
+        sin = [math.sin(p * f) for f in freq]
+        for c in range(d):
+            # cos/sin are the half-length tables duplicated across both halves.
+            cs, sn = cos[c % half], sin[c % half]
+            partner = -row[c + half] if c < half else row[c - half]
+            out.append(row[c] * cs + partner * sn)
+    return Tensor((rows, d), out, "f32")
+
+
+def _softmax_rows(t: Tensor) -> Tensor:
+    """Row-wise softmax, max-subtracted (the standard numerically-stable form)."""
+    rows, cols = t.shape
+    out: list[float] = []
+    for r in range(rows):
+        row = [float(v) for v in t.data[r * cols:(r + 1) * cols]]
+        mx = max(row)
+        ex = [math.exp(v - mx) for v in row]
+        s = sum(ex)
+        out.extend(e / s for e in ex)
+    return Tensor((rows, cols), out, "f32")
+
+
+def _attention(q: Tensor, k: Tensor, v: Tensor, *, scale: float | None = None,
+               causal: bool = False, softcap: float | None = None) -> Tensor:
+    """Scaled dot-product attention: ``softmax(softcap?(Q@K^T * scale) + causal_mask) @ V``.
+
+    ONE definition covering the plain, causal, soft-capped and block-scaled (MX) attention capsules —
+    an MX capsule differs only in how its operands were decoded upstream, not in the math, so routing
+    them through the same function keeps a fused/quantized variant from silently disagreeing with the
+    plain one. ``K`` is stored row-per-key ([n, d]), so the contraction is over the trailing dim of
+    both operands. Default scale is ``1/sqrt(d)``; ``causal`` masks strictly-above-diagonal.
+    """
+    m, d = q.shape
+    n, d2 = k.shape
+    if d != d2:
+        raise ValueError(f"attention: head-dim mismatch q{q.shape} vs k{k.shape}")
+    sc = (1.0 / math.sqrt(d)) if scale is None else float(scale)
+    scores: list[float] = []
+    for i in range(m):
+        qi = [float(x) for x in q.data[i * d:(i + 1) * d]]
+        for j in range(n):
+            kj = k.data[j * d:(j + 1) * d]
+            s = sum(a * float(b) for a, b in zip(qi, kj)) * sc
+            if softcap is not None:
+                s = float(softcap) * math.tanh(s / float(softcap))
+            if causal and j > i:
+                s = -math.inf          # masked BEFORE softmax; exp(-inf) == 0 contributes nothing
+            scores.append(s)
+    p = _softmax_rows(Tensor((m, n), scores, "f32"))
+    return p.matmul(v)
+
+
+def _nested_list(t: Tensor) -> Any:
+    """Row-major nested lists for a 2-D or 3-D tensor. :meth:`Tensor.to_list` handles only rank 2
+    (``rows, cols = self.shape``), so a batched result must be shaped here rather than crashing the
+    oracle on a conformant 3-D output."""
+    if len(t.shape) == 2:
+        return t.to_list()
+    if len(t.shape) == 3:
+        b, m, n = t.shape
+        return [[[t.data[x * m * n + i * n + j] for j in range(n)] for i in range(m)]
+                for x in range(b)]
+    raise ValueError(f"golden: cannot shape a rank-{len(t.shape)} result into nested lists")
+
+
+def _batched_matmul(a: Tensor, w: Tensor) -> Tensor:
+    """``O[b] = A[b] @ W[b]`` over the leading batch dim (independent per-batch 2-D contractions)."""
+    if len(a.shape) != 3 or len(w.shape) != 3:
+        raise ValueError(f"batched matmul needs 3-D operands, got {a.shape} and {w.shape}")
+    batch, m, k = a.shape
+    wb, k2, n = w.shape
+    if batch != wb or k != k2:
+        raise ValueError(f"batched matmul shape mismatch: {a.shape} @ {w.shape}")
+    out: list[float] = []
+    for b in range(batch):
+        asl = Tensor((m, k), a.data[b * m * k:(b + 1) * m * k], a.dtype)
+        wsl = Tensor((k, n), w.data[b * k * n:(b + 1) * k * n], w.dtype)
+        out.extend(asl.matmul(wsl).data)
+    return Tensor((batch, m, n), out, "f32")
+
+
 def _transpose2d(t: Tensor) -> Tensor:
     r, c = t.shape
     out = [0] * (r * c)
@@ -195,6 +315,26 @@ def canonical_input_values(capsule: dict, capsule_dir: str | Path | None = None)
             # (each does ``float(x)`` per element) crash on a row. Flatten so the contract holds regardless
             # of the golden generator.
             out[name] = {"shape": list(spec.get("shape") or []), "values": _flatten_row_major(decoded)}
+    return out
+
+
+def materialized_input_values(capsule: dict) -> dict[str, dict]:
+    """The capsule's DETERMINISTIC leaf operands, in the :func:`canonical_input_values` shape.
+
+    The stimulus a RECOMPUTED golden was evaluated on. A capsule that ships no ``golden.yaml`` has no
+    recorded operands, so :func:`canonical_input_values` is empty and the runner previously attached
+    nothing — leaving a program-oracle target with no operands to build its kernel harness from, which
+    fails a CORRECT backend on an output it was never given the inputs to compute. The golden and the
+    device must run on ONE stimulus; this exposes the recompute path's own so the runner can attach it.
+
+    Element type follows the declared leaf dtype (an integer leaf stays integral) so a consumer that
+    embeds these operands emits the same literals the Tensor engine reduced over.
+    """
+    out: dict[str, dict] = {}
+    for name, t in materialize_capsule_leaves(capsule).items():
+        integral = str(t.dtype).startswith(("i", "u"))
+        vals = [int(v) if integral else float(v) for v in t.data]
+        out[name] = {"shape": list(t.shape), "values": vals}
     return out
 
 
@@ -393,6 +533,49 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             t = _apply_epilogue(t, sub, env)
             outs[spec["out"]] = t.to_list()
         return outs
+
+    # --- float op family -------------------------------------------------------------------------
+    # These are DEFINITIONS of the declared op, not per-capsule answers: one implementation grades
+    # every capsule (present or future) that declares the op, on any target. Each composition reuses
+    # the same primitives, so a fused capsule cannot disagree with its unfused counterpart.
+    if op == "rmsnorm":
+        t = _rmsnorm(env[attrs.get("src", _pick("input"))],
+                     env[attrs.get("gamma", _pick("weight"))],
+                     float(attrs.get("eps", 1e-5)))
+        return {out_name: _apply_epilogue(t, attrs, env).to_list()}
+
+    if op == "rmsnorm_qkv":
+        # Fused norm -> QKV projection: rmsnorm(x, gamma) @ Wqkv.
+        t = _rmsnorm(env[attrs["src"]], env[attrs["gamma"]], float(attrs.get("eps", 1e-5)))
+        t = t.matmul(env[attrs["weight"]])
+        return {out_name: _apply_epilogue(t, attrs, env).to_list()}
+
+    if op == "rope_qkv":
+        # Fused QKV projection -> rotary embedding, positions along the projected rows.
+        t = env[attrs["src"]].matmul(env[attrs["weight"]])
+        t = _rope_rotate_half(t, float(attrs.get("rope_theta", 10000.0)))
+        return {out_name: _apply_epilogue(t, attrs, env).to_list()}
+
+    if op in ("attention_mx", "attention_full", "attention"):
+        # Operand names come from explicit q/k/v attrs when present, else the declared arg_order, else
+        # the input order — never a positional guess when the capsule says otherwise.
+        order = attrs.get("arg_order") or [s["name"] for s in capsule["inputs"]]
+        qn = attrs.get("q", order[0])
+        kn = attrs.get("k", order[1] if len(order) > 1 else None)
+        vn = attrs.get("v", order[2] if len(order) > 2 else None)
+        if not (kn and vn):
+            raise ValueError(f"golden: {op} needs q/k/v operands (got {order!r})")
+        cap_v = attrs.get("softcap")
+        t = _attention(env[qn], env[kn], env[vn],
+                       scale=attrs.get("scale"),
+                       causal=bool(attrs.get("causal", False)),
+                       softcap=float(cap_v) if cap_v is not None else None)
+        return {out_name: _apply_epilogue(t, attrs, env).to_list()}
+
+    if op in ("gemv_batched", "batched_matmul"):
+        t = _batched_matmul(env[attrs.get("lhs", _pick("input"))],
+                            env[attrs.get("weight", _pick("weight"))])
+        return {out_name: _nested_list(_apply_epilogue(t, attrs, env))}
 
     raise ValueError(f"golden: unsupported operation {op!r}")
 

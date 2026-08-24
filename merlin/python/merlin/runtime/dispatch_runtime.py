@@ -478,6 +478,17 @@ def float_boundary_operands(a, b, binding) -> tuple[list, list, float, dict]:
     return qa.tolist(), qb.tolist(), sa * sb, rec
 
 
+def _has_contraction(kfn) -> bool:
+    """True when a kernel func contains a contraction op at all — used to count the matmuls the mesh
+    classifier declined, structurally (no name matching on the symbol)."""
+    for op in kfn.walk():
+        nm = getattr(op, "name", "")
+        if nm in ("linalg.matmul", "linalg.batch_matmul", "linalg.matmul_transpose_b",
+                  "linalg.quantized_matmul"):
+            return True
+    return False
+
+
 def _classify_mesh_matmul(kfn, accept: tuple[str, ...] = ("f32",)) -> dict | None:
     """Like xnnpack's classify_matmul_kernel but for the MESH route: a plain 2-D ``linalg.matmul`` whose two
     ``ins`` are kernel block args, with an element type this target's mesh can take.
@@ -585,7 +596,9 @@ def _classify_mesh_contraction(kfn, accept: tuple[str, ...] = ("f32",)) -> dict 
 def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             entry: str = "forward", cache_dir: str | Path | None = None,
             tap=None, qinner: dict | None = None,
-            kernel_backend: str | None = None, mesh_target: str | None = None) -> list[np.ndarray]:
+            kernel_backend: str | None = None, mesh_target: str | None = None,
+            mesh_package: str | None = None,
+            counters: dict | None = None) -> list[np.ndarray]:
     """Run the outlined model on bound arguments; return the driver's result arrays.
 
     ``cache_dir`` persists compiled kernel ``.so``s keyed by kernel-body hash, so repeated
@@ -645,6 +658,8 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
     # whole-model tolerance), cast for a float one. Which of those applies is DERIVED from the target.
     mesh_routes: dict[str, dict] = {}
     mesh_dp = None                                   # the target's CorpusBinding, whole (see mesh_datapath)
+    mesh_counts: dict = counters if counters is not None else {}   # per-CALL, not
+    # a module-global function attribute: run_suite grades capsules on a thread pool.
     if kernel_backend == "mesh":
         if not mesh_target:
             raise DispatchRuntimeError("kernel_backend='mesh' requires mesh_target=<target>")
@@ -660,15 +675,25 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                      or _classify_mesh_contraction(kfn, _accept))
             if route is not None:
                 mesh_routes[sym] = route
+        # Matmul-family kernels the classifier REJECTED (bias-fused, transposed, batched-generic,
+        # non-f32/i8, operand computed in-kernel). They never reach the mesh branch and so are invisible
+        # to `mesh_fell_back`; counting them keeps the coverage claim honest.
+        _unrouted = sum(1 for sym, kfn in kfns.items()
+                        if sym not in mesh_routes and _has_contraction(kfn))
+        mesh_counts.update(mesh_ran=0, mesh_fell_back=0, mesh_unrouted_matmuls=_unrouted,
+                           mesh_routed=len(mesh_routes))
         execute.last_mesh_routed = len(mesh_routes)
         execute.mesh_ran = 0
         execute.mesh_fell_back = 0
         # What the mesh's operand format could actually hold, summed over every layer it ran. The whole
-        # atlas divergence was invisible because nobody counted this; a run now reports it.
+        # atlas divergence was invisible because nobody counted this; a run now reports it. The SAME dict
+        # rides this call's counters, so a reader takes it off the run's own result rather than off a
+        # module-global attribute that a concurrent grade would clobber.
         execute.mesh_operand_repr = {"operand_dtype": mesh_dp.operand_dtype,
                                      "subnormal_operand_flush": bool(mesh_dp.subnormal_operand_flush),
                                      "n_values": 0, "n_subnormal": 0,
                                      "n_flushed_to_zero": 0, "n_saturating": 0}
+        mesh_counts["mesh_operand_repr"] = execute.mesh_operand_repr
 
     def kernel_model(symbol: str):
         if symbol in compiled:
@@ -802,22 +827,52 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     # its rounding rather than the hardware's -- and a power of two does not round: it
                     # moves the exponent and leaves every mantissa bit where it was.
                     qa, qb, scale, _repr = float_boundary_operands(a, b, binding)
-                    _acc = getattr(execute, "mesh_operand_repr", None)
+                    _acc = mesh_counts.get("mesh_operand_repr")
                     if _acc is not None:
                         for side in ("a", "b"):
                             for key, val in _repr[side].items():
                                 _acc[key] = _acc.get(key, 0) + val
-                mesh_out = run_matmul_on_mesh(mesh_target, qa, qb,
-                                              operand_dtype=op_dt, accum_dtype=acc_dt)
+                # `package` is the SUBMISSION under test. Without it the mesh path resolves the target's
+                # DEFAULT package and quietly certifies a different compiler than the one being graded.
+                mesh_out = run_matmul_on_mesh(mesh_target, qa, qb, operand_dtype=op_dt,
+                                              accum_dtype=acc_dt, package=mesh_package)
                 if mesh_out is not None:
                     om = np.array(mesh_out, np.float64) * scale
                     env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])
+                    mesh_counts["mesh_ran"] = mesh_counts.get("mesh_ran", 0) + 1
                     execute.mesh_ran = getattr(execute, "mesh_ran", 0) + 1
                     if tap is not None:
                         tap(op, [env[id(op.results[0])]])
                     return
             # a layer the mesh could not run at this shape (non-2D or cert-fail) falls back to the host
             # kernel and is NOT counted as mesh-executed — honest accounting, never a faked mesh result.
+            mesh_counts["mesh_fell_back"] = mesh_counts.get("mesh_fell_back", 0) + 1
+            # Name the layer, not just the count. "4 layers fell back" gives a reader nothing to act on;
+            # the SHAPES say whether the cause is one extent the backend cannot take or four different
+            # ones, which is the difference between a tiling gap and a capability gap.
+            try:
+                _sh = f"{a.shape[0]}x{a.shape[1]}x{b.shape[1]}" if (a.ndim == 2 and b.ndim == 2) \
+                    else f"rank{a.ndim}x{b.ndim}"
+            except Exception:                                  # noqa: BLE001
+                _sh = "unknown"
+            try:
+                from ..compile_cli import _MESH_REFUSAL
+                _why = _MESH_REFUSAL.get("reason") or "no reason recorded"
+            except Exception:                                  # noqa: BLE001
+                _why = "no reason recorded"
+            mesh_counts.setdefault("mesh_fallback_shapes", []).append(f"{_sh}: {_why}")
+            # Capture the operands HERE, where they are already numpy arrays, rather than deeper in the
+            # oracle path where an earlier attempt to do it failed silently. A layer that fails inside a
+            # model and runs standalone differs only in the values it was handed.
+            try:
+                import tempfile as _tf
+                _n = len(mesh_counts["mesh_fallback_shapes"])
+                _p = Path(_tf.gettempdir()) / f"fallback_operands_{_n}.npz"
+                np.savez_compressed(_p, A=a, W=b)
+                mesh_counts.setdefault("mesh_fallback_operands", []).append(str(_p))
+            except Exception as _oe:                   # noqa: BLE001
+                mesh_counts.setdefault("mesh_fallback_operands", []).append(
+                    f"capture failed: {type(_oe).__name__}: {_oe}")
             execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
         model = kernel_model(symbol)
         args, keep = [], []
@@ -946,7 +1001,8 @@ def _propagate_quant_inner(module) -> int:
 def run_model(model_dir: str | Path, workdir: str | Path,
               cache_dir: str | Path | None = None, tap=None,
               int8_compute: bool = False,
-              kernel_backend: str | None = None, mesh_target: str | None = None) -> dict[str, Any]:
+              kernel_backend: str | None = None, mesh_target: str | None = None,
+              mesh_package: str | None = None) -> dict[str, Any]:
     """Outline + bind + execute a captured model; gate against ``golden.npy``.
 
     Returns ``{output, golden, cos, rel, ok, n_kernels, n_unique_kernels}``.
@@ -996,10 +1052,14 @@ def run_model(model_dir: str | Path, workdir: str | Path,
         ex = np.load(extra_path)
         qinner = {k[len("qinner::"):]: ex[k] for k in ex.files if k.startswith("qinner::")}
     import os as _os
+    # Per-run mesh counters. A whole-model verdict is decided by these, so they must not
+    # live on a module-global function attribute that a concurrent grade can clobber.
+    _mesh_counts: dict = {}
     if kernel_backend is None and _os.environ.get("MERLIN_XNNPACK_HOST") == "1":
         kernel_backend = "xnnpack"
     results = execute(outlined, args, Path(workdir), cache_dir=cache_dir, tap=tap,
-                      qinner=qinner, kernel_backend=kernel_backend, mesh_target=mesh_target)
+                      qinner=qinner, kernel_backend=kernel_backend, mesh_target=mesh_target,
+                      mesh_package=mesh_package, counters=_mesh_counts)
     # widen bf16 (stored as uint16 bit patterns) to f32 for the golden comparison
     raw = results[0]
     out = (bf16_to_f32(raw) if _elem_str(out_types[0]) == "bf16"
@@ -1009,7 +1069,8 @@ def run_model(model_dir: str | Path, workdir: str | Path,
                            "n_unique_kernels": getattr(execute, "last_unique_kernels", None),
                            "kernel_backend": kernel_backend,
                            "n_xnn_routed": (getattr(execute, "last_xnn_routed", 0)
-                                            if kernel_backend == "xnnpack" else 0)}
+                                            if kernel_backend == "xnnpack" else 0),
+                           **_mesh_counts}
     gpath = model_dir / "golden.npy"
     if gpath.is_file():
         gold = np.load(gpath).astype(np.float32).ravel()

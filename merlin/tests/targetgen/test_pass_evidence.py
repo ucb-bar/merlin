@@ -89,15 +89,53 @@ def test_the_rtl_tier_is_derived_per_target_not_named():
     assert _rtl_tiers_of("definitely_not_a_target") == frozenset()
 
 
+def _grade_model(*, on_mesh, fallback, tiles):
+    """Grade a whole-model capsule against a synthetic compile_model result: `mesh_execution` is what
+    happened to THIS MODEL's layers, `mesh_tile_verification` is a synthesized tile at each routed shape.
+    """
+    from merlin import compile_cli as CCLI
+    from merlin.targetgen import capsule_runner as CR
+
+    capsule = {"name": "M_probe", "kind": "model",
+               "operation": {"op": "model", "attributes": {"model": "probe", "compile_dtype": "int8",
+                                                           "dtype": "i8"}},
+               "required_oracle_tiers": ["L0", "L1", "L2", "L3"],
+               "semantic": {"semantic_family": "contraction", "must_accelerate": True}}
+    out = {"status": "verified", "verify": {"gate_ok": True},
+           "mesh_tile_verification": tiles,
+           "mesh_execution": {"target": "gemmini", "matmul_layers_routed": on_mesh + fallback,
+                              "matmul_layers_on_mesh": on_mesh,
+                              "matmul_layers_host_fallback": fallback}}
+    real = CCLI.compile_model
+    CCLI.compile_model = lambda *a, **k: out
+    try:
+        return CR._grade_model_capsule(capsule, target="gemmini", timeout=1)
+    finally:
+        CCLI.compile_model = real
+
+
 def test_the_model_not_its_tiles_decides_the_model_capsules_tier():
     """A run with every layer on the host once reported '15 of 15 tiles passed'. The tile record proves
-    the SHAPE runs; the capstone is a claim about THIS model."""
-    import inspect
+    the SHAPE runs; the capstone is a claim about THIS model. Asserted on the GRADE, not on the source
+    text -- a behavioural claim that survives the code being rewritten under it."""
+    _all_tiles_pass = {"n_tiles": 15, "n_passed": 15, "n_failed": 0,
+                       "n_unavailable": 0, "n_unsynthesizable": 0}
 
-    from merlin.targetgen import capsule_runner
-    src = inspect.getsource(capsule_runner._grade_model_capsule)
-    assert "_model_ok" in src, "the model's own per-layer accounting must gate the tier"
-    assert "matmul_layers_host_fallback" in src, "a fallen-back layer must not pass the tier"
-    assert "tile_evidence" in src, "the tile record must be reported as separate, weaker evidence"
-    assert '"L3"' not in src.split("_rtl_tiers_of")[-1], \
-        "no tier-name literal may decide which tier the mesh oracle corresponds to"
+    def _passed(r):
+        return {t: v for t, v in ((k, (o or {}).get("status"))
+                                  for k, o in (r.get("tiers") or {}).items()) if v == "pass"}
+
+    on_host = _grade_model(on_mesh=0, fallback=15, tiles=_all_tiles_pass)
+    assert _passed(on_host) == {}, "every layer ran on the host; certified tiles cannot pass the model"
+    assert on_host["status"] != "pass"
+
+    partial = _grade_model(on_mesh=14, fallback=1, tiles=_all_tiles_pass)
+    assert _passed(partial) == {}, "a fallen-back layer must not pass the tier"
+    assert partial["status"] != "pass"
+
+    clean = _grade_model(on_mesh=15, fallback=0, tiles=_all_tiles_pass)
+    assert list(_passed(clean)) == ["L3"], clean["tiers"]
+    assert clean["status"] == "pass"
+    # the tile record is reported BESIDE the verdict, as the separate and weaker evidence it is
+    assert clean["tile_evidence"]["n_tiles"] == 15
+    assert "shapes run, not that this model ran" in clean["tile_evidence"]["note"]

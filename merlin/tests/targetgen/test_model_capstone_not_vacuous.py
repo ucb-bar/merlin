@@ -182,6 +182,19 @@ def test_an_ungrounded_capstone_records_why():
 
 # --- the tier verdict must follow the tiles, and a failing tier must not pass --------------------
 
+def _statuses(r):
+    """Tier -> status, from the rich per-tier objects the merged row carries. The row is the same shape
+    an op capsule produces, which is what capsule_result.schema.json requires and what routes it through
+    the shared fail-closed gates; a tier that is honestly N/A for a whole model (L0/L1 interpret a command
+    buffer, and a model has none) is reported as such rather than omitted."""
+    return {t: (v or {}).get("status") for t, v in (r.get("tiers") or {}).items()}
+
+
+def _passed(r):
+    """The tiers that actually certified — the guarantee, independent of how the row is shaped."""
+    return {t: v for t, v in _statuses(r).items() if v == "pass"}
+
+
 def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3"), *, on_mesh=15, fallback=0):
     """Drive the tier-derivation block with a synthetic TILE-certification record.
 
@@ -215,7 +228,7 @@ def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3"), *, on_mesh=1
 def test_a_tier_passes_when_every_tile_passed():
     r = _grade_with({"n_tiles": 15, "n_passed": 15, "n_failed": 0,
                      "n_unavailable": 0, "n_unsynthesizable": 0})
-    assert r["tiers"] == {"L3": "pass"}, r["tiers"]
+    assert _passed(r) == {"L3": "pass"}, r["tiers"]
     assert r["status"] == "pass", r
 
 
@@ -224,7 +237,8 @@ def test_a_tier_that_ran_and_failed_is_not_a_pass():
     flattering half being the one a reader takes away."""
     r = _grade_with({"n_tiles": 15, "n_passed": 14, "n_failed": 1,
                      "n_unavailable": 0, "n_unsynthesizable": 0})
-    assert r["tiers"] == {"L3": "fail"}, r["tiers"]
+    assert _statuses(r).get("L3") == "fail", r["tiers"]
+    assert _passed(r) == {}, "a failing tile certifies nothing"
     assert r["status"] == "fail", r
     assert r["failure"]["category"] == "FUNCTIONAL_MISMATCH"
 
@@ -235,14 +249,18 @@ def test_an_unrun_tile_is_not_counted_as_a_pass(key):
     accelerator claim unproven, so the tier cannot pass on the strength of the tiles that did run."""
     r = _grade_with({"n_tiles": 15, "n_passed": 14, "n_failed": 0,
                      "n_unavailable": 0, "n_unsynthesizable": 0, key: 1})
-    assert r["tiers"] == {"L3": "fail"}, r["tiers"]
+    assert _statuses(r).get("L3") == "fail", r["tiers"]
+    assert _passed(r) == {}
     assert r["status"] == "fail", r
 
 
-def test_no_tiles_at_all_is_reported_unknown_not_failed():
-    """Distinct from a failing tier: nothing ran, so there is no verdict to report either way."""
-    r = _grade_with({"n_tiles": 0, "n_passed": 0, "n_failed": 0})
-    assert r["tiers"] == {}
+def test_nothing_ran_at_all_is_reported_unknown_not_failed():
+    """Distinct from a failing tier: nothing ran, so there is no verdict to report either way. Nothing
+    ran means BOTH records are empty — no certified tile, and no layer of the model itself on the mesh.
+    A tile record alone was never the whole question, and the model's own accounting is now the half that
+    decides, so this case has to withhold both."""
+    r = _grade_with({"n_tiles": 0, "n_passed": 0, "n_failed": 0}, on_mesh=0)
+    assert _passed(r) == {}
     assert r["status"] == "incomplete"
     assert r["failure"]["category"] == "NOT_RUN_IS_NOT_PASS"
 

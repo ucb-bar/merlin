@@ -693,7 +693,41 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     # 2. runner-owned EXTERN-kernel harness main (operands from the cb) -> STOCK clang rv32 -> main.o
     main_c = muon_harness.external_main_from_cb(cb, kernel_symbol=kernel_symbol, model=model)
     if main_c is None:
-        raise MuonError("could not derive harness operands from the command buffer (no canonical_inputs)")
+        # Say WHICH cause it was. Two earlier versions of this message each blamed the wrong thing, and
+        # each cost a full agentic round: "no canonical_inputs" was asserted unconditionally, and then
+        # "no operand rule for the command shape" was asserted for every remaining case.
+        #
+        # That second one is worse than unhelpful, because the command shape is the one thing that is
+        # IDENTICAL between a submission that grades and one that does not. Measured on the same capsule
+        # (R0_gemm_fp32), both the promoted merlin package and an unaided baseline emit exactly
+        # ['COMMIT', 'EVICT', 'MATMUL_RESIDENT', 'RES_PACK'] -- the vocabulary this target's own
+        # interface_grammar.md documents. The difference is that one DECLARES its operands in `tensors`
+        # and the other leaves the block empty, and `tensors` is optional in command_buffer.schema.json.
+        # So a schema-valid, correctly-spelled command buffer was told its artifact was fine and this
+        # harness was broken; the agent spent its round permuting opcodes, which is what the message
+        # pointed at, and its own notes record "every semantically reasonable opcode set is rejected".
+        #
+        # Every branch of args_from_cb resolves operand names through `tensors` (shape + dtype, and the
+        # roles that order the kernel ABI). With no tensors there is nothing to resolve, whatever the
+        # opcodes are. Name THAT, and keep the genuine-tooling-gap wording for the case where the operands
+        # really are declared and no rule matched.
+        _ops = sorted({(c.get("opcode") or "?") for c in (cb.get("commands") or [])})
+        if not (cb.get("canonical_inputs") or {}):
+            raise MuonError(f"could not derive harness operands: the command buffer carries no "
+                            f"canonical_inputs (commands: {_ops})")
+        if not (cb.get("tensors") or {}):
+            _named = sorted({v for c in (cb.get("commands") or [])
+                             for v in (c.get("operands") or {}).values() if v})
+            raise MuonError(
+                f"could not derive harness operands: the command buffer declares no `tensors`, so the "
+                f"operands its commands name ({_named or 'none'}) have no shape or dtype to embed. This "
+                f"is a defect in the submitted command buffer, not in its opcodes — the command shape "
+                f"{_ops} is supported. Declare every operand and result in `tensors` as "
+                f"{{name: {{shape: [...], dtype: ..., role: input|weight|output}}}}. `tensors` is optional "
+                f"in the schema but required to grade, since the harness embeds the operands by shape.")
+        raise MuonError(f"could not derive harness operands: canonical_inputs and tensors ARE present, but "
+                        f"this harness has no operand rule for the command shape {_ops} — a TOOLING gap, "
+                        f"not a defect in the submitted artifact")
     (work / "main.c").write_text(main_c, encoding="utf-8")
     mobj_rv = work / "main.o"
     mc = subprocess.run([str(clang), *cflags, "-c", str(work / "main.c"), "-o", str(mobj_rv)],

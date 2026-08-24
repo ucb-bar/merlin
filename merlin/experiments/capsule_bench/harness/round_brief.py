@@ -70,6 +70,38 @@ def _focus_section(v: dict) -> list[str]:
     return L + [""]
 
 
+def _passing(v: dict) -> set:
+    return {e.get("capsule") for e in (v.get("per_capsule") or [])
+            if str(e.get("status", "")).lower() == "pass" and e.get("capsule")}
+
+
+def _regression_section(verdicts: list[tuple[int, dict]]) -> list[str]:
+    """Name the capsules LOST since the best round, and which round to diff against.
+
+    The existing delta line watches the lowest mismatch_count, which can hold steady (or improve) while
+    whole capsules are lost -- a round that trades five passing capsules for progress on one shows up as
+    "improved". Measured: a run went 38/40 -> 33/40 while chasing two capsules that were failing for a
+    harness reason, and nothing in the brief said "you dropped these five"; the agent never restored them.
+    Pass count is the graded quantity, so regressions in it are the loudest thing a brief can carry.
+    Redacted-verdict-only (status + capsule name), so no golden and no target name."""
+    if len(verdicts) < 2:
+        return []
+    cur_n, cur_v = verdicts[-1]
+    best_n, best_v = max(verdicts, key=lambda nv: len(_passing(nv[1])))
+    lost = sorted(_passing(best_v) - _passing(cur_v))
+    if not lost or best_n == cur_n:
+        return []
+    return [f"## ⚠️ REGRESSION — you are {len(lost)} capsule(s) BELOW your best round (round {best_n})", "",
+            f"Round {best_n} passed {len(_passing(best_v))}; round {cur_n} passed {len(_passing(cur_v))}. "
+            "These passed then and fail now:", "",
+            *[f"- `{c}`" for c in lost], "",
+            "Recovering these is worth MORE than new work: they are known-solvable by code you already "
+            "wrote. Your `submission/` tree is the one that regressed, so read "
+            "`docs/iteration_notes.md` for what you changed after the good round and undo the part that "
+            "broke them. If a change was needed for something else, make it ADDITIVE instead of a "
+            "replacement.", ""]
+
+
 def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> str:
     """Markdown brief for the round ABOUT TO START (``rnd`` = the round just graded)."""
     verdicts = _load_verdicts(run_dir)
@@ -100,6 +132,7 @@ def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> st
                     delta.append(f"lowest mismatch improved ({pbest} → {cbest}) — continue this direction")
             if delta:
                 L += ["**Since last round:** " + "; ".join(delta) + ".", ""]
+        L += _regression_section(verdicts)
 
     if verdicts:
         L += _focus_section(verdicts[-1][1])
