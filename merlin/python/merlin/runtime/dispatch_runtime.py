@@ -816,8 +816,9 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                         for side in ("a", "b"):
                             for key, val in _repr[side].items():
                                 _acc[key] = _acc.get(key, 0) + val
+                _obs: dict = {}
                 mesh_out = run_matmul_on_mesh(mesh_target, qa, qb,
-                                              operand_dtype=op_dt, accum_dtype=acc_dt)
+                                              operand_dtype=op_dt, accum_dtype=acc_dt, observed=_obs)
                 if mesh_out is not None:
                     om = np.array(mesh_out, np.float64) * scale
                     env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])
@@ -835,9 +836,12 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             elif a.shape[1] != b.shape[0]:
                 _why = f"inner dims disagree: {a.shape} @ {b.shape}"
             else:
-                _why = (f"mesh oracle returned no result for {a.shape} @ {b.shape} "
-                        f"({op_dt}/{acc_dt}) — unsynthesizable at this shape, or the oracle was "
-                        f"unreachable")
+                # the oracle's OWN verdict when it gave one, rather than a guess covering both causes
+                _detail = (locals().get("_obs") or {}).get("decline")
+                _why = (f"mesh oracle declined {a.shape} @ {b.shape} ({op_dt}/{acc_dt}): "
+                        + (str(_detail)[:300] if _detail
+                           else "no result and no reason recorded — unreachable oracle, or a path that "
+                                "returns None without a verdict"))
             execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
             _fb = getattr(execute, "mesh_fallbacks", None)
             if _fb is not None and len(_fb) < 64:            # bounded: a diagnostic, not a full trace

@@ -48,7 +48,12 @@ def test_a_tier_that_actually_ran_can_pass(monkeypatch):
                 "mesh_tile_verification": {"n_tiles": 15, "ok": True}})
     assert r["status"] == "pass"
     assert r["tiers"] == {"L3": "pass"}                   # the declared RTL tier, named from the capsule
-    assert r.get("tiers_unexercised") == ["L0", "L1", "L2"]   # honest about what did NOT run
+    # honest about what did NOT run, AND why. A bare list read as "we skipped three of the four tiers
+    # this capsule declares", which is indistinguishable from a grade that cut corners; the real reason
+    # is that those tiers grade a per-op command buffer a model capsule never produces.
+    unex = r.get("tiers_unexercised")
+    assert sorted(unex) == ["L0", "L1", "L2"]
+    assert all(v and "no whole-model analogue" in v for v in unex.values()), unex
 
 
 def test_a_failing_mesh_execution_is_recorded_as_a_failing_tier(monkeypatch):

@@ -908,6 +908,22 @@ def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: b
     return (concrete + hint) if concrete else hint
 
 
+def _unexercised_note(unexercised: list[str], exercised: dict) -> dict:
+    """``{tier: why it did not run}`` for the declared tiers a whole-model grade did not exercise.
+
+    Reported as a bare LIST, this read as "we skipped three of the four tiers this capsule declares",
+    which is indistinguishable from a grade that cut corners. The actual reason is structural: a model
+    capsule is graded by the whole-model compile+verify path against its golden, plus the mesh oracle --
+    it never enters the per-op tier ladder, and the cheap tiers of that ladder (emit/structure,
+    command-buffer reference equality, functional sim of a command buffer) have no whole-model analogue
+    to run. A tier that is inapplicable and a tier that was skipped deserve different words.
+    """
+    ran = set(exercised)
+    return {t: ("no whole-model analogue: this tier grades a per-op command buffer, which a model "
+                "capsule does not produce — the model is graded end to end against its golden")
+            for t in unexercised if t not in ran}
+
+
 def _rtl_tiers_of(target: str | None) -> frozenset[str]:
     """The tiers this target counts as RTL-derived, from its capability manifest. Fails soft to an empty
     set so the caller falls back to the capsule's own declaration rather than guessing a tier name."""
@@ -1065,25 +1081,10 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                                      "not a verdict on the model"}
     unexercised = [x for x in declared if x not in exercised]
 
-    # A tier that RAN AND FAILED is not a pass, whatever the host-side numeric gate says. The guard below
-    # only refuses the case where nothing ran at all, so a failing accelerator tier still reported
-    # `status: pass` beside `tiers: {L3: fail}` -- the two halves of the same result contradicting each
-    # other, with the flattering half being the one anybody reads.
-    _failed_tiers = sorted(t for t, v in exercised.items() if v != "pass")
-    if _failed_tiers:
-        result.update(status="fail",
-                      numeric={"status": "not_compared", "engine": engine},
-                      failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
-                               "detail": f"declared oracle tier(s) {_failed_tiers} RAN and did not pass "
-                                         f"(on-mesh execution: {mesh_exec.get('n_passed')} of "
-                                         f"{n_tiles} tile(s) passed, {mesh_exec.get('n_failed')} failed, "
-                                         f"{mesh_exec.get('n_unavailable')} unavailable, "
-                                         f"{mesh_exec.get('n_unsynthesizable')} unsynthesizable); a "
-                                         f"whole-model verdict cannot be a pass over a failing tier"})
-        if unexercised:
-            result["tiers_unexercised"] = unexercised
-        return result
-
+    # ORDER MATTERS: the SPECIFIC cause is reported before the generic consequence. Layers falling back
+    # to the host now also drag the tier verdict down (the model, not its tiles, decides it), so leaving
+    # the failed-tier branch first turned "2 of 37 layers fell back" into a bare FUNCTIONAL_MISMATCH --
+    # true, and useless. The fallback check runs first so the result names what to fix.
     # MUST_ACCELERATE IS ABOUT THIS MODEL, NOT ABOUT TILES OF ITS SHAPES. Certifying a synthesized tile
     # proves the shape is runnable; it says nothing about whether the model's own layer reached the
     # device. Measured: atlas routed 15 matmul layers and the dispatch runtime fell back to the host
@@ -1109,6 +1110,25 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                                              f"to the host kernel; the numeric gate therefore measures "
                                              f"the HOST, not the accelerator"})
             return result
+
+    # A tier that RAN AND FAILED is not a pass, whatever the host-side numeric gate says. The guard below
+    # only refuses the case where nothing ran at all, so a failing accelerator tier still reported
+    # `status: pass` beside `tiers: {L3: fail}` -- the two halves of the same result contradicting each
+    # other, with the flattering half being the one anybody reads.
+    _failed_tiers = sorted(t for t, v in exercised.items() if v != "pass")
+    if _failed_tiers:
+        result.update(status="fail",
+                      numeric={"status": "not_compared", "engine": engine},
+                      failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
+                               "detail": f"declared oracle tier(s) {_failed_tiers} RAN and did not pass "
+                                         f"(on-mesh execution: {mesh_exec.get('n_passed')} of "
+                                         f"{n_tiles} tile(s) passed, {mesh_exec.get('n_failed')} failed, "
+                                         f"{mesh_exec.get('n_unavailable')} unavailable, "
+                                         f"{mesh_exec.get('n_unsynthesizable')} unsynthesizable); a "
+                                         f"whole-model verdict cannot be a pass over a failing tier"})
+        if unexercised:
+            result["tiers_unexercised"] = _unexercised_note(unexercised, exercised)
+        return result
 
     if declared and not exercised:
         result.update(status="incomplete",
@@ -1136,7 +1156,7 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                                             "AGGREGATE ONLY — the cosine-only tier carried this "
                                             "verdict; no per-element bound was applied")})
         if unexercised:
-            result["tiers_unexercised"] = unexercised
+            result["tiers_unexercised"] = _unexercised_note(unexercised, exercised)
     elif _quant and st == "run_mismatch" and _cos >= _quant_floor:
         result.update(status="pass",
                       numeric={"status": "pass", "engine": engine, "gate": _v,

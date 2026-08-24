@@ -949,15 +949,18 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
         _W[:K, :N] = _np.asarray(W, dtype=_np.float64)
         A, W = _A.tolist(), _W.tolist()
         M, K, N = _Mp, _Kp, _Np
-    entry = {"name": "mesh_layer", "op": "matmul", "kind": "op",
+    def _build(m: int, k: int, n: int) -> str:
+        e = {"name": "mesh_layer", "op": "matmul", "kind": "op",
              "source_role": "mesh_layer_real_operands",
-             "source_reference": f"whole-model matmul layer {M}x{K}x{N} on the mesh with real operands",
-             "M": M, "K": K, "N": N, "lhs": "A0", "weight": "W", "out": "Y0"}
-    if epilogue:
-        entry["epilogue"] = list(epilogue)
-        if acc_scale is not None:
-            entry["acc_scale"] = float(acc_scale)
-    _, mlir = CS.build(entry, binding)
+             "source_reference": f"whole-model matmul layer {m}x{k}x{n} on the mesh with real operands",
+             "M": m, "K": k, "N": n, "lhs": "A0", "weight": "W", "out": "Y0"}
+        if epilogue:
+            e["epilogue"] = list(epilogue)
+            if acc_scale is not None:
+                e["acc_scale"] = float(acc_scale)
+        return CS.build(e, binding)[1]
+
+    mlir = _build(M, K, N)
 
     # DISPATCH ORDER is deliberate (mirrors capsule_runner.oracle_adapters): a target whose contract
     # DECLARES an EXCLUSIVE bespoke sim (a self-hosted SIMT core graded on its own emitted kernel by its
@@ -972,24 +975,73 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
         return [row[:_n_true] for row in out[:_m_true]]
 
     so = _SIM_ORACLES.get(_bespoke_sim_via(target))
-    if so is not None and so.exclusive:
+
+    def _dispatch(_mlir, _A, _W) -> list | None:
+        """One mesh call at whatever extent it is given."""
+        if so is not None and so.exclusive:
+            if observed is not None:
+                observed["path"] = "bespoke_sim"
+            return _matmul_via_bespoke_sim(target, _mlir, _A, _W, package=package, timeout=timeout,
+                                           observed=observed)
+        if endpoint in (None, "inline_asm_insn", "upstream_target"):
+            if observed is not None:
+                observed["path"] = "oot_cert"
+            return _matmul_via_oot_cert(target, _mlir, _A, _W, simulator=simulator, package=package,
+                                        timeout=timeout, observed=observed)
+        if endpoint == "external_backend":
+            if observed is not None:
+                observed["path"] = "program_oracle"
+            return _matmul_via_program_oracle(target, _mlir, _A, _W, model_ext=model_ext,
+                                              package=package, timeout=timeout,
+                                              operand_dtype=binding.operand_dtype, observed=observed)
+        return None                              # no mesh-execution path derived for this endpoint kind
+
+    # BLOCK A LAYER THAT DOES NOT FIT ON CHIP, rather than declining it. The working set of a matmul is
+    # the weight tile K*N plus the activation tile M*K; past the target's scratchpad the mesh returns
+    # nothing and the whole layer falls back to the host. Measured on lstmnetvit/gemmini: K and N are each
+    # fine alone (1x16x512 and 1x512x16 both run) and together they are not (1x512x512 declines), so two
+    # of 37 layers fell back and the model failed its must_accelerate gate at 35/37.
+    #
+    # `_capacity_fit_tile` already computes the fitting extent from RTL-derived facts, and `_mesh_verify`
+    # already uses it to shrink the tile it CERTIFIES. Only the execution path did not, so the tile record
+    # said "runs at this shape" about a shape the model never got to run. Same tiler, both paths.
+    #
+    # Splitting is EXACT on an integer datapath: partial products over a K split sum in the i32
+    # accumulator, and an N or M split is independent columns/rows. It is NOT applied when an epilogue is
+    # declared -- an acc_scale requant must see the whole accumulation, not each K block -- so such a
+    # layer still declines, now with that as the stated reason.
+    _cap = _scratchpad_capacity_elems(target, _dtype_bytes(binding.operand_dtype))
+    _mt, _kt, _nt = M, K, N
+    if _cap:
+        _mt, _kt, _nt, _n_sub = _capacity_fit_tile(M, K, N, max(1, _D), _cap)
+    if (_mt, _kt, _nt) != (M, K, N):
+        if epilogue:
+            if observed is not None:
+                observed["decline"] = (f"{M}x{K}x{N} exceeds the on-chip working set ({_cap} elems) and "
+                                       f"declares epilogue {list(epilogue)}; an accumulator epilogue "
+                                       f"cannot be split across K blocks")
+            return None
+        import numpy as _np
+        _An, _Wn = _np.asarray(A, dtype=_np.float64), _np.asarray(W, dtype=_np.float64)
+        _acc = _np.zeros((M, N), dtype=_np.float64)
+        _sub_mlir: dict[tuple[int, int, int], str] = {}
         if observed is not None:
-            observed["path"] = "bespoke_sim"
-        return _unpad(_matmul_via_bespoke_sim(target, mlir, A, W, package=package, timeout=timeout,
-                                              observed=observed))
-    if endpoint in (None, "inline_asm_insn", "upstream_target"):
-        if observed is not None:
-            observed["path"] = "oot_cert"
-        return _unpad(_matmul_via_oot_cert(target, mlir, A, W, simulator=simulator, package=package,
-                                           timeout=timeout, observed=observed))
-    if endpoint == "external_backend":
-        if observed is not None:
-            observed["path"] = "program_oracle"
-        return _unpad(_matmul_via_program_oracle(target, mlir, A, W, model_ext=model_ext,
-                                                 package=package, timeout=timeout,
-                                                 operand_dtype=binding.operand_dtype,
-                                                 observed=observed))
-    return None                                  # no mesh-execution path derived for this endpoint kind
+            observed["blocked"] = {"tile": [_mt, _kt, _nt], "n_subtiles": _n_sub,
+                                   "capacity_elems": _cap}
+        for m0 in range(0, M, _mt):
+            for n0 in range(0, N, _nt):
+                for k0 in range(0, K, _kt):
+                    a = _An[m0:m0 + _mt, k0:k0 + _kt]
+                    w = _Wn[k0:k0 + _kt, n0:n0 + _nt]
+                    shp = (a.shape[0], a.shape[1], w.shape[1])
+                    if shp not in _sub_mlir:
+                        _sub_mlir[shp] = _build(*shp)
+                    part = _dispatch(_sub_mlir[shp], a.tolist(), w.tolist())
+                    if part is None:
+                        return None              # fail closed: a partial sum is not a result
+                    _acc[m0:m0 + a.shape[0], n0:n0 + w.shape[1]] += _np.asarray(part, dtype=_np.float64)
+        return _unpad(_acc.tolist())
+    return _unpad(_dispatch(mlir, A, W))
 
 
 def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
@@ -1017,6 +1069,12 @@ def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
         _kind = _orc.get("kind") if isinstance(_orc, dict) else _orc
         observed["oracle"] = f"{target}-{_kind}-{sim}" if _kind else f"{target}-{sim}"
     if res.get("status") != "pass":
+        # KEEP THE REASON. Returning a bare None here is why a whole-model fallback could only be
+        # described as "unsynthesizable at this shape, or the oracle was unreachable" -- a guess covering
+        # two very different causes, offered because the cert's own verdict was discarded one frame down.
+        if observed is not None:
+            observed["decline_status"] = res.get("status")
+            observed["decline"] = (res.get("failure") or {}).get("detail") or res.get("failure")
         return None
     return (res.get("oracle_outputs") or {}).get("Y0")
 
