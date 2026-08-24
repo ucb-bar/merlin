@@ -36,6 +36,7 @@ already reflect the fixed stride), so they are *not* re-doubled here.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import struct
 import subprocess
@@ -228,7 +229,14 @@ def stock_layout_link(objs: list[str | Path], linker_script: str | Path, out_pat
            *[str(o) for o in objs]]
     if extra_args:
         cmd.extend(extra_args)
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    # Run the linker with a SANITIZED LD_LIBRARY_PATH. A caller (e.g. the QA-loop driver, which prepends
+    # conda/chipyard libs so the agent's C++ builds find libidn/libstdc++) may have a process-wide
+    # LD_LIBRARY_PATH whose libLLVM shadows the one ``ld.lld`` itself links against — the loader then binds
+    # the wrong versioned symbol and the link dies (e.g. "undefined symbol: LLVMInitializeM68kTargetInfo,
+    # version LLVM_18.1"). ``ld.lld`` resolves its own libraries via the default/rpath loader path, so we
+    # drop LD_LIBRARY_PATH for the link only — matching the clean environment in which it links correctly.
+    _env = {k: v for k, v in os.environ.items() if k != "LD_LIBRARY_PATH"}
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=_env)
     if proc.returncode != 0:
         raise FixedFormatLinkError(f"stock link failed:\n{' '.join(cmd)}\n{proc.stderr[-2000:]}")
     return Path(out_path)
