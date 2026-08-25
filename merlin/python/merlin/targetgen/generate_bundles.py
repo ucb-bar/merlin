@@ -300,7 +300,7 @@ def _main(argv: list[str] | None = None) -> int:
     from .target_experiment import load_target_experiment
 
     ap = argparse.ArgumentParser(description="Materialize the 4-arm bundle manifests from a descriptor.")
-    ap.add_argument("--descriptor", required=True, help="path to a target_experiment.yaml")
+    ap.add_argument("--descriptor", help="path to a target_experiment.yaml (not needed for --list-tools)")
     ap.add_argument("--dest", default=None, help="output input_bundles dir (default: beside the descriptor)")
     ap.add_argument("--variants", default="hwbringup_v0",
                     help="comma-separated bundle-id variant suffixes (default: hwbringup_v0)")
@@ -323,6 +323,8 @@ def _main(argv: list[str] | None = None) -> int:
             print(f"{name:22} {how:7} {t.blurb}{flag}\n{'':22} rungs: {', '.join(rungs) or '-'}")
         return 0
 
+    if not a.descriptor:
+        ap.error("--descriptor is required (except with --list-tools)")
     te = load_target_experiment(a.descriptor)
     dest = Path(a.dest) if a.dest else Path(a.descriptor).parent / "input_bundles"
     variants = tuple(v.strip() for v in a.variants.split(",") if v.strip())
