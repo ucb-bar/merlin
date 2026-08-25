@@ -1040,11 +1040,75 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -
                                {"public", "dev"}, no_oracle, timeout)
         out.write_text(json.dumps(verdict, indent=2))
         _write_stage_ledger(run_dir, rnd, cand, run_dir / "_qa_work" / f"runs_{rnd:02d}", verdict)
+        _attach_shape_generalization(verdict, cand, run_dir, rnd, timeout=timeout)
     # hand the redacted verdict to the agent for the next round
     qa_dir = ws / "qa"
     qa_dir.mkdir(exist_ok=True)
     (qa_dir / "verdict.json").write_text(json.dumps(verdict, indent=2))
     return verdict
+
+
+# The public suite is the set of shapes an agent can see, so a backend that keys on those shapes passes
+# it by construction and the loop has nothing left to say. Measured: a submission converged at 14/26 with
+# every failure a shape it had never implemented, its self-check clean on everything it HAD, and no round
+# feedback able to point at the gap -- the first instrument to see it was a post-freeze holdout.
+#
+# These probes are derived from the target's own declared capability closure and its DERIVED tile edge
+# (never the corpus), so they leak nothing an agent could not compute itself, and they run at the cheap
+# loop tier. Restricted to the multi-tile corners: the question is "does this backend generalize past ONE
+# tile, and along WHICH axis" -- per-axis, because a backend that loops over K and N but not M passes two
+# of the three, and only naming the axis makes the result actionable.
+def _attach_shape_generalization(verdict: dict, cand, run_dir, rnd: int, *, timeout: int) -> None:
+    """Probe whether this round's candidate LOWERS shapes past a single tile, and fold it into the gate.
+
+    Structural, not numerical: it runs only the emit half of the contract and compares the size of the
+    emitted artifact across shapes, so it costs no oracle, needs no golden, and works on an operand
+    format that has no CPU reference. See :mod:`merlin.targetgen.lowering_coverage` for the invariant
+    ("a program for a bigger problem cannot be smaller") and why it is per-axis.
+
+    Failure to run is RECORDED, never treated as clean -- a probe that did not run reading as a pass is
+    the same class of bug as an unavailable oracle scoring as one.
+    """
+    out = run_dir / "qa_history" / f"shape_coverage_round_{rnd:02d}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        from merlin.targetgen import lowering_coverage as LC
+        cov = LC.sweep(cand, target=C.TARGET, contract=str(C.REPO / "merlin/contract"),
+                       timeout=min(timeout, 300))
+        out.write_text(json.dumps(cov, indent=2))
+    except Exception as e:  # noqa: BLE001 -- record it; never let it read as clean
+        verdict["shape_coverage"] = {
+            "ran": False, "error": f"{type(e).__name__}: {e}",
+            "note": "the shape-coverage probes did NOT run this round; this is NOT a pass."}
+        return
+
+    verdict["shape_coverage"] = {
+        "ran": True,
+        "tile_edge": cov.get("tile_edge"),
+        "baseline_tile_lowered": cov.get("baseline_tile_lowered"),
+        "per_corner": {c["corner"]: c["outcome"] for c in cov.get("corners", [])},
+        "emitted_work": cov.get("emitted_work"),
+        "multi_tile_axes_uncovered": cov.get("multi_tile_axes_uncovered") or [],
+        "all_covered": bool(cov.get("all_covered")),
+        "unmeasured": cov.get("unmeasured"),
+        "detail": {c["corner"]: c.get("detail") for c in cov.get("corners", []) if c.get("detail")},
+        "note": ("DERIVED shape probes, not corpus capsules: the SAME contraction at one tile and at two "
+                 "tiles in each of M, K and N, at this target's derived tile edge. `emitted_work` is the "
+                 "size of the program you emitted for each -- a bigger problem cannot need a SMALLER "
+                 "program, so a corner marked `collapsed` is a shape you silently refused. "
+                 "`multi_tile_axes_uncovered` names the axis your lowering does not loop over: fix the "
+                 "loop, not the arithmetic. If you genuinely cannot lower a shape, DECLARE it "
+                 "(`declined` on the command buffer) instead of emitting a terminator."),
+    }
+    # THE GATE. Passing every public capsule while lowering only the shapes they happen to use is exactly
+    # the state that shipped at 14/26, so the loop must not call that converged.
+    if verdict.get("all_pass") and not verdict["shape_coverage"]["all_covered"]:
+        verdict["all_pass"] = False
+        verdict["not_converged_reason"] = (
+            "every public capsule passes, but the derived shape probes show the backend does not lower "
+            + (f"past one tile on axis/axes {verdict['shape_coverage']['multi_tile_axes_uncovered']}"
+               if verdict["shape_coverage"]["multi_tile_axes_uncovered"]
+               else "the baseline tile itself (nothing about shape can be concluded yet)"))
 
 
 def _write_stage_ledger(run_dir, rnd: int, cand, runs_root, verdict) -> None:

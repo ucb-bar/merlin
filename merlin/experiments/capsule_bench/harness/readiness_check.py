@@ -638,7 +638,7 @@ def test_semantic_coverage_measurable():
     if not cap:
         return
 
-    probes = _cp.synthesize(cap)
+    probes = _cp.synthesize(cap, target=C.TARGET)
     per_fam = {f for p in probes for f in [p.descriptor.resolved_family()] if f}
     _ok("every declared family is probeable", per_fam >= set(cap),
         f"{len(probes)} probes over {sorted(per_fam)}"
