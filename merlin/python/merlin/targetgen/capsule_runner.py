@@ -1977,8 +1977,16 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
         seen = set(_tier_policy.priced_tiers(target or ""))
         i = 0
         while i < len(caps) and i < _CALIBRATION_CAP:
-            head.append(_one(caps[i]))
+            _r = _one(caps[i])
+            head.append(_r)
             i += 1
+            # A capsule that PASSED ran every mandatory tier, so every tier now has a price and there is
+            # nothing left to learn -- stop immediately rather than spending a second serial capsule.
+            # This matters on a target whose ladder was ALREADY in cost order: it gains nothing from the
+            # reordering and pays the whole serial head, and measured that way the head cost more
+            # wall-clock (1074s -> 1195s) than the reordering saved. One passing capsule is enough.
+            if _r.get("status") == "pass":
+                break
             now = set(_tier_policy.priced_tiers(target or ""))
             if now == seen:
                 break

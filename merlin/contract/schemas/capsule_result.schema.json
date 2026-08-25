@@ -9,7 +9,7 @@
     "capsule": {"type": "string"},
     "kind": {"type": "string", "enum": ["isa", "layer", "model_slice", "model"]},
     "label": {"type": "string", "enum": ["public", "dev", "hidden"]},
-    "status": {"type": "string", "enum": ["pass", "fail", "incomplete", "error", "not_gradeable_no_oracle"]},
+    "status": {"type": "string", "enum": ["pass", "fail", "incomplete", "error", "not_gradeable_no_oracle", "screened_only"]},
     "contract_version": {"type": "string"},
     "tiers": {
       "type": "object",
