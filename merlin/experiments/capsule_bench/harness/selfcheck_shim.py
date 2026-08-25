@@ -22,6 +22,10 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--out", default="")
+    # Forwarded like every other flag. Without this the sandboxed agent -- which is EVERY real run --
+    # gets "unrecognized arguments" and the shape-coverage report is unreachable exactly where it
+    # matters, while working fine when tested outside the box.
+    ap.add_argument("--shape-coverage", action="store_true")
     a = ap.parse_args(argv)
 
     ws = Path(__file__).resolve().parent          # the shim lives at <ws>/agent_selfcheck.py
@@ -29,7 +33,8 @@ def main(argv=None):
     ch.mkdir(parents=True, exist_ok=True)
     rid = f"{os.getpid()}_{int(time.time() * 1000) % 1000000}"
     (ch / f"req_{rid}.json").write_text(json.dumps(
-        {"sim": a.sim, "capsules": a.capsules, "workers": a.workers, "timeout": a.timeout}))
+        {"sim": a.sim, "capsules": a.capsules, "workers": a.workers, "timeout": a.timeout,
+         "shape_coverage": bool(a.shape_coverage)}))
     resp, done = ch / f"resp_{rid}.json", ch / f"done_{rid}"
     deadline = time.time() + a.timeout + 240
     while time.time() < deadline:
@@ -39,7 +44,11 @@ def main(argv=None):
             if a.out:
                 Path(a.out).write_text(txt)
             try:
-                return 0 if json.loads(txt).get("all_pass") else 1
+                _v = json.loads(txt)
+                # the shape-coverage report has no `all_pass`; its verdict is `all_covered`
+                if a.shape_coverage:
+                    return 0 if _v.get("all_covered") else 1
+                return 0 if _v.get("all_pass") else 1
             except Exception:
                 return 0
         time.sleep(0.4)
