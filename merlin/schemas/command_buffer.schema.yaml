@@ -14,6 +14,12 @@ required_top_level_fields:
   - commands
   - resources
   - metrics_requested
+optional_top_level_fields:
+  # Present on SOME buffers, so they cannot be required — but they are part of the contract, and a
+  # field documented nowhere is a field the two schema representations can silently disagree about.
+  - tensors            # handle -> {dtype, shape}; absent when every operand is an inline resource
+  - params             # scalar lowering parameters (e.g. acc_scale)
+  - declined           # see `decline_example` below
 producer: merlin runtime lowering (merlin-runtime-to-command-buffer)
 consumers:
   - merlin/runtime/simulator
@@ -37,3 +43,21 @@ example: |
     buffers: []
     handles: [W_res, acc0]
   metrics_requested: [cycles, bytes_moved, pack_count, resident_hits, evictions]
+decline_semantics: >-
+  A backend that cannot lower a capsule DECLINES it and says why, instead of emitting an empty or
+  terminator-only program. This is a separate top-level field rather than a command because it
+  describes the whole buffer: there is no program to run. `reason` is mandatory and must name what
+  could not be lowered (a shape outside the mesh, a dtype the datapath lacks, an unimplemented op);
+  `shape` and `op` are optional and let the grader and the round feedback quote the decline back.
+  A decline is scored as NOT PASSED, never as wrong arithmetic — the distinction is the point.
+  Emitting nothing and hoping it grades is the behaviour this field exists to make unnecessary,
+  and `commands` is empty exactly when `declined` is present.
+decline_example: |
+  abi_version: "0.1"
+  target: toy_npu
+  backend: simulator
+  commands: []
+  declined: {reason: "rhs 4096x4096 exceeds the 16x16 resident tile and no tiler is registered",
+             op: MATMUL_RESIDENT, shape: [4096, 4096]}
+  resources: {buffers: [], handles: []}
+  metrics_requested: []

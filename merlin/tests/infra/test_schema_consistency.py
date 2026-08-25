@@ -25,13 +25,23 @@ JSON_PATH = ROOT / "merlin/contract/schemas/command_buffer.schema.json"
 
 
 def _yaml_documented_fields() -> set[str]:
-    """Top-level field vocabulary the YAML contract documents (required list + example keys)."""
+    """Top-level field vocabulary the YAML contract documents.
+
+    Three sources, because a field can be part of the contract without appearing in every buffer:
+    the `required_top_level_fields` list, the `optional_top_level_fields` list, and the top-level keys
+    of EVERY example block. More than one example exists on purpose — a declining buffer has no
+    program, so it cannot be shown as a variation of the successful one, and folding `declined` into
+    the success example would have documented a buffer that never occurs.
+    """
     doc = yaml.safe_load(YAML_PATH.read_text(encoding="utf-8"))
     fields = set(doc.get("required_top_level_fields", []) or [])
-    # The `example` is a literal block string of a sample command buffer; harvest its top-level keys.
-    example = doc.get("example", "") or ""
-    for m in re.finditer(r'^\s{0,2}"?([a-z_]+)"?\s*:', example, re.MULTILINE):
-        fields.add(m.group(1))
+    fields |= set(doc.get("optional_top_level_fields", []) or [])
+    # Each `*example*` is a literal block string of a sample buffer; harvest its top-level keys.
+    for key, block in doc.items():
+        if "example" not in key or not isinstance(block, str):
+            continue
+        for m in re.finditer(r'^\s{0,2}"?([a-z_]+)"?\s*:', block, re.MULTILINE):
+            fields.add(m.group(1))
     return fields
 
 
