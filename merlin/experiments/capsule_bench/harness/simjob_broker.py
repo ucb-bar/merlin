@@ -81,6 +81,102 @@ def _sim_env() -> dict:
     return e
 
 
+def _submission_digest(ws) -> str:
+    """A content address for the submission the verdict was earned against.
+
+    Verdicts are keyed by BYTES, not by round: unchanged bytes never need re-grading, and changed bytes
+    invalidate exactly the capsules they touch. Without this the loop re-certifies thirty-odd capsules to
+    learn about the one that moved.
+    """
+    import hashlib
+    h = hashlib.sha256()
+    for f in sorted(Path(ws, "submission").rglob("*")):
+        if f.is_file() and "__pycache__" not in f.parts:
+            h.update(f.relative_to(ws).as_posix().encode())
+            h.update(f.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def _cert_cover(ws) -> set | None:
+    """Which capsules are worth certifying at all. The hardware cannot tell two capsules in the same
+    (family, dtype) cell apart, so certifying both spends minutes to learn nothing. `None` on any failure
+    -> certify anything eligible, because a cover that silently comes back empty is indistinguishable
+    from everything already being done."""
+    try:
+        from merlin.targetgen.contract.materialize import cert_capsule_cover
+        from merlin.targetgen.target_experiment import load_target_experiment
+        import _common as _C
+        te = load_target_experiment(_C.EXP / "target_experiment.yaml")
+        # Pass the tile edge so the cover certifies PARTIAL tiles as their own cell. A cover built on
+        # family and dtype alone can pick, per cell, the capsule whose extents happen to divide evenly and
+        # then certify no ragged extent anywhere -- and a partial tile is exactly what a functional model
+        # is least able to stand in for (a taped-out unit here got `n % 64 != 0` wrong while every
+        # functional check passed).
+        _td = None
+        try:
+            from merlin.targetgen.corpus_spec import _tile_dim
+            from merlin.targetgen.target_experiment import load_capability_manifest
+            _td = int(_tile_dim(te.target, load_capability_manifest(te.target).contract)) or None
+        except Exception:  # noqa: BLE001 -- no derivable tile edge: cover without the alignment axis
+            _td = None
+        return set(cert_capsule_cover(te.graded_roots(), tile_dim=_td)["capsules"])
+    except Exception:  # noqa: BLE001 -- no resolvable corpus: stay permissive, never silently empty
+        return None
+
+
+def _tier_state(ws) -> dict:
+    import json as _j
+    f = Path(ws, "qa", "tier_state.json")
+    try:
+        return _j.loads(f.read_text())
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_tier_state(ws, st) -> None:
+    import json as _j
+    f = Path(ws, "qa", "tier_state.json")
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(_j.dumps(st, indent=2))
+
+
+def _promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
+    """Record what the loop tier just learned, and enqueue cert jobs for what it unlocked.
+
+    Returns the capsule names promoted. Enqueues by writing a `simreq_` the broker's own queue picks up --
+    the same path an agent request takes, so it inherits the constrained-runner validation rather than
+    routing around it.
+    """
+    import json as _j
+    digest = _submission_digest(ws)
+    st = _tier_state(ws)
+    promoted = []
+    for row in (verdict.get("per_capsule") or []):
+        name = row.get("capsule")
+        if not name:
+            continue
+        entry = st.setdefault(name, {})
+        entry[loop_tier] = {"status": "pass" if row.get("pass") else "fail", "digest": digest}
+        if not row.get("pass"):
+            continue                                   # a failed loop tier cannot be rescued by RTL
+        if cover is not None and name not in cover:
+            continue                                   # outside the representative cover
+        known = entry.get(cert_tier) or {}
+        if known.get("digest") == digest:
+            continue                                   # already certified FOR THESE BYTES
+        entry[cert_tier] = {"status": "pending", "digest": digest}
+        jid = f"promo{len(promoted)}_{digest}_{name}"[:80]
+        if not (ch / f"simreq_{jid}.json").exists():
+            (ch / f"simreq_{jid}.json").write_text(_j.dumps(
+                {"sim": _NEUTRAL_SIM, "capsules": name, "workers": 1, "tiers": cert_tier,
+                 "promoted": True, "submitted_at": time.time()}))
+            promoted.append(name)
+    _save_tier_state(ws, st)
+    if promoted:
+        print(f"[promote] {loop_tier} pass -> {cert_tier}: {promoted}", file=log, flush=True)
+    return promoted
+
+
 def _strip_golden(obj):
     """Defence-in-depth: drop any 'expected'/'golden' keys before publishing (agent_selfcheck already
     redacts; this guarantees it even if a future change regresses)."""
@@ -145,7 +241,10 @@ def _allowed_sims() -> tuple[str, ...]:
     return ("spike", "verilator", "vcs") if _sim_via() == "chipyard" else (_NEUTRAL_SIM,)
 
 
-_NEUTRAL_SIM = "contract"   # "grade on whatever tier this target's contract resolves to"
+_NEUTRAL_SIM = "contract"
+_LOOP_TIER = None      # resolved in main() from the target's ladder
+_CERT_TIER = None
+_COVER = None   # "grade on whatever tier this target's contract resolves to"
 
 
 def main(argv=None):
@@ -157,6 +256,32 @@ def main(argv=None):
     ap.add_argument("--per-capsule-timeout", type=int, default=0, help="0=read .oracle_timing.json or default")
     a = ap.parse_args(argv)
     ws = Path(a.ws); ch = ws / ".qa_channel"; ch.mkdir(parents=True, exist_ok=True)
+
+    # Which tier is the cheap gate and which is the expensive cert, DERIVED from this target's own
+    # adapter map -- never a literal, so a target with a different ladder gets the right split with no
+    # edit here. loop = the fastest tier the corpus declares; cert = the deepest reachable above it.
+    # Promotion is simply disabled (both None) when the endpoint exposes only one tier, rather than
+    # inventing a second.
+    global _LOOP_TIER, _CERT_TIER, _COVER
+    _LOOP_TIER = _CERT_TIER = None
+    _COVER = None
+    try:
+        from merlin.targetgen import capsule_runner as _CR
+        from merlin.targetgen.contract.materialize import declared_oracle_tiers
+        from merlin.targetgen.target_experiment import load_target_experiment
+        import _common as _C
+        _te = load_target_experiment(_C.EXP / "target_experiment.yaml")
+        _decl = declared_oracle_tiers(*_te.graded_roots())
+        _loop = _CR.qa_loop_adapters(_te.target, _te.sim_via, declared_tiers=_decl)
+        _full = _CR.oracle_adapters(_te.target, _te.sim_via)
+        _deeper = sorted(set(_full) - set(_loop))
+        if _loop and _deeper:
+            _LOOP_TIER, _CERT_TIER = sorted(_loop)[0], _deeper[-1]
+            _COVER = _cert_cover(ws)
+    except Exception as _e:  # noqa: BLE001 -- unresolvable ladder: no promotion, and SAY so
+        print(f"[promote] disabled: {type(_e).__name__}: {_e}", file=sys.stderr, flush=True)
+    print(f"[promote] loop={_LOOP_TIER} cert={_CERT_TIER} "
+          f"cover={len(_COVER) if _COVER is not None else 'all'}", file=sys.stderr, flush=True)
 
     # verilator per-capsule timeout: measured (Part 3) or a generous default
     vpc = a.per_capsule_timeout
@@ -194,6 +319,14 @@ def main(argv=None):
                        "error": f"{j['sim']} exceeded its time budget"}
             resp.write_text(json.dumps(out, indent=2))
             (ch / (f"simerr_{jid}" if out.get("error") else f"simdone_{jid}")).write_text("ok")
+            # PROMOTE: a capsule that just passed the loop tier earns the cert tier now, not at a round
+            # boundary hours away. Skipped for a job that WAS a promotion, so a cert verdict cannot
+            # re-enqueue itself.
+            if not j.get("promoted") and not out.get("error"):
+                try:
+                    _promote(ws, ch, out, _LOOP_TIER, _CERT_TIER, _COVER, sys.stderr)
+                except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
+                    print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
             if j["slot"]:
                 j["slot"].unlink(missing_ok=True)
             running.pop(jid)
@@ -227,10 +360,14 @@ def main(argv=None):
                          "--timeout", str(to), "--out", str(resp_tmp)]
                 if sim != _NEUTRAL_SIM:      # --sim is meaningless where the contract picks the tier
                     argv2[4:4] = ["--sim", sim]
+                _tiers = str(r.get("tiers") or "").strip()
+                if _tiers:                   # validated downstream against the RESOLVED adapter map
+                    argv2 += ["--tiers", _tiers]
                 (ch / f"simrun_{jid}").write_text("running")
                 proc = subprocess.Popen(["timeout", str(to + 120)] + argv2, cwd=str(ws),
                                         env=_sim_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                running[jid] = {"proc": proc, "slot": slot, "resp_tmp": str(resp_tmp), "sim": sim}
+                running[jid] = {"proc": proc, "slot": slot, "resp_tmp": str(resp_tmp), "sim": sim,
+                                "promoted": bool(r.get("promoted"))}
                 claimed.add(jid)
         time.sleep(a.poll)
     # drain on STOP

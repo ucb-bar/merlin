@@ -267,7 +267,8 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     return link
 
 
-def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None) -> dict:
+def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None,
+                       tile_dim: int | None = None) -> dict:
     """The REPRESENTATIVE subset a cycle-accurate cert tier should run, when the functional tier runs
     everything. Returns ``{"capsules": [...], "cells": [...], "uncovered": [...], "basis": {...}}``.
 
@@ -284,7 +285,16 @@ def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None) -> dict:
       * operand ``dtype``   -- the proxy for WHICH compute unit runs it (block-scaled microscaling formats
                               go to the MX PE; ordinary floats to the SIMT lanes) and for datapath width.
 
-    Both are declared per capsule and read as data, so a new target's cover falls out of its own corpus
+      * tile ALIGNMENT (only when ``tile_dim`` is given) -- whether the capsule's extents divide evenly
+        by the target's tile edge, or leave a partial tile. This is the axis a functional model is least
+        able to stand in for: a partial tile changes addressing and the working-set boundary, and this
+        repo has already been bitten by exactly that -- a taped-out unit computed partial N tiles
+        (``n % 64 != 0``) wrongly while every functional check passed. A cover built on family and dtype
+        alone can pick, for each cell, the one capsule whose extents happen to divide evenly, and then
+        certify no partial tile anywhere. Passing ``tile_dim`` closes that blind spot; omitting it leaves
+        it open, which is why ``basis`` reports which axes were actually used.
+
+    All are declared per capsule and read as data, so a new target's cover falls out of its own corpus
     with no edit here. ``expected_instruction_coverage.instruction_classes`` would be the most faithful
     axis of all and is deliberately NOT used: every capsule in this repo declares it empty, so selecting on
     it would silently return a cover of one. That is recorded in ``basis`` so the caller can see which
@@ -308,30 +318,41 @@ def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None) -> dict:
             dts = sorted({str(t.get("dtype")) for t in (cap.get("inputs") or []) if t.get("dtype")})
             if not dts:
                 continue
+            align = None
+            if tile_dim and tile_dim > 0:
+                extents = [int(x) for t in (cap.get("inputs") or [])
+                           for x in (t.get("shape") or []) if str(x).lstrip("-").isdigit()]
+                # "partial" if ANY extent leaves a remainder: one ragged axis is enough to exercise the
+                # tile-edge path, and that is what we are trying to certify.
+                align = "partial" if any(e % tile_dim for e in extents) else "aligned"
             rows.append({"name": cap.get("name") or cy.parent.name,
-                         "family": sem.get("semantic_family"), "dtypes": dts})
+                         "family": sem.get("semantic_family"), "dtypes": dts, "align": align})
 
-    cells = {(r["family"], dt) for r in rows for dt in r["dtypes"]}
+    def _cells(r):
+        return {(r["family"], dt, r["align"]) for dt in r["dtypes"]}
+
+    cells = {c for r in rows for c in _cells(r)}
     uncovered, chosen = set(cells), []
     while uncovered:
         best, gain = None, 0
         for r in rows:
             if r in chosen:
                 continue
-            g = len({(r["family"], dt) for dt in r["dtypes"]} & uncovered)
+            g = len(_cells(r) & uncovered)
             if g > gain:
                 best, gain = r, g
         if best is None:                      # nothing left can cover what remains -> report it
             break
         chosen.append(best)
-        uncovered -= {(best["family"], dt) for dt in best["dtypes"]}
+        uncovered -= _cells(best)
 
     n_class = sum(1 for r in rows if r.get("instruction_classes"))
     return {
         "capsules": sorted(r["name"] for r in chosen),
-        "cells": sorted(f"{f}/{dt}" for f, dt in cells),
-        "uncovered": sorted(f"{f}/{dt}" for f, dt in uncovered),
-        "basis": {"axes": ["semantic_family", "dtype"], "n_candidates": len(rows),
+        "cells": sorted("/".join(x for x in (f, dt, al) if x) for f, dt, al in cells),
+        "uncovered": sorted("/".join(x for x in (f, dt, al) if x) for f, dt, al in uncovered),
+        "basis": {"axes": ["semantic_family", "dtype"] + (["tile_alignment"] if tile_dim else []),
+                  "tile_dim": tile_dim, "n_candidates": len(rows),
                   "n_cells": len(cells), "n_chosen": len(chosen),
                   "instruction_classes_available": n_class,
                   "note": ("instruction_classes is declared empty by every capsule in this corpus, so it "

@@ -168,3 +168,61 @@ def test_a_suppressed_tier_keeps_its_own_mandatory_flag():
     flag to decide whether an absent verdict is acceptable."""
     from merlin.targetgen.capsule_runner import suppressed_tier_result
     assert suppressed_tier_result("L3", mandatory=True, failed_tier="L2").mandatory is True
+
+
+# ---------------------------------------------------------------------------------------------
+# tile alignment: the axis a functional model is least able to stand in for
+# ---------------------------------------------------------------------------------------------
+def _corpus_shaped(tmp_path, specs):
+    """specs: [(name, family, dtype, shape)]."""
+    root = tmp_path / "shaped"
+    for name, fam, dt, shape in specs:
+        d = root / name
+        d.mkdir(parents=True)
+        (d / "capsule.yaml").write_text(yaml.safe_dump({
+            "name": name, "kind": "op", "label": "public",
+            "semantic": {"semantic_family": fam},
+            "inputs": [{"name": "A0", "role": "input", "shape": list(shape), "dtype": dt}],
+        }), encoding="utf-8")
+    return root
+
+
+def test_a_partial_tile_is_its_own_cell(tmp_path):
+    """A taped-out unit in this repo computed partial N tiles (n %% 64 != 0) WRONGLY while every functional
+    check passed. Family and dtype cannot see that: both capsules here are contraction/f32, so a 2-axis
+    cover certifies one of them and might never run a ragged extent at all."""
+    root = _corpus_shaped(tmp_path, [("Aligned", "contraction", "f32", [32, 32]),
+                                     ("Ragged", "contraction", "f32", [32, 33])])
+    two_axis = cert_capsule_cover([root])
+    assert len(two_axis["capsules"]) == 1, "precondition: without alignment these look interchangeable"
+
+    three_axis = cert_capsule_cover([root], tile_dim=16)
+    assert set(three_axis["capsules"]) == {"Aligned", "Ragged"}
+    assert any(c.endswith("/partial") for c in three_axis["cells"])
+    assert any(c.endswith("/aligned") for c in three_axis["cells"])
+
+
+def test_one_ragged_axis_is_enough_to_be_partial(tmp_path):
+    """Exercising the tile-edge path is the point; a capsule that is ragged on any axis does that."""
+    root = _corpus_shaped(tmp_path, [("X", "contraction", "f32", [32, 32, 17])])
+    assert cert_capsule_cover([root], tile_dim=16)["cells"] == ["contraction/f32/partial"]
+
+
+def test_omitting_tile_dim_leaves_the_blind_spot_and_says_so(tmp_path):
+    """The axis is optional because the tile edge is the caller's fact, not the corpus's. What must never
+    happen is a cover that silently claims coverage it does not have."""
+    root = _corpus_shaped(tmp_path, [("A", "contraction", "f32", [32, 33])])
+    r = cert_capsule_cover([root])
+    assert "tile_alignment" not in r["basis"]["axes"]
+    assert r["basis"]["tile_dim"] is None
+
+
+def test_the_alignment_axis_only_ever_widens_the_cover(tmp_path):
+    """Adding an axis must never DROP a capsule that was covering something -- a narrower cover after
+    adding information would mean the extra axis lost a cell."""
+    root = _corpus_shaped(tmp_path, [("A", "contraction", "f32", [32, 32]),
+                                     ("B", "attention", "fp16", [32, 33]),
+                                     ("C", "attention", "fp16", [16, 16])])
+    two, three = cert_capsule_cover([root]), cert_capsule_cover([root], tile_dim=16)
+    assert len(three["capsules"]) >= len(two["capsules"])
+    assert three["uncovered"] == [] and two["uncovered"] == []
