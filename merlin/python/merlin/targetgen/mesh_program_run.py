@@ -14,6 +14,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .capsule_common import oracle_kind as _oracle_kind
+
 
 def _encode_operand(values, dtype: str) -> bytes | None:
     """Encode a nested-list operand to raw device bytes for the cb's DECLARED dtype.
@@ -146,7 +148,9 @@ def matmul_on_program_oracle(target: str, interface_mlir: str, A, W, *, model_ex
         except PO.OracleUnavailable:
             return None
         if observed is not None and res.get("oracle"):
-            observed["oracle"] = res["oracle"]
+            # keep this a STRING: the adapter may now report a {kind, derived_from_rtl, fidelity}
+            # record, and this field is read back as a provenance label.
+            observed["oracle"] = _oracle_kind(res["oracle"])
         outs = res.get("outputs") or {}
         return next(iter(outs.values()), None)
 
