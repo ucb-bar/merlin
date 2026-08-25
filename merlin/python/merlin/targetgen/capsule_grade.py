@@ -26,6 +26,7 @@ from . import capsule_runner as CR
 from .capsule_common import tier_field as _tier_field
 from .capsule_common import tier_status as _tier_status
 from . import coverage_report as CV
+from .corpora import source_experiment_env
 from .oot_runner import CertFailure, build_package, integrity_scan, load_package
 
 
@@ -58,6 +59,14 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     ``oracle_unavailable`` plane — so the report is honest and never claims a numeric pass. Graded runs
     (``no_oracle=False``) keep the ``not_run_is_not_pass`` behavior byte-for-byte."""
     labels = labels or {"public", "dev"}
+    # Source the target's own tooling paths before resolving any adapter, exactly as the harness does
+    # for an arm. Without this a grade run outside the harness can lose a target's certifying-tier sim
+    # and report the whole suite `incomplete` -- fail-closed, but describing the environment rather than
+    # the submission. Process env wins, so an exported var is untouched.
+    _sourced = source_experiment_env(target)
+    if _sourced:
+        print(f"  sourced {len(_sourced)} tooling path(s) from the target's experiment.env: "
+              f"{', '.join(sorted(_sourced))}", flush=True)
     # absolute before any threading, for the same reason run_suite does it: this function also reads the
     # per-capsule traces back out of this root, and a root that moved under a sibling thread's chdir
     # silently yields an empty coverage dict rather than an error.

@@ -43,6 +43,40 @@ def descriptor_path(target: str) -> Path:
             / "target_experiment.yaml")
 
 
+def source_experiment_env(target: str) -> list[str]:
+    """Load ``targets/<target>/experiment.env`` into ``os.environ``, setting ONLY keys not already
+    present, and return the keys it set.
+
+    The harness does this for every arm before a run; a caller that grades a package WITHOUT going
+    through the harness did not, and the difference is not cosmetic. One target's certifying tier is a
+    program-driven Verilator sim registered through ``MERLIN_EXT_<TARGET>_VSIM``; with the variable
+    absent there is no adapter, and its own profile spells out the consequence -- every capsule reports
+    ``incomplete``, never a pass. Fail-closed is right, but reporting a whole suite incomplete because a
+    path was not sourced is a tooling artifact wearing a verdict's clothes.
+
+    The process environment always WINS, so an exported var is never overridden. Structured KEY=VALUE
+    parse, ``#`` comments; target-agnostic (keyed off the descriptor's own directory). This module is the
+    one allowed to know the ``experiments/`` layout.
+    """
+    import os
+
+    desc = descriptor_path(target)
+    f = desc.parent / "experiment.env"
+    set_keys: list[str] = []
+    if not f.is_file():
+        return set_keys
+    for line in f.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        k, v = k.strip(), v.strip().strip('"').strip("'")
+        if k and k not in os.environ:
+            os.environ[k] = v
+            set_keys.append(k)
+    return set_keys
+
+
 def experiment_for(target: str):
     """``target``'s parsed descriptor, or None when it ships none / names a different target."""
     desc = descriptor_path(target)
