@@ -2,21 +2,55 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "merlin/bench_contract/manifest.schema.json",
   "title": "Out-of-tree target-backend package manifest (experiment ABI v0.1)",
-  "description": "A package satisfying the experiment ABI declares this manifest. The runner validates it fail-closed before invoking anything. Same shape for Python and C++ packages — only `language`, `build`, and the entrypoint argv differ.",
+  "description": "A package satisfying the experiment ABI declares this manifest. The runner validates it fail-closed before invoking anything. Same shape for Python and C++ packages \u2014 only `language`, `build`, and the entrypoint argv differ.",
   "type": "object",
-  "required": ["artifact_type", "target", "language", "authoring", "integrity_exempt", "entrypoints", "commands"],
+  "required": [
+    "artifact_type",
+    "target",
+    "language",
+    "authoring",
+    "integrity_exempt",
+    "entrypoints",
+    "commands"
+  ],
   "properties": {
-    "artifact_type": {"const": "mlir_oot_target_backend"},
-    "target": {"type": "string"},
-    "package_id": {"type": "string"},
-    "language": {"type": "string", "enum": ["python", "cpp"]},
+    "artifact_type": {
+      "const": "mlir_oot_target_backend"
+    },
+    "target": {
+      "type": "string"
+    },
+    "package_id": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "python",
+        "cpp"
+      ]
+    },
     "authoring": {
       "type": "object",
-      "required": ["mode"],
+      "required": [
+        "mode"
+      ],
       "properties": {
-        "mode": {"type": "string", "enum": ["hand_curated", "agent_generated_from_recipe", "agent_generated_from_rtl_facts", "deterministic_generated_from_spec"]},
-        "author": {"type": "string"},
-        "generated_by_agent": {"type": "boolean"}
+        "mode": {
+          "type": "string",
+          "enum": [
+            "hand_curated",
+            "agent_generated_from_recipe",
+            "agent_generated_from_rtl_facts",
+            "deterministic_generated_from_spec"
+          ]
+        },
+        "author": {
+          "type": "string"
+        },
+        "generated_by_agent": {
+          "type": "boolean"
+        }
       },
       "additionalProperties": true
     },
@@ -27,35 +61,74 @@
     "llvm": {
       "type": "object",
       "properties": {
-        "version": {"type": "string"},
-        "commit": {"type": "string"}
+        "version": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        }
       }
     },
     "build": {
       "type": "object",
       "description": "Optional. If present, the runner builds the package before use (C++ gemmini-opt).",
-      "required": ["command", "tool_output"],
+      "required": [
+        "command",
+        "tool_output"
+      ],
       "properties": {
-        "command": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-        "configure": {"type": "array", "items": {"type": "string"}},
-        "tool_output": {"type": "string"}
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "configure": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tool_output": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
     "entrypoints": {
       "type": "object",
-      "required": ["tool"],
-      "properties": {"tool": {"type": "string"}},
+      "required": [
+        "tool"
+      ],
+      "properties": {
+        "tool": {
+          "type": "string"
+        }
+      },
       "additionalProperties": true
     },
     "commands": {
       "type": "object",
-      "required": ["parse", "lower_interface_to_target", "emit_command_buffer", "lower_target_to_llvm"],
+      "required": [
+        "parse",
+        "lower_interface_to_target",
+        "emit_command_buffer",
+        "lower_target_to_llvm"
+      ],
       "additionalProperties": {
         "type": "object",
-        "required": ["argv"],
+        "required": [
+          "argv"
+        ],
         "properties": {
-          "argv": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+          "argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
         },
         "additionalProperties": false
       }
@@ -64,14 +137,52 @@
       "type": "object",
       "description": "Optional single-champion publication record, written by merlin.targetgen.publish (WS-E). At most one package per target carries champion: true; the publish bridge exports that package as the target's own public repo.",
       "properties": {
-        "champion": {"type": "boolean"},
-        "certification": {"type": "string"},
-        "certified_by_run": {"type": "string"},
-        "promoted_at": {"type": "string"},
-        "promoted_by": {"type": "string"},
-        "fingerprint": {"type": "string"}
+        "champion": {
+          "type": "boolean"
+        },
+        "certification": {
+          "type": "string"
+        },
+        "certified_by_run": {
+          "type": "string"
+        },
+        "promoted_at": {
+          "type": "string"
+        },
+        "promoted_by": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        }
       },
       "additionalProperties": true
+    },
+    "primitive_tile": {
+      "type": "object",
+      "description": "OPTIONAL. The single (m, k, n) contraction tile this backend implements. Declare it when your lowering handles exactly one tile and does NOT loop over larger extents: the runtime then drives the M/N/K loop nest for you, and every result produced that way is attributed to the runtime (`tiled_by: declared_primitive_tile`), never as evidence that this backend generalizes over shape. Declaring a tile you do not actually lower is caught by the derived shape probes. Omit it if your lowering emits its own loop nest.",
+      "required": [
+        "m",
+        "k",
+        "n"
+      ],
+      "properties": {
+        "m": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "k": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dtype": {
+          "type": "string"
+        }
+      }
     }
   },
   "additionalProperties": true
