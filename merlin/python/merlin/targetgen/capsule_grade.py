@@ -161,6 +161,41 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
             "exhausted. They are in neither the numerator nor the denominator. The covering set "
             "guarantees every axis they exercise was certified by some capsule -- it does NOT certify "
             "these capsules.")
+    # DECLINED, listed by name and shape. Unlike `screened_only` these ARE in the denominator: the
+    # backend was asked and said no, so the capsule is uncertified and counts against the suite. What
+    # changes is that it is no longer reported as wrong arithmetic. A run whose deficit is twelve
+    # declines is a backend that does not cover the shape space; a run whose deficit is twelve numeric
+    # mismatches is a backend whose math is wrong. Those need opposite repairs, and the score used to
+    # spell them the same way.
+    _declined = [r for r in graded if r.get("status") == "declined"]
+    score["n_declined"] = len(_declined)
+    if _declined:
+        score["declined"] = sorted(
+            ({"capsule": r.get("capsule"), **(r.get("declined") or {})} for r in _declined),
+            key=lambda d: str(d.get("capsule")))
+        score["declined_note"] = (
+            "the backend STATED it does not lower these capsules rather than emitting a program that "
+            "writes nothing. They are in the denominator and are NOT passes. Read them as coverage "
+            "gaps (a shape/op the backend never implemented), not as numeric defects.")
+    # BOTH NUMBERS, ALWAYS. When the runtime drove a loop nest over a backend's declared single tile,
+    # the resulting pass is evidence about the runtime AND the backend; the backend's own coverage is the
+    # smaller number. Reporting only the larger one is precisely how "our runtime covered for them" gets
+    # cited as "their compiler generalizes", so the two travel together or the guardrail is not real.
+    _runtime_tiled = [r for r in graded
+                      if (((r.get("contract_obligations") or {}).get("capacity_fit") or {}).get("tiled_by")
+                          == "declared_primitive_tile")]
+    if _runtime_tiled:
+        _names = sorted(str(r.get("capsule")) for r in _runtime_tiled)
+        _unblocked = n_pass - sum(1 for r in _runtime_tiled if r.get("status") == "pass")
+        score["backend_coverage"] = {
+            "with_runtime_loop": f"{n_pass}/{len(graded)}",
+            "unblocked": f"{_unblocked}/{len(graded)}",
+            "runtime_tiled_capsules": _names,
+            "note": ("`unblocked` is what the BACKEND lowered on its own. `with_runtime_loop` adds the "
+                     "capsules that only passed because the runtime drove the M/N/K loop over the single "
+                     "tile the backend declared. Quote `unblocked` for any claim about the backend "
+                     "generalizing over shape; `with_runtime_loop` is a statement about the pair."),
+        }
     score["functional_pass"] = int(n_pass == len(graded) and len(graded) > 0)
     # Structure-only smoke bookkeeping (honest, never a numeric pass): a capsule is structurally clean
     # when it did not FAIL a structural tier — status `pass` OR `not_gradeable_no_oracle` (numeric verdict
@@ -218,22 +253,47 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     from .capsule_runner import _rtl_tiers_of
     _rtl_names = _rtl_tiers_of(target)
 
+    # AN EXPLICIT DENIAL MUST WIN OVER THE NAME. `derived_from_rtl` has three states, and collapsing the
+    # last two is what let a model count as RTL: True (the oracle says it ran RTL), False (the oracle says
+    # it did NOT -- e.g. an arc cosim, an RTL-DERIVED model, landing on the tier named L3), and None (the
+    # record is the bare-string form a model capsule writes, which states nothing). Only None may fall
+    # back to the tier name. Reading `flag or name in _rtl_names` credited an oracle that had explicitly
+    # denied being RTL, purely because its tier shared a name with another target's Verilator tier.
     def _is_rtl_pass(name, rec) -> bool:
-        return _tier_status(rec) == "pass" and bool(_tier_field(rec, "derived_from_rtl")
-                                                    or name in _rtl_names)
+        if _tier_status(rec) != "pass":
+            return False
+        flag = _tier_field(rec, "derived_from_rtl")
+        return bool(name in _rtl_names) if flag is None else bool(flag)
+
+    def _tier_is_rtl(name, rec) -> bool:
+        """Same three-state rule as :func:`_is_rtl_pass`, without the pass requirement."""
+        flag = _tier_field(rec, "derived_from_rtl")
+        return bool(name in _rtl_names) if flag is None else bool(flag)
 
     _passed = [r for r in graded if r.get("status") == "pass"]
     _rtl_backed = [r for r in _passed
                    if any(_is_rtl_pass(n, t) for n, t in (r.get("tiers") or {}).items())]
+    # A pass that cleared a tier the ORACLE ITSELF called a model (fidelity != elaborated_rtl) and no RTL
+    # tier beside it. Named separately because "not RTL-backed" reads as "did not run on hardware-grade
+    # evidence at all", which is not what an RTL-derived cosim pass is.
+    _model_certified = [r for r in _passed
+                        if r not in _rtl_backed
+                        and any(_tier_status(t) == "pass" and _tier_field(t, "fidelity")
+                                for t in (r.get("tiers") or {}).values())]
     score["pass_evidence"] = {
         "n_passed": len(_passed),
         "rtl_backed": len(_rtl_backed),
+        "model_certified": len(_model_certified),
         "cheap_tier_only": len(_passed) - len(_rtl_backed),
         "rtl_tiers_seen": sorted({n for r in graded for n, t in (r.get("tiers") or {}).items()
-                                  if _tier_field(t, "derived_from_rtl") or n in _rtl_names}),
-        "note": ("`rtl_backed` counts passes that cleared a tier derived from the target's RTL. When it "
-                 "is below `n_passed`, the remainder passed on cheap tiers only and the headline score "
-                 "is NOT an RTL result."),
+                                  if _tier_is_rtl(n, t)}),
+        "fidelity_seen": sorted({f for r in graded for t in (r.get("tiers") or {}).values()
+                                 if (f := _tier_field(t, "fidelity"))}),
+        "note": ("`rtl_backed` counts passes that cleared a tier the ORACLE reported as elaborated RTL "
+                 "(`derived_from_rtl`), falling back to the target's declared rtl_tiers only when the "
+                 "oracle states nothing. A tier NAME is not evidence: one target's L3 is Verilator and "
+                 "another's is an RTL-derived model, and counting by name credited the model. When "
+                 "`rtl_backed` is below `n_passed`, the headline score is NOT an RTL result."),
     }
 
     # THE CITABLE FORM OF THE SCORE. `public_passed` stays a bare "20/20" because consumers parse it as
@@ -351,8 +411,13 @@ def _headline(score: dict) -> str:
     tier = score.get("highest_tier")
     bits = [f"tier {tier}" if tier else "no tier cleared by every capsule"]
     rtl, cheap = ev.get("rtl_backed"), ev.get("cheap_tier_only")
+    # SAY WHAT THE NON-RTL PASSES ACTUALLY RESTED ON. "passed on cheap tiers only" is right for a spike
+    # pass and wrong for an RTL-DERIVED cosim pass, and the two now arrive distinguished.
+    modelc = ev.get("model_certified") or 0
     if rtl is not None and cheap:
-        bits.append(f"RTL-backed {rtl}/{n_passed} \u2014 the other {cheap} passed on cheap tiers only")
+        rest = (f"the other {cheap} on a model oracle only ({modelc} RTL-derived)" if modelc
+                else f"the other {cheap} passed on cheap tiers only")
+        bits.append(f"RTL-backed {rtl}/{n_passed} \u2014 {rest}")
     elif rtl is not None and n_passed:
         bits.append(f"RTL-backed {rtl}/{n_passed}")
     if score.get("hidden_passed"):
@@ -366,6 +431,12 @@ def _headline(score: dict) -> str:
     n_screened = score.get("n_screened_only") or 0
     if n_screened:
         bits.append(f"{n_screened} more screened only, NOT certified (outside the covering set)")
+    # A DEFICIT MADE OF DECLINES IS A DIFFERENT RESULT FROM ONE MADE OF WRONG ANSWERS, and the headline
+    # is what gets quoted. "14/26" reads as a compiler that computes twelve things incorrectly; if the
+    # twelve were declined it is a compiler that never implemented them, which is a different repair.
+    n_declined = score.get("n_declined") or 0
+    if n_declined:
+        bits.append(f"{n_declined} DECLINED by the backend (never lowered, not wrong answers)")
     return f"{head} ({'; '.join(bits)})"
 
 
