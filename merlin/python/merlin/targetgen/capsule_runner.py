@@ -34,6 +34,8 @@ import yaml
 
 from aet.core.run_paths import RunPaths
 
+from . import tier_policy as _tier_policy
+
 from . import capsule_golden as CG
 from .rocc import decode as RD
 from . import trace_check as TCK
@@ -69,6 +71,10 @@ class TierResult:
     not_applicable: bool = False      # tier honestly N/A for this capsule's datatype (e.g. the integer
                                       # L0/L1 floor on a float datapath) — a legitimate skip, not a
                                       # not_run_is_not_pass violation (unlike an unavailable RTL oracle)
+    budget_deferred: bool = False     # tier APPLIED and was DELIBERATELY NOT PAID FOR: this capsule is
+                                      # outside the derived covering set and the certify budget is gone.
+                                      # Never a pass, never a fail — the capsule was screened, not
+                                      # certified, and it says so by name.
 
     def to_dict(self) -> dict:
         d = {"status": self.status, "mandatory": self.mandatory,
@@ -78,6 +84,8 @@ class TierResult:
              "timing": self.timing}
         if self.not_applicable:
             d["not_applicable"] = True
+        if self.budget_deferred:
+            d["budget_deferred"] = True
         # perf fields ride the result ONLY when populated (SIMT) — keeps systolic output byte-identical.
         if self.gflops is not None:
             d["gflops"] = self.gflops
@@ -1526,8 +1534,24 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # never reported as a pass, and a REQUIRED tier can never be declared inapplicable (that raises at
         # generation time), so this cannot be used to switch off a failing mandatory oracle.
         _inapplicable = capsule.get("inapplicable_oracle_tiers") or {}
-        for tier in sorted(set(cfg.oracle_tiers) | set(adapters or {})):
+        # CHEAPEST MEASURED TIER FIRST, not lexicographic. The ladder aborts on the first mandatory
+        # tier that refutes a capsule, so the ORDER decides what a failing capsule costs -- and sorting
+        # by name meant one target paid its 24.5 s arc cosim before reaching the 0.29 s Verilator tier
+        # that refutes the same capsules (measured: 12 of 12, identical signature). See tier_policy.
+        _tier_seq = _tier_policy.tier_order(str(cfg.target or target or ""),
+                                            set(cfg.oracle_tiers) | set(adapters or {}))
+        _screen_tier = _tier_seq[0] if _tier_seq else None
+        for tier in _tier_seq:
             mand = tier in required
+            # THE SCREEN IS ALWAYS PAID FOR; the tiers above it are what a budget can decline. A capsule
+            # inside the derived covering set is never declined -- that is what the cover is for.
+            if tier != _screen_tier:
+                _may, _why = _tier_policy.may_certify(str(cfg.target or target or ""), capsule)
+                if not _may:
+                    tiers[tier] = TierResult(tier, "skipped", mand, reason=_why,
+                                             budget_deferred=True,
+                                             derived_from_rtl=tier in cfg.rtl_tiers)
+                    continue
             if tier in _inapplicable and not mand:
                 tiers[tier] = TierResult(tier, "skipped", mand, not_applicable=True,
                                          reason=str(_inapplicable[tier]),
@@ -1611,6 +1635,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _acct = (_tm.get("build_s") or 0.0) + (_tm.get("sim_active_s") or 0.0)
                 _tm["oracle_wait_s"] = round(max(0.0, _adapter_wall - _acct), 3)
             _tm["adapter_wall_s"] = round(_adapter_wall, 3)
+            _tier_policy.record_cost(str(cfg.target or target or ""), tier, _adapter_wall)
+            if tier != _screen_tier:
+                _tier_policy.note_spend(str(cfg.target or target or ""), _adapter_wall)
             if res.get("executability") is not None:
                 # ADVISORY executability smoke: a bounded-cycle RTL-legality check (does a cyclotron(L2)-
                 # passing ELF at least RUN on the real Verilator RTL — boots, no trap, MX PE accepts a
@@ -1755,6 +1782,19 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     # datatype (``not_applicable``; the integer L0/L1 floor on a float datapath) is the ONE exception —
     # a legitimate skip like a dropped RoCC gate, not a missing oracle. An unavailable/absent RTL oracle
     # is never not_applicable, so it still fails closed here.
+    if status == "pass" and any(getattr(t, "budget_deferred", False) for t in tiers.values()):
+        # SCREENED, NOT CERTIFIED. Distinct from `incomplete` (something that should have run did not)
+        # and from `pass` (it certified). The capsule cleared the cheap screen and the expensive tier was
+        # deliberately not bought, because a capsule in the covering set already certifies the axes this
+        # one exercises. Excluded from the pass/fail denominators and reported by name — the one thing it
+        # must never do is read as a pass.
+        _def = sorted(t for t, r in tiers.items() if getattr(r, "budget_deferred", False))
+        status = "screened_only"
+        failure = {"plane": "budget", "category": "SCREENED_NOT_CERTIFIED",
+                   "tier": _def[0] if _def else None,
+                   "detail": (f"passed the screen tier; certify tier(s) {', '.join(_def)} not purchased "
+                              f"(outside the derived covering set, certify budget exhausted). This is "
+                              f"NOT a verdict on this capsule.")}
     if status == "pass":
         for tier in required:
             tr = tiers.get(tier)
@@ -1941,6 +1981,19 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     # Each is reported as ``not_graded`` with the derived reason, counted in neither numerator nor
     # denominator, and visible in the result list.
     op_caps, ungradeable = _split_ineligible(op_caps, target)
+    # CERTIFY THE COVERING SET FIRST. The derived cover is the fewest capsules whose declared axes span
+    # every axis the eligible corpus declares, so a run that is interrupted, times out, or exhausts a
+    # certify budget still has every axis represented rather than a lexicographic prefix. Computed over
+    # the ELIGIBLE capsules only -- spending the cover on a capsule the hardware cannot execute buys
+    # nothing (measured: including the ineligible ones inflated one target's cover from 6 to 17).
+    _cover = set(_tier_policy.covering_set(op_caps))
+    for _c in op_caps:
+        _c["_covering"] = _c.get("name") in _cover
+    op_caps = sorted(op_caps, key=lambda c: (not c.get("_covering"), str(c.get("name"))))
+    if _cover:
+        print(f"  tier plan: {len(_cover)}/{len(op_caps)} eligible capsule(s) form the derived covering "
+              f"set (certified first); budget="
+              f"{_tier_policy.budget_seconds() or 'unlimited'}", flush=True)
     op_results = _run_all(op_caps) + ungradeable
     if ungradeable:
         print(f"  {len(ungradeable)} capsule(s) NOT GRADED — outside this target's declared capability: "
@@ -1962,7 +2015,12 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     # thirds of the suite had not run. `not_graded` (the hardware cannot) and `gated` (not yet
     # attempted) stay excluded; those are the two the exclusion was FOR. This matches the definition
     # the score itself already uses for its denominator.
-    graded = [r for r in op_results if r.get("status") not in ("not_graded", "gated")]
+    # `screened_only` joins the two existing exclusions for the same reason they are excluded: the
+    # capsule was not measured against the certifying tier, deliberately and by name, so it is neither
+    # evidence for nor against. Unlike an ERROR (which used to slip out of here unexplained), this is an
+    # opt-in choice whose coverage is guaranteed by the covering set and whose members are listed.
+    graded = [r for r in op_results
+              if r.get("status") not in ("not_graded", "gated", "screened_only")]
     eligible = [r for r in graded if _gate_counts(r, capsules, target)]
     denom = eligible or graded          # fall back rather than divide by zero if nothing is classifiable
     frac = (sum(1 for r in denom if r.get("status") == "pass") / len(denom)) if denom else 0.0

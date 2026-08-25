@@ -129,7 +129,9 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     # COVERAGE -- it is not a verdict on the model.
     ungraded = [r for r in results if r.get("status") == "not_graded"]
     deferred = [r for r in results if r.get("status") == "gated"]
-    graded = [r for r in results if r.get("status") not in ("not_graded", "gated")]
+    screened = [r for r in results if r.get("status") == "screened_only"]
+    graded = [r for r in results
+              if r.get("status") not in ("not_graded", "gated", "screened_only")]
     n_pass = sum(1 for r in graded if r["status"] == "pass")
     score["n_capsules"] = len(graded)
     score["n_passed"] = n_pass
@@ -139,6 +141,17 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         score["not_graded_ineligible"] = sorted(r.get("capsule") for r in ungraded)
     if deferred:
         score["gated_deferred"] = sorted(r.get("capsule") for r in deferred)
+    # SCREENED BUT NOT CERTIFIED, listed by name. A headline of "14/14" over a suite where nine more
+    # capsules were screened and never certified is only honest if the nine are visible next to it.
+    score["n_screened_only"] = len(screened)
+    if screened:
+        score["screened_only"] = sorted(r.get("capsule") for r in screened)
+        score["screened_only_note"] = (
+            "these capsules PASSED the cheap screen tier and were deliberately not measured against the "
+            "certifying tier: they fall outside the derived covering set and the certify budget was "
+            "exhausted. They are in neither the numerator nor the denominator. The covering set "
+            "guarantees every axis they exercise was certified by some capsule -- it does NOT certify "
+            "these capsules.")
     score["functional_pass"] = int(n_pass == len(graded) and len(graded) > 0)
     # Structure-only smoke bookkeeping (honest, never a numeric pass): a capsule is structurally clean
     # when it did not FAIL a structural tier — status `pass` OR `not_gradeable_no_oracle` (numeric verdict
