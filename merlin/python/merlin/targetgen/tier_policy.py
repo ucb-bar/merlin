@@ -68,6 +68,12 @@ def observed_cost(target: str, tier: str) -> float | None:
     return statistics.median(v) if v else None
 
 
+def priced_tiers(target: str) -> set[str]:
+    """Which tiers of ``target`` have a price yet. Used to decide when calibration is done."""
+    with _LOCK:
+        return {t for (tgt, t) in _COST if tgt == target}
+
+
 def reset_costs() -> None:
     """Forget every observation (tests; and a caller that deliberately wants to recalibrate)."""
     with _LOCK:
@@ -75,14 +81,22 @@ def reset_costs() -> None:
 
 
 def tier_order(target: str, tiers: Iterable[str]) -> list[str]:
-    """``tiers`` cheapest-measured-first; tiers never yet measured go LAST, ties lexicographic.
+    """``tiers`` cheapest-measured-first, with tiers never yet measured FIRST. Ties lexicographic.
 
-    Unmeasured last, not first: an unknown tier might be the expensive one, and putting it ahead of a
-    tier already known to be cheap would reintroduce exactly the accident this replaces. The cost of
-    that choice is bounded -- a target's first passing capsule runs every tier and calibrates them all.
+    Unmeasured first is the counter-intuitive half, and it is load-bearing. The ladder stops at the
+    first tier that refutes a capsule, so a tier only gets measured on capsules that reach it. Sorting
+    unknowns LAST -- the obvious choice, and the one tried first -- deadlocks on any target whose early
+    capsules fail: the expensive tier is measured, aborts the capsule, and the cheap tier below it is
+    never reached, so it stays unknown and keeps sorting behind the expensive one forever. Measured
+    exactly that way on a live suite: nine capsules in, every one had run the 24.5 s tier and only the
+    single passing capsule had ever reached the 0.29 s one.
+
+    Unknown-first inverts that: the moment one tier has a price, any tier without one is tried ahead of
+    it, so the ladder always learns. The exposure is bounded to roughly one capsule per worker paying an
+    unmeasured tier that turns out to be expensive -- once, per target, per process.
     """
     names = sorted(set(tiers))
-    return sorted(names, key=lambda t: (observed_cost(target, t) is None,
+    return sorted(names, key=lambda t: (observed_cost(target, t) is not None,
                                         observed_cost(target, t) or 0.0, t))
 
 

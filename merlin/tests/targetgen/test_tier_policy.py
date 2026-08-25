@@ -42,11 +42,21 @@ def test_the_other_target_orders_the_other_way_from_the_same_code():
     assert TP.tier_order("u", ["L2", "L3"]) == ["L2", "L3"]
 
 
-def test_an_unmeasured_tier_runs_last_not_first():
-    """Unknown might be the expensive one; putting it ahead of a known-cheap tier reintroduces the bug."""
+def test_an_unmeasured_tier_runs_first_so_the_ladder_can_learn():
+    """The deadlock this avoids, measured on a live suite: the ladder stops at the first tier that
+    refutes a capsule, so sorting unknowns LAST means a target whose early capsules fail measures only
+    its expensive tier -- the cheap tier below it is never reached, stays unknown, and keeps sorting
+    behind the expensive one forever. Nine capsules in, every one had paid the 24.5s tier and only the
+    single passing capsule had ever reached the 0.29s one."""
+    TP.record_cost("t", "L3", 24.5)
+    assert TP.observed_cost("t", "L4") is None
+    assert TP.tier_order("t", ["L3", "L4"]) == ["L4", "L3"]
+
+
+def test_once_both_are_measured_the_cheaper_leads():
+    TP.record_cost("t", "L3", 24.5)
     TP.record_cost("t", "L4", 0.29)
     assert TP.tier_order("t", ["L3", "L4"]) == ["L4", "L3"]
-    assert TP.observed_cost("t", "L3") is None
 
 
 def test_cost_is_the_median_so_one_slow_run_does_not_reorder_the_ladder():

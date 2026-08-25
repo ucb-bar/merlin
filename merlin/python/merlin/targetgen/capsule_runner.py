@@ -36,6 +36,11 @@ from aet.core.run_paths import RunPaths
 
 from . import tier_policy as _tier_policy
 
+# Most capsules the suite will run SERIALLY to price the tier ladder before fanning out. Small:
+# the loop stops as soon as a capsule prices nothing new, and this only bounds the pathological
+# case where each early capsule is refuted by a different tier.
+_CALIBRATION_CAP = 3
+
 from . import capsule_golden as CG
 from .rocc import decode as RD
 from . import trace_check as TCK
@@ -1956,11 +1961,34 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
                            config=config, perf_extractor=perf_extractor, no_oracle=no_oracle)
 
     def _run_all(caps: list[dict]) -> list[dict]:
-        if max_workers <= 1:
+        if max_workers <= 1 or not caps:
             return [_one(c) for c in caps]
+        # CALIBRATE BEFORE FANNING OUT. Tier order is learned from observed cost, and a worker that
+        # starts before any tier has a price runs the ladder in the arbitrary order -- so a wide fan-out
+        # means the ENTIRE first wave pays the expensive tier. Measured with 8 workers: 7 of the 12
+        # refutable capsules paid the 24.5 s tier before the 0.29 s one had ever been priced, 171 s of a
+        # 614 s suite, against a floor of ~444 s. Running the head serially bounds that to one or two.
+        #
+        # Self-terminating rather than a fixed count: keep going only while a capsule PRICES A TIER
+        # nothing had priced before, and stop the moment one teaches us nothing new. A capsule that is
+        # refuted early prices only the tier that refuted it, which is exactly why one capsule is not
+        # always enough -- and why a hard cap still bounds the worst case.
+        head: list[dict] = []
+        seen = set(_tier_policy.priced_tiers(target or ""))
+        i = 0
+        while i < len(caps) and i < _CALIBRATION_CAP:
+            head.append(_one(caps[i]))
+            i += 1
+            now = set(_tier_policy.priced_tiers(target or ""))
+            if now == seen:
+                break
+            seen = now
+        rest = caps[i:]
+        if not rest:
+            return head
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            return list(ex.map(_one, caps))
+            return head + list(ex.map(_one, rest))
 
     # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op
     # suite proves itself (its ``gate.after_op_pass_fraction`` of the graded op capsules passed). Grade the
@@ -2028,6 +2056,16 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
         print(f"  model gate: {len(graded) - len(eligible)} graded op capsule(s) excluded from the gate "
               f"denominator as ineligible for this target (the hardware declares no capability for them)",
               flush=True)
+    # SAY IT WHEN THE GATE GOT CHEAPER. Under a certify budget the denominator is what was CERTIFIED, not
+    # what exists, so a capstone can clear 0.8 on the covering set alone. That is the intended trade --
+    # the cover spans every declared axis -- but a gate satisfied by 6 capsules instead of 23 is a
+    # different statement, and it has to be printed next to the number rather than inferred.
+    _screened = [r for r in op_results if r.get("status") == "screened_only"]
+    if _screened:
+        print(f"  model gate: denominator is the {len(denom)} CERTIFIED capsule(s); "
+              f"{len(_screened)} more passed the screen and were not certified "
+              f"(outside the covering set, budget exhausted) — the gate fraction {frac:.2f} is over "
+              f"what was certified, not over the whole suite", flush=True)
     model_results = []
     for c in model_caps:
         if model_gate_satisfied(c, frac):
