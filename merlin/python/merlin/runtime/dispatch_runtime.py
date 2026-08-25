@@ -798,8 +798,8 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     # f32 -> per-tensor symmetric integer at the mesh boundary. The clip bound comes from
                     # the datapath's own width, not from a literal 127: a narrower or wider integer mesh
                     # would otherwise be fed operands saturated to some other unit's range.
-                    from ..targetgen.corpus_spec import dtype_info as _di
-                    _bits = int(_di(op_dt)[2]) * 8
+                    from ..targetgen.capsule_dram import dtype_bits as _dbits
+                    _bits = _dbits(op_dt)
                     lim = float(2 ** (_bits - 1) - 1)
                     af, bf = a.astype(np.float64), b.astype(np.float64)
                     sa = float(np.abs(af).max()) / lim or 1.0

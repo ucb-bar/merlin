@@ -157,6 +157,19 @@ formats:
     torchao_scheme: mx_dyn_act_mx_weight_mx6
     quant_ext_type: mx_tensor
     notes: OCP MXFP6 — E3M2 elements, per-32 E8M0 block scale. True FP6 microscaling.
+  # The MX block SCALE type, not an operand format: mxfp4/6/8 each carry one of these per 32-element
+  # block (see their `scale: {kind: block_e8m0}`). It is registered because capsules declare scale
+  # planes as tensors with this dtype, and a dtype the registry does not know has its width written
+  # down somewhere else instead. Unsigned and mantissa-less: all 8 bits are exponent.
+  e8m0:
+    kind: fp_ocp
+    element_bits: 8
+    exp_bits: 8
+    mant_bits: 0
+    signed: false
+    scale: {kind: none}
+    aliases: [f8E8M0FNU, float8_e8m0fnu]
+    notes: OCP E8M0 block-scale exponent (power-of-two scale for the MX formats).
   mxfp8:
     kind: mx_block
     element_bits: 8
