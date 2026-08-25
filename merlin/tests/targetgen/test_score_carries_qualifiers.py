@@ -71,3 +71,25 @@ def test_a_gated_capsule_carries_why(monkeypatch):
                                           "detail": "whole-model capsule deferred: op pass fraction "
                                                     "0.67 < gate 0.8"}}])
     assert "0.67 < gate 0.8" in s["per_capsule"][0]["gate_reason"]
+
+
+def test_the_headline_names_capsules_that_were_never_certified(monkeypatch):
+    """The headline exists so a reader who copies it cannot drop the qualification. A certify budget
+    introduced a NEW thing to drop: capsules that passed the cheap screen and were never measured
+    against the RTL tier. A bare "17/18" over a suite with seven of those is the same failure the
+    headline was built to prevent."""
+    results = ([{"capsule": f"p{i}", "status": "pass", "kind": "op",
+                 "tiers": {"L3": {"status": "pass", "derived_from_rtl": True}}} for i in range(6)]
+               + [{"capsule": f"s{i}", "status": "screened_only", "kind": "op", "tiers": {}}
+                  for i in range(7)])
+    s = _score(monkeypatch, results)
+    assert s["n_screened_only"] == 7
+    assert "7 more screened only, NOT certified" in s["headline"], s["headline"]
+    assert "covering set" in s["headline"]
+
+
+def test_a_fully_certified_suite_headline_is_unchanged(monkeypatch):
+    """No budget, nothing screened: the headline must not grow noise."""
+    s = _score(monkeypatch, [{"capsule": "p0", "status": "pass", "kind": "op",
+                              "tiers": {"L3": {"status": "pass", "derived_from_rtl": True}}}])
+    assert "screened" not in s["headline"], s["headline"]

@@ -348,6 +348,15 @@ def _headline(score: dict) -> str:
         bits.append(f"RTL-backed {rtl}/{n_passed}")
     if score.get("hidden_passed"):
         bits.append(f"hidden {score['hidden_passed']}")
+    # CAPSULES THAT WERE SCREENED AND NEVER CERTIFIED BELONG IN THE QUOTABLE STRING. Under a certify
+    # budget the denominator is what was certified, so a headline of "17/18" can sit over a suite where
+    # seven more capsules passed the cheap screen and nobody ever paid the RTL tier for them. Leaving
+    # that to the JSON is the same mistake as leaving the tier to the JSON: the string is what gets
+    # copied. The covering set guarantees the AXES were certified; it certifies nothing about these
+    # capsules, and the wording has to keep those two apart.
+    n_screened = score.get("n_screened_only") or 0
+    if n_screened:
+        bits.append(f"{n_screened} more screened only, NOT certified (outside the covering set)")
     return f"{head} ({'; '.join(bits)})"
 
 
