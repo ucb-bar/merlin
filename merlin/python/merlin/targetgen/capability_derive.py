@@ -290,10 +290,16 @@ DRIFT_KINDS = ("missing_declaration", "overbroad_declaration", "unsupported_decl
                "undetermined_declaration")
 
 
-#: The shape AXES a capability declares, and which direction an error in each one moves ARR. Both are
-#: narrowing axes: a value the hardware has but the contract omits makes every region of that shape
-#: score ineligible, which removes it from the ARR DENOMINATOR and therefore RAISES recall. That is the
-#: direction that flatters us, so it is the one worth naming.
+#: The shape AXES a capability declares, and which direction an error in each one moves ARR. Within a
+#: NON-EMPTY declaration both axes narrow: a value the hardware has but the contract omits makes every
+#: region of that shape score ineligible, which removes it from the ARR DENOMINATOR and therefore
+#: RAISES recall. That is the direction that flatters us, so it is the one worth naming.
+#:
+#: An EMPTY declaration is where the two axes part company, and assuming otherwise was a real defect:
+#: `is_eligible` guards the rank check with `if c.ranks` (empty admits every rank) while `_dtype_ok`
+#: returns False on an empty allowed-set (empty admits nothing). The audit reads which is which from
+#: `eligibility.empty_declaration_is_narrowing` rather than restating it, so the auditor and the
+#: grader cannot drift on what an omitted axis means.
 _SHAPE_AXES = ("ranks", "dtypes")
 
 
@@ -320,6 +326,16 @@ def _axis_findings(fam: str, dec, ev: FamilyEvidence) -> list[dict]:
     for axis in _SHAPE_AXES:
         evidenced = tuple(getattr(ev, axis, ()) or ())
         declared_vals = tuple(getattr(dec, axis, ()) or ())
+        if not declared_vals and not _el.empty_declaration_is_narrowing(axis):
+            # The contract constrains NOTHING on this axis, and for this axis an empty declaration
+            # admits every value (`is_eligible` guards the rank check with `if c.ranks`). So no region
+            # is excluded, nothing leaves the denominator, and there is no claim to audit -- the two
+            # findings below are both about CLAIMS. Reporting `missing_axis` here would be false in its
+            # stated direction and, worse, actively harmful: its remedy is to declare the evidenced
+            # value, which turns an axis that excluded nothing into one that excludes everything else.
+            # Over-declaration is the opposite error and is caught downstream, by
+            # `must_accelerate_violations` and `acceleration_precision`, not here.
+            continue
         if not declared_vals and not evidenced:
             continue                       # nothing claimed and nothing seen: the axis is unconstrained
         if axis == "dtypes":

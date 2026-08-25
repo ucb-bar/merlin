@@ -72,3 +72,57 @@ def test_ranks_union_across_rungs_rather_than_first_wins():
     cd._record(out, cd.FamilyEvidence(family="contraction", status="supported", source="unit_intent",
                                       evidence="unit", ranks=(4,)))
     assert out.supported["contraction"].ranks == (2, 4)
+
+
+def test_an_unconstrained_axis_is_not_reported_as_narrowing():
+    """An axis the contract declares NOTHING on excludes nothing, so it is not an under-declaration.
+
+    The auditor used to report ``missing_axis`` here, and its detail said "every region of that shape
+    scores ineligible". For ranks that is false -- ``is_eligible`` guards the rank check with
+    ``if c.ranks``, so an empty declaration admits every rank. Worse, the remedy the finding implies
+    (declare the evidenced value) NARROWS an axis that previously excluded nothing, which is exactly
+    the denominator loss the audit exists to catch. Measured on mx_gemmini, whose contract declares no
+    ranks: rank 2, 3 and 4 regions were all eligible while the gate failed claiming they were not.
+    """
+    declared = {"contraction": SemanticCapability(family="contraction", dtypes=("int8",), ranks=())}
+    findings = cd.reconcile(declared, _derived(dtypes=("int8",), ranks=(2, 4)))
+    assert not _kinds(findings, "missing_axis"), \
+        "an axis that constrains nothing cannot be under-declared"
+    assert not [f for f in findings if f.get("axis") == "ranks"], \
+        "there is no claim on an undeclared axis, so there is nothing to audit either"
+
+
+def test_a_narrowing_axis_left_empty_is_still_reported():
+    """The other half: for dtypes an empty declaration DOES exclude everything (``_dtype_ok`` returns
+    False on an empty allowed-set), so omitting it is a real under-declaration and must still fire.
+    Without this, the fix above would silence both axes and reopen the hole it was written to close."""
+    declared = {"contraction": SemanticCapability(family="contraction", dtypes=(), ranks=(2,))}
+    found = _kinds(cd.reconcile(declared, _derived(dtypes=("int8",), ranks=(2,))), "missing_axis")
+    assert [f for f in found if f["axis"] == "dtypes"], \
+        "an empty dtype declaration admits nothing, so an evidenced dtype it omits is narrowing"
+
+
+def test_empty_declaration_semantics_agree_with_the_grader():
+    """The audit reads the empty-set semantics from ``eligibility`` rather than restating them, and
+    this pins that the table matches what ``is_eligible`` ACTUALLY does. A restated constant is how
+    the auditor and the grader drifted in the first place; the gate's own design note says the two
+    must never disagree about what "cannot execute" means."""
+    from merlin.targetgen import eligibility as el
+
+    for axis, region_kw, probe in (("ranks", {"rank": 4}, ()), ("dtypes", {"in_dtype": "int8"}, ())):
+        cap = {"contraction": SemanticCapability(family="contraction", **{axis: probe})}
+        region = el.RegionDescriptor(family="contraction", **region_kw)
+        excluded = not el.is_eligible(region, cap).eligible
+        assert excluded == el.empty_declaration_is_narrowing(axis), (
+            f"empty_declaration_is_narrowing({axis!r}) says "
+            f"{el.empty_declaration_is_narrowing(axis)} but is_eligible excluded={excluded}")
+
+
+def test_an_unknown_shape_axis_has_no_assumed_semantics():
+    """A new shape axis must have its empty-set meaning written down beside the check that implements
+    it, not defaulted -- defaulting is what produced the wrong finding for ranks."""
+    import pytest
+
+    from merlin.targetgen import eligibility as el
+    with pytest.raises(KeyError):
+        el.empty_declaration_is_narrowing("strides")
