@@ -148,29 +148,41 @@ def _promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     routing around it.
     """
     import json as _j
+    from merlin.targetgen.oracle_schedule import CapsuleState, Verdict, schedule
+
     digest = _submission_digest(ws)
     st = _tier_state(ws)
-    promoted = []
+
+    # Record what the loop tier just learned, keyed by the bytes that earned it.
     for row in (verdict.get("per_capsule") or []):
         name = row.get("capsule")
         if not name:
             continue
-        entry = st.setdefault(name, {})
-        entry[loop_tier] = {"status": "pass" if row.get("pass") else "fail", "digest": digest}
-        if not row.get("pass"):
-            continue                                   # a failed loop tier cannot be rescued by RTL
-        if cover is not None and name not in cover:
-            continue                                   # outside the representative cover
-        known = entry.get(cert_tier) or {}
-        if known.get("digest") == digest:
-            continue                                   # already certified FOR THESE BYTES
-        entry[cert_tier] = {"status": "pending", "digest": digest}
-        jid = f"promo{len(promoted)}_{digest}_{name}"[:80]
+        st.setdefault(name, {})[loop_tier] = {
+            "status": "pass" if row.get("pass") else "fail", "digest": digest}
+
+    # WHAT to run next is `oracle_schedule`'s decision, not this file's. The rules (a cert tier is gated
+    # on the loop tier passing; the cert tier runs a representative cover; a verdict already earned by
+    # these bytes is never re-run) were implemented here once and in the scheduler once, which is one
+    # implementation too many -- two expressions of the same policy drift, and the one that drifts is
+    # whichever has no tests. The scheduler has them; this is now only plumbing.
+    states = [CapsuleState(name=n, digest=digest,
+                           verdicts={t: Verdict(v.get("status"), v.get("digest"))
+                                     for t, v in (e or {}).items() if isinstance(v, dict)})
+              for n, e in st.items()]
+    want = [w for w in schedule(states, tier_order=[loop_tier, cert_tier], cert_tiers=(cert_tier,),
+                                cert_cover=cover)
+            if w.tier == cert_tier]
+
+    promoted = []
+    for w in want:
+        st.setdefault(w.capsule, {})[cert_tier] = {"status": "pending", "digest": digest}
+        jid = f"promo{len(promoted)}_{digest}_{w.capsule}"[:80]
         if not (ch / f"simreq_{jid}.json").exists():
             (ch / f"simreq_{jid}.json").write_text(_j.dumps(
-                {"sim": _NEUTRAL_SIM, "capsules": name, "workers": 1, "tiers": cert_tier,
+                {"sim": _NEUTRAL_SIM, "capsules": w.capsule, "workers": 1, "tiers": cert_tier,
                  "promoted": True, "submitted_at": time.time()}))
-            promoted.append(name)
+            promoted.append(w.capsule)
     _save_tier_state(ws, st)
     if promoted:
         print(f"[promote] {loop_tier} pass -> {cert_tier}: {promoted}", file=log, flush=True)
