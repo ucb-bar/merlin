@@ -14,6 +14,31 @@ import time
 from pathlib import Path
 
 
+def _verdict(txt: str):
+    """The verdict object out of the broker's reply, or ``None`` if there isn't one.
+
+    The reply is the real self-check's whole stdout, and the grader prints human diagnostics on that
+    same stream, so the JSON is not always the first thing in it. Scan for the document rather than
+    assuming the text IS one -- structurally, via ``raw_decode`` from each ``{`` (no regex).
+    """
+    try:
+        whole = json.loads(txt)
+        if isinstance(whole, dict):
+            return whole
+    except Exception:
+        pass
+    dec, i = json.JSONDecoder(), txt.find("{")
+    while i != -1:
+        try:
+            obj, _ = dec.raw_decode(txt, i)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+        i = txt.find("{", i + 1)
+    return None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Agent self-check (redacted; routed to the driver-side broker).")
     ap.add_argument("--submission", default="submission")
@@ -43,14 +68,18 @@ def main(argv=None):
             print(txt)
             if a.out:
                 Path(a.out).write_text(txt)
-            try:
-                _v = json.loads(txt)
-                # the shape-coverage report has no `all_pass`; its verdict is `all_covered`
-                if a.shape_coverage:
-                    return 0 if _v.get("all_covered") else 1
-                return 0 if _v.get("all_pass") else 1
-            except Exception:
-                return 0
+            _v = _verdict(txt)
+            if _v is None:
+                # FAIL CLOSED. This used to `return 0` -- so a reply the shim could not read was
+                # indistinguishable from a clean run, and every exit-code check downstream (the agent's
+                # own, the conformance probe, the shape-coverage gate below) silently read as a pass.
+                print(json.dumps({"error": "self-check reply was not parseable as JSON — "
+                                           "treating as FAILED, not as clean"}))
+                return 2
+            # the shape-coverage report has no `all_pass`; its verdict is `all_covered`
+            if a.shape_coverage:
+                return 0 if _v.get("all_covered") else 1
+            return 0 if _v.get("all_pass") else 1
         time.sleep(0.4)
     print(json.dumps({"error": "self-check broker did not respond (timeout) — tell the operator"}))
     return 2

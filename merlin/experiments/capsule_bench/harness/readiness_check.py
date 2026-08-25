@@ -562,10 +562,24 @@ def test_oracles_endtoend():
         r = subprocess.run([PY, str(SCRIPTS / "agent_selfcheck.py"), "--submission", str(sub),
                             "--sim", sim, "--capsules", cap, "--workers", "1", "--timeout", str(to)],
                            cwd=str(SCRIPTS), env=env, capture_output=True, text=True, timeout=to + 120)
+        # The grader prints human diagnostics ("tier plan: ...", "model gate: ...") on the same stdout
+        # that carries the verdict, so a bare loads() of the whole stream fails and every oracle check
+        # here reported n=None -- a NO-GO that blamed the oracles for a stream-parsing bug. Scan for the
+        # document instead (structurally, no regex).
         try:
             return _json.loads(r.stdout)
         except Exception:
-            return {"error": (r.stdout or r.stderr)[-200:]}
+            pass
+        _dec, _i = _json.JSONDecoder(), (r.stdout or "").find("{")
+        while _i != -1:
+            try:
+                _obj, _ = _dec.raw_decode(r.stdout, _i)
+                if isinstance(_obj, dict):
+                    return _obj
+            except Exception:
+                pass
+            _i = r.stdout.find("{", _i + 1)
+        return {"error": (r.stdout or r.stderr)[-200:]}
 
     try:
         # FROM-CLEAN C++ build: copy the ref, wipe its build dir, grade -> forces cmake CONFIGURE (the step

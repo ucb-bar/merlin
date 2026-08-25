@@ -24,6 +24,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as _dt
 import json
+import sys
 import threading
 import traceback as _traceback
 from dataclasses import dataclass
@@ -2058,12 +2059,12 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     if _cover:
         print(f"  tier plan: {len(_cover)}/{len(op_caps)} eligible capsule(s) form the derived covering "
               f"set (certified first); budget="
-              f"{_tier_policy.budget_seconds() or 'unlimited'}", flush=True)
+              f"{_tier_policy.budget_seconds() or 'unlimited'}", flush=True, file=sys.stderr)
     op_results = _run_all(op_caps) + ungradeable
     if ungradeable:
         print(f"  {len(ungradeable)} capsule(s) NOT GRADED — outside this target's declared capability: "
               f"{', '.join(r['capsule'] for r in ungradeable[:6])}"
-              f"{' ...' if len(ungradeable) > 6 else ''}", flush=True)
+              f"{' ...' if len(ungradeable) > 6 else ''}", flush=True, file=sys.stderr)
     if not model_caps:
         return op_results
     # The gate fraction is over what the HARDWARE CAN DO, not over everything graded. A capsule the
@@ -2092,7 +2093,7 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     if len(eligible) != len(graded):
         print(f"  model gate: {len(graded) - len(eligible)} graded op capsule(s) excluded from the gate "
               f"denominator as ineligible for this target (the hardware declares no capability for them)",
-              flush=True)
+              flush=True, file=sys.stderr)
     # SAY IT WHEN THE GATE GOT CHEAPER. Under a certify budget the denominator is what was CERTIFIED, not
     # what exists, so a capstone can clear 0.8 on the covering set alone. That is the intended trade --
     # the cover spans every declared axis -- but a gate satisfied by 6 capsules instead of 23 is a
@@ -2102,7 +2103,7 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
         print(f"  model gate: denominator is the {len(denom)} CERTIFIED capsule(s); "
               f"{len(_screened)} more passed the screen and were not certified "
               f"(outside the covering set, budget exhausted) — the gate fraction {frac:.2f} is over "
-              f"what was certified, not over the whole suite", flush=True)
+              f"what was certified, not over the whole suite", flush=True, file=sys.stderr)
     model_results = []
     for c in model_caps:
         if model_gate_satisfied(c, frac):
