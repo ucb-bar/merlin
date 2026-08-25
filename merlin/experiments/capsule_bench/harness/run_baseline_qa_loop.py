@@ -61,6 +61,7 @@ def _strip_build_state(root: Path) -> None:
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
 from merlin.common.paths import ext_path  # noqa: E402
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
+from merlin.targetgen import tool_registry as _TR  # noqa: E402  (the arm-gated tool catalog)
 
 def _repo_root():
     from pathlib import Path as _P
@@ -192,6 +193,8 @@ def _cycle_accurate_checkpoint_enabled() -> tuple[bool, str]:
                    f"MERLIN_CAPSULE_L3_CHECKPOINT=1 to opt in")
 _EXPERIMENT = "full"    # set in main(): 'full' (abc1) or 'realistic' (abc2, whole-repo + self-check)
 _ARM = ""               # set in main(): the arm being run (enforces the per-arm language mandate)
+_ADD_TOOLS: tuple = ()  # set in main(): --with-tool    (ABLATION: grant these on top of the rung)
+_DROP_TOOLS: tuple = () # set in main(): --without-tool (ABLATION: withhold these from the rung)
 _DRIVER = "auto"        # set in main(): agent driver (auto|converse|claudecode|opencode); auto routes by model
 _SUBAGENT_MODEL = ""    # set in main(): delegate/subagent model for tier-within-agent (converse driver)
 _BACKGROUND_MODEL = ""  # set in main(): background/mechanical model (converse driver; reserved)
@@ -567,6 +570,98 @@ def _granted_merlin_tools(arm: str) -> set:
         return set()
     return {ln.strip() for ln in f.read_text().splitlines()
             if ln.strip().startswith(("merlin/", "experiments/"))}
+
+
+def _resolved_tools() -> tuple:
+    """The ARM-GATED tools this run actually carries — its ablation cell.
+
+    Resolution order, most authoritative first:
+
+    1. the bundle's generated ``tools.txt`` — a cell is self-describing, so a run launched with
+       ``--bundle`` on a pre-generated cell gets the right brokers without repeating the flags;
+    2. the bundle-id STEM (longest match against the ladder's stems).
+
+    Not from ``_ARM``: the CIRCT driver runs under ``_ARM == "merlin_assisted"`` with a swapped bundle,
+    so an arm-name test cannot see it. Not from the manifest's ``arm:`` field either — the legacy
+    ``merlin_assisted_rtlchecks_public_v0`` declares ``arm: merlin_assisted``, so that field is stale on
+    exactly the bundles where being wrong costs the most.
+
+    The ``--with-tool``/``--without-tool`` flags apply last, so an ad-hoc cell needs no regeneration.
+    """
+    bundle_id = RX.ARM_BUNDLE[_ARM]
+    bdir = C.BUNDLES / bundle_id
+    tools_f = bdir / "tools.txt"
+    if tools_f.is_file():
+        base = tuple(ln.strip() for ln in tools_f.read_text().splitlines() if ln.strip())
+    else:
+        base = _TR.ARM_TOOLS.get(_arm_from_bundle_id(bundle_id), ())
+        _warn_if_grants_disagree(bdir, base)
+    drop = set(_DROP_TOOLS)
+    out = [t for t in base if t not in drop]
+    out += [t for t in _ADD_TOOLS if t not in out]
+    return tuple(out)
+
+
+def _arm_from_bundle_id(bundle_id: str) -> str:
+    """The ladder rung a bundle id names, by LONGEST matching stem.
+
+    Longest wins because the stems nest: ``merlin_assisted_rtlchecks_*`` also starts with
+    ``merlin_assisted_``, and picking the shorter one silently downgrades the CIRCT arm to the xDSL arm.
+    """
+    from merlin.targetgen.generate_bundles import _ARMS
+    best, best_len = "", -1
+    for arm, stem in _ARMS.items():
+        if bundle_id.startswith(stem + "_") and len(stem) > best_len:
+            best, best_len = arm, len(stem)
+    if not best:
+        raise KeyError(f"bundle id {bundle_id!r} matches no ladder rung (stems: {sorted(_ARMS.values())})")
+    return best
+
+
+_GRANT_WARNED: set = set()
+
+
+def _warn_if_grants_disagree(bdir: Path, tools: tuple) -> None:
+    """Surface a bundle whose NAME, BINDINGS and PROMPT disagree, instead of running on the mismatch.
+
+    Three surfaces must agree about which tools an arm has, and they are written by different code:
+
+      * the rung (this bundle's stem)      -> decides which brokers the driver starts;
+      * ``input_bundle_manifest.yaml``     -> what the sandbox actually binds (fully regenerated);
+      * ``allowed_files.txt``              -> what the PROMPT tells the agent it has, via
+        :func:`_granted_merlin_tools`. It is written only-when-absent, so on a hand-authored bundle it
+        goes stale while the manifest moves on.
+
+    When the prompt and the bindings disagree the arm is either told about a tool it cannot open, or
+    silently handed one it is never told about — and in both cases the treatment is not the one the
+    run's label claims. That is not hypothetical: an arm once ran a whole campaign without executing a
+    single one of its generators because its prompt never mentioned them.
+
+    Advisory, not fatal, and reported once per bundle: several legacy bundles predate the generator.
+    """
+    if bdir.name in _GRANT_WARNED:
+        return
+    _GRANT_WARNED.add(bdir.name)
+    man_f, files_f = bdir / "input_bundle_manifest.yaml", bdir / "allowed_files.txt"
+    if not man_f.is_file():
+        return
+    man = yaml.safe_load(man_f.read_text()) or {}
+    bound = {e.get("path") for e in (man.get("allowed") or []) if isinstance(e, dict)}
+    for name in _TR.known_tools():
+        t = _TR.spec(name)
+        if not t.bundle_paths:
+            continue                                  # brokered: staged, never bound -- nothing to compare
+        if (set(t.bundle_paths) <= bound) != (name in tools):
+            state = "binds" if set(t.bundle_paths) <= bound else "does not bind"
+            print(f"  note: bundle {bdir.name} {state} {name!r} but its rung says otherwise; "
+                  f"the rung decides which brokers start", file=sys.stderr)
+    if files_f.is_file():
+        told = {ln.strip() for ln in files_f.read_text().splitlines() if ln.strip()}
+        unadvertised = {p for p in bound - told if p.startswith("merlin/python/")}
+        if unadvertised:
+            print(f"  WARNING: bundle {bdir.name} BINDS {len(unadvertised)} merlin tool path(s) that its "
+                  f"allowed_files.txt does not list, so the prompt will not mention them: "
+                  f"{sorted(unadvertised)[:4]}{' ...' if len(unadvertised) > 4 else ''}", file=sys.stderr)
 
 
 def bwrap_cmd(inner: str, ws: Path, bundle: dict, extra_binds: list[str] | None = None) -> str:
@@ -950,25 +1045,19 @@ def _start_selfcheck_broker(ws: Path):
     _stage_shim(ws, "selfcheck_shim.py", "agent_selfcheck.py")   # sync self-check (spike, fast)
     _stage_shim(ws, "simjob_shim.py", "simjob.py")               # async oracle (spike/verilator/vcs)
     broker_specs = [("selfcheck_broker.py", "broker.log"), ("simjob_broker.py", "simjob_broker.log")]
-    # ISA dev tools (assembler/disassembler/linter) — assisted arms ONLY (arm-3 merlin_assisted + arm-4
-    # merlin_assisted_rtlchecks both carry "merlin_assisted"; raw_baseline does not). Oracle-free + reads no
-    # golden, but gated to those arms so raw_baseline still measures unaided raw-ISA authoring. Its own
-    # channel dir (.isa_channel) + STOP, staged like the self-check.
-    if "merlin_assisted" in _ARM:
-        (ws / ".isa_channel").mkdir(parents=True, exist_ok=True)
-        (ws / ".isa_channel" / "STOP").unlink(missing_ok=True)
-        _stage_shim(ws, "isa_tools_shim.py", "isa_tools.py")
-        broker_specs.append(("isa_tools_broker.py", "isa_tools_broker.log"))
-        # CCA contract tools (check_bijection + escalation_ladder) — the arm-4 prompt MANDATES these but
-        # full merlin cannot import in the sandbox (merlin/kernels/types.py shadows stdlib `types` on a
-        # flat sys.path; regions.py needs the unstaged merlin.common.paths). A driver-side broker runs
-        # them OUTSIDE the box, exactly like the ISA tools. Oracle-free (public CCA<->action structure).
-        # Same channel-dir + STOP pattern; the shim is staged under BOTH mandated module names.
-        (ws / ".cca_channel").mkdir(parents=True, exist_ok=True)
-        (ws / ".cca_channel" / "STOP").unlink(missing_ok=True)
-        _stage_shim(ws, "cca_shim.py", "cca_contract.py")
-        _stage_shim(ws, "cca_shim.py", "action_catalog.py")
-        broker_specs.append(("cca_broker.py", "cca_broker.log"))
+    # Brokered TOOLS (the ISA assembler/disassembler/linter; the two mandated CCA calls) are part of the
+    # arm's TREATMENT, so which ones start is read from the bundle's resolved tool set rather than from
+    # the arm's name. That distinction matters twice over: the CIRCT arm runs under _ARM ==
+    # "merlin_assisted" with a swapped bundle, so a name test cannot see it; and an ablation cell differs
+    # from its rung only in that tool set. Each broker gets its own channel dir + STOP, like the
+    # self-check. All of them are oracle-free and read no golden.
+    for bs in _TR.brokers_for(_resolved_tools()):
+        ch_dir = ws / bs.channel
+        ch_dir.mkdir(parents=True, exist_ok=True)
+        (ch_dir / "STOP").unlink(missing_ok=True)
+        for shim_src, staged_as in bs.shims:
+            _stage_shim(ws, shim_src, staged_as)
+        broker_specs.append((bs.module, bs.log))
     brokers = []
     for name, log in broker_specs:
         brokers.append(subprocess.Popen(
@@ -1321,6 +1410,12 @@ def main(argv: list[str] | None = None) -> int:
     # five-hour limit is org-wide and non-overage, so process parallelism on ONE account just
     # time-shares the same bucket; a second account = a second bucket. Log in once with
     # `CLAUDE_CONFIG_DIR=<dir> claude auth login`, then pass --account-config-dir <dir> here.
+    ap.add_argument("--with-tool", action="append", default=[], metavar="NAME",
+                    help=f"ABLATION: grant this arm-gated tool on top of the arm's rung (repeatable). "
+                         f"Known: {', '.join(_TR.ablatable_tools())}")
+    ap.add_argument("--without-tool", action="append", default=[], metavar="NAME",
+                    help="ABLATION: withhold this arm-gated tool from the arm's rung (repeatable). Pair "
+                         "with a bundle generated for the same cell so the file grants match the brokers.")
     ap.add_argument("--account-config-dir", default=os.environ.get("CLAUDE_CONFIG_DIR", ""),
                     help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)")
     a = ap.parse_args(argv)
@@ -1332,12 +1427,20 @@ def main(argv: list[str] | None = None) -> int:
               "Workspace assembly alone does not hide denied absolute paths.", file=sys.stderr)
         return 4
     arm = a.arm
-    global _EXPERIMENT, _ARM, _DRIVER, _SUBAGENT_MODEL, _BACKGROUND_MODEL
+    global _EXPERIMENT, _ARM, _DRIVER, _SUBAGENT_MODEL, _BACKGROUND_MODEL, _ADD_TOOLS, _DROP_TOOLS
     _EXPERIMENT = a.experiment
     _ARM = arm
     _DRIVER = a.driver
     _SUBAGENT_MODEL = a.subagent_model
     _BACKGROUND_MODEL = a.background_model
+    # Fail closed on an unknown tool name BEFORE any spend: a typo would otherwise ablate nothing and
+    # the cell would silently be a duplicate of its own rung.
+    for _n in (*a.with_tool, *a.without_tool):
+        _TR.spec(_n)
+    _ADD_TOOLS, _DROP_TOOLS = tuple(a.with_tool), tuple(a.without_tool)
+    if _ADD_TOOLS or _DROP_TOOLS:
+        print(f"ABLATION CELL: {arm}{_TR.cell_suffix(_ADD_TOOLS, _DROP_TOOLS)} "
+              f"-> tools {list(_resolved_tools())}")
 
     # DRIVER-SIDE grade env: qa_grade/_verilator_grade run build_package (cmake) for C++ submissions in
     # THIS process's env. The conda cmake transitively needs libidn.so.11 (host has only .12) -> ensure
