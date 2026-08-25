@@ -267,6 +267,78 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     return link
 
 
+def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None) -> dict:
+    """The REPRESENTATIVE subset a cycle-accurate cert tier should run, when the functional tier runs
+    everything. Returns ``{"capsules": [...], "cells": [...], "uncovered": [...], "basis": {...}}``.
+
+    Why a subset at all. The functional tier answers "does it compute the right value" and is cheap; the
+    cert tier answers "does the hardware actually do it" -- encoding, protocol, resource limits -- and is
+    minutes per capsule. Running cert on everything spends most of a run re-proving the same hardware
+    facts, and on this repo's SIMT target that was 80% of an agent round for a verdict the score never
+    read. Running it on nothing leaves the RTL claim unevidenced. A cover is the middle: full coverage at
+    the functional tier, representative coverage at the cert tier.
+
+    Why THESE axes. Representativeness must track where the HARDWARE differs, not where the numerics do:
+
+      * ``semantic_family`` -- a contraction drives different RTL than a normalization or a movement.
+      * operand ``dtype``   -- the proxy for WHICH compute unit runs it (block-scaled microscaling formats
+                              go to the MX PE; ordinary floats to the SIMT lanes) and for datapath width.
+
+    Both are declared per capsule and read as data, so a new target's cover falls out of its own corpus
+    with no edit here. ``expected_instruction_coverage.instruction_classes`` would be the most faithful
+    axis of all and is deliberately NOT used: every capsule in this repo declares it empty, so selecting on
+    it would silently return a cover of one. That is recorded in ``basis`` so the caller can see which
+    axes actually carried the choice rather than assuming all of them did.
+
+    Greedy set cover, which is within a log factor of optimal and, more usefully, is explainable: each
+    chosen capsule is the one adding the most uncovered cells. ``uncovered`` is returned rather than
+    swallowed -- a cell no capsule can cover is a corpus gap the caller should surface, not hide.
+    """
+    labels = labels or {"public"}
+    rows = []
+    for root in ([corpus_roots] if isinstance(corpus_roots, (str, Path)) else corpus_roots):
+        for cy in sorted(Path(root).glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            if cap.get("label") not in labels:
+                continue
+            sem = cap.get("semantic") or {}
+            dts = sorted({str(t.get("dtype")) for t in (cap.get("inputs") or []) if t.get("dtype")})
+            if not dts:
+                continue
+            rows.append({"name": cap.get("name") or cy.parent.name,
+                         "family": sem.get("semantic_family"), "dtypes": dts})
+
+    cells = {(r["family"], dt) for r in rows for dt in r["dtypes"]}
+    uncovered, chosen = set(cells), []
+    while uncovered:
+        best, gain = None, 0
+        for r in rows:
+            if r in chosen:
+                continue
+            g = len({(r["family"], dt) for dt in r["dtypes"]} & uncovered)
+            if g > gain:
+                best, gain = r, g
+        if best is None:                      # nothing left can cover what remains -> report it
+            break
+        chosen.append(best)
+        uncovered -= {(best["family"], dt) for dt in best["dtypes"]}
+
+    n_class = sum(1 for r in rows if r.get("instruction_classes"))
+    return {
+        "capsules": sorted(r["name"] for r in chosen),
+        "cells": sorted(f"{f}/{dt}" for f, dt in cells),
+        "uncovered": sorted(f"{f}/{dt}" for f, dt in uncovered),
+        "basis": {"axes": ["semantic_family", "dtype"], "n_candidates": len(rows),
+                  "n_cells": len(cells), "n_chosen": len(chosen),
+                  "instruction_classes_available": n_class,
+                  "note": ("instruction_classes is declared empty by every capsule in this corpus, so it "
+                           "could not be used as an axis" if not n_class else "")},
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Materialize the sandbox public-capsule view.")
     ap.add_argument("dest", help="destination directory (gitignored sandbox / runs path)")
