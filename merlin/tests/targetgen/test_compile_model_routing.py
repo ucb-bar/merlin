@@ -330,8 +330,9 @@ def test_capacity_fit_tile_shrinks_to_fit():
 
 
 def test_scratchpad_capacity_is_derived_not_hardcoded():
-    """The on-chip capacity comes from the target's RTL memory fact; skip when facts are unavailable."""
-    from merlin.compile_cli import _scratchpad_capacity_elems
+    """The on-chip capacity comes from the target's own RTL, and the two independent sources of it
+    agree: mlc's discovered memory map (which the derivation prefers) and the extracted memory fact."""
+    from merlin.compile_cli import _operand_store_bytes, _operand_store_capacity_elems
     try:
         from merlin.targetgen.rtl import facts as _facts
         mems = (_facts.load_facts("gemmini").get("facts") or {}).get("memories") or []
@@ -340,5 +341,7 @@ def test_scratchpad_capacity_is_derived_not_hardcoded():
     sp = next((m for m in mems if m.get("name") == "scratchpad"), None)
     if not (sp and sp.get("bytes")):
         pytest.skip("no scratchpad memory fact for gemmini")
-    assert _scratchpad_capacity_elems("gemmini", 1) == int(sp["bytes"])
-    assert _scratchpad_capacity_elems("gemmini", 4) == int(sp["bytes"]) // 4
+    assert _operand_store_bytes("gemmini") == int(sp["bytes"])
+    # counted in BITS of the operand format, so a sub-byte format is not rounded up to a byte apiece
+    assert _operand_store_capacity_elems("gemmini", "int8") == int(sp["bytes"])
+    assert _operand_store_capacity_elems("gemmini", "i32") == int(sp["bytes"]) // 4

@@ -86,6 +86,20 @@ _REGISTRY: dict[str, BackendInfo] = {
 _SEEDED: frozenset[str] = frozenset(_REGISTRY)
 _discovered = False
 
+#: Backends whose module RAISED while loading, ``name -> "ExcType: message"``. A load failure used to
+#: be swallowed whole, which made a BROKEN backend indistinguishable from one that was never declared.
+#: That is not hypothetical: one reference package's backend imported a core module that had since been
+#: evicted out of the core tree, discovery ate the ImportError, the backend never registered, and its
+#: whole suite SKIPPED -- 17 skipped, 0 run -- for as long as that lasted. Green, and measuring nothing.
+#: Recording the reason keeps the repo's fail-closed rule: an unloadable backend is UNKNOWN and says
+#: why, never silently absent. No target is named here; the core holds no name -> module map.
+_LOAD_FAILURES: dict[str, str] = {}
+
+
+def load_failures() -> dict[str, str]:
+    """``name -> reason`` for every backend module that raised while loading (empty when all loaded)."""
+    return dict(_LOAD_FAILURES)
+
 
 def register(info: BackendInfo) -> None:
     """Register a backend (idempotent per name). A reference accelerator backend calls this from its
@@ -115,8 +129,8 @@ def _ensure_discovered() -> None:
             continue
         try:
             importlib.import_module(f"{pkg.__name__}.{leaf}")
-        except Exception:  # noqa: BLE001 — a backend with missing optional deps just does not register
-            continue
+        except Exception as exc:  # noqa: BLE001 — missing optional deps: do not register, but SAY SO
+            _LOAD_FAILURES[leaf] = f"{type(exc).__name__}: {exc}"
 
 
 # --- out-of-tree backend discovery (MERLIN_TARGET_PATH) ---------------------------------------------
@@ -213,8 +227,9 @@ def _load_oot_backend(name: str, path: Path, *, ns: str = "merlin._oot_backends"
     sys.modules[modname] = module
     try:
         spec.loader.exec_module(module)  # runs the backend's register(...) self-registration
-    except Exception:  # noqa: BLE001 — a backend with missing deps just does not register
+    except Exception as exc:  # noqa: BLE001 — missing deps: do not register, but RECORD the reason
         sys.modules.pop(modname, None)
+        _LOAD_FAILURES[name] = f"{type(exc).__name__}: {exc}"
 
 
 _oot_lock = threading.RLock()   # guards OOT discovery: the sentinel is published only after it completes
@@ -361,8 +376,17 @@ def name_of_module(module_name: str) -> str:
 
 
 def get_backend(name: str):
-    """Lazily import + return the backend module for ``name`` (raises KeyError if unregistered)."""
+    """Lazily import + return the backend module for ``name``.
+
+    Raises ``KeyError`` if unregistered -- and when the name is missing because its module RAISED
+    while loading, the recorded reason is in the message. Without that, a backend broken by a
+    refactor elsewhere in the tree presents exactly like a backend that was never declared, and the
+    suites that depend on it skip green instead of failing.
+    """
     _ensure_discovered()
+    if name not in _REGISTRY:
+        why = _LOAD_FAILURES.get(name)
+        raise KeyError(f"{name}: backend module failed to load -- {why}" if why else name)
     return importlib.import_module(_REGISTRY[name].module)
 
 

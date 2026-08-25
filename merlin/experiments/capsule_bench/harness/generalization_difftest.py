@@ -66,6 +66,41 @@ NORM_C = 16                    # feature width for row-op families (probes vary 
 MAX_DIM_DEFAULT = 64           # skip 4096-wide skinny probes (impractical to simulate)
 
 
+def corpus_oracle_tiers() -> list[str]:
+    """The oracle tiers a probe must clear, READ FROM THE TARGET'S OWN SHIPPED CORPUS.
+
+    This was the literal ``["L0", "L1", "L2"]``. Not laxer than the corpus -- STRICTER: every shipped
+    public capsule declares ``[L0, L1]``, so the derived probes were being held to a bar the graded
+    corpus never sets, and a probe could fail on a tier no shipped capsule is required to reach. Either
+    way the literal is the bug: the bar is a property of the target's corpus, and baking a different one
+    here silently redefines what the generalization matrix measures.
+
+    Derived by reading the declarations, taking the tiers common to ALL of them (a probe must clear what
+    every shipped capsule must clear, not what the strictest one happens to). Falls back to the union of
+    what was actually declared when the corpus is unreadable, and only then to ``[L0]`` -- never to a
+    richer bar than the evidence supports.
+    """
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment as _lte
+        root = _lte(C.DESCRIPTOR).capsule_corpus
+    except Exception:  # noqa: BLE001 — no descriptor: fall through to the floor below
+        root = None
+    declared: list[set] = []
+    if root is not None and root.is_dir():
+        for cap in sorted(root.glob("*/capsule.yaml")):
+            try:
+                doc = yaml.safe_load(cap.read_text()) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+            tiers = doc.get("required_oracle_tiers")
+            if tiers:
+                declared.append(set(tiers))
+    if not declared:
+        return ["L0"]                       # fail closed: the weakest honest bar, never an assumed one
+    common = set.intersection(*declared)
+    return sorted(common) if common else sorted(set.union(*declared))
+
+
 def datapath_policy() -> dict:
     """The target's NUMERIC datapath, from its own corpus profile — not assumed to be float.
 
@@ -142,7 +177,7 @@ def _write_capsule(probe, iface, *, inputs, out, op, op_attrs, ct, out_dtype=Non
                            {"compare": "tolerance_float", "dtype": out_dtype or "f32",
                             "atol": 0.03125, "rtol": 0.015625}),
         "expected": {"instruction_classes": [], "modes": {}},
-        "required_oracle_tiers": ["L0", "L1", "L2"], "vcs": "optional",
+        "required_oracle_tiers": corpus_oracle_tiers(), "vcs": "optional",
     }, sort_keys=False))
     if pol["exact"]:
         # Integer datapath: declare `merlin_tensor_int` and ship NO decoded operands, so the grader

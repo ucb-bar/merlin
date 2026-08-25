@@ -61,6 +61,34 @@ class EligibilityVerdict:
     undetermined: bool = False
 
 
+#: Whether an EMPTY declaration of a shape axis narrows eligibility, per axis. The two axes this
+#: module checks do not agree, and the disagreement is in the code right below: ``_dtype_ok`` returns
+#: False for an empty ``allowed`` (so a capability declaring no dtypes admits nothing), while the rank
+#: check is guarded by ``if c.ranks`` (so a capability declaring no ranks admits every rank).
+#:
+#: This is stated HERE, beside the checks that implement it, because the capability AUDITOR has to
+#: reason about the same question and must not restate it: an auditor that assumes "omitted == the
+#: hardware has it but the contract hides it" reports an under-declaration for an axis that in fact
+#: excludes nothing, and the remedy it implies -- declare the evidenced value -- would NARROW a
+#: previously unconstrained axis and cause the very denominator loss the audit exists to catch.
+#: Consumed by :func:`merlin.targetgen.capability_derive._axis_findings`; agreement between this
+#: table and :func:`is_eligible` is asserted by test, not assumed.
+_EMPTY_IS_NARROWING = {"dtypes": True, "ranks": False, "layouts": False}
+
+
+def empty_declaration_is_narrowing(axis: str) -> bool:
+    """Does declaring NOTHING on ``axis`` exclude regions (True) or constrain nothing (False)?
+
+    Raises for an axis this module does not check, so a new shape axis cannot be audited against a
+    semantics nobody wrote down.
+    """
+    try:
+        return _EMPTY_IS_NARROWING[axis]
+    except KeyError:
+        raise KeyError(f"no declared empty-set semantics for shape axis {axis!r}; add it beside the "
+                       f"check in is_eligible that implements it") from None
+
+
 def _dtype_ok(want: str | None, allowed: tuple[str, ...]) -> bool:
     """Is format ``want`` covered by ``allowed`` (registry-name/alias aware)? ``None`` want == n/a."""
     if want is None:

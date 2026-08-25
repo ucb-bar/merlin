@@ -35,6 +35,13 @@ import yaml
 from aet.core.run_paths import RunPaths
 
 from ..common.provenance import UNKNOWN as PROV_UNKNOWN
+from . import tier_policy as _tier_policy
+
+# Most capsules the suite will run SERIALLY to price the tier ladder before fanning out. Small:
+# the loop stops as soon as a capsule prices nothing new, and this only bounds the pathological
+# case where each early capsule is refuted by a different tier.
+_CALIBRATION_CAP = 3
+
 from . import capsule_golden as CG
 from .rocc import decode as RD
 from . import trace_check as TCK
@@ -75,6 +82,10 @@ class TierResult:
     not_applicable: bool = False      # tier honestly N/A for this capsule's datatype (e.g. the integer
                                       # L0/L1 floor on a float datapath) — a legitimate skip, not a
                                       # not_run_is_not_pass violation (unlike an unavailable RTL oracle)
+    budget_deferred: bool = False     # tier APPLIED and was DELIBERATELY NOT PAID FOR: this capsule is
+                                      # outside the derived covering set and the certify budget is gone.
+                                      # Never a pass, never a fail — the capsule was screened, not
+                                      # certified, and it says so by name.
 
     def to_dict(self) -> dict:
         d = {"status": self.status, "mandatory": self.mandatory,
@@ -84,6 +95,8 @@ class TierResult:
              "timing": self.timing}
         if self.not_applicable:
             d["not_applicable"] = True
+        if self.budget_deferred:
+            d["budget_deferred"] = True
         # perf fields ride the result ONLY when populated (SIMT) — keeps systolic output byte-identical.
         if self.gflops is not None:
             d["gflops"] = self.gflops
@@ -932,6 +945,22 @@ def _encoding_divergence_hint(trace_check_res: dict | None, oracle_graded: bool,
     return (concrete + hint) if concrete else hint
 
 
+def _unexercised_note(unexercised: list[str], exercised: dict) -> dict:
+    """``{tier: why it did not run}`` for the declared tiers a whole-model grade did not exercise.
+
+    Reported as a bare LIST, this read as "we skipped three of the four tiers this capsule declares",
+    which is indistinguishable from a grade that cut corners. The actual reason is structural: a model
+    capsule is graded by the whole-model compile+verify path against its golden, plus the mesh oracle --
+    it never enters the per-op tier ladder, and the cheap tiers of that ladder (emit/structure,
+    command-buffer reference equality, functional sim of a command buffer) have no whole-model analogue
+    to run. A tier that is inapplicable and a tier that was skipped deserve different words.
+    """
+    ran = set(exercised)
+    return {t: ("no whole-model analogue: this tier grades a per-op command buffer, which a model "
+                "capsule does not produce — the model is graded end to end against its golden")
+            for t in unexercised if t not in ran}
+
+
 def _rtl_tiers_of(target: str | None) -> frozenset[str]:
     """The tiers this target counts as RTL-derived, from its capability manifest. Fails soft to an empty
     set so the caller falls back to the capsule's own declaration rather than guessing a tier name."""
@@ -1083,6 +1112,53 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     _mesh_tier = (_rtl[-1] if _rtl
                   else next((x for x in reversed(_declared) if x not in ("L0", "L1")), "L2"))
     numeric: dict
+    # WHOSE COMPILER PASSED. When the runtime had to discharge a contract obligation the target backend
+    # owes -- residency tiling for `capacity_fit` -- the verdict is about runtime+backend together, and
+    # saying so is the difference between "this compiler handles a 512x512 layer" and "this layer ran".
+    # `tile_source` on each entry says which tiler chose the extent: a capacity fact read out of the RTL,
+    # or a width probed until the backend stopped refusing.
+    _delegated = mx.get("capacity_fit_delegated_to_runtime") or []
+    if _delegated:
+        result["contract_obligations"] = {
+            "capacity_fit": {
+                "discharged_by": "merlin runtime (host-side residency tiling)",
+                "n_layers": len(_delegated), "layers": _delegated[:8],
+                "tile_sources": sorted({str(d.get("tile_source")) for d in _delegated
+                                        if isinstance(d, dict)}),
+                "detail": ("the target backend did not satisfy capacity_fit at these extents; the "
+                           "runtime split them so the model could run. This verdict is evidence about "
+                           "the runtime AND the backend, not about the backend alone."),
+            }
+        }
+    # MUST_ACCELERATE IS ABOUT THIS MODEL, NOT ABOUT TILES OF ITS SHAPES. Certifying a synthesized tile
+    # proves the shape is runnable; it says nothing about whether the model's own layer reached the
+    # device. Measured: a target routed 15 matmul layers and the dispatch runtime fell back to the host
+    # kernel on all 15, while the tile record read "15 of 15 passed" -- so a run with ZERO layers on the
+    # accelerator reported `pass` with `lane: mesh`, which is exactly the CPU-only pass this flag exists
+    # to forbid. Held aside rather than returned here so the row still exits through the tier ladder and
+    # the finalizer: an early return would ship a result with no `tiers` and skip every gate below it.
+    # It is applied AFTER the generic failed-tier branch, so the SPECIFIC cause is what the row names --
+    # "2 of 37 layers fell back" is actionable where a bare FUNCTIONAL_MISMATCH is not.
+    _accel_fail: tuple[str, dict] | None = None
+    if (capsule.get("semantic") or {}).get("must_accelerate") and mx:
+        if ran is None or ran is PROV_UNKNOWN:
+            _accel_fail = ("incomplete",
+                           {"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                            "detail": "capsule declares must_accelerate but the run recorded no "
+                                      "per-layer mesh accounting; cannot confirm the model reached "
+                                      "the accelerator"})
+        # A FALLBACK, specifically -- at least one layer the mesh was asked for and the host ran instead.
+        # `on_mesh == 0` with `host_fallback == 0` is the DIFFERENT case where nothing ran at all: no
+        # layer was routed, so nothing fell back, and the honest report is "no evidence" (which the tier
+        # ladder below already reaches as `skipped` -> incomplete), not a fallback that never happened.
+        elif (fell is not None and fell is not PROV_UNKNOWN and int(fell)):
+            _fb = int(fell)
+            _accel_fail = ("fail",
+                           {"plane": "model", "category": "FALLBACK_ON_ELIGIBLE_REGION",
+                            "detail": f"capsule declares must_accelerate but only {int(ran)} matmul "
+                                      f"layer(s) executed on the {target} mesh and {_fb} fell back "
+                                      f"to the host kernel; the numeric gate therefore measures "
+                                      f"the HOST, not the accelerator"})
     if st == "verified" and gate:
         # A whole-model PASS must carry the strength of the gate that produced it. The numeric gate has a
         # per-element ceiling for exactly the failure aggregates hide (a single element 1209% wrong at
@@ -1189,7 +1265,11 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     _unexercised = [t for t in _declared
                     if tiers.get(t) is None or tiers[t].status not in ("pass", "fail")]
     if _unexercised:
-        result["tiers_unexercised"] = _unexercised
+        # WITH THE REASON, not as a bare list. A list read as "we skipped three of the four tiers this
+        # capsule declares", which is indistinguishable from a grade that cut corners; the actual reason
+        # is structural (those tiers grade a per-op command buffer a model capsule never produces).
+        result["tiers_unexercised"] = _unexercised_note(
+            _unexercised, {t: r.status for t, r in tiers.items() if r.status in ("pass", "fail")})
     # A tier that RAN AND FAILED is not a pass, whatever the host-side numeric gate says -- and it is not
     # an "incomplete" either: something ran and it was wrong, which is a different report from "nothing
     # ran". The guard below only refuses the nothing-ran case.
@@ -1200,6 +1280,10 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                              "detail": f"declared oracle tier(s) {_failed_tiers} RAN and did not pass "
                                        f"({'; '.join(tiers[t].reason or '' for t in _failed_tiers)}); a "
                                        f"whole-model verdict cannot be a pass over a failing tier"}
+    # The SPECIFIC cause last, so it is the one the row names (see where `_accel_fail` is built).
+    if _accel_fail is not None:
+        status, result["failure"] = _accel_fail
+        numeric = {"status": "not_compared", "engine": engine}
     # If no DECLARED tier certified this model, the numeric verdict is withheld whatever the functional
     # gate said. The gate compared our own reference run against the golden; that is a real comparison,
     # but not of the artifact under test, and reporting it as `pass` beside an `incomplete` status invites
@@ -1648,13 +1732,29 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             return next((t for t, r in tiers.items()
                          if getattr(r, "mandatory", False) and getattr(r, "status", None) == "fail"), None)
 
-        for tier in sorted(set(cfg.oracle_tiers) | set(adapters or {})):
+        # CHEAPEST MEASURED TIER FIRST, not lexicographic -- and the short-circuit above is exactly what
+        # makes the order matter. The ladder stops paying once a mandatory tier refutes a capsule, so
+        # sorting by name meant one target paid its 24.5 s arc cosim before reaching the 0.29 s Verilator
+        # tier that refutes the same capsules (measured: 12 of 12, identical signature). See tier_policy.
+        _tier_seq = _tier_policy.tier_order(str(cfg.target or target or ""),
+                                            set(cfg.oracle_tiers) | set(adapters or {}))
+        _screen_tier = _tier_seq[0] if _tier_seq else None
+        for tier in _tier_seq:
             mand = tier in required
             _failed_mandatory = _already_failed_mandatory()
             if _failed_mandatory is not None:
                 tiers[tier] = suppressed_tier_result(tier, mand, _failed_mandatory,
                                                      from_rtl=tier in cfg.rtl_tiers)
                 continue
+            # THE SCREEN IS ALWAYS PAID FOR; the tiers above it are what a budget can decline. A capsule
+            # inside the derived covering set is never declined -- that is what the cover is for.
+            if tier != _screen_tier:
+                _may, _why = _tier_policy.may_certify(str(cfg.target or target or ""), capsule)
+                if not _may:
+                    tiers[tier] = TierResult(tier, "skipped", mand, reason=_why,
+                                             budget_deferred=True,
+                                             derived_from_rtl=tier in cfg.rtl_tiers)
+                    continue
             if tier in _inapplicable and not mand:
                 tiers[tier] = TierResult(tier, "skipped", mand, not_applicable=True,
                                          reason=str(_inapplicable[tier]),
@@ -1743,6 +1843,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _acct = (_tm.get("build_s") or 0.0) + (_tm.get("sim_active_s") or 0.0)
                 _tm["oracle_wait_s"] = round(max(0.0, _adapter_wall - _acct), 3)
             _tm["adapter_wall_s"] = round(_adapter_wall, 3)
+            _tier_policy.record_cost(str(cfg.target or target or ""), tier, _adapter_wall)
+            if tier != _screen_tier:
+                _tier_policy.note_spend(str(cfg.target or target or ""), _adapter_wall)
             if res.get("executability") is not None:
                 # ADVISORY executability smoke: a bounded-cycle RTL-legality check (does a cyclotron(L2)-
                 # passing ELF at least RUN on the real Verilator RTL — boots, no trap, MX PE accepts a
@@ -1949,6 +2052,19 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
     # datatype (``not_applicable``; the integer L0/L1 floor on a float datapath) is the ONE exception —
     # a legitimate skip like a dropped RoCC gate, not a missing oracle. An unavailable/absent RTL oracle
     # is never not_applicable, so it still fails closed here.
+    if status == "pass" and any(getattr(t, "budget_deferred", False) for t in tiers.values()):
+        # SCREENED, NOT CERTIFIED. Distinct from `incomplete` (something that should have run did not)
+        # and from `pass` (it certified). The capsule cleared the cheap screen and the expensive tier was
+        # deliberately not bought, because a capsule in the covering set already certifies the axes this
+        # one exercises. Excluded from the pass/fail denominators and reported by name — the one thing it
+        # must never do is read as a pass.
+        _def = sorted(t for t, r in tiers.items() if getattr(r, "budget_deferred", False))
+        status = "screened_only"
+        failure = {"plane": "budget", "category": "SCREENED_NOT_CERTIFIED",
+                   "tier": _def[0] if _def else None,
+                   "detail": (f"passed the screen tier; certify tier(s) {', '.join(_def)} not purchased "
+                              f"(outside the derived covering set, certify budget exhausted). This is "
+                              f"NOT a verdict on this capsule.")}
     if status == "pass":
         for tier in required:
             tr = tiers.get(tier)
@@ -2083,6 +2199,24 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     one-time build, so concurrent simulator instances (verilator/VCS) don't collide. Mirrors
     :func:`heavy_oracles.run_vcs_parallel`. ``max_workers == 1`` preserves the original sequential order.
     """
+    # RESOLVE THE RUNS ROOT HERE, while this is still single-threaded. Resolving it per-capsule is not
+    # enough: some capsule paths enter a context that chdirs the process (mlc resolves its arc artifacts
+    # relative to its own root), and a relative root resolved inside that window becomes an absolute path
+    # under the WRONG tree. Measured: of 26 op capsules run with 8 workers, 18 wrote their entire run
+    # directory into the mlc checkout. The suite still scored -- the results are returned in memory --
+    # but the trace collection reads from this root, so those 18 capsules contributed no coverage, and a
+    # sibling project's tree acquired 18 stray run trees.
+    # Same treatment for every OTHER relative path this suite carries into a worker thread. The runs
+    # root was only the first one to show: the package directory is re-opened per capsule, and inside a
+    # chdir window it raises FileNotFoundError on a directory that is plainly there -- which the runner
+    # records as a RUNNER_CRASH, i.e. as though the submission were broken. Measured: the same 18 of 26
+    # capsules that misplaced their run dirs also "crashed" this way, and since an errored capsule is in
+    # neither the pass nor the fail bucket, they silently left the gate denominator -- the whole-model
+    # capstone then cleared its 0.8 gate on 7/8 instead of on 26 capsules.
+    runs_root = str(Path(runs_root).resolve())
+    package_dir = str(Path(package_dir).resolve())
+    if contract is not None and Path(contract).exists():
+        contract = str(Path(contract).resolve())
     pkg = load_package(package_dir, contract=contract)
     integrity_scan(pkg)
     build_package(pkg)
@@ -2094,11 +2228,42 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
                            config=config, perf_extractor=perf_extractor, no_oracle=no_oracle)
 
     def _run_all(caps: list[dict]) -> list[dict]:
-        if max_workers <= 1:
+        if max_workers <= 1 or not caps:
             return [_one(c) for c in caps]
+        # CALIBRATE BEFORE FANNING OUT. Tier order is learned from observed cost, and a worker that
+        # starts before any tier has a price runs the ladder in the arbitrary order -- so a wide fan-out
+        # means the ENTIRE first wave pays the expensive tier. Measured with 8 workers: 7 of the 12
+        # refutable capsules paid the 24.5 s tier before the 0.29 s one had ever been priced, 171 s of a
+        # 614 s suite, against a floor of ~444 s. Running the head serially bounds that to one or two.
+        #
+        # Self-terminating rather than a fixed count: keep going only while a capsule PRICES A TIER
+        # nothing had priced before, and stop the moment one teaches us nothing new. A capsule that is
+        # refuted early prices only the tier that refuted it, which is exactly why one capsule is not
+        # always enough -- and why a hard cap still bounds the worst case.
+        head: list[dict] = []
+        seen = set(_tier_policy.priced_tiers(target or ""))
+        i = 0
+        while i < len(caps) and i < _CALIBRATION_CAP:
+            _r = _one(caps[i])
+            head.append(_r)
+            i += 1
+            # A capsule that PASSED ran every mandatory tier, so every tier now has a price and there is
+            # nothing left to learn -- stop immediately rather than spending a second serial capsule.
+            # This matters on a target whose ladder was ALREADY in cost order: it gains nothing from the
+            # reordering and pays the whole serial head, and measured that way the head cost more
+            # wall-clock (1074s -> 1195s) than the reordering saved. One passing capsule is enough.
+            if _r.get("status") == "pass":
+                break
+            now = set(_tier_policy.priced_tiers(target or ""))
+            if now == seen:
+                break
+            seen = now
+        rest = caps[i:]
+        if not rest:
+            return head
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            return list(ex.map(_one, caps))
+            return head + list(ex.map(_one, rest))
 
     # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op
     # suite proves itself (its ``gate.after_op_pass_fraction`` of the graded op capsules passed). Grade the
@@ -2119,6 +2284,19 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     # Each is reported as ``not_graded`` with the derived reason, counted in neither numerator nor
     # denominator, and visible in the result list.
     op_caps, ungradeable = _split_ineligible(op_caps, target)
+    # CERTIFY THE COVERING SET FIRST. The derived cover is the fewest capsules whose declared axes span
+    # every axis the eligible corpus declares, so a run that is interrupted, times out, or exhausts a
+    # certify budget still has every axis represented rather than a lexicographic prefix. Computed over
+    # the ELIGIBLE capsules only -- spending the cover on a capsule the hardware cannot execute buys
+    # nothing (measured: including the ineligible ones inflated one target's cover from 6 to 17).
+    _cover = set(_tier_policy.covering_set(op_caps))
+    for _c in op_caps:
+        _c["_covering"] = _c.get("name") in _cover
+    op_caps = sorted(op_caps, key=lambda c: (not c.get("_covering"), str(c.get("name"))))
+    if _cover:
+        print(f"  tier plan: {len(_cover)}/{len(op_caps)} eligible capsule(s) form the derived covering "
+              f"set (certified first); budget="
+              f"{_tier_policy.budget_seconds() or 'unlimited'}", flush=True)
     op_results = _run_all(op_caps) + ungradeable
     if ungradeable:
         print(f"  {len(ungradeable)} capsule(s) NOT GRADED — outside this target's declared capability: "
@@ -2126,8 +2304,8 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
               f"{' ...' if len(ungradeable) > 6 else ''}", flush=True)
     if not model_caps:
         return op_results
-    # The gate denominator answers "how much of what this device CAN do is working?" -- two independent
-    # ways of getting it wrong, both measured, both guarded here.
+    # The gate denominator answers "how much of what this device CAN do is working?" -- three independent
+    # ways of getting it wrong, all measured, all guarded here.
     #
     # 1. A CRASHED op capsule (``error``) COUNTS. It produced no passing artifact, which is a failure to
     #    deliver one, not an absence of evidence. Leaving it out let a crashier failure mode UNLOCK the
@@ -2141,8 +2319,16 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     #    They can never pass, so the best reachable fraction was 23/35 = 0.66 against a 0.8 gate: the
     #    whole-model capsules were MATHEMATICALLY unreachable and the only report was a repeated "gated".
     #
-    # The two do not cancel: a crashed ELIGIBLE capsule still counts, so the crash loophole stays shut,
-    # while a capsule the hardware cannot do is out either way.
+    # 3. A `screened_only` capsule does NOT count either, for the reason `not_graded` and `gated` do not:
+    #    under a certify budget it was deliberately never measured against the certifying tier, by name
+    #    and with its coverage guaranteed by the derived covering set. It is neither evidence for nor
+    #    against. Unlike an ERROR -- which used to slip out of this denominator unexplained -- that is an
+    #    opt-in choice whose members are listed on the score.
+    #
+    # These do not cancel: a crashed ELIGIBLE capsule still counts, so the crash loophole stays shut,
+    # while a capsule the hardware cannot do, or that was never certified, is out either way. Naming the
+    # three that count rather than the ones that do not is deliberate: a status added later must be
+    # argued INTO the denominator instead of landing in it silently.
     graded = [r for r in op_results if r.get("status") in ("pass", "fail", "error")]
     eligible = [r for r in graded if _gate_counts(r, capsules, target)]
     denom = eligible or graded          # fall back rather than divide by zero if nothing is classifiable
@@ -2151,6 +2337,16 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
         print(f"  model gate: {len(graded) - len(eligible)} graded op capsule(s) excluded from the gate "
               f"denominator as ineligible for this target (the hardware declares no capability for them)",
               flush=True)
+    # SAY IT WHEN THE GATE GOT CHEAPER. Under a certify budget the denominator is what was CERTIFIED, not
+    # what exists, so a capstone can clear 0.8 on the covering set alone. That is the intended trade --
+    # the cover spans every declared axis -- but a gate satisfied by 6 capsules instead of 23 is a
+    # different statement, and it has to be printed next to the number rather than inferred.
+    _screened = [r for r in op_results if r.get("status") == "screened_only"]
+    if _screened:
+        print(f"  model gate: denominator is the {len(denom)} CERTIFIED capsule(s); "
+              f"{len(_screened)} more passed the screen and were not certified "
+              f"(outside the covering set, budget exhausted) — the gate fraction {frac:.2f} is over "
+              f"what was certified, not over the whole suite", flush=True)
     model_results = []
     for c in model_caps:
         if model_gate_satisfied(c, frac):

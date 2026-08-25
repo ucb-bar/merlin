@@ -26,6 +26,7 @@ from . import capsule_runner as CR
 from .capsule_common import tier_field as _tier_field
 from .capsule_common import tier_status as _tier_status
 from . import coverage_report as CV
+from .corpora import source_experiment_env
 from .oot_runner import CertFailure, build_package, integrity_scan, load_package
 
 
@@ -58,14 +59,31 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     ``oracle_unavailable`` plane — so the report is honest and never claims a numeric pass. Graded runs
     (``no_oracle=False``) keep the ``not_run_is_not_pass`` behavior byte-for-byte."""
     labels = labels or {"public", "dev"}
-    pkg_dir = Path(package_dir)
+    # Source the target's own tooling paths before resolving any adapter, exactly as the harness does
+    # for an arm. Without this a grade run outside the harness can lose a target's certifying-tier sim
+    # and report the whole suite `incomplete` -- fail-closed, but describing the environment rather than
+    # the submission. Process env wins, so an exported var is untouched.
+    _sourced = source_experiment_env(target)
+    if _sourced:
+        print(f"  sourced {len(_sourced)} tooling path(s) from the target's experiment.env: "
+              f"{', '.join(sorted(_sourced))}", flush=True)
+    # absolute before any threading, for the same reason run_suite does it: this function also reads the
+    # per-capsule traces back out of this root, and a root that moved under a sibling thread's chdir
+    # silently yields an empty coverage dict rather than an error.
+    runs_root = str(Path(runs_root).resolve())
+    pkg_dir = Path(package_dir).resolve()
+    if contract is not None and Path(contract).exists():
+        contract = str(Path(contract).resolve())
+    capsules_root = ([str(Path(r).resolve()) for r in capsules_root]
+                     if isinstance(capsules_root, (list, tuple))
+                     else str(Path(capsules_root).resolve()))
 
     score: dict = {
         "task": f"{target}-mlir-oot-capsule", "package": str(pkg_dir),
         "integrity_exempt": None, "integrity_status": None,
         "labels_graded": sorted(labels),
         "functional_pass": 0, "n_capsules": 0, "n_passed": 0,
-        "public_passed": None, "hidden_passed": None,
+        "public_passed": None, "hidden_passed": None, "headline": None,
         "per_capsule": [], "tier_reached": {}, "first_failure_planes": {},
         "numeric_all_exact": None, "trace_all_pass": None,
         "cycles_diagnostic": {}, "highest_tier": None,
@@ -120,7 +138,9 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     # COVERAGE -- it is not a verdict on the model.
     ungraded = [r for r in results if r.get("status") == "not_graded"]
     deferred = [r for r in results if r.get("status") == "gated"]
-    graded = [r for r in results if r.get("status") not in ("not_graded", "gated")]
+    screened = [r for r in results if r.get("status") == "screened_only"]
+    graded = [r for r in results
+              if r.get("status") not in ("not_graded", "gated", "screened_only")]
     n_pass = sum(1 for r in graded if r["status"] == "pass")
     score["n_capsules"] = len(graded)
     score["n_passed"] = n_pass
@@ -130,6 +150,17 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         score["not_graded_ineligible"] = sorted(r.get("capsule") for r in ungraded)
     if deferred:
         score["gated_deferred"] = sorted(r.get("capsule") for r in deferred)
+    # SCREENED BUT NOT CERTIFIED, listed by name. A headline of "14/14" over a suite where nine more
+    # capsules were screened and never certified is only honest if the nine are visible next to it.
+    score["n_screened_only"] = len(screened)
+    if screened:
+        score["screened_only"] = sorted(r.get("capsule") for r in screened)
+        score["screened_only_note"] = (
+            "these capsules PASSED the cheap screen tier and were deliberately not measured against the "
+            "certifying tier: they fall outside the derived covering set and the certify budget was "
+            "exhausted. They are in neither the numerator nor the denominator. The covering set "
+            "guarantees every axis they exercise was certified by some capsule -- it does NOT certify "
+            "these capsules.")
     score["functional_pass"] = int(n_pass == len(graded) and len(graded) > 0)
     # Structure-only smoke bookkeeping (honest, never a numeric pass): a capsule is structurally clean
     # when it did not FAIL a structural tier — status `pass` OR `not_gradeable_no_oracle` (numeric verdict
@@ -205,6 +236,14 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
                  "is NOT an RTL result."),
     }
 
+    # THE CITABLE FORM OF THE SCORE. `public_passed` stays a bare "20/20" because consumers parse it as
+    # a fraction (agg_agentic_results._frac does int(total)), and a bare fraction is exactly what gets
+    # quoted -- one gemmini submission travelled as "20/20" while its Verilator tier passed 1 of 20,
+    # indistinguishable in the headline from three siblings that were RTL-clean on all 20. So the
+    # qualification is built ONCE, here, next to the evidence that justifies it, and the renderers print
+    # THIS rather than reassembling a bare fraction each time. Quote `headline`; parse `public_passed`.
+    score["headline"] = _headline(score)
+
     _agg = {"build_s": 0.0, "sim_active_s": 0.0, "oracle_wait_s": 0.0}
     for r in results:
         _cyc = _tier_field((r.get("tiers") or {}).get("L3"), "cycles")
@@ -227,13 +266,33 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         if r.get("failure"):
             p = r["failure"]["plane"]
             score["first_failure_planes"][p] = score["first_failure_planes"].get(p, 0) + 1
-        score["per_capsule"].append({
+        entry = {
             "capsule": r["capsule"], "label": r.get("label"), "status": r["status"],
             "numeric": r.get("numeric", {}).get("status"),
             "trace": r.get("trace_check", {}).get("status"),
             "tiers": {t: _tier_status((r.get("tiers") or {}).get(t)) for t in tiers
                       if t in (r.get("tiers") or {})},
-        })
+        }
+        # CARRY THE QUALIFIERS WITH THE VERDICT. The roll-up kept six fields, and every one of them
+        # flatters: status, tier, numeric, trace. Everything that says what the pass RESTS ON --
+        # which contract obligations someone else discharged on the backend's behalf, how many of the
+        # model's own layers reached the accelerator versus fell back to the host, which declared tiers
+        # never ran -- stayed behind in the per-capsule result, several directories down. The score file
+        # is the artifact that gets cited, so a qualifier that does not travel with it does not exist.
+        if r.get("status") == "gated":
+            # WHY it was deferred. "gated" with no reason is uninterpretable in the artifact -- it reads
+            # as "skipped" when what it means is "the op suite did not earn the right to run this".
+            entry["gate_reason"] = (r.get("failure") or {}).get("detail")
+        if r.get("kind") == "model":
+            entry["kind"] = "model"
+            me = r.get("mesh_execution") or {}
+            if me:
+                entry["mesh_execution"] = {k: me.get(k) for k in (
+                    "matmul_layers_on_mesh", "matmul_layers_host_fallback", "status") if k in me}
+            for k in ("contract_obligations", "tiers_unexercised"):
+                if r.get(k):
+                    entry[k] = r[k]
+        score["per_capsule"].append(entry)
 
     # active-vs-waiting rollup: wall is the suite wall-clock (overlapped under parallelism); the sum of
     # active_sim across capsules can exceed wall (that ratio IS the parallel speedup). oracle_wait_s is
@@ -276,6 +335,38 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     except Exception as _e:                                   # noqa: BLE001
         score["provenance"] = {"unavailable": f"{type(_e).__name__}: {_e}"}
     return score
+
+
+def _headline(score: dict) -> str:
+    """The score as it may be QUOTED: never a bare fraction, always with what the passes rest on.
+
+    Reports the RTL-backed share whenever it is below the pass count, and the highest tier every graded
+    capsule reached (``None`` -> stated as such rather than omitted, because an omitted tier reads as a
+    high one). A reader who copies this string cannot accidentally drop the qualification, which is the
+    whole failure this exists to prevent.
+    """
+    ev = score.get("pass_evidence") or {}
+    n_passed, n_caps = score.get("n_passed", 0), score.get("n_capsules", 0)
+    head = score.get("public_passed") or f"{n_passed}/{n_caps}"
+    tier = score.get("highest_tier")
+    bits = [f"tier {tier}" if tier else "no tier cleared by every capsule"]
+    rtl, cheap = ev.get("rtl_backed"), ev.get("cheap_tier_only")
+    if rtl is not None and cheap:
+        bits.append(f"RTL-backed {rtl}/{n_passed} \u2014 the other {cheap} passed on cheap tiers only")
+    elif rtl is not None and n_passed:
+        bits.append(f"RTL-backed {rtl}/{n_passed}")
+    if score.get("hidden_passed"):
+        bits.append(f"hidden {score['hidden_passed']}")
+    # CAPSULES THAT WERE SCREENED AND NEVER CERTIFIED BELONG IN THE QUOTABLE STRING. Under a certify
+    # budget the denominator is what was certified, so a headline of "17/18" can sit over a suite where
+    # seven more capsules passed the cheap screen and nobody ever paid the RTL tier for them. Leaving
+    # that to the JSON is the same mistake as leaving the tier to the JSON: the string is what gets
+    # copied. The covering set guarantees the AXES were certified; it certifies nothing about these
+    # capsules, and the wording has to keep those two apart.
+    n_screened = score.get("n_screened_only") or 0
+    if n_screened:
+        bits.append(f"{n_screened} more screened only, NOT certified (outside the covering set)")
+    return f"{head} ({'; '.join(bits)})"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -321,9 +412,7 @@ def main(argv: list[str] | None = None) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(score, indent=2), encoding="utf-8")
     print(f"wrote {out}: functional_pass={score['functional_pass']} "
-          f"passed={score['n_passed']}/{score['n_capsules']} "
-          f"public={score.get('public_passed')} hidden={score.get('hidden_passed')} "
-          f"highest_tier={score.get('highest_tier')} integrity={score.get('integrity_status')}")
+          f"score={score.get('headline')} integrity={score.get('integrity_status')}")
     return 0 if score["functional_pass"] == 1 else 1
 
 

@@ -23,9 +23,9 @@ absent, and the recall it never entered reads high because of it. Measured on ``
 16 ``linalg.generic`` ops are attention's Q·Kᵀ and scores·V — 157.4 MMAC against 1702.2 MMAC of matched
 work, so **8.5% of that model's contraction MACs were invisible to every number here**. ``linalg_mlir``
 therefore lets the certificate price what the demands could not see and report it as
-``denominator_completeness``, alongside a recall LOWER BOUND that charges the whole unmatched mass to
-the denominator. The two bracket the truth; quoting only the upper one is the error this block exists
-to stop.
+``denominator_completeness``, alongside a LOWER BOUND for BOTH recalls -- region and flop -- each
+charging the whole unmatched mass to its own denominator. Every recall here is therefore a bracket, and
+quoting only the upper half of one is the error this block exists to stop.
 """
 from __future__ import annotations
 
@@ -162,6 +162,7 @@ def build(plan: dict, cap_map: dict, *, target: str | None = None,
     # the same scale `_flops` uses -- mixing the two units would understate the correction by half.
     completeness = denominator_completeness(linalg_mlir)
     unmatched_flops = 2 * int(completeness.get("unmatched_contraction_macs") or 0) if completeness else 0
+    unmatched_regions = int(completeness.get("n_unmatched_contractions") or 0) if completeness else 0
 
     return {
         "target": target,
@@ -175,13 +176,23 @@ def build(plan: dict, cap_map: dict, *, target: str | None = None,
         "eligible_flops": eligible_flops,
         "accelerated_eligible_flops": accelerated_eligible_flops,
         "unmatched_contraction_flops": unmatched_flops,
+        "unmatched_contraction_regions": unmatched_regions,
         "denominator_completeness": completeness,
         "metrics": {
             # the headline ARR numbers for this single compilation (None == no eligible work).
-            # Both are computed over the regions the matcher PRODUCED, which is why the bound below
-            # exists -- see the module docstring.
+            # The two recalls are computed over the regions the matcher PRODUCED, which is why each
+            # carries a lower bound beside it -- see the module docstring. Quote a recall WITH its
+            # bound or not at all: alone, the upper one reads as a measurement when it is a ceiling.
             "acceleratable_region_recall": _ratio(n_eligible_accelerated, n_eligible),
             "acceleratable_flop_recall": _ratio(accelerated_eligible_flops, eligible_flops),
+            # REGION recall's floor, by the same construction as the flop floor below. This is the one
+            # people actually quote -- it is the plain "how many of the regions it could accelerate did
+            # it" number -- and it was the only headline metric here with no floor beside it, so the
+            # single most-cited figure was also the single least-bracketed one. Charging every unmatched
+            # contraction to the denominator is deliberately the unflattering assumption: each is counted
+            # as eligible and unaccelerated.
+            "acceleratable_region_recall_lower_bound":
+                _ratio(n_eligible_accelerated, n_eligible + unmatched_regions),
             # The same recall with every unmatched contraction charged to the denominator: the floor
             # under the number above, on the assumption (deliberately the unflattering one) that all of
             # that work was eligible and none of it was accelerated. True recall lies between the two;

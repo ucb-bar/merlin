@@ -72,6 +72,18 @@ def float_format_params(fmt: str) -> tuple[int, int, int, str]:
     return _FORMATS[canonical_float(fmt)]
 
 
+def storage_bits(fmt: str) -> int:
+    """Width in bits of one STORED element of ``fmt``, derived from its own layout (1 sign + exp + mant)
+    rather than read off the spelling. Scraping digits out of a token cannot do this: ``fp8_e4m3`` has
+    three digit runs and concatenates to 843, which silently mis-sized every capacity computed from a
+    float operand token. E8M0 is exponent-only (no sign, no mantissa) and carries its own width."""
+    t = _ALIASES.get(fmt, fmt)
+    if t == "e8m0":
+        return int(E8M0["bits"])
+    eb, mb, _bias, _scheme = float_format_params(t)
+    return 1 + eb + mb
+
+
 def normal_range(fmt: str) -> tuple[float, float]:
     """``(smallest positive NORMAL magnitude, largest finite magnitude)`` for ``fmt``, DERIVED.
 

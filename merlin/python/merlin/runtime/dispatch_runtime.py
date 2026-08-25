@@ -686,6 +686,9 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         execute.mesh_ran = 0
         execute.mesh_fell_back = 0
         execute.mesh_fallbacks = []                  # per-layer reasons, so a fallback is actionable
+        # Layers whose capacity_fit obligation the RUNTIME discharged on the backend's behalf. A
+        # whole-model pass that needed this is a statement about runtime+backend, not about the backend.
+        execute.mesh_capacity_fit_delegated = []
         # What the mesh's operand format could actually hold, summed over every layer it ran. The whole
         # atlas divergence was invisible because nobody counted this; a run now reports it. The SAME dict
         # rides this call's counters, so a reader takes it off the run's own result rather than off a
@@ -704,6 +707,9 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                         "the subnormal/saturation accounting applies to a float datapath only"}
         mesh_counts["mesh_operand_repr"] = execute.mesh_operand_repr
         mesh_counts["mesh_fallbacks"] = execute.mesh_fallbacks
+        # Ride this run's own counters, not a module-global attribute a concurrent grade would clobber.
+        # Same list object, so the appends below land in both.
+        mesh_counts["mesh_capacity_fit_delegated"] = execute.mesh_capacity_fit_delegated
 
     def kernel_model(symbol: str):
         if symbol in compiled:
@@ -844,8 +850,24 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                                 _acc[key] = _acc.get(key, 0) + val
                 # `package` is the SUBMISSION under test. Without it the mesh path resolves the target's
                 # DEFAULT package and quietly certifies a different compiler than the one being graded.
+                # `observed` is this call's OWN record of what the mesh path did -- which tiler chose the
+                # extent, why it declined, whether the runtime had to discharge a capacity_fit obligation
+                # the backend owes. Read from the call rather than a module global, so a concurrent grade
+                # cannot attribute one model's decline to another model's layer.
+                _obs: dict = {}
                 mesh_out = run_matmul_on_mesh(mesh_target, qa, qb, operand_dtype=op_dt,
-                                              accum_dtype=acc_dt, package=mesh_package)
+                                              accum_dtype=acc_dt, package=mesh_package, observed=_obs)
+                _cf = _obs.get("capacity_fit")
+                if _cf is not None:
+                    _d = getattr(execute, "mesh_capacity_fit_delegated", None)
+                    if _d is not None and len(_d) < 64:
+                        _d.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
+                                   "required_elems": _cf.get("required_elems"),
+                                   "capacity_elems": _cf.get("capacity_elems"),
+                                   # WHICH tiler chose the extent: a capacity fact read out of the RTL,
+                                   # or a probe that halved until the backend stopped refusing. Those are
+                                   # different provenance claims and the record used to say neither.
+                                   "tile_source": _cf.get("tile_source")})
                 if mesh_out is not None:
                     om = np.array(mesh_out, np.float64) * scale
                     env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])
@@ -866,15 +888,22 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 _why = f"inner dims disagree: {a.shape} @ {b.shape}"
             else:
                 # The oracle path records its OWN refusal reason; prefer it, because "unsynthesizable at
-                # this shape" and "the oracle was unreachable" are different repairs.
-                try:
-                    from ..compile_cli import _MESH_REFUSAL
-                    _recorded = _MESH_REFUSAL.get("reason")
-                except Exception:                                  # noqa: BLE001
-                    _recorded = None
-                _why = _recorded or (f"mesh oracle returned no result for {a.shape} @ {b.shape} "
-                                     f"({op_dt}/{acc_dt}) — unsynthesizable at this shape, or the oracle "
-                                     f"was unreachable")
+                # this shape" and "the oracle was unreachable" are different repairs. THIS call's own
+                # `observed` verdict comes first -- it belongs to this layer and nothing else can have
+                # overwritten it -- then the module-global last-refusal note, then a generic message that
+                # covers both causes and names neither.
+                _recorded = (locals().get("_obs") or {}).get("decline")
+                if not _recorded:
+                    try:
+                        from ..compile_cli import _MESH_REFUSAL
+                        _recorded = _MESH_REFUSAL.get("reason")
+                    except Exception:                              # noqa: BLE001
+                        _recorded = None
+                _why = (f"mesh oracle declined {a.shape} @ {b.shape} ({op_dt}/{acc_dt}): "
+                        f"{str(_recorded)[:300]}" if _recorded else
+                        f"mesh oracle returned no result for {a.shape} @ {b.shape} "
+                        f"({op_dt}/{acc_dt}) — unsynthesizable at this shape, or the oracle "
+                        f"was unreachable")
             # Name the layer, not just the count. "4 layers fell back" gives a reader nothing to act on;
             # the SHAPES say whether the cause is one extent the backend cannot take or four different
             # ones, which is the difference between a tiling gap and a capability gap.

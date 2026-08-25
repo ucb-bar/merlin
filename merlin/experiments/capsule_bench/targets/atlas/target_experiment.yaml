@@ -8,6 +8,21 @@ target: atlas
 
 rtl:
   via: mlc            # ISA/memory/DIM DERIVED from atlas's RTL via mlc discovery
+  # NO `operand_store` is declared, deliberately. The capacity_fit contract obligation needs to know
+  # this device's on-chip operand store, and mlc discovers all 39 of its SRAMs and then refuses to
+  # classify them ("no memory map discovered"), so the obligation is UNDECIDABLE here and reports itself
+  # as such rather than guessing. Two candidates were considered and one was MEASURED AND REFUTED:
+  #   - the matrix register file (32 discovered `mreg/banks_N_ext` banks x 64 x 32 B = 65536 B, matching
+  #     the shipped ISA model's num_m_registers(64) x mrf_depth(32) x mrf_width(32 B)) is NOT it: a
+  #     32x256x256 layer needs 73728 elements against that 65536 and RUNS UNBLOCKED on the arc cosim,
+  #     producing output. Declaring it would make the runtime split layers the device handles, which on
+  #     this bf16 accumulator also changes the reduction order.
+  #   - VMEM is the likelier store, but its two sources disagree (the RTL constant AtlasMemMap.VMEM_SIZE
+  #     is 0x180000 = 1.5 MiB; the shipped model config declares vmem_size = 1 MiB) and mlc's discovered
+  #     memory list contains no VMEM bank at all, so there is nothing to sum. Declaring an unvalidated
+  #     number is worse than reporting the obligation undecidable.
+  # To close this: measure the extent at which this backend actually declines, and declare the store
+  # that predicts it. Never declare one that has not been checked against the device.
 
 # The shared hardware spec given to ALL arms — a constant input (a correct backend needs the target's
 # defined ISA), NOT Merlin assistance. Repo-root-relative bundle-convention path strings: `experiments/...`

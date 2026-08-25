@@ -28,6 +28,68 @@ def capsule_corpus_roots() -> list[Path]:
     return [r for r in roots if r.is_dir()]
 
 
+def descriptor_path(target: str) -> Path:
+    """Where ``target``'s experiment descriptor lives — the per-target convention path, or whatever
+    ``MERLIN_TARGET_EXPERIMENT`` overrides it to. Lives here because this module is the one allowed to
+    know the ``experiments/`` layout; callers elsewhere took the convention path directly and silently
+    ignored the override, so an out-of-tree descriptor resolved for some readers and not others."""
+    import os
+
+    from merlin.common.paths import repo_root
+    override = os.environ.get("MERLIN_TARGET_EXPERIMENT", "").strip()
+    if override:
+        return Path(override)
+    return (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
+            / "target_experiment.yaml")
+
+
+def source_experiment_env(target: str) -> list[str]:
+    """Load ``targets/<target>/experiment.env`` into ``os.environ``, setting ONLY keys not already
+    present, and return the keys it set.
+
+    The harness does this for every arm before a run; a caller that grades a package WITHOUT going
+    through the harness did not, and the difference is not cosmetic. One target's certifying tier is a
+    program-driven Verilator sim registered through ``MERLIN_EXT_<TARGET>_VSIM``; with the variable
+    absent there is no adapter, and its own profile spells out the consequence -- every capsule reports
+    ``incomplete``, never a pass. Fail-closed is right, but reporting a whole suite incomplete because a
+    path was not sourced is a tooling artifact wearing a verdict's clothes.
+
+    The process environment always WINS, so an exported var is never overridden. Structured KEY=VALUE
+    parse, ``#`` comments; target-agnostic (keyed off the descriptor's own directory). This module is the
+    one allowed to know the ``experiments/`` layout.
+    """
+    import os
+
+    desc = descriptor_path(target)
+    f = desc.parent / "experiment.env"
+    set_keys: list[str] = []
+    if not f.is_file():
+        return set_keys
+    for line in f.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        k, v = k.strip(), v.strip().strip('"').strip("'")
+        if k and k not in os.environ:
+            os.environ[k] = v
+            set_keys.append(k)
+    return set_keys
+
+
+def experiment_for(target: str):
+    """``target``'s parsed descriptor, or None when it ships none / names a different target."""
+    desc = descriptor_path(target)
+    if not desc.is_file():
+        return None
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+        te = load_target_experiment(desc)
+    except Exception:                                     # noqa: BLE001 — unreadable descriptor
+        return None
+    return te if str(getattr(te, "target", "")) == target else None
+
+
 def graded_capsule_roots(target: str, *, hidden: bool = False) -> list[Path]:
     """The roots that make up ``target``'s GRADED suite, or the canonical corpus if it has no descriptor.
 
@@ -52,13 +114,7 @@ def graded_capsule_roots(target: str, *, hidden: bool = False) -> list[Path]:
     ``MERLIN_TARGET_EXPERIMENT`` (the same override ``capsule_bench/harness/_common.py`` reads) so a
     target whose descriptor lives out of tree still resolves.
     """
-    import os
-
-    from merlin.common.paths import repo_root
-    override = os.environ.get("MERLIN_TARGET_EXPERIMENT", "").strip()
-    desc = Path(override) if override else (
-        repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
-        / "target_experiment.yaml")
+    desc = descriptor_path(target)
     if not desc.is_file():
         return [] if hidden else capsule_corpus_roots()[:1]   # no descriptor: canonical corpus, unsplit
     try:

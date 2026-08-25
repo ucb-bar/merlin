@@ -249,9 +249,18 @@ def main() -> int:
 
     _bootstrap_import_path()
     from merlin.common import provenance as PROV
-    from merlin.runtime.backends import muon
+    from merlin.runtime.backends.base import get_backend
     from merlin.targetgen import capability_manifests as cm
-    from merlin.targetgen.rtl.muon_introspect import VCS_CONFIG
+
+    # The SIMT backend and its RTL introspector were evicted out of core into their own
+    # reference package, so neither `merlin.runtime.backends.muon` nor
+    # `merlin.targetgen.rtl.muon_introspect` exists to import any more. Both are reached the
+    # only way an evicted backend can be -- through the registry name its package registers
+    # under. VCS_CONFIG is still pulled from the introspector rather than named here so this
+    # package and the RTL introspect cannot drift onto different configs.
+    _muon = get_backend("muon")
+    muon = _muon.muon
+    VCS_CONFIG = _muon.muon_introspect.VCS_CONFIG
 
     header_path = muon.radiance_kernels_root() / "lib" / "include" / "VX_config.h"
     intrinsics_path = muon.radiance_kernels_root() / "lib" / "include" / "mu_intrinsics.h"

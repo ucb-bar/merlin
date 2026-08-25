@@ -362,6 +362,10 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                 # WHICH layers fell back and why -- a count alone fails the must_accelerate gate without
                 # saying what to fix.
                 "host_fallback_detail": res.get("mesh_fallbacks"),
+                # Layers whose capacity_fit obligation the RUNTIME discharged for the backend; non-empty
+                # means this result is evidence about runtime+backend together, not about the backend
+                # alone. Each entry names the tiler that chose its extent (`tile_source`).
+                "capacity_fit_delegated_to_runtime": res.get("mesh_capacity_fit_delegated"),
                 # How much of what we handed the mesh its operand format could hold. After the boundary's
                 # power-of-two scaling this should read zero flushed and zero saturating; a nonzero count
                 # is the run telling you the numbers below it are worth less than they look.
@@ -532,18 +536,70 @@ def _default_oot_package(target: str) -> str | None:
     return None
 
 
-def _dtype_bytes(tok: str | None) -> int:
-    """Byte width of an operand dtype token (i8/i16/i32/f16/f32/…). Defaults to 1 (int8-class)."""
+def _dtype_bits(tok: str | None) -> int:
+    """Width in BITS of one stored element of an operand dtype token. Floats come from the quant-format
+    registry's own layout; integer tokens (``i8``/``int8``/``i32``) from their trailing digit run.
+    Defaults to 8 (int8-class) when the token says nothing.
+
+    Not a digit scrape over the whole token: ``fp8_e4m3`` contains three digit runs, and concatenating
+    them yields 843, which made an fp8 target's on-chip capacity read as 624 elements instead of 65536.
+    """
     if not tok:
-        return 1
-    digits = "".join(ch for ch in str(tok) if ch.isdigit())
-    return max(1, int(digits) // 8) if digits else 1
+        return 8
+    t = str(tok)
+    try:
+        from .runtime.fp8_formats import storage_bits
+        return storage_bits(t)
+    except Exception:  # noqa: BLE001 — not a registered float format: try the integer spelling
+        pass
+    tail = ""
+    for ch in reversed(t):                    # trailing digit run, structurally (no regex)
+        if not ch.isdigit():
+            break
+        tail = ch + tail
+    return int(tail) if tail else 8
 
 
-def _scratchpad_capacity_elems(target: str, dtype_bytes: int) -> int | None:
-    """On-chip operand-store capacity (in elements of ``dtype_bytes``) DERIVED from the target's RTL
-    memory facts (the ``scratchpad`` memory's byte size); None when facts don't declare it (fail-open —
-    the caller then keeps the untiled extent). Never a hardcoded capacity."""
+def _dtype_bytes(tok: str | None) -> int:
+    """Byte width of an operand dtype token, rounded up (a sub-byte format still occupies a byte when
+    something must address it individually). Prefer :func:`_dtype_bits` where packing matters."""
+    return max(1, (_dtype_bits(tok) + 7) // 8)
+
+
+def _operand_store_bytes(target: str) -> int | None:
+    """On-chip OPERAND-store capacity in bytes for ``target``, derived from that target's own RTL. Tries
+    three sources in descending order of independence, and returns None (never a default) when none of
+    them can answer.
+
+    1. mlc's discovered memory MAP — fully structural: mlc names the representative operand bank and this
+       sums its sibling banks' ``depth x row_bytes``. Nothing is declared anywhere.
+    2. The DESCRIPTOR's ``rtl.operand_store`` bank-name prefix, summed over mlc's discovered memory list.
+       mlc discovers every SRAM on some targets and still refuses to classify them ("no memory map
+       discovered"), which left the ``capacity_fit`` obligation decidable on one target and undecidable
+       on another. Here the descriptor supplies only the LABEL; the bytes are still read out of the RTL.
+       Deliberately not a guess: picking the largest discovered memory would select the INSTRUCTION
+       memory on a device whose IMEM (128 KiB) is larger than its operand register file (64 KiB).
+    3. The extracted RTL facts' ``memories`` list, keyed by the role name merlin's own facts schema
+       assigns ("scratchpad" is the schema's operand-store role, not a target's spelling).
+    """
+    from .targetgen.rtl import mlc_bridge as _mb
+    try:
+        caps = _mb.discovered_capacities(target)
+        if caps and caps.get("operand_bytes"):
+            return int(caps["operand_bytes"])
+    except Exception:  # noqa: BLE001 — mlc unavailable → try the declared group next
+        pass
+    try:
+        from .targetgen.corpora import experiment_for
+        prefix = getattr(experiment_for(target), "operand_store", None)
+        if prefix:
+            banks = _mb.discovered_memories(target) or []
+            total = sum(int(b["depth"]) * int(b["row_bytes"]) for b in banks
+                        if str(b.get("name", "")).startswith(prefix))
+            if total:
+                return total
+    except Exception:  # noqa: BLE001 — no descriptor / no discovery → fall through to facts
+        pass
     try:
         from .targetgen.rtl import facts as _facts
         mems = (_facts.load_facts(target).get("facts") or {}).get("memories") or []
@@ -551,7 +607,14 @@ def _scratchpad_capacity_elems(target: str, dtype_bytes: int) -> int | None:
         return None
     sp = next((m for m in mems if m.get("name") == "scratchpad"), None)
     nbytes = sp.get("bytes") if sp else None
-    return int(nbytes) // max(1, dtype_bytes) if nbytes else None
+    return int(nbytes) if nbytes else None
+
+
+def _operand_store_capacity_elems(target: str, operand_dtype: str | None) -> int | None:
+    """The operand store's capacity in ELEMENTS of ``operand_dtype`` — counted in bits, so a sub-byte
+    packed format (fp4/fp6) is not silently rounded up to a byte apiece."""
+    nbytes = _operand_store_bytes(target)
+    return (int(nbytes) * 8) // max(1, _dtype_bits(operand_dtype)) if nbytes else None
 
 
 def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int) -> tuple[int, int, int, int]:
@@ -573,6 +636,47 @@ def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int) -> tuple[
     import math
     n_tiles = math.ceil(M / mt) * math.ceil(K / kt) * math.ceil(N / nt)
     return mt, kt, nt, n_tiles
+
+
+def capacity_fit(target: str, m: int, k: int, n: int, operand_dtype: str | None,
+                 tile_dim: int) -> dict:
+    """Evaluate the ``capacity_fit`` CONTRACT OBLIGATION for one contraction on ``target``.
+
+    ``capacity_fit`` is not a heuristic of ours — it is a predicate the interface contract already
+    names (``xdsl_dialects.contract.KNOWN_PREDICATES``) and already demands, alongside
+    ``rhs_immutable``, on every ``resident_packed_tensor`` requirement. What was missing is anyone
+    evaluating it. A backend that assumes unbounded on-chip storage therefore did not fail its
+    contract; it segfaulted the simulator three layers away, and the result surfaced as a generic
+    "the oracle returned nothing".
+
+    Measured on the gemmini backend under grade: its lowering tiles the ITERATION space into DIM x DIM
+    tiles correctly, but addresses every one of the ``kt*nt`` weight tiles as simultaneously resident
+    (``b_spad = weight_base + (kk*nt + nn)*DIM``). At 512x512 that is 32*32*16 = 16384 scratchpad rows
+    against a 16384-row scratchpad, and spike aborts with
+    ``vector::_M_range_check: __n (which is 16384) >= this->size() (which is 16384)``. Compute tiling
+    without a residency loop above it.
+
+    WHAT ``required_elems`` MODELS, stated because it is a modelling choice and not a property of the
+    layer: it is the working set of a lowering that keeps the contraction's OPERANDS RESIDENT -- the
+    whole weight tile plus the activation tile at once. A backend that instead STREAMS, DMA-ing one
+    mesh tile at a time from DRAM, has a resident set of a few tiles no matter how large the layer, and
+    satisfies the obligation at every extent. Both kinds are under grade here: one target's generated
+    backend addresses all kt*nt weight tiles as simultaneously resident, and the other's issues a DMA
+    per 32x32 tile. So a ``holds: False`` predicts a decline only for the resident kind, which is why
+    the backend is CHARGED only when the dispatch actually declines -- the predicate alone never
+    convicts. Measured: an extent this predicate called too large for one target's 64 KiB register file
+    ran unblocked on its cosim and returned output, because that backend streams.
+
+    Returns ``{"holds", "required_elems", "capacity_elems", "obligation", "assumes"}``; ``holds`` is
+    None when the target declares no capacity (unknown, never assumed true).
+    """
+    cap = _operand_store_capacity_elems(target, operand_dtype)
+    need = int(k) * int(n) + int(m) * int(k)      # weight tile + activation tile, both resident
+    return {"obligation": "capacity_fit",
+            "holds": None if not cap else bool(need <= cap),
+            "required_elems": need, "capacity_elems": cap,
+            "tile_dim": int(tile_dim or 0),
+            "assumes": "operands resident (a streaming lowering needs far less and always fits)"}
 
 
 def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str | None,
@@ -869,7 +973,7 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
             # the capacity fact is absent we keep the untiled extent (prior behavior).
             layer_extent = f"{M}x{K}x{N}"
             n_subtiles = 1
-            sp_cap = _scratchpad_capacity_elems(target, _dtype_bytes(binding.operand_dtype))
+            sp_cap = _operand_store_capacity_elems(target, binding.operand_dtype)
             if sp_cap and (K * N + M * K) > sp_cap:
                 M, K, N, n_subtiles = _capacity_fit_tile(M, K, N, D, sp_cap)
             entry = {"name": f"mesh_tile_{i}_{op}", "op": op, "kind": "op",
@@ -1001,15 +1105,18 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
         _W[:K, :N] = _np.asarray(W, dtype=_np.float64)
         A, W = _A.tolist(), _W.tolist()
         M, K, N = _Mp, _Kp, _Np
-    entry = {"name": "mesh_layer", "op": "matmul", "kind": "op",
+    def _build(m: int, k: int, n: int) -> str:
+        e = {"name": "mesh_layer", "op": "matmul", "kind": "op",
              "source_role": "mesh_layer_real_operands",
-             "source_reference": f"whole-model matmul layer {M}x{K}x{N} on the mesh with real operands",
-             "M": M, "K": K, "N": N, "lhs": "A0", "weight": "W", "out": "Y0"}
-    if epilogue:
-        entry["epilogue"] = list(epilogue)
-        if acc_scale is not None:
-            entry["acc_scale"] = float(acc_scale)
-    _, mlir = CS.build(entry, binding)
+             "source_reference": f"whole-model matmul layer {m}x{k}x{n} on the mesh with real operands",
+             "M": m, "K": k, "N": n, "lhs": "A0", "weight": "W", "out": "Y0"}
+        if epilogue:
+            e["epilogue"] = list(epilogue)
+            if acc_scale is not None:
+                e["acc_scale"] = float(acc_scale)
+        return CS.build(e, binding)[1]
+
+    mlir = _build(M, K, N)
 
     # DISPATCH ORDER is deliberate (mirrors capsule_runner.oracle_adapters): a target whose contract
     # DECLARES an EXCLUSIVE bespoke sim (a self-hosted SIMT core graded on its own emitted kernel by its
@@ -1024,27 +1131,140 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
         return [row[:_n_true] for row in out[:_m_true]]
 
     so = _SIM_ORACLES.get(_bespoke_sim_via(target))
-    if so is not None and so.exclusive:
-        if observed is not None:
-            observed["path"] = "bespoke_sim"
-        out = _matmul_via_bespoke_sim(target, mlir, A, W, package=package, timeout=timeout,
-                                      observed=observed)
-    elif endpoint in (None, "inline_asm_insn", "upstream_target"):
-        if observed is not None:
-            observed["path"] = "oot_cert"
-        out = _matmul_via_oot_cert(target, mlir, A, W, simulator=simulator, package=package,
-                                   timeout=timeout, observed=observed)
-    elif endpoint == "external_backend":
-        if observed is not None:
-            observed["path"] = "program_oracle"
-        out = _matmul_via_program_oracle(target, mlir, A, W, model_ext=model_ext,
-                                         package=package, timeout=timeout,
-                                         operand_dtype=binding.operand_dtype,
-                                         observed=observed)
-    else:
+
+    def _dispatch(_mlir, _A, _W) -> list | None:
+        """One mesh call at whatever extent it is given."""
+        if so is not None and so.exclusive:
+            if observed is not None:
+                observed["path"] = "bespoke_sim"
+            return _matmul_via_bespoke_sim(target, _mlir, _A, _W, package=package, timeout=timeout,
+                                           observed=observed)
+        if endpoint in (None, "inline_asm_insn", "upstream_target"):
+            if observed is not None:
+                observed["path"] = "oot_cert"
+            return _matmul_via_oot_cert(target, _mlir, _A, _W, simulator=simulator, package=package,
+                                        timeout=timeout, observed=observed)
+        if endpoint == "external_backend":
+            if observed is not None:
+                observed["path"] = "program_oracle"
+            return _matmul_via_program_oracle(target, _mlir, _A, _W, model_ext=model_ext,
+                                              package=package, timeout=timeout,
+                                              operand_dtype=binding.operand_dtype, observed=observed)
         return None                              # no mesh-execution path derived for this endpoint kind
+
+    # BLOCK A LAYER THAT DOES NOT FIT ON CHIP, rather than declining it. The working set of a matmul is
+    # the weight tile K*N plus the activation tile M*K; past the target's scratchpad the mesh returns
+    # nothing and the whole layer falls back to the host. Measured on lstmnetvit/gemmini: K and N are each
+    # fine alone (1x16x512 and 1x512x16 both run) and together they are not (1x512x512 declines), so two
+    # of 37 layers fell back and the model failed its must_accelerate gate at 35/37.
+    #
+    # `_capacity_fit_tile` already computes the fitting extent from RTL-derived facts, and `_mesh_verify`
+    # already uses it to shrink the tile it CERTIFIES. Only the execution path did not, so the tile record
+    # said "runs at this shape" about a shape the model never got to run. Same tiler, both paths.
+    #
+    # Splitting is EXACT on an integer datapath: partial products over a K split sum in the i32
+    # accumulator, and an N or M split is independent columns/rows. It is NOT applied when an epilogue is
+    # declared -- an acc_scale requant must see the whole accumulation, not each K block -- so such a
+    # layer still declines, now with that as the stated reason.
+    _cap = _operand_store_capacity_elems(target, binding.operand_dtype)
+    _mt, _kt, _nt = M, K, N
+    if _cap:
+        _mt, _kt, _nt, _n_sub = _capacity_fit_tile(M, K, N, max(1, _D), _cap)
+    if (_mt, _kt, _nt) != (M, K, N):
+        if epilogue:
+            if observed is not None:
+                observed["decline"] = (f"{M}x{K}x{N} exceeds the on-chip working set ({_cap} elems) and "
+                                       f"declares epilogue {list(epilogue)}; an accumulator epilogue "
+                                       f"cannot be split across K blocks")
+            return None
+        import numpy as _np
+        _An, _Wn = _np.asarray(A, dtype=_np.float64), _np.asarray(W, dtype=_np.float64)
+        _acc = _np.zeros((M, N), dtype=_np.float64)
+        _sub_mlir: dict[tuple[int, int, int], str] = {}
+        if observed is not None:
+            # ATTRIBUTION. The runtime is discharging an obligation the contract places on the TARGET
+            # BACKEND. Blocking here keeps whole-model work moving, but a result produced this way is
+            # evidence about our runtime plus their backend -- not evidence that their backend handles
+            # a layer this size. Unrecorded, it reads as the latter.
+            observed["blocked"] = {"tile": [_mt, _kt, _nt], "n_subtiles": _n_sub,
+                                   "capacity_elems": _cap}
+            observed["capacity_fit"] = {
+                **capacity_fit(target, M, K, N, binding.operand_dtype, _D),
+                # WHICH TILER CHOSE THIS EXTENT. Derived here: the fitting extent was computed from
+                # the target's own RTL-derived operand-store capacity. The other tiler below finds a
+                # width by probing until the backend stops refusing, and "derived from a hardware
+                # capacity fact" is a much stronger claim than "found by probing" -- the record used
+                # to make neither, so a reader could not tell them apart.
+                "tile_source": "capacity_fact",
+                "discharged_by": "merlin runtime (host-side residency tiling)",
+                # WHETHER THE SPLIT IS NUMERICALLY FREE depends on the accumulator, and it is not free
+                # everywhere. Over an integer accumulator the K-partials sum exactly, so a blocked layer
+                # is bit-identical to an unblocked one. Over a FLOAT accumulator it is not: the hardware
+                # would reduce all K terms in its own format, while blocking reduces each K block there
+                # and then sums the blocks on the host. That difference is charged to the runtime too,
+                # so a float target's blocked layer is not quotable as "what the accelerator computes".
+                "split_exact": bool(binding.integer),
+                "accum_dtype": binding.accum_dtype,
+                "note": "the target backend did not satisfy capacity_fit at this extent; the runtime "
+                        "split the layer so it could run. A whole-model pass resting on this is a "
+                        "statement about the runtime + backend together."
+                        + ("" if binding.integer else
+                           f" This datapath accumulates in {binding.accum_dtype}, so the split also "
+                           f"CHANGES THE REDUCTION ORDER (per-block on the device, cross-block on the "
+                           f"host) and the layer's numerics are not what the device alone would give."),
+            }
+        for m0 in range(0, M, _mt):
+            for n0 in range(0, N, _nt):
+                for k0 in range(0, K, _kt):
+                    a = _An[m0:m0 + _mt, k0:k0 + _kt]
+                    w = _Wn[k0:k0 + _kt, n0:n0 + _nt]
+                    shp = (a.shape[0], a.shape[1], w.shape[1])
+                    if shp not in _sub_mlir:
+                        _sub_mlir[shp] = _build(*shp)
+                    part = _dispatch(_sub_mlir[shp], a.tolist(), w.tolist())
+                    if part is None:
+                        return None              # fail closed: a partial sum is not a result
+                    _acc[m0:m0 + a.shape[0], n0:n0 + w.shape[1]] += _np.asarray(part, dtype=_np.float64)
+        return _unpad(_acc.tolist())
+
+    # EVALUATE THE OBLIGATION ON EVERY MESH PATH, not just one of them. This check used to sit inside
+    # the RoCC/oot cert path, so a self-hosted-ISA target -- whose layers leave through the program
+    # oracle -- had no obligation evaluated at all, and an oversized layer there declined with the same
+    # uninformative "the oracle returned nothing" that gemmini produced before the check existed.
+    # Evaluating it here covers bespoke_sim / oot_cert / program_oracle from one place, and only at the
+    # FULL extent: the blocked path above already attributes each sub-tile it chose to fit.
+    if observed is not None:
+        try:
+            observed["capacity_fit_check"] = capacity_fit(target, M, K, N, binding.operand_dtype, _D)
+        except Exception:                        # noqa: BLE001 — unresolvable target: no obligation known
+            pass
+    out = _dispatch(mlir, A, W)
     if out is not None or _tiled:
         return _unpad(out)  # already a tile of a split layer: do not recurse further
+    # Past the return above, the mesh DECLINED this extent. Name why, before either tiler is tried:
+    # the obligation evaluated a moment ago already predicted it, or it could not be evaluated at all.
+    if observed is not None:
+        _cf = observed.get("capacity_fit_check") or {}
+        if _cf.get("holds") is False:
+            observed["contract_violation"] = {
+                **_cf, "discharged_by": None,
+                "detail": (f"the target backend does not satisfy the capacity_fit obligation this "
+                           f"interface requires: the contraction needs {_cf['required_elems']} "
+                           f"resident elements against a declared capacity of {_cf['capacity_elems']}. "
+                           f"The lowering must block for residency, not only tile the iteration space."),
+            }
+        elif _cf.get("holds") is None:
+            # SAY THAT THE OBLIGATION COULD NOT BE EVALUATED. A target that declares no on-chip operand
+            # capacity gets `holds: None`, which is correct (never assume it holds) but silent -- and a
+            # silent None is how a whole class of failures came to be reported as an unreachable oracle.
+            # Recording it means a decline on such a target names the missing fact instead of hiding it.
+            observed["capacity_fit_unevaluable"] = {
+                **_cf,
+                "detail": ("this target declares no on-chip operand-store capacity, so the capacity_fit "
+                           "obligation could not be evaluated and this decline is UNATTRIBUTED: it may "
+                           "or may not be a residency failure. Declare the operand store in the "
+                           "target's RTL facts to make the obligation decidable."),
+            }
 
     # The datapath has a magnitude floor: a layer whose operands are small is refused, and one doubling
     # of either operand flips it. Retry once with both operands rescaled to a power of two near 1.0 and
@@ -1072,16 +1292,44 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
         except Exception:                             # noqa: BLE001 — rescale is an optimisation, not a gate
             pass
 
-    # The backend refused this extent. On a target that declares no scratchpad capacity fact there is
-    # nothing to derive a tile size FROM, and inventing one would be a target literal in disguise. Find
-    # the width this backend accepts by halving, then run the layer as N-tiles of that width: splitting
-    # along N is exact, because C[:, a:b] is A @ W[:, a:b]. Costs a few refused probes ONCE per target.
+    # EMPIRICAL TILER -- the fallback, reached only when the DERIVED one above could not act. The two
+    # are complementary, not rivals: the blocking path above computes a fitting extent from the target's
+    # own RTL-derived operand-store capacity and runs first, but `_operand_store_capacity_elems` returns
+    # None for a target that declares no such fact. There is then nothing to derive a tile size FROM, and
+    # inventing one would be a target literal in disguise. So find the width this backend ACCEPTS by
+    # halving, then run the layer as N-tiles of that width: splitting along N is exact, because
+    # C[:, a:b] is A @ W[:, a:b]. Costs a few refused probes ONCE per target.
     D = int(getattr(binding, "tile_dim", 0) or 0)
     if D <= 0:
         return None
+
+    def _probed(extent, n_sub, axis):
+        """Record that a PROBE, not a capacity fact, chose this extent.
+
+        Both tilers write `observed["capacity_fit"]`, and the layer record downstream reads
+        `tile_source` off it. "Derived from an RTL scratchpad capacity" and "found by halving until the
+        backend stopped refusing" are very different provenance claims about the same number.
+        """
+        if observed is None:
+            return
+        observed["capacity_fit"] = {
+            "holds": None, "required_elems": None, "capacity_elems": None,
+            "tile_source": "probed", "tile": list(extent), "n_subtiles": int(n_sub),
+            "split_axis": axis,
+            "discharged_by": "merlin runtime (host-side residency tiling)",
+            # An N or M split leaves every output element a single full-K reduction on the device, so
+            # unlike the K-blocking the derived tiler does, this stays exact on a float accumulator too.
+            "split_exact": True, "accum_dtype": binding.accum_dtype,
+            "note": (f"this target declares no on-chip operand-store capacity, so no tile size could be "
+                     f"DERIVED; the extent above is the largest this backend accepted when probed by "
+                     f"halving. The numerics are the device's own (an {axis}-split is exact), but the "
+                     f"EXTENT is an empirical finding about this backend, not a derived property of the "
+                     f"hardware -- and the layer ran because the runtime split it."),
+        }
+
     _rows_kw = dict(operand_dtype=operand_dtype, accum_dtype=accum_dtype, simulator=simulator,
                     package=package, timeout=timeout, epilogue=epilogue, acc_scale=acc_scale,
-                    observed=observed, M=M)
+                    observed=observed, M=M, record=_probed)
     if N <= D:
         return _unpad(_mesh_rows(target, A, W, **_rows_kw))   # nothing to split along N
     # Keyed by K as well: the accepted width is bounded by the WORKING SET (K*w + M*K), so a width
@@ -1116,11 +1364,12 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
         if piece is None:
             return None                          # a tile the discovered width should have covered
         cols.append(piece)
+    _probed((M, K, width), (N + width - 1) // width, "N")
     return _unpad([sum((c[r] for c in cols), []) for r in range(M)])
 
 
 def _mesh_rows(target, A, W, *, operand_dtype, accum_dtype, simulator, package, timeout,
-               epilogue, acc_scale, M, observed=None):
+               epilogue, acc_scale, M, observed=None, record=None):
     """Run a refused layer as row blocks. The working set is ``K*N + M*K``; N-tiling shrinks the first
     term and M-tiling the second, so a layer whose N is already at or below the tile dim (a projection
     down to a couple of columns, say) can only be helped by splitting M. Exact: C[a:b, :] is A[a:b, :] @ W.
@@ -1147,13 +1396,20 @@ def _mesh_rows(target, A, W, *, operand_dtype, accum_dtype, simulator, package, 
         if piece is None:
             return None
         rows.extend(piece)
+    if record is not None:
+        record((height, len(A[0]) if A else 0, len(W[0]) if W else 0),
+               (M + height - 1) // height, "M")
     return rows
 
 
 def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
                          observed: dict | None = None) -> list | None:
     """Systolic/RoCC path: certify the matmul through the target's generated OOT package on its ELF/mesh
-    oracle, with the real operands injected (``inputs`` -> the package harness's ``materialize_inputs``)."""
+    oracle, with the real operands injected (``inputs`` -> the package harness's ``materialize_inputs``).
+
+    The ``capacity_fit`` obligation is evaluated by the caller (``run_matmul_on_mesh``) BEFORE any mesh
+    path runs, so that if the backend then aborts we can say which contract predicate it failed instead
+    of reporting an unreachable oracle. It lived here once, which left every non-RoCC path unchecked."""
     import os
     import tempfile
     from .benchharness import runs_root
@@ -1175,6 +1431,14 @@ def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
         _kind = _orc.get("kind") if isinstance(_orc, dict) else _orc
         observed["oracle"] = f"{target}-{_kind}-{sim}" if _kind else f"{target}-{sim}"
     if res.get("status") != "pass":
+        # KEEP THE REASON. Returning a bare None here is why a whole-model fallback could only be
+        # described as "unsynthesizable at this shape, or the oracle was unreachable" -- a guess covering
+        # two very different causes, offered because the cert's own verdict was discarded one frame down.
+        if observed is not None:
+            observed["decline_status"] = res.get("status")
+            observed["decline"] = (res.get("failure") or {}).get("detail") or res.get("failure")
+            # The contract ATTRIBUTION for this decline is applied by the caller, which evaluated the
+            # obligation for whichever mesh path ran. Doing it here attributed the RoCC path only.
         return None
     return (res.get("oracle_outputs") or {}).get("Y0")
 
