@@ -826,9 +826,14 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 if _cf is not None:
                     _d = getattr(execute, "mesh_capacity_fit_delegated", None)
                     if _d is not None and len(_d) < 64:
+                        # WHICH tiler discharged it travels with the record. "the layer did not fit"
+                        # and "the backend only built one tile" are different facts about the backend,
+                        # and only the second says its shape space is uncovered -- so the score can
+                        # report the backend's own coverage apart from runtime+backend.
                         _d.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
                                    "required_elems": _cf.get("required_elems"),
-                                   "capacity_elems": _cf.get("capacity_elems")})
+                                   "capacity_elems": _cf.get("capacity_elems"),
+                                   "tiled_by": _cf.get("tiled_by")})
                 if mesh_out is not None:
                     om = np.array(mesh_out, np.float64) * scale
                     env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])

@@ -1095,9 +1095,15 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     # saying so is the difference between "this compiler handles a 512x512 layer" and "this layer ran".
     _delegated = (model_exec or {}).get("capacity_fit_delegated_to_runtime") or []
     if _delegated:
+        # If ANY delegated layer was tiled from the backend's DECLARED tile rather than from a capacity
+        # limit, this verdict rests on the runtime having driven a loop nest the backend does not have.
+        # That is a different claim and the score reports it as one (`backend_coverage`).
+        _tb = sorted({str(d.get("tiled_by")) for d in _delegated if d.get("tiled_by")})
         result["contract_obligations"] = {
             "capacity_fit": {
                 "discharged_by": "merlin runtime (host-side residency tiling)",
+                "tiled_by": ("declared_primitive_tile" if "declared_primitive_tile" in _tb
+                             else (_tb[0] if _tb else None)),
                 "n_layers": len(_delegated), "layers": _delegated[:8],
                 "detail": ("the target backend did not satisfy capacity_fit at these extents; the "
                            "runtime split them so the model could run. This verdict is evidence about "

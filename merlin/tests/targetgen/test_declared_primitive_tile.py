@@ -105,3 +105,25 @@ def test_no_runtime_tiling_leaves_the_score_shape_unchanged(monkeypatch):
     s = _score(monkeypatch, [_cap("A0")])
     assert "backend_coverage" not in s
     assert s["n_passed"] == 1
+
+
+def test_tiled_by_survives_the_whole_chain_to_the_score():
+    """The guardrail is only real if `tiled_by` actually ARRIVES.
+
+    It is produced in compile_cli, carried by dispatch_runtime's delegation record, folded into
+    contract_obligations by capsule_runner, and read by capsule_grade. A break anywhere makes
+    backend_coverage silently never appear -- i.e. the runtime quietly covering for the backend with
+    nothing in the artifact saying so, which is the exact failure the guardrail exists to prevent.
+    """
+    import inspect
+    from merlin.runtime import dispatch_runtime
+    from merlin.targetgen import capsule_runner
+    from merlin import compile_cli
+
+    # produced
+    assert '"tiled_by": _tiled_by' in inspect.getsource(compile_cli.run_matmul_on_mesh)
+    # carried
+    assert '"tiled_by": _cf.get("tiled_by")' in inspect.getsource(dispatch_runtime)
+    # folded in
+    src = inspect.getsource(capsule_runner)
+    assert 'd.get("tiled_by")' in src and '"declared_primitive_tile" in _tb' in src
