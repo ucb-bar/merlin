@@ -156,3 +156,38 @@ def test_the_registry_names_no_target():
     assert TR.TOOLS["rtl_facts"].derived_paths == ("rtl_facts_pin",)
     assert hasattr(load_target_experiment(repo_root() / _DESCRIPTOR), "rtl_facts_pin")
     del tool_registry
+
+
+def _workflow(te, arm, **kw):
+    """The mandatory-workflow block a bundle's OWN grant set produces (cheap: no capability manifest)."""
+    from merlin.targetgen.generate_prompt import _enforced_workflow
+    m = _arm_manifest(te, arm, "bid", **kw)
+    granted = {e["path"] for e in m["allowed"]
+               if str(e.get("path", "")).startswith(("merlin/", "experiments/"))}
+    return _enforced_workflow(arm, "inline_asm_insn", granted, te.target)
+
+
+def test_the_prompt_stops_mandating_a_tool_the_cell_withheld(te):
+    """A cell must never tell the agent to use a tool it cannot open.
+
+    The mandatory-workflow block is derived from the bundle's grant set, so withholding a tool has to
+    remove its step. Without this the agent is handed its full rung's checklist and burns rounds
+    reaching for something that is not there -- which is how an arm once ran a whole campaign without
+    executing a single one of its generators.
+    """
+    full = _workflow(te, "merlin_rtlchecks")
+    assert "xDSL pass pipeline" in full
+    assert "xDSL pass pipeline" not in _workflow(te, "merlin_rtlchecks", drop_tools=("xdsl_kit",))
+    assert "check-bijection" in full
+    assert "check-bijection" not in _workflow(te, "merlin_rtlchecks", drop_tools=("cca_spine",))
+
+
+def test_the_rtl_mandate_needs_both_rtl_tools_dropped(te):
+    """The prompt reads the generators and the extracted facts as ONE capability: it mandates deriving
+    from the RTL if EITHER is granted. So dropping the generators alone is a real cell, but it is not a
+    'no RTL' cell -- the agent still has the facts and is still told to use them. Anyone reading the
+    ablation table needs that distinction, so pin it rather than leave it to be rediscovered.
+    """
+    assert "RTL-checks arm" in _workflow(te, "merlin_rtlchecks", drop_tools=("rtl_generators",))
+    assert "RTL-checks arm" not in _workflow(te, "merlin_rtlchecks",
+                                             drop_tools=("rtl_generators", "rtl_facts"))

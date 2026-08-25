@@ -224,7 +224,13 @@ def _materialize_prompt_and_grants(te: TargetExperiment, bdir, bundle_id: str, v
 
     if cap is not None:
         from .generate_prompt import render_prompt
-        _w_if_absent("STARTER_PROMPT.md", render_prompt(te, cap, experiment, stem))
+        # Thread the bundle's OWN grant set, so the mandatory-workflow block names only the tools this
+        # bundle actually binds. Without it the prompt falls back to a coarse match on the arm string
+        # and an ablation cell would be handed its full rung's checklist -- telling the agent to use a
+        # tool the cell deliberately withheld, which is the one thing a cell must never do.
+        granted = {e["path"] for e in (manifest.get("allowed") or [])
+                   if isinstance(e, dict) and str(e.get("path", "")).startswith(("merlin/", "experiments/"))}
+        _w_if_absent("STARTER_PROMPT.md", render_prompt(te, cap, experiment, stem, granted_tools=granted))
     _w_always("allowed_files.txt", _grant_txt(manifest, "allowed"))
     _w_always("denied_files.txt", _grant_txt(manifest, "denied"))
 
