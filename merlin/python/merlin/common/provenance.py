@@ -71,6 +71,31 @@ class Pin:
     notes: str = ""
     used_by: tuple[str, ...] = ()
     repo_observed_note: str = ""
+    #: Files this checkout is KNOWN to carry uncommitted, as ``(repo-relative path, sha256)`` pairs.
+    #:
+    #: The registry's rule is that a commit must describe the bytes that were read. Sometimes it cannot:
+    #: work lives in a fork we do not control, or has not landed upstream yet, and the derivation reads it
+    #: anyway. Until now the only way to say so was prose in ``notes`` (see the caveat under
+    #: ``firesim_opu_v256d128``), which no check can read -- so the choice was between an unexplained drift
+    #: and a comment nobody enforces.
+    #:
+    #: Declaring the DIGEST makes "<commit> plus exactly these bytes" a nameable revision. It does NOT say
+    #: the file matches upstream, and it does not clear the fact that the tree is dirty: the edit is still
+    #: reported, now in ``notes`` with its digest, so any report carries it. What it buys is that the
+    #: content is pinned -- edit the file again and the digest stops matching, which is drift with a much
+    #: more specific message than "uncommitted changes".
+    #:
+    #: This is a declaration to be REVIEWED, not a way to silence a check. An undeclared edit to a source
+    #: a derivation reads is still drift, exactly as before.
+    local_edits: tuple[tuple[str, str], ...] = ()
+
+    def declared_edit(self, rel: str) -> str | None:
+        """The declared digest for ``rel``, or None if this pin declares no edit to it."""
+        norm = str(rel).lstrip("./")
+        for path, digest in self.local_edits:
+            if str(path).lstrip("./") == norm:
+                return digest
+        return None
 
     def checkout(self) -> Path | None:
         """Where this pin's sources should be, or None when the root env var is unset."""
@@ -281,8 +306,28 @@ def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
             forbids_paths=tuple(body.get("forbids_paths") or ()),
             description=str(body.get("description") or ""), notes=str(body.get("notes") or ""),
             used_by=tuple(body.get("used_by") or ()),
-            repo_observed_note=str(body.get("repo_observed_note") or ""))
+            repo_observed_note=str(body.get("repo_observed_note") or ""),
+            local_edits=_local_edits(p, name, body.get("local_edits")))
     return out
+
+
+def _local_edits(src: Path, name: str, raw: Any) -> tuple[tuple[str, str], ...]:
+    """Parse a pin's ``local_edits`` mapping of repo-relative path -> sha256 of the expected content."""
+    if raw in (None, {}, ()):
+        return ()
+    if not isinstance(raw, dict):
+        raise PinsError(f"{src}: pin {name!r} local_edits must be a mapping of path -> sha256")
+    out = []
+    for rel, digest in raw.items():
+        if not isinstance(digest, str):
+            # Same trap as the commit: an all-digit digest is valid hex and YAML reads it as a number.
+            raise PinsError(f"{src}: pin {name!r} local_edits[{rel!r}] must be a quoted sha256 string; "
+                            f"YAML read {type(digest).__name__}")
+        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest.lower()):
+            raise PinsError(f"{src}: pin {name!r} local_edits[{rel!r}] is not a 64-character sha256 "
+                            f"({digest!r}); a partial digest does not identify content")
+        out.append((str(rel), digest.lower()))
+    return tuple(sorted(out))
 
 
 def pin(name: str, path: "str | Path | None" = None) -> Pin:
@@ -390,17 +435,37 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
             drift.append(f"branch is {got.branch!r} but the pin declares {p.branch!r}")
         if got.dirty:
             touched = _touches(got.dirty_paths, read_set)
-            if touched:
-                drift.append(f"{len(touched)} of the source(s) this reads carry uncommitted changes "
-                             f"({list(touched)}), so the declared revision does not describe what would "
+            # A touched source whose CONTENT the pin declares (see Pin.local_edits) is accounted for:
+            # the revision alone does not describe it, but "<commit> plus this digest" does, and that is
+            # a nameable thing to attribute a result to. Anything else stays drift.
+            accounted, unaccounted, stale = [], [], []
+            for rel in touched:
+                want = p.declared_edit(rel)
+                if want is None:
+                    unaccounted.append(rel)
+                    continue
+                full = Path(got.path) / rel
+                have = file_digest(full) if full.is_file() else ""
+                (accounted if have == want else stale).append(rel)
+            if stale:
+                drift.append(
+                    f"declared local edit(s) {stale} no longer match the digest the pin records, so the "
+                    "content that was reviewed is not the content that would be read")
+            if unaccounted:
+                drift.append(f"{len(unaccounted)} of the source(s) this reads carry uncommitted changes "
+                             f"({unaccounted}), so the declared revision does not describe what would "
                              "be read")
-            elif not read_set:
+            if accounted:
+                notes.append(f"{len(accounted)} declared local edit(s) {accounted} match the digest the "
+                             "pin records; this is the pinned commit PLUS those bytes, and a result "
+                             "citing it must say so")
+            if not touched and not read_set:
                 # Nothing declared as read, so there is nothing to intersect and no basis for calling the
                 # dirt harmless. Fail closed rather than silently downgrading an unknown to a note.
                 drift.append(f"{got.dirty_files} uncommitted change(s) and no read set to check them "
                              "against, so whether the declared revision describes what would be read "
                              "is UNKNOWN")
-            else:
+            elif not touched:
                 notes.append(f"{got.dirty_files} uncommitted change(s), none of them a source this reads")
         if (p.repo_canonical and got.remote not in (UNKNOWN, "")
                 and got.remote != p.repo_canonical and not p.repo_observed_note):
