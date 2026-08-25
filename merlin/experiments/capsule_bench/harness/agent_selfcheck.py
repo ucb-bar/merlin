@@ -105,7 +105,29 @@ def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
                 sim = "verilator"
         return ad, sim
     # non-chipyard target: its contract-resolved tiers (arc / program oracle); --sim does not apply.
-    return CR.oracle_adapters(target, sim_via), sim
+    #
+    # The LOOP ladder, not the full one. `oracle_adapters` is the CHECKPOINT set -- everything the endpoint
+    # can reach, cycle-accurate tiers included -- and returning it here made every self-check pay the
+    # cert tier on every capsule. Measured on this repo's SIMT target that was 80% of an agent round's
+    # wall clock (134 of 167 minutes across nine sweeps), of which 34% returned no verdict at all, for a
+    # tier the score never reads: the DRIVER-side barrier already declines it via
+    # `_cycle_accurate_checkpoint_enabled`, because no capsule in that corpus declares a cert tier
+    # mandatory. Two code paths disagreeing, not a design choice.
+    #
+    # `qa_loop_adapters` keeps the fastest tier the CORPUS ITSELF declares, and fails closed (`{}`) rather
+    # than substituting one it never asked for. `--tiers` below is the way to go deeper, per capsule,
+    # deliberately.
+    _declared = None
+    try:
+        import _common as _C
+        from merlin.targetgen.contract.materialize import declared_oracle_tiers
+        from merlin.targetgen.target_experiment import load_target_experiment
+        _te_ = load_target_experiment(_C.EXP / "target_experiment.yaml")
+        _declared = declared_oracle_tiers(*_te_.graded_roots())
+    except Exception:  # noqa: BLE001 -- no resolvable descriptor: fall back to the full ladder
+        _declared = None
+    loop = CR.qa_loop_adapters(target, sim_via, declared_tiers=_declared) if _declared else {}
+    return (loop or CR.oracle_adapters(target, sim_via)), sim
 
 
 def _log_telemetry(out: dict, capsules_arg: str) -> None:
@@ -142,6 +164,11 @@ def main(argv=None):
     ap.add_argument("--sim", choices=["spike", "verilator", "vcs"], default="spike")
     ap.add_argument("--capsules", default="all", help="'all' or comma-separated capsule names")
     ap.add_argument("--workers", type=int, default=8, help="parallel sim workers (verilator/vcs)")
+    ap.add_argument("--tiers", default="", metavar="L2,L3",
+                    help="oracle tiers to run, comma-separated. Default is the LOOP tier this target's "
+                         "corpus declares (the cheap one). Name a deeper tier to certify deliberately -- "
+                         "a cert tier costs minutes per capsule against seconds for the loop tier, so it "
+                         "is worth spending on a capsule that already passes, not on the whole corpus.")
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--out", default="", help="optional: also write the redacted JSON here")
     a = ap.parse_args(argv)
@@ -168,6 +195,16 @@ def main(argv=None):
 
     _tgt, _sim_via = _target_sim_via()
     adapters, sim = _adapters(a.sim, _tgt, _sim_via)
+    if a.tiers:
+        # Validated against the RESOLVED map, never trusted: an unreachable tier must be named, not
+        # silently dropped (a self-check that quietly grades fewer tiers than asked reads as a pass).
+        want = {t.strip().upper() for t in a.tiers.split(",") if t.strip()}
+        missing = sorted(want - set(adapters))
+        if missing:
+            print(json.dumps({"error": f"--tiers names {missing}, which this endpoint does not reach; "
+                                       f"reachable: {sorted(adapters)}"}))
+            return 2
+        adapters = {t: ad for t, ad in adapters.items() if t in want}
     # barrier = the deepest resolved RTL tier: chipyard maps from --sim; any other target uses its
     # single contract-derived tier (atlas -> L3 program oracle), so read it from the adapters.
     barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" else max(adapters) if adapters else "L3"

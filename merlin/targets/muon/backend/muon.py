@@ -725,9 +725,30 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
                 f"{_ops} is supported. Declare every operand and result in `tensors` as "
                 f"{{name: {{shape: [...], dtype: ..., role: input|weight|output}}}}. `tensors` is optional "
                 f"in the schema but required to grade, since the harness embeds the operands by shape.")
-        raise MuonError(f"could not derive harness operands: canonical_inputs and tensors ARE present, but "
-                        f"this harness has no operand rule for the command shape {_ops} — a TOOLING gap, "
-                        f"not a defect in the submitted artifact")
+        # Third cause: operands ARE declared and no rule matched -- including the declaration-derived
+        # fallback, which binds from roles and shapes rather than from the opcode. Name exactly what it
+        # needed and could not find, because the previous wording ("no operand rule for the command shape")
+        # sent an agent to permute opcodes that were already correct. What the fallback requires is an
+        # output-role tensor whose shape is declared: a produced shape cannot be inferred without the very
+        # per-op knowledge the fallback exists to avoid.
+        _tn = cb.get("tensors") or {}
+        _roles = sorted({str((t or {}).get("role", "?")) for t in _tn.values()})
+        _out = [nm for nm, t in _tn.items() if str((t or {}).get("role", "")).lower() == "output"]
+        _out_unshaped = [nm for nm in _out if not (_tn.get(nm) or {}).get("shape")]
+        if not _out:
+            _why = (f"no tensor is declared with role 'output' (roles present: {_roles}), so the harness "
+                    f"cannot tell which operand your kernel produces")
+        elif _out_unshaped:
+            _why = (f"the output tensor(s) {_out_unshaped} declare no `shape`, and a PRODUCED shape cannot "
+                    f"be inferred without op-specific knowledge")
+        else:
+            _why = (f"the declared operands could not be bound to the command's shapes (outputs: {_out})")
+        raise MuonError(
+            f"could not derive harness operands: {_why}. Command shape {_ops} is NOT the problem — this "
+            f"harness binds operands from the `tensors` declarations, not from opcode names, so any "
+            f"opcode is acceptable provided every operand and result is declared as "
+            f"{{name: {{shape: [...], dtype: ..., role: input|weight|output}}}}. If your declarations are "
+            f"complete, this is a TOOLING gap, not a defect in the submitted artifact.")
     (work / "main.c").write_text(main_c, encoding="utf-8")
     mobj_rv = work / "main.o"
     mc = subprocess.run([str(clang), *cflags, "-c", str(work / "main.c"), "-o", str(mobj_rv)],

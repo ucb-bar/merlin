@@ -81,6 +81,9 @@ def _sim_env() -> dict:
     return e
 
 
+from tier_promote import promote as _promote, resolve_tiers as _resolve_tiers  # noqa: E402
+
+
 def _strip_golden(obj):
     """Defence-in-depth: drop any 'expected'/'golden' keys before publishing (agent_selfcheck already
     redacts; this guarantees it even if a future change regresses)."""
@@ -145,7 +148,10 @@ def _allowed_sims() -> tuple[str, ...]:
     return ("spike", "verilator", "vcs") if _sim_via() == "chipyard" else (_NEUTRAL_SIM,)
 
 
-_NEUTRAL_SIM = "contract"   # "grade on whatever tier this target's contract resolves to"
+_NEUTRAL_SIM = "contract"
+_LOOP_TIER = None      # resolved in main() from the target's ladder
+_CERT_TIER = None
+_COVER = None   # "grade on whatever tier this target's contract resolves to"
 
 
 def main(argv=None):
@@ -157,6 +163,16 @@ def main(argv=None):
     ap.add_argument("--per-capsule-timeout", type=int, default=0, help="0=read .oracle_timing.json or default")
     a = ap.parse_args(argv)
     ws = Path(a.ws); ch = ws / ".qa_channel"; ch.mkdir(parents=True, exist_ok=True)
+
+    # Which tier is the cheap gate and which is the expensive cert, DERIVED from this target's own
+    # adapter map -- never a literal, so a target with a different ladder gets the right split with no
+    # edit here. loop = the fastest tier the corpus declares; cert = the deepest reachable above it.
+    # Promotion is simply disabled (both None) when the endpoint exposes only one tier, rather than
+    # inventing a second.
+    global _LOOP_TIER, _CERT_TIER, _COVER
+    _LOOP_TIER, _CERT_TIER, _COVER = _resolve_tiers(ws)
+    print(f"[promote] loop={_LOOP_TIER} cert={_CERT_TIER} "
+          f"cover={len(_COVER) if _COVER is not None else 'all'}", file=sys.stderr, flush=True)
 
     # verilator per-capsule timeout: measured (Part 3) or a generous default
     vpc = a.per_capsule_timeout
@@ -194,6 +210,14 @@ def main(argv=None):
                        "error": f"{j['sim']} exceeded its time budget"}
             resp.write_text(json.dumps(out, indent=2))
             (ch / (f"simerr_{jid}" if out.get("error") else f"simdone_{jid}")).write_text("ok")
+            # PROMOTE: a capsule that just passed the loop tier earns the cert tier now, not at a round
+            # boundary hours away. Skipped for a job that WAS a promotion, so a cert verdict cannot
+            # re-enqueue itself.
+            if not j.get("promoted") and not out.get("error"):
+                try:
+                    _promote(ws, ch, out, _LOOP_TIER, _CERT_TIER, _COVER, sys.stderr)
+                except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
+                    print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
             if j["slot"]:
                 j["slot"].unlink(missing_ok=True)
             running.pop(jid)
@@ -209,8 +233,28 @@ def main(argv=None):
                 sim = r.get("sim")
                 caps = _valid_capsules(str(r.get("capsules", "all")))
                 if sim not in _allowed_sims() or caps is None:
+                    # Say WHICH of the two it was, and what would be accepted. The old message named
+                    # neither, and a request rejected without a remedy reads as "the oracle is broken":
+                    # measured on a live run, an agent submitted twice, was rejected twice with this
+                    # text, and never used the async oracle again -- while the arm that DID find the
+                    # async path used it 98 times in the round its score moved 17 -> 26. An unhelpful
+                    # rejection costs more than the check it protects.
+                    _allowed = _allowed_sims()
+                    if sim not in _allowed:
+                        _why = (f"--sim {sim!r} is not accepted for this target. Use "
+                                f"{' or '.join(repr(s) for s in _allowed)}"
+                                + (f"; this target's tier comes from its contract, so {_NEUTRAL_SIM!r} "
+                                   f"means 'grade on whatever tier the contract resolves to' and the "
+                                   f"tier itself is chosen with --tiers"
+                                   if _allowed == (_NEUTRAL_SIM,) else ""))
+                    else:
+                        _named = str(r.get("capsules", "all"))
+                        _why = (f"--capsules {_named!r} named something this runner will not run: a "
+                                f"capsule must be an existing public capsule directory name (letters, "
+                                f"digits, underscore), or 'all'")
                     (ch / f"simresp_{jid}.json").write_text(json.dumps(
-                        {"error": "rejected: bad sim or capsule (constrained runner)", "all_pass": False}))
+                        {"error": f"rejected: {_why}", "all_pass": False,
+                         "rejected_field": "sim" if sim not in _allowed else "capsules"}))
                     (ch / f"simerr_{jid}").write_text("rejected"); claimed.add(jid); continue
                 slot = None
                 if sim == "verilator":
@@ -227,10 +271,14 @@ def main(argv=None):
                          "--timeout", str(to), "--out", str(resp_tmp)]
                 if sim != _NEUTRAL_SIM:      # --sim is meaningless where the contract picks the tier
                     argv2[4:4] = ["--sim", sim]
+                _tiers = str(r.get("tiers") or "").strip()
+                if _tiers:                   # validated downstream against the RESOLVED adapter map
+                    argv2 += ["--tiers", _tiers]
                 (ch / f"simrun_{jid}").write_text("running")
                 proc = subprocess.Popen(["timeout", str(to + 120)] + argv2, cwd=str(ws),
                                         env=_sim_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                running[jid] = {"proc": proc, "slot": slot, "resp_tmp": str(resp_tmp), "sim": sim}
+                running[jid] = {"proc": proc, "slot": slot, "resp_tmp": str(resp_tmp), "sim": sim,
+                                "promoted": bool(r.get("promoted"))}
                 claimed.add(jid)
         time.sleep(a.poll)
     # drain on STOP

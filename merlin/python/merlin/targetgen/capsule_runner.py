@@ -631,6 +631,19 @@ def default_adapters() -> dict[str, Callable]:
             "L3": _spike_verilator_adapter("verilator", "gemmini")}
 
 
+def suppressed_tier_result(tier: str, mandatory: bool, failed_tier: str, *, from_rtl: bool = False):
+    """The TierResult for a tier the ladder did NOT run because a mandatory tier already failed.
+
+    ``skipped``, never ``fail``. ``not_run_is_not_pass`` treats a recorded ``fail`` as evidence the capsule
+    was certified at that tier and found wrong; a tier that never executed has no such evidence, and
+    fabricating one would put a cycle-accurate verdict on a capsule no RTL ever saw.
+    """
+    return TierResult(tier, "skipped", mandatory,
+                      reason=(f"not run: mandatory tier {failed_tier} already failed, so this deeper tier "
+                              f"could not change the verdict and was not worth its cost"),
+                      derived_from_rtl=from_rtl)
+
+
 def qa_loop_adapters(target: str, sim_via: str | None = None, *,
                      declared_tiers: set[str] | None = None) -> dict[str, Callable]:
     """The FAST per-round QA-loop oracle set for ``target`` — resolved from :func:`oracle_adapters`, never
@@ -1617,8 +1630,31 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # never reported as a pass, and a REQUIRED tier can never be declared inapplicable (that raises at
         # generation time), so this cannot be used to switch off a failing mandatory oracle.
         _inapplicable = capsule.get("inapplicable_oracle_tiers") or {}
+        # A MANDATORY tier that already failed makes every DEEPER tier unaffordable and uninformative: the
+        # capsule is failed whatever the deeper tier says, and a deeper tier is the expensive one. Measured
+        # on this repo's SIMT target, the functional tier costs ~2.5 s per capsule and the cycle-accurate
+        # tier costs minutes, so a sweep scoring 18/35 spent RTL time on all 35 -- including the 17 whose
+        # numerics were already known wrong. Deeper tiers are recorded as `skipped` naming the tier that
+        # failed, never as `fail`: they did not run, and `not_run_is_not_pass` reads a fabricated fail as
+        # evidence the capsule was certified at that tier.
+        #
+        # Scoped to a MANDATORY failure on purpose. An OPTIONAL cert tier that fails must not suppress
+        # anything -- it is precisely the "passes the functional oracle, fails RTL" signal this benchmark
+        # exists to surface, and a capsule can legitimately pass with an optional tier red.
+        # Derived from what was RECORDED, not from a flag each failure path has to remember to set: there
+        # are eleven sites in this loop that write a TierResult, and a flag would silently stop
+        # short-circuiting the day a twelfth is added.
+        def _already_failed_mandatory() -> str | None:
+            return next((t for t, r in tiers.items()
+                         if getattr(r, "mandatory", False) and getattr(r, "status", None) == "fail"), None)
+
         for tier in sorted(set(cfg.oracle_tiers) | set(adapters or {})):
             mand = tier in required
+            _failed_mandatory = _already_failed_mandatory()
+            if _failed_mandatory is not None:
+                tiers[tier] = suppressed_tier_result(tier, mand, _failed_mandatory,
+                                                     from_rtl=tier in cfg.rtl_tiers)
+                continue
             if tier in _inapplicable and not mand:
                 tiers[tier] = TierResult(tier, "skipped", mand, not_applicable=True,
                                          reason=str(_inapplicable[tier]),

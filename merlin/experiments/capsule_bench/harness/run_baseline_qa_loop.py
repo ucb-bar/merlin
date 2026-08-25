@@ -105,21 +105,42 @@ def _spend_over_cap(this_round_cost) -> tuple[bool, float, float]:
     if cap <= 0 or not ledger:
         return False, 0.0, 0.0
     import fcntl
-    c = float(this_round_cost or 0)
+    # An UNMEASURED round is not a free one. `float(cost or 0)` booked $0 for any round whose usage never
+    # arrived -- and the usage of a round killed by --round-timeout never arrives at all, because the
+    # driver only emits it on `turn.completed` and a killed turn never completes. Measured: three separate
+    # A/B legs across v9, v10 and v11 each burned a full four-hour round that the ledger recorded as
+    # costing nothing. A metered run could therefore overrun its ceiling by an arbitrary amount while
+    # every gate reported it comfortably under.
+    #
+    # Unmeasured rounds are written with `cost: null` + `unmeasured: true` and counted separately, so the
+    # cap is enforced on what is KNOWN while the unknown is visible rather than silently zero. The cap
+    # cannot be enforced against a number nobody has; what it can do is refuse to pretend the number is 0.
+    _unmeasured = this_round_cost is None
+    c = None if _unmeasured else float(this_round_cost)
     p = Path(ledger)
     p.parent.mkdir(parents=True, exist_ok=True)
-    total = 0.0
+    total, n_unmeasured = 0.0, 0
     with open(p, "a+", encoding="utf-8") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
-        f.write(json.dumps({"cost": c}) + "\n")
+        f.write(json.dumps({"cost": c, "unmeasured": _unmeasured}) + "\n")
         f.flush()
         f.seek(0)
         for line in f:
             try:
-                total += float(json.loads(line).get("cost", 0) or 0)
+                row = json.loads(line)
             except Exception:  # noqa: BLE001 — a malformed ledger line must not defeat the cap
                 continue
+            if row.get("unmeasured") or row.get("cost") is None:
+                n_unmeasured += 1
+                continue
+            try:
+                total += float(row.get("cost") or 0)
+            except Exception:  # noqa: BLE001
+                continue
         fcntl.flock(f, fcntl.LOCK_UN)
+    if n_unmeasured:
+        print(f"  [spend] ${total:.2f} of ${cap:.2f} measured, plus {n_unmeasured} UNMEASURED round(s) "
+              f"whose usage never arrived — the true total is a LOWER BOUND", flush=True)
     return total >= cap, total, cap
 
 
@@ -1040,6 +1061,24 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -
                                {"public", "dev"}, no_oracle, timeout)
         out.write_text(json.dumps(verdict, indent=2))
         _write_stage_ledger(run_dir, rnd, cand, run_dir / "_qa_work" / f"runs_{rnd:02d}", verdict)
+    # PROMOTE off the round grade too. Promotion is hooked into both BROKERS, but a broker only sees a
+    # verdict the agent ASKED for -- and a converged agent stops asking. Measured on the run that
+    # motivated this: 24 self-checks in round 0, then ZERO in rounds 1 and 2 once it reached the corpus
+    # ceiling, so the only verdict produced in those rounds was this one and promotion had nothing to fire
+    # on. Three paths produce a verdict; all three must consider promotion, or the deeper tier is only
+    # ever reached while the agent is still struggling -- which is exactly backwards, since a converged
+    # submission is the one worth certifying.
+    try:
+        import sys as _sys
+        from tier_promote import promote as _promote, resolve_tiers as _resolve
+        _loop, _cert, _cover = _resolve(ws)
+        if _loop and _cert and isinstance(verdict, dict) and verdict.get("per_capsule"):
+            _p = _promote(ws, ws / ".qa_channel", verdict, _loop, _cert, _cover, _sys.stderr)
+            if _p:
+                print(f"  [promote] round grade -> {_cert}: {_p}", flush=True)
+    except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
+        print(f"  [promote] skipped: {type(_pe).__name__}: {_pe}", flush=True)
+
     # hand the redacted verdict to the agent for the next round
     qa_dir = ws / "qa"
     qa_dir.mkdir(exist_ok=True)
