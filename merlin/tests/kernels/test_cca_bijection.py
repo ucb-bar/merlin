@@ -105,3 +105,92 @@ def test_dump_contract_roundtrips(tmp_path):
     # every routed axis and every lever axis appears as a row
     assert cc.routed_axes("rvv") <= axes
     assert cc.leverable_axes("rvv") <= axes
+
+
+# ---------------------------------------------------------------------------------------------
+# Backend-general ratchet
+# ---------------------------------------------------------------------------------------------
+#
+# The two per-backend tests above are hand-written, one function each, and that is exactly how the
+# matrix backend's break stayed invisible: `cca_matrix.register_routes` has no caller outside tests, so
+# `check_bijection("matrix")` was never evaluated and its two orphan routes were never reported. A
+# hand-maintained list of backends to check will always lag the backends that exist. These tests
+# DISCOVER them instead, so a backend cannot be added without its bijection being checked.
+
+
+def _registered_backends() -> list[str]:
+    """Every backend that has routes registered, discovered from the router itself.
+
+    `cca_matrix` is registered here because it is the one route provider whose real caller has not
+    landed yet (its routes belong to a matrix-unit backend, which arrives with the per-target route
+    tables). Registering it in the test keeps its bijection checked in the meantime rather than
+    checked never; when the real caller lands, this line becomes redundant, not wrong.
+    """
+    from merlin.kernels import action_catalog as AC, cca_matrix
+
+    cca_matrix.register_routes()
+    return sorted(b for b, routes in AC._ROUTES.items() if routes)
+
+
+def test_every_registered_backend_is_checked():
+    """There is at least one backend beyond rvv, and the discovery actually finds them.
+
+    Without this, a discovery bug that returned `[]` would make every test below vacuously pass — the
+    failure mode where a ratchet reports green because it checked nothing.
+    """
+    backends = _registered_backends()
+    assert "rvv" in backends, backends
+    assert len(backends) > 1, f"discovery found only {backends} — the sweep below would be vacuous"
+
+
+def test_no_backend_has_an_unclassified_field_or_malformed_ladder():
+    """Hard errors, for every backend: these are never allowlistable."""
+    for backend in _registered_backends():
+        rep = cc.check_bijection(backend)
+        assert rep.unclassified == [], f"{backend}: unclassified CCA fields (add to FIELD_REGISTRY): {rep.unclassified}"
+        assert rep.ladder_errors == [], f"{backend}: {rep.ladder_errors}"
+
+
+def test_no_unexpected_bijection_drift_on_any_backend():
+    """The ratchet, generalized: no orphan field or route on ANY backend beyond documented KNOWN_OPEN.
+
+    This is the test that would have caught the matrix break: `compute.accumulator_resident` and
+    `compute.contraction_form` were classified for the literal backend list ("rvv", ...), so a
+    matrix-unit backend routing them had two routes with no backing field.
+    """
+    dirty = {}
+    for backend in _registered_backends():
+        unexpected = cc.check_bijection(backend).unexpected()
+        if not unexpected.clean:
+            dirty[backend] = (unexpected.orphan_fields, unexpected.orphan_routes)
+    assert not dirty, (
+        "NEW bijection drift (not in cca_contract.KNOWN_OPEN), per backend "
+        "(orphan_fields = LEVER with no route, orphan_routes = route with no backing field):\n"
+        + "\n".join(f"  {b}: fields={f} routes={r}" for b, (f, r) in sorted(dirty.items()))
+        + "\nEither add the missing route/field, or (if intentionally deferred) document it in KNOWN_OPEN.")
+
+
+def test_a_family_tagged_axis_is_not_inherited_without_a_route():
+    """The safety property that makes family tags usable at all.
+
+    `compute.*` levers are tagged with the FAMILY "compute" so a target-agnostic property does not have
+    to enumerate every target that has it. That is only sound because `leverable_axes` gates the
+    family-indirect arm on the axis being ROUTED: a backend must never inherit a family axis its
+    hardware does not expose, or every backend would owe a route for every compute lever.
+    """
+    from merlin.kernels import action_catalog as AC
+
+    backend = "family_probe_backend"
+    AC._ROUTES.setdefault(backend, []).append(AC._Route(
+        axis="compute.contraction_form", when=lambda d: True, action_class="KNOB",
+        target_seam="knob:probe", change="probe", forkable_now=False, expected_effect="probe"))
+    try:
+        leverable = cc.leverable_axes(backend)
+        assert "compute.contraction_form" in leverable, "a ROUTED family axis must be leverable"
+        # ... but nothing else in the family comes along for the ride.
+        assert "compute.epilogue" not in leverable, (
+            "an UNROUTED family axis leaked in — family tags would then force every backend to route "
+            "every compute lever, which is the opposite of what they are for")
+        assert cc.check_bijection(backend).orphan_routes == []
+    finally:
+        AC._ROUTES.pop(backend, None)

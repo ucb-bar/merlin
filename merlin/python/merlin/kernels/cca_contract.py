@@ -64,27 +64,40 @@ class FieldSpec:
 # RVV is the first fully-instantiated backend; gemmini (spatial) is being instantiated (Workstream A):
 # its geometry is IDENTITY and its dataflow/accumulator-residency are LEVER (routes landing next). The
 # dataflow (npu) fields remain BACKEND_STUB until their lifter + routes land.
+#
+# `backends` MIXES TWO VOCABULARIES, on purpose. An entry is either a concrete backend name ("rvv") —
+# a DIRECT tag, unconditionally leverable for that backend — or a facet FAMILY ("compute", "spatial") —
+# a family-indirect tag, leverable only for a backend that actually ROUTES the axis. See
+# `leverable_axes`. The family tag is what keeps a target-agnostic property from having to name every
+# target that has it: an axis like `compute.accumulator_resident` is meaningful for any compute
+# endpoint, and enumerating "rvv", "gemmini", "opu", "radiance", "atlas", ... here would both rot on
+# the next target and put target-name literals in library code that `check_no_target_name` forbids.
+# The routed gate is what makes the family tag safe: a backend never inherits a family axis its
+# hardware does not expose, because it can only inherit one it registered a route for.
 FIELD_REGISTRY: dict[str, FieldSpec] = {
     # --- compute (target-agnostic) ---
     "compute.op": FieldSpec("compute.op", IDENTITY, ("rvv", "gemmini", "npu"),
                             "the operation being computed — the join key, not a lever"),
-    "compute.contraction_form": FieldSpec("compute.contraction_form", LEVER, ("rvv",),
+    "compute.contraction_form": FieldSpec("compute.contraction_form", LEVER, ("rvv", "compute"),
                                           "fused_fma vs mul_add -> PASS fused_vfmacc_contraction"),
-    "compute.accumulator_dtype": FieldSpec("compute.accumulator_dtype", LEVER, ("rvv",),
+    "compute.accumulator_dtype": FieldSpec("compute.accumulator_dtype", LEVER, ("rvv", "compute"),
                                            "accumulate width (i32/f32) -> KNOB dtype_strategy"),
-    "compute.widening": FieldSpec("compute.widening", LEVER, ("rvv",),
+    "compute.widening": FieldSpec("compute.widening", LEVER, ("rvv", "compute"),
                                   "i8xi8->i32 widening MAC -> KNOB dtype_strategy=int8_w8a8"),
-    "compute.reduction_form": FieldSpec("compute.reduction_form", LEVER, ("rvv",),
+    "compute.reduction_form": FieldSpec("compute.reduction_form", LEVER, ("rvv", "compute"),
                                         "tree/vredsum reduction -> HEURISTIC lower_multi_reduction"),
-    "compute.register_block": FieldSpec("compute.register_block", LEVER, ("rvv",),
+    "compute.register_block": FieldSpec("compute.register_block", LEVER, ("rvv", "compute"),
                                         "MRxNR register block -> KNOB register-block MR"),
-    "compute.epilogue": FieldSpec("compute.epilogue", LEVER, ("rvv",),
+    "compute.epilogue": FieldSpec("compute.epilogue", LEVER, ("rvv", "compute"),
                                   "requant/narrow fused into store -> PASS fuse-requant-narrowing-store"),
-    "compute.accumulator_resident": FieldSpec("compute.accumulator_resident", LEVER, ("rvv",),
+    "compute.accumulator_resident": FieldSpec("compute.accumulator_resident", LEVER, ("rvv", "compute"),
                                               "accumulator stays in vregs across K -> PASS/CODEGEN ladder"),
+    # NOT family-tagged, unlike its neighbours: `vsetvlmax` is an RVV instruction, so "is NR the
+    # architectural maximum vector length" is a question only a vector-length-agnostic ISA can ask. A
+    # fixed-tile matrix unit has no VL to be adaptive to. Leave it direct-tagged.
     "compute.nr_is_vsetvlmax": FieldSpec("compute.nr_is_vsetvlmax", LEVER, ("rvv",),
                                          "VL-adaptive output width -> HEURISTIC NR=vsetvlmax"),
-    "compute.activation_vectorization": FieldSpec("compute.activation_vectorization", LEVER, ("rvv",),
+    "compute.activation_vectorization": FieldSpec("compute.activation_vectorization", LEVER, ("rvv", "compute"),
                                                   "vectorized poly vs scalar libm -> PASS "
                                                   "vectorized_transcendental_activation"),
     # --- vector (RVV/SIMD) ---
