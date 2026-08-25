@@ -23,15 +23,15 @@ HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
 
 
 def _broker():
-    """Import simjob_broker.py by path — it is a harness script, not an installed module."""
+    """Import the shared promotion module by path — it is a harness script, not installed."""
     if str(HARNESS) not in sys.path:
         sys.path.insert(0, str(HARNESS))
-    spec = importlib.util.spec_from_file_location("simjob_broker", HARNESS / "simjob_broker.py")
+    spec = importlib.util.spec_from_file_location("tier_promote", HARNESS / "tier_promote.py")
     mod = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(mod)
     except Exception as e:  # noqa: BLE001 — harness deps absent in this env
-        pytest.skip(f"simjob_broker not importable here: {type(e).__name__}: {e}")
+        pytest.skip(f"tier_promote not importable here: {type(e).__name__}: {e}")
     return mod
 
 
@@ -55,7 +55,7 @@ def test_a_passing_capsule_produces_a_cert_job(tmp_path):
     B = _broker()
     ws, ch = _ws(tmp_path), None
     ch = ws / ".qa_channel"
-    promoted = B._promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr)
+    promoted = B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr)
     assert promoted == ["A"]
     reqs = list(ch.glob("simreq_*.json"))
     assert len(reqs) == 1
@@ -67,14 +67,14 @@ def test_a_failing_capsule_buys_no_cert_time(tmp_path):
     """A capsule whose numerics are wrong cannot be rescued by RTL, and RTL costs minutes."""
     B = _broker()
     ws = _ws(tmp_path)
-    assert B._promote(ws, ws / ".qa_channel", _verdict([("A", False)]), "L2", "L3", None, sys.stderr) == []
+    assert B.promote(ws, ws / ".qa_channel", _verdict([("A", False)]), "L2", "L3", None, sys.stderr) == []
     assert list((ws / ".qa_channel").glob("simreq_*.json")) == []
 
 
 def test_outside_the_cover_is_not_promoted(tmp_path):
     B = _broker()
     ws = _ws(tmp_path)
-    got = B._promote(ws, ws / ".qa_channel", _verdict([("A", True), ("B", True)]),
+    got = B.promote(ws, ws / ".qa_channel", _verdict([("A", True), ("B", True)]),
                      "L2", "L3", {"A"}, sys.stderr)
     assert got == ["A"]
 
@@ -85,8 +85,8 @@ def test_the_same_bytes_are_never_certified_twice(tmp_path):
     B = _broker()
     ws = _ws(tmp_path)
     ch = ws / ".qa_channel"
-    first = B._promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr)
-    second = B._promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr)
+    first = B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr)
+    second = B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr)
     assert first == ["A"] and second == []
 
 
@@ -96,9 +96,9 @@ def test_changed_bytes_re_certify(tmp_path):
     B = _broker()
     ws = _ws(tmp_path)
     ch = ws / ".qa_channel"
-    assert B._promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr) == ["A"]
+    assert B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr) == ["A"]
     (ws / "submission" / "manifest.yaml").write_text("x: 2")          # the submission moved on
-    assert B._promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr) == ["A"]
+    assert B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr) == ["A"]
 
 
 def test_the_digest_tracks_content_not_time(tmp_path):
@@ -115,7 +115,7 @@ def test_tier_state_records_both_tiers(tmp_path):
     not record `pending` would be re-enqueued on every reap."""
     B = _broker()
     ws = _ws(tmp_path)
-    B._promote(ws, ws / ".qa_channel", _verdict([("A", True), ("B", False)]), "L2", "L3", None, sys.stderr)
+    B.promote(ws, ws / ".qa_channel", _verdict([("A", True), ("B", False)]), "L2", "L3", None, sys.stderr)
     st = json.loads((ws / "qa" / "tier_state.json").read_text())
     assert st["A"]["L2"]["status"] == "pass"
     assert st["A"]["L3"]["status"] == "pending"
@@ -129,4 +129,24 @@ def test_promotion_never_gates_a_run(tmp_path):
     B = _broker()
     ws = _ws(tmp_path)
     for junk in ({}, {"per_capsule": None}, {"per_capsule": [{}]}, {"per_capsule": [{"capsule": None}]}):
-        assert B._promote(ws, ws / ".qa_channel", junk, "L2", "L3", None, sys.stderr) == []
+        assert B.promote(ws, ws / ".qa_channel", junk, "L2", "L3", None, sys.stderr) == []
+
+
+# ---------------------------------------------------------------------------------------------
+# both brokers must promote — hooking one was the original bug
+# ---------------------------------------------------------------------------------------------
+def test_both_brokers_call_promotion():
+    """Promotion was first wired into the async oracle only. A live run then showed the agent using the
+    SYNC self-check 7 times to the async path's 2, so eight verdicts completed and promotion fired zero
+    times. Whichever broker produces a verdict must consider promotion, or the feature is dead on the
+    path that matters."""
+    for name in ("simjob_broker.py", "selfcheck_broker.py"):
+        src = (HARNESS / name).read_text(encoding="utf-8")
+        assert "tier_promote" in src, f"{name} does not reach the shared promotion module"
+        assert "promote" in src, f"{name} never calls promotion"
+
+
+def test_the_policy_is_sourced_not_reimplemented():
+    """One policy, one place. The brokers are plumbing; `oracle_schedule` decides."""
+    src = (HARNESS / "tier_promote.py").read_text(encoding="utf-8")
+    assert "oracle_schedule" in src

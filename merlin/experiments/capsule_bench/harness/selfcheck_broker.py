@@ -123,6 +123,20 @@ def main(argv=None):
                 resp.write_text(out or json.dumps({"error": err}))
         except Exception as e:
             resp.write_text(json.dumps({"error": f"broker: {type(e).__name__}: {str(e)[:200]}"}))
+        # PROMOTE off the SYNCHRONOUS path too. Promotion was first hooked into the async oracle alone,
+        # and a live run then showed the agent using THIS path seven times to the async path's two -- so
+        # eight verdicts completed and promotion fired zero times. Wherever a verdict is produced,
+        # promotion is considered.
+        try:
+            import json as _j
+            from tier_promote import promote as _promote, resolve_tiers as _resolve
+            _loop, _cert, _cover = _resolve(ws)
+            if _loop and _cert and resp.exists():
+                _v = _j.loads(resp.read_text())
+                if isinstance(_v, dict) and not _v.get("error"):
+                    _promote(ws, ch, _v, _loop, _cert, _cover, sys.stderr)
+        except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
+            print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
         if not (ch / f"done_{rid}").exists():
             (ch / f"done_{rid}").write_text("ok")
 
