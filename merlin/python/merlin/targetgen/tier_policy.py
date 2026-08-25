@@ -33,6 +33,14 @@ mode flags, dtype, tile counts, instruction classes) -- not the first N, and not
 goes stale as the corpus grows. :func:`covering_set` is a greedy set cover over exactly those declared
 axes. It is ordered FIRST even when the whole suite is affordable, so that a run which is interrupted,
 times out, or exhausts its budget still has every axis represented instead of a lexicographic prefix.
+
+Relationship to ``.oracle_timing.json``: the harness already measures an oracle's per-capsule cost, but
+for a DIFFERENT consumer -- ``readiness_check`` writes it and the launchers read it to size driver
+TIMEOUTS (and refuse to launch when it is missing or stale). It records one tier for one config; this
+module needs the RELATIVE cost of a target's tiers against each other, learned per run. The two agree
+where they overlap (136.5 s recorded there, 132.5 s median measured here for the same oracle), which is
+a useful cross-check -- they are not competing sources and neither should be derived from the other.
+
 """
 from __future__ import annotations
 
