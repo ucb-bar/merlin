@@ -4,51 +4,149 @@
   "title": "Merlin command buffer (experiment ABI v0.1)",
   "description": "Strict JSON Schema for the target-independent command buffer a package must emit. Mirrors merlin/schemas/command_buffer.schema.yaml but validated programmatically and fail-closed.",
   "type": "object",
-  "required": ["abi_version", "target", "commands"],
+  "required": [
+    "abi_version",
+    "target",
+    "commands"
+  ],
   "properties": {
-    "abi_version": {"type": "string"},
-    "target": {"type": "string"},
-    "backend": {"type": "string"},
+    "abi_version": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    },
+    "backend": {
+      "type": "string"
+    },
     "tensors": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["shape", "dtype"],
+        "required": [
+          "shape",
+          "dtype"
+        ],
         "properties": {
-          "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
-          "dtype": {"type": "string", "minLength": 1, "description": "Tensor dtype — open vocabulary validated by the quant_formats registry (formerly a narrower enum than capsule.schema, which made a microscaling target self-reject its own operands); not a hardcoded list."},
-          "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]},
-          "base": {"type": "integer", "minimum": 0,
-                   "description": "DRAM byte address the kernel loads this input from / stores this output to. The program oracle preloads inputs and reads the output at these addresses, so they MUST match the emitted kernel's loads/stores. Optional: if omitted, the harness assigns a canonical layout (capsule_dram)."},
-          "physical": {"type": "object", "description": "physical->logical readback layout the backend wrote (e.g. {\"unstack_row_halves\": 2}); optional"},
-          "preload_b64": {"type": "string", "description": "harness-attached input bytes (base64); not emitted by the package"}
+          "shape": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minItems": 1
+          },
+          "dtype": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Tensor dtype \u2014 open vocabulary validated by the quant_formats registry (formerly a narrower enum than capsule.schema, which made a microscaling target self-reject its own operands); not a hardcoded list."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "input",
+              "weight",
+              "bias",
+              "output"
+            ]
+          },
+          "base": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "DRAM byte address the kernel loads this input from / stores this output to. The program oracle preloads inputs and reads the output at these addresses, so they MUST match the emitted kernel's loads/stores. Optional: if omitted, the harness assigns a canonical layout (capsule_dram)."
+          },
+          "physical": {
+            "type": "object",
+            "description": "physical->logical readback layout the backend wrote (e.g. {\"unstack_row_halves\": 2}); optional"
+          },
+          "preload_b64": {
+            "type": "string",
+            "description": "harness-attached input bytes (base64); not emitted by the package"
+          }
         },
         "additionalProperties": false
       }
     },
     "commands": {
       "type": "array",
-      "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["opcode"],
+        "required": [
+          "opcode"
+        ],
         "properties": {
           "opcode": {
             "type": "string",
-            "enum": ["RES_PACK", "MATMUL_RESIDENT", "MATMUL", "COMMIT", "EVICT", "VECTOR_MAP", "VREDUCE", "RMSNORM", "ATTENTION_QK", "BATCHED_MATMUL", "LAYERNORM", "SOFTMAX", "GELU", "SOFTCAP", "GEGLU", "ATTENTION_FULL", "ROPE", "CONV", "MATMUL_BATCHED"]
+            "enum": [
+              "RES_PACK",
+              "MATMUL_RESIDENT",
+              "MATMUL",
+              "COMMIT",
+              "EVICT",
+              "VECTOR_MAP",
+              "VREDUCE",
+              "RMSNORM",
+              "ATTENTION_QK",
+              "BATCHED_MATMUL",
+              "LAYERNORM",
+              "SOFTMAX",
+              "GELU",
+              "SOFTCAP",
+              "GEGLU",
+              "ATTENTION_FULL",
+              "ROPE",
+              "CONV",
+              "MATMUL_BATCHED"
+            ]
           },
-          "operands": {"type": "object", "additionalProperties": {"type": "string"}},
+          "operands": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
           "attributes": {
             "type": "object",
             "properties": {
-              "layout": {"type": "string"},
-              "epilogue": {"type": "array", "items": {"type": "string", "enum": ["bias_add", "bias", "requant", "acc_scale", "relu"]}},
-              "output_dtype": {"type": "string", "minLength": 1, "description": "Output dtype — open vocabulary validated by the quant_formats registry (same as the tensor dtype above)."},
-              "acc_scale": {"type": "number"},
-              "requant_shift": {"type": "integer"},
-              "combine": {"type": "string"},
-              "activation": {"type": "array", "items": {"type": "string"}},
-              "op": {"type": "string"}
+              "layout": {
+                "type": "string"
+              },
+              "epilogue": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "bias_add",
+                    "bias",
+                    "requant",
+                    "acc_scale",
+                    "relu"
+                  ]
+                }
+              },
+              "output_dtype": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Output dtype \u2014 open vocabulary validated by the quant_formats registry (same as the tensor dtype above)."
+              },
+              "acc_scale": {
+                "type": "number"
+              },
+              "requant_shift": {
+                "type": "integer"
+              },
+              "combine": {
+                "type": "string"
+              },
+              "activation": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "op": {
+                "type": "string"
+              }
             },
             "additionalProperties": true
           }
@@ -56,9 +154,63 @@
         "additionalProperties": false
       }
     },
-    "params": {"type": "object"},
-    "metrics_requested": {"type": "array", "items": {"type": "string"}},
-    "resources": {"type": "object"}
+    "params": {
+      "type": "object"
+    },
+    "metrics_requested": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resources": {
+      "type": "object"
+    },
+    "declined": {
+      "type": "object",
+      "description": "OPTIONAL. The backend declines to lower this capsule and says so, rather than emitting an empty/terminator-only program. `reason` is mandatory and must name what could not be lowered; `shape`/`op` let the grader and the round feedback quote it back. A decline is a legitimate answer -- it is scored as not-passed, never as wrong arithmetic. Emitting nothing and hoping is not.",
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shape": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "op": {
+          "type": "string"
+        }
+      }
+    }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "declined"
+        ]
+      },
+      "then": {
+        "properties": {
+          "commands": {
+            "minItems": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "commands": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
 }

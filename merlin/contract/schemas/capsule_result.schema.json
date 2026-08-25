@@ -4,55 +4,202 @@
   "title": "Per-capsule result (capsule_bench_v0)",
   "description": "The capsule_runner writes one capsule_result.json per capsule run. status=incomplete when a mandatory oracle tier was not_run in a GRADED run (never silently pass); status=not_gradeable_no_oracle when the run is an explicit --no-oracle structure-only smoke and the mandatory numeric tier was deliberately not requested (a withheld numeric verdict, never a pass).",
   "type": "object",
-  "required": ["capsule", "status", "contract_version", "tiers", "trace_check", "numeric"],
+  "required": [
+    "capsule",
+    "status",
+    "contract_version",
+    "tiers",
+    "trace_check",
+    "numeric"
+  ],
   "properties": {
-    "capsule": {"type": "string"},
-    "kind": {"type": "string", "enum": ["isa", "layer", "model_slice", "model"]},
-    "label": {"type": "string", "enum": ["public", "dev", "hidden"]},
-    "status": {"type": "string", "enum": ["pass", "fail", "incomplete", "error", "not_gradeable_no_oracle", "screened_only"]},
-    "contract_version": {"type": "string"},
+    "capsule": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "isa",
+        "layer",
+        "model_slice",
+        "model"
+      ]
+    },
+    "label": {
+      "type": "string",
+      "enum": [
+        "public",
+        "dev",
+        "hidden"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "incomplete",
+        "error",
+        "not_gradeable_no_oracle",
+        "screened_only",
+        "declined"
+      ]
+    },
+    "contract_version": {
+      "type": "string"
+    },
     "tiers": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["status", "not_run_is_not_pass"],
+        "required": [
+          "status",
+          "not_run_is_not_pass"
+        ],
         "properties": {
-          "status": {"type": "string", "enum": ["pass", "fail", "skipped", "unavailable"]},
-          "reason": {"type": ["string", "null"]},
-          "not_run_is_not_pass": {"type": "boolean"},
-          "mandatory": {"type": "boolean"},
-          "cycles": {"type": ["integer", "null"]},
-          "derived_from_rtl": {"type": "boolean"},
-          "cycle_accurate": {"type": "boolean"},
-          "evidence": {"type": ["string", "null"]}
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "skipped",
+              "unavailable"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "not_run_is_not_pass": {
+            "type": "boolean"
+          },
+          "mandatory": {
+            "type": "boolean"
+          },
+          "cycles": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "derived_from_rtl": {
+            "type": "boolean"
+          },
+          "cycle_accurate": {
+            "type": "boolean"
+          },
+          "evidence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         },
         "additionalProperties": true
       }
     },
     "trace_check": {
       "type": "object",
-      "required": ["status"],
+      "required": [
+        "status"
+      ],
       "properties": {
-        "status": {"type": "string", "enum": ["pass", "fail", "skipped"]},
-        "violations": {"type": "array", "items": {"type": "string"}}
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "skipped"
+          ]
+        },
+        "violations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       },
       "additionalProperties": true
     },
     "numeric": {
       "type": "object",
-      "required": ["status"],
+      "required": [
+        "status"
+      ],
       "properties": {
-        "status": {"type": "string", "enum": ["pass", "fail", "skipped"]},
-        "policy": {"type": "string"},
-        "max_abs_diff": {"type": ["number", "null"]},
-        "max_rel_error": {"type": ["number", "null"]},
-        "mismatch_count": {"type": ["integer", "null"]},
-        "first_mismatch": {"type": ["object", "array", "null"]}
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "skipped"
+          ]
+        },
+        "policy": {
+          "type": "string"
+        },
+        "max_abs_diff": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "max_rel_error": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mismatch_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "first_mismatch": {
+          "type": [
+            "object",
+            "array",
+            "null"
+          ]
+        }
       },
       "additionalProperties": true
     },
-    "failure": {"type": ["object", "null"]},
-    "toolchain_shas": {"type": "object", "additionalProperties": true}
+    "failure": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "toolchain_shas": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "declined": {
+      "type": "object",
+      "description": "Present when the backend STATED it does not handle this capsule instead of emitting a program that writes nothing. Not a pass (the capsule stays in the denominator, uncertified) and not a numeric failure -- the two were indistinguishable before, so round feedback could not name a declined shape.",
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shape": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "op": {
+          "type": "string"
+        }
+      }
+    }
   },
   "additionalProperties": true
 }

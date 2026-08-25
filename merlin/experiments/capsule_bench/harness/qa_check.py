@@ -207,6 +207,9 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
         tiers = r.get("tiers") or {}
         out[r.get("capsule", cr.parent.name)] = {
             "status": r.get("status"),
+            # The backend's own STATED refusal. Redaction-safe: it is text the SUBMISSION wrote about
+            # its own coverage, never corpus or golden data.
+            "declined": r.get("declined"),
             "numeric_status": num.get("status"),
             "mismatch_count": num.get("mismatch_count"),
             "trace_status": (r.get("trace_check") or {}).get("status"),
@@ -288,6 +291,8 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
             "failure_category": rich.get("failure_category"),
             "failure_detail": rich.get("failure_detail"),
         })
+        if rich.get("declined"):
+            per_capsule[-1]["declined"] = rich["declined"]
 
     n_caps = score.get("n_capsules", 0)
     n_pass = score.get("n_passed", 0)
@@ -334,8 +339,13 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
             "highest_tier": score.get("highest_tier"),
             "first_failure_planes": score.get("first_failure_planes", {}),
             "per_capsule": per_capsule,
+            "n_declined": score.get("n_declined", 0),
             "note": ("This is a QA pass/fail signal only. It contains NO reference output values — there is no answer key. "
-                     "Fix failures by capsule + failure_plane + trace_violations; never hardcode outputs."),
+                     "Fix failures by capsule + failure_plane + trace_violations; never hardcode outputs."
+                     + (f" {score['n_declined']} capsule(s) were DECLINED by your backend: it emitted no "
+                        f"program for them. Those are shapes/ops you do not lower — a COVERAGE gap, not a "
+                        f"numeric bug. See `declined` on those rows."
+                        if score.get("n_declined") else "")),
         }
     # top-level integrity failure (K0/K1 fail-closed)
     if "failure" in score:

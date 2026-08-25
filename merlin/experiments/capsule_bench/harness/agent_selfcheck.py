@@ -136,6 +136,36 @@ def _log_telemetry(out: dict, capsules_arg: str) -> None:
         pass
 
 
+def _shape_coverage(sub: Path, out_path: str) -> int:
+    """The agent-facing shape-coverage report (see ``--shape-coverage``).
+
+    Leaks nothing: the probe shapes are multiples of the target's own derived tile edge, which the agent
+    can read off its RTL facts, and the report contains no golden, no corpus capsule and no reference
+    value -- only what the agent's own compiler emitted.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import _common as _C
+    from merlin.targetgen import lowering_coverage as LC
+    try:
+        cov = LC.sweep(sub, target=_C.TARGET, contract=str(_C.REPO / "merlin/contract"))
+    except Exception as e:  # noqa: BLE001
+        print(json.dumps({"error": f"shape-coverage probe failed: {type(e).__name__}: {e}"}))
+        return 2
+    cov["note"] = (
+        "Each corner is the SAME contraction at a different extent. `emitted_work` is how many "
+        "instructions YOUR compiler emitted for it. A larger problem cannot need a smaller program, so a "
+        "corner marked `collapsed` is a shape you silently refused -- at the numeric tier that arrives as "
+        "an output of zeros and is indistinguishable from wrong arithmetic. `multi_tile_axes_uncovered` "
+        "names the axis your lowering does not loop over. If you truly cannot lower a shape, DECLARE it "
+        "(set `declined` on the command buffer) rather than emitting a terminator.")
+    txt = json.dumps(cov, indent=2)
+    print(txt)
+    if out_path:
+        Path(out_path).write_text(txt)
+    return 0 if cov.get("all_covered") else 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Agent self-check runner (redacted; spike/verilator/vcs).")
     ap.add_argument("--submission", default="submission", help="path to your package (with manifest.yaml)")
@@ -144,7 +174,17 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=8, help="parallel sim workers (verilator/vcs)")
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--out", default="", help="optional: also write the redacted JSON here")
+    ap.add_argument("--shape-coverage", action="store_true",
+                    help="INSTEAD of the capsule suite, probe whether your backend LOWERS the same "
+                         "contraction at one tile and at two tiles in each of M, K and N. Costs no "
+                         "simulator and no oracle (it only runs your emit path), so it is cheap to run "
+                         "often. The public capsules are a fixed set of shapes; passing all of them "
+                         "says nothing about whether you generalize past them, and a backend that "
+                         "hardcodes those shapes scores 100%% here and fails the held-out grade.")
     a = ap.parse_args(argv)
+
+    if a.shape_coverage:
+        return _shape_coverage(Path(a.submission), a.out)
 
     sub = Path(a.submission)
     if not (sub / "manifest.yaml").exists():
@@ -302,6 +342,15 @@ def main(argv=None):
             console_tail = lg.read_text()[-800:]
         row = {"capsule": name, "pass": passed, "barrier_tier": bar_used,
                "barrier_declared": barrier_tier, "barrier_status": bar}
+        # A STATED DECLINE IS THE MOST ACTIONABLE THING THIS REPORT CAN CARRY, so it rides the row
+        # whether or not the capsule passed, and ahead of the numeric block. Without it a declined
+        # capsule reads exactly like one whose arithmetic is wrong -- an output of zeros and a
+        # "does not compute the declared operation" -- and the fix for those two is not the same.
+        if d.get("declined"):
+            row["declined"] = d["declined"]
+            row["declined_note"] = ("your backend DECLINED this capsule -- it never emitted a program. "
+                                    "This is a coverage gap (a shape/op you do not lower), not a "
+                                    "numeric bug; do not debug the arithmetic.")
         if not passed:
             # FULL debug detail ONLY for a FAILING capsule (the one you are working). A passing capsule's
             # diff stats / trace dump / console tail are noise that re-inflates the agent's context every
@@ -334,15 +383,20 @@ def main(argv=None):
             Path(a.out).write_text(txt)
         _log_telemetry(out, a.capsules)
         return 1
+    n_declined = sum(1 for r in rows if r.get("declined"))
     out = {"sim": sim, "barrier_tier": barrier_tier, "n_passed": npass, "n_capsules": n,
            "all_pass": npass == n and n > 0, "per_capsule": rows,
+           "n_declined": n_declined,
            "note": f"Self-check on {sim} ({barrier_tier}). You see EVERYTHING your dialect produced — "
                    "command buffer, decoded trace + instruction counts, sim console, and your artifacts "
                    "copied to ./selfcheck_out/. The diff stats (mismatch_count, magnitudes) are YOUR "
                    "output measured against the operation's own definition, which you can reproduce from "
                    "the declared inputs — there is no answer key; the reference output values are withheld "
                    "so you debug from your own intent, as in real bring-up. 'done' = all public pass on "
-                   "verilator/VCS; cycles are not a criterion. (Movement ops legitimately have 0 matmuls.)"}
+                   "verilator/VCS; cycles are not a criterion. (Movement ops legitimately have 0 matmuls.)"
+                   + (f" {n_declined} capsule(s) were DECLINED by your backend -- see 'declined' on those "
+                      f"rows. A decline is a shape/op you never lowered, NOT wrong arithmetic."
+                      if n_declined else "")}
     txt = json.dumps(out, indent=2)
     print(txt)
     if a.out:

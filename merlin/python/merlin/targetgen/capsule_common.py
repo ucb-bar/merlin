@@ -86,6 +86,20 @@ def tier_field(entry, field: str):
     return entry.get(field) if isinstance(entry, dict) else None
 
 
+def oracle_kind(oracle):
+    """The oracle's PROVENANCE STRING, whichever shape it arrived in.
+
+    An adapter reports its oracle either as a bare string (``"gemmini-spike"``) or as a record
+    (``{"kind": ..., "derived_from_rtl": ..., "fidelity": ...}``) — the record form exists so an oracle
+    can state whether it is elaborated RTL rather than leaving that to be guessed from its tier name.
+    Callers that only want the human-readable identity go through here, so enriching an adapter never
+    turns a recorded string field into a dict.
+    """
+    if isinstance(oracle, dict):
+        return oracle.get("kind")
+    return oracle
+
+
 def discover_capsules(root, *, labels: set[str] | None = None,
                       contract: str | Path | None = None) -> list[dict]:
     """Load every capsule under ``root`` (recursively), optionally filtered by label.
@@ -140,8 +154,8 @@ def run_entrypoints(pkg, package_dir: str | Path, capsule: dict, paths, *,
     dialect chooses LLVM-dialect MLIR vs a SIMT kernel). Raises CertFailure on any plane failure.
     The oracle tiers (L2+) are the caller's, since they diverge per target.
     """
-    from .oot_runner import (CertFailure, build_package, integrity_scan, load_package,
-                             run_entrypoint)
+    from .oot_runner import (BackendDeclined, CertFailure, build_package, integrity_scan,
+                             load_package, run_entrypoint)
 
     if pkg is None:
         pkg = load_package(package_dir, contract=contract)
@@ -195,6 +209,21 @@ def run_entrypoints(pkg, package_dir: str | Path, capsule: dict, paths, *,
     except (json.JSONDecodeError, schemas.ContractViolation) as e:
         raise CertFailure("command_buffer_schema", _cat("PROTOCOL_VIOLATION"),
                           f"command_buffer.json invalid: {e}") from e
+
+    # AN EXPLICIT DECLINE, READ BEFORE ANYTHING IS RUN. A backend states here that it does not handle
+    # this capsule; the alternative it used to have was to emit a program that writes nothing, which
+    # reaches the grader as zeros and is scored as wrong arithmetic. Reading the declaration first means
+    # no oracle is paid for a program the backend already said it did not write, and the round feedback
+    # can name the shape instead of reporting a numeric mismatch that never happened.
+    _declined = cb.get("declined")
+    if _declined:
+        if not isinstance(_declined, dict) or not str(_declined.get("reason") or "").strip():
+            raise CertFailure("command_buffer_schema", _cat("PROTOCOL_VIOLATION"),
+                              "command_buffer declares `declined` without a non-empty `reason`: a "
+                              "decline has to say WHAT it could not lower, or it is just a silent drop "
+                              "with extra steps")
+        raise BackendDeclined(str(_declined["reason"]), shape=_declined.get("shape"),
+                              op=_declined.get("op"))
 
     # the 4th entrypoint: emit the target's codegen artifact (RoCC LLVM / SIMT kernel / ...). The
     # resolver aliases the legacy name lower_target_to_llvm, so packages using either spelling work.

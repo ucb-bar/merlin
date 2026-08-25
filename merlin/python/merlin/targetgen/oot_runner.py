@@ -119,6 +119,38 @@ class CertFailure(Exception):
         self.detail = detail
 
 
+class BackendDeclined(Exception):
+    """The backend STATED that it does not handle this capsule, instead of emitting a wrong program.
+
+    A backend that cannot lower a shape has two ways to say so, and only one of them is legible. It can
+    emit a program that writes nothing -- which arrives at the grader as an output full of zeros,
+    indistinguishable from arithmetic that ran and was wrong -- or it can decline. Measured: one
+    submission chained twelve shape-keyed builders with ``or`` and fell through to a bare terminator, so
+    twelve capsules failed as "your artifact does not compute the declared operation" when the artifact
+    had never been written. Nothing in the round feedback could say "you declined these shapes", because
+    nothing could tell the two apart, and the agent iterated on arithmetic it had not emitted.
+
+    This is the same "decline rather than guess" contract the routing/cost-model layer already uses
+    (:mod:`merlin.targetgen.routing`): declining is a legitimate, reportable answer. It is NOT a pass --
+    a declined capsule stays in the denominator, uncertified -- but it is not a numeric failure either,
+    and the difference is what an agent needs to act on.
+    """
+
+    def __init__(self, reason: str, *, shape=None, op: str | None = None):
+        super().__init__(reason)
+        self.reason = reason
+        self.shape = list(shape) if shape is not None else None
+        self.op = op
+
+    def to_dict(self) -> dict:
+        d = {"reason": self.reason}
+        if self.shape is not None:
+            d["shape"] = self.shape
+        if self.op:
+            d["op"] = self.op
+        return d
+
+
 # --------------------------------------------------------------------------- package model
 
 
