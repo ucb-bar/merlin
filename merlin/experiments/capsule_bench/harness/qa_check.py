@@ -243,11 +243,14 @@ def _loop_target_sim_via() -> tuple[str, str]:
 
 def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
         no_oracle: bool, timeout: int) -> dict:
-    # Loop gate = L0+L1+trace + the target's FASTEST RTL oracle tier ONLY — for gemmini (sim_via=chipyard)
-    # that is L2 (spike); the slower cycle-accurate tier (verilator L3) is the separate bounded checkpoint
-    # (run_baseline_qa_loop). Per-round verilator on 20 capsules across 3 parallel arms is infeasible (CPU
-    # storm). The adapters are resolved from the descriptor's target+sim_via via the shared factory, so a
-    # non-chipyard target (arc/cyclotron) grades on its own RTL-derived tier with NO gemmini-specific path.
+    # Loop gate = L0+L1+trace + the target's full reachable oracle ladder, screened cheapest-first. The
+    # adapters are resolved from the descriptor's target+sim_via via the shared factory, so a non-chipyard
+    # target (arc/cyclotron) grades on its own RTL-derived tier with NO gemmini-specific path.
+    #
+    # This used to keep the FASTEST tier only, reserving the cycle-accurate one for an end-of-run barrier,
+    # because per-round verilator across three PARALLEL arms was a CPU storm. Fail-fast changes that sum:
+    # the expensive tier is only ever paid for on a capsule the cheap tier could not refute, which early in
+    # a run is almost none of them.
     _target, _sim_via = _loop_target_sim_via()
     # The loop tier is chosen from the tiers THESE capsules declare, so the per-round gate always rides a
     # tier the capsule asked for. Without this the loop picks the endpoint's fastest tier, which for an
@@ -255,8 +258,18 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
     # tier the capsule never declared.
     from merlin.targetgen.contract.materialize import declared_oracle_tiers as _declared
     _decl = _declared(capsules_root)
+    # THE PER-ROUND GATE CERTIFIES; it does not merely screen. Hand the grade the target's whole
+    # reachable ladder, not just its cheapest tier. The ladder runs CHEAPEST-MEASURED-FIRST and
+    # fail-fasts on the first mandatory tier that refutes a capsule, so this is close to free on a
+    # failing submission -- a capsule the cheap tier refutes never reaches the expensive one. What it
+    # buys is the other direction, the one that was broken: a capsule that PASSES the screen now goes on
+    # to the cert tier in the SAME round, and counts as passed only if the cert tier passes too.
+    #
+    # Grading the round on the screen alone is unsound in exactly one direction, and it was measured:
+    # one submission passed the cheap functional tier on 20 of 20 capsules while the RTL tier passed 1.
+    # A screen may eliminate; it may never certify (see merlin.targetgen.tier_policy).
     _loop_adapters = ({} if no_oracle
-                      else CR.qa_loop_adapters(_target, _sim_via, declared_tiers=_decl))
+                      else CR.qa_checkpoint_adapters(_target, _sim_via))
     # Refuse ONLY when the endpoint exposes tiers but none of them is declared — substituting one there is
     # the defect. An endpoint that reaches nothing at all is an honestly ABSENT oracle: leave the adapter
     # set empty and let each capsule report its missing tier as unavailable, exactly as before.

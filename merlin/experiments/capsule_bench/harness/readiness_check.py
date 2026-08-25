@@ -598,11 +598,16 @@ def test_oracles_endtoend():
             cb.get("n_capsules") == 1 and "FAIL[build]" not in str(cb.get("error", "")) and
             "libidn" not in str(cb), f"n={cb.get('n_passed')}/{cb.get('n_capsules')} {str(cb.get('error',''))[:60]}")
 
+        # What this probe means is "the SCREEN tier runs and returns a real verdict". It must not assert
+        # all_pass: the capsules declare a cycle-accurate cert tier as mandatory, and --sim spike supplies
+        # no adapter for it, so a screen-only grade correctly reports the capsule as not certified. Reading
+        # the tier's own result keeps this a check on the oracle rather than on the pass bar.
         sp = _grade(ref, "spike", 300)
         c = (sp.get("per_capsule") or [{}])[0]
+        _spike_tier = (c.get("tiers") or {}).get("L2") or c.get("barrier_status")
         _ok("spike RUNS to a real L2=pass on the reference backend",
-            sp.get("all_pass") and sp.get("n_capsules") == 1 and c.get("barrier_status") == "pass",
-            f"n={sp.get('n_passed')}/{sp.get('n_capsules')} {sp.get('error','')[:50]}")
+            sp.get("n_capsules") == 1 and _spike_tier == "pass",
+            f"L2={_spike_tier} n={sp.get('n_passed')}/{sp.get('n_capsules')} {sp.get('error','')[:50]}")
         # Probe a COMPUTE capsule for the L3 cert — a movement-only capsule (A1) tops out below L3, so it
         # can never certify verilator's numerical tier. And agent_selfcheck reports the reached tier on its
         # per-capsule record as barrier_tier/barrier_status (there is NO "tiers" map — the same field the

@@ -42,7 +42,13 @@ def _verdict(txt: str):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Agent self-check (redacted; routed to the driver-side broker).")
     ap.add_argument("--submission", default="submission")
-    ap.add_argument("--sim", choices=["spike", "verilator", "vcs"], default="spike")
+    # DEFAULTS TO THE CERTIFYING SIM, not the screen. The capsules declare a cycle-accurate cert
+    # tier as mandatory, and this ladder runs cheapest-measured-first with fail-fast, so the
+    # screen still refutes a broken submission at screen cost -- what changes is that a capsule
+    # which PASSES the screen goes on to certify instead of stopping there. Choosing "spike"
+    # explicitly is a legitimate fast screen, but it CANNOT certify: the mandatory cert tier
+    # reports unavailable and the capsule is not a pass.
+    ap.add_argument("--sim", choices=["spike", "verilator", "vcs"], default="verilator")
     ap.add_argument("--capsules", default="all")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--timeout", type=int, default=1800)

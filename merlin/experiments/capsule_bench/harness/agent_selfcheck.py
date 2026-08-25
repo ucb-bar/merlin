@@ -169,7 +169,13 @@ def _shape_coverage(sub: Path, out_path: str) -> int:
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Agent self-check runner (redacted; spike/verilator/vcs).")
     ap.add_argument("--submission", default="submission", help="path to your package (with manifest.yaml)")
-    ap.add_argument("--sim", choices=["spike", "verilator", "vcs"], default="spike")
+    # DEFAULTS TO THE CERTIFYING SIM, not the screen. The capsules declare a cycle-accurate cert
+    # tier as mandatory, and this ladder runs cheapest-measured-first with fail-fast, so the
+    # screen still refutes a broken submission at screen cost -- what changes is that a capsule
+    # which PASSES the screen goes on to certify instead of stopping there. Choosing "spike"
+    # explicitly is a legitimate fast screen, but it CANNOT certify: the mandatory cert tier
+    # reports unavailable and the capsule is not a pass.
+    ap.add_argument("--sim", choices=["spike", "verilator", "vcs"], default="verilator")
     ap.add_argument("--capsules", default="all", help="'all' or comma-separated capsule names")
     ap.add_argument("--workers", type=int, default=8, help="parallel sim workers (verilator/vcs)")
     ap.add_argument("--timeout", type=int, default=1800)
@@ -384,6 +390,13 @@ def main(argv=None):
         _log_telemetry(out, a.capsules)
         return 1
     n_declined = sum(1 for r in rows if r.get("declined"))
+    # A capsule can fail here for a reason the agent does not control: it declares a mandatory cert tier
+    # that the SIM CHOSEN FOR THIS RUN supplies no adapter for. That is a screen being asked to certify,
+    # not a defect in the submission, and it must say so -- being told to fix an oracle it cannot reach is
+    # how a conformant run decays into ten rounds of effort against nothing.
+    _unreached = sorted({(r.get("failure") or {}).get("tier") for r in rows
+                         if (r.get("failure") or {}).get("category") == "NOT_RUN_IS_NOT_PASS"
+                         and (r.get("failure") or {}).get("tier_status") == "unavailable"} - {None})
     out = {"sim": sim, "barrier_tier": barrier_tier, "n_passed": npass, "n_capsules": n,
            "all_pass": npass == n and n > 0, "per_capsule": rows,
            "n_declined": n_declined,
@@ -396,7 +409,12 @@ def main(argv=None):
                    "verilator/VCS; cycles are not a criterion. (Movement ops legitimately have 0 matmuls.)"
                    + (f" {n_declined} capsule(s) were DECLINED by your backend -- see 'declined' on those "
                       f"rows. A decline is a shape/op you never lowered, NOT wrong arithmetic."
-                      if n_declined else "")}
+                      if n_declined else "")
+                   + (f" ⚠ {len(_unreached)} mandatory cert tier(s) {_unreached} were NOT REACHABLE with "
+                      f"--sim {sim}, so capsules that cleared the screen still could not certify. That is "
+                      f"a property of the sim you selected, NOT of your backend — re-run without --sim "
+                      f"(the default certifies) before reading these as failures."
+                      if _unreached else "")}
     txt = json.dumps(out, indent=2)
     print(txt)
     if a.out:
