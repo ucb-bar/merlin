@@ -576,6 +576,12 @@ AFTER you converge on the fast functional tier, so tight, narrow loops cost you 
 - **Compute must be compiler-GENERATED, never an authored/library kernel.** No hand C compute kernels, no
   copying/calling the target's high-level device libraries as the answer — your passes generate the code.
 - Never hardcode/embed outputs (hidden capsules run after you freeze). One general backend.
+- **Nor any other capsule-specific value.** Read every extent and every attribute from the capsule you
+  were handed, never from the set you happened to see. Two things a held-out capsule caught in a
+  submission that passed its public suite: a dispatch guarded on ONE operand extent, so a matmul with a
+  second tile in that dimension wrote nothing; and an accumulator-scale epilogue that emitted the literal
+  constant the public capsule happened to use, while the surrounding code parsed the real attribute and
+  discarded it. Both passed every public capsule and failed the holdout that changed only that value.
 - Do not read withheld goldens, hidden capsules, prior backends, or Merlin internals.
 
 ## Target ISA facts (derived — build your lowering on these)
