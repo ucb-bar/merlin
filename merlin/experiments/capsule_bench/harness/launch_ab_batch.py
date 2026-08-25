@@ -99,6 +99,12 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
         cmd += ["--provider", a.provider, "--aws-region", a.aws_region]
         if a.aws_profile:
             cmd += ["--aws-profile", a.aws_profile]
+    # ABLATION passthrough: the same cell applies to EVERY arm in the batch, which is what makes an
+    # add-one/subtract-one sweep a single command per cell instead of one per arm.
+    for t in getattr(a, "with_tool", []) or []:
+        cmd += ["--with-tool", t]
+    for t in getattr(a, "without_tool", []) or []:
+        cmd += ["--without-tool", t]
     return cmd
 
 
@@ -209,6 +215,12 @@ def main(argv=None):
     ap.add_argument("--preflight", action="store_true",
                     help="lock all answer surfaces (chmod 000) + dry-run + assert cheat-clean BEFORE any "
                          "spend; launches NOTHING (use this immediately before a real launch).")
+    ap.add_argument("--with-tool", action="append", default=[], metavar="NAME",
+                    help="ABLATION: grant this arm-gated tool on top of every launched arm's rung "
+                         "(repeatable). Generate the matching bundles first with "
+                         "`python -m merlin.targetgen.generate_bundles --with-tool NAME`.")
+    ap.add_argument("--without-tool", action="append", default=[], metavar="NAME",
+                    help="ABLATION: withhold this arm-gated tool from every launched arm (repeatable).")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
 
