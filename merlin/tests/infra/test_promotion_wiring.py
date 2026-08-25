@@ -150,3 +150,18 @@ def test_the_policy_is_sourced_not_reimplemented():
     """One policy, one place. The brokers are plumbing; `oracle_schedule` decides."""
     src = (HARNESS / "tier_promote.py").read_text(encoding="utf-8")
     assert "oracle_schedule" in src
+
+
+# ---------------------------------------------------------------------------------------------
+# a rejection must carry a remedy
+# ---------------------------------------------------------------------------------------------
+def test_a_rejection_names_the_field_and_the_remedy():
+    """An agent submitted to the async oracle twice, was rejected twice with "bad sim or capsule
+    (constrained runner)", and never used it again -- while the arm that DID reach the async path used it
+    98 times in the round its compiler-earned score moved 17 -> 26. The check is load-bearing isolation
+    and stays; what changes is that the refusal says which field was wrong and what would be accepted.
+    Asserted on the source because the branch needs a live broker loop to reach."""
+    src = (HARNESS / "simjob_broker.py").read_text(encoding="utf-8")
+    assert "rejected: bad sim or capsule (constrained runner)" not in src, "the remedy-free message is back"
+    assert "rejected_field" in src, "a rejection must say WHICH field it refused"
+    assert "--tiers" in src, "a neutral-sim target must be told how to choose a tier"

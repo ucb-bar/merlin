@@ -233,8 +233,28 @@ def main(argv=None):
                 sim = r.get("sim")
                 caps = _valid_capsules(str(r.get("capsules", "all")))
                 if sim not in _allowed_sims() or caps is None:
+                    # Say WHICH of the two it was, and what would be accepted. The old message named
+                    # neither, and a request rejected without a remedy reads as "the oracle is broken":
+                    # measured on a live run, an agent submitted twice, was rejected twice with this
+                    # text, and never used the async oracle again -- while the arm that DID find the
+                    # async path used it 98 times in the round its score moved 17 -> 26. An unhelpful
+                    # rejection costs more than the check it protects.
+                    _allowed = _allowed_sims()
+                    if sim not in _allowed:
+                        _why = (f"--sim {sim!r} is not accepted for this target. Use "
+                                f"{' or '.join(repr(s) for s in _allowed)}"
+                                + (f"; this target's tier comes from its contract, so {_NEUTRAL_SIM!r} "
+                                   f"means 'grade on whatever tier the contract resolves to' and the "
+                                   f"tier itself is chosen with --tiers"
+                                   if _allowed == (_NEUTRAL_SIM,) else ""))
+                    else:
+                        _named = str(r.get("capsules", "all"))
+                        _why = (f"--capsules {_named!r} named something this runner will not run: a "
+                                f"capsule must be an existing public capsule directory name (letters, "
+                                f"digits, underscore), or 'all'")
                     (ch / f"simresp_{jid}.json").write_text(json.dumps(
-                        {"error": "rejected: bad sim or capsule (constrained runner)", "all_pass": False}))
+                        {"error": f"rejected: {_why}", "all_pass": False,
+                         "rejected_field": "sim" if sim not in _allowed else "capsules"}))
                     (ch / f"simerr_{jid}").write_text("rejected"); claimed.add(jid); continue
                 slot = None
                 if sim == "verilator":
