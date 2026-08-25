@@ -1061,6 +1061,24 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -
                                {"public", "dev"}, no_oracle, timeout)
         out.write_text(json.dumps(verdict, indent=2))
         _write_stage_ledger(run_dir, rnd, cand, run_dir / "_qa_work" / f"runs_{rnd:02d}", verdict)
+    # PROMOTE off the round grade too. Promotion is hooked into both BROKERS, but a broker only sees a
+    # verdict the agent ASKED for -- and a converged agent stops asking. Measured on the run that
+    # motivated this: 24 self-checks in round 0, then ZERO in rounds 1 and 2 once it reached the corpus
+    # ceiling, so the only verdict produced in those rounds was this one and promotion had nothing to fire
+    # on. Three paths produce a verdict; all three must consider promotion, or the deeper tier is only
+    # ever reached while the agent is still struggling -- which is exactly backwards, since a converged
+    # submission is the one worth certifying.
+    try:
+        import sys as _sys
+        from tier_promote import promote as _promote, resolve_tiers as _resolve
+        _loop, _cert, _cover = _resolve(ws)
+        if _loop and _cert and isinstance(verdict, dict) and verdict.get("per_capsule"):
+            _p = _promote(ws, ws / ".qa_channel", verdict, _loop, _cert, _cover, _sys.stderr)
+            if _p:
+                print(f"  [promote] round grade -> {_cert}: {_p}", flush=True)
+    except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
+        print(f"  [promote] skipped: {type(_pe).__name__}: {_pe}", flush=True)
+
     # hand the redacted verdict to the agent for the next round
     qa_dir = ws / "qa"
     qa_dir.mkdir(exist_ok=True)

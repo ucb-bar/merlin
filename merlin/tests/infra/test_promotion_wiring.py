@@ -140,10 +140,22 @@ def test_both_brokers_call_promotion():
     SYNC self-check 7 times to the async path's 2, so eight verdicts completed and promotion fired zero
     times. Whichever broker produces a verdict must consider promotion, or the feature is dead on the
     path that matters."""
-    for name in ("simjob_broker.py", "selfcheck_broker.py"):
+    for name in ("simjob_broker.py", "selfcheck_broker.py", "run_baseline_qa_loop.py"):
         src = (HARNESS / name).read_text(encoding="utf-8")
         assert "tier_promote" in src, f"{name} does not reach the shared promotion module"
         assert "promote" in src, f"{name} never calls promotion"
+
+
+def test_the_round_grade_promotes_too():
+    """A broker only sees a verdict the agent ASKED for, and a converged agent stops asking: measured 24
+    self-checks in round 0, then ZERO in rounds 1 and 2 once the corpus ceiling was reached. The round
+    grade was then the only verdict produced, and promotion had nothing to fire on -- so the deeper tier
+    would only ever be reached while the agent was still struggling, which is backwards. A converged
+    submission is the one worth certifying."""
+    src = (HARNESS / "run_baseline_qa_loop.py").read_text(encoding="utf-8")
+    i = src.index("def qa_grade(")
+    j = src.index("def _write_stage_ledger(")
+    assert "tier_promote" in src[i:j], "qa_grade does not promote"
 
 
 def test_the_policy_is_sourced_not_reimplemented():
