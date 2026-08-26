@@ -69,7 +69,11 @@ def _encode_operand(values, dtype: str) -> bytes | None:
         eb, mb = int(f.exp_bits or 0), int(f.mant_bits or 0)
         if not eb or bits != 8:
             return None
-        flat = [ocp_encode(float(v), eb, mb) for v in a.reshape(-1)]
+        # `signed` comes from the registry, exactly as the int_affine branch above reads it. Assuming a
+        # sign bit made the code one bit too wide for the unsigned block-scale type, and packing a
+        # 9-bit value into a byte raises rather than truncating -- which is the good outcome, but only
+        # because bytearray happens to check. Pass what the format declares.
+        flat = [ocp_encode(float(v), eb, mb, signed=bool(f.signed)) for v in a.reshape(-1)]
         return bytes(bytearray(flat))
 
     return None
