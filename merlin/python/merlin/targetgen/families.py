@@ -1,7 +1,6 @@
 """Compute-unit-KIND registry — the routing axis that keeps core generation target-name-free.
 
-A target's compute-unit ``kind`` (``systolic`` | ``simt`` | ``vector`` | ``scalar`` — the canonical
-taxonomy ``merlin.targetgen.compute_units.KINDS``, aligned with ``runtime.backends.base.TargetClass``)
+A target's compute-unit ``kind`` (the canonical taxonomy ``merlin.targetgen.compute_units.KINDS``)
 selects the GENERATION defaults: which codegen endpoint, whether an op->``.insn`` encoding derivation
 applies, which trace-gate plugin (if any), the RTL grading tiers, and the perf metrics. Core modules
 consult this registry by ``kind`` so they NEVER branch on a target *name* — the overfit smell test.
@@ -9,6 +8,18 @@ consult this registry by ``kind`` so they NEVER branch on a target *name* — th
 Everything here is a DATA default. The per-target capability manifest (the human-reviewed cache derived
 from RTL facts + the designer's docs) may override any field; this registry only supplies the family
 baseline so a brand-new accelerator of a known kind brings up with zero per-target code.
+
+⚠️ ``kind`` IS A SET, PER TARGET — and most of this module reads only one of them. A target declares
+several compute units (a SIMT cluster containing a matrix PE; an NPU with a matrix array AND a vector
+engine), and ``contract_endpoint_kind`` below collapses that set to the PRIMARY kind. That is the right
+question for "which codegen endpoint does the outermost unit want", and the WRONG question for anything
+describing what the silicon can do: measured on the atlas corpus, 62% of its engine-driving expert
+kernels touch a vector engine its contract does not even declare. Before adding a caller that keys on
+the primary kind, check whether the honest answer is the set — see :mod:`merlin.kernels.engines`, which
+maps each kind to the CCA facet that describes it and derives the coarse
+``runtime.backends.base.TargetClass`` from the whole set. That module also holds the KINDS -> TargetClass
+correspondence this docstring used to assert in prose (five kinds cannot "align with" three tokens by
+inspection); it is a checked map now, not a comment.
 """
 from __future__ import annotations
 

@@ -30,11 +30,41 @@ from typing import Any, Protocol, runtime_checkable
 
 
 class TargetClass(str, Enum):
-    """The hardware class a backend targets (not the specific silicon instance)."""
+    """The coarse hardware class a backend targets (not the specific silicon instance).
 
-    CPU = "cpu"     # scalar/vector CPU — RVV baremetal + whole-model (spike, saturn_vec, *_model)
-    GPU = "gpu"     # SIMT — muon
-    NPU = "npu"     # systolic-array / tensor accelerator — gemmini
+    The members are DERIVED, in the sense that matters: which class a target is follows from the
+    compute ENGINES it declares, and that relationship lives in one place --
+    :data:`merlin.kernels.engines.TARGET_CLASS_OF_ENGINE` -- rather than being restated here in a
+    comment. ``targetgen.families`` used to assert in prose that the compute-unit kinds were "aligned
+    with" this enum; five kinds cannot align with three tokens by inspection, so it is now a check
+    (:func:`merlin.kernels.engines.check_class_map_is_total`).
+
+    The enum itself stays, because a backend genuinely declares its class when it registers and that
+    is a fact about the backend. What is derived is the correspondence, so the two cannot drift.
+
+    Deliberately NOT annotated with which silicon is which: naming targets here is how a coarse class
+    turns into a lookup table for specific hardware. Use :func:`target_class_for` to ask.
+    """
+
+    CPU = "cpu"     # a scalar and/or lane (vector) engine — a CPU, with or without SIMD
+    GPU = "gpu"     # a threads-of-control (SIMT) engine, with or without a tensor unit inside it
+    NPU = "npu"     # an array engine (systolic wavefront or outer-product tile) as the outermost unit
+
+
+def target_class_for(target: str) -> "TargetClass | None":
+    """The class a target's DECLARED engines imply, or None when it declares none.
+
+    None is a real answer -- "nobody has said what silicon this is" -- and must not be defaulted to
+    CPU: guessing the class of an undeclared accelerator is how a result gets attributed to the wrong
+    kind of device. Imported lazily so the runtime does not depend on the compiler packages at import
+    time; returns None if they are unavailable rather than failing a backend lookup.
+    """
+    try:
+        from merlin.kernels import engines as _engines
+    except Exception:                        # noqa: BLE001 — kernels unavailable in this sandbox
+        return None
+    got = _engines.target_class_for(_engines.engines_for(target))
+    return TargetClass(got) if got else None
 
 
 class BackendKind(str, Enum):

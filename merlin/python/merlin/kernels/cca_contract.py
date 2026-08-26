@@ -31,7 +31,7 @@ from typing import Any
 
 from . import action_catalog
 from .cca import (ComputeFacet, CoverageFacet, DataflowFacet, MemoryFacet, EnvelopeFacet,
-                  SpatialFacet,
+                  SimtFacet, SpatialFacet,
                   VectorFacet)
 
 # facet name (the axis prefix) -> the dataclass whose fields it exposes.
@@ -41,6 +41,7 @@ FACET_CLASSES = {
     "memory": MemoryFacet,
     "envelope": EnvelopeFacet,
     "spatial": SpatialFacet,
+    "simt": SimtFacet,
     "dataflow": DataflowFacet,
     "coverage": CoverageFacet,
 }
@@ -146,6 +147,24 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
     "spatial.accumulator_resident": FieldSpec("spatial.accumulator_resident", LEVER, ("spatial",),
                                               "output stays PE/accumulator-resident across the reduction "
                                               "(a discovered accumulator memory implies this lever)"),
+    # --- simt (a threads-of-control engine: muon/radiance) ---
+    # Family-tagged "simt", like spatial.*, so any target with that engine picks these up when it
+    # routes them -- and no target without one ever does. BACKEND_STUB until the lifter that fills
+    # them and the routes that expose them land: a field nothing can populate and nothing can change
+    # is not a lever, and calling it one would promise the loop an action that does not exist.
+    "simt.warps": FieldSpec("simt.warps", BACKEND_STUB, ("simt",),
+                            "warps cooperating on the region -> partition lever (routes pending)"),
+    "simt.threads_per_warp": FieldSpec("simt.threads_per_warp", IDENTITY, ("simt",),
+                                       "fixed warp width -- a target constant the compiler targets, "
+                                       "not a choice (cf. spatial.pe_rows)"),
+    "simt.smem_resident": FieldSpec("simt.smem_resident", BACKEND_STUB, ("simt",),
+                                    "operand tile staged in shared memory across the reduction "
+                                    "-> residency lever (routes pending)"),
+    "simt.barriers_in_loop": FieldSpec("simt.barriers_in_loop", BACKEND_STUB, ("simt",),
+                                       "barriers inside the reduction loop -> hw-sync placement "
+                                       "(the region with no cca_axes today)"),
+    "simt.divergence": FieldSpec("simt.divergence", BACKEND_STUB, ("simt",),
+                                 "uniform vs divergent control flow -> predication/partition lever"),
     # --- coverage (whole-model, target-agnostic) ---
     # These are GRAPH-level, which is the point: every other facet is lifted from ONE kernel's asm, so a
     # loss that lives in the graph -- an entire contraction class left unclaimed, or the ~88% of linalg
