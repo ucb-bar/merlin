@@ -86,24 +86,64 @@ def _target() -> str:
 SIM_TIER = {"spike": "L2", "verilator": "L3", "vcs": "L4"}
 
 
-def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
-    """Resolve the self-check oracle tiers from the TARGET's contract (target-agnostic, mirrors the driver
-    grade). A chipyard target (gemmini) exposes the spike/verilator/vcs ladder selectable via --sim; any
-    other target grades on its OWN contract-derived RTL tier (atlas external_backend -> the program oracle;
-    an arc target -> the RTL-derived arc cosim), where --sim is not applicable. Routing atlas here through
-    the hardcoded spike/verilator adapters ran the gemmini/RVV lowering path and crashed (AW4)."""
+def select_tiers(full: dict, default: dict, requested: str) -> tuple[dict, str | None]:
+    """Which tiers this self-check runs: the target's cheap LOOP ladder by default, or exactly the tiers
+    ``--tiers`` names, validated against everything the endpoint can REACH.
+
+    The two maps are a deliberate distinction and were being conflated. Resolving the DEFAULT from the
+    loop ladder is what keeps a sweep cheap -- a cert tier is minutes per capsule against seconds for the
+    functional one, and paying it on every capsule of every sweep was 80% of an agent round. Validating
+    the REQUEST against that same shrunken map is a different question, and answering it with the loop
+    map made the flag useless for the one job it exists to do: on this repo's SIMT target the loop ladder
+    is {L2}, so ``--tiers L2,L3`` was refused as "unreachable" by an endpoint whose full map is
+    {L2, L3}.
+
+    The same conflation silently disabled automatic promotion. ``tier_promote.resolve_tiers`` derives its
+    cert tier as ``oracle_adapters - qa_loop_adapters`` -- i.e. precisely a tier the loop map never
+    contains -- and the broker forwards it as ``--tiers <cert>``. So every promoted job asked for a tier
+    this validation could only refuse. Promotion was not merely untested in production; it could not fire
+    even in principle.
+
+    Returns ``(adapters, error)``. An unreachable tier is still NAMED, never silently dropped: a
+    self-check that quietly grades fewer tiers than it was asked for reads as a pass.
+    """
+    want = {t.strip().upper() for t in requested.split(",") if t.strip()}
+    if not want:
+        return default, None
+    missing = sorted(want - set(full))
+    if missing:
+        return {}, (f"--tiers names {missing}, which this endpoint does not reach; "
+                    f"reachable: {sorted(full)}")
+    return {t: ad for t, ad in full.items() if t in want}, None
+
+
+def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, dict, str]:
+    """``(default_tiers, reachable_tiers, sim)`` from the TARGET's contract (target-agnostic, mirrors the
+    driver grade).
+
+    ``default`` is what a sweep runs when ``--tiers`` is absent: the fastest ladder the CORPUS declares.
+    ``reachable`` is everything the endpoint can run, cert tiers included -- the set ``--tiers`` is
+    validated against, and the set the broker's promotion draws its cert tier from. Returning only the
+    first of these is what broke both (see :func:`select_tiers`).
+
+    A chipyard target (gemmini) exposes the spike/verilator/vcs ladder selectable via --sim; any other
+    target grades on its OWN contract-derived RTL tier (atlas external_backend -> the program oracle; an
+    arc target -> the RTL-derived arc cosim), where --sim is not applicable. Routing atlas here through
+    the hardcoded spike/verilator adapters ran the gemmini/RVV lowering path and crashed (AW4).
+    """
     if sim_via == "chipyard":
         ad = {"L2": CR._spike_verilator_adapter("spike", target)}
+        full = {"L2": ad["L2"], "L3": CR._spike_verilator_adapter("verilator", target)}
         if sim in ("verilator", "vcs"):
-            ad["L3"] = CR._spike_verilator_adapter("verilator", target)
+            ad["L3"] = full["L3"]
         if sim == "vcs":
             try:
                 from merlin.targetgen import vcs_adapter as VA  # optional, config-gated
-                ad["L4"] = VA.adapter()
+                ad["L4"] = full["L4"] = VA.adapter()
             except Exception:
                 print("  (vcs adapter unavailable in this environment — falling back to verilator L3)", file=sys.stderr)
                 sim = "verilator"
-        return ad, sim
+        return ad, full, sim
     # non-chipyard target: its contract-resolved tiers (arc / program oracle); --sim does not apply.
     #
     # The LOOP ladder, not the full one. `oracle_adapters` is the CHECKPOINT set -- everything the endpoint
@@ -115,8 +155,8 @@ def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
     # mandatory. Two code paths disagreeing, not a design choice.
     #
     # `qa_loop_adapters` keeps the fastest tier the CORPUS ITSELF declares, and fails closed (`{}`) rather
-    # than substituting one it never asked for. `--tiers` below is the way to go deeper, per capsule,
-    # deliberately.
+    # than substituting one it never asked for. `--tiers` is the way to go deeper, per capsule,
+    # deliberately -- which requires the FULL map to be returned alongside, not discarded.
     _declared = None
     try:
         import _common as _C
@@ -126,8 +166,9 @@ def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
         _declared = declared_oracle_tiers(*_te_.graded_roots())
     except Exception:  # noqa: BLE001 -- no resolvable descriptor: fall back to the full ladder
         _declared = None
+    full = CR.oracle_adapters(target, sim_via)
     loop = CR.qa_loop_adapters(target, sim_via, declared_tiers=_declared) if _declared else {}
-    return (loop or CR.oracle_adapters(target, sim_via)), sim
+    return (loop or full), full, sim
 
 
 def _log_telemetry(out: dict, capsules_arg: str) -> None:
@@ -194,17 +235,11 @@ def main(argv=None):
     _strip_build_state(sub)   # every grade builds from scratch in its OWN path — see helper
 
     _tgt, _sim_via = _target_sim_via()
-    adapters, sim = _adapters(a.sim, _tgt, _sim_via)
-    if a.tiers:
-        # Validated against the RESOLVED map, never trusted: an unreachable tier must be named, not
-        # silently dropped (a self-check that quietly grades fewer tiers than asked reads as a pass).
-        want = {t.strip().upper() for t in a.tiers.split(",") if t.strip()}
-        missing = sorted(want - set(adapters))
-        if missing:
-            print(json.dumps({"error": f"--tiers names {missing}, which this endpoint does not reach; "
-                                       f"reachable: {sorted(adapters)}"}))
-            return 2
-        adapters = {t: ad for t, ad in adapters.items() if t in want}
+    adapters, full, sim = _adapters(a.sim, _tgt, _sim_via)
+    adapters, _err = select_tiers(full, adapters, a.tiers)
+    if _err:
+        print(json.dumps({"error": _err}))
+        return 2
     # barrier = the deepest resolved RTL tier: chipyard maps from --sim; any other target uses its
     # single contract-derived tier (atlas -> L3 program oracle), so read it from the adapters.
     barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" else max(adapters) if adapters else "L3"
