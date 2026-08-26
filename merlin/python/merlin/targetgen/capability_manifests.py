@@ -506,11 +506,29 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
 
         derived = _cd.derive(name, manifest, facts)
         manifest.update(derived.to_dict())
-        manifest["capability_evidence"] = {
+        evidence = {
             "drift": _cd.reconcile(_el.capability_map_from_contract(manifest), derived),
             "derived_families": derived.families(),
             "undetermined_families": sorted(derived.unknown),
         }
+
+        # ENGINES, on the same terms: which compute datapaths the evidence reaches, recorded beside the
+        # declared `compute_units` and never replacing them. A target described only by its declaration
+        # can be most of a machine short -- atlas declares one systolic unit with ops ('matmul',) while
+        # 50 of its 137 expert kernels drive a vector engine exclusively -- and that gap is invisible
+        # until something compares the two.
+        #
+        # `unchecked_engine` findings are the load-bearing part. No rung can observe a SIMT engine
+        # today, so a SIMT declaration is UNCHECKED rather than unsupported, and the report says which
+        # it is. Collapsing those two would action a gap in our instruments as a fact about silicon.
+        from merlin.kernels import engines as _eng
+
+        engines = _cd.derive_engines(name, manifest, facts)
+        evidence.update(engines.to_dict())
+        declared_engines = _eng.facet_families_of_units(_cu.compute_units(manifest))
+        evidence["engine_drift"] = _cd.reconcile_engines(declared_engines, engines)
+        evidence["engines_declared"] = sorted(declared_engines)
+        manifest["capability_evidence"] = evidence
     except Exception as exc:  # noqa: BLE001 — never block contract derivation on the audit
         manifest["capability_evidence"] = {"error": f"{type(exc).__name__}: {exc}"}
 

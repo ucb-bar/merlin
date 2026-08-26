@@ -150,6 +150,15 @@ def engines_for(target: str) -> frozenset[str]:
     return engines_of_units(compute_units(contract or {}))
 
 
+def facet_families_of_units(units) -> frozenset[str]:
+    """The engine-scoped CCA facets a list of ``ComputeUnit`` warrants.
+
+    The units-level form, for a caller that already holds them — chiefly the manifest derivation, which
+    has the contract in hand and must not re-resolve the target by name while deriving it.
+    """
+    return frozenset(f for f in (facet_for(k) for k in engines_of_units(units)) if f)
+
+
 def facet_families_for(target: str) -> frozenset[str]:
     """The engine-scoped CCA facets a target's silicon warrants, derived from its engine set."""
     return frozenset(f for f in (facet_for(k) for k in engines_for(target)) if f)

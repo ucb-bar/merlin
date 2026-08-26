@@ -1,7 +1,7 @@
 """The engine model: a target is a SET of compute engines, and each engine picks a CCA facet.
 
 The measurement that motivated this is worth restating, because the tests below are only interesting
-if you believe it. Bucketing atlas's 180 hand-written expert kernels by the roles its DERIVED IsaModel
+if you believe it. Bucketing atlas's 137 hand-written expert kernels by the roles its DERIVED IsaModel
 assigns: 26 drive only the matrix array, 50 drive only the vector engine, 35 drive both, 26 drive
 neither. Filing atlas as "an NPU" and giving it one facet leaves 62% of its engine-driving corpus
 undescribed. So the invariants here are about never collapsing the set, and about the three
