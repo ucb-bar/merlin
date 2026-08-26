@@ -834,6 +834,28 @@ def discovered_dim(target: str) -> int | None:
         return None
 
 
+def discovered_mesh(target: str) -> dict | None:
+    """The target's compute-mesh record as DISCOVERED from the RTL — geometry plus the corroboration that
+    makes it a fact rather than a ranking: which module holds the grid, which element is replicated and how
+    many times (summed across CIRCT's structural variants), and the multiply/add/register counts of the
+    multiply-accumulate idiom the recognizer confirmed.
+
+    Callers must prefer this over :func:`discovered_dim`. A bare DIM cannot be refuted by whoever reads it
+    downstream, and an unrefutable number is exactly how a SIMT cluster came to publish a 17x17 mesh that
+    was 289 flip-flops in a divide/sqrt unit. None when the target has no mesh / mlc is unavailable.
+    Target-agnostic."""
+    if mlc_dir() is None:
+        return None
+    try:
+        with _mlc_cwd():
+            _ensure_interface_cache(target)
+            from mlc.discover.cache import load_interface
+            mesh = load_interface(target).get("mesh")
+            return dict(mesh) if isinstance(mesh, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def discovered_memories(target: str) -> list[dict] | None:
     """The target's SRAM banks (name/depth/row_bytes), DISCOVERED from the RTL by mlc. Target-agnostic."""
     if mlc_dir() is None:

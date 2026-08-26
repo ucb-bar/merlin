@@ -255,6 +255,16 @@ class DerivedEngines:
     #: Rungs that actually ran on this target -- not merely "were importable". A census that saw only
     #: scalar classes has not covered compute, and does not count.
     rungs: tuple[str, ...] = ()
+    #: Observations a rung PRODUCED but could not corroborate, engine -> what was seen. These are NOT
+    #: evidence and never enter `evidenced`.
+    #:
+    #: The fourth state, and the one the first three could not express. `undeclared` / `unevidenced` /
+    #: `unchecked` all locate a disagreement in the CONTRACT -- it over-declares, it under-declares, or
+    #: we could not look. None of them can say the instrument is at fault, so a bad reading gets
+    #: reported as a hardware finding with full confidence. Measured: a SIMT target was told it had an
+    #: undeclared array engine on the strength of an RTL "17x17 mesh" that was 289 D-flip-flops inside a
+    #: float divide/sqrt unit, 289 being a perfect square. Nothing in the report could have said so.
+    suspect: dict[str, str] = field(default_factory=dict)
 
     def engines(self) -> list[str]:
         return sorted(self.evidenced)
@@ -274,7 +284,32 @@ class DerivedEngines:
             ],
             "engines_rungs_ran": list(self.rungs),
             "engines_observable": sorted(self.observable()),
+            "engines_suspect": [{"engine": e, "observation": o}
+                                for e, o in sorted(self.suspect.items())],
         }
+
+
+def _array_observation(a: dict) -> str:
+    """The literal thing observed in the RTL, not the dimension concluded from it.
+
+    ``16x16`` is the CONCLUSION. ``256 instances of 'Tile' in 'Mesh'`` is the observation, and only the
+    second can be read and refuted by someone who knows the hardware."""
+    dims = f"{a.get('rows')}x{a.get('cols')}"
+    what = f"array {a.get('name')!r} {dims}"
+    element, instances, container = a.get("element"), a.get("instances"), a.get("container")
+    if element and instances:
+        what += f" <- {instances} instances of {element!r}"
+        if container:
+            what += f" in {container!r}"
+        variants = a.get("element_variants") or []
+        if len(variants) > 1:
+            what += f" (across {len(variants)} structural variants)"
+    mac = a.get("mac_idiom") or {}
+    if mac:
+        what += f", mac idiom {dict(sorted(mac.items()))}"
+    elif not a.get("corroborated"):
+        what += ", NO multiply-accumulate idiom confirmed"
+    return f"{what} ({a.get('source', 'rtl')})"
 
 
 def _engine(out: DerivedEngines, ev: EngineEvidence) -> None:
@@ -323,13 +358,22 @@ def derive_engines(target: str, contract: dict, facts: dict | None = None, *,
 
     body = (facts or {}).get("facts") or {}
     arrays = [a for a in (body.get("arrays") or ()) if isinstance(a, dict)]
-    if arrays:
+    # An array fact evidences an engine only when it carries the corroboration that makes it one: WHICH
+    # element was found replicated, how many times, and the multiply-accumulate idiom confirming the
+    # element computes. A bare rows x cols is a ranking, not an observation -- the extractor that
+    # produced it could not fail, so it reported a grid for every design it was given.
+    good = [a for a in arrays if a.get("corroborated")]
+    if good:
         rungs.append("rtl_facts")
-        for a in arrays:
-            dims = f"{a.get('rows')}x{a.get('cols')}"
-            _engine(out, EngineEvidence(
-                engine="spatial", source="rtl_facts",
-                evidence=f"MAC array {a.get('name')!r} {dims} ({a.get('source', 'rtl')})"))
+        for a in good:
+            _engine(out, EngineEvidence(engine="spatial", source="rtl_facts",
+                                        evidence=_array_observation(a)))
+    for a in arrays:
+        if not a.get("corroborated"):
+            # Recorded, never promoted, and pointedly NOT counted as a rung that ran: an uncorroborated
+            # reading must not make a declared engine look over-declared ("a capable rung missed it")
+            # when the truth is that the rung returned something we cannot trust.
+            out.suspect.setdefault("spatial", _array_observation(a))
 
     out.rungs = tuple(rungs)
     return out
@@ -338,13 +382,20 @@ def derive_engines(target: str, contract: dict, facts: dict | None = None, *,
 def reconcile_engines(declared: "set[str] | frozenset[str]", derived: DerivedEngines) -> list[str]:
     """Compare the DECLARED engine facets against the evidenced ones. Returns drift, newest concern first.
 
-    Three outcomes, never two, for the same reason the family ladder insists on three: "the evidence
-    contradicts this" and "no rung could look" want opposite responses, and collapsing them into one
-    "mismatch" bucket is how an evidence gap gets actioned as a hardware fact.
+    FOUR outcomes, never fewer, for the same reason the family ladder insists on three: "the evidence
+    contradicts this", "no rung could look", and "the rung answered but we cannot trust it" want
+    different responses, and collapsing them is how an evidence gap gets actioned as a hardware fact.
+    The fourth (``suspect_evidence``) is the one that has to point at OUR instrument rather than at the
+    contract -- see :attr:`DerivedEngines.suspect`.
     """
     drift: list[str] = []
     ev = set(derived.evidenced)
     observable = derived.observable()
+    for engine in sorted(set(derived.suspect) - ev):
+        drift.append(f"suspect_evidence {engine}: a rung produced {derived.suspect[engine]}, which "
+                     f"carries no corroboration that it is a compute grid -- this is a finding about "
+                     f"OUR extractor, not about the contract, and neither confirms nor refutes the "
+                     f"declaration")
     for engine in sorted(ev - set(declared)):
         e = derived.evidenced[engine]
         drift.append(f"undeclared_engine {engine}: evidenced by {e.source} ({e.evidence}) but the "
