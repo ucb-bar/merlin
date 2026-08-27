@@ -693,7 +693,8 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     # 2. runner-owned EXTERN-kernel harness main (operands from the cb) -> STOCK clang rv32 -> main.o
     main_c = muon_harness.external_main_from_cb(cb, kernel_symbol=kernel_symbol, model=model)
     if main_c is None:
-        raise MuonError("could not derive harness operands from the command buffer (no canonical_inputs)")
+        raise MuonError("could not derive harness operands from the command buffer: "
+                        + muon_harness.why_no_operands(cb))
     (work / "main.c").write_text(main_c, encoding="utf-8")
     mobj_rv = work / "main.o"
     mc = subprocess.run([str(clang), *cflags, "-c", str(work / "main.c"), "-o", str(mobj_rv)],

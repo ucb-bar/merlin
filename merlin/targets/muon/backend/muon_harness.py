@@ -404,7 +404,10 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                        TensorArg(x, len(xv), 1, xv, "f32")]
             out_args = [TensorArg(out, oc, pp, [0.0] * (oc * pp), "f32")]
             return in_args, out_args
-        if op == "BATCHED_MATMUL":
+        # The command-buffer schema declares BOTH spellings of this opcode legal (`BATCHED_MATMUL` and
+        # `MATMUL_BATCHED`). Modelling only one made a conformant submission fail: the contract told the
+        # agent the spelling it chose was legal, and the harness then could not build operands for it.
+        if op in ("BATCHED_MATMUL", "MATMUL_BATCHED"):
             a, w, out = o.get("a"), o.get("w"), o.get("dst")
             if not (a and w and out) or a not in env0 or w not in env0:
                 return None
@@ -553,6 +556,50 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     body += ['  _ps("DONE\\n");', "  return 0;", "}"]
     return "\n".join(body) + "\n"
 
+
+
+def modelled_opcodes() -> frozenset[str]:
+    """Opcodes this harness can build reference operands for.
+
+    Derived from the dispatch itself rather than restated, so it cannot drift from what the code
+    actually handles."""
+    import pathlib
+    src = pathlib.Path(__file__).read_text(encoding="utf-8")
+    out = set()
+    for line in src.splitlines():
+        t = line.strip()
+        for lead in ('if op == "', 'elif op == "'):
+            if t.startswith(lead):
+                out.add(t[len(lead):].split('"', 1)[0])
+        if t.startswith('if op in ('):
+            for part in t[len('if op in ('):].split(")", 1)[0].split(","):
+                part = part.strip().strip('"').strip("'")
+                if part:
+                    out.add(part)
+    return frozenset(out)
+
+
+def why_no_operands(cb: dict) -> str:
+    """A TRUE explanation of why :func:`external_main_from_cb` returned None.
+
+    The caller used to report every failure as "no canonical_inputs", which is usually false: the runner
+    attaches those from the golden, and the real cause is almost always an opcode this harness does not
+    model. Naming the wrong cause sent the agent to fix a command buffer that was already correct --
+    measured at 13 of 32 failures on one run, every one of them reported against the wrong thing."""
+    ops = [str(c.get("opcode") or c.get("op") or "?") for c in (cb.get("commands") or [])]
+    have = bool(cb.get("canonical_inputs"))
+    modelled = modelled_opcodes()
+    unmodelled = [o for o in ops if o not in modelled]
+    if not have and not ops:
+        return "the command buffer carries no commands and no canonical operands"
+    if unmodelled:
+        return (f"this reference harness does not model opcode(s) {sorted(set(unmodelled))} "
+                f"(it models {sorted(modelled)}); the command buffer itself carries "
+                f"{'canonical operands' if have else 'NO canonical operands'}")
+    if not have:
+        return "the runner attached no canonical operands for this capsule's golden"
+    return (f"operand shapes could not be reduced to the 1-D/2-D form this reference harness builds "
+            f"(opcodes {sorted(set(ops))} were all modelled)")
 
 def external_main_from_cb(cb: dict, *, kernel_symbol: str, model) -> str | None:
     """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the
