@@ -35,6 +35,11 @@ export TMP=$TMPDIR TEMP=$TMPDIR
 # versus 1.5 min with the RTL cert dropped.
 export MERLIN_MUON_GSIM_EMU=/scratch/agustin/projects/gsim/build/radiance_gsim/emu_radiance_gsimconfig
 export MERLIN_MUON_GSIM_MAXCYCLES=2000000
+# MERLIN_MLC_DIR is NOT in .env, and without it isa_encoding_for() returns None, _model_for() raises,
+# and EVERY fork-free compile fails closed — the run then grades only the capsules that need no oracle.
+# Measured: a first attempt sat flat at 6/39 (the six MX fixtures) for 101 minutes. codegen_smoke now
+# refuses to launch in that state, but setting it here is the actual fix.
+export MERLIN_MLC_DIR=${MERLIN_MLC_DIR:-/scratch2/agustin/mvp-lhwir/modeling}
 
 echo "head:    $(git rev-parse --short HEAD)  branch: $(git rev-parse --abbrev-ref HEAD)"
 echo "corpus:  $(ls merlin/contract/capsules/radiance/model_slices | wc -l) model_slices, \
@@ -45,7 +50,7 @@ echo "start:   $(date -u +%Y%m%dT%H%M%SZ)"
 
 CHIA_PY=/scratch/agustin/projects/oscar-merlin/build/chia-venv/bin/python
 $CHIA_PY merlin/experiments/capsule_bench/harness/chia_ab_batch.py \
-    --tag radiance_continuous_v13b --arms merlin_rtlchecks --repeats 1 \
+    --tag radiance_continuous_v13c --arms merlin_rtlchecks --repeats 1 \
     --driver codex --model gpt-5.6-sol --effort high \
     --codex-slots 1 \
     --schedule continuous --max-wall-s 36000 \

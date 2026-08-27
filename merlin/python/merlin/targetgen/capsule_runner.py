@@ -590,6 +590,28 @@ def codegen_smoke(target: str) -> tuple[bool, str]:
     (BSP regenerated from source) -> reference sim -> assert the computed result — so the exact pipeline is
     exercised offline and a live run never debugs it. Any other target returns n/a (the oracle-side
     compiler_smoke covers a compile-based backend)."""
+    # PREREQUISITE FIRST, AND IT FAILS CLOSED.
+    #
+    # Everything below early-returns `True, "n/a (…)"` for a target whose emit path this smoke does not
+    # cover. That is right for a smoke that does not APPLY — but the fork-free path's ISA model is not a
+    # smoke, it is a prerequisite: if the backend cannot build it, every capsule fails to compile and the
+    # run grades nothing.
+    #
+    # The two are resolved by DIFFERENT paths, which is how this hid. `isa_model_for_target` (consulted
+    # below) succeeded and reported "not fixed-format" -> n/a -> codegen_ok: true, while the compile path's
+    # `_model_for` reads the mlc-derived encoding fact and returned None. Measured: a radiance run spent
+    # 101 minutes flat at 6/39 — the six MX fixtures, which need no oracle at all — with every real capsule
+    # `incomplete: no derived ISA encoding fact for target 'radiance'`, because MERLIN_MLC_DIR was unset.
+    # codegen_smoke said codegen_ok: true for all 101 of those minutes.
+    if _bespoke_sim_via(target) == "cyclotron":
+        try:
+            from ..runtime.backends import base as _bk0
+            _bk0.get_backend("muon").muon._model_for(target)
+        except Exception as e:  # noqa: BLE001 — the prerequisite is missing; that is a NO_GO, not an n/a
+            return False, (f"the fork-free emit path cannot build its ISA model for {target!r}: "
+                           f"{str(e)[-160:]}. Every capsule would fail to compile and the run would "
+                           f"grade only capsules needing no oracle. Derive the encoding fact / set "
+                           f"MERLIN_MLC_DIR before spending.")
     try:
         from .isa_model import isa_model_for_target
         if not isa_model_for_target(target).is_fixed_format():
