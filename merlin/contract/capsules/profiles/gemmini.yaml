@@ -410,3 +410,14 @@ capsules:
    operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'lstmnetvit int8 — vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)',
    label: public, gate: {after_op_pass_fraction: 0.8}}
+# INTEROP: the capstones above assert the accelerator ran the whole model; this one asserts the compiler
+# can SPLIT one across the mesh and the host scalar/RVV lane and still be numerically right. That is the
+# normal shape of a real network on a matmul-only mesh -- norms and activations have nowhere else to go --
+# so a bar that treats host-lane work as failure tests the wrong thing. `must_accelerate` is withheld for
+# a lane-declaring capsule for exactly that reason. This target declares one compute unit (systolic_mesh),
+# so `in_contract_vector_scalar` is unreachable here and is deliberately not required.
+- {cat: model, name: GX0_interop_rvv_lane, kind: model, op: model, model: small_llama,
+   operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama int8 composed across the systolic mesh and the host scalar/RVV lane — asserts both lanes carried work',
+   label: public, gate: {after_op_pass_fraction: 0.8},
+   lanes: {require: [on_mesh, scalar_rvv_lane]}}

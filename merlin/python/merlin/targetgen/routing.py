@@ -319,6 +319,38 @@ def route_target(demands: list[OpDemand], target_name: str) -> list[RouteResult]
 _MESH_KINDS = {"systolic", "spatial", "simt"}
 
 
+def reachable_lanes_on(units: list) -> set[str]:
+    """Which routing-plan lanes a target can actually populate, from its DECLARED compute units.
+
+    The plan partitions every op three ways, so a lane is reachable only if the partition can put
+    something in it:
+
+      ``on_mesh``                    -- the target declares a unit of a mesh kind (systolic/spatial/simt);
+      ``in_contract_vector_scalar``  -- it declares a unit that is NOT a mesh kind (a vector unit, say);
+      ``scalar_rvv_lane``            -- always: an op routed to no unit falls to the host CPU's lane.
+
+    This exists because a capsule may REQUIRE a lane, and a required lane the target cannot populate is a
+    capsule no compiler can pass -- a bar that looks like a capability test and is actually a wall.
+    Measured: two of three targets here declare no non-mesh unit at all, so an interop capsule demanding
+    ``in_contract_vector_scalar`` on either of them is unpassable by construction.
+    """
+    kinds = {getattr(u, "kind", None) for u in units}
+    lanes = {"scalar_rvv_lane"}
+    if kinds & _MESH_KINDS:
+        lanes.add("on_mesh")
+    if {k for k in kinds if k} - _MESH_KINDS:
+        lanes.add("in_contract_vector_scalar")
+    return lanes
+
+
+def reachable_lanes(target_name: str) -> set[str]:
+    """:func:`reachable_lanes_on` for a named target, loading its declared units the same way
+    :func:`route_plan` does, so reachability is judged against exactly the units that will do the routing."""
+    from merlin.targetgen import target_registry as tr
+
+    return reachable_lanes_on(_cu.compute_units(tr.load_contract(target_name)))
+
+
 def route_plan_on(demands: list[OpDemand], units: list[_cu.ComputeUnit]) -> dict:
     """Split a whole model's ops across a set of already-loaded ``units`` (the target-agnostic core of
     :func:`route_plan`). ``results`` preserves the input op ORDER — the whole-model splice walks it to

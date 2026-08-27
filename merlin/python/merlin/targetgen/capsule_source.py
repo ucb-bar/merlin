@@ -792,6 +792,36 @@ def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, lis
     return family, classes
 
 
+def _checked_lanes(entry: dict, binding) -> list[str]:
+    """The lanes an interop capsule requires, REFUSED at generation time if this target cannot populate one.
+
+    A required lane is a bar the submission must clear. A bar the target's declared compute units make
+    unreachable is not a hard capability test, it is a wall: no compiler can put work on a lane the router
+    has nothing to route there. Measured on the corpus this check was written for -- a capsule required
+    ``in_contract_vector_scalar`` on a target whose every declared unit is a mesh kind, so the lane was
+    empty by construction and the capsule was unpassable however good the backend was.
+
+    Raising here (rather than shipping the capsule and failing it forever) keeps the failure where someone
+    can fix it: at authoring time, naming the lane and what the target actually offers."""
+    want = [str(x) for x in (entry.get("lanes") or {}).get("require") or []]
+    target = getattr(binding, "target", None)
+    if not target:
+        return want                                   # no target to judge against: leave the declaration
+    try:
+        from merlin.targetgen.routing import reachable_lanes
+        have = reachable_lanes(target)
+    except Exception:                                 # noqa: BLE001 - never block generation on this
+        return want
+    missing = [ln for ln in want if ln not in have]
+    if missing:
+        raise ValueError(
+            f"capsule {entry.get('name')!r} requires lane(s) {missing} that target {target!r} cannot "
+            f"populate (its declared compute units make {sorted(have)} reachable). A required lane the "
+            f"router can put nothing on is unpassable by construction -- declare a lane this target owns, "
+            f"or give the target a compute unit that serves the one you want")
+    return want
+
+
 def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSource | None" = None):
     """Materialize a whole-model capsule: the model is lowered end-to-end via model2MLIR (the linalg IS
     the interface), weights are externalized alongside, and the golden is the host torch-eager output.
@@ -860,7 +890,7 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         # lanes is asserting COMPOSITION -- part of the model on the accelerator, part on the lane the
         # target also owns -- so host-lane work is the behaviour under test rather than a fallback
         # failure, and must_accelerate is withheld below for the same reason.
-        **({"lanes": {"require": [str(x) for x in (entry.get("lanes") or {}).get("require") or []]}}
+        **({"lanes": {"require": _checked_lanes(entry, binding)}}
            if (entry.get("lanes") or {}).get("require") else {}),
         "pytorch_ref": {"op": "model", "dtype": idt, "loader": "capsule.pytorch.py"},
         "linalg_mlir": "capsule.interface.mlir",

@@ -254,11 +254,17 @@ capsules:
 # small_llama is also the only whole model here that is realistically GSIM-runnable: the other capstones
 # are real networks (TinyLlama-1.1B, a ViT, a vision+LSTM net) whose oracle cost is unbounded -- measured
 # on another target, ONE such capstone consumed 10+ hours of a run, one simulator layer at a time.
-- {cat: model, name: MX0_interop_scalar_lane, kind: model, op: model, model: small_llama, operand_dtype: f32,
+# INTEROP pair. Both require the SAME lanes because this target declares only mesh-kind compute units
+# (simt_cluster, mx_pe), so `in_contract_vector_scalar` is empty by construction here and a capsule
+# demanding it would be unpassable however good the backend is. They differ by MODEL, so the pair covers
+# two op mixes -- a decode-shaped stack and a vision+recurrent one -- splitting differently across the
+# accelerator and the host lane. The `in_contract_vector_scalar` variant lives on the target that
+# declares a non-mesh unit (see atlas.yaml).
+- {cat: model, name: MX0_interop_rvv_lane_lstm, kind: model, op: model, model: lstmnetvit, operand_dtype: f32,
    out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'small_llama composed across the SIMT accelerator and the in-contract scalar/vector lane — reuses the M0 capture, asserts both lanes carried work',
+   source_reference: 'lstmnetvit composed across the SIMT accelerator and the scalar/RVV host lane — a conv/recurrent op mix, so a different split from the decode stack',
    label: public, gate: {after_op_pass_fraction: 0.8},
-   lanes: {require: [on_mesh, in_contract_vector_scalar]}}
+   lanes: {require: [on_mesh, scalar_rvv_lane]}}
 - {cat: model, name: MX1_interop_rvv_lane, kind: model, op: model, model: small_llama, operand_dtype: f32,
    out: Y0, source_role: pytorch_model_slice,
    source_reference: 'small_llama composed across the SIMT accelerator and the scalar/RVV host lane — reuses the M0 capture, asserts both lanes carried work',
