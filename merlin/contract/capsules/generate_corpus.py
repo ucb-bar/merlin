@@ -401,6 +401,15 @@ def _mx_golden(entry, binding):
         lhs: {"shape": [M, K], "decoded": A.reshape(-1).tolist()},
         weight: {"shape": [K, N], "decoded": W.reshape(-1).tolist()},
         "SA_e8m0_codes": SA.tolist(), "SB_e8m0_codes": SB.tolist(),
+        # The SAME scales again, keyed by the operand names the capsule DECLARES, as ordinary per-tensor
+        # specs. The two lists above are non-tensor provenance that `canonical_input_raws` skips by
+        # design, so before this the scales reached the reference kernel (which bakes them) and no one
+        # else -- a submitted backend was handed block-scaled element bytes and no scales, which is half
+        # a number. Recorded additively: the oracle keeps reading the lists above.
+        f"{lhs}_scale": {"shape": [GK, M], "decoded": SA.reshape(-1).tolist(),
+                         "note": "E8M0 exponent codes, one per block of K elements per lhs row"},
+        f"{weight}_scale": {"shape": [GK, N], "decoded": SB.reshape(-1).tolist(),
+                            "note": "E8M0 exponent codes, one per block of K elements per weight column"},
         "scale_example": {"SA[0][0]": int(SA[0, 0]), "as_scale": e8m0_decode(int(SA[0, 0]))},
         # RAW device operand bytes exactly as mx_ref consumed them (fp8: one byte/elt; fp4/fp6: packed) —
         # the ``decoded`` floats above lose precision through YAML, so a bit-exact grade re-runs the MX

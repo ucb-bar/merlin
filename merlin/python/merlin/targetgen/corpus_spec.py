@@ -95,6 +95,11 @@ class CorpusBinding:
     # ``datapath.semantic_defaults`` so a target states its posture in one place instead of repeating it
     # on every entry; a capsule's own ``semantic:`` overrides it.
     semantic_defaults: dict = field(default_factory=dict)
+    # Elements per E8M0 block scale, DERIVED from the manifest's declared scale group; None when the
+    # target declares no block scaling, or declares it without a group. Never assumed -- a different
+    # microscaling profile uses a different run length, and a guessed one silently mis-shapes the
+    # scale operands.
+    scale_block: int | None = None
     # instruction-class source: a callable (op, output_dtype, epilogue, movement) -> [class,...]
     classes_for: Callable[..., list[str]] = field(default=lambda **_: [])
 
@@ -109,6 +114,43 @@ class CorpusBinding:
 # tile size is a software blocking choice, not a hardware fact. A hardware-mesh target derives its dim
 # from facts/manifest and never reaches this. NOT an ISA/hardware constant.
 _DEFAULT_SW_TILE = 16
+
+
+def _scale_block_elems(contract: dict) -> int | None:
+    """Elements per E8M0 block scale, DERIVED from the target's manifest, or None.
+
+    A block-scaled compute unit (``scaling: block_e8m0``) carries one shared exponent per fixed-length run
+    of K elements. The run length is the target's OWN declared scale ``group`` -- searched for in the
+    manifest rather than assumed, because a different microscaling profile uses a different one and a
+    guessed length silently mis-shapes every scale operand.
+
+    Returns None when the target declares no block-scaled unit, or declares one without a group. The
+    caller then declares NO scale operands and the capsule keeps its present shape: fail closed, never a
+    baked constant.
+    """
+    units = contract.get("compute_units") or []
+    if not any(str((u or {}).get("scaling") or "").startswith("block") for u in units):
+        return None
+
+    def _group(o) -> int | None:
+        """The first declared ``group`` at any depth -- the manifest names its MX interface block
+        per target, so the group is found by KEY, not by a path spelled here."""
+        if isinstance(o, dict):
+            g = o.get("group")
+            if isinstance(g, int) and g > 0:
+                return g
+            for v in o.values():
+                found = _group(v)
+                if found is not None:
+                    return found
+        elif isinstance(o, list):
+            for v in o:
+                found = _group(v)
+                if found is not None:
+                    return found
+        return None
+
+    return _group(contract)
 
 
 def _tile_dim(target: str, contract: dict) -> int:
@@ -313,6 +355,7 @@ def derive_binding(te, datapath: dict) -> CorpusBinding:
         atol=datapath.get("atol"),
         rtol=datapath.get("rtol"),
         scaling=(scaling if scaling and scaling != "none" else None),
+        scale_block=_scale_block_elems(c),
         requant_output_dtype=datapath.get("requant_output_dtype"),
         subnormal_operand_flush=bool(datapath.get("subnormal_operand_flush", False)),
         inapplicable_tiers=_inapplicable_tiers(datapath, tiers),
@@ -356,6 +399,32 @@ def _default_modes(binding: CorpusBinding, output_dtype: str, epilogue: list[str
     return modes
 
 
+def _matmul_inputs(lhs: str, weight: str, M: int, K: int, N: int, idt: str,
+                   binding: CorpusBinding) -> list[dict]:
+    """The declared leaf operands of a matmul capsule.
+
+    On a BLOCK-SCALED datapath the operand format is (elements, per-block scales); declaring only the
+    elements hands a backend half a number and asks it for the product. The scale streams are therefore
+    declared operands in their own right, shaped by the target's own derived scale group -- one shared
+    exponent per run of ``scale_block`` K elements, per lhs row and per weight column.
+
+    Declared only when the target's manifest yields BOTH a block-scaled compute unit and a scale group,
+    and the contraction depth divides into whole blocks. Otherwise the operand list is exactly what it
+    has always been, so an unscaled target's capsules are unchanged."""
+    inputs = [{"name": weight, "role": "weight", "shape": [K, N], "dtype": idt},
+              {"name": lhs, "role": "input", "shape": [M, K], "dtype": idt}]
+    blk = binding.scale_block if binding.scaling else None
+    if blk and K % blk == 0:
+        g = K // blk
+        inputs += [
+            {"name": f"{lhs}_scale", "role": "scale", "scale_of": lhs, "block": blk,
+             "shape": [g, M], "dtype": "e8m0"},
+            {"name": f"{weight}_scale", "role": "scale", "scale_of": weight, "block": blk,
+             "shape": [g, N], "dtype": "e8m0"},
+        ]
+    return inputs
+
+
 def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """A single weight-stationary matmul/linear capsule (op ∈ {matmul, linear})."""
     D = binding.tile_dim
@@ -385,8 +454,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "name": entry["name"], "kind": entry["kind"],
         "source_role": entry["source_role"], "source_reference": entry["source_reference"],
         "label": entry.get("label", "public"), "interface_mlir": "capsule.interface.mlir",
-        "inputs": [{"name": weight, "role": "weight", "shape": [K, N], "dtype": idt},
-                   {"name": lhs, "role": "input", "shape": [M, K], "dtype": idt}],
+        "inputs": _matmul_inputs(lhs, weight, M, K, N, idt, binding),
         "operation": {"op": op, "attributes": attrs},
         "numeric_policy": _numeric_policy(binding, output_dtype, acc_scale),
         "expected": expected, "required_oracle_tiers": list(binding.tiers),
@@ -397,7 +465,8 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         lhs=lhs, weight=weight, out=out, M=M, K=K, N=N, epilogue=epilogue, output_dtype=odt,
         acc_scale=acc_scale, comment=entry.get("comment", ""),
         target=binding.target, operand_dtype=binding.mlir_dtype(binding.operand_dtype),
-        acc_dtype=binding.mlir_dtype(binding.accum_dtype))
+        acc_dtype=binding.mlir_dtype(binding.accum_dtype),
+        scale_block=(binding.scale_block if binding.scaling else None))
     return cap, mlir
 
 
