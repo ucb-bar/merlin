@@ -41,6 +41,21 @@ pins:
       - src/main/scala/common/Consts.scala
       - src/main/scala/common/Parameters.scala
       - benchmarks/common/bme.h
+    # This checkout carries the file below UNCOMMITTED, and the geometry derivation reads it, so the
+    # commit alone does not describe what would be read. The digest makes "ea373800 plus exactly these
+    # bytes" a nameable revision instead of an unexplained dirty tree: `verify` reports it as a note
+    # rather than drift while it matches, and as drift the moment it changes.
+    #
+    # WHAT THE EDIT IS: the EICG clock-gate passthrough (`WithEICGPassthrough`,
+    # `OPUV256D128ShuttleNoGateConfig` and the Kodiak configs). On FPGA the gate is combinational logic
+    # in the clock path, so the tools add a second global clock net that cannot be delay-matched to its
+    # parent -- 4.207 ns of skew and 258,620 hold-failing endpoints. It is ours, it is required for any
+    # FPGA build at this size, and it is not upstream because the fork is not ours to push to.
+    #
+    # This is a declaration to be reviewed, not a way to quiet the gate. Land it upstream and delete
+    # this block; do not add an entry here for an edit nobody has read.
+    local_edits:
+      chipyard/OPUConfigs.scala: "8cbea4f9f46f33ad808da1f68b34b0460240b2c07cd08a22b92066921576d258"
     used_by:
       - OPU microkernel emission and encoding derivation (kernels/opu_kernel, targetgen/rtl/opu_isa)
       - OPU L3 numerical certification (kernels/opu_cert)
@@ -226,6 +241,19 @@ pins:
       - src/main/scala/atlas/common/MxuParams.scala
       - src/main/scala/atlas/mxu/sa/PE.scala
       - src/main/scala/atlas/mxu/sa/SystolicArray.scala
+    # The systolic sources this reads are carried UNCOMMITTED here (the configurable FMA pipeline
+    # depth). Declaring the digests names the bytes so "569b7c31 plus exactly these" is a revision a
+    # verdict can cite, and so a further edit re-raises as drift instead of blending into a tree that
+    # was already dirty.
+    #
+    # ⚠️ A digest pins CONTENT, not correctness. The edit's own comments claim the cut-set is strictly
+    # feed-forward and therefore bit-exact, adding latency only. That claim is still RECORDED, NOT
+    # VERIFIED -- see `notes`. Declaring it here says we know which bytes are read; it does not say the
+    # numbers they produce match the pinned revision's.
+    local_edits:
+      src/main/scala/atlas/common/SystolicArrayParams.scala: "a4f121498d189f5c061a335fab908d83c5af7144ed82174d8f1837463293ad8f"
+      src/main/scala/atlas/mxu/sa/PE.scala: "563e4bef88f38ca83ba87fa76ea5961257434540ce3d5cd3ac0606a22bbbf90f"
+      src/main/scala/atlas/mxu/sa/SystolicArray.scala: "2261aca4cd2eb9a309a7d5beeb753c9891f271f23636d33afbd82852323edd0b"
     used_by:
       - mesh geometry + ISA fact extraction for the atlas capsule corpus (targetgen/isa_model.py)
       - the L3 arc cosim and L4 Verilator program oracles (targetgen/program_oracle.py)
@@ -254,6 +282,12 @@ pins:
       - src/main/scala/sp26-fp-units/E4M3Mul.scala
       - src/main/scala/sp26-fp-units/E4M3ProdAddBF16.scala
       - src/main/scala/sp26-fp-units/E4M3FMA.scala
+    # As for atlas_npu: the accumulate/FMA sources carry the same uncommitted pipelining edits, so
+    # their content is declared here to make the read-set nameable. E4M3Mul -- the subnormal-flush
+    # source the goldens were corrected for -- is UNMODIFIED and therefore needs no entry.
+    local_edits:
+      src/main/scala/sp26-fp-units/E4M3FMA.scala: "d8a18eb4458472adaf078276f8bbc9fb8c84c79d643b55cec57c29a151d2af4c"
+      src/main/scala/sp26-fp-units/E4M3ProdAddBF16.scala: "5adfe329ec5c5dce2f82c2691ed3ee53fe6c1623d8f6f085b1e934f4e5c28a28"
     used_by:
       - the fp8 operand-decode + bf16 accumulate contract the atlas capsule goldens model
     notes: >-

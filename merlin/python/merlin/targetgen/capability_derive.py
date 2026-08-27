@@ -80,6 +80,31 @@ _ROLE_FAMILY: dict[str, tuple[str, tuple[str, ...]]] = {
 #: not negative.
 _CENSUS_IS_CONCLUSIVE_FOR = ("contraction",)
 
+#: The same structural roles -> the ENGINE (a CCA facet name) that role evidences.
+#:
+#: Read this next to ``_ROLE_FAMILY`` above, because the two disagree on purpose and the disagreement
+#: is the point. That table deliberately omits ``weight_load`` / ``acc_seed`` / ``acc_readout`` --
+#: "contraction PLUMBING ... license nothing on their own" -- which is right about FAMILIES and exactly
+#: wrong about ENGINES: an instruction whose job is to push weights into a grid or drain an accumulator
+#: is the strongest possible evidence that a grid EXISTS. So the roles one table throws away are the
+#: ones the other is built on, and atlas's census reports precisely those three as ``unmapped`` today.
+#:
+#: Values are FACET names, not compute-unit kinds, because that is the granularity this evidence
+#: actually reaches. A role census cannot tell a stationary-weight wavefront from a rank-1
+#: outer-product tile -- both push weights and drain accumulators -- so claiming ``systolic`` over
+#: ``spatial`` would assert something no rung observed. The facet is the honest unit of the claim.
+_ROLE_ENGINE: dict[str, str] = {
+    "matmul": "spatial",
+    "weight_load": "spatial",
+    "acc_seed": "spatial",
+    "acc_readout": "spatial",
+    "acc_readout_scaled": "spatial",
+    "tensor_compute_unary": "vector",
+    "tensor_compute_binary": "vector",
+    # `memory` and `scalar` evidence NO engine: every target has data movement and a scalar core, so
+    # their presence distinguishes nothing. Absent on purpose, as above.
+}
+
 
 @dataclass(frozen=True)
 class FamilyEvidence:
@@ -178,6 +203,215 @@ def _from_isa_roles(taxonomy: dict, out: DerivedCapabilities, dtypes: tuple[str,
                                     evidence=f"ISA role {role!r} -> {classes[:3]}",
                                     dtypes=dtypes, composed_with=comp))
     return any(_ROLE_FAMILY.get(r, ("", ()))[0] in _CENSUS_IS_CONCLUSIVE_FOR for r in by_role)
+
+
+# ---------------------------------------------------------------------------------------------
+# Engines — which COMPUTE DATAPATHS the evidence says a target has
+# ---------------------------------------------------------------------------------------------
+#
+# Same discipline as the family ladder above and for the same reason: a target's declared
+# ``compute_units`` is a claim about hardware, and a claim nothing checks is an assertion. The
+# measured motivation is atlas -- its contract declares ONE systolic unit whose ops are ``('matmul',)``
+# while 50 of its 137 expert kernels drive a vector engine EXCLUSIVELY -- so a target described by its
+# declaration alone can be most of a machine short.
+#
+# Nothing here writes ``compute_units``. The findings are recorded BESIDE the declaration, exactly as
+# ``derive`` records semantic capabilities beside it, because a derivation bug must never be able to
+# silently redescribe the silicon.
+
+
+@dataclass(frozen=True)
+class EngineEvidence:
+    """One rung's verdict that a target has a given engine, with the literal observation."""
+
+    engine: str                     # a CCA facet name (see merlin.kernels.engines.ENGINE_FACET)
+    source: str                     # which rung: isa_role | rtl_facts
+    evidence: str                   # the literal thing observed
+
+
+#: What each rung is CAPABLE of observing, independent of what it found on any particular target.
+#:
+#: This exists because "a rung ran and did not find X" and "no rung can see X" are different facts that
+#: want opposite responses, and the first reads as an over-declaration while the second is a gap in our
+#: own instruments. Without this table the report tells a target it over-declares its SIMT cluster when
+#: the truth is that neither rung has ever been able to see one.
+#:
+#: ⚠️ Note what is missing: NO rung observes ``simt``. A structural role census reads an instruction's
+#: typed operands, and the thing that makes a SIMT engine SIMT -- many threads of control over one
+#: instruction stream -- is not a property of any single instruction's operands. Nothing here can fix
+#: that by trying harder; it needs a rung that reads warp/barrier structure. Until one exists, every
+#: SIMT declaration is UNCHECKED, and this table is what makes the report say so instead of guessing.
+_RUNG_CAN_SEE: dict[str, frozenset[str]] = {
+    "isa_role": frozenset({"spatial", "vector"}),
+    "rtl_facts": frozenset({"spatial"}),
+}
+
+
+@dataclass
+class DerivedEngines:
+    """Engines the evidence reaches, and which rungs were in a position to decide."""
+
+    evidenced: dict[str, EngineEvidence] = field(default_factory=dict)
+    #: Rungs that actually ran on this target -- not merely "were importable". A census that saw only
+    #: scalar classes has not covered compute, and does not count.
+    rungs: tuple[str, ...] = ()
+    #: Observations a rung PRODUCED but could not corroborate, engine -> what was seen. These are NOT
+    #: evidence and never enter `evidenced`.
+    #:
+    #: The fourth state, and the one the first three could not express. `undeclared` / `unevidenced` /
+    #: `unchecked` all locate a disagreement in the CONTRACT -- it over-declares, it under-declares, or
+    #: we could not look. None of them can say the instrument is at fault, so a bad reading gets
+    #: reported as a hardware finding with full confidence. Measured: a SIMT target was told it had an
+    #: undeclared array engine on the strength of an RTL "17x17 mesh" that was 289 D-flip-flops inside a
+    #: float divide/sqrt unit, 289 being a perfect square. Nothing in the report could have said so.
+    suspect: dict[str, str] = field(default_factory=dict)
+
+    def engines(self) -> list[str]:
+        return sorted(self.evidenced)
+
+    def observable(self) -> frozenset[str]:
+        """Engines SOME rung that ran could have evidenced. Anything outside this is unchecked."""
+        out: set[str] = set()
+        for r in self.rungs:
+            out |= _RUNG_CAN_SEE.get(r, frozenset())
+        return frozenset(out)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "engines_derived": [
+                {"engine": e.engine, "source": e.source, "evidence": e.evidence}
+                for e in sorted(self.evidenced.values(), key=lambda x: x.engine)
+            ],
+            "engines_rungs_ran": list(self.rungs),
+            "engines_observable": sorted(self.observable()),
+            "engines_suspect": [{"engine": e, "observation": o}
+                                for e, o in sorted(self.suspect.items())],
+        }
+
+
+def _array_observation(a: dict) -> str:
+    """The literal thing observed in the RTL, not the dimension concluded from it.
+
+    ``16x16`` is the CONCLUSION. ``256 instances of 'Tile' in 'Mesh'`` is the observation, and only the
+    second can be read and refuted by someone who knows the hardware."""
+    dims = f"{a.get('rows')}x{a.get('cols')}"
+    what = f"array {a.get('name')!r} {dims}"
+    element, instances, container = a.get("element"), a.get("instances"), a.get("container")
+    if element and instances:
+        what += f" <- {instances} instances of {element!r}"
+        if container:
+            what += f" in {container!r}"
+        variants = a.get("element_variants") or []
+        if len(variants) > 1:
+            what += f" (across {len(variants)} structural variants)"
+    mac = a.get("mac_idiom") or {}
+    if mac:
+        what += f", mac idiom {dict(sorted(mac.items()))}"
+    elif not a.get("corroborated"):
+        what += ", NO multiply-accumulate idiom confirmed"
+    return f"{what} ({a.get('source', 'rtl')})"
+
+
+def _engine(out: DerivedEngines, ev: EngineEvidence) -> None:
+    """Record an engine, keeping the FIRST (strongest-rung) observation for it."""
+    out.evidenced.setdefault(ev.engine, ev)
+
+
+def derive_engines(target: str, contract: dict, facts: dict | None = None, *,
+                   taxonomy: dict | None = None) -> DerivedEngines:
+    """Which compute engines this target's OWN evidence reaches. Never raises on missing evidence.
+
+    Two rungs, strongest first, mirroring the family ladder:
+
+    ``isa_role``   the structural role census -- name-blind, and the only rung that works on a
+                   self-hosted ISA.
+    ``rtl_facts``  an extracted MAC array. A grid of multiply-accumulate cells IS an array engine;
+                   nothing weaker is claimed from it.
+
+    ``unit_intent`` is deliberately NOT a rung here. The contract's own ``compute_units`` is the thing
+    being audited, so reading it back would make every target trivially agree with itself.
+    """
+    out = DerivedEngines()
+    rungs: list[str] = []
+
+    if taxonomy is None:
+        try:
+            from merlin.targetgen import isa_taxonomy as _it
+            taxonomy = _it.taxonomy_for_target(target)
+        except Exception:  # noqa: BLE001 — no self-hosted ISA (a RoCC target); the other rung still runs
+            taxonomy = None
+    if taxonomy:
+        from merlin.targetgen import isa_taxonomy as _it
+        by_role = _it._classes_by_role(taxonomy or {})
+        # A census that found ONLY scalar classes has read the ISA without covering compute, so it is
+        # silent about engines rather than negative about them -- the same distinction
+        # `_CENSUS_IS_CONCLUSIVE_FOR` draws for families. Radiance's taxonomy is exactly this shape
+        # (6 scalar classes, nothing else), and counting it as a compute census made the report accuse
+        # its contract of over-declaring an engine the census never looked for.
+        if any(role != "scalar" and classes for role, classes in by_role.items()):
+            rungs.append("isa_role")
+            for role, classes in sorted(by_role.items()):
+                eng = _ROLE_ENGINE.get(role)
+                if eng and classes:
+                    _engine(out, EngineEvidence(engine=eng, source="isa_role",
+                                                evidence=f"ISA role {role!r} -> {list(classes)[:3]}"))
+
+    body = (facts or {}).get("facts") or {}
+    arrays = [a for a in (body.get("arrays") or ()) if isinstance(a, dict)]
+    # An array fact evidences an engine only when it carries the corroboration that makes it one: WHICH
+    # element was found replicated, how many times, and the multiply-accumulate idiom confirming the
+    # element computes. A bare rows x cols is a ranking, not an observation -- the extractor that
+    # produced it could not fail, so it reported a grid for every design it was given.
+    good = [a for a in arrays if a.get("corroborated")]
+    if good:
+        rungs.append("rtl_facts")
+        for a in good:
+            _engine(out, EngineEvidence(engine="spatial", source="rtl_facts",
+                                        evidence=_array_observation(a)))
+    for a in arrays:
+        if not a.get("corroborated"):
+            # Recorded, never promoted, and pointedly NOT counted as a rung that ran: an uncorroborated
+            # reading must not make a declared engine look over-declared ("a capable rung missed it")
+            # when the truth is that the rung returned something we cannot trust.
+            out.suspect.setdefault("spatial", _array_observation(a))
+
+    out.rungs = tuple(rungs)
+    return out
+
+
+def reconcile_engines(declared: "set[str] | frozenset[str]", derived: DerivedEngines) -> list[str]:
+    """Compare the DECLARED engine facets against the evidenced ones. Returns drift, newest concern first.
+
+    FOUR outcomes, never fewer, for the same reason the family ladder insists on three: "the evidence
+    contradicts this", "no rung could look", and "the rung answered but we cannot trust it" want
+    different responses, and collapsing them is how an evidence gap gets actioned as a hardware fact.
+    The fourth (``suspect_evidence``) is the one that has to point at OUR instrument rather than at the
+    contract -- see :attr:`DerivedEngines.suspect`.
+    """
+    drift: list[str] = []
+    ev = set(derived.evidenced)
+    observable = derived.observable()
+    for engine in sorted(set(derived.suspect) - ev):
+        drift.append(f"suspect_evidence {engine}: a rung produced {derived.suspect[engine]}, which "
+                     f"carries no corroboration that it is a compute grid -- this is a finding about "
+                     f"OUR extractor, not about the contract, and neither confirms nor refutes the "
+                     f"declaration")
+    for engine in sorted(ev - set(declared)):
+        e = derived.evidenced[engine]
+        drift.append(f"undeclared_engine {engine}: evidenced by {e.source} ({e.evidence}) but the "
+                     f"contract's compute_units declare no unit of that kind")
+    for engine in sorted(set(declared) - ev):
+        if engine in observable:
+            drift.append(f"unevidenced_engine {engine}: declared, and a rung that CAN see this engine "
+                         f"class ran ({', '.join(derived.rungs)}) without finding it -- the "
+                         f"declaration over-reaches, or the evidence for it is missing")
+        else:
+            why = (f"the rung(s) that ran ({', '.join(derived.rungs)}) cannot observe this engine class"
+                   if derived.rungs else "no rung was available to check it")
+            drift.append(f"unchecked_engine {engine}: declared, and {why} -- this is a gap in OUR "
+                         f"instruments, not a finding about the hardware, and must not be actioned "
+                         f"as one")
+    return drift
 
 
 def _from_isa_classes(contract: dict, out: DerivedCapabilities, dtypes: tuple[str, ...]) -> None:

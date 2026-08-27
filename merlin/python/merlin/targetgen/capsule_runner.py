@@ -24,6 +24,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as _dt
 import json
+import sys
 import threading
 import traceback as _traceback
 from dataclasses import dataclass
@@ -50,7 +51,7 @@ from .contract import schemas
 # shared, target-agnostic capsule I/O (also re-exported: callers use CR.discover_capsules/load_capsule)
 from .capsule_common import (_cat, _flat, discover_capsules, load_capsule,  # noqa: F401
                              make_run_paths, run_entrypoints)
-from .oot_runner import (CertFailure, Package, build_package, integrity_scan,
+from .oot_runner import (BackendDeclined, CertFailure, Package, build_package, integrity_scan,
                          load_package, run_entrypoint)
 
 SUITE = "gemmini-capsule-bench"
@@ -86,6 +87,11 @@ class TierResult:
                                       # outside the derived covering set and the certify budget is gone.
                                       # Never a pass, never a fail — the capsule was screened, not
                                       # certified, and it says so by name.
+    fidelity: str | None = None       # WHAT THE ORACLE ACTUALLY WAS, in the oracle's own words:
+                                      # elaborated_rtl | rtl_derived_model | functional_model. The tier
+                                      # NAME cannot carry this — one target's L3 is Verilator and
+                                      # another's is a model — so a reader of the record could not tell
+                                      # a hardware verdict from a model one.
 
     def to_dict(self) -> dict:
         d = {"status": self.status, "mandatory": self.mandatory,
@@ -97,6 +103,8 @@ class TierResult:
             d["not_applicable"] = True
         if self.budget_deferred:
             d["budget_deferred"] = True
+        if self.fidelity:
+            d["fidelity"] = self.fidelity
         # perf fields ride the result ONLY when populated (SIMT) — keeps systolic output byte-identical.
         if self.gflops is not None:
             d["gflops"] = self.gflops
@@ -1119,9 +1127,15 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     # or a width probed until the backend stopped refusing.
     _delegated = mx.get("capacity_fit_delegated_to_runtime") or []
     if _delegated:
+        # If ANY delegated layer was tiled from the backend's DECLARED tile rather than from a capacity
+        # limit, this verdict rests on the runtime having driven a loop nest the backend does not have.
+        # That is a different claim and the score reports it as one (`backend_coverage`).
+        _tb = sorted({str(d.get("tiled_by")) for d in _delegated if d.get("tiled_by")})
         result["contract_obligations"] = {
             "capacity_fit": {
                 "discharged_by": "merlin runtime (host-side residency tiling)",
+                "tiled_by": ("declared_primitive_tile" if "declared_primitive_tile" in _tb
+                             else (_tb[0] if _tb else None)),
                 "n_layers": len(_delegated), "layers": _delegated[:8],
                 "tile_sources": sorted({str(d.get("tile_source")) for d in _delegated
                                         if isinstance(d, dict)}),
@@ -1431,6 +1445,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     numeric = {"status": "skipped"}
     executability: dict = {}                      # advisory RTL-executability smoke result(s), by tier
     failure: dict | None = None
+    declined: dict | None = None                  # the backend's STATED refusal ({reason, shape, op})
     status = "pass"
 
     try:
@@ -1974,18 +1989,21 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 f"on {sim_name}, your emitted artifact does not compute the declared operation within tolerance"
                 if oracle_graded
                 else f"on {sim_name}, your emitted artifact does not compute the declared operation")
-            # ``oracle`` may be a rich dict (gemmini spike/verilator: {derived_from_rtl, ...}) OR a plain
-            # provenance string (the arc / program cosim returns e.g. "atlas-arc-arcilator-cosim"); default
-            # to the tier's RTL classification when it doesn't declare derived_from_rtl.
+            # ``oracle`` may be a rich dict ({kind, derived_from_rtl, fidelity}) OR a plain provenance
+            # string; default to the tier's RTL classification only when it doesn't declare
+            # derived_from_rtl. THE ORACLE'S OWN WORD OUTRANKS THE TIER NAME: an RTL-DERIVED model that
+            # happens to land on the tier named L3 is not RTL certification, and classifying by name
+            # credited it as such on every target whose L3 is not Verilator.
             _oracle_meta = res.get("oracle")
             _derived_from_rtl = (_oracle_meta.get("derived_from_rtl", tier in cfg.rtl_tiers)
                                  if isinstance(_oracle_meta, dict) else (tier in cfg.rtl_tiers))
+            _fidelity = _oracle_meta.get("fidelity") if isinstance(_oracle_meta, dict) else None
             tiers[tier] = TierResult(
                 tier, "pass" if okt else "fail", mand,
                 reason=None if okt else _mismatch_reason,
                 cycles=res.get("cycles"), derived_from_rtl=_derived_from_rtl,
                 cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{sim_name}_console.log",
-                timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak)
+                timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, fidelity=_fidelity)
             if res.get("console") is not None:
                 (paths.artifacts_dir / f"{sim_name}_console.log").write_text(
                     res["console"], encoding="utf-8")
@@ -2000,6 +2018,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                       trace_check_res, oracle_graded,
                                       cb=cb, capsule=capsule, trace=decoded_trace))
 
+    except BackendDeclined as bd:
+        # A STATED REFUSAL IS NOT A WRONG ANSWER. It is still not a pass -- the capsule stays in the
+        # denominator, uncertified -- but recording it as a numeric mismatch told the agent its
+        # arithmetic was wrong about a program it had never emitted, and no feedback could say which
+        # shapes it had declined.
+        status = "declined"
+        declined = bd.to_dict()
+        failure = {"plane": "backend_declined", "category": "DECLINED", "detail": bd.reason}
     except CertFailure as cf:
         status = "fail"
         cat = cf.category.value if hasattr(cf.category, "value") else str(cf.category)
@@ -2148,6 +2174,10 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
         result.update(extra)
     if executability:
         result["executability"] = executability
+    # The refusal rides the result BY NAME AND SHAPE, so the round feedback can quote what was declined
+    # rather than reporting a numeric mismatch on a program that was never emitted.
+    if declined:
+        result["declined"] = declined
     (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
                                                         encoding="utf-8")
     _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite)
@@ -2296,12 +2326,12 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     if _cover:
         print(f"  tier plan: {len(_cover)}/{len(op_caps)} eligible capsule(s) form the derived covering "
               f"set (certified first); budget="
-              f"{_tier_policy.budget_seconds() or 'unlimited'}", flush=True)
+              f"{_tier_policy.budget_seconds() or 'unlimited'}", flush=True, file=sys.stderr)
     op_results = _run_all(op_caps) + ungradeable
     if ungradeable:
         print(f"  {len(ungradeable)} capsule(s) NOT GRADED — outside this target's declared capability: "
               f"{', '.join(r['capsule'] for r in ungradeable[:6])}"
-              f"{' ...' if len(ungradeable) > 6 else ''}", flush=True)
+              f"{' ...' if len(ungradeable) > 6 else ''}", flush=True, file=sys.stderr)
     if not model_caps:
         return op_results
     # The gate denominator answers "how much of what this device CAN do is working?" -- three independent
@@ -2336,7 +2366,7 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     if len(eligible) != len(graded):
         print(f"  model gate: {len(graded) - len(eligible)} graded op capsule(s) excluded from the gate "
               f"denominator as ineligible for this target (the hardware declares no capability for them)",
-              flush=True)
+              flush=True, file=sys.stderr)
     # SAY IT WHEN THE GATE GOT CHEAPER. Under a certify budget the denominator is what was CERTIFIED, not
     # what exists, so a capstone can clear 0.8 on the covering set alone. That is the intended trade --
     # the cover spans every declared axis -- but a gate satisfied by 6 capsules instead of 23 is a
@@ -2346,7 +2376,7 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
         print(f"  model gate: denominator is the {len(denom)} CERTIFIED capsule(s); "
               f"{len(_screened)} more passed the screen and were not certified "
               f"(outside the covering set, budget exhausted) — the gate fraction {frac:.2f} is over "
-              f"what was certified, not over the whole suite", flush=True)
+              f"what was certified, not over the whole suite", flush=True, file=sys.stderr)
     model_results = []
     for c in model_caps:
         if model_gate_satisfied(c, frac):

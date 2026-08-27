@@ -2,12 +2,24 @@
 (framework kernel, our compiler output, DSE view) decompiles into, at any level (asm | source_ast
 | mlir | dse).
 
-NOT RVV-specific. A region carries a ``backend`` tag (``scalar|rvv|gemmini|npu|…``, or a list for
-a composite region like NPU+RVV) and only the relevant **facets** are populated:
-- ``compute`` (target-agnostic): op, contraction form, accumulator, widening, reduction, epilogue.
-- ``vector`` (RVV/SIMD): SEW, LMUL, VL strategy, tail.
-- ``spatial`` (Gemmini/systolic): PE-array dims, dataflow, accumulator residency.
-- ``dataflow`` (NPU): engine ops, DMA pattern, on-chip-buffer residency.
+NOT RVV-specific. A region carries a ``backend`` tag and only the relevant **facets** are populated.
+Which facets those are is a property of the target's ENGINES, not of its name: a target is a SET of
+compute engines (see :mod:`merlin.kernels.engines`), and each engine-scoped facet is populated exactly
+when the target has that engine. Measured: 62% of atlas's engine-driving expert kernels touch its
+vector engine, so describing it by one facet because it is "an NPU" would leave most of its corpus
+unexpressed.
+
+ENGINE-SCOPED — populated per :func:`merlin.kernels.engines.facet_families_for`:
+- ``vector`` (a lane engine: RVV, or an accelerator's VPU): SEW, LMUL, VL strategy, tail.
+- ``spatial`` (an array engine, systolic OR outer-product): PE-array dims, dataflow, accumulator
+  residency. The two datapaths share this facet and differ in ``dataflow``'s VALUE.
+- ``simt`` (a threads-of-control engine): warps, shared-memory residency, barriers, divergence.
+
+ENGINE-AGNOSTIC — meaningful for any target:
+- ``compute``: op, contraction form, accumulator, widening, reduction, epilogue.
+- ``memory``: access pattern, panel reuse, operand broadcast.
+- ``envelope``: what is emitted AROUND the loop.
+- ``coverage``: whole-model claim (model-scoped, not per-kernel).
 
 Lifters reconstruct a CCA from each level (``lift_asm`` is primary, per-ISA). ``cca_agree``
 cross-checks two CCAs (e.g. source-lifted vs asm-lifted) per populated facet field — the
@@ -97,15 +109,59 @@ class EnvelopeFacet:                             # the code AROUND the inner loo
 
 
 @dataclass
-class SpatialFacet:                            # Gemmini / systolic (populated by a future lifter)
+class SpatialFacet:
+    """An ARRAY engine: a 2-D grid of cells with an accumulator (populated by a future lifter).
+
+    Covers both array datapaths — a stationary-weight systolic wavefront and a rank-1 outer-product
+    accumulate — because what a lifter reads out of the assembly is the same question for both. They
+    are separate compute-unit KINDS (they carry different RTL fact families) and they differ here only
+    in ``dataflow``'s value, which is the right place for it: on a systolic mesh the choice is a real
+    lever, on an outer-product unit it is fixed, and ``leverable_axes`` already expresses "fixed" as
+    simply not routing the axis.
+
+    The geometry is what the compiler tiles TO, not something it picks — hence IDENTITY, not LEVER.
+    """
+
     pe_rows: int | None = None
     pe_cols: int | None = None
-    dataflow: str | None = None               # ws | os
+    dataflow: str | None = None               # ws | os | outer_product
     accumulator_resident: bool | None = None
 
 
 @dataclass
-class DataflowFacet:                           # NPU (populated by a future lifter)
+class SimtFacet:
+    """A THREADS-OF-CONTROL engine (populated by a future lifter).
+
+    Distinct from ``vector`` and not reducible to it: a lane engine is element-parallel *within one
+    thread of control*, so it has a VL and no divergence; a SIMT engine has threads that can diverge,
+    a barrier discipline, and a programmer-managed scratchpad. ``vector.lmul`` has no SIMT analogue
+    and barrier placement has no lane analogue, which is why they are two engines rather than one.
+
+    ``threads_per_warp`` is fixed hardware geometry (IDENTITY, like ``pe_rows``); the rest are choices
+    the schedule makes and therefore candidate levers.
+    """
+
+    warps: int | None = None                  # warps cooperating on this region
+    threads_per_warp: int | None = None       # fixed geometry, not a choice
+    smem_resident: bool | None = None         # operand tile staged in shared memory across the reduction
+    barriers_in_loop: int | None = None       # barriers INSIDE the reduction loop (0 = none needed)
+    divergence: str | None = None             # uniform | divergent
+
+
+@dataclass
+class DataflowFacet:
+    """DATA MOVEMENT, not an engine — and awaiting a fold rather than a lifter.
+
+    Named for a target class ("NPU") it never described. Its three fields are movement and staging,
+    which every target has: they belong in ``MemoryFacet``/``DispatchFacet``, not in a facet scoped to
+    one kind of silicon. Nothing has ever populated it.
+
+    It is kept, rather than deleted, because ``DispatchFacet`` — which receives ``dma_pattern`` and
+    ``onchip_resident`` — does not exist yet, and these three rows are the only written record that
+    the movement story is missing. Deleting them now would drop the intent with nothing left to catch
+    it. Fold and remove when the dispatch facet lands; do not add fields here in the meantime.
+    """
+
     engine_ops: list[str] = field(default_factory=list)
     dma_pattern: str | None = None
     onchip_resident: str | None = None
@@ -151,6 +207,7 @@ class CCA:
     memory: MemoryFacet | None = None
     envelope: EnvelopeFacet | None = None
     spatial: SpatialFacet | None = None
+    simt: SimtFacet | None = None
     dataflow: DataflowFacet | None = None
     #: whole-model coverage. Present only on a MODEL-level CCA (lifted from IR + schedule); None on a
     #: per-kernel CCA, where "what fraction of the model is claimed" is not a meaningful question.
@@ -616,7 +673,7 @@ def cca_agree(a: CCA, b: CCA) -> AgreementReport:
     whose levels disagree is quarantined from policy promotion until reconciled."""
     diffs: list[str] = []
     compared: list[str] = []
-    for facet in ("compute", "vector", "memory", "spatial", "dataflow"):
+    for facet in ("compute", "vector", "memory", "spatial", "simt", "dataflow"):
         fa, fb = getattr(a, facet), getattr(b, facet)
         for k, (va, vb) in _facet_fields(fa, fb).items():
             compared.append(f"{facet}.{k}")

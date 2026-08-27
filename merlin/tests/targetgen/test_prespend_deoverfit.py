@@ -12,21 +12,48 @@ from merlin.common.paths import repo_root
 
 # --- capsule_dram: MX dtype byte widths are a single source (no drift), never a KeyError ---------------
 def test_capsule_dram_knows_mx_dtypes():
+    """Every MX operand dtype SIZES, and sub-byte formats size to what they actually occupy.
+
+    mxfp6/mxfp4 were once absent here and crashed the runner on the MX-tile capsules. The first fix gave
+    them 1 byte/element, which stopped the crash and introduced a quieter error: a 16x32 mxfp6 operand
+    reserves 512 bytes while holding 384, so every following tensor in the address map sits 128 bytes
+    off — the exact mis-placement this module exists to prevent. Bytes-per-element has no integer answer
+    for a 6-bit format, so the sizing question is only well posed for a WHOLE tensor.
+    """
     from merlin.targetgen import capsule_dram as CD
-    # mxfp6/mxfp4 were absent and crashed the runner on the MX-tile capsules; now 1 byte/element like mxfp8.
-    assert CD.dtype_bytes("mxfp8") == 1
-    assert CD.dtype_bytes("mxfp6") == 1
-    assert CD.dtype_bytes("mxfp4") == 1
-    # the MLIR spellings resolve too
-    assert CD.dtype_bytes("f6E3M2FN") == 1 and CD.dtype_bytes("f4E2M1FN") == 1
+
+    assert CD.dtype_bits("mxfp8") == 8 and CD.dtype_bits("mxfp6") == 6 and CD.dtype_bits("mxfp4") == 4
+    assert CD.dtype_bits("f6E3M2FN") == 6 and CD.dtype_bits("f4E2M1FN") == 4   # MLIR spellings resolve
+    assert CD.dtype_bytes("mxfp8") == 1                       # byte-aligned: bytes/element is meaningful
+    for sub_byte in ("mxfp6", "mxfp4", "f6E3M2FN", "f4E2M1FN"):
+        with pytest.raises(KeyError):                         # ...and for a packed format it is not
+            CD.dtype_bytes(sub_byte)
+    assert CD.tensor_nbytes([16, 32], "mxfp6") == 384         # 512 elements x 6 bits, not 512 bytes
+    assert CD.tensor_nbytes([16, 32], "mxfp4") == 256
+    assert CD.tensor_nbytes([16, 32], "mxfp8") == 512
 
 
-def test_capsule_dram_delegates_to_corpus_spec_on_miss():
-    """A dtype the operand-gen authority (corpus_spec._DTYPE) knows is never a DRAM KeyError even if the
-    local table lacks it — one source of dtype widths, not two that can drift."""
+def test_dtype_width_has_exactly_one_source():
+    """The operand-gen authority (corpus_spec) and the DRAM address map must never disagree about how
+    wide a dtype is — one source of widths, not two that can drift.
+
+    They did drift: corpus_spec carried a hand-written byte column reading 1 byte/element for mxfp6 and
+    mxfp4 while capsule_dram derived 6 and 4 bits from the format registry. It mis-addressed nothing only
+    because the single consumer read it on the integer path, where the literal happened to be right —
+    a latent second copy, not a live fault. corpus_spec now derives the width, so this compares two
+    views of ONE fact rather than two independently-maintained tables.
+    """
     from merlin.targetgen import capsule_dram as CD
-    from merlin.targetgen.corpus_spec import dtype_info
-    assert CD.dtype_bytes("fp6_e3m2") == dtype_info("fp6_e3m2")[2]
+    from merlin.targetgen.corpus_spec import _DTYPE, dtype_info
+
+    for token in _DTYPE:
+        capsule_spelling, _mlir, width, _integer = dtype_info(token)
+        bits = CD.dtype_bits(capsule_spelling)
+        if bits % 8:
+            assert width is None, \
+                f"{token}: {bits}-bit format must not claim a byte width (got {width})"
+        else:
+            assert width == bits // 8, f"{token}: corpus_spec says {width}B, registry says {bits} bits"
 
 
 # --- interface_emit: MX float tensor types parse structurally (no narrow-regex silent drop) ------------

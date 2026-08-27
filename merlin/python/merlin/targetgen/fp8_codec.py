@@ -109,6 +109,43 @@ def fp8_e4m3_encode_row(values) -> list[int]:
 # datapath shares these grids, so this names no target.
 
 
+def _e8m0_decode(code: int, exp_bits: int) -> float:
+    """Decode an UNSIGNED, MANTISSA-LESS OCP code: the whole field is a biased exponent.
+
+    This is the MX block-SCALE type (E8M0), not an operand format. It has no sign bit, no mantissa and
+    no zero -- the smallest code is ``2^(1-bias)``, not 0 -- and the all-ones code is reserved for NaN.
+    That is a different grid from :func:`_ocp_fpx_decode`'s sign|exp|mant layout, which is why it is a
+    separate function rather than a flag on that one: sharing the code path would mean threading "does
+    this format have a sign bit, a mantissa, a subnormal binade, a NaN code" through every branch of an
+    encoder whose whole structure assumes it does.
+    """
+    bias = (1 << (exp_bits - 1)) - 1
+    code &= (1 << exp_bits) - 1
+    if code == (1 << exp_bits) - 1:
+        return float("nan")
+    return 2.0 ** (code - bias)
+
+
+def _e8m0_encode(v: float, exp_bits: int) -> int:
+    """Encode a positive value to the nearest power-of-two E8M0 code, saturating off-grid.
+
+    Raises for a negative value rather than encoding its magnitude. An unsigned format cannot represent
+    a sign, and silently dropping one would turn a wrong-signed scale into plausible wrong numbers --
+    the same failure this module's own header describes for e4m3-encoded-as-e5m2.
+    """
+    if v < 0.0:
+        raise ValueError(f"E8M0 is unsigned and cannot represent {v!r}; a negative block scale is not "
+                         f"a representable value, and encoding |v| would silently drop the sign")
+    bias = (1 << (exp_bits - 1)) - 1
+    top = (1 << exp_bits) - 2                  # all-ones is NaN, so the largest finite code is one less
+    if not math.isfinite(v):
+        return (1 << exp_bits) - 1             # NaN
+    if v == 0.0:
+        return 0                               # no zero on this grid; saturate to the smallest scale
+    code = _round_half_to_even(math.log2(v)) + bias
+    return int(min(max(code, 0), top))
+
+
 def _ocp_fpx_decode(code: int, exp_bits: int, mant_bits: int) -> float:
     """Decode an OCP FPx code with ``exp_bits`` exponent and ``mant_bits`` mantissa
     bits (bias ``2^(exp_bits-1)-1``, subnormal binade at ``e==0``, no inf/NaN)."""
@@ -166,15 +203,36 @@ def _ocp_fpx_encode(v: float, exp_bits: int, mant_bits: int) -> int:
     return sign | (((e_used + bias) & ((1 << exp_bits) - 1)) << mant_bits) | (mant & mant_max)
 
 
-def ocp_encode(v: float, exp_bits: int, mant_bits: int) -> int:
+def ocp_encode(v: float, exp_bits: int, mant_bits: int, *, signed: bool = True) -> int:
     """Encode one value to an OCP fp code of ANY (exp_bits, mant_bits) width — the public form of the
     generic encoder the named e4m3/fp6/fp4 helpers below are thin wrappers over.
 
     Exposed because a caller that knows a format only through the quant-format registry has its
     ``exp_bits``/``mant_bits`` and no reason to know which named helper corresponds. Without this, such a
     caller either name-matches formats (which is how e5m2 gets encoded as e4m3) or gives up.
+
+    ``signed`` comes from the registry entry and must be passed, not assumed. The sign bit used to be
+    unconditional, which made the returned code ``exp_bits + mant_bits + 1`` wide — for the unsigned,
+    mantissa-less block-scale type that is 9 bits, and packing it into a byte raises. A caller that
+    knows the format only through the registry has ``signed`` for exactly this reason.
     """
+    if not signed:
+        if mant_bits:
+            raise ValueError(f"no unsigned OCP grid with a mantissa is defined "
+                             f"(exp_bits={exp_bits}, mant_bits={mant_bits}); the only unsigned OCP "
+                             f"format is the mantissa-less block scale")
+        return _e8m0_encode(v, exp_bits)
     return _ocp_fpx_encode(v, exp_bits, mant_bits)
+
+
+def ocp_decode(code: int, exp_bits: int, mant_bits: int, *, signed: bool = True) -> float:
+    """Decode an OCP fp code of ANY width — the inverse of :func:`ocp_encode`."""
+    if not signed:
+        if mant_bits:
+            raise ValueError(f"no unsigned OCP grid with a mantissa is defined "
+                             f"(exp_bits={exp_bits}, mant_bits={mant_bits})")
+        return _e8m0_decode(code, exp_bits)
+    return _ocp_fpx_decode(code, exp_bits, mant_bits)
 
 
 def fp6_e3m2_decode(code: int) -> float:

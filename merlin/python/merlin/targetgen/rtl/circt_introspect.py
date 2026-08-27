@@ -430,8 +430,23 @@ def _facts_from_discovery(target: str, facts: dict) -> list[str]:
     sourced: list[str] = []
     dim = mlc_bridge.discovered_dim(target)
     if dim:
+        # Carry the OBSERVATION, not just the conclusion. "a 17x17 mesh" is unfalsifiable by anyone
+        # downstream; "289 instances of a D-flip-flop inside a divide/sqrt unit" is refuted on sight,
+        # and that is the difference between a fact and a ranking. `mesh_corroborated` is what the
+        # engine audit gates on -- an uncorroborated geometry evidences nothing.
+        mesh = mlc_bridge.discovered_mesh(target) or {}
+        rec = {"name": "mesh", "rows": dim, "cols": dim, "source": "mlc_discovery"}
+        if mesh:
+            rec.update({
+                "container": mesh.get("parent"),        # the module holding the grid
+                "element": mesh.get("child"),           # the replicated cell
+                "instances": mesh.get("count"),         # summed across CIRCT structural variants
+                "element_variants": mesh.get("elements") or [],
+                "mac_idiom": {k: mesh.get(k) for k in ("muls", "adds", "regs") if mesh.get(k)},
+                "corroborated": bool(mesh.get("corroborated")),
+            })
         facts["arrays"] = [a for a in facts.get("arrays", []) if a.get("name") != "mesh"]
-        facts["arrays"].append({"name": "mesh", "rows": dim, "cols": dim, "source": "mlc_discovery"})
+        facts["arrays"].append(rec)
         sourced.append("mesh")
     caps = mlc_bridge.discovered_capacities(target)
     if caps:

@@ -827,8 +827,8 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     # f32 -> per-tensor symmetric integer at the mesh boundary. The clip bound comes from
                     # the datapath's own width, not from a literal 127: a narrower or wider integer mesh
                     # would otherwise be fed operands saturated to some other unit's range.
-                    from ..targetgen.corpus_spec import dtype_info as _di
-                    _bits = int(_di(op_dt)[2]) * 8
+                    from ..targetgen.capsule_dram import dtype_bits as _dbits
+                    _bits = _dbits(op_dt)
                     lim = float(2 ** (_bits - 1) - 1)
                     af, bf = a.astype(np.float64), b.astype(np.float64)
                     sa = float(np.abs(af).max()) / lim or 1.0
@@ -861,13 +861,21 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 if _cf is not None:
                     _d = getattr(execute, "mesh_capacity_fit_delegated", None)
                     if _d is not None and len(_d) < 64:
+                        # WHICH tiler discharged it travels with the record. "the layer did not fit"
+                        # and "the backend only built one tile" are different facts about the backend,
+                        # and only the second says its shape space is uncovered -- so the score can
+                        # report the backend's own coverage apart from runtime+backend.
                         _d.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
                                    "required_elems": _cf.get("required_elems"),
                                    "capacity_elems": _cf.get("capacity_elems"),
                                    # WHICH tiler chose the extent: a capacity fact read out of the RTL,
                                    # or a probe that halved until the backend stopped refusing. Those are
                                    # different provenance claims and the record used to say neither.
-                                   "tile_source": _cf.get("tile_source")})
+                                   "tile_source": _cf.get("tile_source"),
+                                   # ...and WHY it tiled at all (working-set capacity vs a declared
+                                   # primitive tile). A separate question from which tiler ran, so both
+                                   # ride the record — neither answers the other.
+                                   "tiled_by": _cf.get("tiled_by")})
                 if mesh_out is not None:
                     om = np.array(mesh_out, np.float64) * scale
                     env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])

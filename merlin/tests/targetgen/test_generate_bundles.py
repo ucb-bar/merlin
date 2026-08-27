@@ -6,7 +6,8 @@ import yaml
 from pathlib import Path
 
 from merlin.targetgen.target_experiment import load_target_experiment
-from merlin.targetgen.generate_bundles import generate_bundles, _CPP_ALLOW, _XDSL_ALLOW
+from merlin.targetgen import tool_registry as TR
+from merlin.targetgen.generate_bundles import generate_bundles
 from merlin.common.paths import repo_root
 
 
@@ -52,8 +53,11 @@ def test_reproduces_hand_authored_gemmini_bundles():
 
 
 def test_agnostic_tool_blocks_have_no_target_name():
-    """The per-rung tool blocks are literal merlin/python paths — no target name, for any target."""
-    for p in _CPP_ALLOW + _XDSL_ALLOW:
+    """The per-rung tool blocks are literal merlin/python paths — no target name, for any target. They
+    now live in the tool registry, which is also where an ablation cell picks them up from."""
+    literal = [p for t in TR.TOOLS.values() for p in t.bundle_paths]
+    assert literal, "the registry grants nothing — the rungs would all be empty"
+    for p in literal:
         assert p.startswith("merlin/python/merlin/") and "gemmini" not in p
 
 

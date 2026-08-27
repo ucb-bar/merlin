@@ -169,6 +169,63 @@ class TestVerificationCatchesTheRealMistake:
         assert any("none of them a source this reads" in n for n in got.notes)
         assert got.observed.dirty is True, "the fact itself must not be lost"
 
+    def test_a_declared_local_edit_with_a_matching_digest_is_a_note_not_drift(self, tmp_path):
+        # Sometimes the commit CANNOT describe the bytes: the work lives in a fork we cannot push to, and
+        # the derivation reads it anyway. Declaring the digest makes "<commit> plus exactly these bytes" a
+        # nameable revision, which is strictly better than the prose caveat that was the only prior option.
+        root, sha = _repo(tmp_path)
+        (root / "kept.txt").write_text("edited", encoding="utf-8")
+        digest = P.file_digest(root / "kept.txt")
+        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n    requires_paths: [kept.txt]\n"
+                               f'    local_edits:\n      kept.txt: "{digest}"\n')
+        got = P.verify("x", checkout=root, path=pins)
+        assert got.ok, got.drift
+        # The edit is not swept away: it is reported, with the instruction that a result must cite it.
+        assert any("declared local edit" in n and "must say so" in n for n in got.notes), got.notes
+        assert got.observed.dirty is True, "the fact itself must not be lost"
+
+    def test_a_declared_edit_that_changed_again_is_drift(self, tmp_path):
+        # The digest is what makes the declaration honest rather than a mute button. Edit the file once
+        # more and the content that was reviewed is not the content that would be read, so it re-raises.
+        root, sha = _repo(tmp_path)
+        (root / "kept.txt").write_text("edited", encoding="utf-8")
+        digest = P.file_digest(root / "kept.txt")
+        (root / "kept.txt").write_text("edited AGAIN, by someone else", encoding="utf-8")
+        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n    requires_paths: [kept.txt]\n"
+                               f'    local_edits:\n      kept.txt: "{digest}"\n')
+        got = P.verify("x", checkout=root, path=pins)
+        assert not got.ok
+        assert any("no longer match the digest" in d for d in got.drift), got.drift
+
+    def test_declaring_one_edit_does_not_excuse_another(self, tmp_path):
+        # The declaration is per FILE, so it cannot be used to wave through a dirty tree: an undeclared
+        # edit to a source that is read stays drift even while a declared one beside it is accounted for.
+        root, sha = _repo(tmp_path)
+        (root / "kept.txt").write_text("edited", encoding="utf-8")
+        (root / "other.txt").write_text("also read, and NOT declared", encoding="utf-8")
+        digest = P.file_digest(root / "kept.txt")
+        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n"
+                               f"    requires_paths: [kept.txt, other.txt]\n"
+                               f'    local_edits:\n      kept.txt: "{digest}"\n')
+        got = P.verify("x", checkout=root, path=pins)
+        assert not got.ok
+        assert any("other.txt" in d for d in got.drift), got.drift
+        assert not any("kept.txt" in d for d in got.drift), "the declared one should not be re-reported"
+
+    def test_an_unquoted_or_partial_digest_is_refused(self, tmp_path):
+        # Same trap as the commit: an all-digit digest is valid hex and YAML reads it as a number, and a
+        # truncated digest does not identify content. Both fail at load rather than verifying loosely.
+        root, sha = _repo(tmp_path)
+        numeric = _pins(tmp_path, f"  x:\n    commit: {sha}\n"
+                                  f"    local_edits:\n      kept.txt: {'1' * 64}\n")
+        with pytest.raises(P.PinsError, match="quoted sha256"):
+            P.load_pins(numeric)
+        short = tmp_path / "short.yaml"
+        short.write_text(f'version: 1\npins:\n  x:\n    commit: {sha}\n'
+                         f'    local_edits:\n      kept.txt: "abc123"\n', encoding="utf-8")
+        with pytest.raises(P.PinsError, match="sha256"):
+            P.load_pins(short)
+
     def test_the_read_set_can_be_narrowed_by_the_caller(self, tmp_path):
         # A build reads a specific set of files, which is usually narrower than everything the pin requires
         # to be present. Answering about THIS build is what makes the verdict actionable.

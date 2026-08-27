@@ -583,6 +583,13 @@ AFTER you converge on the fast functional tier, so tight, narrow loops cost you 
   constant the public capsule happened to use, while the surrounding code parsed the real attribute and
   discarded it. Both passed every public capsule and failed the holdout that changed only that value.
 - Do not read withheld goldens, hidden capsules, prior backends, or Merlin internals.
+- **If you cannot lower something, DECLINE it — do not emit a program that writes nothing.** Set
+  `declined: {{"reason": "...", "shape": [...], "op": "..."}}` on the command buffer and emit no commands.
+  A decline is scored as not-passed (it never becomes a pass), but it is recorded as a COVERAGE gap
+  rather than as wrong arithmetic, and your self-check reports it back to you by shape. Falling through
+  to an empty/terminator-only program instead makes your refusal arrive as an output of zeros — which is
+  indistinguishable from a multiply that ran and was wrong, so you will debug arithmetic you never
+  emitted. An empty command buffer with no stated reason is a contract violation.
 
 ## Target ISA facts (derived — build your lowering on these)
 {isa_spec}{isa_facts}
@@ -726,6 +733,14 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str,
          "   capability contract under `merlin/contract/` — never guess or hardcode; derive any fact not given.",
          "3. After EVERY build, run `python3 agent_selfcheck.py --submission submission --capsules all` and",
          "   iterate until all required capsules pass — a submission you did not self-check is not acceptable.",
+         "   THEN run `python3 agent_selfcheck.py --submission submission --shape-coverage`, which probes the",
+         "   SAME operation at one tile and at two tiles in each of M, K and N. It costs no simulator (it runs",
+         "   only your emit path), so run it often. **The capsules are a FIXED SET OF SHAPES: passing all of",
+         "   them says nothing about whether you lower anything else, and you are graded on shapes you have",
+         "   not seen.** `emitted_work` is how many instructions you emitted per shape — a bigger problem",
+         "   cannot need a smaller program, so a corner reported `collapsed` is a shape you silently refused.",
+         "   `multi_tile_axes_uncovered` names the axis your lowering does not loop over: fix the LOOP, not",
+         "   the arithmetic. A round is not converged while any axis is uncovered.",
          "4. GRADEABLE-FLOOR FIRST (do this in your FIRST minutes, before deep encoder / ISA / parse work):",
          "   write `submission/manifest.yaml` declaring your entrypoints + a minimal CLI that ANSWERS all of",
          "   them (even trivially / with empty output) so `agent_selfcheck` can invoke your package and the",

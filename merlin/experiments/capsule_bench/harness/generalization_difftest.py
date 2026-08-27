@@ -27,6 +27,7 @@ from pathlib import Path
 
 import numpy as np
 import yaml
+from dataclasses import replace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
@@ -407,6 +408,12 @@ def grade(cdir: Path, adapters, pkg: Path) -> str:
     cap = load_capsule(str(cdir), contract=str(CONTRACT))
     res = run_capsule(cap, pkg, runs_root=RUNS, run_id=cap["name"], contract=str(CONTRACT),
                       target=TARGET, timeout=600, oracle_adapters=adapters)
+    # A STATED DECLINE IS ITS OWN VERDICT HERE TOO. Folding it into "fail" is what made a backend that
+    # never lowered a shape look identical to one whose arithmetic was wrong, which is the confusion
+    # this whole probe suite exists to resolve.
+    if res.get("status") == "declined":
+        why = (res.get("declined") or {}).get("reason") or "no reason given"
+        return f"declined:{why[:120]}"
     l2 = (res.get("tiers", {}) or {}).get("L2", {}).get("status")
     return "pass" if res.get("status") == "pass" or l2 == "pass" else "fail"
 
@@ -450,6 +457,15 @@ def main(argv=None) -> int:
     ap.add_argument("--package", default=None,
                     help="backend package to measure (default: the target's derived reference backend). "
                          "Point it at a run's frozen submission/ to measure THAT compiler's recall.")
+    ap.add_argument("--corners", default=None,
+                    help="comma-separated SHAPE-CORNER names to keep (e.g. "
+                         "'tile,m_2tiles,k_2tiles,n_2tiles'). The per-round loop uses this to run the "
+                         "multi-tile corners only -- the cheap subset that answers 'does this backend "
+                         "generalize past ONE tile, and along which axis?' without paying for the full "
+                         "closure every round.")
+    ap.add_argument("--out", default=None,
+                    help="where to write the JSON report (default: the target's reports dir)")
+    ap.add_argument("--quiet", action="store_true", help="suppress per-probe streaming lines")
     ap.add_argument("--splits", action="store_true",
                     help="write the leave-one-family-out manifest for this target and exit (no grading, "
                          "no spend). The splits module has always been able to compute these; nothing "
@@ -465,15 +481,35 @@ def main(argv=None) -> int:
     fams = set(a.families.split(","))
     adapters = qa_loop_adapters(TARGET)
     cap_map = EL.capability_map_for_target(TARGET)
-    probes = [p for p in CP.synthesize(cap_map)
+    # target= so the shape corners bracket THIS device's derived tile edge; without it they are
+    # measured against the software-tiling default and cannot cross a wider mesh's tile boundary.
+    probes = [p for p in CP.synthesize(cap_map, target=TARGET)
               if p.descriptor.resolved_family() in (fams & set(FAMILY_MAT))]
-    rows, skipped = [], []
+    if a.corners:
+        keep = {c.strip() for c in a.corners.split(",") if c.strip()}
+        # probe names are "<family>.<corner>"; select on the corner half so one flag covers every family
+        probes = [p for p in probes if p.name.rpartition(".")[2] in keep]
+    rows, skipped, substituted = [], [], []
     for i, p in enumerate(probes):
         d = p.descriptor
         fam = d.resolved_family()
         if d.in_dtype not in GRADEABLE_DTYPE:
-            skipped.append((p.name, "mx-dtype (seeded operands, no from-float CPU ref)"))
-            continue
+            # A SHAPE probe asks "does the lowering loop over this axis", which is orthogonal to the
+            # operand format -- so when the family declares a dtype we CAN build a CPU reference for,
+            # re-issue the probe on that one instead of dropping it. Without this the whole shape axis
+            # is unmeasurable on any target whose LEAD dtype is an MX/fp8 format: measured, all four
+            # multi-tile probes skipped on exactly the target they were added for, and the suite
+            # reported 0 graded, which reads as "nothing to report" rather than "could not look".
+            # Only ever a substitution for the SHAPE axis; a dtype-axis probe is about its dtype.
+            _alt = next((dt for dt in (cap_map.get(fam).dtypes if cap_map.get(fam) else ())
+                         if dt in GRADEABLE_DTYPE), None)
+            if p.axis != "shape" or not _alt:
+                skipped.append((p.name, "mx-dtype (seeded operands, no from-float CPU ref)"))
+                continue
+            d = replace(d, in_dtype=_alt,
+                        weight_dtype=(_alt if d.weight_dtype is not None else None))
+            substituted.append({"probe": p.name, "declared_dtype": p.descriptor.in_dtype,
+                                "graded_dtype": _alt})
         dims = [int(v) for v in (d.m, d.k, d.n) if v is not None]
         if dims and max(dims) > a.max_dim:
             skipped.append((p.name, f"shape>{a.max_dim} (impractical to simulate)"))
@@ -481,13 +517,20 @@ def main(argv=None) -> int:
         if int(getattr(d, "batch", 1) or 1) > 1 or getattr(d, "layout", None):
             skipped.append((p.name, "batch/layout axis (materializer is plain 2-D; not yet handled)"))
             continue
-        cdir = FAMILY_MAT[fam](p, seed=1000 + i)
+        # pass the (possibly dtype-substituted) descriptor, not the original probe -- the
+        # materializer reads `probe.descriptor`, so substituting `d` alone changed nothing.
+        cdir = FAMILY_MAT[fam](replace(p, descriptor=d), seed=1000 + i)
+        if cdir is None:
+            skipped.append((p.name, "materializer declined this descriptor (no CPU reference)"))
+            continue
         try:
             verdict = grade(cdir, adapters, pkg)
         except Exception as e:  # noqa: BLE001
             verdict = f"error:{type(e).__name__}:{str(e)[:80]}"
-        rows.append({"probe": p.name, "family": fam, "axis": p.axis, "verdict": verdict})
-        print(json.dumps(rows[-1]), flush=True)
+        rows.append({"probe": p.name, "family": fam, "axis": p.axis, "verdict": verdict,
+                     "shape": {k: v for k, v in (("m", d.m), ("k", d.k), ("n", d.n)) if v is not None}})
+        if not a.quiet:
+            print(json.dumps(rows[-1]), flush=True)
 
     def _recall(key):
         agg = {}
@@ -501,11 +544,36 @@ def main(argv=None) -> int:
     summary = {"target": TARGET, "package": str(pkg), "graded": len(rows), "overall": f"{n_pass}/{len(rows)}",
                "acceleratable_region_recall_sampled": (n_pass / len(rows)) if rows else None,
                "per_family_recall": _recall("family"), "per_axis_recall": _recall("axis"),
-               "skipped": skipped}
-    out = C.REPORTS / "generalization_arr.json"
+               "skipped": skipped,
+               # RECORDED, not silent: a shape verdict measured on a substituted operand dtype is a
+               # statement about the LOWERING's shape handling, not about that capsule's numerics.
+               "dtype_substituted": substituted}
+    # PER-AXIS, because "does it generalize" is the wrong granularity. A backend that loops over K and N
+    # but not M passes two thirds of these, and only naming the axis turns the result into an action.
+    summary["per_corner_verdict"] = {r["probe"].rpartition(".")[2]: r["verdict"] for r in rows}
+    # A MULTI-TILE VERDICT IS ONLY INTERPRETABLE IF THE ONE-TILE BASELINE PASSES. Otherwise the probe
+    # never isolated the shape axis: whatever breaks at one tile breaks at two, and reporting "M, K and N
+    # all fail" would attribute a dtype/op problem to shape generalization. Measured while building this:
+    # substituting a gradeable operand dtype moved the probe onto a different lowering path whose tile
+    # edge is different, so the canonical corner failed and all three axes read as failing -- a confident,
+    # specific, wrong answer, which is worse than no answer.
+    _corner = {r["probe"].rpartition(".")[2]: r["verdict"] for r in rows}
+    _baseline_ok = _corner.get("tile") == "pass"
+    summary["baseline_tile_pass"] = _baseline_ok
+    if _baseline_ok:
+        summary["multi_tile_axes_failed"] = sorted(
+            {c[0] for c, v in _corner.items() if c.endswith("_2tiles") and v != "pass"})
+    else:
+        summary["multi_tile_axes_failed"] = []
+        summary["shape_axis_unmeasured"] = (
+            "the one-tile baseline corner did NOT pass, so the multi-tile corners cannot attribute "
+            "anything to shape generalization -- fix the baseline first, then re-read this.")
+    summary["n_declined"] = sum(1 for r in rows if str(r["verdict"]).startswith("declined"))
+    out = Path(a.out) if a.out else (C.REPORTS / "generalization_arr.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"summary": summary, "rows": rows}, indent=2))
-    print("SUMMARY", json.dumps(summary, indent=2))
+    if not a.quiet:
+        print("SUMMARY", json.dumps(summary, indent=2))
     print("persisted →", out)
     return 0
 

@@ -617,6 +617,34 @@ def _operand_store_capacity_elems(target: str, operand_dtype: str | None) -> int
     return (int(nbytes) * 8) // max(1, _dtype_bits(operand_dtype)) if nbytes else None
 
 
+def declared_primitive_tile(package: str | Path | None) -> tuple[int, int, int] | None:
+    """The (m, k, n) tile a backend DECLARES it implements, from its ``manifest.yaml``, or ``None``.
+
+    Why this exists alongside the capacity derivation: they answer different questions and only one of
+    them is always answerable. Capacity asks "how much fits on chip", which needs a classified operand
+    store -- and on a device whose SRAMs cannot be classified there is nothing to compute, so the whole
+    residency tiler becomes unreachable and an oversized layer is handed to a backend that cannot take
+    it. The declared tile asks "what did you build", which the backend always knows.
+
+    A backend that declares one is promising to lower EXACTLY that shape; the loop nest over larger
+    extents is then the runtime's, and every result produced that way is attributed as such (see the
+    ``discharged_by`` block in :func:`run_matmul_on_mesh`) -- never as evidence the backend generalizes.
+    Declaring nothing is legal and keeps the previous behaviour.
+    """
+    if not package:
+        return None
+    try:
+        import yaml as _yaml
+        man = Path(package) / "manifest.yaml"
+        if not man.is_file():
+            return None
+        t = ((_yaml.safe_load(man.read_text(encoding="utf-8")) or {}).get("primitive_tile") or {})
+        m, k, n = int(t.get("m") or 0), int(t.get("k") or 0), int(t.get("n") or 0)
+        return (m, k, n) if m > 0 and k > 0 and n > 0 else None
+    except Exception:  # noqa: BLE001 -- an unreadable/absent declaration is simply no declaration
+        return None
+
+
 def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int) -> tuple[int, int, int, int]:
     """Shrink a matmul (M,K,N) to the largest D-aligned tile whose on-chip working set — the weight
     tile K·N plus the activation tile M·K — fits ``cap_elems``, and return (mt,kt,nt,n_tiles) where
@@ -1168,14 +1196,31 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
     # layer still declines, now with that as the stated reason.
     _cap = _operand_store_capacity_elems(target, binding.operand_dtype)
     _mt, _kt, _nt = M, K, N
+    _n_sub = 1
+    _tiled_by = None
     if _cap:
         _mt, _kt, _nt, _n_sub = _capacity_fit_tile(M, K, N, max(1, _D), _cap)
+        _tiled_by = "capacity"
+    else:
+        # NO CLASSIFIABLE OPERAND STORE -> the capacity tiler cannot even be evaluated, and this branch
+        # used to end there: the whole extent went to a backend that may implement one tile, which
+        # answers with a program that writes nothing. Fall back to what the backend DECLARES it built.
+        # Measured: on the target whose 39 SRAMs mlc declines to classify, `capacity_elems` is None, so
+        # the residency tiler was structurally unreachable and every multi-tile layer failed there.
+        _decl = declared_primitive_tile(package)
+        if _decl:
+            _dm, _dk, _dn = (max(1, min(v, e)) for v, e in zip(_decl, (M, K, N)))
+            if (_dm, _dk, _dn) != (M, K, N):
+                _mt, _kt, _nt = _dm, _dk, _dn
+                _n_sub = (-(-M // _mt)) * (-(-K // _kt)) * (-(-N // _nt))
+                _tiled_by = "declared_primitive_tile"
     if (_mt, _kt, _nt) != (M, K, N):
         if epilogue:
             if observed is not None:
-                observed["decline"] = (f"{M}x{K}x{N} exceeds the on-chip working set ({_cap} elems) and "
-                                       f"declares epilogue {list(epilogue)}; an accumulator epilogue "
-                                       f"cannot be split across K blocks")
+                _why = (f"exceeds the on-chip working set ({_cap} elems)" if _tiled_by == "capacity"
+                        else f"exceeds the backend's declared primitive tile {list(_decl)}")
+                observed["decline"] = (f"{M}x{K}x{N} {_why} and declares epilogue {list(epilogue)}; "
+                                       f"an accumulator epilogue cannot be split across K blocks")
             return None
         import numpy as _np
         _An, _Wn = _np.asarray(A, dtype=_np.float64), _np.asarray(W, dtype=_np.float64)
@@ -1186,8 +1231,11 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
             # BACKEND. Blocking here keeps whole-model work moving, but a result produced this way is
             # evidence about our runtime plus their backend -- not evidence that their backend handles
             # a layer this size. Unrecorded, it reads as the latter.
+            # WHICH tiler engaged is part of the attribution, not a detail: "the layer did not fit"
+            # and "the backend only built one tile" are different facts about the backend, and only the
+            # second one says the shape space is uncovered.
             observed["blocked"] = {"tile": [_mt, _kt, _nt], "n_subtiles": _n_sub,
-                                   "capacity_elems": _cap}
+                                   "capacity_elems": _cap, "tiled_by": _tiled_by}
             observed["capacity_fit"] = {
                 **capacity_fit(target, M, K, N, binding.operand_dtype, _D),
                 # WHICH TILER CHOSE THIS EXTENT. Derived here: the fitting extent was computed from
@@ -1205,9 +1253,15 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
                 # so a float target's blocked layer is not quotable as "what the accelerator computes".
                 "split_exact": bool(binding.integer),
                 "accum_dtype": binding.accum_dtype,
-                "note": "the target backend did not satisfy capacity_fit at this extent; the runtime "
-                        "split the layer so it could run. A whole-model pass resting on this is a "
-                        "statement about the runtime + backend together."
+                "tiled_by": _tiled_by,
+                "note": ("the target backend did not satisfy capacity_fit at this extent; the runtime "
+                         "split the layer so it could run. A whole-model pass resting on this is a "
+                         "statement about the runtime + backend together."
+                         if _tiled_by == "capacity" else
+                         "the backend DECLARED it implements a single "
+                         f"{_mt}x{_kt}x{_nt} tile, so the runtime drove the loop nest over this larger "
+                         "extent. The backend lowered one tile; the generalization over M/K/N is the "
+                         "RUNTIME'S, and this result is NOT evidence that the backend generalizes.")
                         + ("" if binding.integer else
                            f" This datapath accumulates in {binding.accum_dtype}, so the split also "
                            f"CHANGES THE REDUCTION ORDER (per-block on the device, cross-block on the "
@@ -1413,7 +1467,7 @@ def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
     import os
     import tempfile
     from .benchharness import runs_root
-    from .targetgen import oot_runner
+    from .targetgen import capsule_common as CC, oot_runner
     sim = simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")
     pkg = package or _default_oot_package(target)
     if pkg is None:
@@ -1427,8 +1481,7 @@ def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
     if observed is not None:
         # the cert reports its oracle as a record ({kind, derived_from_rtl, ...}); the simulator that ran
         # it is the other half of the identity, so label with both when the record is present.
-        _orc = res.get("oracle")
-        _kind = _orc.get("kind") if isinstance(_orc, dict) else _orc
+        _kind = CC.oracle_kind(res.get("oracle"))
         observed["oracle"] = f"{target}-{_kind}-{sim}" if _kind else f"{target}-{sim}"
     if res.get("status") != "pass":
         # KEEP THE REASON. Returning a bare None here is why a whole-model fallback could only be
@@ -1564,7 +1617,7 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout,
             return _refuse(f'the oracle raised {type(_e).__name__}: {str(_e)[:1500]}'
                            f'{f" [full: {_dump}]" if _dump else ""}')
         if observed is not None:
-            observed["oracle"] = res.get("oracle") or CR._bespoke_sim_via(target)
+            observed["oracle"] = CC.oracle_kind(res.get("oracle")) or CR._bespoke_sim_via(target)
         outs = res.get("outputs") or {}
         got = outs.get("Y0") or next(iter(outs.values()), None)
         if got is None:

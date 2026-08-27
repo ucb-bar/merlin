@@ -303,8 +303,15 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
     for name, spec in _resolve_out_specs(target, cb, bundle).items():
         raw = bytes(res.slave.captured(spec["base"], _out_nbytes(spec)))
         outputs[name] = _decode_output(raw, spec["shape"], spec["dtype"], spec["physical"]).tolist()
+    # RTL-DERIVED IS NOT RTL, AND THE TIER NAME CANNOT TELL THEM APART. This cosim runs the arc MODEL
+    # elaborated from the target's RTL -- authoritative about the ISA and the datapath, but not the
+    # elaborated Verilog. It lands on the tier named L3, which on a target whose bespoke sim IS verilator
+    # (gemmini) means genuinely-RTL, so classifying by tier NAME credited a model as RTL certification.
+    # Declaring `derived_from_rtl` here is the seam capsule_runner already reads (it defaults to the tier
+    # name only when the adapter stays silent) and the shape muon's gsim adapter already returns.
     return {"outputs": outputs, "cycles": int(res.cycles),
-            "oracle": f"{target}-arc-arcilator-cosim"}
+            "oracle": {"kind": f"{target}-arc-arcilator-cosim", "derived_from_rtl": False,
+                       "fidelity": "rtl_derived_model"}}
 
 
 def derive_cycle_budget(cb: dict, *, floor: int = 20000, per_element: int = 64) -> int:
@@ -492,7 +499,8 @@ def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | Non
         outputs[name] = _decode_output(base64.b64decode(outmap[key]), spec["shape"], spec["dtype"],
                                        spec["physical"]).tolist()
     return {"outputs": outputs, "cycles": int(res.get("cycles") or 0),
-            "oracle": f"{target}-functional"}
+            "oracle": {"kind": f"{target}-functional", "derived_from_rtl": False,
+                       "fidelity": "functional_model"}}
 
 
 def program_functional_adapter(target: str, *, model_ext: str) -> Callable:
@@ -774,8 +782,10 @@ def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: d
     for raw, (name, spec) in zip(outs, specs.items()):
         outputs[name] = _decode_output(bytes(raw), spec["shape"], spec["dtype"],
                                        spec["physical"]).tolist()
+    # The one tier here that runs the ELABORATED Verilog, so the only one entitled to say RTL.
     return {"outputs": outputs, "cycles": int(res.get("cycles") or 0),
-            "oracle": f"{target}-verilator-rtl"}
+            "oracle": {"kind": f"{target}-verilator-rtl", "derived_from_rtl": True,
+                       "fidelity": "elaborated_rtl"}}
 
 
 def program_verilator_adapter(target: str, *, model_ext: str) -> Callable | None:

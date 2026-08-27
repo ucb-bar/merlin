@@ -64,4 +64,14 @@ def test_verilator_l4_matches_arc_l3_bit_exact():
     a4 = np.array(next(iter(l4["outputs"].values())))
     assert a3.shape == a4.shape, f"shape mismatch L3 {a3.shape} vs L4 {a4.shape}"
     assert np.array_equal(a3, a4), "verilator L4 diverged from arc L3 (should be bit-exact on the same RTL)"
-    assert l4["oracle"] == "atlas-verilator-rtl"
+    # The oracle now reports a RECORD, not a bare string, so a reader can tell what actually ran:
+    # these two tiers are bit-exact but they are NOT the same kind of evidence. L4 elaborates the
+    # Verilog; L3 runs the arc model DERIVED from it. Only one of them is RTL certification, and
+    # classifying by tier NAME credited both.
+    from merlin.targetgen.capsule_common import oracle_kind
+    assert oracle_kind(l4["oracle"]) == "atlas-verilator-rtl"
+    assert l4["oracle"]["derived_from_rtl"] is True
+    assert l4["oracle"]["fidelity"] == "elaborated_rtl"
+    assert oracle_kind(l3["oracle"]) == "atlas-arc-arcilator-cosim"
+    assert l3["oracle"]["derived_from_rtl"] is False, "the arc cosim is an RTL-DERIVED MODEL, not RTL"
+    assert l3["oracle"]["fidelity"] == "rtl_derived_model"

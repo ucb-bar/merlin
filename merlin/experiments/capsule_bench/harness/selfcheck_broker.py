@@ -9,7 +9,7 @@ redacted verdict + the agent's OWN artifacts back into the workspace. The agent 
 shim staged at <ws>/agent_selfcheck.py.
 
 Channel (under <ws>/.qa_channel/, RW from both sides via the bind mount):
-  req_<id>.json   agent -> broker : {sim, capsules, workers, timeout}
+  req_<id>.json   agent -> broker : {sim, capsules, workers, timeout, shape_coverage}
   resp_<id>.json  broker -> agent : the redacted self-check JSON (golden expected values withheld)
   done_<id>       broker -> agent : marker that resp is complete
   STOP            driver -> broker: sentinel to exit (written after the agent round)
@@ -90,6 +90,10 @@ def main(argv=None):
                  "--workers", str(r.get("workers", 8)),
                  "--timeout", str(to),
                  "--out", str(resp)]
+        # forward the shape-coverage request through the sandbox shim (the agent cannot reach the
+        # oracle itself, so a flag it sets here is the only way the check runs at all)
+        if r.get("shape_coverage"):
+            argv2.append("--shape-coverage")
         try:
             # Run the REAL self-check OUTSIDE the sandbox (oracle available); cwd=ws so the agent's own
             # artifacts land in <ws>/selfcheck_out/ (visible to the agent through the bind mount).

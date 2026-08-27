@@ -562,10 +562,24 @@ def test_oracles_endtoend():
         r = subprocess.run([PY, str(SCRIPTS / "agent_selfcheck.py"), "--submission", str(sub),
                             "--sim", sim, "--capsules", cap, "--workers", "1", "--timeout", str(to)],
                            cwd=str(SCRIPTS), env=env, capture_output=True, text=True, timeout=to + 120)
+        # The grader prints human diagnostics ("tier plan: ...", "model gate: ...") on the same stdout
+        # that carries the verdict, so a bare loads() of the whole stream fails and every oracle check
+        # here reported n=None -- a NO-GO that blamed the oracles for a stream-parsing bug. Scan for the
+        # document instead (structurally, no regex).
         try:
             return _json.loads(r.stdout)
         except Exception:
-            return {"error": (r.stdout or r.stderr)[-200:]}
+            pass
+        _dec, _i = _json.JSONDecoder(), (r.stdout or "").find("{")
+        while _i != -1:
+            try:
+                _obj, _ = _dec.raw_decode(r.stdout, _i)
+                if isinstance(_obj, dict):
+                    return _obj
+            except Exception:
+                pass
+            _i = r.stdout.find("{", _i + 1)
+        return {"error": (r.stdout or r.stderr)[-200:]}
 
     try:
         # FROM-CLEAN C++ build: copy the ref, wipe its build dir, grade -> forces cmake CONFIGURE (the step
@@ -584,11 +598,16 @@ def test_oracles_endtoend():
             cb.get("n_capsules") == 1 and "FAIL[build]" not in str(cb.get("error", "")) and
             "libidn" not in str(cb), f"n={cb.get('n_passed')}/{cb.get('n_capsules')} {str(cb.get('error',''))[:60]}")
 
+        # What this probe means is "the SCREEN tier runs and returns a real verdict". It must not assert
+        # all_pass: the capsules declare a cycle-accurate cert tier as mandatory, and --sim spike supplies
+        # no adapter for it, so a screen-only grade correctly reports the capsule as not certified. Reading
+        # the tier's own result keeps this a check on the oracle rather than on the pass bar.
         sp = _grade(ref, "spike", 300)
         c = (sp.get("per_capsule") or [{}])[0]
+        _spike_tier = (c.get("tiers") or {}).get("L2") or c.get("barrier_status")
         _ok("spike RUNS to a real L2=pass on the reference backend",
-            sp.get("all_pass") and sp.get("n_capsules") == 1 and c.get("barrier_status") == "pass",
-            f"n={sp.get('n_passed')}/{sp.get('n_capsules')} {sp.get('error','')[:50]}")
+            sp.get("n_capsules") == 1 and _spike_tier == "pass",
+            f"L2={_spike_tier} n={sp.get('n_passed')}/{sp.get('n_capsules')} {sp.get('error','')[:50]}")
         # Probe a COMPUTE capsule for the L3 cert — a movement-only capsule (A1) tops out below L3, so it
         # can never certify verilator's numerical tier. And agent_selfcheck reports the reached tier on its
         # per-capsule record as barrier_tier/barrier_status (there is NO "tiers" map — the same field the
@@ -638,7 +657,7 @@ def test_semantic_coverage_measurable():
     if not cap:
         return
 
-    probes = _cp.synthesize(cap)
+    probes = _cp.synthesize(cap, target=C.TARGET)
     per_fam = {f for p in probes for f in [p.descriptor.resolved_family()] if f}
     _ok("every declared family is probeable", per_fam >= set(cap),
         f"{len(probes)} probes over {sorted(per_fam)}"

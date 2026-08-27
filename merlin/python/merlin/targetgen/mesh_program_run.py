@@ -14,6 +14,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .capsule_common import oracle_kind as _oracle_kind
+
 
 def _encode_operand(values, dtype: str) -> bytes | None:
     """Encode a nested-list operand to raw device bytes for the cb's DECLARED dtype.
@@ -67,7 +69,11 @@ def _encode_operand(values, dtype: str) -> bytes | None:
         eb, mb = int(f.exp_bits or 0), int(f.mant_bits or 0)
         if not eb or bits != 8:
             return None
-        flat = [ocp_encode(float(v), eb, mb) for v in a.reshape(-1)]
+        # `signed` comes from the registry, exactly as the int_affine branch above reads it. Assuming a
+        # sign bit made the code one bit too wide for the unsigned block-scale type, and packing a
+        # 9-bit value into a byte raises rather than truncating -- which is the good outcome, but only
+        # because bytearray happens to check. Pass what the format declares.
+        flat = [ocp_encode(float(v), eb, mb, signed=bool(f.signed)) for v in a.reshape(-1)]
         return bytes(bytearray(flat))
 
     return None
@@ -146,7 +152,9 @@ def matmul_on_program_oracle(target: str, interface_mlir: str, A, W, *, model_ex
         except PO.OracleUnavailable:
             return None
         if observed is not None and res.get("oracle"):
-            observed["oracle"] = res["oracle"]
+            # keep this a STRING: the adapter may now report a {kind, derived_from_rtl, fidelity}
+            # record, and this field is read back as a provenance label.
+            observed["oracle"] = _oracle_kind(res["oracle"])
         outs = res.get("outputs") or {}
         return next(iter(outs.values()), None)
 

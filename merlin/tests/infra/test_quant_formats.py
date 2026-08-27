@@ -16,9 +16,24 @@ def test_registry_loads_and_every_entry_is_valid():
 
 
 def test_float_formats_obey_sign_exp_mantissa_identity():
+    """A self-describing float element is exactly sign + exponent + mantissa.
+
+    The sign bit counts only when the element has one. E8M0 -- the MX block-scale type, whose OCP name
+    ends FNU for "finite, no sign, unsigned" -- spends all eight bits on the exponent, and asserting an
+    unconditional sign bit made it unregisterable.
+    """
     for fmt in qf.registry().values():
         if fmt.is_float:
-            assert 1 + fmt.exp_bits + fmt.mant_bits == fmt.element_bits, fmt.name
+            sign_bits = 1 if fmt.signed else 0
+            assert sign_bits + fmt.exp_bits + fmt.mant_bits == fmt.element_bits, fmt.name
+
+
+def test_an_unsigned_float_element_spends_every_bit_on_the_exponent():
+    """Pins the case the identity above was widened for, so a future tightening cannot silently
+    re-exclude it: the registry must be able to express a mantissa-less, sign-less float."""
+    e8m0 = qf.get("e8m0")
+    assert (e8m0.signed, e8m0.exp_bits, e8m0.mant_bits, e8m0.element_bits) == (False, 8, 0, 8)
+    assert qf.get("f8E8M0FNU").name == "e8m0", "the MLIR spelling resolves to the same format"
 
 
 def test_request_spec_encodings():

@@ -40,6 +40,32 @@ compute_units:
     ops: [matmul, elementwise]
     scaling: none
     requant: {ref: none}
+    # The cluster EMBEDS the MX array below, so the target has two engines and not one. This was found by
+    # auditing the declaration against the RTL: the introspected design's top module is the Radiance
+    # cluster, and inside it a mesh instantiates 256 multiply-accumulating, spatially interconnected tiles
+    # (128 + 80 + 32 + 16 across four CIRCT structural variants, the partial-sum bus widening down the
+    # column) whose ports carry weight/activation MX format selectors. Declaring only the SIMT cluster
+    # described half the silicon, and `contains` is how composition is expressed (compute_units.effective
+    # folds the union) rather than by promoting one unit to "the" kind.
+    contains: [mx_pe]
+  # The same physical array radiance declares -- both targets are the same cluster RTL -- so this mirrors
+  # radiance's mx_pe rather than re-deriving a second, drifting description of one piece of hardware.
+  # Geometry is deliberately absent: mesh/warp dimensions are RTL-derived facts consumers read from the
+  # fact bundle (see the header note), and duplicating DIM here is how a contract goes stale.
+  - name: mx_pe
+    kind: systolic
+    dtypes: [mxfp4, mxfp6, mxfp8, int8, bf16]
+    ops: [matmul]
+    scaling: block_e8m0
+    requant: {ref: mx_gemmini.mx_requantizer}
+    accumulate:
+      - {in: mxfp4, weight: mxfp4, acc: f32}
+      - {in: mxfp6, weight: mxfp6, acc: f32}
+      - {in: mxfp8, weight: mxfp8, acc: f32}
+      - {in: int8,  weight: int8,  acc: i32}
+    semantic_capabilities:
+      - family: contraction
+        dtypes: [mxfp4, mxfp6, mxfp8, int8, bf16]
 memory_model:
   resident: false
   accumulators: false

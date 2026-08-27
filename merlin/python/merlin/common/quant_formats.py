@@ -153,10 +153,16 @@ def _validate_entry(name: str, d: dict[str, Any]) -> None:
     if kind in _FLOAT_ELEMENT_KINDS:
         if not isinstance(exp, int) or not isinstance(mant, int):
             raise ValueError(f"quant format {name!r}: {kind} requires int exp_bits + mant_bits")
-        # A self-describing float element: sign + exponent + mantissa fills the element width.
-        if 1 + exp + mant != bits:
+        # A self-describing float element: sign + exponent + mantissa fills the element width. The
+        # sign bit is counted only when the element HAS one -- an unsigned float element (the OCP
+        # E8M0 block-scale type, whose name ends FNU for "finite, no sign, unsigned") spends all
+        # eight of its bits on the exponent. Hardcoding the sign bit made that format unregisterable,
+        # which pushed its width back into hand-written per-module tables -- the second copy this
+        # registry exists to retire. Every signed format is unaffected.
+        sign_bits = 1 if bool(d.get("signed", True)) else 0
+        if sign_bits + exp + mant != bits:
             raise ValueError(
-                f"quant format {name!r}: 1 + exp_bits({exp}) + mant_bits({mant}) "
+                f"quant format {name!r}: {sign_bits} (sign) + exp_bits({exp}) + mant_bits({mant}) "
                 f"!= element_bits({bits})"
             )
     elif exp is not None or mant is not None:

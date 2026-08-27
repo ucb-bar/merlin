@@ -17,36 +17,53 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-# canonical dtype token -> (capsule.yaml spelling, MLIR spelling, byte width, is_integer). Keyed on the
-# dtype, never on a target — a target selects its dtypes via its compute-unit contract.
+from merlin.targetgen.capsule_dram import dtype_bits
+
+# canonical dtype token -> (capsule.yaml spelling, MLIR spelling, is_integer). Keyed on the dtype, never
+# on a target — a target selects its dtypes via its compute-unit contract.
+#
+# The WIDTH is deliberately absent. It used to be a fourth literal column, and it was a second copy of a
+# fact the format registry already owns: it read 1 byte/element for mxfp6 and mxfp4, which are 6- and
+# 4-bit formats, so the two authorities disagreed about how large an MX tensor is. Nothing was
+# mis-addressed only because the one consumer read it on the integer path, where the literal happened to
+# be right. `dtype_info` derives the width from the registry instead, so there is one source and a new
+# format is a registry entry rather than an edit here.
 _DTYPE = {
-    "int8": ("i8", "i8", 1, True),
-    "i8": ("i8", "i8", 1, True),
-    "int32": ("i32", "i32", 4, True),
-    "i32": ("i32", "i32", 4, True),
-    "fp8_e4m3": ("fp8_e4m3", "f8E4M3FN", 1, False),
-    "fp8_e5m2": ("fp8_e5m2", "f8E5M2", 1, False),
+    "int8": ("i8", "i8", True),
+    "i8": ("i8", "i8", True),
+    "int32": ("i32", "i32", True),
+    "i32": ("i32", "i32", True),
+    "fp8_e4m3": ("fp8_e4m3", "f8E4M3FN", False),
+    "fp8_e5m2": ("fp8_e5m2", "f8E5M2", False),
     # MX microscaling operand widths (block-scaled). ``mxfp*`` are the manifest tokens; ``fp*_e*m*`` the
     # canonical layout spellings — same code<->value map, so both resolve to the OCP MX MLIR type names.
-    "mxfp8": ("mxfp8", "f8E4M3FN", 1, False),
-    "mxfp6": ("mxfp6", "f6E3M2FN", 1, False),
-    "mxfp4": ("mxfp4", "f4E2M1FN", 1, False),
-    "fp6_e3m2": ("fp6_e3m2", "f6E3M2FN", 1, False),
-    "fp4_e2m1": ("fp4_e2m1", "f4E2M1FN", 1, False),
-    "e8m0": ("e8m0", "f8E8M0FNU", 1, False),
-    "fp16": ("fp16", "f16", 2, False),
-    "f16": ("fp16", "f16", 2, False),
-    "bf16": ("bf16", "bf16", 2, False),
-    "f32": ("f32", "f32", 4, False),
-    "fp32": ("f32", "f32", 4, False),      # alias: a contract may spell single precision "fp32"
+    "mxfp8": ("mxfp8", "f8E4M3FN", False),
+    "mxfp6": ("mxfp6", "f6E3M2FN", False),
+    "mxfp4": ("mxfp4", "f4E2M1FN", False),
+    "fp6_e3m2": ("fp6_e3m2", "f6E3M2FN", False),
+    "fp4_e2m1": ("fp4_e2m1", "f4E2M1FN", False),
+    "e8m0": ("e8m0", "f8E8M0FNU", False),
+    "fp16": ("fp16", "f16", False),
+    "f16": ("fp16", "f16", False),
+    "bf16": ("bf16", "bf16", False),
+    "f32": ("f32", "f32", False),
+    "fp32": ("f32", "f32", False),      # alias: a contract may spell single precision "fp32"
 }
 
 
-def dtype_info(token: str) -> tuple[str, str, int, bool]:
-    """(capsule spelling, MLIR spelling, byte width, is_integer) for a canonical dtype token."""
+def dtype_info(token: str) -> tuple[str, str, int | None, bool]:
+    """(capsule spelling, MLIR spelling, byte width, is_integer) for a canonical dtype token.
+
+    The width is DERIVED from ``merlin.common.quant_formats`` rather than declared here, so this module
+    and the capsule DRAM address map cannot disagree about how large a tensor is. It is ``None`` for a
+    sub-byte format (mxfp4, mxfp6), where bytes-per-element has no integer answer and rounding it up
+    would over-stride a packed tensor -- size those whole-tensor via ``capsule_dram.tensor_nbytes``.
+    """
     if token not in _DTYPE:
         raise KeyError(f"unknown dtype token {token!r} (extend corpus_spec._DTYPE)")
-    return _DTYPE[token]
+    capsule_spelling, mlir_spelling, integer = _DTYPE[token]
+    bits = dtype_bits(capsule_spelling)
+    return (capsule_spelling, mlir_spelling, bits // 8 if bits % 8 == 0 else None, integer)
 
 
 @dataclass(frozen=True)

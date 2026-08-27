@@ -234,7 +234,22 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
             # the runner report each capsule's missing tier as unavailable, as it always has.
             tier_ceiling = _DEFAULT_CEILING
         else:
-            tier_ceiling = max(loop, key=lambda t: _TIER_ORDER.index(t) if t in _TIER_ORDER else -1)
+            # Cap to the highest DECLARED tier this endpoint can REACH -- not to the cheap per-round
+            # screen tier. Capping at the screen silently rewrote the capsule's contract: gemmini's
+            # capsules declare L3 (verilator), the loop tier is L2 (spike), so every materialized capsule
+            # came out requiring only L2. Two things followed, both invisible. A capsule that passed
+            # spike was recorded `pass` with the RTL tier never run, and
+            # `_cycle_accurate_checkpoint_enabled` -- which asks whether any cert tier is MANDATORY in
+            # this corpus -- found none and skipped the verilator barrier outright. The whole run graded
+            # on the functional model with the elaborated RTL never executed once.
+            #
+            # The ceiling exists to avoid REQUIRING a tier the endpoint cannot reach. That is what it
+            # now does, and no more; how much of the reachable ladder a given PHASE buys is the phase's
+            # decision (fail-fast + covering set + certify budget), not something to bake into the
+            # corpus by weakening what the capsules ask for.
+            reach = set(_CR.oracle_adapters(te.target, te.sim_via))
+            usable = (declared & reach) or set(loop)
+            tier_ceiling = max(usable, key=lambda t: _TIER_ORDER.index(t) if t in _TIER_ORDER else -1)
     # Concurrency-safe publish. Several A/B arms materialize the SAME target's public set at once; the old
     # ``rmtree(dest) + rebuild`` in place let one arm delete another's half-built cache mid-read (corrupt or
     # missing capsules -> wrong grades). Instead build into a UNIQUE versioned dir, then ATOMICALLY repoint a
