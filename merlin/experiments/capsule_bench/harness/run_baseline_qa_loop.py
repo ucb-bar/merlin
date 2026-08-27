@@ -1396,6 +1396,24 @@ def main(argv: list[str] | None = None) -> int:
                     help="AWS region for --provider bedrock")
     ap.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE", ""),
                     help="AWS profile (~/.aws) for --provider bedrock; else the env-var cred chain")
+    ap.add_argument("--schedule", choices=("rounds", "continuous"), default="rounds",
+                    help="ROUNDS (default, byte-identical to before): the loop is bounded by "
+                         "--max-rounds, and the run ends when that budget is spent whether or not the "
+                         "submission was still improving. CONTINUOUS: the round COUNT stops being a "
+                         "terminator — the run ends on convergence, on a plateau, or on a wall/spend "
+                         "budget, i.e. on evidence about the submission rather than on an arithmetic "
+                         "cap. Per-capsule promotion is unaffected by this flag: a capsule's cert tier "
+                         "is enqueued the moment its loop tier passes (tier_promote fires on EVERY "
+                         "verdict — both brokers and the round grade), never at a round boundary. What "
+                         "continuous removes is the ARTIFICIAL end, not the grading cadence.\n"
+                         "Rounds remain the unit of agent invocation and of the artifact layout in both "
+                         "modes, so every downstream reader (round_NN transcripts, qa_history verdicts, "
+                         "the cost rollup) is unchanged.")
+    ap.add_argument("--max-wall-s", type=int, default=0,
+                    help="continuous only (0 = no wall cap): stop after this much ACTIVE agent wall "
+                         "time. With --schedule continuous and no wall cap and no plateau, the only "
+                         "terminators left are convergence and the spend ceiling — which is what you "
+                         "want for a run whose whole point is to finish the work, but say so on purpose.")
     ap.add_argument("--max-rounds", type=int, default=12)
     ap.add_argument("--min-rounds", type=int, default=0,
                     help="OPT-IN (0 = disabled, the default). Refuse the agent's READY_FOR_BARRIER "
@@ -1755,7 +1773,32 @@ def main(argv: list[str] | None = None) -> int:
             "last_updated": datetime.now(timezone.utc).isoformat()}, sort_keys=False))
 
     cost_capped = False             # set if the batch dollar ceiling (MERLIN_MAX_SPEND_USD) is reached
-    while rnd < a.max_rounds and not verdict.get("all_pass"):
+
+    def _keep_going() -> bool:
+        """Should the loop run another agent invocation?
+
+        ROUNDS: the historical condition, unchanged — bounded by --max-rounds.
+
+        CONTINUOUS: the round COUNT is not a terminator. A run stops on EVIDENCE (converged, plateaued)
+        or on a declared BUDGET (wall, spend), never because an arithmetic cap ran out while the
+        submission was still improving. Measured on the v12 arm-4 run: it reached its ceiling in round 0
+        and then spent two more rounds and 37.9M tokens going nowhere — the round budget was both too
+        loose (it kept paying after convergence) and, on other runs, too tight (a productive round cut at
+        the cap). Neither failure is about the submission, which is the only thing a stop should be about.
+        A safety cap remains via --max-rounds only if the caller explicitly lowers it; the default 12 is
+        ignored in continuous mode so it cannot silently reimpose the very bound this removes.
+        """
+        if verdict.get("all_pass"):
+            return False
+        if a.schedule == "rounds":
+            return rnd < a.max_rounds
+        if a.max_wall_s and active_wall_s >= a.max_wall_s:
+            print(f"[continuous] wall budget reached ({active_wall_s:.0f}s >= {a.max_wall_s}s) — "
+                  f"stopping honestly (not converged; reason=max_wall_s)")
+            return False
+        return True
+
+    while _keep_going():
         print(f"\n===== ROUND {rnd} =====")
         _rstart = time.time()
         try:
@@ -2005,7 +2048,11 @@ def main(argv: list[str] | None = None) -> int:
                 {"attempts": verilator_attempts, "final_all_pass": vv["all_pass"],
                  "last_per_capsule": vv["per_capsule"]}, indent=2))
             print(f"[verilator attempt {vatt}] {vv['n_passed']}/{vv['n_capsules']} pass L3 (all_pass={vv['all_pass']})")
-            _decision = _l3_barrier_decision(vv["all_pass"], rnd, a.max_rounds)
+            # In CONTINUOUS mode the round count is not a terminator anywhere, including here: passing an
+            # effectively unbounded cap keeps the decision to 'done' or 'iterate', so an L3 that has not
+            # passed yet keeps being worked instead of stopping because an arithmetic budget expired.
+            _cap = a.max_rounds if a.schedule == "rounds" else (rnd + 1_000_000)
+            _decision = _l3_barrier_decision(vv["all_pass"], rnd, _cap)
             if _decision == "done":
                 break                                    # ONLY success exit
             if _decision == "budget":
