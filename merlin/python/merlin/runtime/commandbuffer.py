@@ -23,7 +23,19 @@ REQUIRED_KEYS = ("abi_version", "target", "commands")
 
 
 def validate_command_buffer(cb: dict[str, Any]) -> list[str]:
-    """Return a list of problems (empty == valid)."""
+    """Return a list of problems (empty == valid).
+
+    Beyond the required keys, this catches the one structural error the JSON schema cannot express: an
+    operand slot holds the NAME of a buffer, and the schema types it as a bare string, so a value that
+    names nothing at all still validates. A submission that emitted commands referencing shape strings
+    (``dst: "16x16"``) with no ``tensors`` declared passed schema validation, was told it was valid, and
+    was then rejected downstream for a constraint the contract never stated -- so it spent its session
+    guessing spellings instead of writing a compiler.
+
+    The check is deliberately the weakest one that is certainly true: commands that reference operands
+    need SOMETHING to reference. Names produced by earlier commands (an accumulator, a committed
+    intermediate) are legitimately absent from ``tensors``, so per-name resolution is NOT asserted here --
+    only that a computing command buffer declares at least one buffer to compute over."""
     problems: list[str] = []
     for k in REQUIRED_KEYS:
         if k not in cb:
@@ -31,6 +43,15 @@ def validate_command_buffer(cb: dict[str, Any]) -> list[str]:
     for i, cmd in enumerate(cb.get("commands", [])):
         if "opcode" not in cmd:
             problems.append(f"command {i} missing 'opcode'")
+    cmds = cb.get("commands") or []
+    referenced = sorted({str(v) for c in cmds for v in (c.get("operands") or {}).values()
+                         if isinstance(v, str) and v})
+    if referenced and not (cb.get("tensors") or {}) and not cb.get("declined"):
+        problems.append(
+            f"commands reference operand name(s) {referenced[:6]}"
+            f"{' ...' if len(referenced) > 6 else ''} but the command buffer declares no 'tensors'. "
+            f"An operand slot holds the NAME of a tensor declared in 'tensors' (e.g. \"Y0\"), not a "
+            f"shape, a type, or a dimension list")
     return problems
 
 

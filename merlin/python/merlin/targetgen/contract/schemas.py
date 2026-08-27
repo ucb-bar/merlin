@@ -98,7 +98,18 @@ def validate_capsule(cap: Any, *, contract: str | Path | None = None) -> None:
 
 
 def validate_command_buffer(cb: Any, *, contract: str | Path | None = None) -> None:
+    """Validate a command buffer against the schema AND the structural rules the schema cannot state.
+
+    JSON Schema types an operand slot as a bare string, so a value naming nothing -- a shape, a type, a
+    dimension list -- validates. A submission that emitted such operands with no ``tensors`` declared was
+    told its command buffer was VALID and was then rejected downstream for a constraint the contract never
+    expressed; it spent its session guessing spellings. A validator the submitter is told to run must fail
+    on what the runner will refuse, or it is not the contract."""
     validate(cb, "command_buffer", contract=contract)
+    from merlin.runtime.commandbuffer import validate_command_buffer as _structural
+    problems = [p for p in _structural(cb) if "declares no 'tensors'" in p]
+    if problems:
+        raise ContractViolation("command_buffer contract violation: " + "; ".join(problems))
 
 
 def validate_manifest(man: Any, *, contract: str | Path | None = None) -> None:
