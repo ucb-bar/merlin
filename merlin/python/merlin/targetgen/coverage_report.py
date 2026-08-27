@@ -11,13 +11,17 @@ from typing import Any
 
 from .capsule_common import tier_status as _tier_status
 
-# BASELINE axes: always reported, so a 0 is an explicit "not covered" row rather than an absent one.
-# These are gemmini's (the ISA the bench was written against) and they are NOT the vocabulary — a
-# self-hosted-ISA or command-buffer target names its classes and modes differently, and a corpus may
-# declare a mode no gemmini capsule has (radiance's `rmsnorm`). The axes actually reported are these
-# UNIONED with the target's own ISA (see `_isa_class_vocabulary`), what the capsules declare, and what
-# the traces contain; see `_axes` and `aggregate`. Counting only the baseline is how a mode could be
-# declared, graded, and silently absent from its own coverage report.
+# RETIRED AS AXIS SEEDS. These are one target's vocabulary — the ISA the bench was first written
+# against; 11 of the 12 class names below are literally that target's declared `semantic_class`. Seeding
+# them on EVERY report printed a dozen instructions a different machine cannot execute, each as an
+# explicit "not covered" hole, which reads as a coverage gap rather than the category error it is.
+# Measured across this repo's targets: a self-hosted-ISA target got 12 foreign class rows, and a SIMT
+# target and a command-buffer OPU each got 8 foreign MODE rows (`conv2d`, `padded_edge`, ...).
+#
+# The axes are now DERIVED per target: classes from its own declared/derived ISA vocabulary
+# (`_class_axis_baseline`), modes from what its graded capsules actually declare. A target whose
+# vocabulary does not resolve reports what its traces were OBSERVED to run and nothing else — fail
+# closed, never another machine's universe. Kept as named constants only because callers import them.
 BASELINE_CLASSES = ["CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
                     "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV"]
 BASELINE_MODES = ["i8", "relu", "acc_scale", "k_accumulate", "resident_reuse",
@@ -294,10 +298,18 @@ def _isa_class_vocabulary(target: str | None) -> list[str]:
 
 
 def _class_axis_baseline(target: str | None) -> list[str]:
-    """The not-covered class axes to print for ``target``: its OWN vocabulary when one resolves, else
-    :data:`BASELINE_CLASSES`. Keeps a target with no resolvable ISA reporting exactly as before, while
-    stopping one machine's class names from appearing as holes in another machine's report."""
-    return _isa_class_vocabulary(target) or BASELINE_CLASSES
+    """The not-covered class axes to seed for ``target``: its OWN vocabulary, else NOTHING.
+
+    Fails closed rather than substituting :data:`BASELINE_CLASSES`. That list is one machine's
+    vocabulary -- 11 of its 12 entries are literally one target's declared ``semantic_class`` -- so
+    seeding it for a target whose own vocabulary did not resolve prints a dozen instructions that target
+    cannot execute, each as an explicit "not covered" hole. Measured: two targets in this repo have no
+    resolvable manifest, and both were being reported against another machine's ISA.
+
+    Returning ``[]`` does not blank the report: :func:`aggregate` unions these seeds with the classes the
+    decoded traces actually exercised, so an unknown-vocabulary target still reports what it was OBSERVED
+    to run -- it just stops asserting a universe nobody derived."""
+    return _isa_class_vocabulary(target)
 
 
 def _derived_isa_classes(target: str) -> list[str]:
@@ -343,7 +355,9 @@ def aggregate(results: list[dict], capsules: list[dict] | None = None,
     # ISA cannot express them, which reads as a coverage hole rather than as a category error. It is now
     # the FALLBACK, used only when nothing about this target resolves (an unnamed target, or one with
     # neither a declared vocabulary nor a derivable ISA), which is exactly the case it was written for.
-    mode_cov = {m: 0 for m in _axes(BASELINE_MODES, universe_modes)}
+    # Modes come from what THIS corpus declares, not from a baseline list (see the note on the constants):
+    # `conv2d` / `padded_edge` on a SIMT target are as wrong as another machine's opcodes would be.
+    mode_cov = {m: 0 for m in _axes([], universe_modes)}
     class_cov = {c: 0 for c in _axes(_class_axis_baseline(target), universe_classes)}
     # Heavy-oracle availability is tracked per heavy oracle tier; the substrate NAME for each tier is
     # DERIVED from the canonical tier->simulator map (single source of truth in capsule_runner), never

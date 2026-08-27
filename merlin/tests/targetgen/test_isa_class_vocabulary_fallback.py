@@ -107,11 +107,24 @@ def test_a_declaring_target_keeps_its_own_declared_axes(monkeypatch):
     assert CR._class_axis_baseline("t") == ["MVIN", "MVOUT"]
 
 
-def test_baseline_is_the_fallback_when_nothing_about_the_target_resolves(monkeypatch):
-    """Back-compat: a target with neither a declared vocabulary nor a derivable ISA reports as before."""
+def test_unknown_vocabulary_seeds_NOTHING_rather_than_another_machines_isa(monkeypatch):
+    """Fail closed. BASELINE_CLASSES is one target's vocabulary (11 of its 12 names ARE that target's
+    declared semantic_class), so seeding it for a target whose own vocabulary did not resolve prints a
+    dozen instructions that target cannot execute as explicit "not covered" holes. Measured: two targets
+    in this repo have no resolvable manifest and were both being reported against another machine's ISA.
+    Returning [] does not blank the report -- aggregate unions these seeds with what the traces
+    exercised, so the target still reports what it was OBSERVED to run."""
     _patch(monkeypatch, manifest=_FakeManifest(), taxonomy_raises=True)
-    assert CR._class_axis_baseline("t") == CR.BASELINE_CLASSES
-    assert CR._class_axis_baseline(None) == CR.BASELINE_CLASSES
+    assert CR._class_axis_baseline("t") == []
+    assert CR._class_axis_baseline(None) == []
+
+
+def test_mode_axes_come_from_the_corpus_not_a_baseline_list(monkeypatch):
+    """Same category error one axis over: `conv2d` / `padded_edge` seeded onto a SIMT target or a
+    command-buffer OPU are as wrong as another machine's opcodes."""
+    _patch(monkeypatch, manifest=_FakeManifest(), taxonomy_raises=True)
+    cov = CR.aggregate([], target="t")
+    assert not [m for m in cov["mode_coverage"] if m in CR.BASELINE_MODES]
 
 
 def test_rendered_table_does_not_reintroduce_foreign_classes(monkeypatch):

@@ -97,8 +97,10 @@ def test_a_corpus_declared_mode_is_counted_not_dropped():
     results = [{"capsule": "MODE_PROBE", "status": "pass", "kind": "isa", "label": "public"}]
     cov = CV.aggregate(results, capsules=[cap])
     assert cov["mode_coverage"]["rmsnorm"] == 1
-    for m in CV.BASELINE_MODES:                      # baseline axes still reported as not-covered
-        assert m in cov["mode_coverage"]
+    # ...and ONLY what this corpus declares. The baseline list is one target's mode vocabulary, so
+    # seeding it here reported `conv2d` / `padded_edge` as not-covered holes on a SIMT target and on a
+    # command-buffer OPU -- the same category error the class axis had.
+    assert set(cov["mode_coverage"]) == {"rmsnorm"}
     assert "| rmsnorm | 1 |" in CV.render_markdown(cov, results)
 
 
@@ -112,7 +114,10 @@ def test_a_traced_class_outside_the_baseline_is_counted():
     cov = CV.aggregate(results, capsules=[cap], traces=traces)
     assert cov["instruction_class_coverage"]["MXUMatMul"] == 1
     assert cov["instruction_class_coverage"]["MVIN"] == 1
-    assert cov["instruction_class_coverage"]["FLUSH"] == 0     # baseline, explicitly not covered
+    # No target resolves here, so the axes are exactly what the traces exercised -- never a baseline
+    # seed. `FLUSH` belongs to one specific machine; reporting it as "not covered" for a target that
+    # cannot execute it states a coverage gap where there is a category error.
+    assert set(cov["instruction_class_coverage"]) == {"MXUMatMul", "MVIN"}
 
 
 def test_the_aggregate_still_validates_against_the_coverage_schema(tmp_path):
