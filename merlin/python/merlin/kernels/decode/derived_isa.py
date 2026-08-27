@@ -92,8 +92,19 @@ class DerivedIsaInsn:
     fields: dict[str, int] = field(default_factory=dict)
 
 
+#: RISC-V R-type funct3 position, for resolving WHICH instruction a custom opcode space holds. The
+#: instruction FORMAT, not a value: the values come from the target's own intrinsics header.
+_F3_SHIFT, _F3_MASK = 12, 0x7
+
+
+#: RISC-V R-type funct7 position. Format, not a value.
+_F7_SHIFT, _F7_MASK = 25, 0x7F
+
+
 def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
-                  spaces: Sequence[str] = (), roles_of=None) -> list[DerivedIsaInsn]:
+                  spaces: Sequence[str] = (), roles_of=None,
+                  custom_table: "Mapping[tuple, str] | None" = None,
+                  cede_funct7_in: Sequence[str] = ()) -> list[DerivedIsaInsn]:
     """Decode a stream against a derived encoding.
 
     ``spaces`` names the opcode-table entries that belong to this endpoint (e.g. the custom space plus
@@ -115,12 +126,33 @@ def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
         word = _word_of(getattr(insn, "hexcode", ""), width)
         f = fields_of(word, layout) if word is not None else {}
         space = by_value.get(f.get("opcode"), "") if f else ""
+        # Inside a custom opcode space the SPACE name says nothing about the operation. When the
+        # target's own intrinsics header names the individual instructions, resolve to that finer
+        # identity — the difference between "this word is in CUSTOM0" and "this word is a barrier".
+        identity = space
+        if custom_table and word is not None and space:
+            # Scoped to the SHARED space only. Applied to every space it also cedes ordinary
+            # arithmetic — a standard R-type instruction has funct7 bits like anything else — and the
+            # coverage number falls while looking like a correctness fix. Caught by watching it move
+            # the wrong way.
+            if space in cede_funct7_in and ((word >> _F7_SHIFT) & _F7_MASK):
+                # Another endpoint SHARES this opcode space and carries its operation in funct7; a
+                # word with funct7 set is that endpoint's, not an unexplained one. Ceding it keeps the
+                # unroled bucket meaningful — otherwise one engine's instructions are reported as the
+                # other engine's gap, and the number that should drive work becomes noise.
+                identity = ""
+            else:
+                finer = custom_table.get((f.get("opcode"),
+                                          (word >> _F3_SHIFT) & _F3_MASK,
+                                          (word >> _F7_SHIFT) & _F7_MASK))
+                if finer:
+                    identity = finer
         out.append(DerivedIsaInsn(
             index=i, addr=int(getattr(insn, "addr", 0)),
-            identity=space or str(getattr(insn, "mnemonic", "")),
-            space=space,
-            roles=(tuple(roles_of(space)) if (space and roles_of) else ()),
-            from_endpoint=bool(space) and space.upper() in mine,
+            identity=identity or str(getattr(insn, "mnemonic", "")),
+            space=space if identity else "",
+            roles=(tuple(roles_of(identity)) if (identity and roles_of) else ()),
+            from_endpoint=bool(identity) and space.upper() in mine,
             mnemonic=str(getattr(insn, "mnemonic", "")),
             operands=tuple(getattr(insn, "operands", ()) or ()),
             fields=f))

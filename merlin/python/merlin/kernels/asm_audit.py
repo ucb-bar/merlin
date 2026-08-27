@@ -187,9 +187,55 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
             # The width of a word in the OBJECT, not the ISA's internal instruction width. Decoding at
             # the internal width declines every architectural word and reports the kernel unaccounted.
             enc["inst_width"] = int(width)
+        from merlin.kernels.decode import insn_header as _ih
+        custom, _problems = _ih.table_for(target, endpoint)
+        # Cede funct7-bearing words when another endpoint of this target claims that space by funct7.
+        cede = tuple(
+            str(other.get("opcode_space") or "")
+            for e in _ep.endpoints_for(target)
+            if e.name != endpoint.name
+            for other in [((_ep._spec()["endpoints"].get(e.name) or {}).get("encoding") or {})]
+            if str(other.get("discriminator") or "") == "funct7" and other.get("opcode_space"))
         decoded = _isa.decode_stream(raws, enc,
                                      (block.get("encoding") or {}).get("spaces") or (),
-                                     endpoint.roles_of)
+                                     endpoint.roles_of, custom, cede)
+    elif kind == "funct_header":
+        # A RoCC endpoint whose funct table comes from the target's own C ISA header. Reuses the RoCC
+        # decoder unchanged: the ONLY difference from an RTL-derived table is where the codes were
+        # read, and the decoder never cared.
+        from merlin.common import provenance as _prov
+        from merlin.kernels.decode import rocc as _rocc
+        from merlin.targetgen.rtl.circt_introspect import _functs_from_headers
+        enc = block.get("encoding") or {}
+        try:
+            root = Path(_prov.verify(str(enc.get("pin"))).observed.path)
+            by_code = _functs_from_headers([root / str(enc.get("path"))])
+        except (KeyError, OSError, ValueError) as exc:
+            return AsmAudit(target=target, endpoint=endpoint.name, engine=endpoint.engine,
+                            total=len(raws),
+                            notes=(f"{target}: funct header unresolved ({type(exc).__name__})",))
+        opcodes = (_derived_opcodes(target) or {})
+        opcode = opcodes.get(str(enc.get("opcode_space") or ""))
+        if opcode is None:
+            return AsmAudit(target=target, endpoint=endpoint.name, engine=endpoint.engine,
+                            total=len(raws),
+                            notes=(f"{target}: opcode space {enc.get('opcode_space')!r} is not in the "
+                                   f"derived opcode table; refusing to guess its value",))
+        table = {"custom_opcode": opcode, "legal_funct": sorted(by_code),
+                 "names": {str(k): v for k, v in by_code.items()}}
+        decoded = _rocc.decode_stream(raws, table, endpoint.roles_of)
+        # This endpoint SHARES its opcode space with the target's SIMT surface, told apart by field:
+        # a RoCC command carries its operation in funct7, an intrinsic has funct7 == 0. Claim only the
+        # unambiguous half; funct7 == 0 is genuinely undecidable from the encoding and is left to the
+        # other endpoint rather than resolved by preference.
+        if str(enc.get("discriminator") or "") == "funct7":
+            for d in decoded:
+                if d.from_endpoint and not d.fields.get("funct"):
+                    object.__setattr__(d, "from_endpoint", False)
+                    object.__setattr__(d, "roles", ())
+        return _classify(decoded, endpoint, target, endpoint.engine,
+                         notes=("shares an opcode space with this target's SIMT endpoint; claims only "
+                                "funct7 != 0, since funct7 == 0 cannot be told apart by encoding",))
     elif kind == "matrix_units":
         encodings, why = _matrix_encodings(target, block)
         if not encodings:
@@ -208,6 +254,12 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
                         notes=(f"endpoint {endpoint.name!r} derives its encoding from {kind!r}, which "
                                f"is not decodable from a binary — audit its text corpus instead",))
     return _classify(decoded, endpoint, target, endpoint.engine)
+
+
+def _derived_opcodes(target: str) -> dict:
+    """The target's own opcode-space table, so an opcode VALUE is never written down here."""
+    from merlin.targetgen.rtl import mlc_bridge as _mb
+    return dict((_mb.isa_encoding_for(target) or {}).get("opcodes") or {})
 
 
 def _matrix_encodings(target: str, block: dict) -> tuple[dict, str]:

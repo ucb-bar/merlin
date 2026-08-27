@@ -36,6 +36,8 @@ ROLES: dict[str, str] = {
     "config": "set endpoint state that later instructions inherit (vector length, dataflow, dtype)",
     "loop_descriptor": "hand the endpoint a whole loop nest to run itself (a hardware-loop FSM)",
     "control": "branch/jump/link — the loop structure AROUND the work, computing nothing itself",
+    "divergence": "change which LANES are live: thread mask, predicate, split/join",
+    "warp_control": "partition work across threads of control: spawn/retire warps",
     "sync": "order or wait: fences, barriers, completion polls",
     "dma": "bulk asynchronous movement between memories, not through the compute datapath",
 }
@@ -62,6 +64,12 @@ ROLE_EVIDENCES_ENGINE: dict[str, str] = {
     "readout": "spatial",
     "loop_descriptor": "spatial",
     "elementwise": "vector",
+    # Both evidence a SIMT engine and nothing else: only a machine with many threads of control can
+    # have some of them diverge, or spawn more. This is the first rung in the tree that can observe
+    # `simt` at all -- every SIMT declaration was UNCHECKED before, because a role census over typed
+    # operands cannot see what makes SIMT what it is.
+    "divergence": "simt",
+    "warp_control": "simt",
 }
 
 

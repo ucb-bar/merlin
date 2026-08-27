@@ -49,6 +49,10 @@ ROLE_AXES: dict[str, tuple[str, ...]] = {
     # Control flow is the ENVELOPE: the code around the loop, whose cost is real (measured: a per-tile
     # runtime call was ~77% of everything retired) and whose axes are the envelope metrics.
     "control": ("envelope.calls_in_loop", "envelope.runtime_calls"),
+    # Which LANES are live, and how many threads of control there are. Both were axes nothing could
+    # populate until a rung existed that observes SIMT at all -- the target's own intrinsics header.
+    "divergence": ("simt.divergence", "simt.smem_resident"),
+    "warp_control": ("simt.warps", "simt.threads_per_warp"),
 }
 
 

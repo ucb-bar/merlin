@@ -272,3 +272,70 @@ class TestAMultiEngineTargetIsNotAuditedThroughOneEngine:
         assert set(m["per_engine"]) >= {"spatial", "vector"}
         assert "elementwise" not in m["per_engine"]["spatial"]["roles"], (
             "a pooled histogram reads as one machine doing all of it")
+
+
+class TestTheKernelRepoWasEnough:
+    """The custom opcode spaces were called unguessable. They were not: the target's own kernel repo
+    ships both tables — an intrinsics header whose inline assembly defines the SIMT control surface,
+    and a RoCC ISA header defining the MX array's funct codes."""
+
+    def _elfs(self):
+        import glob
+        f = sorted(glob.glob("/scratch2/agustin/radiance-kernels/kernels/*/kernel.radiance.elf"))
+        if not f:
+            pytest.skip("radiance kernels not present in this checkout")
+        return f[:6]
+
+    def test_the_simt_control_surface_is_derived_from_the_targets_header(self):
+        """`.insn r %0, 4, 0, ...` inside `vx_barrier` is the target saying, in its own words, that
+        this encoding is a warp barrier. Reading it is the same act as reading a funct table out of
+        RTL — the source differs, the derivation does not."""
+        from merlin.kernels.decode import insn_header as H
+        insns, problems = H.parse_insn_header(
+            "/scratch2/agustin/radiance-kernels/lib/include/vx_intrinsics.h")
+        names = {i.name for i in insns}
+        assert {"vx_barrier", "vx_split", "vx_join", "vx_wspawn"} <= names, sorted(names)
+        assert problems == (), problems
+
+    def test_barriers_and_divergence_appear_in_real_kernels(self):
+        """`simt.barriers_in_loop` was an axis nothing could populate. It is decidable now."""
+        hist = {}
+        for f in self._elfs():
+            for k, v in A.audit_stream(f, "radiance",
+                                       EP.load_endpoint("radiance_simt")).role_histogram.items():
+                hist[k] = hist.get(k, 0) + v
+        assert hist.get("sync", 0) > 0 and hist.get("divergence", 0) > 0, hist
+
+    def test_the_mx_array_is_a_second_endpoint_read_from_the_repos_own_isa_header(self):
+        import glob
+        mx = sorted(glob.glob("/scratch2/agustin/radiance-kernels/kernels/*mxgemm*/*.elf"))
+        if not mx:
+            pytest.skip("no MX kernels in this checkout")
+        ep = EP.load_endpoint("radiance_mx")
+        assert "loop_descriptor" in ep.roles and not ep.missing
+        hist = {}
+        for f in mx:
+            for k, v in A.audit_stream(f, "radiance", ep).role_histogram.items():
+                hist[k] = hist.get(k, 0) + v
+        assert hist.get("loop_descriptor", 0) > 0, (
+            "the expert MX kernels drive the array through its hardware loop descriptor")
+
+    def test_two_endpoints_sharing_one_opcode_space_do_not_claim_each_others_words(self):
+        """Measured: the MX RoCC and the SIMT intrinsics share CUSTOM0, told apart by field — a RoCC
+        command carries its operation in funct7, an intrinsic has funct7 == 0. Ignoring funct7
+        mislabelled the array's instructions as SIMT control and inflated that role count."""
+        from merlin.kernels.decode import insn_header as H
+        table, _ = H.table_for("radiance", EP.load_endpoint("radiance_simt"))
+        assert table, "the intrinsics table did not resolve"
+        assert all(len(k) == 3 for k in table), "the table must key on funct7, not just funct3"
+        assert all(k[2] == 0 for k in table), "every intrinsic declares funct7 == 0"
+
+    def test_ceding_is_scoped_to_the_shared_space_only(self):
+        """Applied to every opcode space it also cedes ordinary arithmetic — a standard R-type
+        instruction has funct7 bits like anything else — and coverage falls while looking like a
+        correctness fix."""
+        import inspect
+
+        from merlin.kernels.decode import derived_isa as D
+        src = inspect.getsource(D.decode_stream)
+        assert "space in cede_funct7_in" in src, "the cede must be scoped to named spaces"

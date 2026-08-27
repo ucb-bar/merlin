@@ -78,19 +78,99 @@ endpoints:
       disasm_triple: riscv32
       disasm_mattr: "+m,+a,+f,+d,+c"
       stream_width: 32
+      # The CUSTOM opcode space is where this target's SIMT control surface lives, and its own
+      # intrinsics header IS the decode table for it: each intrinsic names the operation and encodes
+      # it in the same place, so reading the header is the same act as reading a funct table out of
+      # RTL. Without it these are 4 unexplained opcode spaces; with it, barriers, warp spawns and
+      # divergence points are legible — and `simt.barriers_in_loop` becomes decidable from a real
+      # kernel instead of being an axis nothing can populate.
+      intrinsics:
+        pin: radiance_kernels
+        path: lib/include/vx_intrinsics.h
     roles:
       operand_load: [LOAD]
       commit: [STORE]
       accumulate: [MADD, MSUB, NM_ADD, NM_SUB]
       elementwise: [OP, OP_IMM, OP_FP]
-      sync: [MISC_MEM, SYSTEM]
       # The loop structure around the work. Roled so the UNROLED bucket contains only instructions we
       # genuinely cannot explain — which for this target is the CUSTOM spaces, where its accelerator
       # surface lives and where guessing would invent the semantics the corpus exists to teach us.
       control: [BRANCH, JAL, JALR, AUIPC, LUI]
+      # Roles over the intrinsic names the header declares — the same shape as a role table over an
+      # RTL funct table, with the target's own vocabulary on the right-hand side.
+      #
+      # `sync` gains the warp barrier here. Before this the only sync evidence was a fence opcode,
+      # so "how many barriers are inside the reduction loop" — the one axis that says whether the
+      # engine can hold its state across a reduction — could not be answered from a real kernel.
+      sync: [MISC_MEM, SYSTEM, vx_barrier]
+      # Thread-mask, predicate, split and join all change WHICH LANES ARE LIVE. Distinct from
+      # `control` (branch/jump), which changes what the whole warp executes.
+      # vx_tmc_zero / vx_tmc_one are convenience wrappers that encode IDENTICALLY to vx_tmc, so the
+      # table (keyed by encoding) holds one name for all three. Declaring the wrappers would report
+      # them permanently missing from a table that has nothing to add them to.
+      divergence: [vx_tmc, vx_pred, vx_split, vx_join]
+      # Spawning warps partitions work across threads of control: a scheduling decision, neither
+      # arithmetic nor a branch.
+      warp_control: [vx_wspawn]
     notes: >-
       The MX array this cluster embeds is a SECOND endpoint that does not exist here yet: its
       instructions live in the custom opcode spaces, which are reported unroled rather than guessed.
+
+  radiance_mx:
+    description: >-
+      The MX array this SIMT cluster embeds, driven over RoCC. The notes on radiance_simt said its
+      instructions "live in the custom opcode spaces, reported unroled rather than guessed" — this is
+      that endpoint, and the guess was never needed: the kernel repo ships the header that defines the
+      table, in exactly the `#define k_<NAME> <N>` convention a RoCC target's ISA headers already use.
+    target: radiance
+    engine: spatial
+    exposure: rocc
+    encoding:
+      # ⚠️ This endpoint SHARES an opcode space with radiance_simt, which is a real property of the
+      # target and not a modelling shortcut. They are told apart by FIELD: a RoCC command carries its
+      # operation in funct7, while every SIMT intrinsic has funct7 == 0 and carries its operation in
+      # funct3. So funct7 != 0 is unambiguously this endpoint.
+      #
+      # funct7 == 0 is genuinely AMBIGUOUS — k_CONFIG is funct7 0, and a RoCC funct3 holds the
+      # xd/xs1/xs2 flags, which can coincide with an intrinsic's funct3. Nothing in the encoding
+      # separates those two cases, so this endpoint claims only funct7 != 0 and the ambiguity is
+      # recorded here rather than resolved by preference.
+      source: funct_header
+      pin: radiance_kernels
+      path: lib/mxgemmini/include/gemmini.h
+      opcode_space: CUSTOM0
+      discriminator: funct7
+      disasm_triple: riscv32
+      disasm_mattr: "+m,+a,+f,+d,+c"
+      stream_width: 32
+    # The same role vocabulary as any other RoCC array endpoint, over this header's own k_ names.
+    roles:
+      config: [CONFIG]
+      operand_load: [MVIN, MVIN2, MVIN3]
+      weight_load: [PRELOAD]
+      accumulate: [COMPUTE_PRELOADED, COMPUTE_ACCUMULATE]
+      readout: [MVOUT, MVOUT_SPAD]
+      commit: [MVOUT, MVOUT_SPAD]
+      sync: [FLUSH]
+      loop_descriptor:
+        - LOOP_WS
+        - LOOP_WS_CONFIG_BOUNDS
+        - LOOP_WS_CONFIG_ADDRS_AB
+        - LOOP_WS_CONFIG_ADDRS_DC
+        - LOOP_WS_CONFIG_STRIDES_AB
+        - LOOP_WS_CONFIG_STRIDES_DC
+        - LOOP_WS_CONFIG_SPAD_AB
+        - LOOP_WS_CONFIG_SPAD_C
+        - LOOP_CONV_WS
+        - LOOP_CONV_WS_CONFIG_1
+        - LOOP_CONV_WS_CONFIG_2
+        - LOOP_CONV_WS_CONFIG_3
+        - LOOP_CONV_WS_CONFIG_4
+        - LOOP_CONV_WS_CONFIG_5
+        - LOOP_CONV_WS_CONFIG_6
+    levels:
+      fsm: [loop_descriptor]
+      fine_grained: [weight_load, accumulate]
 
   rvv_lanes:
     description: >-
@@ -236,6 +316,15 @@ endpoints:
       # carries architectural 32-bit words. Decoding the ELF at the internal width declines every word
       # and reports the whole kernel as unaccounted.
       stream_width: 32
+      # The CUSTOM opcode space is where this target's SIMT control surface lives, and its own
+      # intrinsics header IS the decode table for it: each intrinsic names the operation and encodes
+      # it in the same place, so reading the header is the same act as reading a funct table out of
+      # RTL. Without it these are 4 unexplained opcode spaces; with it, barriers, warp spawns and
+      # divergence points are legible — and `simt.barriers_in_loop` becomes decidable from a real
+      # kernel instead of being an axis nothing can populate.
+      intrinsics:
+        pin: radiance_kernels
+        path: lib/include/vx_intrinsics.h
     # Roles over the opcode names mlc recovers from this target's own decoder RTL. Coarser than a
     # per-instruction table — an opcode SPACE groups many instructions — and that coarseness is the
     # honest resolution of this evidence: the decoder tells us which space a word falls in, not which
@@ -252,11 +341,26 @@ endpoints:
       # one instruction, which is what separates a contraction from a multiply followed by an add.
       accumulate: [MADD, MSUB, NM_ADD, NM_SUB]
       elementwise: [OP, OP_IMM, OP_FP]
-      sync: [MISC_MEM, SYSTEM]
       # The loop structure around the work. Roled so the UNROLED bucket contains only instructions we
       # genuinely cannot explain — which for this target is the CUSTOM spaces, where its accelerator
       # surface lives and where guessing would invent the semantics the corpus exists to teach us.
       control: [BRANCH, JAL, JALR, AUIPC, LUI]
+      # Roles over the intrinsic names the header declares — the same shape as a role table over an
+      # RTL funct table, with the target's own vocabulary on the right-hand side.
+      #
+      # `sync` gains the warp barrier here. Before this the only sync evidence was a fence opcode,
+      # so "how many barriers are inside the reduction loop" — the one axis that says whether the
+      # engine can hold its state across a reduction — could not be answered from a real kernel.
+      sync: [MISC_MEM, SYSTEM, vx_barrier]
+      # Thread-mask, predicate, split and join all change WHICH LANES ARE LIVE. Distinct from
+      # `control` (branch/jump), which changes what the whole warp executes.
+      # vx_tmc_zero / vx_tmc_one are convenience wrappers that encode IDENTICALLY to vx_tmc, so the
+      # table (keyed by encoding) holds one name for all three. Declaring the wrappers would report
+      # them permanently missing from a table that has nothing to add them to.
+      divergence: [vx_tmc, vx_pred, vx_split, vx_join]
+      # Spawning warps partitions work across threads of control: a scheduling decision, neither
+      # arithmetic nor a branch.
+      warp_control: [vx_wspawn]
     notes: >-
       Disassembly of this target MUST pin its ISA extensions. With the extensions left to the tool's
       default, 76% of a real kernel's words come back unnamed; given +m,+a,+f,+d,+c it is 15%, and that
