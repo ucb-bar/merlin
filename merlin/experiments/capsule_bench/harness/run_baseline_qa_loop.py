@@ -1380,6 +1380,14 @@ def main(argv: list[str] | None = None) -> int:
                          "rate-limit-boundary exposure, and can cut a productive round mid-fix (rc=124). "
                          "The original abc runs used 4h and converged in ~1 productive round.")
     ap.add_argument("--qa-timeout", type=int, default=900)
+    ap.add_argument("--continuous", action="store_true",
+                    help="CONTINUOUS mode: one long-lived agent session instead of round relaunches. "
+                         "A background grader re-grades the workspace every --grade-interval seconds and "
+                         "refreshes qa/verdict.json, so the agent's feedback is continuous rather than "
+                         "arriving at a round barrier. --max-rounds is ignored; --round-timeout bounds "
+                         "the single session.")
+    ap.add_argument("--grade-interval", type=int, default=900,
+                    help="seconds between background grades in --continuous mode (default 900)")
     # Default sandbox=bwrap: enforced FS isolation (the agent cannot read a masked answer surface at all),
     # AND the driver-side broker tools (async simjob oracle, self-check, arc-model isa_tools, CCA) only
     # start under bwrap. The earlier "bwrap crashes claude" blocker was a sandbox-config bug, now fixed in
@@ -1713,6 +1721,59 @@ def main(argv: list[str] | None = None) -> int:
                            "rate_limit_wait_s": round(rate_limit_wait_s, 3),
                            "rl_waits_used": rl_waits_used, "started_at": started_at},
             "last_updated": datetime.now(timezone.utc).isoformat()}, sort_keys=False))
+
+    if a.continuous:
+        # CONTINUOUS MODE — one session, no round barrier.
+        #
+        # The round loop exists to (a) give the agent a fresh context and (b) deliver a graded verdict.
+        # (b) does not need (a): qa_grade already grades a SNAPSHOT COPY of the workspace and writes the
+        # redacted verdict to ws/qa/verdict.json, so it is safe to run while the agent is working. Here a
+        # background grader does exactly that on an interval, and the agent — a single long-lived session
+        # — sees its feedback refresh continuously instead of at a barrier. Per-capsule tier promotion is
+        # unchanged and already immediate: capsule_runner runs each capsule's ladder cheapest-first, so a
+        # capsule that clears the screen goes on to the certifying tier in the same grade, not next round.
+        import threading
+        stop = threading.Event()
+        state = {"tick": 0, "verdict": verdict}
+
+        def _grader() -> None:
+            while not stop.wait(max(30, int(a.grade_interval))):
+                t = state["tick"] + 1
+                try:
+                    v = qa_grade(ws, run_dir, t, a.no_oracle, a.qa_timeout)
+                except Exception as e:  # noqa: BLE001 — a mid-write submission must never kill the run
+                    print(f"[continuous] grade {t} skipped: {type(e).__name__}: {e}", flush=True)
+                    continue
+                state["tick"], state["verdict"] = t, v
+                print(f"[continuous] grade {t}: {v.get('n_passed')}/{v.get('n_capsules')} "
+                      f"all_pass={v.get('all_pass')}", flush=True)
+                _checkpoint(t)
+                if v.get("all_pass"):
+                    stop.set()                     # converged: stop grading; the session is torn down below
+                    return
+
+        gt = threading.Thread(target=_grader, name="continuous-grader", daemon=True)
+        gt.start()
+        try:
+            rc, tpath = launch_agent(ws, run_dir, a.model, a.effort, a.sandbox, bundle, 0,
+                                     a.round_timeout, arm=arm)
+        except subprocess.TimeoutExpired:
+            rc, tpath = 124, run_dir / "rounds" / "round_00.transcript.jsonl"
+            print("[continuous] agent session TIMEOUT (the session bound, not a round)")
+        stop.set()
+        gt.join(timeout=60)
+        # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
+        # the run's verdict is a grade of the submission as the session left it.
+        verdict = qa_grade(ws, run_dir, state["tick"] + 1, a.no_oracle, a.qa_timeout)
+        rounds_summary.append({"round": 0, "mode": "continuous", "agent_rc": rc,
+                               "grades": state["tick"] + 1,
+                               "all_pass": verdict.get("all_pass", False),
+                               "n_passed": verdict.get("n_passed"),
+                               "n_capsules": verdict.get("n_capsules")})
+        _checkpoint(state["tick"] + 1)
+        print(f"\ncontinuous run complete: {run_dir}  converged={verdict.get('all_pass', False)}  "
+              f"grades={state['tick'] + 1}")
+        return 0
 
     cost_capped = False             # set if the batch dollar ceiling (MERLIN_MAX_SPEND_USD) is reached
     while rnd < a.max_rounds and not verdict.get("all_pass"):
