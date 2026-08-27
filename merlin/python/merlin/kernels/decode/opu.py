@@ -65,6 +65,9 @@ class Decoded:
     addr: int
     identity: str                  # the derived mnemonic, or the disassembler's own text
     from_extension: bool
+    #: Roles the endpoint declares for this identity. Without them the stream is decoded but carries
+    #: no MEANING, and a CCA lifted from it compares equal to everything.
+    roles: tuple[str, ...] = ()
     mnemonic: str = ""             # what the disassembler called it
     operands: tuple[str, ...] = ()
     fields: dict[str, int] = field(default_factory=dict)
@@ -85,7 +88,8 @@ def _word_of(hexcode: str) -> int | None:
         return None
 
 
-def decode_stream(insns: Sequence[Any], encodings: Mapping[str, Any]) -> list[Decoded]:
+def decode_stream(insns: Sequence[Any], encodings: Mapping[str, Any],
+                  roles_of=None) -> list[Decoded]:
     """Name every instruction in a disassembly stream, using ``encodings`` for the unnameable ones.
 
     ``insns`` are :class:`kernels.decode.objdump.RawInsn`; ``encodings`` maps a name to anything
@@ -103,6 +107,7 @@ def decode_stream(insns: Sequence[Any], encodings: Mapping[str, Any]) -> list[De
         out.append(Decoded(index=i, addr=int(getattr(insn, "addr", 0)),
                            identity=name or str(getattr(insn, "mnemonic", "")),
                            from_extension=name is not None,
+                           roles=(tuple(roles_of(name)) if (name and roles_of) else ()),
                            mnemonic=str(getattr(insn, "mnemonic", "")),
                            operands=tuple(getattr(insn, "operands", ()) or ()),
                            fields=f))

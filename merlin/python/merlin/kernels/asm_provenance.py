@@ -212,7 +212,8 @@ def opportunities(hist: dict, *, engine: str = "", total: int = 0) -> list[Oppor
              f"multiply followed by an add, not a fused MAC",
              "select the fused multiply-accumulate form so each step advances the partial sum in one "
              "instruction instead of two", confidence="high")
-    if acc and not g("readout", 0):
+    offloaded = g("loop_descriptor", 0) > 0
+    if acc and not g("readout", 0) and not offloaded:
         _add("compute.accumulator_resident",
              f"{acc} accumulate(s) and NO readout: the accumulator is never drained in this stream",
              "check the epilogue actually extracts the result — an accumulate-without-extraction is "
@@ -239,7 +240,7 @@ def opportunities(hist: dict, *, engine: str = "", total: int = 0) -> list[Oppor
              f"re-set more often than it is used",
              "hoist the configuration out of the loop so the state is set once and inherited",
              confidence="high")
-    if engine == "spatial" and acc and not g("loop_descriptor", 0):
+    if engine == "spatial" and acc and not offloaded:
         _add("dispatch.loop_offloaded",
              f"{acc} accumulate(s) issued command-by-command with no loop descriptor",
              "hand the loop nest to the endpoint's own sequencer instead of issuing every step",

@@ -177,10 +177,17 @@ def audit(insns: Sequence[Any], target: str, endpoint=None) -> RoccAudit:
             unaccounted.append({"index": d.index, "addr": d.addr, "fields": dict(d.fields)})
 
     levels = endpoint.levels if endpoint is not None else {}
+    level = level_of(role_counts, levels)
+    # A stream that OFFLOADS its loop nest legitimately has no visible operand load, accumulate or
+    # readout: the endpoint's own sequencer issues them, so they never appear in the instruction
+    # stream at all. Reporting them missing there would flag a correct expert kernel as incomplete —
+    # measured on a real conv kernel, which is pure loop-descriptor and drives the array perfectly.
+    # Completeness is only a question about a stream that issues the steps itself.
+    missing = (_roles.missing_contraction_roles(role_counts)
+               if (role_counts and level != "fsm") else ())
     return RoccAudit(
         counts=counts, role_counts=role_counts, total_insns=len(decoded),
         endpoint_insns=sum(1 for d in decoded if d.from_endpoint),
         unaccounted=tuple(unaccounted),
-        level=level_of(role_counts, levels),
-        missing_roles=_roles.missing_contraction_roles(role_counts) if role_counts else (),
+        level=level, missing_roles=missing,
         digest=digest(decoded))

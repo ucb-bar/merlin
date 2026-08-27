@@ -154,3 +154,70 @@ class TestAgainstRealStreams:
         assert int(block["stream_width"]) == 32, (
             "the width of a word in the OBJECT is not the ISA's internal instruction width; decoding "
             "at the internal width declines every architectural word")
+
+
+class TestEveryTargetDecodesRealExpertCode:
+    """The confidence check. A role table that only ever saw synthetic words proves nothing about
+    whether we can read the kernels experts actually wrote."""
+
+    def _first(self, pattern):
+        import glob
+        hits = sorted(glob.glob(pattern))
+        if not hits:
+            pytest.skip(f"no artifact matching {pattern} in this checkout")
+        return hits[0]
+
+    _GEMMINI = ("/scratch2/agustin/chipyard/generators/gemmini/software/gemmini-rocc-tests/"
+                "build/bareMetalC/")
+
+    def test_a_real_rocc_expert_binary_decodes_with_nothing_unaccounted(self):
+        a = A.audit_stream(self._first(self._GEMMINI + "matmul*-baremetal"), "gemmini")
+        assert a.is_consistent() and a.role_tagged > 0
+        assert a.unaccounted == 0 and a.claimed_no_role == 0, a.to_dict()
+
+    def test_the_two_instruction_levels_are_visible_in_real_expert_code(self):
+        """The Phase 2 finding, confirmed on binaries: the same C call lowers either way — the library
+        expands it — so the level is a property of the EMITTED stream and only disassembly can see it."""
+        from merlin.kernels.decode import rocc as RC
+        from merlin.kernels.decode import rvv as R
+        ep = EP.load_endpoint("gemmini_rocc")
+        fine = self._first(self._GEMMINI + "matmul-baremetal")
+        fsm = self._first(self._GEMMINI + "conv-baremetal")
+        a = RC.audit([i.raw for i in R.decode(fine).insns], "gemmini", ep)
+        b = RC.audit([i.raw for i in R.decode(fsm).insns], "gemmini", ep)
+        assert a.level == "fine_grained" and b.level == "fsm", (a.level, b.level)
+
+    def test_an_offloaded_stream_is_not_judged_incomplete(self):
+        """When the endpoint's own sequencer runs the loop, the steps never appear in the instruction
+        stream. Reporting them missing flags a correct expert kernel as broken."""
+        from merlin.kernels.decode import rocc as RC
+        from merlin.kernels.decode import rvv as R
+        obj = self._first(self._GEMMINI + "conv-baremetal")
+        a = RC.audit([i.raw for i in R.decode(obj).insns], "gemmini",
+                     EP.load_endpoint("gemmini_rocc"))
+        assert a.level == "fsm" and a.missing_roles == ()
+
+    def test_a_real_matrix_extension_binary_role_tags(self):
+        a = A.audit_stream(
+            self._first("/scratch2/agustin/chipyard/generators/saturn/benchmarks/opu-*.riscv"),
+            "saturn")
+        if not a.total:
+            pytest.skip("saturn benchmark not decodable in this checkout")
+        assert a.role_tagged > 0 and "accumulate" in a.role_histogram
+        assert a.unaccounted == 0
+
+    def test_a_hand_written_corpus_resolves_its_core_instructions(self):
+        """The corpus and the model spell these differently; joined by encoding, not by name."""
+        import glob
+        files = sorted(glob.glob("/scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/"
+                                 "baremetal/assembly/*.S"))
+        if not files:
+            pytest.skip("atlas corpus not present in this checkout")
+        hist = {}
+        for f in files[:60]:
+            a = A.audit_text(open(f, errors="replace").read().splitlines(), "atlas")
+            for k, v in a.role_histogram.items():
+                hist[k] = hist.get(k, 0) + v
+        # weight_load and readout are the MXU push/pop, which only appear once the assembler bridge
+        # resolves the corpus spelling — without it the contraction facets are undecidable.
+        assert {"accumulate", "weight_load", "readout"} <= set(hist), hist

@@ -30,6 +30,7 @@ the work, not about the language it was written in.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 __all__ = ["AsmAudit", "audit_stream", "audit_text", "comparable"]
@@ -189,12 +190,59 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
         decoded = _isa.decode_stream(raws, enc,
                                      (block.get("encoding") or {}).get("spaces") or (),
                                      endpoint.roles_of)
+    elif kind == "matrix_units":
+        encodings, why = _matrix_encodings(target, block)
+        if not encodings:
+            return AsmAudit(target=target, endpoint=endpoint.name, engine=endpoint.engine,
+                            total=len(raws), notes=(why,))
+        from merlin.kernels.decode import opu as _opu
+        decoded = _opu.decode_stream(raws, encodings, endpoint.roles_of)
+        # `from_extension` is this decoder's spelling of "the derived table claims it"; the classifier
+        # reads `from_endpoint`, so bridge the two rather than teaching the classifier a second name.
+        for d in decoded:
+            object.__setattr__(d, "from_endpoint", d.from_extension)
+        return _classify(decoded, endpoint, target, endpoint.engine)
     else:
         return AsmAudit(target=target, endpoint=endpoint.name, engine=endpoint.engine,
                         total=len(raws),
                         notes=(f"endpoint {endpoint.name!r} derives its encoding from {kind!r}, which "
                                f"is not decodable from a binary — audit its text corpus instead",))
     return _classify(decoded, endpoint, target, endpoint.engine)
+
+
+def _matrix_encodings(target: str, block: dict) -> tuple[dict, str]:
+    """Derive the matrix extension's encoding table from the target's own RTL sources.
+
+    The table is not stored anywhere: it is derived on demand from the Chisel sources the unit
+    declaration names, under the pin that says which revision they must be. So an audit of this
+    endpoint is only as good as the checkout, and when the pin does not verify the honest result is no
+    table and a stated reason — never a guessed encoding, which would name instructions confidently
+    and wrongly.
+    """
+    try:
+        import yaml as _yaml
+
+        from merlin.common import provenance as _prov
+        from merlin.common.paths import merlin_dir
+        from merlin.targetgen.rtl import opu_isa as _opu_isa
+
+        enc = block.get("encoding") or {}
+        units = (_yaml.safe_load((merlin_dir() / "contract" / "matrix_units.yaml")
+                                 .read_text(encoding="utf-8")) or {}).get("units") or {}
+        spec = units.get(enc.get("unit")) or {}
+        if not spec:
+            return {}, f"{target}: matrix_units.yaml declares no unit {enc.get('unit')!r}"
+        root = Path(_prov.verify(str(spec["pin"])).observed.path)
+        S, D = spec["sources"], spec["declarations"]
+        derived = _opu_isa.derive(
+            consts=root / S["consts"], instructions=root / S["instructions"],
+            params=root / S["params"], funct6_enum=D["funct6_enum"],
+            consts_container=D["consts_container"], insn_seq=D["insn_seq"],
+            opcode_name=D["opcode_name"], form_funct3=D["form_funct3"])
+        return dict(derived.encodings), ""
+    except Exception as exc:  # noqa: BLE001
+        return {}, (f"{target}: the matrix extension's encoding could not be derived "
+                    f"({type(exc).__name__}: {exc}) — no table, and no guessed one either")
 
 
 def audit_text(lines, target: str, endpoint=None) -> AsmAudit:
