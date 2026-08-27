@@ -242,6 +242,35 @@ def rv64_cross_prefix() -> str | None:
     return "riscv64-unknown-elf" if shutil.which("riscv64-unknown-elf-gcc") else None
 
 
+def console_base(target: str | None = None) -> int | None:
+    """The SoC console's base address, from the target's DERIVED facts (``facts.console.base``).
+
+    The device tree's ``stdout-path`` is the only sound source for it: the kernel-side putchar aperture
+    (``IO_COUT_ADDR``) is a Vortex constant that cyclotron mirrors and the RTL maps no device at, so
+    anything that needs a byte to actually leave an RTL run has to ask the elaborated design where its
+    console is. ``None`` when the facts carry no console — callers FAIL CLOSED rather than guess.
+
+    Only a MISSING/ABSENT fact reads as ``None``. An import or parse error is raised: swallowing those
+    turns a coding mistake into a silent "this target has no console", which is exactly how the bug this
+    exists to fix stayed hidden.
+    """
+    from merlin.targetgen.rtl import facts as _facts
+    try:
+        doc = _facts.load_facts(target or _facts_target())
+    except FileNotFoundError:
+        return None
+    con = (doc.get("facts") or {}).get("console") or {}
+    base = con.get("base")
+    return int(base) if base is not None else None
+
+
+def _facts_target() -> str:
+    """The target name this backend's facts are filed under (``muon_introspect.TARGET``), so the name
+    lives in ONE place instead of being restated at every call site."""
+    from .muon_introspect import TARGET as _T
+    return _T
+
+
 def fuse_soc_elf(muon_elf: Path, work: Path) -> Path:
     """Fuse a bare rv32 Muon ELF into the rv64 'SoC' carrier ELF the Verilator RTL harness loads
     (radiance-kernels ``soc/fuse_rv32_into_rv64.sh``): the muon PT_LOADs are mirrored at +0x1_0000_0000
@@ -261,6 +290,26 @@ def fuse_soc_elf(muon_elf: Path, work: Path) -> Path:
     env = dict(os.environ)
     env.update(CROSS64=cross, RV32_ELF=str(muon_elf), OUT=str(out),
                RV64_START=str(start_s), RV64_MAIN=str(main_c))
+    # RUNNER-OWNED CARRIER (opt-in). The stock carrier spins, so nothing on the chip ever drives the
+    # console: the kernel's OUT/DONE bytes go to the Vortex IO_COUT aperture, which this SoC maps no
+    # device at, and Rocket -- the only master that reaches serial@10020000 -- does nothing. Swapping in
+    # our own main.c is what lets a result leave an RTL run at all.
+    # Gated on MERLIN_MUON_SOC_CARRIER so a normal grade stays byte-identical until it is asked for, and
+    # the UART base is DERIVED from the target's elaborated console fact (never a literal): no fact, no
+    # carrier -- fail closed rather than guess an address.
+    if os.environ.get("MERLIN_MUON_SOC_CARRIER", "").strip().lower() in ("1", "true", "yes", "on"):
+        base = console_base()
+        if base is None:
+            raise MuonUnavailable(
+                "MERLIN_MUON_SOC_CARRIER is set but this target's console fact carries no base "
+                "(no elaborated *.dts stdout-path / *.memmap.json) — refusing to guess a UART address")
+        carrier = Path(__file__).resolve().parent / "soc_carrier" / "main.c"
+        if not carrier.is_file():
+            raise MuonUnavailable(f"runner-owned SoC carrier missing at {carrier}")
+        env["RV64_MAIN"] = str(carrier)
+        env["RV64_CFLAGS"] = (os.environ.get("RV64_CFLAGS")
+                              or "-march=rv64gc -mabi=lp64 -ffreestanding -nostdlib -mcmodel=medany") \
+            + f" -DMU_UART_BASE=0x{base:x}UL"
     # the fuse script writes start.o/main.o into CWD -> run inside the per-run workdir
     proc = subprocess.run(["bash", str(script)], capture_output=True, text=True,
                           cwd=str(work), env=env)
