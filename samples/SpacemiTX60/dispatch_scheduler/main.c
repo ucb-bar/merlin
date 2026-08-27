@@ -35,6 +35,10 @@ static void print_usage(const char *argv0) {
 		"  --trace_csv=<path>          Write trace CSV\n"
 		"  --variant_p=RVV             ISA variant dir for CPU_P VMFBs\n"
 		"  --variant_e=scalar          ISA variant dir for CPU_E VMFBs\n"
+		"  --pin_per_core[=1]          Honour CPU_P#N placement: one pinned\n"
+		"                              device per core instead of one per\n"
+		"                              cluster. Required for a schedule built\n"
+		"                              from single-core profiles.\n"
 		"\n"
 		"Notes:\n"
 		"  - This runner is strict and expects async-external dispatch VMFB "
@@ -84,6 +88,9 @@ int main(int argc, char **argv) {
 	 * the expected configuration. Defaults preserve the old behaviour. */
 	const char *variant_p = "RVV";
 	const char *variant_e = "scalar";
+	/* Off by default: honouring per-core placement changes what the run
+	 * measures, so it should be asked for explicitly. */
+	int pin_per_core = 0;
 
 	for (int i = 6; i < argc; ++i) {
 		const char *v = NULL;
@@ -105,6 +112,10 @@ int main(int argc, char **argv) {
 			variant_p = v;
 		} else if ((v = get_flag_value(argv[i], "--variant_e"))) {
 			variant_e = v;
+		} else if ((v = get_flag_value(argv[i], "--pin_per_core"))) {
+			pin_per_core = parse_int_or_default(v, 0);
+		} else if (strcmp(argv[i], "--pin_per_core") == 0) {
+			pin_per_core = 1;
 		} else {
 			fprintf(stderr, "Unknown arg: %s\n\n", argv[i]);
 			print_usage(argv[0]);
@@ -129,6 +140,7 @@ int main(int argc, char **argv) {
 
 	// SpacemiT X60-specific target configuration.
 	cfg.target_platform = "spacemit_x60";
+	cfg.pin_per_core = pin_per_core;
 	cfg.variant_p_dir = variant_p;
 	cfg.variant_e_dir = variant_e;
 	cfg.elf_marker = "_embedded_elf_riscv_64";

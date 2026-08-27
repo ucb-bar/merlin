@@ -29,6 +29,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <map>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -595,6 +596,9 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 	iree_runtime_instance_t *instance = nullptr;
 	iree_hal_device_t *device_p = nullptr;
 	iree_hal_device_t *device_e = nullptr;
+	// (target, core_index) -> device pinned to that one physical core.
+	// Populated only when cfg->pin_per_core is set.
+	std::map<std::pair<int, int>, iree_hal_device_t *> per_core_devices;
 
 	TraceWriter trace;
 	if (cfg->trace_csv_path && cfg->trace_csv_path[0]) {
@@ -647,6 +651,37 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 		}
 	}
 
+	if (cfg->pin_per_core) {
+		// One device per physical core, so a dispatch placed on CPU_P#2 runs
+		// on CPU_P's third core and nowhere else. Without this the core index
+		// is parsed and discarded, and IREE's local-task picks any core in the
+		// cluster pool -- which silently invalidates a schedule built from
+		// single-core profiles.
+		std::vector<int> ids_p, ids_e;
+		SplitCpuIds(cfg->cpu_p_cpu_ids, &ids_p);
+		SplitCpuIds(cfg->cpu_e_cpu_ids, &ids_e);
+		const std::vector<int> *sets[2] = {&ids_p, &ids_e};
+		for (int t = 0; t < 2; ++t) {
+			for (size_t k = 0; k < sets[t]->size(); ++k) {
+				char one[16];
+				snprintf(one, sizeof(one), "%d", (*sets[t])[k]);
+				iree_hal_device_t *dev = nullptr;
+				iree_status_t st =
+					CreatePinnedLocalTaskDevice(host_alloc, one, &dev);
+				if (!iree_status_is_ok(st)) {
+					fprintf(stderr,
+						"Failed creating per-core device for cpu %s\n", one);
+					iree_status_fprint(stderr, st);
+					iree_status_ignore(st);
+					continue;
+				}
+				per_core_devices[std::make_pair(t, (int)k)] = dev;
+			}
+		}
+		fprintf(stdout, "[dispatch] per-core pinning ON (%zu devices)\n",
+			per_core_devices.size());
+	}
+
 	fprintf(stdout,
 		"[dispatch] CPU_P local-task topology = {%s}\n"
 		"[dispatch] CPU_E local-task topology = {%s}\n",
@@ -657,23 +692,35 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 	std::unordered_map<std::string, std::unique_ptr<CachedModule>> cache;
 	cache.reserve(model.nodes.size() * 2);
 
-	auto cache_key_for = [](HardwareTarget target, const std::string &path) {
-		return std::string(HardwareTargetName(target)) + "|" + path;
+	auto device_for = [&](const DispatchNode &n) -> iree_hal_device_t * {
+		iree_hal_device_t *fallback =
+			(n.hardware_target == HardwareTarget::kCpuP) ? device_p : device_e;
+		if (!cfg->pin_per_core || n.core_index < 0)
+			return fallback;
+		auto it = per_core_devices.find(std::make_pair(
+			n.hardware_target == HardwareTarget::kCpuP ? 0 : 1, n.core_index));
+		return it == per_core_devices.end() ? fallback : it->second;
+	};
+
+	// The core is part of the key: a module is loaded against a device, so two
+	// cores running the same VMFB need two cached modules.
+	auto cache_key_for = [&](HardwareTarget target, int core,
+							 const std::string &path) {
+		return std::string(HardwareTargetName(target)) + "#" +
+			   std::to_string(cfg->pin_per_core ? core : -1) + "|" + path;
 	};
 
 	std::vector<CachedModule *> node_modules(model.nodes.size(), nullptr);
 
 	for (size_t i = 0; i < model.nodes.size(); ++i) {
 		DispatchNode &node = model.nodes[i];
-		const std::string cache_key =
-			cache_key_for(node.hardware_target, node.vmfb_path_resolved);
+		const std::string cache_key = cache_key_for(
+			node.hardware_target, node.core_index, node.vmfb_path_resolved);
 
 		auto it = cache.find(cache_key);
 		if (it == cache.end()) {
 			auto cm = std::make_unique<CachedModule>();
-			iree_hal_device_t *target_device =
-				(node.hardware_target == HardwareTarget::kCpuP) ? device_p
-																: device_e;
+			iree_hal_device_t *target_device = device_for(node);
 
 			iree_status_t st = LoadModule(
 				instance, target_device, node.vmfb_path_resolved, cm.get());
@@ -851,6 +898,10 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 
 	for (auto &kv : cache)
 		CachedModuleRelease(kv.second.get());
+	for (auto &kv : per_core_devices) {
+		if (kv.second)
+			iree_hal_device_release(kv.second);
+	}
 	if (device_e)
 		iree_hal_device_release(device_e);
 	if (device_p)

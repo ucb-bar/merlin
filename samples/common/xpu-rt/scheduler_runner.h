@@ -28,6 +28,18 @@ typedef struct scheduler_runner_config_t {
 	const char *cpu_p_cpu_ids;
 	const char *cpu_e_cpu_ids;
 	int visible_cores;
+	/** When non-zero, honour the per-core placement a schedule expresses as
+	 *  "CPU_P#2": create one pinned local-task device per physical core and
+	 *  run each dispatch on the device matching its core_index. Default 0
+	 *  keeps the historical behaviour of one device per cluster, where the
+	 *  core index is parsed and then ignored and IREE's local-task picks a
+	 *  core from the pool.
+	 *
+	 *  This matters for calibration, not just tidiness: a schedule built from
+	 *  single-core profiles and executed on a 4-core pool runs its dispatches
+	 *  ~3.7x faster than planned, and every predicted-vs-actual number is then
+	 *  measuring the mismatch rather than the model. */
+	int pin_per_core;
 
 	const char *out_json_path;
 	const char *out_dot_path;
