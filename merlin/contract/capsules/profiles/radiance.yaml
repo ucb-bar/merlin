@@ -215,6 +215,35 @@ capsules:
    source_role: pytorch_model_slice,
    source_reference: 'fused QKV+RoPE: Y = rope(X@Wqkv) bf16 (radiance-kernels rope_qkv_fused)',
    label: public, modes: {rope: true}}
+# --- CROSS-BACKEND capsules: work this SoC's SIMT cluster provably cannot do -------------------------
+#
+# Both are int8 MOVEMENT. The forcing function is derived, not asserted:
+#   * radiance declares `movement` over fp32/fp16/bf16 ONLY, so there is no SIMT integer movement
+#     datapath — eligibility reports "input dtype 'i8' not in movement formats [fp32, fp16, bf16]";
+#   * int8 IS in the target's declared dtypes (the contraction/MX PE takes it), so the capsule is NOT
+#     hard-withheld — `_split_ineligible` grades it. Verified: graded=1, withheld=0.
+# A capsule that is graded and has no accelerator datapath is the only shape that FORCES the compiler to
+# reach for something else; a withheld one would be a silent no-op.
+#
+# And the something else is real on this SoC. Its Rocket is `rv64imac` + zicsr/zifencei/zihpm (from the
+# elaborated device tree) — INTEGER ONLY, no `v` and no `f`/`d`. So the two engines are complementary:
+# float goes to the Muon SIMT cluster, integer has to come off it. That is also why an RVV capsule is
+# NOT authored against radiance: this SoC has no vector unit, and a capsule that no configuration can
+# serve measures nothing. The vector variant below is the SHAPE at which a scalar loop stops being the
+# answer, so the reference worth reusing is the existing tuned RVV package from another experiment
+# (out/artifacts/targets/rvv/…) rather than a fresh microkernel.
+- {cat: model_slices, name: RX0_movement_i8_scalar, kind: model_slice, op: movement,
+   operand_dtype: int8, M: 16, N: 16, src: X, out: Y0, semantic: mvin_mvout,
+   source_role: pytorch_model_slice,
+   source_reference: 'int8 movement, scalar-shaped (16x16) — no SIMT integer movement datapath; the
+     rv64imac Rocket is the engine that can hold these operands',
+   label: public, modes: {movement: true}}
+- {cat: model_slices, name: RX1_movement_i8_vector, kind: model_slice, op: movement,
+   operand_dtype: int8, M: 64, N: 256, src: X, out: Y0, semantic: mvin_mvout,
+   source_role: pytorch_model_slice,
+   source_reference: 'int8 movement, vector-shaped (64x256) — same missing datapath at a size where a
+     scalar loop is not the answer; reuse the tuned RVV package rather than regenerating one',
+   label: public, modes: {movement: true}}
 # Whole-model capsule (kind: model) — a small representative transformer lowered end to end via model2MLIR,
 # graded vs its host torch-eager output. GATED: only scheduled once >= 80% of the op capsules pass, so the
 # whole model is the capstone test that the compiler produces a WORKING network (right layers lowered,
