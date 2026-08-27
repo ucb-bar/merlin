@@ -139,6 +139,35 @@ def _classes_by_role(taxonomy: dict) -> dict[str, list[str]]:
     return out
 
 
+def roles_of(taxonomy: dict) -> frozenset[str]:
+    """Every structural role the target's ISA definition evidences. The role census in set form — the
+    input to :func:`families_of`."""
+    return frozenset(_classes_by_role(taxonomy))
+
+
+def families_of(taxonomy: dict) -> frozenset[str]:
+    """The canonical semantic families a target's own ISA EVIDENCES, derived from its role census.
+
+    This is how a self-hosted-ISA target — which ships an ``isa_definition.py`` instead of an
+    ``encoding.semantic_class`` map — gets a family vocabulary at all. Roles come from the instructions'
+    typed operands (:func:`oracle_helpers.isa_introspect._role_for_pattern`), and
+    :func:`semantic_families.from_isa_role` pins each to a family, so nothing here reads a mnemonic.
+
+    ⚠️ This is a LOWER BOUND on capability, and one family is structurally invisible to it: a reduction
+    and a per-element map compile to the same tensor->tensor instructions, so the census cannot evidence
+    ``reduction``. Treat its absence as UNKNOWN, never as "this target cannot reduce"."""
+    from . import semantic_families
+    return semantic_families.families_from_roles(roles_of(taxonomy))
+
+
+def families_for_target(target: str, *, timeout: int = 120) -> frozenset[str]:
+    """:func:`families_of` for a target by name; empty frozenset when no ISA definition resolves."""
+    try:
+        return families_of(taxonomy_for_target(target, timeout=timeout))
+    except Exception:  # noqa: BLE001 — no derivable ISA -> honestly empty, never guessed
+        return frozenset()
+
+
 def required_classes_for_op(taxonomy: dict, *, op: str = "matmul", output_dtype: str | None = None,
                             epilogue: tuple[str, ...] = (), movement: bool = False) -> list[str]:
     """Derive the instruction classes a capsule of this op MUST exercise, selected by DERIVED semantic

@@ -86,6 +86,38 @@ _ISA_CLASS_FAMILY: dict[str, str] = {
     # CONFIG / CONFIG_EX / CONFIG_LD / CONFIG_ST / FLUSH: plumbing, deliberately absent
 }
 
+# --- structural ISA ROLE -> canonical family ----------------------------------------------------
+# A self-hosted-ISA target declares no ``encoding.semantic_class`` at all: its vocabulary is its own
+# mnemonics (``MXUMatMul``, ``TensorComputeBinary``, ...), which _ISA_CLASS_FAMILY must never learn --
+# that is the name-matching this repo exists to avoid. What such a target DOES yield is a structural
+# ROLE census (:func:`merlin.targetgen.oracle_helpers.isa_introspect._role_for_pattern`), which reads
+# each instruction's OWN typed operands and answers "what datapath does this describe?" -- accumulator
+# from tensor+weight sources is a matmul, tensor->tensor is a vector epilogue, and so on. Those roles
+# are a closed, universal systolic vocabulary, so they pin to families exactly as the declared classes
+# above do, and every target gains a family vocabulary whether or not it declares one.
+#
+# ⚠️ Deliberately NOT derivable here: ``reduction``. A reduce-over-an-axis is expressed with the same
+# tensor->tensor instructions as a per-element map, so the operand census cannot separate them -- the
+# distinction lives in the loop structure, not the instruction. Callers get ``elementwise_map`` for the
+# tensor-compute roles and must treat a missing ``reduction`` as UNKNOWN, never as "cannot reduce".
+#: ``{role: (family, requires)}``. ``requires`` names families the licence is only valid ALONGSIDE — an
+#: epilogue that exists solely on another unit's output path is not a standalone capability.
+ISA_ROLE_FAMILY: dict[str, tuple[str, tuple[str, ...]]] = {
+    "matmul": ("contraction", ()),
+    # tensor base+offset load/store: data motion, the role-census twin of MVIN / MVOUT
+    "memory": ("movement", ()),
+    # the vector unary/binary epilogue -- a per-element map over tensor registers
+    "tensor_compute_unary": ("elementwise_map", ()),
+    "tensor_compute_binary": ("elementwise_map", ()),
+    # a SCALED accumulator pop is a requant on the readout path: an elementwise map available only fused
+    # with the contraction that filled the accumulator, never standalone.
+    "acc_readout_scaled": ("elementwise_map", ("contraction",)),
+    # weight_load / acc_seed / acc_readout are contraction PLUMBING: they feed or drain the mesh and
+    # license nothing on their own -- reading them as "contraction" would let a target that merely pushes
+    # weights claim it can multiply. scalar is host-side control. All absent on purpose, exactly as
+    # CONFIG is absent above: setting the datapath up is not a computation.
+}
+
 # --- routing OpDemand.op / prov.op -> canonical family -----------------------------------------
 # When only an op name is available (no family tag), pin it structurally. Softmax/normalization ops
 # resolve to their composite so eligibility can ask for the fused capability or the primitives.
@@ -213,6 +245,45 @@ def from_isa_class(isa_class: str | None) -> str | None:
     return _ISA_CLASS_FAMILY.get(isa_class.strip().upper())
 
 
+def from_isa_role(isa_role: str | None) -> str | None:
+    """Canonical family for a STRUCTURAL ISA role from the role census; ``None`` if it maps to nothing.
+
+    The companion to :func:`from_isa_class` for a target that declares no shared class vocabulary. The
+    role is derived from an instruction's own typed operands, so this stays a structural lookup and never
+    reads a target's mnemonics. ``None`` for control/scalar plumbing and for any unknown role — callers
+    fail closed (record UNKNOWN) rather than guessing a family.
+    """
+    if not isa_role:
+        return None
+    hit = ISA_ROLE_FAMILY.get(isa_role.strip().lower())
+    return hit[0] if hit else None
+
+
+def isa_role_requires(isa_role: str | None) -> tuple[str, ...]:
+    """Families the role's licence is only valid alongside; empty when it stands alone or is unknown."""
+    if not isa_role:
+        return ()
+    hit = ISA_ROLE_FAMILY.get(isa_role.strip().lower())
+    return hit[1] if hit else ()
+
+
+def families_from_roles(roles) -> frozenset[str]:
+    """The canonical families a role census evidences — the family vocabulary of a self-hosted-ISA
+    target. Roles that pin to nothing (contraction plumbing, scalar/control, unknown) drop out silently.
+
+    A role whose licence ``requires`` another family only counts when that family is ALSO evidenced: a
+    scaled accumulator pop proves a fused requant exists, not that the target can map elementwise on its
+    own. An empty result means the census evidenced no computation family — a real answer, not an error.
+    """
+    seen = {r.strip().lower() for r in (roles or ()) if r}
+    standalone = {ISA_ROLE_FAMILY[r][0] for r in seen if r in ISA_ROLE_FAMILY
+                  and not ISA_ROLE_FAMILY[r][1]}
+    conditional = {ISA_ROLE_FAMILY[r][0] for r in seen if r in ISA_ROLE_FAMILY
+                   and ISA_ROLE_FAMILY[r][1]
+                   and all(req in standalone for req in ISA_ROLE_FAMILY[r][1])}
+    return frozenset(standalone | conditional)
+
+
 def from_prov(prov_family: str | None, prov_op: str | None = None) -> str | None:
     """Canonical family for a captured op's ``prov.family`` (with ``prov.op`` as a tiebreaker).
 
@@ -257,4 +328,10 @@ def check() -> list[str]:
     for src, fam in {**_PROV_FAMILY, **_OP_FAMILY, **_ISA_CLASS_FAMILY}.items():
         if fam not in FAMILIES:
             problems.append(f"mapping {src!r} -> {fam!r} is not a declared family")
+    for role, (fam, requires) in ISA_ROLE_FAMILY.items():
+        if fam not in FAMILIES:
+            problems.append(f"role {role!r} -> {fam!r} is not a declared family")
+        for req in requires:
+            if req not in FAMILIES:
+                problems.append(f"role {role!r} requires {req!r}, not a declared family")
     return problems

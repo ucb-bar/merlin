@@ -62,18 +62,16 @@ from typing import Any
 from merlin.targetgen import semantic_families as _sf
 
 #: Structural ISA roles -> the family that role licenses. Roles are derived from an instruction's typed
-#: operands, so this table reads hardware structure, not names. ``acc_readout_scaled`` is the epilogue:
-#: a SCALED accumulator pop is a requant on the readout path, which is an elementwise map available only
-#: fused with the contraction that filled the accumulator -- never standalone.
-_ROLE_FAMILY: dict[str, tuple[str, tuple[str, ...]]] = {
-    "matmul": ("contraction", ()),
-    "memory": ("movement", ()),
-    "tensor_compute_unary": ("elementwise_map", ()),
-    "tensor_compute_binary": ("elementwise_map", ()),
-    "acc_readout_scaled": ("elementwise_map", ("contraction",)),
-    # weight_load / acc_seed / acc_readout are contraction PLUMBING: they feed or drain the mesh and
-    # license nothing on their own. scalar is host-side. Absent on purpose.
-}
+#: operands, so this table reads hardware structure, not names.
+#:
+#: The table itself lives in :mod:`semantic_families`, the single source of truth for the family
+#: vocabulary, next to the declared-class and prov-tag maps it already owns — so this rung, the coverage
+#: class vocabulary and the ISA-taxonomy family derivation all read ONE table. It is aliased rather than
+#: re-stated because a second copy is exactly how the two drift: a duplicate written here dropped the
+#: ``acc_readout_scaled`` requires-contraction condition and promoted the three plumbing roles to a
+#: standalone ``contraction`` licence, which would let a target that merely pushes weights claim it can
+#: multiply.
+_ROLE_FAMILY = _sf.ISA_ROLE_FAMILY
 
 #: Roles whose presence proves the census actually ran and covered compute, so a family it did NOT find
 #: can be reported ``unsupported`` rather than ``unknown``. Without one of these the census is silent,

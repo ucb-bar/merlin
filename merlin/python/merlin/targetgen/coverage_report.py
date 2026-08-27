@@ -270,14 +270,20 @@ def _isa_class_vocabulary(target: str | None) -> list[str]:
     target's decoded-instruction classes (contract ``interfaces[].instruction_classes``), or a
     RoCC/systolic target's ``encoding.semantic_class`` + ``config_subtype`` names (the config op is
     refined into its subtypes in the decoded trace). Returns ``[]`` when no manifest resolves — the
-    caller then relies on the observed-trace union + the reference fallback. Never a target-name branch."""
+    caller then relies on the observed-trace union + the reference fallback. Never a target-name branch.
+
+    Third source, for a target that declares NEITHER: its own ISA definition. A self-hosted-ISA core
+    ships ``isa_definition.py`` rather than a class map, so both declared vocabularies came back empty
+    and every not-covered row was blank — the report silently had nothing to say about the target whose
+    ISA is most fully specified. :mod:`isa_taxonomy` derives the class names from that definition, so the
+    fallback is still "read the target's own sources", one rung further in."""
     if not target:
         return []
     try:
         from .target_experiment import load_capability_manifest
         m = load_capability_manifest(target)
     except Exception:  # noqa: BLE001 — no resolvable manifest -> rely on observed traces
-        return []
+        return _derived_isa_classes(target)
     out: list[str] = []
     for itf in (m.contract.get("interfaces") or []):     # self-hosted ISA / SIMT decoded classes
         out += list(itf.get("instruction_classes") or [])
@@ -289,7 +295,27 @@ def _isa_class_vocabulary(target: str | None) -> list[str]:
             continue
         out.append(name)
     out += list(cst.values())
-    return [c for c in dict.fromkeys(out) if c]
+    vocab = [c for c in dict.fromkeys(out) if c]
+    return vocab or _derived_isa_classes(target)
+
+
+def _class_axis_baseline(target: str | None) -> list[str]:
+    """The not-covered class axes to print for ``target``: its OWN vocabulary when one resolves, else
+    :data:`BASELINE_CLASSES`. Keeps a target with no resolvable ISA reporting exactly as before, while
+    stopping one machine's class names from appearing as holes in another machine's report."""
+    return _isa_class_vocabulary(target) or BASELINE_CLASSES
+
+
+def _derived_isa_classes(target: str) -> list[str]:
+    """Class names DERIVED from the target's shipped ISA definition, for a target that declares no class
+    vocabulary. Empty on any failure — a target with no derivable ISA is honestly silent here, never
+    guessed at from a name."""
+    try:
+        from . import isa_taxonomy
+        tax = isa_taxonomy.taxonomy_for_target(target)
+    except Exception:  # noqa: BLE001 — no derivable ISA definition -> stay silent, fail closed
+        return []
+    return [c for c in dict.fromkeys((tax.get("by_class") or {})) if c]
 def _axes(baseline: list[str], observed) -> list[str]:
     """Baseline axes first (stable report order), then anything else observed, sorted."""
     extra = sorted(set(observed) - set(baseline))
@@ -317,11 +343,14 @@ def aggregate(results: list[dict], capsules: list[dict] | None = None,
     by_kind: dict[str, int] = {}
     by_label: dict[str, int] = {}
     by_tier_reached = {t: 0 for t in TIERS}
-    # BASELINE axes unioned with what this target's ISA/traces/capsules exercised, so a corpus-declared
-    # mode or a self-hosted-ISA class is reported (not silently filtered on the gemmini baseline) while a
-    # baseline axis still shows an explicit not-covered 0.
+    # THIS TARGET's class axes unioned with what its traces/capsules exercised. The baseline list is one
+    # machine's vocabulary, so prepending it unconditionally printed a dozen rows of another target's
+    # instruction classes -- COMPUTE_PRELOADED, CONFIG_LD, LOOP_CONV -- as "not covered" on a target whose
+    # ISA cannot express them, which reads as a coverage hole rather than as a category error. It is now
+    # the FALLBACK, used only when nothing about this target resolves (an unnamed target, or one with
+    # neither a declared vocabulary nor a derivable ISA), which is exactly the case it was written for.
     mode_cov = {m: 0 for m in _axes(BASELINE_MODES, universe_modes)}
-    class_cov = {c: 0 for c in _axes(BASELINE_CLASSES, universe_classes)}
+    class_cov = {c: 0 for c in _axes(_class_axis_baseline(target), universe_classes)}
     # Heavy-oracle availability is tracked per heavy oracle tier; the substrate NAME for each tier is
     # DERIVED from the canonical tier->simulator map (single source of truth in capsule_runner), never
     # hardcoded as vcs/firesim here — so a target whose ladder names its heavy oracles differently is
@@ -378,9 +407,11 @@ def render_markdown(cov: dict, results: list[dict]) -> str:
         L.append(f"| {t} | {cov['by_tier_reached'].get(t, 0)} |")
     L += ["", "## Instruction-class coverage (explicit not-covered rows)", "",
           "| class | capsules exercising |", "|---|---|"]
-    # Iterate the AGGREGATE's own axes, not the baseline list: a class or mode this corpus contributed
-    # is in the counts, and rendering only the baseline would drop it from the report it belongs to.
-    for c in _axes(BASELINE_CLASSES, cov["instruction_class_coverage"]):
+    # Iterate the AGGREGATE's own axes, and ONLY those: they are already this target's vocabulary unioned
+    # with what the corpus exercised (see _class_axis_baseline). Re-prepending the baseline list here put
+    # another machine's classes back into the rendered table even once the counts had stopped carrying
+    # them -- the same category error, one layer down.
+    for c in cov["instruction_class_coverage"]:
         n = cov["instruction_class_coverage"].get(c, 0)
         mark = "" if n else "  _(not covered)_"
         L.append(f"| {c} | {n}{mark} |")
