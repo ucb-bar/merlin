@@ -21,16 +21,47 @@
 #error "MU_UART_BASE must be defined by the builder from the target's derived console fact"
 #endif
 
-/* SiFive uart0 register file: txdata at +0x00. Bit 31 of txdata reads back as FULL, so a write is only
- * accepted when it is clear. Polling it (rather than blind-storing) is what makes the carrier safe on a
- * sim whose UART backpressures — a dropped byte here would look exactly like the bug this replaces. */
-#define UART_TXDATA (*(volatile uint32_t *)((uintptr_t)(MU_UART_BASE) + 0x00))
-#define UART_TXFULL (1u << 31)
+/* SiFive uart0 register file. txdata's bit 31 reads back as FULL, so a write is only accepted when it
+ * is clear — polling it (rather than blind-storing) keeps the carrier safe on a sim whose UART
+ * backpressures, since a dropped byte would look exactly like the bug this replaces.
+ *
+ * TXEN IS NOT OPTIONAL. A uart0 comes out of reset with the transmitter DISABLED: storing to txdata
+ * before setting txctrl.txen is accepted by the bus and transmits nothing, so the harness's SimUART
+ * never sees out_valid and the console stays empty — indistinguishable, from the outside, from the
+ * unmapped-aperture bug. Measured exactly that: Rocket reached the carrier 73,682 times and
+ * uart_chars stayed 0 until this enable was added.
+ */
+#define UART_REG(off)  (*(volatile uint32_t *)((uintptr_t)(MU_UART_BASE) + (off)))
+#define UART_TXDATA    UART_REG(0x00)
+#define UART_TXCTRL    UART_REG(0x08)
+#define UART_DIV       UART_REG(0x18)
+#define UART_TXFULL    (1u << 31)
+#define UART_TXEN      (1u << 0)
+
+static void uart_init(void)
+{
+    /* Enable TX and DO NOT TOUCH div. Rocket executes the BootROM before ever reaching this carrier
+     * (traced: pc walks 0x10000.. long before 0x80000000), and the BootROM programs the divisor for the
+     * clock it was built against. Writing our own rate over it produced exactly one 0xFF underrun frame
+     * and then wedged the FULL poll below — a carrier that hangs the run is strictly worse than one that
+     * prints nothing. Deriving a divisor here would need the clock fact; inheriting the one the boot
+     * flow already set needs nothing and is right on silicon too.
+     */
+    UART_TXCTRL |= UART_TXEN;
+}
 
 static void up(char c)
 {
-    while (UART_TXDATA & UART_TXFULL) { /* wait for room */ }
-    UART_TXDATA = (uint32_t)(unsigned char)c;
+    /* BOUNDED wait. An unconfigured or absent transmitter leaves FULL set forever, and an unbounded
+     * spin there turns "the console does not work" into "the run hangs" — the same class of failure,
+     * made much more expensive to diagnose. Give up on the byte instead; a short console is a visible
+     * symptom, a wedged simulation is not. */
+    for (int spin = 0; spin < (1 << 20); ++spin) {
+        if (!(UART_TXDATA & UART_TXFULL)) {
+            UART_TXDATA = (uint32_t)(unsigned char)c;
+            return;
+        }
+    }
 }
 
 static void us(const char *s)
@@ -44,6 +75,7 @@ int main(void)
      * reach the UART and `uart_chars` — the counter that exposed the original bug — is nonzero.
      * Result readback lands on top of this once the channel is established; doing it the other way round
      * would mean debugging a readback contract through a console that was never shown to work. */
+    uart_init();
     us("MU_CARRIER_ALIVE\n");
 
     /* Hand the machine back exactly as the stock carrier did: the Muon cores are released and run to
