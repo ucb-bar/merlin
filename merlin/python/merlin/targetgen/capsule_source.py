@@ -855,6 +855,13 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         **({"inapplicable_oracle_tiers": dict(binding.inapplicable_tiers)}
            if getattr(binding, "inapplicable_tiers", None) else {}),
         "gate": gate,
+        # INTEROP: the lanes this capsule requires to have carried work (routing-plan keys, e.g.
+        # `on_mesh` + `scalar_rvv_lane`). Present only when the profile declares it. A capsule that names
+        # lanes is asserting COMPOSITION -- part of the model on the accelerator, part on the lane the
+        # target also owns -- so host-lane work is the behaviour under test rather than a fallback
+        # failure, and must_accelerate is withheld below for the same reason.
+        **({"lanes": {"require": [str(x) for x in (entry.get("lanes") or {}).get("require") or []]}}
+           if (entry.get("lanes") or {}).get("require") else {}),
         "pytorch_ref": {"op": "model", "dtype": idt, "loader": "capsule.pytorch.py"},
         "linalg_mlir": "capsule.interface.mlir",
         # A model capsule carried no semantic block, so the eligibility oracle could not resolve it
@@ -865,7 +872,11 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         "semantic": {
             **({"semantic_family": _model_family} if _model_family else {}),
             "generalization_axis": "model",
-            "must_accelerate": bool(_model_family and _model_classes),
+            # An INTEROP capsule requires lane composition, so a region reaching the scalar/vector lane is
+            # the behaviour under test -- asserting must_accelerate there would fail a conformant
+            # submission for doing exactly what the capsule asks.
+            "must_accelerate": bool(_model_family and _model_classes
+                                    and not ((entry.get("lanes") or {}).get("require"))),
             "eligible": "auto",
             **({} if (_model_family and _model_classes) else {
                 "not_asserted_reason":

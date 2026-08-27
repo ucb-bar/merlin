@@ -112,6 +112,13 @@
       "description": "Scheduling gate: a whole-model capsule is only run once the op-level suite has proven itself. `after_op_pass_fraction` is the minimum fraction of graded op capsules that must PASS before this capsule is scheduled.",
       "properties": {"after_op_pass_fraction": {"type": "number", "minimum": 0, "maximum": 1}},
       "additionalProperties": false
+    },
+    "lanes": {
+      "type": "object",
+      "description": "INTEROP contract. `require` names the execution lanes that must each have carried work, using the routing plan's own keys (e.g. `on_mesh`, `in_contract_vector_scalar`, `scalar_rvv_lane`). A capsule that names lanes asserts COMPOSITION across backends -- part of the model on the accelerator, part on the scalar/vector lane the target also owns -- so work reaching the other lane is the behaviour under test, not a fallback failure. `semantic.must_accelerate` is withheld for such a capsule for the same reason. A named lane the routing plan does not report fails the capsule with that lane named.",
+      "properties": {"require": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
+      "required": ["require"],
+      "additionalProperties": false
     }
   },
   "additionalProperties": true

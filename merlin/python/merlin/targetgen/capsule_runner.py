@@ -1082,6 +1082,26 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
             _on = model_exec.get("matmul_layers_on_mesh")
             _model_ok = (_on is not None and int(_on) > 0
                          and not int(model_exec.get("matmul_layers_host_fallback") or 0))
+        # INTEROP capsules invert one half of that. A capsule may DECLARE that its point is composition
+        # across lanes -- part of the model on the accelerator, the rest on the scalar/vector lane the
+        # target also owns -- in which case "no host fallback" is the wrong bar: it would fail the exact
+        # behaviour under test. Such a capsule names the lanes it requires, and passes only when EVERY
+        # named lane actually carried work.
+        #
+        # The lane names are the routing plan's OWN keys (`on_mesh`, `in_contract_vector_scalar`,
+        # `scalar_rvv_lane`), so this asserts against what the compiler reported rather than a vocabulary
+        # invented here; a capsule naming a lane the plan does not report fails closed with that lane
+        # named, which is the actionable direction.
+        _req_lanes = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
+        if _req_lanes:
+            _plan = result.get("routing_plan") or {}
+            _empty = [ln for ln in _req_lanes if not (_plan.get(ln) or {})]
+            _model_ok = not _empty
+            if _empty:
+                result.setdefault("lane_report", {})["unexercised"] = _empty
+            result.setdefault("lane_report", {})["required"] = _req_lanes
+            result.setdefault("lane_report", {})["observed"] = sorted(
+                k for k, v in _plan.items() if v)
 
         # WHICH tier the mesh oracle corresponds to, DERIVED from the target's own declared RTL tiers.
         # This was `[x for x in declared if x not in ("L0", "L1")]` with an `"L3"` fallback -- three tier

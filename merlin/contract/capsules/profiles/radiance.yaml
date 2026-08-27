@@ -240,6 +240,30 @@ capsules:
    out: Y0, source_role: pytorch_model_slice,
    source_reference: 'tiny_llama — real TinyLlama-1.1B logits (embed/RMSNorm/RoPE/attn+softmax/SwiGLU/lm_head); matches autocomp_tinyllama_e2e',
    label: public, gate: {after_op_pass_fraction: 0.8}}
+# INTEROP capstones (GATED at the same 80% as the other whole-model capsules). These exist to answer a
+# question the single-backend capsules cannot: can this compiler COMPOSE across backends -- run part of a
+# real network on the accelerator and the rest on the scalar / vector lane the target also owns -- and
+# still produce the right answer end to end?
+#
+# They REUSE the small_llama capture the M0 capstone already uses (2 MB on disk: model.mlir + weights +
+# inputs + golden), so nothing is regenerated and no new model is introduced; what differs is the LANE
+# CONTRACT each asserts. `lanes.require` names routing-plan keys, and the capsule passes only when every
+# named lane actually carried work -- so unlike M0, reaching the non-accelerator lane is the behaviour
+# under test rather than a fallback failure (must_accelerate is withheld for exactly that reason).
+#
+# small_llama is also the only whole model here that is realistically GSIM-runnable: the other capstones
+# are real networks (TinyLlama-1.1B, a ViT, a vision+LSTM net) whose oracle cost is unbounded -- measured
+# on another target, ONE such capstone consumed 10+ hours of a run, one simulator layer at a time.
+- {cat: model, name: MX0_interop_scalar_lane, kind: model, op: model, model: small_llama, operand_dtype: f32,
+   out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama composed across the SIMT accelerator and the in-contract scalar/vector lane — reuses the M0 capture, asserts both lanes carried work',
+   label: public, gate: {after_op_pass_fraction: 0.8},
+   lanes: {require: [on_mesh, in_contract_vector_scalar]}}
+- {cat: model, name: MX1_interop_rvv_lane, kind: model, op: model, model: small_llama, operand_dtype: f32,
+   out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama composed across the SIMT accelerator and the scalar/RVV host lane — reuses the M0 capture, asserts both lanes carried work',
+   label: public, gate: {after_op_pass_fraction: 0.8},
+   lanes: {require: [on_mesh, scalar_rvv_lane]}}
 - {cat: model, name: M3_spectformer_fp32, kind: model, op: model, model: spectformer, operand_dtype: f32,
    out: Y0, source_role: pytorch_model_slice,
    source_reference: 'spectformer — ViT (patch-embed + spectral/attention blocks + classifier head); matches the _vision e2e set',
