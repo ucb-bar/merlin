@@ -89,7 +89,17 @@ def flash_attention_fp8(mx, S_scores, V, SB_v, *, M, Skv, Dv, att_scale, softcap
 
     S = np.asarray(S_scores, dtype=np.float64).reshape(M, Skv)
     scale = bf16(att_scale)
-    NBLK = Skv // 32
+    # FAIL CLOSED ON A PARTIAL BLOCK, like the MX GEMM golden. `Skv // 32` drops the keys past the last
+    # whole block-scale group, and P_codes/P_dec/SA_p are zero-initialised, so those key positions
+    # contribute nothing and the flash golden silently ignores part of the sequence. Every flash capsule
+    # on disk has Skv = 32 or 64, so this refuses nothing today.
+    if Skv % mx.GROUP:
+        raise ValueError(
+            f"MX flash reference needs the key length to be a whole multiple of the {mx.GROUP}-element "
+            f"block-scale group; got Skv={Skv} ({Skv % mx.GROUP} key(s) in a partial final group). One "
+            f"E8M0 scale is emitted per whole group, so the probability scales would cover only "
+            f"{mx.GROUP * (Skv // mx.GROUP)} of {Skv} keys and the tail would contribute zero.")
+    NBLK = Skv // mx.GROUP
     P_codes = np.zeros((M, Skv), np.uint8)
     P_dec = np.zeros((M, Skv), np.float64)
     SA_p = np.zeros((NBLK, M), np.uint8)

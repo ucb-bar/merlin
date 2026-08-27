@@ -360,6 +360,15 @@ def _mx_golden(entry, binding):
 
     A_codes = np.vectorize(enc)(A).astype(np.uint8)
     B_codes = np.vectorize(enc)(W).astype(np.uint8)
+    # Same partial-block refusal as _mx_requant_blocks: one E8M0 scale per WHOLE group, so a K with a
+    # remainder would emit scale streams covering only K - (K % GROUP) elements while the operand codes
+    # cover all K. The mismatch is silent -- the scales simply stop early.
+    if K % mx.GROUP:
+        raise ValueError(
+            f"MX golden needs K to be a whole multiple of the {mx.GROUP}-element block-scale group; got "
+            f"K={K} for capsule {entry.get('name')!r} ({K % mx.GROUP} element(s) in a partial final "
+            f"group). One E8M0 scale is emitted per whole group, so the scale stream would cover only "
+            f"{mx.GROUP * (K // mx.GROUP)} of {K} K elements.")
     GK = K // mx.GROUP
     SA = np.array(CO.e8m0_scale_codes((GK, M), _salt(entry["name"], "SA")), dtype=np.uint8)
     SB = np.array(CO.e8m0_scale_codes((GK, N), _salt(entry["name"], "SB")), dtype=np.uint8)
@@ -458,6 +467,25 @@ def _mx_requant_blocks(P, palette, *, group: int, target: float = 2.0):
     import math
     import numpy as np
     M, K = P.shape
+    # FAIL CLOSED ON A PARTIAL BLOCK. `K // group` silently drops the elements past the last whole group,
+    # and every array here is zero-initialised, so the tail comes back as zeros and the golden simply does
+    # not depend on that part of its own input. MEASURED: at K=33 one column is dropped; at K=48 sixteen of
+    # forty-eight are -- a THIRD of the reduction -- and perturbing A[0,32] with K=33 leaves the result
+    # bit-identical. That is a silently wrong golden, which is worse than no golden: it would certify a
+    # backend that also ignored the tail and fail one that did not.
+    #
+    # No capsule on disk trips this (every MX K is 32 or 64), so refusing here changes nothing today and
+    # turns the trap into a message. It is also the reason MX coverage is aligned-only: a non-aligned MX
+    # capsule cannot be minted, so the tail path has never been exercised. Supporting it means giving the
+    # tail group its own E8M0 scale over a short block -- a real change to this reference, not a relaxation
+    # of this guard.
+    if K % group:
+        raise ValueError(
+            f"MX requant needs K to be a whole multiple of the {group}-element block-scale group; got "
+            f"K={K} ({K % group} element(s) in a partial final group). The reference assigns one E8M0 "
+            f"scale per whole group and would silently zero the tail, producing a golden that ignores "
+            f"{K % group} of its own K elements. Use a K that is a multiple of {group}, or extend this "
+            f"reference to scale a partial final group.")
     G = K // group
     pv = sorted(palette)
     dec = np.zeros((M, K), dtype=np.float64)
