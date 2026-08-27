@@ -514,10 +514,18 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 			}
 		}
 
+		// Which CPU are we really on? Affinity here is requested, never
+		// checked -- BestEffortPinCurrentThreadToCpuIds casts the result away.
+		// Sampling either side of the call turns the pin into a measurement,
+		// and a start != end pair means the thread migrated mid-dispatch,
+		// which would invalidate this row's timing.
+		const int observed_cpu_start = sched_getcpu();
+
 		iree_status_t st = CallModuleUnlocked((*node_modules)[(size_t)node_idx],
 			(int32_t)dispatch_iters, host_alloc);
 
 		const uint64_t end_us = UsSince(iter_t0, Clock::now());
+		const int observed_cpu_end = sched_getcpu();
 
 		if (!iree_status_is_ok(st)) {
 			{
@@ -581,8 +589,13 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 			}
 		}
 
+		// held_mask is what the core lock actually reserved, which is a
+		// stronger claim than node.core_indices: it is the set no other worker
+		// could touch for the duration. Passed as the raw mask so the trace
+		// path allocates nothing.
 		trace->WriteRow(graph_iter, (*nodes)[(size_t)node_idx],
-			planned_start_us, ready_us, start_us, end_us);
+			planned_start_us, ready_us, start_us, end_us, held_mask,
+			observed_cpu_start, observed_cpu_end);
 
 		sched->cv.notify_all();
 	}

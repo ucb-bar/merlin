@@ -68,7 +68,29 @@ struct TraceWriter {
 			"planned_start_us,eligible_us,submit_us,complete_us,"
 			"residency_us,dep_slip_us,planned_duration_us,"
 			"ready_us,start_us,end_us,queue_delay_us,run_us,total_latency_"
-			"us\n");
+			"us,"
+			// Appended, not inserted: every Python consumer reads this file
+			// with csv.DictReader, but appending keeps even a positional
+			// reader working.
+			//
+			// `cores` is the core set the runtime actually HELD for this
+			// dispatch, as cluster-relative indices joined by '+'. It is the
+			// one placement fact only the runner knows: `target` is just
+			// CPU_P/CPU_E because HardwareTargetName drops the index, which
+			// made measured per-core utilization impossible to compute --
+			// summing run_us by target yields >100% for a cluster.
+			//
+			// observed_cpu_{start,end} are sched_getcpu() either side of the
+			// dispatch. Affinity is only ever requested here ("best effort"
+			// pthread_setaffinity_np), never verified; these turn that into a
+			// check, and a start != end pair means the thread migrated
+			// mid-dispatch, which would invalidate the timing.
+			//
+			// Nominal release (k*T) is deliberately NOT a column: the periods
+			// live in the schedule's metadata.periodic_networks and the job
+			// instance is already in job_name, so Python can derive it without
+			// teaching the C++ what a period is.
+			"cores,observed_cpu_start,observed_cpu_end\n");
 		wrote_header = true;
 	}
 
@@ -79,12 +101,35 @@ struct TraceWriter {
 	 *  @param ready_us        Time the node became ready (us).
 	 *  @param start_us        Actual execution start time (us).
 	 *  @param end_us          Actual execution end time (us).
+	 *  @param held_core_mask  Bitmask of cluster-relative core indices the
+	 *                         runner held for the whole dispatch; 0 when the
+	 *                         node was not pinned.
+	 *  @param observed_cpu_start sched_getcpu() before the call, or -1.
+	 *  @param observed_cpu_end   sched_getcpu() after the call, or -1.
 	 */
 	void WriteRow(int graph_iter, const DispatchNode &node,
 		uint64_t planned_start_us, uint64_t ready_us, uint64_t start_us,
-		uint64_t end_us) {
+		uint64_t end_us, uint64_t held_core_mask = 0,
+		int observed_cpu_start = -1, int observed_cpu_end = -1) {
 		if (!f)
 			return;
+
+		// Formatted into a fixed buffer, on purpose. The first version of this
+		// built a std::vector<int> per dispatch, which cost ~4% of an MLP
+		// dispatch's 85 us -- invisible in aggregate but enough to flip
+		// several marginal 10 ms-deadline instances from meet to miss. Trace
+		// instrumentation that perturbs the thing it measures is worse than no
+		// instrumentation, so this path does no allocation at all.
+		char cores[3 * 64 + 1];
+		int n = 0;
+		for (int c = 0; c < 64 && n < (int)sizeof(cores) - 4; ++c) {
+			if (!(held_core_mask & ((uint64_t)1 << c)))
+				continue;
+			if (n)
+				cores[n++] = '+';
+			n += snprintf(cores + n, sizeof(cores) - (size_t)n, "%d", c);
+		}
+		cores[n] = '\0';
 
 		const uint64_t eligible_us = ready_us;
 		const uint64_t submit_us = start_us;
@@ -108,14 +153,15 @@ struct TraceWriter {
 			"%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ","
 			"%" PRIu64 ",%" PRIu64 ",%" PRIu64 ","
 			"%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ","
-			"%" PRIu64 ",%" PRIu64 "\n",
+			"%" PRIu64 ",%" PRIu64 ",%s,%d,%d\n",
 			graph_iter, node.key.c_str(), node.id, node.ordinal, node.total,
 			node.job_name.c_str(), node.module_name.c_str(),
 			HardwareTargetName(node.hardware_target),
 			node.vmfb_path_resolved.c_str(), planned_start_us, eligible_us,
 			submit_us, complete_us, residency_us, dep_slip_us,
 			MsToUs(node.planned_duration_ms), ready_us, start_us, end_us,
-			queue_delay_us, run_us, total_latency_us);
+			queue_delay_us, run_us, total_latency_us, cores,
+			observed_cpu_start, observed_cpu_end);
 	}
 };
 
