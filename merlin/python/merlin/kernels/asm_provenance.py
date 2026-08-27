@@ -188,7 +188,15 @@ def _seam_for(axis: str) -> tuple[str, bool, str]:
     return "", False, "ungoverned"
 
 
-def opportunities(hist: dict, *, engine: str = "", total: int = 0) -> list[Opportunity]:
+#: Semantic families whose regions are contractions. A role histogram alone CANNOT distinguish an
+#: unfused matmul from an activation kernel — both are "loads and arithmetic with no accumulate" — so
+#: the rule that proposes a fused multiply-accumulate needs the region's family, and says so when it
+#: does not have it rather than proposing a contraction rewrite for an activation.
+_CONTRACTION_FAMILIES = frozenset({"contraction", "attention"})
+
+
+def opportunities(hist: dict, *, engine: str = "", total: int = 0,
+                  family: str | None = None) -> list[Opportunity]:
     """Candidate optimizations implied by one stream's role histogram.
 
     Every rule below is a SHAPE in the assembly, not a heuristic about what is usually good: a stream
@@ -206,12 +214,22 @@ def opportunities(hist: dict, *, engine: str = "", total: int = 0) -> list[Oppor
         out.append(Opportunity(axis=axis, observation=observation, change=change, seam=seam,
                                forkable_now=forkable, status=status, confidence=confidence))
 
-    if acc == 0 and mul_like > 0:
+    if acc == 0 and mul_like > 0 and family in _CONTRACTION_FAMILIES:
         _add("compute.contraction_form",
-             f"{mul_like} elementwise op(s) and ZERO multiply-accumulate: the arithmetic is a "
-             f"multiply followed by an add, not a fused MAC",
+             f"a {family} region with {mul_like} elementwise op(s) and ZERO multiply-accumulate: the "
+             f"arithmetic is a multiply followed by an add, not a fused MAC",
              "select the fused multiply-accumulate form so each step advances the partial sum in one "
              "instruction instead of two", confidence="high")
+    elif acc == 0 and mul_like > 0 and family is None and engine != "vector":
+        # No family given, so this MIGHT be an unfused contraction or might be an activation kernel
+        # doing exactly what it should. Reported at low confidence with the ambiguity named, never as
+        # a recommendation -- proposing a contraction rewrite for an activation is worse than silence.
+        _add("compute.contraction_form",
+             f"{mul_like} elementwise op(s) and ZERO multiply-accumulate, and the region's family is "
+             f"UNKNOWN: this is either an unfused contraction or an elementwise kernel behaving "
+             f"correctly, and a role histogram cannot tell them apart",
+             "establish the region's semantic family, then re-ask — if it contracts, fuse the "
+             "multiply-add", confidence="low")
     offloaded = g("loop_descriptor", 0) > 0
     if acc and not g("readout", 0) and not offloaded:
         _add("compute.accumulator_resident",

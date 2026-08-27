@@ -19,10 +19,11 @@ def _audits(target: str, patterns):
     for pat in patterns or ():
         for path in sorted(glob.glob(pat)):
             try:
-                out.append(A.audit_stream(path, target))
+                # EVERY endpoint: auditing a multi-engine target through one hides the other engine's
+                # work silently, which is the failure the engine model exists to prevent.
+                out.extend(A.audit_every_endpoint(path, target))
             except Exception as exc:  # noqa: BLE001 — a stream we cannot read is REPORTED, not dropped
-                a = A.AsmAudit(target=target, notes=(f"{path}: {type(exc).__name__}: {exc}",))
-                out.append(a)
+                out.append(A.AsmAudit(target=target, notes=(f"{path}: {type(exc).__name__}: {exc}",)))
     return out
 
 
@@ -44,19 +45,32 @@ def main(argv: list[str] | None = None) -> int:
     for pat in a.asm:
         for path in sorted(glob.glob(pat)):
             with open(path, encoding="utf-8", errors="replace") as fh:
-                audits.append(A.audit_text(fh.read().splitlines(), a.target))
+                audits.extend(A.audit_every_endpoint(fh.read().splitlines(), a.target, text=True))
 
     report = A.target_report(a.target, audits)
     hist: dict = {}
-    total = 0
     engine = ""
     for x in audits:
-        total += x.total
         engine = x.engine or engine
         for k, v in x.role_histogram.items():
             hist[k] = hist.get(k, 0) + v
-    report["opportunities"] = [o.to_dict() for o in P.opportunities(hist, engine=engine, total=total)]
-    report["role_totals"] = dict(sorted(hist.items()))
+    # One stream read through several endpoints is still ONE stream. Summing per audit multiplies the
+    # instruction count by the number of engines and deflates every coverage fraction by the same
+    # factor -- a number that looks like a measurement and is an artefact of how it was gathered.
+    n_endpoints = max(1, len({x.endpoint for x in audits if x.endpoint}))
+    total = sum(x.total for x in audits) // n_endpoints
+    merged = A.merge_audits(audits) if audits else {"per_engine": {}}
+    report["per_engine"] = merged.get("per_engine", {})
+    # Opportunities are derived PER ENGINE: a lane engine's elementwise work and an array's accumulate
+    # are different work on different silicon, and a pooled histogram reads as one machine doing all
+    # of it -- which would propose an array optimization from a vector kernel's shape.
+    opps = []
+    for eng, slot in (merged.get("per_engine") or {}).items():
+        opps += [o.to_dict() for o in P.opportunities(slot["roles"], engine=eng, total=total)]
+    report["opportunities"] = opps
+    # Kept for the JSON consumers, and explicitly NOT the headline: it double-counts roles that more
+    # than one endpoint claims.
+    report["role_totals_pooled"] = dict(sorted(hist.items()))
 
     if a.json:
         print(json.dumps(report, indent=2))
@@ -74,7 +88,11 @@ def main(argv: list[str] | None = None) -> int:
     if audits:
         sem = report["observed"]["semantic_fraction"]
         print(f"  observed: {total} instruction(s), {sem:.1%} carry a role")
-        print(f"    roles: {report['role_totals']}")
+        # PER ENGINE, not pooled. Roles shared by two endpoints (every endpoint moves data) would be
+        # counted once per endpoint in a pooled line, and a lane engine's elementwise work pooled with
+        # an array's accumulate reads as one machine doing all of it.
+        for eng, slot in sorted((report.get("per_engine") or {}).items()):
+            print(f"    {eng:9} via {','.join(slot['endpoints'])}: {dict(sorted(slot['roles'].items()))}")
         if report["observed"]["declared_but_never_seen"]:
             print(f"    declared but never seen: "
                   f"{', '.join(report['observed']['declared_but_never_seen'])}")

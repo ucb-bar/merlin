@@ -245,6 +245,55 @@ def _matrix_encodings(target: str, block: dict) -> tuple[dict, str]:
                     f"({type(exc).__name__}: {exc}) — no table, and no guessed one either")
 
 
+def audit_every_endpoint(source, target: str, *, text: bool = False) -> list[AsmAudit]:
+    """Audit ``source`` through EVERY endpoint the target declares, one audit each.
+
+    Picking a single endpoint for a multi-engine target hides the other engine's work completely, and
+    it hides it silently — the histogram simply has no entry for it. Measured on a real corpus: audited
+    through the array endpoint alone, 1207 lane-engine instructions across 137 kernels do not appear at
+    all, which is the same "described by one engine, most of the machine short" failure the whole
+    engine model exists to prevent, reappearing in the instrument built to detect it.
+
+    So the default for a target is EVERY endpoint. A caller that wants one asks for one.
+    """
+    from merlin.kernels import endpoints as _ep
+
+    eps = [e for e in _ep.endpoints_for(target) if e.roles]
+    if not eps:
+        return [audit_text(source, target) if text else audit_stream(source, target)]
+    return [audit_text(source, target, e) if text else audit_stream(source, target, e) for e in eps]
+
+
+def merge_audits(audits) -> dict:
+    """Per-ENGINE role totals across a target's endpoints, plus the union coverage.
+
+    Roles are summed per engine rather than pooled, because a lane engine's elementwise work and an
+    array's accumulate are different work on different silicon; a single pooled histogram would read
+    as one machine doing all of it.
+    """
+    by_engine: dict = {}
+    shared = {"total": 0, "role_tagged": 0, "unaccounted": 0}
+    seen_totals = False
+    for a in audits:
+        eng = a.engine or "?"
+        slot = by_engine.setdefault(eng, {"endpoints": [], "roles": {}})
+        if a.endpoint and a.endpoint not in slot["endpoints"]:
+            slot["endpoints"].append(a.endpoint)      # the endpoint SET, not one entry per stream
+        for k, v in a.role_histogram.items():
+            slot["roles"][k] = slot["roles"].get(k, 0) + v
+        if not seen_totals:
+            # The instruction TOTAL is one stream read several ways, so counting it per endpoint would
+            # multiply it. Take it once.
+            shared["total"] = a.total
+            seen_totals = True
+        shared["unaccounted"] = min(shared["unaccounted"] or a.unaccounted, a.unaccounted)
+    union_roles: set = set()
+    for slot in by_engine.values():
+        union_roles |= set(slot["roles"])
+    return {"per_engine": by_engine, "total": shared["total"],
+            "roles_union": sorted(union_roles), "unaccounted": shared["unaccounted"]}
+
+
 def audit_text(lines, target: str, endpoint=None) -> AsmAudit:
     """Audit a hand-written assembly kernel — the same four-way split, from text.
 

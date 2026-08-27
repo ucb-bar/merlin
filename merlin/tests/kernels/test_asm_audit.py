@@ -221,3 +221,54 @@ class TestEveryTargetDecodesRealExpertCode:
         # weight_load and readout are the MXU push/pop, which only appear once the assembler bridge
         # resolves the corpus spelling — without it the contraction facets are undecidable.
         assert {"accumulate", "weight_load", "readout"} <= set(hist), hist
+
+
+class TestAMultiEngineTargetIsNotAuditedThroughOneEngine:
+    """The failure the engine model exists to prevent, reappearing inside the instrument built to
+    detect it: audited through its array endpoint alone, a two-engine target's lane work does not
+    appear at all — and it does not appear SILENTLY, because the histogram simply has no entry."""
+
+    def _corpus(self):
+        import glob
+        files = sorted(glob.glob("/scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/"
+                                 "baremetal/assembly/*.S"))
+        if not files:
+            pytest.skip("atlas corpus not present in this checkout")
+        return files[:40]
+
+    def test_auditing_every_endpoint_finds_both_engines(self):
+        engines = {}
+        for f in self._corpus():
+            lines = open(f, errors="replace").read().splitlines()
+            m = A.merge_audits(A.audit_every_endpoint(lines, "atlas", text=True))
+            for eng, slot in m["per_engine"].items():
+                engines.setdefault(eng, set()).update(slot["roles"])
+        assert {"spatial", "vector"} <= set(engines), engines
+        assert "accumulate" in engines["spatial"] and "elementwise" in engines["vector"]
+
+    def test_one_endpoint_alone_misses_the_other_engines_work(self):
+        # Stated as a test so nobody "simplifies" the audit back to a single endpoint.
+        lines = []
+        for f in self._corpus():
+            lines += open(f, errors="replace").read().splitlines()
+        arr = A.audit_text(lines, "atlas", EP.load_endpoint("atlas_isa"))
+        vpu = A.audit_text(lines, "atlas", EP.load_endpoint("atlas_vpu"))
+        assert "elementwise" not in arr.role_histogram
+        assert vpu.role_histogram.get("elementwise", 0) > 0
+
+    def test_the_instruction_total_is_not_multiplied_by_endpoint_count(self):
+        """One stream read several ways is still one stream; counting the total per endpoint would
+        inflate every coverage fraction by the number of engines."""
+        lines = open(self._corpus()[0], errors="replace").read().splitlines()
+        auds = A.audit_every_endpoint(lines, "atlas", text=True)
+        m = A.merge_audits(auds)
+        assert m["total"] == auds[0].total and len(auds) > 1
+
+    def test_roles_are_kept_per_engine_not_pooled(self):
+        lines = []
+        for f in self._corpus():
+            lines += open(f, errors="replace").read().splitlines()
+        m = A.merge_audits(A.audit_every_endpoint(lines, "atlas", text=True))
+        assert set(m["per_engine"]) >= {"spatial", "vector"}
+        assert "elementwise" not in m["per_engine"]["spatial"]["roles"], (
+            "a pooled histogram reads as one machine doing all of it")

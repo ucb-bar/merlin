@@ -64,9 +64,10 @@ class TestOpportunitiesComeFromTheAssembly:
         """A real finding on a real kernel: the 'matmul' used vfmul + vfadd, so there genuinely is no
         accumulate — which is the contraction_form divergence, visible only because the roles
         distinguish a multiply-accumulate from a bare multiply."""
-        opps = P.opportunities({"elementwise": 9, "operand_load": 11})
-        axes = [o.axis for o in opps]
-        assert "compute.contraction_form" in axes
+        # The family is REQUIRED for high confidence: a role histogram cannot distinguish an unfused
+        # matmul from an activation kernel, and proposing a contraction rewrite for the latter is
+        # worse than silence. See TestARuleCannotProposeWhatItCannotKnow.
+        opps = P.opportunities({"elementwise": 9, "operand_load": 11}, family="contraction")
         top = next(o for o in opps if o.axis == "compute.contraction_form")
         assert top.confidence == "high" and top.forkable_now and top.seam
 
@@ -110,3 +111,31 @@ class TestOpportunitiesComeFromTheAssembly:
         assert P._seam_for("compute.contraction_form")[2] == "forkable"
         assert P._seam_for("simt.barriers_in_loop")[2] == "seam_is_a_gap"
         assert P._seam_for("memory.a_broadcast_vf")[2] == "metric_not_a_lever"
+
+
+class TestARuleCannotProposeWhatItCannotKnow:
+    """A role histogram cannot distinguish an unfused matmul from an activation kernel: both are
+    "loads and arithmetic with no accumulate". Found by running the audit on a real lane-engine
+    corpus, where the fused-MAC rule proposed a contraction rewrite for 1207 activation instructions."""
+
+    def test_the_fused_mac_rule_needs_the_regions_family(self):
+        opps = P.opportunities({"elementwise": 1207, "operand_load": 69}, engine="vector")
+        assert not any(o.axis == "compute.contraction_form" and o.confidence == "high"
+                       for o in opps), [o.to_dict() for o in opps]
+
+    def test_it_fires_with_high_confidence_once_the_family_is_known(self):
+        opps = P.opportunities({"elementwise": 9}, family="contraction")
+        top = next(o for o in opps if o.axis == "compute.contraction_form")
+        assert top.confidence == "high" and "contraction region" in top.observation
+
+    def test_an_unknown_family_is_reported_as_ambiguous_not_recommended(self):
+        opps = P.opportunities({"elementwise": 9}, engine="spatial")
+        amb = [o for o in opps if o.axis == "compute.contraction_form"]
+        assert amb and amb[0].confidence == "low"
+        assert "cannot tell them apart" in amb[0].observation
+
+    def test_an_offloaded_stream_is_not_told_to_drain_an_accumulator(self):
+        """When the sequencer runs the loop the readout never enters the stream; proposing an epilogue
+        fix there is advice about an instruction the hardware was never going to emit."""
+        opps = P.opportunities({"accumulate": 4, "loop_descriptor": 6}, engine="spatial")
+        assert not any(o.axis == "compute.accumulator_resident" for o in opps)
