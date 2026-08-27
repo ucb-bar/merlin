@@ -2049,6 +2049,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         name=name, capsule=capsule, status=status, failure=failure, tiers=tiers,
         trace_check_res=trace_check_res, numeric=numeric, required=required, no_oracle=no_oracle,
         eff_target=eff_target, paths=paths, run_id=run_id, cfg=cfg, contract=contract,
+        # A BackendDeclined refusal is raised and recorded in THIS function, but the row is built in the
+        # finalizer, so it has to be threaded across. It was not: the finalizer was lifted out of
+        # run_capsule on one branch while the decline block was added inline on the other, and the
+        # textually-clean merge left `declined` referenced in a scope that never binds it.
+        declined=declined,
         executability=executability)
 
 
@@ -2056,6 +2061,7 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
                              tiers: dict, trace_check_res: dict, numeric: dict, required, no_oracle: bool,
                              eff_target: str, paths: "RunPaths", run_id: str, cfg, contract,
                              executability: dict | None = None,
+                             declined: dict | None = None,
                              extra: dict | None = None) -> dict:
     """The shared tail of every capsule grade: fail-closed gates, the result row, and self-validation.
 
