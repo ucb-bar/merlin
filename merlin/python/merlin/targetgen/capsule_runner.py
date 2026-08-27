@@ -798,6 +798,21 @@ def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
 
 
 
+
+def _oracle_kind(oracle_meta) -> str | None:
+    """A filesystem-safe name for the engine an adapter reports, or ``None`` when it reports none.
+
+    Adapters return either a rich ``{"kind": ..., "derived_from_rtl": ...}`` dict or a bare provenance
+    string. Both carry the engine's identity; the contract's static ``tier_sim`` map does not, because a
+    backend may substitute a different RTL-derived engine at runtime. ``None`` means "the oracle did not
+    say", and the caller keeps the declared name -- never a guess.
+    """
+    kind = oracle_meta.get("kind") if isinstance(oracle_meta, dict) else oracle_meta
+    if not isinstance(kind, str) or not kind.strip():
+        return None
+    safe = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in kind.strip())
+    return safe or None
+
 def lane_report(capsule: dict, routing_plan: dict | None) -> dict | None:
     """Verify an INTEROP capsule's declared lanes against the routing plan the compiler reported.
 
@@ -1814,14 +1829,22 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             _derived_from_rtl = (_oracle_meta.get("derived_from_rtl", tier in cfg.rtl_tiers)
                                  if isinstance(_oracle_meta, dict) else (tier in cfg.rtl_tiers))
             _fidelity = _oracle_meta.get("fidelity") if isinstance(_oracle_meta, dict) else None
+            # NAME THE EVIDENCE AFTER THE ORACLE THAT PRODUCED IT. ``sim_name`` comes from the contract's
+            # static ``tier_sim`` map, which cannot know that a faster RTL-derived engine replaced the
+            # declared one at runtime (the muon backend swaps GSIM in for Verilator whenever its emu is
+            # configured). The console was then written to ``verilator_console.log`` by an engine that is
+            # not Verilator -- a certification filed under the wrong tool's name, which is the same defect
+            # as reporting a score without the tier that produced it. Same rule as ``derived_from_rtl``
+            # above: the oracle's own word outranks the declared name.
+            _ev_name = _oracle_kind(_oracle_meta) or sim_name
             tiers[tier] = TierResult(
                 tier, "pass" if okt else "fail", mand,
                 reason=None if okt else _mismatch_reason,
                 cycles=res.get("cycles"), derived_from_rtl=_derived_from_rtl,
-                cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{sim_name}_console.log",
+                cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{_ev_name}_console.log",
                 timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, fidelity=_fidelity)
             if res.get("console") is not None:
-                (paths.artifacts_dir / f"{sim_name}_console.log").write_text(
+                (paths.artifacts_dir / f"{_ev_name}_console.log").write_text(
                     res["console"], encoding="utf-8")
             # Only a MANDATORY/gold tier mismatch fails the capsule. An ADDITIVE lower-fidelity tier
             # (one not in required_oracle_tiers — e.g. a fast functional model with known approximation
