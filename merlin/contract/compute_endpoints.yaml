@@ -1,0 +1,139 @@
+# Compute endpoints — how software drives each target's compute datapath, and what each instruction DOES.
+#
+# Generalizes matrix_units.yaml (which described exactly one endpoint) to every endpoint the tree can
+# mine. One block per endpoint; the role vocabulary is merlin.kernels.roles, which is CLOSED.
+#
+# What this file is NOT: an encoding table. No opcode, funct, register field or address appears here.
+# Encodings are DERIVED from each target's own sources at run time — the RTL funct_decode_table, the
+# capability manifest, the IsaModel — and this file only says WHERE to derive them from and, where a
+# target's derived table uses its own vocabulary, which of its names carries which role.
+#
+# That mapping is a bridge between two vocabularies, not a hardcoded fact: every name on the right-hand
+# side must appear in the target's OWN derived table, so a rename in the RTL surfaces as a missing role
+# rather than as a silently wrong decode. Targets with a derived IsaModel (self-hosted ISA) need no
+# name map at all — their roles come from the model, bridged by roles.FROM_ISA_ROLE.
+version: 1
+
+endpoints:
+
+  gemmini_rocc:
+    description: >-
+      The RoCC command endpoint. Two instruction LEVELS share one funct space: a fine-grained
+      preload/compute sequence, and a hardware loop FSM that is handed a whole loop nest. A kernel looks
+      identical in C either way — tiled_matmul_auto expands into the FSM inside the library — so the
+      level is a property of the emitted stream and can only be established by disassembly.
+    target: gemmini
+    engine: spatial
+    exposure: rocc
+    encoding:
+      source: rtl_facts                  # merlin.targetgen.rtl.facts.load_facts(target)
+      opcode_from: funct_decode_table.custom_opcode
+      table: funct_decode_table          # legal_funct + names, both RTL-derived
+      names_from: names
+    # Left: this repo's closed role vocabulary. Right: names that must exist in the RTL-derived table.
+    roles:
+      config: [CONFIG_CMD, CLKGATE_EN]
+      operand_load: [LOAD_CMD, LOAD2_CMD, LOAD3_CMD]
+      weight_load: [PRELOAD_CMD]
+      accumulate: [COMPUTE_AND_FLIP_CMD, COMPUTE_AND_STAY_CMD]
+      # MVOUT does BOTH: it drains the accumulator and makes the result visible. Listing it
+      # under one role only made a complete contraction report a missing readout.
+      readout: [STORE_CMD, STORE_SPAD_CMD]
+      commit: [STORE_CMD, STORE_SPAD_CMD]
+      sync: [FLUSH_CMD]
+      loop_descriptor:
+        - LOOP_WS
+        - LOOP_WS_CONFIG_BOUNDS
+        - LOOP_WS_CONFIG_ADDRS_AB
+        - LOOP_WS_CONFIG_ADDRS_DC
+        - LOOP_WS_CONFIG_STRIDES_AB
+        - LOOP_WS_CONFIG_STRIDES_DC
+        - LOOP_WS_CONFIG_SPAD_AB
+        - LOOP_CONV_WS
+        - LOOP_CONV_WS_CONFIG_1
+        - LOOP_CONV_WS_CONFIG_2
+        - LOOP_CONV_WS_CONFIG_3
+        - LOOP_CONV_WS_CONFIG_4
+        - LOOP_CONV_WS_CONFIG_5
+        - LOOP_CONV_WS_CONFIG_6
+    levels:
+      # Which roles distinguish the two levels. Reported, never chosen for the user: which level an
+      # expert kernel used is one of the decisions mining exists to surface.
+      fsm: [loop_descriptor]
+      fine_grained: [weight_load, accumulate]
+
+  saturn_opu:
+    description: >-
+      The outer-product matrix extension: four instructions in reserved even funct6 slots of the vector
+      opcode. Command-buffer driven, NOT RoCC. Its roles are already declared in matrix_units.yaml under
+      the same names, so they are referenced rather than restated.
+    target: saturn
+    engine: spatial
+    exposure: command_buffer
+    encoding:
+      source: matrix_units               # merlin/contract/matrix_units.yaml, unit saturn_opu
+      unit: saturn_opu
+      roles_from: kernel_roles           # accumulate/broadcast/readout/operand_load, already declared
+    crosscheck:
+      # MEASURED, and it corrects an earlier reading. The RTL derivation and bme.h AGREE on every field
+      # (funct3 = 6 for the VX-form OPMVIN/OPMVINBCAST/OPMVOUT and 2 for the VV-form OPMACC; the
+      # difference is the instruction FORM, which matrix_units.yaml already declares under form_funct3,
+      # not a disagreement between sources). The reported conflicting value could not be reproduced:
+      # no file in the toolchain defines these instructions, and the cited lines of the Spike
+      # encoding.h are CSR definitions.
+      #
+      # So the check is NOT blocked by a dispute — it is UNCORROBORATED, which is a different problem
+      # with a different fix. `crosscheck_sources` reports `conclusive: false` because only one source
+      # spoke; a second independent source would settle it. A readable file that happens to contain
+      # none of these instructions is SILENT, never agreeing, and must not raise confidence.
+      sources: [crosscheck_header]
+      status: single_source
+      corroborating: 1
+      note: >-
+        A second independent source is what this needs, not a tie-break. Finding one is the work;
+        picking a value would manufacture confidence the evidence does not support.
+
+  atlas_isa:
+    description: >-
+      A self-hosted ISA: the kernel emits its own encoded instructions. Roles come from the DERIVED
+      IsaModel and need no name map here — isa_model.roles is already a role table, bridged to this
+      repo's vocabulary by kernels.roles.FROM_ISA_ROLE.
+    target: atlas
+    engine: spatial
+    exposure: external_backend
+    encoding:
+      source: isa_model                  # merlin.targetgen.isa_model.isa_model_for_target(target)
+      roles_from: isa_model.roles
+    notes: >-
+      The corpus spells instructions differently from the model (VMATPUSH.W.MXU0 vs
+      vmatpush.weight.mxu0, DMA.CONFIG x5 vs dma.config.ch5). The target's own assembler
+      (baremetal/assembler.py) carries both spellings and the operand order, so a round-trip reads the
+      target's assembler rather than a hand-written alias map.
+
+  atlas_vpu:
+    description: >-
+      The lane engine on the same self-hosted ISA. Declared as its own endpoint because it is a distinct
+      datapath driven by distinct instructions — 50 of atlas's 137 expert kernels drive it EXCLUSIVELY,
+      and a target described by its array endpoint alone loses all of them.
+    target: atlas
+    engine: vector
+    exposure: external_backend
+    encoding:
+      source: isa_model
+      roles_from: isa_model.roles
+
+  muon_simt:
+    description: >-
+      A SIMT cluster embedding an MX array. Its custom surface spans TWO encoding spaces — custom-0 and
+      the REPURPOSED standard OP space — so a decoder that reads only custom-0 sees a third of it.
+    target: muon
+    engine: simt
+    exposure: external_backend
+    encoding:
+      source: isa_encoding               # mlc_bridge.isa_encoding_for(target)
+      spaces: [custom_0, repurposed_op]
+    notes: >-
+      Disassembly of this target MUST pin its ISA extensions. With the extensions left to the tool's
+      default, 76% of a real kernel's words come back unnamed; given +m,+a,+f,+d,+c it is 15%, and that
+      15% is the actual custom surface. A probe that does not pin them reports the tool's ignorance as
+      the corpus's nature.

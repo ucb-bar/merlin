@@ -560,6 +560,83 @@ def derive(*, consts: "str | Path", instructions: "str | Path", params: "str | P
                          gaps=tuple(gaps))
 
 
+def crosscheck_sources(derivation: IsaDerivation, sources: dict, *,
+                       pairs: dict[str, str]) -> dict:
+    """Cross-check a derivation against SEVERAL independent sources and report every dispute.
+
+    :func:`crosscheck` compares against one header and fails closed on any disagreement, which is the
+    right behaviour for emission and the wrong shape for a report: the caller learns that something
+    disagrees, not WHICH sources disagree about WHICH field, and cannot tell a stale header from a
+    genuine encoding change.
+
+    This returns a per-field tally instead. ``sources`` maps a label to a readable path. For every
+    instruction and every field, the derived value and each source's value are recorded; a field where
+    the sources do not all agree lands in ``disputed`` with each side attributed by label.
+
+    **Nothing here resolves a dispute.** There is a live one on this endpoint: two sources give
+    different ``funct3`` values for the same instructions while their ``funct7`` values agree. Choosing
+    between them requires knowing which RTL revision each source was written against, which is a fact
+    about the hardware and not something a majority vote or a source-precedence rule can supply. A
+    resolver here would turn "we do not know" into a confident wrong encoding, so the report names the
+    dispute and the caller refuses to emit.
+
+    A source that cannot be read is recorded as UNAVAILABLE, never as agreeing — an absent file is not
+    corroboration.
+    """
+    fields = ("opcode", "funct3", "funct6")
+    per_source: dict[str, dict] = {}
+    for label, path in (sources or {}).items():
+        try:
+            per_source[str(label)] = {"macros": insn_r_macros(Path(path).read_text(encoding="utf-8")),
+                                      "path": str(path)}
+        except OSError as exc:
+            per_source[str(label)] = {"unavailable": f"{type(exc).__name__}: {exc}", "path": str(path)}
+
+    rows: list[dict] = []
+    disputed: list[dict] = []
+    for name, enc in sorted(derivation.encodings.items()):
+        macro_name = pairs.get(name)
+        row = {"instruction": name, "macro": macro_name,
+               "derived": {f: getattr(enc, f) for f in fields}, "sources": {}}
+        for label, blob in per_source.items():
+            if "unavailable" in blob:
+                row["sources"][label] = {"status": "unavailable", "reason": blob["unavailable"]}
+                continue
+            macro = blob["macros"].get(macro_name) if macro_name else None
+            if macro is None:
+                row["sources"][label] = {"status": "absent"}
+                continue
+            row["sources"][label] = {"status": "present",
+                                     **{f: macro[f] for f in fields if f in macro}}
+        for f in fields:
+            vals = {lab: s[f] for lab, s in row["sources"].items()
+                    if s.get("status") == "present" and f in s}
+            if len(set(vals.values()) | {row["derived"][f]}) > 1:
+                disputed.append({"instruction": name, "field": f,
+                                 "derived": row["derived"][f], "sources": vals})
+        rows.append(row)
+
+    readable = [lab for lab, b in per_source.items() if "unavailable" not in b]
+    # A source that was READ but claimed none of these instructions is SILENT, not agreeing. Counting
+    # silence as corroboration is how a check reports "conclusive" while exactly one source has actually
+    # been consulted: the second file opens, contains nothing relevant, contributes no value to any
+    # comparison, and therefore never disagrees. Same shape as an extractor that cannot fail.
+    spoke = {lab for row in rows for lab, s in row["sources"].items() if s.get("status") == "present"}
+    silent = sorted(lab for lab in readable if lab not in spoke)
+    return {
+        "rows": rows,
+        "disputed": disputed,
+        "sources_read": sorted(readable),
+        "sources_corroborating": sorted(spoke),
+        "sources_silent": silent,
+        "sources_unavailable": sorted(lab for lab in per_source if lab not in readable),
+        # Deliberately not "ok". Agreement among the sources that actually spoke is not agreement among
+        # the sources asked, and a caller treating a partial check as a pass emits an unverified table.
+        "agrees_where_checked": not disputed,
+        "conclusive": (len(spoke) == len(per_source)) and bool(spoke) and not disputed,
+    }
+
+
 def crosscheck(derivation: IsaDerivation, header: "str | Path", *,
                pairs: dict[str, str]) -> IsaDerivation:
     """Check the derivation against a C header's ``.insn r`` literals and record the result.
