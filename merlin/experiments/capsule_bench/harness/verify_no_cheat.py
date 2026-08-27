@@ -124,6 +124,18 @@ def _manifest(arm: str, cond: str) -> dict:
     return yaml.safe_load(p.read_text()) if p.is_file() else {}
 
 
+def _ships(arm: str, cond: str) -> bool:
+    """Does THIS target ship this arm at all?
+
+    The arm list is the full roster the bench can run; a given target ships the subset it is being run
+    with. An arm that is absent is not a moat violation -- it is an arm that is not part of this
+    experiment -- and treating absence as failure made a target that ships six complete bundles read as
+    NO-GO for lacking a seventh it never runs. Absence must never MASK a leak, though, so only the
+    "this arm must have its treatment" direction is skipped; the "no other arm may reach it" direction
+    below stays unconditional."""
+    return (BUNDLES / f"{arm}_{cond}" / "input_bundle_manifest.yaml").is_file()
+
+
 def _allowed(m: dict) -> list[str]:
     return [e["path"] for e in m.get("allowed", []) if isinstance(e, dict)]
 
@@ -151,10 +163,11 @@ def check_moat() -> tuple[bool, list[str]]:
         # The eqsat moat, checked in both directions: arm5 must HAVE the seam (else its treatment is
         # absent and a null result means nothing), and no other arm may reach it (else the comparison
         # is against an arm that also had it).
-        eqsat = _manifest(EQSAT_ARM, cond)
-        for tok in EQSAT_PATHS:
-            if not _has(_allowed(eqsat), tok):
-                probs.append(f"{EQSAT_ARM}_{cond}: eqsat arm must ALLOW {tok} — it is the treatment")
+        if _ships(EQSAT_ARM, cond):
+            eqsat = _manifest(EQSAT_ARM, cond)
+            for tok in EQSAT_PATHS:
+                if not _has(_allowed(eqsat), tok):
+                    probs.append(f"{EQSAT_ARM}_{cond}: eqsat arm must ALLOW {tok} — it is the treatment")
         for other in ("raw_baseline", "merlin_assisted", CIRCT_ARM, "cpp_merlininfra"):
             man = _manifest(other, cond)
             for tok in EQSAT_PATHS:
@@ -167,6 +180,8 @@ def check_kit_parity() -> tuple[bool, list[str]]:
     probs = []
     for cond in CONDITIONS:
         for arm in MERLIN_ARMS:
+            if not _ships(arm, cond):
+                continue                       # arm not part of this target's experiment (see _ships)
             if not _has(_allowed(_manifest(arm, cond)), "oot_starterkit"):
                 probs.append(f"{arm}_{cond}: starter kit (oot_starterkit) not in allowed — prompt references it")
     return (not probs), probs
@@ -185,6 +200,8 @@ def check_grant_consistency() -> tuple[bool, list[str]]:
     probs = []
     for arm in MERLIN_ARMS:
         for cond in CONDITIONS:
+            if not _ships(arm, cond):
+                continue                       # arm not part of this target's experiment (see _ships)
             bdir = BUNDLES / f"{arm}_{cond}"
             prompt = (bdir / "STARTER_PROMPT.md")
             if not prompt.is_file():
