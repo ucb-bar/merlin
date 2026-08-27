@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 from merlin.kernels import endpoints as EP
-from merlin.kernels.decode import muon as MU
+from merlin.kernels.decode import derived_isa as MU
 from merlin.kernels.decode import rocc as RC
 
 
@@ -139,11 +139,11 @@ class TestMuonDecodesAgainstADerivedLayout:
         assert MU._word_of("0b", int(enc["inst_width"])) is None
 
     def test_a_word_nothing_can_place_is_unaccounted(self, enc):
-        bad = MU.MuonInsn(index=0, addr=0, identity="<unknown>", space="", mnemonic="<unknown>")
+        bad = MU.DerivedIsaInsn(index=0, addr=0, identity="<unknown>", space="", mnemonic="<unknown>")
         assert not MU.accountable(bad)
 
     def test_a_word_the_tool_named_is_accounted_even_without_a_space(self):
         """The distinction the 76%-unknown probe got wrong: 'the tool could not name this' is not the
         same as 'this is the endpoint's instruction'."""
-        ok = MU.MuonInsn(index=0, addr=0, identity="addi", space="", mnemonic="addi")
+        ok = MU.DerivedIsaInsn(index=0, addr=0, identity="addi", space="", mnemonic="addi")
         assert MU.accountable(ok)

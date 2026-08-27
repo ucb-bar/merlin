@@ -15,7 +15,10 @@ _POLICIES = [
 
 
 def test_expert_cca_maps_policies_with_axis_evidence():
-    cca, ev = mine.expert_cca_from_policies(_POLICIES, op="matmul")
+    # `backend` is REQUIRED now. It used to default to one target, which was invisible coupling
+    # hiding behind a module path that claimed that ISA: the register-block lookup read a features
+    # block keyed by that name and returned empty -- so no divergence -- for every other target.
+    cca, ev = mine.expert_cca_from_policies(_POLICIES, op="matmul", backend="rvv")
     assert cca.compute.contraction_form == "fused_fma"
     assert cca.compute.widening is True
     assert cca.vector.lmul == 4.0 and cca.vector.vl_strategy == "vsetvl_loop"

@@ -143,8 +143,17 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -
         sm, divs = cmp["structural_match"], cmp["divergences"]
     else:  # mock / no-objdump path: trust result fields if present
         sm, divs = result.get("structural_match", 0.0), result.get("divergences", [])
+    # The WHOLE-MODEL objective, gated on numerics. A kernel-scoped score can look excellent while
+    # the model runs at a few percent of peak, because most of the arithmetic was never claimed by
+    # the schedule at all -- measured across several models, 86-89% of linalg ops never reached the
+    # vectorized path. None when either factor is unknown, because an unknown factor is not 1.0, and
+    # None for a fast wrong answer rather than a number with a caveat attached.
+    cov = (result.get("coverage") or {})
+    objective = _meas.whole_model_objective(cov.get("claimed_mac_fraction"),
+                                            cov.get("attainment"), numerics_ok=gate_ok)
     out = {"gate_ok": gate_ok, "structural_match": sm, "cycles": cycles,
            "k1_wall_ns": k1_wall, "divergences": divs,
+           "whole_model_objective": objective,
            # Which substrate each number came from, so a reader never has to infer it. A number whose
            # provenance is inferred is a number that gets attributed to the wrong device.
            "cycles_from": _cyc_from, "wall_from": _wall_from}

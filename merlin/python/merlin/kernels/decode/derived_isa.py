@@ -1,5 +1,10 @@
 """Decode a self-hosted-ISA stream against the target's OWN derived field layout.
 
+Named for what it does, not for the target it was first exercised on. It contains no bit position, no
+opcode value and no instruction width: everything comes from the encoding mlc recovers from a target's
+decoder RTL, so pointing it at another derived-ISA target decodes that one. A module named after one
+target is a claim about scope, and this module's scope is every target with a derived encoding.
+
 Unlike :mod:`kernels.decode.rocc`, which lays a command over the fixed RISC-V R-type format, nothing
 about the field positions here is known in advance. They are read from the encoding mlc recovers from
 the target's decoder RTL (``mlc_bridge.isa_encoding_for``: ``inst_width``, ``fields`` as ``[hi, lo]``
@@ -26,7 +31,8 @@ from typing import Any
 
 from merlin.kernels.decode.opu import UNKNOWN_MNEMONIC
 
-__all__ = ["MuonAudit", "MuonInsn", "audit", "decode_stream", "digest", "encoding_for", "fields_of"]
+__all__ = ["DerivedIsaAudit", "DerivedIsaInsn", "audit", "decode_stream", "digest",
+           "encoding_for", "fields_of"]
 
 
 def encoding_for(target: str) -> dict[str, Any]:
@@ -71,7 +77,7 @@ def fields_of(word: int, layout: Mapping[str, Any]) -> dict[str, int]:
 
 
 @dataclass(frozen=True)
-class MuonInsn:
+class DerivedIsaInsn:
     index: int
     addr: int
     identity: str                  # the derived opcode-space name, or the disassembler's text
@@ -83,7 +89,7 @@ class MuonInsn:
 
 
 def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
-                  spaces: Sequence[str] = ()) -> list[MuonInsn]:
+                  spaces: Sequence[str] = ()) -> list[DerivedIsaInsn]:
     """Decode a stream against a derived encoding.
 
     ``spaces`` names the opcode-table entries that belong to this endpoint (e.g. the custom space plus
@@ -96,12 +102,12 @@ def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
     for name, value in (encoding.get("opcodes") or {}).items():
         by_value.setdefault(int(value), str(name))       # first name wins; aliases are reported as one
     mine = {str(s).upper().replace("-", "_") for s in spaces}
-    out: list[MuonInsn] = []
+    out: list[DerivedIsaInsn] = []
     for i, insn in enumerate(insns):
         word = _word_of(getattr(insn, "hexcode", ""), width)
         f = fields_of(word, layout) if word is not None else {}
         space = by_value.get(f.get("opcode"), "") if f else ""
-        out.append(MuonInsn(
+        out.append(DerivedIsaInsn(
             index=i, addr=int(getattr(insn, "addr", 0)),
             identity=space or str(getattr(insn, "mnemonic", "")),
             space=space,
@@ -112,7 +118,7 @@ def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
     return out
 
 
-def accountable(d: MuonInsn) -> bool:
+def accountable(d: DerivedIsaInsn) -> bool:
     """Did SOMETHING name this word — the disassembler or the derived table?
 
     The distinction the 76%-unknown probe got wrong. A word the tool declined to name but the derived
@@ -123,7 +129,7 @@ def accountable(d: MuonInsn) -> bool:
 
 
 @dataclass(frozen=True)
-class MuonAudit:
+class DerivedIsaAudit:
     space_counts: dict[str, int] = field(default_factory=dict)
     total_insns: int = 0
     endpoint_insns: int = 0
@@ -144,7 +150,7 @@ class MuonAudit:
                 "digest": self.digest}
 
 
-def digest(decoded: Sequence[MuonInsn]) -> str:
+def digest(decoded: Sequence[DerivedIsaInsn]) -> str:
     """Hash of the decoded identity stream, so the inert-lever guard can see this endpoint too."""
     lines = []
     for d in decoded:
@@ -156,7 +162,7 @@ def digest(decoded: Sequence[MuonInsn]) -> str:
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:16]
 
 
-def audit(insns: Sequence[Any], target: str, endpoint=None) -> MuonAudit:
+def audit(insns: Sequence[Any], target: str, endpoint=None) -> DerivedIsaAudit:
     """Audit one stream against ``target``'s derived encoding and its endpoint's declared spaces."""
     encoding = encoding_for(target)
     spaces = ()
@@ -173,7 +179,7 @@ def audit(insns: Sequence[Any], target: str, endpoint=None) -> MuonAudit:
         if not accountable(d):
             unaccounted.append({"index": d.index, "addr": d.addr, "fields": dict(d.fields),
                                 "mnemonic": d.mnemonic})
-    return MuonAudit(
+    return DerivedIsaAudit(
         space_counts=counts, total_insns=len(decoded),
         endpoint_insns=sum(1 for d in decoded if d.from_endpoint),
         named_by_disassembler=sum(1 for d in decoded

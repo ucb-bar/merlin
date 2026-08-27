@@ -133,3 +133,60 @@ class TestAttemptsFoldIntoTheDesign:
                                  {"cell": key, "outcome": "compile_error"}])
         assert sp.cells[key].improved == 1 and sp.cells[key].failed == 1
         assert sp.cells[key].observed is True, "merging attempts must not un-observe a kept cell"
+
+
+class TestItActuallyFeedsTheDse:
+    """Without this the module is a parallel search of its own, which is worse than useless: the tree
+    already has a design-space explorer, and a second one that never meets it means the corpus
+    evidence never reaches the thing that actually searches."""
+
+    def _space(self):
+        sp = S.space_from_records(_SWEEP, axes=("m", "n", "k"), target="t")
+        return S.merge_ledger(sp, [{"cell": "k=256 m=64 n=64", "outcome": "regressed"},
+                                   {"cell": "k=256 m=64 n=64", "outcome": "compile_error"}])
+
+    def test_the_space_is_the_shape_the_real_grid_search_consumes(self):
+        from merlin.dse.search.grid import grid_search
+        sp = self._space()
+        rows = grid_search(S.to_search_space(sp), lambda p: 1.0)
+        assert len(rows) == 3 * 3 * 5, "the DSE explorer did not enumerate the corpus design"
+
+    def test_dse_rows_runs_the_real_explorer(self):
+        rows = S.dse_rows(self._space())
+        assert rows and "score" in rows[0]
+        assert all(set(r) - {"score"} == {"m", "n", "k"} for r in rows)
+
+    def test_a_cell_an_expert_already_ran_is_not_re_proposed_first(self):
+        rows = S.dse_rows(self._space())
+        observed = {c.key for c in self._space().observed}
+        top = " ".join(f"{a}={rows[0][a]}" for a in sorted(("m", "n", "k")))
+        assert top not in observed, "the search's top pick is a cell the corpus already contains"
+
+    def test_a_ledger_refuted_cell_sinks_but_is_not_excluded(self):
+        """Ranked below untried, never dropped: a refutation on one toolchain is evidence, not proof,
+        and excluding it silently would hide that the attempt happened."""
+        rows = S.dse_rows(self._space())
+        refuted = [r for r in rows if (r["m"], r["n"], r["k"]) == (64, 64, 256)]
+        assert refuted, "the refuted cell vanished from the search space"
+        assert refuted[0]["score"] < 0
+        assert refuted[0] is rows[-1] or refuted[0]["score"] <= rows[-1]["score"] + 1e-9
+
+    def test_the_prior_separates_never_tried_from_tried_and_lost(self):
+        prior = S.corpus_prior(self._space())
+        never = prior({"m": 96, "n": 32, "k": 32})
+        lost = prior({"m": 64, "n": 64, "k": 256})
+        assert never["attempted"] == 0 and never["observed"] is False
+        assert lost["attempted"] == 2 and lost["observed"] is False
+
+    def test_a_caller_may_supply_its_own_scorer(self):
+        # The default is a PRIORITIZER, not a performance model: it says where to look, never how fast
+        # something will be.
+        rows = S.dse_rows(self._space(), evaluate=lambda p: float(p["k"]))
+        assert rows[0]["k"] == max(r["k"] for r in rows)
+
+    def test_it_emits_a_declared_search_space_document(self):
+        doc = S.to_search_space_doc(self._space())
+        for required in ("name", "candidate_type", "method", "space", "objective"):
+            assert required in doc, required
+        assert doc["space"] == S.to_search_space(self._space())
+        assert "refuted" in doc["objective"]["deprioritize"]

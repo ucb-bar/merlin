@@ -171,6 +171,108 @@ def to_dict(space: DesignSpace) -> dict:
     return space.to_dict()
 
 
+# ---------------------------------------------------------------------------------------------
+# The DSE connection
+# ---------------------------------------------------------------------------------------------
+#
+# Without this the module is a parallel search of its own, which is worse than useless: the tree
+# already HAS a design-space explorer (`merlin.dse.search`), and a second one that never meets it
+# means the corpus evidence never reaches the thing that actually searches.
+#
+# What the corpus adds to that explorer is a PRIOR. `grid_search` enumerates the cartesian product and
+# scores every point with equal ignorance. The corpus already knows which points an expert kept, and
+# the transform ledger knows which ones were tried and failed — measured, a 13.4% improvement rate
+# over 1509 attempts. A search that re-evaluates a refuted point is spending its budget re-deriving
+# somebody else's negative result.
+
+
+def to_search_space(space: DesignSpace) -> dict:
+    """The design as the ``space`` dict :func:`merlin.dse.search.grid.grid_search` consumes.
+
+    ``axis -> [levels]``, matching ``search_space.schema.yaml``. Deliberately the axes the CORPUS
+    varies, not a hand-written grid: an expert corpus is a sample of a real design somebody ran, and
+    its axes are the ones that turned out to matter on that hardware.
+    """
+    return {name: list(levels) for name, levels in sorted(space.axes.items())}
+
+
+def to_search_space_doc(space: DesignSpace, *, name: str | None = None,
+                        candidate_type: str = "compilation_strategy",
+                        method: str = "grid") -> dict:
+    """The design as a full ``search_space.schema.yaml`` document, not just its ``space`` block.
+
+    So a mined corpus can be emitted as a DECLARED search space that the DSE tooling reads like any
+    other, rather than only being reachable through a Python call. The objective names the corpus
+    prior explicitly, because a search space whose scoring is implicit cannot be reviewed.
+    """
+    return {
+        "name": name or f"mined_{space.target}",
+        "candidate_type": candidate_type,
+        "method": method,
+        "space": to_search_space(space),
+        "objective": {
+            "prioritize": "unobserved cells nearest an observed one",
+            "deprioritize": "cells a transform ledger already refuted",
+            "exclude": "nothing — a refutation on one toolchain is evidence, not proof",
+            "note": ("derived from a corpus sample, so the axes are the ones that mattered on real "
+                     "hardware rather than a hand-written grid; coverage "
+                     f"{round(space.coverage, 4)} of the cross product"),
+        },
+        "provenance": {"target": space.target, "observed_cells": len(space.observed),
+                       "unobserved_cells": len(space.unobserved()), "notes": list(space.notes)},
+    }
+
+
+def corpus_prior(space: DesignSpace):
+    """``point -> what the corpus already knows about it``, for a DSE evaluator to consult.
+
+    Returns a callable taking a ``{axis: level}`` point (grid_search's own shape) and yielding
+    ``{observed, n_kernels, improved, regressed, failed, attempted}``. Every field is 0/False for a
+    point nobody has touched, which is the honest state — and distinct from a point that was tried and
+    lost, which the ledger records.
+    """
+    def prior(point: dict) -> dict:
+        key = " ".join(f"{a}={point[a]}" for a in sorted(point))
+        cell = space.cells.get(key)
+        if cell is None:
+            return {"observed": False, "n_kernels": 0, "improved": 0, "regressed": 0,
+                    "failed": 0, "attempted": 0}
+        return {"observed": cell.observed, "n_kernels": cell.n_kernels,
+                "improved": cell.improved, "regressed": cell.regressed,
+                "failed": cell.failed, "attempted": cell.attempted}
+    return prior
+
+
+def dse_rows(space: DesignSpace, evaluate=None) -> list[dict]:
+    """Run the REAL DSE grid search over the corpus design, with the corpus prior attached.
+
+    ``evaluate(point)`` is the caller's scorer. Omitted, points are scored by the corpus evidence
+    alone: an unobserved point nearest to something an expert kept scores highest, and a point the
+    ledger already refuted scores lowest. That default is a PRIORITIZER, not a performance model —
+    it says where to look, never how fast something will be, and a caller with a cost model should
+    pass one.
+    """
+    from merlin.dse.search.grid import grid_search
+
+    prior = corpus_prior(space)
+    obs = space.observed
+
+    def _default(point: dict) -> float:
+        info = prior(point)
+        if info["observed"]:
+            return 0.0                      # an expert already ran it; nothing to learn by repeating
+        if info["failed"] or info["regressed"]:
+            # Tried and lost. Ranked below untried, never excluded: a refutation on one target's
+            # toolchain is evidence, not proof, and dropping it silently would hide the attempt.
+            return -1.0 - info["attempted"]
+        if not obs:
+            return 1.0
+        near = min(sum(1 for a, v in point.items() if dict(o.coords).get(a) != v) for o in obs)
+        return 1.0 / (1 + near)             # nearest-to-observed first
+
+    return grid_search(to_search_space(space), evaluate or _default)
+
+
 def candidates(space: DesignSpace, *, limit: int | None = None) -> list[dict]:
     """Unobserved cells as DSE candidates, nearest-to-observed first.
 

@@ -602,7 +602,7 @@ def lift_asm_roles(decoded, endpoint, *, op: str, source: str,
 
     ``lift_asm`` counts RVV mnemonic literals, so it recognizes exactly one target. This takes a stream
     that some target's own decoder has already role-tagged (``kernels.decode.rocc`` /
-    ``kernels.decode.muon`` / the matrix decoder) plus the :class:`kernels.endpoints.Endpoint` that
+    ``kernels.decode.derived_isa`` / the matrix decoder) plus the :class:`kernels.endpoints.Endpoint` that
     supplied the roles, and fills the facets those roles license. Roles are the only vocabulary shared
     across targets, and they are the same roles that derive the engine set, so a target cannot end up
     with a lifted facet its declared silicon does not have.
