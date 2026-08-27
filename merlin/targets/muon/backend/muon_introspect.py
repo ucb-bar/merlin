@@ -94,6 +94,87 @@ def _smem_evidence(gs: Path) -> str | None:
     return f"smem mem : UInt<{width.strip()}>[{dims[0]}] [{dims[1]}]"
 
 
+def _address_map(gs: Path) -> dict[str, Any] | None:
+    """The SoC address map from the elaborated design's ``*.memmap.json``.
+
+    Every MMIO/memory region the design actually exposes, with the device-tree name it was elaborated
+    under. This is the ONLY sound source for a device address on this target: a literal would bake in
+    one config's map, and the facts block carried no address information at all, which is how the
+    device console came to store into an address the SoC does not map.
+
+    Fails closed (``None``) when the elaboration output is absent -- a missing map must read as
+    UNKNOWN, never as an empty map that a consumer could mistake for "the SoC has no devices".
+    """
+    for p in sorted(gs.glob("*.memmap.json")):
+        try:
+            doc = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        regions = []
+        for e in doc.get("mapping") or []:
+            names = e.get("names") or []
+            base = (e.get("base") or [None])[0]
+            size = (e.get("size") or [None])[0]
+            if base is None or size is None or not names:
+                continue
+            regions.append({
+                "name": str(names[0]), "base": int(base), "size": int(size),
+                "r": bool((e.get("r") or [False])[0]), "w": bool((e.get("w") or [False])[0]),
+            })
+        if regions:
+            return {"regions": sorted(regions, key=lambda r: r["base"]),
+                    "config": gs.name.rpartition(".")[2],
+                    "evidence": f"elaborated address map {p.name}: {len(regions)} region(s)"}
+    return None
+
+
+def _console_device(gs: Path, amap: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The device the elaborated design designates as its console, from the device tree's
+    ``stdout-path``.
+
+    Parsed STRUCTURALLY (partition/split, never a regex, per the repo's no-regex rule): ``stdout-path``
+    names a label (``&L44``); the label is then defined as ``L44: serial@10020000``. Resolving through
+    the label -- rather than assuming a node called "serial" -- is what keeps this target-agnostic.
+
+    Returns ``None`` when the dts is absent or names no console, so a consumer fails closed instead of
+    guessing an address.
+    """
+    label = None
+    for p in sorted(gs.glob("*.dts")):
+        text = _read(p)
+        if not text:
+            continue
+        for line in text.splitlines():
+            if "stdout-path" in line and "&" in line:
+                _, _, rest = line.partition("&")
+                label = rest.strip().rstrip(";").strip()
+                break
+        if not label:
+            continue
+        # the label's own definition line: "<label>: <node>@<hexbase> {"
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith(f"{label}:"):
+                continue
+            node = stripped.partition(":")[2].strip().partition("{")[0].strip()
+            name, _, base_hex = node.partition("@")
+            if not base_hex:
+                continue
+            try:
+                base = int(base_hex, 16)
+            except ValueError:
+                continue
+            size = None
+            for r in ((amap or {}).get("regions") or []):
+                if r["base"] == base:
+                    size = r["size"]
+                    break
+            return {"node": node, "device": name.strip(), "base": base, "size": size,
+                    "label": label,
+                    "evidence": f"{p.name}: chosen/stdout-path -> &{label} -> {node}"}
+    return None
+
+
 def _isa_block() -> dict[str, Any]:
     """The ISA facts, DERIVED from the mlc ``isa_encoding`` fact (the RTL-decoder field layout + opcode
     table + address-space macros) rather than a hand-copied list. Encoding width, the src/dst operand
@@ -135,6 +216,8 @@ def build_facts() -> dict[str, Any]:
     cfg = _parse_config(_read(config_path()))
     hier = _hierarchy_counts(gs)
     smem = _smem_evidence(gs)
+    amap = _address_map(gs)
+    console = _console_device(gs, amap)
 
     lanes = cfg.get("num_lanes", 16)
     warps = cfg.get("num_warps", 8)
@@ -173,6 +256,15 @@ def build_facts() -> dict[str, Any]:
                 "rtl_bank_evidence": smem or "smem mem line not found in FIRRTL",
                 "evidence": "RadianceBaseConfig TapeoutSmemConfig (128 KiB/cluster); RTL FIRRTL smem mem bank",
             },
+            # The SoC address map and the console device it designates. Absent from this facts block
+            # until now, which is why the device console had no derived address to target and kept
+            # storing to the Vortex IO_COUT_ADDR aperture -- an address this SoC maps no device at, so
+            # every OUT/DONE byte was dropped and every RTL grade came back completion-only.
+            # UNKNOWN (null) when the elaboration output is absent: fail closed, never guess an address.
+            "address_map": amap or {"regions": None,
+                                    "evidence": f"no *.memmap.json under {gs} — address map UNKNOWN"},
+            "console": console or {"base": None,
+                                   "evidence": f"no *.dts stdout-path under {gs} — console UNKNOWN"},
             "fp_datapath": {
                 "dtype": "f32", "flop_per_fma": 2,
                 "peak_flops_per_cycle": peak_flops_cycle,
