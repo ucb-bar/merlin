@@ -184,6 +184,83 @@ def load_facts(target: str, *, explicit: str | Path | None = None) -> dict[str, 
     return json.loads(ensure_facts(target, explicit=explicit).read_text(encoding="utf-8"))
 
 
+class FactsDowngrade(RuntimeError):
+    """A regeneration would replace an existing facts artifact with a STRICTLY WEAKER one.
+
+    :class:`FactsEmpty` covers the artifact that came out wholly empty. This covers the subtler and more
+    dangerous case: an artifact that regenerates *populated* but with individual facts hollowed out,
+    because an optional extractor was missing from the environment. Measured on the muon artifact, a
+    regeneration without ``MERLIN_MLC_DIR`` keeps every key and still turns
+
+        instruction_classes: [AUIPC, BRANCH, CUSTOM0, ...] -> []
+        address_spaces:      {"global": 0, "shared": 1}    -> None
+        max_src_operands:    3 (RTL-derived)               -> 4 (ISA-doc fallback)
+
+    Nothing failed and nothing was logged on that path -- ``_warn_if_degraded`` guards ``ensure_facts``,
+    not a direct extractor run -- so the only thing standing between a gutted artifact and every
+    downstream consumer was noticing by hand. Downstream, an empty ``instruction_classes`` reads as "this
+    endpoint has no ISA", which is the opposite of the truth and precisely the confusion
+    :class:`FactsEmpty` exists to prevent.
+
+    The rule is the repo's existing ratchet, applied to facts: evidence may only get RICHER. A genuine
+    hardware change that legitimately removes a fact passes ``allow_downgrade=True`` and says so.
+    """
+
+
+def hollowed_facts(old: dict, new: dict) -> list[str]:
+    """Facts present-and-populated in ``old`` that ``new`` empties or drops. Pure; no I/O.
+
+    "Weaker" is deliberately narrow -- a value going to ``None``/``[]``/``{}``/absent -- so that ordinary
+    churn (a count changing, an evidence string getting longer) is never mistaken for a downgrade. That
+    keeps the guard quiet enough to leave on.
+    """
+    def _hollow(v) -> bool:
+        return v is None or v == [] or v == {} or v == ""
+
+    out: list[str] = []
+    for key, ofacts in (old.get("facts") or {}).items():
+        nfacts = (new.get("facts") or {}).get(key)
+        if nfacts is None:
+            out.append(key)
+            continue
+        if isinstance(ofacts, dict) and isinstance(nfacts, dict):
+            for k, ov in ofacts.items():
+                if _hollow(ov):
+                    continue
+                if _hollow(nfacts.get(k)):
+                    out.append(f"{key}.{k}")
+        elif not _hollow(ofacts) and _hollow(nfacts):
+            out.append(key)
+    return sorted(out)
+
+
+def write_facts_guarded(path, doc: dict, *, allow_downgrade: bool = False) -> None:
+    """Write a facts artifact, REFUSING to hollow out an existing one.
+
+    Every extractor should write through here rather than calling ``write_text`` itself: the hole this
+    closes is not in any one extractor but in the fact that a partial extraction looks exactly like a
+    successful one on the way out.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    p = _Path(path)
+    if p.is_file() and not allow_downgrade:
+        try:
+            old = _json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            old = {}
+        lost = hollowed_facts(old, doc) if old else []
+        if lost:
+            raise FactsDowngrade(
+                f"refusing to overwrite {p}: regeneration would hollow out {lost}. This is what a "
+                f"MISSING EXTRACTOR looks like (e.g. MERLIN_MLC_DIR unset gives an ISA-doc fallback that "
+                f"empties instruction_classes) — point the toolchain and re-run. If the hardware really "
+                f"lost these facts, pass allow_downgrade=True.")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(_json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+
+
 class FactsEmpty(RuntimeError):
     """The facts artifact exists but carries NO extracted facts.
 
