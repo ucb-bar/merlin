@@ -22,6 +22,44 @@ targets:
     # RVV-specific tuning (used by quantized pipelines).
     - --riscv-v-fixed-length-vector-lmul-max=2
 
+  # Ukernel-enabled variants.
+  #
+  # The `generic:` block above sets --iree-llvmcpu-enable-ukernels=none, which
+  # makes 826 lines of vendored RISC-V int8 microkernel dead code in every K1
+  # build: third_party/iree_bar/.../riscv_64/mmt4d_riscv_64_v_i8.c contains an
+  # RVV int8 mmt4d tile family (M0 in {1,2,4,7,8}, N = VLEN/32 x 2, i.e. 8x16x1
+  # at VLEN 256) AND a native 4x4x8 smt.vmadot kernel. Neither has ever been
+  # linked here.
+  #
+  # These two variants override to link it, and are kept SEPARATE from RVV and
+  # IME rather than changing them, so the existing measurements stay
+  # comparable and the ukernel path is an A/B rather than a silent
+  # substitution. Note enable-vector-contract-custom-kernels is turned OFF
+  # here: the custom-kernel path and the ukernel path are two different ways to
+  # reach the same instruction, and leaving both on makes it ambiguous which
+  # one produced a given vmadot.
+  RVV_ukernel:
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl256b
+    - --iree-codegen-mmt4d-use-intrinsics
+    - --iree-llvmcpu-enable-vector-contract-custom-kernels=false
+    - --iree-llvmcpu-enable-ukernels=all
+    - --iree-llvmcpu-link-ukernel-bitcode=true
+    - --iree-llvmcpu-loop-vectorization=true
+    - --iree-llvmcpu-target-vector-width-in-bytes=32
+    - --iree-opt-data-tiling=true
+    - --riscv-v-fixed-length-vector-lmul-max=2
+
+  IME_ukernel:
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl256b,+xsmtvdot
+    - --iree-codegen-mmt4d-use-intrinsics
+    - --iree-llvmcpu-enable-vector-contract-custom-kernels=false
+    - --iree-llvmcpu-enable-ukernels=all
+    - --iree-llvmcpu-link-ukernel-bitcode=true
+    - --iree-llvmcpu-loop-vectorization=true
+    - --iree-llvmcpu-target-vector-width-in-bytes=32
+    - --iree-opt-data-tiling=true
+    - --riscv-v-fixed-length-vector-lmul-max=2
+
   # SpaceMiT IME (smt.vmadot) int8 matrix extension.
   #
   # LEGAL ON CLUSTER 0 ONLY (cores 0-3). Measured with a per-core SIGILL probe:

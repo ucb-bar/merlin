@@ -123,6 +123,25 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	/* IME on cluster 1 traps; refuse rather than SIGILL on the first dispatch.
+	 *
+	 * Measured with a per-core SIGILL probe (see
+	 * artifacts/k1_bringup/ * /ime_capability_probe.txt): smt.vmadot executes
+	 * on cores 0-3 and traps on cores 4-7. xpu-rt/capabilities.py rejects the
+	 * placement when a schedule is BUILT, but this is the only layer that sees
+	 * the actual invocation -- a hand-typed --variant_e=IME bypasses the
+	 * scheduler entirely, and until now it was accepted without comment.
+	 *
+	 * Checked by prefix so IME_ukernel and any future IME variant are covered. */
+	if (strncmp(variant_e, "IME", 3) == 0) {
+		fprintf(stderr,
+			"--variant_e=%s: cluster 1 (cores %s) does not implement "
+			"smt.vmadot -- an IME kernel there does not run slowly, it "
+			"traps with SIGILL. IME is legal on cluster 0 only.\n",
+			variant_e, cpu_e_cpu_ids);
+		return 1;
+	}
+
 	scheduler_runner_config_t cfg;
 	memset(&cfg, 0, sizeof(cfg));
 	cfg.graph_json_path = json_path;
