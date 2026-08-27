@@ -66,6 +66,18 @@ compute_units:
     semantic_capabilities:
       - family: contraction
         dtypes: [mxfp4, mxfp6, mxfp8, int8, bf16]
+measurement:
+  # The cyclotron perf model, NOT a functional simulator: it is the only substrate that produces cycles
+  # for this target at all.
+  cycles_from: cyclotron
+  wall_from: null             # no silicon and no board: wall time is UNKNOWN, which is not zero
+  cycles_tier: cycle_model
+  wall_tier: silicon
+  speed_of_light: simt_lane_peak
+  citable_tier: cycle_model
+  notes:
+    - "The cyclotron model carries a bracketed SIMT-GEMM overcount that must be carried through to any
+       number quoted from it, rather than silently absorbed into the result."
 memory_model:
   resident: false
   accumulators: false

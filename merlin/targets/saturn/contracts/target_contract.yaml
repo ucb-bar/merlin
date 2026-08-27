@@ -87,6 +87,16 @@ compute_units:
       instructions in reserved even funct6 slots of the vector opcode, an int8 datapath accumulating in
       int32, and a tile whose edge is the vector unit's VLMAX at e8/m1. Tile geometry is deliberately
       not restated here -- it is an RTL-derived fact.
+measurement:
+  cycles_from: spike
+  wall_from: k1
+  cycles_tier: functional
+  wall_tier: silicon
+  speed_of_light: rvv_lane_peak
+  citable_tier: rtl
+  notes:
+    - "The OPU half is command-buffer driven and revision-contingent, so a cycle count that includes it
+       is only citable on a checkout whose saturn_opu_int8 pin verifies."
 memory_model:
   resident: true
   accumulators: true      # vector register accumulators (e32m4 tiles)

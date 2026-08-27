@@ -116,19 +116,25 @@ def _emitted_digest(run_dir: "Path") -> str | None:
 def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -> dict:
     """Attach gate_ok + structural_match + divergences to a certify result."""
     gate_ok = bool((result.get("correctness") or {}).get("gate_ok"))
-    # "spike" is the RVV instantiation's functional-cycles reference substrate: it is the label the
-    # runner stamps on the functional cycle-count measurement (rvvgen.runner emits {"target": "spike",
-    # "cycles": ...} for the spike gate). This selection is INHERENT to this path, not a derivable
-    # per-target fact — it deliberately picks spike's authoritative functional cycles and NOT k1's own
-    # record (which also carries a `cycles` field, but only an rdtime-derived estimate; k1 is the
-    # real-silicon WALL-time authority, read separately below as `wall_ns`). A different reference
-    # substrate would be a different instantiation of this engine.
-    cycles = next((m.get("cycles") for m in result.get("measurement", [])
-                   if m.get("target") == "spike"), None)
-    # real-silicon wall time (K1) when the beam ran the k1 target — the REAL speedup signal (vs the
-    # structural_match proxy / spike functional cycles). None when k1 was not a target.
-    k1_wall = next((m.get("wall_ns") for m in result.get("measurement", [])
-                    if m.get("target") == "k1"), None)
+    # WHICH substrate may produce which number is DECLARED per target (kernels.measurement), not chosen
+    # here. The substrate labels used to be literals with an honest comment saying the choice was
+    # "INHERENT to this path, not a derivable per-target fact" -- true for one target and wrong for
+    # five, since a target with no such substrate then silently yields no number at all.
+    #
+    # The distinction the declaration preserves: more than one substrate emits a `cycles` field while
+    # only one is authoritative (the other is an rdtime-derived ESTIMATE), so picking by field name
+    # gets the estimate. `pick` refuses to fall back for exactly that reason.
+    from ..kernels import measurement as _meas
+    _auth = _meas.authority_for(result.get("target") or "rvv")
+    measurements = result.get("measurement", [])
+    cycles, _cyc_from = _meas.pick(measurements, _auth, "cycles")
+    k1_wall, _wall_from = _meas.pick(measurements, _auth, "wall")
+    if not _auth.declared:
+        # Undeclared is UNKNOWN, and unknown must not silently become somebody else's substrate. The
+        # gaps ride along so a run that measured nothing says so instead of reporting zeros.
+        _auth_gaps = list(_auth.gaps())
+    else:
+        _auth_gaps = []
     sm, divs = 0.0, []
     objd = run_dir / "generated" / "objdump.txt"
     if objd.is_file():
@@ -137,8 +143,14 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -
         sm, divs = cmp["structural_match"], cmp["divergences"]
     else:  # mock / no-objdump path: trust result fields if present
         sm, divs = result.get("structural_match", 0.0), result.get("divergences", [])
-    return {"gate_ok": gate_ok, "structural_match": sm, "cycles": cycles,
-            "k1_wall_ns": k1_wall, "divergences": divs}
+    out = {"gate_ok": gate_ok, "structural_match": sm, "cycles": cycles,
+           "k1_wall_ns": k1_wall, "divergences": divs,
+           # Which substrate each number came from, so a reader never has to infer it. A number whose
+           # provenance is inferred is a number that gets attributed to the wrong device.
+           "cycles_from": _cyc_from, "wall_from": _wall_from}
+    if _auth_gaps:
+        out["measurement_gaps"] = _auth_gaps
+    return out
 
 
 def _resolve_margin(noise_margin: float | None) -> float:

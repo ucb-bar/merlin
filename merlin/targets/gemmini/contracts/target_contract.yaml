@@ -109,6 +109,18 @@ compute_units:
 # bundle by consumers; the supported ops/layouts follow from the agent's own target dialect, verified
 # against the oracle. (Kept as a present key for schema compliance.)
 capabilities: {}
+# Which substrate may produce which number. Declared because the alternative is a consumer picking by
+# field name, and two substrates here both emit `cycles` while only one is authoritative.
+measurement:
+  cycles_from: spike          # the functional-cycles reference for this path
+  wall_from: k1               # real silicon: the only wall-time authority
+  cycles_tier: functional
+  wall_tier: silicon
+  speed_of_light: mesh_macs_per_cycle
+  citable_tier: rtl           # below this a number is not a hardware claim
+  notes:
+    - "k1 also carries a `cycles` field, but it is an rdtime-derived ESTIMATE, not authoritative.
+       Picking cycles by field name rather than by authority gets that estimate."
 memory_model:
   resident: true
   accumulators: true
