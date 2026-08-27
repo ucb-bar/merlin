@@ -797,6 +797,36 @@ def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
     return bool(getattr(verdict, "eligible", True))
 
 
+
+def lane_report(capsule: dict, routing_plan: dict | None) -> dict | None:
+    """Verify an INTEROP capsule's declared lanes against the routing plan the compiler reported.
+
+    Returns ``None`` when the capsule declares no ``lanes.require`` (the ordinary case: a capstone that
+    claims the accelerator runs the model, judged by "every routed layer on-mesh, nothing fell back").
+    Otherwise returns ``{required, observed, unexercised}`` and the caller passes the capsule only when
+    ``unexercised`` is empty.
+
+    Why a capsule would ask for this: the ordinary bar makes host-lane work a FAILURE, which is exactly
+    backwards for the question "can this compiler split a real network across the accelerator and the
+    scalar/vector lane the target also owns?" -- there, work reaching the other lane is the behaviour
+    under test. Such a capsule names the lanes that must EACH have carried work.
+
+    The names are the routing plan's OWN keys, so this asserts against what the compiler reported rather
+    than a vocabulary invented here -- a target whose plan reports different lanes needs no change. A
+    lane the plan does not report (or reports empty) comes back in ``unexercised``, NAMED: an unnamed
+    failure would turn a composition capsule into a single-backend capsule nobody notices.
+
+    A lane counts as exercised when the plan carries a non-empty entry for it. An absent key and a key
+    mapped to an empty dict mean the same thing -- no work went there -- and both fail closed.
+    """
+    req = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
+    if not req:
+        return None
+    plan = routing_plan or {}
+    return {"required": req,
+            "observed": sorted(k for k, v in plan.items() if v),
+            "unexercised": [ln for ln in req if not (plan.get(ln) or {})]}
+
 def _absent_outputs(nrep: dict) -> list[str]:
     """Outputs the kernel DECLARED (present in the interface/golden) but never wrote — or wrote at the
     wrong length — extracted from :func:`capsule_golden.compare`'s ``per_output``. These structural
@@ -1092,16 +1122,10 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         # `scalar_rvv_lane`), so this asserts against what the compiler reported rather than a vocabulary
         # invented here; a capsule naming a lane the plan does not report fails closed with that lane
         # named, which is the actionable direction.
-        _req_lanes = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
-        if _req_lanes:
-            _plan = result.get("routing_plan") or {}
-            _empty = [ln for ln in _req_lanes if not (_plan.get(ln) or {})]
-            _model_ok = not _empty
-            if _empty:
-                result.setdefault("lane_report", {})["unexercised"] = _empty
-            result.setdefault("lane_report", {})["required"] = _req_lanes
-            result.setdefault("lane_report", {})["observed"] = sorted(
-                k for k, v in _plan.items() if v)
+        _lane_rep = lane_report(capsule, result.get("routing_plan"))
+        if _lane_rep is not None:
+            result["lane_report"] = _lane_rep
+            _model_ok = not _lane_rep["unexercised"]
 
         # WHICH tier the mesh oracle corresponds to, DERIVED from the target's own declared RTL tiers.
         # This was `[x for x in declared if x not in ("L0", "L1")]` with an `"L3"` fallback -- three tier

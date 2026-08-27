@@ -25,6 +25,7 @@ import json
 import pytest
 
 from merlin.common.paths import merlin_dir
+from merlin.targetgen.capsule_runner import lane_report
 
 _SCHEMA = merlin_dir() / "contract/schemas/capsule.schema.json"
 _RUNNER = merlin_dir() / "python/merlin/targetgen/capsule_runner.py"
@@ -66,22 +67,39 @@ def test_must_accelerate_is_withheld_when_lanes_are_declared():
         "reaching the other lane is the behaviour under test, not a violation")
 
 
-def test_the_runner_checks_every_required_lane_against_the_routing_plan():
-    src = _RUNNER.read_text(encoding="utf-8")
-    assert "lanes" in src and "routing_plan" in src, "the runner must honor the lane contract"
-    # the check must consult the routing plan the COMPILER reported, not a hardcoded lane list
-    seg = src.split("_req_lanes", 1)[1][:1200]
-    assert "routing_plan" in seg, "lane verification must read the reported routing plan"
-    assert "unexercised" in seg, (
-        "a required lane that carried no work must be NAMED in the result — an unnamed failure turns a "
-        "composition capsule into a single-backend capsule nobody notices")
+def test_an_ordinary_capsule_is_untouched():
+    """No lanes declared -> no lane verdict at all, so the existing capstone bar is unchanged."""
+    assert lane_report({}, {"on_mesh": {"matmul": 3}}) is None
+    assert lane_report({"lanes": {}}, {"on_mesh": {"matmul": 3}}) is None
+    assert lane_report({"lanes": {"require": []}}, {"on_mesh": {"matmul": 3}}) is None
 
 
-def test_lane_names_are_not_invented_here():
-    """The vocabulary must be the routing plan's, so a target that reports different lanes still works."""
-    src = _RUNNER.read_text(encoding="utf-8")
-    seg = src.split("_req_lanes", 1)[1][:1200]
-    # the required lanes come from the capsule; the observed set comes from the plan's own keys
-    assert "capsule.get(\"lanes\")" in src or "capsule.get('lanes')" in src
-    assert ".items()" in seg or "_plan.get" in seg, (
-        "observed lanes must be read off the plan's keys rather than compared to a fixed list")
+def test_composition_passes_only_when_every_named_lane_carried_work():
+    rep = lane_report({"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}},
+                      {"on_mesh": {"matmul": 3}, "scalar_rvv_lane": {"add": 2}})
+    assert rep["unexercised"] == [], "both lanes carried work — this is the capability under test"
+    assert rep["observed"] == ["on_mesh", "scalar_rvv_lane"]
+
+
+def test_a_lane_that_carried_nothing_is_named():
+    """The actionable direction: an unnamed failure turns a composition capsule into a single-backend
+    capsule nobody notices."""
+    rep = lane_report({"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}},
+                      {"on_mesh": {"matmul": 3}})
+    assert rep["unexercised"] == ["scalar_rvv_lane"]
+    assert rep["observed"] == ["on_mesh"]
+
+
+def test_an_empty_lane_entry_counts_as_no_work():
+    """A key present but empty means the same as absent — no work went there. Both fail closed."""
+    assert lane_report({"lanes": {"require": ["on_mesh"]}}, {"on_mesh": {}})["unexercised"] == ["on_mesh"]
+    assert lane_report({"lanes": {"require": ["on_mesh"]}}, {})["unexercised"] == ["on_mesh"]
+    assert lane_report({"lanes": {"require": ["on_mesh"]}}, None)["unexercised"] == ["on_mesh"]
+
+
+def test_lane_names_are_the_plans_own_keys_not_a_fixed_list():
+    """A target whose routing plan reports different lane names needs no change here."""
+    rep = lane_report({"lanes": {"require": ["some_future_lane"]}},
+                      {"some_future_lane": {"op": 1}, "another": {"op": 2}})
+    assert rep["unexercised"] == []
+    assert rep["observed"] == ["another", "some_future_lane"]
