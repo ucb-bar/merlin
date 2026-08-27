@@ -783,6 +783,29 @@ def why_no_operands(cb: dict) -> str:
                 f"{'canonical operands' if have else 'NO canonical operands'}")
     if not have:
         return "the runner attached no canonical operands for this capsule's golden"
+    # An operand slot holds a TENSOR NAME that must resolve against the cb's declared tensors. A backend
+    # still discovering the format often puts something else there -- a shape, a type, a dimension list --
+    # and every one of those reads downstream as "the shapes could not be reduced", which points at the
+    # arithmetic when the actual problem is that the name resolves to nothing. Say which slot and which
+    # value, because that is the fixable thing.
+    declared = set(cb.get("tensors") or {})
+    referenced: list[tuple[str, str]] = []
+    for c in (cb.get("commands") or []):
+        for slot, val in (c.get("operands") or {}).items():
+            if isinstance(val, str) and val:
+                referenced.append((slot, val))
+    unresolved = [(slot, val) for slot, val in referenced if val not in declared]
+    if referenced and not declared:
+        shown = sorted({f"{slot}={val!r}" for slot, val in referenced})[:6]
+        return (f"the command buffer declares NO tensors, so no operand name resolves to a buffer. Its "
+                f"commands reference {shown}{' ...' if len(referenced) > 6 else ''}. Each operand slot "
+                f"holds the NAME of a tensor declared in the cb's `tensors` map (e.g. \"Y0\"), not a "
+                f"shape, a type, or a dimension list")
+    if unresolved:
+        shown = sorted({f"{slot}={val!r}" for slot, val in unresolved})[:6]
+        return (f"operand name(s) {shown}{' ...' if len(unresolved) > 6 else ''} do not resolve to any "
+                f"tensor the command buffer declares (it declares {sorted(declared)[:8]}). An operand slot "
+                f"holds a declared tensor NAME, not a shape or a type")
     return (f"operand shapes could not be reduced to the 1-D/2-D form this reference harness builds "
             f"(opcodes {sorted(set(ops))} were all modelled)")
 

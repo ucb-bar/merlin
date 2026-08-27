@@ -207,3 +207,43 @@ def test_the_scale_role_is_read_from_the_command_buffers_own_declaration(mh):
     assert mh._is_scale_operand(cb, "W_scale") and mh._is_scale_operand(cb, "A0_scale")
     assert not mh._is_scale_operand(cb, "W") and not mh._is_scale_operand(cb, "A0")
     assert not mh._is_scale_operand(cb, "nonexistent")
+
+
+# --------------------------------------------------------------- naming the fixable thing
+# An operand slot holds a TENSOR NAME resolving against the cb's declared `tensors`. A backend still
+# discovering the format puts other things there. Measured on a live run 32 minutes in: a submission
+# emitted twelve MATMUL commands whose dst was twelve different spellings of a SHAPE
+# ('[16,16]', '16x16', 'tensor<16x16xf32>', 'output:16x16xf32', ...) with no tensors declared at all --
+# it was brute-force guessing the format. The harness answered "operand shapes could not be reduced to
+# the 1-D/2-D form", which is true of the arithmetic and useless as a fix: nothing there is about shape
+# reduction. Feedback that points at the wrong thing costs the agent the round it spends chasing it.
+
+def test_a_cb_with_no_declared_tensors_says_exactly_that(mh):
+    cb = _cb(commands=[{"opcode": "MATMUL", "operands": {"lhs": "A0", "rhs": "W", "dst": "16x16"}}],
+             canonical_inputs={"A0": {"values": [0.0]}})
+    msg = mh.why_no_operands(cb)
+    assert "declares NO tensors" in msg
+    assert "'16x16'" in msg, "name the offending value, not just the rule"
+    assert "shape" in msg and "not a" in msg, "say what an operand slot actually holds"
+
+
+def test_an_unresolved_operand_name_is_named_with_its_slot(mh):
+    cb = _cb(commands=[{"opcode": "MATMUL", "operands": {"lhs": "A0", "rhs": "W", "dst": "tensor<16x16xf32>"}}],
+             leaves={"A0": [2, 2], "W": [2, 2]},
+             canonical_inputs={"A0": {"values": [0.0]}})
+    msg = mh.why_no_operands(cb)
+    assert "do not resolve" in msg
+    assert "dst=" in msg and "tensor<16x16xf32>" in msg
+    assert "A0" in msg, "show what IS declared, so the fix is obvious"
+
+
+def test_a_well_formed_cb_keeps_the_shape_reduction_message(mh):
+    """No regression: when every name resolves, the real cause is still the real cause."""
+    cb = _cb(commands=[{"opcode": "MATMUL", "operands": {"lhs": "A0", "rhs": "W", "dst": "Y0"}}],
+             leaves={"A0": [2, 2], "W": [2, 2], "Y0": [2, 2]},
+             canonical_inputs={"A0": {"values": [0.0]}})
+    assert "1-D/2-D form" in mh.why_no_operands(cb)
+
+
+def test_an_empty_cb_still_reports_emptiness(mh):
+    assert "no commands" in mh.why_no_operands(_cb())
