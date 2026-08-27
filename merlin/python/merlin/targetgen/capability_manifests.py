@@ -361,6 +361,111 @@ def _spatial_capabilities_from_fields(fields: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _kind_for_facet(facet: str) -> str | None:
+    """The compute-unit KIND a facet implies, or None when the facet does not determine one.
+
+    ``spatial`` maps to two kinds (``systolic`` and ``spatial``) and a role census cannot tell a
+    stationary-weight wavefront from a rank-1 outer-product tile -- both push weights and drain
+    accumulators. Synthesizing either would assert a datapath nobody observed, so the honest answer is
+    None and the caller declines to synthesize."""
+    from merlin.kernels import engines as _eng
+    kinds = [k for k, f in _eng.ENGINE_FACET.items() if f == facet]
+    return kinds[0] if len(kinds) == 1 else None
+
+
+def _derived_units_for_undeclared_engines(name: str, manifest: dict, facts: dict) -> list[dict]:
+    """Compute units for engines the target's OWN evidence reaches but its residual never declared.
+
+    This is the acting half of the engine audit. The audit reports that atlas's ISA census evidences a
+    vector engine while its contract declares one systolic ``mxu``; without this, that finding stays a
+    line in a report and the eligibility oracle keeps attributing atlas's elementwise work to the
+    matrix array -- the recorded `atlas-0of11-is-agent-not-tooling` shape, where the agent was never
+    told which engine owned which family.
+
+    Three constraints make this safe to run inside a generator:
+
+    * it only ADDS units, never edits or removes a declared one, so authored intent always wins;
+    * it declines any facet that does not determine a single kind (see :func:`_kind_for_facet`) rather
+      than guessing a datapath;
+    * every synthesized unit carries ``derived_from`` naming the rung and the literal observation, so a
+      derived unit is never mistaken for a reviewed one.
+
+    Ops and semantic families come from the ROLES that evidenced the engine, not from a default: a unit
+    invented with a plausible-looking capability list would be a fabricated hardware claim wearing
+    derivation's clothes.
+    """
+    from . import capability_derive as _cd
+    from . import semantic_families as _sf
+
+    declared = {u.get("kind") for u in (manifest.get("compute_units") or []) if isinstance(u, dict)}
+    try:
+        derived = _cd.derive_engines(name, manifest, facts)
+    except Exception:  # noqa: BLE001 — no evidence is not a reason to fail generation
+        return []
+
+    # Which roles evidenced each facet, so the synthesized unit's capability is read off the same
+    # census rather than defaulted.
+    try:
+        from . import isa_taxonomy as _it
+        by_role = _it._classes_by_role(_it.taxonomy_for_target(name) or {})
+    except Exception:  # noqa: BLE001
+        by_role = {}
+
+    out: list[dict] = []
+    for facet, ev in sorted(derived.evidenced.items()):
+        kind = _kind_for_facet(facet)
+        if kind is None or kind in declared:
+            continue
+        roles = [r for r in sorted(by_role) if _cd._ROLE_ENGINE.get(r) == facet and by_role.get(r)]
+        fams, ops = [], []
+        for role in roles:
+            mapped = _sf.ISA_ROLE_FAMILY.get(role)
+            fam = mapped[0] if isinstance(mapped, tuple) else mapped
+            if fam and fam not in fams:
+                fams.append(fam)
+        if not fams:
+            continue                       # evidenced an engine but nothing says what it computes
+        dtypes = _unit_dtypes_for_synthesis(manifest)
+        ops = sorted({_SYNTH_OP_FOR[f] for f in fams if f in _SYNTH_OP_FOR})
+        if not ops:
+            continue                       # a family with no op token binds nothing; claim nothing
+        unit = {
+            "name": f"{kind}_unit",
+            "kind": kind,
+            "dtypes": list(dtypes),
+            "ops": ops,
+            "scaling": "none",
+            "requant": {"ref": "none"},
+            "semantic_capabilities": [{"family": f, "dtypes": list(dtypes)} for f in fams],
+            "derived_from": f"{ev.source}: {ev.evidence}",
+        }
+        out.append(unit)
+    return out
+
+
+#: The op token a synthesized unit may claim for a family it was evidenced to compute.
+#:
+#: Deliberately small and explicit. An op token is a claim about what the compiler's ROUTING may bind
+#: to this unit, so a generator widening that surface on its own would move the ARR numerator without
+#: evidence. A family absent here synthesizes no unit rather than defaulting to a plausible op --
+#: ``movement`` in particular evidences no engine and licenses no binding.
+_SYNTH_OP_FOR = {"elementwise_map": "elementwise", "contraction": "matmul"}
+
+
+def _unit_dtypes_for_synthesis(manifest: dict) -> tuple[str, ...]:
+    """Formats a synthesized unit may claim: the union already declared by the target's own units.
+
+    A lane engine that shares a register file with the array runs the same formats; inventing a wider
+    set would be a fabricated capability, and inventing a narrower one would shrink the ARR denominator.
+    """
+    seen: list[str] = []
+    for u in manifest.get("compute_units") or []:
+        for d in (u.get("dtypes") or []) if isinstance(u, dict) else []:
+            if d not in seen:
+                seen.append(d)
+    return tuple(seen)
+
+
 def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
                     residual: dict[str, Any] | None = None) -> dict[str, Any]:
     """Derive a schema-valid capability manifest from a descriptor + CIRCT facts + a small residual.
@@ -492,6 +597,19 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
     # --- schema-required top-level fields the stripped residual may omit ---
     for req in ("compiler_obligations", "hardware_promises", "runtime_promises", "legality"):
         manifest.setdefault(req, [])
+
+    # --- compute units the evidence reaches but the residual never declared ---
+    # Additive and evidence-bearing (see _derived_units_for_undeclared_engines): the audit below would
+    # otherwise report the same undeclared engine on every run forever while the eligibility oracle kept
+    # attributing that engine's work to the wrong datapath. Runs BEFORE the audit so the audit scores
+    # the manifest that will actually ship.
+    try:
+        _synth = _derived_units_for_undeclared_engines(name, manifest, facts)
+    except Exception:  # noqa: BLE001 — synthesis is an improvement, never a precondition
+        _synth = []
+    if _synth:
+        manifest["compute_units"] = list(manifest.get("compute_units") or []) + _synth
+        manifest["derived_compute_units"] = [u["name"] for u in _synth]
 
     # --- semantic capability: derived from this target's OWN evidence, every run ---
     # The ARR denominator is a claim about hardware, and a claim nothing checks is an assertion. So the

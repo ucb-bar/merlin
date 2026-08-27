@@ -21,7 +21,7 @@ contains — so gemmini-mx works standalone or as a sub-unit.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from merlin.common import quant_formats as qf
@@ -67,6 +67,19 @@ class SemanticCapability:
     arbitrary_mnk: bool = True            # M/N/K need not be tile multiples (tails handled)
     batch: bool = True                    # batch dimensions supported
     layouts: tuple[str, ...] = ()         # legal layout tags (coarse); () = unconstrained
+    #: Which compute-unit KINDS provide this family on this target — the engine attribution.
+    #:
+    #: The fold below merges every unit's capabilities into one family -> capability map and, until
+    #: this field existed, dropped WHICH unit provided each one. So the oracle knew a target could do
+    #: ``elementwise_map``; it did not know that this happens on the VPU rather than the MXU. That is
+    #: the recorded atlas failure mode (`atlas-0of11-is-agent-not-tooling`): the accumulate never fired
+    #: because nothing the agent was handed said which engine owned which family.
+    #:
+    #: Populated by :func:`semantic_capability_map` from the declaring unit's ``kind`` — it is derived,
+    #: not authored, so a contract cannot drift from its own compute_units. Empty means unconstrained
+    #: (see ``eligibility._EMPTY_IS_NARROWING``), which is the honest reading for a contract written
+    #: before the attribution existed.
+    engines: tuple[str, ...] = ()
     #: Families this one is only available FUSED WITH — () means it is available standalone.
     #: A systolic mesh whose only elementwise hardware is the readout epilogue (requant/relu on the
     #: accumulator pop) can run ``elementwise_map`` as a contraction epilogue and CANNOT run a standalone
@@ -110,6 +123,13 @@ def _sem_cap(raw: dict[str, Any], unit_name: str) -> SemanticCapability:
     if not _sf.is_family(family):
         raise ValueError(f"compute unit {unit_name!r}: semantic_capabilities family {family!r} not in "
                          f"{sorted(_sf.FAMILIES)}")
+    if raw.get("engines"):
+        # Refused rather than honoured: engine attribution is DERIVED from the declaring unit's kind
+        # (see SemanticCapability.engines). Letting a contract author it would permit exactly the drift
+        # the derivation exists to prevent -- a unit of kind "vector" declaring that its capability
+        # runs on a systolic array, which no reader could then contradict.
+        raise ValueError(f"compute unit {unit_name!r}: semantic_capability {family!r} declares "
+                         f"'engines'; attribution is derived from the unit's kind, not authored")
     dtypes = tuple(raw.get("dtypes", ()) or ())
     unknown = [d for d in dtypes if not qf.has(d)]
     if unknown:
@@ -265,6 +285,9 @@ def _merge_caps(a: SemanticCapability, b: SemanticCapability) -> SemanticCapabil
         arbitrary_mnk=a.arbitrary_mnk or b.arbitrary_mnk,
         batch=a.batch or b.batch,
         layouts=_u(a.layouts, b.layouts),
+        # Engines UNION: two units providing one family means the target has two ways to run it, and
+        # that is exactly the fact a single folded map used to destroy.
+        engines=_u(a.engines, b.engines),
         composed_with=_i(a.composed_with, b.composed_with),
         notes=notes,
     )
@@ -278,5 +301,40 @@ def semantic_capability_map(units: list[ComputeUnit]) -> dict[str, SemanticCapab
     merged: dict[str, SemanticCapability] = {}
     for u in units:
         for cap in effective(u, units).semantic_capabilities:
+            # Attribute to the unit that DECLARED it before merging. `effective` folds a containing
+            # unit's capabilities together with what it contains, so the attribution is taken from the
+            # declaring unit found by `providers_of`, not from the outer unit's kind -- otherwise a
+            # SIMT cluster containing a systolic mesh would report every family as SIMT.
+            cap = _attribute(cap, providers_of(cap.family, units))
             merged[cap.family] = _merge_caps(merged[cap.family], cap) if cap.family in merged else cap
     return merged
+
+
+def _attribute(cap: SemanticCapability, providers: tuple[tuple[str, str], ...]) -> SemanticCapability:
+    """``cap`` with its ``engines`` set from the units that declare it (kept if already declared)."""
+    if cap.engines or not providers:
+        return cap
+    kinds = tuple(dict.fromkeys(k for _, k in providers))
+    return replace(cap, engines=kinds)
+
+
+def providers_of(family: str, units: list[ComputeUnit]) -> tuple[tuple[str, str], ...]:
+    """The ``(unit_name, kind)`` pairs that DECLARE ``family``, in declaration order.
+
+    Reads each unit's OWN ``semantic_capabilities`` rather than its effective ones, because the
+    question is which piece of silicon computes the family -- a cluster does not acquire a mesh's
+    contraction by containing it, it acquires the mesh.
+    """
+    return tuple((u.name, u.kind) for u in units
+                 if any(c.family == family for c in u.semantic_capabilities))
+
+
+def semantic_engine_map(units: list[ComputeUnit]) -> dict[str, tuple[tuple[str, str], ...]]:
+    """``family -> ((unit_name, kind), ...)``: which units of a target cover which semantic family.
+
+    The companion to :func:`semantic_capability_map`, which answers WHETHER and deliberately not WHICH.
+    """
+    fams: set[str] = set()
+    for u in units:
+        fams.update(c.family for c in effective(u, units).semantic_capabilities)
+    return {f: providers_of(f, units) for f in sorted(fams)}

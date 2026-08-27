@@ -44,6 +44,11 @@ class RegionDescriptor:
     rank: int | None = None
     batch: int = 1
     layout: str | None = None
+    #: Require the region to run on a specific compute-unit KIND (a ``compute_units.KINDS`` token).
+    #: None == "any engine will do", which is what almost every region means; a caller sets this only
+    #: when it is asking a narrower question ("can the ARRAY run this?", distinct from "can the target
+    #: run this?"). A hybrid is the only place the two answers differ, which is why the axis exists.
+    engine: str | None = None
 
     def resolved_family(self) -> str | None:
         return self.family or sf.from_op(self.op)
@@ -59,6 +64,14 @@ class EligibilityVerdict:
     #: ineligible would flatter recall by shrinking the denominator, and counting it eligible would
     #: deflate recall by demanding work the hardware may not support. It is reported as unmeasured.
     undetermined: bool = False
+    #: Which compute-unit KINDS can execute this region, and which declared units they are.
+    #:
+    #: A verdict that says only "eligible" leaves the caller to guess where the work lands, and the
+    #: folded capability map used to make that guess impossible: it recorded that the target supports
+    #: elementwise_map, not that the VPU does and the MXU does not. Empty on an ineligible verdict and
+    #: on a contract that predates the attribution.
+    engines: tuple[str, ...] = ()
+    units: tuple[str, ...] = ()
 
 
 #: Whether an EMPTY declaration of a shape axis narrows eligibility, per axis. The two axes this
@@ -73,7 +86,12 @@ class EligibilityVerdict:
 #: previously unconstrained axis and cause the very denominator loss the audit exists to catch.
 #: Consumed by :func:`merlin.targetgen.capability_derive._axis_findings`; agreement between this
 #: table and :func:`is_eligible` is asserted by test, not assumed.
-_EMPTY_IS_NARROWING = {"dtypes": True, "ranks": False, "layouts": False}
+#: ``engines`` is False for the same reason ``ranks`` is: the check below is guarded by ``if
+#: c.engines``, so a capability naming no engine admits every engine. Declaring one on a contract that
+#: names none would NARROW an axis that currently excludes nothing -- the exact denominator loss that
+#: the mx_gemmini rank bug was. The attribution is derived from compute_units rather than authored, so
+#: in practice this is empty only for a target whose capability predates the attribution.
+_EMPTY_IS_NARROWING = {"dtypes": True, "ranks": False, "layouts": False, "engines": False}
 
 
 def empty_declaration_is_narrowing(axis: str) -> bool:
@@ -120,8 +138,14 @@ def _family_support(family: str, cap_map: dict[str, SemanticCapability]):
 
 
 def is_eligible(region: RegionDescriptor, cap_map: dict[str, SemanticCapability],
-                *, undetermined: "frozenset[str] | tuple[str, ...] | None" = None) -> EligibilityVerdict:
+                *, undetermined: "frozenset[str] | tuple[str, ...] | None" = None,
+                providers: "dict[str, tuple[tuple[str, str], ...]] | None" = None) -> EligibilityVerdict:
     """Can the hardware described by ``cap_map`` execute ``region``? Pure declarative check.
+
+    ``providers`` is :func:`compute_units.semantic_engine_map` for the same units. It supplies the
+    declared UNIT NAMES behind each family; the engine KINDS ride on the capability itself and need no
+    such argument. Optional because the verdict is well defined without it -- naming the engine is the
+    load-bearing part, naming the unit is a convenience for a report.
 
     ``undetermined`` names families for which no evidence source could reach a verdict (see
     :mod:`merlin.targetgen.capability_derive`). Such a family is NOT silently treated as unsupported:
@@ -160,6 +184,10 @@ def is_eligible(region: RegionDescriptor, cap_map: dict[str, SemanticCapability]
             return EligibilityVerdict(False, family,
                                       f"layout {region.layout!r} not in {c.family} legal layouts "
                                       f"{list(c.layouts)}")
+        if c.engines and region.engine is not None and region.engine not in c.engines:
+            return EligibilityVerdict(False, family,
+                                      f"engine {region.engine!r} does not provide {c.family} on this "
+                                      f"target; declared on {list(c.engines)}")
         # A capability available only FUSED cannot execute the region standalone. ``how == "direct"``
         # means the region asked for this family on its own; reached via ``primitives`` it is already
         # part of the composite that licenses it, which is exactly the fused form.
@@ -167,7 +195,9 @@ def is_eligible(region: RegionDescriptor, cap_map: dict[str, SemanticCapability]
             return EligibilityVerdict(False, family,
                                       f"{c.family} is available only fused with "
                                       f"{list(c.composed_with)} on this target, not standalone")
-    return EligibilityVerdict(True, family, f"eligible ({how})")
+    engines = tuple(dict.fromkeys(e for c in caps for e in c.engines))
+    units = tuple(dict.fromkeys(n for c in caps for n, _ in (providers or {}).get(c.family, ())))
+    return EligibilityVerdict(True, family, f"eligible ({how})", engines=engines, units=units)
 
 
 # --- convenience: build the capability map from a contract / named target ---------------------------
@@ -177,6 +207,19 @@ def capability_map_from_contract(contract: dict) -> dict[str, SemanticCapability
     from merlin.targetgen import compute_units as cu
 
     return cu.semantic_capability_map(cu.compute_units(contract))
+
+
+def providers_from_contract(contract: dict) -> dict[str, tuple[tuple[str, str], ...]]:
+    """``family -> ((unit_name, kind), ...)`` for a contract — the ``providers`` argument above."""
+    from merlin.targetgen import compute_units as cu
+
+    return cu.semantic_engine_map(cu.compute_units(contract))
+
+
+def providers_for_target(target_name: str) -> dict[str, tuple[tuple[str, str], ...]]:
+    from merlin.targetgen import target_registry as tr
+
+    return providers_from_contract(tr.load_contract(target_name))
 
 
 def capability_map_for_target(target_name: str) -> dict[str, SemanticCapability]:

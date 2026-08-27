@@ -1166,16 +1166,89 @@ def clear_fact_bundle_cache() -> None:
     _FACT_BUNDLE_CACHE.clear()
 
 
-def _fact_bundle_uncached(target: str) -> dict:
-    """The un-memoized extraction (see :func:`fact_bundle_for`)."""
+def _resolve_kinds(target: str) -> tuple[str, ...]:
+    """EVERY compute-unit kind the target declares, primary first, deduped.
+
+    The set, not a primary. A hybrid runs one extractor per datapath family, and selecting a single
+    kind extracted facts for half its silicon: a SIMT cluster embedding a systolic mesh resolved to
+    ``simt``, ran the config introspect, and never looked at the mesh -- so the mesh geometry, the
+    on-chip capacities and the legal opcodes were all absent for hardware that has them.
+
+    Primary first so single-unit targets are unchanged and a hybrid's headline kind is still its
+    outermost unit."""
+    try:
+        from ..target_experiment import _primary_kind, load_capability_manifest
+        from .. import compute_units as _cu
+        units = _cu.compute_units(load_capability_manifest(target).contract)
+    except Exception:  # noqa: BLE001 — no manifest yet (fresh/arc-only target) ⇒ the arc-declared kind
+        k = _ARC_TARGET_KINDS.get(target)
+        return (k,) if k else ()
+    if not units:
+        return ()
+    return tuple(dict.fromkeys([_primary_kind(units)] + [u.kind for u in units]))
+
+
+def _extractors_for(target: str) -> tuple[str, ...]:
+    """The fact extractors this target needs, in kind order, deduped."""
     from ..families import family_profile, known_kinds
-    kind = _resolve_kind(target)
-    extractor = family_profile(kind).fact_extractor if kind in known_kinds() else "circt_static"
-    if extractor == "opu":
+    kinds = _resolve_kinds(target)
+    if not kinds:
+        return ("circt_static",)
+    out = [family_profile(k).fact_extractor if k in known_kinds() else "circt_static" for k in kinds]
+    return tuple(dict.fromkeys(out))
+
+
+def _run_extractor(name: str, target: str) -> dict:
+    if name == "opu":
         return spatial_fact_bundle(target)
-    if extractor == "simt_config":
+    if name == "simt_config":
         return _simt_fact_bundle(target)
     return target_fact_bundle(target)
+
+
+def _merge_fact_bundles(bundles: list[dict], extractors: tuple[str, ...] = ()) -> dict:
+    """Union several extractors' bundles into one ``{target, method, fields, n_derived}``.
+
+    Field collisions are resolved by EVIDENCE, never by extractor precedence: a derived value beats an
+    undrived one, and two extractors that both derive a field and DISAGREE keep both readings under
+    ``conflicts`` rather than letting the first-listed datapath silently win. A hybrid whose two halves
+    report different mesh geometries has a real problem, and a merge that hides it converts that problem
+    into a wrong number nobody can trace."""
+    head = bundles[0]
+    fields: dict = {}
+    conflicts: list[dict] = []
+    for b in bundles:
+        for name, rec in (b.get("fields") or {}).items():
+            prev = fields.get(name)
+            if prev is None or (not prev.get("derived") and rec.get("derived")):
+                fields[name] = rec
+                continue
+            if (prev.get("derived") and rec.get("derived")
+                    and prev.get("value") != rec.get("value")):
+                conflicts.append({"field": name, "kept": prev, "also": rec})
+    out = {
+        "target": head.get("target"),
+        "method": " + ".join(dict.fromkeys(str(b.get("method")) for b in bundles if b.get("method"))),
+        "kind": head.get("kind"),
+        "fields": fields,
+        "n_derived": sum(1 for r in fields.values() if r.get("derived")),
+    }
+    if len(bundles) > 1:
+        # Only stamped on a genuine hybrid, so a single-datapath bundle stays byte-identical. Taken
+        # from the extractors that actually ran, not from each bundle's `kind` -- the static CIRCT
+        # bundle does not carry one, so reading it back yields None for the half that has no label.
+        out["extractors"] = list(extractors) or [str(b.get("kind")) for b in bundles]
+    if conflicts:
+        out["conflicts"] = conflicts
+    return out
+
+
+def _fact_bundle_uncached(target: str) -> dict:
+    """The un-memoized extraction (see :func:`fact_bundle_for`)."""
+    extractors = _extractors_for(target)
+    if len(extractors) == 1:
+        return _run_extractor(extractors[0], target)
+    return _merge_fact_bundles([_run_extractor(e, target) for e in extractors], extractors)
 
 
 def render_fact_bundle_for(target: str, bundle: dict | None = None) -> str:
@@ -1188,10 +1261,8 @@ def render_fact_bundle_for(target: str, bundle: dict | None = None) -> str:
     :func:`render_fact_bundle` for gemmini and every current ``circt_static`` caller — the same reasoning
     as ``fact_bundle_for``: gemmini resolves ``kind='systolic'`` -> ``fact_extractor='circt_static'`` ->
     the ``return render_fact_bundle(...)`` fall-through, on the same ``bundle`` object."""
-    from ..families import family_profile, known_kinds
-    kind = _resolve_kind(target)
-    extractor = family_profile(kind).fact_extractor if kind in known_kinds() else "circt_static"
-    if extractor == "opu":
+    # Routes on the extractor SET, so a hybrid that has a spatial tile still gets the tile brief.
+    if "opu" in _extractors_for(target):
         return render_spatial_fact_bundle(target, bundle)
     return render_fact_bundle(target, bundle)
 
