@@ -27,8 +27,8 @@ from merlin.common.paths import repo_root
 from merlin.common.driver_output import int_after
 from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
 from merlin.kernels import bench_ceiling
-from merlin.rvvgen import k1
-from merlin.rvvgen.registry import load_rvv_package
+from merlin.mining import k1
+from merlin.mining.registry import load_rvv_package
 
 HERE = Path(repo_root()) / "merlin/python/merlin/kernels/ceiling_drivers"
 K1H = HERE / "k1_harness"
@@ -127,8 +127,8 @@ def measure_expert_k1(source: str, *, M: int, N: int, K: int) -> dict:
 
 def measure_ours_k1(run_id: str, features: list[str], *, M: int, N: int, K: int,
                     timeout: int = 600) -> dict:
-    from merlin.rvvgen.apply import apply_rvv_package
-    from merlin.rvvgen import workloads
+    from merlin.mining.apply import apply_rvv_package
+    from merlin.mining import workloads
 
     base = {"op": "matmul", "dtype": "f32", "M": M, "N": N, "K": K,
             "source": run_id, "target": "k1", "mode": "inner_compute",

@@ -49,7 +49,7 @@ from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME                 # no
 from merlin.runtime import boards, elf_audit                                # noqa: E402
 from merlin.runtime.boards import CONSOLE_HTIF                              # noqa: E402
 from merlin.runtime.backends import zephyr_model as zm                      # noqa: E402
-from merlin.rvvgen.registry import load_rvv_package                         # noqa: E402
+from merlin.mining.registry import load_rvv_package                         # noqa: E402
 
 #: How each board is loaded and run, in ITS OWN flow. Quoted from the board's own repo so the authors
 #: recognise it, rather than a command we invented.

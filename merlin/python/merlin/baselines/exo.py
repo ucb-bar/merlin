@@ -44,7 +44,7 @@ from merlin.baselines import bundle, k1_exec, profile, rvv_audit
 from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
 from merlin.common.artifacts import new_measurement
 from merlin.common.paths import repo_root
-from merlin.rvvgen import k1
+from merlin.mining import k1
 
 FRAMEWORK = "exo"
 MARCH = "rv64gcv"

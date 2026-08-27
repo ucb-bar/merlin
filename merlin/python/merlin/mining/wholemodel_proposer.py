@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from ..kernels.rvv_knobs import ForkProposal
+from ..kernels.knobs import ForkProposal
 
 # Whole-model HARDCODE levers, most-impactful first by measured byte-traffic / e2e attribution. Each
 # entry is (feature_name, is_full_schedule_replacement). These are the levers a per-facet CCA diff
@@ -329,7 +329,7 @@ def family_region_ids(model_dir: str | Path, family: str) -> list[str]:
 
 #: A build_fn takes a built section bundle dir and returns ``(objdump_text, undefined_symbols)`` for
 #: its emitted object — the board/compile seam the section-lift path depends on. The board agent
-#: supplies one that runs ``rvvgen.k1.build_k1_binary`` on the section and reads
+#: supplies one that runs ``mining.k1.build_k1_binary`` on the section and reads
 #: ``decode.objdump.disassemble_text`` / ``undefined_symbols`` off ``generated/model.o``. Tests inject
 #: a mock returning a canned objdump.
 SectionBuildFn = Callable[[Path], "tuple[str, tuple[str, ...] | None]"]

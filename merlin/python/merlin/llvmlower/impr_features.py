@@ -633,7 +633,7 @@ module attributes {{transform.with_named_sequence}} {{
 #: shape-aware resolver read the same numbers. ``WHOLEMODEL_VF_CAPS`` is ``(MR, NR, KC)``; the two
 #: per-class clamps are the tails somebody picked to survive the VLA shapes (matmul M tile 1,
 #: batch_matmul N tile 8). They are a SHAPE decision, not a constant of the target, which is why
-#: ``rvvgen.apply.shape_adapted_features`` can re-derive them from a workload's own extents --
+#: ``mining.apply.shape_adapted_features`` can re-derive them from a workload's own extents --
 #: reading the triple as an upper BOUND. On tiny_llama that derivation returns exactly (4, 16) /
 #: (4, 8), i.e. this frozen point, so the model this block was tuned on is unaffected.
 WHOLEMODEL_VF_NAME = "accumulator_resident_wholemodel_vf"
@@ -1066,7 +1066,7 @@ ACCUM_RESIDENT_NAMES: list[str] = _register_accumulator_resident()
 # — a one-element dot product with no parallel dim, which NO lowering_strategy matches (measured: 24
 # such ops survived on whisper_tiny, and an un-lowered vector.contract has no LLVM translation, so
 # the build dies late with "missing LLVMTranslationDialectInterface"). That is a selection bug, not a
-# lowering gap: a 1-lane vector is not a vectorization. `rvvgen.apply` therefore never selects NR=1 —
+# lowering gap: a 1-lane vector is not a vectorization. `mining.apply` therefore never selects NR=1 —
 # it leaves that op class un-tiled for `convert-linalg-to-loops` instead.
 _ACCUM_RESIDENT_V2_LOWER_SCHEDULE = """\
 module attributes {transform.with_named_sequence} {

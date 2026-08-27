@@ -191,7 +191,11 @@ def mine_run(target: str, op: str, runs_root: Path, mined_dir: Path, out_root: P
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--target", default="rvv")
+    # REQUIRED, not defaulted. A default of one target silently mislabels every run for another
+    # one -- the mined artifacts are written under <target>/ and the CCA is compared against that
+    # target's expert corpus, so a mislabelled run compares the wrong things and says nothing about it.
+    ap.add_argument("--target", required=True,
+                    help="the target whose expert corpus is mined and whose endpoint is lifted")
     ap.add_argument("--op", default="matmul")
     ap.add_argument("--runs-root", default="out/runs/rvv_experiment")
     ap.add_argument("--mined", required=True, help="out/artifacts/kernel-mining/<target>/<mining run> dir")

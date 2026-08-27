@@ -47,7 +47,7 @@ def test_dtype_strategy_route_reaches_the_quant_datapath():
     import pytest
 
     from merlin.common.paths import artifacts_dir
-    from merlin.rvvgen.registry import load_rvv_package
+    from merlin.mining.registry import load_rvv_package
     base = artifacts_dir() / "targets" / "rvv"
     if not (base / "hand_v0_int8").is_dir():
         pytest.skip("rvv baselines not present")

@@ -4,7 +4,7 @@ Given a whole-model capture + a selected region set, :func:`build_section_bundle
 module to that section (:func:`..xdsl_dialects.lowering.section_mlir.emit_section_module`) and writes a
 tiny "model" directory — ``model.mlir`` (the section ``@forward``) + a section-scoped
 ``weights.safetensors`` (+ manifest) + ``inputs.npz`` + ``input_order.json`` — that flows through the
-EXISTING whole-model K1 build (``rvvgen.k1.build_k1_binary`` → lower → ELF → ``run_on_k1``) unchanged.
+EXISTING whole-model K1 build (``mining.k1.build_k1_binary`` → lower → ELF → ``run_on_k1``) unchanged.
 
 Each section-``@forward`` argument is one of:
   * a MODEL WEIGHT (a driver block-arg whose model manifest entry is ``param``) — carried into the

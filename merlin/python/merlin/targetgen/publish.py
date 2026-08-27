@@ -37,7 +37,7 @@ is verified only against a LOCAL bare remote (``file://…``); it is never pushe
 harness. It reuses, and does not re-implement, the shared machinery:
 :mod:`merlin.common.artifacts` (``utc_stamp`` / ``git_sha7`` / ``new_product``),
 :mod:`merlin.targetgen.oot_runner` (``load_package`` / ``build_package`` — the fresh-clone build
-verify), :mod:`merlin.rvvgen.registry` (``load_rvv_package`` — the rvv payload),
+verify), :mod:`merlin.mining.registry` (``load_rvv_package`` — the rvv payload),
 :mod:`merlin.common.paths`, and ``targetgen.contract.schemas.validate_manifest``.
 
 CLI (``merlin-target-publish``)::
@@ -476,8 +476,8 @@ def _index_readme(target: str, entries: list[dict[str, Any]]) -> str:
             "`lmul_policy`, and the `expected_instructions` the emitted code must contain",
             "- `payload/baseline_runs/` — the recorded reference runs",
             "",
-            "Merlin consumes it through `merlin.rvvgen.registry.load_rvv_package(<dir>)` and "
-            "applies it with `merlin.rvvgen.apply.apply_rvv_package(...)`; the schedule and "
+            "Merlin consumes it through `merlin.mining.registry.load_rvv_package(<dir>)` and "
+            "applies it with `merlin.mining.apply.apply_rvv_package(...)`; the schedule and "
             "cflags are the only things that change, so the rest of the pipeline is untouched.",
             "",
             "The `baseline` branch is the FROZEN, hand-authored, unoptimized control. It exists "
@@ -672,7 +672,7 @@ def assemble_repo_tree(sel: ChampionSelection, dest: str | Path, *, layout_versi
 
 def _populate_vector_schedule_payload(sel: ChampionSelection, payload: Path) -> None:
     """rvv family: payload/schedule.mlir + knobs.yaml + baseline_runs/ (via load_rvv_package)."""
-    from ..rvvgen.registry import load_rvv_package
+    from ..mining.registry import load_rvv_package
 
     pkg = load_rvv_package(sel.package_dir)
     _write(payload / "schedule.mlir", pkg.schedule_text)

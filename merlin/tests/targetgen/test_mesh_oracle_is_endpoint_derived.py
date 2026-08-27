@@ -100,7 +100,7 @@ def test_a_dtype_with_no_scalar_datapath_is_refused_not_substituted():
     """The map must not name a strategy no package can declare — that error reads as a missing artifact
     and sends the reader off to mint a package that cannot exist."""
     from merlin.compile_cli import _DTYPE_STRATEGY
-    from merlin.rvvgen.tuning_agent import _DTYPE_STRATEGIES
+    from merlin.mining.tuning_agent import _DTYPE_STRATEGIES
 
     unsatisfiable = {d: s for d, s in _DTYPE_STRATEGY.items() if s not in _DTYPE_STRATEGIES}
     assert not unsatisfiable, \

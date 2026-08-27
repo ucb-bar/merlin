@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 
 from merlin.common.yaml import dump_yaml, load_yaml, write_yaml
-from merlin.rvvgen import promote_champion as pc
-from merlin.rvvgen.registry import load_rvv_package
+from merlin.mining import promote_champion as pc
+from merlin.mining.registry import load_rvv_package
 from merlin.targetgen import publish as pub
 
 
@@ -42,7 +42,7 @@ def _write(path: Path, text: str) -> None:
 
 def _fork_pkg(targets_rvv: Path, run_id: str, *, version: int, depth: int,
               parent: str | None) -> Path:
-    """Write a minimal beam fork package (mirrors merlin.rvvgen.fork.write_fork)."""
+    """Write a minimal beam fork package (mirrors merlin.mining.fork.write_fork)."""
     d = targets_rvv / run_id
     manifest = {
         "target": "rvv",
@@ -51,7 +51,7 @@ def _fork_pkg(targets_rvv: Path, run_id: str, *, version: int, depth: int,
         "schedule_format": "transform_dialect_mlir",
         "status": "proposed",
         "authoring": {"mode": "deterministic_generated_from_spec",
-                      "generated_by_agent": False, "author": "rvvgen.from_strategy"},
+                      "generated_by_agent": False, "author": "mining.from_strategy"},
         "lineage": {"parent_run_id": parent, "version": version, "depth": depth,
                     "lever": "feature", "source_evidence": ["census:byte-traffic"]},
         "outputs": {"schedule": "schedule.mlir", "knobs": "knobs.yaml"},

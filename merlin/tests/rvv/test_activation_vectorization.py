@@ -41,7 +41,7 @@ def _toolchain() -> bool:
 
 
 def _pkg(features):
-    from merlin.rvvgen.registry import load_rvv_package
+    from merlin.mining.registry import load_rvv_package
     pkg = load_rvv_package(REPO / "out/artifacts/targets" / "rvv" / "hand_v0")
     return replace(pkg, run_id="test_act", compiler_features=list(features))
 
@@ -49,7 +49,7 @@ def _pkg(features):
 def _build(features, bundle):
     """apply_rvv_package -> (decoded InsnStream, build dict, work dir)."""
     from merlin.kernels.decode import rvv
-    from merlin.rvvgen.apply import apply_rvv_package
+    from merlin.mining.apply import apply_rvv_package
     work = Path(tempfile.mkdtemp(prefix="test_act_"))
     build = apply_rvv_package(_pkg(features), bundle, work,
                               board="spike_riscv64", harts=1, arena_mb=64)
@@ -57,7 +57,7 @@ def _build(features, bundle):
 
 
 def _gens():
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     return {"gelu": workloads.gen_gelu_f32, "sigmoid": workloads.gen_sigmoid_f32,
             "silu": workloads.gen_silu_f32}
 

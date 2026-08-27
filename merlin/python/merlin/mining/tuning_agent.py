@@ -1,6 +1,6 @@
 """LLM-based ForkProposal proposer — the judgment alternative to the deterministic gap-router.
 
-`propose_forks_llm` is signature-compatible with `merlin.kernels.rvv_knobs.propose_forks`, so it
+`propose_forks_llm` is signature-compatible with `merlin.kernels.knobs.propose_forks`, so it
 drops straight into `run_beam(proposer=propose_forks_llm)`. Where the gap-router enumerates a fixed
 motif->knob table, the tuning agent asks an LLM to read the S4 divergences (+ optional mined-policy
 / curated-fingerprint context) and PROPOSE schedule-knob changes to close the structural gap toward
@@ -11,7 +11,7 @@ Honest contract:
     ANTHROPIC_API_KEY is set, else None so we degrade to []). The prompt is a versioned artifact
     (merlin/prompts/rvv_tuning_v{V}.md).
   * Every proposed override is VALIDATED/CLAMPED against the known knob vocabulary before it can be
-    minted; an override key the generator (rvvgen.from_strategy.render_schedule) cannot render is
+    minted; an override key the generator (mining.from_strategy.render_schedule) cannot render is
     DROPPED with a note rather than emitted (the beam never tries to render an unknown knob).
   * Graceful: llm_fn None / parse failure / empty list -> [] (the beam simply finds no forks and
     falls back on whatever else it has). Non-actionable suggestions are returned as
@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..common.agent_output import parse_json
-from ..kernels.rvv_knobs import ForkProposal
+from ..kernels.knobs import ForkProposal
 
 from merlin.common.paths import prompts_dir
 

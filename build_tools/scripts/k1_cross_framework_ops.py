@@ -36,8 +36,8 @@ from pathlib import Path
 
 from merlin.common.paths import repo_root
 from merlin.common.driver_output import int_after, int_field
-from merlin.rvvgen import k1
-from merlin.rvvgen.registry import load_rvv_package
+from merlin.mining import k1
+from merlin.mining.registry import load_rvv_package
 
 HERE = Path(repo_root()) / "merlin/python/merlin/kernels/ceiling_drivers"
 K1H = HERE / "k1_harness"
@@ -73,7 +73,7 @@ def _deploy_run(binary: Path, tag: str, *, timeout: int = 300,
         k1._ssh(f"chmod +x {remote}", timeout=30)
         cmd = remote
         if pmu:
-            from merlin.rvvgen import pmu as pmu_mod
+            from merlin.mining import pmu as pmu_mod
             if pmu_mod.ensure_deployed():
                 cmd = pmu_mod.wrap(remote)
         p = k1._ssh(cmd, timeout=timeout)
@@ -87,7 +87,7 @@ def _deploy_run(binary: Path, tag: str, *, timeout: int = 300,
     # Counters (when requested) are appended to the console so the existing _parse path is untouched
     # and the numbers land in the same record the wall-time measurement does.
     if pmu:
-        from merlin.rvvgen import pmu as pmu_mod
+        from merlin.mining import pmu as pmu_mod
         counts = pmu_mod.parse(p.stderr or "")
         if counts is not None:
             return f"{p.stdout}\nMERLIN_PMU cycles={counts.cycles} instructions={counts.instructions}\n", "ok"
@@ -104,7 +104,7 @@ def _parse(base: dict, console: str | None, detail: str, *, reps: int = 1) -> di
     if t is None:
         return {**base, "ticks": None, "status": "not_run", "blocker": "no CYCLES/ticks line"}
     err = int_field(console, "errors")
-    from merlin.rvvgen import pmu as pmu_mod
+    from merlin.mining import pmu as pmu_mod
     counts = pmu_mod.parse(console)
     pmu_fields = counts.as_dict() if counts is not None else {}
     # Retired instructions on the SAME bracket as the rdtime timing (the drivers read minstret via
@@ -243,7 +243,7 @@ def _build_run_ours(tag, bundle: Path, driver: Path, defs: list[str], run_id: st
 
 # ---------------------------------------------------------------------------
 def run_activation(op: str, sizes: list[int], reps: int) -> list[dict]:
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     rows = []
     if op == "gelu":
         ksrc = "f32-vgelu/gen/f32-vgelu-rvv-rational-12-10-div-u4v.c"
@@ -288,7 +288,7 @@ def run_f32_gemm(shapes: list[int], reps: int) -> list[dict]:
     baseline AND our best whole-model feature (accumulator_resident_wholemodel_vf). Kernel-region
     rdtime on real silicon (mode=inner_compute), pack-outside fairness. This is the per-op analogue
     of the whole-model four-way, isolating the GEMM kernel gap the models are dominated by."""
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     rows = []
     for S in shapes:
         base = {"op": "f32_gemm", "dtype": "f32", "M": S, "N": S, "K": S,
@@ -320,7 +320,7 @@ def run_f32_gemm(shapes: list[int], reps: int) -> list[dict]:
 
 
 def run_int8_gemm(shapes: list[int], reps: int) -> list[dict]:
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     rows = []
     for S in shapes:
         base = {"op": "int8_gemm", "dtype": "qd8_qc8w", "M": S, "N": S, "K": S,
@@ -349,7 +349,7 @@ def run_int8_gemm(shapes: list[int], reps: int) -> list[dict]:
         #     256^3   896,380 (8.20x)   503,434 (4.60x)    1.78x
         # so vf is NOT the int8 best and had not been for some time; it was simply the only int8
         # recipe wired here. The naive row is kept to SHOW the gap the vectorization lever closes.
-        from merlin.rvvgen.from_strategy import microkernel_features
+        from merlin.mining.from_strategy import microkernel_features
         bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=S, N=S, K=S)
         int8_configs = [([], "ours_int8_naive"),
                         (["accumulator_resident_wholemodel_vf"], "ours_int8_vf"),
@@ -395,7 +395,7 @@ def run_conv2d(reps: int) -> list[dict]:
     over a 8x8 output = M=64 positions, N=16 out-ch, K=27 patch-volume. XNNPACK's only f32 conv
     RVV kernel is depthwise (raced separately); regular conv on the library side IS its f32 GEMM
     (igemm), so we note that and race OUR im2col-GEMM baseline vs vectorized."""
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     rows = []
     M, N, K = 64, 16, 27
     bundle = workloads.gen_conv2d_as_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=M, N=N, K=K)
@@ -416,7 +416,7 @@ def run_conv2d(reps: int) -> list[dict]:
 def run_attention(reps: int) -> list[dict]:
     """ATTENTION has NO library baseline (not an XNNPACK/OpenBLAS primitive). So we compare OUR
     baseline batch_matmul lowering vs OUR vfmacc feature — explicitly ours-vs-ours."""
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     rows = []
     B, M, Nn, K = 4, 32, 8, 32   # llama-style attention bmm (small N -> N-tail path)
     bundle = workloads.gen_batch_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", B=B, M=M, N=Nn, K=K)
@@ -448,7 +448,7 @@ def run_attention(reps: int) -> list[dict]:
 def run_vbinary(sizes: list[int], reps: int) -> list[dict]:
     """XNNPACK f32-vbinary (vmul / vadd) vs OUR elementwise-mul/add codegen. Present in every
     model (residual adds, gating muls); mapped in the catalog. Bandwidth-bound -> sweep N."""
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     rows = []
     kernels = [("mul", "f32-vbinary/gen/f32-vmul-rvv-u8v.c", "xnn_f32_vmul_ukernel__rvv_u8v"),
                ("add", "f32-vbinary/gen/f32-vadd-rvv-u8v.c", "xnn_f32_vadd_ukernel__rvv_u8v")]
@@ -483,7 +483,7 @@ def run_vbinary(sizes: list[int], reps: int) -> list[dict]:
 def run_reduce(shapes: list[tuple[int, int]], reps: int) -> list[dict]:
     """XNNPACK f32-rsum / f32-rmax (per-row, over the last dim) vs OUR reduce codegen. The
     softmax/norm reduction present in every model; catalog partial (rsum/rminmax)."""
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     rows = []
     kernels = [("sum", "f32-rsum/gen/f32-rsum-rvv-u8v.c", "xnn_f32_rsum_ukernel__rvv_u8v"),
                ("max", "f32-rminmax/gen/f32-rmax-rvv-u8v.c", "xnn_f32_rmax_ukernel__rvv_u8v")]
@@ -516,7 +516,7 @@ def run_reduce(shapes: list[tuple[int, int]], reps: int) -> list[dict]:
 
 def run_clamp(sizes: list[int], reps: int) -> list[dict]:
     """XNNPACK f32-vclamp (relu6) vs OUR clamp codegen. Mapped in the catalog (clamp/relu)."""
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     rows = []
     ksrc = "f32-vclamp/gen/f32-vclamp-rvv-u8v.c"
     kfn = "xnn_f32_vclamp_ukernel__rvv_u8v"
@@ -550,7 +550,7 @@ def run_clamp(sizes: list[int], reps: int) -> list[dict]:
 def run_transpose(shapes: list[tuple[int, int]], reps: int) -> list[dict]:
     """XNNPACK x32-transposec vs OUR transpose codegen. Largest BYTE-traffic op family across the
     census; catalog partial. Non-square shapes so a stride bug is not hidden by symmetry."""
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     rows = []
     ksrc = "x32-transposec/gen/x32-transposec-8xv4-rvv.c"
     kfn = "xnn_x32_transposec_ukernel__8xv4_rvv"

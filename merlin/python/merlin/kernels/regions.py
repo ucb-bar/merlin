@@ -60,7 +60,7 @@ _IMPR = "merlin.llvmlower.impr_features.register"
 _PQI = "merlin/python/merlin/llvmlower/passes_quant_int.py"
 _PIPE = "merlin/python/merlin/llvmlower/pipeline.py"
 _IF = "merlin/python/merlin/llvmlower/impr_features.py"
-_FS = "merlin/python/merlin/rvvgen/from_strategy.py"
+_FS = "merlin/python/merlin/mining/from_strategy.py"
 
 REGIONS: dict[str, Region] = {r.key: r for r in [
     # ---- frontend / ingest ------------------------------------------------------------

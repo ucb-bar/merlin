@@ -48,7 +48,7 @@ TRITON_PATHS = (
 # Imports that would smuggle a target-specific decision into the frontend. `targetgen.target_registry`
 # is deliberately NOT here: resolving "what does this target's contract say" is the generic seam the
 # frontend is supposed to use.
-FORBIDDEN_IMPORT_PREFIXES = ("merlin.targets", "merlin.rvvgen")
+FORBIDDEN_IMPORT_PREFIXES = ("merlin.targets", "merlin.mining")
 
 
 def _sources() -> list:

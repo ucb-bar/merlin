@@ -108,7 +108,7 @@ def test_beam_reaches_the_fix_from_the_objdump_alone():
     """The whole point: discovery -> route -> FORK, with no human in the loop. Regression-guards the
     wiring that was missing (the beam lifted without a symbol table, so runtime_calls stayed None on
     both sides and the PASS that closes the gap was never proposed)."""
-    from merlin.rvvgen.fork_from_action import action_to_fork
+    from merlin.mining.fork_from_action import action_to_fork
     expert = _lift(EXPERT_ASM.read_text(), "xnnpack", None)          # no symbols needed
     ours = _lift(OURS_ASM, "ours", ["memrefCopy", "memcpy", "malloc"])
     div = next(d for d in cca_compare.compare(expert, ours) if d.axis == "envelope.runtime_calls")

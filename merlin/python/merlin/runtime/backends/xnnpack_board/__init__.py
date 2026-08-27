@@ -2,7 +2,7 @@
 whole-model lowering to XNNPACK's RVV GEMM microkernel, the K1/RVV analogue of the host
 ``xnnpack_host`` backend (default-off, additive).
 
-The board runs one compiled C binary (``rvvgen.k1.build_k1_binary``): the whole model lowers
+The board runs one compiled C binary (``mining.k1.build_k1_binary``): the whole model lowers
 monolithically to ``model.ll`` and is driven by ``_mlir_ciface_forward``. There is no
 per-dispatch call boundary like the host Python interpreter's, so we create one at the MLIR
 level: :func:`rewrite_matmuls_to_xnn` replaces every routable plain 2-D f32 ``linalg.matmul``

@@ -1,6 +1,6 @@
 """``merlin-rvv-beam`` — the aet-instrumented, board-serialized entrypoint for the CCA beam (BB3).
 
-Runs :func:`rvvgen.beam.run_beam` under an aet PARENT run (``out/runs/rvv/beam/<id>/``), then emits
+Runs :func:`mining.beam.run_beam` under an aet PARENT run (``out/runs/rvv/beam/<id>/``), then emits
 one aet CHILD run per fork carrying a ``metrics/summary_metrics.json`` (speedup, cos-gate, cycles,
 K1 wall, lever, depth, parent_run_id, CCA divergences closed) so ``aet runs`` / ``aet compare`` can
 rank the forks. ``beam_tree.yaml`` (the full LLM-digestible per-step record) lands in the parent run.

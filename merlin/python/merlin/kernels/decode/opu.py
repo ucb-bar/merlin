@@ -9,7 +9,7 @@ The extension's instructions occupy reserved encoding slots, so no assembler kno
   hardcodes a field value. This is also the difference between this tool and the one whose "100%
   coverage" claim was wrong: that one counted ``.insn`` occurrences in *source text*, which says what a
   programmer wrote, not what the compiler emitted or what the hardware will run.
-* **The existing inert-lever digest is blind here.** ``rvvgen.beam._emitted_digest`` hashes the mnemonic
+* **The existing inert-lever digest is blind here.** ``mining.beam._emitted_digest`` hashes the mnemonic
   stream, and since all four of these instructions disassemble to the same ``<unknown>`` with no
   operands, a change that swaps an accumulate for a readout would hash identically and be marked inert.
   :func:`digest` therefore hashes the DECODED identity, so a matrix-extension change is visible to the

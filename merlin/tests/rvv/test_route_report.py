@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from merlin.rvvgen import route_report as rr
+from merlin.mining import route_report as rr
 
 
 def test_full_table_runs_and_lists_every_axis(capsys):

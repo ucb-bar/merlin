@@ -8,7 +8,7 @@ frameworks, each runner prints marker lines to stdout that this module parses:
 
 ``ticks`` are raw K1 ``rdtime`` counts (24 MHz platform timer). We convert to an *estimated* core
 cycle count with the K1 CPU/timebase ratio — reported ``cycle_accurate=False`` (spike/FireSim remain
-the cycle authorities), exactly as ``merlin.rvvgen.k1`` does for our own runs.
+the cycle authorities), exactly as ``merlin.mining.k1`` does for our own runs.
 
 A framework that also exposes an isolated kernel driver (EXO's natural granularity, or a per-op
 micro-benchmark) can reuse the SAME markers so region numbers are comparable to whole-model brackets
@@ -22,7 +22,7 @@ from merlin.baselines.contract import RegionProfile
 
 # Reuse the exact K1 constants so cycle estimates match our own runs.
 try:
-    from merlin.rvvgen.k1 import K1_CPU_HZ, K1_TIMEBASE_HZ
+    from merlin.mining.k1 import K1_CPU_HZ, K1_TIMEBASE_HZ
 except Exception:  # pragma: no cover - defensive if k1 import chain changes
     K1_CPU_HZ, K1_TIMEBASE_HZ = 1_600_000_000, 24_000_000
 

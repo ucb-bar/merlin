@@ -9,7 +9,7 @@ Each CCA ``Divergence`` (from ``cca_compare``) routes to a typed ``CompilerActio
 
 ``target_seam`` names the concrete place to make the change; ``forkable_now`` says whether an
 ``impr_`` fork can express it today (schedule knob / cflag / a registered ``impr_features`` hook)
-or it is a deferred work-item. Supersedes the knob-only ``rvv_knobs`` gap-router. Routes are keyed
+or it is a deferred work-item. Supersedes the knob-only ``knobs`` gap-router. Routes are keyed
 by ``(backend, axis)`` so non-RVV targets add their own rows without disturbing RVV.
 """
 from __future__ import annotations
@@ -421,7 +421,7 @@ _RVV_ROUTES: list[_Route] = [
         axis="coverage.claimed_mac_fraction",
         when=lambda d: isinstance(d.ours, (int, float)) and d.ours < 1.0,
         action_class="KNOB",
-        target_seam="schedule:per-op-class register block (rvvgen.apply.shape_adapted_features)",
+        target_seam="schedule:per-op-class register block (mining.apply.shape_adapted_features)",
         change="re-derive the register block per op class against the workload's real extents (and, for "
                "a multicore build, against the per-hart tile) so a class is claimed at a legal width "
                "rather than declined outright",
@@ -652,7 +652,7 @@ _SeamSpec = tuple[str, str, bool]   # (file, kind, needs_new_code)
 SEAM_FILES: dict[str, _SeamSpec] = {
     "impr_features": ("merlin/python/merlin/llvmlower/impr_features.py",
                       "registered PASS/HEURISTIC/PATTERN feature hook (default-off)", False),
-    "schedule": ("merlin/python/merlin/rvvgen/from_strategy.py (+ the package knobs.yaml / schedule.mlir)",
+    "schedule": ("merlin/python/merlin/mining/from_strategy.py (+ the package knobs.yaml / schedule.mlir)",
                  "transform-schedule knob (forkable via schedule.mlir today)", False),
     "quant": ("merlin/python/merlin/llvmlower/quant_passes.py",
               "int8 quant-pass registry (register/toggle a QuantPass; reached via dtype_strategy=int8_w8a8"

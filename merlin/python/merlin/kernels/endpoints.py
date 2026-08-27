@@ -194,8 +194,31 @@ def load_endpoint(name: str) -> Endpoint:
                     roles=bound, missing=missing,
                     unmapped=tuple(sorted(names - claimed)) if names else (),
                     levels={str(k): tuple(v) for k, v in (block.get("levels") or {}).items()},
-                    crosscheck=dict(block.get("crosscheck") or {}),
+                    crosscheck=_crosscheck_with_pairs(block),
                     notes=str(block.get("notes") or ""))
+
+
+def _crosscheck_with_pairs(block: dict) -> dict:
+    """The endpoint's crosscheck block, plus the RTL-name -> header-name pairs its source declares.
+
+    The two vocabularies differ (the array's own name for an instruction versus the macro an expert
+    header defines for it), and consumers that look for one spelling in a file written in the other
+    find nothing. The correspondence is already declared for the encoding crosscheck, so it is surfaced
+    here rather than restated.
+    """
+    out = dict(block.get("crosscheck") or {})
+    enc = block.get("encoding") or {}
+    if enc.get("source") == "matrix_units" and enc.get("unit"):
+        import yaml as _y
+        path = merlin_dir() / "contract" / "matrix_units.yaml"
+        try:
+            units = (_y.safe_load(path.read_text(encoding="utf-8")) or {}).get("units") or {}
+            pairs = ((units.get(enc["unit"]) or {}).get("declarations") or {}).get("crosscheck_pairs")
+            if pairs:
+                out["pairs"] = dict(pairs)
+        except OSError:
+            pass
+    return out
 
 
 def endpoints_for(target: str) -> tuple[Endpoint, ...]:

@@ -2,7 +2,7 @@
 """Validate the GENERAL compiler features (commit e5dd143) on REAL models on the K1 board.
 
 This is EVIDENCE that the general transforms help (or honestly do not) on real whole models — NOT
-a tuning loop. It reuses the frozen harness (`merlin.rvvgen.k1.run_on_k1`, the bitvla 9.35x
+a tuning loop. It reuses the frozen harness (`merlin.mining.k1.run_on_k1`, the bitvla 9.35x
 precedent path) and the multi-tier `_gate` cos-vs-host-golden. Baseline is FROZEN hand_v0.
 
 For each (model, feature-config) it records, all measurement-only:
@@ -27,8 +27,8 @@ from pathlib import Path
 
 import numpy as np
 
-from merlin.rvvgen import k1
-from merlin.rvvgen.registry import load_rvv_package
+from merlin.mining import k1
+from merlin.mining.registry import load_rvv_package
 from merlin.llvmlower.lower import lower_model_file
 from merlin.llvmlower.pipeline import PipelineError
 from merlin.runtime.backends import zephyr_model as zm

@@ -43,7 +43,7 @@ from merlin.baselines import k1_exec, profile, rvv_audit
 from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
 from merlin.common import artifacts
 from merlin.common.paths import build_dir, repo_root
-from merlin.rvvgen import k1
+from merlin.mining import k1
 
 FRAMEWORK = "executorch"
 

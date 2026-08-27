@@ -2,7 +2,7 @@
 from "stalls on each instruction". Board-free: only the parse/derive contract is tested here."""
 from __future__ import annotations
 
-from merlin.rvvgen.pmu import PmuCounts, parse
+from merlin.mining.pmu import PmuCounts, parse
 
 
 def test_parses_counts_and_derives_ipc():

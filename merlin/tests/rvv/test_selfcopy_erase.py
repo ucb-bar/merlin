@@ -43,7 +43,7 @@ def _m2m() -> bool:
 def _lower_ir(features: list[str], *, int8: bool, M: int = 64, N: int = 64, K: int = 64) -> str:
     """Lower a matmul through the real compiler and return the emitted LLVM IR text."""
     from merlin.llvmlower.lower import lower_model_file
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     from merlin.runtime.backends import zephyr_model as zm
 
     bundle = workloads.gen_matmul_f32(tempfile.mkdtemp(prefix="selfcopy_wl_"), M=M, N=N, K=K)
@@ -88,7 +88,7 @@ def test_the_microkernel_knob_block_delivers_the_erase_for_int8_and_f32_alike():
     """End-to-end through the SHARED capability: a package that names the micro-kernel point via the
     target-agnostic `microkernel` knob block gets the hygiene without listing it, whatever its
     dtype_strategy. This is the seam that stopped int8 from being a parallel silo."""
-    from merlin.rvvgen.registry import _resolve_features, load_rvv_package
+    from merlin.mining.registry import _resolve_features, load_rvv_package
 
     pkg_dir = Path(repo_root()) / "out/artifacts/targets/rvv/hand_v0_int8"
     if not pkg_dir.is_dir():

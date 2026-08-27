@@ -2,7 +2,7 @@
 """VALIDATION 1 — does `vectorized_transcendental_activation` LIFT whole-model e2e on K1 silicon?
 
 Reuses the FROZEN e2e harness (`scripts/k1_e2e_general_validate.run_pkg` ->
-`merlin.rvvgen.k1.run_on_k1` -> `build_k1_binary`, the same bitvla 9.35x precedent path and the
+`merlin.mining.k1.run_on_k1` -> `build_k1_binary`, the same bitvla 9.35x precedent path and the
 multi-tier cos-vs-host-golden gate). Baseline is FROZEN hand_v0. Measurement only.
 
 Per model (bitvla, openvla) it runs these configs, N reps each, min wall, cos vs the SAME host
@@ -30,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
-from merlin.rvvgen.registry import load_rvv_package
+from merlin.mining.registry import load_rvv_package
 from merlin.llvmlower.impr_features import apply_schedule, normalize, CompositionError
 from merlin.llvmlower.pipeline import RVV_TRANSFORM_SCHEDULE
 

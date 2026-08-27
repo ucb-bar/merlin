@@ -2,7 +2,7 @@
 
 This is the generator the tuning agent / beam-search use: given a parent package's knobs + a set
 of overrides (a lever choice), it produces a new ``schedule.mlir`` and writes a lineage-stamped
-fork (via :mod:`merlin.rvvgen.fork`). The generator is faithfulness-tested: re-rendering the
+fork (via :mod:`merlin.mining.fork`). The generator is faithfulness-tested: re-rendering the
 ``hand_v0`` knobs reproduces its verbatim schedule (so a fork only differs by the intended knob).
 
 Knobs consumed:
@@ -25,9 +25,9 @@ from .registry import RvvPackage, load_rvv_package
 #
 # TARGET-PLUGIN NOTE: `_VARS` and `render_schedule` below are the RVV RENDERER — they emit the
 # RVV transform-dialect schedule (op_match tile/vectorize + vector.* lowering patterns). They are
-# intentionally RVV-specific: a different target reusing the beam engine (rvvgen.beam) supplies its
+# intentionally RVV-specific: a different target reusing the beam engine (mining.beam) supplies its
 # OWN render/generator (a `render_schedule(knobs) -> str` and a `mint_fork(...) -> Path`) rather
-# than these. See rvvgen/TARGET_PLUGIN.md for the full target-plugin contract.
+# than these. See mining/TARGET_PLUGIN.md for the full target-plugin contract.
 _VARS = {
     "linalg.matmul": ("mm", "t", "l"),
     "linalg.batch_matmul": ("bm", "bt", "bl"),

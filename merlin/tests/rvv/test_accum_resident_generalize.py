@@ -39,8 +39,8 @@ def _toolchain() -> bool:
 def _build(features, bundle):
     """apply_rvv_package(hand_v0 + features) on a workload bundle -> decoded InsnStream of model.o."""
     from merlin.kernels.decode import rvv
-    from merlin.rvvgen.apply import apply_rvv_package
-    from merlin.rvvgen.registry import load_rvv_package
+    from merlin.mining.apply import apply_rvv_package
+    from merlin.mining.registry import load_rvv_package
 
     pkg = load_rvv_package(REPO / "out/artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(pkg, run_id="test_general", compiler_features=list(features))
@@ -50,17 +50,17 @@ def _build(features, bundle):
 
 
 def _conv_bundle():
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     return workloads.gen_conv2d_as_matmul_f32(tempfile.mkdtemp(), M=64, N=16, K=27)
 
 
 def _attn_bundle(N: int):
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     return workloads.gen_batch_matmul_f32(tempfile.mkdtemp(), B=4, M=32, N=N, K=32)
 
 
 def _matmul_bundle(M: int, N: int = 64, K: int = 64):
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     return workloads.gen_matmul_f32(tempfile.mkdtemp(), M=M, N=N, K=K)
 
 

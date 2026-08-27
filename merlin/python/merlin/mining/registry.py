@@ -11,7 +11,7 @@ NEVER hardcoded into the core lowering tables:
 This is the RVV analogue of :func:`merlin.targetgen.registry.load_target`, but RVV is a
 transform SCHEDULE + cflags rather than a resident-accelerator dialect, so the payload is
 ``schedule.mlir`` + ``knobs.yaml`` (NOT a ``dialect.py`` exposing ``SPEC_OPS``). The loaded
-package feeds ``build_app(rvv_schedule=..., cflags_override=...)`` via :mod:`merlin.rvvgen.apply`.
+package feeds ``build_app(rvv_schedule=..., cflags_override=...)`` via :mod:`merlin.mining.apply`.
 """
 from __future__ import annotations
 

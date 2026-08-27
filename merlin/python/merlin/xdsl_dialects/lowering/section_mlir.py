@@ -5,7 +5,7 @@ runtime-program level. To build a *board binary* for that section we instead sli
 keep the dispatch calls whose kernel symbol carries a selected ``prov.region_id`` (plus the interior
 view-glue between them), promote the section's boundary inputs to function arguments, and return the
 section's outputs. The result is an ordinary single-``@forward`` module holding only the kept kernel
-funcs — so it flows through the EXISTING whole-model K1 build (``rvvgen.k1.build_k1_binary`` →
+funcs — so it flows through the EXISTING whole-model K1 build (``mining.k1.build_k1_binary`` →
 ``lower_model_file`` → ``c_runtime.generate`` → ELF) unchanged, fed the region-boundary tensors as
 inputs. Compile the whole model once; emit + run just the section you care about.
 

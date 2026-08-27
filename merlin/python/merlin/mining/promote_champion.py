@@ -1,6 +1,6 @@
 """Promote a beam-search champion into the publishable RVV package structure.
 
-The RVV beam (``merlin.rvvgen.beam``) mints isolated fork packages under
+The RVV beam (``merlin.mining.beam``) mints isolated fork packages under
 ``<run>/targets/rvv/<pkg>/`` (schedule.mlir + knobs.yaml + manifest.yaml) and records the whole
 search in ``<run>/beam_tree.yaml``. The measured, XNNPACK-beating win lives on the tree's ``best``
 node (``gate_ok``, board-measured ``k1_wall_ns`` / ``speedup``, ``attainment_vs_expert``) -- but the
@@ -261,7 +261,7 @@ def stamp_champion(champ: BeamChampion, *, status: str = K1_VERIFIED_STATUS,
         "certified_by": certified_by,
         "certified_by_run": cert_run,
         "promoted_at": utc_stamp(),
-        "promoted_by": "merlin.rvvgen.promote_champion",
+        "promoted_by": "merlin.mining.promote_champion",
         "fingerprint": fingerprint,
         "measured": {
             "k1_wall_ns": champ.k1_wall_ns,
@@ -329,7 +329,7 @@ def promote_and_publish(run_dir: str | Path, *, target: str = "rvv", execute: bo
 def write_payload_manifest(payload_dir: str | Path, *, package_id: str,
                            target: str = "rvv") -> Path:
     """Opt-in fix for the round-trip nuance: write a minimal ``manifest.yaml`` into a published
-    ``payload/`` so ``rvvgen.registry.load_rvv_package(payload_dir)`` can read it back.
+    ``payload/`` so ``mining.registry.load_rvv_package(payload_dir)`` can read it back.
 
     The publish bridge writes ``payload/schedule.mlir`` + ``knobs.yaml`` but NOT an
     ``rvv_package_manifest`` (the published tree is consumed as a CMake OOT build, and the rvv load
@@ -345,7 +345,7 @@ def write_payload_manifest(payload_dir: str | Path, *, package_id: str,
         "schedule_format": "transform_dialect_mlir",
         "status": K1_VERIFIED_STATUS,
         "authoring": {"mode": "deterministic_generated_from_spec",
-                      "generated_by_agent": False, "author": "merlin.rvvgen.promote_champion"},
+                      "generated_by_agent": False, "author": "merlin.mining.promote_champion"},
         "outputs": {"schedule": "schedule.mlir", "knobs": "knobs.yaml"},
     }
     out = payload_dir / "manifest.yaml"
@@ -371,7 +371,11 @@ def main(argv: list[str] | None = None) -> int:
         prog="merlin-rvv-promote-champion",
         description="Certify + stamp a beam-verified RVV champion and (optionally) publish it.")
     ap.add_argument("--run", required=True, help="beam run dir containing beam_tree.yaml")
-    ap.add_argument("--target", default="rvv")
+    # REQUIRED, not defaulted. A default of one target silently mislabels every run for another
+    # one -- the mined artifacts are written under <target>/ and the CCA is compared against that
+    # target's expert corpus, so a mislabelled run compares the wrong things and says nothing about it.
+    ap.add_argument("--target", required=True,
+                    help="the target whose expert corpus is mined and whose endpoint is lifted")
     ap.add_argument("--status", default=K1_VERIFIED_STATUS,
                     help="honest recorded status (default k1_verified; do NOT use spike_verified "
                          "unless spike actually verified the fork)")

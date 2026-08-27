@@ -35,6 +35,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.kernels.ingest` | Ingest kernels from external sources. |
 | `merlin.liveness` | HW-agnostic *liveness / progress* oracle — an L2.5 tier between functional (L2) and RTL (L3). |
 | `merlin.llvmlower` | Whole-model lowering: linalg-on-tensors MLIR -> LLVM IR -> RVV objects. |
+| `merlin.mining` | RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect |
 | `merlin.plotting` | Shared plotting house style (palette + card/callout/style_ax helpers). |
 | `merlin.runtime` | Merlin-owned runtime substrate (real, dependency-free). |
 | `merlin.runtime.backends` | Merlin runtime execution backends. |
@@ -42,7 +43,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.runtime.backends.ours_board` | BOARD (RVV) OURS GEMM kernel backend: route the f32 ``linalg.matmul`` dispatches of a |
 | `merlin.runtime.backends.xnnpack_board` | BOARD (RVV) XNNPACK kernel backend: route the f32 ``linalg.matmul`` dispatches of a |
 | `merlin.runtime.backends.xnnpack_host` | HOST XNNPACK kernel backend for the dispatch runtime (default-off, additive). |
-| `merlin.rvvgen` | RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect |
+| `merlin.rvvgen` | Compatibility shim: ``merlin.rvvgen`` is now :mod:`merlin.mining`. |
 | `merlin.targetgen` | TargetGen pipeline: ingest -> extract -> plan -> generate -> validate. |
 | `merlin.targetgen.agent` | Agentic target-generation slots (Claude Code CLI dispatch + gated kernel synthesis). |
 | `merlin.targetgen.contract` | Experiment-ABI contract layer. |

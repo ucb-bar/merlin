@@ -123,7 +123,7 @@ CATALOG: dict[str, dict] = {
         },
     },
     # --- RVV intrinsic decisions: schedule-level codegen knobs (abstraction None -> policy_rule
-    # only). Each maps to an RVV target-package knob/lever via kernels/rvv_knobs.MOTIF_TO_KNOB,
+    # only). Each maps to an RVV target-package knob/lever via kernels/knobs.MOTIF_TO_KNOB,
     # which the tuning agent uses to propose forks. `when` is symbolic (compiler-visible facts),
     # never a kernel's literal LMUL/tile constants.
     "lmul_grouping": {

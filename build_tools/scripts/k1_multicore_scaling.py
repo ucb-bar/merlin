@@ -45,8 +45,8 @@ import numpy as np
 
 from merlin.baselines import bundle as _bundle
 from merlin.common.artifacts import artifacts_dir
-from merlin.rvvgen import k1
-from merlin.rvvgen.registry import load_rvv_package
+from merlin.mining import k1
+from merlin.mining.registry import load_rvv_package
 from merlin.runtime.backends import zephyr_model as zm
 
 

@@ -23,8 +23,8 @@ import numpy as np
 
 from merlin.baselines import bundle as _bundle
 from merlin.common.paths import artifacts_dir, repo_root
-from merlin.rvvgen import k1
-from merlin.rvvgen.registry import load_rvv_package
+from merlin.mining import k1
+from merlin.mining.registry import load_rvv_package
 from merlin.runtime.backends import zephyr_model as zm
 
 #: The recipes under test. ``microkernel`` is the knob-block spelling of the SHARED micro-kernel
@@ -41,7 +41,7 @@ def _pkg_for(base, tag: str, cfg: dict):
     """Build the package for one config. A ``microkernel`` block must go through the knob resolver
     (that IS the shared capability), so it is applied to knobs and re-resolved, not hand-listed."""
     if "microkernel" in cfg:
-        from merlin.rvvgen.registry import _resolve_features
+        from merlin.mining.registry import _resolve_features
         knobs = {**base.knobs, "microkernel": cfg["microkernel"]}
         return replace(base, run_id=tag, knobs=knobs,
                        compiler_features=_resolve_features(knobs, base.manifest))

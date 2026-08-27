@@ -24,7 +24,7 @@ _NOISE_MARGIN_ENV = "MERLIN_BEAM_NOISE_MARGIN"
 
 from ..common.yaml import write_yaml
 from ..kernels.compare import RvvFingerprint, compare_fingerprints
-from ..kernels.rvv_knobs import propose_forks
+from ..kernels.knobs import propose_forks
 from .fork_from_action import propose_forks_from_cca
 from .from_strategy import mint_fork
 from .registry import load_rvv_package
@@ -204,7 +204,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     kernel C source for this op (the structural target); ``op_key`` = {op,dtype,shape_regime}.
 
     Target-plugin seams (all injectable; defaults are the RVV instantiation — see
-    rvvgen/TARGET_PLUGIN.md): ``loader(package_dir) -> pkg`` (pkg must expose ``.run_id`` and
+    mining/TARGET_PLUGIN.md): ``loader(package_dir) -> pkg`` (pkg must expose ``.run_id`` and
     ``.knobs``), ``minter(parent, overrides, ...) -> Path`` (render+write a fork package),
     ``proposer(divergences, knobs) -> [ForkProposal]`` (the lever/tuning policy), and
     ``certify_fn(**job) -> result`` (build+run+gate). A new target reuses this engine unchanged by
@@ -452,5 +452,5 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
                     if best else None,
             "nodes": nodes, "deferred_work_items": deferred}
     tree_path = runs_root / "beam_tree.yaml"
-    write_yaml(tree_path, tree, header="RVV beam-search tree (rvvgen.beam.run_beam)")
+    write_yaml(tree_path, tree, header="RVV beam-search tree (mining.beam.run_beam)")
     return {"best": best, "nodes": nodes, "deferred": deferred, "tree_path": str(tree_path)}

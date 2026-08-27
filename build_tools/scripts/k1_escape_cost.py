@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Quantify a RUNTIME ESCAPE's cost on the real K1, by how its instruction count SCALES.
 
-The escape audit (``merlin.rvvgen.escape_sweep``) screens for calls the compiler emitted inside a
+The escape audit (``merlin.mining.escape_sweep``) screens for calls the compiler emitted inside a
 loop. Screening cannot say what one costs -- an in-loop call could be a cheap epilogue or, as it was
 for the f32 GEMM, 77% of everything retired. This script measures that, using the scaling argument
 that localized the original defect:
@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import k1_large_shape_packing as L  # noqa: E402
 from merlin.common.driver_output import int_after  # noqa: E402
 from merlin.common.paths import repo_root  # noqa: E402
-from merlin.rvvgen import k1  # noqa: E402
+from merlin.mining import k1  # noqa: E402
 
 TAG = "esc"          # unique remote-tag prefix: other agents measure on this board concurrently
 
@@ -50,8 +50,8 @@ def build_gemm(*, M: int, N: int, K: int, dtype: str, features: list[str],
     from merlin.llvmlower import c_runtime, toolchain
     from merlin.llvmlower.lower import lower_model_file
     from merlin.llvmlower.pipeline import PipelineError
-    from merlin.rvvgen import workloads
-    from merlin.rvvgen.registry import load_rvv_package
+    from merlin.mining import workloads
+    from merlin.mining.registry import load_rvv_package
     from merlin.runtime.backends import zephyr_model as zm
 
     pkg_dir = "hand_v0_int8" if dtype == "int8" else "hand_v0"

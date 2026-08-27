@@ -111,17 +111,17 @@ def _decode(features, gen_fn):
 
 
 def _reduce_sum(d):
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     return workloads.gen_reduce_f32(d, op="sum", M=64, N=256)
 
 
 def _softmax(d):
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     return workloads.gen_softmax_f32(d, M=64, N=256)
 
 
 def _matmul(d):
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     return workloads.gen_matmul_f32(d, M=64, N=64, K=64)
 
 

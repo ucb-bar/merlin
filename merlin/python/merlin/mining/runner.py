@@ -245,7 +245,7 @@ def _write(run_dir: Path, rec: dict[str, Any]) -> Path:
     if problems:
         rec.setdefault("notes", {})["schema"] = problems
     return write_yaml(run_dir / "results.yaml", rec,
-                      header="RVV experiment result (merlin.rvvgen.runner.certify_rvv)")
+                      header="RVV experiment result (merlin.mining.runner.certify_rvv)")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -157,7 +157,7 @@ def _probe(key: str) -> tuple[str, str]:
             sp = importlib.import_module("merlin.runtime.backends.spike")
             return ("available" if sp.available() else "unavailable", "")
         if key == "k1_board":
-            k1 = importlib.import_module("merlin.rvvgen.k1")
+            k1 = importlib.import_module("merlin.mining.k1")
             return ("available" if k1.available() else "unavailable",
                     os.environ.get("MERLIN_K1_HOST", "MERLIN_K1_HOST unset"))
         if key == "firesim":

@@ -1,4 +1,4 @@
-"""C8: assemble a model SECTION into a K1-buildable bundle (rvvgen.section_build).
+"""C8: assemble a model SECTION into a K1-buildable bundle (mining.section_build).
 
 Gated on a real capture with weights (the committed prov-only corpus has no weights). Asserts the
 assembled section is a well-formed, self-contained "model" directory the whole-model K1 build consumes
@@ -23,7 +23,7 @@ def test_section_bundle_is_a_valid_buildable_model_dir(tmp_path):
     import numpy as np
 
     from merlin.llvmlower.weights_pack import load_safetensors_header
-    from merlin.rvvgen.section_build import build_section_bundle
+    from merlin.mining.section_build import build_section_bundle
 
     out = tmp_path / "sec_mm0"
     summary = build_section_bundle(str(_CAP), {"matmul_0"}, out)
@@ -49,7 +49,7 @@ def test_section_bundle_is_a_valid_buildable_model_dir(tmp_path):
 
 def test_bad_region_id_fails_closed(tmp_path):
     from merlin.xdsl_dialects.lowering.outline import OutlineError
-    from merlin.rvvgen.section_build import build_section_bundle
+    from merlin.mining.section_build import build_section_bundle
 
     with pytest.raises((OutlineError, ValueError)):
         build_section_bundle(str(_CAP), {"no_such_region"}, tmp_path / "nope")
@@ -57,7 +57,7 @@ def test_bad_region_id_fails_closed(tmp_path):
 
 def _k1_up() -> bool:
     try:
-        from merlin.rvvgen import k1
+        from merlin.mining import k1
         return k1.available()
     except Exception:  # noqa: BLE001
         return False
@@ -71,9 +71,9 @@ def test_section_runs_correctly_on_k1_board(tmp_path):
     import numpy as np
 
     from merlin.common.paths import repo_root
-    from merlin.rvvgen import k1
-    from merlin.rvvgen.registry import load_rvv_package
-    from merlin.rvvgen.section_build import build_section_bundle
+    from merlin.mining import k1
+    from merlin.mining.registry import load_rvv_package
+    from merlin.mining.section_build import build_section_bundle
     from merlin.runtime.backends.zephyr_model import _parse_console
 
     sec = tmp_path / "sec_mm0"

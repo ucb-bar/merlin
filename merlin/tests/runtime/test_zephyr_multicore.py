@@ -118,8 +118,8 @@ def test_multicore_is_bit_identical_on_the_k1_board(threads, tmp_path):
     how many cores executed, not what was compiled.
     """
     from merlin.compile_cli import default_package
-    from merlin.rvvgen import k1
-    from merlin.rvvgen.registry import load_rvv_package
+    from merlin.mining import k1
+    from merlin.mining.registry import load_rvv_package
 
     if not k1.available():
         pytest.skip("K1 board unreachable")
@@ -161,7 +161,7 @@ def test_zephyr_openmp_shim_is_bit_identical_on_a_kernel(n_harts, tmp_path):
     zm = _zm()
     if not zm.available():
         pytest.skip("Zephyr/spike toolchain unavailable")
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
 
     # N=256 splits cleanly over 2 and 4 harts and stays a multiple of the NR=8 micro-kernel tile.
     b = workloads.gen_matmul_f32(tmp_path / "bundle", M=64, N=256, K=64, seed=0)
@@ -248,8 +248,8 @@ def test_new_workload_multicore_output_is_bit_identical(bundle_name, n_harts, tm
     must be proven correct independently of it -- a wrong-but-identical output still proves the
     parallel decomposition touched nothing, which is the property under test here.
     """
-    from merlin.rvvgen.apply import shape_adapted_features
-    from merlin.rvvgen.registry import load_rvv_package
+    from merlin.mining.apply import shape_adapted_features
+    from merlin.mining.registry import load_rvv_package
 
     zm = _zm()
     if not zm.available():

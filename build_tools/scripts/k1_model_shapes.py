@@ -73,7 +73,7 @@ def main():
 def _expert_rect(source, *, M, N, K, reps):
     import subprocess, tempfile
     from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
-    from merlin.rvvgen import k1
+    from merlin.mining import k1
     spec = expert._experts()[source]
     base = {"op": "matmul", "dtype": spec["dtype"], "M": M, "N": N, "K": K, "source": source,
             "target": "k1", "mode": "inner_compute", "scope": "inner_compute", "timer": "rdtime",
@@ -119,7 +119,7 @@ def _expert_rect(source, *, M, N, K, reps):
 
 def _intrinsic_rect(*, M, N, K, reps):
     import subprocess, tempfile
-    from merlin.rvvgen import k1
+    from merlin.mining import k1
     base = {"op": "matmul", "dtype": "f32", "M": M, "N": N, "K": K, "source": "ours-intrinsic",
             "target": "k1", "mode": "inner_compute", "scope": "inner_compute", "timer": "rdtime",
             "timebase_hz": k1.K1_TIMEBASE_HZ, "cycle_accurate": False,
@@ -160,8 +160,8 @@ def _ours_tiled_mnk(*, M, N, K, reps):
     """Compiler-emitted tiled-vfmacc on an explicit rectangular [M,N,K]."""
     import subprocess, tempfile
     from dataclasses import replace
-    from merlin.rvvgen import k1, workloads
-    from merlin.rvvgen.registry import load_rvv_package
+    from merlin.mining import k1, workloads
+    from merlin.mining.registry import load_rvv_package
     from merlin.llvmlower import c_runtime, toolchain
     from merlin.llvmlower.lower import lower_model_file
     from merlin.llvmlower.pipeline import PipelineError

@@ -122,7 +122,7 @@ def _objdump() -> str | None:
     would fabricate a false ~0% RVV coverage. ``llvm-objdump`` decodes the V extension correctly, so
     we prefer it everywhere (toolchain bin first, then PATH). GNU objdump remains a last resort.
     """
-    from merlin.rvvgen import k1
+    from merlin.mining import k1
     root = k1._toolchain_root()
     cands = ("llvm-objdump", "riscv64-unknown-linux-gnu-objdump", "objdump")
     if root:

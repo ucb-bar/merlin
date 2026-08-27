@@ -1,6 +1,6 @@
 """PER-OP register blocking: give every contraction the block legal for ITS OWN extents.
 
-The shape-aware policy in :mod:`merlin.rvvgen.apply` picks one block per op CLASS
+The shape-aware policy in :mod:`merlin.mining.apply` picks one block per op CLASS
 (``linalg.matmul`` / ``linalg.batch_matmul``). That is one decision too coarse, because a class is not
 shape-homogeneous: whisper_tiny's ``batch_matmul`` class holds both a 1500-wide encoder attention and a
 single-token decode step whose N=1, and the only block legal for *every* member is one lane wide. The
@@ -19,7 +19,7 @@ Two facts decide the design, both measured:
    ``accum_microkernel.SCALARIZE_MARKER`` uses for A-operand scalarization).
 
 So: merlin decides the blocks (this module, using the measured predicate in
-``rvvgen.from_strategy``), emits them as a **shape -> block table** into the runner source, and the
+``mining.from_strategy``), emits them as a **shape -> block table** into the runner source, and the
 runner does nothing but look up each contraction's shape and set ``merlin.blk_<MR>x<NR>``. The policy
 stays in one place; the runner carries no policy it could drift from.
 """
@@ -95,8 +95,8 @@ def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
     model that built fine at 1 hart. The split is derived by the same helper the class-wide policy
     uses, so the two cannot drift.
     """
-    from ..rvvgen.apply import _harts_split_shapes
-    from ..rvvgen.from_strategy import _rvv_best_block
+    from ..mining.apply import _harts_split_shapes
+    from ..mining.from_strategy import _rvv_best_block
 
     out: dict[str, tuple[int, int]] = {}
     for s in shapes:

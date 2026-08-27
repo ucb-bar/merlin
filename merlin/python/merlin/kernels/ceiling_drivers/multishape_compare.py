@@ -152,20 +152,20 @@ def _ours_package(run_id: str, features: list[str]):
     Constructed in-memory so the measurement does not depend on timestamped
     auto-fork directories; baseline (features==[]) is byte-identical to hand_v0.
     """
-    from ...rvvgen.registry import load_rvv_package
+    from ...mining.registry import load_rvv_package
     base = load_rvv_package(artifacts_dir() / "targets" / "rvv" / "hand_v0")
     return replace(base, run_id=run_id, compiler_features=list(features))
 
 
 def _gen_matmul_bundle(M: int, N: int, K: int) -> Path:
-    from ...rvvgen import workloads
+    from ...mining import workloads
     out_root = artifacts_dir() / "cache" / "rvv_workloads"
     return workloads.gen_matmul_f32(out_root, M=M, N=N, K=K)
 
 
 def measure_ours(run_id: str, features: list[str], *, M: int, N: int, K: int,
                  timeout: int = 600) -> dict:
-    from ...rvvgen.apply import apply_rvv_package
+    from ...mining.apply import apply_rvv_package
     from ...runtime.backends import spike
 
     regime = bench_ceiling.shape_regime("matmul", M, N, K)

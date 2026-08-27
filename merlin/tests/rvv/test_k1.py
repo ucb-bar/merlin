@@ -1,4 +1,4 @@
-"""SpacemiT K1 adapter (merlin.rvvgen.k1) — fail-closed units + an opt-in real-board run.
+"""SpacemiT K1 adapter (merlin.mining.k1) — fail-closed units + an opt-in real-board run.
 
 Board-free units lock in the safety contract that keeps the coupled runner honest:
 ``available()`` is False without a configured host (so the runner records K1 ``not_run``, never a
@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from merlin.rvvgen import k1
+from merlin.mining import k1
 
 
 def test_available_fail_closed_without_host(monkeypatch):
@@ -79,8 +79,8 @@ def test_main_linux_is_glibc_hosted():
 def test_real_k1_matmul_end_to_end(tmp_path):
     # REAL silicon: generate a tiny matmul, cross-compile + deploy + run on the board, and assert
     # we got real measurements back (cycles estimate + raw timebase ticks + wall ns + vlen).
-    from merlin.rvvgen.registry import load_rvv_package
-    from merlin.rvvgen.workloads import gen_matmul_f32
+    from merlin.mining.registry import load_rvv_package
+    from merlin.mining.workloads import gen_matmul_f32
 
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     bundle = gen_matmul_f32(tmp_path, M=64, N=64, K=64)

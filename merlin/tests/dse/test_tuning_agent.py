@@ -5,11 +5,11 @@ test_rvv_beam.py)."""
 import json
 import os
 
-from merlin.rvvgen.tuning_agent import propose_forks_llm, build_prompt, prompt_path
-from merlin.rvvgen.from_strategy import render_schedule
-from merlin.rvvgen.beam import run_beam
-from merlin.rvvgen import load_rvv_package
-from merlin.kernels.rvv_knobs import ForkProposal
+from merlin.mining.tuning_agent import propose_forks_llm, build_prompt, prompt_path
+from merlin.mining.from_strategy import render_schedule
+from merlin.mining.beam import run_beam
+from merlin.mining import load_rvv_package
+from merlin.kernels.knobs import ForkProposal
 
 # Reuse the divergences + mock-certify from the beam test (replicated, kept identical).
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))

@@ -413,7 +413,7 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
                 continue
             # The innermost extent must be a whole multiple of the vector width. A partial tail means a
             # MASKED parallel dim, which does not lower at all on the integer path (see
-            # rvvgen.from_strategy._rvv_blocking_lowers) -- the same predicate the register block obeys.
+            # mining.from_strategy._rvv_blocking_lowers) -- the same predicate the register block obeys.
             try:
                 shape = list(op.results[0].type.get_shape())
             except Exception:                                      # noqa: BLE001
@@ -2149,7 +2149,7 @@ def build_and_run(model_dir: str | Path, work: str | Path, *, board: str = "spik
 
     ``n_harts``/``iters``/``warmup`` select the multicore and sustained-inference images;
     ``rvv_schedule``/``cflags_override``/``features`` pass an RVV package's codegen through
-    (the same seam :mod:`merlin.rvvgen.apply` uses) so a package can be measured here.
+    (the same seam :mod:`merlin.mining.apply` uses) so a package can be measured here.
     """
     # spike needs at least as many harts as the image will use, or the pinned workers have
     # nowhere to run and the pool silently clamps to fewer threads.

@@ -15,7 +15,7 @@ from merlin.kernels.microkernel import (ContractionShape, MicrokernelSpec, VL_DY
                                         largest_divisor_at_most, masked_parallel_dims,
                                         resolve, resolve_for_shapes)
 from merlin.kernels.shapes import contraction_shapes
-from merlin.rvvgen.from_strategy import _rvv_best_block, _rvv_blocking_lowers
+from merlin.mining.from_strategy import _rvv_best_block, _rvv_blocking_lowers
 
 
 # (MR, NR, M, N, lowers) — measured cells of the int8 lowering grid.
@@ -228,7 +228,7 @@ def test_adaptation_is_a_noop_when_the_frozen_block_lowers():
     named point would change the emitted kernel for models whose numbers are already published.
     """
     from merlin.llvmlower import impr_features as impr
-    from merlin.rvvgen.apply import _adapt_frozen_points
+    from merlin.mining.apply import _adapt_frozen_points
 
     # matmul M%1==0 and N%16==0; batch_matmul M%4==0 and N%8==0 -> both frozen blocks lower.
     shapes = [
@@ -243,7 +243,7 @@ def test_adaptation_is_a_noop_when_the_frozen_block_lowers():
 def test_adaptation_fires_only_for_the_failing_op_class():
     """A class whose frozen block cannot lower is re-derived; the other class keeps its block."""
     from merlin.llvmlower import impr_features as impr
-    from merlin.rvvgen.apply import _adapt_frozen_points
+    from merlin.mining.apply import _adapt_frozen_points
 
     # matmul N=8 with the frozen NR=16: MR==1 but NR > N, so the fully-masked single iteration
     # does not lower (the measured rank-1 escape needs NR <= N). batch_matmul is left fitting.
@@ -274,7 +274,7 @@ def test_a_class_with_no_multi_lane_block_is_left_unclaimed():
     for convert-linalg-to-loops) and keep the other class vectorized.
     """
     from merlin.llvmlower import impr_features as impr
-    from merlin.rvvgen.apply import _adapt_frozen_points
+    from merlin.mining.apply import _adapt_frozen_points
 
     shapes = [
         _Shape("linalg.matmul", (1, 384)),
@@ -327,7 +327,7 @@ def test_schedule_pinned_blocks_are_read_by_following_handles():
     shape resolver cannot re-derive it. Reading it back is what lets a caller warn instead of silently
     running ~34x slow.
     """
-    from merlin.rvvgen.apply import _schedule_pinned_blocks
+    from merlin.mining.apply import _schedule_pinned_blocks
 
     sched = """
     module {
@@ -349,7 +349,7 @@ def test_schedule_pinned_blocks_are_read_by_following_handles():
 
 def test_a_schedule_pinned_block_that_masks_is_reported_not_swallowed():
     """M=1/M=3 against an MR=4 schedule block must produce a message naming the op class."""
-    from merlin.rvvgen.apply import blocking_risks
+    from merlin.mining.apply import blocking_risks
 
     class _Pkg:
         compiler_features: tuple = ()
@@ -358,7 +358,7 @@ def test_a_schedule_pinned_block_that_masks_is_reported_not_swallowed():
                          '%t, %l:3 = transform.structured.tile_using_for %mm tile_sizes [4, 8, 1] '
                          ': (!transform.any_op) -> (!transform.any_op)\n')
 
-    import merlin.rvvgen.apply as apply_mod
+    import merlin.mining.apply as apply_mod
 
     shapes = [_Shape("linalg.matmul", (1, 64)), _Shape("linalg.matmul", (3, 4096)),
               _Shape("linalg.matmul", (64, 256))]
@@ -378,7 +378,7 @@ def test_a_schedule_pinned_block_that_masks_is_reported_not_swallowed():
 def test_a_frozen_feature_package_reports_no_schedule_risk():
     """The resolver already adapts a frozen point, so warning about it would be noise."""
     from merlin.llvmlower import impr_features as impr
-    from merlin.rvvgen.apply import blocking_risks
+    from merlin.mining.apply import blocking_risks
 
     class _Pkg:
         compiler_features = (impr.WHOLEMODEL_VF_NAME,)
@@ -403,7 +403,7 @@ def test_the_per_hart_tile_is_what_a_multicore_block_must_cover():
     remainder tile). Resolving against the unsplit N is how a block that lowers at 1 and 4 harts
     failed at 3.
     """
-    from merlin.rvvgen.apply import _harts_split_shapes
+    from merlin.mining.apply import _harts_split_shapes
 
     shapes = [_Shape("linalg.matmul", (32, 2)), _Shape("linalg.batch_matmul", (6, 8, 64))]
     assert [s.parallel for s in _harts_split_shapes(shapes, 1)] == [(32, 2), (6, 8, 64)]
@@ -416,7 +416,7 @@ def test_the_per_hart_tile_is_what_a_multicore_block_must_cover():
 
 def test_a_remainder_tile_is_checked_too_not_just_the_ceiling():
     """The last hart's tile is smaller than the others; a block legal only for the big tile is wrong."""
-    from merlin.rvvgen.apply import _harts_split_shapes
+    from merlin.mining.apply import _harts_split_shapes
 
     # N=10 over 4 harts -> ceil = 3 for three harts, remainder 1 for the fourth.
     tiles = sorted({s.parallel[-1] for s in

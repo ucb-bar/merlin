@@ -46,8 +46,8 @@ import numpy as np
 
 from merlin.common.paths import artifacts_dir
 from merlin.llvmlower.op_profile import join_key
-from merlin.rvvgen import k1
-from merlin.rvvgen.registry import load_rvv_package
+from merlin.mining import k1
+from merlin.mining.registry import load_rvv_package
 from merlin.runtime.backends import zephyr_model as zm
 
 TIMEBASE_HZ = k1.K1_TIMEBASE_HZ  # rdtime tick rate (24 MHz)

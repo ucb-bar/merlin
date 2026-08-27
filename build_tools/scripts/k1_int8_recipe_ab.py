@@ -22,7 +22,7 @@ from pathlib import Path
 
 from merlin.common.paths import artifacts_dir, repo_root
 from merlin.common.driver_output import int_after
-from merlin.rvvgen import k1
+from merlin.mining import k1
 
 sys.path.insert(0, str(Path(repo_root()) / "build_tools" / "scripts"))
 from k1_cross_framework_ops import HERE, REPO, _build_run_ours, _build_run_xnn  # noqa: E402
@@ -42,7 +42,7 @@ def _instret(row: dict) -> int | None:
 
 
 def run(shapes: list[int], reps: int, prefix: str, dtype: str) -> list[dict]:
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     rows: list[dict] = []
     for S in shapes:
         bundle = workloads.gen_matmul_f32(REPO / "out" / "artifacts" / "cache" / "rvv_workloads",

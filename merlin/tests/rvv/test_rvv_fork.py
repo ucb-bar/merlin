@@ -6,9 +6,9 @@ lineage-stamped package (never mutate the parent).
 """
 import os
 
-from merlin.rvvgen import load_rvv_package
-from merlin.rvvgen.fork import mint_run_id
-from merlin.rvvgen.from_strategy import render_schedule, mint_fork
+from merlin.mining import load_rvv_package
+from merlin.mining.fork import mint_run_id
+from merlin.mining.from_strategy import render_schedule, mint_fork
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 HAND_V0 = os.path.join(ROOT, "out/artifacts/targets", "rvv", "hand_v0")

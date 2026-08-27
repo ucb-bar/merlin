@@ -166,7 +166,7 @@ def prime_board_cache(spec, root: Path, *, n: int = 3) -> dict[str, str]:
     per-op driver (a declared follow-on; not yet wired here)."""
     import sys as _sys
 
-    from merlin.rvvgen import k1 as _k1
+    from merlin.mining import k1 as _k1
     if not _k1.available():
         raise RuntimeError("merlin-compare --run: K1 board unavailable (set MERLIN_K1_HOST / "
                            "MERLIN_K1_SSH_KEY / MERLIN_K1_TOOLCHAIN in .env). Remove --run to ingest cache.")

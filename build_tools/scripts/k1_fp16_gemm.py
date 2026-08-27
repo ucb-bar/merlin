@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from merlin.common.artifacts import cache_dir
 from merlin.common.driver_output import int_after, int_field
 from merlin.common.paths import repo_root
-from merlin.rvvgen import k1
+from merlin.mining import k1
 
 import k1_cross_framework_ops as X
 
@@ -67,7 +67,7 @@ def _run_ours(S: int, reps: int, tag: str, keep: Path, feats: list[str]) -> dict
             "mode": "inner_compute", "timer": "rdtime", "timebase_hz": k1.K1_TIMEBASE_HZ,
             "source": "ours_fp16_f32acc", "compiler_features": feats,
             "gate": "cos>0.9999 AND rel_l2<1e-2 AND max_rel<0.05 (per-element, vs f64-exact)"}
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     bundle = workloads.gen_matmul_f16(cache_dir("rvv_workloads"), M=S, N=S, K=S)
     work = keep / "work"
     work.mkdir(parents=True, exist_ok=True)

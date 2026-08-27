@@ -15,7 +15,7 @@ Target-appropriate semantics (they are genuinely different pipelines, not a fals
 
 Fail-closed + honest: a missing toolchain / board / sim yields a clear ``status`` (never a fake pass);
 correctness gates before any success is reported. This CLI only ORCHESTRATES the existing, tested API
-(``llvmlower.lower``, ``rvvgen.k1``, ``rvvgen.registry``, ``runtime.backends.zephyr_model``,
+(``llvmlower.lower``, ``mining.k1``, ``mining.registry``, ``runtime.backends.zephyr_model``,
 ``targetgen.oot_runner``) — it adds no new compile logic.
 """
 from __future__ import annotations
@@ -137,7 +137,7 @@ def _capture_python(m2m_dir: Path, workload: str) -> Path:
 #: RIGHT datatype. An fp32 schedule applied to an int8 workload builds a silently wrong
 #: datapath rather than failing, so this must never fall back across datatypes.
 #:
-#: These strings must match what packages actually declare (``rvvgen.tuning_agent``'s strategy
+#: These strings must match what packages actually declare (``mining.tuning_agent``'s strategy
 #: set: fp32, int8_w8a8, bf16_f32acc, fp16_f32acc). "fp16"/"fp8" matched nothing, so
 #: ``select_champion`` raised and the fallback below handed back ``hand_v0`` — an **fp32**
 #: package — which is exactly the cross-datatype substitution the paragraph above forbids.
@@ -170,7 +170,7 @@ def default_package(dtype: str, *, bundle: "Path | None" = None) -> str:
     unused. Falls back to the hand baseline only when no package of this dtype is certified, and
     says so.
     """
-    from .rvvgen.tuning_agent import _DTYPE_STRATEGIES
+    from .mining.tuning_agent import _DTYPE_STRATEGIES
     from .targetgen.publish import PublishError, select_champion
     strategy = _DTYPE_STRATEGY.get(dtype)
     if strategy is None and bundle is not None:
@@ -197,7 +197,7 @@ def default_package(dtype: str, *, bundle: "Path | None" = None) -> str:
         raise SystemExit(
             f"[merlin-compile] _DTYPE_STRATEGY maps --dtype {dtype} to dtype_strategy {strategy!r}, which "
             f"is not a strategy packages may declare ({', '.join(sorted(_DTYPE_STRATEGIES))}); no package "
-            f"can ever satisfy it. Fix the map, or add {strategy!r} to rvvgen.tuning_agent.")
+            f"can ever satisfy it. Fix the map, or add {strategy!r} to mining.tuning_agent.")
     try:
         sel = select_champion("rvv", dtype_strategy=strategy)
         return str(sel.package_dir)
@@ -235,7 +235,7 @@ def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
     """
     frozen = list(pkg.compiler_features)
     try:
-        from .rvvgen.apply import blocking_risks, shape_adapted_features
+        from .mining.apply import blocking_risks, shape_adapted_features
         # A package whose block lives in its SCHEDULE TEXT (no feature) cannot be re-resolved. Say so
         # rather than letting the resulting ~34x fp32 degradation read as "this model is slow".
         for risk in blocking_risks(pkg, bundle):
@@ -272,8 +272,8 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     ``kernel_backend='mesh'`` + ``mesh_target`` runs the model's matmul LAYERS on that target's
     accelerator mesh (host dispatch runtime, each matmul injected onto the mesh oracle)."""
     import numpy as np
-    from .rvvgen import k1
-    from .rvvgen.registry import load_rvv_package
+    from .mining import k1
+    from .mining.registry import load_rvv_package
     from .runtime.backends import zephyr_model as zm
 
     # Sustained mode runs warmup + iters passes inside ONE invocation, so the run deadline has to

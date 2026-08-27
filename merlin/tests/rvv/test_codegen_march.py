@@ -3,9 +3,9 @@
 ``-march=rv64gcv`` promises only the RVV minimum VLEN (128 bits), so a fixed-width vector we emit is
 given double the LMUL a VLEN=256 core needs — doubling vector-register pressure (K-loop spills) and
 running each vector instruction at half of VLMAX. These tests pin the contract; the measured effect
-is recorded in :func:`merlin.rvvgen.k1.codegen_march`'s docstring.
+is recorded in :func:`merlin.mining.k1.codegen_march`'s docstring.
 """
-from merlin.rvvgen import k1
+from merlin.mining import k1
 
 
 def test_codegen_march_pins_the_boards_vlen():

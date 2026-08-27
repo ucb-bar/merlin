@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Harvest per-family XNNPACK RVV ukernel objdump fixtures for the beam's per-op teacher.
 
-The per-op teacher (``merlin.rvvgen.wholemodel_proposer``) pairs a per-FAMILY expert CCA against our
+The per-op teacher (``merlin.mining.wholemodel_proposer``) pairs a per-FAMILY expert CCA against our
 per-family section CCA. The expert CCA is lifted from a REAL RVV disassembly of the family's XNNPACK
 ukernel. GEMM fixtures pre-exist (``run_expert_gemm``); this script harvests the rest of the census
 byte-traffic families that HAVE an XNNPACK primitive — transpose, reduce (rsum/rmax), the transcendental
@@ -27,8 +27,8 @@ from pathlib import Path
 
 from merlin.common.paths import repo_root, work_dir
 from merlin.kernels.decode.objdump import disassemble_text
-from merlin.rvvgen import k1
-from merlin.rvvgen.wholemodel_proposer import FAMILY_TEACHERS, FamilyTeacher, cca_asm_dir
+from merlin.mining import k1
+from merlin.mining.wholemodel_proposer import FAMILY_TEACHERS, FamilyTeacher, cca_asm_dir
 
 _CFLAGS = ["--target=riscv64-unknown-linux-gnu", "-march=rv64gcv_zfh_zvfh", "-mabi=lp64d",
            "-O3", "-DNDEBUG"]

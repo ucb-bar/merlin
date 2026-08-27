@@ -144,8 +144,8 @@ def _abstraction_section(mined: Path) -> str:
 
 
 def _knob_section() -> str:
-    from ..kernels import rvv_knobs
-    routes = getattr(rvv_knobs, "MOTIF_ROUTES", None) or getattr(rvv_knobs, "_ROUTES", {})
+    from ..kernels import knobs
+    routes = getattr(knobs, "MOTIF_ROUTES", None) or getattr(knobs, "_ROUTES", {})
     lines = ["## 3b. Legacy motif -> knob gap-router (superseded by §3; kept for continuity)", "",
              "| divergence axis | policy | lever | forkable now | note |",
              "|---|---|---|---|---|"]

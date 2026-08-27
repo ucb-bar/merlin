@@ -7,7 +7,7 @@ match, K0 integrity failure recording (no raise), and K1/K5 not_run when targets
 """
 import os
 
-from merlin.rvvgen import runner, k1
+from merlin.mining import runner, k1
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -66,7 +66,7 @@ def test_k1_unavailable_is_fail_closed(monkeypatch):
 def test_workload_matmul_bundle_is_valid(tmp_path):
     import json
     import numpy as np
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     b = workloads.gen_matmul_f32(tmp_path, M=8, N=8, K=8, seed=1)
     for f in ("model.mlir", "weights.safetensors", "weights.safetensors.manifest.json",
               "input_order.json", "inputs.npz", "golden.npy"):

@@ -114,8 +114,8 @@ def _manual_best(model: str) -> dict:
 
 
 def run_cell(dtype: str, model: str, *, width: int, depth: int, top_k: int) -> dict:
-    from merlin.rvvgen.beam_cli import run_instrumented_beam
-    from merlin.rvvgen.wholemodel_proposer import propose_wholemodel_levers
+    from merlin.mining.beam_cli import run_instrumented_beam
+    from merlin.mining.wholemodel_proposer import propose_wholemodel_levers
     bundle = _BUNDLE.get((dtype, model))
     obj = _EXPERT_OBJDUMP.get(dtype)
     root = repo_root()

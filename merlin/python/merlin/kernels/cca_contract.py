@@ -179,19 +179,20 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
         "dispatch.config_fraction", METRIC, ("dispatch",),
         "METRIC: share of dispatches that only set state -- diagnoses re-configuration overhead"),
     "dispatch.descriptor_reuse": FieldSpec(
-        "dispatch.descriptor_reuse", BACKEND_STUB, ("dispatch",),
-        "endpoint state set once and inherited vs re-set per tile -> preload-elision lever "
-        "(routes pending)"),
+        "dispatch.descriptor_reuse", LEVER, ("dispatch",),
+        "endpoint state set once and inherited vs re-set per tile -> the preload-elision route the RTL "
+        "backend derives for any endpoint whose table binds a config role"),
     "dispatch.loop_offloaded": FieldSpec(
-        "dispatch.loop_offloaded", BACKEND_STUB, ("dispatch",),
-        "a loop nest handed to the endpoint's own sequencer -> the runtime-layout-encoding region "
-        "(registered with no cca_axes today)"),
+        "dispatch.loop_offloaded", LEVER, ("dispatch",),
+        "a loop nest handed to the endpoint's own sequencer -> derived for any endpoint whose table "
+        "binds a loop_descriptor role; governed by the runtime-layout-encoding region"),
     "dispatch.double_buffered_banks": FieldSpec(
         "dispatch.double_buffered_banks", BACKEND_STUB, ("dispatch",),
         "on-chip banks alternated across tiles -> arena-plan lever (routes pending)"),
     "dispatch.dma_overlap": FieldSpec(
-        "dispatch.dma_overlap", BACKEND_STUB, ("dispatch",),
-        "bulk movement issued to overlap with compute -> the hw-sync region (no cca_axes today)"),
+        "dispatch.dma_overlap", LEVER, ("dispatch",),
+        "bulk movement issued to overlap with compute -> derived for any endpoint binding a dma role; "
+        "governed by the hw-sync region"),
     # --- layout: how operands are laid out BEFORE the region runs ---
     # transpose_materialized is ALREADY routed in the action catalog with no facet behind it, so the
     # divergence that route exists to answer could never be raised: a route nothing can trigger.
@@ -200,8 +201,9 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
         "a transpose written to memory vs folded into the access -> the route already registered in "
         "the action catalog, which until now had no field able to trigger it"),
     "layout.operand_major": FieldSpec(
-        "layout.operand_major", BACKEND_STUB, ("layout",),
-        "k-major vs m/n-major operand packing -> arena-plan/pack lever (routes pending)"),
+        "layout.operand_major", LEVER, ("layout",),
+        "k-major vs m/n-major operand packing -> derived for any endpoint binding a load role, routed to "
+        "the target's own packing seam"),
     "layout.prepack_required": FieldSpec(
         "layout.prepack_required", IDENTITY, ("layout",),
         "the endpoint REQUIRES an offline-packed panel -- a property of the silicon, not a choice"),
@@ -209,9 +211,9 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
     # A compile-time FEASIBILITY predicate, not a performance hint: failing it produced 0/16384 correct
     # elements silently, and nothing in the CCA could say why.
     "memory.capacity_fit": FieldSpec(
-        "memory.capacity_fit", BACKEND_STUB, ("memory",),
-        "does the working set fit the declared on-chip capacity -> tiling/residency lever "
-        "(routes pending)"),
+        "memory.capacity_fit", LEVER, ("memory",),
+        "does the working set fit the discovered on-chip capacity -> derived wherever an accumulator "
+        "memory is discovered; overrunning it is not slow, it is silently wrong"),
     "memory.onchip_bytes_required": FieldSpec(
         "memory.onchip_bytes_required", METRIC, ("memory",),
         "METRIC: bytes the region's working set needs on chip"),

@@ -18,7 +18,7 @@ import pytest
 
 from merlin.common.paths import repo_root
 from merlin.kernels import cca, cca_compare
-from merlin.rvvgen import wholemodel_proposer as W
+from merlin.mining import wholemodel_proposer as W
 
 
 def _ours(op, **compute):
@@ -173,7 +173,7 @@ def test_ours_section_cca_wiring(tmp_path, monkeypatch):
     (tmp_path / "model.mlir").write_text(_MODEL_MLIR)
     seen = {}
 
-    import merlin.rvvgen.section_build as SB
+    import merlin.mining.section_build as SB
 
     def fake_build_section_bundle(model_dir, region_ids, out_dir, *, seed=0):
         seen["region_ids"] = list(region_ids)

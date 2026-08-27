@@ -32,8 +32,8 @@ from pathlib import Path
 from merlin.common.paths import repo_root
 from merlin.common.driver_output import int_after
 from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
-from merlin.rvvgen import k1
-from merlin.rvvgen.registry import load_rvv_package
+from merlin.mining import k1
+from merlin.mining.registry import load_rvv_package
 
 HERE = Path(repo_root()) / "merlin/python/merlin/kernels/ceiling_drivers"
 K1H = HERE / "k1_harness"
@@ -177,7 +177,7 @@ def measure_ours_compiler(run_id: str, features: list[str], *, S: int, reps: int
     """ours-baseline / ours-tiled go through the COMPILER (model.o). Their pack is fused into
     the kernel (no hoistable pre-pack), so inner==full by construction. We measure the
     inner-compute driver (ours_gemm_driver.c) and label both scopes from it."""
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     from merlin.llvmlower import c_runtime, toolchain
     from merlin.llvmlower.lower import lower_model_file
     from merlin.llvmlower.pipeline import PipelineError

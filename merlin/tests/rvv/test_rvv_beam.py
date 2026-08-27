@@ -2,9 +2,9 @@
 rank -> top-k -> beam_tree, plus deferred lever-2/3 work-item capture and the gap-router."""
 import os
 
-from merlin.rvvgen.beam import run_beam
-from merlin.rvvgen import load_rvv_package
-from merlin.kernels.rvv_knobs import propose_forks
+from merlin.mining.beam import run_beam
+from merlin.mining import load_rvv_package
+from merlin.kernels.knobs import propose_forks
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 HAND_V0 = os.path.join(ROOT, "out/artifacts/targets", "rvv", "hand_v0")
@@ -21,7 +21,7 @@ def test_cca_divergences_lifts_ours_from_objdump_and_diffs_vs_expert(tmp_path):
 
     from merlin.common.paths import merlin_dir
     from merlin.kernels import cca
-    from merlin.rvvgen.beam import _cca_divergences
+    from merlin.mining.beam import _cca_divergences
 
     gen = tmp_path / "run1" / "generated"
     gen.mkdir(parents=True)
@@ -91,7 +91,7 @@ def test_beam_stops_when_no_correct_parent(tmp_path):
 def test_rank_results_prefers_real_k1_speedup_and_fails_closed_on_incorrectness():
     """Ranking driver: real K1 speedup (measured silicon) beats the structural_match proxy; a fork
     that broke numerics never outranks a correct one no matter how 'fast'."""
-    from merlin.rvvgen.sweep import rank_results
+    from merlin.mining.sweep import rank_results
     nodes = [
         {"run_id": "seed", "gate_ok": True, "speedup": 1.0, "structural_match": 0.9},
         {"run_id": "fast_correct", "gate_ok": True, "speedup": 1.4, "structural_match": 0.5},
@@ -105,7 +105,7 @@ def test_rank_results_prefers_real_k1_speedup_and_fails_closed_on_incorrectness(
 
 def test_rank_results_falls_back_to_structural_match_without_k1():
     """No k1 run (speedup=None everywhere) -> ranking falls back to the structural_match proxy."""
-    from merlin.rvvgen.sweep import rank_results
+    from merlin.mining.sweep import rank_results
     nodes = [
         {"run_id": "a", "gate_ok": True, "speedup": None, "structural_match": 0.6},
         {"run_id": "b", "gate_ok": True, "speedup": None, "structural_match": 0.9},
@@ -122,7 +122,7 @@ def test_instrumented_beam_emits_aet_parent_and_child_runs(tmp_path, monkeypatch
     from pathlib import Path
 
     from merlin.common.paths import merlin_dir
-    from merlin.rvvgen.beam_cli import run_instrumented_beam
+    from merlin.mining.beam_cli import run_instrumented_beam
 
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
     ours_objd = (merlin_dir() / "tests" / "data" / "cca_asm" / "ours_baseline_matmul.objdump").read_text()
@@ -165,7 +165,7 @@ def test_instrumented_beam_emits_aet_parent_and_child_runs(tmp_path, monkeypatch
 def test_escalation_routes_unmet_promise_to_next_stronger_class():
     """BB2: when a fork leaves a residual (didn't achieve its promised facet), _escalations routes the
     next-stronger class for the unmet axis — turning the beam into a knob→…→CODEGEN escalation engine."""
-    from merlin.rvvgen.beam import _escalations
+    from merlin.mining.beam import _escalations
     from merlin.kernels.action_catalog import route
     from merlin.kernels.cca_compare import Divergence
     from merlin.kernels import cca

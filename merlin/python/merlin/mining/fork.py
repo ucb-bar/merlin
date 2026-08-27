@@ -26,7 +26,7 @@ def write_fork(out_root: str | Path, target: str, run_id: str, *, schedule_text:
     d = Path(out_root) / target / run_id
     d.mkdir(parents=True, exist_ok=True)
     (d / "schedule.mlir").write_text(schedule_text, encoding="utf-8")
-    write_yaml(d / "knobs.yaml", knobs, header="RVV fork knobs (rvvgen.from_strategy)")
+    write_yaml(d / "knobs.yaml", knobs, header="RVV fork knobs (mining.from_strategy)")
     manifest = {
         "target": target,
         "run_id": run_id,
@@ -35,9 +35,9 @@ def write_fork(out_root: str | Path, target: str, run_id: str, *, schedule_text:
         "status": status,                     # proposed -> spike_verified -> cycle_confirmed
         "authoring": {"mode": "deterministic_generated_from_spec",
                       "generated_by_agent": bool(lineage.get("generated_by_agent", False)),
-                      "author": lineage.get("author", "rvvgen.from_strategy")},
+                      "author": lineage.get("author", "mining.from_strategy")},
         "lineage": lineage,
         "outputs": {"schedule": "schedule.mlir", "knobs": "knobs.yaml"},
     }
-    write_yaml(d / "manifest.yaml", manifest, header="Isolated RVV fork package (rvvgen.fork)")
+    write_yaml(d / "manifest.yaml", manifest, header="Isolated RVV fork package (mining.fork)")
     return d

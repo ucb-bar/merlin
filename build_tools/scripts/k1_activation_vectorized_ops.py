@@ -30,7 +30,7 @@ _spec = _ilu.spec_from_file_location(
     "k1_ops", str(Path(__file__).resolve().parent / "k1_cross_framework_ops.py"))
 _ops = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_ops)
 
-from merlin.rvvgen import k1, workloads
+from merlin.mining import k1, workloads
 from merlin.common.paths import repo_root
 
 REPO = Path(repo_root())

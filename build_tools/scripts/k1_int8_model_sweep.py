@@ -3,7 +3,7 @@
 multicore board, and gate correctness against the torch goldens.
 
 For each int8 bundle (small -> large): build a K1 Linux rv64gcv binary via the int8 package
-(rvvgen.k1.build_k1_binary, which threads int8_compute=True), scp + run on the board, parse
+(mining.k1.build_k1_binary, which threads int8_compute=True), scp + run on the board, parse
 OUT/METRIC/DONE, gate the output prefix vs golden_w8a8 (T1) and the fp32 golden (T2), objdump the
 model object to confirm genuine integer RVV was emitted, and record a resumable JSONL ledger +
 coverage table. The board run cleans its own /tmp (run_on_k1); we clean the host work dir per model
@@ -23,8 +23,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "merlin" / "python"))
 from merlin.baselines import bundle as _bundle         # noqa: E402
-from merlin.rvvgen import load_rvv_package           # noqa: E402
-from merlin.rvvgen import k1 as k1mod                  # noqa: E402
+from merlin.mining import load_rvv_package           # noqa: E402
+from merlin.mining import k1 as k1mod                  # noqa: E402
 from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
 from merlin.llvmlower import custom_isa                 # noqa: E402
 

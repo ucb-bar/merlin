@@ -11,7 +11,7 @@ import pytest
 
 from merlin.common import mlir_query as mq
 from merlin.common.paths import repo_root
-from merlin.rvvgen import workloads
+from merlin.mining import workloads
 
 
 def _golden(bundle):

@@ -9,7 +9,7 @@ one package anyone actually compiles with the one package that could not adapt t
 That matters because the block is not a property of the target, it is a claim about extents: a
 block that masks a parallel dim of a contraction it must cover does not lower at all on the
 integer path (LLVM-23 rejects the multi-op ``vector.mask`` the masked ``transfer_write`` needs).
-See ``rvvgen.from_strategy._rvv_blocking_lowers`` for the measured predicate.
+See ``mining.from_strategy._rvv_blocking_lowers`` for the measured predicate.
 
 This module names each frozen point's caps AND its per-op-class realization, so a caller can ask
 two separate questions: "what upper bound did this point intend" and "does the block it actually

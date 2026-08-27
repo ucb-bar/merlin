@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from merlin.kernels.cca_compare import Divergence
-from merlin.rvvgen.fork_from_action import action_to_fork, propose_forks_from_cca
+from merlin.mining.fork_from_action import action_to_fork, propose_forks_from_cca
 from merlin.kernels.action_catalog import route
 
 _KNOBS = {"op_match": [{"op": "matmul", "tile": [4, 8, 1], "vector": [4, 8, 1]}]}

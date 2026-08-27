@@ -68,7 +68,7 @@ from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallb
 from merlin.common import artifacts
 from merlin.common.artifacts import cache_dir
 from merlin.common.paths import build_dir, repo_root
-from merlin.rvvgen import k1
+from merlin.mining import k1
 
 FRAMEWORK = "ggml"
 

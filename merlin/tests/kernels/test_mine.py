@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import yaml
 
-from merlin.rvvgen import mine
+from merlin.mining import mine
 
 _POLICIES = [
     {"policy": "fma_broadcast_policy", "evidence": ["openblas_rvv_gemm", "xnnpack_rvv_gemm"]},

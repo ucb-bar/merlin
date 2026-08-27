@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from merlin.common.paths import merlin_dir
-from merlin.rvvgen.op_sweep import OpCell, is_scalar_kernel, run_op_sweep
+from merlin.mining.op_sweep import OpCell, is_scalar_kernel, run_op_sweep
 
 
 def test_is_scalar_kernel_flags_scalar_and_passes_rvv():

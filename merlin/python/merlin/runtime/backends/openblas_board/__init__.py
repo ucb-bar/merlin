@@ -3,7 +3,7 @@ whole-model lowering to OpenBLAS's RVV 8x8 GEMM microkernel — the OpenBLAS ana
 :mod:`merlin.runtime.backends.xnnpack_board` backend (default-off, additive). This completes
 the four-way whole-model comparison (baseline / ours / XNNPACK / OpenBLAS).
 
-The board runs one compiled C binary (``rvvgen.k1.build_k1_binary``): the whole model lowers
+The board runs one compiled C binary (``mining.k1.build_k1_binary``): the whole model lowers
 monolithically to ``model.ll`` and is driven by ``_mlir_ciface_forward``. There is no
 per-dispatch call boundary, so we create one at the MLIR level exactly like the XNNPACK backend:
 :func:`rewrite_matmuls_to_openblas` replaces every routable plain 2-D f32 ``linalg.matmul`` in

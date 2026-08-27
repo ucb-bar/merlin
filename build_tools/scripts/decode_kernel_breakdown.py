@@ -52,8 +52,8 @@ OURS_FORKS = (
 
 def _lower_ours_to_obj(features, M, N, K, work: Path):
     """Lower a single f32 matmul (M,N,K) with `features` to model.o, return (obj_path, blocker)."""
-    from merlin.rvvgen import workloads
-    from merlin.rvvgen.registry import load_rvv_package
+    from merlin.mining import workloads
+    from merlin.mining.registry import load_rvv_package
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.lower import lower_model_file
     from merlin.llvmlower.pipeline import PipelineError

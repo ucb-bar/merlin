@@ -211,7 +211,11 @@ def beam_search(target: str, base_pkg_dir: str | Path, model_dir: str | Path, fe
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--target", default="rvv")
+    # REQUIRED, not defaulted. A default of one target silently mislabels every run for another
+    # one -- the mined artifacts are written under <target>/ and the CCA is compared against that
+    # target's expert corpus, so a mislabelled run compares the wrong things and says nothing about it.
+    ap.add_argument("--target", required=True,
+                    help="the target whose expert corpus is mined and whose endpoint is lifted")
     ap.add_argument("--base", default="out/artifacts/targets/rvv/hand_v0")
     ap.add_argument("--workload", required=True)
     ap.add_argument("--features", required=True, help="comma list of registered impr features")

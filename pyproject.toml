@@ -61,12 +61,25 @@ merlin-target-publish = "merlin.targetgen.publish:main"
 merlin-design-pressure = "merlin.design_pressure.cli:main"
 merlin-dse = "merlin.dse.cli:main"
 merlin-dse-guidance = "merlin.dse_guidance.cli:main"
-merlin-rvv-report = "merlin.rvvgen.report:main"
-merlin-rvv-mine = "merlin.rvvgen.mine:main"
-merlin-rvv-autotune = "merlin.rvvgen.autotune:main"
-merlin-rvv-beam = "merlin.rvvgen.beam_cli:main"
-merlin-rvv-opt = "merlin.rvvgen.op_sweep:main"
-merlin-cca-route = "merlin.rvvgen.route_report:main"
+# The mining CLIs. The `merlin-kernel-*` names are canonical: the loop mines expert kernels for ANY
+# endpoint now (the lifter keys on instruction roles, not on vector mnemonics), so a name claiming one
+# ISA had become a claim about scope that is no longer true.
+merlin-kernel-report = "merlin.mining.report:main"
+merlin-kernel-mine = "merlin.mining.mine:main"
+merlin-kernel-autotune = "merlin.mining.autotune:main"
+merlin-kernel-beam = "merlin.mining.beam_cli:main"
+merlin-kernel-opt = "merlin.mining.op_sweep:main"
+# Retained aliases -- the same entry points under the old names, so an out-of-tree caller keeps
+# resolving. They alias the COMMAND, not the old argument defaults: `--target` is now required on the
+# mining CLIs, because defaulting it to one target silently mislabels every run for another, and a
+# mislabelled run compares against the wrong expert corpus without saying so. A caller that relied on
+# the default fails loudly, which is the point.
+merlin-rvv-report = "merlin.mining.report:main"
+merlin-rvv-mine = "merlin.mining.mine:main"
+merlin-rvv-autotune = "merlin.mining.autotune:main"
+merlin-rvv-beam = "merlin.mining.beam_cli:main"
+merlin-rvv-opt = "merlin.mining.op_sweep:main"
+merlin-cca-route = "merlin.mining.route_report:main"
 merlin-compile = "merlin.compile_cli:main"
 merlin-compare = "merlin.compare.cli:main"
 merlin-liveness = "merlin.liveness.cli:main"

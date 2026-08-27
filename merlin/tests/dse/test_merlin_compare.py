@@ -168,7 +168,7 @@ def test_run_board_is_live_and_board_gated(monkeypatch):
     # silent/fabricated run. (k1.K1_HOST is import-frozen, so force unavailability at k1.available.)
     from merlin.compare.empirical import measure_all
     from merlin.compare.spec import Spec
-    from merlin.rvvgen import k1
+    from merlin.mining import k1
     monkeypatch.setattr(k1, "available", lambda: False)
     # per-cell measure() just ingests now (no NotImplementedError stub)
     m = measure(Config.parse("xnnpack"), Workload.parse("openvla"), "k1", run=True)

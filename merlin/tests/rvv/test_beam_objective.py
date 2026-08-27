@@ -13,14 +13,14 @@ import os
 from pathlib import Path
 
 from merlin.common.paths import merlin_dir, repo_root
-from merlin.rvvgen import load_rvv_package
-from merlin.rvvgen.beam import (
+from merlin.mining import load_rvv_package
+from merlin.mining.beam import (
     _margin_improved,
     _ranked_speedup,
     _resolve_margin,
     run_beam,
 )
-from merlin.rvvgen.sweep import rank_results
+from merlin.mining.sweep import rank_results
 
 HAND_V0 = str(repo_root() / "out/artifacts/targets/rvv/hand_v0")
 _DIVS = ["lmul_class: expert='m4' vs ours='m2'",
@@ -148,7 +148,7 @@ def test_margin_gate_credits_a_real_win(tmp_path):
 # --------------------------------------------------------------------------------------------------
 
 def test_inert_forks_are_excluded_from_survivors(tmp_path):
-    from merlin.rvvgen.beam_cli import lift_expert_cca
+    from merlin.mining.beam_cli import lift_expert_cca
 
     ours = (merlin_dir() / "tests" / "data" / "cca_asm" / "ours_baseline_matmul.objdump").read_text()
     expert_objd = merlin_dir() / "tests" / "data" / "cca_asm" / "xnnpack_f32_gemm_rvv.objdump"

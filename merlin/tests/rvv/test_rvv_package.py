@@ -11,7 +11,7 @@ import pytest
 
 from merlin.llvmlower import pipeline
 from merlin.runtime.backends import zephyr_model as zm
-from merlin.rvvgen import load_rvv_package
+from merlin.mining import load_rvv_package
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 HAND_V0 = os.path.join(ROOT, "out/artifacts/targets", "rvv", "hand_v0")
@@ -48,7 +48,7 @@ def test_hand_v0_lowering_is_byte_identical_to_shipping_rvv(tmp_path):
     BYTE-IDENTICAL LLVM IR. This corroborates that apply_rvv_package(hand_v0) IS the RVV codegen
     we ship/run — not merely a string match. Skips if the m2m lowering toolchain is unavailable."""
     import numpy as np
-    from merlin.rvvgen import workloads
+    from merlin.mining import workloads
     try:
         from merlin.llvmlower.lower import lower_model_file
         from merlin.runtime.backends.zephyr_model import _prepare_model_mlir

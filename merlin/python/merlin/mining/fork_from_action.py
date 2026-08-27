@@ -2,7 +2,7 @@
 for what to change in the compiler.
 
 Historically the beam had two parallel routers: ``kernels.action_catalog`` (CCA-axis-keyed, the one the
-bijection contract enforces) and ``kernels.rvv_knobs`` (motif-string-keyed). This module derives the
+bijection contract enforces) and ``kernels.knobs`` (motif-string-keyed). This module derives the
 beam's proposer from ``action_catalog`` so there is one source of truth. ``propose_forks_from_cca`` takes
 typed CCA ``Divergence`` objects (from ``cca_compare.compare``), routes each via ``action_catalog.route``,
 and maps the typed ``CompilerAction`` to a ``ForkProposal`` the beam can mint + certify.
@@ -13,7 +13,7 @@ router marks ``forkable_now=False`` (a deferred PASS/CODEGEN work-item), or a fo
 auto-knob builder yet, becomes a ``forkable=False`` proposal — recorded, never faked into a knob.
 
 Drop-in for ``beam.run_beam(proposer=...)``: same ``(divergences, knobs) -> [ForkProposal]`` contract as
-``rvv_knobs.propose_forks``, but consuming CCA Divergences instead of motif strings. (``rvv_knobs`` is
+``knobs.propose_forks``, but consuming CCA Divergences instead of motif strings. (``knobs`` is
 retained for the existing motif-string beam path until the beam is cut over to CCA divergences in WS-D.)
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ from typing import Any
 
 from ..kernels.action_catalog import CompilerAction, route
 from ..kernels.cca_compare import Divergence
-from ..kernels.rvv_knobs import ForkProposal, _wider_n_overrides
+from ..kernels.knobs import ForkProposal, _wider_n_overrides
 
 # HEURISTIC axes whose (schedule:) seam is IMPLEMENTED by a registered impr_features feature — the
 # router marks them forkable_now=True but the proposer had no builder, silently demoting them to

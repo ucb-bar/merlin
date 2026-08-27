@@ -33,7 +33,7 @@ from merlin.common.artifacts import cache_dir
 from merlin.common.driver_output import int_after, int_field
 from merlin.common.paths import repo_root
 from merlin.kernels.microkernel import MicrokernelSpec, UnsupportedAxis
-from merlin.rvvgen import k1
+from merlin.mining import k1
 
 import k1_cross_framework_ops as X  # the shared build/deploy/parse path (same protocol as the matrix)
 
@@ -115,8 +115,8 @@ def _run_point(spec: MicrokernelSpec, S: int, reps: int, tag: str, keep: Path,
     itself to the hardware at run time (the whole point of the axis), and the cross-cutting finding
     is that the pin may not even take effect at scale. VL_FIXED points keep the pinned default so the
     VL-agnostic loop is measured against the strongest fixed-width baseline."""
-    from merlin.rvvgen import workloads
-    from merlin.rvvgen.from_strategy import microkernel_features
+    from merlin.mining import workloads
+    from merlin.mining.from_strategy import microkernel_features
     from merlin.kernels.microkernel import VL_DYNAMIC
 
     if march is None:

@@ -25,7 +25,7 @@ def test_the_lever_is_a_registered_feature_not_an_env_var():
 
 def test_it_is_additive_so_it_layers_on_a_micro_kernel_recipe():
     """It must not be schedule_replace: the contraction arms have to survive underneath it."""
-    from merlin.rvvgen.registry import load_rvv_package
+    from merlin.mining.registry import load_rvv_package
 
     pkg = load_rvv_package("out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
     base = impr.apply_schedule(pkg.schedule_text, frozenset(pkg.compiler_features))

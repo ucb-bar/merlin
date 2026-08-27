@@ -90,7 +90,7 @@ class MicrokernelSpec:
 #: so a package or a test may pin it), but a proposer must not spend beam budget PROPOSING a pruned
 #: axis as a candidate win — it burns a certify slot to (best case) reproduce the parent, (worst case)
 #: regress. Two levers were inert/wrong exactly this way (they looked wired at every layer while the
-#: emitted code was flat or slower — see rvvgen/beam._emitted_digest):
+#: emitted code was flat or slower — see mining/beam._emitted_digest):
 #:   * ``KC``       — INERT. The v3 recipe tiles the reduction K by 1 regardless of KC (KC only names
 #:                    the outer register-block trip conceptually), so proposing different KC values on
 #:                    the default recipe changes no emitted instruction (measured flat across KC). The

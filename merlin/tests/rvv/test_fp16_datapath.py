@@ -13,7 +13,7 @@ from merlin.common.paths import repo_root  # noqa: F401  (layout convention: no 
 
 
 def _bundle(tmp_path, M=64, N=64, K=64):
-    from merlin.rvvgen.workloads import gen_matmul_f16
+    from merlin.mining.workloads import gen_matmul_f16
     return gen_matmul_f16(tmp_path, M=M, N=N, K=K)
 
 

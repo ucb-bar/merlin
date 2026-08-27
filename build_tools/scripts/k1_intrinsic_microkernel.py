@@ -27,7 +27,7 @@ from pathlib import Path
 
 from merlin.common.paths import repo_root
 from merlin.common.driver_output import int_after, int_field
-from merlin.rvvgen import k1
+from merlin.mining import k1
 
 HERE = Path(repo_root()) / "merlin/python/merlin/kernels/ceiling_drivers"
 K1H = HERE / "k1_harness"

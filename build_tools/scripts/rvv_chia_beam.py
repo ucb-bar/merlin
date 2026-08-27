@@ -2,7 +2,7 @@
 """chia-driven RVV beam (BB3) — fan each generation's fork certifications out as Ray tasks gated on a
 single-slot ``k1`` resource, so K1 forks serialize on the one board while spike-only forks overlap.
 
-This is the CHIA orchestration layer over :func:`merlin.rvvgen.beam_cli.run_instrumented_beam`. It runs
+This is the CHIA orchestration layer over :func:`merlin.mining.beam_cli.run_instrumented_beam`. It runs
 under the CHIA venv (chia hard-pins ray/pydantic — see ``merlin.benchharness.chia_bridge``):
 
   build/chia-venv/bin/python build_tools/scripts/rvv_chia_beam.py \
@@ -38,7 +38,7 @@ def _make_chia_sweep(k1_slots: int):
         # runs on a Ray worker under the chia venv; import inside so the closure stays serializable.
         import sys as _sys
         _sys.path.insert(0, str(REPO / "merlin" / "python"))
-        from merlin.rvvgen.runner import certify_rvv
+        from merlin.mining.runner import certify_rvv
         try:
             return certify_rvv(**job)
         except Exception as e:  # fork error must not abort the sweep (same contract as run_sweep)
@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
 
     require_chia()
-    from merlin.rvvgen.beam_cli import run_instrumented_beam
+    from merlin.mining.beam_cli import run_instrumented_beam
 
     seed_pkg = a.seed_pkg or str(repo_root() / "out/artifacts/targets/rvv/hand_v0")
     sweep_fn = _make_chia_sweep(a.k1_slots)

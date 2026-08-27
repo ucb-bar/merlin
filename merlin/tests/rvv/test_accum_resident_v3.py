@@ -114,9 +114,9 @@ def _toolchain() -> bool:
 def _decode(features, M, N, K):
     """apply_rvv_package(hand_v0 + features) on a matmul bundle -> decoded InsnStream of model.o."""
     from merlin.kernels.decode import rvv
-    from merlin.rvvgen import workloads
-    from merlin.rvvgen.apply import apply_rvv_package
-    from merlin.rvvgen.registry import load_rvv_package
+    from merlin.mining import workloads
+    from merlin.mining.apply import apply_rvv_package
+    from merlin.mining.registry import load_rvv_package
 
     bundle = workloads.gen_matmul_f32(tempfile.mkdtemp(), M=M, N=N, K=K)
     pkg = load_rvv_package(REPO / "out/artifacts/targets" / "rvv" / "hand_v0")

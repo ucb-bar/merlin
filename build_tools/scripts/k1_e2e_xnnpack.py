@@ -35,8 +35,8 @@ from pathlib import Path
 
 import numpy as np
 
-from merlin.rvvgen import k1
-from merlin.rvvgen.registry import load_rvv_package
+from merlin.mining import k1
+from merlin.mining.registry import load_rvv_package
 from merlin.runtime.backends import zephyr_model as zm
 
 
