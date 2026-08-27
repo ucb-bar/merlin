@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -51,12 +52,43 @@ inline const char *HardwareTargetName(HardwareTarget t) {
  *  @param out Receives the parsed value on success.
  *  @return True if parsing succeeded.
  */
-inline bool ParseHardwareTarget(const std::string &s, HardwareTarget *out) {
-	if (s == "CPU_P") {
+inline bool ParseHardwareTarget(
+	const std::string &s, HardwareTarget *out, int *core_index = nullptr) {
+	/* Accepts "CPU_P" and the per-core form "CPU_P#2".
+	 *
+	 * XPU-RT names a machine per physical core (workload_factory.py), so a
+	 * schedule built with machine_combination_mode=singletons -- the model a
+	 * multi-core target needs to express real concurrency -- emits "CPU_P#0"
+	 * rather than "CPU_P". Rejecting the suffix made every such schedule
+	 * unparseable.
+	 *
+	 * The index is reported so callers can record the intended placement.
+	 * NOTE: the runner still dispatches to a per-CLUSTER worker pool pinned to
+	 * --cpu_p_cpu_ids / --cpu_e_cpu_ids, so the core index is currently
+	 * observed, not enforced -- IREE's local-task picks a core within the pool.
+	 * Predicted-vs-actual comparisons should treat intra-cluster placement as
+	 * unpinned until that is wired through. */
+	std::string kind = s;
+	int idx = -1;
+	const size_t hash = s.find('#');
+	if (hash != std::string::npos) {
+		kind = s.substr(0, hash);
+		const std::string digits = s.substr(hash + 1);
+		if (digits.empty())
+			return false;
+		for (char c : digits) {
+			if (c < '0' || c > '9')
+				return false;
+		}
+		idx = atoi(digits.c_str());
+	}
+	if (core_index)
+		*core_index = idx;
+	if (kind == "CPU_P") {
 		*out = HardwareTarget::kCpuP;
 		return true;
 	}
-	if (s == "CPU_E") {
+	if (kind == "CPU_E") {
 		*out = HardwareTarget::kCpuE;
 		return true;
 	}
@@ -141,6 +173,10 @@ struct DispatchNode {
 
 	HardwareTarget hardware_target =
 		HardwareTarget::kCpuP; /**< Execution target. */
+	/** Physical core index within the target cluster, from a "CPU_P#2"-style
+	 *  hardware_target. -1 when the schedule named only a cluster. Observed
+	 *  rather than enforced -- see ParseHardwareTarget. */
+	int core_index = -1;
 	double start_time_ms = 0.0; /**< Planned start time (ms). */
 	double planned_duration_ms = 0.0; /**< Planned duration (ms). */
 

@@ -33,6 +33,8 @@ static void print_usage(const char *argv0) {
 		"  --out_json=<path>           Write summary JSON\n"
 		"  --out_dot=<path>            Write DOT graph\n"
 		"  --trace_csv=<path>          Write trace CSV\n"
+		"  --variant_p=RVV             ISA variant dir for CPU_P VMFBs\n"
+		"  --variant_e=scalar          ISA variant dir for CPU_E VMFBs\n"
 		"\n"
 		"Notes:\n"
 		"  - This runner is strict and expects async-external dispatch VMFB "
@@ -73,6 +75,15 @@ int main(int argc, char **argv) {
 	const char *out_json = NULL;
 	const char *out_dot = NULL;
 	const char *trace_csv = NULL;
+	/* ISA variant directories used to resolve per-dispatch VMFBs. These were
+	 * hardcoded to RVV/scalar, which silently decided a scheduling experiment:
+	 * a schedule built from RVV profiles on BOTH clusters would have loaded
+	 * scalar binaries on CPU_E and been measured against the wrong timings.
+	 * On the K1 both clusters implement RVV identically (measured: 0.996 median
+	 * ratio on compute-bound dispatches), so RVV/RVV is a legitimate and in fact
+	 * the expected configuration. Defaults preserve the old behaviour. */
+	const char *variant_p = "RVV";
+	const char *variant_e = "scalar";
 
 	for (int i = 6; i < argc; ++i) {
 		const char *v = NULL;
@@ -90,6 +101,10 @@ int main(int argc, char **argv) {
 			out_dot = v;
 		} else if ((v = get_flag_value(argv[i], "--trace_csv"))) {
 			trace_csv = v;
+		} else if ((v = get_flag_value(argv[i], "--variant_p"))) {
+			variant_p = v;
+		} else if ((v = get_flag_value(argv[i], "--variant_e"))) {
+			variant_e = v;
 		} else {
 			fprintf(stderr, "Unknown arg: %s\n\n", argv[i]);
 			print_usage(argv[0]);
@@ -114,8 +129,8 @@ int main(int argc, char **argv) {
 
 	// SpacemiT X60-specific target configuration.
 	cfg.target_platform = "spacemit_x60";
-	cfg.variant_p_dir = "RVV";
-	cfg.variant_e_dir = "scalar";
+	cfg.variant_p_dir = variant_p;
+	cfg.variant_e_dir = variant_e;
 	cfg.elf_marker = "_embedded_elf_riscv_64";
 
 	return scheduler_runner_run(&cfg);

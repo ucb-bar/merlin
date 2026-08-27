@@ -79,7 +79,8 @@ inline bool ParseDispatchesObject(
 					std::string s;
 					if (!jp->ParseString(&s))
 						return false;
-					if (!ParseHardwareTarget(s, &node.hardware_target)) {
+					if (!ParseHardwareTarget(s, &node.hardware_target,
+							&node.core_index)) {
 						fprintf(stderr, "Unknown hardware_target '%s' for %s\n",
 							s.c_str(), node.key.c_str());
 						return false;

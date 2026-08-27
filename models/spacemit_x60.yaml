@@ -22,6 +22,34 @@ targets:
     # RVV-specific tuning (used by quantized pipelines).
     - --riscv-v-fixed-length-vector-lmul-max=2
 
+  # SpaceMiT IME (smt.vmadot) int8 matrix extension.
+  #
+  # LEGAL ON CLUSTER 0 ONLY (cores 0-3). Measured with a per-core SIGILL probe:
+  # smt.vmadot executes on cores 0-3 and traps on cores 4-7. A dispatch built
+  # with this variant does not degrade on cluster 1 -- it dies. xpu-rt's
+  # capabilities.py rejects that placement before scheduling.
+  #
+  # Flags follow third_party/iree_bar/tests/e2e/SpacemiT/compile_vmadot.sh, the
+  # recipe that actually emits vmadot. Note it deliberately does NOT use
+  # ukernels: IME comes out of vector.contract custom kernels plus mmt4d
+  # intrinsics, so enable-ukernels stays none and
+  # enable-vector-contract-custom-kernels must be true. (The variant in
+  # benchmarks/SpacemiTX60/compile_matmul_xsmt_i8_ukernel_all.sh inverts both
+  # and additionally references files absent at the pinned IREE SHA.)
+  #
+  # Verify with: llvm-objdump -d --mattr=+m,+a,+f,+d,+c,+v,+zvl256b,+xsmtvdot <obj> | grep vmadot
+  # A build that silently fell back to RVV must be rejected, not profiled.
+  IME:
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl256b,+xsmtvdot
+    - --iree-codegen-mmt4d-use-intrinsics
+    - --iree-llvmcpu-enable-vector-contract-custom-kernels=true
+    - --iree-llvmcpu-enable-ukernels=none
+    - --iree-llvmcpu-link-ukernel-bitcode=false
+    - --iree-opt-data-tiling=true
+    - --iree-llvmcpu-loop-vectorization=true
+    - --iree-llvmcpu-target-vector-width-in-bytes=32
+    - --riscv-v-fixed-length-vector-lmul-max=2
+
   # Scalar-only (no V extension). Useful as a baseline and/or for cores without RVV.
   scalar:
     - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c
