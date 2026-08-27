@@ -264,14 +264,20 @@ def _isa_class_vocabulary(target: str | None) -> list[str]:
     target's decoded-instruction classes (contract ``interfaces[].instruction_classes``), or a
     RoCC/systolic target's ``encoding.semantic_class`` + ``config_subtype`` names (the config op is
     refined into its subtypes in the decoded trace). Returns ``[]`` when no manifest resolves — the
-    caller then relies on the observed-trace union + the reference fallback. Never a target-name branch."""
+    caller then relies on the observed-trace union + the reference fallback. Never a target-name branch.
+
+    Third source, for a target that declares NEITHER: its own ISA definition. A self-hosted-ISA core
+    ships ``isa_definition.py`` rather than a class map, so both declared vocabularies came back empty
+    and every not-covered row was blank — the report silently had nothing to say about the target whose
+    ISA is most fully specified. :mod:`isa_taxonomy` derives the class names from that definition, so the
+    fallback is still "read the target's own sources", one rung further in."""
     if not target:
         return []
     try:
         from .target_experiment import load_capability_manifest
         m = load_capability_manifest(target)
     except Exception:  # noqa: BLE001 — no resolvable manifest -> rely on observed traces
-        return []
+        return _derived_isa_classes(target)
     out: list[str] = []
     for itf in (m.contract.get("interfaces") or []):     # self-hosted ISA / SIMT decoded classes
         out += list(itf.get("instruction_classes") or [])
@@ -283,7 +289,20 @@ def _isa_class_vocabulary(target: str | None) -> list[str]:
             continue
         out.append(name)
     out += list(cst.values())
-    return [c for c in dict.fromkeys(out) if c]
+    vocab = [c for c in dict.fromkeys(out) if c]
+    return vocab or _derived_isa_classes(target)
+
+
+def _derived_isa_classes(target: str) -> list[str]:
+    """Class names DERIVED from the target's shipped ISA definition, for a target that declares no class
+    vocabulary. Empty on any failure — a target with no derivable ISA is honestly silent here, never
+    guessed at from a name."""
+    try:
+        from . import isa_taxonomy
+        tax = isa_taxonomy.taxonomy_for_target(target)
+    except Exception:  # noqa: BLE001 — no derivable ISA definition -> stay silent, fail closed
+        return []
+    return [c for c in dict.fromkeys((tax.get("by_class") or {})) if c]
 def _axes(baseline: list[str], observed) -> list[str]:
     """Baseline axes first (stable report order), then anything else observed, sorted."""
     extra = sorted(set(observed) - set(baseline))
