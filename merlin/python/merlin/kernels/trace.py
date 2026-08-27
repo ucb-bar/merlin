@@ -246,6 +246,31 @@ def asm_region_from_stream(stream, *, op: str, source: str = "asm", label: str =
     return AsmRegion(label=label, span=stream.innermost_loop(), facts=facts)
 
 
+def asm_region_from_roles(decoded, endpoint, *, op: str, source: str = "asm", label: str = "kernel",
+                          geometry: dict | None = None, loop_spans=None) -> AsmRegion:
+    """An AsmRegion from a ROLE-tagged stream — the non-RVV sibling of :func:`asm_region_from_stream`.
+
+    That function reuses ``cca.lift_asm``, which is the RVV lifter: it reads a vtype history and counts
+    vector mnemonics. Handing it an accelerator's command stream does not fail loudly, it produces an
+    EMPTY vector facet and an asm region whose facts are silently about nothing. So a trace whose asm
+    end is an endpoint command stream lifts through the role lifter instead, and the region's facts come
+    from whichever facets that endpoint's engine actually licenses.
+    """
+    from dataclasses import asdict as _asdict
+
+    from .cca import lift_asm_roles
+    c = lift_asm_roles(decoded, endpoint, op=op, source=source, geometry=geometry,
+                       loop_spans=loop_spans)
+    facts: dict[str, Any] = {}
+    for facet in (c.compute, c.spatial, c.simt, c.vector, c.dispatch):
+        if facet is not None:
+            facts.update({k: v for k, v in _asdict(facet).items() if v is not None})
+    facts["role_counts"] = c.provenance.get("role_counts", {})
+    facts["confidence"] = c.provenance.get("confidence")
+    spans = list(loop_spans or ())
+    return AsmRegion(label=label, span=(spans[0] if spans else None), facts=facts)
+
+
 # ---- expert-side trace (matched at the contract + asm level; graph deferred by design) ----
 
 # The declared-transformation sections of a framework contract, in lowering order, mapped to the step
@@ -297,6 +322,137 @@ def build_expert_trace(framework: str, stream, *, op: str, kernel_id: str) -> Lo
         steps=expert_steps_from_contract(framework),
         asm=asm_region_from_stream(stream, op=op, source=framework, label=kernel_id),
         provenance={"level": "contract+asm", "framework": framework})
+
+
+#: The stages an expert BUILD passes through, in order. These are the real steps of somebody else's
+#: toolchain, not ours, which is exactly why they are worth recording: a divergence attributed to "their
+#: compiler is better" is unactionable until you can see WHICH step produced the difference.
+_BUILD_STAGES = (
+    ("preprocess", "frontend", "macro expansion + header inclusion (the .insn / intrinsic surface)"),
+    ("frontend", "frontend", "C/C++ -> LLVM IR"),
+    ("llvm-pipeline", "kernel-codegen", "the -O pipeline: inlining, vectorization, unrolling"),
+    ("asm-emission", "emission", "instruction selection + register allocation -> the emitted stream"),
+)
+
+#: Build-command tokens that carry a decision worth recording, and what each names. A flag not listed
+#: here is still recorded verbatim under ``flags``; this only decides which ones get NAMED as decisions.
+_FLAG_MEANING = {
+    "-O": "optimization level",
+    "-march": "the ISA the code may use",
+    "-mabi": "the calling convention",
+    "-mcpu": "the scheduling model",
+    "-ffast-math": "float reassociation permitted",
+    "-ffp-contract": "fma contraction policy",
+    "-funroll-loops": "unrolling forced on",
+    "-fno-vectorize": "vectorization forced off",
+}
+
+
+def _flag_decisions(argv) -> list[tuple[str, str]]:
+    """(flag, what it decides) for the build tokens that carry a decision. Structural, no regex."""
+    out: list[tuple[str, str]] = []
+    for token in argv or ():
+        tok = str(token)
+        if not tok.startswith("-"):
+            continue
+        head = tok.split("=", 1)[0]
+        for known, meaning in _FLAG_MEANING.items():
+            if head == known or (known == "-O" and head.startswith("-O") and len(head) <= 3):
+                out.append((tok, meaning))
+                break
+    return out
+
+
+def expert_build_steps(build_cmd, *, tool: str = "", version: str = "") -> list[TransformStep]:
+    """The expert's BUILD as ordered TransformSteps — the steps of a compiler we do not control.
+
+    ``modifiable_by`` is None on every one of them, and that is the point rather than an omission. Our
+    own trace records, per step, the seam that can change it; theirs has no such seam, and saying so
+    explicitly is what stops a reader from treating an expert step as an action we could take. A
+    divergence whose cause sits in their `-O` pipeline is a fact to design against, not a task.
+    """
+    argv = list(build_cmd or ())
+    decisions = _flag_decisions(argv)
+    flags = " ".join(str(a) for a in argv if str(a).startswith("-"))
+    who = " ".join(t for t in (tool, version) if t)
+    entry = " :: ".join(part for part in (who, flags) if part) or None
+    steps: list[TransformStep] = []
+    for name, phase, what in _BUILD_STAGES:
+        detail = what
+        if name == "llvm-pipeline" and decisions:
+            detail = f"{what}; decided by " + ", ".join(f"{f} ({m})" for f, m in decisions)
+        steps.append(TransformStep(
+            name=name, plane="expert-build", stage=name, summary=detail,
+            entry=entry, phase=phase,
+            modifiable_by=None,           # deliberate: we cannot edit their compiler
+        ))
+    return steps
+
+
+def expert_trace(source: str, stream, *, op: str, kernel_id: str, target: str,
+                 build_cmd=None, tool: str = "", version: str = "",
+                 obj: "str | Path | None" = None,
+                 hand_written: bool = False, endpoint=None,
+                 geometry: dict | None = None, loop_spans=None) -> LoweringTrace:
+    """A LoweringTrace for an expert kernel, from its BUILD rather than from a declared contract.
+
+    ``build_expert_trace`` reads the framework contract, i.e. what the expert framework SAYS it does.
+    This reads what its toolchain actually ran, so both sides of a comparison end in an asm region
+    reached by recorded steps and a divergence can be attributed to a step rather than to a vendor.
+
+    ``hand_written`` records that the expert side has NO lowering to reconstruct: a corpus of
+    hand-written assembly was not produced by a compiler, so an absent trace there is a PROPERTY of the
+    endpoint and not a missing feature. Stamping it is what keeps someone from later "fixing" it.
+
+    Every step is stamped ``modifiable_by=None``; see :func:`expert_build_steps`.
+    """
+    steps: list[TransformStep] = []
+    prov: dict[str, Any] = {"level": "build+asm", "source": source, "target": target}
+    if hand_written:
+        prov["no_lowering"] = ("hand-written assembly: there is no compiler lowering to reconstruct on "
+                               "the expert side, which is a property of this endpoint rather than a gap")
+    else:
+        steps = expert_build_steps(build_cmd, tool=tool, version=version)
+        prov["build_cmd"] = [str(a) for a in (build_cmd or ())]
+        prov["tool"], prov["tool_version"] = tool, version
+    if obj is not None:
+        prov["object"] = str(obj)
+        try:
+            from merlin.common import provenance as _p
+            prov["source_digest"] = _p.source_digest([obj])
+        except Exception:  # noqa: BLE001 — a digest we cannot take is recorded absent, never faked
+            prov["source_digest"] = None
+    # `endpoint` selects the lifter: an accelerator command stream through the role lifter, an RVV
+    # InsnStream through the vector one. Passing an accelerator stream to the RVV lifter yields an empty
+    # facet rather than an error, so the choice has to be explicit.
+    region = (asm_region_from_roles(stream, endpoint, op=op, source=source, label=kernel_id,
+                                    geometry=geometry, loop_spans=loop_spans)
+              if endpoint is not None
+              else asm_region_from_stream(stream, op=op, source=source, label=kernel_id))
+    prov["lifter"] = "roles" if endpoint is not None else "rvv"
+    return LoweringTrace(
+        kernel=kernel_id, target=target, source=source, graph=None, steps=steps,
+        asm=region, provenance=prov)
+
+
+def traces_agree(ours: LoweringTrace, theirs: LoweringTrace) -> dict:
+    """Do the two traces describe the same REGION, and where does each side's authority end?
+
+    Not a comparison of the kernels -- ``cca_compare`` does that. This answers the prior question of
+    whether the two traces are about the same thing and how far each is editable, so a divergence is
+    never attributed to a step nobody can reach.
+    """
+    ours_editable = [s.name for s in ours.steps if s.modifiable_by]
+    theirs_editable = [s.name for s in theirs.steps if s.modifiable_by]
+    return {
+        "same_op": (ours.asm or AsmRegion("")).label == (theirs.asm or AsmRegion("")).label,
+        "our_editable_steps": ours_editable,
+        # Expected to be EMPTY. A non-empty list means something claimed we can edit the expert's
+        # compiler, which is false and would route a divergence to a seam that does not exist.
+        "their_editable_steps": theirs_editable,
+        "their_trace_absent": not theirs.steps,
+        "notes": ([theirs.provenance["no_lowering"]] if theirs.provenance.get("no_lowering") else []),
+    }
 
 
 def build_our_trace(stream, *, op: str | None = None, record=None, recognized_op: str | None = None,
