@@ -403,7 +403,19 @@ def test_the_real_dotcodex_directory_is_never_bound_wholesale(tmp_path):
     assert real not in sources, "the real ~/.codex must never be bound as a whole"
 
 
-def test_the_credential_is_bound_read_only_onto_the_isolated_home(tmp_path):
+def test_the_credential_is_bound_writable_onto_the_isolated_home(tmp_path):
+    """The credential must land on the ISOLATED home, and must be writable.
+
+    This assertion used to demand read-only, so that a refresh attempt would fail loudly rather than
+    rewrite a shared credential. Measured, that inverts: OAuth refresh tokens are single-use and
+    rotate, so Codex spends the old token server-side, cannot write the new pair back, and every later
+    run dies `401 refresh_token_reused` -- while presenting as rounds that finish in seconds with a
+    small constant score, i.e. as a bad agent rather than a dead credential.
+
+    What still matters, and is what this test guards, is the DESTINATION: the credential is mapped onto
+    `<codex_home>/auth.json`, never by exposing the real `~/.codex`. That the rest of the real home
+    stays unreachable is asserted separately, just above.
+    """
     home = tmp_path / "home"
     home.mkdir()
     binds = CA.codex_runtime_binds(home)
@@ -411,8 +423,13 @@ def test_the_credential_is_bound_read_only_onto_the_isolated_home(tmp_path):
     if not auth.is_file():
         pytest.skip("no local codex credential to assert against")
     idx = binds.index(str(auth))
-    assert binds[idx - 1] == "--ro-bind", "a token must not be modifiable by the agent"
-    assert binds[idx + 1] == str(home / "auth.json")
+    assert binds[idx - 1] == "--bind", (
+        "the credential must be writable or a rotated refresh token cannot be persisted, "
+        "which kills every subsequent codex run"
+    )
+    assert binds[idx + 1] == str(home / "auth.json"), (
+        "the credential must be mapped onto the isolated home, not the real ~/.codex"
+    )
 
 
 def test_a_canary_prompt_can_override_the_graded_instruction_but_is_not_the_default(tmp_path):

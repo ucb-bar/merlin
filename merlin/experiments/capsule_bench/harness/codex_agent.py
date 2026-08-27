@@ -268,10 +268,22 @@ def codex_runtime_binds(codex_home: Path) -> list[str]:
       binding ``~/.local/bin`` alone (which the shared claude binds already do)
       leaves the launcher pointing at nothing. Contains no conversation state.
     * *codex_home* writable — Codex must create sessions/state/caches somewhere.
-    * the real ``auth.json`` RO **onto** ``<codex_home>/auth.json`` — auth works,
-      the token cannot be modified, and nothing secret is written to disk. A
-      refresh attempt fails loudly rather than silently rewriting a shared
-      credential.
+    * the real ``auth.json`` WRITABLE **onto** ``<codex_home>/auth.json``.
+
+      This bind was read-only, on the reasoning that a refresh attempt should
+      fail loudly rather than silently rewrite a shared credential. Measured,
+      that reasoning inverts: OAuth refresh tokens are SINGLE-USE and rotate, so
+      Codex spends the old token server-side, cannot write the new pair back,
+      and every subsequent run dies ``401 refresh_token_reused``. The failure is
+      not loud where it matters either -- rounds complete in seconds and the
+      score is a small constant, which reads as a bad agent, not a dead
+      credential. ``codex login`` only postpones it to the next rotation, so the
+      read-only bind was the defect rather than the safeguard.
+
+      Writable is therefore the correct bind, with the user's explicit consent
+      (it lets a sandboxed process write a live credential). The target is the
+      user's own ``~/.codex/auth.json``, so no secret is copied into the
+      artifact tree; rotation lands where the next run will look for it.
 
     Note what is NOT bound: ``~/.codex`` itself. Inside the sandbox that
     directory therefore contains only ``packages/``, so no prior session,
@@ -285,7 +297,8 @@ def codex_runtime_binds(codex_home: Path) -> list[str]:
     binds += ["--bind", str(codex_home), str(codex_home)]
     auth = home / "auth.json"
     if auth.is_file():
-        binds += ["--ro-bind", str(auth), str(codex_home / "auth.json")]
+        # Writable, so a single-use refresh token can rotate in place; see the docstring.
+        binds += ["--bind", str(auth), str(codex_home / "auth.json")]
     binds += ["--setenv", "CODEX_HOME", str(codex_home)]
     return binds
 
