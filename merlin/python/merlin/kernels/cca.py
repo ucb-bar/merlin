@@ -60,6 +60,11 @@ class ComputeFacet:
     # gap (it used to be injected out-of-band); the compiler exposes it via
     # impr_features:vectorized_transcendental_activation.
     activation_vectorization: str | None = None
+    # Does the register block's M extent SHRINK for a small-M region rather than staying at the tile
+    # size? Routed in the action catalog with no field behind it, so the divergence could never be
+    # raised. The measured case is a decode step at M=1 on a wide tile: correct, busy, and using one
+    # row of the block.
+    mr_adapts_to_m: bool | None = None
 
 
 @dataclass
@@ -84,6 +89,56 @@ class MemoryFacet:                             # data-movement / packing (the #1
     # Is the A operand broadcast via vfmacc.vf (no per-step A-vector rebuild ladder) vs rebuilt with
     # vslideup/vrgather each step? True = .vf broadcast (a_broadcast_per_fma == 0).
     a_broadcast_vf: bool | None = None
+    # --- ON-CHIP RESIDENCY: does the working set FIT, and what happens when it does not? ---
+    # A compile-time feasibility predicate, not a performance hint. Radiance's SPAD_DEST() is exactly
+    # this, and failing it produced 0/16384 correct elements SILENTLY -- the kernel ran, wrote nothing
+    # correct, and nothing in the CCA could say why. `capacity_fit` measures the BACKEND's residency
+    # strategy against the target's declared capacity, so a lowering that overruns is a divergence
+    # rather than a mystery.
+    capacity_fit: bool | None = None
+    onchip_bytes_required: int | None = None   # METRIC: what the region's working set needs
+    banks_used: int | None = None              # METRIC: distinct on-chip banks the region occupies
+    spill_reason: str | None = None            # why it did not fit: operand | accumulator | both | none
+    # Folded in from the retired DataflowFacet: bulk movement is data movement, which every target has.
+    dma_pattern: str | None = None             # burst | strided | scatter_gather | none
+    onchip_resident: str | None = None         # which operand stays on chip: a | b | both | none
+
+
+@dataclass
+class DispatchFacet:
+    """HOW MANY commands the region issues to its endpoint, and what shape they take.
+
+    The largest structural gap the CCA had, and it is engine-agnostic: every endpoint is driven by
+    something. Gemmini's biggest expert win IS dispatch shape rather than arithmetic — a hardware-loop
+    descriptor offloads the whole loop nest, ``matmul_ws`` elides re-preloads it does not need, and
+    ``a_spad_id``/``b_spad_id`` double-buffer the scratchpad — and none of that is expressible in
+    contraction form, vector config or access pattern. ``features/dispatch.py`` already extracts the
+    counts and had nowhere to put them.
+
+    ``n_dispatches`` is a METRIC (a count, not a choice). The rest are choices a schedule makes.
+    """
+
+    n_dispatches: int | None = None            # METRIC: commands issued to the endpoint
+    config_fraction: float | None = None       # METRIC: share of them that only set state
+    descriptor_reuse: bool | None = None       # state set once and inherited, vs re-set per tile
+    loop_offloaded: bool | None = None         # a loop nest handed to the endpoint's own sequencer
+    double_buffered_banks: int | None = None   # distinct on-chip banks alternated across tiles
+    dma_overlap: bool | None = None            # bulk movement issued to overlap with compute
+
+
+@dataclass
+class LayoutFacet:
+    """How operands are LAID OUT before the region runs, as opposed to how they are fetched.
+
+    ``layout.transpose_materialized`` is already ROUTED in the action catalog with no backing facet, so
+    the divergence it exists to answer could never be raised — a route with nothing able to trigger it.
+    Distinct from ``MemoryFacet``, which describes the access pattern of a layout already chosen; this
+    describes the choice.
+    """
+
+    transpose_materialized: bool | None = None  # a transpose written to memory vs folded into access
+    operand_major: str | None = None            # k_major | m_major | n_major
+    prepack_required: bool | None = None        # the endpoint needs an offline-packed operand panel
 
 
 @dataclass
@@ -149,25 +204,6 @@ class SimtFacet:
 
 
 @dataclass
-class DataflowFacet:
-    """DATA MOVEMENT, not an engine — and awaiting a fold rather than a lifter.
-
-    Named for a target class ("NPU") it never described. Its three fields are movement and staging,
-    which every target has: they belong in ``MemoryFacet``/``DispatchFacet``, not in a facet scoped to
-    one kind of silicon. Nothing has ever populated it.
-
-    It is kept, rather than deleted, because ``DispatchFacet`` — which receives ``dma_pattern`` and
-    ``onchip_resident`` — does not exist yet, and these three rows are the only written record that
-    the movement story is missing. Deleting them now would drop the intent with nothing left to catch
-    it. Fold and remove when the dispatch facet lands; do not add fields here in the meantime.
-    """
-
-    engine_ops: list[str] = field(default_factory=list)
-    dma_pattern: str | None = None
-    onchip_resident: str | None = None
-
-
-@dataclass
 class CoverageFacet:
     """WHOLE-MODEL coverage: how much of the work the schedule actually claims.
 
@@ -208,7 +244,10 @@ class CCA:
     envelope: EnvelopeFacet | None = None
     spatial: SpatialFacet | None = None
     simt: SimtFacet | None = None
-    dataflow: DataflowFacet | None = None
+    #: HOW the region drives its endpoint (engine-agnostic: every endpoint is driven by something).
+    dispatch: DispatchFacet | None = None
+    #: How operands are laid out BEFORE the region runs, as opposed to how they are fetched.
+    layout: LayoutFacet | None = None
     #: whole-model coverage. Present only on a MODEL-level CCA (lifted from IR + schedule); None on a
     #: per-kernel CCA, where "what fraction of the model is claimed" is not a meaningful question.
     coverage: CoverageFacet | None = None
@@ -544,9 +583,137 @@ def lift_npu(engine_ops: list[str], *, op: str, source: str,
     return CCA(
         op=op, backend=[backend],
         compute=ComputeFacet(op=op),
-        dataflow=DataflowFacet(engine_ops=list(engine_ops), dma_pattern=dma_pattern),
+        # `engine_ops` had no home after the fold: it is a LIST of op names, i.e. a coverage question
+        # ("which ops reached the engine"), not a per-region property. Its movement half is what
+        # mattered and it lives on memory now, beside the access pattern it belongs with.
+        memory=MemoryFacet(dma_pattern=dma_pattern),
+        dispatch=DispatchFacet(n_dispatches=len(list(engine_ops)) or None),
         provenance={"level": "asm", "source": source, "confidence": "medium"},
     )
+
+
+def lift_asm_roles(decoded, endpoint, *, op: str, source: str,
+                   geometry: dict | None = None,
+                   accumulator_dtype: str | None = None,
+                   widening: bool | None = None,
+                   loop_spans=None) -> CCA:
+    """A CCA lifted from a ROLE-tagged instruction stream — the target-agnostic generalization of
+    :func:`lift_asm`.
+
+    ``lift_asm`` counts RVV mnemonic literals, so it recognizes exactly one target. This takes a stream
+    that some target's own decoder has already role-tagged (``kernels.decode.rocc`` /
+    ``kernels.decode.muon`` / the matrix decoder) plus the :class:`kernels.endpoints.Endpoint` that
+    supplied the roles, and fills the facets those roles license. Roles are the only vocabulary shared
+    across targets, and they are the same roles that derive the engine set, so a target cannot end up
+    with a lifted facet its declared silicon does not have.
+
+    Which engine-scoped facet gets filled follows ``endpoint.engine``, not a target name. The
+    engine-agnostic facets (``dispatch``, ``memory``, ``compute``) are filled for every endpoint,
+    because every endpoint is driven by something and moves data.
+
+    ``geometry`` carries the target's derived hardware constants (``pe_rows``/``pe_cols``,
+    ``threads_per_warp``, ``sew``, ...). They are IDENTITY, not levers: the compiler tiles TO them.
+    Absent, they stay None rather than being inferred from the stream, because a stream that happens to
+    use a 16-wide operand says nothing about how wide the array is.
+
+    ``loop_spans`` names the address ranges of reduction loops when the caller could resolve them.
+    Residency is scoped to the LOOP: a looping reduction emits one accumulate statically, so "is there
+    a readout between the first and the last accumulate" is vacuous for exactly the kernels that matter.
+    Without spans, residency is reported UNKNOWN (None) rather than guessed -- an unlinked object
+    resolves every branch to its own address, finds no span, and would otherwise collapse every
+    loop-scoped count to a confident zero.
+    """
+    from . import roles as _roles
+
+    counts: dict[str, int] = {}
+    for d in decoded:
+        for r in getattr(d, "roles", ()) or ():
+            counts[r] = counts.get(r, 0) + 1
+    geo = dict(geometry or {})
+    total = sum(counts.values())
+
+    # --- dispatch: engine-agnostic, and the largest gap this closes ---
+    n_config = counts.get("config", 0)
+    dispatch = DispatchFacet(
+        n_dispatches=total or None,
+        config_fraction=(n_config / total) if total else None,
+        # State set ONCE and inherited by the rest of the stream, versus re-set per tile. One config
+        # for many accumulates is reuse; one per accumulate is not.
+        descriptor_reuse=(n_config <= 1) if counts.get("accumulate") else None,
+        loop_offloaded=bool(counts.get("loop_descriptor")) if total else None,
+        dma_overlap=bool(counts.get("dma")) if total else None,
+    )
+
+    # --- compute: shared across every engine ---
+    resident = _accumulator_resident(decoded, loop_spans)
+    compute = ComputeFacet(
+        op=op, accumulator_dtype=accumulator_dtype, widening=widening,
+        contraction_form=geo.get("dataflow"),
+        accumulator_resident=resident,
+    )
+
+    # --- the engine-scoped facet, chosen by the ENDPOINT's engine ---
+    spatial = simt = vector = None
+    engine = getattr(endpoint, "engine", "")
+    if engine == "spatial":
+        spatial = SpatialFacet(pe_rows=geo.get("pe_rows"), pe_cols=geo.get("pe_cols"),
+                               dataflow=geo.get("dataflow"), accumulator_resident=resident)
+    elif engine == "simt":
+        simt = SimtFacet(warps=geo.get("warps"), threads_per_warp=geo.get("threads_per_warp"),
+                         # A barrier inside the reduction loop is the SIMT analogue of a readout
+                         # inside it: both say the engine cannot keep its state across the reduction.
+                         barriers_in_loop=counts.get("sync") if total else None,
+                         smem_resident=resident,
+                         divergence=geo.get("divergence"))
+    elif engine == "vector":
+        vector = VectorFacet(sew=geo.get("sew"), lmul=geo.get("lmul"),
+                             vl_strategy=geo.get("vl_strategy"), tail=geo.get("tail"))
+
+    # A stream where NOTHING was role-tagged is not a clean lift, it is a lift that saw nothing. The
+    # completeness check only applies once at least one role was recognized; otherwise the honest
+    # verdict is "no roles recognized", which reads as an unresolved decode rather than a good kernel.
+    # The completeness check applies to a CONTRACTION, and a stream is one iff it accumulates. Judging
+    # a lane engine's elementwise region by contraction completeness would report every correct
+    # activation kernel as incomplete for lacking a weight load it has no use for.
+    missing = _roles.missing_contraction_roles(counts) if counts.get("accumulate") else ()
+    nothing_seen = not counts
+    return CCA(
+        op=op, backend=[getattr(endpoint, "target", "") or "unknown"],
+        compute=compute, spatial=spatial, simt=simt, vector=vector, dispatch=dispatch,
+        memory=MemoryFacet(dma_pattern="burst" if counts.get("dma") else None),
+        provenance={"level": "asm", "source": source,
+                    # A stream missing a role a complete contraction needs is reported at LOW
+                    # confidence rather than as a clean lift. The measured failure it guards: an audit
+                    # counted accumulates and passed a kernel that never drained its accumulator.
+                    "confidence": "low" if (missing or nothing_seen) else "high",
+                    "no_roles_recognized": nothing_seen,
+                    "endpoint": getattr(endpoint, "name", ""),
+                    "engine": engine,
+                    "role_counts": dict(sorted(counts.items())),
+                    "missing_contraction_roles": list(missing)},
+    )
+
+
+def _accumulator_resident(decoded, loop_spans) -> bool | None:
+    """Does the accumulator stay in the endpoint across the reduction, committing once after it?
+
+    None when it cannot be decided. Scoped to the reduction LOOP when spans are available; without
+    them the question is genuinely undecidable from a static stream, and answering it anyway is how a
+    lifter reports a clean kernel it could not see.
+    """
+    acc = [d for d in decoded if "accumulate" in (getattr(d, "roles", ()) or ())]
+    out = [d for d in decoded if "readout" in (getattr(d, "roles", ()) or ())]
+    if not acc:
+        return None                               # the engine was not driven at all
+    if not loop_spans:
+        if len(acc) > 1:
+            # Fully unrolled: a readout BETWEEN the first and last accumulate means the accumulator
+            # round-trips mid-reduction.
+            lo, hi = acc[0].index, acc[-1].index
+            return not any(lo < d.index < hi for d in out)
+        return None                               # one static accumulate and no spans: undecidable
+    inside = lambda d: any(lo <= d.addr <= hi for lo, hi in loop_spans)   # noqa: E731
+    return not any(inside(d) for d in out)
 
 
 def particularities() -> dict:
@@ -673,7 +840,7 @@ def cca_agree(a: CCA, b: CCA) -> AgreementReport:
     whose levels disagree is quarantined from policy promotion until reconciled."""
     diffs: list[str] = []
     compared: list[str] = []
-    for facet in ("compute", "vector", "memory", "spatial", "simt", "dataflow"):
+    for facet in ("compute", "vector", "memory", "envelope", "spatial", "simt", "dispatch", "layout"):
         fa, fb = getattr(a, facet), getattr(b, facet)
         for k, (va, vb) in _facet_fields(fa, fb).items():
             compared.append(f"{facet}.{k}")

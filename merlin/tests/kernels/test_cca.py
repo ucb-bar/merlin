@@ -111,7 +111,10 @@ def test_composite_backend_supported():
     # a heterogeneous region (NPU+RVV) is just a backend list — not a special case
     c = cca.CCA(op="attention", backend=["npu", "rvv"])
     assert c.backend == ["npu", "rvv"]
-    assert c.spatial is None and c.dataflow is None   # facets populated only when relevant
+    # facets are populated only when relevant. (`dataflow` was retired: its fields were data MOVEMENT,
+    # which every target has, so they folded into memory/dispatch rather than staying in a facet
+    # scoped to one kind of silicon.)
+    assert c.spatial is None and c.simt is None and c.dispatch is None and c.layout is None
 
 
 # ---- accumulator-residency / register-block / VL-NR: the abstraction reads the expert-win

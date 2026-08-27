@@ -26,6 +26,11 @@ _AXIS_CATEGORY = {
     # The envelope axes are data-movement too: a redundant tile-epilogue copy IS layout traffic.
     "envelope.runtime_calls": "fusion-layout",
     "envelope.calls_in_loop": "fusion-layout",
+    # A small-M region on a wide register block is correct, busy, and using one row of it. The choice
+    # of block extent is a tiling question, so it categorizes with the rest of them.
+    "compute.mr_adapts_to_m": "tiling-dataflow",
+    # A materialized transpose is layout traffic, exactly like the envelope copies above.
+    "layout.transpose_materialized": "fusion-layout",
     "compute.accumulator_resident": "register-residency",
     "compute.accumulator_dtype": "register-residency",
     # coverage (whole-model): "is this work even ON the vector path" is a tiling/dataflow question for

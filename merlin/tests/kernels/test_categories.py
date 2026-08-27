@@ -33,6 +33,10 @@ def test_categorize_groups_divergences_by_what_to_improve():
 
 
 def test_uncategorized_axis_not_dropped():
-    # an axis with no category lands under None (surfaced, never silently dropped)
-    grouped = C.categorize([Divergence("compute.mr_adapts_to_m", True, False, "rvv")])
+    # an axis with no category lands under None (surfaced, never silently dropped).
+    # Deliberately a FICTITIOUS axis: this test used compute.mr_adapts_to_m as its example of an
+    # uncategorized axis, and then that axis got a category -- so the test began asserting the opposite
+    # of what it means. An invariant about "any uncategorized axis" must not be pinned to a real axis
+    # someone will eventually categorize.
+    grouped = C.categorize([Divergence("compute.no_such_axis", True, False, "rvv")])
     assert None in grouped

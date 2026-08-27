@@ -66,7 +66,8 @@ AGNOSTIC_FACETS: frozenset[str] = frozenset({
     "memory",     # access pattern, panel reuse, operand broadcast
     "envelope",   # what is emitted AROUND the loop -- including a scalar core's contribution
     "coverage",   # whole-model claim; model-scoped rather than per-kernel
-    "dataflow",   # movement, awaiting its fold into memory/dispatch (see cca.DataflowFacet)
+    "dispatch",   # HOW the endpoint is driven — every endpoint is driven by something
+    "layout",     # how operands are laid out before the region runs
 })
 
 

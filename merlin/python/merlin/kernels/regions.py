@@ -117,7 +117,7 @@ REGIONS: dict[str, Region] = {r.key: r for r in [
        "contraction classes it claims at all — a block no extent admits declines the class to scalar.",
        (_PIPE, _FS, _IF),
        [_ep("KNOB", "schedule:op_match", _FS, "add/adjust an op_match tile in render_schedule")],
-       cca_axes=("compute.register_block", "compute.nr_is_vsetvlmax",
+       cca_axes=("compute.register_block", "compute.nr_is_vsetvlmax", "compute.mr_adapts_to_m",
                  "coverage.claimed_mac_fraction", "coverage.unclaimed_op_classes")),
     _r("vectorization", "kernel-codegen", "Vectorization",
        "Scoped vectorize + vector width/LMUL/VL strategy/tail policy, including the SCOPE: which "
@@ -175,7 +175,8 @@ REGIONS: dict[str, Region] = {r.key: r for r in [
        (_IF, _FS),
        [_ep("PASS", "impr_features:vfmacc_packed", _IF,
             "register a packing feature (transform.structured.pack layout)", _IMPR)],
-       cca_axes=("memory.access_pattern",)),
+       cca_axes=("memory.access_pattern", "layout.transpose_materialized", "layout.operand_major",
+                 "memory.dma_pattern", "memory.onchip_resident", "memory.capacity_fit")),
     # ---- emission ---------------------------------------------------------------------
     _r("target-lowering", "emission", "Target lowering / legalization",
        "Dialect -> LLVM mechanical descent (convert-*-to-llvm, reconcile-unrealized-casts).",
@@ -199,18 +200,31 @@ REGIONS: dict[str, Region] = {r.key: r for r in [
        ("merlin/python/merlin/runtime/program.py",
         "merlin/python/merlin/runtime/commandbuffer.py"),
        [_ep("DATA", "program:opcodes", "merlin/python/merlin/runtime/program.py",
-            "add a namespaced opcode / capability flag / layout-encoding to the program format")]),
+            "add a namespaced opcode / capability flag / layout-encoding to the program format")],
+       # This region was registered with NO cca_axes, so nothing could route to it -- a documented
+       # edit point the loop had no way to reach. Dispatch SHAPE is what it governs: whether a loop
+       # nest is handed to the endpoint's own sequencer, and whether endpoint state is set once and
+       # inherited or re-set per tile. Both are program/command-buffer format decisions.
+       cca_axes=("dispatch.loop_offloaded", "dispatch.descriptor_reuse", "dispatch.n_dispatches",
+                 "dispatch.config_fraction")),
     _r("aot-opt", "runtime", "Ahead-of-time (once) optimizations",
        "AOT-once products: the static arena memory plan, prepacked weights.",
        ("merlin/python/merlin/xdsl_dialects/lowering/arena_plan.py",),
        [_ep("DATA", "arena:plan", "merlin/python/merlin/xdsl_dialects/lowering/arena_plan.py",
-            "extend the AOT arena/prepack plan emitted once at compile time")]),
+            "extend the AOT arena/prepack plan emitted once at compile time")],
+       cca_axes=("dispatch.double_buffered_banks", "simt.smem_resident", "simt.warps",
+                 "layout.prepack_required")),
     _r("hw-sync", "runtime", "HW synchronization",
        "Barrier / hart-partition / event synchronization emitted for multicore execution.",
        ("merlin/python/merlin/runtime/backends/rvv_codegen.py",),
        [_ep("CODEGEN", "codegen:hw_sync", "merlin/python/merlin/runtime/backends/rvv_codegen.py",
             "GAP: barrier/sync is hand-written per codegen backend; no sync-strategy registry yet",
-            forkable=False)]),
+            forkable=False)],
+       # Also registered with no cca_axes. Ordering is what it governs: barrier placement inside a
+       # reduction loop, whether control flow is uniform, and whether bulk movement is issued to
+       # overlap with compute. The edit point remains a stated GAP (sync is hand-written per codegen
+       # backend), which is exactly why the axes must be reachable -- otherwise the gap is invisible.
+       cca_axes=("simt.barriers_in_loop", "simt.divergence", "dispatch.dma_overlap")),
     # ---- cross-cutting ----------------------------------------------------------------
     _r("heuristics", "cross-cutting", "Optimization heuristics (when to apply what)",
        "The CCA->lever router + escalation ladder; DSE candidate selection.",

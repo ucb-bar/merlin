@@ -30,9 +30,8 @@ from pathlib import Path
 from typing import Any
 
 from . import action_catalog
-from .cca import (ComputeFacet, CoverageFacet, DataflowFacet, MemoryFacet, EnvelopeFacet,
-                  SimtFacet, SpatialFacet,
-                  VectorFacet)
+from .cca import (ComputeFacet, CoverageFacet, DispatchFacet, LayoutFacet, MemoryFacet,
+                  EnvelopeFacet, SimtFacet, SpatialFacet, VectorFacet)
 
 # facet name (the axis prefix) -> the dataclass whose fields it exposes.
 FACET_CLASSES = {
@@ -42,7 +41,8 @@ FACET_CLASSES = {
     "envelope": EnvelopeFacet,
     "spatial": SpatialFacet,
     "simt": SimtFacet,
-    "dataflow": DataflowFacet,
+    "dispatch": DispatchFacet,
+    "layout": LayoutFacet,
     "coverage": CoverageFacet,
 }
 
@@ -165,6 +165,75 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
                                        "(the region with no cca_axes today)"),
     "simt.divergence": FieldSpec("simt.divergence", BACKEND_STUB, ("simt",),
                                  "uniform vs divergent control flow -> predication/partition lever"),
+    # --- dispatch: HOW the endpoint is driven (engine-AGNOSTIC: everything is driven by something) ---
+    # The largest structural gap the CCA had. Gemmini's biggest expert win is dispatch SHAPE, not
+    # arithmetic: a loop descriptor hands the whole nest to the endpoint's own sequencer, matmul_ws
+    # elides re-preloads it does not need, and the scratchpad ids double-buffer across tiles. None of
+    # that is expressible in contraction form, vector config or access pattern, so no divergence could
+    # ever be raised for it -- and features/dispatch.py was already extracting the counts with nowhere
+    # to put them.
+    "dispatch.n_dispatches": FieldSpec(
+        "dispatch.n_dispatches", METRIC, ("dispatch",),
+        "METRIC: commands issued to the endpoint -- an outcome, not a knob"),
+    "dispatch.config_fraction": FieldSpec(
+        "dispatch.config_fraction", METRIC, ("dispatch",),
+        "METRIC: share of dispatches that only set state -- diagnoses re-configuration overhead"),
+    "dispatch.descriptor_reuse": FieldSpec(
+        "dispatch.descriptor_reuse", BACKEND_STUB, ("dispatch",),
+        "endpoint state set once and inherited vs re-set per tile -> preload-elision lever "
+        "(routes pending)"),
+    "dispatch.loop_offloaded": FieldSpec(
+        "dispatch.loop_offloaded", BACKEND_STUB, ("dispatch",),
+        "a loop nest handed to the endpoint's own sequencer -> the runtime-layout-encoding region "
+        "(registered with no cca_axes today)"),
+    "dispatch.double_buffered_banks": FieldSpec(
+        "dispatch.double_buffered_banks", BACKEND_STUB, ("dispatch",),
+        "on-chip banks alternated across tiles -> arena-plan lever (routes pending)"),
+    "dispatch.dma_overlap": FieldSpec(
+        "dispatch.dma_overlap", BACKEND_STUB, ("dispatch",),
+        "bulk movement issued to overlap with compute -> the hw-sync region (no cca_axes today)"),
+    # --- layout: how operands are laid out BEFORE the region runs ---
+    # transpose_materialized is ALREADY routed in the action catalog with no facet behind it, so the
+    # divergence that route exists to answer could never be raised: a route nothing can trigger.
+    "layout.transpose_materialized": FieldSpec(
+        "layout.transpose_materialized", LEVER, ("layout",),
+        "a transpose written to memory vs folded into the access -> the route already registered in "
+        "the action catalog, which until now had no field able to trigger it"),
+    "layout.operand_major": FieldSpec(
+        "layout.operand_major", BACKEND_STUB, ("layout",),
+        "k-major vs m/n-major operand packing -> arena-plan/pack lever (routes pending)"),
+    "layout.prepack_required": FieldSpec(
+        "layout.prepack_required", IDENTITY, ("layout",),
+        "the endpoint REQUIRES an offline-packed panel -- a property of the silicon, not a choice"),
+    # --- memory: on-chip residency (engine-agnostic) ---
+    # A compile-time FEASIBILITY predicate, not a performance hint: failing it produced 0/16384 correct
+    # elements silently, and nothing in the CCA could say why.
+    "memory.capacity_fit": FieldSpec(
+        "memory.capacity_fit", BACKEND_STUB, ("memory",),
+        "does the working set fit the declared on-chip capacity -> tiling/residency lever "
+        "(routes pending)"),
+    "memory.onchip_bytes_required": FieldSpec(
+        "memory.onchip_bytes_required", METRIC, ("memory",),
+        "METRIC: bytes the region's working set needs on chip"),
+    "memory.banks_used": FieldSpec(
+        "memory.banks_used", METRIC, ("memory",),
+        "METRIC: distinct on-chip banks the region occupies -- a kernel using one bank of four leaves "
+        "three idle, and no cycle count says so"),
+    "memory.spill_reason": FieldSpec(
+        "memory.spill_reason", METRIC, ("memory",),
+        "METRIC: which operand class overran the capacity (operand/accumulator/both/none)"),
+    "memory.dma_pattern": FieldSpec(
+        "memory.dma_pattern", BACKEND_STUB, ("memory",),
+        "burst/strided/scatter-gather bulk movement -> DMA-shape lever (routes pending); folded here "
+        "from the retired dataflow facet, since movement is not an engine"),
+    "memory.onchip_resident": FieldSpec(
+        "memory.onchip_resident", BACKEND_STUB, ("memory",),
+        "which operand stays on chip across the reduction -> residency lever (routes pending)"),
+    # --- compute: the field behind a route that already existed ---
+    "compute.mr_adapts_to_m": FieldSpec(
+        "compute.mr_adapts_to_m", LEVER, ("compute",),
+        "does the register block's M extent shrink for a small-M region -> the small-M route already "
+        "registered in the action catalog, which had no field to trigger it"),
     # --- coverage (whole-model, target-agnostic) ---
     # These are GRAPH-level, which is the point: every other facet is lifted from ONE kernel's asm, so a
     # loss that lives in the graph -- an entire contraction class left unclaimed, or the ~88% of linalg
@@ -182,10 +251,6 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
         "coverage.non_contraction_op_fraction", LEVER, ("rvv",),
         "share of ops the contraction-only schedule never matches -> PASS vectorize the "
         "non-contraction generics (elementwise/layout/gather tail)"),
-    # --- dataflow (npu) — stubs until the npu lifter + npu routes land ---
-    "dataflow.engine_ops": FieldSpec("dataflow.engine_ops", BACKEND_STUB, ("npu",)),
-    "dataflow.dma_pattern": FieldSpec("dataflow.dma_pattern", BACKEND_STUB, ("npu",)),
-    "dataflow.onchip_resident": FieldSpec("dataflow.onchip_resident", BACKEND_STUB, ("npu",)),
 }
 
 
@@ -223,11 +288,11 @@ KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
         ),
         # routed axes still awaiting a backing ComputeFacet field.
         # CLOSED so far: compute.activation_vectorization (field + lift_asm inferer added).
-        "orphan_routes": (
-            "compute.mr_adapts_to_m",
-            "layout.transpose_materialized",   # fuse_transpose_b: route + measured win real; graph-level
-                                               # (IR) backing-field lifter deferred (see note above).
-        ),
+        # CLOSED: both of these were routes with no backing FIELD, so the divergence each route exists
+        # to answer could never be raised -- an action wired to a question nothing could ask.
+        # `layout.transpose_materialized` now has LayoutFacet behind it and `compute.mr_adapts_to_m` a
+        # field on ComputeFacet, both populated by the role lifter.
+        "orphan_routes": (),
     },
     # Per-target (example: gemmini): the two spatial LEVER axes (dataflow, accumulator-residency) are
     # backed by routes the generic, derivation-driven backend (targetgen/rtl_backend.py) DERIVES from the
