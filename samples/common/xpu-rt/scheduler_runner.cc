@@ -29,6 +29,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <deque>
 #include <map>
 #include <thread>
 #include <unordered_map>
@@ -237,10 +238,34 @@ static uint64_t NextReleaseUsLocked(
 	return sched->exec[(size_t)future.front()].release_us;
 }
 
-static int PickBestReadyIndex(
-	const std::vector<int> &ready, const std::vector<DispatchNode> &nodes) {
-	int best_i = 0;
-	for (int i = 1; i < (int)ready.size(); ++i) {
+// Pick the best ready node this worker may run.
+//
+// worker_core is the physical core index this worker owns, or -1 when the
+// worker serves a whole target (the historical one-thread-per-cluster mode).
+// A core-owning worker takes only nodes placed on its core, plus -- if it owns
+// the target's first core -- nodes the schedule left unplaced (core_index < 0),
+// so an unplaced node can never strand with every worker refusing it.
+//
+// Returns an index into `ready`, or -1 when nothing here belongs to us.
+static int PickBestReadyIndex(const std::vector<int> &ready,
+	const std::vector<DispatchNode> &nodes, int worker_core = -1,
+	bool accepts_unplaced = true) {
+	auto eligible = [&](int node_idx) {
+		if (worker_core < 0)
+			return true;
+		const int c = nodes[(size_t)node_idx].core_index;
+		if (c < 0)
+			return accepts_unplaced;
+		return c == worker_core;
+	};
+	int best_i = -1;
+	for (int i = 0; i < (int)ready.size(); ++i) {
+		if (!eligible(ready[i]))
+			continue;
+		if (best_i < 0) {
+			best_i = i;
+			continue;
+		}
 		const auto &A = nodes[(size_t)ready[i]];
 		const auto &B = nodes[(size_t)ready[best_i]];
 
@@ -301,6 +326,7 @@ static void SeedReadyNodes(
 //------------------------------------------------------------------------------
 
 static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
+	int worker_core, bool accepts_unplaced,
 	std::vector<DispatchNode> *nodes,
 	const std::vector<std::vector<int>> *dependents,
 	const std::vector<CachedModule *> *node_modules, int dispatch_iters,
@@ -328,8 +354,9 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 				PromoteReleasedNodesLocked(sched, *nodes, target, now_us);
 
 				std::vector<int> &ready = ReadyQueueFor(sched, target);
-				if (!ready.empty()) {
-					const int best_i = PickBestReadyIndex(ready, *nodes);
+				const int best_i = PickBestReadyIndex(
+					ready, *nodes, worker_core, accepts_unplaced);
+				if (best_i >= 0) {
 					node_idx = ready[(size_t)best_i];
 					ready.erase(ready.begin() + best_i);
 
@@ -785,13 +812,59 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 	fprintf(stdout, "[dispatch] Warmup complete.\n");
 	fflush(stdout);
 
-	std::thread worker_p(WorkerMain, HardwareTarget::kCpuP, cfg->cpu_p_cpu_ids,
-		&model.nodes, &dependents, &node_modules, dispatch_iters, host_alloc,
-		&shared, &sched, &trace);
-
-	std::thread worker_e(WorkerMain, HardwareTarget::kCpuE, cfg->cpu_e_cpu_ids,
-		&model.nodes, &dependents, &node_modules, dispatch_iters, host_alloc,
-		&shared, &sched, &trace);
+	// One worker per core when per-core pinning is on, otherwise one per
+	// target -- the historical shape.
+	//
+	// N-way is only safe together with per-core devices, and that is not a
+	// coincidence: a CachedModule wraps an IREE session, and two threads
+	// calling into one session concurrently is a data race. With
+	// --pin_per_core the module cache is keyed by core, so each module belongs
+	// to exactly one core, and giving each core exactly one worker means each
+	// session is touched by exactly one thread. Spawning N workers per target
+	// WITHOUT per-core devices would share sessions across threads, which is
+	// why that combination is deliberately not offered.
+	std::vector<std::thread> workers;
+	// Backing storage for the per-worker cpu-id strings. WorkerMain takes a
+	// const char*, so these must outlive the threads; a deque never
+	// reallocates its elements, so pointers taken from it stay valid.
+	std::deque<std::string> worker_cpu_csv;
+	{
+		std::vector<int> ids_p, ids_e;
+		SplitCpuIds(cfg->cpu_p_cpu_ids, &ids_p);
+		SplitCpuIds(cfg->cpu_e_cpu_ids, &ids_e);
+		struct TargetSpec {
+			HardwareTarget target;
+			const char *csv;
+			const std::vector<int> *ids;
+		};
+		const TargetSpec specs[2] = {
+			{HardwareTarget::kCpuP, cfg->cpu_p_cpu_ids, &ids_p},
+			{HardwareTarget::kCpuE, cfg->cpu_e_cpu_ids, &ids_e},
+		};
+		for (const TargetSpec &ts : specs) {
+			if (!cfg->pin_per_core || ts.ids->empty()) {
+				workers.emplace_back(WorkerMain, ts.target, ts.csv,
+					/*worker_core=*/-1, /*accepts_unplaced=*/true,
+					&model.nodes, &dependents, &node_modules, dispatch_iters,
+					host_alloc, &shared, &sched, &trace);
+				continue;
+			}
+			for (size_t k = 0; k < ts.ids->size(); ++k) {
+				// Pin this worker to the one physical core it serves, so the
+				// thread that submits also runs on the core the schedule named.
+				worker_cpu_csv.emplace_back(std::to_string((*ts.ids)[k]));
+				const char *csv = worker_cpu_csv.back().c_str();
+				workers.emplace_back(WorkerMain, ts.target, csv,
+					/*worker_core=*/(int)k,
+					/*accepts_unplaced=*/(k == 0),
+					&model.nodes, &dependents, &node_modules, dispatch_iters,
+					host_alloc, &shared, &sched, &trace);
+			}
+		}
+		fprintf(stdout, "[dispatch] %zu worker thread(s)%s\n", workers.size(),
+			cfg->pin_per_core ? " (one per core)" : " (one per target)");
+		fflush(stdout);
+	}
 
 	const auto run_t0 = Clock::now();
 
@@ -854,8 +927,8 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 	}
 	sched.cv.notify_all();
 
-	worker_p.join();
-	worker_e.join();
+	for (auto &w : workers)
+		w.join();
 
 	const auto run_t1 = Clock::now();
 	const double total_s =
