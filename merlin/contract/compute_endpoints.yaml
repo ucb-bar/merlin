@@ -62,6 +62,86 @@ endpoints:
       fsm: [loop_descriptor]
       fine_grained: [weight_load, accumulate]
 
+  radiance_simt:
+    description: >-
+      Radiance's SIMT cluster, which is the same cluster RTL muon is introspected from — so it resolves
+      the same derived encoding. Declared as its own endpoint rather than aliased to muon's: the two
+      are separate subjects everywhere downstream (corpus, contract, suite, results), and an endpoint
+      that silently stood for another target would attribute one target's kernels to the other.
+    target: radiance
+    engine: simt
+    exposure: external_backend
+    encoding:
+      source: isa_encoding
+      spaces: [custom_0, repurposed_op]
+      match: opcode
+      disasm_triple: riscv32
+      disasm_mattr: "+m,+a,+f,+d,+c"
+      stream_width: 32
+    roles:
+      operand_load: [LOAD]
+      commit: [STORE]
+      accumulate: [MADD, MSUB, NM_ADD, NM_SUB]
+      elementwise: [OP, OP_IMM, OP_FP]
+      sync: [MISC_MEM, SYSTEM]
+      # The loop structure around the work. Roled so the UNROLED bucket contains only instructions we
+      # genuinely cannot explain — which for this target is the CUSTOM spaces, where its accelerator
+      # surface lives and where guessing would invent the semantics the corpus exists to teach us.
+      control: [BRANCH, JAL, JALR, AUIPC, LUI]
+    notes: >-
+      The MX array this cluster embeds is a SECOND endpoint that does not exist here yet: its
+      instructions live in the custom opcode spaces, which are reported unroled rather than guessed.
+
+  rvv_lanes:
+    description: >-
+      The base vector ISA's lane engine. Declared as an endpoint like any other so a vector kernel is
+      measured the SAME WAY as an accelerator kernel — without this the loop's one working target is
+      the one target whose assembly carries no declared meaning, and a cross-target comparison is not
+      apples to apples.
+    target: rvv
+    engine: vector
+    exposure: inline_asm
+    encoding:
+      # A standard ISA has no per-target decode table to derive from; its own instruction GRAMMAR is
+      # the vocabulary, and the mnemonics below are stems matched before the form suffix (`.vv`,
+      # `.vf`, `.vx`, `.vs`, `.wv`, ...), which is a property of the ISA's naming, not of any target.
+      #
+      # ⚠️ Unlike an RTL-derived table this cannot be verified against the silicon, so the loader marks
+      # it UNVERIFIED and the asm audit reports every observed mnemonic no role covers. The gap is
+      # visible and shrinkable rather than assumed away.
+      source: mnemonic_grammar
+      match: stem                      # compare the mnemonic up to its first '.'
+    roles:
+      config: [vsetvli, vsetivli, vsetvl]
+      # The whole-register load family spells its element width into the stem (vl2re8, not vl2r.e8),
+      # so the stems must be listed as the ISA actually names them. Found by auditing a real kernel:
+      # the shorter spellings matched nothing and the instructions fell through to "unroled".
+      operand_load: [vle8, vle16, vle32, vle64, vlse8, vlse16, vlse32, vlse64,
+                     vluxei8, vluxei16, vluxei32, vloxei8, vloxei16, vloxei32,
+                     vl1re8, vl1re16, vl1re32, vl1re64, vl2re8, vl2re16, vl2re32, vl2re64,
+                     vl4re8, vl4re16, vl4re32, vl4re64, vl8re8, vl8re16, vl8re32, vl8re64]
+      # A multiply-accumulate ADVANCES a partial sum; a bare multiply does not, and counting the two
+      # together is how an unfused mul+add lowering reads as a contraction.
+      accumulate: [vfmacc, vmacc, vfwmacc, vwmacc, vwmaccu, vwmaccsu, vwmaccus,
+                   vfmadd, vmadd, vfnmacc, vfmsac, vqmacc, vqmaccu, vqmaccsu, vqmaccus]
+      # `.vf`/`.vx` forms take a scalar operand broadcast across the lanes; the stem alone cannot say
+      # which form was used, so the FORM is read from the operand syntax by the decoder and this list
+      # names the stems that HAVE a broadcast form.
+      broadcast: [vfmv, vmv, vrgather, vfslide1up, vslideup, vslidedown]
+      # Draining a vector accumulator to a scalar is a readout, exactly as popping a tile is.
+      readout: [vredsum, vfredsum, vfredusum, vfredosum, vredmax, vredmin, vfredmax, vfredmin]
+      commit: [vse8, vse16, vse32, vse64, vsse8, vsse16, vsse32, vsse64,
+               vsuxei8, vsuxei16, vsuxei32, vsoxei8, vsoxei16, vsoxei32, vs1r, vs2r, vs4r, vs8r]
+      # Whole-register moves compute nothing and touch no memory. A stream full of them is an operand
+      # ladder being REBUILT per step instead of broadcast — a real, diagnosable shape that was
+      # invisible while these counted as "the tool named it".
+      move: [vmv1r, vmv2r, vmv4r, vmv8r]
+      elementwise: [vadd, vsub, vmul, vmulh, vmulhu, vdiv, vrem, vand, vor, vxor, vsll, vsrl, vsra,
+                    vmin, vmax, vminu, vmaxu, vfadd, vfsub, vfmul, vfdiv, vfsqrt, vfabs, vfneg,
+                    vfmin, vfmax, vzext, vsext, vfcvt, vfwcvt, vfncvt, vnsrl, vnsra, vnclip,
+                    vssra, vssrl, vsadd, vssub, vaadd, vasub, vwadd, vwsub, vwmul, vwmulu]
+      sync: [fence]
+
   saturn_opu:
     description: >-
       The outer-product matrix extension: four instructions in reserved even funct6 slots of the vector
@@ -104,6 +184,18 @@ endpoints:
     encoding:
       source: isa_model                  # merlin.targetgen.isa_model.isa_model_for_target(target)
       roles_from: isa_model.roles
+      # The corpus and the derived model spell the same instruction differently — the corpus writes
+      # VMATPUSH.W.MXU0 where the model has vmatpush.weight.mxu0, an ABBREVIATION rather than a
+      # prefix, so no amount of string normalization joins them. The target's OWN assembler is the
+      # bridge: it is a pure encoder, so calling each of its mnemonics yields a word whose opcode and
+      # funct7 identify the instruction, and the model's table carries the same two fields.
+      #
+      # The join is therefore by ENCODING, never by name — which is the difference between deriving
+      # the correspondence from the target's own sources and hand-writing an alias table that goes
+      # stale the moment either side renames anything.
+      assembler:
+        pin: atlas_npu
+        path: baremetal/assembler.py
     notes: >-
       The corpus spells instructions differently from the model (VMATPUSH.W.MXU0 vs
       vmatpush.weight.mxu0, DMA.CONFIG x5 vs dma.config.ch5). The target's own assembler
@@ -132,6 +224,39 @@ endpoints:
     encoding:
       source: isa_encoding               # mlc_bridge.isa_encoding_for(target)
       spaces: [custom_0, repurposed_op]
+      match: opcode                      # roles are declared over the DERIVED opcode-space names
+      # ⚠️ PIN THE DISASSEMBLER. With the extensions left to the tool's default, 76% of a real kernel's
+      # words came back unnamed and looked like a vast custom surface; given these explicitly it is
+      # 15%, and that 15% IS the custom surface. An unpinned probe reports the tool's ignorance as the
+      # corpus's nature and the two are indistinguishable in the output.
+      disasm_triple: riscv32
+      disasm_mattr: "+m,+a,+f,+d,+c"
+      # The width of a word AS IT APPEARS IN THE OBJECT, which is not the ISA's internal instruction
+      # width: mlc recovers a 64-bit decoder format from this cluster's RTL while the compiled ELF
+      # carries architectural 32-bit words. Decoding the ELF at the internal width declines every word
+      # and reports the whole kernel as unaccounted.
+      stream_width: 32
+    # Roles over the opcode names mlc recovers from this target's own decoder RTL. Coarser than a
+    # per-instruction table — an opcode SPACE groups many instructions — and that coarseness is the
+    # honest resolution of this evidence: the decoder tells us which space a word falls in, not which
+    # operation it performs within that space.
+    #
+    # ⚠️ The CUSTOM spaces are deliberately UNROLED. They are where this target's accelerator surface
+    # lives, and guessing a role for them would invent the very semantics the corpus exists to teach
+    # us. The asm audit reports them as claimed-but-unroled, which is a gap we own and can close, and
+    # is exactly the state to be honest about rather than paper over.
+    roles:
+      operand_load: [LOAD]
+      commit: [STORE]
+      # MADD/MSUB/NM_ADD/NM_SUB are the fused multiply-add opcode group: they advance a partial sum in
+      # one instruction, which is what separates a contraction from a multiply followed by an add.
+      accumulate: [MADD, MSUB, NM_ADD, NM_SUB]
+      elementwise: [OP, OP_IMM, OP_FP]
+      sync: [MISC_MEM, SYSTEM]
+      # The loop structure around the work. Roled so the UNROLED bucket contains only instructions we
+      # genuinely cannot explain — which for this target is the CUSTOM spaces, where its accelerator
+      # surface lives and where guessing would invent the semantics the corpus exists to teach us.
+      control: [BRANCH, JAL, JALR, AUIPC, LUI]
     notes: >-
       Disassembly of this target MUST pin its ISA extensions. With the extensions left to the tool's
       default, 76% of a real kernel's words come back unnamed; given +m,+a,+f,+d,+c it is 15%, and that

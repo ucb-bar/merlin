@@ -23,10 +23,18 @@ class TestTheTargetSelectsTheLifter:
             pytest.skip("gemmini endpoint not resolvable in this checkout")
         assert ep.name == "gemmini_rocc" and "accumulate" in ep.roles
 
-    def test_a_lane_only_target_resolves_none_and_that_is_an_answer(self):
-        """None is the vector path, not a failure: a lane-only target has no accelerator endpoint to
-        decode and its CCA legitimately comes from the vector lifter."""
-        assert mine.endpoint_for_target("rvv") is None
+    def test_a_lane_target_now_resolves_its_own_endpoint(self):
+        """The base ISA used to resolve None and fall through to the mnemonic-counting lifter, which
+        made the one target the loop worked on the one whose assembly carried no declared meaning.
+        It has a declared lane endpoint now, so it is measured like every other target."""
+        ep = mine.endpoint_for_target("rvv")
+        if ep is None:
+            pytest.skip("rvv endpoint not resolvable in this checkout")
+        assert ep.engine == "vector" and "elementwise" in ep.roles
+
+    def test_a_target_with_no_endpoint_at_all_still_resolves_none(self):
+        """None remains a real answer, not a failure — it means the vector lifter, honestly."""
+        assert mine.endpoint_for_target("a-target-that-does-not-exist") is None
 
     def test_an_unknown_target_does_not_invent_an_endpoint(self):
         assert mine.endpoint_for_target("a-target-that-does-not-exist") is None

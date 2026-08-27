@@ -82,6 +82,10 @@ class DerivedIsaInsn:
     addr: int
     identity: str                  # the derived opcode-space name, or the disassembler's text
     space: str = ""                # which derived opcode space the word falls in
+    #: Roles the endpoint declares for this opcode space. Coarser than a per-instruction table -- a
+    #: space groups many operations -- and that coarseness is the honest resolution of this evidence:
+    #: the decoder says which space a word is in, not which operation it performs within it.
+    roles: tuple[str, ...] = ()
     from_endpoint: bool = False
     mnemonic: str = ""
     operands: tuple[str, ...] = ()
@@ -89,12 +93,16 @@ class DerivedIsaInsn:
 
 
 def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
-                  spaces: Sequence[str] = ()) -> list[DerivedIsaInsn]:
+                  spaces: Sequence[str] = (), roles_of=None) -> list[DerivedIsaInsn]:
     """Decode a stream against a derived encoding.
 
     ``spaces`` names the opcode-table entries that belong to this endpoint (e.g. the custom space plus
     a repurposed standard space). Empty means "report the space but claim nothing", which is the honest
     state for a target whose endpoint boundary has not been established.
+
+    ``roles_of`` maps an opcode-space name to the roles the endpoint declares for it. Without it the
+    stream is decoded but carries no MEANING, and a CCA lifted from it compares equal to everything —
+    so an audit reports such a stream as claimed-but-unroled rather than as understood.
     """
     width = int(encoding.get("inst_width") or 32)
     layout = encoding.get("fields") or {}
@@ -111,6 +119,7 @@ def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
             index=i, addr=int(getattr(insn, "addr", 0)),
             identity=space or str(getattr(insn, "mnemonic", "")),
             space=space,
+            roles=(tuple(roles_of(space)) if (space and roles_of) else ()),
             from_endpoint=bool(space) and space.upper() in mine,
             mnemonic=str(getattr(insn, "mnemonic", "")),
             operands=tuple(getattr(insn, "operands", ()) or ()),

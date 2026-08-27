@@ -117,6 +117,12 @@ def _derived_names(target: str, block: dict) -> tuple[set[str], str]:
         units = (_y.safe_load(path.read_text(encoding="utf-8")) or {}).get("units") or {}
         unit = units.get(enc.get("unit")) or {}
         return set((unit.get(enc.get("roles_from") or "kernel_roles") or {}).values()), "matrix_units"
+    if source == "mnemonic_grammar":
+        # A standard ISA has no per-target decode table to verify against: its GRAMMAR is the
+        # vocabulary. Returning the declared set means every role binds, and the loader stamps the
+        # result UNVERIFIED so nobody mistakes "declared" for "confirmed against silicon". The asm
+        # audit then reports every observed mnemonic no role covers, so the gap stays visible.
+        return set(), "mnemonic_grammar [declared, not verifiable against a decode table]"
     if source == "isa_encoding":
         from merlin.targetgen.rtl import mlc_bridge as _mb
         got = _mb.isa_encoding_for(target) or {}

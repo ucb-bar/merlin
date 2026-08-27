@@ -64,6 +64,9 @@ merlin-dse-guidance = "merlin.dse_guidance.cli:main"
 # The mining CLIs. The `merlin-kernel-*` names are canonical: the loop mines expert kernels for ANY
 # endpoint now (the lifter keys on instruction roles, not on vector mnemonics), so a name claiming one
 # ISA had become a claim about scope that is no longer true.
+# What we understand of a target's assembly, which CCA facets it can populate, and what its
+# emitted code implies is worth trying. Repeatable because every number in it goes stale.
+merlin-asm-audit = "merlin.kernels.cli_asm:main"
 merlin-kernel-report = "merlin.mining.report:main"
 merlin-kernel-mine = "merlin.mining.mine:main"
 merlin-kernel-autotune = "merlin.mining.autotune:main"

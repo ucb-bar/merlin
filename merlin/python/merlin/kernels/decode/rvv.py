@@ -303,9 +303,9 @@ def _stream_from_raws(raws) -> InsnStream:
     return InsnStream(insns=out)
 
 
-def decode(obj_path, triple: str = "riscv64") -> InsnStream:
+def decode(obj_path, triple: str = "riscv64", mattr: str | None = None) -> InsnStream:
     """Object -> InsnStream with per-insn effective vtype (RVV/vector facet)."""
-    return _stream_from_raws(tokenize(obj_path, triple=triple))
+    return _stream_from_raws(tokenize(obj_path, triple=triple, mattr=mattr))
 
 
 def decode_text(text: str) -> InsnStream:

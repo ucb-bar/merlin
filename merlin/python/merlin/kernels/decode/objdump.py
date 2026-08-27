@@ -62,9 +62,23 @@ class RawInsn:
     section: str = ""              # enclosing section/symbol if known
 
 
-def disassemble_text(obj_path: str | Path, triple: str = "riscv64") -> str:
-    """Raw ``llvm-objdump -d`` text (no-aliases so the canonical mnemonics/vtype show)."""
-    cmd = [objdump_bin(), "-d", f"--triple={triple}", "-M", "no-aliases", str(obj_path)]
+def disassemble_text(obj_path: str | Path, triple: str = "riscv64",
+                     mattr: str | None = None) -> str:
+    """Raw ``llvm-objdump -d`` text (no-aliases so the canonical mnemonics/vtype show).
+
+    ⚠️ ``mattr`` is not cosmetic. Left to the tool's default, the disassembler silently falls back to a
+    base decoder and reports everything it cannot parse as unnamed: measured on a real kernel, 76% of
+    words came back ``<unknown>`` with the default and 15% with the extensions given explicitly — and
+    that residual 15% is the actual custom surface. A probe that does not pin its ISA settings reports
+    the TOOL's ignorance as the corpus's nature, and the two are indistinguishable in the output.
+
+    So callers that know the target should pass its declared attributes; the value belongs in the
+    endpoint declaration, not in a default here.
+    """
+    cmd = [objdump_bin(), "-d", f"--triple={triple}", "-M", "no-aliases"]
+    if mattr:
+        cmd.append(f"--mattr={mattr}")
+    cmd.append(str(obj_path))
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode != 0:
         raise RuntimeError(f"objdump failed: {' '.join(cmd)}\n{p.stderr[-1500:]}")
@@ -127,9 +141,10 @@ def _tokenize_lines(text: str) -> list[RawInsn]:
     return out
 
 
-def tokenize(obj_path: str | Path, triple: str = "riscv64") -> list[RawInsn]:
+def tokenize(obj_path: str | Path, triple: str = "riscv64",
+             mattr: str | None = None) -> list[RawInsn]:
     """Object file -> ordered list of RawInsn (instructions only)."""
-    return _tokenize_lines(disassemble_text(obj_path, triple=triple))
+    return _tokenize_lines(disassemble_text(obj_path, triple=triple, mattr=mattr))
 
 
 def tokenize_text(text: str) -> list[RawInsn]:
