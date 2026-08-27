@@ -138,11 +138,17 @@ def _dump_facts_for_kind(p, target: str) -> None:
             raise RuntimeError(
                 f"no SIMT introspect served {target!r}, so its facts artifact would be empty; register "
                 f"an introspect for it rather than writing a body that reads as un-extracted RTL")
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(_json.dumps(body, indent=2), encoding="utf-8")
+        write_facts_guarded(p, body)
         return
+    # Extractors that write the artifact THEMSELVES (circt_static for systolic/vector/scalar; opu for
+    # spatial) cannot be handed the guarded writer, so the seam guards them: snapshot, let the extractor
+    # write, and refuse the result if it hollowed a fact out. Doing it HERE rather than in each extractor
+    # is what makes the ratchet a property of every compute-unit family — including one added later,
+    # whose author will not know to opt in.
     from .circt_introspect import dump_facts      # function-local: circt_introspect imports this module
+    before = _read_facts_doc(p)
     dump_facts(p, target=target)
+    _refuse_hollowed(p, before)
 
 
 def _warn_if_degraded(target: str) -> None:
@@ -232,6 +238,44 @@ def hollowed_facts(old: dict, new: dict) -> list[str]:
         elif not _hollow(ofacts) and _hollow(nfacts):
             out.append(key)
     return sorted(out)
+
+
+def _read_facts_doc(path):
+    """The facts doc at ``path``, or ``None`` when absent/unreadable. Never raises: a snapshot that
+    cannot be taken means there is nothing to protect, not that the write should fail."""
+    import json as _json
+    from pathlib import Path as _Path
+    p = _Path(path)
+    if not p.is_file():
+        return None
+    try:
+        return _json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _refuse_hollowed(path, before) -> None:
+    """After an extractor wrote ``path`` itself, restore ``before`` and raise if facts were hollowed.
+
+    The extractor already overwrote the file, so the artifact is put BACK before raising -- a guard that
+    reports the downgrade but leaves the gutted file in place would have destroyed the thing it exists
+    to protect.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    if before is None:
+        return
+    after = _read_facts_doc(path)
+    if after is None:
+        return
+    lost = hollowed_facts(before, after)
+    if not lost:
+        return
+    _Path(path).write_text(_json.dumps(before, indent=2) + "\n", encoding="utf-8")
+    raise FactsDowngrade(
+        f"refusing the regeneration of {path}: it would hollow out {lost} (the previous artifact has "
+        f"been restored). A hollowed fact is the signature of a MISSING EXTRACTOR, not of hardware that "
+        f"lost a feature — check the toolchain this target's family needs (e.g. MERLIN_MLC_DIR).")
 
 
 def write_facts_guarded(path, doc: dict, *, allow_downgrade: bool = False) -> None:

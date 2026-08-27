@@ -401,8 +401,11 @@ def dump_fact_bundle(target: str, out_path: Path | str | None = None) -> dict[st
     written bundle."""
     out = Path(out_path) if out_path is not None else rtl_cache_dir(target, ensure=True) / "facts.json"
     bundle = build_fact_bundle(target)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(bundle, indent=2) + "\n", encoding="utf-8")
+    # Guarded: the spatial family's facts come from the OPU state manifest, and a manifest the extractor
+    # cannot see yields a well-formed bundle with the geometry hollowed out. Same ratchet as every other
+    # fact-extraction family (see facts.write_facts_guarded).
+    from .facts import write_facts_guarded
+    write_facts_guarded(out, bundle)
     bundle["_path"] = str(out)
     return bundle
 

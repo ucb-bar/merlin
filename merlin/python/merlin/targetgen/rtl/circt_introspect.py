@@ -546,8 +546,10 @@ def dump_facts(out_path: Path | str | None = None, **kw) -> dict[str, Any]:
                 return old  # deterministic cache hit
         except Exception:
             pass
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(rec, indent=2), encoding="utf-8")
+    # Guarded: an extraction that lost the decode table looks identical to a good one on the way out.
+    # Same ratchet every fact-extraction family is held to (see facts.write_facts_guarded).
+    from .facts import write_facts_guarded
+    write_facts_guarded(out, rec)
     return rec
 
 

@@ -16,7 +16,9 @@ import json
 
 import pytest
 
-from merlin.targetgen.rtl.facts import FactsDowngrade, hollowed_facts, write_facts_guarded
+from merlin.targetgen.rtl.facts import (
+    FactsDowngrade, _read_facts_doc, _refuse_hollowed, hollowed_facts, write_facts_guarded,
+)
 
 RICH = {"facts": {
     "isa": {"instruction_classes": ["AUIPC", "BRANCH"], "address_spaces": {"global": 0},
@@ -75,3 +77,48 @@ def test_a_first_write_is_never_blocked(tmp_path):
     p = tmp_path / "facts.json"
     write_facts_guarded(p, POOR)          # nothing to lose yet
     assert p.is_file()
+
+
+# --- the ratchet is a property of every FAMILY, not of the one target that exposed it -------------
+
+def test_every_declared_family_routes_through_the_guard():
+    """Each compute-unit kind declares a ``fact_extractor``; every one of those paths must be guarded.
+    A family added later inherits it because the seam is shared — whoever adds the next NPU/GPU/spatial
+    family should not have to know to opt in, which is exactly how the muon hole went unnoticed."""
+    import inspect
+
+    from merlin.targetgen import families
+    from merlin.targetgen.rtl import circt_introspect, facts as F, spatial_introspect
+
+    extractors = {families.family_profile(k).fact_extractor for k in families.known_kinds()}
+    assert extractors == {"circt_static", "simt_config", "opu"}, (
+        f"a new fact-extraction family appeared ({extractors}); guard its writer too")
+
+    # simt_config (GPU-class, e.g. muon) — guarded inside the shared seam
+    assert "write_facts_guarded" in inspect.getsource(F._dump_facts_for_kind)
+    # circt_static (systolic/NPU, vector, scalar) — writes its own artifact
+    assert "write_facts_guarded" in inspect.getsource(circt_introspect.dump_facts)
+    # opu (spatial) — likewise
+    assert "write_facts_guarded" in inspect.getsource(spatial_introspect.dump_fact_bundle)
+
+
+def test_the_seam_restores_the_artifact_before_raising(tmp_path):
+    """An extractor that writes the file ITSELF has already clobbered it by the time the seam looks.
+    Reporting the downgrade while leaving the gutted file in place would destroy the very thing the
+    guard exists to protect, so the previous artifact is put back first."""
+    p = tmp_path / "facts.json"
+    p.write_text(json.dumps(RICH))
+    before = _read_facts_doc(p)
+    p.write_text(json.dumps(POOR))        # stands in for the extractor's own write
+    with pytest.raises(FactsDowngrade):
+        _refuse_hollowed(p, before)
+    assert json.loads(p.read_text())["facts"]["isa"]["instruction_classes"] == ["AUIPC", "BRANCH"]
+
+
+def test_the_seam_is_silent_when_there_was_nothing_to_protect(tmp_path):
+    """A cold cache is the NORMAL regeneration path — the guard must not turn a first extraction into
+    an error."""
+    p = tmp_path / "facts.json"
+    p.write_text(json.dumps(POOR))
+    _refuse_hollowed(p, None)             # no snapshot => nothing was lost
+    assert json.loads(p.read_text())["facts"]["isa"]["instruction_classes"] == []
