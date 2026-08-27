@@ -52,9 +52,11 @@ inline const char *HardwareTargetName(HardwareTarget t) {
  *  @param out Receives the parsed value on success.
  *  @return True if parsing succeeded.
  */
-inline bool ParseHardwareTarget(
-	const std::string &s, HardwareTarget *out, int *core_index = nullptr) {
-	/* Accepts "CPU_P" and the per-core form "CPU_P#2".
+inline bool ParseHardwareTarget(const std::string &s, HardwareTarget *out,
+	int *core_index = nullptr,
+	std::vector<int> *core_indices = nullptr) {
+	/* Accepts "CPU_P", the per-core form "CPU_P#2", and the shard form
+	 * "CPU_P#0+CPU_P#1+CPU_P#2+CPU_P#3".
 	 *
 	 * XPU-RT names a machine per physical core (workload_factory.py), so a
 	 * schedule built with machine_combination_mode=singletons -- the model a
@@ -62,37 +64,76 @@ inline bool ParseHardwareTarget(
 	 * rather than "CPU_P". Rejecting the suffix made every such schedule
 	 * unparseable.
 	 *
-	 * The index is reported so callers can record the intended placement.
-	 * NOTE: the runner still dispatches to a per-CLUSTER worker pool pinned to
-	 * --cpu_p_cpu_ids / --cpu_e_cpu_ids, so the core index is currently
-	 * observed, not enforced -- IREE's local-task picks a core within the pool.
-	 * Predicted-vs-actual comparisons should treat intra-cluster placement as
-	 * unpinned until that is wired through. */
-	std::string kind = s;
-	int idx = -1;
-	const size_t hash = s.find('#');
-	if (hash != std::string::npos) {
-		kind = s.substr(0, hash);
-		const std::string digits = s.substr(hash + 1);
-		if (digits.empty())
-			return false;
-		for (char c : digits) {
-			if (c < '0' || c > '9')
-				return false;
+	 * A combination holding more than one machine is serialised by
+	 * postprocessing.py as its machine names joined with '+'. That is a
+	 * *shard*: one dispatch spread over several cores, timed with the
+	 * matching multi-hart profile (topo_0_1_2_3 for four). It is not several
+	 * dispatches. The runner must therefore hold every core in the set for the
+	 * duration, which is what the core lock in scheduler_runner.cc does --
+	 * otherwise the schedule says four cores are busy while the runner leaves
+	 * three of them free to take other work, and the measurement is of a
+	 * machine that does not exist.
+	 *
+	 * core_index reports the FIRST core, which is the one that owns the node;
+	 * core_indices, when asked for, reports the whole set. Every part must name
+	 * the same hardware kind: a shard spanning both clusters would need two
+	 * differently pinned devices and is rejected rather than silently pinned to
+	 * one of them. */
+	std::vector<std::string> parts;
+	size_t pos = 0;
+	while (pos <= s.size()) {
+		const size_t plus = s.find('+', pos);
+		if (plus == std::string::npos) {
+			parts.push_back(s.substr(pos));
+			break;
 		}
-		idx = atoi(digits.c_str());
+		parts.push_back(s.substr(pos, plus - pos));
+		pos = plus + 1;
 	}
+	if (parts.empty() || parts[0].empty())
+		return false;
+
+	bool have_kind = false;
+	HardwareTarget kind_out = HardwareTarget::kCpuP;
+	std::vector<int> idxs;
+	for (const std::string &part : parts) {
+		if (part.empty())
+			return false;
+		std::string kind = part;
+		int idx = -1;
+		const size_t hash = part.find('#');
+		if (hash != std::string::npos) {
+			kind = part.substr(0, hash);
+			const std::string digits = part.substr(hash + 1);
+			if (digits.empty())
+				return false;
+			for (char c : digits) {
+				if (c < '0' || c > '9')
+					return false;
+			}
+			idx = atoi(digits.c_str());
+		}
+		HardwareTarget t;
+		if (kind == "CPU_P") {
+			t = HardwareTarget::kCpuP;
+		} else if (kind == "CPU_E") {
+			t = HardwareTarget::kCpuE;
+		} else {
+			return false;
+		}
+		if (have_kind && t != kind_out)
+			return false;  // shard spanning two clusters
+		kind_out = t;
+		have_kind = true;
+		idxs.push_back(idx);
+	}
+
+	*out = kind_out;
 	if (core_index)
-		*core_index = idx;
-	if (kind == "CPU_P") {
-		*out = HardwareTarget::kCpuP;
-		return true;
-	}
-	if (kind == "CPU_E") {
-		*out = HardwareTarget::kCpuE;
-		return true;
-	}
-	return false;
+		*core_index = idxs[0];
+	if (core_indices)
+		*core_indices = idxs;
+	return true;
 }
 
 //------------------------------------------------------------------------------
@@ -175,8 +216,14 @@ struct DispatchNode {
 		HardwareTarget::kCpuP; /**< Execution target. */
 	/** Physical core index within the target cluster, from a "CPU_P#2"-style
 	 *  hardware_target. -1 when the schedule named only a cluster. Observed
-	 *  rather than enforced -- see ParseHardwareTarget. */
+	 *  honoured when the runner is started with --pin_per_core, which creates
+	 *  one device per physical core; without that flag IREE's local-task picks
+	 *  any core in the cluster pool and the index is observed, not enforced. */
 	int core_index = -1;
+	/** Every core of a shard, or a single entry for an ordinary placement.
+	 *  size() > 1 means one dispatch spread over these cores -- see
+	 *  ParseHardwareTarget. */
+	std::vector<int> core_indices;
 	double start_time_ms = 0.0; /**< Planned start time (ms). */
 	double planned_duration_ms = 0.0; /**< Planned duration (ms). */
 

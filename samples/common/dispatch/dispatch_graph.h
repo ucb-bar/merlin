@@ -80,7 +80,8 @@ inline bool ParseDispatchesObject(
 					if (!jp->ParseString(&s))
 						return false;
 					if (!ParseHardwareTarget(s, &node.hardware_target,
-							&node.core_index)) {
+							&node.core_index,
+							&node.core_indices)) {
 						fprintf(stderr, "Unknown hardware_target '%s' for %s\n",
 							s.c_str(), node.key.c_str());
 						return false;

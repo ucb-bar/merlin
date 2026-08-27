@@ -183,7 +183,49 @@ struct SchedulerShared {
 
 	size_t completed = 0;
 	size_t total_nodes = 0;
+
+	// Which physical cores are occupied right now, one bitmask per cluster
+	// (index 0 = CPU_P, 1 = CPU_E), bit k = that cluster's core k.
+	//
+	// A one-core node takes one bit; a shard -- one dispatch spread over
+	// several cores, written "CPU_P#0+CPU_P#1+..." in the schedule -- takes all
+	// of them. Without this the runner would happily start three more
+	// dispatches on cores 1-3 while a four-core shard was using them, and the
+	// resulting trace would describe a machine with more cores than the board
+	// has. That is the same class of mistake as declaring eight machines
+	// against two cores, which already produced one retracted conclusion.
+	uint64_t busy_cores[2] = {0, 0};
+	// Cores a *waiting* shard has claimed. Single-core work refuses to start on
+	// a claimed core, so a stream of short dispatches cannot starve a shard
+	// that needs all of them free at once. Shards ignore it, which keeps two
+	// shards from deadlocking on each other's claims; they are still mutually
+	// excluded by busy_cores.
+	uint64_t wanted_cores[2] = {0, 0};
 };
+
+// Cluster index used by the core masks: CPU_P is 0, CPU_E is 1.
+static inline int ClusterIndex(HardwareTarget t) {
+	return t == HardwareTarget::kCpuP ? 0 : 1;
+}
+
+// Bits for every core a node occupies. An unplaced node (core_index < 0) holds
+// no cores: it is not pinned, so there is nothing to exclude it from.
+static inline uint64_t CoreMaskFor(const DispatchNode &n) {
+	uint64_t m = 0;
+	if (!n.core_indices.empty()) {
+		for (int c : n.core_indices) {
+			if (c >= 0 && c < 64)
+				m |= (uint64_t)1 << c;
+		}
+	} else if (n.core_index >= 0 && n.core_index < 64) {
+		m |= (uint64_t)1 << n.core_index;
+	}
+	return m;
+}
+
+static inline bool IsShard(const DispatchNode &n) {
+	return n.core_indices.size() > 1;
+}
 
 static std::vector<int> &ReadyQueueFor(SchedulerShared *s, HardwareTarget t) {
 	return (t == HardwareTarget::kCpuP) ? s->ready_p : s->ready_e;
@@ -249,14 +291,31 @@ static uint64_t NextReleaseUsLocked(
 // Returns an index into `ready`, or -1 when nothing here belongs to us.
 static int PickBestReadyIndex(const std::vector<int> &ready,
 	const std::vector<DispatchNode> &nodes, int worker_core = -1,
-	bool accepts_unplaced = true) {
+	bool accepts_unplaced = true, const SchedulerShared *sched = nullptr) {
 	auto eligible = [&](int node_idx) {
-		if (worker_core < 0)
+		const DispatchNode &n = nodes[(size_t)node_idx];
+		if (worker_core >= 0) {
+			// A shard is owned by the worker that owns its FIRST core, so
+			// exactly one worker will ever try to start it.
+			const int c = n.core_index;
+			if (c < 0) {
+				if (!accepts_unplaced)
+					return false;
+			} else if (c != worker_core) {
+				return false;
+			}
+		}
+		if (!sched)
 			return true;
-		const int c = nodes[(size_t)node_idx].core_index;
-		if (c < 0)
-			return accepts_unplaced;
-		return c == worker_core;
+		const uint64_t mask = CoreMaskFor(n);
+		if (!mask)
+			return true;  // unplaced: occupies no named core
+		const int cl = ClusterIndex(n.hardware_target);
+		if (sched->busy_cores[cl] & mask)
+			return false;
+		if (!IsShard(n) && (sched->wanted_cores[cl] & mask))
+			return false;  // yield to a shard already waiting on this core
+		return true;
 	};
 	int best_i = -1;
 	for (int i = 0; i < (int)ready.size(); ++i) {
@@ -321,6 +380,41 @@ static void SeedReadyNodes(
 	}
 }
 
+// Let a worker reserve the cores its own shard is waiting for.
+//
+// Without this, a four-core shard on cores 0-3 can wait indefinitely: cores 1-3
+// keep accepting 60 us MLP dispatches, so all four are never simultaneously
+// free. The shard's owning worker therefore marks them wanted, and single-core
+// work declines to start on a wanted core. The claim is advisory and is dropped
+// the moment the shard actually starts, or the worker leaves.
+static void ClaimForWaitingShardLocked(SchedulerShared *sched,
+	const std::vector<int> &ready, const std::vector<DispatchNode> &nodes,
+	int worker_core, bool accepts_unplaced, uint64_t *claimed_mask,
+	int *claimed_cluster) {
+	if (*claimed_mask) {
+		sched->wanted_cores[*claimed_cluster] &= ~*claimed_mask;
+		*claimed_mask = 0;
+	}
+	if (worker_core < 0)
+		return;
+	for (int node_idx : ready) {
+		const DispatchNode &n = nodes[(size_t)node_idx];
+		if (!IsShard(n))
+			continue;
+		if (n.core_index != worker_core) {
+			if (n.core_index >= 0 || !accepts_unplaced)
+				continue;
+		}
+		const uint64_t mask = CoreMaskFor(n);
+		if (!mask)
+			continue;
+		*claimed_cluster = ClusterIndex(n.hardware_target);
+		*claimed_mask = mask;
+		sched->wanted_cores[*claimed_cluster] |= mask;
+		return;
+	}
+}
+
 //------------------------------------------------------------------------------
 // Worker thread
 //------------------------------------------------------------------------------
@@ -334,17 +428,27 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 	TraceWriter *trace) {
 	BestEffortPinCurrentThreadToCpuIds(cpu_ids_csv);
 
+	uint64_t claimed_mask = 0;
+	int claimed_cluster = 0;
+
 	while (true) {
 		int node_idx = -1;
 		int graph_iter = 0;
 		Clock::time_point iter_t0;
+		uint64_t held_mask = 0;
+		int held_cluster = 0;
 
 		{
 			std::unique_lock<std::mutex> lock(sched->mu);
 
 			while (true) {
-				if (sched->shutdown || HasFatal(fatal))
+				if (sched->shutdown || HasFatal(fatal)) {
+					if (claimed_mask) {
+						sched->wanted_cores[claimed_cluster] &= ~claimed_mask;
+						sched->cv.notify_all();
+					}
 					return;
+				}
 				if (!sched->active) {
 					sched->cv.wait(lock);
 					continue;
@@ -355,10 +459,19 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 
 				std::vector<int> &ready = ReadyQueueFor(sched, target);
 				const int best_i = PickBestReadyIndex(
-					ready, *nodes, worker_core, accepts_unplaced);
+					ready, *nodes, worker_core, accepts_unplaced, sched);
 				if (best_i >= 0) {
 					node_idx = ready[(size_t)best_i];
 					ready.erase(ready.begin() + best_i);
+
+					// Take the cores before releasing the lock; from here on
+					// no other worker can start anything that overlaps them.
+					const DispatchNode &picked = (*nodes)[(size_t)node_idx];
+					held_mask = CoreMaskFor(picked);
+					held_cluster = ClusterIndex(picked.hardware_target);
+					sched->busy_cores[held_cluster] |= held_mask;
+					sched->wanted_cores[held_cluster] &= ~held_mask;
+					claimed_mask = 0;
 
 					graph_iter = sched->current_graph_iter;
 					iter_t0 = sched->iter_t0;
@@ -368,6 +481,12 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 					xs.start_us = UsSince(iter_t0, Clock::now());
 					break;
 				}
+
+				// Nothing runnable. If the only thing keeping this worker idle
+				// is that a shard of ours is waiting for busy cores, claim
+				// those cores so short work stops jumping the queue.
+				ClaimForWaitingShardLocked(sched, ready, *nodes, worker_core,
+					accepts_unplaced, &claimed_mask, &claimed_cluster);
 
 				const uint64_t next_release_us =
 					NextReleaseUsLocked(sched, target);
@@ -401,6 +520,12 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 		const uint64_t end_us = UsSince(iter_t0, Clock::now());
 
 		if (!iree_status_is_ok(st)) {
+			{
+				// Give the cores back even on the failure path, so the other
+				// workers wind down instead of blocking on a dead shard.
+				std::lock_guard<std::mutex> lock(sched->mu);
+				sched->busy_cores[held_cluster] &= ~held_mask;
+			}
 			SetFatalOnce(
 				fatal, st, "[dispatch] sync benchmark module call failed");
 			sched->cv.notify_all();
@@ -421,6 +546,8 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 			planned_start_us = xs.planned_start_us;
 			ready_us = xs.ready_us;
 			start_us = xs.start_us;
+
+			sched->busy_cores[held_cluster] &= ~held_mask;
 
 			const uint64_t run_us =
 				end_us >= start_us ? (end_us - start_us) : 0;
@@ -626,6 +753,11 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 	// (target, core_index) -> device pinned to that one physical core.
 	// Populated only when cfg->pin_per_core is set.
 	std::map<std::pair<int, int>, iree_hal_device_t *> per_core_devices;
+	// (target, core bitmask) -> device pinned to every core of a shard, so a
+	// dispatch placed on "CPU_P#0+CPU_P#1+CPU_P#2+CPU_P#3" gets a local-task
+	// topology of four harts and IREE really does distribute its workgroups.
+	// Measured on the K1: DroNet's 22.8 ms convolution becomes 6.1 ms.
+	std::map<std::pair<int, uint64_t>, iree_hal_device_t *> shard_devices;
 
 	TraceWriter trace;
 	if (cfg->trace_csv_path && cfg->trace_csv_path[0]) {
@@ -707,6 +839,58 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 		}
 		fprintf(stdout, "[dispatch] per-core pinning ON (%zu devices)\n",
 			per_core_devices.size());
+
+		// One device per distinct shard placement actually present in the
+		// schedule. Built from the graph rather than from every possible core
+		// subset: a device costs threads, and only the placements the
+		// scheduler chose can ever be used.
+		const std::vector<int> *phys[2] = {&ids_p, &ids_e};
+		std::map<std::pair<int, uint64_t>, std::string> shard_csv;
+		for (const DispatchNode &n : model.nodes) {
+			if (!IsShard(n))
+				continue;
+			const int cl = ClusterIndex(n.hardware_target);
+			const uint64_t mask = CoreMaskFor(n);
+			if (!mask || shard_csv.count(std::make_pair(cl, mask)))
+				continue;
+			std::string csv;
+			bool ok = true;
+			for (int idx : n.core_indices) {
+				if (idx < 0 || (size_t)idx >= phys[cl]->size()) {
+					ok = false;
+					break;
+				}
+				if (!csv.empty())
+					csv += ",";
+				csv += std::to_string((*phys[cl])[(size_t)idx]);
+			}
+			if (!ok) {
+				fprintf(stderr,
+					"[dispatch] shard %s names a core outside %s's cpu id "
+					"list; refusing to guess an affinity for it\n",
+					n.key.c_str(), HardwareTargetName(n.hardware_target));
+				trace.Close();
+				return 1;
+			}
+			shard_csv[std::make_pair(cl, mask)] = csv;
+		}
+		for (const auto &kv : shard_csv) {
+			iree_hal_device_t *dev = nullptr;
+			iree_status_t st = CreatePinnedLocalTaskDevice(
+				host_alloc, kv.second.c_str(), &dev);
+			if (!iree_status_is_ok(st)) {
+				fprintf(stderr,
+					"Failed creating shard device for cpus %s\n",
+					kv.second.c_str());
+				iree_status_fprint(stderr, st);
+				iree_status_ignore(st);
+				trace.Close();
+				return 1;
+			}
+			shard_devices[kv.first] = dev;
+			fprintf(stdout, "[dispatch] shard device cpus={%s}\n",
+				kv.second.c_str());
+		}
 	}
 
 	fprintf(stdout,
@@ -724,30 +908,52 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 			(n.hardware_target == HardwareTarget::kCpuP) ? device_p : device_e;
 		if (!cfg->pin_per_core || n.core_index < 0)
 			return fallback;
-		auto it = per_core_devices.find(std::make_pair(
-			n.hardware_target == HardwareTarget::kCpuP ? 0 : 1, n.core_index));
+		const int cl = ClusterIndex(n.hardware_target);
+		if (IsShard(n)) {
+			auto sit = shard_devices.find(
+				std::make_pair(cl, CoreMaskFor(n)));
+			// Never silently fall back to the cluster device here: that would
+			// run the shard on 4 harts by accident on a 4-core cluster and on
+			// the wrong number anywhere else, and the trace would look fine.
+			return sit == shard_devices.end() ? nullptr : sit->second;
+		}
+		auto it = per_core_devices.find(std::make_pair(cl, n.core_index));
 		return it == per_core_devices.end() ? fallback : it->second;
 	};
 
 	// The core is part of the key: a module is loaded against a device, so two
 	// cores running the same VMFB need two cached modules.
-	auto cache_key_for = [&](HardwareTarget target, int core,
-							 const std::string &path) {
-		return std::string(HardwareTargetName(target)) + "#" +
-			   std::to_string(cfg->pin_per_core ? core : -1) + "|" + path;
+	auto cache_key_for = [&](const DispatchNode &n, const std::string &path) {
+		std::string key = std::string(HardwareTargetName(n.hardware_target)) +
+			"#" + std::to_string(cfg->pin_per_core ? n.core_index : -1);
+		// A shard is loaded against a differently-pinned device than the single
+		// core of the same index, so it needs its own cache entry -- sharing
+		// one would run the shard on a one-hart device and quietly delete the
+		// speedup the whole rung is measuring.
+		if (cfg->pin_per_core && IsShard(n))
+			key += "x" + std::to_string(n.core_indices.size());
+		return key + "|" + path;
 	};
 
 	std::vector<CachedModule *> node_modules(model.nodes.size(), nullptr);
 
 	for (size_t i = 0; i < model.nodes.size(); ++i) {
 		DispatchNode &node = model.nodes[i];
-		const std::string cache_key = cache_key_for(
-			node.hardware_target, node.core_index, node.vmfb_path_resolved);
+		const std::string cache_key =
+			cache_key_for(node, node.vmfb_path_resolved);
 
 		auto it = cache.find(cache_key);
 		if (it == cache.end()) {
 			auto cm = std::make_unique<CachedModule>();
 			iree_hal_device_t *target_device = device_for(node);
+			if (!target_device) {
+				fprintf(stderr,
+					"No device for node %s: it is placed on a shard with no "
+					"matching pinned device (was --pin_per_core set?)\n",
+					node.key.c_str());
+				trace.Close();
+				return 1;
+			}
 
 			iree_status_t st = LoadModule(
 				instance, target_device, node.vmfb_path_resolved, cm.get());
@@ -972,6 +1178,10 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 	for (auto &kv : cache)
 		CachedModuleRelease(kv.second.get());
 	for (auto &kv : per_core_devices) {
+		if (kv.second)
+			iree_hal_device_release(kv.second);
+	}
+	for (auto &kv : shard_devices) {
 		if (kv.second)
 			iree_hal_device_release(kv.second);
 	}
