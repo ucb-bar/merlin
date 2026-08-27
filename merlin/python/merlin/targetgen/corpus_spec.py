@@ -615,6 +615,34 @@ def build_rmsnorm(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     return cap, "\n".join(L) + "\n"
 
 
+def _attention_mx_inputs(q: str, k: str, v: str, M: int, H: int, Skv: int, Dv: int, idt: str,
+                         binding: CorpusBinding) -> list[dict]:
+    """Declared leaf operands of a fused block-scaled attention capsule.
+
+    Two MX stages contract over different axes, so they carry different scale streams: the QK stage over
+    the head dim ``H`` (scaling q's rows and k's rows), the PV stage over the key count ``Skv`` (scaling
+    v's columns). The PV stage's LHS is ``P`` -- the softmax output, an INTERMEDIATE the kernel produces
+    and requantizes -- and the exponent it is requantized against was chosen when the golden was built.
+    It is therefore declared too: a value the kernel cannot derive is an input, whatever produced it."""
+    inputs = [{"name": q, "role": "input", "shape": [M, H], "dtype": idt},
+              {"name": k, "role": "input", "shape": [Skv, H], "dtype": idt},
+              {"name": v, "role": "input", "shape": [Skv, Dv], "dtype": idt}]
+    blk = binding.scale_block if binding.scaling else None
+    if blk and H % blk == 0 and Skv % blk == 0:
+        hg, sg = H // blk, Skv // blk
+        inputs += [
+            {"name": f"{q}_scale", "role": "scale", "scale_of": q, "block": blk,
+             "shape": [hg, M], "dtype": "e8m0"},
+            {"name": f"{k}_scale", "role": "scale", "scale_of": k, "block": blk,
+             "shape": [hg, Skv], "dtype": "e8m0"},
+            {"name": f"{v}_scale", "role": "scale", "scale_of": v, "block": blk,
+             "shape": [sg, Dv], "dtype": "e8m0"},
+            {"name": "P_scale", "role": "scale", "scale_of": "P", "block": blk,
+             "shape": [sg, M], "dtype": "e8m0"},
+        ]
+    return inputs
+
+
 def build_attention_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """A fused MX flash-attention capsule (op == attention_mx): O = softmax(Q @ K^T / sqrt(H) [+ soft-cap])
     @ V, with the two matmuls on the block-scaled MX PE (E8M0 per 32-element K group, bf16 accumulate) and
@@ -641,9 +669,7 @@ def build_attention_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
         "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
         "interface_mlir": "capsule.interface.mlir",
-        "inputs": [{"name": q, "role": "input", "shape": [M, H], "dtype": idt},
-                   {"name": k, "role": "input", "shape": [Skv, H], "dtype": idt},
-                   {"name": v, "role": "input", "shape": [Skv, Dv], "dtype": idt}],
+        "inputs": _attention_mx_inputs(q, k, v, M, H, Skv, Dv, idt, binding),
         "operation": {"op": "attention_mx", "attributes": attrs},
         "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
         # two matmuls (QK, PV) drive the MX PE; the softmax rides the SIMT/vector lanes (no matmul classes).
@@ -658,6 +684,21 @@ def build_attention_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         f'  %{q} = merlin_iface.tensor {{name = "{q}", role = "input"}} : tensor<{M}x{H}x{midt}>',
         f'  %{k} = merlin_iface.tensor {{name = "{k}", role = "input"}} : tensor<{Skv}x{H}x{midt}>',
         f'  %{v} = merlin_iface.tensor {{name = "{v}", role = "input"}} : tensor<{Skv}x{Dv}x{midt}>',
+    ]
+    _blk = binding.scale_block if binding.scaling else None
+    if _blk and H % _blk == 0 and Skv % _blk == 0:
+        _hg, _sg = H // _blk, Skv // _blk
+        L += [
+            f'  %{q}_scale = merlin_iface.tensor {{name = "{q}_scale", role = "scale", '
+            f'scale_of = "{q}", block = {_blk} : i64}} : tensor<{_hg}x{M}xi8>',
+            f'  %{k}_scale = merlin_iface.tensor {{name = "{k}_scale", role = "scale", '
+            f'scale_of = "{k}", block = {_blk} : i64}} : tensor<{_hg}x{Skv}xi8>',
+            f'  %{v}_scale = merlin_iface.tensor {{name = "{v}_scale", role = "scale", '
+            f'scale_of = "{v}", block = {_blk} : i64}} : tensor<{_sg}x{Dv}xi8>',
+            f'  %P_scale = merlin_iface.tensor {{name = "P_scale", role = "scale", '
+            f'scale_of = "P", block = {_blk} : i64}} : tensor<{_sg}x{M}xi8>',
+        ]
+    L += [
         f'  %S = merlin_iface.attention_qk %{q}, %{k} {{name = "S", block_scale = "e8m0", '
         f'output_dtype = "{odt}"}} : (tensor<{M}x{H}x{midt}>, tensor<{Skv}x{H}x{midt}>) '
         f'-> tensor<{M}x{Skv}x{modt}>',
@@ -755,6 +796,26 @@ def build_rope_qkv(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     return cap, "\n".join(L) + "\n"
 
 
+def _batched_mx_inputs(lhs: str, weight: str, B: int, M: int, H: int, N: int, idt: str,
+                       binding: CorpusBinding) -> list[dict]:
+    """Declared leaf operands of a BATCHED block-scaled matmul: one scale stream per batch.
+
+    Same reasoning as :func:`_matmul_inputs` -- the elements alone are half the operand -- with the batch
+    dimension leading, because each batch is an independent GEMM with its own block scales."""
+    inputs = [{"name": weight, "role": "weight", "shape": [B, H, N], "dtype": idt},
+              {"name": lhs, "role": "input", "shape": [B, M, H], "dtype": idt}]
+    blk = binding.scale_block if binding.scaling else None
+    if blk and H % blk == 0:
+        g = H // blk
+        inputs += [
+            {"name": f"{lhs}_scale", "role": "scale", "scale_of": lhs, "block": blk,
+             "shape": [B, g, M], "dtype": "e8m0"},
+            {"name": f"{weight}_scale", "role": "scale", "scale_of": weight, "block": blk,
+             "shape": [B, g, N], "dtype": "e8m0"},
+        ]
+    return inputs
+
+
 def build_gemv_batched_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """Batched MX matmul (op == gemv_batched): B independent MX GEMMs A_b[M,H] @ W_b[H,N] on the mx_pe,
     output stacked row-major to [B*M, N] bf16. mxfp8; golden from mx_ref. Interface presents the batched
@@ -773,8 +834,7 @@ def build_gemv_batched_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, st
         "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
         "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
         "interface_mlir": "capsule.interface.mlir",
-        "inputs": [{"name": weight, "role": "weight", "shape": [B, H, N], "dtype": idt},
-                   {"name": lhs, "role": "input", "shape": [B, M, H], "dtype": idt}],
+        "inputs": _batched_mx_inputs(lhs, weight, B, M, H, N, idt, binding),
         "operation": {"op": "gemv_batched", "attributes": attrs},
         "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
         "expected": {"instruction_classes": binding.classes_for(op="matmul", output_dtype=odt),
@@ -785,6 +845,19 @@ def build_gemv_batched_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, st
     L += [
         f'  %{lhs} = merlin_iface.tensor {{name = "{lhs}", role = "input"}} : tensor<{B}x{M}x{H}x{midt}>',
         f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{B}x{H}x{N}x{midt}>',
+    ]
+    _blk = binding.scale_block if binding.scaling else None
+    if _blk and H % _blk == 0:
+        # The batched form carries one scale stream per batch: the op declares `block_scale = "e8m0"`
+        # already, and these are the streams that attribute refers to.
+        _g = H // _blk
+        L += [
+            f'  %{lhs}_scale = merlin_iface.tensor {{name = "{lhs}_scale", role = "scale", '
+            f'scale_of = "{lhs}", block = {_blk} : i64}} : tensor<{B}x{_g}x{M}xi8>',
+            f'  %{weight}_scale = merlin_iface.tensor {{name = "{weight}_scale", role = "scale", '
+            f'scale_of = "{weight}", block = {_blk} : i64}} : tensor<{B}x{_g}x{N}xi8>',
+        ]
+    L += [
         f'  %{out} = merlin_iface.matmul_batched %{lhs}, %{weight} {{name = "{out}", batch = {B} : i64, '
         f'block_scale = "e8m0", output_dtype = "{odt}"}} '
         f': (tensor<{B}x{M}x{H}x{midt}>, tensor<{B}x{H}x{N}x{midt}>) -> tensor<{B * M}x{N}x{modt}>', "}"]

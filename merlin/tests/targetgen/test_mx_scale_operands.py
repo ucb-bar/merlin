@@ -142,3 +142,47 @@ def test_the_oracles_own_scale_provenance_is_untouched():
     assert ins["SA_e8m0_codes"] == [[125] * 16]
     # and the new per-tensor spec must not be mistaken for one of them
     assert isinstance(ins["A0_scale"], dict)
+
+
+# --------------------------------------------------------------- the other two block-scaled shapes
+# The single GEMM is not the only block-scaled capsule form. A batched GEMM carries one scale stream per
+# batch, and a fused attention capsule has TWO MX stages contracting over different axes. Both were
+# equally scale-blind, so both are pinned here.
+
+def test_a_batched_matmul_carries_a_scale_stream_per_batch():
+    ins = CS._batched_mx_inputs("A0", "W", 2, 16, 32, 16, "mxfp8", _binding("block_e8m0", 32))
+    by = {i["name"]: i for i in ins}
+    assert by["A0_scale"]["shape"] == [2, 1, 16], "batch leads: each batch is its own GEMM"
+    assert by["W_scale"]["shape"] == [2, 1, 16]
+
+
+def test_an_unscaled_batched_matmul_is_unchanged():
+    ins = CS._batched_mx_inputs("A0", "W", 2, 16, 32, 16, "int8", _binding(None, None, "int8"))
+    assert [i["name"] for i in ins] == ["W", "A0"]
+
+
+def test_attention_scales_follow_each_stages_own_contraction_axis():
+    """QK contracts over the head dim, PV over the key count -- different axes, different streams."""
+    ins = CS._attention_mx_inputs("Q", "K", "V", 16, 32, 32, 16, "mxfp8", _binding("block_e8m0", 32))
+    by = {i["name"]: i for i in ins}
+    assert by["Q_scale"]["shape"] == [1, 16], "H/32 groups x M queries"
+    assert by["K_scale"]["shape"] == [1, 32], "H/32 groups x Skv keys"
+    assert by["V_scale"]["shape"] == [1, 16], "Skv/32 groups x Dv value columns"
+
+
+def test_the_softmax_intermediates_requant_scale_is_an_operand_too():
+    """P is produced by the kernel, but the exponent it is requantized against was chosen when the golden
+    was built -- so the kernel cannot derive it, and a value it cannot derive is an input."""
+    by = {i["name"]: i for i in
+          CS._attention_mx_inputs("Q", "K", "V", 16, 32, 32, 16, "mxfp8", _binding("block_e8m0", 32))}
+    assert "P_scale" in by
+    assert by["P_scale"]["scale_of"] == "P"
+    assert by["P_scale"]["shape"] == [1, 16], "Skv/32 groups x M rows"
+
+
+def test_attention_declares_no_scales_when_either_axis_is_not_whole_blocks():
+    b = _binding("block_e8m0", 32)
+    assert [i["name"] for i in CS._attention_mx_inputs("Q", "K", "V", 16, 24, 32, 16, "mxfp8", b)] \
+        == ["Q", "K", "V"]
+    assert [i["name"] for i in CS._attention_mx_inputs("Q", "K", "V", 16, 32, 24, 16, "mxfp8", b)] \
+        == ["Q", "K", "V"]

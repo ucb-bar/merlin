@@ -624,6 +624,17 @@ def _mx_attention_golden(entry, binding):
         "SA_q_e8m0_codes": SA_q.tolist(), "SB_k_e8m0_codes": SB_k.tolist(),
         "SB_v_e8m0_codes": SB_v.tolist(),
         "scale_example": {"SA_q[0][0]": int(SA_q[0, 0]), "as_scale": e8m0_decode(int(SA_q[0, 0]))},
+        # The four scale streams under the operand names the capsule declares, so a submitted backend is
+        # handed them alongside the elements. P_scale is the exponent the softmax intermediate is
+        # requantized against: chosen HERE when the golden was built, so the kernel cannot derive it.
+        f"{q}_scale": {"shape": [H // mx.GROUP, M], "decoded": SA_q.reshape(-1).tolist(),
+                       "note": "E8M0 codes, one per block of H per query row"},
+        f"{k}_scale": {"shape": [H // mx.GROUP, Skv], "decoded": SB_k.reshape(-1).tolist(),
+                       "note": "E8M0 codes, one per block of H per key row"},
+        f"{v}_scale": {"shape": [Skv // mx.GROUP, Dv], "decoded": SB_v.reshape(-1).tolist(),
+                       "note": "E8M0 codes, one per block of Skv per value column"},
+        "P_scale": {"shape": [Skv // mx.GROUP, M], "decoded": SA_p.reshape(-1).tolist(),
+                    "note": "E8M0 codes the softmax intermediate P is requantized against"},
         # RAW device operand bytes exactly as mx_ref consumed them (per stage, format-packed) + LUTs, so a
         # bit-exact grade re-runs the two MX GEMMs + the pinned softmax/requant over THESE codes.
         "attention_codes": {
@@ -697,6 +708,14 @@ def _mx_gemv_batched_golden(entry, binding):
                           "stacked_out_shape": [B * M, N], "batches": batches},
         "scale_example": {"SA0[0][0]": batches[0]["SA"][0],
                           "as_scale": e8m0_decode(int(batches[0]["SA"][0]))},
+        # The per-batch scale streams under the operand names the capsule declares, so a submitted
+        # backend is handed them the same way it is handed the elements (see the single-GEMM path).
+        f"{lhs}_scale": {"shape": [B, H // mx.GROUP, M],
+                         "decoded": [c for bt in batches for c in bt["SA"]],
+                         "note": "E8M0 exponent codes per batch, one per block of H per lhs row"},
+        f"{weight}_scale": {"shape": [B, H // mx.GROUP, N],
+                            "decoded": [c for bt in batches for c in bt["SB"]],
+                            "note": "E8M0 exponent codes per batch, one per block of H per weight column"},
     }
     return {out: rows_out}, prov
 
