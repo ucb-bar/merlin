@@ -160,3 +160,50 @@ def test_shapes_declared_but_no_operand_values_available_is_refused(mh, monkeypa
     there is nothing to feed -- and feeding zeros would silently mis-measure rather than fail."""
     assert _derive(mh, monkeypatch, _cb(kernel_abi={"lhs": ["A0"], "outputs": ["Y0"]},
                                         operand_shapes={"A0": [2, 2], "Y0": [2, 2]})) is None
+
+
+# --------------------------------------------------------------- when the declaration must win
+# The opcode branches predate block-scaled formats, so for a microscaling capsule they return a
+# PLAUSIBLE answer that is missing the E8M0 scale streams entirely -- and a plausible answer wins under
+# "opcode first", which would leave a kernel fed half its operands and the whole scale contract inert.
+# The override is deliberately narrow: only when every operand the declaration ADDS is a scale.
+
+def _mx_cb(scale_role="scale"):
+    return _cb(kernel_abi={"weight": ["W", "W_scale"], "lhs": ["A0", "A0_scale"], "outputs": ["Y0"]},
+               operand_shapes={"W": [2, 2], "A0": [2, 2], "W_scale": [1, 2], "A0_scale": [1, 2],
+                               "Y0": [2, 2]},
+               leaves={"W": [2, 2], "A0": [2, 2], "W_scale": [1, 2], "A0_scale": [1, 2]},
+               operands=[{"name": "W", "role": "weight"}, {"name": "A0", "role": "input"},
+                         {"name": "W_scale", "role": scale_role},
+                         {"name": "A0_scale", "role": scale_role},
+                         {"name": "Y0", "role": "output"}])
+
+
+def test_declared_scales_are_fed_even_when_the_opcode_path_answered(mh, monkeypatch):
+    """The op branch returns the elements alone; the declaration adds the scales, so it wins."""
+    monkeypatch.setattr(mh, "_args_from_cb_by_opcode",
+                        lambda cb: ([mh.TensorArg("W", 2, 2, [0.0] * 4, "f32"),
+                                     mh.TensorArg("A0", 2, 2, [0.0] * 4, "f32")],
+                                    [mh.TensorArg("Y0", 2, 2, [0.0] * 4, "f32")]))
+    ins, _ = mh.args_from_cb(_mx_cb())
+    assert [a.name for a in ins] == ["W", "W_scale", "A0", "A0_scale"], (
+        "a kernel fed fewer operands than its capsule declares is not given a smaller answer, "
+        "it is given the wrong one")
+
+
+def test_extra_operands_that_are_not_scales_do_not_override(mh, monkeypatch):
+    """Narrow on purpose: a cb may declare operands an op branch folds in for other reasons, and
+    overriding on those changed 9 of 35 real command buffers when it was tried."""
+    monkeypatch.setattr(mh, "_args_from_cb_by_opcode",
+                        lambda cb: ([mh.TensorArg("W", 2, 2, [0.0] * 4, "f32"),
+                                     mh.TensorArg("A0", 2, 2, [0.0] * 4, "f32")],
+                                    [mh.TensorArg("Y0", 2, 2, [0.0] * 4, "f32")]))
+    ins, _ = mh.args_from_cb(_mx_cb(scale_role="input"))
+    assert [a.name for a in ins] == ["W", "A0"], "only a SCALE may override the opcode derivation"
+
+
+def test_the_scale_role_is_read_from_the_command_buffers_own_declaration(mh):
+    cb = _mx_cb()
+    assert mh._is_scale_operand(cb, "W_scale") and mh._is_scale_operand(cb, "A0_scale")
+    assert not mh._is_scale_operand(cb, "W") and not mh._is_scale_operand(cb, "A0")
+    assert not mh._is_scale_operand(cb, "nonexistent")

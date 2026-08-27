@@ -634,6 +634,21 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
     return in_args, out_args
 
 
+def _is_scale_operand(cb: dict, name: str) -> bool:
+    """Whether the command buffer declares ``name`` as a block-SCALE stream rather than an element operand.
+
+    Read from the cb's own per-operand ``role``, which is the capsule's declared role carried through. A
+    scale is the one operand class an opcode branch here can silently drop while still returning a
+    plausible answer, because the branches were written before block-scaled formats existed."""
+    for spec in (cb.get("operands") or []):
+        if isinstance(spec, dict) and str(spec.get("name")) == name:
+            return str(spec.get("role") or "").lower() == "scale"
+    tspec = (cb.get("tensors") or {}).get(name)
+    if isinstance(tspec, dict):
+        return str(tspec.get("role") or "").lower() == "scale"
+    return False
+
+
 def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     """Derive the kernel's ``(in_args, out_args)`` from a capsule's COMMAND BUFFER.
 
@@ -654,8 +669,6 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
         derived = _args_from_cb_by_opcode(cb)
     except Exception:
         derived = None          # a malformed/unfamiliar cb must fall through, not abort the harness
-    if derived is not None:
-        return derived
     from merlin.runtime.commandbuffer import materialize_inputs
     canon = cb.get("canonical_inputs")
     if not isinstance(canon, dict):
@@ -664,7 +677,22 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
         env = materialize_inputs(cb)
     except Exception:
         env = {}
-    return _args_from_declared_abi(cb, canon, env)
+    declared = _args_from_declared_abi(cb, canon, env)
+    if derived is None:
+        return declared
+    if declared is None:
+        return derived
+    # Both resolved. Keep the opcode answer -- UNLESS the ONLY operands the declaration adds are SCALE
+    # streams. The op branches here predate block-scaled formats, so a block-scaled matmul's E8M0 scales
+    # are dropped by an inference that never knew to look for them; feeding a kernel fewer operands than
+    # its capsule declares is not a smaller answer, it is the wrong one. The test is narrow on purpose:
+    # a cb may legitimately declare operands an op branch omits for other reasons (an epilogue input a
+    # fused branch folds in, say), and overriding on those breaks derivations that work today -- measured,
+    # 9 of 35 frozen command buffers changed under the looser "any extra operand" rule.
+    extra = [a.name for a in declared[0] if a.name not in {d.name for d in derived[0]}]
+    if extra and all(_is_scale_operand(cb, nm) for nm in extra):
+        return declared
+    return derived
 
 
 def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorArg],
