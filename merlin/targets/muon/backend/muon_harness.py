@@ -558,11 +558,25 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
 
 
 
-def modelled_opcodes() -> frozenset[str]:
-    """Opcodes this harness can build reference operands for.
+#: Substrings the plan loop matches on rather than comparing an opcode exactly. The single-matmul plan
+#: accepts ANY opcode containing these (``MATMUL``, ``MATMUL_RESIDENT``, ``MATMUL_BATCHED``, ``GEMM``…),
+#: so an exact-name scan of the dispatch UNDERSTATES what is handled -- it reported the most common
+#: opcode of all as unmodelled.
+_OPCODE_SUBSTRINGS = ("MATMUL", "GEMM")
 
-    Derived from the dispatch itself rather than restated, so it cannot drift from what the code
-    actually handles."""
+
+def models_opcode(op: str) -> bool:
+    """Can this harness build reference operands for ``op``? Substring-matched plans included."""
+    o = (op or "").upper()
+    return o in modelled_opcodes() or any(sub in o for sub in _OPCODE_SUBSTRINGS)
+
+
+def modelled_opcodes() -> frozenset[str]:
+    """Opcodes this harness names EXACTLY in its dispatch.
+
+    Derived from the source rather than restated, so it cannot drift from what the code handles. It is
+    deliberately NOT the whole answer: the plan loop also matches opcodes by SUBSTRING (see
+    :data:`_OPCODE_SUBSTRINGS`), so callers asking "is this handled?" must use :func:`models_opcode`."""
     import pathlib
     src = pathlib.Path(__file__).read_text(encoding="utf-8")
     out = set()
@@ -588,13 +602,13 @@ def why_no_operands(cb: dict) -> str:
     measured at 13 of 32 failures on one run, every one of them reported against the wrong thing."""
     ops = [str(c.get("opcode") or c.get("op") or "?") for c in (cb.get("commands") or [])]
     have = bool(cb.get("canonical_inputs"))
-    modelled = modelled_opcodes()
-    unmodelled = [o for o in ops if o not in modelled]
+    unmodelled = [o for o in ops if not models_opcode(o)]
     if not have and not ops:
         return "the command buffer carries no commands and no canonical operands"
     if unmodelled:
         return (f"this reference harness does not model opcode(s) {sorted(set(unmodelled))} "
-                f"(it models {sorted(modelled)}); the command buffer itself carries "
+                f"(it names {sorted(modelled_opcodes())} and matches anything containing "
+                f"{list(_OPCODE_SUBSTRINGS)}); the command buffer itself carries "
                 f"{'canonical operands' if have else 'NO canonical operands'}")
     if not have:
         return "the runner attached no canonical operands for this capsule's golden"
