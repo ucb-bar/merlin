@@ -62,8 +62,18 @@ def test_atlas_manifest_reproduced_from_residual_and_facts():
     residual = cm._load_residual("atlas")
     assert residual.pop("facts_source") == "rtl"
     # residual intent/prose is preserved verbatim (facts only AUGMENT mesh/encoding/capacities)
-    for key in ("name", "family", "features", "provenance", "compute_units"):
+    for key in ("name", "family", "features", "provenance"):
         assert m[key] == residual[key], f"atlas.{key} drifted from the residual"
+    # compute_units is ADDITIVE rather than verbatim: the generator synthesizes a unit for each engine
+    # the target's own evidence reaches and the residual never declared. Every declared unit must still
+    # survive UNCHANGED -- authored intent always wins -- and anything extra must carry the rung and the
+    # observation that justify it, so a derived unit is never mistaken for a reviewed one.
+    declared = {u["name"]: u for u in residual["compute_units"]}
+    for unit in m["compute_units"]:
+        if unit["name"] in declared:
+            assert unit == declared[unit["name"]], f"declared unit {unit['name']} was edited"
+        else:
+            assert unit.get("derived_from"), f"synthesized unit {unit['name']} carries no evidence"
     # runner intent (model_ext/fourth_output_name) is preserved; only the inert suite default is added
     assert {k: m["runner"][k] for k in residual["runner"]} == residual["runner"]
     assert m["runner"]["suite"] == "atlas-capsule-bench"

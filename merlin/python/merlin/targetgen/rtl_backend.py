@@ -66,7 +66,44 @@ def derived_levers(profile: TargetProfile) -> list[str]:
         levers.append("spatial.dataflow")
     if profile.has_accumulator:
         levers.append("spatial.accumulator_resident")
+        # An accumulator memory is also what makes on-chip residency a compile-time FEASIBILITY
+        # question rather than a performance hint: a working set that overruns it produces wrong
+        # answers silently, so the fit is a lever the hardware implies.
+        levers.append("memory.capacity_fit")
+    levers.extend(_endpoint_levers(profile.target))
     return levers
+
+
+def _endpoint_levers(target: str) -> list[str]:
+    """Levers implied by what the target's compute ENDPOINT can be told to do.
+
+    Derived from the roles its own encoding table binds (``kernels.endpoints``), which is the same
+    derivation the lifter reads — so a target cannot be offered a lever whose instruction it does not
+    have, and a target that GAINS one gets the lever without an edit here. This is the dispatch surface
+    the RTL profile alone cannot see: a mesh and an accumulator say nothing about whether the endpoint
+    accepts a loop descriptor, and on gemmini that descriptor is the single biggest expert win.
+    """
+    try:
+        from ..kernels import endpoints as _ep
+        eps = _ep.endpoints_for(target)
+    except Exception:  # noqa: BLE001 — no endpoint declared / unreadable: derive nothing, claim nothing
+        return []
+    roles: set[str] = set()
+    for endpoint in eps:
+        roles |= set(endpoint.roles)
+    out: list[str] = []
+    if "loop_descriptor" in roles:
+        out.append("dispatch.loop_offloaded")
+    if "config" in roles:
+        out.append("dispatch.descriptor_reuse")
+    if "dma" in roles:
+        out.append("dispatch.dma_overlap")
+    if "sync" in roles:
+        out.append("simt.barriers_in_loop" if any(e.engine == "simt" for e in eps)
+                   else "dispatch.dma_overlap")
+    if "weight_load" in roles or "operand_load" in roles:
+        out.append("layout.operand_major")
+    return sorted(dict.fromkeys(out))
 
 
 def lever_derivation_gaps(profile: TargetProfile) -> tuple[str, ...]:
@@ -102,6 +139,23 @@ _LEVER_META = {
     "spatial.accumulator_resident": ("PASS", True,
                                      "keep the output accumulator-resident across the reduction — a "
                                      "discovered accumulator memory implies this choice"),
+    "memory.capacity_fit": ("HEURISTIC", True,
+                            "tile so the working set fits the discovered on-chip capacity — overrunning "
+                            "it is not slow, it is silently wrong"),
+    # --- dispatch: implied by what the endpoint's own instruction table accepts ---
+    "dispatch.loop_offloaded": ("PASS", True,
+                                "hand the loop nest to the endpoint's own sequencer instead of issuing "
+                                "the nest command by command — the endpoint binds a loop_descriptor role"),
+    "dispatch.descriptor_reuse": ("KNOB", True,
+                                  "set endpoint state once and let the rest of the stream inherit it, "
+                                  "instead of re-configuring per tile"),
+    "dispatch.dma_overlap": ("HEURISTIC", True,
+                             "issue bulk movement so it overlaps the compute it feeds"),
+    "simt.barriers_in_loop": ("CODEGEN", 0,
+                              "hoist barriers out of the reduction loop — a barrier inside it says the "
+                              "engine cannot hold its state across the reduction"),
+    "layout.operand_major": ("KNOB", "k_major",
+                             "pack the operand in the major order the endpoint's load role streams"),
 }
 
 

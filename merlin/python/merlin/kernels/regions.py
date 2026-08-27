@@ -117,7 +117,10 @@ REGIONS: dict[str, Region] = {r.key: r for r in [
        "contraction classes it claims at all — a block no extent admits declines the class to scalar.",
        (_PIPE, _FS, _IF),
        [_ep("KNOB", "schedule:op_match", _FS, "add/adjust an op_match tile in render_schedule")],
+       # `spatial.dataflow` (WS/OS, or fixed outer-product) decides how operands stream through the
+       # array, which is the array's tiling decision.
        cca_axes=("compute.register_block", "compute.nr_is_vsetvlmax", "compute.mr_adapts_to_m",
+                 "spatial.dataflow", "spatial.pe_rows", "spatial.pe_cols",
                  "coverage.claimed_mac_fraction", "coverage.unclaimed_op_classes")),
     _r("vectorization", "kernel-codegen", "Vectorization",
        "Scoped vectorize + vector width/LMUL/VL strategy/tail policy, including the SCOPE: which "
@@ -161,7 +164,12 @@ REGIONS: dict[str, Region] = {r.key: r for r in [
        [_ep("PASS", "impr_features:accumulator_resident_microkernel", _IF,
             "register an accumulation feature; the spill-free closer needs a CODEGEN microkernel emitter",
             _IMPR)],
-       cca_axes=("compute.accumulator_resident", "compute.reduction_form")),
+       # `spatial.accumulator_resident` is the SAME question on an array engine -- does the output stay
+       # in the fastest storage across the whole reduction -- so it is governed here rather than in a
+       # region of its own. Found by making check_regions iterate every registered backend instead of
+       # the literal "rvv", which had made the invariant true by construction for every other target.
+       cca_axes=("compute.accumulator_resident", "compute.reduction_form",
+                 "spatial.accumulator_resident")),
     # ---- memory / layout --------------------------------------------------------------
     _r("bufferization-memplan", "memory", "Bufferization & memory planning",
        "Tensor->memref bufferization, out-param buffers, the AOT static arena plan.",
@@ -272,12 +280,17 @@ def all_edit_points() -> list[tuple[str, EditPoint]]:
     return [(r.key, ep) for r in REGIONS.values() for ep in r.edit_points]
 
 
-def check_regions() -> list[str]:
+def check_regions(backends=None) -> list[str]:
     """Sanity/coverage invariant, returns problems (empty = OK):
-    - every region has a valid phase, ≥1 real module file, and ≥1 edit-point;
-    - every RVV CCA LEVER axis is governed by EXACTLY one region (the bijection's region taxonomy)."""
+    - every region has a valid phase, >=1 real module file, and >=1 edit-point;
+    - every LEVER axis of every REGISTERED backend is governed by EXACTLY one region.
+
+    The axis half was scoped to the literal ``"rvv"``, so the taxonomy was only ever checked against
+    one target and a second backend's lever axis could go ungoverned unnoticed. Backends come from the
+    action catalog.
+    """
     from ..common.paths import repo_root
-    from . import cca_contract
+    from . import action_catalog, cca_contract
 
     problems: list[str] = []
     root = repo_root()
@@ -289,7 +302,8 @@ def check_regions() -> list[str]:
         for m in r.modules:
             if not (root / m).is_file():
                 problems.append(f"region {key}: module missing on disk: {m}")
-    lever = cca_contract.leverable_axes("rvv")
+    names = list(backends) if backends is not None else sorted(action_catalog.backends())
+    lever = {ax for b in names for ax in cca_contract.leverable_axes(b)}
     covered: dict[str, list[str]] = {}
     for r in REGIONS.values():
         for ax in r.cca_axes:

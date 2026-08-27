@@ -54,22 +54,38 @@ def test_fact_extractor_routing_table():
 def test_fact_bundle_for_routes_by_kind(monkeypatch):
     """The dispatch sends each kind to its extractor — proven without mlc by monkeypatching the leaves.
 
-    fact_bundle_for is memoized process-wide, so clear the memo first (else a real gemmini bundle cached
-    by an earlier test shadows the monkeypatched leaf) and again in teardown (so these fake bundles never
-    leak into the shared memo for later tests)."""
+    Dispatch reads the SET of kinds now, not a primary one: routing on the primary made a SIMT cluster
+    embedding a systolic mesh run the config introspect and never look at the mesh, so its geometry,
+    capacities and legal opcodes were absent for hardware that has all three.
+
+    fact_bundle_for is memoized process-wide, so clear the memo first (else a real bundle cached by an
+    earlier test shadows the monkeypatched leaf) and again in teardown."""
     B.clear_fact_bundle_cache()
-    monkeypatch.setattr(B, "target_fact_bundle", lambda t: {"via": "circt_static", "target": t})
-    monkeypatch.setattr(B, "spatial_fact_bundle", lambda t: {"via": "opu", "target": t})
-    monkeypatch.setattr(B, "_simt_fact_bundle", lambda t: {"via": "muon", "target": t})
+    monkeypatch.setattr(B, "target_fact_bundle", lambda t: {"via": "circt_static", "target": t,
+                                                            "fields": {"mesh_dim": {"value": 16,
+                                                                                    "derived": True}}})
+    monkeypatch.setattr(B, "spatial_fact_bundle", lambda t: {"via": "opu", "target": t, "fields": {}})
+    monkeypatch.setattr(B, "_simt_fact_bundle", lambda t: {"via": "muon", "target": t,
+                                                           "fields": {"simt": {"value": 1,
+                                                                               "derived": True}}})
     try:
-        monkeypatch.setattr(B, "_resolve_kind", lambda t: "systolic")
+        monkeypatch.setattr(B, "_resolve_kinds", lambda t: ("systolic",))
         assert B.fact_bundle_for("gemmini")["via"] == "circt_static"
-        monkeypatch.setattr(B, "_resolve_kind", lambda t: "spatial")
+        B.clear_fact_bundle_cache()
+        monkeypatch.setattr(B, "_resolve_kinds", lambda t: ("spatial",))
         assert B.fact_bundle_for(_OPU_TARGET)["via"] == "opu"
-        monkeypatch.setattr(B, "_resolve_kind", lambda t: "simt")
+        B.clear_fact_bundle_cache()
+        monkeypatch.setattr(B, "_resolve_kinds", lambda t: ("simt",))
         assert B.fact_bundle_for("muon")["via"] == "muon"
+        # a HYBRID runs BOTH and merges: the mesh half must survive, which is the whole fix.
+        B.clear_fact_bundle_cache()
+        monkeypatch.setattr(B, "_resolve_kinds", lambda t: ("simt", "systolic"))
+        merged = B.fact_bundle_for("hybrid")
+        assert merged["fields"]["simt"]["derived"] and merged["fields"]["mesh_dim"]["value"] == 16
+        assert merged["extractors"] == ["simt_config", "circt_static"]
         # an unresolved kind degrades to the systolic static path (pre-existing behavior).
-        monkeypatch.setattr(B, "_resolve_kind", lambda t: None)
+        B.clear_fact_bundle_cache()
+        monkeypatch.setattr(B, "_resolve_kinds", lambda t: ())
         assert B.fact_bundle_for("brand_new")["via"] == "circt_static"
     finally:
         B.clear_fact_bundle_cache()

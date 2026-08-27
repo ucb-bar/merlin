@@ -31,6 +31,16 @@ _AXIS_CATEGORY = {
     "compute.mr_adapts_to_m": "tiling-dataflow",
     # A materialized transpose is layout traffic, exactly like the envelope copies above.
     "layout.transpose_materialized": "fusion-layout",
+    # The array-engine counterparts of the two axes above. Surfaced by making check_categories iterate
+    # every registered backend rather than only rvv.
+    "spatial.dataflow": "tiling-dataflow",
+    "spatial.accumulator_resident": "register-residency",
+    "memory.capacity_fit": "register-residency",
+    "dispatch.loop_offloaded": "tiling-dataflow",
+    "dispatch.descriptor_reuse": "tiling-dataflow",
+    "dispatch.dma_overlap": "fusion-layout",
+    "layout.operand_major": "fusion-layout",
+    "simt.barriers_in_loop": "tiling-dataflow",
     "compute.accumulator_resident": "register-residency",
     "compute.accumulator_dtype": "register-residency",
     # coverage (whole-model): "is this work even ON the vector path" is a tiling/dataflow question for
@@ -66,15 +76,23 @@ def categorize(divergences) -> dict[str, list]:
     return out
 
 
-def check_categories() -> list[str]:
-    """Invariant (empty = OK): every RVV CCA LEVER axis has an improvement category, and every category
-    in the map is a declared CATEGORY."""
-    from . import cca_contract
+def check_categories(backends=None) -> list[str]:
+    """Invariant (empty = OK): every LEVER axis of every REGISTERED backend has an improvement
+    category, and every category in the map is a declared CATEGORY.
 
+    Was scoped to the literal ``"rvv"``, which made the invariant true by construction for every other
+    target: a second backend could register a lever axis with no category and the checker would not
+    look. Backends are discovered from the action catalog, so a newly registered one is checked without
+    editing this function.
+    """
+    from . import action_catalog, cca_contract
+
+    names = list(backends) if backends is not None else sorted(action_catalog.backends())
     problems: list[str] = []
-    for ax in sorted(cca_contract.leverable_axes("rvv")):
-        if ax not in _AXIS_CATEGORY:
-            problems.append(f"lever axis {ax}: no improvement category")
+    for backend in names:
+        for ax in sorted(cca_contract.leverable_axes(backend)):
+            if ax not in _AXIS_CATEGORY:
+                problems.append(f"[{backend}] lever axis {ax}: no improvement category")
     for ax, cat in _AXIS_CATEGORY.items():
         if cat not in CATEGORIES:
             problems.append(f"axis {ax}: unknown category {cat!r}")

@@ -493,6 +493,18 @@ def ensure_backend(backend: str) -> None:
             continue
 
 
+def backends() -> tuple[str, ...]:
+    """Every backend that has registered routes — the discovery seam the checkers iterate.
+
+    Exists so ``check_regions``/``check_categories`` stop being scoped to the literal ``"rvv"``. Those
+    invariants were true by construction for every other target: a second backend could register a
+    lever axis with no governing region or no improvement category and nothing would look. Reads only
+    what is already registered and never triggers a derivation, so asking the question cannot change
+    the answer.
+    """
+    return tuple(sorted(b for b, routes in _ROUTES.items() if routes))
+
+
 def register_route(backend: str, route: _Route) -> None:
     """Plug one backend-specific route into the agnostic router (idempotent per (backend, axis, seam)).
     Backend plugins (generated/OOT) call this at load time so the core stays backend-agnostic."""
