@@ -87,3 +87,40 @@ def test_derived_names_are_deduped_and_blanks_dropped(monkeypatch):
     _patch(monkeypatch, manifest=_FakeManifest(),
            taxonomy={"by_class": {"Alpha": [{}], "": [{}]}})
     assert CR._isa_class_vocabulary("t") == ["Alpha"]
+
+
+def test_class_axes_are_this_targets_vocabulary_not_the_baseline(monkeypatch):
+    """The overfit this closes: the baseline list is ONE machine's class names, and prepending it to
+    every report printed a dozen of that machine's instructions as "not covered" holes on a target whose
+    ISA cannot express them."""
+    _patch(monkeypatch, manifest=_FakeManifest(),
+           taxonomy={"by_class": {"Alpha": [{}], "Beta": [{}]}})
+    axes = CR._class_axis_baseline("t")
+    assert axes == ["Alpha", "Beta"]
+    assert not set(axes) & set(CR.BASELINE_CLASSES), "another target's classes leaked into the axes"
+
+
+def test_a_declaring_target_keeps_its_own_declared_axes(monkeypatch):
+    _patch(monkeypatch,
+           manifest=_FakeManifest(encoding={"semantic_class": {"0": "MVIN", "1": "MVOUT"}}),
+           taxonomy={"by_class": {"Alpha": [{}]}})
+    assert CR._class_axis_baseline("t") == ["MVIN", "MVOUT"]
+
+
+def test_baseline_is_the_fallback_when_nothing_about_the_target_resolves(monkeypatch):
+    """Back-compat: a target with neither a declared vocabulary nor a derivable ISA reports as before."""
+    _patch(monkeypatch, manifest=_FakeManifest(), taxonomy_raises=True)
+    assert CR._class_axis_baseline("t") == CR.BASELINE_CLASSES
+    assert CR._class_axis_baseline(None) == CR.BASELINE_CLASSES
+
+
+def test_rendered_table_does_not_reintroduce_foreign_classes(monkeypatch):
+    """The same category error one layer down: the renderer re-prepended the baseline to the table."""
+    _patch(monkeypatch, manifest=_FakeManifest(),
+           taxonomy={"by_class": {"Alpha": [{}], "Beta": [{}]}})
+    cov = CR.aggregate([], target="t")
+    assert set(cov["instruction_class_coverage"]) == {"Alpha", "Beta"}
+    body = CR.render_markdown(cov, [])
+    assert "| Alpha |" in body and "| Beta |" in body, "the target's own classes must still render"
+    for foreign in CR.BASELINE_CLASSES:
+        assert f"| {foreign} |" not in body, f"{foreign!r} rendered on a target that cannot execute it"
