@@ -105,7 +105,14 @@ def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
                 sim = "verilator"
         return ad, sim
     # non-chipyard target: its contract-resolved tiers (arc / program oracle); --sim does not apply.
-    return CR.oracle_adapters(target, sim_via), sim
+    #
+    # Report the engine that ACTUALLY graded, not the one the caller asked for. `--sim` is a chipyard
+    # ladder selector (spike/verilator/vcs); on any other target it is ignored here, so echoing it back
+    # made the telemetry claim a simulator that never ran — a SIMT target graded by its own cyclotron sim
+    # logged `sim: spike` on every self-check because the prompt's worked example passes `--sim spike`.
+    # A run record that names the wrong oracle is the same class of defect as quoting a score without the
+    # tier that produced it: it is not wrong by a little, it is attributable to the wrong machine.
+    return CR.oracle_adapters(target, sim_via), (sim_via or sim)
 
 
 def _log_telemetry(out: dict, capsules_arg: str) -> None:
