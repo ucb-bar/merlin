@@ -10,6 +10,7 @@ These console-scripts are installed with the package (`uv sync --all-extras`, or
 | `kernel-bench` | `merlin.kernels.bench_ceiling:main` |
 | `kernel-extract` | `merlin.kernels.cli_extract:main` |
 | `kernel-index` | `merlin.kernels.cli_index:main` |
+| `merlin-asm-audit` | `merlin.kernels.cli_asm:main` |
 | `merlin-cca-route` | `merlin.mining.route_report:main` |
 | `merlin-compare` | `merlin.compare.cli:main` |
 | `merlin-compile` | `merlin.compile_cli:main` |
