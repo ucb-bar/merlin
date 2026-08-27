@@ -232,15 +232,22 @@ capsules:
 # serve measures nothing. The vector variant below is the SHAPE at which a scalar loop stops being the
 # answer, so the reference worth reusing is the existing tuned RVV package from another experiment
 # (out/artifacts/targets/rvv/…) rather than a fresh microkernel.
+# ⚠️ `generalization.must_accelerate: false` is DELIBERATE and is the one field that must not inherit the
+# corpus default here. must_accelerate asserts "an eligible region that falls back is a hard failure" —
+# the exact opposite of what these capsules are for. The SIMT cluster provably cannot hold an i8 operand
+# in this family, so leaving the default true would demand acceleration the hardware cannot provide and
+# feed `must_accelerate_violations` with a violation that is the capsule's whole design.
 - {cat: model_slices, name: RX0_movement_i8_scalar, kind: model_slice, op: movement,
    operand_dtype: int8, M: 16, N: 16, src: X, out: Y0, semantic: mvin_mvout,
    source_role: pytorch_model_slice,
+   generalization: {must_accelerate: false, generalization_axis: composition},
    source_reference: 'int8 movement, scalar-shaped (16x16) — no SIMT integer movement datapath; the
      rv64imac Rocket is the engine that can hold these operands',
    label: public, modes: {movement: true}}
 - {cat: model_slices, name: RX1_movement_i8_vector, kind: model_slice, op: movement,
    operand_dtype: int8, M: 64, N: 256, src: X, out: Y0, semantic: mvin_mvout,
    source_role: pytorch_model_slice,
+   generalization: {must_accelerate: false, generalization_axis: composition},
    source_reference: 'int8 movement, vector-shaped (64x256) — same missing datapath at a size where a
      scalar loop is not the answer; reuse the tuned RVV package rather than regenerating one',
    label: public, modes: {movement: true}}

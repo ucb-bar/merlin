@@ -1,0 +1,40 @@
+name: RX1_movement_i8_vector
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: "int8 movement, vector-shaped (64x256) \u2014 same missing datapath\
+  \ at a size where a scalar loop is not the answer; reuse the tuned RVV package rather\
+  \ than regenerating one"
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 64
+  - 256
+  dtype: i8
+operation:
+  op: movement
+  attributes:
+    out: Y0
+    src: X
+    semantic: mvin_mvout
+    output_dtype: f32
+numeric_policy:
+  compare: exact_int
+  dtype: f32
+expected:
+  instruction_classes: []
+  modes:
+    movement: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: movement
+  generalization_axis: composition
+  must_accelerate: false
+  eligible: auto
