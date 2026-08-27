@@ -771,21 +771,34 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
         # Compare dtypes through eligibility's OWN alias-aware check, never by string equality: the
         # contract spells the format `int8` while a capsule region reports `i8`, so a raw `!=` reads a
         # native-dtype capsule as having no datapath at all and withholds it for a spelling difference.
+        # RANK IS NOT A HARD FACT — it is the one thing a compiler exists to change.
+        #
+        # The dtype test above IS hard: if no datapath holds the operand format, no arrangement of the
+        # program puts it on the device. Rank fails that test by exactly the argument the paragraph above
+        # makes for family. Ranks compose: a rank-4 convolution reaches a rank-2 mesh through im2col, and
+        # this compiler already SHIPS that lowering (`convolution_im2col_matmul` in linalg_lower, which
+        # derives the conv geometry from the operand shapes and emits an (m,k,n) matmul).
+        #
+        # Measured on radiance: RP14_patch_embed_bf16_pt was withheld as "rank 4 not in contraction legal
+        # ranks [2, 3]" and never graded, while the lowering that turns it into a rank-2 contraction sat
+        # in the tree unused. Withholding it did not report a hardware limit — it hid a reachable
+        # capability behind the SOURCE shape of the op, which is the question a library of kernels asks,
+        # not the question a compiler answers.
+        #
+        # So rank now only DOWNGRADES to graded: if the compiler cannot in fact lower it, the capsule
+        # fails honestly and visibly, which is the finding we want. Withholding on doubt is how a suite
+        # shrinks itself into a better score.
         dt = getattr(region, "in_dtype", None)
-        rk = getattr(region, "rank", None)
         all_dtypes = tuple({x for cap in cmap.values() for x in (getattr(cap, "dtypes", ()) or ())})
-        ranks = {int(x) for cap in cmap.values() for x in (getattr(cap, "ranks", ()) or ())}
         dtype_absent = bool(dt is not None and all_dtypes and not _el._dtype_ok(dt, all_dtypes))
-        rank_absent = bool(rk is not None and ranks and int(rk) not in ranks)
-        hard = dtype_absent or rank_absent
-        if not hard:
+        if not dtype_absent:
             keep.append(c); continue
         # State the fact that ACTUALLY triggered withholding. eligibility's reason describes its own
         # family verdict, which can read "unrecognized semantic family" for a capsule withheld purely
         # because its dtype has no datapath -- true but misleading about the cause, and it would send
         # someone to fix the taxonomy when the hardware is the constraint.
-        why = (f"operand dtype {dt!r} is in no capability this target declares" if dtype_absent
-               else f"operand rank {rk} is in no capability this target declares")
+        # Only the dtype reaches here now; rank is graded (see above), so the reason cannot be about it.
+        why = f"operand dtype {dt!r} is in no capability this target declares"
         withheld.append({
             "capsule": c.get("name"), "kind": c.get("kind"), "label": c.get("label"),
             "status": "not_graded", "ineligible": True,
