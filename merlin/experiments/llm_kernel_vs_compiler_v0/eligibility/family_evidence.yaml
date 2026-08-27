@@ -1,0 +1,75 @@
+# Independent evidence that the target can execute a semantic family.
+#
+# WHY THIS FILE EXISTS. The study measures what fraction of a workload's target-eligible compute
+# Merlin's compiler accelerates. If Merlin's own capability declaration supplied that denominator, the
+# ratio would be partly self-graded. So the denominator is grounded in evidence that exists whether or
+# not Merlin does: kernels a HUMAN wrote against this hardware, in the hardware's own repo.
+#
+# WHICH DIRECTION THE BIAS RUNS. Coverage is accelerated / eligible, so a SMALLER denominator makes
+# Merlin look better. Merlin's own derivation currently evidences only `contraction` and
+# `elementwise_map` and leaves `movement`, `reduction`, `synchronization` undetermined -- i.e. it
+# UNDER-claims, which would flatter it. The hand-written kernels evidence all eight. Taking the larger,
+# independently-evidenced denominator is therefore the conservative choice, and is the one used.
+#
+# WHAT COUNTS AS EVIDENCE. Only kernels the provenance audit classified `hand` (a human authored the
+# source and a human committed it). Agent-generated, compiler-generated, artifact-only and unknown
+# kernels are all excluded -- an agent's own output cannot establish what the hardware can do for the
+# purpose of grading agents.
+#
+# ⚠️ LIMITATION, STATED NOT HIDDEN. The kernel -> family assignment below is by NAME plus a reading of
+# what the kernel computes; it is not derived from the source automatically. It is data, reviewable
+# entry by entry against the cited repo paths, and it is deliberately CONSERVATIVE: a family is claimed
+# only where at least one kernel is unambiguous. `requires_human_review` stays true until a reviewer
+# has checked each citation.
+schema: family_evidence/v1
+target: radiance
+requires_human_review: true
+evidence_repo:
+  # The merlin-PINNED checkout. Two checkouts of this repo exist on this host and only one is read.
+  path: /scratch2/agustin/radiance-kernels
+  commit: 399757f6da3b2c75980821b2479e9f1ca732e8ea
+  pin: radiance_kernels
+  provenance_verdict_required: hand
+
+families:
+  contraction:
+    evidenced_by: [gemm_mxgemmini, gemm_mxgemmini_ws, gemm_simt, sgemm_muon, sgemm_gemmini,
+                   sgemm_tcore, gemv, gemv_batched_fp8_m32]
+    note: >-
+      Dense matmul and matrix-vector on both engines: the MX mesh (gemm_mxgemmini*, sgemm_gemmini*)
+      and the SIMT cluster (gemm_simt, sgemm_muon). Unambiguous.
+  attention:
+    evidenced_by: [flash_attention, flash_attention_mx, flash_attention_mx_gqa,
+                   flash_attention_mx_gemma, flash_attention_virgo]
+    note: >-
+      Full flash-attention kernels including grouped-query and the Gemma soft-cap variant, i.e. the
+      composed QK / softmax / PV pipeline, not just its contraction part.
+  normalization:
+    evidenced_by: [rmsnorm, rmsnorm_gemma, rmsnorm_qkv_fused, layernorm, gemma_4norm]
+    note: >-
+      Both norm forms the reveal models need: RMSNorm (Llama/Gemma, including the (1+w) variant) and
+      LayerNorm with mean subtraction and bias (the SigLIP vision tower).
+  softmax:
+    evidenced_by: [softmax, logit_softcap]
+    note: >-
+      A standalone softmax kernel, plus the tanh soft-cap epilogue. The online softmax inside the
+      flash kernels is additional evidence but is not counted separately here.
+  elementwise_map:
+    evidenced_by: [geglu, swiglu, bias_add, vecadd, saxpy, embed_scale, qkv_bias, simt_quant]
+    note: >-
+      Activations (GeGLU/SwiGLU), bias adds, scaling and quantization -- all pointwise maps.
+  reduction:
+    evidenced_by: [gemv, softmax, rmsnorm]
+    note: >-
+      Each carries a real reduction axis (dot-product rows, max/sum, sum-of-squares). Merlin's own
+      derivation leaves this family `undetermined`; the hardware plainly does it.
+  movement:
+    evidenced_by: [patch_embed, fmastore, unaligned, test_backing_mem, pointerchase]
+    note: >-
+      Gather/scatter, patchify, unaligned access and explicit backing-memory traffic. Also
+      `undetermined` in Merlin's own derivation.
+  synchronization:
+    evidenced_by: [launch, spin, idle]
+    note: >-
+      Warp launch, spin-wait and idle -- the barrier/scheduling surface. `undetermined` in Merlin's
+      own derivation; these kernels exist precisely to exercise it.
