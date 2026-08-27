@@ -34,7 +34,14 @@ export TMP=$TMPDIR TEMP=$TMPDIR
 # cert jobs cost ~45 min/capsule instead of seconds. Measured: a bare re-grade took 60+ min on Verilator
 # versus 1.5 min with the RTL cert dropped.
 export MERLIN_MUON_GSIM_EMU=/scratch/agustin/projects/gsim/build/radiance_gsim/emu_radiance_gsimconfig
-export MERLIN_MUON_GSIM_MAXCYCLES=2000000
+# 8M, up from 2M. MEASURED: RX1_movement_i8_vector reaches L3 pass at 8M having timed out at 2M, so
+# several capsules reported L3 "unavailable" were budget-starved, not defective -- and the failure message
+# blamed the cycle cap, which reads as a hang. Raising this was UNSAFE until the console stopped being
+# buffered in RAM (the parent reached 72.67 GB at a 12M cap and the host's OOM killer took out a live
+# 10-hour run); the console now spools to disk, so the cap is a real knob. Not raised further: a
+# 16x128x128 tile did not complete even at 12M, so non-termination there is not ruled out and a bigger
+# budget would only spend longer failing.
+export MERLIN_MUON_GSIM_MAXCYCLES=8000000
 # MERLIN_MLC_DIR is NOT in .env, and without it isa_encoding_for() returns None, _model_for() raises,
 # and EVERY fork-free compile fails closed — the run then grades only the capsules that need no oracle.
 # Measured: a first attempt sat flat at 6/39 (the six MX fixtures) for 101 minutes. codegen_smoke now
@@ -50,7 +57,7 @@ echo "start:   $(date -u +%Y%m%dT%H%M%SZ)"
 
 CHIA_PY=/scratch/agustin/projects/oscar-merlin/build/chia-venv/bin/python
 $CHIA_PY merlin/experiments/capsule_bench/harness/chia_ab_batch.py \
-    --tag radiance_continuous_v13c --arms merlin_rtlchecks --repeats 1 \
+    --tag radiance_continuous_v15 --arms merlin_rtlchecks --repeats 1 \
     --driver codex --model gpt-5.6-sol --effort high \
     --codex-slots 1 \
     --schedule continuous --max-wall-s 36000 \
