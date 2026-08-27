@@ -1003,6 +1003,29 @@ def _rtl_tiers_of(target: str | None) -> frozenset[str]:
         return frozenset()
 
 
+def _numeric_when_not_accelerated(st, gate, verify: dict, cos: float, engine: str,
+                                  measured_on: str) -> dict:
+    """The numeric verdict for a model capsule that will NOT be reported as a pass.
+
+    The whole-model gate runs BEFORE the acceleration checks, so by the time one of those rejects the
+    capsule the arithmetic has already been measured -- and was being overwritten with
+    ``not_compared``, which reads as "we do not know" when in fact we do. That erased the one thing a
+    reader most needs from a failing capstone: whether the compiler got the model RIGHT and merely ran it
+    in the wrong place, or got it wrong as well. Those call for completely different work.
+
+    ``measured_on`` is carried explicitly so the number can never be mistaken for an accelerator result;
+    the capsule verdict stays ``fail`` in every caller."""
+    return {"status": ("pass" if (st == "verified" and gate) else "fail"),
+            "engine": engine,
+            "gate": verify or None,
+            "cos": (cos if cos else None),
+            "measured_on": measured_on,
+            "note": ("arithmetic only -- this capsule is NOT a pass; see the failure block for what "
+                     "disqualified it. A correct number computed on the wrong lane is still not an "
+                     "accelerator result."),
+            "model_status": st}
+
+
 def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int) -> dict:
     """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
     (``compile_model``): route each op across the target's compute units (matmul/systolic -> the mesh, the
@@ -1203,7 +1226,8 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
             return result
         if int(_on) == 0 or _fb:
             result.update(status="fail",
-                          numeric={"status": "not_compared", "engine": engine},
+                          numeric=_numeric_when_not_accelerated(
+                              st, gate, _v, _cos, engine, measured_on="host_lane_fallback"),
                           failure={"plane": "model", "category": "FALLBACK_ON_ELIGIBLE_REGION",
                                    "detail": f"capsule declares must_accelerate but only {_on} matmul "
                                              f"layer(s) executed on the {target} mesh and {_fb} fell back "
@@ -1218,7 +1242,8 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     _failed_tiers = sorted(t for t, v in exercised.items() if v != "pass")
     if _failed_tiers:
         result.update(status="fail",
-                      numeric={"status": "not_compared", "engine": engine},
+                      numeric=_numeric_when_not_accelerated(
+                          st, gate, _v, _cos, engine, measured_on=run_where),
                       failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
                                "detail": f"declared oracle tier(s) {_failed_tiers} RAN and did not pass "
                                          f"(on-mesh execution: {mesh_exec.get('n_passed')} of "
@@ -1231,8 +1256,11 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         return result
 
     if declared and not exercised:
+        # Same reasoning as the branches above: the arithmetic WAS measured before we got here, so report
+        # it. The verdict stays `incomplete` -- no declared tier ran, and a number alone is not a tier.
         result.update(status="incomplete",
-                      numeric={"status": "not_compared", "engine": engine},
+                      numeric=_numeric_when_not_accelerated(
+                          st, gate, _v, _cos, engine, measured_on=run_where),
                       failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
                                "detail": f"declares required oracle tiers {declared} and ran NONE of them "
                                          f"(the functional gate here is the {run_where} reference, not the "
