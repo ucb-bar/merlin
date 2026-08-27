@@ -186,3 +186,36 @@ def test_attention_declares_no_scales_when_either_axis_is_not_whole_blocks():
         == ["Q", "K", "V"]
     assert [i["name"] for i in CS._attention_mx_inputs("Q", "K", "V", 16, 32, 24, 16, "mxfp8", b)] \
         == ["Q", "K", "V"]
+
+
+# --------------------------------------------------------------- the gate is the CAPSULE's dtype
+# Regression: the gate was originally the target-level `binding.scaling`, which `derive_binding` reads
+# from ONE compute unit. On a target whose first unit is unscaled and whose second is the MX engine, that
+# is None -- so no capsule on that target ever declared a scale operand and the whole contract shipped
+# inert. The dtype of the capsule's own operands is the honest predicate, and it is the same one the
+# corpus generator uses to route an entry to its MX golden.
+
+def test_the_gate_is_the_capsules_own_dtype_not_a_target_level_flag():
+    unscaled_looking = CS.CorpusBinding(
+        target="t", tile_dim=16, operand_dtype="mxfp8", accum_dtype="f32", integer=False,
+        tiers=["L2"], compare="tolerance_float", scaling=None, scale_block=32)
+    names = [i["name"] for i in CS._matmul_inputs("A0", "W", 16, 32, 16, "mxfp8", unscaled_looking)]
+    assert "A0_scale" in names, (
+        "a block-scaled capsule must declare its scales even when the target-level scaling flag is unset "
+        "-- that flag reads a single compute unit and is None on a mixed-engine target")
+
+
+def test_a_float_capsule_on_a_block_scaled_target_declares_no_scales():
+    """The other half: scale_block is a TARGET property, so it must not leak onto an fp32 capsule that
+    happens to be generated for a target that also owns an MX engine."""
+    b = CS.CorpusBinding(target="t", tile_dim=16, operand_dtype="f32", accum_dtype="f32", integer=False,
+                         tiers=["L2"], compare="tolerance_float", scaling="block_e8m0", scale_block=32)
+    assert [i["name"] for i in CS._matmul_inputs("A0", "W", 16, 32, 16, "f32", b)] == ["W", "A0"]
+
+
+def test_the_block_scaled_dtypes_are_one_shared_vocabulary():
+    """The generator routes to the MX golden by the same predicate that declares scale operands, so the
+    two can never disagree about what 'block-scaled' means."""
+    assert CS.is_block_scaled("mxfp8") and CS.is_block_scaled("mxfp4") and CS.is_block_scaled("mxfp6")
+    for t in ("f32", "fp16", "bf16", "int8", "fp8_e4m3", None, ""):
+        assert not CS.is_block_scaled(t)

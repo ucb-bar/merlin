@@ -116,6 +116,19 @@ class CorpusBinding:
 _DEFAULT_SW_TILE = 16
 
 
+# The OCP microscaling operand tokens: a value in one of these formats is a PAIR -- quantized elements
+# plus a shared E8M0 exponent per fixed-length block of them -- so a capsule in one of these dtypes needs
+# its scale streams declared as operands. One source of truth: the corpus generator routes an entry to the
+# MX golden by the same predicate, so the dtypes that get an MX golden are exactly the ones that get
+# scale operands.
+BLOCK_SCALED_DTYPES = frozenset({"mxfp4", "mxfp6", "mxfp8"})
+
+
+def is_block_scaled(token: str | None) -> bool:
+    """Whether an operand dtype token is a block-scaled (microscaling) format."""
+    return str(token or "") in BLOCK_SCALED_DTYPES
+
+
 def _scale_block_elems(contract: dict) -> int | None:
     """Elements per E8M0 block scale, DERIVED from the target's manifest, or None.
 
@@ -413,7 +426,7 @@ def _matmul_inputs(lhs: str, weight: str, M: int, K: int, N: int, idt: str,
     has always been, so an unscaled target's capsules are unchanged."""
     inputs = [{"name": weight, "role": "weight", "shape": [K, N], "dtype": idt},
               {"name": lhs, "role": "input", "shape": [M, K], "dtype": idt}]
-    blk = binding.scale_block if binding.scaling else None
+    blk = binding.scale_block if is_block_scaled(binding.operand_dtype) else None
     if blk and K % blk == 0:
         g = K // blk
         inputs += [
@@ -466,7 +479,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         acc_scale=acc_scale, comment=entry.get("comment", ""),
         target=binding.target, operand_dtype=binding.mlir_dtype(binding.operand_dtype),
         acc_dtype=binding.mlir_dtype(binding.accum_dtype),
-        scale_block=(binding.scale_block if binding.scaling else None))
+        scale_block=(binding.scale_block if is_block_scaled(binding.operand_dtype) else None))
     return cap, mlir
 
 
@@ -627,7 +640,7 @@ def _attention_mx_inputs(q: str, k: str, v: str, M: int, H: int, Skv: int, Dv: i
     inputs = [{"name": q, "role": "input", "shape": [M, H], "dtype": idt},
               {"name": k, "role": "input", "shape": [Skv, H], "dtype": idt},
               {"name": v, "role": "input", "shape": [Skv, Dv], "dtype": idt}]
-    blk = binding.scale_block if binding.scaling else None
+    blk = binding.scale_block if is_block_scaled(binding.operand_dtype) else None
     if blk and H % blk == 0 and Skv % blk == 0:
         hg, sg = H // blk, Skv // blk
         inputs += [
@@ -685,7 +698,7 @@ def build_attention_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         f'  %{k} = merlin_iface.tensor {{name = "{k}", role = "input"}} : tensor<{Skv}x{H}x{midt}>',
         f'  %{v} = merlin_iface.tensor {{name = "{v}", role = "input"}} : tensor<{Skv}x{Dv}x{midt}>',
     ]
-    _blk = binding.scale_block if binding.scaling else None
+    _blk = binding.scale_block if is_block_scaled(binding.operand_dtype) else None
     if _blk and H % _blk == 0 and Skv % _blk == 0:
         _hg, _sg = H // _blk, Skv // _blk
         L += [
@@ -804,7 +817,7 @@ def _batched_mx_inputs(lhs: str, weight: str, B: int, M: int, H: int, N: int, id
     dimension leading, because each batch is an independent GEMM with its own block scales."""
     inputs = [{"name": weight, "role": "weight", "shape": [B, H, N], "dtype": idt},
               {"name": lhs, "role": "input", "shape": [B, M, H], "dtype": idt}]
-    blk = binding.scale_block if binding.scaling else None
+    blk = binding.scale_block if is_block_scaled(binding.operand_dtype) else None
     if blk and H % blk == 0:
         g = H // blk
         inputs += [
@@ -846,7 +859,7 @@ def build_gemv_batched_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, st
         f'  %{lhs} = merlin_iface.tensor {{name = "{lhs}", role = "input"}} : tensor<{B}x{M}x{H}x{midt}>',
         f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{B}x{H}x{N}x{midt}>',
     ]
-    _blk = binding.scale_block if binding.scaling else None
+    _blk = binding.scale_block if is_block_scaled(binding.operand_dtype) else None
     if _blk and H % _blk == 0:
         # The batched form carries one scale stream per batch: the op declares `block_scale = "e8m0"`
         # already, and these are the streams that attribute refers to.

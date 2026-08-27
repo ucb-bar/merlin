@@ -850,7 +850,7 @@ def _entry_regime(entry, binding):
     Routed purely by the entry's operand dtype token — no target name."""
     from merlin.runtime.fp8_formats import canonical_float
     tok = entry.get("operand_dtype") or binding.operand_dtype
-    if tok in ("mxfp4", "mxfp6", "mxfp8"):
+    if CS.is_block_scaled(tok):
         regime, acc = "mx", "bf16"
     else:
         try:
