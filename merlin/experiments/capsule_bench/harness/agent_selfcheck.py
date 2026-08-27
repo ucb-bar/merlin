@@ -105,14 +105,7 @@ def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
                 sim = "verilator"
         return ad, sim
     # non-chipyard target: its contract-resolved tiers (arc / program oracle); --sim does not apply.
-    #
-    # Report the engine that ACTUALLY graded, not the one the caller asked for. `--sim` is a chipyard
-    # ladder selector (spike/verilator/vcs); on any other target it is ignored here, so echoing it back
-    # made the telemetry claim a simulator that never ran — a SIMT target graded by its own cyclotron sim
-    # logged `sim: spike` on every self-check because the prompt's worked example passes `--sim spike`.
-    # A run record that names the wrong oracle is the same class of defect as quoting a score without the
-    # tier that produced it: it is not wrong by a little, it is attributable to the wrong machine.
-    return CR.oracle_adapters(target, sim_via), (sim_via or sim)
+    return CR.oracle_adapters(target, sim_via), sim
 
 
 def _log_telemetry(out: dict, capsules_arg: str) -> None:
@@ -283,7 +276,7 @@ def main(argv=None):
     # self-check return n_capsules:0 with per_capsule:[] — the agent's feedback loop went blind while
     # the driver's in-memory grade was correct (the atlas 0/11 blind-loop bug).
     cb_root = runs_root / "runs" / CR.suite_for(_tgt)
-    rows, npass = [], 0
+    rows, npass, ncert, nscreened = [], 0, 0, 0
     _results = sorted(cb_root.glob("*/capsule_result.json")) if cb_root.exists() else []
     # Does the declared barrier EVER produce a verdict for this target? Two very different situations
     # look identical per-capsule, and only this whole-corpus view separates them:
@@ -326,8 +319,33 @@ def main(argv=None):
             if ran:
                 bar_used = max(ran)
                 bar = tiers.get(bar_used)
-        passed = (d.get("status") == "pass") and (bar == "pass")
+        # CLASSIFY UNDER THE ORACLE SELECTION IN FORCE.
+        #
+        # A capsule declares the tiers it requires; an oracle selection supplies adapters for some subset.
+        # A required tier with no adapter here did not RUN, and a tier that did not run is absence of
+        # evidence about the backend, not evidence against it. `NOT_RUN_IS_NOT_PASS` is the right rule for
+        # a CERTIFYING grade -- it stops an unrun tier being read as a pass -- but applying it as a FAILURE
+        # inside a screen scores the submission for the engine the caller picked.
+        #
+        # Measured: a submission whose capsule graded {L0 pass, L1 pass, L2 pass, L3 unavailable} scored
+        # 0, and a run spent 325 consecutive self-checks at zero while the certifying grade of the same
+        # submission was 22/25. An agent told it fails everything rewrites working code.
+        #
+        # So: `passed` = passed everything this selection could measure; `certified` = also cleared every
+        # mandatory tier. `all_pass` keys on certification, so a screen can never certify -- it may only
+        # eliminate. Derived from the capsule's own declared tiers and the adapters present; no engine or
+        # target is named here.
+        _f = d.get("failure") or {}
+        _blocked_by_selection = (_f.get("category") == "NOT_RUN_IS_NOT_PASS"
+                                 and _f.get("tier_status") == "unavailable")
+        _ran = {t: v for t, v in tiers.items() if v not in (None, "skipped", "unavailable")}
+        _ran_clean = bool(_ran) and all(v == "pass" for v in _ran.values())
+        certified = (d.get("status") == "pass") and (bar == "pass")
+        screened = (not certified) and _blocked_by_selection and _ran_clean and bar in ("pass", None)
+        passed = certified or screened
         npass += int(passed)
+        ncert += int(certified)
+        nscreened += int(screened)
         # numeric diagnostics — keep ALL stats; redact ONLY the golden expected value
         num = dict(d.get("numeric") or {})
         fm = num.get("first_mismatch")
@@ -405,7 +423,11 @@ def main(argv=None):
                          if (r.get("failure") or {}).get("category") == "NOT_RUN_IS_NOT_PASS"
                          and (r.get("failure") or {}).get("tier_status") == "unavailable"} - {None})
     out = {"sim": sim, "barrier_tier": barrier_tier, "n_passed": npass, "n_capsules": n,
-           "all_pass": npass == n and n > 0, "per_capsule": rows,
+           # `n_passed` is what this oracle selection could measure; `n_certified` is what cleared every
+           # mandatory tier. They differ exactly when the selection cannot reach a required tier, and
+           # `all_pass` keys on the second: a screen may eliminate, it may never certify.
+           "n_certified": ncert, "n_screened_only": nscreened,
+           "all_pass": ncert == n and n > 0, "per_capsule": rows,
            "n_declined": n_declined,
            "note": f"Self-check on {sim} ({barrier_tier}). You see EVERYTHING your dialect produced — "
                    "command buffer, decoded trace + instruction counts, sim console, and your artifacts "
@@ -418,9 +440,11 @@ def main(argv=None):
                       f"rows. A decline is a shape/op you never lowered, NOT wrong arithmetic."
                       if n_declined else "")
                    + (f" ⚠ {len(_unreached)} mandatory cert tier(s) {_unreached} were NOT REACHABLE with "
-                      f"--sim {sim}, so capsules that cleared the screen still could not certify. That is "
-                      f"a property of the sim you selected, NOT of your backend — re-run without --sim "
-                      f"(the default certifies) before reading these as failures."
+                      f"--sim {sim}. {nscreened} capsule(s) passed EVERY tier this sim can run and are "
+                      f"reported as screened, not certified: they are counted in n_passed and NOT in "
+                      f"n_certified, and they are not failures — the tier could not run here, which is a "
+                      f"property of the sim you selected, not of your backend. Re-run without --sim (the "
+                      f"default certifies) to convert them; all_pass requires certification."
                       if _unreached else "")}
     txt = json.dumps(out, indent=2)
     print(txt)
