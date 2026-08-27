@@ -5,12 +5,22 @@
 # CMake context and can freely reference IREE runtime targets such as
 # iree_runtime_runtime.
 #
-# We forward to a dedicated subdirectory that defines the xpurt_iree_plugin
-# static library.
+# We forward to the subdirectory that defines the xpurt_objs / xpurt targets.
+#
+# This path tracked a directory move and was left stale: bf8483d refactored
+# xpu-rt into projects/, then 4582be0 ("Embed XPU-RT into samples for
+# stand-alone export") moved it to samples/common/xpu-rt without updating this
+# reference, so configuring any target that enables the runtime plugin dies
+# with "add_subdirectory given source .../projects/xpu-rt which is not an
+# existing directory".
+#
+# samples/CMakeLists.txt deliberately does NOT add common/xpu-rt -- this file
+# is its only entry point, which is why the samples build cannot cover for it.
+# Both SpacemiTX60 runners link `xpurt`, so the targets must exist here.
 
 get_filename_component(MERLIN_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
 
-add_subdirectory("${MERLIN_SOURCE_DIR}/projects/xpu-rt"
+add_subdirectory("${MERLIN_SOURCE_DIR}/samples/common/xpu-rt"
                  "${IREE_BINARY_DIR}/runtime/plugins/xpu-rt")
 
 # Merlin runtime plugin entrypoint used by IREE plugin CMake integration.

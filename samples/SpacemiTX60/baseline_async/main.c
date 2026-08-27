@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "iree/base/api.h"
-#include "iree/base/tooling/flags.h"
+#include "iree/base/internal/flags.h"
 
 #include "core/cli_utils.h"
 #include "xpu-rt/baseline_runner.h"
