@@ -929,6 +929,55 @@ def _run_vcs(elf: Path, timeout: int) -> tuple[str, int | None]:
     return console, cycles
 
 
+#: Substrings the RTL completion grade depends on. They must survive console truncation WHEREVER they
+#: appear in the file — the perf report's ``Cycles:`` line is near the start of the epilogue while the
+#: watchdog's verdict is at the very end, so a pure tail window can drop the one that decides the grade.
+_GSIM_MARKERS = ("Cycles:", "Timeout exceeded", "FINISHED: cycles=", "finished execution")
+
+
+def _read_console(path: Path, *, tail_bytes: int | None = None) -> tuple[str, int, bool]:
+    """Read a spooled RTL console back into a BOUNDED string: every marker-bearing line, plus the tail.
+
+    Returns ``(console, total_bytes, truncated)``. The marker lines are kept because the grade is decided
+    by their presence; the tail is kept because that is what a human reads to see why a run failed. A
+    grade computed from this string is identical to one computed from the whole file for every marker in
+    :data:`_GSIM_MARKERS`, and ``truncated`` says plainly when the returned text is not the whole console
+    so nothing downstream reports a partial console as complete.
+
+    Window size via ``MERLIN_MUON_GSIM_CONSOLE_TAIL_BYTES`` (default 256 KiB).
+    """
+    import collections
+    import os as _os
+
+    if tail_bytes is None:
+        tail_bytes = int(_os.environ.get("MERLIN_MUON_GSIM_CONSOLE_TAIL_BYTES", str(256 * 1024)))
+    if not path.is_file():
+        return "", 0, False
+    total = path.stat().st_size
+    kept: list[str] = []
+    tail: collections.deque[str] = collections.deque(maxlen=4096)   # lines, not bytes: cheap and ample
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            s = line.rstrip("\n")
+            tail.append(s)
+            # cap the marker set too: a pathological run could print "Cycles:" a million times
+            if len(kept) < 512 and any(m in s for m in _GSIM_MARKERS):
+                kept.append(s)
+    tail_text = "\n".join(tail)
+    if len(tail_text) > tail_bytes:
+        tail_text = tail_text[-tail_bytes:]
+    truncated = total > len(tail_text)
+    # markers first, so `Cycles:` is found by a first-occurrence search even when the tail dropped it
+    parts = []
+    if kept:
+        parts.append("\n".join(kept))
+    if truncated:
+        parts.append(f"[... console truncated: {total} bytes on disk at {path}, "
+                     f"marker lines + last {len(tail_text)} bytes retained ...]")
+    parts.append(tail_text)
+    return "\n".join(parts), total, truncated
+
+
 def _cycles_from_rtl_report(console: str) -> int | None:
     """Cycle count from the RTL sim's Muon performance report (a ``Cycles: <N>`` line), parsed
     structurally by locating the marker and reading the next integer token — no regex. Returns the
@@ -970,16 +1019,24 @@ def _run_verilator(elf: Path, timeout: int) -> tuple[str, int | None]:
         except (ValueError, OSError):
             pass
 
+    # SPOOL TO DISK, NOT RAM -- the same defect as the GSIM path, and worse here: this command runs with
+    # `+verbose` and `+max-cycles=10000000`, so the per-instruction commit trace it prints is unbounded in
+    # the parent's memory. A single GSIM run at 12M cycles reached 72.67 GB buffered this way and made the
+    # host's OOM killer terminate an unrelated experiment; Verilator at 10M cycles with +verbose is the
+    # same shape. `_read_console` keeps every grading marker plus a bounded tail, so the verdict below is
+    # unchanged while parent memory stays bounded and the full console stays on disk for debugging.
+    log = work / "verilator_console.log"
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                              cwd=str(verilator_path().parent), preexec_fn=_unlimited_stack)
+        with log.open("wb") as fh:
+            proc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout,
+                                  cwd=str(verilator_path().parent), preexec_fn=_unlimited_stack)
     except subprocess.TimeoutExpired as e:
         raise MuonUnavailable(f"verilator RTL sim timed out after {timeout}s") from e
-    console = proc.stdout + ("\n" + proc.stderr if proc.stderr else "")
+    console, _nbytes, _trunc = _read_console(log)
     if "finished execution" not in console:
         raise MuonUnavailable(
             f"verilator RTL sim did not reach the finished-execution marker (rc={proc.returncode}). "
-            f"tail:\n{console[-600:]}")
+            f"console: {_nbytes} bytes at {log}\ntail:\n{console[-600:]}")
     return console, _cycles_from_rtl_report(console)
 
 
