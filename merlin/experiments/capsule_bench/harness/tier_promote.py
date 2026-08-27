@@ -79,7 +79,11 @@ def _cert_cover(ws) -> set | None:
             _td = int(_tile_dim(te.target, load_capability_manifest(te.target).contract)) or None
         except Exception:  # noqa: BLE001 -- no derivable tile edge: cover without the alignment axis
             _td = None
-        return set(cert_capsule_cover(te.graded_roots(), tile_dim=_td)["capsules"])
+        # Exclusions travel WITH the roots. A capsule the descriptor withholds from the paid loop cannot
+        # stand for its cell, because promotion only enqueues capsules in the cover — picking one that
+        # never runs retires the cell for a certificate nobody will produce.
+        return set(cert_capsule_cover(te.graded_roots(), tile_dim=_td,
+                                      exclude=set(getattr(te, "graded_exclude", ()) or ()))["capsules"])
     except Exception:  # noqa: BLE001 -- no resolvable corpus: stay permissive, never silently empty
         return None
 
