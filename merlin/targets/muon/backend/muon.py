@@ -691,26 +691,54 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
         raise MuonError(f"stock rv32 compile of the lowered MLIR failed:\n{cc.stderr[-2000:]}")
 
     # 2. runner-owned EXTERN-kernel harness main (operands from the cb) -> STOCK clang rv32 -> main.o
-    main_c = muon_harness.external_main_from_cb(cb, kernel_symbol=kernel_symbol, model=model)
-    if main_c is None:
+    harness = muon_harness.external_main_from_cb(cb, kernel_symbol=kernel_symbol, model=model)
+    if harness is None:
         raise MuonError("could not derive harness operands from the command buffer: "
                         + muon_harness.why_no_operands(cb))
-    (work / "main.c").write_text(main_c, encoding="utf-8")
+    (work / "main.c").write_text(harness.source, encoding="utf-8")
     mobj_rv = work / "main.o"
     mc = subprocess.run([str(clang), *cflags, "-c", str(work / "main.c"), "-o", str(mobj_rv)],
                         capture_output=True, text=True)
     if mc.returncode != 0:
         raise MuonError(f"stock rv32 compile of the harness main failed:\n{mc.stderr[-2000:]}")
 
-    # 3. reloc-preserving transcode of BOTH objects (the main->kernel call is a cross-object relocation)
+    # 2b. operands too large to materialize element-wise arrive as blobs; assemble each into a .rodata
+    # object the link supplies. `.incbin` keeps main.c O(1) in operand size -- the whole point, since the
+    # element-wise form is superlinear in clang and unbuildable at model scale.
+    blob_objs: list[Path] = []
+    for sym, raw in sorted(harness.blobs.items()):
+        binf = work / f"{sym}.bin"
+        binf.write_bytes(raw)
+        asm = work / f"{sym}.S"
+        asm.write_text(
+            f'\t.section .rodata,"a",@progbits\n'
+            f"\t.globl {sym}\n\t.balign 4\n{sym}:\n"
+            f'\t.incbin "{binf.name}"\n'
+            f"\t.size {sym}, {len(raw)}\n",
+            encoding="utf-8")
+        bobj_rv = work / f"{sym}.o"
+        bc = subprocess.run([str(clang), *cflags, "-c", str(asm), "-o", str(bobj_rv)],
+                            capture_output=True, text=True, cwd=str(work))
+        if bc.returncode != 0:
+            raise MuonError(f"stock rv32 assemble of operand blob {sym} failed:\n{bc.stderr[-2000:]}")
+        blob_objs.append(bobj_rv)
+
+    # 3. reloc-preserving transcode of BOTH objects (the main->kernel call is a cross-object relocation).
+    # A blob object carries no code, so the same transcode copies it through verbatim.
     kobj, mobj = work / "kernel_muon.o", work / "main_muon.o"
     muon_bsp.transcode_boot_object(kobj_rv, kobj, isa_model=model)
     muon_bsp.transcode_boot_object(mobj_rv, mobj, isa_model=model)
+    blobs_t: list[Path] = []
+    for bobj_rv in blob_objs:
+        bt = work / f"{bobj_rv.stem}_muon.o"
+        muon_bsp.transcode_boot_object(bobj_rv, bt, isa_model=model)
+        blobs_t.append(bt)
 
-    # 4. fork-free link: from-source BSP + harness main + MLIR kernel
+    # 4. fork-free link: from-source BSP + harness main + MLIR kernel + operand blobs
     bsp_objs = build_forkfree_bsp(work, target=target, num_warps=num_warps)
     elf = work / "kernel.radiance.elf"
-    muon_link.link_fork_free([*[str(o) for o in bsp_objs], str(mobj), str(kobj)],
+    muon_link.link_fork_free([*[str(o) for o in bsp_objs], str(mobj), str(kobj),
+                              *[str(b) for b in blobs_t]],
                              str(lib_dir() / "linker/mu_link.ld"), str(elf), target=target)
     return elf
 
