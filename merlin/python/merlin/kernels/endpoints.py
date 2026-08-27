@@ -14,6 +14,7 @@ Nothing here contains an opcode, a funct value or a field position. Those are de
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -29,6 +30,18 @@ def _spec() -> dict[str, Any]:
     if not path.is_file():
         return {"endpoints": {}}
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {"endpoints": {}}
+
+
+@dataclass(frozen=True)
+class _EndpointStub:
+    """Just enough of an Endpoint for the intrinsics reader, which needs only the declaration block.
+
+    Exists so name RESOLUTION can consult the header before the Endpoint that will carry the resolved
+    names has been built — the alternative is a two-pass load whose halves can disagree.
+    """
+
+    block: dict
+    name: str = ""
 
 
 @dataclass(frozen=True)
@@ -117,10 +130,45 @@ def _derived_names(target: str, block: dict) -> tuple[set[str], str]:
         units = (_y.safe_load(path.read_text(encoding="utf-8")) or {}).get("units") or {}
         unit = units.get(enc.get("unit")) or {}
         return set((unit.get(enc.get("roles_from") or "kernel_roles") or {}).values()), "matrix_units"
+    if source == "funct_header":
+        # A RoCC funct table declared by the target's own C ISA header, in the `#define k_<NAME> <N>`
+        # convention. The same derivation the RTL introspector already uses for a target that ships
+        # headers -- reused rather than restated, so the two cannot drift.
+        from merlin.common import provenance as _prov
+        from merlin.targetgen.rtl.circt_introspect import _functs_from_headers
+        try:
+            root = Path(_prov.verify(str(enc.get("pin"))).observed.path)
+        except (KeyError, OSError, ValueError) as exc:
+            # NARROW on purpose. A blanket except here swallowed a NameError from a missing import and
+            # reported it as "the pin will not verify" — a wrong diagnosis that sends the reader to
+            # the checkout instead of to the code.
+            return set(), f"funct_header(pin unresolved: {type(exc).__name__})"
+        by_code = _functs_from_headers([root / str(enc.get("path"))])
+        return set(by_code.values()), f"funct_header ({len(by_code)} codes)"
+    if source == "mnemonic_grammar":
+        # A standard ISA has no per-target decode table to verify against: its GRAMMAR is the
+        # vocabulary. Returning the declared set means every role binds, and the loader stamps the
+        # result UNVERIFIED so nobody mistakes "declared" for "confirmed against silicon". The asm
+        # audit then reports every observed mnemonic no role covers, so the gap stays visible.
+        return set(), "mnemonic_grammar [declared, not verifiable against a decode table]"
     if source == "isa_encoding":
         from merlin.targetgen.rtl import mlc_bridge as _mb
         got = _mb.isa_encoding_for(target) or {}
-        return set((got.get("opcodes") or {})), "isa_encoding"
+        names = set(got.get("opcodes") or {})
+        how = "isa_encoding"
+        # A target may ALSO declare an intrinsics header, which names the individual instructions
+        # inside a custom opcode space. Both are the target's own vocabulary at different resolutions:
+        # the decoder tells us which space a word is in, the header tells us which operation.
+        intr = (block.get("encoding") or {}).get("intrinsics") or {}
+        if intr:
+            from merlin.kernels.decode import insn_header as _ih
+            table, problems = _ih.table_for(target, _EndpointStub(block))
+            if table:
+                names |= set(table.values())
+                how = f"{how} + intrinsics header"
+            if problems:
+                how = f"{how} [header problems: {len(problems)}]"
+        return names, how
     return set(), f"{source or 'none'}(unsupported)"
 
 

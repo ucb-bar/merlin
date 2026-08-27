@@ -84,6 +84,12 @@ def attribute_target(text: str, default_target: str,
     matched names are recorded, so the attribution can be checked rather than trusted.
     """
     for target, names in sorted((markers if markers is not None else endpoint_markers()).items()):
+        if target == default_target:
+            # A target's own endpoint markers cannot RE-attribute it to itself. Without this the base
+            # ISA's own mnemonics (now that it has a declared endpoint too) match every kernel
+            # compiled for it, and every ordinary kernel reports as "re-attributed" — noise that would
+            # bury the one case this exists to catch.
+            continue
         hit = tuple(n for n in names if n in text)
         if hit:
             return target, hit

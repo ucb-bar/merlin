@@ -29,11 +29,15 @@ ROLES: dict[str, str] = {
     "operand_load": "move an activation/operand INTO the endpoint's local storage",
     "weight_load": "move a weight into the endpoint (stationary or streamed)",
     "broadcast": "fan one operand across the endpoint's cells/lanes",
+    "move": "relocate data WITHIN the endpoint's own registers/tiles, computing nothing",
     "readout": "drain a result out of the accumulator or tile",
     "commit": "make a result architecturally visible (store/retire the readout)",
     "elementwise": "apply a unary/binary op across lanes — a lane engine's compute, not a contraction",
     "config": "set endpoint state that later instructions inherit (vector length, dataflow, dtype)",
     "loop_descriptor": "hand the endpoint a whole loop nest to run itself (a hardware-loop FSM)",
+    "control": "branch/jump/link — the loop structure AROUND the work, computing nothing itself",
+    "divergence": "change which LANES are live: thread mask, predicate, split/join",
+    "warp_control": "partition work across threads of control: spawn/retire warps",
     "sync": "order or wait: fences, barriers, completion polls",
     "dma": "bulk asynchronous movement between memories, not through the compute datapath",
 }
@@ -44,6 +48,15 @@ ROLES: dict[str, str] = {
 #: ever built, so their presence distinguishes nothing and they evidence no engine. Mirrors — and is
 #: checked against — ``targetgen.capability_derive._ROLE_ENGINE``, which reads the same distinction off
 #: the ISA census.
+#: ``control`` likewise evidences no engine, and it exists to keep the UNROLED bucket meaningful.
+#: Without it, branch and jump instructions sit beside a target's genuinely unexplained custom opcodes
+#: in the same "claimed but no role" pile — so a report cannot separate "this is not endpoint work" from
+#: "we own this gap and can close it", which is the only distinction that makes the number actionable.
+#:
+#: ``move`` evidences NO engine on purpose: every endpoint with more than one register can shuffle
+#: between them, so its presence distinguishes nothing. It earns a role anyway because a stream full of
+#: register moves is a real and diagnosable shape -- an operand ladder being rebuilt per step instead of
+#: broadcast -- and lumping those instructions into "the tool named it" hides that shape entirely.
 ROLE_EVIDENCES_ENGINE: dict[str, str] = {
     "accumulate": "spatial",
     "weight_load": "spatial",
@@ -51,6 +64,12 @@ ROLE_EVIDENCES_ENGINE: dict[str, str] = {
     "readout": "spatial",
     "loop_descriptor": "spatial",
     "elementwise": "vector",
+    # Both evidence a SIMT engine and nothing else: only a machine with many threads of control can
+    # have some of them diverge, or spawn more. This is the first rung in the tree that can observe
+    # `simt` at all -- every SIMT declaration was UNCHECKED before, because a role census over typed
+    # operands cannot see what makes SIMT what it is.
+    "divergence": "simt",
+    "warp_control": "simt",
 }
 
 

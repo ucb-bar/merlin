@@ -180,15 +180,26 @@ class TestTextIsaStreams:
         assert c.spatial.pe_rows == 32
         assert c.provenance["role_counts"].get("accumulate") == 2
 
-    def test_an_unresolvable_spelling_is_named_not_dropped(self):
-        """Measured: every one of 137 corpus files contains a mnemonic the model does not have, and it
-        is a SPELLING gap (VMATPUSH.W.MXU0 vs vmatpush.weight.mxu0), not a coverage gap. Mining the
-        subset that happened to parse is the recorded silent-drop failure."""
+    def test_the_corpus_spelling_now_resolves_through_the_targets_assembler(self):
+        """VMATPUSH.W.MXU0 vs vmatpush.weight.mxu0 is an ABBREVIATION, so no string normalization
+        joins them — and it is the corpus's core MXU instruction. The target's own assembler is a pure
+        encoder, so the two are joined by ENCODING (opcode + funct7), never by name."""
         self._atlas()
         from merlin.kernels.decode import isa_text as T
         ep = EP.load_endpoint("atlas_isa")
+        if not T._assembler_bridge("atlas", ep):
+            pytest.skip("atlas assembler not readable in this checkout")
         d = T.decode_text(["VMATPUSH.W.MXU0 0, 1"], "atlas", ep)
-        assert "VMATPUSH.W.MXU0" in T.unresolved_mnemonics(d)
+        assert "VMATPUSH.W.MXU0" not in T.unresolved_mnemonics(d)
+        assert d[0].roles == ("weight_load",), d[0].roles
+
+    def test_a_mnemonic_nothing_can_place_is_still_named_not_dropped(self):
+        """The invariant survives the fix: mining the subset that happened to parse is the recorded
+        silent-drop failure, so what remains unresolvable must be reported BY NAME."""
+        self._atlas()
+        from merlin.kernels.decode import isa_text as T
+        d = T.decode_text(["NOT.A.REAL.INSTRUCTION 0"], "atlas", EP.load_endpoint("atlas_isa"))
+        assert "NOT.A.REAL.INSTRUCTION" in T.unresolved_mnemonics(d)
 
     def test_labels_directives_and_comments_are_not_instructions(self):
         self._atlas()
