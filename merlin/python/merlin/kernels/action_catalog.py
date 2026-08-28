@@ -39,6 +39,29 @@ class CompilerAction:
     # most beneficial for — so a big matmul and a small-M decode matmul get DIFFERENT optimizations.
     # Empty = shape-agnostic (applies to all regimes). Generalizes on regimes, never exact (M,N,K).
     shape_regimes: tuple[str, ...] = ()
+    # --- what it takes to apply this, and what it cannot be applied WITH -----------------------
+    # Conditions that must hold for the action to be LEGAL, in prose the planner can read and a
+    # human can check. Legality was previously only the route's `when` predicate over a divergence,
+    # which cannot express a capacity or dependency constraint ("the working set must fit the
+    # discovered accumulator"), so those were enforced nowhere or by the fork failing to build.
+    preconditions: tuple[str, ...] = ()
+    # Other actions that must be applied WITH this one, and ones it cannot compose with. Composition
+    # was previously an ad-hoc rule inside one proposer ("two full-schedule replacements clobber"),
+    # so any other caller composing actions had no way to know.
+    requires: tuple[str, ...] = ()
+    conflicts: tuple[str, ...] = ()
+    # What must be rebuilt for this to take effect; see REBUILD_SCOPES. The dominant cost term of a
+    # search step, and previously inferable only from `seam_location()["needs_new_code"]`.
+    rebuild_scope: str = "schedule"
+    # For a tunable action: the domain to search, as an explicit set/range rather than a seam name.
+    # None = not a numeric action. The local tuner searches THIS; the planner does not enumerate it.
+    parameter_domain: Any | None = None
+    # A family key, so a beam can keep its candidates diverse by KIND rather than by temperature —
+    # six variants of one tile change are one idea, not six.
+    action_family: str = ""
+    # Prior belief this action helps, from measured outcomes (see kernels.space.corpus_prior and the
+    # transform ledger: 1509 attempts, 13.45% improved). None = no prior, which is NOT 0.5.
+    evidence_prior: float | None = None
 
 
 # A route: predicate over a Divergence -> a CompilerAction template (filled with evidence/backend).
@@ -53,6 +76,14 @@ class _Route:
     expected_effect: str
     intended_facet: dict[str, Any] | None = None
     shape_regimes: tuple[str, ...] = ()   # regimes this route targets (empty = all); see CompilerAction
+    # Carried onto the CompilerAction this route builds; see CompilerAction for what each means.
+    preconditions: tuple[str, ...] = ()
+    requires: tuple[str, ...] = ()
+    conflicts: tuple[str, ...] = ()
+    rebuild_scope: str = "schedule"
+    parameter_domain: Any | None = None
+    action_family: str = ""
+    evidence_prior: float | None = None
 
 
 def _is_higher(d: Divergence) -> bool:
@@ -517,7 +548,24 @@ def register_route(backend: str, route: _Route) -> None:
 
 # The action-class escalation ladder: cheapest/weakest -> strongest. When an action's intended facet
 # is NOT achieved by the emitted code, the loop escalates to the next-stronger class for the same axis.
-_CLASS_ORDER = {"FLAG": 0, "KNOB": 1, "HEURISTIC": 2, "PASS": 3, "CODEGEN": 4}
+#
+# RUNTIME sits at the top, and what that ordering means is worth stating because it is easy to
+# over-read. It is a COST ordering for escalation -- try the cheaper intervention first -- not a
+# claim that a runtime change subsumes a codegen one. They act on different subsystems: CODEGEN
+# changes what instructions are emitted, RUNTIME changes how the emitted work is orchestrated
+# (command-buffer batching, launch grouping, DMA schedule, fences, engine overlap). Most runtime
+# axes have no compile-time route at all, so a route is registered as RUNTIME directly and no
+# escalation walks through CODEGEN to reach it.
+#
+# It exists because these were otherwise expressed as knobs wearing a disguise: `categories` already
+# reserved a "runtime-sync" bucket and recorded that it had no lever axis, which is what a missing
+# action class looks like from the other side.
+_CLASS_ORDER = {"FLAG": 0, "KNOB": 1, "HEURISTIC": 2, "PASS": 3, "CODEGEN": 4, "RUNTIME": 5}
+
+#: Rebuild scope of an action — what has to be rebuilt for it to take effect. Ordered cheapest first,
+#: because it is the main cost term in a search step and the loop should prefer a cheap probe.
+REBUILD_SCOPES: tuple[str, ...] = (
+    "none", "schedule", "target-package", "compiler", "runtime", "full")
 
 
 def _action_from_route(r: _Route, divergence: Divergence) -> CompilerAction:
@@ -538,7 +586,11 @@ def _action_from_route(r: _Route, divergence: Divergence) -> CompilerAction:
         target_seam=r.target_seam, change=r.change, forkable_now=r.forkable_now,
         expected_effect=r.expected_effect, backend=divergence.backend,
         evidence=list(divergence.evidence), intended_facet=intended,
-        shape_regimes=r.shape_regimes)
+        shape_regimes=r.shape_regimes,
+        preconditions=r.preconditions, requires=r.requires,
+        conflicts=r.conflicts, rebuild_scope=r.rebuild_scope,
+        parameter_domain=r.parameter_domain, action_family=r.action_family,
+        evidence_prior=r.evidence_prior)
 
 
 def route(divergence: Divergence) -> CompilerAction | None:
@@ -726,3 +778,50 @@ def escalation_ladder(axis: str, backend: str = "rvv", *, oot_package: str | Non
                     "forkable_now": r.forkable_now, "seam_file": loc["seam_file"],
                     "seam_kind": loc["seam_kind"], "needs_new_code": loc["needs_new_code"]})
     return out
+
+
+def composition_problems(actions) -> tuple[str, ...]:
+    """Why this SET of actions cannot be applied together. Empty when the bundle is legal.
+
+    Composition legality lived in one proposer as a single ad-hoc rule -- "two full-schedule
+    replacement features clobber" -- so every other caller that bundled actions had no way to learn
+    it. A bundle is how interaction effects get tested, and the beam applies bundles, so the rule
+    belongs on the action.
+
+    Three checks, each naming what would otherwise be silently wrong:
+
+    * a declared CONFLICT between two actions in the bundle;
+    * a declared REQUIREMENT that the bundle does not satisfy -- an action applied without its
+      precondition tends to build fine and do nothing, which the intended-facet audit then reports as
+      an unachieved promise, sending the loop escalating for a reason that is not the real one;
+    * two actions writing the SAME seam, which is the general form of the clobber rule: the second
+      overwrites the first and the result is credited to both.
+    """
+    problems: list[str] = []
+    families = {a.action_family for a in actions if a.action_family}
+    names = {a.action_family or a.target_seam for a in actions}
+
+    for a in actions:
+        for c in a.conflicts:
+            if c in names or c in families:
+                problems.append(
+                    f"{a.divergence_axis}: declares a conflict with {c!r}, which is in this bundle")
+        for req in a.requires:
+            if req not in names and req not in families:
+                problems.append(
+                    f"{a.divergence_axis}: requires {req!r}, which the bundle does not apply — an "
+                    f"action without its requirement usually builds and does nothing")
+
+    by_seam: dict[str, list[str]] = {}
+    for a in actions:
+        by_seam.setdefault(a.target_seam, []).append(a.divergence_axis)
+    for seam, axes in sorted(by_seam.items()):
+        if len(axes) > 1:
+            problems.append(
+                f"{len(axes)} actions write the same seam {seam!r} ({', '.join(sorted(axes))}): the "
+                f"later one overwrites the earlier and the result would be credited to both")
+    return tuple(problems)
+
+
+def composable(actions) -> bool:
+    return not composition_problems(actions)
