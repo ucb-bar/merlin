@@ -23,6 +23,38 @@ inputs:
   - 32
   - 32
   dtype: mxfp6
+- name: Q_scale
+  role: scale
+  scale_of: Q
+  block: 32
+  shape:
+  - 1
+  - 32
+  dtype: e8m0
+- name: K_scale
+  role: scale
+  scale_of: K
+  block: 32
+  shape:
+  - 1
+  - 32
+  dtype: e8m0
+- name: V_scale
+  role: scale
+  scale_of: V
+  block: 32
+  shape:
+  - 1
+  - 32
+  dtype: e8m0
+- name: P_scale
+  role: scale
+  scale_of: P
+  block: 32
+  shape:
+  - 1
+  - 32
+  dtype: e8m0
 operation:
   op: attention_mx
   attributes:

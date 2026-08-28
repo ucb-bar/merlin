@@ -797,6 +797,63 @@ def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
     return bool(getattr(verdict, "eligible", True))
 
 
+
+
+def _oracle_kind(oracle_meta) -> str | None:
+    """A filesystem-safe name for the engine an adapter reports, or ``None`` when it reports none.
+
+    Adapters return either a rich ``{"kind": ..., "derived_from_rtl": ...}`` dict or a bare provenance
+    string. Both carry the engine's identity; the contract's static ``tier_sim`` map does not, because a
+    backend may substitute a different RTL-derived engine at runtime. ``None`` means "the oracle did not
+    say", and the caller keeps the declared name -- never a guess.
+    """
+    kind = oracle_meta.get("kind") if isinstance(oracle_meta, dict) else oracle_meta
+    if not isinstance(kind, str) or not kind.strip():
+        return None
+    safe = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in kind.strip())
+    return safe or None
+
+def lane_report(capsule: dict, routing_plan: dict | None,
+                mesh_execution: dict | None = None) -> dict | None:
+    """Verify an INTEROP capsule's declared lanes against what the compiler actually DID.
+
+    Returns ``None`` when the capsule declares no ``lanes.require`` (the ordinary case).
+
+    Two things this must not do, both of which it did and both of which produced a hollow pass on the
+    first capsule to use it:
+
+    * **A routing plan is not an execution.** ``plan["on_mesh"]`` lists the ops the router ASSIGNED to the
+      mesh; whether they ran there is a different fact, recorded in ``mesh_execution``. Measured on the
+      same submission: 15 matmuls assigned to the mesh, 15 host fallbacks at run time. So when per-layer
+      accounting exists it decides ``on_mesh``, and the plan is only consulted where no accounting does.
+    * **Not every key of the plan is a lane.** The plan also carries ``n_mesh_ops``, ``n_scalar_ops``,
+      ``mesh_matmul_extents`` and ``note``; scanning it for truthy keys reported those as lanes that
+      "carried work". A lane entry is a MAPPING of op -> count, so only dict-valued keys are lanes.
+    """
+    req = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
+    if not req:
+        return None
+    plan = routing_plan or {}
+    lanes = {k: v for k, v in plan.items() if isinstance(v, dict)}
+    carried = {k for k, v in lanes.items() if v}
+    me = mesh_execution or {}
+    # The mesh lane is the one we have real per-layer accounting for; when it exists, believe it.
+    if me:
+        on = me.get("matmul_layers_on_mesh")
+        if on is not None:
+            if int(on) > 0:
+                carried.add("on_mesh")
+            else:
+                carried.discard("on_mesh")
+    unexercised = [ln for ln in req if ln not in carried]
+    out = {"required": req, "observed": sorted(carried), "unexercised": unexercised,
+           "evidence": ("execution" if me.get("matmul_layers_on_mesh") is not None else "routing_plan")}
+    if out["evidence"] == "routing_plan":
+        out["caveat"] = ("no per-layer execution accounting was recorded, so this reports what the "
+                         "router PLANNED, not what ran; a lane can appear here and still have executed "
+                         "nothing")
+    return out
+
 def _absent_outputs(nrep: dict) -> list[str]:
     """Outputs the kernel DECLARED (present in the interface/golden) but never wrote — or wrote at the
     wrong length — extracted from :func:`capsule_golden.compare`'s ``per_output``. These structural
@@ -958,7 +1015,31 @@ def _rtl_tiers_of(target: str | None) -> frozenset[str]:
         return frozenset()
 
 
-def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int) -> dict:
+def _numeric_when_not_accelerated(st, gate, verify: dict, cos: float, engine: str,
+                                  measured_on: str) -> dict:
+    """The numeric verdict for a model capsule that will NOT be reported as a pass.
+
+    The whole-model gate runs BEFORE the acceleration checks, so by the time one of those rejects the
+    capsule the arithmetic has already been measured -- and was being overwritten with
+    ``not_compared``, which reads as "we do not know" when in fact we do. That erased the one thing a
+    reader most needs from a failing capstone: whether the compiler got the model RIGHT and merely ran it
+    in the wrong place, or got it wrong as well. Those call for completely different work.
+
+    ``measured_on`` is carried explicitly so the number can never be mistaken for an accelerator result;
+    the capsule verdict stays ``fail`` in every caller."""
+    return {"status": ("pass" if (st == "verified" and gate) else "fail"),
+            "engine": engine,
+            "gate": verify or None,
+            "cos": (cos if cos else None),
+            "measured_on": measured_on,
+            "note": ("arithmetic only -- this capsule is NOT a pass; see the failure block for what "
+                     "disqualified it. A correct number computed on the wrong lane is still not an "
+                     "accelerator result."),
+            "model_status": st}
+
+
+def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int,
+                         package_dir: str | Path | None = None) -> dict:
     """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
     (``compile_model``): route each op across the target's compute units (matmul/systolic -> the mesh, the
     rest -> the vector/scalar lane), compile the functional whole model (the scalar/RVV reference,
@@ -975,8 +1056,14 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     # Derive it instead: a capsule whose semantic block asserts must_accelerate runs on the mesh lane,
     # everything else keeps the host lane. The env var still overrides, for a deliberate diagnostic run.
     _sem = capsule.get("semantic") or {}
+    # WHICH LANE THE MODEL RUNS ON. must_accelerate implies the mesh lane. So does an interop capsule
+    # that REQUIRES on_mesh: it withholds must_accelerate on purpose (host work is the behaviour under
+    # test), but running it on the host lane means the mesh never executes and its own lane requirement
+    # becomes unverifiable -- which is exactly how the first such capsule passed while executing nothing
+    # on the accelerator.
+    _req_lanes = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
     run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or (
-        "mesh" if _sem.get("must_accelerate") else "host")
+        "mesh" if (_sem.get("must_accelerate") or "on_mesh" in _req_lanes) else "host")
     # MERLIN_MESH_VERIFY additionally EXECUTES each mesh-routed matmul as a single systolic tile on the
     # target's real mesh oracle (compile_model mesh_verify) — proving the matmul layers run ON the mesh, not
     # just that a routing plan was produced. Off by default (the oracle build/run is heavy); the whole-model
@@ -1013,9 +1100,22 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         # exact datapath format in operation.attributes.dtype -- pass that for routing so a demand is
         # matched against the unit's declared format rather than against a compile-mode token.
         _attrs = (capsule.get("operation") or {}).get("attributes") or {}
+        # THE PACKAGE UNDER TEST MUST REACH THE MESH ORACLE. `run_capsule` is handed the submission
+        # being graded, but this function never took it and called `compile_model(package=None)`, so a
+        # whole-model capsule was compiled and mesh-verified against the DEFAULT path -- not against the
+        # submission. Every whole-model number that resulted (numeric verdict, layers-on-mesh accounting,
+        # tile certification) was therefore a statement about the reference flow, not about the backend
+        # the capsule was supposed to be judging. Measured: mesh verification reported
+        # `n_tiles: 0, reason: "no default OOT backend package for target"` while a perfectly good
+        # submission sat in the caller's hand.
+        #
+        # It goes to `mesh_package` (the OOT ACCELERATOR backend that certifies tiles), not to `package`
+        # (the RVV whole-model codegen package) -- two different things that a single name would conflate.
+        _pkg = str(package_dir) if package_dir else None
         out = compile_model(model, dtype, target=target, run=run_where, verify=True, package=None,
                             auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir,
-                            mesh_verify=mesh_verify, routing_dtype=_attrs.get("dtype"))
+                            mesh_verify=mesh_verify, mesh_package=_pkg,
+                            routing_dtype=_attrs.get("dtype"))
     except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
         result.update(status="incomplete",
                       failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
@@ -1082,6 +1182,20 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
             _on = model_exec.get("matmul_layers_on_mesh")
             _model_ok = (_on is not None and int(_on) > 0
                          and not int(model_exec.get("matmul_layers_host_fallback") or 0))
+        # INTEROP capsules invert one half of that. A capsule may DECLARE that its point is composition
+        # across lanes -- part of the model on the accelerator, the rest on the scalar/vector lane the
+        # target also owns -- in which case "no host fallback" is the wrong bar: it would fail the exact
+        # behaviour under test. Such a capsule names the lanes it requires, and passes only when EVERY
+        # named lane actually carried work.
+        #
+        # The lane names are the routing plan's OWN keys (`on_mesh`, `in_contract_vector_scalar`,
+        # `scalar_rvv_lane`), so this asserts against what the compiler reported rather than a vocabulary
+        # invented here; a capsule naming a lane the plan does not report fails closed with that lane
+        # named, which is the actionable direction.
+        _lane_rep = lane_report(capsule, result.get("routing_plan"), model_exec)
+        if _lane_rep is not None:
+            result["lane_report"] = _lane_rep
+            _model_ok = not _lane_rep["unexercised"]
 
         # WHICH tier the mesh oracle corresponds to, DERIVED from the target's own declared RTL tiers.
         # This was `[x for x in declared if x not in ("L0", "L1")]` with an `"L3"` fallback -- three tier
@@ -1142,9 +1256,27 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                                              "per-layer mesh accounting; cannot confirm the model "
                                              "reached the accelerator"})
             return result
+        # AN UNMEASURED LAYER IS NOT A FALLEN-BACK LAYER. When the oracle could not tell us whether the
+        # mesh runs a layer, the honest verdict is `incomplete` (NOT_RUN_IS_NOT_PASS), not a compiler
+        # failure -- the same rule the tier ladder already applies one level up. Measured: a whole model
+        # whose every layer the mesh executes correctly reported "15 of 15 fell back" because the
+        # simulator timed out at its per-layer budget, and that number failed must_accelerate.
+        _unavail = int(model_exec.get("matmul_layers_oracle_unavailable") or 0)
+        if int(_on) == 0 and _unavail and not _fb:
+            result.update(status="incomplete",
+                          numeric=_numeric_when_not_accelerated(
+                              st, gate, _v, _cos, engine, measured_on="host_lane_unmeasured"),
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"the mesh oracle could not measure {_unavail} of this "
+                                             f"model's matmul layer(s) (timed-out or unreachable "
+                                             f"simulator), so whether they run on the {target} mesh is "
+                                             f"UNKNOWN -- not a fallback, and not evidence about the "
+                                             f"backend. Re-run with an oracle that completes."})
+            return result
         if int(_on) == 0 or _fb:
             result.update(status="fail",
-                          numeric={"status": "not_compared", "engine": engine},
+                          numeric=_numeric_when_not_accelerated(
+                              st, gate, _v, _cos, engine, measured_on="host_lane_fallback"),
                           failure={"plane": "model", "category": "FALLBACK_ON_ELIGIBLE_REGION",
                                    "detail": f"capsule declares must_accelerate but only {_on} matmul "
                                              f"layer(s) executed on the {target} mesh and {_fb} fell back "
@@ -1159,7 +1291,8 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     _failed_tiers = sorted(t for t, v in exercised.items() if v != "pass")
     if _failed_tiers:
         result.update(status="fail",
-                      numeric={"status": "not_compared", "engine": engine},
+                      numeric=_numeric_when_not_accelerated(
+                          st, gate, _v, _cos, engine, measured_on=run_where),
                       failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
                                "detail": f"declared oracle tier(s) {_failed_tiers} RAN and did not pass "
                                          f"(on-mesh execution: {mesh_exec.get('n_passed')} of "
@@ -1172,8 +1305,11 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         return result
 
     if declared and not exercised:
+        # Same reasoning as the branches above: the arithmetic WAS measured before we got here, so report
+        # it. The verdict stays `incomplete` -- no declared tier ran, and a number alone is not a tier.
         result.update(status="incomplete",
-                      numeric={"status": "not_compared", "engine": engine},
+                      numeric=_numeric_when_not_accelerated(
+                          st, gate, _v, _cos, engine, measured_on=run_where),
                       failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
                                "detail": f"declares required oracle tiers {declared} and ran NONE of them "
                                          f"(the functional gate here is the {run_where} reference, not the "
@@ -1288,7 +1424,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
     # same capsule_result.json shape so downstream reporting is uniform.
     if capsule.get("kind") == "model":
-        result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout)
+        result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout,
+                                      package_dir=package_dir)
         (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         # Persist the ARR coverage certificate as its own durable artifact (not only inside
         # capsule_result.json) so the report/grader can read it back per compilation.
@@ -1770,14 +1907,22 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             _derived_from_rtl = (_oracle_meta.get("derived_from_rtl", tier in cfg.rtl_tiers)
                                  if isinstance(_oracle_meta, dict) else (tier in cfg.rtl_tiers))
             _fidelity = _oracle_meta.get("fidelity") if isinstance(_oracle_meta, dict) else None
+            # NAME THE EVIDENCE AFTER THE ORACLE THAT PRODUCED IT. ``sim_name`` comes from the contract's
+            # static ``tier_sim`` map, which cannot know that a faster RTL-derived engine replaced the
+            # declared one at runtime (the muon backend swaps GSIM in for Verilator whenever its emu is
+            # configured). The console was then written to ``verilator_console.log`` by an engine that is
+            # not Verilator -- a certification filed under the wrong tool's name, which is the same defect
+            # as reporting a score without the tier that produced it. Same rule as ``derived_from_rtl``
+            # above: the oracle's own word outranks the declared name.
+            _ev_name = _oracle_kind(_oracle_meta) or sim_name
             tiers[tier] = TierResult(
                 tier, "pass" if okt else "fail", mand,
                 reason=None if okt else _mismatch_reason,
                 cycles=res.get("cycles"), derived_from_rtl=_derived_from_rtl,
-                cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{sim_name}_console.log",
+                cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{_ev_name}_console.log",
                 timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, fidelity=_fidelity)
             if res.get("console") is not None:
-                (paths.artifacts_dir / f"{sim_name}_console.log").write_text(
+                (paths.artifacts_dir / f"{_ev_name}_console.log").write_text(
                     res["console"], encoding="utf-8")
             # Only a MANDATORY/gold tier mismatch fails the capsule. An ADDITIVE lower-fidelity tier
             # (one not in required_oracle_tiers — e.g. a fast functional model with known approximation

@@ -266,7 +266,7 @@ def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
 def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: str | None,
                 auto_capture: bool, timeout: int, harts: int = 1, iters: int = 1,
                 warmup: int = 0, kernel_backend: str | None = None,
-                mesh_target: str | None = None) -> dict:
+                mesh_target: str | None = None, mesh_package: str | None = None) -> dict:
     """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
 
     ``kernel_backend='mesh'`` + ``mesh_target`` runs the model's matmul LAYERS on that target's
@@ -333,7 +333,8 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         from .runtime.dispatch_runtime import run_model
 
         res = run_model(bundle, work, int8_compute=pkg.is_int8,
-                        kernel_backend=kernel_backend, mesh_target=mesh_target)
+                        kernel_backend=kernel_backend, mesh_target=mesh_target,
+                        mesh_package=mesh_package)
         if kernel_backend == "mesh":
             from .runtime import dispatch_runtime as _dr
             # THIS MODEL's own layers: how many of its matmuls reached the accelerator and how many
@@ -346,6 +347,13 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                                      # WHICH layers fell back and why -- a count alone fails the
                                      # must_accelerate gate without saying what to fix.
                                      "host_fallback_detail": getattr(_dr.execute, "mesh_fallbacks", None),
+                                     # Layers the ORACLE could not measure (timed-out / unreachable
+                                     # simulator). Counted apart from a fallback because it is not
+                                     # evidence about the backend: the mesh may well run these.
+                                     "matmul_layers_oracle_unavailable":
+                                         getattr(_dr.execute, "mesh_unavailable", None),
+                                     "oracle_unavailable_detail":
+                                         getattr(_dr.execute, "mesh_unavailable_detail", None),
                                      # layers whose capacity_fit obligation the RUNTIME discharged for
                                      # the backend; non-empty means this result is runtime+backend
                                      "capacity_fit_delegated_to_runtime":
@@ -567,6 +575,31 @@ def _operand_store_capacity_elems(target: str, operand_dtype: str | None) -> int
     return (int(nbytes) * 8) // max(1, _dtype_bits(operand_dtype)) if nbytes else None
 
 
+def _accumulator_capacity_elems(target: str, accum_dtype: str | None) -> int | None:
+    """The ACCUMULATOR's capacity in elements of ``accum_dtype``, or None when it cannot be derived.
+
+    Separate from the operand store because it is a separate, much smaller SRAM, and it binds a
+    different quantity: the operand store bounds the INPUT working set (weight tile + activation tile),
+    the accumulator bounds the OUTPUT tile that the contraction accumulates into. A layer can sit
+    comfortably inside a 256 KiB scratchpad and still overrun a 64 KiB accumulator, because the output
+    grows as M*N while the operands grow as K*(M+N).
+
+    Measured: the whole-model capsule routed four layers whose operands fit the scratchpad by a wide
+    margin -- (345,32)@(32,256) and (96,64)@(64,512) -- so nothing tiled them, and every one aborted the
+    simulator with ``vector::_M_range_check: __n (which is 1024) >= this->size() (which is 1024)``: the
+    1024 accumulator rows (65536 B / (16 elems * 4 B)) addressed one past the end. The tiles that DID
+    run all passed, so this cost four unmeasurable layers rather than four wrong ones -- the capsule
+    failed for want of a measurement, not for a wrong answer.
+    """
+    from .targetgen.rtl import mlc_bridge as _mb
+    try:
+        caps = _mb.discovered_capacities(target) or {}
+    except Exception:  # noqa: BLE001 -- mlc unavailable => undecidable, never assumed
+        return None
+    nbytes = caps.get("accumulator_bytes")
+    return (int(nbytes) * 8) // max(1, _dtype_bits(accum_dtype)) if nbytes else None
+
+
 def declared_primitive_tile(package: str | Path | None) -> tuple[int, int, int] | None:
     """The (m, k, n) tile a backend DECLARES it implements, from its ``manifest.yaml``, or ``None``.
 
@@ -595,29 +628,58 @@ def declared_primitive_tile(package: str | Path | None) -> tuple[int, int, int] 
         return None
 
 
-def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int) -> tuple[int, int, int, int]:
-    """Shrink a matmul (M,K,N) to the largest D-aligned tile whose on-chip working set — the weight
-    tile K·N plus the activation tile M·K — fits ``cap_elems``, and return (mt,kt,nt,n_tiles) where
-    n_tiles is how many such tiles cover the layer. Keeps M whole (the row dim streams); halves the
-    larger of K/N (never below D) until the tile fits. Pure arithmetic, target-agnostic."""
-    def _fits(mt, kt, nt):
+def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int,
+                       acc_elems: int | None = None) -> tuple[int, int, int, int]:
+    """Shrink a matmul (M,K,N) to the largest D-aligned tile that fits on chip, and return
+    (mt,kt,nt,n_tiles) where n_tiles is how many such tiles cover the layer.
+
+    TWO stores bound the tile, and they bind different dimensions:
+      * the OPERAND store holds the weight tile K·N plus the activation tile M·K (``cap_elems``);
+      * the ACCUMULATOR holds the OUTPUT tile M·N (``acc_elems``), when it can be derived.
+
+    Modelling only the first is what let four layers through whose operands fit the scratchpad easily
+    while their output overran the accumulator. Output residency is the constraint that can force the
+    ROW dim to split: with nt already at the tile edge, shrinking K does nothing for M·N, so M is the
+    only dimension left to give. That is why M is no longer unconditionally whole -- but only when an
+    accumulator bound is known AND the output actually exceeds it, so a caller that passes no
+    ``acc_elems`` gets exactly the previous extents. Pure arithmetic, target-agnostic."""
+    def _half(x):
+        return max(D, (x // 2 // D) * D or D)
+
+    def _operands_fit(mt, kt, nt):
         return kt * nt + mt * kt <= cap_elems
 
+    def _output_fits(mt, nt):
+        return (not acc_elems) or mt * nt <= acc_elems
+
     mt, kt, nt = M, K, N
-    while not _fits(mt, kt, nt) and (kt > D or nt > D):
-        if nt >= kt and nt > D:
-            nt = max(D, (nt // 2 // D) * D or D)
-        elif kt > D:
-            kt = max(D, (kt // 2 // D) * D or D)
+    while not (_operands_fit(mt, kt, nt) and _output_fits(mt, nt)):
+        if not _output_fits(mt, nt):
+            # the OUTPUT is what does not fit: only M or N relieve it (K does not appear in M·N)
+            if nt >= mt and nt > D:
+                nt = _half(nt)
+            elif mt > D:
+                mt = _half(mt)
+            elif nt > D:
+                nt = _half(nt)
+            else:
+                break                       # already a single tile edge: nothing left to give
+        elif kt > D or nt > D:
+            if nt >= kt and nt > D:
+                nt = _half(nt)
+            elif kt > D:
+                kt = _half(kt)
+            else:
+                nt = _half(nt)
         else:
-            nt = max(D, (nt // 2 // D) * D or D)
+            break
     import math
     n_tiles = math.ceil(M / mt) * math.ceil(K / kt) * math.ceil(N / nt)
     return mt, kt, nt, n_tiles
 
 
 def capacity_fit(target: str, m: int, k: int, n: int, operand_dtype: str | None,
-                 tile_dim: int) -> dict:
+                 tile_dim: int, accum_dtype: str | None = None) -> dict:
     """Evaluate the ``capacity_fit`` CONTRACT OBLIGATION for one contraction on ``target``.
 
     ``capacity_fit`` is not a heuristic of ours — it is a predicate the interface contract already
@@ -650,11 +712,27 @@ def capacity_fit(target: str, m: int, k: int, n: int, operand_dtype: str | None,
     """
     cap = _operand_store_capacity_elems(target, operand_dtype)
     need = int(k) * int(n) + int(m) * int(k)      # weight tile + activation tile, both resident
+    # The OUTPUT must also be resident, in the accumulator -- a separate and much smaller store. It is
+    # reported and conjoined separately because it fails on different layers: the output grows as M*N
+    # while the operands grow as K*(M+N), so a wide-output layer overruns the accumulator while its
+    # operands sit well inside the scratchpad. Undecidable (None) stays undecidable, never assumed true.
+    acc = _accumulator_capacity_elems(target, accum_dtype)
+    out_need = int(m) * int(n)
+    op_holds = None if not cap else bool(need <= cap)
+    acc_holds = None if not acc else bool(out_need <= acc)
+    # Three-valued conjunction, fail-closed: a violated term convicts, but an UNEVALUATED one leaves the
+    # obligation undecidable -- never "holds". Reporting True because the one term we could evaluate
+    # passed would claim an obligation nobody checked.
+    _terms = (op_holds, acc_holds)
+    holds = (False if False in _terms else None if None in _terms else True)
     return {"obligation": "capacity_fit",
-            "holds": None if not cap else bool(need <= cap),
+            "holds": holds,
             "required_elems": need, "capacity_elems": cap,
+            "output_elems": out_need, "accumulator_capacity_elems": acc,
+            "operands_hold": op_holds, "output_holds": acc_holds,
             "tile_dim": int(tile_dim or 0),
-            "assumes": "operands resident (a streaming lowering needs far less and always fits)"}
+            "assumes": "operands resident (a streaming lowering needs far less and always fits) "
+                       "and the output tile resident in the accumulator"}
 
 
 def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str | None,
@@ -950,10 +1028,21 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
             # repeating unit — a fit tile that passes proves the layer runs on the mesh once tiled. When
             # the capacity fact is absent we keep the untiled extent (prior behavior).
             layer_extent = f"{M}x{K}x{N}"
+            # RECORD THE PADDING. `layer_extent` above is the extent AFTER rounding each dim up to the
+            # mesh edge, and it was the only extent recorded -- so a layer whose real M is a partial tile
+            # was certified at the padded M and reported as though that were the layer. Measured: a model
+            # whose every matmul is M=8 on a 16-row mesh had 15/15 tiles "pass" at M=16 while the model
+            # execution path declined the real M=8 on all 15, and nothing in the tile record showed the
+            # two were different shapes. Keep the declared extent beside the certified one; when they
+            # differ, the tile is evidence about a PADDED shape, which is a weaker claim.
+            declared_extent = (f"{int(d.m)}x{int(d.k)}x{int(d.n)}"
+                               if (d.m and d.k and d.n) else None)
+            padded = bool(declared_extent and declared_extent != layer_extent)
             n_subtiles = 1
             sp_cap = _operand_store_capacity_elems(target, binding.operand_dtype)
-            if sp_cap and (K * N + M * K) > sp_cap:
-                M, K, N, n_subtiles = _capacity_fit_tile(M, K, N, D, sp_cap)
+            acc_cap = _accumulator_capacity_elems(target, binding.accum_dtype)
+            if sp_cap and ((K * N + M * K) > sp_cap or (acc_cap and M * N > acc_cap)):
+                M, K, N, n_subtiles = _capacity_fit_tile(M, K, N, D, sp_cap, acc_cap)
             entry = {"name": f"mesh_tile_{i}_{op}", "op": op, "kind": "op",
                      "source_role": "mesh_tile_synthesized",
                      "source_reference": f"whole-model op {d.op} [{d.site}]: layer {layer_extent} on the "
@@ -969,8 +1058,13 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
         # target's own oracle and ignores it, so record it only where it is the truth and let the
         # executor stamp ``oracle_kind`` with what actually ran.
         rec.update(M=M, K=K, N=N, layer_extent=layer_extent, n_subtiles=n_subtiles,
+                   declared_layer_extent=declared_extent, padded_to_mesh_edge=padded,
                    operand_dtype=binding.cap_dtype(binding.operand_dtype),
                    output_dtype=binding.cap_dtype(binding.accum_dtype))
+        if padded:
+            rec["evidence_note"] = (f"certified at {layer_extent}, but this layer is {declared_extent}; "
+                                    f"a dim was rounded UP to the mesh edge, so this tile is evidence "
+                                    f"that the PADDED shape runs, not the layer's own extent")
         if _via_oot:
             rec["sim"] = sim
         if _via_oot:
@@ -1024,6 +1118,30 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
         "scalar/RVV remainder co-scheduled in one binary with activations handed between layers) — see "
         "compile_model's docstring.")
     return out
+
+
+def _mesh_layer_id(m: int, k: int, n: int, binding, epilogue: list | None,
+                   acc_scale: float | None) -> str:
+    """A per-layer artifact identity for the mesh run directory.
+
+    Every mesh layer used the SAME run_id ("mesh_layer"), so all of a model's layers wrote to and read
+    from one artifact directory and clobbered each other. The failure was not subtle once seen: two
+    layers of two different models each received the OTHER's interface --
+    ``(8,344)@(344,128)`` was handed ``(288,96)`` and ``(64,288)@(288,96)`` was handed ``(352,128)`` --
+    and three further layers all expected one stale ``(128,128)``. A layer that fails this way runs
+    perfectly in isolation, which is why it read as a shape bug rather than a collision.
+
+    The id is CONTENT-ADDRESSED on what actually changes the emitted kernel: extent, operand and
+    accumulator dtype, and the epilogue (an acc_scale requant emits a different kernel). Two genuinely
+    identical layers therefore still share one directory -- small_llama repeats the same extent eight
+    times and should compile once -- while two different layers can never collide."""
+    parts = [f"{m}x{k}x{n}",
+             binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)]
+    if epilogue:
+        parts.append("-".join(str(e) for e in epilogue))
+    if acc_scale is not None:
+        parts.append(f"s{float(acc_scale):.6g}")
+    return "mesh_layer_" + "_".join(parts).replace(".", "p").replace("-", "_")
 
 
 def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | None = None,
@@ -1114,11 +1232,15 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
             if observed is not None:
                 observed["path"] = "bespoke_sim"
             return _matmul_via_bespoke_sim(target, _mlir, _A, _W, package=package, timeout=timeout,
+                                           layer_id=_mesh_layer_id(len(_A), len(_A[0]), len(_W[0]),
+                                                                   binding, epilogue, acc_scale),
                                            observed=observed)
         if endpoint in (None, "inline_asm_insn", "upstream_target"):
             if observed is not None:
                 observed["path"] = "oot_cert"
             return _matmul_via_oot_cert(target, _mlir, _A, _W, simulator=simulator, package=package,
+                                        layer_id=_mesh_layer_id(len(_A), len(_A[0]), len(_W[0]),
+                                                                binding, epilogue, acc_scale),
                                         timeout=timeout, observed=observed)
         if endpoint == "external_backend":
             if observed is not None:
@@ -1146,8 +1268,9 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
     _mt, _kt, _nt = M, K, N
     _n_sub = 1
     _tiled_by = None
+    _acc_cap = _accumulator_capacity_elems(target, binding.accum_dtype)
     if _cap:
-        _mt, _kt, _nt, _n_sub = _capacity_fit_tile(M, K, N, max(1, _D), _cap)
+        _mt, _kt, _nt, _n_sub = _capacity_fit_tile(M, K, N, max(1, _D), _cap, _acc_cap)
         _tiled_by = "capacity"
     else:
         # NO CLASSIFIABLE OPERAND STORE -> the capacity tiler cannot even be evaluated, and this branch
@@ -1261,6 +1384,7 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
 
 
 def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
+                         layer_id: str = "mesh_layer",
                          observed: dict | None = None) -> list | None:
     """Systolic/RoCC path: certify the matmul through the target's generated OOT package on its ELF/mesh
     oracle, with the real operands injected (``inputs`` -> the package harness's ``materialize_inputs``).
@@ -1276,11 +1400,12 @@ def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
     pkg = package or _default_oot_package(target)
     if pkg is None:
         return None
-    with tempfile.TemporaryDirectory(prefix="mesh_layer_") as td:
-        iface = Path(td) / "mesh_layer.interface.mlir"
+    _lid = layer_id
+    with tempfile.TemporaryDirectory(prefix=_lid + "_") as td:
+        iface = Path(td) / f"{_lid}.interface.mlir"
         iface.write_text(mlir, encoding="utf-8")
         res = oot_runner.certify(pkg, iface, runs_root=str(runs_root(target, "mesh_run")),
-                                 run_id="mesh_layer", simulator=sim, target=target, timeout=timeout,
+                                 run_id=_lid, simulator=sim, target=target, timeout=timeout,
                                  inputs={"A0": A, "W": W})
     if observed is not None:
         # the cert reports its oracle as a record ({kind, derived_from_rtl, ...}); the simulator that ran
@@ -1316,6 +1441,7 @@ def _matmul_via_program_oracle(target, mlir, A, W, *, model_ext, package, timeou
 
 
 def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout,
+                            layer_id: str = "mesh_layer",
                             observed: dict | None = None) -> list | None:
     """Exclusive bespoke-sim path: a self-hosted SIMT core (endpoint ``external_backend``) graded on the
     kernel its OWN generated package emits, by its OWN declared bespoke oracle (e.g. cyclotron via the muon
@@ -1357,11 +1483,12 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout,
         cdir = tdp / "cap"
         cdir.mkdir(parents=True, exist_ok=True)
         (cdir / "capsule.interface.mlir").write_text(mlir, encoding="utf-8")
-        capsule = {"name": "mesh_layer", "kind": "op", "interface_mlir": "capsule.interface.mlir",
+        _bid = layer_id
+        capsule = {"name": _bid, "kind": "op", "interface_mlir": "capsule.interface.mlir",
                    "operation": {"op": "matmul", "attributes": {}}, "__dir__": str(cdir),
                    "required_oracle_tiers": ["L2"]}
-        paths = make_run_paths(runs_root(target, "mesh_bsim"), "mesh_layer", suite="mesh",
-                               target=target, dtype="prog", benchmark="mesh_layer")
+        paths = make_run_paths(runs_root(target, "mesh_bsim"), _bid, suite="mesh",
+                               target=target, dtype="prog", benchmark=_bid)
         try:
             _pkg, cb, kernel_text = CC.run_entrypoints(None, pkg, capsule, paths, contract=None,
                                                        timeout=timeout, fourth_output_name="kernel.cpp")
@@ -1636,7 +1763,7 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
     if run == "mesh":
         out = compile_rvv(workload, dtype, run="host", verify=verify, package=package,
                           auto_capture=auto_capture, timeout=timeout,
-                          kernel_backend="mesh", mesh_target=target)
+                          kernel_backend="mesh", mesh_target=target, mesh_package=mesh_package)
     else:
         out = compile_rvv(workload, dtype, run=run, verify=verify, package=package,
                           auto_capture=auto_capture, timeout=timeout)

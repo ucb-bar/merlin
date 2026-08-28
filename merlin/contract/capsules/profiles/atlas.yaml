@@ -105,6 +105,23 @@ capsules:
    operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'small_llama fp8 — whole-model capstone', label: public,
    gate: {after_op_pass_fraction: 0.8}}
+# INTEROP pair. This target declares TWO compute units of different kinds -- an mxu (systolic) and a
+# vector_unit (vector) -- so it is the only target here that can populate `in_contract_vector_scalar`,
+# and it gets both composition capsules:
+#   AX0 -- accelerator + the IN-CONTRACT vector unit the target itself declares;
+#   AX1 -- accelerator + the HOST scalar/RVV lane (an op routed to no unit at all).
+# The two are different claims: the first says the compiler uses the whole accelerator, the second says
+# it can hand work off the accelerator entirely and still be right.
+- {cat: model, name: AX0_interop_vector_unit, kind: model, op: model, model: small_llama,
+   operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama fp8 composed across the mxu and the in-contract vector unit — asserts both declared units carried work',
+   label: public, gate: {after_op_pass_fraction: 0.8},
+   lanes: {require: [on_mesh, in_contract_vector_scalar]}}
+- {cat: model, name: AX1_interop_rvv_lane, kind: model, op: model, model: small_llama,
+   operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama fp8 composed across the mxu and the host scalar/RVV lane — asserts work left the accelerator entirely and stayed correct',
+   label: public, gate: {after_op_pass_fraction: 0.8},
+   lanes: {require: [on_mesh, scalar_rvv_lane]}}
 # --- More VPU/activation/reduction ops mined from atlas-npu/baremetal (smolvla_gelu_tanh, smolvla_silu,
 # smolvla_elementwise_*, smolvla_reduction_sum, smolvla_rope_frequency).
 - {cat: model_slices, name: AF4_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,

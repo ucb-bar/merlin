@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import shutil
 import struct
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -228,7 +229,16 @@ def stock_layout_link(objs: list[str | Path], linker_script: str | Path, out_pat
            *[str(o) for o in objs]]
     if extra_args:
         cmd.extend(extra_args)
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    # Run the STOCK linker under a CLEAN library path. It is a system binary linked against the system
+    # libLLVM; a caller that has put a target toolchain's libs on LD_LIBRARY_PATH (the harness does
+    # exactly this, process-globally, so a conda cmake can find libidn for the C++ submission build)
+    # makes it load THAT libLLVM instead and it dies at startup:
+    #   /usr/bin/ld.lld: symbol lookup error: undefined symbol: LLVMInitializeM68kTargetInfo
+    # Measured: the same link succeeds standalone and fails under the launcher, which reads as "the
+    # target's emit path cannot produce a runnable kernel" and refuses to launch a ready target. The
+    # variable is dropped only for THIS child; the caller's environment is untouched.
+    env = {k: v for k, v in os.environ.items() if k != "LD_LIBRARY_PATH"}
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if proc.returncode != 0:
         raise FixedFormatLinkError(f"stock link failed:\n{' '.join(cmd)}\n{proc.stderr[-2000:]}")
     return Path(out_path)

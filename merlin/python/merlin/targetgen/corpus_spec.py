@@ -95,6 +95,11 @@ class CorpusBinding:
     # ``datapath.semantic_defaults`` so a target states its posture in one place instead of repeating it
     # on every entry; a capsule's own ``semantic:`` overrides it.
     semantic_defaults: dict = field(default_factory=dict)
+    # Elements per E8M0 block scale, DERIVED from the manifest's declared scale group; None when the
+    # target declares no block scaling, or declares it without a group. Never assumed -- a different
+    # microscaling profile uses a different run length, and a guessed one silently mis-shapes the
+    # scale operands.
+    scale_block: int | None = None
     # instruction-class source: a callable (op, output_dtype, epilogue, movement) -> [class,...]
     classes_for: Callable[..., list[str]] = field(default=lambda **_: [])
 
@@ -109,6 +114,56 @@ class CorpusBinding:
 # tile size is a software blocking choice, not a hardware fact. A hardware-mesh target derives its dim
 # from facts/manifest and never reaches this. NOT an ISA/hardware constant.
 _DEFAULT_SW_TILE = 16
+
+
+# The OCP microscaling operand tokens: a value in one of these formats is a PAIR -- quantized elements
+# plus a shared E8M0 exponent per fixed-length block of them -- so a capsule in one of these dtypes needs
+# its scale streams declared as operands. One source of truth: the corpus generator routes an entry to the
+# MX golden by the same predicate, so the dtypes that get an MX golden are exactly the ones that get
+# scale operands.
+BLOCK_SCALED_DTYPES = frozenset({"mxfp4", "mxfp6", "mxfp8"})
+
+
+def is_block_scaled(token: str | None) -> bool:
+    """Whether an operand dtype token is a block-scaled (microscaling) format."""
+    return str(token or "") in BLOCK_SCALED_DTYPES
+
+
+def _scale_block_elems(contract: dict) -> int | None:
+    """Elements per E8M0 block scale, DERIVED from the target's manifest, or None.
+
+    A block-scaled compute unit (``scaling: block_e8m0``) carries one shared exponent per fixed-length run
+    of K elements. The run length is the target's OWN declared scale ``group`` -- searched for in the
+    manifest rather than assumed, because a different microscaling profile uses a different one and a
+    guessed length silently mis-shapes every scale operand.
+
+    Returns None when the target declares no block-scaled unit, or declares one without a group. The
+    caller then declares NO scale operands and the capsule keeps its present shape: fail closed, never a
+    baked constant.
+    """
+    units = contract.get("compute_units") or []
+    if not any(str((u or {}).get("scaling") or "").startswith("block") for u in units):
+        return None
+
+    def _group(o) -> int | None:
+        """The first declared ``group`` at any depth -- the manifest names its MX interface block
+        per target, so the group is found by KEY, not by a path spelled here."""
+        if isinstance(o, dict):
+            g = o.get("group")
+            if isinstance(g, int) and g > 0:
+                return g
+            for v in o.values():
+                found = _group(v)
+                if found is not None:
+                    return found
+        elif isinstance(o, list):
+            for v in o:
+                found = _group(v)
+                if found is not None:
+                    return found
+        return None
+
+    return _group(contract)
 
 
 def _tile_dim(target: str, contract: dict) -> int:
@@ -313,6 +368,7 @@ def derive_binding(te, datapath: dict) -> CorpusBinding:
         atol=datapath.get("atol"),
         rtol=datapath.get("rtol"),
         scaling=(scaling if scaling and scaling != "none" else None),
+        scale_block=_scale_block_elems(c),
         requant_output_dtype=datapath.get("requant_output_dtype"),
         subnormal_operand_flush=bool(datapath.get("subnormal_operand_flush", False)),
         inapplicable_tiers=_inapplicable_tiers(datapath, tiers),
@@ -356,6 +412,32 @@ def _default_modes(binding: CorpusBinding, output_dtype: str, epilogue: list[str
     return modes
 
 
+def _matmul_inputs(lhs: str, weight: str, M: int, K: int, N: int, idt: str,
+                   binding: CorpusBinding) -> list[dict]:
+    """The declared leaf operands of a matmul capsule.
+
+    On a BLOCK-SCALED datapath the operand format is (elements, per-block scales); declaring only the
+    elements hands a backend half a number and asks it for the product. The scale streams are therefore
+    declared operands in their own right, shaped by the target's own derived scale group -- one shared
+    exponent per run of ``scale_block`` K elements, per lhs row and per weight column.
+
+    Declared only when the target's manifest yields BOTH a block-scaled compute unit and a scale group,
+    and the contraction depth divides into whole blocks. Otherwise the operand list is exactly what it
+    has always been, so an unscaled target's capsules are unchanged."""
+    inputs = [{"name": weight, "role": "weight", "shape": [K, N], "dtype": idt},
+              {"name": lhs, "role": "input", "shape": [M, K], "dtype": idt}]
+    blk = binding.scale_block if is_block_scaled(binding.operand_dtype) else None
+    if blk and K % blk == 0:
+        g = K // blk
+        inputs += [
+            {"name": f"{lhs}_scale", "role": "scale", "scale_of": lhs, "block": blk,
+             "shape": [g, M], "dtype": "e8m0"},
+            {"name": f"{weight}_scale", "role": "scale", "scale_of": weight, "block": blk,
+             "shape": [g, N], "dtype": "e8m0"},
+        ]
+    return inputs
+
+
 def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """A single weight-stationary matmul/linear capsule (op ∈ {matmul, linear})."""
     D = binding.tile_dim
@@ -385,8 +467,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "name": entry["name"], "kind": entry["kind"],
         "source_role": entry["source_role"], "source_reference": entry["source_reference"],
         "label": entry.get("label", "public"), "interface_mlir": "capsule.interface.mlir",
-        "inputs": [{"name": weight, "role": "weight", "shape": [K, N], "dtype": idt},
-                   {"name": lhs, "role": "input", "shape": [M, K], "dtype": idt}],
+        "inputs": _matmul_inputs(lhs, weight, M, K, N, idt, binding),
         "operation": {"op": op, "attributes": attrs},
         "numeric_policy": _numeric_policy(binding, output_dtype, acc_scale),
         "expected": expected, "required_oracle_tiers": list(binding.tiers),
@@ -397,7 +478,8 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         lhs=lhs, weight=weight, out=out, M=M, K=K, N=N, epilogue=epilogue, output_dtype=odt,
         acc_scale=acc_scale, comment=entry.get("comment", ""),
         target=binding.target, operand_dtype=binding.mlir_dtype(binding.operand_dtype),
-        acc_dtype=binding.mlir_dtype(binding.accum_dtype))
+        acc_dtype=binding.mlir_dtype(binding.accum_dtype),
+        scale_block=(binding.scale_block if is_block_scaled(binding.operand_dtype) else None))
     return cap, mlir
 
 
@@ -546,6 +628,34 @@ def build_rmsnorm(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     return cap, "\n".join(L) + "\n"
 
 
+def _attention_mx_inputs(q: str, k: str, v: str, M: int, H: int, Skv: int, Dv: int, idt: str,
+                         binding: CorpusBinding) -> list[dict]:
+    """Declared leaf operands of a fused block-scaled attention capsule.
+
+    Two MX stages contract over different axes, so they carry different scale streams: the QK stage over
+    the head dim ``H`` (scaling q's rows and k's rows), the PV stage over the key count ``Skv`` (scaling
+    v's columns). The PV stage's LHS is ``P`` -- the softmax output, an INTERMEDIATE the kernel produces
+    and requantizes -- and the exponent it is requantized against was chosen when the golden was built.
+    It is therefore declared too: a value the kernel cannot derive is an input, whatever produced it."""
+    inputs = [{"name": q, "role": "input", "shape": [M, H], "dtype": idt},
+              {"name": k, "role": "input", "shape": [Skv, H], "dtype": idt},
+              {"name": v, "role": "input", "shape": [Skv, Dv], "dtype": idt}]
+    blk = binding.scale_block if is_block_scaled(binding.operand_dtype) else None
+    if blk and H % blk == 0 and Skv % blk == 0:
+        hg, sg = H // blk, Skv // blk
+        inputs += [
+            {"name": f"{q}_scale", "role": "scale", "scale_of": q, "block": blk,
+             "shape": [hg, M], "dtype": "e8m0"},
+            {"name": f"{k}_scale", "role": "scale", "scale_of": k, "block": blk,
+             "shape": [hg, Skv], "dtype": "e8m0"},
+            {"name": f"{v}_scale", "role": "scale", "scale_of": v, "block": blk,
+             "shape": [sg, Dv], "dtype": "e8m0"},
+            {"name": "P_scale", "role": "scale", "scale_of": "P", "block": blk,
+             "shape": [sg, M], "dtype": "e8m0"},
+        ]
+    return inputs
+
+
 def build_attention_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """A fused MX flash-attention capsule (op == attention_mx): O = softmax(Q @ K^T / sqrt(H) [+ soft-cap])
     @ V, with the two matmuls on the block-scaled MX PE (E8M0 per 32-element K group, bf16 accumulate) and
@@ -572,9 +682,7 @@ def build_attention_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
         "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
         "interface_mlir": "capsule.interface.mlir",
-        "inputs": [{"name": q, "role": "input", "shape": [M, H], "dtype": idt},
-                   {"name": k, "role": "input", "shape": [Skv, H], "dtype": idt},
-                   {"name": v, "role": "input", "shape": [Skv, Dv], "dtype": idt}],
+        "inputs": _attention_mx_inputs(q, k, v, M, H, Skv, Dv, idt, binding),
         "operation": {"op": "attention_mx", "attributes": attrs},
         "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
         # two matmuls (QK, PV) drive the MX PE; the softmax rides the SIMT/vector lanes (no matmul classes).
@@ -589,6 +697,21 @@ def build_attention_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         f'  %{q} = merlin_iface.tensor {{name = "{q}", role = "input"}} : tensor<{M}x{H}x{midt}>',
         f'  %{k} = merlin_iface.tensor {{name = "{k}", role = "input"}} : tensor<{Skv}x{H}x{midt}>',
         f'  %{v} = merlin_iface.tensor {{name = "{v}", role = "input"}} : tensor<{Skv}x{Dv}x{midt}>',
+    ]
+    _blk = binding.scale_block if is_block_scaled(binding.operand_dtype) else None
+    if _blk and H % _blk == 0 and Skv % _blk == 0:
+        _hg, _sg = H // _blk, Skv // _blk
+        L += [
+            f'  %{q}_scale = merlin_iface.tensor {{name = "{q}_scale", role = "scale", '
+            f'scale_of = "{q}", block = {_blk} : i64}} : tensor<{_hg}x{M}xi8>',
+            f'  %{k}_scale = merlin_iface.tensor {{name = "{k}_scale", role = "scale", '
+            f'scale_of = "{k}", block = {_blk} : i64}} : tensor<{_hg}x{Skv}xi8>',
+            f'  %{v}_scale = merlin_iface.tensor {{name = "{v}_scale", role = "scale", '
+            f'scale_of = "{v}", block = {_blk} : i64}} : tensor<{_sg}x{Dv}xi8>',
+            f'  %P_scale = merlin_iface.tensor {{name = "P_scale", role = "scale", '
+            f'scale_of = "P", block = {_blk} : i64}} : tensor<{_sg}x{M}xi8>',
+        ]
+    L += [
         f'  %S = merlin_iface.attention_qk %{q}, %{k} {{name = "S", block_scale = "e8m0", '
         f'output_dtype = "{odt}"}} : (tensor<{M}x{H}x{midt}>, tensor<{Skv}x{H}x{midt}>) '
         f'-> tensor<{M}x{Skv}x{modt}>',
@@ -686,6 +809,26 @@ def build_rope_qkv(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     return cap, "\n".join(L) + "\n"
 
 
+def _batched_mx_inputs(lhs: str, weight: str, B: int, M: int, H: int, N: int, idt: str,
+                       binding: CorpusBinding) -> list[dict]:
+    """Declared leaf operands of a BATCHED block-scaled matmul: one scale stream per batch.
+
+    Same reasoning as :func:`_matmul_inputs` -- the elements alone are half the operand -- with the batch
+    dimension leading, because each batch is an independent GEMM with its own block scales."""
+    inputs = [{"name": weight, "role": "weight", "shape": [B, H, N], "dtype": idt},
+              {"name": lhs, "role": "input", "shape": [B, M, H], "dtype": idt}]
+    blk = binding.scale_block if is_block_scaled(binding.operand_dtype) else None
+    if blk and H % blk == 0:
+        g = H // blk
+        inputs += [
+            {"name": f"{lhs}_scale", "role": "scale", "scale_of": lhs, "block": blk,
+             "shape": [B, g, M], "dtype": "e8m0"},
+            {"name": f"{weight}_scale", "role": "scale", "scale_of": weight, "block": blk,
+             "shape": [B, g, N], "dtype": "e8m0"},
+        ]
+    return inputs
+
+
 def build_gemv_batched_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """Batched MX matmul (op == gemv_batched): B independent MX GEMMs A_b[M,H] @ W_b[H,N] on the mx_pe,
     output stacked row-major to [B*M, N] bf16. mxfp8; golden from mx_ref. Interface presents the batched
@@ -704,8 +847,7 @@ def build_gemv_batched_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, st
         "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
         "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
         "interface_mlir": "capsule.interface.mlir",
-        "inputs": [{"name": weight, "role": "weight", "shape": [B, H, N], "dtype": idt},
-                   {"name": lhs, "role": "input", "shape": [B, M, H], "dtype": idt}],
+        "inputs": _batched_mx_inputs(lhs, weight, B, M, H, N, idt, binding),
         "operation": {"op": "gemv_batched", "attributes": attrs},
         "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
         "expected": {"instruction_classes": binding.classes_for(op="matmul", output_dtype=odt),
@@ -716,6 +858,19 @@ def build_gemv_batched_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, st
     L += [
         f'  %{lhs} = merlin_iface.tensor {{name = "{lhs}", role = "input"}} : tensor<{B}x{M}x{H}x{midt}>',
         f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{B}x{H}x{N}x{midt}>',
+    ]
+    _blk = binding.scale_block if is_block_scaled(binding.operand_dtype) else None
+    if _blk and H % _blk == 0:
+        # The batched form carries one scale stream per batch: the op declares `block_scale = "e8m0"`
+        # already, and these are the streams that attribute refers to.
+        _g = H // _blk
+        L += [
+            f'  %{lhs}_scale = merlin_iface.tensor {{name = "{lhs}_scale", role = "scale", '
+            f'scale_of = "{lhs}", block = {_blk} : i64}} : tensor<{B}x{_g}x{M}xi8>',
+            f'  %{weight}_scale = merlin_iface.tensor {{name = "{weight}_scale", role = "scale", '
+            f'scale_of = "{weight}", block = {_blk} : i64}} : tensor<{B}x{_g}x{N}xi8>',
+        ]
+    L += [
         f'  %{out} = merlin_iface.matmul_batched %{lhs}, %{weight} {{name = "{out}", batch = {B} : i64, '
         f'block_scale = "e8m0", output_dtype = "{odt}"}} '
         f': (tensor<{B}x{M}x{H}x{midt}>, tensor<{B}x{H}x{N}x{midt}>) -> tensor<{B * M}x{N}x{modt}>', "}"]

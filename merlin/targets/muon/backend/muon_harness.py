@@ -163,7 +163,117 @@ def _decode_preload(tspec: dict | None) -> list[float] | None:
     return [float(x) for x in np.asarray(arr).reshape(-1)]
 
 
-def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
+def declared_abi_order(cb: dict) -> tuple[list[str], list[str]] | None:
+    """The ``(input_names, output_names)`` a command buffer DECLARES for its kernel, or None.
+
+    Reads the cb's own ``kernel_abi`` block -- ``{weight, lhs, outputs}`` -- which is the very ABI
+    :func:`args_from_cb` documents itself as building (``[weight] ++ [lhs] ++ [output]``). Each slot may
+    hold a scalar or a list, so a backend may declare one weight or several. Returns None unless BOTH an
+    input list and an output list resolve, so a half-written declaration is ignored rather than
+    half-honoured."""
+    abi = cb.get("kernel_abi") or cb.get("abi")
+    if not isinstance(abi, dict):
+        return None
+
+    def _names(v) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, (list, tuple)):
+            return [str(x) for x in v if x]
+        return [str(v)]
+
+    ins = _names(abi.get("weight")) + _names(abi.get("lhs"))
+    outs = _names(abi.get("outputs")) or _names(abi.get("output"))
+    if not ins or not outs:
+        return None
+    return ins, outs
+
+
+def _deep_flat(v) -> list[float]:
+    """Flatten a nested sequence of numbers to a flat row-major list of floats, at ANY rank.
+
+    The module's other value paths assume rank 2 (``for row in t.to_list() for v in row``), which raises on
+    a rank-1 operand and silently yields lists instead of floats on a rank-3 one."""
+    if isinstance(v, (list, tuple)):
+        out: list[float] = []
+        for e in v:
+            out.extend(_deep_flat(e))
+        return out
+    return [float(v)]
+
+
+def _args_from_declared_abi(cb: dict, canon: dict, env: dict) -> tuple[list, list] | None:
+    """Build ``(in_args, out_args)`` from the ABI the cb DECLARES -- the LAST resort, after every opcode
+    branch above has declined.
+
+    Those branches reverse-engineer the operands from opcode semantics, so a conformant backend becomes
+    ungradeable the moment it emits an op class with no hand-written branch here, or an operand of rank > 2
+    -- and BOTH are reported to the submitter as "no canonical_inputs", which is not the cause (measured: 8
+    of 19 failures on one run, every one named against the wrong thing). A cb carrying ``kernel_abi`` has
+    already stated the only things this harness needs -- which buffers, in what order, at what shape -- so
+    reading the declaration is more faithful to the contract and free of any opcode vocabulary.
+
+    Placed AFTER the opcode path, never before it: every cb that derives today must keep deriving exactly
+    as it does, so this can only turn a None into an answer, never change an existing one.
+
+    Shapes come from the cb's declared ``operand_shapes`` (else the materialized leaf), folded to
+    (rows, cols) by :func:`_shape2d` -- a relabelling of the same row-major bytes, which is what lets a
+    batched operand be fed without a batched code path. Values keep the module's precedence: an injected
+    preload, then the golden's canonical operands, then deterministic materialization. Returns None -- never
+    a partial answer -- if anything is unresolvable, so the fail-closed contract is unchanged."""
+    order = declared_abi_order(cb)
+    if order is None:
+        return None
+    in_names, out_names = order
+    shapes = cb.get("operand_shapes") or {}
+    tensors = cb.get("tensors") or {}
+
+    def _shape_of(nm: str):
+        s = shapes.get(nm)
+        if not s and isinstance(tensors.get(nm), dict):
+            s = (tensors.get(nm) or {}).get("shape")
+        if not s and nm in env:
+            s = list(env[nm].shape)
+        return list(s) if s else None
+
+    def _values_of(nm: str):
+        inj = _decode_preload(tensors.get(nm) if isinstance(tensors.get(nm), dict) else None)
+        if inj is not None:
+            return list(inj)
+        c = canon.get(nm) if isinstance(canon, dict) else None
+        if isinstance(c, dict):
+            c = c.get("values")
+        if c is not None:
+            return _deep_flat(c)
+        t = env.get(nm)
+        if t is not None:
+            # ``.data`` is the flat row-major buffer at ANY rank; ``to_list()`` is rank-2-only and
+            # raises on the batched operands this fallback exists to serve.
+            return [float(x) for x in t.data]
+        return None
+
+    in_args = []
+    for nm in in_names:
+        shp = _shape_of(nm)
+        vals = _values_of(nm)
+        if shp is None or vals is None:
+            return None
+        r, c = _shape2d(shp)
+        if len(vals) != r * c:            # a declaration inconsistent with its own operand
+            return None
+        in_args.append(TensorArg(nm, r, c, [float(x) for x in vals], "f32"))
+
+    out_args = []
+    for nm in out_names:
+        shp = _shape_of(nm)
+        if shp is None:
+            return None
+        r, c = _shape2d(shp)
+        out_args.append(TensorArg(nm, r, c, [0.0] * (r * c), "f32"))
+    return in_args, out_args
+
+
+def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     """Derive the kernel's ``(in_args, out_args)`` from a capsule's COMMAND BUFFER, in the generic
     ``kernel_abi`` order ``[weight] ++ [lhs] ++ [output]``. Input VALUES come from the SAME deterministic
     materialization the reference backend and the golden use (:func:`commandbuffer.materialize_inputs`) — NOT
@@ -404,7 +514,10 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
                        TensorArg(x, len(xv), 1, xv, "f32")]
             out_args = [TensorArg(out, oc, pp, [0.0] * (oc * pp), "f32")]
             return in_args, out_args
-        if op == "BATCHED_MATMUL":
+        # The command-buffer schema declares BOTH spellings of this opcode legal (`BATCHED_MATMUL` and
+        # `MATMUL_BATCHED`). Modelling only one made a conformant submission fail: the contract told the
+        # agent the spelling it chose was legal, and the harness then could not build operands for it.
+        if op in ("BATCHED_MATMUL", "MATMUL_BATCHED"):
             a, w, out = o.get("a"), o.get("w"), o.get("dst")
             if not (a and w and out) or a not in env0 or w not in env0:
                 return None
@@ -521,6 +634,67 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     return in_args, out_args
 
 
+def _is_scale_operand(cb: dict, name: str) -> bool:
+    """Whether the command buffer declares ``name`` as a block-SCALE stream rather than an element operand.
+
+    Read from the cb's own per-operand ``role``, which is the capsule's declared role carried through. A
+    scale is the one operand class an opcode branch here can silently drop while still returning a
+    plausible answer, because the branches were written before block-scaled formats existed."""
+    for spec in (cb.get("operands") or []):
+        if isinstance(spec, dict) and str(spec.get("name")) == name:
+            return str(spec.get("role") or "").lower() == "scale"
+    tspec = (cb.get("tensors") or {}).get(name)
+    if isinstance(tspec, dict):
+        return str(tspec.get("role") or "").lower() == "scale"
+    return False
+
+
+def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
+    """Derive the kernel's ``(in_args, out_args)`` from a capsule's COMMAND BUFFER.
+
+    Two derivations, tried in this order:
+
+    1. :func:`_args_from_cb_by_opcode` -- the original, which infers the operands from what each opcode
+       MEANS. It is tried first and its answer is always kept, so every command buffer that derives today
+       derives identically tomorrow.
+    2. :func:`_args_from_declared_abi` -- reads the ABI the cb DECLARES (``kernel_abi``). This is what a
+       backend emitting an op class with no branch in (1), or an operand of rank > 2, falls back to.
+
+    Before (2) existed, both of those cases returned None and were reported to the submitter as
+    "no canonical_inputs" -- a cause that was usually false, since the runner attaches those from the
+    golden. Measured on one run: 8 of 19 failures, every one named against the wrong thing.
+
+    Returns None only when NEITHER derivation resolves, so the fail-closed contract is unchanged."""
+    try:
+        derived = _args_from_cb_by_opcode(cb)
+    except Exception:
+        derived = None          # a malformed/unfamiliar cb must fall through, not abort the harness
+    from merlin.runtime.commandbuffer import materialize_inputs
+    canon = cb.get("canonical_inputs")
+    if not isinstance(canon, dict):
+        canon = {}
+    try:
+        env = materialize_inputs(cb)
+    except Exception:
+        env = {}
+    declared = _args_from_declared_abi(cb, canon, env)
+    if derived is None:
+        return declared
+    if declared is None:
+        return derived
+    # Both resolved. Keep the opcode answer -- UNLESS the ONLY operands the declaration adds are SCALE
+    # streams. The op branches here predate block-scaled formats, so a block-scaled matmul's E8M0 scales
+    # are dropped by an inference that never knew to look for them; feeding a kernel fewer operands than
+    # its capsule declares is not a smaller answer, it is the wrong one. The test is narrow on purpose:
+    # a cb may legitimately declare operands an op branch omits for other reasons (an epilogue input a
+    # fused branch folds in, say), and overriding on those breaks derivations that work today -- measured,
+    # 9 of 35 frozen command buffers changed under the looser "any extra operand" rule.
+    extra = [a.name for a in declared[0] if a.name not in {d.name for d in derived[0]}]
+    if extra and all(_is_scale_operand(cb, nm) for nm in extra):
+        return declared
+    return derived
+
+
 def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorArg],
                                *, kernel_symbol: str, model) -> str:
     """Harness ``main`` for an OBJECT kernel (an MLIR-lowered ``kernel.o``): declares ``kernel_symbol``
@@ -553,6 +727,87 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     body += ['  _ps("DONE\\n");', "  return 0;", "}"]
     return "\n".join(body) + "\n"
 
+
+
+#: Substrings the plan loop matches on rather than comparing an opcode exactly. The single-matmul plan
+#: accepts ANY opcode containing these (``MATMUL``, ``MATMUL_RESIDENT``, ``MATMUL_BATCHED``, ``GEMM``…),
+#: so an exact-name scan of the dispatch UNDERSTATES what is handled -- it reported the most common
+#: opcode of all as unmodelled.
+_OPCODE_SUBSTRINGS = ("MATMUL", "GEMM")
+
+
+def models_opcode(op: str) -> bool:
+    """Can this harness build reference operands for ``op``? Substring-matched plans included."""
+    o = (op or "").upper()
+    return o in modelled_opcodes() or any(sub in o for sub in _OPCODE_SUBSTRINGS)
+
+
+def modelled_opcodes() -> frozenset[str]:
+    """Opcodes this harness names EXACTLY in its dispatch.
+
+    Derived from the source rather than restated, so it cannot drift from what the code handles. It is
+    deliberately NOT the whole answer: the plan loop also matches opcodes by SUBSTRING (see
+    :data:`_OPCODE_SUBSTRINGS`), so callers asking "is this handled?" must use :func:`models_opcode`."""
+    import pathlib
+    src = pathlib.Path(__file__).read_text(encoding="utf-8")
+    out = set()
+    for line in src.splitlines():
+        t = line.strip()
+        for lead in ('if op == "', 'elif op == "'):
+            if t.startswith(lead):
+                out.add(t[len(lead):].split('"', 1)[0])
+        if t.startswith('if op in ('):
+            for part in t[len('if op in ('):].split(")", 1)[0].split(","):
+                part = part.strip().strip('"').strip("'")
+                if part:
+                    out.add(part)
+    return frozenset(out)
+
+
+def why_no_operands(cb: dict) -> str:
+    """A TRUE explanation of why :func:`external_main_from_cb` returned None.
+
+    The caller used to report every failure as "no canonical_inputs", which is usually false: the runner
+    attaches those from the golden, and the real cause is almost always an opcode this harness does not
+    model. Naming the wrong cause sent the agent to fix a command buffer that was already correct --
+    measured at 13 of 32 failures on one run, every one of them reported against the wrong thing."""
+    ops = [str(c.get("opcode") or c.get("op") or "?") for c in (cb.get("commands") or [])]
+    have = bool(cb.get("canonical_inputs"))
+    unmodelled = [o for o in ops if not models_opcode(o)]
+    if not have and not ops:
+        return "the command buffer carries no commands and no canonical operands"
+    if unmodelled:
+        return (f"this reference harness does not model opcode(s) {sorted(set(unmodelled))} "
+                f"(it names {sorted(modelled_opcodes())} and matches anything containing "
+                f"{list(_OPCODE_SUBSTRINGS)}); the command buffer itself carries "
+                f"{'canonical operands' if have else 'NO canonical operands'}")
+    if not have:
+        return "the runner attached no canonical operands for this capsule's golden"
+    # An operand slot holds a TENSOR NAME that must resolve against the cb's declared tensors. A backend
+    # still discovering the format often puts something else there -- a shape, a type, a dimension list --
+    # and every one of those reads downstream as "the shapes could not be reduced", which points at the
+    # arithmetic when the actual problem is that the name resolves to nothing. Say which slot and which
+    # value, because that is the fixable thing.
+    declared = set(cb.get("tensors") or {})
+    referenced: list[tuple[str, str]] = []
+    for c in (cb.get("commands") or []):
+        for slot, val in (c.get("operands") or {}).items():
+            if isinstance(val, str) and val:
+                referenced.append((slot, val))
+    unresolved = [(slot, val) for slot, val in referenced if val not in declared]
+    if referenced and not declared:
+        shown = sorted({f"{slot}={val!r}" for slot, val in referenced})[:6]
+        return (f"the command buffer declares NO tensors, so no operand name resolves to a buffer. Its "
+                f"commands reference {shown}{' ...' if len(referenced) > 6 else ''}. Each operand slot "
+                f"holds the NAME of a tensor declared in the cb's `tensors` map (e.g. \"Y0\"), not a "
+                f"shape, a type, or a dimension list")
+    if unresolved:
+        shown = sorted({f"{slot}={val!r}" for slot, val in unresolved})[:6]
+        return (f"operand name(s) {shown}{' ...' if len(unresolved) > 6 else ''} do not resolve to any "
+                f"tensor the command buffer declares (it declares {sorted(declared)[:8]}). An operand slot "
+                f"holds a declared tensor NAME, not a shape or a type")
+    return (f"operand shapes could not be reduced to the 1-D/2-D form this reference harness builds "
+            f"(opcodes {sorted(set(ops))} were all modelled)")
 
 def external_main_from_cb(cb: dict, *, kernel_symbol: str, model) -> str | None:
     """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the

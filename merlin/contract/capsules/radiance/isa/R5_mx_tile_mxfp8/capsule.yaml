@@ -18,6 +18,22 @@ inputs:
   - 16
   - 32
   dtype: mxfp8
+- name: A0_scale
+  role: scale
+  scale_of: A0
+  block: 32
+  shape:
+  - 1
+  - 16
+  dtype: e8m0
+- name: W_scale
+  role: scale
+  scale_of: W
+  block: 32
+  shape:
+  - 1
+  - 16
+  dtype: e8m0
 operation:
   op: matmul
   attributes:

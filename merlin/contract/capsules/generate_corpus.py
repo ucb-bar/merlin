@@ -401,6 +401,15 @@ def _mx_golden(entry, binding):
         lhs: {"shape": [M, K], "decoded": A.reshape(-1).tolist()},
         weight: {"shape": [K, N], "decoded": W.reshape(-1).tolist()},
         "SA_e8m0_codes": SA.tolist(), "SB_e8m0_codes": SB.tolist(),
+        # The SAME scales again, keyed by the operand names the capsule DECLARES, as ordinary per-tensor
+        # specs. The two lists above are non-tensor provenance that `canonical_input_raws` skips by
+        # design, so before this the scales reached the reference kernel (which bakes them) and no one
+        # else -- a submitted backend was handed block-scaled element bytes and no scales, which is half
+        # a number. Recorded additively: the oracle keeps reading the lists above.
+        f"{lhs}_scale": {"shape": [GK, M], "decoded": SA.reshape(-1).tolist(),
+                         "note": "E8M0 exponent codes, one per block of K elements per lhs row"},
+        f"{weight}_scale": {"shape": [GK, N], "decoded": SB.reshape(-1).tolist(),
+                            "note": "E8M0 exponent codes, one per block of K elements per weight column"},
         "scale_example": {"SA[0][0]": int(SA[0, 0]), "as_scale": e8m0_decode(int(SA[0, 0]))},
         # RAW device operand bytes exactly as mx_ref consumed them (fp8: one byte/elt; fp4/fp6: packed) —
         # the ``decoded`` floats above lose precision through YAML, so a bit-exact grade re-runs the MX
@@ -615,6 +624,17 @@ def _mx_attention_golden(entry, binding):
         "SA_q_e8m0_codes": SA_q.tolist(), "SB_k_e8m0_codes": SB_k.tolist(),
         "SB_v_e8m0_codes": SB_v.tolist(),
         "scale_example": {"SA_q[0][0]": int(SA_q[0, 0]), "as_scale": e8m0_decode(int(SA_q[0, 0]))},
+        # The four scale streams under the operand names the capsule declares, so a submitted backend is
+        # handed them alongside the elements. P_scale is the exponent the softmax intermediate is
+        # requantized against: chosen HERE when the golden was built, so the kernel cannot derive it.
+        f"{q}_scale": {"shape": [H // mx.GROUP, M], "decoded": SA_q.reshape(-1).tolist(),
+                       "note": "E8M0 codes, one per block of H per query row"},
+        f"{k}_scale": {"shape": [H // mx.GROUP, Skv], "decoded": SB_k.reshape(-1).tolist(),
+                       "note": "E8M0 codes, one per block of H per key row"},
+        f"{v}_scale": {"shape": [Skv // mx.GROUP, Dv], "decoded": SB_v.reshape(-1).tolist(),
+                       "note": "E8M0 codes, one per block of Skv per value column"},
+        "P_scale": {"shape": [Skv // mx.GROUP, M], "decoded": SA_p.reshape(-1).tolist(),
+                    "note": "E8M0 codes the softmax intermediate P is requantized against"},
         # RAW device operand bytes exactly as mx_ref consumed them (per stage, format-packed) + LUTs, so a
         # bit-exact grade re-runs the two MX GEMMs + the pinned softmax/requant over THESE codes.
         "attention_codes": {
@@ -688,6 +708,14 @@ def _mx_gemv_batched_golden(entry, binding):
                           "stacked_out_shape": [B * M, N], "batches": batches},
         "scale_example": {"SA0[0][0]": batches[0]["SA"][0],
                           "as_scale": e8m0_decode(int(batches[0]["SA"][0]))},
+        # The per-batch scale streams under the operand names the capsule declares, so a submitted
+        # backend is handed them the same way it is handed the elements (see the single-GEMM path).
+        f"{lhs}_scale": {"shape": [B, H // mx.GROUP, M],
+                         "decoded": [c for bt in batches for c in bt["SA"]],
+                         "note": "E8M0 exponent codes per batch, one per block of H per lhs row"},
+        f"{weight}_scale": {"shape": [B, H // mx.GROUP, N],
+                            "decoded": [c for bt in batches for c in bt["SB"]],
+                            "note": "E8M0 exponent codes per batch, one per block of H per weight column"},
     }
     return {out: rows_out}, prov
 
@@ -822,7 +850,7 @@ def _entry_regime(entry, binding):
     Routed purely by the entry's operand dtype token — no target name."""
     from merlin.runtime.fp8_formats import canonical_float
     tok = entry.get("operand_dtype") or binding.operand_dtype
-    if tok in ("mxfp4", "mxfp6", "mxfp8"):
+    if CS.is_block_scaled(tok):
         regime, acc = "mx", "bf16"
     else:
         try:

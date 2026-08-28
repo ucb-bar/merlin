@@ -32,10 +32,17 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
                         epilogue: list[str], output_dtype: str,
                         acc_scale: float | None = None, comment: str = "",
                         target: str = "gemmini", operand_dtype: str = "i8",
-                        acc_dtype: str = "i32") -> str:
+                        acc_dtype: str = "i32", scale_block: int | None = None,
+                        scale_dtype: str = "i8") -> str:
     """Emit a single-matmul merlin_iface module (weight-stationary). ``target``/``operand_dtype``/
     ``acc_dtype`` default to the gemmini integer path (so existing callers are byte-identical); pass the
-    target's derived MLIR dtype spellings (e.g. ``f8E4M3FN``/``bf16`` for a float MXU) to emit its ISA."""
+    target's derived MLIR dtype spellings (e.g. ``f8E4M3FN``/``bf16`` for a float MXU) to emit its ISA.
+
+    ``scale_block`` declares a BLOCK-SCALED operand format: one shared exponent per run of that many K
+    elements. A microscaling operand is (elements, per-block scales) -- declaring only the elements, as
+    this interface used to, hands a backend half a number and asks it for the product, which no compiler
+    can supply. When set, the two scale streams are declared as first-class input tensors alongside the
+    operands they scale. Omitted (None) leaves the module byte-identical for an unscaled target."""
     epi = ", ".join(f'"{e}"' for e in epilogue)
     commit_attrs = f'name = "{out}", epilogue = [{epi}], output_dtype = "{output_dtype}"'
     if acc_scale is not None:
@@ -49,6 +56,19 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
         f'tensor<{K}x{N}x{operand_dtype}>',
         f'  %{lhs} = merlin_iface.tensor {{name = "{lhs}", role = "input"}} : '
         f'tensor<{M}x{K}x{operand_dtype}>',
+    ]
+    if scale_block and K % scale_block == 0:
+        # A block-scaled datapath consumes one E8M0 exponent per `scale_block` K elements, per row of the
+        # lhs and per column of the weight. They are declared operands, not hidden state: the scales are
+        # corpus data a backend cannot reconstruct from the element bytes.
+        g = K // scale_block
+        lines += [
+            f'  %{lhs}_scale = merlin_iface.tensor {{name = "{lhs}_scale", role = "scale", '
+            f'scale_of = "{lhs}", block = {scale_block} : i64}} : tensor<{g}x{M}x{scale_dtype}>',
+            f'  %{weight}_scale = merlin_iface.tensor {{name = "{weight}_scale", role = "scale", '
+            f'scale_of = "{weight}", block = {scale_block} : i64}} : tensor<{g}x{N}x{scale_dtype}>',
+        ]
+    lines += [
         f'  %{weight}_res = merlin_iface.resident_pack %{weight} {{layout = "packed_rhs"}} '
         f': (tensor<{K}x{N}x{operand_dtype}>) -> !merlin_iface.resident',
         f'  %acc0 = merlin_iface.matmul %{lhs}, %{weight}_res '

@@ -792,6 +792,36 @@ def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, lis
     return family, classes
 
 
+def _checked_lanes(entry: dict, binding) -> list[str]:
+    """The lanes an interop capsule requires, REFUSED at generation time if this target cannot populate one.
+
+    A required lane is a bar the submission must clear. A bar the target's declared compute units make
+    unreachable is not a hard capability test, it is a wall: no compiler can put work on a lane the router
+    has nothing to route there. Measured on the corpus this check was written for -- a capsule required
+    ``in_contract_vector_scalar`` on a target whose every declared unit is a mesh kind, so the lane was
+    empty by construction and the capsule was unpassable however good the backend was.
+
+    Raising here (rather than shipping the capsule and failing it forever) keeps the failure where someone
+    can fix it: at authoring time, naming the lane and what the target actually offers."""
+    want = [str(x) for x in (entry.get("lanes") or {}).get("require") or []]
+    target = getattr(binding, "target", None)
+    if not target:
+        return want                                   # no target to judge against: leave the declaration
+    try:
+        from merlin.targetgen.routing import reachable_lanes
+        have = reachable_lanes(target)
+    except Exception:                                 # noqa: BLE001 - never block generation on this
+        return want
+    missing = [ln for ln in want if ln not in have]
+    if missing:
+        raise ValueError(
+            f"capsule {entry.get('name')!r} requires lane(s) {missing} that target {target!r} cannot "
+            f"populate (its declared compute units make {sorted(have)} reachable). A required lane the "
+            f"router can put nothing on is unpassable by construction -- declare a lane this target owns, "
+            f"or give the target a compute unit that serves the one you want")
+    return want
+
+
 def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSource | None" = None):
     """Materialize a whole-model capsule: the model is lowered end-to-end via model2MLIR (the linalg IS
     the interface), weights are externalized alongside, and the golden is the host torch-eager output.
@@ -855,6 +885,13 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         **({"inapplicable_oracle_tiers": dict(binding.inapplicable_tiers)}
            if getattr(binding, "inapplicable_tiers", None) else {}),
         "gate": gate,
+        # INTEROP: the lanes this capsule requires to have carried work (routing-plan keys, e.g.
+        # `on_mesh` + `scalar_rvv_lane`). Present only when the profile declares it. A capsule that names
+        # lanes is asserting COMPOSITION -- part of the model on the accelerator, part on the lane the
+        # target also owns -- so host-lane work is the behaviour under test rather than a fallback
+        # failure, and must_accelerate is withheld below for the same reason.
+        **({"lanes": {"require": _checked_lanes(entry, binding)}}
+           if (entry.get("lanes") or {}).get("require") else {}),
         "pytorch_ref": {"op": "model", "dtype": idt, "loader": "capsule.pytorch.py"},
         "linalg_mlir": "capsule.interface.mlir",
         # A model capsule carried no semantic block, so the eligibility oracle could not resolve it
@@ -865,7 +902,11 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         "semantic": {
             **({"semantic_family": _model_family} if _model_family else {}),
             "generalization_axis": "model",
-            "must_accelerate": bool(_model_family and _model_classes),
+            # An INTEROP capsule requires lane composition, so a region reaching the scalar/vector lane is
+            # the behaviour under test -- asserting must_accelerate there would fail a conformant
+            # submission for doing exactly what the capsule asks.
+            "must_accelerate": bool(_model_family and _model_classes
+                                    and not ((entry.get("lanes") or {}).get("require"))),
             "eligible": "auto",
             **({} if (_model_family and _model_classes) else {
                 "not_asserted_reason":

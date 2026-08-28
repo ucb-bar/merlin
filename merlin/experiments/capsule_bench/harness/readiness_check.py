@@ -532,13 +532,31 @@ def test_oracles_endtoend():
             # would be satisfied by the arc default it must NOT be using. That check is kept, but routed
             # from the contract's endpoint kind rather than assumed for every non-chipyard target.
             endpoint_kind, _ = CR._endpoint_of(TARGET)
-            if endpoint_kind == "external_backend":
+            # PRECEDENCE, mirroring oracle_adapters: a declared EXCLUSIVE bespoke sim owns the ladder and
+            # REPLACES the program-oracle default. A SIMT core's endpoint is also `external_backend` (it
+            # emits a kernel, not `.insn`), so asserting the program oracle owns its tiers fails a target
+            # that is correctly graded by its own sim -- and this gate is what says GO/NO-GO before money
+            # is spent, so a ready target read as NO-GO. Resolve the engine first, exactly as the runner
+            # does, and only assert program-oracle ownership when no exclusive sim claims the ladder.
+            _eng = CR._SIM_ORACLES.get(sim_via if sim_via else CR._bespoke_sim_via(TARGET))
+            _exclusive = bool(getattr(_eng, "exclusive", False))
+            if _exclusive:
+                _ok(f"the declared exclusive sim ({sim_via or CR._bespoke_sim_via(TARGET)}) owns the "
+                    f"graded tiers", bool(mods), str(mods))
+            elif endpoint_kind == "external_backend":
                 _ok("the program oracle owns the graded tiers (external_backend endpoint)",
                     bool(mods) and all("program_oracle" in m for m in mods.values()), str(mods))
-            if sim_via:
+            if sim_via and not _exclusive:
                 # `_sim_engine_adapters` returns {} for an unknown engine, which is indistinguishable in
                 # the result from a target that declared nothing -- so compare against the arc-only set.
-                bespoke = {t for t in ad if t not in CR.oracle_adapters(TARGET, "")}
+                # `oracle_adapters(TARGET, "")` can RAISE for a target with no program-oracle config (an
+                # exclusive-sim target has none by design); that is not a readiness failure, so treat an
+                # unavailable baseline as "no baseline" rather than letting it abort the whole check.
+                try:
+                    _baseline = set(CR.oracle_adapters(TARGET, ""))
+                except Exception:  # noqa: BLE001 — no arc/program default here; every adapter is bespoke
+                    _baseline = set()
+                bespoke = {t for t in ad if t not in _baseline}
                 _ok(f"the declared sim ({sim_via}) contributes a real adapter", bool(bespoke),
                     str(sorted(bespoke)) if bespoke
                     else f"no adapter registered for sim_via={sim_via!r}; grading falls back to the arc "

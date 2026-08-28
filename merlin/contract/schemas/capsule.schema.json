@@ -23,14 +23,17 @@
         "required": ["name", "role", "shape", "dtype"],
         "properties": {
           "name": {"type": "string"},
-          "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]},
+          "role": {"type": "string", "enum": ["input", "weight", "bias", "output", "scale"],
+                   "description": "Operand role. 'scale' is a block-scale stream: a microscaling operand is a PAIR -- quantized elements plus one shared exponent per fixed-length block of them -- so a block-scaled capsule declares its scales as operands a backend can be handed, rather than leaving them reachable only by the reference kernel."},
           "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
           "dtype": {
             "type": "string",
             "minLength": 1,
             "description": "Element type of this tensor. Not a fixed enum: the numeric-format vocabulary is data, declared in merlin/schemas/quant_formats.registry.yaml (where a new format -- MX, NVFP4, a GGUF k-quant -- is an entry, not a code change), so a list copied here goes stale the moment a target brings a format the list predates. Validity is enforced by merlin.targetgen.contract.schemas.validate_capsule against that registry plus plain machine accumulator widths, and an unknown token is still a hard ContractViolation."
           },
-          "layout": {"type": "string"}
+          "layout": {"type": "string"},
+          "scale_of": {"type": "string", "description": "For a 'scale' operand: the operand whose blocks it scales. Names the pairing explicitly so a backend need not infer it from operand order."},
+          "block": {"type": "integer", "minimum": 1, "description": "For a 'scale' operand: how many elements of the scaled operand share one exponent, along the contraction axis. Derived from the target's declared scale group, never assumed -- a different microscaling profile uses a different run length."}
         },
         "additionalProperties": false
       }
@@ -111,6 +114,13 @@
       "type": "object",
       "description": "Scheduling gate: a whole-model capsule is only run once the op-level suite has proven itself. `after_op_pass_fraction` is the minimum fraction of graded op capsules that must PASS before this capsule is scheduled.",
       "properties": {"after_op_pass_fraction": {"type": "number", "minimum": 0, "maximum": 1}},
+      "additionalProperties": false
+    },
+    "lanes": {
+      "type": "object",
+      "description": "INTEROP contract. `require` names the execution lanes that must each have carried work, using the routing plan's own keys (e.g. `on_mesh`, `in_contract_vector_scalar`, `scalar_rvv_lane`). A capsule that names lanes asserts COMPOSITION across backends -- part of the model on the accelerator, part on the scalar/vector lane the target also owns -- so work reaching the other lane is the behaviour under test, not a fallback failure. `semantic.must_accelerate` is withheld for such a capsule for the same reason. A named lane the routing plan does not report fails the capsule with that lane named.",
+      "properties": {"require": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
+      "required": ["require"],
       "additionalProperties": false
     }
   },

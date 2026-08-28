@@ -124,6 +124,7 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
           console: str = "htif", sdk_dir: str | Path | None = None,
           sdk_chip: str | None = None, chip_freq_hz: int | None = None,
           matrix: "Any | None" = None, matrix_scalar_tile: bool = False,
+          device: "Any | None" = None,
           stack_bytes: int = 0x40000, op_profile: bool = False,
           prof_heartbeat_cycles: int = 2_000_000_000,
           code_reserve: int | None = None) -> dict:
@@ -197,7 +198,7 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
             from . import zephyr_model as _zm
             prepared_path, features = _zm.prepare_for_lowering(
                 prepared_path, work, int8_compute=int8_compute, features=features,
-                matrix=matrix)
+                matrix=matrix, device=device)
             vectorize = True
         if op_profile:
             # Instrumented AFTER preparation, so the ids name the ops that actually run -- instrumenting
@@ -314,6 +315,32 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     #     that must be defined, and a set reconstructed here could drift from them into a link error.
     #     Compiled with CLANG, like the model object: the `.insn` directives and the vector intrinsics
     #     want the same toolchain that lowered the model, and only the -march has to agree with GCC's.
+    # 4a-bis. the device objects, if any contraction was offloaded. Driven by the SIDECAR the rewrite
+    #         wrote rather than by anything passed in, for the same reason the matrix shim is: the
+    #         symbols the module actually calls are the ones that must be defined, and a set
+    #         reconstructed here could drift from them into a link error.
+    from ...llvmlower.device_offload import load_sidecar as _load_device_sidecar
+    _dev_side = _load_device_sidecar(work)
+    _dev_sigs = {k: tuple(v) for k, v in (_dev_side.get("signatures") or {}).items()}
+    if _dev_sigs:
+        if device is None:
+            raise RuntimeError(
+                f"{len(_dev_sigs)} device signature(s) were offloaded but no `device=` routing is "
+                "available to build them against; the image would not link")
+        from ...llvmlower.device_build import build_device_objects
+        _dev_dts = {r["symbol"]: tuple(r["dtypes"]) for r in (_dev_side.get("routed") or [])}
+        _dev_build = build_device_objects(
+            device.device, _dev_sigs, _dev_dts, package_dir=device.package_dir,
+            workdir=work / "device", operand_dtype=device.operand_dtype,
+            accum_dtype=device.accum_dtype, codegen_target="riscv")
+        if not _dev_build.ok:
+            raise RuntimeError(
+                f"device offload produced no linkable objects for {device.device!r}: "
+                f"{_dev_build.skipped}")
+        objs.extend(_dev_build.objects)
+        print(f"[device] linked {len(_dev_build.kernels)} kernel(s) + shim for {device.device}"
+              + (f"; declined: {[w for _s, w in _dev_build.skipped]}" if _dev_build.skipped else ""))
+
     matrix_build = None
     from ...llvmlower.passes_opu import load_sidecar as _load_matrix_sidecar
     matrix_sigs = _load_matrix_sidecar(work)

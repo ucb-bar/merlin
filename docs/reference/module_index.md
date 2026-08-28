@@ -44,6 +44,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.runtime.backends.xnnpack_board` | BOARD (RVV) XNNPACK kernel backend: route the f32 ``linalg.matmul`` dispatches of a |
 | `merlin.runtime.backends.xnnpack_host` | HOST XNNPACK kernel backend for the dispatch runtime (default-off, additive). |
 | `merlin.rvvgen` | Compatibility shim: ``merlin.rvvgen`` is now :mod:`merlin.mining`. |
+| `merlin.system` | Host+device system model: what we compile for, and how the pieces are reached. |
 | `merlin.targetgen` | TargetGen pipeline: ingest -> extract -> plan -> generate -> validate. |
 | `merlin.targetgen.agent` | Agentic target-generation slots (Claude Code CLI dispatch + gated kernel synthesis). |
 | `merlin.targetgen.contract` | Experiment-ABI contract layer. |

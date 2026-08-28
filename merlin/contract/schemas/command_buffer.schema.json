@@ -39,7 +39,7 @@
           "dtype": {
             "type": "string",
             "minLength": 1,
-            "description": "Tensor dtype \u2014 open vocabulary validated by the quant_formats registry (formerly a narrower enum than capsule.schema, which made a microscaling target self-reject its own operands); not a hardcoded list."
+            "description": "Tensor dtype — open vocabulary validated by the quant_formats registry (formerly a narrower enum than capsule.schema, which made a microscaling target self-reject its own operands); not a hardcoded list."
           },
           "role": {
             "type": "string",
@@ -47,8 +47,10 @@
               "input",
               "weight",
               "bias",
-              "output"
-            ]
+              "output",
+              "scale"
+            ],
+            "description": "Tensor role. 'scale' is a block-scale stream: a microscaling operand is a PAIR (quantized elements plus one shared exponent per fixed block of them), so the scales are operands in their own right, not hidden state. Omitting it here made a block-scaled target's own capsules fail the protocol gate before grading."
           },
           "base": {
             "type": "integer",
@@ -127,7 +129,7 @@
               "output_dtype": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Output dtype \u2014 open vocabulary validated by the quant_formats registry (same as the tensor dtype above)."
+                "description": "Output dtype — open vocabulary validated by the quant_formats registry (same as the tensor dtype above)."
               },
               "acc_scale": {
                 "type": "number"
