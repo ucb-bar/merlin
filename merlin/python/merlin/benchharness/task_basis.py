@@ -40,6 +40,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping, Sequence
 
 from merlin.targetgen import eligibility as EL
+from merlin.targetgen import semantic_families as sf
 
 #: Cost fraction the cover must reach before it stops. The plan's figure; a caller may raise it.
 DEFAULT_COVER_TARGET = 0.95
@@ -120,11 +121,27 @@ class TaskBasis:
         Path(path).write_text(json.dumps(self.certificate, indent=2, sort_keys=True))
 
 
+def _semantic_family(row: Any) -> str:
+    """The row's SEMANTIC family, resolving an op-class name when that is what it carries.
+
+    ``CensusRow.family`` is documented as the semantic family, but it falls back to ``prov.op`` when
+    a capture carries no ``prov.family`` -- and then it holds an op class. Measured on the seed
+    model, every row said "matmul"/"batch_matmul" where the capability map is keyed "contraction",
+    so every group came back ineligible and the basis was empty. An empty basis is not obviously
+    wrong from the outside; it reads as "the target supports nothing", which is the same shape a
+    real answer would have. Resolved through the op registry instead of trusted.
+    """
+    fam = row.family or ""
+    if fam and sf.is_family(fam):
+        return fam
+    return sf.from_op(fam or row.op_class or "") or fam
+
+
 def _row_signature(row: Any, *, boundaries: Sequence[int]) -> Signature:
     extents = tuple(row.parallel) + tuple(row.reduction)
     return Signature(
         op_class=row.op_class or "",
-        family=row.family or "",
+        family=_semantic_family(row),
         role=row.role or "",
         dtypes=tuple(row.dtypes or ()),
         rank=len(extents),
@@ -140,7 +157,7 @@ def _descriptor(row: Any) -> EL.RegionDescriptor:
     return EL.RegionDescriptor(
         source="census",
         op=row.op_class or None,
-        family=row.family or None,
+        family=_semantic_family(row) or None,
         in_dtype=dt[0] if dt else None,
         weight_dtype=dt[1] if len(dt) > 1 else None,
         m=par[0] if par else None,
@@ -177,12 +194,20 @@ def _group_cost(census: Any, rows: Sequence[Any]) -> tuple[float, str, bool]:
 def derive_basis(census: Any, cap_map: Mapping[str, Any], *,
                  cover_target: float = DEFAULT_COVER_TARGET,
                  regime_boundaries: Sequence[int] = (),
+                 census_enumerates: Sequence[str] = (),
                  family_floor: bool = True) -> TaskBasis:
     """Group, weigh, filter and cover -- deterministically.
 
     ``cap_map`` is the target's capability map (``eligibility.capability_map_for_target``). It decides
     only what is ELIGIBLE; it never decides what is measured, so a target cannot shrink its own
     denominator by declaring less.
+
+    ``census_enumerates`` names the families the census can SEE. It matters because a census with a
+    narrow scope makes a model look narrow: a contraction census over the seed model reports seven
+    declared families as unevidenced, which reads as "the model never normalizes" when the model
+    plainly does -- the census simply does not enumerate normalization. Supplying the scope splits
+    that list into families the model really lacks and families nothing looked for. Left empty, the
+    distinction cannot be drawn and the certificate says so rather than implying the stronger claim.
     """
     if not 0 < cover_target <= 1:
         raise ValueError(f"cover_target must be in (0, 1]; got {cover_target}")
@@ -244,7 +269,12 @@ def derive_basis(census: Any, cap_map: Mapping[str, Any], *,
 
     evidenced = {g.signature.family for g in groups if g.signature.family}
     declared = {f for f in cap_map}
-    declared_not_evidenced = sorted(declared - evidenced)
+    scope = {f for f in census_enumerates}
+    missing = declared - evidenced
+    # A family the census cannot see is UNSEARCHED, not absent. Conflating the two would let a
+    # narrow census be reported as a narrow model.
+    outside_scope = sorted(missing - scope) if scope else []
+    not_evidenced = sorted(missing & scope) if scope else sorted(missing)
 
     chosen_sorted = tuple(sorted(chosen, key=lambda g: (-g.cost, g.signature.key())))
     cert = {
@@ -264,7 +294,13 @@ def derive_basis(census: Any, cap_map: Mapping[str, Any], *,
         "groups_chosen": len(chosen_sorted),
         "families_covered": sorted({g.signature.family for g in chosen_sorted}),
         "families_evidenced": sorted(evidenced),
-        "families_declared_not_evidenced": declared_not_evidenced,
+        # Declared by the target, and the census looked for them and did not find them.
+        "families_declared_not_evidenced": not_evidenced,
+        # Declared by the target, but this census never enumerates them -- says nothing about
+        # whether the model uses them.
+        "families_outside_census_scope": outside_scope,
+        "census_enumerates": sorted(scope),
+        "census_scope_known": bool(scope),
         "family_floor_added": floor_added,
         "excluded_undetermined": [
             {"signature": g.signature.key(), "cost": g.cost, "reason": g.reason}

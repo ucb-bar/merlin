@@ -267,3 +267,57 @@ def test_groups_carry_their_shapes_so_a_config_ladder_can_be_built(monkeypatch):
             _Row(index=1, parallel=(72, 72), reduction=(64,), ticks=5, key="b")]
     b = TB.derive_basis(_Census(rows, model_ticks=10), _Cap())
     assert b.entries[0].shapes == ((64, 64, 64), (72, 72, 64))
+
+
+# --- family resolution ----------------------------------------------------------------------------
+
+def test_an_op_class_in_the_family_field_is_resolved_to_a_semantic_family():
+    """Measured on the seed model: every row said 'matmul' where capabilities say 'contraction'.
+
+    Unresolved, every group is ineligible and the basis comes back EMPTY -- which reads from the
+    outside like "the target supports nothing", the same shape a real answer would have.
+    """
+    assert TB._semantic_family(_Row(family="matmul", op_class="matmul")) == "contraction"
+    assert TB._semantic_family(_Row(family="batch_matmul", op_class="batch_matmul")) == "contraction"
+
+
+def test_a_real_semantic_family_is_left_alone():
+    assert TB._semantic_family(_Row(family="normalization")) == "normalization"
+
+
+def test_the_family_falls_back_to_the_op_class_when_absent():
+    assert TB._semantic_family(_Row(family="", op_class="matmul")) == "contraction"
+
+
+def test_resolution_reaches_the_eligibility_question_and_the_signature():
+    rows = [_Row(index=0, family="matmul", op_class="matmul", ticks=10, key="a")]
+    b = TB.derive_basis(_Census(rows, model_ticks=10), _Cap(("contraction",)))
+    assert b.certificate["families_evidenced"] == ["contraction"]
+    assert len(b.entries) == 1, "the group must be eligible once its family resolves"
+
+
+# --- census scope ---------------------------------------------------------------------------------
+
+def test_a_family_the_census_cannot_see_is_unsearched_not_absent(monkeypatch):
+    """A contraction census over the seed model lists normalization as unevidenced.
+
+    Reported flatly, that reads as "the model never normalizes" -- of a transformer that plainly
+    does. The census simply does not enumerate it, and the two must not share a field.
+    """
+    monkeypatch.setattr(TB.EL, "is_eligible", lambda *_a, **_k: TB.EL.EligibilityVerdict(
+        True, "contraction", "ok"))
+    b = TB.derive_basis(_Census([_Row(index=0, family="matmul", ticks=1, key="a")], model_ticks=1),
+                        _Cap(("contraction", "normalization", "softmax")),
+                        census_enumerates=("contraction",))
+    assert b.certificate["families_outside_census_scope"] == ["normalization", "softmax"]
+    assert b.certificate["families_declared_not_evidenced"] == []
+    assert b.certificate["census_scope_known"] is True
+
+
+def test_an_unknown_census_scope_makes_no_claim_about_absence(monkeypatch):
+    monkeypatch.setattr(TB.EL, "is_eligible", lambda *_a, **_k: TB.EL.EligibilityVerdict(
+        True, "contraction", "ok"))
+    b = TB.derive_basis(_Census([_Row(index=0, family="matmul", ticks=1, key="a")], model_ticks=1),
+                        _Cap(("contraction", "normalization")))
+    assert b.certificate["census_scope_known"] is False
+    assert b.certificate["families_outside_census_scope"] == []
