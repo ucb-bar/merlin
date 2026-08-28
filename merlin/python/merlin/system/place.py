@@ -117,6 +117,16 @@ def units_for(system) -> list[tuple[str, Any]]:
     return out
 
 
+def _candidate(unit, demand):
+    """The `routing.Candidate` view of a unit, so any cost model in the repo can score it."""
+    from merlin.targetgen import compute_units as _cu
+    from merlin.targetgen.routing import Candidate, _legal_on  # noqa: PLC2701
+
+    _legal, acc = _legal_on(unit, demand)
+    return Candidate(unit=unit.name, kind=unit.kind, acc=acc,
+                     exposure=getattr(unit, "exposure", None))
+
+
 def _lane_for(kind: str | None, on_host: bool) -> str:
     from merlin.targetgen.routing import _MESH_KINDS
 
@@ -160,8 +170,12 @@ def place(demands: Sequence[Any], system, *,
 
         chosen, why = pool[0], "first legal unit in declaration order"
         if cost is not None:
+            # Score against a routing.Candidate, not the ComputeUnit: that is the protocol every cost
+            # model in the repo already implements (it reads `candidate.unit` as a NAME), and passing
+            # the unit object instead made "a cost model is an argument" true only of cost models
+            # written for this function. MeasuredCost could not be passed at all.
             scored = [(c, i, p) for i, p in enumerate(pool)
-                      if (c := cost(d, p[1])) is not None]
+                      if (c := cost(d, _candidate(p[1], d))) is not None]
             if scored:
                 best = min(scored, key=lambda t: (t[0], t[1]))
                 chosen, why = best[2], f"lowest cost {best[0]:.4g} of {len(scored)} priced candidate(s)"
@@ -175,3 +189,64 @@ def place(demands: Sequence[Any], system, *,
                              why=why if not on_host else f"{why} (no device accepted it)"))
 
     return Placement(placed=tuple(placed))
+
+
+def measured_cost_for(system) -> "Callable[[Any, Any], float | None] | None":
+    """A cost model built from what the system's devices have actually MEASURED, or ``None``.
+
+    ``routing.MeasuredCost`` has existed unused since it was written, and the reason is not oversight:
+    it needs a per-unit throughput and a per-tile-pair overhead, and those are SOLVED from a unit's own
+    certification (``kernels.opu_cert.UnitRate``) rather than declared. A name in a registry cannot
+    carry them, which is why registering it as one was never going to work.
+
+    So this resolves them instead. A unit with no measurement contributes none, and a system where
+    nothing is measured yields ``None`` — at which point placement stays declaration-order, which is
+    what it does today. That is the honest behaviour: the alternative is a default rate, and a default
+    rate is a measurement nobody took, driving a decision somebody will quote.
+
+    What unlocks it is per-unit certification data, not code here.
+    """
+    from merlin.targetgen import compute_units as _cu, routing as _r, target_registry as _tr
+
+    rates: dict[str, float] = {}
+    edges: dict[str, int] = {}
+    overhead: dict[str, float] = {}
+    for dev in getattr(system, "devices", ()) or ():
+        try:
+            units = _cu.compute_units(_tr.load_contract(dev.name))
+        except Exception:            # noqa: BLE001
+            continue
+        for u in units:
+            rate = _declared_rate(u)
+            if rate:
+                rates[u.name] = rate
+            edge = _declared_tile_edge(dev.name)
+            if edge:
+                edges[u.name] = edge
+    if not rates:
+        return None                  # nothing measured: say so rather than price with a default
+    return _r.MeasuredCost(macs_per_cycle=rates, tile_edge=edges, tile_overhead_cycles=overhead)
+
+
+def _declared_rate(unit) -> float | None:
+    """A unit's measured MACs/cycle where its contract records one; never inferred from geometry.
+
+    Deliberately not ``rows * cols``: peak lane count is what a unit could do at full occupancy, and
+    costing with it credits every shape with work it will not do — which is precisely the error
+    ``MeasuredCost`` documents itself as avoiding.
+    """
+    raw = getattr(unit, "requant", None)          # opaque per-unit dict; never interpreted structurally
+    if isinstance(raw, dict):
+        got = raw.get("macs_per_cycle")
+        if isinstance(got, (int, float)) and got > 0:
+            return float(got)
+    return None
+
+
+def _declared_tile_edge(device: str) -> int | None:
+    """The device's tile edge from its own RTL facts, or None."""
+    try:
+        from merlin.llvmlower.device_shim import tile_edge_for
+        return tile_edge_for(device)
+    except Exception:            # noqa: BLE001
+        return None

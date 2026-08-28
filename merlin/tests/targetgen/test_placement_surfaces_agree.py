@@ -159,3 +159,47 @@ def test_an_explicit_datapath_overrides_the_literal():
     with IR_LOCK:
         assert len(routable_contractions(mq.parse(_CORPUS["f32_square"]),
                                          dtypes=("f32", "f32", "f32"))) == 1
+
+
+# --------------------------------------------------------------- what the surfaces share, precisely
+
+def test_placement_reproduces_the_routers_lane_assignment():
+    """`place` and `route_plan` share `_legal_on`, so they agree by construction rather than by
+    coincidence -- and representing the host did not move any work. A divergence here means one of
+    them grew a private rule."""
+    from merlin.system import system_for
+    from merlin.system.derive import host_from_board
+    from merlin.system.model import System
+    from merlin.system.place import place
+    from merlin.targetgen.routing import OpDemand, route_plan
+
+    demands = [OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="mm", m=16, n=16, k=32),
+               OpDemand(op="matmul", in_fmt="fp32", weight_fmt="fp32", site="mmf"),
+               OpDemand(op="softmax", in_fmt="fp32", weight_fmt=None, site="sm"),
+               OpDemand(op="matmul", in_fmt="mxfp4", weight_fmt="mxfp4", site="mx")]
+    for target in ("gemmini", "atlas"):
+        s = System(host=host_from_board("chipyard_kodiak"), devices=system_for(target).devices)
+        if not s.devices or not s.devices[0].kind:
+            continue
+        plan = route_plan(demands, target)
+        expect = {r.demand.site: lane
+                  for key, lane in (("mesh", "on_mesh"),
+                                    ("fallback", "in_contract_vector_scalar"),
+                                    ("scalar_rvv", "scalar_rvv_lane"))
+                  for r in plan[key]}
+        got = {p.demand.site: p.lane for p in place(demands, s).placed}
+        assert got == expect, f"{target}: placement diverged from the router: {got} != {expect}"
+
+
+def test_the_runtime_accepts_the_host_float_on_purpose_not_by_accident():
+    """The run-time surface accepts f32 as well as the device's own operand format, and that is a
+    REASONED difference rather than a disagreement: it quantizes at the boundary, so it can take an
+    f32 tensor the compiled path cannot. Collapsing it into the others would refuse work it correctly
+    runs today. Pinned so the reason survives, and so the dtype it adds stays DERIVED."""
+    import inspect
+
+    from merlin.runtime import dispatch_runtime as dr
+    src = inspect.getsource(dr.execute)
+    assert "mesh_datapath(mesh_target)" in src, "the accepted dtype must stay derived from the target"
+    assert '_accept = ("f32"' in src
+    assert "host lane materializes f32" in src, "the widening must keep saying why it is there"

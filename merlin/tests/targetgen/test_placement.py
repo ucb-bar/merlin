@@ -122,3 +122,67 @@ def test_a_system_with_no_devices_still_places_everything_on_the_host():
     p = place([_MM_I8, _SOFTMAX], s)
     assert all(not x.on_device for x in p.placed)
     assert p.emulated() == (), "the host natively carries these formats"
+
+
+# ------------------------------------------------------------------ cost needs measurements
+
+def test_an_unmeasured_system_yields_no_cost_model():
+    """`MeasuredCost` has existed unused since it was written, and not by oversight: it needs a
+    per-unit throughput solved from that unit's own certification. A registry name cannot carry one,
+    which is why registering it as a name was never going to work."""
+    from merlin.system.place import measured_cost_for
+    from merlin.system import system_for
+    for target in ("gemmini", "atlas", "definitely_not_a_target"):
+        assert measured_cost_for(system_for(target)) is None, (
+            f"{target} reported a cost model without any measurement behind it")
+
+
+def test_placement_stays_declaration_order_while_nothing_is_measured():
+    """The honest behaviour. The alternative is a default rate -- a measurement nobody took, driving
+    a decision somebody will quote."""
+    from merlin.system.place import measured_cost_for
+    s = _sys()
+    p = place([_MM_I8], s, cost=measured_cost_for(s))
+    assert "declaration order" in p.placed[0].why
+
+
+def test_a_shapeless_demand_cannot_be_priced_by_a_tiled_model():
+    """Not a defect: a tiled unit is charged for the tile it occupies, and that is unknowable without
+    the extents. Declining to price is not declining to run."""
+    from merlin.targetgen.routing import MeasuredCost
+    s = _sys()
+    names = [u.name for d, u in units_for(s) if d != HOST_DEVICE]
+    if not names:
+        pytest.skip("no device unit resolvable here")
+    cost = MeasuredCost(macs_per_cycle={names[0]: 256.0}, tile_edge={names[0]: 16},
+                        tile_overhead_cycles={})
+    p = place([_MM_I8], s, cost=cost)          # _MM_I8 carries no m/n/k
+    assert "could be priced" in p.placed[0].why and p.placed[0].on_device
+
+
+def test_a_measured_rate_is_used_when_one_exists():
+    """The seam works the moment a measurement does; only the measurement is missing."""
+    from merlin.targetgen.routing import MeasuredCost
+    s = _sys()
+    unit_names = [u.name for d, u in units_for(s) if d != HOST_DEVICE]
+    if not unit_names:
+        pytest.skip("no device unit resolvable here")
+    cost = MeasuredCost(macs_per_cycle={unit_names[0]: 256.0},
+                        tile_edge={unit_names[0]: 16}, tile_overhead_cycles={})
+    # A tiled cost model declines a demand with no extents, and rightly: a tiled unit is charged for
+    # the tile it occupies, which is unknowable without the shape.
+    shaped = OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="mm",
+                      m=64, n=64, k=64)
+    p = place([shaped], s, cost=cost)
+    assert "lowest cost" in p.placed[0].why and p.placed[0].on_device
+
+
+def test_a_rate_is_never_inferred_from_lane_count():
+    """Peak lanes is what a unit could do at full occupancy. Costing with it credits every shape with
+    work it will not do, which is the error MeasuredCost documents itself as avoiding."""
+    from merlin.system.place import _declared_rate
+    from merlin.targetgen.compute_units import ComputeUnit
+    assert _declared_rate(ComputeUnit(name="u", kind="systolic")) is None
+    assert _declared_rate(ComputeUnit(name="u", kind="systolic", requant={"ref": "x"})) is None
+    assert _declared_rate(ComputeUnit(name="u", kind="systolic",
+                                      requant={"macs_per_cycle": 256})) == 256.0
