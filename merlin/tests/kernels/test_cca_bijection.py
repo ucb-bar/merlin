@@ -194,3 +194,51 @@ def test_a_family_tagged_axis_is_not_inherited_without_a_route():
         assert cc.check_bijection(backend).orphan_routes == []
     finally:
         AC._ROUTES.pop(backend, None)
+
+
+class TestTheContractSeesEveryFacetTheCCAHas:
+    """A completeness check whose universe is hand-maintained can only confirm what someone remembered.
+
+    ``FACET_CLASSES`` was a literal dict. Adding ``CommunicationFacet`` to the CCA with seven
+    unclassified fields left this whole suite GREEN, because the contract could not see the facet at
+    all -- so "every field is classified" was true of a universe that excluded the new fields.
+    ``cca_compare._facet_names`` had already learned this and its docstring says so; the same fix
+    belongs on both sides of the contract.
+    """
+
+    def test_the_contracts_universe_equals_the_ccas_facets(self):
+        import dataclasses
+
+        from merlin.kernels import cca as ccamod
+        from merlin.kernels.cca_contract import FACET_CLASSES
+
+        facet_types = {n for n, o in vars(ccamod).items()
+                       if dataclasses.is_dataclass(o) and n.endswith("Facet")}
+        on_cca = {f.name for f in dataclasses.fields(ccamod.CCA)
+                  if any(t in str(f.type) for t in facet_types)}
+        assert set(FACET_CLASSES) == on_cca, (
+            f"the contract sees {sorted(set(FACET_CLASSES))} but the CCA has {sorted(on_cca)}; a "
+            "facet the contract cannot see has fields it cannot require to be classified")
+
+    def test_every_field_of_every_facet_has_a_row(self):
+        import dataclasses
+
+        from merlin.kernels.cca_contract import FACET_CLASSES, FIELD_REGISTRY
+
+        missing = [f"{fname}.{fld.name}"
+                   for fname, cls in FACET_CLASSES.items()
+                   for fld in dataclasses.fields(cls)
+                   if f"{fname}.{fld.name}" not in FIELD_REGISTRY]
+        assert not missing, f"unclassified facet field(s): {missing}"
+
+    def test_the_facet_that_exposed_this_is_visible_without_a_list_entry(self):
+        """THE REGRESSION CASE, concretely. ``communication`` was added to the CCA and to no list.
+
+        Under the old hand-written FACET_CLASSES it was invisible and its seven fields went
+        unclassified with the suite green. If someone reinstates a literal dict and forgets a facet,
+        this fails.
+        """
+        from merlin.kernels.cca_contract import FACET_CLASSES, FIELD_REGISTRY
+
+        assert "communication" in FACET_CLASSES
+        assert any(k.startswith("communication.") for k in FIELD_REGISTRY)

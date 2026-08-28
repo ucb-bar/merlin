@@ -34,17 +34,34 @@ from .cca import (ComputeFacet, CoverageFacet, DispatchFacet, LayoutFacet, Memor
                   EnvelopeFacet, SimtFacet, SpatialFacet, VectorFacet)
 
 # facet name (the axis prefix) -> the dataclass whose fields it exposes.
-FACET_CLASSES = {
-    "compute": ComputeFacet,
-    "vector": VectorFacet,
-    "memory": MemoryFacet,
-    "envelope": EnvelopeFacet,
-    "spatial": SpatialFacet,
-    "simt": SimtFacet,
-    "dispatch": DispatchFacet,
-    "layout": LayoutFacet,
-    "coverage": CoverageFacet,
-}
+def _facet_classes() -> dict:
+    """The facets a CCA actually has, DERIVED from the CCA rather than listed here.
+
+    This was a hand-written dict, which made the capture-completeness check above unable to detect
+    the thing it exists to detect: a facet missing from the list is not merely unclassified, it is
+    invisible, so adding ``CommunicationFacet`` with seven unclassified fields left the whole suite
+    green. A completeness check whose universe is hand-maintained can only ever confirm what someone
+    already remembered.
+
+    ``cca_compare._facet_names`` learned this first ("this list used to be a literal, which meant a
+    newly added facet was silently never compared"); the same fix belongs here.
+    """
+    import dataclasses as _dc
+
+    from merlin.kernels import cca as _cca
+
+    by_type = {n: o for n, o in vars(_cca).items() if _dc.is_dataclass(o) and n.endswith("Facet")}
+    out: dict = {}
+    for fld in _dc.fields(_cca.CCA):
+        for tname, cls in by_type.items():
+            if tname in str(fld.type):
+                out[fld.name] = cls
+                break
+    return out
+
+
+#: Facet name -> facet class, derived. Kept as a module-level mapping because callers index it.
+FACET_CLASSES = _facet_classes()
 
 IDENTITY = "IDENTITY"          # names the region, not a thing we change (the op key)
 LEVER = "LEVER"                # a compute property that MUST map to an exposed compiler modification
@@ -193,6 +210,34 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
         "dispatch.dma_overlap", LEVER, ("dispatch",),
         "bulk movement issued to overlap with compute -> derived for any endpoint binding a dma role; "
         "governed by the hw-sync region"),
+    # --- communication: what crosses a boundary (dispatch/program scope) ---
+    # ALL BACKEND_STUB. There is no lifter for this facet yet and therefore no route: a field that
+    # cannot be routed is a stub, never a quiet LEVER. They are declared now, rather than when the
+    # lifter lands, because the contract's job is to say what the vocabulary IS -- and because the
+    # check that should have caught seven undeclared fields could not see the facet at all until
+    # FACET_CLASSES stopped being a hand-written list.
+    "communication.host_device_bytes": FieldSpec(
+        "communication.host_device_bytes", BACKEND_STUB, ("communication",),
+        "bytes crossing host<->device per invocation; None is NOT zero -- an unmeasured transfer is "
+        "the one that surprises you"),
+    "communication.engine_engine_bytes": FieldSpec(
+        "communication.engine_engine_bytes", BACKEND_STUB, ("communication",),
+        "bytes moved between engines of one target -- invisible to any single-engine facet"),
+    "communication.mechanism": FieldSpec(
+        "communication.mechanism", BACKEND_STUB, ("communication",),
+        "how movement is performed (dma | simt | scalar_copy | mixed) -- a lever once a route exists"),
+    "communication.intermediate_materialized": FieldSpec(
+        "communication.intermediate_materialized", BACKEND_STUB, ("communication",),
+        "an intermediate written to memory only to be read straight back by the next stage"),
+    "communication.resident_across_calls": FieldSpec(
+        "communication.resident_across_calls", BACKEND_STUB, ("communication",),
+        "an operand kept resident across invocations instead of re-fetched"),
+    "communication.copy_compute_overlap": FieldSpec(
+        "communication.copy_compute_overlap", BACKEND_STUB, ("communication",),
+        "movement issued so it overlaps the compute it feeds rather than serializing with it"),
+    "communication.fences": FieldSpec(
+        "communication.fences", BACKEND_STUB, ("communication",),
+        "explicit ordering primitives on the boundary, counted"),
     # --- layout: how operands are laid out BEFORE the region runs ---
     # transpose_materialized is ALREADY routed in the action catalog with no facet behind it, so the
     # divergence that route exists to answer could never be raised: a route nothing can trigger.

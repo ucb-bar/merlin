@@ -68,6 +68,11 @@ AGNOSTIC_FACETS: frozenset[str] = frozenset({
     "coverage",   # whole-model claim; model-scoped rather than per-kernel
     "dispatch",   # HOW the endpoint is driven — every endpoint is driven by something
     "layout",     # how operands are laid out before the region runs
+    # What crosses a BOUNDARY. Agnostic because every target moves operands to and from whatever
+    # computes on them -- a systolic mesh, SIMT lanes and a vector unit all need feeding, and the
+    # measured cost of that movement (183 runtime weight transposes moving 2,493 MiB per inference
+    # on one model here) is a property of the program, not of which datapath is at the far end.
+    "communication",
 })
 
 

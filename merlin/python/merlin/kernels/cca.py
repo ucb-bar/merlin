@@ -234,6 +234,42 @@ class CoverageFacet:
     non_contraction_op_fraction: float | None = None
 
 
+#: WHAT A CCA DESCRIBES. Not decoration: the same axis name means a different question at each
+#: scope, so a cross-scope comparison silently compares two different things and reports the
+#: difference as a divergence. ``kernel`` is one region's inner loop; ``dispatch`` is one launch and
+#: its operand traffic; ``program`` is the whole model. ``coverage`` — "what fraction of the model is
+#: claimed" — is only meaningful at ``program``, which is why it was already documented as
+#: model-scoped before this axis existed to say so.
+SCOPES: tuple[str, ...] = ("kernel", "dispatch", "program")
+
+
+@dataclass
+class CommunicationFacet:
+    """What crosses a boundary, by which mechanism, and whether it overlaps the compute it feeds.
+
+    Engine-agnostic and mostly NOT visible in an inner loop: a kernel CCA can be identical to an
+    expert's while the model around it moves an order of magnitude more bytes. Measured on this
+    tree: 183 runtime weight transposes moving 2,493 MiB per inference on one model, and a
+    materialized transpose accounting for 38% of byte traffic on another — neither of which any
+    per-kernel facet can express.
+    """
+
+    #: bytes crossing host<->device, and engine<->engine, per invocation. None = not measured, which
+    #: is NOT zero: an unmeasured transfer is the one that surprises you.
+    host_device_bytes: int | None = None
+    engine_engine_bytes: int | None = None
+    #: how the movement is performed: "dma" | "simt" | "scalar_copy" | "mixed".
+    mechanism: str | None = None
+    #: an intermediate written to memory only to be read straight back by the next stage.
+    intermediate_materialized: bool | None = None
+    #: an operand that stays resident across invocations rather than being re-fetched.
+    resident_across_calls: bool | None = None
+    #: movement issued so it overlaps the compute it feeds, rather than serializing with it.
+    copy_compute_overlap: bool | None = None
+    #: explicit ordering primitives on the boundary (fences/events/barriers), counted.
+    fences: int | None = None
+
+
 @dataclass
 class CCA:
     op: str
@@ -251,10 +287,31 @@ class CCA:
     #: whole-model coverage. Present only on a MODEL-level CCA (lifted from IR + schedule); None on a
     #: per-kernel CCA, where "what fraction of the model is claimed" is not a meaningful question.
     coverage: CoverageFacet | None = None
+    #: What crosses a boundary. Engine-agnostic, and populated at ``dispatch``/``program`` scope --
+    #: the traffic between regions is invisible from inside one.
+    communication: CommunicationFacet | None = None
+    #: Which QUESTION this CCA answers; see :data:`SCOPES`. Defaults to ``kernel`` because every
+    #: lifter that predates this axis lifts one region's inner loop.
+    scope: str = "kernel"
     provenance: dict[str, Any] = field(default_factory=dict)   # level, source, confidence
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    def scope_problems(self) -> tuple[str, ...]:
+        """Ways this CCA's contents contradict the scope it claims. Empty when consistent.
+
+        Stated as a check rather than enforced in ``__post_init__`` because a lifter mid-construction
+        may legitimately be incomplete; the invariant matters where CCAs are COMPARED and recorded.
+        """
+        out: list[str] = []
+        if self.scope not in SCOPES:
+            out.append(f"scope {self.scope!r} is not one of {list(SCOPES)}")
+        if self.coverage is not None and self.scope != "program":
+            out.append(
+                f"coverage is populated at scope {self.scope!r}: 'what fraction of the model is "
+                f"claimed' is not a question a single region can answer")
+        return tuple(out)
 
 
 # ---- lifters ------------------------------------------------------------------------

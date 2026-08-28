@@ -41,14 +41,35 @@ def _facet_names() -> tuple[str, ...]:
     the lift would populate it, the contract would demand a route for it, and `compare` would still
     report no divergence, so the beam would never see it. Reflecting keeps a new facet wired by
     construction. (Found the hard way: `region` was invisible here even after being lifted.)
+
+    A facet is identified STRUCTURALLY -- a field whose declared type is one of the ``*Facet``
+    dataclasses -- rather than by subtracting a hardcoded list of non-facets. That subtraction had
+    the mirror image of the same bug: adding a plain scalar field to ``CCA`` (``scope``) put it in
+    this list, and ``compare`` then tried to read facet fields off a string. A list of what to
+    EXCLUDE must be updated by whoever adds a non-facet; deriving what to INCLUDE need not be.
     """
     from dataclasses import fields as _fields
-    skip = {"op", "backend", "provenance"}
-    return tuple(f.name for f in _fields(CCA) if f.name not in skip)
+    from dataclasses import is_dataclass
+
+    from merlin.kernels import cca as _cca
+
+    facet_types = {n for n, o in vars(_cca).items() if is_dataclass(o) and n.endswith("Facet")}
+    return tuple(f.name for f in _fields(CCA) if any(t in str(f.type) for t in facet_types))
 
 
 def compare(expert: CCA, ours: CCA, *, evidence: list[str] | None = None) -> list[Divergence]:
-    """expert-vs-ours CCA -> typed Divergences (the authoritative gap when both are asm-lifted)."""
+    """expert-vs-ours CCA -> typed Divergences (the authoritative gap when both are asm-lifted).
+
+    REFUSES a cross-scope comparison. The same axis name asks a different question at each scope --
+    ``dispatch.n_dispatches`` means "launches in this region" at kernel scope and "launches in the
+    model" at program scope -- so comparing across scopes yields divergences that are real numbers
+    answering different questions, which is worse than no comparison because they look routable.
+    """
+    es, os_ = getattr(expert, "scope", "kernel"), getattr(ours, "scope", "kernel")
+    if es != os_:
+        raise ValueError(
+            f"refusing to compare a {es!r}-scoped CCA against a {os_!r}-scoped one: the same axis "
+            f"means a different question at each scope, so the differences would not be divergences")
     ev = evidence or [expert.provenance.get("source", "expert")]
     backend = (expert.backend or ours.backend or ["?"])[0]
     out: list[Divergence] = []
