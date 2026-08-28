@@ -11,8 +11,15 @@ from merlin.kernels.compare import RvvFingerprint
 from merlin.kernels.types import NormalizedKernel
 
 _HAVE_TOOLCHAIN = B.asm_toolchain_available()
-_needs_tc = pytest.mark.skipif(not _HAVE_TOOLCHAIN,
-                               reason="riscv gcc/objdump unavailable (set MERLIN_CHIPYARD)")
+# The CORPUS is a second, independent precondition. Guarding only on the toolchain made an ABSENT
+# corpus report as "vec-dotprod should compile standalone with the riscv toolchain" -- a failure
+# blaming the compiler for a checkout that is not on disk. `saturn_benchmark_asm` returns None for
+# both "missing bench" and "did not compile", so the test cannot tell them apart; the guard has to.
+_HAVE_SATURN = (B.saturn_root() / "benchmarks").is_dir()
+_needs_tc = pytest.mark.skipif(
+    not (_HAVE_TOOLCHAIN and _HAVE_SATURN),
+    reason=("riscv gcc/objdump unavailable (set MERLIN_CHIPYARD)" if not _HAVE_TOOLCHAIN
+            else f"saturn-vectors corpus absent at {B.saturn_root()} (set MERLIN_SATURN_REPO)"))
 
 # A small, real objdump -d excerpt (column layout: addr<TAB>hex<TAB>mnemonic ...). This is
 # the contract build_kernel_asm emits and RvvFingerprint.from_objdump consumes — no toolchain.

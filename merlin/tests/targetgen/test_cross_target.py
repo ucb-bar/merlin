@@ -140,7 +140,12 @@ def test_radiance_uses_the_simt_cyclotron_oracle_not_arc_mxu():
     assert B.arc_available("radiance") is True
     prof = RB.target_profile("radiance")
     assert not prof.legal_opcodes and prof.dim is None    # SIMT: no RoCC systolic facts on its profile
-    assert not RB.derived_levers(prof)                    # nothing fabricated on the arc systolic leg
+    # Nothing fabricated on the arc systolic leg: an empty RTL profile yields no SPATIAL lever. It
+    # does yield the levers radiance's own declared endpoints imply (a loop descriptor, config reuse,
+    # a barrier placement) -- those are derived from the endpoint role table, not from an impersonated
+    # systolic geometry, which is exactly the distinction this test exists to hold.
+    assert not {"spatial.dataflow", "spatial.accumulator_resident",
+                "memory.capacity_fit"} & set(RB.derived_levers(prof))
 
     # But radiance has a real oracle: the committed cyclotron adapter (fail-closed via MuonUnavailable).
     from merlin.runtime.backends.base import get_backend

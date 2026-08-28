@@ -10,12 +10,26 @@ from merlin.targetgen.rtl import mlc_bridge as B
 _MLC_OK = B.mlc_available()[0]
 
 
+#: Levers `derived_levers` reads off the RTL PROFILE. The rest of what it returns comes from the
+#: target's declared compute ENDPOINTS (`_endpoint_levers`), which a hand-built profile has none of.
+#: Asserting on this subset rather than on the whole list is deliberate: the previous exact-list
+#: assertion went stale the moment the dispatch/layout levers were derived from endpoints, and an
+#: exact list makes every future derivation look like a regression.
+_STRUCTURAL = {"spatial.dataflow", "spatial.accumulator_resident", "memory.capacity_fit"}
+
+
 def test_derived_levers_come_from_discovered_structure():
     """The levers are IMPLIED by the discovered hardware, not hand-listed — pure function, no mlc."""
     mesh_acc = RB.TargetProfile("x", legal_opcodes=(0, 1, 2), memory_map={"accum_mem": "acc"}, dim=16)
-    assert RB.derived_levers(mesh_acc) == ["spatial.dataflow", "spatial.accumulator_resident"]
+    # A mesh implies a dataflow choice; an accumulator implies BOTH residency and a capacity fit --
+    # a working set that overruns the accumulator is not slow, it is silently wrong.
+    assert set(RB.derived_levers(mesh_acc)) & _STRUCTURAL == _STRUCTURAL
+
     scalar = RB.TargetProfile("y", legal_opcodes=(0, 1), memory_map={}, dim=None)
-    assert RB.derived_levers(scalar) == []                 # no mesh/accumulator => no spatial levers
+    # THE NEGATIVE CASE: no mesh and no accumulator must fabricate no spatial lever. Target "y"
+    # declares no endpoints either, so nothing at all is implied.
+    assert not set(RB.derived_levers(scalar)) & _STRUCTURAL
+    assert RB.derived_levers(scalar) == []
 
 
 def test_profile_degrades_honestly_without_mlc(monkeypatch):
@@ -61,7 +75,10 @@ def test_profile_derived_from_rtl_for_example_target():
     prof = RB.target_profile("gemmini")
     assert prof.legal_opcodes and 126 in prof.legal_opcodes and 25 not in prof.legal_opcodes
     assert prof.dim == 16 and prof.has_mesh and prof.has_accumulator
-    assert set(RB.derived_levers(prof)) == {"spatial.dataflow", "spatial.accumulator_resident"}
+    # The STRUCTURAL levers come from the discovered mesh + accumulator. The full list also carries
+    # what gemmini's endpoint accepts (a loop descriptor, config reuse), which is a different
+    # derivation with a different source -- see `_STRUCTURAL`.
+    assert set(RB.derived_levers(prof)) & _STRUCTURAL == _STRUCTURAL
 
 
 @pytest.mark.skipif(not _MLC_OK or B.core_hw_mlir("gemmini") is None,
