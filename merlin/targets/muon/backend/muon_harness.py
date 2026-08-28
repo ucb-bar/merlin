@@ -248,6 +248,94 @@ def bind_from_declarations(cb: dict, env0: dict, vals) -> tuple[list[TensorArg],
 
 
 def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
+    """Derive ``(in_args, out_args)`` for the kernel: the per-op rules first, then generic DATAFLOW.
+
+    The rule ladder below (:func:`_args_from_cb_rules`) recognises specific op shapes and, by its own
+    docstring, returns ``None`` on "chained matmuls / no matmul". Every FUSED capsule therefore had no
+    binding at all and could not be graded -- flash attention (attention_qk -> softmax -> matmul ->
+    commit), rmsnorm+qkv, chained matmuls. On radiance that was 6 of 7 persistent failures, two of which
+    (R8/R9) compute their result BIT-EXACTLY at the functional tier and failed only because the cert tier
+    could not bind their operands.
+
+    So an unmatched buffer now falls through to
+    :func:`merlin.runtime.commandbuffer.dataflow_operands`, which needs no op-specific or target-specific
+    knowledge: consumed-but-never-produced is a leaf input, the last produced-and-declared tensor is the
+    output, both is an intermediate. The rules are kept ahead of it because they encode the ABI's operand
+    ORDER for the shapes they know (weight-first for a normalization, etc.), which dataflow cannot infer.
+    """
+    rules = _args_from_cb_rules(cb)
+    if rules is not None:
+        return rules
+    return _args_from_dataflow(cb)
+
+
+def _args_from_dataflow(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
+    """Generic binding for a buffer no rule matched, from the command buffer's dataflow alone.
+
+    Order: leaves are emitted weight-role-first then input-role, each group in first-consumption order.
+    That mirrors the ``[weight] ++ [lhs] ++ [output]`` convention the rules use, so a kernel built from
+    the same buffer sees the same order. It is a CONVENTION, not a derivation -- if a kernel's signature
+    disagrees the mismatch shows up as a shape error at build time, which is loud, rather than as silently
+    swapped operands.
+    """
+    from merlin.runtime.commandbuffer import dataflow_operands, materialize_inputs
+
+    got = dataflow_operands(cb)
+    if got is None:
+        return None
+    leaves, out_name = got
+    tensors = cb.get("tensors") or {}
+    canon = cb.get("canonical_inputs") or {}
+    try:
+        env = materialize_inputs(cb)
+    except Exception:                                    # noqa: BLE001 — an unmaterializable operand is
+        return None                                      # not bindable; stay fail-safe like the rules
+
+    def _leafvals(name: str) -> list[float] | None:
+        """Same precedence the rules use: injected preload, then the golden's canonical operands, then
+        the deterministic materialization -- so the harness embeds what the golden compared against."""
+        inj = _decode_preload(tensors.get(name))
+        if inj is not None:
+            return inj
+        c = canon.get(name)
+        if isinstance(c, dict):
+            c = c.get("values")
+        if c is not None:
+            return _flatten_floats(c)
+        t = env.get(name)
+        return _flatten_floats(t.to_list()) if t is not None else None
+
+    def _role(name: str) -> str:
+        return str((tensors.get(name) or {}).get("role", "")).lower()
+
+    ordered = ([n for n in leaves if _role(n) == "weight"]
+               + [n for n in leaves if _role(n) != "weight"])
+    in_args: list[TensorArg] = []
+    for name in ordered:
+        spec = tensors.get(name) or {}
+        vals = _leafvals(name)
+        if vals is None:
+            return None
+        r, c = _shape2d(list(spec.get("shape") or []))
+        in_args.append(TensorArg(name, r, c, vals, "f32"))
+    orows, ocols = _shape2d(list((tensors.get(out_name) or {}).get("shape") or []))
+    if not in_args or orows * ocols <= 0:
+        return None
+    return in_args, [TensorArg(out_name, orows, ocols, [0.0] * (orows * ocols), "f32")]
+
+
+def _flatten_floats(v) -> list[float]:
+    """Rank-agnostic row-major flatten to f32. A batched operand is rank-3, and a two-level comprehension
+    raises TypeError on it, which is how a batched capsule used to fail before reaching its shape check."""
+    if isinstance(v, (list, tuple)):
+        out: list[float] = []
+        for e in v:
+            out.extend(_flatten_floats(e))
+        return out
+    return [float(v)]
+
+
+def _args_from_cb_rules(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     """Derive the kernel's ``(in_args, out_args)`` from a capsule's COMMAND BUFFER, in the generic
     ``kernel_abi`` order ``[weight] ++ [lhs] ++ [output]``. Input VALUES come from the SAME deterministic
     materialization the reference backend and the golden use (:func:`commandbuffer.materialize_inputs`) — NOT
