@@ -65,6 +65,21 @@ def repo_root() -> Path:
     raise SystemExit("could not locate the repo root")
 
 
+
+def _evaluator_python() -> str:
+    """The interpreter the ORACLE needs -- merlin's, never the caller's.
+
+    AutoComp runs under its own venv, which has boto3 and google-genai but not xdsl or the merlin
+    package. Launching the evaluation with `sys.executable` therefore inherited the caller's
+    interpreter and failed on `import merlin`, and because the evaluator reports a failed subprocess
+    as an uncorrectable candidate, that surfaced as "the kernel is wrong" for every candidate
+    including a known-good reference. The oracle's environment is a property of the oracle, so it is
+    resolved here rather than inherited.
+    """
+    venv = repo_root() / ".venv" / "bin" / "python"
+    return str(venv) if venv.exists() else sys.executable
+
+
 def missing_requirements(fidelity: str) -> list[str]:
     """Paths a fidelity needs that are not present. Empty means it can actually run.
 
@@ -128,7 +143,7 @@ print("<<<KVC>>>" + json.dumps({{"full": ev.to_dict(), "redacted": ev.redact()}}
     env.update(FIDELITY_ENV[fidelity])
 
     try:
-        r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+        r = subprocess.run([_evaluator_python(), "-c", code], capture_output=True, text=True,
                            env=env, cwd=str(repo), timeout=timeout + 300)
         for line in r.stdout.splitlines():
             if line.startswith("<<<KVC>>>"):

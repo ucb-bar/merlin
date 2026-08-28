@@ -13,6 +13,16 @@ The two arms this drives are the metered ones -- Bedrock and the Google API -- b
 provider APIs. The ChatGPT seat is not an API and cannot be driven this way, which is a real asymmetry
 the study records rather than hides.
 
+⚠️ AUTOCOMP OPTIMIZES; IT DOES NOT GENERATE FROM NOTHING. Its search starts from a working kernel and
+improves it, and refuses to start from an incorrect one ("Initial code is incorrect"). So it is seeded
+with the repository's own unoptimized reference kernel -- the same implementation the study already
+uses as its performance baseline.
+
+That makes this arm measure something DIFFERENT from the direct-agent arm, and the difference must be
+carried into any comparison rather than absorbed into it: AutoComp is measured optimizing a correct
+kernel, the direct agent is measured writing one from the specification. Neither number answers the
+other'"'"'s question, and quoting them as one would flatter whichever had the easier start.
+
 Run it under AutoComp's own venv (it needs boto3, google-genai and the framework itself):
 
     /scratch/agustin/projects/autocomp/.venv/bin/python run_autocomp.py --method bedrock_kernel \\
@@ -85,6 +95,20 @@ per-unit busy fractions, so aim at the unit that is idle rather than guessing.
 """
 
 
+
+def _reference_kernel(capsule_dir: Path) -> str:
+    """The repository's own unoptimized kernel for this capsule, as AutoComp's starting point.
+
+    Chosen rather than a hand-written stub because it is already the study's performance reference, so
+    AutoComp's speedups are measured against the same baseline everything else is -- and because it is
+    known-correct, which AutoComp requires before it will search at all.
+    """
+    from merlin.runtime.backends.base import get_backend
+    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+    cb = parse_interface_mlir((capsule_dir / "capsule.interface.mlir").read_text())
+    return get_backend("muon").muon_codegen_mlir.emit_kernel_mlir(cb)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--method", required=True)
@@ -96,6 +120,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--plans", type=int, default=2)
     ap.add_argument("--codes", type=int, default=2)
     ap.add_argument("--fidelity", default="fast", choices=sorted(kvc_eval.FIDELITY_ENV))
+    ap.add_argument("--seed-kernel", type=Path, default=None,
+                    help="starting kernel; default is the repository reference emitter's output")
     ap.add_argument("--runs-root", type=Path, default=Path("/scratch/agustin/tmp/kvc-runs"))
     a = ap.parse_args(argv)
 
@@ -138,6 +164,10 @@ def main(argv: list[str] | None = None) -> int:
     prob = Prob("muon", 0, context=_task_context(capsule_dir))
     model = _autocomp_model(cfg)
 
+    initial_code = (a.seed_kernel.read_text() if a.seed_kernel
+                    else _reference_kernel(capsule_dir))
+    (run_dir / "seed_kernel.llvm.mlir").write_text(initial_code)
+
     # Build AutoComp's own agents, then DISCARD its eval backend for ours. The search, the prompts and
     # the model tiering stay exactly as the framework ships them.
     _their_backend, agent, code_agent = create_backend_and_agents(
@@ -156,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.time()
     optimizer = BeamSearchStrategy(
         output_dir=run_dir, eval_backend=eval_backend, agent=agent, code_agent=code_agent,
-        orig_code="", prob=prob, metric="latency", simulator="cyclotron",
+        orig_code=initial_code, prob=prob, metric="latency", simulator="cyclotron",
         num_plan_candidates=a.plans, num_code_candidates=a.codes, beam_size=a.beam,
         # AutoComp's native muon settings, so the search is the framework's and not mine.
         give_score_feedback=1, give_hw_feedback=0,
@@ -187,6 +217,10 @@ def main(argv: list[str] | None = None) -> int:
         "provider": cfg.get("provider"), "model": cfg["model"],
         "autocomp_model": model, "billing_mode": cfg.get("billing_mode"),
         "task_id": capsule_dir.name, "target": a.target, "fidelity": a.fidelity,
+        # Stated in the record, because it changes what the number means: this arm OPTIMIZES a correct
+        # kernel while the direct-agent arm WRITES one from the spec.
+        "started_from": ("supplied seed kernel" if a.seed_kernel
+                         else "repository reference kernel (unoptimized)"),
         "status": status,
         "candidates_evaluated": len(eval_backend.trajectory),
         "candidates_correct": len(correct),
