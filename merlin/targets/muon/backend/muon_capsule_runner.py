@@ -31,16 +31,80 @@ _MUON_CONFIG = RunnerConfig(
     target=TARGET, suite=SUITE, dtype="f32",
     fourth_output_name="kernel.cpp",                       # SIMT C++ kernel (external_backend endpoint)
     tier_sim={"L2": "cyclotron", "L3": "vcs"}, rtl_tiers=frozenset({"L3"}),
-    oracle_tiers=("L2", "L3"), perf_fields=("flops", "gflops", "pct_fp_peak"),
+    oracle_tiers=("L2", "L3"),
+    perf_fields=("flops", "gflops", "pct_fp_peak",
+                 "warp_occupancy", "fp_util", "int_util", "sfu_util", "smem_lane_util",
+                 "dma_util", "tensor_util", "smem_conflict_rate"),
     trace_gate=None,                                        # no RoCC trace gate on a SIMT target
     force_match_policy={"compare": "float", "atol": 1e-3},  # fp tolerance (device prints fixed decimals)
 )
 
 
+def _ratio(num, den):
+    """num/den, or None when the denominator is absent or zero.
+
+    None means UNMEASURED and must stay distinguishable from a real 0.0: a unit that was never
+    exercised and a unit the simulator did not report are different findings, and reporting the
+    second as 0% invents an efficiency result.
+    """
+    try:
+        n, d = float(num), float(den)
+    except (TypeError, ValueError):
+        return None
+    return None if d <= 0 else n / d
+
+
+def _utilization(summary: dict | None) -> dict:
+    """Per-unit utilization from the SIMT simulator's own counters.
+
+    Latency alone cannot say WHY a kernel is slow. These ratios do: a kernel with high warp occupancy
+    but near-zero FP utilization is issuing the wrong work, while low occupancy with high FP
+    utilization is starved rather than inefficient. Both are actionable in a way a cycle count is not,
+    and both are what an optimization round needs in its feedback.
+
+    Every value is a fraction of the SAME cycle window the simulator reports, so they are comparable
+    to each other and across kernels.
+    """
+    if not isinstance(summary, dict):
+        return {}
+    tot = summary.get("total")
+    if not isinstance(tot, dict):
+        return {}
+    sched = tot.get("scheduler") or {}
+    ex = tot.get("execute_util") or {}
+    smem = tot.get("smem_util") or {}
+    dma = tot.get("dma_util") or {}
+    tensor = tot.get("tensor_util") or {}
+    conf = tot.get("smem_conflicts") or {}
+
+    cycles = ex.get("cycles") or sched.get("cycles")
+    # Occupancy is per-warp-slot, so the window is cycles x the warps the scheduler could track.
+    warp_slots = _ratio(sched.get("active_warps_sum"), sched.get("cycles"))
+
+    return {
+        "warp_occupancy": warp_slots,
+        "fp_util": _ratio(ex.get("fp_busy_sum"), cycles),
+        "int_util": _ratio((ex.get("int_busy_sum") or 0) + (ex.get("int_mul_busy_sum") or 0)
+                           + (ex.get("int_div_busy_sum") or 0), cycles),
+        "sfu_util": _ratio(ex.get("sfu_busy_sum"), cycles),
+        "smem_lane_util": _ratio(smem.get("lane_busy_sum"),
+                                 (smem.get("cycles") or 0) * (smem.get("lane_total") or 0)),
+        "dma_util": _ratio(dma.get("busy_sum"), dma.get("cycles")),
+        "tensor_util": _ratio(tensor.get("busy_sum"), tensor.get("cycles")),
+        "smem_conflict_rate": _ratio(conf.get("conflict_lanes"), conf.get("active_lanes")),
+    }
+
+
 def _muon_perf(cb: dict, res: dict) -> dict:
-    """Perf headline for a Muon tier: the cyclotron/vcs adapters already compute gflops/%FP-peak; pass
-    them through (flops_from_cb is available for adapters that don't)."""
-    return {"gflops": res.get("gflops"), "pct_fp_peak": res.get("pct_fp_peak")}
+    """Perf headline for a Muon tier: latency AND where the machine's time actually went.
+
+    The adapters already compute gflops/%FP-peak (flops_from_cb serves any that do not). The
+    utilization block is derived from the simulator's own counters, so an optimization round can act
+    on the bottleneck rather than guessing from a cycle count.
+    """
+    out = {"gflops": res.get("gflops"), "pct_fp_peak": res.get("pct_fp_peak")}
+    out.update(_utilization(res.get("summary")))
+    return out
 
 
 def _wrap_adapters(adapters: dict[str, Callable]) -> dict[str, Callable]:

@@ -39,6 +39,13 @@ from typing import Any
 #: won this task, so it is excluded from scoring rather than counted against the method.
 STATUSES = ("pass", "fail", "error", "unsupported", "declined")
 
+#: Utilization counters carried from a tier, when the target's perf hook supplies them. Named
+#: explicitly rather than copied wholesale so an unrelated tier key cannot leak into agent feedback.
+_UTIL_FIELDS = (
+    "warp_occupancy", "fp_util", "int_util", "sfu_util",
+    "smem_lane_util", "dma_util", "tensor_util", "smem_conflict_rate",
+)
+
 #: Correctness verdicts. ``not_certified`` means the kernel ran but nothing compared its output --
 #: an execution cert, not a numeric one.
 VERDICTS = ("match", "mismatch", "not_certified", "structurally_unwinnable", "unknown")
@@ -79,6 +86,10 @@ class EvaluationResult:
     gflops: float | None = None
     pct_fp_peak: float | None = None
     perf_valid: bool = False
+    #: Where the machine's time went, as fractions of the same cycle window. Latency alone cannot say
+    #: WHY a kernel is slow; these can. A None entry means the simulator did not report that counter
+    #: and must stay distinct from a real 0.0, which would invent an efficiency result.
+    utilization: dict[str, float | None] = field(default_factory=dict)
 
     compile_ok: bool = False
     run_ok: bool = False
@@ -136,6 +147,10 @@ class EvaluationResult:
             "cycles": self.cycles,
             "gflops": self.gflops,
             "pct_fp_peak": self.pct_fp_peak,
+            # Utilization is a profiler counter, not an answer -- a developer running their own kernel
+            # under a profiler sees exactly this, so it is safe to return and is what an optimization
+            # round needs in order to act on the bottleneck rather than guess.
+            "utilization": dict(self.utilization),
             "build_seconds": self.build_seconds,
             "caveats": [asdict(c) for c in self.caveats],
         }
@@ -187,6 +202,10 @@ def from_capsule_result(
             ev.cycles = d.get("cycles")
             ev.gflops = d.get("gflops")
             ev.pct_fp_peak = d.get("pct_fp_peak")
+            # The tier nests these under "utilization"; older/other targets may inline them. Accept
+            # both, and filter to the known counters so an unrelated tier key cannot reach an agent.
+            src = d.get("utilization") if isinstance(d.get("utilization"), dict) else d
+            ev.utilization = {k: src[k] for k in _UTIL_FIELDS if k in src}
             ev.oracle = d.get("evidence") or ev.oracle
             timing = d.get("timing") or {}
             ev.build_seconds = timing.get("build_s")

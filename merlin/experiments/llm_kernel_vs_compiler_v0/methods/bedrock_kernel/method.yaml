@@ -2,7 +2,11 @@
 #
 # Runs in parallel with, and BLIND to, the codex arm.
 method: bedrock_kernel
-driver: converse                    # capsule_bench/harness/bedrock_agent.py
+# opencode, not the converse driver. bedrock_agent hardcodes a system prompt for a DIFFERENT job
+# ("build the target backend under submission/ ... manifest.yaml"), which contradicts a task asking
+# for one kernel file; an agent given both is scored on which instruction it guessed. opencode is
+# task-neutral, so both metered arms receive exactly the task card the runner writes.
+driver: opencode
 model: qwen.qwen3-coder-480b-a35b-v1:0
 provider: bedrock
 # ⚠️ REGION IS PART OF THE MODEL'S IDENTITY HERE. This id exists ONLY in us-west-2; us-east-1 --
