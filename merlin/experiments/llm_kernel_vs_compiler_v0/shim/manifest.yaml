@@ -1,0 +1,29 @@
+# The package that lets an AGENT'S KERNEL be graded by the standard capsule oracle.
+#
+# An agent here writes a compute kernel; the oracle grades packages. This wraps the one in the other
+# and changes nothing else: the scaffolding entrypoints delegate to the reference tool, so every arm
+# shares an identical command buffer and only the compute artifact varies. A score difference is then
+# attributable to the kernel rather than to how each arm happened to describe the buffers.
+artifact_type: mlir_oot_target_backend
+target: muon
+package_id: kvc_kernel_shim_v0
+language: python
+authoring:
+  mode: hand_curated
+  author: human
+  generated_by_agent: false
+# The SHIM is exempt (it delegates to a tool that imports Merlin). The SUBMISSION is not: the shim
+# runs its own scan over the agent's kernel text, since the usual scan is skipped for an exempt
+# package and would otherwise cover neither.
+integrity_exempt: true
+entrypoints:
+  tool: kernelshim
+commands:
+  parse:
+    argv: ["{tool}", "--verify-diagnostics", "{input_mlir}"]
+  lower_interface_to_target:
+    argv: ["{tool}", "--convert-iface-to-muon", "{input_mlir}"]
+  emit_command_buffer:
+    argv: ["{tool}", "--convert-iface-to-muon", "--emit-command-buffer={output_json}", "{input_mlir}"]
+  lower_target_to_llvm:
+    argv: ["{tool}", "--convert-iface-to-muon", "--emit-target-artifact", "{input_mlir}"]

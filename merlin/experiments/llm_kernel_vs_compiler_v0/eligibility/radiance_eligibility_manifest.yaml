@@ -1,0 +1,244 @@
+schema: eligibility_manifest/v1
+target: radiance
+generated_by: llm_kernel_vs_compiler_v0/scripts/build_eligibility_manifest.py
+denominator_source: independent hand-written kernels for this hardware, unioned with the target contract's
+  own declaration where Merlin's derivation corroborates it
+independence_argument: The families in the denominator are established by kernels a human wrote against
+  this hardware in the hardware's own repository, classified `hand` by the provenance audit. That evidence
+  exists whether or not Merlin does, so Merlin is not setting the denominator it is graded against.
+bias_direction: Coverage is accelerated/eligible, so a SMALLER denominator flatters the compiler. Merlin's
+  own derivation leaves ['movement', 'reduction', 'synchronization'] undetermined; the independent evidence
+  covers them. Using the larger independent denominator is the conservative choice and is what this manifest
+  does.
+sources:
+  family_evidence: eligibility/family_evidence.yaml
+  provenance: eligibility/provenance/kernel_provenance.yaml
+  evidence_repo:
+    path: /scratch2/agustin/radiance-kernels
+    commit: 399757f6da3b2c75980821b2479e9f1ca732e8ea
+    pin: radiance_kernels
+    provenance_verdict_required: hand
+  n_hand_kernels_available: 57
+requires_human_review: true
+families_in_denominator:
+- attention
+- contraction
+- elementwise_map
+- movement
+- normalization
+- reduction
+- softmax
+- synchronization
+families_excluded: []
+families_only_independent_evidence:
+- movement
+- reduction
+- synchronization
+families:
+  attention:
+    independently_evidenced: true
+    evidence_kernels:
+    - flash_attention
+    - flash_attention_mx
+    - flash_attention_mx_gqa
+    - flash_attention_mx_gemma
+    - flash_attention_virgo
+    evidence_dropped_not_hand: []
+    declared_by_target_contract: true
+    merlin_derivation_undetermined: false
+    engines:
+    - simt
+    dtypes:
+    - fp16
+    - bf16
+    - fp32
+    - mxfp8
+    - mxfp6
+    - mxfp4
+    ranks: []
+    providers:
+    - - simt_cluster
+      - simt
+    in_denominator: true
+    denominator_basis: independent_hand_kernel
+    note: Full flash-attention kernels including grouped-query and the Gemma soft-cap variant, i.e. the
+      composed QK / softmax / PV pipeline, not just its contraction part.
+  contraction:
+    independently_evidenced: true
+    evidence_kernels:
+    - gemm_mxgemmini
+    - gemm_mxgemmini_ws
+    - gemm_simt
+    - sgemm_muon
+    - sgemm_gemmini
+    - sgemm_tcore
+    - gemv
+    - gemv_batched_fp8_m32
+    evidence_dropped_not_hand: []
+    declared_by_target_contract: true
+    merlin_derivation_undetermined: false
+    engines:
+    - simt
+    - systolic
+    dtypes:
+    - fp32
+    - fp16
+    - bf16
+    - mxfp4
+    - mxfp6
+    - mxfp8
+    - int8
+    ranks:
+    - 2
+    - 3
+    providers:
+    - - simt_cluster
+      - simt
+    - - mx_pe
+      - systolic
+    in_denominator: true
+    denominator_basis: independent_hand_kernel
+    note: 'Dense matmul and matrix-vector on both engines: the MX mesh (gemm_mxgemmini*, sgemm_gemmini*)
+      and the SIMT cluster (gemm_simt, sgemm_muon). Unambiguous.'
+  elementwise_map:
+    independently_evidenced: true
+    evidence_kernels:
+    - geglu
+    - swiglu
+    - bias_add
+    - vecadd
+    - saxpy
+    - embed_scale
+    - qkv_bias
+    - simt_quant
+    evidence_dropped_not_hand: []
+    declared_by_target_contract: true
+    merlin_derivation_undetermined: false
+    engines:
+    - simt
+    dtypes:
+    - fp32
+    - fp16
+    - bf16
+    ranks: []
+    providers:
+    - - simt_cluster
+      - simt
+    in_denominator: true
+    denominator_basis: independent_hand_kernel
+    note: Activations (GeGLU/SwiGLU), bias adds, scaling and quantization -- all pointwise maps.
+  movement:
+    independently_evidenced: true
+    evidence_kernels:
+    - patch_embed
+    - fmastore
+    - unaligned
+    - test_backing_mem
+    - pointerchase
+    evidence_dropped_not_hand: []
+    declared_by_target_contract: true
+    merlin_derivation_undetermined: true
+    engines:
+    - simt
+    dtypes:
+    - fp32
+    - fp16
+    - bf16
+    ranks: []
+    providers:
+    - - simt_cluster
+      - simt
+    in_denominator: true
+    denominator_basis: independent_hand_kernel
+    note: Gather/scatter, patchify, unaligned access and explicit backing-memory traffic. Also `undetermined`
+      in Merlin's own derivation.
+  normalization:
+    independently_evidenced: true
+    evidence_kernels:
+    - rmsnorm
+    - rmsnorm_gemma
+    - rmsnorm_qkv_fused
+    - layernorm
+    - gemma_4norm
+    evidence_dropped_not_hand: []
+    declared_by_target_contract: true
+    merlin_derivation_undetermined: false
+    engines:
+    - simt
+    dtypes:
+    - fp32
+    - fp16
+    - bf16
+    ranks: []
+    providers:
+    - - simt_cluster
+      - simt
+    in_denominator: true
+    denominator_basis: independent_hand_kernel
+    note: 'Both norm forms the reveal models need: RMSNorm (Llama/Gemma, including the (1+w) variant)
+      and LayerNorm with mean subtraction and bias (the SigLIP vision tower).'
+  reduction:
+    independently_evidenced: true
+    evidence_kernels:
+    - gemv
+    - softmax
+    - rmsnorm
+    evidence_dropped_not_hand: []
+    declared_by_target_contract: true
+    merlin_derivation_undetermined: true
+    engines:
+    - simt
+    dtypes:
+    - fp32
+    - fp16
+    - bf16
+    ranks: []
+    providers:
+    - - simt_cluster
+      - simt
+    in_denominator: true
+    denominator_basis: independent_hand_kernel
+    note: Each carries a real reduction axis (dot-product rows, max/sum, sum-of-squares). Merlin's own
+      derivation leaves this family `undetermined`; the hardware plainly does it.
+  softmax:
+    independently_evidenced: true
+    evidence_kernels:
+    - softmax
+    - logit_softcap
+    evidence_dropped_not_hand: []
+    declared_by_target_contract: true
+    merlin_derivation_undetermined: false
+    engines:
+    - simt
+    dtypes:
+    - fp32
+    - fp16
+    - bf16
+    ranks: []
+    providers:
+    - - simt_cluster
+      - simt
+    in_denominator: true
+    denominator_basis: independent_hand_kernel
+    note: A standalone softmax kernel, plus the tanh soft-cap epilogue. The online softmax inside the
+      flash kernels is additional evidence but is not counted separately here.
+  synchronization:
+    independently_evidenced: true
+    evidence_kernels:
+    - launch
+    - spin
+    - idle
+    evidence_dropped_not_hand: []
+    declared_by_target_contract: true
+    merlin_derivation_undetermined: true
+    engines:
+    - simt
+    dtypes: []
+    ranks: []
+    providers:
+    - - simt_cluster
+      - simt
+    in_denominator: true
+    denominator_basis: independent_hand_kernel
+    note: Warp launch, spin-wait and idle -- the barrier/scheduling surface. `undetermined` in Merlin's
+      own derivation; these kernels exist precisely to exercise it.

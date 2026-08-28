@@ -76,6 +76,15 @@ MODEL_ARCH: dict[str, ModelArch] = {
                              note="LLaMA-style decoder; K=7 captured decode length (IR-recovered)."),
     "tiny_llama": ModelArch("tiny_llama", "llm", "token_decode", 7, None, None,
                             loop_count_source="recovered_from_ir"),
+    # Captured on disk long before it was registered here, which made every one of its capture
+    # directories invisible to discover_model_captures() -- a model can be fully captured and still
+    # read as absent if its base name is not a key in this table.
+    "gemma2_2b": ModelArch("gemma2_2b", "llm", "token_decode", 7, None, None,
+                           loop_count_source="assumed",
+                           note="Gemma-2 2B decoder. Differs from the Llama-family entries in ways "
+                                "the op inventory sees: GeGLU rather than SwiGLU, RMSNorm applied "
+                                "both pre- and post-block in a (1+w) form, a tanh logit soft-cap, "
+                                "and sliding-window attention on alternate layers."),
     "small": ModelArch("small", "llm", "token_decode", 32, None, None),
     # Feed-forward vision / audio / control workloads. loop_count is 1 BY CONSTRUCTION, not as a
     # reference value: one input produces one output, so the single-pass capture hides no

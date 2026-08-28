@@ -53,6 +53,63 @@ def _emit_fill(arr: str, arg: TensorArg) -> list[str]:
     return lines
 
 
+#: Element count above which an input tensor is linked in as a binary blob instead of being
+#: materialized element-wise. Below it nothing changes, so every capsule that passes today keeps a
+#: byte-identical harness. Above it the element-wise form is not merely large but unbuildable: one C
+#: statement per element makes clang superlinear in statement count (a 2048x2048 f32 operand is
+#: 4,194,305 statements / 124.7 MB of C, measured; clang ran 45+ min without finishing), and the array
+#: is a stack local, so a 16 MB operand would overrun the stack even if it compiled.
+_BLOB_MIN_ELEMS = 1024
+
+
+@dataclass
+class Harness:
+    """A harness ``main`` plus the binary blobs it expects the link to supply.
+
+    ``blobs`` maps a C symbol to its raw little-endian bytes. The caller writes each one out and
+    assembles it into the link (``.incbin``); the harness source refers to it as an ``extern`` array.
+    Empty when every operand fit under :data:`_BLOB_MIN_ELEMS`."""
+    source: str
+    blobs: dict[str, bytes]
+
+
+def _blob_bytes(arg: TensorArg) -> bytes:
+    """``arg`` as raw little-endian 32-bit words -- the same u32 image ``_emit_fill`` would store."""
+    out = bytearray()
+    for v in arg.values:
+        bits = _f32_bits(v) if arg.dtype == "f32" else (int(v) & 0xFFFFFFFF)
+        out += bits.to_bytes(4, "little")
+    return bytes(out)
+
+
+def _emit_input(arr: str, arg: TensorArg, blobs: dict[str, bytes]) -> list[str]:
+    """Materialize one INPUT operand, choosing the form by size.
+
+    Small operands stay element-wise on the stack (relocation-free, unchanged). Large ones become an
+    ``extern const`` array the linker fills from a blob and the kernel reads in place -- no initializer
+    and no copy. The blob reference costs a HI20/LO12 relocation pair, which is why this form is only
+    valid on the relocation-PRESERVING build path (the object-kernel path this module's
+    :func:`build_external_kernel_main` feeds); the inline-source path must keep using
+    :func:`_emit_fill`."""
+    if arg.rows * arg.cols < _BLOB_MIN_ELEMS:
+        return _emit_fill(arr, arg)
+    blobs[arr] = _blob_bytes(arg)
+    return [f"  /* {arr}: {arg.rows}x{arg.cols} linked from a blob, read in place */"]
+
+
+def _emit_output(arr: str, out: TensorArg, statics: list[str]) -> list[str]:
+    """Reserve one OUTPUT buffer. Large ones move off the stack into ``.bss``.
+
+    A big output is the same stack hazard as a big input: ``volatile uint32_t x[N]`` with N in the
+    millions is tens of MB of stack. A file-scope ``static`` lives in ``.bss`` instead and costs the
+    same HI20/LO12 pair as a blob."""
+    n = out.rows * out.cols
+    if n < _BLOB_MIN_ELEMS:
+        return [f"  volatile uint32_t {arr}[{n}];"]   # stack (SP-relative -> no reloc)
+    statics.append(f"static volatile uint32_t {arr}[{n}];")
+    return [f"  /* {arr}: {out.rows}x{out.cols} in .bss, too large for the stack */"]
+
+
 def _render_helpers(model) -> str:
     """The harness's print/identity helpers, with the hart-id CSR and the console-MMIO putchar aperture DERIVED
     from the target's ``runtime_abi`` — no hardcoded CSR number or address. The hart-id CSR is the RISC-V machine
@@ -696,25 +753,36 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
 
 
 def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorArg],
-                               *, kernel_symbol: str, model) -> str:
+                               *, kernel_symbol: str, model) -> Harness:
     """Harness ``main`` for an OBJECT kernel (an MLIR-lowered ``kernel.o``): declares ``kernel_symbol``
     EXTERN (not inlined), embeds every input, calls it, prints ``OUT <name> <r> <c> ...`` + ``DONE``. Unlike
     :func:`build_program` (which inlines a *source* kernel to stay relocation-free), the extern call leaves a
     cross-object ``R_RISCV_CALL`` that the fork-free reloc-preserving transcode + linker resolve. Inputs are
-    stack-embedded (``_emit_fill``) so ``main`` itself carries ONLY the kernel-call relocation."""
+    stack-embedded (``_emit_fill``) so ``main`` itself carries ONLY the kernel-call relocation -- except
+    for operands past :data:`_BLOB_MIN_ELEMS`, which are linked in as blobs and read in place, since the
+    element-wise form is not buildable at model scale. Returns a :class:`Harness`: the source, plus the
+    blobs the caller must assemble into the link."""
     ptrs = ", ".join(["const void*"] * len(in_args) + ["void*"] * len(out_args)) or "void"
-    body: list[str] = [_render_helpers(model).strip(), "",
-                       f"extern void {kernel_symbol}({ptrs});", "",
-                       "int main(void){", "  if(_hid()!=0)return 0;"]
+    blobs: dict[str, bytes] = {}
+    statics: list[str] = []
     call_ptrs: list[str] = []
+    inner: list[str] = []
     for a in in_args:
         arr = f"_in_{a.name}"
-        body += _emit_fill(arr, a)
+        inner += _emit_input(arr, a, blobs)
         call_ptrs.append(f"(const void*){arr}")
     for o in out_args:
         arr = f"_out_{o.name}"
-        body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")
+        inner += _emit_output(arr, o, statics)
         call_ptrs.append(f"(void*){arr}")
+
+    # Blob and .bss symbols are file-scope, so they must be declared before main.
+    externs = [f"extern const uint32_t {sym}[];" for sym in sorted(blobs)]
+    body: list[str] = [_render_helpers(model).strip(), ""]
+    body += externs + statics + ([""] if (externs or statics) else [])
+    body += [f"extern void {kernel_symbol}({ptrs});", "",
+             "int main(void){", "  if(_hid()!=0)return 0;"]
+    body += inner
     body.append(f"  {kernel_symbol}({', '.join(call_ptrs)});")
     for o in out_args:
         arr = f"_out_{o.name}"
@@ -725,7 +793,7 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
             body.append(f"  for(int i=0;i<{o.rows * o.cols};i++){{_pc(' ');_pu({arr}[i]);}}")
         body.append("  _pc('\\n');")
     body += ['  _ps("DONE\\n");', "  return 0;", "}"]
-    return "\n".join(body) + "\n"
+    return Harness(source="\n".join(body) + "\n", blobs=blobs)
 
 
 
@@ -809,7 +877,7 @@ def why_no_operands(cb: dict) -> str:
     return (f"operand shapes could not be reduced to the 1-D/2-D form this reference harness builds "
             f"(opcodes {sorted(set(ops))} were all modelled)")
 
-def external_main_from_cb(cb: dict, *, kernel_symbol: str, model) -> str | None:
+def external_main_from_cb(cb: dict, *, kernel_symbol: str, model) -> Harness | None:
     """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the
     EXTERN-kernel harness ``main`` (to be compiled to ``main.o`` and fork-free-linked against the MLIR
     ``kernel.o``). None when the operands aren't available (fail-safe)."""

@@ -74,6 +74,12 @@ class TierResult:
     timing: dict | None = None        # {build_s, sim_active_s, oracle_wait_s} — active vs waiting
     gflops: float | None = None       # perf (SIMT); None -> omitted so systolic output is unchanged
     pct_fp_peak: float | None = None
+    utilization: dict | None = None   # WHERE THE TIME WENT, as fractions of the oracle's own cycle
+                                      # window (warp occupancy, per-unit busy, memory conflicts).
+                                      # Latency says a kernel is slow; this says why, which is the
+                                      # difference between an actionable result and a number. Shape is
+                                      # the target's to define; None -> omitted, so a target whose
+                                      # oracle reports no counters is byte-identical to before.
     not_applicable: bool = False      # tier honestly N/A for this capsule's datatype (e.g. the integer
                                       # L0/L1 floor on a float datapath) — a legitimate skip, not a
                                       # not_run_is_not_pass violation (unlike an unavailable RTL oracle)
@@ -104,6 +110,8 @@ class TierResult:
             d["gflops"] = self.gflops
         if self.pct_fp_peak is not None:
             d["pct_fp_peak"] = self.pct_fp_peak
+        if self.utilization:
+            d["utilization"] = dict(self.utilization)
         return d
 
 
@@ -1829,9 +1837,12 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                         cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers, timing=_tm)
                     continue
                 _cg = _cp = None
+                _cu: dict | None = None
                 if perf_extractor is not None:
                     _cperf = perf_extractor(cb, res) or {}
                     _cg, _cp = _cperf.get("gflops"), _cperf.get("pct_fp_peak")
+                    _cu = {k: v for k, v in _cperf.items()
+                           if k not in ("gflops", "pct_fp_peak", "flops")} or None
                 if res.get("console") is not None:
                     (paths.artifacts_dir / f"{_sim_name}_console.log").write_text(
                         res["console"], encoding="utf-8")
@@ -1841,7 +1852,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                            "required functional tier)",
                     cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers,
                     cycle_accurate=tier in cfg.rtl_tiers, evidence=f"{_sim_name}_console.log",
-                    timing=_tm, gflops=_cg, pct_fp_peak=_cp)
+                    timing=_tm, gflops=_cg, pct_fp_peak=_cp, utilization=_cu)
                 continue
             if independent_float:
                 # Float grade: the RTL program-oracle output vs the INDEPENDENT golden.yaml (tolerance_float).
@@ -1877,10 +1888,16 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # SIMT perf headline (gflops / % of peak) when a perf extractor is supplied; None (systolic)
             # leaves the fields off the TierResult so the output stays byte-identical.
             _gflops = _pct_peak = None
+            _util: dict | None = None
             if perf_extractor is not None:
                 _perf = perf_extractor(cb, res) or {}
                 _gflops = _perf.get("gflops")
                 _pct_peak = _perf.get("pct_fp_peak")
+                # Everything the extractor returned beyond the two headline numbers is utilization
+                # detail. Taken as the remainder rather than a fixed list so a target can report the
+                # counters ITS oracle actually has, without this shared runner naming any of them.
+                _util = {k: v for k, v in _perf.items()
+                         if k not in ("gflops", "pct_fp_peak", "flops")} or None
             # Engineer framing (no "golden"): the emitted artifact, run on the RTL, does not compute the
             # declared operation. There is no answer key handed to the agent — the reference is the op's
             # own definition, which the agent can reproduce from the declared inputs. The appended
@@ -1920,7 +1937,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 reason=None if okt else _mismatch_reason,
                 cycles=res.get("cycles"), derived_from_rtl=_derived_from_rtl,
                 cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{_ev_name}_console.log",
-                timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, fidelity=_fidelity)
+                timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, utilization=_util, fidelity=_fidelity)
             if res.get("console") is not None:
                 (paths.artifacts_dir / f"{_ev_name}_console.log").write_text(
                     res["console"], encoding="utf-8")
