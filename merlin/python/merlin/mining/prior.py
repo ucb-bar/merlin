@@ -222,3 +222,128 @@ def family_strategy_map(pairs: Iterable[tuple[str, str]]) -> Callable[[Any], str
         fam = getattr(action, "action_family", "") if action is not None else ""
         return table.get(str(fam)) if fam else None
     return strategy_of
+
+
+# --------------------------------------------------------------------------------------------------
+# Learning from our OWN runs, on two axes with very different prices.
+#
+# "Does this action DO WHAT IT PROMISES" is answerable from the emitted code: build, disassemble,
+# re-lift the CCA, compare against intended_facet. No execution. "Does this action HELP" needs a
+# measured number, which needs hardware or a cycle model.
+#
+# Keeping them apart is the whole economics of a one-shot compiler. The landing rate is cheap enough
+# to learn on every candidate ever built, including ones no board ever saw; the improvement rate is
+# paid for per policy and amortized over every later compile. Folding them into one number would
+# price the cheap evidence as if it cost the same as the expensive kind, and — worse — would let a
+# candidate that was never measured look like one that was measured and did not help.
+# --------------------------------------------------------------------------------------------------
+
+#: A candidate whose emitted code was byte-identical to its parent never applied its action, so it is
+#: evidence about NEITHER axis. Counted separately rather than dropped: a lever that keeps coming back
+#: inert is a real finding about the lever.
+INERT = "inert"
+
+
+@dataclass(frozen=True)
+class SeamEvidence:
+    """What our own runs measured about one seam, on both axes."""
+    seam: str
+    #: cheap axis — the action was applied and the emitted code was checked against its promise
+    promise_checked: int = 0
+    promise_kept: int = 0
+    #: expensive axis — a measured speedup existed and could be compared to the parent
+    measured: int = 0
+    improved: int = 0
+    #: excluded populations, kept visible
+    inert: int = 0
+    unmeasured: int = 0
+    unverifiable: int = 0
+
+    @property
+    def landing_rate(self) -> float | None:
+        """How often the action did what it promised. None when nothing was checkable."""
+        return (self.promise_kept / self.promise_checked) if self.promise_checked else None
+
+    @property
+    def improvement_rate(self) -> float | None:
+        """How often it helped, among candidates that were actually measured."""
+        return (self.improved / self.measured) if self.measured else None
+
+
+def classify_node(node: dict) -> str | None:
+    """One beam node -> ``improved`` / ``regressed`` / ``incorrect`` / ``correct_no_gain`` / ``inert``,
+    or **None when the node carries no measurement at all**.
+
+    None is the important return. Under a build-only search most candidates never run, and counting an
+    unmeasured candidate as "did not improve" would drag every prior toward zero using evidence that
+    was never collected — the flattering direction is not the only way a number can lie.
+
+    A failed correctness gate reports ``incorrect``; a build failure is folded in there because the
+    node records no rung, and inventing the distinction would be worse than naming the limit.
+    """
+    if node.get("inert"):
+        return INERT
+    if not node.get("gate_ok"):
+        return "incorrect"
+    speedup = node.get("speedup")
+    if speedup is None:
+        return None                      # never measured: evidence about nothing
+    parent = node.get("parent_speedup")
+    if node.get("margin_improved"):
+        return IMPROVED
+    if parent is not None and speedup < parent:
+        return "regressed"
+    return "correct_no_gain"
+
+
+def seam_evidence_from_nodes(nodes: Iterable[dict]) -> dict[str, SeamEvidence]:
+    """Accumulate both axes per seam from a beam run's nodes.
+
+    The seam is the key because it is what every action carries; ``action_family`` would be the better
+    key and is not yet declared anywhere, so using it would silently bucket everything under "".
+    """
+    acc: dict[str, dict[str, int]] = {}
+    for node in nodes:
+        seams = node.get("applied_seams") or []
+        if not seams:
+            continue
+        seam = str(seams[-1])            # the action THIS node added on top of its parent
+        b = acc.setdefault(seam, {})
+        outcome = classify_node(node)
+        if outcome == INERT:
+            b["inert"] = b.get("inert", 0) + 1
+            continue                     # applied nothing: evidence about neither axis
+        step = node.get("search_step") or {}
+        if step:
+            if step.get("promise_checkable"):
+                b["promise_checked"] = b.get("promise_checked", 0) + 1
+                if step.get("achieved"):
+                    b["promise_kept"] = b.get("promise_kept", 0) + 1
+            else:
+                b["unverifiable"] = b.get("unverifiable", 0) + 1
+        if outcome is None:
+            b["unmeasured"] = b.get("unmeasured", 0) + 1
+        else:
+            b["measured"] = b.get("measured", 0) + 1
+            if outcome == IMPROVED:
+                b["improved"] = b.get("improved", 0) + 1
+    return {s: SeamEvidence(seam=s, **v) for s, v in acc.items()}
+
+
+def landing_prior_fn(evidence: dict[str, SeamEvidence], *, min_attempts: int = 3
+                     ) -> Callable[[Any], float | None]:
+    """A ``prior_fn`` over the CHEAP axis: how reliably an action lands what it promises.
+
+    This is the prior a hardware-poor loop can actually afford to build, because every candidate ever
+    compiled contributes to it. It ranks by "will this action do anything at all", which is a
+    different question from "will it help" — and an action that reliably does nothing is worth
+    de-ranking long before a board is involved.
+    """
+    def fn(proposal: Any) -> float | None:
+        action = getattr(proposal, "action", None)
+        seam = getattr(action, "target_seam", None) if action is not None else None
+        ev = evidence.get(str(seam)) if seam else None
+        if ev is None or ev.promise_checked < min_attempts:
+            return None
+        return ev.landing_rate
+    return fn

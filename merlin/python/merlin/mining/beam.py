@@ -29,6 +29,7 @@ from .fork_from_action import propose_forks_from_cca
 from .from_strategy import mint_fork
 from .registry import load_rvv_package
 from .runner import certify_rvv
+from .prior import landing_prior_fn, seam_evidence_from_nodes
 from .select import select_proposals
 from .sweep import rank_results, run_sweep
 
@@ -357,10 +358,23 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
             # blamed on the action), ranks measured-helps > unmeasured > measured-refuted, and
             # round-robins by action family so width buys distinct IDEAS. Nothing is silently lost:
             # everything unbuilt lands in `deferred` with its reason.
+            # The run learns from ITSELF as it goes. Every candidate built so far -- including ones
+            # that were never measured -- says whether its action does what it promises, and that
+            # axis costs only a build. The run's own evidence is about THIS compiler and THIS target,
+            # so it outranks the injected corpus prior once there is enough of it; below that
+            # threshold the caller's prior still answers.
+            _own = landing_prior_fn(seam_evidence_from_nodes(nodes))
+
+            def _prior(proposal, _own=_own, _outer=prior_fn):
+                p = _own(proposal)
+                if p is not None:
+                    return p
+                return _outer(proposal) if _outer is not None else None
+
             forkable, rejected = select_proposals(
                 props, width=width,
                 applied_actions=applied_by_rid.get(parent_node["run_id"], ()),
-                prior_fn=prior_fn)
+                prior_fn=_prior)
             deferred.extend({"parent": parent_node["run_id"], "lever": p.lever,
                              "targets": p.targets, "note": p.note, "evidence": p.evidence}
                             for p in props if not p.forkable)

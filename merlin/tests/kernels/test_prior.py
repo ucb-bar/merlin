@@ -149,3 +149,122 @@ def test_a_proposal_with_no_action_has_no_strategy():
         action = None
     fn = prior_fn_from(None, family_strategy_map([("tiling", "S1")]))
     assert fn(_Bare()) is None
+
+
+class TestLearningFromOurOwnRuns:
+    """Two axes at very different prices: whether an action LANDS (a build answers it) and whether it
+    HELPS (hardware answers it). The tests are mostly about not letting the cheap axis be read as the
+    expensive one, and not letting absent evidence count as negative evidence."""
+
+    def _node(self, seam="schedule:x", **kw):
+        n = {"applied_seams": [seam], "gate_ok": True, "inert": False}
+        n.update(kw)
+        return n
+
+    def test_an_unmeasured_candidate_is_evidence_about_nothing(self):
+        """Under a build-only search most candidates never run. Counting those as 'did not improve'
+        would drag every prior toward zero on evidence nobody collected."""
+        from merlin.mining.prior import classify_node
+        assert classify_node(self._node(speedup=None)) is None
+
+    def test_an_inert_candidate_is_evidence_about_neither_axis(self):
+        """Byte-identical emitted code means the action never applied."""
+        from merlin.mining.prior import INERT, classify_node, seam_evidence_from_nodes
+        assert classify_node(self._node(inert=True, speedup=2.0)) == INERT
+        ev = seam_evidence_from_nodes([self._node(inert=True, speedup=2.0)])["schedule:x"]
+        assert ev.inert == 1 and ev.measured == 0 and ev.promise_checked == 0
+
+    def test_a_broken_candidate_is_incorrect_not_a_regression(self):
+        from merlin.mining.prior import classify_node
+        assert classify_node(self._node(gate_ok=False, speedup=9.0)) == "incorrect"
+
+    def test_improvement_needs_to_beat_the_noise_margin(self):
+        from merlin.mining.prior import classify_node
+        assert classify_node(self._node(speedup=1.30, parent_speedup=1.0,
+                                        margin_improved=True)) == "improved"
+        assert classify_node(self._node(speedup=1.001, parent_speedup=1.0,
+                                        margin_improved=False)) == "correct_no_gain"
+        assert classify_node(self._node(speedup=0.80, parent_speedup=1.0,
+                                        margin_improved=False)) == "regressed"
+
+    def test_the_two_axes_are_accumulated_separately(self):
+        """A candidate can land its promise and still not help, or help while nothing checked it."""
+        from merlin.mining.prior import seam_evidence_from_nodes
+        nodes = [
+            self._node(speedup=1.5, parent_speedup=1.0, margin_improved=True,
+                       search_step={"promise_checkable": True, "achieved": True}),
+            self._node(speedup=1.0, parent_speedup=1.0, margin_improved=False,
+                       search_step={"promise_checkable": True, "achieved": True}),
+            self._node(speedup=None, search_step={"promise_checkable": True, "achieved": False}),
+        ]
+        ev = seam_evidence_from_nodes(nodes)["schedule:x"]
+        assert ev.promise_checked == 3 and ev.promise_kept == 2
+        assert ev.measured == 2 and ev.improved == 1
+        assert ev.unmeasured == 1
+        assert ev.landing_rate == pytest.approx(2 / 3)
+        assert ev.improvement_rate == pytest.approx(0.5)
+
+    def test_an_unverifiable_step_is_counted_apart_from_a_failed_one(self):
+        from merlin.mining.prior import seam_evidence_from_nodes
+        ev = seam_evidence_from_nodes([
+            self._node(speedup=None, search_step={"promise_checkable": False, "achieved": False})
+        ])["schedule:x"]
+        assert ev.unverifiable == 1 and ev.promise_checked == 0
+        assert ev.landing_rate is None      # nothing was checked, so there is no rate
+
+    def test_the_node_is_credited_to_the_action_it_ADDED(self):
+        """applied_seams is a lineage; the last entry is what this fork added on top of its parent."""
+        from merlin.mining.prior import seam_evidence_from_nodes
+        node = self._node(speedup=None)
+        node["applied_seams"] = ["schedule:parent", "schedule:child"]
+        ev = seam_evidence_from_nodes([node])
+        assert set(ev) == {"schedule:child"}
+
+    def test_a_seam_with_too_little_evidence_yields_no_prior(self):
+        from merlin.mining.prior import landing_prior_fn, seam_evidence_from_nodes
+
+        class _A:
+            target_seam = "schedule:x"
+
+        class _P:
+            action = _A()
+
+        ev = seam_evidence_from_nodes([
+            self._node(speedup=None, search_step={"promise_checkable": True, "achieved": True})])
+        assert landing_prior_fn(ev, min_attempts=3)(_P()) is None
+        assert landing_prior_fn(ev, min_attempts=1)(_P()) == pytest.approx(1.0)
+
+
+class TestShapeScopeIsAClaimOrSilence:
+    """An empty shape_regimes makes an action fire on every regime. Whether that is a validated claim
+    or nobody having said is the difference between a one-shot emission that rests on evidence and one
+    that is guessing."""
+
+    def _action(self, **kw):
+        from merlin.kernels.action_catalog import CompilerAction
+        base = dict(divergence_axis="a", action_class="KNOB", target_seam="s", change="c",
+                    forkable_now=True, expected_effect="e", backend="rvv")
+        base.update(kw)
+        return CompilerAction(**base)
+
+    def test_the_three_states_are_distinguishable(self):
+        from merlin.kernels.action_catalog import shape_scope
+        assert shape_scope(self._action(shape_regimes=("skinny",))) == "regimes"
+        assert shape_scope(self._action(shape_agnostic=True)) == "agnostic"
+        assert shape_scope(self._action()) == "unspecified"
+
+    def test_unspecified_still_applies_everywhere(self):
+        """Behaviour is unchanged -- only the claim it makes is now separable from silence."""
+        from merlin.kernels.action_catalog import applies_to_shape
+        assert applies_to_shape(self._action(), "square_large")
+
+    def test_unvalidated_scope_names_the_guesses_being_made(self):
+        from merlin.kernels.action_catalog import unvalidated_scope
+        actions = [self._action(shape_regimes=("skinny",)), self._action(shape_agnostic=True),
+                   self._action()]
+        guessed = unvalidated_scope(actions, "skinny")
+        assert len(guessed) == 1 and guessed[0].shape_regimes == ()
+
+    def test_an_action_that_does_not_fire_here_is_not_a_guess_here(self):
+        from merlin.kernels.action_catalog import unvalidated_scope
+        assert unvalidated_scope([self._action(shape_regimes=("skinny",))], "square_large") == ()
