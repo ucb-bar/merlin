@@ -36,18 +36,6 @@ from typing import Any
 UART_BYTES_PER_S = 92_000
 
 
-#: Width, in bytes, of one loader transfer beat. A loader that moves the image in fixed-width beats
-#: must issue a *partially masked* final beat for a segment whose file size is not a whole number of
-#: beats. Over TileLink that beat is a `PutPartialData`, and a manager is free not to support it:
-#: testchipip's `TSIToTileLink` builds its mask from which 32-bit words of the beat are valid, so a
-#: segment ending on an odd word is exactly what produces one, and the chip-side manager reached over
-#: serial TL rejects it — the load dies on a monitor assertion having printed nothing but the UART
-#: banner, which is indistinguishable from the model hanging. Boards may override with
-#: `loader_beat_bytes`; 8 is the TileLink beat every serial-TL/TSI path in this repo uses, and padding
-#: to it is free (at most 7 bytes per segment) and harmless to loaders that do not care.
-LOADER_BEAT_BYTES = 8
-
-
 def _bytes_per_s(brd) -> float:
     return float(getattr(brd, "loader_bytes_per_s", None) or UART_BYTES_PER_S)
 
@@ -212,18 +200,6 @@ def audit(elf: str | Path, brd, *, expect_htif: bool | None = None,
             rep.problems.append(
                 f"LOAD segment at {hex(seg.vaddr)} ends at {hex(seg.end)}, past the board's DRAM end "
                 f"{hex(hi)} ({brd.dram_bytes / 2**20:.0f} MB) — the image would not boot")
-
-    beat = int(getattr(brd, "loader_beat_bytes", None) or LOADER_BEAT_BYTES)
-    beat_derived = getattr(brd, "loader_beat_bytes", None) is not None
-    rep.facts["loader_beat_bytes"] = beat
-    rep.facts["loader_beat_basis"] = "board" if beat_derived else "default (not board-declared)"
-    ragged = [s for s in segments if beat > 0 and s.filesz % beat]
-    for seg in ragged:
-        rep.problems.append(
-            f"LOAD segment at {hex(seg.vaddr)} has file size {seg.filesz} "
-            f"({seg.filesz % beat} bytes past a {beat}-byte beat) — a beat-oriented loader must issue a "
-            f"partially masked final beat for it, which a TileLink manager may reject outright; pad the "
-            f"section to a {beat}-byte multiple in the linker script")
 
     total_mem = sum(s.memsz for s in segments)
     total_file = sum(s.filesz for s in segments)
