@@ -83,6 +83,12 @@ class EvaluationResult:
     numeric_policy: str = ""
 
     cycles: int | None = None
+    #: WHICH tier produced `cycles`, and whether that tier is cycle-accurate. Without these a latency
+    #: from a functional model is indistinguishable from one measured on RTL, and the two differ by
+    #: more than any optimization being measured. A cert-tier run whose RTL engine reports no cycle
+    #: count still yields a MODEL latency, and this is what says so.
+    cycles_tier: str | None = None
+    cycles_cycle_accurate: bool = False
     gflops: float | None = None
     pct_fp_peak: float | None = None
     perf_valid: bool = False
@@ -145,6 +151,8 @@ class EvaluationResult:
             "max_abs_error": self.max_abs_error,
             "max_rel_error": self.max_rel_error,
             "cycles": self.cycles,
+            "cycles_tier": self.cycles_tier,
+            "cycles_cycle_accurate": self.cycles_cycle_accurate,
             "gflops": self.gflops,
             "pct_fp_peak": self.pct_fp_peak,
             # Utilization is a profiler counter, not an answer -- a developer running their own kernel
@@ -200,6 +208,8 @@ def from_capsule_result(
         d = tiers[tier]
         if d.get("cycles") is not None and (ev.cycles is None or tier in certifying):
             ev.cycles = d.get("cycles")
+            ev.cycles_tier = tier
+            ev.cycles_cycle_accurate = bool(d.get("cycle_accurate"))
             ev.gflops = d.get("gflops")
             ev.pct_fp_peak = d.get("pct_fp_peak")
             # The tier nests these under "utilization"; older/other targets may inline them. Accept
@@ -250,6 +260,23 @@ def from_capsule_result(
     # Performance is only meaningful for a kernel that computed the right answer; an incorrect
     # kernel can be arbitrarily fast by skipping the work.
     ev.perf_valid = ev.cycles is not None and ev.counts_as_correct
+
+    # A cycle-accurate tier that passed while reporting NO cycles leaves the latency coming from a
+    # functional model. That is legitimate -- it is an execution cert, not a timing one -- but it must
+    # never be read as a measured latency, so it is named here rather than left to the tier table.
+    rtl_timed = [t for t in passed
+                 if isinstance(tiers[t], dict) and tiers[t].get("cycle_accurate")
+                 and tiers[t].get("cycles") is not None]
+    rtl_untimed = [t for t in passed
+                   if isinstance(tiers[t], dict) and tiers[t].get("cycle_accurate")
+                   and tiers[t].get("cycles") is None]
+    if rtl_untimed and not rtl_timed and ev.cycles is not None and not ev.cycles_cycle_accurate:
+        ev.add_caveat(
+            "latency_is_a_model_estimate",
+            f"{sorted(rtl_untimed)} certified execution on RTL but reported no cycle count, so the "
+            f"{ev.cycles} cycles come from {ev.cycles_tier} (a functional model). Correctness is "
+            f"RTL-backed; the LATENCY is not measured hardware timing.",
+        )
 
     # A substituted reference artifact does not measure the submission, so say so where the number is.
     if ev.toolchain and "not-the-submission" in ev.toolchain:

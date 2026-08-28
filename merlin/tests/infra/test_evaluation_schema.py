@@ -134,3 +134,37 @@ def test_unavailable_is_not_reported_as_a_failure():
 @pytest.mark.parametrize("field", ["task_id", "config_id", "target"])
 def test_identity_is_carried_so_results_can_be_joined(field):
     assert getattr(_ev(_result()), field)
+
+
+def test_an_rtl_tier_without_cycles_leaves_the_latency_a_model_estimate():
+    """The trap this pins: a cert run whose RTL engine reports no timing.
+
+    GSIM on this target passes L3 with cycles=None -- it certifies that the kernel RAN, not how long
+    it took. The latency then still comes from the functional model, and a record saying "cert"
+    beside a model number is how a perf claim becomes unfalsifiable.
+    """
+    res = _result(
+        tiers={
+            "L2": {"status": "pass", "cycles": 573042, "cycle_accurate": False},
+            "L3": {"status": "pass", "cycles": None, "cycle_accurate": True,
+                   "derived_from_rtl": True},
+        },
+    )
+    ev = _ev(res)
+    assert ev.tier_reached == "L3", "the RTL tier did pass"
+    assert ev.cycles == 573042
+    assert ev.cycles_tier == "L2", "the number came from the model, and must say so"
+    assert ev.cycles_cycle_accurate is False
+    assert "latency_is_a_model_estimate" in {c.code for c in ev.caveats}
+    assert "latency_is_a_model_estimate" in repr(ev.redact()), "the agent-facing view must carry it"
+
+
+def test_a_cycle_accurate_tier_that_reports_cycles_needs_no_caveat():
+    """The control: when RTL DOES time the kernel, nothing is hedged."""
+    res = _result(tiers={"L2": {"status": "pass", "cycles": 99, "cycle_accurate": False},
+                         "L3": {"status": "pass", "cycles": 12345, "cycle_accurate": True}})
+    ev = EV.from_capsule_result(res, task_id="T", config_id="C0", target="t",
+                                certifying_tiers=frozenset({"L2", "L3"}))
+    assert ev.cycles == 12345 and ev.cycles_tier == "L3"
+    assert ev.cycles_cycle_accurate is True
+    assert "latency_is_a_model_estimate" not in {c.code for c in ev.caveats}
