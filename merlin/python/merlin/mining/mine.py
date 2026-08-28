@@ -173,22 +173,21 @@ def cca_from_object(obj_path: Path, target: str, op: str, source: str,
         return ccamod.lift_asm(rvv_decode.decode(obj_path), op=op, source=source)
 
     geometry = _geometry_for(target)
-    stream = rvv_decode.decode(obj_path)
+    from merlin.kernels import decode as _dec
+
+    # ONE dispatcher, shared with the audit path. This function used to decode with its own shorter
+    # copy of that logic, and the two drifted: no ISA triple/mattr, no roles_of, no stream width, no
+    # intrinsics table. Every difference produced the same symptom -- an expert kernel lifting to
+    # None, reported as "decoded nothing of this endpoint", which reads as an empty corpus rather
+    # than as a decoder that was never handed what it needed.
+    settings = _dec.disasm_settings(target, endpoint)
+    stream = rvv_decode.decode(obj_path, triple=settings["triple"], mattr=settings["mattr"])
     raws = [i.raw for i in getattr(stream, "insns", ())]
     spans = stream.loop_spans() if getattr(stream, "spans_reliable", lambda: False)() else None
 
-    from merlin.kernels import endpoints as _ep
-    block = ((_ep._spec().get("endpoints") or {}).get(endpoint.name) or {})
-    source_kind = str((block.get("encoding") or {}).get("source") or "")
-    if source_kind == "rtl_facts":
-        from merlin.kernels.decode import rocc as _rocc
-        decoded = _rocc.decode_stream(raws, _rocc.funct_table_for(target), endpoint.roles_of)
-    elif source_kind == "isa_encoding":
-        from merlin.kernels.decode import derived_isa as _isa
-        decoded = _isa.decode_stream(raws, _isa.encoding_for(target),
-                                      (block.get("encoding") or {}).get("spaces") or ())
-    else:
-        return None            # a text-ISA endpoint is not lifted from an object; see mine_asm_corpus
+    decoded = _dec.decode_for_endpoint(raws, target, endpoint)
+    if not decoded:
+        return None            # no object decoder for this endpoint's encoding (e.g. a text ISA)
     if not any(getattr(d, "roles", ()) for d in decoded):
         return None            # decoded nothing of this endpoint: say so instead of lifting a blank
     return ccamod.lift_asm_roles(decoded, endpoint, op=op, source=source,
@@ -300,7 +299,13 @@ def mine_run(target: str, op: str, runs_root: Path, mined_dir: Path, out_root: P
 
     ours, baseline_run = _our_cca_from_run(runs_root, baseline_run_glob, op,
                                            target=target, endpoint=endpoint)
-    divs = cca_compare.compare(expert, ours) if ours else []
+    # A MISSING SIDE IS NOT AGREEMENT. With no `ours` this returned [], and the run reported
+    # "divergences=0 actions=0" -- indistinguishable from a genuine match, for a comparison that was
+    # never made. Measured: a run whose expert object failed to lift printed exactly that. The count
+    # is only meaningful when BOTH sides lifted, so say which one did not.
+    comparable = expert is not None and ours is not None
+    divs = cca_compare.compare(expert, ours) if comparable else []
+    missing = [n for n, c in (("expert", expert), ("ours", ours)) if c is None]
     for d in divs:                       # attach the evidence of the policy that asserts this axis
         d.evidence = ev_by_axis.get(d.axis, [])
     actions, unrouted = ac.build_catalog(divs)
@@ -315,7 +320,11 @@ def mine_run(target: str, op: str, runs_root: Path, mined_dir: Path, out_root: P
         # The LEVEL each side was lifted at. A run that compared a policy summary against emitted asm
         # is a weaker result than one that compared two streams, and the difference must be legible in
         # the artifact rather than inferred from which fields happen to be filled.
-        "expert_level": (expert.provenance or {}).get("level"),
+        # Which side(s) never lifted. Empty on a real comparison; a reader must never have to infer
+        # "we compared nothing" from a zero.
+        "sides_missing": missing,
+        "comparison_made": comparable,
+        "expert_level": (expert.provenance or {}).get("level") if expert is not None else None,
         "our_level": ((ours.provenance or {}).get("level") if ours else None),
         "expert_source": expert_src,
         "endpoint": getattr(endpoint, "name", None),
@@ -425,8 +434,17 @@ def main(argv: list[str] | None = None) -> int:
                        baseline_run_glob=a.baseline_glob)
     man = yaml.safe_load((run_dir / "manifest.yaml").read_text())
     print(f"minted {run_dir}")
+    if not man.get("comparison_made", True):
+        # Loudly, and with a non-zero exit: a zero here would read as "the expert and we agree".
+        print(f"  NO COMPARISON MADE — {', '.join(man.get('sides_missing') or ['?'])} did not lift. "
+              f"This is NOT agreement; nothing was compared.")
+        return 2
     print(f"  divergences={man['n_divergences']} actions={man['n_actions']} "
-          f"unrouted={man['n_unrouted']}")
+          f"unrouted={man['n_unrouted']}  "
+          f"[expert={man.get('expert_level')} ours={man.get('our_level')}]")
+    if man.get("expert_level") != "asm":
+        print("  NOTE: the expert side is a POLICY SUMMARY, not the expert's emitted code — a "
+              "weaker result than an asm-vs-asm comparison. Supply <mined>/expert_objects/*.o.")
     return 0
 
 

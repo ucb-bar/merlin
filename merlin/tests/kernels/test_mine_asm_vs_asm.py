@@ -88,7 +88,9 @@ class TestNothingDecodedIsNotACleanResult:
                 return []
 
         from merlin.kernels.decode import rvv as rvv_decode
-        monkeypatch.setattr(rvv_decode, "decode", lambda p: _S())
+        # Accepts the disassembly settings the caller now pins (triple/mattr): a stub narrower than
+        # the real signature fails the CALLER rather than the behaviour under test.
+        monkeypatch.setattr(rvv_decode, "decode", lambda p, **kw: _S())
         obj = tmp_path / "model.o"
         obj.write_bytes(b"")
         assert mine.cca_from_object(obj, "gemmini", "matmul", "t", endpoint=ep) is None
