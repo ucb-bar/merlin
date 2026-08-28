@@ -825,3 +825,37 @@ def composition_problems(actions) -> tuple[str, ...]:
 
 def composable(actions) -> bool:
     return not composition_problems(actions)
+
+
+def lineage_problems(applied, candidate) -> tuple[str, ...]:
+    """Why ``candidate`` cannot be applied on top of the ``applied`` actions of its parent.
+
+    This is the SEQUENTIAL sibling of :func:`composition_problems`, and it deliberately checks less.
+    A bundle applies its actions together, so two actions writing one seam make the credit ambiguous
+    and that is a real problem. A beam applies them one generation at a time: the child overwrites the
+    parent's seam, the measured delta is parent-to-child, and the credit is unambiguous — that is
+    ordinary refinement, not a clobber. Running the bundle rule over a lineage would therefore reject
+    every deepening step, which is the opposite of what the beam is for.
+
+    What DOES survive the sequential case is what the declarations say about the actions themselves:
+    a conflict is a conflict however it was reached, and an unmet requirement still produces an action
+    that builds and does nothing.
+    """
+    problems: list[str] = []
+    names = {a.action_family or a.target_seam for a in applied}
+    names |= {a.action_family for a in applied if a.action_family}
+    for c in candidate.conflicts:
+        if c in names:
+            problems.append(
+                f"{candidate.divergence_axis}: declares a conflict with {c!r}, already applied on "
+                f"this parent")
+    self_names = {candidate.action_family or candidate.target_seam}
+    if candidate.action_family:
+        self_names.add(candidate.action_family)
+    for req in candidate.requires:
+        if req not in names and req not in self_names:
+            problems.append(
+                f"{candidate.divergence_axis}: requires {req!r}, which neither this action nor its "
+                f"parent lineage applies — an action without its requirement usually builds and does "
+                f"nothing, and the facet audit then blames the action")
+    return tuple(problems)
