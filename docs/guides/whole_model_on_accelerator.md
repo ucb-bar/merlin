@@ -68,6 +68,26 @@ op that consumes it. An op no unit supports is an honest scalar/RVV fallback, ne
 
 ## The compiled path
 
+Measured end to end: a single ELF carrying host code and four device kernels — 33 custom instructions
+in `.text` — ran `small_llama` int8 to completion on spike, with 15 contractions executing on the
+accelerator across 4 distinct extents.
+
+| | cos vs fp32 | cos vs W8A8 | max\|d\|/max\|g\| | argmax |
+|---|---|---|---|---|
+| **compiled ELF** | 0.999929 | 0.999908 | 0.01308 / 0.01480 | match |
+| interpreted path | 0.99993 | 0.99991 | 0.0131 / 0.0148 | match |
+
+The two agree to five decimal places, which is the check that matters: the compiled artifact is not
+merely *a* result, it is the same result the graded path produces.
+
+One fix stood between those two rows and it is worth repeating, because it is the failure mode this
+whole path is most exposed to. The kernel ABI requires operands zero-padded to the mesh tile edge, and
+every offloaded layer here has M=8 against a 16-wide mesh. Handing over raw buffers does not fault —
+the kernel strides by the padded width through unpadded data, reads a neighbouring row as its own, and
+returns **cos 0.9847**: plausible, and wrong. Nothing catches that except comparing against a path
+already known to be right.
+
+
 ```python
 from merlin.llvmlower.device_build import DeviceRouting
 from merlin.runtime.backends import spike_model
