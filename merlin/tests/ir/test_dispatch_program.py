@@ -232,3 +232,33 @@ def test_program_on_real_small_llama():
                if n.kind == "dispatch" and n.prov.get("prov.op") == "matmul"]
     assert len(matmuls) == 15
     json.dumps(prog.to_dict())                   # serializes for the runtime
+
+
+class TestARegionIdIsOnlyReadFromASymbolWeEmitted:
+    """`__r` alone appears in symbols nobody here emitted, and reading it as provenance is not a
+    harmless mislabel: `section_mlir` picks which regions to splice into a section build using this
+    function, so a false positive silently builds a slice of the wrong model.
+    """
+
+    def test_an_xnnpack_rvv_suffix_is_not_a_region_id(self):
+        """THE COLLISION, measured on a real object: XNNPACK names its vector kernels
+        `..._ukernel_16x4v__rvv`, which split on the separator alone yields region id 'vv'."""
+        from merlin.xdsl_dialects.lowering.outline import region_id_of_symbol
+
+        assert region_id_of_symbol(
+            "xnn_qs8_qc8w_gemm_minmax_fp32_ukernel_16x4v__rvv") is None
+
+    def test_an_outlined_symbol_still_resolves(self):
+        from merlin.xdsl_dialects.lowering.outline import region_id_of_symbol
+
+        assert region_id_of_symbol("forward$kernel_3__rmatmul_0") == "matmul_0"
+
+    def test_an_untagged_outlined_symbol_claims_nothing(self):
+        from merlin.xdsl_dialects.lowering.outline import region_id_of_symbol
+
+        assert region_id_of_symbol("forward$kernel_1") is None
+
+    def test_an_unrelated_symbol_claims_nothing(self):
+        from merlin.xdsl_dialects.lowering.outline import region_id_of_symbol
+
+        assert region_id_of_symbol("memcpy") is None

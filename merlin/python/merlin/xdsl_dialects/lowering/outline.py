@@ -110,14 +110,31 @@ def _sanitize_symbol(text: str) -> str:
     return "".join(c if (c.isalnum() or c == "_") else "_" for c in text)
 
 
+#: The infix every outlined dispatch symbol carries (``forward$kernel_3``). Required before the
+#: ``__r`` suffix is read as provenance — see :func:`region_id_of_symbol`.
+KERNEL_SYMBOL_INFIX = "$kernel_"
+
+
 def region_id_of_symbol(symbol: str) -> str | None:
     """Recover the ``prov.region_id`` a dispatch symbol was tagged with (``None`` if untagged).
 
     Inverse of the suffix the outliner appends. Used to attribute an emitted kernel / ELF symbol
     back to its model region — the asm-side of the provenance join.
+
+    ⚠️ REQUIRES the ``$kernel_`` infix, and this is not belt-and-braces. ``__r`` alone appears inside
+    symbols nobody here emitted: XNNPACK names its vector kernels
+    ``xnn_qs8_qc8w_gemm_minmax_fp32_ukernel_16x4v__rvv``, which split on the separator alone yields a
+    confident region id of ``"vv"``. That is the same ``__rvv`` collision that already had to be
+    fixed once in corpus ingest, and here it is worse than a mislabel: ``section_mlir`` selects which
+    regions to splice into a section build by this function, so a false positive silently builds a
+    slice of the wrong model.
     """
-    _, sep, rid = symbol.partition(REGION_SYMBOL_SEP)
-    return rid or None if sep else None
+    core, sep, rid = symbol.partition(REGION_SYMBOL_SEP)
+    if not sep or not rid:
+        return None
+    if KERNEL_SYMBOL_INFIX not in core:
+        return None            # not a symbol this outliner emitted; claim nothing about it
+    return rid
 
 
 def _cloneable(owner) -> bool:
