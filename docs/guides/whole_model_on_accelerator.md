@@ -124,16 +124,24 @@ failing later as an unresolved symbol.
 | substrate | whole-model artifact | why |
 |---|---|---|
 | spike (`--extension=<target>`) | **yes** | measured; the numbers above |
-| chipyard Verilator | **no**, as configured | its RAM model rejects sub-word writes |
+| chipyard Verilator | **no** on either gemmini config tried | harness RAM rejects sub-word writes |
 | GSIM | **no**, as configured | no ELF loader on that SoC build |
 
 The Verilator block is worth stating precisely, because it looks like a compiler failure and is not.
 The harness monitor aborts with `'A' channel carries PutPartial type which is unexpected` — a
 sub-word write on the TileLink A channel. A whole-model image produces those routinely; the capsules
 do not, because they are scratchpad-resident with no sub-word DRAM traffic, which is why the same sim
-certifies capsules happily. **Measured control:** the identical model built with NO device offload
+certifies capsules happily. **Measured control, on two configs:** the identical model built with NO device offload
 aborts at the same monitor, so this is the sim's memory model and not the offload path. Running a
 whole model on RTL needs a config whose memory accepts sub-word writes.
+
+Checked on a second config rather than inferred from one. `GemminiAndOPUShuttleConfig` aborts at the
+same monitor and the same simulation timestamp, so this is the harness memory these builds share, not
+a property of the config first tried. (An offloaded image on that config exits quietly WITHOUT the
+abort, which is not evidence the block is absent: gemmini sits on a different custom opcode slot when
+the OPU is also present, so its kernels trap early and the run never reaches the writes that trip the
+monitor.) FireSim is the substrate to try next -- it models DDR rather than this harness RAM, and its
+gemmini bitstream exists.
 
 The GSIM block is different in kind. That SoC build bakes its kernel into the BootROM constants
 because SimTSI was pruned, so there is no path to load an ELF at all — a compiled artifact cannot be
