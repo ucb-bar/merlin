@@ -1948,6 +1948,21 @@ def _sustained_stats(cycles: list[int]) -> dict[str, Any]:
 # e.g. bitvla's fp32 baseline). 0 (or empty) DISABLES the per-element term entirely.
 _GATE_MAX_REL = float(os.environ.get("MERLIN_GATE_MAX_REL", "0.05") or "0")
 
+# Localized-error veto for the COSINE-ONLY tier (t3), expressed against the run's own quantization
+# floor rather than a constant. Measured across the tracked recaptures, the deviation of a CORRECT
+# host int8 reference from the fp32 golden spans 0.027 (small_llama) to 1.88 (gemma2_2b) of the
+# output RMS, and 1.3 to 99.0 in per-element relative terms. So NO fixed bound -- relative or
+# absolute -- is satisfiable by correct implementations across models: the 0.05 per-element ceiling
+# above rejects every one of them, which is why t3 carries no per-element term at all today.
+# What IS comparable is the run against the SAME MODEL's own quantization noise: golden_w8a8 is the
+# host's int8 result, so max|golden_w8a8 - golden_fp32| is the deviation that correct W8A8 arithmetic
+# already costs on this exact output. A conformant accelerator computes the same quantized math in a
+# different (equally valid) rounding/accumulation order, so it should land within a small multiple of
+# that floor; a localized blow-up lands far outside it. The bound is therefore DERIVED per run and
+# needs no per-model tuning. Requires BOTH references (the floor is unmeasurable otherwise) and a
+# non-degenerate floor; 0 (or empty) disables it.
+_GATE_QUANT_EXCESS = float(os.environ.get("MERLIN_GATE_QUANT_EXCESS", "4.0") or "0")
+
 
 def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> dict:
     """Multi-tier accuracy gate for an int8 (W8A8) run. ``references`` is either a single
@@ -1970,11 +1985,13 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
         references = {"fp32": references}
     thresh = _GATE_MAX_REL if max_rel is None else float(max_rel)
     out: dict[str, Any] = {}
+    _arr: dict[str, np.ndarray] = {}
     k = len(pref)
     for tier, ref in references.items():
         if ref is None:
             continue
         r = np.asarray(ref, dtype=np.float32).ravel()[:k]
+        _arr[tier] = r
         rmax = max(1e-9, float(np.abs(r).max()))
         rel = float(np.abs(pref - r).max()) / rmax
         cos = float((pref @ r) / (np.linalg.norm(pref) * np.linalg.norm(r) + 1e-12))
@@ -1993,6 +2010,21 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
         out[f"{tier}_rel"] = rel
         out[f"{tier}_argmax"] = bool(int(np.argmax(pref)) == int(np.argmax(r)))
         out[f"{tier}_max_rel"] = perel
+
+    # ---- derived localized-error veto (see _GATE_QUANT_EXCESS): judge the run against the
+    # quantization noise THIS model's own references already exhibit, not against a constant.
+    _excess_ok, _excess_applied = True, False
+    _f, _q = _arr.get("fp32"), _arr.get("w8a8")
+    if _GATE_QUANT_EXCESS > 0 and _f is not None and _q is not None:
+        _floor = float(np.abs(_q.astype(np.float64) - _f.astype(np.float64)).max())
+        _scale = max(1e-12, float(np.abs(_f.astype(np.float64)).max()))
+        if _floor > 1e-9 * _scale:  # degenerate (identical references) => unmeasurable, veto stays off
+            _run = float(np.abs(pref.astype(np.float64)[:len(_f)] - _f.astype(np.float64)).max())
+            out["quant_floor_abs"] = _floor
+            out["run_dev_abs"] = _run
+            out["quant_excess"] = _run / _floor
+            _excess_applied = True
+            _excess_ok = out["quant_excess"] <= _GATE_QUANT_EXCESS
 
     def _perel_ok(tier: str, bound: float | None = None) -> bool:
         # bound <= 0 disables the term; missing tier => vacuously ok (that tier isn't in play).
@@ -2013,12 +2045,15 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
     # output legitimately carries high PER-ELEMENT relative error on its many small (low-absolute)
     # elements -- bitvla's real seed measured per-element max-rel 1.1 (even RMS-masked) at cos
     # 0.9999945 / global rel 0.0031, i.e. numerically correct but per-element-noisy by nature. No
-    # per-element bound can pass such an output, which is why the four-way authority (that has always
-    # accepted these results) gates on cosine alone. The per-element localized-error veto is retained
-    # where outputs are well-scaled and it is meaningful: the int8 (t1/w8a8) and classification
+    # per-element RELATIVE bound can pass such an output, which is why the four-way authority (that has
+    # always accepted these results) gates on cosine alone. A per-element ABSOLUTE bound CAN gate one,
+    # and t3 now carries it whenever it is measurable -- see _GATE_QUANT_EXCESS. That veto is what
+    # closes the localized-blow-up hole at this tier; without it a 1209%-style single-element error
+    # reaching t3 passed untouched, since cosine is exactly what such an error hides from.
+    # The per-element RELATIVE veto is retained where outputs are well-scaled and it is meaningful: the int8 (t1/w8a8) and classification
     # (t2/argmax) and bit-close (legacy) tiers, plus the fp16 driver's own gate. Whole-model fp16/int8
     # forks are still per-element-guarded via t1 (w8a8 ref) and the dtype drivers.
-    t3 = (out.get("fp32_cos", 0.0) > 0.9999 and "fp32_cos" in out)
+    t3 = (out.get("fp32_cos", 0.0) > 0.9999 and "fp32_cos" in out and _excess_ok)
     out["cos"] = out.get("w8a8_cos", out.get("fp32_cos"))
     out["rel"] = out.get("w8a8_rel", out.get("fp32_rel"))
     out["max_rel"] = out.get("w8a8_max_rel", out.get("fp32_max_rel"))
@@ -2032,7 +2067,8 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
     out["tiers"] = sorted(t for t in ("w8a8", "fp32") if f"{t}_cos" in out)
     out["tier_ok"] = ("w8a8" if t1 else "fp32" if t2 else
                       "fp32_legacy" if legacy else "fp32_cos_only" if t3 else None)
-    # DID A PER-ELEMENT VETO ACTUALLY APPLY? t3 is cosine-only by design -- a whole-model regression
+    # DID A PER-ELEMENT VETO ACTUALLY APPLY? t3 is cosine-only only WHEN THE DERIVED VETO CANNOT BE
+    # MEASURED (one reference, or two identical ones) -- a whole-model regression
     # output legitimately carries high per-element relative error on its many small elements, and no
     # per-element bound can pass one. But t3 fires for ANY output whose cosine clears 0.9999, including
     # one where the veto WOULD have been meaningful and WOULD have failed: a measured whole model passed
@@ -2040,7 +2076,12 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
     # t2 on exactly those numbers. That is a real pass and also a much weaker one, and a caller quoting
     # `ok` alone cannot tell the two apart. Stated as a field so a certification can carry its own
     # strength instead of the reader having to reverse-engineer it from a tier name.
-    out["per_element_guarded"] = bool(t1 or t2 or legacy)
+    # When both references are present the run IS per-element guarded -- by the quantization-excess
+    # bound, the veto actually applicable to this output class (the relative one rejects correct
+    # reference implementations, so its absence here was never evidence of a defect).
+    out["per_element_guarded"] = bool(t1 or t2 or legacy or (t3 and _excess_applied))
+    out["per_element_basis"] = ("relative" if (t1 or t2 or legacy)
+                                else "quantization_excess" if (t3 and _excess_applied) else None)
     return out
 
 
