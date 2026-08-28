@@ -172,9 +172,15 @@ def zero_initialised(op) -> bool:
     anything not recognised is the fail-closed direction: an unrecognised init might be zero, and a
     contraction wrongly left on the vector path is merely slower.
 
-    Structural: the init operand's defining op must be ``linalg.fill`` of an ``arith.constant`` integer
-    zero. A block argument (whose ``owner`` is a ``Block``, not an ``Operation``) is not a fill and is
-    rejected by the same check.
+    Structural: the init operand's defining op must be ``linalg.fill`` of an ``arith.constant`` zero,
+    integer OR float. A block argument (whose ``owner`` is a ``Block``, not an ``Operation``) is not a
+    fill and is rejected by the same check.
+
+    The float case is not cosmetic. This predicate is a CORRECTNESS condition -- it decides whether the
+    addend may be dropped -- and "is the init all zeros" has nothing to do with the element type. While
+    it recognised integers only, every float contraction answered "no", so a float accelerator could
+    never take a single layer through this path no matter what its datapath declared. That reads as a
+    device with no work rather than as a predicate that cannot see it.
     """
     from xdsl.ir import Operation
 
@@ -190,7 +196,23 @@ def zero_initialised(op) -> bool:
     const = fill_operands[0].owner
     if not isinstance(const, Operation) or getattr(const, "name", "") != "arith.constant":
         return False
-    return _int_attr_value(getattr(const, "value", None)) == 0
+    return _is_zero_attr(getattr(const, "value", None))
+
+
+def _is_zero_attr(attr) -> bool:
+    """Whether ``attr`` is a zero constant of any numeric kind. Unrecognised => False (fail closed).
+
+    Both signed zeros count: dropping a ``-0.0`` addend changes no result, since ``x + -0.0 == x`` for
+    every finite ``x`` and ``0.0 + -0.0 == 0.0``. A NaN or a non-numeric attribute is not zero and is
+    refused by the comparison itself.
+    """
+    if _int_attr_value(attr) == 0:
+        return True
+    value = getattr(attr, "value", None)
+    raw = getattr(value, "data", value)
+    if isinstance(raw, float):
+        return raw == 0.0
+    return False
 
 
 def _int_attr_value(attr) -> int | None:
@@ -204,24 +226,41 @@ def _int_attr_value(attr) -> int | None:
     return data if isinstance(data, int) else None
 
 
-def routable_contractions(module) -> list[tuple[Any, Any]]:
+def routable_contractions(module, *, device: str | None = None,
+                          dtypes: "tuple[str, str, str] | None" = None) -> list[tuple[Any, Any]]:
     """``[(op, shape)]`` for every contraction this path COULD take, with no decision made.
 
     Separated from the rewrite so a caller (a cost model, an e-graph, a report) can enumerate the
     candidate set without mutating anything — the same split
     :func:`routing.route_candidates` makes for the same reason.
 
-    "Could" means LEGAL, not profitable: rank-2 int8 ``matmul`` accumulating into a zero init. Whether a
-    legal contraction is worth moving is the ``select`` caller's decision.
+    "Could" means LEGAL, not profitable: a rank-2 ``matmul`` on this datapath accumulating into a zero
+    init. Whether a legal contraction is worth moving is the ``select`` caller's decision.
+
+    **The datapath is a parameter, not a law.** ``INT8_DTYPES`` is this unit's first declared
+    ``accumulate`` rule written down, and written down it belongs to nobody: a second device either
+    inherits this one's precision or needs a second copy of the pass. Passing ``device=`` derives the
+    triple from that device instead (:mod:`merlin.system.offload`), and ``dtypes=`` states it outright.
+    Neither is the default, so every existing caller keeps this unit's behaviour exactly.
     """
     from ..kernels.shapes import observe_contractions
+
+    want = tuple(dtypes) if dtypes else INT8_DTYPES
+    if device is not None:
+        from merlin.system.offload import device_dtype_triples
+        derived = device_dtype_triples(device)
+        if not derived:
+            return []                    # fail closed: an underivable datapath routes nothing
+        accepted = set(derived)
+    else:
+        accepted = {want}
 
     out: list[tuple[Any, Any]] = []
     for op, shape in observe_contractions(module):
         want_parallel = ROUTABLE_OPS.get(shape.op)
         if want_parallel is None:
             continue
-        if tuple(shape.dtypes) != INT8_DTYPES:
+        if tuple(shape.dtypes) not in accepted:
             continue
         if len(shape.parallel) != want_parallel or len(shape.reduction) != 1:
             continue
