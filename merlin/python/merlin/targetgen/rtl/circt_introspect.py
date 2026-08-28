@@ -225,9 +225,53 @@ def extract_funct_table(isa_src: str) -> dict[str, Any]:
         "name": "funct_decode_table",
         "legal_funct": legal,
         "names": {str(k): table[k] for k in legal},
+        # Bindings OUTSIDE the funct block, for naming codes the SILICON decodes that the block never
+        # mentions. Kept separate because they are not authoritative: see :func:`outside_block_names`.
+        "outside_block_names": outside_block_names(isa_src, start_at=start),
         "evidence": f"GemminiISA.scala // funct values block: {len(legal)} codes "
                     f"[{legal[0]}..{legal[-1]}] up to CONFIG_EX",
     }
+
+
+def outside_block_names(isa_src: str, start_at: int = 0) -> dict[str, list[str]]:
+    """Every ``val NAME = <n>.U`` binding in the file, code -> the names bound to it.
+
+    WHY THIS IS SEPARATE FROM THE FUNCT BLOCK. The funct block is authoritative and this is not. Two
+    measured reasons, both from GemminiISA.scala itself:
+
+    * The "cisc-gemmini opcodes" group binds 10..17 and the file SAYS SO in a comment — ``// TODO the
+      numbers here overlap with the LOOP_WS commands``, ``// same as COMPUTE_AND_FLIP``. Naming a
+      funct from a whole-file scan would rename LOOP_WS_CONFIG_ADDRS_AB to ADDR_AB.
+    * The rs1-subfield group rebinds small numbers (``CONFIG_EX = 0.U``) that collide with real
+      functs (``CONFIG_CMD = 0.U``).
+
+    So this returns the FULL list of names per code, never one name, and the caller may only use a
+    code whose list has exactly one entry. An ambiguous code stays unnamed — which is the honest
+    result, because guessing between two bindings is how a decode table starts lying.
+
+    Bit-width annotation is NOT a rejection criterion here. The funct block excludes ``<n>.U(<w>.W)``
+    because its rs1-subfields are annotated; but ``COUNTER_OP = 126.U(7.W)`` is a real funct the
+    silicon decodes, written with a width. A pattern narrow enough to exclude the subfields also
+    excluded a live instruction, which is exactly the too-narrow-pattern failure the repo forbids.
+    """
+    out: dict[str, list[str]] = {}
+    for ln in isa_src.splitlines()[start_at:]:
+        s = ln.strip()
+        if not s.startswith("val "):
+            continue
+        lhs, sep, rhs = s.partition("=")
+        if not sep or ".U" not in rhs:
+            continue
+        name = lhs[4:].strip()
+        num, _after = rhs.strip().split(".U", 1)
+        num = num.strip()
+        if not (num.isdigit() and name
+                and all(c.isupper() or c.isdigit() or c == "_" for c in name)):
+            continue
+        names = out.setdefault(num, [])
+        if name not in names:
+            names.append(name)
+    return out
 
 
 # ------------------------------------------------------- decoder-derived funct set (the true ISA)
@@ -271,6 +315,23 @@ def _reconcile_funct(decoder: dict[str, Any] | None, header: dict[str, Any] | No
         hs, ds = set(header.get("legal_funct", [])), set(decoder["legal_funct"])
         hnames = header.get("names", {})
         decoder["names"] = {str(k): hnames.get(str(k), "?") for k in decoder["legal_funct"]}
+        # A code the SILICON decodes that the funct block never named reads as "?" -- and an unnamed
+        # instruction cannot be given a role, so it lands in `claimed_no_role` forever. Measured on
+        # gemmini: funct 126 is decoded by the silicon, is bound exactly once in the ISA source as
+        # COUNTER_OP, and sits after the block's CONFIG_EX stop, so the block never reaches it.
+        # Name it from the unambiguous binding; leave it "?" when the file binds the code more than
+        # once, and RECORD which codes were named this way so the weaker provenance stays visible.
+        outside = header.get("outside_block_names") or {}
+        recovered: dict[str, str] = {}
+        for code in decoder["legal_funct"]:
+            if decoder["names"].get(str(code)) != "?":
+                continue
+            cands = outside.get(str(code)) or []
+            if len(cands) == 1:
+                decoder["names"][str(code)] = cands[0]
+                recovered[str(code)] = cands[0]
+        if recovered:
+            decoder["names_recovered_from_outside_block"] = recovered
         decoder["header_only_functs"] = sorted(hs - ds)   # header claims, silicon never decodes (phantom)
         decoder["decoder_only_functs"] = sorted(ds - hs)  # silicon decodes, header omits (missing)
         decoder["evidence"] += (f"; vs header: phantom={sorted(hs - ds)} missing={sorted(ds - hs)}")
