@@ -150,7 +150,7 @@ whole-model RTL run remains unavailable on the substrates here.
 |---|---|---|
 | spike (`--extension=<target>`) | **yes** | measured; the numbers above |
 | chipyard Verilator | **no** on either gemmini config tried | harness RAM rejects sub-word writes |
-| GSIM | **no**, as configured | no ELF loader on that SoC build |
+| GSIM | not yet, but unblocked | DRAM path works; needs a loader + result readback |
 
 The Verilator block is worth stating precisely, because it looks like a compiler failure and is not.
 The harness monitor aborts with `'A' channel carries PutPartial type which is unexpected` — a
@@ -168,10 +168,25 @@ the OPU is also present, so its kernels trap early and the run never reaches the
 monitor.) FireSim is the substrate to try next -- it models DDR rather than this harness RAM, and its
 gemmini bitstream exists.
 
-The GSIM block is different in kind. That SoC build bakes its kernel into the BootROM constants
-because SimTSI was pruned, so there is no path to load an ELF at all — a compiled artifact cannot be
-handed to it regardless of size. DRAM preload plus a reset vector would have to be built into the
-harness first.
+The GSIM situation is different in kind, and better than it first appeared. That SoC build bakes its
+kernel into the BootROM constants because SimTSI was pruned, so an ELF still cannot simply be handed
+to it. What was ALSO believed — that its DRAM path had never worked — is false, and the correction is
+worth recording because the evidence was misread twice.
+
+The chip-boundary AXI port backed by testchipip's `mm_magic_t` DOES work. A probe that preloads two
+distinct values at `0x8000_0000` and loads them retires both with exactly the preloaded bytes
+(`deadbeefcafebabe`, `0123456789abcdef`), with `ar=1` at `0x8000_0000` and eight read-data beats — a
+full cache line. Both halves matter: a memory answering with zeros still fires `ar`, so it is the
+value check that makes it evidence.
+
+The reason it looked dead is latency. The first DRAM load retires at cycle ~1044 against an
+instruction issued at cycle 20 — about 1024 cycles for a cold miss out to memory — and the probe
+harness stopped at 400. At that bound every AXI counter reads zero, which is indistinguishable from a
+request that never left the SoC. Run it for 5000 cycles and the path is plainly alive.
+
+What GSIM still needs is a loader (write the ELF's PT_LOAD segments into the backing store with
+`gemmini_dram_write`, and boot at `0x8000_0000`) and result readback (`gemmini_dram_read`, which also
+removes the need for a console). Both functions already exist.
 
 ## Reading the result
 
