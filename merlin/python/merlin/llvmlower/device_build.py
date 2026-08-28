@@ -158,10 +158,13 @@ def build_device_objects(device: str,
 
     for index, sym in enumerate(sorted(signatures)):
         key = tuple(int(v) for v in signatures[sym])
-        if len(key) != 3:
-            skipped.append((sym, f"rank-{len(key) - 1} signature; only rank-2 kernels are built"))
+        if len(key) not in (3, 4):
+            skipped.append((sym, f"signature {key} has neither 3 nor 4 extents; no kernel shape for it"))
             continue
-        m, n, k = key
+        # A batched signature needs the SAME kernel as its unbatched form: the batch is a loop in the
+        # shim over disjoint slices, not a third axis the device sees. Building a separate kernel per
+        # batch size would mint one per B for identical work.
+        m, n, k = key[-3:]
         want = kernel_symbol(abi.symbol, index)
         stem = work / f"{sym}"
 

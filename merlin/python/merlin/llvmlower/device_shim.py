@@ -155,6 +155,80 @@ merlin_memref_2d {symbol}(
 """
 
 
+_ENTRY_3D = """
+/* {symbol}: B={b} M={m} N={n} K={k}, datapath {dtypes}{padnote}.
+ *
+ * A batch is a LOOP, not a third tile axis. The device contracts two dimensions and reduces a third;
+ * a batch is many of those, and each slice's operands and result are disjoint, so the batched form is
+ * the same kernel called B times with the leading offset advanced. Growing a second kernel for it
+ * would need its own legality and its own certification to say anything.
+ *
+ * The staging buffers are reused across slices, which is sound only because the slices run in
+ * sequence -- that is a property of this loop, not of the buffers. */
+{staging}
+merlin_memref_3d {symbol}(
+    void *a_alloc, void *a_aligned, intptr_t a_off, intptr_t a_s0, intptr_t a_s1, intptr_t a_s2,
+    intptr_t a_st0, intptr_t a_st1, intptr_t a_st2,
+    void *b_alloc, void *b_aligned, intptr_t b_off, intptr_t b_s0, intptr_t b_s1, intptr_t b_s2,
+    intptr_t b_st0, intptr_t b_st1, intptr_t b_st2,
+    void *c_alloc, void *c_aligned, intptr_t c_off, intptr_t c_s0, intptr_t c_s1, intptr_t c_s2,
+    intptr_t c_st0, intptr_t c_st1, intptr_t c_st2)
+{{
+  if (a_s0 != {b} || a_s1 != {m} || a_s2 != {k} || b_s1 != {k} || b_s2 != {n}
+      || c_s0 != {b} || c_s1 != {m} || c_s2 != {n}) {{
+    merlin_memref_3d bad;
+    bad.allocated = 0; bad.aligned = 0; bad.offset = 0;
+    bad.sizes[0] = 0; bad.sizes[1] = 0; bad.sizes[2] = 0;
+    bad.strides[0] = 0; bad.strides[1] = 0; bad.strides[2] = 0;
+    return bad;
+  }}
+  (void)a_alloc; (void)b_alloc; (void)b_s0; (void)a_st1; (void)a_st2;
+  (void)b_st1; (void)b_st2; (void)c_st1; (void)c_st2;
+  {{
+    long slice;
+    for (slice = 0; slice < {b}; ++slice) {{
+      const unsigned char *src_a = (const unsigned char *)a_aligned
+                                 + (a_off + slice * a_st0) * {lhs_bytes};
+      const unsigned char *src_b = (const unsigned char *)b_aligned
+                                 + (b_off + slice * b_st0) * {rhs_bytes};
+      unsigned char *dst_c = (unsigned char *)c_aligned + (c_off + slice * c_st0) * {out_bytes};
+{body}
+    }}
+  }}
+  merlin_memref_3d r;
+  r.allocated = c_alloc; r.aligned = c_aligned; r.offset = c_off;
+  r.sizes[0] = c_s0; r.sizes[1] = c_s1; r.sizes[2] = c_s2;
+  r.strides[0] = c_st0; r.strides[1] = c_st1; r.strides[2] = c_st2;
+  return r;
+}}
+"""
+
+#: Direct call, when every extent already sits on the tile edge.
+_BODY_3D_DIRECT = """      {kernel}((void *)src_b, (void *)src_a, (void *)dst_c);"""
+
+#: Staged call, when an extent misses the edge. Same contract as the rank-2 padded entry.
+_BODY_3D_STAGED = """      {{
+        long i, j;
+        for (i = 0; i < {mp} * {kp} * {lhs_bytes}; ++i) {symbol}_a[i] = 0;
+        for (i = 0; i < {kp} * {np_} * {rhs_bytes}; ++i) {symbol}_b[i] = 0;
+        for (i = 0; i < {mp} * {np_} * {out_bytes}; ++i) {symbol}_c[i] = 0;
+        for (i = 0; i < {m}; ++i)
+          for (j = 0; j < {k} * {lhs_bytes}; ++j)
+            {symbol}_a[i * {kp} * {lhs_bytes} + j] = src_a[i * {k} * {lhs_bytes} + j];
+        for (i = 0; i < {k}; ++i)
+          for (j = 0; j < {n} * {rhs_bytes}; ++j)
+            {symbol}_b[i * {np_} * {rhs_bytes} + j] = src_b[i * {n} * {rhs_bytes} + j];
+        {kernel}({symbol}_b, {symbol}_a, {symbol}_c);
+        for (i = 0; i < {m}; ++i)
+          for (j = 0; j < {n} * {out_bytes}; ++j)
+            dst_c[i * {n} * {out_bytes} + j] = {symbol}_c[i * {np_} * {out_bytes} + j];
+      }}"""
+
+_STAGING_3D = """static unsigned char {symbol}_a[{mp} * {kp} * {lhs_bytes}];
+static unsigned char {symbol}_b[{kp} * {np_} * {rhs_bytes}];
+static unsigned char {symbol}_c[{mp} * {np_} * {out_bytes}];"""
+
+
 @dataclass(frozen=True)
 class KernelAbi:
     """The device kernel's symbol and argument order, from the OOT backend contract."""
@@ -256,8 +330,8 @@ def emit_translation_unit(device: str,
     for sym in sorted(signatures):
         key = tuple(int(v) for v in signatures[sym])
         dt = tuple(str(d) for d in (dtypes.get(sym) or ()))
-        if len(key) != 3:
-            skipped.append((sym, f"rank-{len(key) - 1} signature {key}; only rank-2 entries are emitted"))
+        if len(key) not in (3, 4):
+            skipped.append((sym, f"signature {key} has neither 3 nor 4 extents; no entry shape for it"))
             continue
         if len(dt) != 3:
             skipped.append((sym, f"no datapath recorded for {sym}"))
@@ -267,7 +341,7 @@ def emit_translation_unit(device: str,
             skipped.append((sym, f"sub-byte or unknown element width in {dt}; offset arithmetic "
                                  f"would be a guess"))
             continue
-        m, n, k = key
+        batch, (m, n, k) = ((None, key) if len(key) == 3 else (key[0], key[1:]))
         edge = tile_edge if tile_edge is not None else tile_edge_for(device)
         if not edge:
             # Without the edge we cannot know whether this entry needs staging, and emitting the
@@ -277,17 +351,21 @@ def emit_translation_unit(device: str,
                                  "staging is unknown; declining rather than emitting the raw form"))
             continue
         needs_pad = any(int(x) % int(edge) for x in (m, n, k))
-        if needs_pad:
-            def _up(v):
-                return ((int(v) + int(edge) - 1) // int(edge)) * int(edge)
-            entries.append(_ENTRY_2D_PADDED.format(
-                symbol=sym, m=m, n=n, k=k, dtypes=dt, edge=int(edge), kernel=kernel_for(sym),
-                mp=_up(m), np_=_up(n), kp=_up(k),
-                lhs_bytes=widths[0], rhs_bytes=widths[1], out_bytes=widths[2]))
+        def _up(v):
+            return ((int(v) + int(edge) - 1) // int(edge)) * int(edge)
+
+        shape = dict(symbol=sym, m=m, n=n, k=k, dtypes=dt, kernel=kernel_for(sym),
+                     mp=_up(m), np_=_up(n), kp=_up(k),
+                     lhs_bytes=widths[0], rhs_bytes=widths[1], out_bytes=widths[2])
+        if batch is None:
+            entries.append((_ENTRY_2D_PADDED if needs_pad else _ENTRY_2D).format(
+                edge=int(edge), **shape))
         else:
-            entries.append(_ENTRY_2D.format(symbol=sym, m=m, n=n, k=k, dtypes=dt,
-                                            kernel=kernel_for(sym), lhs_bytes=widths[0],
-                                            rhs_bytes=widths[1], out_bytes=widths[2]))
+            body = (_BODY_3D_STAGED if needs_pad else _BODY_3D_DIRECT).format(**shape)
+            staging = _STAGING_3D.format(**shape) if needs_pad else ""
+            entries.append(_ENTRY_3D.format(
+                b=int(batch), staging=staging, body=body,
+                padnote=(f", tile edge {int(edge)} (staged)" if needs_pad else ""), **shape))
         emitted.append(sym)
 
     kernels = sorted({kernel_for(sym) for sym in emitted})

@@ -104,10 +104,23 @@ def test_an_unusable_package_is_reported_not_raised(tmp_path):
     assert not b.ok and b.skipped and any("package" in why for _, why in b.skipped)
 
 
-def test_a_rank_this_path_cannot_build_is_skipped_with_its_shape(tmp_path):
-    """A model whose third extent the package declines should still build the other two."""
+def test_a_batched_signature_builds_the_same_kernel_as_its_unbatched_form(tmp_path):
+    """The batch is a loop in the shim over disjoint slices, not a third axis the device sees.
+    Building a separate kernel per batch size would mint one per B for identical work."""
+    if not _PKG:
+        pytest.skip("set MERLIN_TEST_DEVICE_PACKAGE to exercise the build")
     b = build_device_objects("gemmini", {"b0": (4, 16, 16, 32)}, {"b0": ("i8", "i8", "i32")},
+                             package_dir=_PKG, workdir=tmp_path,
+                             operand_dtype="int8", accum_dtype="i32", timeout=900)
+    if not b.ok:
+        pytest.skip(f"device build unavailable here: {b.skipped}")
+    assert set(b.kernels) == {"b0"}, "a batched signature still needs exactly one kernel"
+
+
+def test_a_shape_this_path_cannot_build_is_skipped_with_its_shape(tmp_path):
+    """A model whose third extent the path cannot express should still build the other two."""
+    b = build_device_objects("gemmini", {"b0": (2, 3, 16, 16, 32)}, {"b0": ("i8", "i8", "i32")},
                              package_dir=_PKG or (tmp_path / "nope"), workdir=tmp_path,
                              operand_dtype="int8", accum_dtype="i32")
     assert not b.ok
-    assert any("rank" in why or "package" in why for _, why in b.skipped)
+    assert any("extents" in why or "package" in why for _, why in b.skipped)

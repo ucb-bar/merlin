@@ -94,10 +94,13 @@ def test_a_sub_byte_format_is_declined_rather_than_guessed():
     assert any("sub-byte" in why or "unknown element width" in why for _, why in unit.skipped)
 
 
-def test_a_rank_this_emitter_cannot_express_is_declined():
-    unit = emit_translation_unit("gemmini", {"s": (4, 16, 16, 32)}, {"s": ("i8", "i8", "i32")})
+def test_a_shape_this_emitter_cannot_express_is_declined():
+    """Rank-2 and batched rank-3 both have an entry shape. Anything else is declined and reported --
+    emitting an entry whose arity does not match the caller's descriptors would fail at the call, far
+    from here."""
+    unit = emit_translation_unit("gemmini", {"s": (2, 3, 16, 16, 32)}, {"s": ("i8", "i8", "i32")})
     assert unit.symbols == ()
-    assert any("rank" in why for _, why in unit.skipped)
+    assert any("extents" in why for _, why in unit.skipped)
 
 
 def test_a_signature_with_no_recorded_datapath_is_declined():
@@ -177,3 +180,63 @@ def test_an_underivable_edge_declines_rather_than_guessing():
     unit = emit_translation_unit("definitely_not_a_target", {"s": (8, 24, 8)},
                                  {"s": ("i8", "i8", "i32")})
     assert unit.symbols == () or "s" not in unit.symbols
+
+
+# --------------------------------------------------------------- batched contractions
+
+_K3_STUB = """
+#include <stdint.h>
+static int calls = 0;
+void {kernel}(void *weight, void *lhs_0, void *out_0) {{
+  (void)weight; (void)lhs_0; ((int32_t *)out_0)[0] = ++calls;
+}}
+"""
+
+_D3 = """
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+typedef struct {{ void *a; void *b; intptr_t o; intptr_t s[3]; intptr_t st[3]; }} mr3;
+extern mr3 {symbol}(void*,void*,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,
+                    void*,void*,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,
+                    void*,void*,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t);
+int main(void) {{
+  enum {{ B={b}, M={m}, N={n}, K={k} }};
+  static int8_t A[B*M*K], W[B*K*N]; static int32_t C[B*M*N];
+  memset(C, 0, sizeof C);
+  mr3 r = {symbol}(A,A,0,B,M,K, M*K,K,1,  W,W,0,B,K,N, K*N,N,1,  C,C,0,B,M,N, M*N,N,1);
+  int ok = (r.s[0]==B && r.s[1]==M && r.s[2]==N && r.b==(void*)C);
+  for (int i = 0; i < B; ++i) ok = ok && (C[i*M*N] == i+1);
+  printf("%d\\n", ok);
+  return ok ? 0 : 1;
+}}
+"""
+
+
+@pytest.mark.parametrize("sig,staged", [((3, 16, 16, 32), False), ((3, 8, 344, 128), True)])
+def test_a_batched_signature_emits_one_entry(sig, staged):
+    """A batch is a LOOP over disjoint slices, not a third tile axis, so it reuses the same kernel."""
+    unit = emit_translation_unit("gemmini", {"s": sig}, {"s": ("i8", "i8", "i32")},
+                                 kernel_symbol_for=lambda _s: "k", tile_edge=16)
+    assert unit.symbols == ("s",), unit.skipped
+    assert ("static unsigned char" in unit.text) is staged
+
+
+@pytest.mark.skipif(_CC is None, reason="no C compiler available")
+def test_each_batch_slice_gets_its_own_call_at_its_own_offset(tmp_path):
+    """The failure this catches: a loop that recomputes the same slice, or writes every result to
+    slice 0. Both produce a full-looking output tensor whose later slices are wrong."""
+    b, m, n, k = 3, 8, 16, 32
+    unit = emit_translation_unit("gemmini", {"dev3": (b, m, n, k)},
+                                 {"dev3": ("i8", "i8", "i32")},
+                                 kernel_symbol_for=lambda _s: "gk", tile_edge=16)
+    (tmp_path / "shim.c").write_text(unit.text, encoding="utf-8")
+    (tmp_path / "k.c").write_text(_K3_STUB.format(kernel="gk"), encoding="utf-8")
+    (tmp_path / "d.c").write_text(_D3.format(symbol="dev3", b=b, m=m, n=n, k=k), encoding="utf-8")
+    exe = tmp_path / "t"
+    build = subprocess.run([_CC, "-Wall", "-Wextra", "-Werror", str(tmp_path / "shim.c"),
+                            str(tmp_path / "k.c"), str(tmp_path / "d.c"), "-o", str(exe)],
+                           capture_output=True, text=True)
+    assert build.returncode == 0, build.stderr
+    run = subprocess.run([str(exe)], capture_output=True, text=True)
+    assert run.returncode == 0, f"batch loop wrong: {run.stdout} {run.stderr}"
