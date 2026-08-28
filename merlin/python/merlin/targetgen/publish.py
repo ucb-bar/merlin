@@ -120,6 +120,7 @@ class ChampionSelection:
     version: int
     lineage_depth: int
     timestamp: str
+    repo_name: str = ""
 
     @property
     def dialect_name(self) -> str:
@@ -162,6 +163,7 @@ def _build_selection(target: str, pkg_dir: Path, manifest: dict[str, Any]) -> Ch
         version=int(manifest.get("version", 0) or 0),
         lineage_depth=int(lineage.get("depth", 0) or 0),
         timestamp=str(manifest.get("timestamp", "")),
+        repo_name=resolve_repo_name(target),
     )
 
 
@@ -262,6 +264,32 @@ def select_champion(target: str, *, artifacts_root: str | Path | None = None,
 # ---------------------------------------------------------------------------- remote resolution
 
 
+def resolve_repo_name(target: str, *, config: str | Path | None = None,
+                      override: str | None = None) -> str:
+    """Resolve the PUBLIC repo name for ``target``. Precedence matches :func:`resolve_remote`:
+    ``override`` > env ``MERLIN_PUBLISH_REPO_NAME_<TARGET>`` > ``publish.yaml``'s ``repo_names`` >
+    the default ``<target>-mlir``.
+
+    The repo name is deliberately NOT the target key. A target key names the thing we generate code
+    for; the repo name is what the public sees, and the two do not have to agree -- the host target
+    is keyed ``rvv`` because its payload is a vector schedule, but the repo holds all host codegen,
+    scalar included, so it publishes as ``host-mlir``. Keeping them separate also leaves the build
+    contract alone: the tool is still ``<target>-opt``, which is what oot_runner builds.
+    """
+    if override:
+        return override
+    env_val = paths.env(f"MERLIN_PUBLISH_REPO_NAME_{target.upper()}")
+    if env_val:
+        return env_val
+    cfg_path = Path(config) if config else paths.targets_dir() / "publish.yaml"
+    if cfg_path.is_file():
+        data = load_yaml(cfg_path) or {}
+        name = (data.get("repo_names") or {}).get(target)
+        if name:
+            return str(name)
+    return f"{target}-mlir"
+
+
 def resolve_remote(target: str, *, config: str | Path | None = None,
                    override: str | None = None) -> str:
     """Resolve the git remote for ``target``. Precedence: ``override`` (``--remote``) >
@@ -345,7 +373,7 @@ _SKELETON_IGNORE = {"manifest.yaml", ".merlin", "build", "__pycache__", ".git", 
 def _cmakelists(sel: ChampionSelection) -> str:
     return (
         "cmake_minimum_required(VERSION 3.13)\n"
-        f"project({sel.target}_mlir CXX)\n\n"
+        f"project({sel.repo_name.replace('-', '_')} CXX)\n\n"
         "# Buildable OOT tree emitted by merlin-target-publish (WS-E). The thin driver below makes\n"
         "# the repo contract-shaped so oot_runner can build build/bin/{tool} on a fresh clone; a\n"
         "# real champion with a full mlir_oot/ tree overwrites this file with its own CMakeLists.\n"
@@ -380,11 +408,29 @@ def _driver_cpp(sel: ChampionSelection) -> str:
     )
 
 
+def _tier_phrase(tier: Any) -> str:
+    """Say in words what a recorded certification is a certification OF.
+
+    `pass` alone invites the reader to assume the strongest thing it could mean. Naming the oracle
+    -- and saying plainly when the tier was never recorded -- keeps the repo's own README from
+    overclaiming on behalf of a run nobody here can see.
+    """
+    if not isinstance(tier, dict) or not tier:
+        return "**tier not recorded** \u2014 do not read this as an RTL result"
+    oracles = ", ".join(f"`{o}`" for o in (tier.get("oracles") or [])) or "unnamed oracle"
+    if tier.get("derived_from_rtl") and tier.get("cycle_accurate"):
+        return f"cycle-accurate RTL ({oracles})"
+    if tier.get("derived_from_rtl"):
+        return f"RTL-derived, not cycle-accurate ({oracles})"
+    return (f"a functional simulator ({oracles}) \u2014 numerically correct; "
+            f"**not** an RTL or timing result")
+
+
 def _readme(sel: ChampionSelection, manifest: dict[str, Any]) -> str:
     merlin_sha = git_sha7()
     pub = manifest.get("publication") or {}
     lines = [
-        f"# {sel.target}-mlir",
+        f"# {sel.repo_name}",
         "",
         f"Standalone, buildable out-of-tree Merlin codegen backend for **{sel.target}** "
         f"(family `{sel.family or 'unknown'}`).",
@@ -404,8 +450,8 @@ def _readme(sel: ChampionSelection, manifest: dict[str, Any]) -> str:
         "## How to build",
         "",
         "```sh",
-        f"git clone <this-repo> {sel.target}-mlir",
-        f"cd {sel.target}-mlir",
+        f"git clone <this-repo> {sel.repo_name}",
+        f"cd {sel.repo_name}",
         "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
         "cmake --build build",
         f"./build/bin/{sel.tool_name} --version",
@@ -418,6 +464,7 @@ def _readme(sel: ChampionSelection, manifest: dict[str, Any]) -> str:
         "",
         f"- Certification: `{pub.get('certification', sel.cert_status or 'recorded:' + (sel.status or 'unknown'))}`",
         f"- Certified by run: `{pub.get('certified_by_run', sel.cert_run or 'n/a')}`",
+        f"- Certified against: {_tier_phrase(pub.get('certification_tier'))}",
         f"- Fingerprint: `{pub.get('fingerprint', 'n/a')}`",
         "",
         "See `.merlin/provenance.yaml` and `.merlin/certification.yaml` for the full lineage. Each "
@@ -437,7 +484,7 @@ def _index_readme(target: str, entries: list[dict[str, Any]]) -> str:
     branch, what it is for, and how to consume it.
     """
     lines = [
-        f"# {target}-mlir",
+        f"# {resolve_repo_name(target)}",
         "",
         f"Merlin's published codegen packages for the **{target}** target.",
         "",
@@ -460,8 +507,8 @@ def _index_readme(target: str, entries: list[dict[str, Any]]) -> str:
         "## Using a package",
         "",
         "```sh",
-        f"git clone -b <branch> <this-repo> {target}-mlir",
-        f"cd {target}-mlir",
+        f"git clone -b <branch> <this-repo> {resolve_repo_name(target)}",
+        f"cd {resolve_repo_name(target)}",
         "```",
         "",
     ]
@@ -785,6 +832,11 @@ def embed_provenance(dest: str | Path, sel: ChampionSelection) -> None:
         "certified_by_run": cert_run,
         "oracle_cycles": sel.oracle_cycles,
         "detail": gate_detail,
+        # The TIER the pass was earned at. The gate treats a functional-simulator pass and a
+        # cycle-accurate RTL pass alike, but they are different claims and a reader of this repo
+        # must be able to tell them apart without rerunning anything. Absent = never recorded.
+        "tier": (sel.manifest.get("publication") or {}).get("certification_tier") or "UNKNOWN",
+        "rungs": (sel.manifest.get("publication") or {}).get("certified_rungs") or [],
     }
     _write(meta / "certification.yaml", dump_yaml(certification))
 
@@ -814,6 +866,72 @@ def _check_gate(sel: ChampionSelection) -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------- promotion
+
+
+def record_certification(target: str, package_id: str, results: "list[str | Path]", *,
+                         artifacts_root: str | Path | None = None) -> dict[str, Any]:
+    """Record one or more ``oot_runner.certify`` verdicts onto a package's manifest.
+
+    A certify run writes ``results.yaml`` into its own run dir and stops there. Nothing ever carried
+    that verdict back to the package, so ``publication.certification`` could only be written by
+    :func:`promote` -- which asks :func:`_check_gate`, which asks for the certification. Nothing can
+    satisfy that loop, which is why a package carrying a real out-of-tree dialect could never be
+    promoted and the only publishable champion was the hand baseline, whose repo builds a stub.
+
+    The verdict keeps its TIER. A pass on the functional simulator and a pass on cycle-accurate RTL
+    are both ``pass`` to the gate, but they are emphatically not the same claim: one says the
+    lowering computes the right numbers, the other says the hardware does. Both travel here so the
+    published ``certification.yaml`` states which one it is, and a reader can never mistake a
+    functional pass for an RTL one.
+
+    Fails CLOSED: any rung that is not a pass makes the recorded certification a failure, and a
+    results file that does not name its oracle is recorded as UNKNOWN rather than assumed benign.
+    """
+    sel = select_champion(target, artifacts_root=artifacts_root, package_id=package_id)
+    rungs: list[dict[str, Any]] = []
+    for r in results:
+        rp = Path(r)
+        if rp.is_dir():
+            rp = rp / "results.yaml"
+        if not rp.is_file():
+            raise PublishError(f"no certify results at {rp}")
+        data = load_yaml(rp) or {}
+        oracle = data.get("oracle") if isinstance(data.get("oracle"), dict) else {}
+        rungs.append({
+            "rung": str(data.get("rung", rp.parent.name)),
+            "run_id": str(data.get("run_id", "")),
+            "status": str(data.get("status", "UNKNOWN")),
+            "oracle": str(oracle.get("kind", "UNKNOWN")),
+            # `is True` on purpose: a missing key must not read as False, which would silently
+            # downgrade an RTL pass to a functional one (or vice versa) on a malformed file.
+            "derived_from_rtl": oracle.get("derived_from_rtl") is True,
+            "cycle_accurate": oracle.get("cycle_accurate") is True,
+            "cycles": oracle.get("cycles"),
+        })
+    if not rungs:
+        raise PublishError("no certify results given")
+
+    passed = all(r["status"] == "pass" for r in rungs)
+    man = load_yaml(sel.package_dir / "manifest.yaml")
+    pub = man.get("publication") if isinstance(man.get("publication"), dict) else {}
+    pub.update({
+        "certification": "pass" if passed else "fail",
+        "certified_by_run": rungs[0]["run_id"] or None,
+        "certified_at": utc_stamp(),
+        "certified_by": "merlin.targetgen.oot_runner.certify",
+        # The tier is the weakest rung's, not the strongest: a package is only as certified as its
+        # least-certified covered rung, and quoting the best one is how a headline outruns its
+        # evidence.
+        "certification_tier": {
+            "derived_from_rtl": all(r["derived_from_rtl"] for r in rungs),
+            "cycle_accurate": all(r["cycle_accurate"] for r in rungs),
+            "oracles": sorted({r["oracle"] for r in rungs}),
+        },
+        "certified_rungs": rungs,
+    })
+    man["publication"] = pub
+    write_yaml(sel.package_dir / "manifest.yaml", man)
+    return pub
 
 
 def promote(target: str, package_id: str, *, gate: bool = True,
@@ -1245,6 +1363,14 @@ def main(argv: list[str] | None = None) -> int:
     p_prom.add_argument("--artifacts-root")
     p_prom.add_argument("--no-gate", action="store_true")
 
+    p_cert = sub.add_parser("record-cert",
+                            help="record oot_runner.certify verdict(s) onto a package manifest")
+    p_cert.add_argument("--target", required=True)
+    p_cert.add_argument("--champion", "--package", dest="champion", required=True)
+    p_cert.add_argument("--results", nargs="+", required=True,
+                        help="one or more certify run dirs (or results.yaml paths)")
+    p_cert.add_argument("--artifacts-root")
+
     p_idx = sub.add_parser("index", help="publish the landing page to the repo's default branch")
     p_idx.add_argument("--target", required=True)
     p_idx.add_argument("--remote", help="override the resolved remote")
@@ -1277,6 +1403,17 @@ def main(argv: list[str] | None = None) -> int:
                                 branch=args.branch, confirm_push=args.confirm_push)
             _print_result(res)
             return 0
+        if args.cmd == "record-cert":
+            pub = record_certification(args.target, args.champion, args.results,
+                                       artifacts_root=args.artifacts_root)
+            tier = pub.get("certification_tier") or {}
+            print(f"certification={pub.get('certification')} "
+                  f"rungs={len(pub.get('certified_rungs') or [])} "
+                  f"derived_from_rtl={tier.get('derived_from_rtl')} "
+                  f"cycle_accurate={tier.get('cycle_accurate')} "
+                  f"oracles={','.join(tier.get('oracles') or [])}")
+            return 0 if pub.get("certification") == "pass" else 1
+
         if args.cmd == "promote":
             promote(args.target, args.champion, gate=not args.no_gate,
                     artifacts_root=args.artifacts_root)

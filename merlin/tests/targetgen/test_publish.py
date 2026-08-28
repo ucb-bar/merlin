@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from merlin.common import paths
-from merlin.common.yaml import dump_yaml
+from merlin.common.yaml import dump_yaml, load_yaml
 from merlin.targetgen import publish as pub
 
 
@@ -152,7 +152,10 @@ def test_resolve_remote_precedence(out_root, monkeypatch):
     assert pub.resolve_remote("rvv") == "file:///from-env"
     monkeypatch.delenv("MERLIN_PUBLISH_REMOTE_RVV")
     # falls back to merlin/targets/publish.yaml
-    assert pub.resolve_remote("rvv").endswith("rvv-mlir.git")
+    # host-mlir, not rvv-mlir: the repo holds ALL host codegen, and scalar is the case where
+    # no vector unit is declared rather than a separate target, so the target key (`rvv`,
+    # named for its vector-schedule payload) and the public repo name deliberately differ.
+    assert pub.resolve_remote("rvv").endswith("host-mlir.git")
 
 
 # --------------------------------------------------------------------------- (b) dry-run
@@ -342,3 +345,102 @@ def test_fresh_clone_builds_tool(out_root, monkeypatch, target, maker):
     assert pkg.manifest["build"]["tool_output"] == f"build/bin/{target}-opt"
     oot_runner.build_package(pkg)
     assert pkg.tool.exists(), f"expected built tool at {pkg.tool}"
+
+
+# --------------------------------------------------------------- repo name & recorded certification
+
+
+def test_repo_name_defaults_to_target_and_is_overridable(out_root, monkeypatch, tmp_path):
+    """The public repo name is config, not the target key.
+
+    They are deliberately separable: the host target is keyed `rvv` because its payload is a vector
+    schedule, but the repo holds all host codegen (scalar is the no-vector case, not a second
+    target), so it publishes as `host-mlir`. The tool name stays `<target>-opt` either way, because
+    that is what the build contract names.
+    """
+    assert pub.resolve_repo_name("gemmini") == "gemmini-mlir"
+    cfg = tmp_path / "publish.yaml"
+    cfg.write_text(dump_yaml({"targets": {"rvv": "git@example:x.git"},
+                              "repo_names": {"rvv": "host-mlir"}}))
+    assert pub.resolve_repo_name("rvv", config=cfg) == "host-mlir"
+    assert pub.resolve_repo_name("rvv", config=cfg, override="other") == "other"
+    monkeypatch.setenv("MERLIN_PUBLISH_REPO_NAME_RVV", "env-mlir")
+    assert pub.resolve_repo_name("rvv", config=cfg) == "env-mlir"
+
+
+def _cert_results(d: Path, run_id: str, *, status="pass", rtl=True, cycles=100) -> Path:
+    _write(d / "results.yaml", dump_yaml({
+        "status": status, "rung": run_id, "run_id": run_id,
+        "oracle": {"kind": "rtl_verilator" if rtl else "spike_gemmini_functional",
+                   "derived_from_rtl": rtl, "cycle_accurate": rtl,
+                   "result": status, "cycles": cycles}}))
+    return d
+
+
+def test_record_certification_breaks_the_promote_gate_circularity(out_root, tmp_path):
+    """A certify verdict has to reach the manifest, or nothing can ever be promoted.
+
+    `promote` writes `publication.certification` only when the gate already passes, and the gate
+    asks for that same field -- so a package carrying a real out-of-tree dialect could never be
+    promoted, and the only publishable champion was a hand baseline whose repo builds a stub.
+    """
+    troot = out_root / "artifacts" / "targets"
+    _make_gemmini_package(troot, "oot_pkg")
+    # strip the fixture's pre-baked status so only a recorded certification can open the gate
+    man_path = troot / "gemmini" / "oot_pkg" / "manifest.yaml"
+    man = load_yaml(man_path); man["status"] = ""; _write(man_path, dump_yaml(man))
+
+    with pytest.raises(pub.PublishError):
+        pub.promote("gemmini", "oot_pkg")
+
+    pub.record_certification("gemmini", "oot_pkg",
+                             [_cert_results(tmp_path / "r1", "g3"), _cert_results(tmp_path / "r2", "g4")])
+    pub.promote("gemmini", "oot_pkg")        # no longer refused
+    sel = pub.select_champion("gemmini", package_id="oot_pkg")
+    assert sel.cert_status == "pass"
+
+
+def test_recorded_certification_keeps_its_tier(out_root, tmp_path):
+    """RTL and functional passes are both `pass` to the gate but are not the same claim."""
+    troot = out_root / "artifacts" / "targets"
+    _make_gemmini_package(troot, "p")
+    got = pub.record_certification("gemmini", "p", [_cert_results(tmp_path / "r", "g3", rtl=True)])
+    assert got["certification_tier"] == {"derived_from_rtl": True, "cycle_accurate": True,
+                                         "oracles": ["rtl_verilator"]}
+    assert "cycle-accurate RTL" in pub._tier_phrase(got["certification_tier"])
+
+
+def test_a_mixed_tier_records_as_the_weakest_rung(out_root, tmp_path):
+    """A package is only as certified as its least-certified rung; quoting the best one overclaims."""
+    troot = out_root / "artifacts" / "targets"
+    _make_gemmini_package(troot, "p")
+    got = pub.record_certification("gemmini", "p", [
+        _cert_results(tmp_path / "a", "g3", rtl=True),
+        _cert_results(tmp_path / "b", "g4", rtl=False)])
+    assert got["certification"] == "pass"
+    assert got["certification_tier"]["derived_from_rtl"] is False
+    assert "not** an RTL" in pub._tier_phrase(got["certification_tier"])
+
+
+def test_a_failing_rung_fails_the_whole_certification(out_root, tmp_path):
+    troot = out_root / "artifacts" / "targets"
+    _make_gemmini_package(troot, "p")
+    got = pub.record_certification("gemmini", "p", [
+        _cert_results(tmp_path / "a", "g3"),
+        _cert_results(tmp_path / "b", "g4", status="fail")])
+    assert got["certification"] == "fail"
+
+
+def test_an_unnamed_oracle_records_unknown_not_a_benign_default(out_root, tmp_path):
+    """Fail closed: a results file with no oracle block must not read as a passing RTL tier."""
+    troot = out_root / "artifacts" / "targets"
+    _make_gemmini_package(troot, "p")
+    _write(tmp_path / "r" / "results.yaml", dump_yaml({"status": "pass", "run_id": "g3"}))
+    got = pub.record_certification("gemmini", "p", [tmp_path / "r"])
+    assert got["certification_tier"]["oracles"] == ["UNKNOWN"]
+    assert got["certification_tier"]["derived_from_rtl"] is False
+
+
+def test_tier_phrase_refuses_to_imply_rtl_when_nothing_was_recorded():
+    assert "not recorded" in pub._tier_phrase(None)
+    assert "not recorded" in pub._tier_phrase({})
