@@ -13,20 +13,35 @@ The two arms this drives are the metered ones -- Bedrock and the Google API -- b
 provider APIs. The ChatGPT seat is not an API and cannot be driven this way, which is a real asymmetry
 the study records rather than hides.
 
-⚠️ AUTOCOMP OPTIMIZES; IT DOES NOT GENERATE FROM NOTHING. Its search starts from a working kernel and
-improves it, and refuses to start from an incorrect one ("Initial code is incorrect"). So it is seeded
-with the repository's own unoptimized reference kernel -- the same implementation the study already
-uses as its performance baseline.
+⚠️ AUTOCOMP OPTIMIZES; IT DOES NOT GENERATE FROM NOTHING. Its search refuses to start from an
+incorrect kernel ("Initial code is incorrect"), so something must hand it a working one.
 
-That makes this arm measure something DIFFERENT from the direct-agent arm, and the difference must be
-carried into any comparison rather than absorbed into it: AutoComp is measured optimizing a correct
-kernel, the direct agent is measured writing one from the specification. Neither number answers the
-other'"'"'s question, and quoting them as one would flatter whichever had the easier start.
+Handing it the REPOSITORY'S kernel would be the wrong accommodation. Writing the first correct kernel
+for an unfamiliar target is the expensive part of the work -- it is most of what this study is
+measuring -- and a run that skips it measures only who optimizes better, on a target neither arm had
+to reach. Worse, it is not even a fair trade: the direct-agent arm would pay generation while this arm
+was given it.
+
+So the arm BOOTSTRAPS ITSELF (--start scratch, the default): the arm'"'"'s own model, through the same
+generation loop and the same task card the direct-agent arm uses, writes kernels until one is correct.
+That kernel becomes AutoComp'"'"'s starting point, and the tokens, rounds and wall time it cost are
+charged to this arm. AutoComp the framework is untouched; what changes is that the arm now pays its
+own entry condition instead of being lifted over it.
+
+If the model never produces a correct kernel, the search never runs and the arm reports
+`no_seed_reached`. That is a result about the method, not a hole in the data -- and it is the honest
+place for it to appear, since it is precisely what the direct-agent arm would have recorded too.
+
+`--start reference` restores the old lifted-in seed. It measures optimization in isolation, which is a
+different and narrower question; a run that uses it says so in its own record.
 
 Run it under AutoComp's own venv (it needs boto3, google-genai and the framework itself):
 
     /scratch/agustin/projects/autocomp/.venv/bin/python run_autocomp.py --method bedrock_kernel \\
         --capsule merlin/contract/capsules/radiance/isa/R0_gemm_fp32 --run-id ac_qwen_R0
+
+The bootstrap runs under merlin's interpreter, which this script locates itself -- so this venv only
+has to satisfy AutoComp.
 """
 
 from __future__ import annotations
@@ -35,6 +50,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -96,12 +112,70 @@ per-unit busy fractions, so aim at the unit that is idle rather than guessing.
 
 
 
-def _reference_kernel(capsule_dir: Path) -> str:
-    """The repository's own unoptimized kernel for this capsule, as AutoComp's starting point.
+def _bootstrap_kernel(capsule_dir: Path, *, method: str, run_dir: Path, runs_root: Path,
+                      target: str, rounds: int, round_timeout: int) -> tuple[str | None, dict]:
+    """Have the ARM'S OWN MODEL write the first correct kernel, from the specification.
 
-    Chosen rather than a hand-written stub because it is already the study's performance reference, so
-    AutoComp's speedups are measured against the same baseline everything else is -- and because it is
-    known-correct, which AutoComp requires before it will search at all.
+    This is what lets the arm start from nothing. It runs the direct-agent generation loop -- same task
+    card, same oracle, same redacted feedback -- under this method's own model, and returns the first
+    kernel that passes. Everything it spent belongs to this arm.
+
+    Deliberately reuses `run_kernel_agent` rather than reimplementing generation: if the two arms
+    bootstrapped through different code, a difference in how well they start would be a difference
+    between my two loops rather than between the methods.
+
+    Runs under MERLIN'S interpreter, not AutoComp's: the generation loop imports the oracle, and this
+    process lives in a venv that has neither xdsl nor merlin.
+    """
+    boot_id = f"{run_dir.name}__bootstrap"
+    cmd = [kvc_eval._evaluator_python(), str(HERE / "run_kernel_agent.py"),
+           "--method", method, "--capsule", str(capsule_dir), "--run-id", boot_id,
+           "--target", target, "--rounds", str(rounds), "--opt-rounds", "0",
+           "--round-timeout", str(round_timeout), "--runs-root", str(runs_root)]
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(kvc_eval.repo_root() / "merlin" / "python")
+    t0 = time.time()
+    proc = subprocess.run(cmd, env=env, cwd=str(kvc_eval.repo_root()),
+                          capture_output=True, text=True, timeout=rounds * (round_timeout + 900) + 600)
+    boot_dir = runs_root / "agents" / boot_id
+    (run_dir / "bootstrap.stdout.txt").write_text(proc.stdout + ("\n" + proc.stderr if proc.stderr else ""))
+
+    summary = {}
+    sp = boot_dir / "summary.json"
+    if sp.is_file():
+        summary = json.loads(sp.read_text())
+    best = boot_dir / "best_kernel.llvm.mlir"
+    code = best.read_text() if best.is_file() else None
+
+    record = {
+        "mode": "self_bootstrapped_by_the_arm's_own_model",
+        "run_dir": str(boot_dir),
+        "rounds_allowed": rounds,
+        "rounds_run": summary.get("rounds_run"),
+        "solved": bool(code),
+        "solved_at_round": summary.get("solved_at_round"),
+        "seed_cycles": summary.get("best_cycles"),
+        "wall_seconds": round(time.time() - t0, 1),
+        # Stated so the arm's cost is never quoted without it: this is spend the arm incurred
+        # reaching the point where AutoComp will consent to run at all.
+        "cost_belongs_to_this_arm": True,
+        # A KNOWN ASYMMETRY, recorded rather than smoothed over. The bootstrap reaches the model
+        # through the direct-agent CLI while the search reaches the SAME model through AutoComp's own
+        # client. Harness is a first-order variable here -- one model has scored 0/20 and 15/20 on
+        # two harnesses -- so a bootstrap failure is a fact about (model, CLI), not about the model.
+        # The CLI is used deliberately: it is the identical loop the direct-agent arm bootstraps
+        # through, which is what makes the two arms' starting conditions comparable at all.
+        "bootstrap_harness": "direct-agent CLI (same loop as the kernel-generation arm)",
+        "search_harness": "autocomp native client",
+    }
+    return code, record
+
+
+def _reference_kernel(capsule_dir: Path) -> str:
+    """The repository's own unoptimized kernel -- the LIFTED-IN start, used only under --start reference.
+
+    Not the default: it hands the arm the expensive half of the task. Kept because optimization-in-
+    isolation is a real question, just a narrower one, and the run records which start it used.
     """
     from merlin.runtime.backends.base import get_backend
     from merlin.targetgen.contract.interface_emit import parse_interface_mlir
@@ -120,8 +194,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--plans", type=int, default=2)
     ap.add_argument("--codes", type=int, default=2)
     ap.add_argument("--fidelity", default="fast", choices=sorted(kvc_eval.FIDELITY_ENV))
-    ap.add_argument("--seed-kernel", type=Path, default=None,
-                    help="starting kernel; default is the repository reference emitter's output")
+    ap.add_argument("--start", choices=("scratch", "reference", "file"), default="scratch",
+                    help="scratch (default): the arm's own model writes the first correct kernel and "
+                         "pays for it. reference: lift in the repository's kernel, measuring "
+                         "optimization alone. file: use --seed-kernel.")
+    ap.add_argument("--bootstrap-rounds", type=int, default=3,
+                    help="generation rounds allowed to reach a correct kernel under --start scratch")
+    ap.add_argument("--bootstrap-round-timeout", type=int, default=900)
+    ap.add_argument("--seed-kernel", type=Path, default=None, help="starting kernel for --start file")
     ap.add_argument("--runs-root", type=Path, default=Path("/scratch/agustin/tmp/kvc-runs"))
     a = ap.parse_args(argv)
 
@@ -164,8 +244,47 @@ def main(argv: list[str] | None = None) -> int:
     prob = Prob("muon", 0, context=_task_context(capsule_dir))
     model = _autocomp_model(cfg)
 
-    initial_code = (a.seed_kernel.read_text() if a.seed_kernel
-                    else _reference_kernel(capsule_dir))
+    bootstrap: dict = {"mode": "none"}
+    if a.start == "file":
+        if not a.seed_kernel:
+            raise SystemExit("--start file needs --seed-kernel")
+        initial_code = a.seed_kernel.read_text()
+        bootstrap = {"mode": "supplied_file", "path": str(a.seed_kernel),
+                     "cost_belongs_to_this_arm": False}
+    elif a.start == "reference":
+        initial_code = _reference_kernel(capsule_dir)
+        bootstrap = {"mode": "repository_reference_kernel", "cost_belongs_to_this_arm": False}
+    else:
+        print(f"  bootstrap: {cfg['model']} writing the first correct kernel from the spec "
+              f"({a.bootstrap_rounds} rounds allowed)...", flush=True)
+        initial_code, bootstrap = _bootstrap_kernel(
+            capsule_dir, method=a.method, run_dir=run_dir, runs_root=a.runs_root,
+            target=a.target, rounds=a.bootstrap_rounds,
+            round_timeout=a.bootstrap_round_timeout)
+        if initial_code is None:
+            # The search cannot start, and that IS the measurement. Recorded as a full run with its
+            # real cost rather than dropped, so the arm's failure to reach a correct kernel shows up
+            # in the study instead of vanishing from it.
+            summary = {
+                "run_id": a.run_id, "method": a.method, "driver": "autocomp",
+                "provider": cfg.get("provider"), "model": cfg["model"],
+                "billing_mode": cfg.get("billing_mode"), "task_id": capsule_dir.name,
+                "target": a.target, "fidelity": a.fidelity,
+                "started_from": "nothing (the arm's own model, from the specification)",
+                "bootstrap": bootstrap,
+                "status": "no_seed_reached",
+                "status_detail": (f"{cfg['model']} did not produce a correct kernel in "
+                                  f"{a.bootstrap_rounds} rounds, so AutoComp's search never ran "
+                                  f"(it refuses an incorrect starting kernel)."),
+                "candidates_evaluated": 0, "candidates_correct": 0, "best_cycles": None,
+                "wall_seconds": bootstrap.get("wall_seconds"), "trajectory": [],
+            }
+            (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+            print(f"\n  {a.method}/{capsule_dir.name}: NO SEED REACHED -- search did not run")
+            print(f"  -> {run_dir}")
+            return 0
+        print(f"  bootstrap: correct at round {bootstrap.get('solved_at_round')}, "
+              f"{bootstrap.get('seed_cycles')} cycles", flush=True)
     (run_dir / "seed_kernel.llvm.mlir").write_text(initial_code)
 
     # Build AutoComp's own agents, then DISCARD its eval backend for ours. The search, the prompts and
@@ -217,10 +336,12 @@ def main(argv: list[str] | None = None) -> int:
         "provider": cfg.get("provider"), "model": cfg["model"],
         "autocomp_model": model, "billing_mode": cfg.get("billing_mode"),
         "task_id": capsule_dir.name, "target": a.target, "fidelity": a.fidelity,
-        # Stated in the record, because it changes what the number means: this arm OPTIMIZES a correct
-        # kernel while the direct-agent arm WRITES one from the spec.
-        "started_from": ("supplied seed kernel" if a.seed_kernel
-                         else "repository reference kernel (unoptimized)"),
+        # Stated in the record, because it changes what the number means: a lifted-in seed measures
+        # optimization alone, while a self-bootstrapped one measures the whole job.
+        "started_from": {"scratch": "nothing (the arm's own model, from the specification)",
+                         "reference": "repository reference kernel (unoptimized, lifted in)",
+                         "file": "supplied seed kernel (lifted in)"}[a.start],
+        "bootstrap": bootstrap,
         "status": status,
         "candidates_evaluated": len(eval_backend.trajectory),
         "candidates_correct": len(correct),
