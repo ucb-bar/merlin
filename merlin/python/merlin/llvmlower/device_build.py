@@ -99,6 +99,28 @@ def _ar() -> str | None:
     return shutil.which("llvm-ar") or shutil.which("ar")
 
 
+#: Transports whose package artifact this pipeline can turn into an object. `host_instruction` is a
+#: device the host drives with its own instructions (the artifact is LLVM-dialect MLIR); None is a
+#: unit that lowers through a stock LLVM target and has no separate device artifact at all.
+BUILDABLE_TRANSPORTS: frozenset = frozenset({"host_instruction", None})
+
+
+def _unbuildable_reason(device: str) -> str | None:
+    """Why this path cannot build ``device``, or None when it can."""
+    try:
+        from merlin.system.derive import link_for
+        from merlin.targetgen.target_experiment import load_capability_manifest
+        endpoint = getattr(load_capability_manifest(device), "endpoint_kind", None)
+        link = link_for(device, endpoint)
+    except Exception:            # noqa: BLE001 -- an unresolvable device is caught by the package load
+        return None
+    if link.command_transport not in BUILDABLE_TRANSPORTS:
+        return (f"{device!r} is reached by {link.command_transport!r}; this path compiles a device "
+                f"whose artifact is LLVM-dialect MLIR, and that transport's package emits "
+                f"{link.emitted_artifact or 'another artifact'} instead")
+    return None
+
+
 def _objcopy() -> str | None:
     from .toolchain import DEFAULT_LLVM_INSTALL
 
@@ -140,6 +162,18 @@ def build_device_objects(device: str,
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
     skipped: list[tuple[str, str]] = []
+
+    # WHICH DEVICES THIS PATH CAN BUILD, asked of the device's derived link rather than assumed.
+    #
+    # The pipeline below runs the package's artifact through mlir-translate and clang, so it works
+    # exactly for a device whose artifact IS LLVM-dialect MLIR. A device driven by a command buffer
+    # emits a JSON command buffer, and a self-hosted one emits its own source; handing either to
+    # mlir-translate fails obscurely, and worse, the shim would declare an extern kernel symbol that
+    # nothing in the archive defines. Declining with the transport named is the honest answer, and it
+    # is the first consumer of the transport axis the Link derives.
+    unbuildable = _unbuildable_reason(device)
+    if unbuildable:
+        return DeviceBuild(device=device, skipped=(("all", unbuildable),))
 
     abi = kernel_abi_for(device)
     if abi is None:

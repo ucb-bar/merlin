@@ -124,3 +124,39 @@ def test_a_shape_this_path_cannot_build_is_skipped_with_its_shape(tmp_path):
                              operand_dtype="int8", accum_dtype="i32")
     assert not b.ok
     assert any("extents" in why or "package" in why for _, why in b.skipped)
+
+
+# ------------------------------------------------------------------ which devices this path can build
+
+def test_a_device_this_path_cannot_compile_is_declined_with_its_transport():
+    """The pipeline runs a package's artifact through mlir-translate and clang, so it works exactly
+    for a device whose artifact IS LLVM-dialect MLIR. A command-buffer device emits JSON and a
+    self-hosted one emits its own source; handing either to mlir-translate fails obscurely, and the
+    shim would then declare an extern kernel nothing in the archive defines.
+
+    This is the first consumer of the transport axis the Link derives -- before it, `endpoint_kind`
+    answered four questions at once and none of them was 'can this be compiled here'."""
+    from merlin.llvmlower.device_build import _unbuildable_reason
+
+    verdicts = {t: _unbuildable_reason(t) for t in ("gemmini", "radiance", "atlas",
+                                                    "saturn_opu_mxv256d128")}
+    declined = {t: why for t, why in verdicts.items() if why}
+    if not declined:
+        pytest.skip("no non-compilable device resolvable in this checkout")
+    for t, why in declined.items():
+        assert "reached by" in why and t in why, f"{t}: the decline must name the device and transport"
+
+
+def test_the_decline_happens_before_any_work(tmp_path):
+    """Named early so the reason is the transport, not a confusing failure three tools later."""
+    from merlin.llvmlower.device_build import _unbuildable_reason
+
+    target = next((t for t in ("saturn_opu_mxv256d128", "radiance", "atlas")
+                   if _unbuildable_reason(t)), None)
+    if target is None:
+        pytest.skip("no non-compilable device resolvable here")
+    b = build_device_objects(target, _SIGS, _DTS, package_dir=_PKG or (tmp_path / "nope"),
+                             workdir=tmp_path, operand_dtype="int8", accum_dtype="i32")
+    assert not b.ok
+    assert any("reached by" in why for _s, why in b.skipped)
+    assert not list(tmp_path.glob("*.o")), "nothing should have been compiled before declining"
