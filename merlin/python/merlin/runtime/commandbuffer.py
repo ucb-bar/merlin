@@ -117,6 +117,73 @@ def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None)
     return env
 
 
+#: Operand keys that PRODUCE a tensor. This is the command-buffer ABI's own vocabulary (the buffer
+#: declares its ``abi_version``), not a fact about any target — every command-buffer endpoint names its
+#: result with one of these, whatever its opcodes are called. Kept next to :func:`materialize_inputs`,
+#: which uses the same notion of "produced" to decide what is a leaf.
+PRODUCING_KEYS = ("dst", "out", "output")
+
+
+def dataflow_operands(cb: dict[str, Any]) -> tuple[list[str], str] | None:
+    """``(leaf_input_names, final_output_name)`` of a command buffer, derived by DATAFLOW alone.
+
+    Target-agnostic and opcode-agnostic by construction: a declared tensor that some command CONSUMES and
+    no command PRODUCES is a leaf input; the last produced tensor that is itself declared is the output;
+    a tensor that is both produced and consumed is an intermediate and is neither. Nothing here reads a
+    target fact, an opcode meaning, or an op-specific shape rule, so it works for any endpoint that
+    speaks this ABI — SIMT, systolic/NPU, or otherwise.
+
+    Why dataflow rather than the declared ``role``: role cannot decide it. Measured on a real fused
+    flash-attention buffer, THREE tensors declare ``role: output`` (``S``, ``P``, ``Y0``) because each is
+    produced by some command, and two of them are intermediates feeding the next stage. Reading roles
+    alone yields three candidate outputs and no way to choose; the dataflow yields exactly ``Q, K, V`` in
+    and ``Y0`` out.
+
+    This is the general case the single-op binders cannot express. A binder that pattern-matches "one
+    matmul" returns ``None`` on a CHAIN, which is what left every fused capsule (attention_qk -> softmax
+    -> matmul -> commit, rmsnorm -> matmul, chained matmuls) unbindable and therefore ungradeable.
+
+    Returns ``None`` when the buffer carries no commands, no declared ``tensors``, or no produced tensor
+    that is declared — i.e. when dataflow genuinely cannot answer, never a guess.
+
+    NOTE ON ORDER: the returned inputs are in first-consumption order (the order the command stream
+    first reads them), which is deterministic and reproducible. It is NOT authoritative for a kernel ABI
+    — the emitted kernel's own signature is. A caller that must match a kernel signature should reorder
+    these by matching declared shapes to that signature rather than trusting this order.
+    """
+    tensors = cb.get("tensors") or {}
+    commands = cb.get("commands") or []
+    if not tensors or not commands:
+        return None
+
+    produced: list[str] = []
+    consumed: list[str] = []
+    for cmd in commands:
+        ops = cmd.get("operands") or {}
+        for key, name in ops.items():
+            if not isinstance(name, str):
+                continue
+            (produced if key in PRODUCING_KEYS else consumed).append(name)
+
+    produced_set = set(produced)
+    # leaves, in first-consumption order, de-duplicated
+    seen: set[str] = set()
+    leaves: list[str] = []
+    for name in consumed:
+        if name in produced_set or name in seen or name not in tensors:
+            continue
+        seen.add(name)
+        leaves.append(name)
+
+    # The output is the LAST produced tensor that is DECLARED. An internal accumulator is produced but
+    # not declared (measured: `acc_Y0` is a dst and absent from `tensors`), so walking backwards over the
+    # produced list and taking the first declared hit lands on the committed result rather than on it.
+    out = next((n for n in reversed(produced) if n in tensors), None)
+    if out is None or not leaves:
+        return None
+    return leaves, out
+
+
 def _flatten(nested) -> list[int]:
     out: list[int] = []
     if nested and isinstance(nested[0], list):
