@@ -119,6 +119,27 @@ offset is not a byte count, is declined and reported rather than approximated. A
 signatures with no `device=` routing to build them against is refused with that stated, rather than
 failing later as an unresolved symbol.
 
+## Which substrates can run a compiled whole model
+
+| substrate | whole-model artifact | why |
+|---|---|---|
+| spike (`--extension=<target>`) | **yes** | measured; the numbers above |
+| chipyard Verilator | **no**, as configured | its RAM model rejects sub-word writes |
+| GSIM | **no**, as configured | no ELF loader on that SoC build |
+
+The Verilator block is worth stating precisely, because it looks like a compiler failure and is not.
+The harness monitor aborts with `'A' channel carries PutPartial type which is unexpected` — a
+sub-word write on the TileLink A channel. A whole-model image produces those routinely; the capsules
+do not, because they are scratchpad-resident with no sub-word DRAM traffic, which is why the same sim
+certifies capsules happily. **Measured control:** the identical model built with NO device offload
+aborts at the same monitor, so this is the sim's memory model and not the offload path. Running a
+whole model on RTL needs a config whose memory accepts sub-word writes.
+
+The GSIM block is different in kind. That SoC build bakes its kernel into the BootROM constants
+because SimTSI was pruned, so there is no path to load an ELF at all — a compiled artifact cannot be
+handed to it regardless of size. DRAM preload plus a reset vector would have to be built into the
+harness first.
+
 ## Reading the result
 
 Two questions decide whether a whole-model result means anything, and they are separate.

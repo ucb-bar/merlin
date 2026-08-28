@@ -44,10 +44,26 @@ class OpDemand:
     m: int | None = None            # the op's real extents when known (a contraction's M x K x N), so a
     n: int | None = None            # whole-model matmul LAYER is compiled at its true shape (the backend
     k: int | None = None            # tiles it into DxD mesh tiles) rather than a single fixed tile
+    #: The op's OUTPUT rank, when the producer knows it. Optional for the same reason the extents are:
+    #: a demand that omits it is still routable. It exists because a unit's declared shape envelope
+    #: (``SemanticCapability.ranks`` / ``batch``) could not be consulted at all without it -- the
+    #: capability model has always been richer than what routing could ask, and this is the missing
+    #: half. ``None`` means UNKNOWN, and unknown never narrows: a producer that does not supply a rank
+    #: must not thereby make a unit refuse work it can do.
+    rank: int | None = None
 
     @property
     def has_shape(self) -> bool:
         return None not in (self.m, self.n, self.k)
+
+    @property
+    def is_batched(self) -> bool | None:
+        """Whether this op carries a batch dimension; None when the rank is unknown.
+
+        A contraction's output rank above 2 means leading batch dims. Tri-state on purpose -- a unit
+        that declares ``batch: False`` must refuse a batched op, and must NOT refuse an op whose
+        batchedness nobody recorded."""
+        return None if self.rank is None else self.rank > 2
 
 
 @dataclass(frozen=True)
@@ -77,9 +93,34 @@ def _fmt_ok(want: str | None, allowed) -> bool:
     return _dtype_ok(want, tuple(allowed or ()))
 
 
+def _shape_envelope_ok(unit: _cu.ComputeUnit, demand: OpDemand) -> bool:
+    """Does ``demand`` fit the shape envelope ``unit`` DECLARES for its family?
+
+    ``SemanticCapability`` has always carried ranks / batch / transpose / layouts, and routing could
+    consult none of it, because the demand had no shape beyond optional extents. Now that a demand can
+    carry a rank, the two declared axes that a rank decides are checkable.
+
+    Unknown never narrows, in both directions: a demand with no rank is not refused by a unit that
+    declares one, and a unit that declares no envelope refuses nothing. That keeps this inert for every
+    producer that does not yet supply a rank, which is the honest default -- an absent fact must not
+    become a refusal.
+    """
+    if demand.rank is None:
+        return True
+    caps = [c for c in (unit.semantic_capabilities or ()) if c.dtypes or c.ranks or not c.batch]
+    for cap in caps:
+        if cap.ranks and demand.rank not in cap.ranks:
+            return False
+        if cap.batch is False and demand.is_batched:
+            return False
+    return True
+
+
 def _legal_on(unit: _cu.ComputeUnit, demand: OpDemand) -> tuple[bool, str | None]:
     """Is ``demand`` legal on ``unit``? Returns (legal, accumulator token)."""
     if not unit.supports_op(demand.op):
+        return False, None
+    if not _shape_envelope_ok(unit, demand):
         return False, None
     if not _fmt_ok(demand.in_fmt, unit.dtypes):
         return False, None
