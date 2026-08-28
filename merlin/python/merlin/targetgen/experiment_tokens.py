@@ -273,6 +273,208 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
     return rec
 
 
+def _codex_usage(events: list[dict]) -> dict | None:
+    """Totals from a `codex exec --json` transcript, or None if it reported none.
+
+    Codex publishes usage ONLY on `turn.completed`. A turn that failed or was cut off carries no
+    usage at all, and that is UNPRICED -- not zero. Reporting it as zero would make a timed-out round
+    look free, and failed rounds are most of the cost in a repair loop.
+
+    `input_tokens` ALREADY CONTAINS `cached_input_tokens` + `cache_write_input_tokens`, so fresh input
+    is obtained by SUBTRACTION. Adding them would double-count the cached prefix -- on a measured
+    round here that is 188928 of 221310 input tokens, an 85% overstatement.
+
+    `reasoning_output_tokens` is a SUBSET of `output_tokens`; it is recorded beside the total and
+    never added to it.
+    """
+    tot = {"input": 0, "cached": 0, "cache_write": 0, "output": 0, "reasoning": 0}
+    turns = completed = 0
+    for e in events:
+        if e.get("type") == "turn.started":
+            turns += 1
+        if e.get("type") != "turn.completed":
+            continue
+        u = e.get("usage") or {}
+        if not u:
+            continue
+        completed += 1
+        tot["input"] += int(u.get("input_tokens", 0) or 0)
+        tot["cached"] += int(u.get("cached_input_tokens", 0) or 0)
+        tot["cache_write"] += int(u.get("cache_write_input_tokens", 0) or 0)
+        tot["output"] += int(u.get("output_tokens", 0) or 0)
+        tot["reasoning"] += int(u.get("reasoning_output_tokens", 0) or 0)
+    if not completed:
+        return None
+    fresh = tot["input"] - tot["cached"] - tot["cache_write"]
+    return {
+        "tokens_input": max(fresh, 0),
+        "tokens_cached": tot["cached"],
+        "tokens_cache_write": tot["cache_write"],
+        "tokens_output": tot["output"],
+        "tokens_reasoning": tot["reasoning"],
+        "turns_started": turns,
+        "turns_completed": completed,
+        # False when a turn produced no usage event: its tokens are unknown, not zero.
+        "usage_complete": completed >= max(turns, 1),
+        "input_included_cached": True,
+        # Codex documents reasoning as part of output_tokens, and the measured data agrees
+        # (reasoning <= output on every round). Recorded beside the total, never added to it.
+        "reasoning_is_subset_of_output": True,
+    }
+
+
+def _opencode_usage(events: list[dict]) -> dict | None:
+    """Totals from an `opencode run --format json` transcript, or None if it reported none.
+
+    opencode reports usage PER STEP on `step-finish` parts, so the run total is a sum over steps
+    rather than one terminal event. It also carries its own per-step `cost`, which is used only when
+    the CLI is billing the model it is actually running.
+    """
+    tot = {"input": 0, "output": 0, "reasoning": 0, "cache_read": 0, "cache_write": 0}
+    cost = 0.0
+    steps = 0
+    have_cost = False
+    for e in events:
+        part = e.get("part") or {}
+        tk = part.get("tokens")
+        if not isinstance(tk, dict):
+            continue
+        steps += 1
+        tot["input"] += int(tk.get("input", 0) or 0)
+        tot["output"] += int(tk.get("output", 0) or 0)
+        tot["reasoning"] += int(tk.get("reasoning", 0) or 0)
+        cache = tk.get("cache") or {}
+        tot["cache_read"] += int(cache.get("read", 0) or 0)
+        tot["cache_write"] += int(cache.get("write", 0) or 0)
+        if isinstance(part.get("cost"), (int, float)):
+            cost += float(part["cost"])
+            have_cost = True
+    if not steps:
+        return None
+    return {
+        "tokens_input": tot["input"],
+        "tokens_cached": tot["cache_read"],
+        "tokens_cache_write": tot["cache_write"],
+        "tokens_output": tot["output"],
+        "tokens_reasoning": tot["reasoning"],
+        "steps": steps,
+        # opencode reports reasoning as its OWN counter, not a slice of output: a measured gemini run
+        # shows reasoning 47377 against output 22608, which cannot be a subset. So it is additive
+        # here where codex's is not, and the flag says which -- one field with two meanings would
+        # either double-count codex or lose a third of gemini's generated tokens.
+        "reasoning_is_subset_of_output": tot["reasoning"] <= tot["output"],
+        "usage_complete": True,
+        "cli_cost_usd": round(cost, 6) if have_cost else None,
+        # Unlike codex, opencode does not document whether `input` nets out the cached prefix. On the
+        # arms measured here cache_read is 0 (Bedrock allows cachePoint only for Anthropic and Nova),
+        # so the two readings coincide and nothing is at stake -- but the flag stays UNKNOWN rather
+        # than assuming, because a cached arm would silently over- or under-count by the prefix.
+        "input_included_cached": None,
+    }
+
+
+#: Transcript readers by driver. Adding a driver is adding an entry, not editing a parser.
+_AGENT_READERS = {"codex": _codex_usage, "opencode": _opencode_usage}
+
+
+def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
+                           billing_mode: str = METERED) -> dict:
+    """Token/cost totals from an agent CLI transcript that is NOT claude stream-json.
+
+    `parse_transcript` reads the claude CLI's `result`/`assistant` event shape. Point it at a
+    `codex exec --json` or `opencode run --format json` file and it finds no event it recognises and
+    returns `available: False, "no usage metadata in transcript"` -- which is indistinguishable from
+    a genuinely usage-free run, and would silently zero a study's entire cost axis while every
+    transcript on disk carried complete usage. Both formats are read here instead.
+
+    Returns the same shape as `parse_transcript` so the two are interchangeable downstream.
+    """
+    p = Path(path)
+    if not p.is_file():
+        return {"available": False, "reason": f"transcript not found: {p}"}
+    reader = _AGENT_READERS.get(driver)
+    if reader is None:
+        return {"available": False,
+                "reason": f"no transcript reader for driver {driver!r}; "
+                          f"known: {sorted(_AGENT_READERS)}"}
+
+    events, n_lines = [], 0
+    for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        n_lines += 1
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            continue
+
+    u = reader(events)
+    if u is None:
+        return {"available": False,
+                "reason": f"{driver} transcript carries no usage (turn failed or was cut off); "
+                          f"UNPRICED, not zero",
+                "n_events": n_lines, "usage_complete": False, "billing_mode": billing_mode}
+
+    tok_in = u["tokens_input"]
+    tok_cached = u["tokens_cached"]
+    tok_out = u["tokens_output"]
+    rec = {
+        "available": True,
+        "usage_source": f"{driver}_transcript",
+        "driver": driver,
+        "model": model,
+        "tokens_input": tok_in,
+        "tokens_cached": tok_cached,
+        "tokens_output": tok_out,
+        # Cache WRITES are fresh input the provider charged for, so they belong in the total; cached
+        # READS are counted separately because they are the cheap half and must never be summed into
+        # the fresh-token axis a cost curve is plotted against.
+        "tokens_total": tok_in + u.get("tokens_cache_write", 0) + tok_cached + tok_out
+                        + (0 if u.get("reasoning_is_subset_of_output", True)
+                           else u.get("tokens_reasoning", 0)),
+        "billing_mode": billing_mode,
+        "n_events": n_lines,
+    }
+    for k in ("tokens_cache_write", "tokens_reasoning", "reasoning_is_subset_of_output",
+              "turns_started", "turns_completed", "steps", "usage_complete",
+              "input_included_cached"):
+        if k in u:
+            rec[k] = u[k]
+
+    rate = _rate(model) if model else None
+    cost = None
+    if rate is not None:
+        rin, rout = rate
+        billable_out = tok_out + (0 if u.get("reasoning_is_subset_of_output", True)
+                                  else u.get("tokens_reasoning", 0))
+        cost = (tok_in * rin + u.get("tokens_cache_write", 0) * rin * _CACHE_WRITE_MULT
+                + tok_cached * rin * _CACHE_READ_MULT + billable_out * rout)
+
+    if billing_mode != METERED:
+        # A seat is not billed per token. The spend field stays empty so no aggregator can sum a
+        # notional figure into a real budget.
+        rec["estimated_cost_usd"] = None
+        rec["cost_unavailable_reason"] = (
+            f"{billing_mode}: a subscription seat is not billed per token; any dollar figure is what "
+            "the same traffic would have cost metered, not money spent")
+        if cost is not None:
+            rec["subscription_notional_usd"] = round(cost, 4)
+        else:
+            rec["cost_unavailable_reason"] += f"; and no metered rate for {model!r} either"
+    elif u.get("cli_cost_usd") is not None:
+        # The CLI priced its own call against the provider it actually used.
+        rec["estimated_cost_usd"] = u["cli_cost_usd"]
+        rec["cost_source"] = f"{driver}_reported"
+    elif cost is not None:
+        rec["estimated_cost_usd"] = round(cost, 4)
+        rec["cost_source"] = "price_table"
+    else:
+        rec["estimated_cost_usd"] = None
+        rec["cost_unavailable_reason"] = f"no price entry for model {model!r}"
+    return rec
+
+
 def write_cost_yaml(summary: dict, out: str | Path, *, wall_time_seconds=None,
                     model=None, exit_code=None) -> None:
     import yaml

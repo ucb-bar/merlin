@@ -33,8 +33,11 @@ import sys
 import time
 from pathlib import Path
 
+from merlin.targetgen import experiment_tokens as ET
+
 HERE = Path(__file__).resolve().parent
 EXP = HERE.parent
+
 
 #: Where the agent must leave its kernel. Named in TASK.md and read by the shim.
 KERNEL_REL = "submission/kernel.llvm.mlir"
@@ -432,6 +435,13 @@ def main(argv: list[str] | None = None) -> int:
             # that works rather than from the regression it just produced.
             kernel.write_text(best_src)
 
+        # Accounting per round, beside the verdict. Recovered from the transcript rather than
+        # tracked separately so the two can never disagree, and recorded for FAILED rounds too --
+        # a repair loop spends most of its tokens on rounds that did not work.
+        rec["accounting"] = ET.parse_agent_transcript(
+            transcript, driver=cfg["driver"], model=cfg["model"],
+            billing_mode=cfg.get("billing_mode", ET.METERED)) if transcript else {"available": False}
+
         rec["best_cycles_so_far"] = (best or {}).get("cycles")
         history.append(rec)
         (run_dir / "rounds" / f"round_{rnd:02d}.json").write_text(json.dumps(rec, indent=2))
@@ -439,8 +449,24 @@ def main(argv: list[str] | None = None) -> int:
               f"correct={rec['correct']} cycles={(rec.get('evaluation') or {}).get('cycles')} "
               f"best={(best or {}).get('cycles')} agent={rec['agent_seconds']}s", flush=True)
 
+    # Cumulative cost for this run: the axis the amortization curves are plotted against. Summed
+    # over EVERY round including the failures, and with billed and notional kept in separate fields
+    # so nothing can total a subscription seat's notional dollars into a real budget.
+    acc = [r.get("accounting") or {} for r in history]
+    priced = [x for x in acc if x.get("available")]
+    totals = {k: sum(x.get(k) or 0 for x in priced)
+              for k in ("tokens_input", "tokens_cached", "tokens_output", "tokens_total")}
+    totals["rounds_priced"] = len(priced)
+    totals["rounds_unpriced"] = sum(1 for x in acc if x and not x.get("available"))
+    totals["usage_complete"] = all(x.get("usage_complete", True) for x in priced) and not totals["rounds_unpriced"]
+    totals["billed_usd"] = round(sum(x.get("estimated_cost_usd") or 0 for x in priced), 6)
+    totals["notional_usd"] = round(sum(x.get("subscription_notional_usd") or 0 for x in priced), 6)
+    totals["agent_seconds"] = round(sum(r.get("agent_seconds") or 0 for r in history), 1)
+    totals["eval_seconds"] = round(sum(r.get("eval_seconds") or 0 for r in history), 1)
+
     summary = {
         "run_id": a.run_id, "method": a.method, "driver": cfg["driver"],
+        "cost": totals,
         "provider": cfg.get("provider"), "model": cfg["model"],
         "billing_mode": cfg.get("billing_mode"), "seed": a.seed,
         "task_id": capsule_dir.name, "target": a.target,
