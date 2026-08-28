@@ -115,6 +115,26 @@ never exercise norms, softmax or elementwise. Two consequences:
 
 ---
 
+## Agent routing — a standing constraint
+
+**Every agent run goes through the Codex subscription or Bedrock.** Anthropic and OpenAI models
+rate-cap quickly on this account, and a capped run does not fail loudly: it yields short rounds and a
+small constant score, which reads as a weak agent rather than a throttled one. A comparison run that
+way measures quota, not capability.
+
+| arm | driver | model | billing |
+|---|---|---|---|
+| `codex_kernel` | codex (ChatGPT seat) | `gpt-5.6-sol` | `subscription_notional` — billed 0, any figure is a projection |
+| `bedrock_kernel` | converse (Bedrock) | `qwen.qwen3-coder-480b-a35b-v1:0` | `metered`, hard cap $100 |
+
+The Bedrock model is the campaign-proven pick rather than a guess: it is the most-called model of the
+prior Radiance campaign (2955 calls). Note `model_tiers` aliases `qwen-coder` to qwen3-coder-**next**,
+a different model the campaign never used, so the id is pinned explicitly.
+
+The two arms run **in parallel and blind to each other**. The policy is enforced by
+`scripts/check_method_models.py`, which is driver-aware because the same id means different things by
+route: `gpt-5.6-sol` is the seat's own model on codex and an OpenAI-on-Bedrock profile on converse.
+
 ## Not ready
 
 - **Task derivation (Phase B), kernel library (F), agent runners (E/G), accounting (D), plots.**
@@ -132,10 +152,11 @@ never exercise norms, softmax or elementwise. Two consequences:
 
 ## Known limitations that could weaken the claim
 
-1. **AutoComp's onboarding cost cannot be measured on this box.** ~$223 is already spent (1461 calls
-   at $44.47 live, plus a $178.54 archived log), and its campaign docs cover **all four reveal
-   models**. Its reveal results are contaminated-by-construction and must be reported as an upper
-   bound with dual accounting, never as transfer.
+1. **AutoComp's onboarding cost cannot be measured on this box.** **$267.37 over 6882 calls** is
+   already spent across both ledgers, and its campaign docs cover **all four reveal models**. Its
+   reveal results are contaminated-by-construction and must be reported as an upper bound with dual
+   accounting, never as transfer. By model: `us.anthropic.claude-sonnet-4-6` $124.11/2429 calls,
+   `qwen.qwen3-coder-480b-a35b-v1:0` $76.10/2955, `gemini-3.5-flash` $57.19/1400, rest $9.97.
 2. **"Hand-written" is only "human-committed."** Stated in the artifact itself.
 3. **Only cyclotron@L2 certifies numerics.** Verilator L3 is completion-only; VCS L3 crashes upstream.
    Every result must quote `tier_reached`, never a bare fraction.
@@ -161,8 +182,12 @@ E=merlin/experiments/llm_kernel_vs_compiler_v0
 
 .venv/bin/python $E/scripts/inventory_models.py --all --out out/artifacts/kvc-inventory/v1
 
+# every agent arm must route through the Codex seat or Bedrock -- exit 0 required before a run
+.venv/bin/python $E/scripts/check_method_models.py
+
 MERLIN_MUON_SKIP_RTL_L3=1 .venv/bin/python -m pytest \
   merlin/tests/infra/test_kvc_inventory.py merlin/tests/infra/test_evaluation_schema.py \
+  merlin/tests/infra/test_kvc_method_routing.py \
   merlin/tests/runtime/test_muon_harness_blobs.py merlin/tests/infra/test_codex_driver.py -q
 ```
 
