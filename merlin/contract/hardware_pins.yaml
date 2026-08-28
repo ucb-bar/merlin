@@ -98,6 +98,16 @@ pins:
       the unit brought onto it first, at which point the sequencer hazard above must be re-checked
       rather than assumed to carry over.
 
+      EXPECT `--verify-pins` TO REPORT DRIFT FOR THIS PIN ON A DEVELOPMENT CHECKOUT, and read that as
+      the control working rather than as a fault. `root_env`/`path` resolve the SAME directory as
+      `saturn_opu_int8`, and a working tree can only be on one revision at a time; a tree carrying the
+      OPU (which is what any OPU work requires) necessarily fails the `forbids_paths` this pin exists
+      to assert, and reports the fork as its origin because that is where the OPU branch lives. The
+      pin verifies only on a checkout deliberately placed on 249340a6. Said explicitly because a
+      permanently-red line that nobody can distinguish from a real regression stops being read at all,
+      and this one guards a claim — an OPU verdict attributed to a revision that cannot execute one —
+      that is exactly the kind nobody catches later.
+
       EXPECTED TO REPORT DRIFT, PERMANENTLY — do not chase it. This pin shares root_env and path with
       saturn_opu_int8 ($MERLIN_CHIPYARD/generators/saturn) while forbidding the exact files that pin
       requires, so a single checkout cannot satisfy both, and the OPU work needs the other one. Do NOT
@@ -172,7 +182,7 @@ pins:
     repo_observed_note: >-
       No upstream is known for this repository; the personal remote above is its only recorded home.
       Written down rather than left implicit, so nobody reproducing this looks for one that does not exist.
-    commit: "a13439e91d0855db11f313a9df29e077c35811a0"
+    commit: "d38e5adc1b40b112a1199a2770dc49345249a9e9"
     branch: feature/discover-datapaths
     root_env: MERLIN_MLC_DIR
     path: ""
