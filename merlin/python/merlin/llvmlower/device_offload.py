@@ -22,8 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["DeviceRewrite", "SIDECAR_NAME", "load_sidecar", "rewrite_contractions_to_device",
-           "rewrite_prepared_file",
+__all__ = ["DeviceRewrite", "SIDECAR_NAME", "emit_device_program", "load_sidecar",
+           "lower_device_submits", "rewrite_contractions_to_device", "rewrite_prepared_file",
            "symbol_stem"]
 
 #: Where the rewrite records what it minted, beside the prepared module. One file per device, so two
@@ -126,6 +126,83 @@ def _signature_key(shape) -> tuple[int, ...]:
     return (*(int(d) for d in shape.parallel), int(shape.reduction[0]))
 
 
+def emit_device_program(module, device: str, *, select=None) -> list:
+    """Record the offload as ``runtime`` dialect ops and return the contractions it claimed.
+
+    Merlin owns a ``runtime`` dialect that says exactly this -- ``device.get``, a command buffer, an
+    append per command, ``submit`` -- and until now no real model passed through it. The reason is
+    structural rather than neglect: the module's TEXT goes on to upstream mlir-opt, which does not know
+    this dialect, so runtime ops cannot survive into what is printed. They therefore live between two
+    stages of one xDSL pass -- emitted here, lowered by :func:`lower_device_submits` before anything is
+    printed -- which is the only shape in which a real model can pass through the dialect at all.
+
+    What that buys is not decoration. The offload decision is now expressed once, device-independently,
+    and the TRANSPORT decides how it is realized; a second transport becomes a second lowering rather
+    than a second pass with its own idea of what is legal.
+    """
+    from xdsl.dialects.builtin import DictionaryAttr, StringAttr
+
+    from merlin.system.offload import offloadable_contractions
+    from merlin.xdsl_dialects import runtime as r
+    from merlin.xdsl_dialects._common import HAS_XDSL
+
+    chosen = [(op, sh) for op, sh in offloadable_contractions(module, device)
+              if select is None or select(sh)]
+    if not chosen or not HAS_XDSL:
+        return chosen
+
+    fn = next((f for f in module.walk() if f.name == "func.func"), None)
+    if fn is None or not fn.regions or not fn.regions[0].blocks:
+        return chosen
+    block = fn.regions[0].blocks[0]
+
+    dev = r.DeviceGetOp(result_types=[r.DeviceType()], properties={
+        "device": StringAttr(str(device)), "backend": r.BackendAttr(r.Backend.BAREMETAL)})
+    cb = r.CommandBufferCreateOp(operands=[dev.dev], result_types=[r.CommandBufferType()],
+                                 properties={"target": StringAttr(str(device))})
+    block.insert_op_before(dev, block.first_op)
+    block.insert_op_after(cb, dev)
+    prev = cb
+    for _op, shape in chosen:
+        ap = r.CommandBufferAppendOp(operands=[cb.cb], properties={
+            "opcode": StringAttr("MATMUL"),
+            "args": DictionaryAttr({"m": StringAttr(str(shape.parallel[-2])),
+                                    "n": StringAttr(str(shape.parallel[-1])),
+                                    "k": StringAttr(str(shape.reduction[0]))})})
+        block.insert_op_after(ap, prev)
+        prev = ap
+    sub = r.SubmitOp(operands=[dev.dev, cb.cb], result_types=[r.EventType()])
+    block.insert_op_after(sub, prev)
+    return chosen
+
+
+def lower_device_submits(module, device: str, *, transport: str | None) -> int:
+    """Replace the ``runtime`` ops with the realization ``transport`` calls for; return how many.
+
+    ``host_instruction`` is realized by the call-plus-shim path the rest of this module emits, so the
+    printed module is byte-identical to not having gone through the dialect at all -- which is the
+    point: passing through it must cost nothing to the one transport that already worked.
+
+    Any other transport removes the ops WITHOUT a realization and says so, rather than leaving
+    dialect ops in text that upstream mlir-opt is about to parse and reject with an error naming a
+    dialect nobody outside this repo has heard of.
+    """
+    from merlin.xdsl_dialects import runtime as r
+    from merlin.xdsl_dialects._common import HAS_XDSL
+
+    if not HAS_XDSL:
+        return 0
+    kinds = (r.SubmitOp, r.CommandBufferAppendOp, r.CommandBufferCreateOp, r.DeviceGetOp)
+    doomed = [op for op in module.walk() if isinstance(op, kinds)]
+    # The results are consumed only by each other (device -> buffer -> submit), so erasing in reverse
+    # order leaves nothing dangling. Nothing outside this set ever holds one: that is what makes the
+    # dialect stage removable without touching the model's own values.
+    for op in reversed(doomed):
+        op.detach()
+        op.erase()
+    return len(doomed)
+
+
 def rewrite_contractions_to_device(module, device: str, *,
                                    select: Callable[[Any], bool] | None = None,
                                    sidecar_dir: str | Path | None = None) -> DeviceRewrite:
@@ -150,8 +227,21 @@ def rewrite_contractions_to_device(module, device: str, *,
         return DeviceRewrite(device=device,
                              skipped=(("all", f"{device!r} declares no derivable datapath"),))
 
+    # THROUGH THE RUNTIME DIALECT. The offload is recorded as runtime ops first and realized second,
+    # so the decision is expressed once and device-independently and the TRANSPORT decides how it is
+    # carried out. They cannot survive into the printed text -- upstream mlir-opt does not know this
+    # dialect -- so both stages happen here, before anything is printed.
+    from merlin.system.derive import link_for
+    try:
+        from merlin.targetgen.target_experiment import load_capability_manifest
+        _endpoint = getattr(load_capability_manifest(device), "endpoint_kind", None)
+    except Exception:            # noqa: BLE001
+        _endpoint = None
+    _transport = link_for(device, _endpoint).command_transport
+
+    chosen = emit_device_program(module, device, select=select)
     candidates = offloadable_contractions(module, device)
-    chosen = [(op, sh) for op, sh in candidates if select(sh)]
+    lower_device_submits(module, device, transport=_transport)
     skipped: list[tuple[str, str]] = []
     if not chosen:
         return DeviceRewrite(device=device,

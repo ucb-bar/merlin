@@ -204,3 +204,73 @@ def test_the_sidecar_is_written_even_when_nothing_moved(tmp_path):
 def test_the_module_is_untouched_when_nothing_moved(tmp_path):
     _r, prep = _rewrite_on_disk(tmp_path, select=lambda _s: False)
     assert prep.read_text(encoding="utf-8").count("linalg.matmul") == 2
+
+
+# --------------------------------------------------------------- through the runtime dialect
+
+def _text(m):
+    from merlin.xdsl_dialects._common import text as to_text
+    return to_text(m)
+
+
+def test_the_offload_is_recorded_as_runtime_ops_before_it_is_realized():
+    """Merlin owns a `runtime` dialect that says exactly this -- device.get, a command buffer, an
+    append per command, submit -- and no real model passed through it. Now one does."""
+    from merlin.llvmlower.device_offload import emit_device_program
+    dev = _int8_device()
+    with IR_LOCK:
+        m = _parse(_TWO_SHAPES)
+        chosen = emit_device_program(m, dev, select=lambda _s: True)
+        mid = _text(m)
+    assert len(chosen) == 2
+    assert "runtime.device.get" in mid and "runtime.submit" in mid
+    assert mid.count("runtime.command_buffer.append") == 2, "one append per offloaded contraction"
+
+
+def test_nothing_of_the_dialect_survives_into_the_printed_module():
+    """The structural reason this dialect stayed a parallel universe: the module's TEXT goes on to
+    upstream mlir-opt, which does not know it. Leaving one op behind fails the whole lowering with an
+    error naming a dialect nobody outside this repo has heard of."""
+    dev = _int8_device()
+    with IR_LOCK:
+        m = _parse(_TWO_SHAPES)
+        rewrite_contractions_to_device(m, dev, select=lambda _s: True)
+        out = _text(m)
+    assert "runtime." not in out
+    assert out.count("func.call") == 2
+
+
+def test_passing_through_the_dialect_changes_nothing_about_the_result():
+    """The one transport that already worked must pay nothing for the indirection: same calls, same
+    signatures, same declarations."""
+    dev = _int8_device()
+    with IR_LOCK:
+        m = _parse(_TWO_SHAPES)
+        r = rewrite_contractions_to_device(m, dev, select=lambda _s: True)
+        out = _text(m)
+    assert r.moved == 2 and len(r.signatures) == 2
+    assert set(r.signatures.values()) == {(16, 16, 32), (8, 64, 128)}
+    assert "linalg.matmul" not in out and out.count("func.call") == 2
+    # The access attributes are NOT asserted here: the printer drops them for a bodyless declaration,
+    # which is exactly why the on-disk seam patches them back. That is pinned in
+    # `test_the_written_module_keeps_its_access_attributes`, where it is actually observable.
+
+
+def test_the_lowering_reports_what_it_removed():
+    from merlin.llvmlower.device_offload import emit_device_program, lower_device_submits
+    dev = _int8_device()
+    with IR_LOCK:
+        m = _parse(I8_MATMUL)
+        emit_device_program(m, dev, select=lambda _s: True)
+        # device.get + create + one append + submit
+        assert lower_device_submits(m, dev, transport="host_instruction") == 4
+        assert "runtime." not in _text(m)
+
+
+def test_a_declined_selection_records_no_program():
+    from merlin.llvmlower.device_offload import emit_device_program
+    dev = _int8_device()
+    with IR_LOCK:
+        m = _parse(I8_MATMUL)
+        assert emit_device_program(m, dev, select=lambda _s: False) == []
+        assert "runtime." not in _text(m), "nothing selected means no program to record"
