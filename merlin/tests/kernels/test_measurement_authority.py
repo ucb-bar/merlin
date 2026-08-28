@@ -162,3 +162,78 @@ class TestAttainmentPicksByAuthorityNotByFieldName:
         from merlin.kernels import measurement as M
         auth = M.MeasurementAuthority(target="t", cycles_from="spike", declared=True)
         assert M.pick([{"target": "k1", "cycles": 999}], auth, "cycles") == (None, None)
+
+
+class TestDeclarationSurvivesARedirectedOutRoot:
+    """A committed declaration must not depend on where output happens to be written.
+
+    The three generated targets keep their contracts under ``out/artifacts/targets/<t>/contracts/``.
+    Those files are TRACKED, but the registry resolved them through ``artifacts_dir()``, which honors
+    ``MERLIN_OUT_ROOT``. So any run that redirected the out root — a test, a worktree, a relocated
+    checkout — found no contract and concluded the target declared no authority. It then fails closed
+    correctly and reports UNKNOWN for cycles, wall time and attainment, which reads as a property of
+    the target while actually being a broken path: the beam lost its whole objective this way and
+    ranked every fork as None.
+    """
+
+    def test_generated_targets_still_declare_under_a_redirected_out_root(self, monkeypatch, tmp_path):
+        from merlin.kernels import measurement as meas
+        monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "elsewhere"))
+        for target in ("rvv", "radiance", "atlas"):
+            auth = meas.authority_for(target)
+            assert auth.declared, f"{target} lost its declaration when the out root moved"
+            assert auth.cycles_from, f"{target} declared no cycle authority"
+
+    def test_the_fallback_records_which_file_answered(self, monkeypatch, tmp_path):
+        """Provenance, not just a value: a reader must never have to infer which file was believed."""
+        from merlin.kernels import measurement as meas
+        assert meas.authority_for("rvv").source == "capability_manifest"
+        monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "elsewhere"))
+        assert meas.authority_for("rvv").source == "tracked_contract"
+
+    def test_a_failed_lookup_is_not_reported_as_a_target_that_declares_nothing(self):
+        """Two different facts. Collapsing them sends the reader to argue about a target's contract
+        when the actual problem is that nothing could be read."""
+        from merlin.kernels import measurement as meas
+        auth = meas.authority_for("no_such_target_anywhere")
+        assert not auth.declared
+        assert auth.lookup_error
+        assert "could NOT BE READ" in auth.gaps()[0]
+        assert "failed lookup" in auth.gaps()[0]
+
+    def test_a_descriptor_with_no_measurement_block_is_undeclared_not_a_lookup_error(self):
+        """The genuine 'declares nothing' case must keep saying exactly that."""
+        from merlin.kernels import measurement as meas
+        auth = meas.authority_for("t", descriptor={"compute_units": []})
+        assert not auth.declared and auth.lookup_error is None
+        assert "no measurement authority declared" in auth.gaps()[0]
+
+    def test_the_beam_can_still_rank_when_the_out_root_moves(self, monkeypatch, tmp_path):
+        """The consequence the two facts above have on the search: with the authority lost, `_score`
+        returns wall=None for every fork, `speedup` and `attainment_vs_expert` are None everywhere,
+        and the beam has nothing to rank by."""
+        from pathlib import Path
+        from merlin.kernels.compare import RvvFingerprint
+        from merlin.mining.beam import _score
+        monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "elsewhere"))
+        result = {"correctness": {"gate_ok": True},
+                  "measurement": [{"target": "k1", "cycles": 500_000, "wall_ns": 112_500}]}
+        curated = RvvFingerprint.from_curated("void f(){}", {"op": "matmul"}, "curated")
+        sc = _score(result, Path(tmp_path / "absent"), curated, {"op": "matmul"}, target="rvv")
+        assert sc["k1_wall_ns"] == 112_500
+        assert sc["wall_from"] == "k1"
+
+    def test_score_refuses_to_default_an_unnamed_target(self, tmp_path):
+        """The other half of the same fix. `_score` used to fall back to the reference backend's name
+        when neither the result nor the caller named a target -- which does NOT fail closed: it reads
+        whichever substrate that OTHER target declares and attributes the number to this run. An
+        unnamed target must be UNKNOWN."""
+        from pathlib import Path
+        from merlin.kernels.compare import RvvFingerprint
+        from merlin.mining.beam import _score
+        result = {"correctness": {"gate_ok": True},
+                  "measurement": [{"target": "k1", "cycles": 500_000, "wall_ns": 112_500}]}
+        curated = RvvFingerprint.from_curated("void f(){}", {"op": "matmul"}, "curated")
+        sc = _score(result, Path(tmp_path / "absent"), curated, {"op": "matmul"})
+        assert sc["k1_wall_ns"] is None and sc["wall_from"] is None
+        assert any("named a target" in g for g in sc.get("measurement_gaps", []))

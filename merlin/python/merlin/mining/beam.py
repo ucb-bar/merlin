@@ -29,6 +29,7 @@ from .fork_from_action import propose_forks_from_cca
 from .from_strategy import mint_fork
 from .registry import load_rvv_package
 from .runner import certify_rvv
+from .select import select_proposals
 from .sweep import rank_results, run_sweep
 
 
@@ -113,7 +114,8 @@ def _emitted_digest(run_dir: "Path") -> str | None:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
 
 
-def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -> dict:
+def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict,
+           target: str | None = None) -> dict:
     """Attach gate_ok + structural_match + divergences to a certify result."""
     gate_ok = bool((result.get("correctness") or {}).get("gate_ok"))
     # WHICH substrate may produce which number is DECLARED per target (kernels.measurement), not chosen
@@ -125,7 +127,14 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -
     # only one is authoritative (the other is an rdtime-derived ESTIMATE), so picking by field name
     # gets the estimate. `pick` refuses to fall back for exactly that reason.
     from ..kernels import measurement as _meas
-    _auth = _meas.authority_for(result.get("target") or "rvv")
+    # The target is NAMED by the result or by the caller -- never defaulted. Defaulting it read one
+    # target's declared authority for another, which does not fail closed: it produces a NUMBER, from
+    # whichever substrate that other target happens to declare, attributed to this run. An unnamed
+    # target is UNKNOWN, and the run says so.
+    _target = result.get("target") or target
+    _auth = (_meas.authority_for(_target) if _target else _meas.MeasurementAuthority(
+        target="<unspecified>", declared=False,
+        lookup_error="neither the certify result nor the caller named a target"))
     measurements = result.get("measurement", [])
     cycles, _cyc_from = _meas.pick(measurements, _auth, "cycles")
     k1_wall, _wall_from = _meas.pick(measurements, _auth, "wall")
@@ -207,7 +216,8 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
              expert_cca=None, loader: Callable = load_rvv_package, minter: Callable = mint_fork,
              max_workers: int | None = None, sweep_fn: Callable = run_sweep,
              expert_wall_ns: float | None = None, validate_fn: Callable | None = None,
-             noise_margin: float | None = None
+             noise_margin: float | None = None,
+             prior_fn: Callable[[Any], float | None] | None = None
              ) -> dict[str, Any]:
     """Run the beam. Returns {best, nodes, deferred, tree_path}. ``curated_text`` is the expert
     kernel C source for this op (the structural target); ``op_key`` = {op,dtype,shape_regime}.
@@ -245,13 +255,17 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
         res = certify_fn(package_dir=str(pkg_dir), model_dir=str(model_dir),
                          runs_root=str(runs_root), run_id=run_id, targets=targets,
                          baseline_run_dir=(str(baseline_run_dir) if baseline_run_dir else None))
-        sc = _score(res, runs_root / run_id, curated, op_key)
+        sc = _score(res, runs_root / run_id, curated, op_key, target=target)
         return {"run_id": run_id, "package_dir": str(pkg_dir), "parent_run_id": parent_rid,
                 "lever": lever, "evidence": evidence, "depth": d, **sc}
 
     nodes: list[dict] = []
     deferred: list[dict] = []           # recorded lever-2/3 work-items the beam can't auto-apply
     node_by_rid: dict[str, dict] = {}   # run_id -> node, for parent-speedup lookup (the margin gate)
+    # run_id -> the CompilerActions applied along that fork's lineage. Kept OUT of the node because
+    # nodes are serialized to beam_tree.yaml; the node carries the seam names for inspectability and
+    # this map carries the objects the selector's legality check needs.
+    applied_by_rid: dict[str, list[Any]] = {}
 
     # BB0 freeze-assert: snapshot the frozen baseline BEFORE any fork is minted. The beam forks into
     # fresh dirs (from_strategy.mint_fork writes a NEW package; the seed is read-only), so this digest
@@ -301,7 +315,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
         res = validate_fn(package_dir=node["package_dir"], model_dir=str(model_dir),
                           runs_root=str(runs_root), run_id=vrun_id, targets=targets,
                           baseline_run_dir=(str(baseline_run_dir) if baseline_run_dir else None))
-        node.update(_score(res, runs_root / vrun_id, curated, op_key))
+        node.update(_score(res, runs_root / vrun_id, curated, op_key, target=target))
         node["validated"] = True
         return node
 
@@ -337,10 +351,20 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
             divs = (_cca_divergences(runs_root / parent_node["run_id"], expert_cca, op_key)
                     if cca_mode else parent_node["divergences"])
             props = proposer(divs, parent_pkg.knobs)
-            forkable = [p for p in props if p.forkable][:width]
+            # SELECTION: spend this generation's width on EVIDENCE, not on the order the divergence
+            # list happened to arrive in. Drops proposals illegal on this parent (a conflict, or a
+            # requirement the lineage does not satisfy -- which would build and do nothing, and be
+            # blamed on the action), ranks measured-helps > unmeasured > measured-refuted, and
+            # round-robins by action family so width buys distinct IDEAS. Nothing is silently lost:
+            # everything unbuilt lands in `deferred` with its reason.
+            forkable, rejected = select_proposals(
+                props, width=width,
+                applied_actions=applied_by_rid.get(parent_node["run_id"], ()),
+                prior_fn=prior_fn)
             deferred.extend({"parent": parent_node["run_id"], "lever": p.lever,
                              "targets": p.targets, "note": p.note, "evidence": p.evidence}
                             for p in props if not p.forkable)
+            deferred.extend({"parent": parent_node["run_id"], **r.to_dict()} for r in rejected)
             for p in forkable:
                 counter += 1
                 fork_dir = minter(parent_pkg, p.overrides, version=d, depth=d,
@@ -362,10 +386,17 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
         results = sweep_fn(jobs, certify_fn=certify_fn, max_workers=max_workers)
         gen_nodes = []
         for (fork_dir, parent_rid, p), res in zip(meta, results):
-            sc = _score(res, runs_root / fork_dir.name, curated, op_key)
+            sc = _score(res, runs_root / fork_dir.name, curated, op_key, target=target)
+            _p_action = getattr(p, "action", None)
+            _lineage = list(applied_by_rid.get(parent_rid, ())) + ([_p_action] if _p_action else [])
+            applied_by_rid[fork_dir.name] = _lineage
             node = {"run_id": fork_dir.name, "package_dir": str(fork_dir),
                     "parent_run_id": parent_rid, "lever": p.lever, "evidence": p.evidence,
-                    "targets_decision": p.targets, "depth": d, **sc}
+                    "targets_decision": p.targets, "depth": d,
+                    # the action lineage as SEAM NAMES -- the selector reads the objects from
+                    # applied_by_rid; this is the inspectable record that survives into the tree file
+                    "applied_seams": [getattr(a, "target_seam", "?") for a in _lineage],
+                    **sc}
             node["speedup"] = _real_speedup(node)     # real K1 speedup vs the seed (None if no k1)
             node["explore_speedup"] = node["speedup"]  # frozen explore-phase speed (survives validation)
             node["attainment_vs_expert"] = _attainment_vs_expert(node)   # vs XNNPACK (the real target)

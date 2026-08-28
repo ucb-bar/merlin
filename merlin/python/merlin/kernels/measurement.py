@@ -48,10 +48,21 @@ class MeasurementAuthority:
     citable_tier: str = "rtl"
     notes: tuple[str, ...] = ()
     declared: bool = False                # False = nothing was declared; every answer is UNKNOWN
+    #: Where the declaration was read from, so a reader never has to guess which file answered.
+    source: str | None = None
+    #: Why the lookup failed, when it did. An undeclared authority and an UNREADABLE one are
+    #: different facts: the first is a policy statement about the target, the second is a broken
+    #: lookup wearing that statement's clothes. Reporting the second as the first sends whoever reads
+    #: the run record to argue about the target's contract instead of fixing the path.
+    lookup_error: str | None = None
 
     def gaps(self) -> tuple[str, ...]:
         """What this target cannot measure, stated. An empty authority is a gap, not a zero."""
         if not self.declared:
+            if self.lookup_error:
+                return (f"{self.target}: measurement authority could NOT BE READ ({self.lookup_error})"
+                        f" — this is a failed lookup, not a target that declares nothing; cycles, "
+                        f"wall time and attainment are UNKNOWN until it resolves",)
             return (f"{self.target}: no measurement authority declared — cycles, wall time and "
                     f"attainment are all UNKNOWN, which is NOT the same as zero",)
         out = []
@@ -67,23 +78,70 @@ class MeasurementAuthority:
         return {"target": self.target, "cycles_from": self.cycles_from, "wall_from": self.wall_from,
                 "cycles_tier": self.cycles_tier, "wall_tier": self.wall_tier,
                 "speed_of_light": self.speed_of_light, "citable_tier": self.citable_tier,
-                "declared": self.declared, "gaps": list(self.gaps()), "notes": list(self.notes)}
+                "declared": self.declared, "gaps": list(self.gaps()), "notes": list(self.notes),
+                "source": self.source, "lookup_error": self.lookup_error}
+
+
+def _tracked_measurement_block(target: str) -> tuple[dict, str | None]:
+    """The ``measurement:`` block from the target's REPO-ANCHORED contract, ignoring MERLIN_OUT_ROOT.
+
+    Returns ``(block, error)``. Reads the reviewed contract and, failing that, the residual that the
+    contract is generated from — the residual is where the declaration is authored, so it answers
+    even for a target whose contract has not been regenerated. Never raises: a failure comes back as
+    a reason string so the caller can report a broken lookup as a broken lookup.
+    """
+    from merlin.common.paths import targets_dir, tracked_out_dir
+    from merlin.common.yaml import load_yaml
+
+    homes = (targets_dir() / target, tracked_out_dir() / "artifacts" / "targets" / target)
+    errors: list[str] = []
+    for home in homes:
+        for name in ("target_contract.yaml", "residual.yaml"):
+            path = home / "contracts" / name
+            if not path.is_file():
+                continue
+            try:
+                doc = load_yaml(path) or {}
+            except Exception as exc:  # noqa: BLE001 — a malformed tracked file is a real answer
+                errors.append(f"{path.name}: {type(exc).__name__}: {exc}")
+                continue
+            block = dict((doc.get("measurement") or {}))
+            if block:
+                return block, None
+    return {}, ("; ".join(errors) if errors else None)
 
 
 def authority_for(target: str, descriptor: dict | None = None) -> MeasurementAuthority:
     """The declared authority for ``target``. Never guesses a substrate."""
     block: dict = {}
+    source: str | None = None
+    lookup_error: str | None = None
     if descriptor is not None:
         block = dict((descriptor.get("measurement") or {}))
+        source = "descriptor"
     else:
         try:
             from merlin.targetgen.target_experiment import load_capability_manifest
             contract = load_capability_manifest(target).contract
             block = dict((contract.get("measurement") or {}))
-        except Exception:  # noqa: BLE001 — no descriptor: undeclared, and say so
-            block = {}
+            source = "capability_manifest"
+        except Exception as exc:  # noqa: BLE001
+            lookup_error = f"{type(exc).__name__}: {exc}"
+        if not block:
+            # The generated targets' contracts are TRACKED files that happen to live under `out/`, and
+            # the registry resolves them through the REDIRECTABLE out root. So a run with
+            # MERLIN_OUT_ROOT pointed elsewhere (a test, a worktree, a relocated checkout) finds no
+            # contract and concludes the target declares no authority -- at which point every cycle,
+            # wall time and attainment silently becomes UNKNOWN and the search loses its objective.
+            # A committed declaration must not depend on where output is being written, so fall back
+            # to the repo-anchored copy and record that that is what answered.
+            tracked, err = _tracked_measurement_block(target)
+            if tracked:
+                block, source, lookup_error = tracked, "tracked_contract", None
+            elif err and not lookup_error:
+                lookup_error = err
     if not block:
-        return MeasurementAuthority(target=target, declared=False)
+        return MeasurementAuthority(target=target, declared=False, lookup_error=lookup_error)
     return MeasurementAuthority(
         target=target,
         cycles_from=block.get("cycles_from"),
@@ -94,6 +152,7 @@ def authority_for(target: str, descriptor: dict | None = None) -> MeasurementAut
         citable_tier=str(block.get("citable_tier") or "rtl"),
         notes=tuple(block.get("notes") or ()),
         declared=True,
+        source=source,
     )
 
 

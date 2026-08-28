@@ -125,6 +125,10 @@ def runtime_dir() -> Path:
 #     three subdirs (runs/ artifacts/ build/). These helpers are the SINGLE source of truth for the
 #     root names — callers must never hard-code the literal strings. Honors ``MERLIN_OUT_ROOT`` for
 #     relocated/installed checkouts (mirrors ``MERLIN_REPO_ROOT``). ---
+#: The single generated-output root name. Callers never spell it; they call the helpers below.
+_OUT_ROOT_NAME = "out"
+
+
 def work_dir() -> Path:
     """Return the writable WORK root for ephemeral scratch (``tmp/`` build scratch, calibration
     intermediates, external baseline checkouts) — ``<repo>`` in-repo, honoring ``MERLIN_WORK_DIR``.
@@ -144,7 +148,22 @@ def out_dir() -> Path:
     env = os.environ.get("MERLIN_OUT_ROOT")
     if env:
         return Path(env)
-    return repo_root() / "out"
+    return repo_root() / _OUT_ROOT_NAME
+
+
+def tracked_out_dir() -> Path:
+    """The REPO-anchored ``<repo>/out`` — deliberately ignoring ``MERLIN_OUT_ROOT``.
+
+    ``out/`` is the generated-output root and is redirectable, but a few files under it are TRACKED,
+    reviewed inputs rather than output: the generated targets' ``contracts/`` (their capability
+    manifest and residual). Resolving those through the redirectable root means a run with
+    ``MERLIN_OUT_ROOT`` pointed elsewhere — a test, a worktree, a relocated checkout — cannot see a
+    declaration that is committed to the repository, and a policy declaration that disappears when an
+    env var moves is not a fact about the target.
+
+    Use :func:`out_dir` for everything generated. Use this ONLY to read a tracked file under ``out/``.
+    """
+    return repo_root() / _OUT_ROOT_NAME
 
 
 def runs_dir() -> Path:
