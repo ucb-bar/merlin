@@ -119,6 +119,31 @@ offset is not a byte count, is declined and reported rather than approximated. A
 signatures with no `device=` routing to build them against is refused with that stated, rather than
 failing later as an unresolved symbol.
 
+## What is RTL-backed, and what is not
+
+A whole-model image cannot run on the Verilator harness (below), so the compiled artifact's RTL
+evidence is obtained by asking a narrower question. The artifact's device side is a fixed set of
+kernels at fixed extents — the offload mints one per distinct `(M,N,K)` — and those are
+scratchpad-resident, with no sub-word DRAM traffic. They therefore certify on exactly the harness the
+capsule ladder uses, at the extents the model actually calls.
+
+Measured for `small_llama` int8, whose compiled ELF carries four kernels:
+
+| kernel | M×N×K | oracle | derived_from_rtl | cycle-accurate | cycles |
+|---|---|---|---|---|---|
+| k0 | 8×128×128 | rtl_verilator | yes | yes | 2837 |
+| k1 | 8×344×128 | rtl_verilator | yes | yes | 7363 |
+| k2 | 8×128×344 | rtl_verilator | yes | yes | 7159 |
+| k3 | 8×256×128 | rtl_verilator | yes | yes | 5339 |
+
+All four pass, including `reference_outputs_vs_simulate`.
+
+**State the claim at its real scope.** This certifies the DEVICE CODE the artifact contains, on
+elaborated RTL, at the extents it runs. It is not a whole-model RTL run, and the host↔device
+integration is not what it measures — that is what the spike numbers above cover. The two together
+are: correct device code (RTL), assembled into a correct whole-model result (functional). A
+whole-model RTL run remains unavailable on the substrates here.
+
 ## Which substrates can run a compiled whole model
 
 | substrate | whole-model artifact | why |
