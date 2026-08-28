@@ -599,6 +599,13 @@ def _flat(nested) -> list:
     return out
 
 
+#: How many diverging element indices to record per output. Enough to see whether the failure is
+#: clustered (a row/column/tile — a scale, stride or tail bug) or scattered (rounding); bounded so a
+#: saturated output cannot balloon the record. `mismatch_count` always carries the true total, and
+#: `mismatch_indices_truncated` says when the list is partial.
+_MISMATCH_INDEX_CAP = 64
+
+
 def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
             *, golden_source: str = "merlin_tensor_int") -> dict:
     """Exact-int (or tolerance-float) comparison; returns a numeric_report dict. ``golden_source`` is
@@ -638,6 +645,16 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
         maxabs = 0
         maxrel = 0.0
         first = None
+        # WHERE the divergences are, not just how many. A count plus one index cannot distinguish a
+        # CLUSTERED failure (a whole row/column/tile wrong -> a scale, stride or tail-handling bug) from a
+        # SCATTERED one (a few elements a couple of ULP out -> rounding or accumulation order), and those
+        # need completely different fixes. Measured: a capsule diverged on 8 of 256 elements by exactly
+        # 3/32 and 5/32 -- even multiples of the bf16 ULP and sub-ULP in the operand format -- and the
+        # record could not say whether the 8 shared a row, so the reading stayed a guess.
+        #
+        # Bounded so a saturated output cannot balloon the record: the first `_MISMATCH_INDEX_CAP`
+        # indices are enough to see clustering, and `mismatch_count` already carries the total.
+        bad_idx: list[int] = []
         for idx, (a, b) in enumerate(zip(ef, of)):
             if mode == "exact_int":
                 bad = int(a) != int(b)
@@ -656,11 +673,16 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
                     maxrel = max(maxrel, d / den)
                 if first is None:
                     first = {"output": name, "index": idx, "expected": a, "observed": b}
+                if len(bad_idx) < _MISMATCH_INDEX_CAP:
+                    bad_idx.append(idx)
         rep["per_output"][name] = {"status": "pass" if mism == 0 else "fail",
                                    "mismatch_count": mism, "max_abs_error": maxabs,
                                    "max_rel_error": maxrel,
                                    "n_elements": len(ef),
                                    "saturated": bool(mism and mism == len(ef))}
+        if mism:
+            rep["per_output"][name]["mismatch_indices"] = bad_idx
+            rep["per_output"][name]["mismatch_indices_truncated"] = mism > len(bad_idx)
         if mism:
             # DISTINCT FAILURE CLASS: the kernel never wrote this output, so what was compared is the
             # buffer's initial fill, not a computed result. Calling that a numeric mismatch is actively
