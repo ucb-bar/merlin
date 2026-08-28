@@ -317,8 +317,18 @@ def _run_agent(cfg: dict, ws: Path, run_dir: Path, rnd: int, prompt: str,
         env["AWS_REGION"] = str(cfg["aws_region"])
 
     if driver == "codex":
+        # Codex runs its OWN bwrap internally. Nested inside ours it dies with
+        # `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`, and then every shell
+        # command fails while the model keeps trying -- it reported "the shell is unavailable",
+        # wrote nothing, and scored 0/9 across three tasks and three seeds. That reads as a model
+        # that cannot write a kernel; it is two sandboxes fighting.
+        #
+        # Inside our box, codex's own sandbox is redundant: the bwrap prefix already denies
+        # everything outside the workspace, and it -- not codex's setting -- is the boundary the
+        # study relies on. Outside our box the setting still matters, so it is conditional.
+        inner = "danger-full-access" if sandbox else "workspace-write"
         argv = ["codex", "exec", "--json", "--skip-git-repo-check",
-                "-c", "approval_policy=never", "--sandbox", "workspace-write", "--cd", str(ws)]
+                "-c", "approval_policy=never", "--sandbox", inner, "--cd", str(ws)]
         stdin = prompt
     elif driver == "opencode":
         model = cfg["model"]
