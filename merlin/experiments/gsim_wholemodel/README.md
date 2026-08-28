@@ -92,3 +92,19 @@ well as after it) does not change it, so the phit interface's clock-domain handl
 where to look next. The link counters in the harness are the instrument: they separate "the host is
 not sending" from "the DUT is not listening", which is the distinction that took the longest to
 establish and should not have to be re-established.
+
+### Do not chase the clock — GSIM has no clock domains
+
+The blackbox contract this model is built on states it plainly: *"GSIM abstracts Clock-typed ports
+away (step() advances all registers), so the EICG clock-gate reduces to a no-op in this model and the
+IO cells are plain passthroughs."*
+
+So `serial_tl_0$$clock_in` and `clock_uncore` are inputs that GSIM does not model as clocks. Driving
+them changes nothing, and the serial-TL block is ALREADY being clocked — every register advances on
+each `step()`. Three experiments were spent learning this the slow way (toggle the uncore clock,
+toggle the serial clock, clock it through reset); none of them could have worked, and none of them
+tells you anything when it fails.
+
+Which means the receiver holding `in_ready` low is not a clocking problem. The remaining suspects are
+its reset, or a credit/init handshake the TL-over-serial adapter expects before it will accept a
+phit. That is where to look, and the link counters distinguish it from a host-side fault in one run.
