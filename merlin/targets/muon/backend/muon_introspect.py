@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -290,11 +291,22 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="extract Muon RTL facts -> muon_facts.json")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--allow-downgrade", action="store_true",
+                    help="permit a regeneration that HOLLOWS OUT facts the existing artifact carries. "
+                         "Only for a genuine hardware change that really lost them — a hollowed fact is "
+                         "otherwise the signature of a missing extractor (see MERLIN_MLC_DIR).")
     a = ap.parse_args(argv)
     facts = build_facts()
     out = Path(a.out) if a.out else default_facts_path()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(facts, indent=2) + "\n", encoding="utf-8")
+    # Guarded write: an extraction that silently lost the isa block looks identical to a good one on the
+    # way out, and this is the path a person runs by hand (ensure_facts' _warn_if_degraded does not cover
+    # it). Refuse the downgrade here rather than leave it to be caught by eye.
+    from merlin.targetgen.rtl.facts import FactsDowngrade, write_facts_guarded
+    try:
+        write_facts_guarded(out, facts, allow_downgrade=a.allow_downgrade)
+    except FactsDowngrade as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
     f = facts["facts"]
     print(f"wrote {out}")
     print(f"  simt: {f['simt']['cores']} cores x {f['simt']['warps_per_core']} warps x "

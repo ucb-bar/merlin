@@ -1,0 +1,39 @@
+name: RX0_movement_i8_scalar
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: "int8 movement, scalar-shaped (16x16) \u2014 no SIMT integer movement\
+  \ datapath; the rv64imac Rocket is the engine that can hold these operands"
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: movement
+  attributes:
+    out: Y0
+    src: X
+    semantic: mvin_mvout
+    output_dtype: f32
+numeric_policy:
+  compare: exact_int
+  dtype: f32
+expected:
+  instruction_classes: []
+  modes:
+    movement: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: movement
+  generalization_axis: composition
+  must_accelerate: false
+  eligible: auto

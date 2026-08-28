@@ -1,0 +1,879 @@
+# DERIVED — regenerate with:
+#   build_tools/scripts/check_conformance_coverage.py --target radiance --write merlin/contract/capsules/conformance/radiance.yaml
+# Do not hand-edit: the point of this file is that it is evidence, not authorship.
+target: radiance
+generated_by: merlin.targetgen.conformance.spec
+derivation:
+  admitted: capability manifest compute_units[].semantic_capabilities (family x dtype)
+  observed: model_coverage.regions_from_module over each captured model (name-first, provenance-tag fallback;
+    unresolved regions not counted)
+  required: admitted INTERSECT observed, x tile alignment where the target tiles
+  cell_vocabulary: "(semantic_family, dtype, tile_alignment) \u2014 identical to contract.materialize.cert_capsule_cover,\
+    \ so the existing cover measures this spec without a second definition of a cell"
+boundaries:
+  tile_edge: 16
+  tile_edge_is_hardware_fact: false
+  tile_edge_source: software-tiling default (16); this target declares no fixed hardware mesh, so it is
+    NOT a hardware boundary
+  block_scale_group: 32
+  block_scale_source: target contract mx_mmio.group (one E8M0 scale per K group)
+  operand_store_bytes: 131072
+  operand_store_source: rtl facts memories[name="shared_memory"].bytes
+  extent_probes:
+  - boundary: tile_edge
+    edge: 16
+    source: software-tiling default (16); this target declares no fixed hardware mesh, so it is NOT a
+      hardware boundary
+    points:
+    - 15
+    - 16
+    - 17
+    - 32
+  - boundary: block_scale_group
+    edge: 32
+    source: target contract mx_mmio.group (one E8M0 scale per K group)
+    points:
+    - 31
+    - 32
+    - 33
+    - 64
+diagnostics:
+  n_cells: 56
+  captures_read:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  captures_unreadable: {}
+  families_observed:
+    attention: 244
+    contraction: 467
+    elementwise_map: 794
+    movement: 939
+    normalization: 423
+    reduction: 244
+    softmax: 244
+  families_observed_via_primitives:
+    attention:
+    - contraction
+    - reduction
+    - elementwise_map
+    softmax:
+    - reduction
+    - elementwise_map
+  families_needed_but_not_admitted: []
+  families_admitted_but_no_model_uses:
+  - synchronization
+  alignment_axis:
+  - aligned
+  - partial
+  notes:
+  - 2 composite family/families (attention, softmax) appear in NO capture as a region of their own because
+    the importer decomposes them; they are required on the evidence that every primitive they decompose
+    into is observed. Taking the region census literally would drop attention from a transformer corpus
+  - the alignment axis uses tile edge 16, which is a SOFTWARE tiling default for this target, not a hardware
+    boundary
+  axis_basis:
+    semantic_family: observed in a real capture (or all of its primitives were)
+    dtype: "ADMITTED ONLY \u2014 the captures are single-precision, so dtype demand is not observable\
+      \ from them; every dtype the hardware declares for an observed family is required"
+    tile_alignment: 'both, wherever the target tiles: a unit that only ever sees whole tiles has never
+      exercised its tail path'
+personas: {}
+cells:
+- cell: attention/bf16/aligned
+  family: attention
+  dtype: bf16
+  alignment: aligned
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: attention/bf16/partial
+  family: attention
+  dtype: bf16
+  alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: attention/f32/aligned
+  family: attention
+  dtype: f32
+  alignment: aligned
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: attention/f32/partial
+  family: attention
+  dtype: f32
+  alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: attention/fp16/aligned
+  family: attention
+  dtype: fp16
+  alignment: aligned
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: attention/fp16/partial
+  family: attention
+  dtype: fp16
+  alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: attention/mxfp4/aligned
+  family: attention
+  dtype: mxfp4
+  alignment: aligned
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: attention/mxfp4/partial
+  family: attention
+  dtype: mxfp4
+  alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: attention/mxfp6/aligned
+  family: attention
+  dtype: mxfp6
+  alignment: aligned
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: attention/mxfp6/partial
+  family: attention
+  dtype: mxfp6
+  alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: attention/mxfp8/aligned
+  family: attention
+  dtype: mxfp8
+  alignment: aligned
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: attention/mxfp8/partial
+  family: attention
+  dtype: mxfp8
+  alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: contraction/bf16/aligned
+  family: contraction
+  dtype: bf16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - mx_pe
+  - simt_cluster
+  n_regions: 467
+- cell: contraction/bf16/partial
+  family: contraction
+  dtype: bf16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - mx_pe
+  - simt_cluster
+  n_regions: 467
+- cell: contraction/f32/aligned
+  family: contraction
+  dtype: f32
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 467
+- cell: contraction/f32/partial
+  family: contraction
+  dtype: f32
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 467
+- cell: contraction/fp16/aligned
+  family: contraction
+  dtype: fp16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 467
+- cell: contraction/fp16/partial
+  family: contraction
+  dtype: fp16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 467
+- cell: contraction/i8/aligned
+  family: contraction
+  dtype: i8
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - mx_pe
+  n_regions: 467
+- cell: contraction/i8/partial
+  family: contraction
+  dtype: i8
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - mx_pe
+  n_regions: 467
+- cell: contraction/mxfp4/aligned
+  family: contraction
+  dtype: mxfp4
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - mx_pe
+  n_regions: 467
+- cell: contraction/mxfp4/partial
+  family: contraction
+  dtype: mxfp4
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - mx_pe
+  n_regions: 467
+- cell: contraction/mxfp6/aligned
+  family: contraction
+  dtype: mxfp6
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - mx_pe
+  n_regions: 467
+- cell: contraction/mxfp6/partial
+  family: contraction
+  dtype: mxfp6
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - mx_pe
+  n_regions: 467
+- cell: contraction/mxfp8/aligned
+  family: contraction
+  dtype: mxfp8
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - mx_pe
+  n_regions: 467
+- cell: contraction/mxfp8/partial
+  family: contraction
+  dtype: mxfp8
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - mx_pe
+  n_regions: 467
+- cell: elementwise_map/bf16/aligned
+  family: elementwise_map
+  dtype: bf16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 794
+- cell: elementwise_map/bf16/partial
+  family: elementwise_map
+  dtype: bf16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 794
+- cell: elementwise_map/f32/aligned
+  family: elementwise_map
+  dtype: f32
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 794
+- cell: elementwise_map/f32/partial
+  family: elementwise_map
+  dtype: f32
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 794
+- cell: elementwise_map/fp16/aligned
+  family: elementwise_map
+  dtype: fp16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 794
+- cell: elementwise_map/fp16/partial
+  family: elementwise_map
+  dtype: fp16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 794
+- cell: movement/bf16/aligned
+  family: movement
+  dtype: bf16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 939
+- cell: movement/bf16/partial
+  family: movement
+  dtype: bf16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 939
+- cell: movement/f32/aligned
+  family: movement
+  dtype: f32
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 939
+- cell: movement/f32/partial
+  family: movement
+  dtype: f32
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 939
+- cell: movement/fp16/aligned
+  family: movement
+  dtype: fp16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 939
+- cell: movement/fp16/partial
+  family: movement
+  dtype: fp16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 939
+- cell: normalization/bf16/aligned
+  family: normalization
+  dtype: bf16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 423
+- cell: normalization/bf16/partial
+  family: normalization
+  dtype: bf16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 423
+- cell: normalization/f32/aligned
+  family: normalization
+  dtype: f32
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 423
+- cell: normalization/f32/partial
+  family: normalization
+  dtype: f32
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 423
+- cell: normalization/fp16/aligned
+  family: normalization
+  dtype: fp16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 423
+- cell: normalization/fp16/partial
+  family: normalization
+  dtype: fp16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 423
+- cell: reduction/bf16/aligned
+  family: reduction
+  dtype: bf16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 244
+- cell: reduction/bf16/partial
+  family: reduction
+  dtype: bf16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 244
+- cell: reduction/f32/aligned
+  family: reduction
+  dtype: f32
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 244
+- cell: reduction/f32/partial
+  family: reduction
+  dtype: f32
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 244
+- cell: reduction/fp16/aligned
+  family: reduction
+  dtype: fp16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 244
+- cell: reduction/fp16/partial
+  family: reduction
+  dtype: fp16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  n_regions: 244
+- cell: softmax/bf16/aligned
+  family: softmax
+  dtype: bf16
+  alignment: aligned
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: softmax/bf16/partial
+  family: softmax
+  dtype: bf16
+  alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: softmax/f32/aligned
+  family: softmax
+  dtype: f32
+  alignment: aligned
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: softmax/f32/partial
+  family: softmax
+  dtype: f32
+  alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: softmax/fp16/aligned
+  family: softmax
+  dtype: fp16
+  alignment: aligned
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - reduction
+  - elementwise_map
+  n_regions: 244
+- cell: softmax/fp16/partial
+  family: softmax
+  dtype: fp16
+  alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - lstmnetvit
+  - small_llama
+  - spectformer
+  - tiny_llama
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - reduction
+  - elementwise_map
+  n_regions: 244

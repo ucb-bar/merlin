@@ -131,6 +131,25 @@ class OracleUnavailable(Exception):
 DID_NOT_HALT_PLANE = "program_did_not_halt"
 
 
+def _clip(msg: str, budget: int) -> str:
+    """Clip a long exception to ``budget`` chars KEEPING BOTH ENDS -- the head names the failure, the tail
+    usually carries the operand/shape specifics.
+
+    A bare ``msg[-budget:]`` throws the head away, and the head is where the diagnosis lives. Measured:
+    the muon operand-binding error is one long sentence whose useful half is first ("could not derive
+    harness operands: <which of three cases>") and whose second half is fixed advisory prose. Tail-only
+    clipping rendered five radiance capsules as `cyclotron crash: es (outputs: ['Y0'])` -- the real cause
+    truncated to the last two letters of "shapes" -- and they read as unexplained infra failures across
+    many runs while the message that would have named them was being discarded every time.
+    """
+    msg = str(msg)
+    if len(msg) <= budget:
+        return msg
+    head = budget * 2 // 3                                   # bias to the head: that is the diagnosis
+    tail = budget - head - 5
+    return f"{msg[:head]} […] {msg[-tail:]}" if tail > 0 else msg[:budget]
+
+
 def _did_not_halt_reason(msg: str) -> str:
     """The tier ``reason`` for a program that ran to the cap without halting."""
     return f"did not halt (ran to the cycle cap): {msg[-240:]}"
@@ -587,6 +606,28 @@ def codegen_smoke(target: str) -> tuple[bool, str]:
     (BSP regenerated from source) -> reference sim -> assert the computed result — so the exact pipeline is
     exercised offline and a live run never debugs it. Any other target returns n/a (the oracle-side
     compiler_smoke covers a compile-based backend)."""
+    # PREREQUISITE FIRST, AND IT FAILS CLOSED.
+    #
+    # Everything below early-returns `True, "n/a (…)"` for a target whose emit path this smoke does not
+    # cover. That is right for a smoke that does not APPLY — but the fork-free path's ISA model is not a
+    # smoke, it is a prerequisite: if the backend cannot build it, every capsule fails to compile and the
+    # run grades nothing.
+    #
+    # The two are resolved by DIFFERENT paths, which is how this hid. `isa_model_for_target` (consulted
+    # below) succeeded and reported "not fixed-format" -> n/a -> codegen_ok: true, while the compile path's
+    # `_model_for` reads the mlc-derived encoding fact and returned None. Measured: a radiance run spent
+    # 101 minutes flat at 6/39 — the six MX fixtures, which need no oracle at all — with every real capsule
+    # `incomplete: no derived ISA encoding fact for target 'radiance'`, because MERLIN_MLC_DIR was unset.
+    # codegen_smoke said codegen_ok: true for all 101 of those minutes.
+    if _bespoke_sim_via(target) == "cyclotron":
+        try:
+            from ..runtime.backends import base as _bk0
+            _bk0.get_backend("muon").muon._model_for(target)
+        except Exception as e:  # noqa: BLE001 — the prerequisite is missing; that is a NO_GO, not an n/a
+            return False, (f"the fork-free emit path cannot build its ISA model for {target!r}: "
+                           f"{str(e)[-160:]}. Every capsule would fail to compile and the run would "
+                           f"grade only capsules needing no oracle. Derive the encoding fact / set "
+                           f"MERLIN_MLC_DIR before spending.")
     try:
         from .isa_model import isa_model_for_target
         if not isa_model_for_target(target).is_fixed_format():
@@ -755,21 +796,34 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
         # Compare dtypes through eligibility's OWN alias-aware check, never by string equality: the
         # contract spells the format `int8` while a capsule region reports `i8`, so a raw `!=` reads a
         # native-dtype capsule as having no datapath at all and withholds it for a spelling difference.
+        # RANK IS NOT A HARD FACT — it is the one thing a compiler exists to change.
+        #
+        # The dtype test above IS hard: if no datapath holds the operand format, no arrangement of the
+        # program puts it on the device. Rank fails that test by exactly the argument the paragraph above
+        # makes for family. Ranks compose: a rank-4 convolution reaches a rank-2 mesh through im2col, and
+        # this compiler already SHIPS that lowering (`convolution_im2col_matmul` in linalg_lower, which
+        # derives the conv geometry from the operand shapes and emits an (m,k,n) matmul).
+        #
+        # Measured on radiance: RP14_patch_embed_bf16_pt was withheld as "rank 4 not in contraction legal
+        # ranks [2, 3]" and never graded, while the lowering that turns it into a rank-2 contraction sat
+        # in the tree unused. Withholding it did not report a hardware limit — it hid a reachable
+        # capability behind the SOURCE shape of the op, which is the question a library of kernels asks,
+        # not the question a compiler answers.
+        #
+        # So rank now only DOWNGRADES to graded: if the compiler cannot in fact lower it, the capsule
+        # fails honestly and visibly, which is the finding we want. Withholding on doubt is how a suite
+        # shrinks itself into a better score.
         dt = getattr(region, "in_dtype", None)
-        rk = getattr(region, "rank", None)
         all_dtypes = tuple({x for cap in cmap.values() for x in (getattr(cap, "dtypes", ()) or ())})
-        ranks = {int(x) for cap in cmap.values() for x in (getattr(cap, "ranks", ()) or ())}
         dtype_absent = bool(dt is not None and all_dtypes and not _el._dtype_ok(dt, all_dtypes))
-        rank_absent = bool(rk is not None and ranks and int(rk) not in ranks)
-        hard = dtype_absent or rank_absent
-        if not hard:
+        if not dtype_absent:
             keep.append(c); continue
         # State the fact that ACTUALLY triggered withholding. eligibility's reason describes its own
         # family verdict, which can read "unrecognized semantic family" for a capsule withheld purely
         # because its dtype has no datapath -- true but misleading about the cause, and it would send
         # someone to fix the taxonomy when the hardware is the constraint.
-        why = (f"operand dtype {dt!r} is in no capability this target declares" if dtype_absent
-               else f"operand rank {rk} is in no capability this target declares")
+        # Only the dtype reaches here now; rank is graded (see above), so the reason cannot be about it.
+        why = f"operand dtype {dt!r} is in no capability this target declares"
         withheld.append({
             "capsule": c.get("name"), "kind": c.get("kind"), "label": c.get("label"),
             "status": "not_graded", "ineligible": True,
@@ -1772,8 +1826,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 tiers[tier] = TierResult(
                     tier, "fail", mand,
                     reason=(_did_not_halt_reason(_msg) if _did_not_halt
-                            else f"kernel faulted at runtime: {_msg[-260:]}" if _trapped
-                            else f"{_sim} crash: {_msg[-300:]}"),
+                            else f"kernel faulted at runtime: {_clip(_msg, 260)}" if _trapped
+                            else f"{_sim} crash: {_clip(_msg, 300)}"),
                     derived_from_rtl=tier in cfg.rtl_tiers)
                 if mand:
                     if _did_not_halt:
@@ -1785,9 +1839,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                           "memory access — before producing output). Check that every "
                                           "memory-movement instruction uses a valid, in-range DRAM address "
                                           "(derive it from the passed pointer args / the declared DRAM "
-                                          f"layout, never a baked 0 or a guessed address): {_msg[-300:]}") from e
+                                          f"layout, never a baked 0 or a guessed address): {_clip(_msg, 300)}") from e
                     raise CertFailure(_sim, _cat("TOOL_CRASH"),
-                                      f"{_sim} invocation failed: {_msg[-400:]}") from e
+                                      f"{_sim} invocation failed: {_clip(_msg, 400)}") from e
                 continue
             _adapter_wall = _time.perf_counter() - _adapter_t0
             # Split active (build + sim) vs waiting (queue/FPGA slot). Adapters that route through a

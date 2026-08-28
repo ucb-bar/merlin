@@ -283,7 +283,7 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
 
 
 def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None,
-                       tile_dim: int | None = None) -> dict:
+                       tile_dim: int | None = None, exclude: set[str] | None = None) -> dict:
     """The REPRESENTATIVE subset a cycle-accurate cert tier should run, when the functional tier runs
     everything. Returns ``{"capsules": [...], "cells": [...], "uncovered": [...], "basis": {...}}``.
 
@@ -320,6 +320,17 @@ def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None,
     swallowed -- a cell no capsule can cover is a corpus gap the caller should surface, not hide.
     """
     labels = labels or {"public"}
+    # A capsule the descriptor EXCLUDES FROM GRADING cannot represent its cell. The cover names, per
+    # cell, the one capsule a cert tier should spend minutes on -- and promotion only ever enqueues a
+    # capsule that is in it. Choosing one that never runs retires the cell for a certificate nobody will
+    # produce, which is strictly worse than leaving the cell uncovered: uncovered is REPORTED.
+    #
+    # Measured on radiance: `contraction/i64/partial` is the whole-model cell, and the greedy pick landed
+    # on M1_lstmnetvit_fp32 -- one of the three models `grading.exclude_capsules` withholds from the paid
+    # loop. So M0_small_llama_fp32, the model that actually runs, was not in the cover and could never be
+    # promoted to the cert tier. The whole-model capstone could pass its functional tier forever and never
+    # reach RTL, for a reason nothing reported.
+    exclude = set(exclude or ())
     rows = []
     for root in ([corpus_roots] if isinstance(corpus_roots, (str, Path)) else corpus_roots):
         for cy in sorted(Path(root).glob("*/capsule.yaml")):
@@ -328,6 +339,8 @@ def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None,
             except yaml.YAMLError:
                 continue
             if cap.get("label") not in labels:
+                continue
+            if (cap.get("name") or cy.parent.name) in exclude:
                 continue
             sem = cap.get("semantic") or {}
             dts = sorted({str(t.get("dtype")) for t in (cap.get("inputs") or []) if t.get("dtype")})

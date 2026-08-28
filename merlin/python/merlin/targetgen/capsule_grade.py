@@ -206,7 +206,34 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     # pass and `gradeable` as True — the exact vacuous-pass trap that made a mis-rooted hidden phase
     # (n_capsules:0) look green. Report the boolean flags as null and gradeable False, never a pass.
     _empty = len(graded) == 0
-    score["gradeable"] = (not no_oracle) and not _empty
+    # A capsule is INCOMPLETE when a MANDATORY tier came back `unavailable`: the oracle never ran, so
+    # this score says nothing about the submission for it. That is a third thing, distinct from both
+    # neighbours it keeps being confused with — a FAIL means the submission was wrong, and
+    # `not_gradeable_no_oracle` means --no-oracle deliberately withheld the verdict. Here the run
+    # BELIEVED it was grading and the tool was simply missing.
+    #
+    # Measured: re-grading a frozen submission whose own run scored 33/36 produced `n_passed: 6` with 29
+    # capsules incomplete ("no derived ISA encoding fact for target 'radiance'") — the six that "passed"
+    # were the MX fixtures, which need no oracle. Nothing in the rollup said so: n_not_gradeable_no_oracle
+    # stayed 0 and a reader would quote 6/36 as a capability collapse. It is an ENVIRONMENT gap, and the
+    # scorecard has to say which of the two it is or the number is worse than no number.
+    _incomplete = [r for r in graded if r.get("status") == "incomplete"]
+    score["n_incomplete"] = len(_incomplete)
+    if _incomplete:
+        _why = sorted({(r.get("failure") or {}).get("tier_reason")
+                       or (r.get("failure") or {}).get("detail") or "unknown"
+                       for r in _incomplete})
+        score["measurement_incomplete"] = {
+            "n": len(_incomplete), "of": len(graded),
+            "capsules": sorted(r["capsule"] for r in _incomplete)[:12],
+            "reasons": _why[:4],
+            "detail": (f"{len(_incomplete)} of {len(graded)} capsules had a MANDATORY tier come back "
+                       f"unavailable, so the oracle never ran on them. n_passed is NOT a capability "
+                       f"measurement for this run — fix the environment and re-grade before quoting it."),
+        }
+    # `gradeable` means this run had a working numeric oracle. It did not, for those capsules, so it is
+    # False even though an oracle was requested — the same fail-closed posture the empty suite gets.
+    score["gradeable"] = (not no_oracle) and not _empty and not _incomplete
     score["n_not_gradeable_no_oracle"] = n_not_gradeable
     score["n_structural_pass"] = n_pass + n_not_gradeable
     score["structural_pass"] = bool(not _empty and (n_pass + n_not_gradeable) == len(graded))

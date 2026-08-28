@@ -735,6 +735,16 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     except Exception:
         env = {}
     declared = _args_from_declared_abi(cb, canon, env)
+    if derived is None and declared is None:
+        # THIRD derivation: the buffer's own DATAFLOW. The two above are op-shaped and declaration-shaped;
+        # a FUSED capsule is neither -- flash attention (attention_qk -> softmax -> matmul -> commit),
+        # rmsnorm+qkv, chained matmuls -- so both decline and the capsule could not be graded at all. On
+        # radiance that was 6 of 7 persistent failures, two of which (R8/R9) compute their result
+        # BIT-EXACTLY at the functional tier and failed only because the cert tier could not bind operands.
+        # Needs no op-specific or target-specific knowledge: consumed-but-never-produced is a leaf input,
+        # the last produced-and-declared tensor is the output. Tried LAST, so every buffer that derives
+        # today still derives the same way.
+        return _args_from_dataflow(cb)
     if derived is None:
         return declared
     if declared is None:
@@ -750,6 +760,61 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     if extra and all(_is_scale_operand(cb, nm) for nm in extra):
         return declared
     return derived
+
+
+def _args_from_dataflow(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
+    """Generic binding for a buffer no rule matched, from the command buffer's dataflow alone.
+
+    Order: leaves are emitted weight-role-first then input-role, each group in first-consumption order.
+    That mirrors the ``[weight] ++ [lhs] ++ [output]`` convention the rules use, so a kernel built from
+    the same buffer sees the same order. It is a CONVENTION, not a derivation -- if a kernel's signature
+    disagrees the mismatch shows up as a shape error at build time, which is loud, rather than as silently
+    swapped operands.
+    """
+    from merlin.runtime.commandbuffer import dataflow_operands, materialize_inputs
+
+    got = dataflow_operands(cb)
+    if got is None:
+        return None
+    leaves, out_name = got
+    tensors = cb.get("tensors") or {}
+    canon = cb.get("canonical_inputs") or {}
+    try:
+        env = materialize_inputs(cb)
+    except Exception:                                    # noqa: BLE001 — an unmaterializable operand is
+        return None                                      # not bindable; stay fail-safe like the rules
+
+    def _leafvals(name: str) -> list[float] | None:
+        """Same precedence the rules use: injected preload, then the golden's canonical operands, then
+        the deterministic materialization -- so the harness embeds what the golden compared against."""
+        inj = _decode_preload(tensors.get(name))
+        if inj is not None:
+            return inj
+        c = canon.get(name)
+        if isinstance(c, dict):
+            c = c.get("values")
+        if c is not None:
+            return _deep_flat(c)
+        t = env.get(name)
+        return _deep_flat(t.to_list()) if t is not None else None
+
+    def _role(name: str) -> str:
+        return str((tensors.get(name) or {}).get("role", "")).lower()
+
+    ordered = ([n for n in leaves if _role(n) == "weight"]
+               + [n for n in leaves if _role(n) != "weight"])
+    in_args: list[TensorArg] = []
+    for name in ordered:
+        spec = tensors.get(name) or {}
+        vals = _leafvals(name)
+        if vals is None:
+            return None
+        r, c = _shape2d(list(spec.get("shape") or []))
+        in_args.append(TensorArg(name, r, c, vals, "f32"))
+    orows, ocols = _shape2d(list((tensors.get(out_name) or {}).get("shape") or []))
+    if not in_args or orows * ocols <= 0:
+        return None
+    return in_args, [TensorArg(out_name, orows, ocols, [0.0] * (orows * ocols), "f32")]
 
 
 def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorArg],

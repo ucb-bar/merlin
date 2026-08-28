@@ -230,13 +230,24 @@ def gsim_muon_adapter() -> Callable:
         # fire, which is when a passing self-verifying kernel cleanly exits. Not a correctness relaxation
         # -- the kernel's own on-chip self-verify still gates the clean exit.
         cmd = [emu, str(soc), f"+loadmem={soc}", "+max_core_cycles=0", f"+max-cycles={maxcyc}"]
+        # SPOOL THE CONSOLE TO DISK, NEVER TO RAM. This console carries a per-instruction DASM commit
+        # trace, so its size scales with RETIRED INSTRUCTIONS -- not with the cycle cap, and not with
+        # anything the caller can see. `capture_output=True` buffers all of it in the parent: measured, a
+        # 12,000,000-cycle run on one 16x128x128 tile retired 3.4M instructions and the buffer reached
+        # 72.67 GB, which took a 125 GB node to 96% and made Ray's OOM killer terminate an unrelated
+        # 10-hour experiment on the same host. Raising MERLIN_MUON_GSIM_MAXCYCLES was unsafe for exactly
+        # this reason. Spooling to a file in the run's own workdir keeps parent memory bounded by the
+        # read-back window below, and keeps the FULL console on disk for debugging (strictly more than
+        # the old path retained, which was capped at the 600-char failure tail anyway).
+        log = Path(workdir) / "gsim_console.log"
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                                  preexec_fn=_unlimited_stack)
+            with log.open("wb") as fh:
+                subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout,
+                               preexec_fn=_unlimited_stack)
         except subprocess.TimeoutExpired as e:
             raise muon.MuonUnavailable(f"GSIM emu wall-timed out after {timeout}s") from e
         t2 = time.perf_counter()
-        console = proc.stdout + ("\n" + proc.stderr if proc.stderr else "")
+        console, console_bytes, console_truncated = muon._read_console(log)
         # GSIM completion contract (the radiance kernels self-verify against their embedded golden, then
         # go idle on PASS or spin on FAIL):
         #   PASS  => the GPUResetAggregator's stopSim (GPU idle for 1k cycles) fires, which the emitted
@@ -258,6 +269,12 @@ def gsim_muon_adapter() -> Callable:
             "cycles": cycles,
             "oracle": {"kind": "rtl_gsim_muon", "derived_from_rtl": True},
             "console": console,
+            # Say plainly that the console in this record is a window, and where the whole thing is. A
+            # truncated console read as complete is how "the marker is absent" gets confused with "the
+            # marker never printed", which on this contract is the difference between pass and fail.
+            "console_spool": {"path": str(log), "bytes_on_disk": console_bytes,
+                              "truncated": console_truncated,
+                              "markers_preserved": list(muon._GSIM_MARKERS)},
             "toolchain": toolchain,
             "timing": _timing(t1 - t0, t2 - t1),
             "gflops": muon.gflops(flops, cycles),

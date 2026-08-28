@@ -86,6 +86,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--provider", choices=["subscription", "bedrock"], default="subscription")
     ap.add_argument("--aws-region", default="us-east-1")
     ap.add_argument("--aws-profile", default="")
+    # Schedule passthrough — _arm_cmd (reused from launch_ab_batch) forwards these to each arm's driver.
+    ap.add_argument("--schedule", choices=("rounds", "continuous"), default="rounds")
+    ap.add_argument("--plateau-rounds", type=int, default=None,
+                    help="continuous only: forwarded to each arm's loop — stop when the best "
+                         "score has not improved across this many rounds (0 disables). "
+                         "Unset leaves the loop default, so a batch that omits it is unchanged.")
+    ap.add_argument("--max-wall-s", type=int, default=0)
     ap.add_argument("--max-rounds", type=int, default=40)
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
     ap.add_argument("--round-timeout", type=int, default=14400)

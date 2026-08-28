@@ -242,6 +242,35 @@ def rv64_cross_prefix() -> str | None:
     return "riscv64-unknown-elf" if shutil.which("riscv64-unknown-elf-gcc") else None
 
 
+def console_base(target: str | None = None) -> int | None:
+    """The SoC console's base address, from the target's DERIVED facts (``facts.console.base``).
+
+    The device tree's ``stdout-path`` is the only sound source for it: the kernel-side putchar aperture
+    (``IO_COUT_ADDR``) is a Vortex constant that cyclotron mirrors and the RTL maps no device at, so
+    anything that needs a byte to actually leave an RTL run has to ask the elaborated design where its
+    console is. ``None`` when the facts carry no console — callers FAIL CLOSED rather than guess.
+
+    Only a MISSING/ABSENT fact reads as ``None``. An import or parse error is raised: swallowing those
+    turns a coding mistake into a silent "this target has no console", which is exactly how the bug this
+    exists to fix stayed hidden.
+    """
+    from merlin.targetgen.rtl import facts as _facts
+    try:
+        doc = _facts.load_facts(target or _facts_target())
+    except FileNotFoundError:
+        return None
+    con = (doc.get("facts") or {}).get("console") or {}
+    base = con.get("base")
+    return int(base) if base is not None else None
+
+
+def _facts_target() -> str:
+    """The target name this backend's facts are filed under (``muon_introspect.TARGET``), so the name
+    lives in ONE place instead of being restated at every call site."""
+    from .muon_introspect import TARGET as _T
+    return _T
+
+
 def fuse_soc_elf(muon_elf: Path, work: Path) -> Path:
     """Fuse a bare rv32 Muon ELF into the rv64 'SoC' carrier ELF the Verilator RTL harness loads
     (radiance-kernels ``soc/fuse_rv32_into_rv64.sh``): the muon PT_LOADs are mirrored at +0x1_0000_0000
@@ -261,6 +290,26 @@ def fuse_soc_elf(muon_elf: Path, work: Path) -> Path:
     env = dict(os.environ)
     env.update(CROSS64=cross, RV32_ELF=str(muon_elf), OUT=str(out),
                RV64_START=str(start_s), RV64_MAIN=str(main_c))
+    # RUNNER-OWNED CARRIER (opt-in). The stock carrier spins, so nothing on the chip ever drives the
+    # console: the kernel's OUT/DONE bytes go to the Vortex IO_COUT aperture, which this SoC maps no
+    # device at, and Rocket -- the only master that reaches serial@10020000 -- does nothing. Swapping in
+    # our own main.c is what lets a result leave an RTL run at all.
+    # Gated on MERLIN_MUON_SOC_CARRIER so a normal grade stays byte-identical until it is asked for, and
+    # the UART base is DERIVED from the target's elaborated console fact (never a literal): no fact, no
+    # carrier -- fail closed rather than guess an address.
+    if os.environ.get("MERLIN_MUON_SOC_CARRIER", "").strip().lower() in ("1", "true", "yes", "on"):
+        base = console_base()
+        if base is None:
+            raise MuonUnavailable(
+                "MERLIN_MUON_SOC_CARRIER is set but this target's console fact carries no base "
+                "(no elaborated *.dts stdout-path / *.memmap.json) — refusing to guess a UART address")
+        carrier = Path(__file__).resolve().parent / "soc_carrier" / "main.c"
+        if not carrier.is_file():
+            raise MuonUnavailable(f"runner-owned SoC carrier missing at {carrier}")
+        env["RV64_MAIN"] = str(carrier)
+        env["RV64_CFLAGS"] = (os.environ.get("RV64_CFLAGS")
+                              or "-march=rv64gc -mabi=lp64 -ffreestanding -nostdlib -mcmodel=medany") \
+            + f" -DMU_UART_BASE=0x{base:x}UL"
     # the fuse script writes start.o/main.o into CWD -> run inside the per-run workdir
     proc = subprocess.run(["bash", str(script)], capture_output=True, text=True,
                           cwd=str(work), env=env)
@@ -854,6 +903,55 @@ def _run_vcs(elf: Path, timeout: int) -> tuple[str, int | None]:
     return console, cycles
 
 
+#: Substrings the RTL completion grade depends on. They must survive console truncation WHEREVER they
+#: appear in the file — the perf report's ``Cycles:`` line is near the start of the epilogue while the
+#: watchdog's verdict is at the very end, so a pure tail window can drop the one that decides the grade.
+_GSIM_MARKERS = ("Cycles:", "Timeout exceeded", "FINISHED: cycles=", "finished execution")
+
+
+def _read_console(path: Path, *, tail_bytes: int | None = None) -> tuple[str, int, bool]:
+    """Read a spooled RTL console back into a BOUNDED string: every marker-bearing line, plus the tail.
+
+    Returns ``(console, total_bytes, truncated)``. The marker lines are kept because the grade is decided
+    by their presence; the tail is kept because that is what a human reads to see why a run failed. A
+    grade computed from this string is identical to one computed from the whole file for every marker in
+    :data:`_GSIM_MARKERS`, and ``truncated`` says plainly when the returned text is not the whole console
+    so nothing downstream reports a partial console as complete.
+
+    Window size via ``MERLIN_MUON_GSIM_CONSOLE_TAIL_BYTES`` (default 256 KiB).
+    """
+    import collections
+    import os as _os
+
+    if tail_bytes is None:
+        tail_bytes = int(_os.environ.get("MERLIN_MUON_GSIM_CONSOLE_TAIL_BYTES", str(256 * 1024)))
+    if not path.is_file():
+        return "", 0, False
+    total = path.stat().st_size
+    kept: list[str] = []
+    tail: collections.deque[str] = collections.deque(maxlen=4096)   # lines, not bytes: cheap and ample
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            s = line.rstrip("\n")
+            tail.append(s)
+            # cap the marker set too: a pathological run could print "Cycles:" a million times
+            if len(kept) < 512 and any(m in s for m in _GSIM_MARKERS):
+                kept.append(s)
+    tail_text = "\n".join(tail)
+    if len(tail_text) > tail_bytes:
+        tail_text = tail_text[-tail_bytes:]
+    truncated = total > len(tail_text)
+    # markers first, so `Cycles:` is found by a first-occurrence search even when the tail dropped it
+    parts = []
+    if kept:
+        parts.append("\n".join(kept))
+    if truncated:
+        parts.append(f"[... console truncated: {total} bytes on disk at {path}, "
+                     f"marker lines + last {len(tail_text)} bytes retained ...]")
+    parts.append(tail_text)
+    return "\n".join(parts), total, truncated
+
+
 def _cycles_from_rtl_report(console: str) -> int | None:
     """Cycle count from the RTL sim's Muon performance report (a ``Cycles: <N>`` line), parsed
     structurally by locating the marker and reading the next integer token — no regex. Returns the
@@ -895,16 +993,24 @@ def _run_verilator(elf: Path, timeout: int) -> tuple[str, int | None]:
         except (ValueError, OSError):
             pass
 
+    # SPOOL TO DISK, NOT RAM -- the same defect as the GSIM path, and worse here: this command runs with
+    # `+verbose` and `+max-cycles=10000000`, so the per-instruction commit trace it prints is unbounded in
+    # the parent's memory. A single GSIM run at 12M cycles reached 72.67 GB buffered this way and made the
+    # host's OOM killer terminate an unrelated experiment; Verilator at 10M cycles with +verbose is the
+    # same shape. `_read_console` keeps every grading marker plus a bounded tail, so the verdict below is
+    # unchanged while parent memory stays bounded and the full console stays on disk for debugging.
+    log = work / "verilator_console.log"
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                              cwd=str(verilator_path().parent), preexec_fn=_unlimited_stack)
+        with log.open("wb") as fh:
+            proc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout,
+                                  cwd=str(verilator_path().parent), preexec_fn=_unlimited_stack)
     except subprocess.TimeoutExpired as e:
         raise MuonUnavailable(f"verilator RTL sim timed out after {timeout}s") from e
-    console = proc.stdout + ("\n" + proc.stderr if proc.stderr else "")
+    console, _nbytes, _trunc = _read_console(log)
     if "finished execution" not in console:
         raise MuonUnavailable(
             f"verilator RTL sim did not reach the finished-execution marker (rc={proc.returncode}). "
-            f"tail:\n{console[-600:]}")
+            f"console: {_nbytes} bytes at {log}\ntail:\n{console[-600:]}")
     return console, _cycles_from_rtl_report(console)
 
 

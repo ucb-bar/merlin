@@ -81,6 +81,18 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
            "--round-timeout", str(a.round_timeout)]
     if getattr(a, "min_rounds", 0):
         cmd += ["--min-rounds", str(a.min_rounds)]
+    # Schedule passthrough. Forwarded ONLY when non-default so an unpatched/older driver in the batch is
+    # invoked exactly as before — a batch runs several arms and a flag one of them does not understand
+    # kills that cell, which reads as an arm-specific failure rather than a launcher mismatch.
+    if getattr(a, "schedule", "rounds") != "rounds":
+        cmd += ["--schedule", a.schedule]
+    if getattr(a, "max_wall_s", 0):
+        cmd += ["--max-wall-s", str(a.max_wall_s)]
+    # Threaded like --max-wall-s: a per-arm loop terminator the batch must pass through, or every arm
+    # silently falls back to the loop's default and the batch's own setting is a lie. Only forwarded when
+    # the caller set it explicitly (None), so a batch that does not mention it stays byte-identical.
+    if getattr(a, "plateau_rounds", None) is not None:
+        cmd += ["--plateau-rounds", str(a.plateau_rounds)]
     cmd += extra
     # Agent driver + optional tier-within-agent models (default "" -> the per-driver default tier).
     if getattr(a, "driver", "auto") != "auto":
@@ -197,6 +209,15 @@ def main(argv=None):
     ap.add_argument("--provider", choices=["subscription", "bedrock"], default="subscription")
     ap.add_argument("--aws-region", default="us-east-1", help="AWS region for --provider bedrock")
     ap.add_argument("--aws-profile", default="", help="AWS profile (~/.aws) for --provider bedrock")
+    ap.add_argument("--schedule", choices=("rounds", "continuous"), default="rounds",
+                    help="forwarded to every arm's driver. rounds (default) is unchanged; continuous "
+                         "stops using the round COUNT as a terminator (see the driver's --schedule).")
+    ap.add_argument("--plateau-rounds", type=int, default=None,
+                    help="continuous only: forwarded to each arm's loop — stop when the best "
+                         "score has not improved across this many rounds (0 disables). "
+                         "Unset leaves the loop default, so a batch that omits it is unchanged.")
+    ap.add_argument("--max-wall-s", type=int, default=0,
+                    help="forwarded with --schedule continuous: per-arm ACTIVE wall budget (0 = none).")
     ap.add_argument("--max-rounds", type=int, default=12)
     ap.add_argument("--min-rounds", type=int, default=0,
                     help="Decline a READY_FOR_BARRIER self-declaration before round N while the run is "
