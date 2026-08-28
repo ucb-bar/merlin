@@ -62,11 +62,33 @@ class Tensor:
         return len(self.data) * DTYPE_BYTES.get(self.dtype, 4)
 
     def to_list(self) -> list:
-        """Return nested lists (1-D or 2-D) for JSON serialization."""
+        """Return nested lists (any rank) for JSON serialization.
+
+        Rank 1 and 2 are unchanged. Rank 3+ used to raise
+        ``ValueError: too many values to unpack (expected 2)`` from the ``rows, cols = self.shape``
+        below, which made every batched operand unserialisable. That surfaced far from here: the muon
+        harness's operand derivation calls this through a helper written to be *rank-agnostic*
+        (``_fl2``, added after an earlier rank-3 crash), so the caller believed it handled batching while
+        the type underneath still did not -- and a batched capsule failed as an opaque
+        "cyclotron invocation failed: too many values to unpack (expected 2)". Measured on
+        RP10_gemv_batched_fp16_pt, operands ``[2,16,16] @ [2,16,1]``.
+        """
         if len(self.shape) == 1:
             return list(self.data)
-        rows, cols = self.shape
-        return [self.data[r * cols:(r + 1) * cols] for r in range(rows)]
+        if len(self.shape) == 2:
+            rows, cols = self.shape
+            return [self.data[r * cols:(r + 1) * cols] for r in range(rows)]
+
+        def _nest(dims, flat):
+            """Row-major split of ``flat`` into ``dims``; the data layout is unchanged, only the nesting."""
+            if len(dims) == 1:
+                return list(flat)
+            stride = 1
+            for x in dims[1:]:
+                stride *= x
+            return [_nest(dims[1:], flat[i * stride:(i + 1) * stride]) for i in range(dims[0])]
+
+        return _nest(list(self.shape), self.data)
 
     # -- ops ----------------------------------------------------------------
     def matmul(self, rhs: "Tensor") -> "Tensor":

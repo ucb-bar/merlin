@@ -148,6 +148,31 @@ def _sem_cap(raw: dict[str, Any], unit_name: str) -> SemanticCapability:
     )
 
 
+def _derived_sem_caps(raw: dict[str, Any], unit_name: str) -> tuple[SemanticCapability, ...]:
+    """Semantic capabilities implied by a unit's OWN declared ``ops`` + ``dtypes``.
+
+    Used only when a unit declares no ``semantic_capabilities``. A generated contract may describe a unit
+    fully in ``ops``/``dtypes`` and omit the semantic block, and the omission is indistinguishable from
+    "this unit can accelerate nothing": every region is then ineligible, so eligibility and recall read
+    0/N and look like a measurement instead of a missing field. Measured: a systolic MXU declaring
+    ``ops: [matmul]`` scored 0% routable on six real models purely because the block was absent.
+
+    Deriving is not widening the claim -- ``ops`` is the unit's own declaration and the family router is the
+    canonical op->family map, so a unit gets exactly the families its declared ops imply and no others. An
+    op with no known family is SKIPPED rather than guessed, so an unrecognized op still contributes nothing
+    (fail closed). A unit that genuinely accelerates nothing declares no ops and still derives nothing.
+    """
+    ops = tuple(raw.get("ops", ()) or ())
+    dtypes = tuple(raw.get("dtypes", ()) or ())
+    families: list[str] = []
+    for op in ops:
+        family = _sf.from_op(op)
+        if family is not None and family not in families:
+            families.append(family)
+    return tuple(SemanticCapability(family=f, dtypes=dtypes, notes=f"derived from {unit_name!r} ops")
+                 for f in families)
+
+
 def _unit(raw: dict[str, Any]) -> ComputeUnit:
     kind = raw.get("kind")
     if kind not in KINDS:
@@ -177,7 +202,11 @@ def _unit(raw: dict[str, Any]) -> ComputeUnit:
         scaling=scaling,
         requant=raw.get("requant"),
         contains=tuple(raw.get("contains", ()) or ()),
-        semantic_capabilities=tuple(_sem_cap(s, name) for s in raw.get("semantic_capabilities", ()) or ()),
+        # An explicit declaration always wins; derive from this unit's own ops only when absent, so a
+        # target that DOES declare its semantic block is completely unaffected.
+        semantic_capabilities=(tuple(_sem_cap(s, name) for s in raw["semantic_capabilities"])
+                               if raw.get("semantic_capabilities")
+                               else _derived_sem_caps(raw, name)),
         exposure=exposure,
     )
 

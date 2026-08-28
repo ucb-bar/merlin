@@ -204,7 +204,13 @@ def chia_run(
     chia_dir.mkdir(parents=True, exist_ok=True)
 
     if not ray.is_initialized():
-        ray.init(resources=dict(ray_resources or {}), ignore_reinit_error=True)
+        # Force an ISOLATED local cluster. This experiment declares its OWN logical resources (the
+        # verilator/codex_slots gates ``@ChiaFunction(resources=...)`` schedules on), so it must not
+        # auto-JOIN whatever Ray cluster happens to be running on the box: Ray forbids passing
+        # ``resources=`` when connecting to an existing cluster (the crash this replaces), and a peer's
+        # cluster would not define our gates anyway. ``address="local"`` always starts a fresh local
+        # instance on its own free port, so the resource declaration is honored and runs never contend.
+        ray.init(address="local", resources=dict(ray_resources or {}), ignore_reinit_error=True)
 
     from chia.trace import MetricsLogger, start_collector
 

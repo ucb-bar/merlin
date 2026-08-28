@@ -66,12 +66,10 @@ denied:
   reason: denied tool (kept a strict subset of the xDSL arm)
 - path: merlin/python/merlin/xdsl_dialects/lowering/
   reason: denied tool (kept a strict subset of the xDSL arm)
-- path: merlin/targets/radiance/contracts/irdl/
+- path: merlin/targets/muon/contracts/irdl/
   reason: IRDL spec (xDSL arm only)
-- path: merlin/targets/radiance/contracts/rtl_facts/
+- path: merlin/targets/muon/contracts/rtl_facts/
   reason: RTL facts (CIRCT arm only)
-- path: merlin/contract/capsules/radiance/hidden/
-  reason: hidden capsules + goldens
 - path: experiments/capsule_bench/targets/radiance/input_bundles/grader_private_v0/
   reason: grader-private
 - path: experiments/capsule_bench/targets/radiance/runs/

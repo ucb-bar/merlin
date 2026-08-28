@@ -23,13 +23,36 @@ sys.path.insert(0, str(repo_root() / "merlin/experiments/capsule_bench/harness")
 import qa_check as qc  # noqa: E402
 
 
-def test_the_tier_reason_leads_the_detail():
-    """The reason must be interpolated, not just the status."""
-    from merlin.targetgen import capsule_runner
-    src = inspect.getsource(capsule_runner.run_capsule)
-    assert '_why = (getattr(tr, "reason", None) or "").strip()' in src, \
-        "the tier reason must be read"
-    assert '"tier_reason": _why or None' in src, "the reason must be carried structurally too"
+def test_the_tier_reason_leads_the_detail(tmp_path):
+    """The reason must be interpolated, not just the status.
+
+    Asserted on the produced row rather than on the source text. The original form matched a literal
+    line inside `run_capsule`; when that block was lifted into the shared finalizer -- so the model path
+    would report tier reasons too -- the behaviour was preserved but the assertion broke, which is the
+    failure mode of testing where code lives instead of what it does.
+    """
+    from merlin.targetgen import capsule_runner as R
+    from merlin.targetgen.capsule_common import make_run_paths
+
+    paths = make_run_paths(tmp_path / "runs", "cap", suite="t", target="radiance",
+                           dtype="fp32", benchmark="cap")
+    why = "atlas program did not halt within 20000 instructions (functional)"
+    row = R._finalize_capsule_result(
+        name="cap",
+        capsule={"name": "cap", "kind": "isa", "label": "public",
+                 "required_oracle_tiers": ["L2"]},
+        status="pass", failure=None,
+        tiers={"L2": R.TierResult("L2", "unavailable", True, reason=why)},
+        trace_check_res={"status": "skipped", "violations": []},
+        numeric={"status": "pass"}, required={"L2"}, no_oracle=False,
+        eff_target="radiance", paths=paths, run_id="cap",
+        cfg=R._config_for_target("radiance", "t", "fp32"), contract=None)
+
+    assert row["status"] != "pass", "a mandatory tier that did not run cannot yield a pass"
+    fail = row["failure"]
+    assert fail["tier_reason"] == why, "the reason must be carried structurally"
+    assert fail["detail"].startswith(why), "the actionable half must LEAD the detail, not be dropped"
+    assert fail["tier"] == "L2", "the agent must be told which tier blocked it"
 
 
 def test_the_tier_label_survives_redaction():

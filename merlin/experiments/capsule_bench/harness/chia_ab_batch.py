@@ -110,7 +110,13 @@ def main(argv: list[str] | None = None) -> int:
     if a.verilator_slots < 1:
         print("--verilator-slots must be >= 1", file=sys.stderr)
         return 2
-    LB._run_preflight()   # lock answer surfaces + verify_no_cheat before any spend
+    # Honour the verdict. This return code was DISCARDED, so a preflight that printed
+    # "VERIFY_NO_CHEAT: FAIL -- DO NOT launch" went on to launch anyway, and the gate that exists
+    # to stop a compromised run from spending was decorative. Observed on a live launch.
+    _pf = LB._run_preflight()   # lock answer surfaces + verify_no_cheat before any spend
+    if _pf:
+        print("preflight FAILED — refusing to launch (nothing has been spent)", file=sys.stderr)
+        return _pf
     # target is DERIVED from the active descriptor (MERLIN_TARGET_EXPERIMENT via _common), never hardcoded
     # — so the chia run dir + telemetry land under the right target (atlas/gemmini/…), no per-target branch.
     # The cluster must SUPPLY every resource a task requests, or Ray never schedules that task at all

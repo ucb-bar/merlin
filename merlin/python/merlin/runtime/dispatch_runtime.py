@@ -478,6 +478,17 @@ def float_boundary_operands(a, b, binding) -> tuple[list, list, float, dict]:
     return qa.tolist(), qb.tolist(), sa * sb, rec
 
 
+def _has_contraction(kfn) -> bool:
+    """True when a kernel func contains a contraction op at all — used to count the matmuls the mesh
+    classifier declined, structurally (no name matching on the symbol)."""
+    for op in kfn.walk():
+        nm = getattr(op, "name", "")
+        if nm in ("linalg.matmul", "linalg.batch_matmul", "linalg.matmul_transpose_b",
+                  "linalg.quantized_matmul"):
+            return True
+    return False
+
+
 def _classify_mesh_matmul(kfn, accept: tuple[str, ...] = ("f32",)) -> dict | None:
     """Like xnnpack's classify_matmul_kernel but for the MESH route: a plain 2-D ``linalg.matmul`` whose two
     ``ins`` are kernel block args, with an element type this target's mesh can take.
@@ -605,7 +616,8 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             entry: str = "forward", cache_dir: str | Path | None = None,
             tap=None, qinner: dict | None = None,
             kernel_backend: str | None = None, mesh_target: str | None = None,
-            mesh_package: str | None = None) -> list[np.ndarray]:
+            mesh_package: str | None = None,
+            counters: dict | None = None) -> list[np.ndarray]:
     """Run the outlined model on bound arguments; return the driver's result arrays.
 
     ``cache_dir`` persists compiled kernel ``.so``s keyed by kernel-body hash, so repeated
@@ -665,6 +677,8 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
     # whole-model tolerance), cast for a float one. Which of those applies is DERIVED from the target.
     mesh_routes: dict[str, dict] = {}
     mesh_dp = None                                   # the target's CorpusBinding, whole (see mesh_datapath)
+    mesh_counts: dict = counters if counters is not None else {}   # per-CALL, not
+    # a module-global function attribute: run_suite grades capsules on a thread pool.
     if kernel_backend == "mesh":
         if not mesh_target:
             raise DispatchRuntimeError("kernel_backend='mesh' requires mesh_target=<target>")
@@ -680,6 +694,15 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                      or _classify_mesh_contraction(kfn, _accept))
             if route is not None:
                 mesh_routes[sym] = route
+        # Matmul-family kernels the classifier REJECTED (bias-fused, transposed, batched-generic,
+        # non-f32/i8, operand computed in-kernel). They never reach the mesh branch and so are invisible
+        # to `mesh_fell_back`; counting them keeps the coverage claim honest.
+        _unrouted = sum(1 for sym, kfn in kfns.items()
+                        if sym not in mesh_routes and _has_contraction(kfn))
+        # mesh_unavailable seeded to 0 alongside the rest: absent it reads as UNKNOWN downstream,
+        # which is the right answer for "nobody could tell" but the wrong one for "none occurred".
+        mesh_counts.update(mesh_ran=0, mesh_fell_back=0, mesh_unrouted_matmuls=_unrouted,
+                           mesh_routed=len(mesh_routes), mesh_unavailable=0)
         execute.last_mesh_routed = len(mesh_routes)
         execute.mesh_ran = 0
         execute.mesh_fell_back = 0
@@ -695,7 +718,9 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         # whole-model pass that needed this is a statement about runtime+backend, not about the backend.
         execute.mesh_capacity_fit_delegated = []
         # What the mesh's operand format could actually hold, summed over every layer it ran. The whole
-        # atlas divergence was invisible because nobody counted this; a run now reports it.
+        # atlas divergence was invisible because nobody counted this; a run now reports it. The SAME dict
+        # rides this call's counters, so a reader takes it off the run's own result rather than off a
+        # module-global attribute that a concurrent grade would clobber.
         execute.mesh_operand_repr = {"operand_dtype": mesh_dp.operand_dtype,
                                      "subnormal_operand_flush": bool(mesh_dp.subnormal_operand_flush),
                                      "n_values": 0, "n_subnormal": 0,
@@ -708,6 +733,11 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 "operand_dtype": mesh_dp.operand_dtype, "applicable": False,
                 "note": "integer datapath: operands are quantized to the mesh's width at the boundary; "
                         "the subnormal/saturation accounting applies to a float datapath only"}
+        mesh_counts["mesh_operand_repr"] = execute.mesh_operand_repr
+        mesh_counts["mesh_fallbacks"] = execute.mesh_fallbacks
+        # Ride this run's own counters, not a module-global attribute a concurrent grade would clobber.
+        # Same list object, so the appends below land in both.
+        mesh_counts["mesh_capacity_fit_delegated"] = execute.mesh_capacity_fit_delegated
 
     def kernel_model(symbol: str):
         if symbol in compiled:
@@ -841,11 +871,17 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     # its rounding rather than the hardware's -- and a power of two does not round: it
                     # moves the exponent and leaves every mantissa bit where it was.
                     qa, qb, scale, _repr = float_boundary_operands(a, b, binding)
-                    _acc = getattr(execute, "mesh_operand_repr", None)
+                    _acc = mesh_counts.get("mesh_operand_repr")
                     if _acc is not None:
                         for side in ("a", "b"):
                             for key, val in _repr[side].items():
                                 _acc[key] = _acc.get(key, 0) + val
+                # `package` is the SUBMISSION under test. Without it the mesh path resolves the target's
+                # DEFAULT package and quietly certifies a different compiler than the one being graded.
+                # `observed` is this call's OWN record of what the mesh path did -- which tiler chose the
+                # extent, why it declined, whether the runtime had to discharge a capacity_fit obligation
+                # the backend owes. Read from the call rather than a module global, so a concurrent grade
+                # cannot attribute one model's decline to another model's layer.
                 _obs: dict = {}
                 # THE BACKEND UNDER TEST MUST REACH THE MESH. Without it this resolved to the
                 # target's DEFAULT package -- which for a target that ships none is no oracle at all, so
@@ -866,10 +902,18 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                         _d.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
                                    "required_elems": _cf.get("required_elems"),
                                    "capacity_elems": _cf.get("capacity_elems"),
+                                   # WHICH tiler chose the extent: a capacity fact read out of the RTL,
+                                   # or a probe that halved until the backend stopped refusing. Those are
+                                   # different provenance claims and the record used to say neither.
+                                   "tile_source": _cf.get("tile_source"),
+                                   # ...and WHY it tiled at all (working-set capacity vs a declared
+                                   # primitive tile). A separate question from which tiler ran, so both
+                                   # ride the record — neither answers the other.
                                    "tiled_by": _cf.get("tiled_by")})
                 if mesh_out is not None:
                     om = np.array(mesh_out, np.float64) * scale
                     env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])
+                    mesh_counts["mesh_ran"] = mesh_counts.get("mesh_ran", 0) + 1
                     execute.mesh_ran = getattr(execute, "mesh_ran", 0) + 1
                     if tap is not None:
                         tap(op, [env[id(op.results[0])]])
@@ -879,32 +923,71 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             # says a model failed its must_accelerate gate without saying what to fix, which is the same
             # fail-silent shape the rest of this path was built to avoid: a whole-model capsule reported
             # "35 of 37 layers on the mesh, 2 fell back" and nothing anywhere named the two.
+            mesh_counts["mesh_fell_back"] = mesh_counts.get("mesh_fell_back", 0) + 1
             if not (a.ndim == 2 and b.ndim == 2):
                 _why = f"operand rank {a.ndim}x{b.ndim}: the mesh boundary takes a 2-D contraction"
             elif a.shape[1] != b.shape[0]:
                 _why = f"inner dims disagree: {a.shape} @ {b.shape}"
             else:
-                # the oracle's OWN verdict when it gave one, rather than a guess covering both causes
-                _detail = (locals().get("_obs") or {}).get("decline")
+                # The oracle path records its OWN refusal reason; prefer it, because "unsynthesizable at
+                # this shape" and "the oracle was unreachable" are different repairs. THIS call's own
+                # `observed` verdict comes first -- it belongs to this layer and nothing else can have
+                # overwritten it -- then the module-global last-refusal note, then a generic message that
+                # covers both causes and names neither.
+                _recorded = (locals().get("_obs") or {}).get("decline")
+                if not _recorded:
+                    try:
+                        from ..compile_cli import _MESH_REFUSAL
+                        _recorded = _MESH_REFUSAL.get("reason")
+                    except Exception:                              # noqa: BLE001
+                        _recorded = None
                 _why = (f"mesh oracle declined {a.shape} @ {b.shape} ({op_dt}/{acc_dt}): "
-                        + (str(_detail)[:300] if _detail
-                           else "no result and no reason recorded — unreachable oracle, or a path that "
-                                "returns None without a verdict"))
+                        f"{str(_recorded)[:300]}" if _recorded else
+                        f"mesh oracle returned no result for {a.shape} @ {b.shape} "
+                        f"({op_dt}/{acc_dt}) — unsynthesizable at this shape, or the oracle "
+                        f"was unreachable")
             # SEPARATE "the oracle could not tell us" FROM "the mesh refused". The host kernel runs
             # either way -- the model must still compute -- but only the second is evidence about the
             # backend. `_oracle_unreachable` keys on the oracle's OWN reported cause, never on a guess.
+            # Carried on the counters dict, not the module-global function attributes this check first
+            # used: concurrent grades clobber those, and a model verdict now depends on the count.
             _decl = str((locals().get("_obs") or {}).get("decline") or "")
-            _unavailable = _oracle_unreachable(_decl)
-            if _unavailable:
-                execute.mesh_unavailable = getattr(execute, "mesh_unavailable", 0) + 1
-                _ud = getattr(execute, "mesh_unavailable_detail", None)
-                if _ud is not None and len(_ud) < 64:
+            if _oracle_unreachable(_decl):
+                # charged above as a fallback; it is not one -- move it to its own bucket
+                mesh_counts["mesh_fell_back"] = max(0, mesh_counts.get("mesh_fell_back", 0) - 1)
+                mesh_counts["mesh_unavailable"] = mesh_counts.get("mesh_unavailable", 0) + 1
+                _ud = mesh_counts.setdefault("mesh_unavailable_detail", [])
+                if len(_ud) < 64:
                     _ud.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
                                 "reason": _why})
+                _unavailable = True
             else:
+                _unavailable = False
+            if not _unavailable:
+                # Name the layer, not just the count. "4 layers fell back" gives a reader nothing to act on;
+                # the SHAPES say whether the cause is one extent the backend cannot take or four different
+                # ones, which is the difference between a tiling gap and a capability gap.
+                try:
+                    _sh = f"{a.shape[0]}x{a.shape[1]}x{b.shape[1]}" if (a.ndim == 2 and b.ndim == 2) \
+                        else f"rank{a.ndim}x{b.ndim}"
+                except Exception:                                  # noqa: BLE001
+                    _sh = "unknown"
+                mesh_counts.setdefault("mesh_fallback_shapes", []).append(f"{_sh}: {_why}")
+                # Capture the operands HERE, where they are already numpy arrays, rather than deeper in the
+                # oracle path where an earlier attempt to do it failed silently. A layer that fails inside a
+                # model and runs standalone differs only in the values it was handed.
+                try:
+                    import tempfile as _tf
+                    _n = len(mesh_counts["mesh_fallback_shapes"])
+                    _p = Path(_tf.gettempdir()) / f"fallback_operands_{_n}.npz"
+                    np.savez_compressed(_p, A=a, W=b)
+                    mesh_counts.setdefault("mesh_fallback_operands", []).append(str(_p))
+                except Exception as _oe:                   # noqa: BLE001
+                    mesh_counts.setdefault("mesh_fallback_operands", []).append(
+                        f"capture failed: {type(_oe).__name__}: {_oe}")
                 execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
                 _fb = getattr(execute, "mesh_fallbacks", None)
-                if _fb is not None and len(_fb) < 64:        # bounded: a diagnostic, not a full trace
+                if _fb is not None and len(_fb) < 64:            # bounded: a diagnostic, not a full trace
                     _fb.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
                                 "reason": _why})
         model = kernel_model(symbol)
@@ -1085,11 +1168,14 @@ def run_model(model_dir: str | Path, workdir: str | Path,
         ex = np.load(extra_path)
         qinner = {k[len("qinner::"):]: ex[k] for k in ex.files if k.startswith("qinner::")}
     import os as _os
+    # Per-run mesh counters. A whole-model verdict is decided by these, so they must not
+    # live on a module-global function attribute that a concurrent grade can clobber.
+    _mesh_counts: dict = {}
     if kernel_backend is None and _os.environ.get("MERLIN_XNNPACK_HOST") == "1":
         kernel_backend = "xnnpack"
     results = execute(outlined, args, Path(workdir), cache_dir=cache_dir, tap=tap,
                       qinner=qinner, kernel_backend=kernel_backend, mesh_target=mesh_target,
-                      mesh_package=mesh_package)
+                      mesh_package=mesh_package, counters=_mesh_counts)
     # widen bf16 (stored as uint16 bit patterns) to f32 for the golden comparison
     raw = results[0]
     out = (bf16_to_f32(raw) if _elem_str(out_types[0]) == "bf16"
@@ -1099,7 +1185,8 @@ def run_model(model_dir: str | Path, workdir: str | Path,
                            "n_unique_kernels": getattr(execute, "last_unique_kernels", None),
                            "kernel_backend": kernel_backend,
                            "n_xnn_routed": (getattr(execute, "last_xnn_routed", 0)
-                                            if kernel_backend == "xnnpack" else 0)}
+                                            if kernel_backend == "xnnpack" else 0),
+                           **_mesh_counts}
     gpath = model_dir / "golden.npy"
     if gpath.is_file():
         gold = np.load(gpath).astype(np.float32).ravel()

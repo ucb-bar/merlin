@@ -129,12 +129,16 @@ def _run_preflight() -> int:
     from merlin.targetgen.target_experiment import load_target_experiment, bundles_match_descriptor
     desc = C.EXP / "target_experiment.yaml"          # C.EXP honors MERLIN_TARGET_EXPERIMENT
     te = load_target_experiment(desc) if desc.is_file() else None
-    locked = []
-    for p in _answer_surfaces_to_lock(te):
-        if Path(p).exists():
-            subprocess.run(["chmod", "-R", "000", p], capture_output=True)
-            locked.append(p)
-    print(f"  locked answer surfaces (chmod 000): {locked or '(none present)'}")
+    # ORDER MATTERS: verify BEFORE locking, then lock.
+    #
+    # The held-out check derives every holdout capsule NAME by walking `hidden/*/capsule.yaml` and then
+    # looks for those names inside the tree the bundles grant. Locking first (chmod -R 000) makes that walk
+    # return nothing, so the check cannot see the very thing it exists to check. While it treated "no names"
+    # as "nothing to check" that was invisible; once it was made to fail closed, lock-then-check turned into
+    # a guaranteed failure -- which is the honest symptom of an ordering bug that was always there.
+    #
+    # Verifying first costs nothing: the lock still lands before any agent process starts, which is the
+    # invariant that matters ("before any spend"), and no agent has been launched at this point.
     vnc = SCRIPTS / "verify_no_cheat.py"
     if not vnc.is_file():
         print(f"  ⚠ verify_no_cheat.py not found at {vnc} — build it before launch (#167).")
@@ -143,6 +147,12 @@ def _run_preflight() -> int:
     r = subprocess.run([sys.executable, str(vnc)], cwd=str(C.REPO))
     if r.returncode:
         return r.returncode
+    locked = []
+    for p in _answer_surfaces_to_lock(te):
+        if Path(p).exists():
+            subprocess.run(["chmod", "-R", "000", p], capture_output=True)
+            locked.append(p)
+    print(f"  locked answer surfaces (chmod 000): {locked or '(none present)'}")
     # Descriptor governs the shared hardware spec: refuse if any active arm bundle drifted from it (so
     # every arm gets exactly the ISA/RTL the target_experiment.yaml declares — a fair, honest run).
     try:

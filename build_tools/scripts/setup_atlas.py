@@ -119,9 +119,10 @@ def main() -> int:
     if ok and not a.no_target_package:
         try:
             from merlin.targetgen import capability_manifests as _cm
-            from merlin.targetgen import target_registry as _tr
-            dest = Path(a.target_package_dir) if a.target_package_dir else _tr.generated_target_home() / "atlas"
-            _cm.write_oot_target("atlas", dest)
+            # The SAME target-agnostic materialization every target uses (atlas / gemmini / ...): drop the
+            # OOT package into the zero-env generated home so target_registry.resolve finds it with no env.
+            dest = Path(a.target_package_dir) if a.target_package_dir else None
+            dest = _cm.materialize_generated_target("atlas", dest)
             print(f"target package [OOT def]      : {dest} (endpoint/mesh/encoding derived from CIRCT facts)")
         except Exception as e:  # noqa: BLE001
             sys.stderr.write(f"target-package materialization failed: {type(e).__name__}: {e}\n"); ok = False

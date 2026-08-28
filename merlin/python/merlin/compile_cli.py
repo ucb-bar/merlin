@@ -21,6 +21,9 @@ correctness gates before any success is reported. This CLI only ORCHESTRATES the
 from __future__ import annotations
 
 import argparse
+import functools
+import itertools
+import threading
 import json
 import sys
 import tempfile
@@ -336,34 +339,42 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                         kernel_backend=kernel_backend, mesh_target=mesh_target,
                         mesh_package=mesh_package)
         if kernel_backend == "mesh":
-            from .runtime import dispatch_runtime as _dr
             # THIS MODEL's own layers: how many of its matmuls reached the accelerator and how many
             # fell back to the host kernel. Distinct from the synthetic tile certification below, which
             # proves that tiles OF THESE SHAPES run -- a much weaker claim about a different artifact.
-            out["mesh_execution"] = {"target": mesh_target,
-                                     "matmul_layers_routed": getattr(_dr.execute, "last_mesh_routed", None),
-                                     "matmul_layers_on_mesh": getattr(_dr.execute, "mesh_ran", None),
-                                     "matmul_layers_host_fallback": getattr(_dr.execute, "mesh_fell_back", None),
-                                     # WHICH layers fell back and why -- a count alone fails the
-                                     # must_accelerate gate without saying what to fix.
-                                     "host_fallback_detail": getattr(_dr.execute, "mesh_fallbacks", None),
-                                     # Layers the ORACLE could not measure (timed-out / unreachable
-                                     # simulator). Counted apart from a fallback because it is not
-                                     # evidence about the backend: the mesh may well run these.
-                                     "matmul_layers_oracle_unavailable":
-                                         getattr(_dr.execute, "mesh_unavailable", None),
-                                     "oracle_unavailable_detail":
-                                         getattr(_dr.execute, "mesh_unavailable_detail", None),
-                                     # layers whose capacity_fit obligation the RUNTIME discharged for
-                                     # the backend; non-empty means this result is runtime+backend
-                                     "capacity_fit_delegated_to_runtime":
-                                         getattr(_dr.execute, "mesh_capacity_fit_delegated", None),
-                                     # How much of what we handed the mesh its operand format could hold.
-                                     # After the boundary's power-of-two scaling this should read zero
-                                     # flushed and zero saturating; a nonzero count is the run telling you
-                                     # the numbers below it are worth less than they look.
-                                     "operand_representability": getattr(_dr.execute, "mesh_operand_repr",
-                                                                         None)}
+            #
+            # Read the counters off THIS run's result. They used to be function attributes on a
+            # module-global (`_dr.execute.mesh_ran`), which concurrent grades clobber -- and a model
+            # verdict now depends on them. `UNKNOWN` rather than None when absent: None reads as "zero
+            # layers ran", when what it means is "nobody could tell".
+            from .common.provenance import UNKNOWN as _UNKNOWN
+            out["mesh_execution"] = {
+                "target": mesh_target,
+                "matmul_layers_routed": res.get("mesh_routed", _UNKNOWN),
+                "matmul_layers_on_mesh": res.get("mesh_ran", _UNKNOWN),
+                "matmul_layers_host_fallback": res.get("mesh_fell_back", _UNKNOWN),
+                # coverage, NOT a gate: matmuls the classifier never routed (e.g. batched attention
+                # generics), so a row can say "15 of 19 layers on the mesh" instead of implying 19.
+                "matmul_layers_unrouted": res.get("mesh_unrouted_matmuls", _UNKNOWN),
+                # which layers the mesh could not take, by extent -- a count alone cannot distinguish
+                # "one shape the backend refuses" from "four unrelated capability gaps".
+                "fallback_shapes": res.get("mesh_fallback_shapes", []),
+                # WHICH layers fell back and why -- a count alone fails the must_accelerate gate without
+                # saying what to fix.
+                "host_fallback_detail": res.get("mesh_fallbacks"),
+                # Layers the ORACLE could not measure (timed-out / unreachable simulator). Counted
+                # apart from a fallback because it is not evidence about the backend: the mesh may
+                # well run these.
+                "matmul_layers_oracle_unavailable": res.get("mesh_unavailable", _UNKNOWN),
+                "oracle_unavailable_detail": res.get("mesh_unavailable_detail"),
+                # Layers whose capacity_fit obligation the RUNTIME discharged for the backend; non-empty
+                # means this result is evidence about runtime+backend together, not about the backend
+                # alone. Each entry names the tiler that chose its extent (`tile_source`).
+                "capacity_fit_delegated_to_runtime": res.get("mesh_capacity_fit_delegated"),
+                # How much of what we handed the mesh its operand format could hold. After the boundary's
+                # power-of-two scaling this should read zero flushed and zero saturating; a nonzero count
+                # is the run telling you the numbers below it are worth less than they look.
+                "operand_representability": res.get("mesh_operand_repr")}
         out["status"] = "ran"
         out["n_kernels"] = res.get("n_kernels")
         if refs:
@@ -462,6 +473,42 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     out["status"] = "not_run"
     out["reason"] = f"run mode {run!r} not supported for rvv (use none|k1|spike|zephyr|verilator)"
     return out
+
+
+_MESH_REFUSAL: dict = {}      # diagnostic only: why the last mesh attempt returned None
+
+
+def _refuse(reason: str):
+    """Record why a mesh attempt is giving up, then give up. Diagnostic only -- callers still
+    just see None, which stays the fail-closed contract."""
+    _MESH_REFUSAL["reason"] = reason
+    return None
+
+
+_MESH_RUN_SEQ = itertools.count()      # one run dir per mesh-layer invocation
+_MESH_NTILE_WIDTH: dict[tuple, int] = {}   # N-tile width a target's backend accepts
+_MESH_PKG_CACHE: dict[str, object] = {}
+_MESH_PKG_LOCK = threading.Lock()
+
+
+def _built_mesh_package(pkg_dir: str, timeout: int):
+    """The loaded+scanned+built package for ``pkg_dir``, built at most once per process.
+
+    The whole-model mesh path calls this once per matmul layer. Rebuilding per layer is pure waste and
+    turns one broken build into a per-layer storm of identical failures.
+    """
+    key = str(Path(pkg_dir).resolve())
+    with _MESH_PKG_LOCK:
+        hit = _MESH_PKG_CACHE.get(key)
+    if hit is not None:
+        return hit
+    from .targetgen.oot_runner import build_package, integrity_scan, load_package
+    obj = load_package(pkg_dir, contract=None)     # the same sequence run_entrypoints does when pkg is None
+    integrity_scan(obj)
+    build_package(obj)
+    with _MESH_PKG_LOCK:
+        _MESH_PKG_CACHE[key] = obj
+    return obj
 
 
 def _default_oot_package(target: str) -> str | None:
@@ -1148,7 +1195,9 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
                        accum_dtype: str | None = None, simulator: str | None = None,
                        package: str | None = None, epilogue: list | None = None,
                        acc_scale: float | None = None, timeout: int = 900,
-                       observed: dict | None = None) -> list | None:
+                       observed: dict | None = None,
+                       _tiled: bool = False,
+                       _rescaled: bool = False) -> list | None:
     """Execute ``A @ W`` on the target's mesh oracle with the REAL operand values INJECTED (not
     materialized-from-name), and return the mesh's output tensor (nested list) — or ``None`` when this
     target has no reachable mesh path. ``A`` / ``W`` are the layer's real activations / weights.
@@ -1309,6 +1358,12 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
                                    "capacity_elems": _cap, "tiled_by": _tiled_by}
             observed["capacity_fit"] = {
                 **capacity_fit(target, M, K, N, binding.operand_dtype, _D),
+                # WHICH TILER CHOSE THIS EXTENT. Derived here: the fitting extent was computed from
+                # the target's own RTL-derived operand-store capacity. The other tiler below finds a
+                # width by probing until the backend stops refusing, and "derived from a hardware
+                # capacity fact" is a much stronger claim than "found by probing" -- the record used
+                # to make neither, so a reader could not tell them apart.
+                "tile_source": "capacity_fact",
                 "discharged_by": "merlin runtime (host-side residency tiling)",
                 # WHETHER THE SPLIT IS NUMERICALLY FREE depends on the accumulator, and it is not free
                 # everywhere. Over an integer accumulator the K-partials sum exactly, so a blocked layer
@@ -1358,7 +1413,11 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
         except Exception:                        # noqa: BLE001 — unresolvable target: no obligation known
             pass
     out = _dispatch(mlir, A, W)
-    if out is None and observed is not None:
+    if out is not None or _tiled:
+        return _unpad(out)  # already a tile of a split layer: do not recurse further
+    # Past the return above, the mesh DECLINED this extent. Name why, before either tiler is tried:
+    # the obligation evaluated a moment ago already predicted it, or it could not be evaluated at all.
+    if observed is not None:
         _cf = observed.get("capacity_fit_check") or {}
         if _cf.get("holds") is False:
             observed["contract_violation"] = {
@@ -1380,7 +1439,141 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
                            "or may not be a residency failure. Declare the operand store in the "
                            "target's RTL facts to make the obligation decidable."),
             }
-    return _unpad(out)
+
+    # The datapath has a magnitude floor: a layer whose operands are small is refused, and one doubling
+    # of either operand flips it. Retry once with both operands rescaled to a power of two near 1.0 and
+    # the result divided back. Exact -- a power-of-two factor moves only the exponent -- so this changes
+    # which layers run and not what they compute.
+    if not _rescaled:
+        try:
+            import math as _math
+            _amax = max((abs(v) for row in A for v in row), default=0.0)
+            _wmax = max((abs(v) for row in W for v in row), default=0.0)
+            if _amax > 0.0 and _wmax > 0.0:
+                _i = -int(_math.floor(_math.log2(_amax)))
+                _j = -int(_math.floor(_math.log2(_wmax)))
+                if _i or _j:
+                    _sa, _sw = 2.0 ** _i, 2.0 ** _j
+                    _As = [[v * _sa for v in row] for row in A]
+                    _Ws = [[v * _sw for v in row] for row in W]
+                    _scaled = run_matmul_on_mesh(
+                        target, _As, _Ws, operand_dtype=operand_dtype, accum_dtype=accum_dtype,
+                        simulator=simulator, package=package, timeout=timeout, epilogue=epilogue,
+                        acc_scale=acc_scale, observed=observed, _rescaled=True)
+                    if _scaled is not None:
+                        _inv = 1.0 / (_sa * _sw)
+                        return _unpad([[v * _inv for v in row] for row in _scaled])
+        except Exception:                             # noqa: BLE001 — rescale is an optimisation, not a gate
+            pass
+
+    # EMPIRICAL TILER -- the fallback, reached only when the DERIVED one above could not act. The two
+    # are complementary, not rivals: the blocking path above computes a fitting extent from the target's
+    # own RTL-derived operand-store capacity and runs first, but `_operand_store_capacity_elems` returns
+    # None for a target that declares no such fact. There is then nothing to derive a tile size FROM, and
+    # inventing one would be a target literal in disguise. So find the width this backend ACCEPTS by
+    # halving, then run the layer as N-tiles of that width: splitting along N is exact, because
+    # C[:, a:b] is A @ W[:, a:b]. Costs a few refused probes ONCE per target.
+    D = int(getattr(binding, "tile_dim", 0) or 0)
+    if D <= 0:
+        return None
+
+    def _probed(extent, n_sub, axis):
+        """Record that a PROBE, not a capacity fact, chose this extent.
+
+        Both tilers write `observed["capacity_fit"]`, and the layer record downstream reads
+        `tile_source` off it. "Derived from an RTL scratchpad capacity" and "found by halving until the
+        backend stopped refusing" are very different provenance claims about the same number.
+        """
+        if observed is None:
+            return
+        observed["capacity_fit"] = {
+            "holds": None, "required_elems": None, "capacity_elems": None,
+            "tile_source": "probed", "tile": list(extent), "n_subtiles": int(n_sub),
+            "split_axis": axis,
+            "discharged_by": "merlin runtime (host-side residency tiling)",
+            # An N or M split leaves every output element a single full-K reduction on the device, so
+            # unlike the K-blocking the derived tiler does, this stays exact on a float accumulator too.
+            "split_exact": True, "accum_dtype": binding.accum_dtype,
+            "note": (f"this target declares no on-chip operand-store capacity, so no tile size could be "
+                     f"DERIVED; the extent above is the largest this backend accepted when probed by "
+                     f"halving. The numerics are the device's own (an {axis}-split is exact), but the "
+                     f"EXTENT is an empirical finding about this backend, not a derived property of the "
+                     f"hardware -- and the layer ran because the runtime split it."),
+        }
+
+    _rows_kw = dict(operand_dtype=operand_dtype, accum_dtype=accum_dtype, simulator=simulator,
+                    package=package, timeout=timeout, epilogue=epilogue, acc_scale=acc_scale,
+                    observed=observed, M=M, record=_probed)
+    if N <= D:
+        return _unpad(_mesh_rows(target, A, W, **_rows_kw))   # nothing to split along N
+    # Keyed by K as well: the accepted width is bounded by the WORKING SET (K*w + M*K), so a width
+    # discovered at K=128 is too wide at K=344 and its tiles are refused in turn. Measured: caching
+    # without K left 4 of 15 small_llama layers on the host for exactly that reason.
+    key = (target, operand_dtype or "", accum_dtype or "", K)
+    width = _MESH_NTILE_WIDTH.get(key)
+    if width is None:
+        w = N
+        while w > D:
+            w = max(D, (w // 2 // D) * D or D)
+            probe = run_matmul_on_mesh(target, A, [row[:w] for row in W],
+                                       operand_dtype=operand_dtype, accum_dtype=accum_dtype,
+                                       simulator=simulator, package=package, timeout=timeout,
+                                       epilogue=epilogue, acc_scale=acc_scale,
+                                       observed=observed, _tiled=True)
+            if probe is not None:
+                width = w
+                break
+        if width is None:
+            # Even one tile-dim-wide column is refused, so the M*K term is what does not fit.
+            return _unpad(_mesh_rows(target, A, W, **_rows_kw))
+        _MESH_NTILE_WIDTH[key] = width
+    cols: list[list] = []
+    for a in range(0, N, width):
+        b = min(a + width, N)
+        piece = run_matmul_on_mesh(target, A, [row[a:b] for row in W],
+                                   operand_dtype=operand_dtype, accum_dtype=accum_dtype,
+                                   simulator=simulator, package=package, timeout=timeout,
+                                   epilogue=epilogue, acc_scale=acc_scale,
+                                   observed=observed, _tiled=True)
+        if piece is None:
+            return None                          # a tile the discovered width should have covered
+        cols.append(piece)
+    _probed((M, K, width), (N + width - 1) // width, "N")
+    return _unpad([sum((c[r] for c in cols), []) for r in range(M)])
+
+
+def _mesh_rows(target, A, W, *, operand_dtype, accum_dtype, simulator, package, timeout,
+               epilogue, acc_scale, M, observed=None, record=None):
+    """Run a refused layer as row blocks. The working set is ``K*N + M*K``; N-tiling shrinks the first
+    term and M-tiling the second, so a layer whose N is already at or below the tile dim (a projection
+    down to a couple of columns, say) can only be helped by splitting M. Exact: C[a:b, :] is A[a:b, :] @ W.
+    """
+    if M <= 1:
+        return None
+    height = M
+    while height > 1:
+        height = max(1, height // 2)
+        probe = run_matmul_on_mesh(target, A[:height], W, operand_dtype=operand_dtype,
+                                   accum_dtype=accum_dtype, simulator=simulator, package=package,
+                                   timeout=timeout, epilogue=epilogue, acc_scale=acc_scale,
+                                   observed=observed, _tiled=True)
+        if probe is not None:
+            break
+    else:
+        return None
+    rows: list = []
+    for a in range(0, M, height):
+        piece = run_matmul_on_mesh(target, A[a:a + height], W, operand_dtype=operand_dtype,
+                                   accum_dtype=accum_dtype, simulator=simulator, package=package,
+                                   timeout=timeout, epilogue=epilogue, acc_scale=acc_scale,
+                                   observed=observed, _tiled=True)
+        if piece is None:
+            return None
+        rows.extend(piece)
+    if record is not None:
+        record((height, len(A[0]) if A else 0, len(W[0]) if W else 0),
+               (M + height - 1) // height, "M")
+    return rows
 
 
 def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
@@ -1465,7 +1658,7 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout,
 
     pkg = package or _default_oot_package(target)
     if pkg is None:
-        return None
+        return _refuse('no OOT package resolved for this target')
     so = CR._SIM_ORACLES.get(CR._bespoke_sim_via(target))
     if so is None or not so.exclusive:
         return None
@@ -1487,15 +1680,24 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout,
         capsule = {"name": _bid, "kind": "op", "interface_mlir": "capsule.interface.mlir",
                    "operation": {"op": "matmul", "attributes": {}}, "__dir__": str(cdir),
                    "required_oracle_tiers": ["L2"]}
-        paths = make_run_paths(runs_root(target, "mesh_bsim"), _bid, suite="mesh",
-                               target=target, dtype="prog", benchmark=_bid)
+        # A run id per LAYER SHAPE: `mesh_layer` was hardcoded, so every layer of a model wrote into one
+        # run dir and overwrote the last, leaving nothing to attribute a failure to afterwards.
+        # Unique per INVOCATION, not per shape. A model repeats shapes -- small_llama has two 8x128x128
+        # layers and two 8x344x128 -- and a shape-keyed id put each repeat in the first one's directory,
+        # where it collided with the previous run's artifacts and the oracle exited 1. The original bug
+        # was a single hardcoded "mesh_layer" for every layer; keying by shape fixed only distinct shapes.
+        _rid = (f"mesh_layer_{len(A)}x{len(A[0]) if A else 0}x{len(W[0]) if W else 0}"
+                f"_{next(_MESH_RUN_SEQ)}")
+        paths = make_run_paths(runs_root(target, "mesh_bsim"), _rid, suite="mesh",
+                               target=target, dtype="prog", benchmark=_rid)
         try:
-            _pkg, cb, kernel_text = CC.run_entrypoints(None, pkg, capsule, paths, contract=None,
+            _built = _built_mesh_package(pkg, timeout)     # built once per process, not once per layer
+            _pkg, cb, kernel_text = CC.run_entrypoints(_built, pkg, capsule, paths, contract=None,
                                                        timeout=timeout, fourth_output_name="kernel.cpp")
-        except Exception:                             # noqa: BLE001 — package can't emit this kernel: honest None
-            return None
+        except Exception as _e:                       # noqa: BLE001 — package can't emit this kernel
+            return _refuse(f'run_entrypoints raised {type(_e).__name__}: {str(_e)[:160]}')
         if cb is None or not kernel_text:
-            return None
+            return _refuse('the package emitted no command buffer or kernel text')
         # INJECT the real operands onto the cb's leaf tensors (encoded for each tensor's declared dtype);
         # the muon harness decodes ``preload_b64`` and embeds THESE values instead of the materialized ones.
         operands = {"A0": A, "W": W}
@@ -1503,16 +1705,48 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout,
             if tspec.get("role") in ("input", "weight", "bias") and tname in operands:
                 raw = MP._encode_operand(operands[tname], tspec.get("dtype", "f32"))
                 if raw is None:
-                    return None
+                    return _refuse(f'operand {tname!r} could not be encoded for dtype '
+                                   f'{tspec.get("dtype", "f32")!r} (non-finite or out of range?)')
                 tspec["preload_b64"] = base64.b64encode(raw).decode()
         try:
             res = run(cb, kernel_text, tdp / "oracle", timeout)
-        except Exception:                             # noqa: BLE001 — oracle unavailable / run failure: fail closed
-            return None
+        except Exception as _e:                       # noqa: BLE001 — oracle unavailable / run failure
+            # This exit swallowed the oracle's own exception, so an oracle that CRASHED and an oracle that
+            # was simply absent reached the caller identically -- and a layer dying here looked exactly
+            # like a backend that cannot emit the extent.
+            # Dump the WHOLE thing: the first 200 chars of this exception are a cyclotron diagnostic
+            # banner ("rename pool: ... (limit 256)") that is well under its own limit and says nothing
+            # about the failure, so a truncated reason reads as an explanation while withholding one.
+            _seq = next(_MESH_RUN_SEQ)
+            _dump = Path(tempfile.gettempdir()) / f"mesh_refusal_{_seq}.txt"
+            try:
+                _dump.write_text(f"{type(_e).__name__}: {_e}", encoding="utf-8")
+                # Dump the OPERANDS too. A layer that fails inside a model and succeeds standalone differs
+                # only in the values it was handed, so without them every hypothesis costs a full model
+                # run to test. With them the case replays in seconds.
+                import numpy as _np
+                _np.savez_compressed(Path(tempfile.gettempdir()) / f"mesh_refusal_{_seq}.npz",
+                                     A=_np.asarray(A, dtype=_np.float64),
+                                     W=_np.asarray(W, dtype=_np.float64))
+            except Exception as _de:                  # noqa: BLE001
+                # Say WHY the diagnostic write failed. Swallowing this is the same mistake the reason
+                # recording exists to fix: the operand dump silently never appeared and the next run was
+                # spent discovering that, not diagnosing the layer.
+                try:
+                    _dump.write_text(f"{type(_e).__name__}: {_e}\n\n"
+                                     f"[operand dump failed: {type(_de).__name__}: {_de}]",
+                                     encoding="utf-8")
+                except Exception:                     # noqa: BLE001
+                    _dump = None
+            return _refuse(f'the oracle raised {type(_e).__name__}: {str(_e)[:1500]}'
+                           f'{f" [full: {_dump}]" if _dump else ""}')
         if observed is not None:
             observed["oracle"] = CC.oracle_kind(res.get("oracle")) or CR._bespoke_sim_via(target)
         outs = res.get("outputs") or {}
-        return outs.get("Y0") or next(iter(outs.values()), None)
+        got = outs.get("Y0") or next(iter(outs.values()), None)
+        if got is None:
+            return _refuse(f'the oracle ran but produced no output tensor (keys: {sorted(outs)})')
+        return got
 
 
 def run_whole_model_on_mesh(target: str, module, *, in_fmt: str = "f32",

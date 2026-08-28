@@ -134,7 +134,8 @@ def declared_oracle_tiers(*roots: str | Path) -> set[str]:
 
 def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAULT_CEILING,
                                 contract: str | Path | None = None,
-                                corpus_roots: list[Path] | None = None) -> list[str]:
+                                corpus_roots: list[Path] | None = None,
+                                exclude: tuple[str, ...] | set[str] | None = None) -> list[str]:
     """Derive the sandbox public-capsule view into ``dest``. Returns the capsule names written.
 
     Copies the 5 capsule files verbatim, then rewrites ``capsule.yaml``'s ``required_oracle_tiers``
@@ -143,12 +144,29 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
     ``corpus_roots`` (target-AGNOSTIC): materialize the public capsules found directly under these roots
     (the descriptor's ``capsule_corpus`` + sibling corpora). When omitted, falls back to the legacy
     gemmini-contract discovery (``contract``) for backward compatibility.
+
+    ``exclude`` is the descriptor's ``grading.exclude_capsules`` — capsule DIRECTORY NAMES this
+    experiment withholds from the public graded set (see
+    :attr:`~merlin.targetgen.target_experiment.TargetExperiment.graded_exclude` for why one exists). The
+    names are matched against what the corpus actually holds and an exclusion matching NOTHING raises:
+    a mistyped or stale name would otherwise silently re-admit an expensive capsule, and the failure
+    mode of a *quietly wider* set is a run that blows its wall-clock budget with no signal saying why.
     """
     keep = set(_cap_tiers(tier_ceiling))
     dest = Path(dest)
     written: list[str] = []
     sources = (_public_capsule_dirs_in(corpus_roots) if corpus_roots is not None
                else _public_capsule_dirs(contract))
+    drop = set(exclude or ())
+    if drop:
+        present = {s.name for s in sources}
+        unknown = sorted(drop - present)
+        if unknown:
+            raise ValueError(
+                f"grading.exclude_capsules names {unknown} but the public corpus holds no such "
+                f"capsule(s); it has {sorted(present)}. Refusing to materialize, because an exclusion "
+                f"that matches nothing silently GROWS the graded set back to full size.")
+        sources = [s for s in sources if s.name not in drop]
     for src in sources:
         name = src.name
         d = dest / name
@@ -243,7 +261,8 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     link = base / te.target
     ver = base / f".{te.target}.build.{os.getpid()}.{uuid.uuid4().hex[:8]}"
     shutil.rmtree(ver, ignore_errors=True)
-    materialize_public_capsules(ver, tier_ceiling=tier_ceiling, corpus_roots=roots)
+    materialize_public_capsules(ver, tier_ceiling=tier_ceiling, corpus_roots=roots,
+                                exclude=getattr(te, "graded_exclude", ()))
     tmp_link = base / f".{te.target}.lnk.{os.getpid()}.{uuid.uuid4().hex[:8]}"
     if tmp_link.is_symlink() or tmp_link.exists():
         tmp_link.unlink()
@@ -261,6 +280,99 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
         except OSError:
             pass
     return link
+
+
+def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None,
+                       tile_dim: int | None = None) -> dict:
+    """The REPRESENTATIVE subset a cycle-accurate cert tier should run, when the functional tier runs
+    everything. Returns ``{"capsules": [...], "cells": [...], "uncovered": [...], "basis": {...}}``.
+
+    Why a subset at all. The functional tier answers "does it compute the right value" and is cheap; the
+    cert tier answers "does the hardware actually do it" -- encoding, protocol, resource limits -- and is
+    minutes per capsule. Running cert on everything spends most of a run re-proving the same hardware
+    facts, and on this repo's SIMT target that was 80% of an agent round for a verdict the score never
+    read. Running it on nothing leaves the RTL claim unevidenced. A cover is the middle: full coverage at
+    the functional tier, representative coverage at the cert tier.
+
+    Why THESE axes. Representativeness must track where the HARDWARE differs, not where the numerics do:
+
+      * ``semantic_family`` -- a contraction drives different RTL than a normalization or a movement.
+      * operand ``dtype``   -- the proxy for WHICH compute unit runs it (block-scaled microscaling formats
+                              go to the MX PE; ordinary floats to the SIMT lanes) and for datapath width.
+
+      * tile ALIGNMENT (only when ``tile_dim`` is given) -- whether the capsule's extents divide evenly
+        by the target's tile edge, or leave a partial tile. This is the axis a functional model is least
+        able to stand in for: a partial tile changes addressing and the working-set boundary, and this
+        repo has already been bitten by exactly that -- a taped-out unit computed partial N tiles
+        (``n % 64 != 0``) wrongly while every functional check passed. A cover built on family and dtype
+        alone can pick, for each cell, the one capsule whose extents happen to divide evenly, and then
+        certify no partial tile anywhere. Passing ``tile_dim`` closes that blind spot; omitting it leaves
+        it open, which is why ``basis`` reports which axes were actually used.
+
+    All are declared per capsule and read as data, so a new target's cover falls out of its own corpus
+    with no edit here. ``expected_instruction_coverage.instruction_classes`` would be the most faithful
+    axis of all and is deliberately NOT used: every capsule in this repo declares it empty, so selecting on
+    it would silently return a cover of one. That is recorded in ``basis`` so the caller can see which
+    axes actually carried the choice rather than assuming all of them did.
+
+    Greedy set cover, which is within a log factor of optimal and, more usefully, is explainable: each
+    chosen capsule is the one adding the most uncovered cells. ``uncovered`` is returned rather than
+    swallowed -- a cell no capsule can cover is a corpus gap the caller should surface, not hide.
+    """
+    labels = labels or {"public"}
+    rows = []
+    for root in ([corpus_roots] if isinstance(corpus_roots, (str, Path)) else corpus_roots):
+        for cy in sorted(Path(root).glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            if cap.get("label") not in labels:
+                continue
+            sem = cap.get("semantic") or {}
+            dts = sorted({str(t.get("dtype")) for t in (cap.get("inputs") or []) if t.get("dtype")})
+            if not dts:
+                continue
+            align = None
+            if tile_dim and tile_dim > 0:
+                extents = [int(x) for t in (cap.get("inputs") or [])
+                           for x in (t.get("shape") or []) if str(x).lstrip("-").isdigit()]
+                # "partial" if ANY extent leaves a remainder: one ragged axis is enough to exercise the
+                # tile-edge path, and that is what we are trying to certify.
+                align = "partial" if any(e % tile_dim for e in extents) else "aligned"
+            rows.append({"name": cap.get("name") or cy.parent.name,
+                         "family": sem.get("semantic_family"), "dtypes": dts, "align": align})
+
+    def _cells(r):
+        return {(r["family"], dt, r["align"]) for dt in r["dtypes"]}
+
+    cells = {c for r in rows for c in _cells(r)}
+    uncovered, chosen = set(cells), []
+    while uncovered:
+        best, gain = None, 0
+        for r in rows:
+            if r in chosen:
+                continue
+            g = len(_cells(r) & uncovered)
+            if g > gain:
+                best, gain = r, g
+        if best is None:                      # nothing left can cover what remains -> report it
+            break
+        chosen.append(best)
+        uncovered -= _cells(best)
+
+    n_class = sum(1 for r in rows if r.get("instruction_classes"))
+    return {
+        "capsules": sorted(r["name"] for r in chosen),
+        "cells": sorted("/".join(x for x in (f, dt, al) if x) for f, dt, al in cells),
+        "uncovered": sorted("/".join(x for x in (f, dt, al) if x) for f, dt, al in uncovered),
+        "basis": {"axes": ["semantic_family", "dtype"] + (["tile_alignment"] if tile_dim else []),
+                  "tile_dim": tile_dim, "n_candidates": len(rows),
+                  "n_cells": len(cells), "n_chosen": len(chosen),
+                  "instruction_classes_available": n_class,
+                  "note": ("instruction_classes is declared empty by every capsule in this corpus, so it "
+                           "could not be used as an axis" if not n_class else "")},
+    }
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -23,6 +23,13 @@
 # tight). Status: prototype, not RTL-certified (requires_human_review).
 target: radiance
 
+# This experiment target is served by the MUON core package (the SIMT core inside RadianceMuonConfig),
+# so its contracts/ — and therefore the rtl_facts / irdl bundle pins the CIRCT arm is granted — live
+# under merlin/targets/muon, NOT merlin/targets/radiance (which does not exist). Declared because it
+# cannot be inferred from the target name: inferring it produced a bundle that claimed to grant the
+# CIRCT arm its RTL-extracted facts while pointing at a path that can never exist.
+backend_package_dir: merlin/targets/muon
+
 rtl:
   via: mlc            # facts via muon_introspect (RadianceMuonConfig RTL); arc-matmul discovery is N/A (SIMT)
 
@@ -44,6 +51,25 @@ capsule_corpus: merlin/contract/capsules/radiance/isa
 # Radiance's RTL oracle is its bespoke cyclotron sim (the muon capsule path), NOT the arc MXU model.
 toolchain:
   sim_via: cyclotron
+
+# Scope of the PAID agentic loop: which whole-model capsules each round is scored on.
+#
+# A model capsule costs one cyclotron invocation per matmul layer, and that cost is the MODEL's size,
+# not the compiler's difficulty. Measured on this target: M0's 15 layers take ~45 min per arm, while the
+# four together are 297 layers (M0 15, M1 37, M3 90, M2 155) — ~15 h per arm per ROUND, which put a
+# 12-round A/B out of reach. The first A/B where both arms cleared the op gate spent its entire budget
+# grading M1 and never reached round 1.
+#
+# M0 is kept because it is the one that answers the question: "does a whole model run on the target
+# mesh", certified at L2 with mesh_ran/mesh_fell_back counters. The other three re-ask it at 6-20x the
+# price. They are still graded outside the loop (grade_agent_run against a frozen submission), where
+# paying once is fine; withholding them here is a statement about the LOOP's budget, not about the
+# corpus. The excluded names appear in the run manifest and the denominator moves with them.
+grading:
+  exclude_capsules:
+    - M1_lstmnetvit_fp32
+    - M2_tiny_llama_fp32
+    - M3_spectformer_fp32
 
 answer_surfaces:
   # Both of these are WORKING radiance compilers sitting in out/artifacts/targets/radiance/, which is
