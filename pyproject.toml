@@ -67,6 +67,9 @@ merlin-dse-guidance = "merlin.dse_guidance.cli:main"
 # What we understand of a target's assembly, which CCA facets it can populate, and what its
 # emitted code implies is worth trying. Repeatable because every number in it goes stale.
 merlin-asm-audit = "merlin.kernels.cli_asm:main"
+# The editable surface: every place this target can be changed, derived from the live
+# registries rather than written down once and left to drift.
+merlin-surface = "merlin.kernels.cli_surface:main"
 merlin-kernel-report = "merlin.mining.report:main"
 merlin-kernel-mine = "merlin.mining.mine:main"
 merlin-kernel-autotune = "merlin.mining.autotune:main"

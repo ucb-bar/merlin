@@ -85,7 +85,7 @@ Root names come from `merlin.common.paths` — `out_dir()` / `runs_dir()` / `art
   owns a subtree and uses ITS OWN axis — target for compiler/mining/experiments, workload for the
   three DSE tools, model for recaptures/measurements, framework for kernel-index, cross-cutting for
   ceiling/compare). Concerns: `dse-guidance/`, `dse/`, `design-pressure/`, `kernel-mining/<target>/`,
-  `kernel-index/<framework>/`, `ceiling/`, `compare/`,
+  `kernel-index/<framework>/`, `optimization-surface/<target>/`, `ceiling/`, `compare/`,
   `measurements/<substrate>/<model>/<exp>_v<ver>_<TS>_<sha>/` (substrate = `k1_spacemit` /
   `firesim_<bitstream>` / `baremetal_<verilator-design>` / `zephyr_<design>` / `spike_<config>`,
   via `new_measurement(...)`), `recaptures/`, `perf-bench/<target>/`, `capsule-bench/<target>/`,

@@ -30,6 +30,7 @@ These console-scripts are installed with the package (`uv sync --all-extras`, or
 | `merlin-rvv-mine` | `merlin.mining.mine:main` |
 | `merlin-rvv-opt` | `merlin.mining.op_sweep:main` |
 | `merlin-rvv-report` | `merlin.mining.report:main` |
+| `merlin-surface` | `merlin.kernels.cli_surface:main` |
 | `merlin-target-fetch` | `merlin.targetgen.oot_fetch:main` |
 | `merlin-target-publish` | `merlin.targetgen.publish:main` |
 | `merlin-targetgen` | `merlin.targetgen.cli:main` |
