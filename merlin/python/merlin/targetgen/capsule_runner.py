@@ -134,6 +134,25 @@ class OracleUnavailable(Exception):
 DID_NOT_HALT_PLANE = "program_did_not_halt"
 
 
+def _clip(msg: str, budget: int) -> str:
+    """Clip a long exception to ``budget`` chars KEEPING BOTH ENDS -- the head names the failure, the tail
+    usually carries the operand/shape specifics.
+
+    A bare ``msg[-budget:]`` throws the head away, and the head is where the diagnosis lives. Measured:
+    the muon operand-binding error is one long sentence whose useful half is first ("could not derive
+    harness operands: <which of three cases>") and whose second half is fixed advisory prose. Tail-only
+    clipping rendered five radiance capsules as `cyclotron crash: es (outputs: ['Y0'])` -- the real cause
+    truncated to the last two letters of "shapes" -- and they read as unexplained infra failures across
+    many runs while the message that would have named them was being discarded every time.
+    """
+    msg = str(msg)
+    if len(msg) <= budget:
+        return msg
+    head = budget * 2 // 3                                   # bias to the head: that is the diagnosis
+    tail = budget - head - 5
+    return f"{msg[:head]} […] {msg[-tail:]}" if tail > 0 else msg[:budget]
+
+
 def _did_not_halt_reason(msg: str) -> str:
     """The tier ``reason`` for a program that ran to the cap without halting."""
     return f"did not halt (ran to the cycle cap): {msg[-240:]}"
@@ -1865,8 +1884,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 tiers[tier] = TierResult(
                     tier, "fail", mand,
                     reason=(_did_not_halt_reason(_msg) if _did_not_halt
-                            else f"kernel faulted at runtime: {_msg[-260:]}" if _trapped
-                            else f"{_sim} crash: {_msg[-300:]}"),
+                            else f"kernel faulted at runtime: {_clip(_msg, 260)}" if _trapped
+                            else f"{_sim} crash: {_clip(_msg, 300)}"),
                     derived_from_rtl=tier in cfg.rtl_tiers)
                 if mand:
                     if _did_not_halt:
@@ -1878,9 +1897,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                           "memory access — before producing output). Check that every "
                                           "memory-movement instruction uses a valid, in-range DRAM address "
                                           "(derive it from the passed pointer args / the declared DRAM "
-                                          f"layout, never a baked 0 or a guessed address): {_msg[-300:]}") from e
+                                          f"layout, never a baked 0 or a guessed address): {_clip(_msg, 300)}") from e
                     raise CertFailure(_sim, _cat("TOOL_CRASH"),
-                                      f"{_sim} invocation failed: {_msg[-400:]}") from e
+                                      f"{_sim} invocation failed: {_clip(_msg, 400)}") from e
                 continue
             _adapter_wall = _time.perf_counter() - _adapter_t0
             # Split active (build + sim) vs waiting (queue/FPGA slot). Adapters that route through a
