@@ -27,6 +27,13 @@ class SearchStep:
     intended_facet: dict = field(default_factory=dict)
     achieved: bool = False               # did the emitted asm achieve the intended facet? (the audit)
     residual: list[str] = field(default_factory=list)   # promised-but-not-achieved axes (-> escalate)
+    #: Whether there was a promise to check at all. An action with no ``intended_facet`` produces an
+    #: EMPTY residual, so ``not residual`` used to report it as achieved — a step that verified
+    #: nothing was recorded, and printed, as a closed one. That is a check that cannot fail, sitting
+    #: on the one gate that needs no hardware: the whole point of the emitted-code audit is to
+    #: confirm an action landed WITHOUT running it, so a vacuous pass here is the most expensive kind
+    #: of wrong. Unverifiable is now distinct from verified-good.
+    promise_checkable: bool = True
     correctness_ok: bool = False         # the cos/rel numerics gate passed (real, not fake)
     speedup: float | None = None         # measured speedup vs the unoptimized baseline (None if not real)
     rationale: str = ""
@@ -35,7 +42,10 @@ class SearchStep:
         return asdict(self)
 
     def to_line(self) -> str:
-        got = "closed" if self.achieved else f"OPEN (residual {self.residual})"
+        if not self.promise_checkable:
+            got = "UNVERIFIED (the action makes no machine-checkable promise)"
+        else:
+            got = "closed" if self.achieved else f"OPEN (residual {self.residual})"
         real = (f"{self.speedup:.2f}x" if self.speedup is not None
                 else ("no-speedup" if self.correctness_ok else "FAILED-numerics"))
         return (f"[{self.category or '?'}] {self.axis} via {self.action_class} {self.target_seam} "
@@ -51,13 +61,17 @@ def make_step(action, achieved_cca, *, correctness_ok: bool, speedup: float | No
     from .categories import category_for_axis
 
     residual = achieved_residual(action, achieved_cca)
+    checkable = bool(action.intended_facet)
     return SearchStep(
         axis=action.divergence_axis,
         category=category_for_axis(action.divergence_axis),
         action_class=action.action_class,
         target_seam=action.target_seam,
         intended_facet=dict(action.intended_facet or {}),
-        achieved=not residual,
+        promise_checkable=checkable,
+        # An unverifiable action is not an achieved one. It has no residual to escalate toward
+        # either -- the gap is a missing promise in the catalog, not a weak lever in the compiler.
+        achieved=checkable and not residual,
         residual=residual,
         correctness_ok=correctness_ok,
         speedup=speedup if correctness_ok else None,   # fail-closed: no speedup credit without correctness

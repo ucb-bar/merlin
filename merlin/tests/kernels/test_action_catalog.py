@@ -202,3 +202,103 @@ def test_escalation_ladder_walks_up_classes():
     assert esc is not None and esc.action_class == "CODEGEN"
     # CODEGEN is the top of the ladder -> nothing stronger
     assert ac.route_escalated(d, prior_class="CODEGEN") is None
+
+
+class TestPromisesAreDerivedFromTheExpert:
+    """A route that exists to close an axis toward the expert is promising the expert's value on that
+    axis. Deriving that promise is what lets the emitted-code audit confirm the action landed WITHOUT
+    running anything -- which is the only gate on the ladder that costs a build instead of hardware.
+    """
+
+    def _div(self, axis, expert, ours=None):
+        from merlin.kernels.cca_compare import Divergence
+        return Divergence(axis=axis, expert=expert, ours=ours, backend="rvv", evidence=[])
+
+    def test_a_match_the_expert_axis_gets_a_promise_without_being_named(self):
+        """The derivation used to name two axes as literals, leaving every other one unverifiable."""
+        from merlin.kernels.action_catalog import route
+        a = route(self._div("vector.sew", 8))
+        assert a is not None and a.intended_facet == {"vector.sew": 8}
+
+    def test_an_absent_expert_value_yields_NO_promise(self):
+        """'The expert does not exhibit this property' names no target to reach, so there is nothing
+        to promise. Fail closed rather than promising None, which anything would satisfy."""
+        from merlin.kernels.action_catalog import _promised_value
+        assert _promised_value(None) is None
+
+    def test_a_tuple_promise_collapses_to_what_the_audit_actually_compares(self):
+        """_facet_value reads register_block as its MR, so promising the whole tuple would compare a
+        tuple against an int and never match."""
+        from merlin.kernels.action_catalog import _promised_value
+        assert _promised_value((7, 4)) == 7
+
+    def test_direction_is_declared_not_inferred_from_the_value_type(self):
+        """A bigger register block is better; a bigger vector.sew is worse (wider elements, fewer
+        lanes). Both are ints, so type cannot decide the comparison."""
+        from merlin.kernels.action_catalog import _RVV_ROUTES
+        by_axis = {r.axis: r for r in _RVV_ROUTES}
+        assert by_axis["compute.register_block"].promise_comparison == "at_least"
+        assert all(r.promise_comparison == "exact"
+                   for r in _RVV_ROUTES if r.axis == "vector.sew")
+
+    def test_at_least_credits_exceeding_the_expert(self):
+        from merlin.kernels.action_catalog import CompilerAction, achieved_residual
+        from merlin.kernels.cca import CCA, ComputeFacet
+        act = CompilerAction(divergence_axis="compute.register_block", action_class="PASS",
+                             target_seam="s", change="c", forkable_now=True, expected_effect="e",
+                             backend="rvv", intended_facet={"compute.register_block": 4},
+                             promise_comparison="at_least")
+        cca = CCA(op="matmul", backend="rvv", compute=ComputeFacet(register_block=(8, 4)))
+        assert achieved_residual(act, cca) == []          # 8 >= 4 keeps the promise
+
+    def test_at_least_still_reports_falling_short(self):
+        from merlin.kernels.action_catalog import CompilerAction, achieved_residual
+        from merlin.kernels.cca import CCA, ComputeFacet
+        act = CompilerAction(divergence_axis="compute.register_block", action_class="PASS",
+                             target_seam="s", change="c", forkable_now=True, expected_effect="e",
+                             backend="rvv", intended_facet={"compute.register_block": 8},
+                             promise_comparison="at_least")
+        cca = CCA(op="matmul", backend="rvv", compute=ComputeFacet(register_block=(4, 4)))
+        assert achieved_residual(act, cca) == ["compute.register_block"]
+
+    def test_exact_does_not_credit_merely_exceeding(self):
+        """Default semantics must stay exact -- a wider SEW than the expert is worse, not better."""
+        from merlin.kernels.action_catalog import CompilerAction, achieved_residual
+        from merlin.kernels.cca import CCA, VectorFacet
+        act = CompilerAction(divergence_axis="vector.sew", action_class="KNOB", target_seam="s",
+                             change="c", forkable_now=True, expected_effect="e", backend="rvv",
+                             intended_facet={"vector.sew": 8})
+        cca = CCA(op="matmul", backend="rvv", vector=VectorFacet(sew=32))
+        assert achieved_residual(act, cca) == ["vector.sew"]
+
+
+class TestAnUnverifiableActionIsNotAnAchievedOne:
+    """The emitted-code audit is the one gate that needs no hardware. A vacuous pass there is the most
+    expensive kind of wrong: it certifies, for free, something nothing checked."""
+
+    def _action(self, facet):
+        from merlin.kernels.action_catalog import CompilerAction
+        return CompilerAction(divergence_axis="compute.widening", action_class="KNOB",
+                              target_seam="schedule:x", change="c", forkable_now=True,
+                              expected_effect="e", backend="rvv", intended_facet=facet)
+
+    def test_no_promise_is_not_reported_as_closed(self):
+        from merlin.kernels.search_step import make_step
+        step = make_step(self._action(None), None, correctness_ok=True, speedup=1.2)
+        assert step.achieved is False and step.promise_checkable is False
+        assert "UNVERIFIED" in step.to_line()
+
+    def test_an_unverifiable_step_has_nothing_to_escalate_toward(self):
+        """The gap is a missing promise in the catalog, not a weak lever in the compiler, so it must
+        not be pushed up the FLAG->KNOB->...->CODEGEN ladder."""
+        from merlin.kernels.search_step import make_step
+        assert make_step(self._action(None), None, correctness_ok=True, speedup=None).residual == []
+
+    def test_a_kept_promise_still_reads_as_closed(self):
+        from merlin.kernels.search_step import make_step
+        from merlin.kernels.cca import CCA, ComputeFacet
+        cca = CCA(op="matmul", backend="rvv", compute=ComputeFacet(widening=True))
+        step = make_step(self._action({"compute.widening": True}), cca,
+                         correctness_ok=True, speedup=1.2)
+        assert step.achieved is True and step.promise_checkable is True
+        assert "closed" in step.to_line()

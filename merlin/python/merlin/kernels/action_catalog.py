@@ -62,6 +62,18 @@ class CompilerAction:
     # Prior belief this action helps, from measured outcomes (see kernels.space.corpus_prior and the
     # transform ledger: 1509 attempts, 13.45% improved). None = no prior, which is NOT 0.5.
     evidence_prior: float | None = None
+    #: Whether the empty ``shape_regimes`` above is a CLAIM or merely silence. An empty tuple makes
+    #: the action apply to every regime, so an undeclared action asserts universality nobody
+    #: established -- and a policy applied to a shape regime it was never validated on is precisely
+    #: the guess that a one-shot compile cannot afford to make silently. True = deliberately
+    #: shape-agnostic; False with empty regimes = UNSPECIFIED, reported by :func:`unvalidated_scope`.
+    shape_agnostic: bool = False
+    #: How the emitted value is compared against the promise: "exact" (default) or "at_least".
+    #: Direction is a property of the AXIS'S MEANING and cannot be inferred from the value's type — a
+    #: bigger register block is better, while a bigger vector.sew is worse (wider elements, fewer
+    #: lanes). It was previously a name test on the axis string, which silently gave every other
+    #: numeric axis exact-match semantics whether or not that was right.
+    promise_comparison: str = "exact"
 
 
 # A route: predicate over a Divergence -> a CompilerAction template (filled with evidence/backend).
@@ -84,6 +96,8 @@ class _Route:
     parameter_domain: Any | None = None
     action_family: str = ""
     evidence_prior: float | None = None
+    promise_comparison: str = "exact"
+    shape_agnostic: bool = False
 
 
 def _is_higher(d: Divergence) -> bool:
@@ -255,6 +269,8 @@ _RVV_ROUTES: list[_Route] = [
         shape_regimes=("vector", "square_small", "skinny")),   # small-/skinny-M decode matmuls
     _Route(
         axis="compute.register_block",
+        # MR is a magnitude: reaching MORE blocking than the expert keeps the promise.
+        promise_comparison="at_least",
         # The #1 GEMM data-movement decision and the one the policy-built expert CCA used to hide
         # (register_block=null). The experts ship register blocking up to MR=7 (XNNPACK 7x4v) / MR=16
         # (OpenBLAS 16x8) and SELECT the high MR; our baseline is unblocked (MR=1, one accumulator,
@@ -568,19 +584,42 @@ REBUILD_SCOPES: tuple[str, ...] = (
     "none", "schedule", "target-package", "compiler", "runtime", "full")
 
 
+def _promised_value(expert_value):
+    """The value an action promises the emitted code will reach, from the EXPERT's value on that axis.
+
+    None means no checkable promise, which is the fail-closed answer for an expert value that is
+    absent or of a shape the audit cannot compare. A tuple collapses to its leading element, matching
+    :func:`_facet_value`'s register-block treatment -- the audit compares MR, so the promise must be
+    the MR too, not the whole tuple.
+    """
+    if expert_value is None or isinstance(expert_value, bool):
+        return expert_value if isinstance(expert_value, bool) else None
+    if isinstance(expert_value, (int, float, str)):
+        return expert_value
+    if isinstance(expert_value, (tuple, list)):
+        if expert_value and isinstance(expert_value[0], int):
+            return expert_value[0]
+        return tuple(expert_value)
+    return None
+
+
 def _action_from_route(r: _Route, divergence: Divergence) -> CompilerAction:
-    # The promise is the route's static intended_facet, EXCEPT numeric "match-the-expert" axes whose
-    # target is the expert's own value (register_block MR, lmul) — derive those from the divergence so
-    # the achieved check is "did we reach what THIS expert does", not a hardcoded constant.
+    # The promise is the route's static intended_facet, EXCEPT "match-the-expert" axes whose target is
+    # the expert's OWN value — derive those from the divergence so the achieved check is "did we reach
+    # what THIS expert does", not a hardcoded constant.
+    #
+    # This derivation used to name two axes (compute.register_block, vector.lmul) as literals, which
+    # left every other match-the-expert axis with NO machine-checkable promise: applying such an action
+    # was unverifiable from the emitted code, so confirming it needed an execution. That is the
+    # expensive direction. A route that exists to close an axis toward the expert is, by definition,
+    # promising the expert's value on that axis, so derive it for any axis whose expert value is
+    # present and checkable -- and fail closed (no promise) when it is absent, since "the expert does
+    # not exhibit this property" names no target to reach.
     intended = dict(r.intended_facet) if r.intended_facet else None
     if intended is None:
-        if divergence.axis == "compute.register_block":
-            ev = divergence.expert
-            mr = ev[0] if isinstance(ev, (tuple, list)) and ev and isinstance(ev[0], int) else None
-            if isinstance(mr, int):
-                intended = {"compute.register_block": mr}
-        elif divergence.axis == "vector.lmul" and isinstance(divergence.expert, (int, float)):
-            intended = {"vector.lmul": float(divergence.expert)}
+        target = _promised_value(divergence.expert)
+        if target is not None:
+            intended = {divergence.axis: target}
     return CompilerAction(
         divergence_axis=divergence.axis, action_class=r.action_class,
         target_seam=r.target_seam, change=r.change, forkable_now=r.forkable_now,
@@ -590,7 +629,8 @@ def _action_from_route(r: _Route, divergence: Divergence) -> CompilerAction:
         preconditions=r.preconditions, requires=r.requires,
         conflicts=r.conflicts, rebuild_scope=r.rebuild_scope,
         parameter_domain=r.parameter_domain, action_family=r.action_family,
-        evidence_prior=r.evidence_prior)
+        evidence_prior=r.evidence_prior, promise_comparison=r.promise_comparison,
+        shape_agnostic=r.shape_agnostic)
 
 
 def route(divergence: Divergence) -> CompilerAction | None:
@@ -646,11 +686,14 @@ def achieved_residual(action: CompilerAction, achieved_cca) -> list[str]:
     if not action.intended_facet:
         return []
     residual: list[str] = []
+    at_least = action.promise_comparison == "at_least"
     for axis, want in action.intended_facet.items():
         got = _facet_value(achieved_cca, axis)
-        if axis.endswith("register_block"):           # MR: achieved must be >= promised
-            ok = isinstance(got, int) and isinstance(want, int) and got >= want
-        else:                                          # everything else: exact match
+        if at_least:
+            ok = (isinstance(got, (int, float)) and not isinstance(got, bool)
+                  and isinstance(want, (int, float)) and not isinstance(want, bool)
+                  and got >= want)
+        else:
             ok = got == want
         if not ok:
             residual.append(axis)
@@ -669,6 +712,27 @@ def applies_to_shape(action: CompilerAction, regime: str) -> bool:
     (empty ``shape_regimes``) apply everywhere; shape-specific ones only to their regimes — so a big
     matmul and a small-M decode matmul get DIFFERENT optimizations."""
     return not action.shape_regimes or regime in action.shape_regimes
+
+
+def shape_scope(action: CompilerAction) -> str:
+    """``regimes`` | ``agnostic`` | ``unspecified`` -- how far this action's applicability was
+    established. ``unspecified`` still APPLIES everywhere (the behaviour is unchanged); it just stops
+    that permissiveness from reading as a validated claim."""
+    if action.shape_regimes:
+        return "regimes"
+    return "agnostic" if action.shape_agnostic else "unspecified"
+
+
+def unvalidated_scope(actions, regime: str) -> tuple[CompilerAction, ...]:
+    """Of ``actions`` that would fire on ``regime``, the ones whose scope was never established.
+
+    This is the hardware-budget question for a one-shot compile: applying a policy to a shape regime
+    nobody validated it on is a guess, and this names exactly which guesses are being made. Where the
+    set is empty the emission rests on validated scope; where it is not, that is where a measurement
+    would buy the most.
+    """
+    return tuple(a for a in actions
+                 if applies_to_shape(a, regime) and shape_scope(a) == "unspecified")
 
 
 def route_for_shape(divergence: Divergence, op: str, m: int, n: int, k: int) -> CompilerAction | None:
