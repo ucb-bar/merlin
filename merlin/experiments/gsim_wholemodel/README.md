@@ -65,3 +65,30 @@ So the remaining gap is the HOST-INTERACTION boundary, not the memory boundary �
 opposite of what the earlier notes claimed. The tractable next step is a coherent path from the
 harness into the memory system (what TSI provided before it was pruned), after which both the HTIF
 handshake and the result readback become straightforward.
+
+## The TSI route: right architecture, one signal short
+
+The DRAM backdoor cannot answer HTIF (the handshake never leaves L1) and cannot read results back
+(the final writes are still dirty). Both are host-side problems, and fesvr's `tsi_t` is the component
+that already solves them: it loads THROUGH the SoC coherently and acts as the HTIF host. Only the
+host-side driver was pruned — the DUT's `serial_tl_0` port is present and fully wired, and fesvr
+ships the driver pre-built (`libfesvr.a`, `testchip_tsi.cc`, `testchip_htif.cc`).
+
+`tsi_run_harness.cpp` implements it, mirroring testchipip's SimTSI tick order exactly rather than
+re-deriving it (a serial handshake off by a cycle still simulates and silently moves the wrong phits).
+
+Where it gets to, and the one thing left:
+
+* with the STOCK bootrom the core reaches `0x10034` — the wfi-spin waiting for a TSI IPI, which is
+  the correct state to be in. (A baked jump-to-DRAM ROM is WRONG for this path: it jumps before TSI
+  has finished loading, and the core arrives at zeros.)
+* the host side works. Measured over 500k cycles: `host_has_phit=499999`.
+* the DUT never accepts one: `accepted_by_dut=0 dut_sent=0 dut_ready=0`. `serial_tl_0$$in$$ready` is
+  low for the entire run.
+
+So the remaining blocker is a single signal — the serial-TL receiver never asserting ready — and the
+suspects are its clocking or reset. Driving `serial_tl_0$$clock_in` (toggled, and through reset as
+well as after it) does not change it, so the phit interface's clock-domain handling under GSIM is
+where to look next. The link counters in the harness are the instrument: they separate "the host is
+not sending" from "the DUT is not listening", which is the distinction that took the longest to
+establish and should not have to be re-established.
