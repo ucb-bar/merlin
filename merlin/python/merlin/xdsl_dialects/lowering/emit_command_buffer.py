@@ -33,8 +33,18 @@ def _parse_shape(spec: str) -> tuple[list[int], str]:
     return [int(d) for d in shape_s.split("x")], dtype
 
 
-def emit_command_buffer(module) -> dict[str, Any]:
-    """Walk the runtime module and emit the executable command-buffer dict."""
+def emit_command_buffers(module) -> list[dict[str, Any]]:
+    """One executable command buffer per ``command_buffer.create`` in the module.
+
+    A configuration with two accelerators is a normal one, and the IR has always been able to say so:
+    ``create`` takes its device as an OPERAND and ``append`` takes its buffer as one, so which device
+    runs which commands is already written down. The single-buffer cap was an artificial one.
+
+    Lifting it is a correctness fix independently of multi-device work. The previous code collected
+    EVERY append in the module regardless of which buffer it was appended to, so a second buffer would
+    not merely have been rejected -- had the cap ever been relaxed without this, both buffers would
+    have been emitted carrying all of both their commands.
+    """
     if not HAS_XDSL:
         raise LoweringError("xDSL is required to emit a command buffer")
     from .. import runtime as r
@@ -44,18 +54,41 @@ def emit_command_buffer(module) -> dict[str, Any]:
     if problems:
         raise LoweringError("; ".join(problems))
 
-    devices = [op for op in module.walk() if isinstance(op, r.DeviceGetOp)]
     creates = [op for op in module.walk() if isinstance(op, r.CommandBufferCreateOp)]
-    if len(devices) != 1 or len(creates) != 1:
-        raise LoweringError("expected exactly one device.get and one "
-                            "command_buffer.create")
-    dev, create = devices[0], creates[0]
+    if not creates:
+        raise LoweringError("no runtime.command_buffer.create in the module")
+    return [_emit_one(module, create) for create in creates]
+
+
+def emit_command_buffer(module) -> dict[str, Any]:
+    """The single command buffer this module describes.
+
+    Kept for callers that are single-device by nature (an oracle grading one capsule). A module
+    describing several devices is a real thing, not an error, so it is directed to
+    :func:`emit_command_buffers` rather than rejected as malformed.
+    """
+    buffers = emit_command_buffers(module)
+    if len(buffers) != 1:
+        raise LoweringError(f"this module describes {len(buffers)} command buffers; "
+                            f"use emit_command_buffers() to get them all")
+    return buffers[0]
+
+
+def _emit_one(module, create) -> dict[str, Any]:
+    """One buffer, carrying only the commands appended to IT and its own device."""
+    from .. import runtime as r
+
+    dev = create.dev.owner if isinstance(create.dev.owner, r.DeviceGetOp) else None
+    if dev is None:
+        raise LoweringError("runtime.command_buffer.create's device operand is not a device.get")
 
     commands: list[dict[str, Any]] = []
     bias_names: set[str] = set()
     for op in module.walk():
         if not isinstance(op, r.CommandBufferAppendOp):
             continue
+        if op.cb.owner is not create:
+            continue                      # belongs to another buffer; see the docstring above
         cmd: dict[str, Any] = {"opcode": op.opcode.data,
                                "operands": _attr_to_py(op.args)}
         attrs = _attr_to_py(op.attrs) if op.attrs is not None else {}
