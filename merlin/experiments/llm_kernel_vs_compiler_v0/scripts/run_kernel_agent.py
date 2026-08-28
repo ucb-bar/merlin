@@ -235,8 +235,69 @@ def _find_misrouted_kernel(transcript: Path | None, *, expected: Path) -> Path |
     return best
 
 
+def _runtime_binds(driver: str, run_dir: Path) -> list[str]:
+    """bwrap binds that make one agent CLI runnable and authenticated INSIDE the box.
+
+    Per driver, because each keeps its launcher and credentials somewhere different. Everything not
+    named here stays hidden: `base_argv` tmpfs-masks /scratch and /scratch2 wholesale, which is what
+    puts the other arms' run directories out of reach.
+    """
+    home = Path(os.path.expanduser("~"))
+    binds: list[str] = []
+
+    def ro(*ps):
+        for q in ps:
+            if Path(q).exists():
+                binds.extend(["--ro-bind", str(q), str(q)])
+
+    # Node lives under nvm for both CLIs; the launcher on PATH is a symlink into it.
+    ro(home / ".nvm", home / ".local/bin", home / ".local/share/pnpm", "/opt/node")
+
+    if driver == "codex":
+        # Per-run CODEX_HOME, constructed identically for every arm: a warm home changes the
+        # cached-token profile, so a shared one would make cache-hit rate differ between arms for a
+        # reason that has nothing to do with the treatment.
+        ch = run_dir / "codex_home"
+        ch.mkdir(parents=True, exist_ok=True)
+        ro(home / ".codex/packages")
+        binds += ["--bind", str(ch), str(ch)]
+        auth = home / ".codex/auth.json"
+        if auth.exists():
+            # Writable: OAuth refresh tokens are single-use and rotate. A read-only bind spends the
+            # old token server-side with nowhere to write the new one, and every later run dies
+            # 401 refresh_token_reused -- in seconds, which reads as a weak agent, not a dead
+            # credential. Consented; the target is the user's own file, so no secret is copied.
+            binds += ["--bind", str(auth), str(ch / "auth.json")]
+        binds += ["--setenv", "CODEX_HOME", str(ch)]
+    elif driver == "opencode":
+        ro(home / ".config/opencode")
+        share = run_dir / "opencode_share"
+        share.mkdir(parents=True, exist_ok=True)
+        binds += ["--bind", str(share), str(home / ".local/share/opencode")]
+    return binds
+
+
+def _sandbox_argv(driver: str, ws: Path, run_dir: Path, repo: Path) -> list[str] | None:
+    """The bwrap prefix that isolates ONE agent, or None if bwrap is unavailable.
+
+    THE INVARIANT THIS ENFORCES. The plan makes mutual blindness a hard requirement: no arm may see
+    another's results, submissions or transcripts. Run without it, and an agent CLI that roots itself
+    at the enclosing checkout can read the whole tree -- which is exactly what happened. One arm read
+    another's `best_kernel.llvm.mlir` and `summary.json`, and one read the study's own STATUS.md.
+
+    The bundle is EMPTY on purpose. The agent needs nothing but its workspace: the task card already
+    carries the interface and the ABI, and the capsule directory holds the golden. So everything is
+    denied and only the workspace is writable -- the strongest form of the guarantee, and the one that
+    does not have to be re-audited each time a path is added elsewhere.
+    """
+    if shutil.which("bwrap") is None:
+        return None
+    from merlin.targetgen.sandbox import bwrap
+    return bwrap.base_argv(ws, {}, repo=repo) + _runtime_binds(driver, run_dir)
+
+
 def _run_agent(cfg: dict, ws: Path, run_dir: Path, rnd: int, prompt: str,
-               timeout: int) -> tuple[int, Path | None]:
+               timeout: int, sandbox: list[str] | None = None) -> tuple[int, Path | None]:
     """Invoke the agent CLI for this method, with OUR prompt. Returns (rc, raw-output path).
 
     The full stdout is kept per round regardless of outcome -- a failed round is part of the cost
@@ -268,6 +329,8 @@ def _run_agent(cfg: dict, ws: Path, run_dir: Path, rnd: int, prompt: str,
     else:
         raise SystemExit(f"no CLI wiring for driver {driver!r}")
 
+    if sandbox:
+        argv = sandbox + argv
     try:
         r = subprocess.run(argv, input=stdin, capture_output=True, text=True,
                            timeout=timeout, cwd=str(ws), env=env)
@@ -295,7 +358,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--eval-timeout", type=int, default=900)
     ap.add_argument("--runs-root", type=Path,
                     default=Path("/scratch/agustin/tmp/kvc-runs"))
-    ap.add_argument("--sandbox", default="none")
+    ap.add_argument("--sandbox", default="bwrap", choices=("bwrap", "none"),
+                    help="bwrap (default) isolates the agent so it cannot read other arms' runs")
     ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args(argv)
 
@@ -337,6 +401,13 @@ def main(argv: list[str] | None = None) -> int:
     # Making the workspace its own repository puts the detected root back inside it.
     if not (ws / ".git").exists():
         subprocess.run(["git", "init", "-q"], cwd=str(ws), capture_output=True)
+
+    sandbox_argv = _sandbox_argv(cfg["driver"], ws, run_dir, repo) if a.sandbox != "none" else None
+    if a.sandbox != "none" and sandbox_argv is None:
+        raise SystemExit("bwrap not found: refusing to run unsandboxed, because an unsandboxed arm "
+                         "can read the other arms' results. Pass --sandbox none to override.")
+    if sandbox_argv is None:
+        print("  !! UNSANDBOXED: this run can read other arms' results and is not blind.", flush=True)
 
     kernel = ws / KERNEL_REL
     history: list[dict] = []
@@ -382,7 +453,8 @@ def main(argv: list[str] | None = None) -> int:
                      + prev.read_text()[:4000] + "\n```\n")
         (ws / "TASK.md").write_text(card)
         t0 = time.time()
-        rc, transcript = _run_agent(cfg, ws, run_dir, rnd, card, a.round_timeout)
+        rc, transcript = _run_agent(cfg, ws, run_dir, rnd, card, a.round_timeout,
+                                    sandbox=sandbox_argv)
         agent_s = time.time() - t0
 
         misroute = None
@@ -484,6 +556,7 @@ def main(argv: list[str] | None = None) -> int:
         "optimization_rounds": sum(1 for r in history if r["stage"] == "optimization"),
         "solved": any(r["correct"] for r in history),
         "solved_at_round": solved_round,
+        "sandbox": a.sandbox if sandbox_argv else "NONE (not blind)",
         "started_from": ("supplied seed kernel (optimization only)" if a.seed_kernel
                          else "the specification (generation then optimization)"),
         "best_cycles": (best or {}).get("cycles"),
