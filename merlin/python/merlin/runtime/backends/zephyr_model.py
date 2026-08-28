@@ -467,7 +467,8 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                          features: "frozenset[str] | None" = None,
                          blocking: bool = True, harts: int = 1,
                          vlen: int | None = None,
-                         matrix: "MatrixRouting | None" = None) -> tuple[Path, frozenset[str]]:
+                         matrix: "MatrixRouting | None" = None,
+                         device: "Any | None" = None) -> tuple[Path, frozenset[str]]:
     """``(prepared_mlir, concrete_features)`` — everything that must happen to a captured module
     before ``lower_model_file``, shared by every whole-model backend.
 
@@ -523,6 +524,19 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                   f"m={worst.m} n={worst.n} k={worst.k} ({worst.fqn or 'unnamed'}). "
                   f"This build supplied select= explicitly; the sidecar records it under "
                   f"`routing_rule`.")
+
+    # DEVICE OFFLOAD, for the same reason and in the same place as the matrix routing above: a
+    # contraction that has become a call is no longer on the vector path, so the register-block table
+    # below must be derived from the IR that REMAINS. Inert unless a routing was supplied, and inert
+    # again unless that routing carries a selector -- the placement decision is made elsewhere
+    # (merlin.system.place) and passed in, never taken here.
+    if device is not None and getattr(device, "select", None) is not None:
+        from ...llvmlower.device_offload import rewrite_prepared_file as _dev_rewrite
+        moved = _dev_rewrite(prepared, work, device.device, select=device.select)
+        print(f"[device] routed {moved.moved} contraction(s) to {device.device} across "
+              f"{len(moved.signatures)} signature(s)"
+              + (f"; declined: {[why for _s, why in moved.skipped]}" if moved.skipped else ""))
+
     if not blocking:
         return prepared, features
     from ...llvmlower import perop_blocks as _pb

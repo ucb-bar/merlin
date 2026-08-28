@@ -21,11 +21,32 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 from pathlib import Path
 
-__all__ = ["DeviceBuild", "build_device_objects", "kernel_symbol"]
+__all__ = ["DeviceBuild", "DeviceRouting", "build_device_objects", "kernel_symbol"]
+
+
+@dataclass(frozen=True)
+class DeviceRouting:
+    """Everything a whole-model build needs to offload onto one device.
+
+    The mirror of the matrix-unit path's routing descriptor, and required for the same reason: a build
+    that enabled offload without saying WHICH device and WHICH backend package would have to guess
+    both, and a guessed package emits kernels for the wrong hardware that link and run.
+
+    ``select`` is the placement decision, passed in rather than made here -- see
+    :mod:`merlin.system.place`. ``None`` moves nothing, so the whole path is inert unless a decision
+    has been made.
+    """
+
+    device: str
+    package_dir: str | Path
+    operand_dtype: str
+    accum_dtype: str
+    select: "Callable[[Any], bool] | None" = None
 
 
 @dataclass(frozen=True)
