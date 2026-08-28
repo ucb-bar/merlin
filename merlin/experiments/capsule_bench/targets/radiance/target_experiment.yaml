@@ -65,8 +65,21 @@ toolchain:
 # price. They are still graded outside the loop (grade_agent_run against a frozen submission), where
 # paying once is fine; withholding them here is a statement about the LOOP's budget, not about the
 # corpus. The excluded names appear in the run manifest and the denominator moves with them.
+# 2026-08-28: M0 joins them FOR A LADDER RUN, on the same "LOOP's budget" grounds stated above and now
+# measured rather than estimated. The note says "M0's 15 layers take ~45 min per arm"; on a 4-arm ladder
+# an arm sat on M0 for over 3 HOURS -- 4x that -- with its own grade dir still empty, because the
+# whole-model path drives ONE warp of the target's 2 cores x 8 warps (measured: 0.286 IPC on c0t0 while
+# c0t1/c1t0/c1t1 retire 37 instructions and park) and because its per-layer mesh sims land in /tmp, on a
+# root filesystem at 97%, rather than in the TMPDIR the launcher exports (the sandbox does not propagate
+# it). Four arms x that cost does not fit any budget, and the ladder's question is the OP corpus: what
+# does each nested bundle add? M0 answers a different question and answers it identically for every arm.
+#
+# This does NOT retire the whole-model capstone. M0 has passed in-loop (v14, v17) and its 80% gate is
+# demonstrated in BOTH directions (v20 gated it out at 54%; v21 earned it), so the capability is evidenced.
+# It goes back in the loop once warp utilization makes it affordable -- that is the fix, not a smaller model.
 grading:
   exclude_capsules:
+    - M0_small_llama_fp32
     - M1_lstmnetvit_fp32
     - M2_tiny_llama_fp32
     - M3_spectformer_fp32
