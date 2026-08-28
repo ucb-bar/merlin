@@ -403,6 +403,15 @@ def main(argv: list[str] | None = None) -> int:
             kernel.parent.mkdir(parents=True, exist_ok=True)
             kernel.write_text(Path(misroute).read_text())
         if kernel.is_file():
+            # Archive the candidate BEFORE grading. The workspace file is overwritten every round --
+            # by the next candidate, or by the best-kernel restore below -- so without this copy a
+            # rejected candidate exists nowhere afterwards. The plan requires every intermediate
+            # preserved, and unlike tokens or cycles a lost candidate cannot be recovered from any
+            # other record: re-deriving it would mean paying the model again.
+            cand = run_dir / "candidates" / f"round_{rnd:02d}.llvm.mlir"
+            cand.parent.mkdir(parents=True, exist_ok=True)
+            cand.write_text(kernel.read_text())
+            rec["candidate"] = str(cand)
             t1 = time.time()
             res = _evaluate(kernel, capsule_dir, shim_pkg=shim_pkg, runs_root=a.runs_root,
                             task_id=capsule_dir.name, config_id="C0", target=a.target,
