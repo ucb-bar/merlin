@@ -51,5 +51,5 @@ hand_authored:
 - layers/B3_conv2d_im2col_i8
 - layers/B4_conv2d_relu_i8
 held_out:
-  n_generated: 6
-  n_hand_authored: 5
+  n_generated: 0
+  n_hand_authored: 0

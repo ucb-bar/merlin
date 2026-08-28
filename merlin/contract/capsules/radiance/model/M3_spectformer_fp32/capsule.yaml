@@ -46,10 +46,10 @@ pytorch_ref:
   loader: capsule.pytorch.py
 linalg_mlir: capsule.interface.mlir
 semantic:
+  semantic_family: contraction
   generalization_axis: model
   must_accelerate: false
   eligible: auto
-  semantic_family: contraction
   not_asserted_reason: the accelerator demand could not be derived from this model's
     linalg against this target's declared capabilities and role census, so must_accelerate
     is withheld rather than asserted ungrounded
