@@ -55,8 +55,15 @@ def _load_method(name: str) -> dict:
     return yaml.safe_load(p.read_text()) or {}
 
 
-def _task_card(capsule_dir: Path, iface: str, rnd: int) -> str:
-    """What the agent is told. Contains the interface and the ABI -- never a reference answer."""
+def _task_card(capsule_dir: Path, iface: str, rnd: int, *, stage: str = "functional",
+               best: dict | None = None) -> str:
+    """What the agent is told. Contains the interface and the ABI -- never a reference answer.
+
+    Two stages, because they ask for different things. The functional stage asks for a correct kernel
+    and stops when it has one. The optimization stage keeps a correct kernel in hand and asks for a
+    faster one, which is only answerable if the agent is told where the time went -- so that stage
+    carries the profiler counters and names the axes explicitly.
+    """
     return f"""# Task: write a compute kernel for this accelerator
 
 You are writing ONE compute kernel for a SIMT accelerator, as **LLVM-dialect MLIR**.
@@ -105,9 +112,38 @@ Correctness first. A kernel that is fast and wrong scores nothing.
 - Your kernel may not import the grader, read a golden file, or shell out. This is scanned.
 - Do not modify anything outside `{KERNEL_REL}`.
 
-Round {rnd}. If `qa/verdict.json` exists, it is the grader's verdict on your previous attempt --
-read it first and fix what it reports.
-"""
+Round {rnd}.
+""" + (_optimization_brief(best) if stage == "optimization" else
+       "If `qa/verdict.json` exists, it is the grader's verdict on your previous attempt -- read it "
+       "first and fix what it reports.\n")
+
+
+def _optimization_brief(best: dict | None) -> str:
+    """The optimization stage's instructions: keep it correct, make it faster AND better utilized."""
+    b = best or {}
+    util = b.get("utilization") or {}
+    lines = [
+        "\n## You already have a CORRECT kernel. Now make it faster.",
+        "",
+        f"Your best correct kernel so far runs in **{b.get('cycles')} cycles** "
+        f"({b.get('pct_fp_peak')} of FP peak).",
+        "",
+        "Where its time actually goes, as fractions of the run:",
+    ]
+    for k, v in util.items():
+        lines.append(f"  - {k}: {'unmeasured' if v is None else f'{v:.4f}'}")
+    lines += [
+        "",
+        "Read those before changing anything. Low FP utilization with healthy warp occupancy means "
+        "the wrong work is being issued -- more arithmetic per loop iteration, fewer redundant loads. "
+        "High utilization with low occupancy means the machine is starved and wants more parallel "
+        "work in flight. A unit sitting at 0 is one you are not using at all.",
+        "",
+        "Rewrite the kernel to lower cycles AND raise utilization. Correctness is not negotiable: a "
+        "faster kernel that computes the wrong answer scores nothing, and the previous correct "
+        "version is kept if you regress.",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def _evaluate(kernel: Path, capsule_dir: Path, *, shim_pkg: Path, runs_root: Path,
@@ -199,7 +235,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--capsule", required=True, type=Path)
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--target", default="radiance")
-    ap.add_argument("--rounds", type=int, default=2)
+    ap.add_argument("--rounds", type=int, default=2,
+                    help="functional-stage budget: rounds allowed to reach a CORRECT kernel")
+    ap.add_argument("--opt-rounds", type=int, default=0,
+                    help="optimization-stage budget: rounds spent making a correct kernel faster")
+    ap.add_argument("--seed-kernel", type=Path, default=None,
+                    help="start from this correct kernel and go straight to optimization -- the "
+                         "like-for-like setting against a search that requires a working seed")
     ap.add_argument("--round-timeout", type=int, default=1800)
     ap.add_argument("--eval-timeout", type=int, default=900)
     ap.add_argument("--runs-root", type=Path,
@@ -243,8 +285,40 @@ def main(argv: list[str] | None = None) -> int:
     history: list[dict] = []
     t_start = time.time()
 
-    for rnd in range(a.rounds):
-        card = _task_card(capsule_dir, iface, rnd)
+    best: dict | None = None          # best CORRECT candidate so far, by cycles
+    best_src: str | None = None
+    solved_round: int | None = None
+
+    # A supplied seed skips the functional stage: the kernel is already correct, so the run measures
+    # optimization alone. This is the setting that compares like-for-like against a search which
+    # REQUIRES a working seed and therefore never pays a generation cost at all.
+    if a.seed_kernel:
+        seed = a.seed_kernel.read_text()
+        kernel.write_text(seed)
+        res0 = _evaluate(kernel, capsule_dir, shim_pkg=shim_pkg, runs_root=a.runs_root,
+                         task_id=capsule_dir.name, config_id="C0", target=a.target,
+                         method=a.method, timeout=a.eval_timeout)
+        full0 = res0["full"]
+        if not (full0.get("verdict") == "match" and full0.get("certifying_tier")):
+            # Refuse rather than silently start the optimization stage from a broken kernel, which
+            # would make every later round look like the agent breaking something it never had.
+            raise SystemExit(f"seed kernel is not correct under this oracle: "
+                             f"{full0.get('failure_detail') or full0.get('verdict')}")
+        best = {k: full0.get(k) for k in ("cycles", "pct_fp_peak", "gflops", "utilization")}
+        best_src = seed
+        solved_round = -1                      # correct before the agent was asked anything
+        (run_dir / "best_kernel.llvm.mlir").write_text(seed)
+        (ws / "qa" / "verdict.json").write_text(json.dumps(res0["redacted"], indent=2))
+        history.append({"round": -1, "stage": "seed", "rc": 0, "agent_seconds": 0.0,
+                        "kernel_written": True, "correct": True, "evaluation": full0,
+                        "best_cycles_so_far": best.get("cycles")})
+        print(f"  seed: correct, {best.get('cycles')} cycles -- optimization stage only", flush=True)
+
+    for rnd in range(a.rounds + a.opt_rounds):
+        stage = "functional" if best is None else "optimization"
+        if stage == "functional" and rnd >= a.rounds:
+            break                          # never became correct; the optimization budget is unusable
+        card = _task_card(capsule_dir, iface, rnd, stage=stage, best=best)
         prev = (ws / "qa" / "verdict.json")
         if rnd and prev.is_file():
             card += ("\n## The grader's verdict on your previous attempt\n\n```json\n"
@@ -254,7 +328,8 @@ def main(argv: list[str] | None = None) -> int:
         rc, transcript = _run_agent(cfg, ws, run_dir, rnd, card, a.round_timeout)
         agent_s = time.time() - t0
 
-        rec: dict = {"round": rnd, "rc": rc, "agent_seconds": round(agent_s, 1),
+        rec: dict = {"round": rnd, "stage": stage, "rc": rc,
+                     "agent_seconds": round(agent_s, 1),
                      "transcript": str(transcript) if transcript else None,
                      "kernel_written": kernel.is_file()}
         if kernel.is_file():
@@ -274,19 +349,43 @@ def main(argv: list[str] | None = None) -> int:
                 {"status": "error", "correct": False,
                  "failure_detail": f"no kernel found at {KERNEL_REL}"}, indent=2))
 
+        # Keep the best CORRECT candidate. A regression does not discard it -- the agent is asked
+        # for a faster kernel, not a riskier one, and every candidate is preserved either way.
+        if rec["correct"]:
+            cyc = (rec.get("evaluation") or {}).get("cycles")
+            if solved_round is None:
+                solved_round = rnd
+            if cyc is not None and (best is None or cyc < (best.get("cycles") or 1 << 62)):
+                best = {k: (rec["evaluation"] or {}).get(k)
+                        for k in ("cycles", "pct_fp_peak", "gflops", "utilization")}
+                best_src = kernel.read_text()
+                (run_dir / "best_kernel.llvm.mlir").write_text(best_src)
+        elif best_src is not None:
+            # Restore the best correct kernel so the next optimization round starts from something
+            # that works rather than from the regression it just produced.
+            kernel.write_text(best_src)
+
+        rec["best_cycles_so_far"] = (best or {}).get("cycles")
         history.append(rec)
         (run_dir / "rounds" / f"round_{rnd:02d}.json").write_text(json.dumps(rec, indent=2))
-        print(f"  round {rnd}: rc={rc} kernel={rec['kernel_written']} "
-              f"correct={rec['correct']} agent={rec['agent_seconds']}s", flush=True)
-        if rec["correct"]:
-            break                                  # functional stage satisfied
+        print(f"  round {rnd} [{stage}]: rc={rc} kernel={rec['kernel_written']} "
+              f"correct={rec['correct']} cycles={(rec.get('evaluation') or {}).get('cycles')} "
+              f"best={(best or {}).get('cycles')} agent={rec['agent_seconds']}s", flush=True)
 
     summary = {
         "run_id": a.run_id, "method": a.method, "driver": cfg["driver"],
         "provider": cfg.get("provider"), "model": cfg["model"],
         "billing_mode": cfg.get("billing_mode"), "seed": a.seed,
         "task_id": capsule_dir.name, "target": a.target,
-        "rounds_run": len(history), "solved": any(r["correct"] for r in history),
+        "rounds_run": len(history),
+        "functional_rounds": sum(1 for r in history if r["stage"] == "functional"),
+        "optimization_rounds": sum(1 for r in history if r["stage"] == "optimization"),
+        "solved": any(r["correct"] for r in history),
+        "solved_at_round": solved_round,
+        "started_from": ("supplied seed kernel (optimization only)" if a.seed_kernel
+                         else "the specification (generation then optimization)"),
+        "best_cycles": (best or {}).get("cycles"),
+        "best_utilization": (best or {}).get("utilization"),
         "wall_seconds": round(time.time() - t_start, 1),
         "history": history,
     }
