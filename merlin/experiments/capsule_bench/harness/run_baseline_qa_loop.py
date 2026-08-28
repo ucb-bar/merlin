@@ -1409,12 +1409,6 @@ def main(argv: list[str] | None = None) -> int:
                          "Rounds remain the unit of agent invocation and of the artifact layout in both "
                          "modes, so every downstream reader (round_NN transcripts, qa_history verdicts, "
                          "the cost rollup) is unchanged.")
-    ap.add_argument("--plateau-rounds", type=int, default=3,
-                    help="continuous only (0 = disable): stop when the BEST score has not improved "
-                         "across this many completed rounds. Without it the only terminators are "
-                         "convergence and the wall budget, so a run that cannot reach all_pass spends "
-                         "its entire budget however early it stopped improving — which is what made a "
-                         "four-arm ladder cost 4x the full budget by construction.")
     ap.add_argument("--max-wall-s", type=int, default=0,
                     help="continuous only (0 = no wall cap): stop after this much ACTIVE agent wall "
                          "time. With --schedule continuous and no wall cap and no plateau, the only "
@@ -1802,25 +1796,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[continuous] wall budget reached ({active_wall_s:.0f}s >= {a.max_wall_s}s) — "
                   f"stopping honestly (not converged; reason=max_wall_s)")
             return False
-        # PLATEAU. This docstring promised a stop on "converged, plateaued" and only `converged`
-        # (all_pass) existed, so a run that could never reach all_pass -- which is every radiance run so
-        # far -- was guaranteed to spend its ENTIRE wall budget however early it stopped improving. That
-        # is the exact waste this schedule was introduced to remove (v12 arm-4 hit its ceiling in round 0
-        # and then burned two more rounds and 37.9M tokens), and it made a four-arm ladder cost 4 x the
-        # full budget by construction.
-        #
-        # Plateau = the best score has not improved across the last `_PLATEAU_ROUNDS` COMPLETED rounds.
-        # Measured on the best score, not the latest: a round that scores lower has not undone the
-        # progress, and stopping on a single dip would cut a run that is still exploring.
-        if a.plateau_rounds and len(rounds_summary) >= a.plateau_rounds + 1:
-            scored = [r.get("n_passed") for r in rounds_summary if r.get("n_passed") is not None]
-            if len(scored) >= a.plateau_rounds + 1:
-                recent, earlier = scored[-a.plateau_rounds:], scored[:-a.plateau_rounds]
-                if earlier and max(recent) <= max(earlier):
-                    print(f"[continuous] plateau: best {max(scored)} not improved in the last "
-                          f"{a.plateau_rounds} round(s) (history {scored}) — stopping honestly "
-                          f"(not converged; reason=plateau)")
-                    return False
         return True
 
     while _keep_going():
