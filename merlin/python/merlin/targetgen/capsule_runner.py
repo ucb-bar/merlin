@@ -813,34 +813,46 @@ def _oracle_kind(oracle_meta) -> str | None:
     safe = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in kind.strip())
     return safe or None
 
-def lane_report(capsule: dict, routing_plan: dict | None) -> dict | None:
-    """Verify an INTEROP capsule's declared lanes against the routing plan the compiler reported.
+def lane_report(capsule: dict, routing_plan: dict | None,
+                mesh_execution: dict | None = None) -> dict | None:
+    """Verify an INTEROP capsule's declared lanes against what the compiler actually DID.
 
-    Returns ``None`` when the capsule declares no ``lanes.require`` (the ordinary case: a capstone that
-    claims the accelerator runs the model, judged by "every routed layer on-mesh, nothing fell back").
-    Otherwise returns ``{required, observed, unexercised}`` and the caller passes the capsule only when
-    ``unexercised`` is empty.
+    Returns ``None`` when the capsule declares no ``lanes.require`` (the ordinary case).
 
-    Why a capsule would ask for this: the ordinary bar makes host-lane work a FAILURE, which is exactly
-    backwards for the question "can this compiler split a real network across the accelerator and the
-    scalar/vector lane the target also owns?" -- there, work reaching the other lane is the behaviour
-    under test. Such a capsule names the lanes that must EACH have carried work.
+    Two things this must not do, both of which it did and both of which produced a hollow pass on the
+    first capsule to use it:
 
-    The names are the routing plan's OWN keys, so this asserts against what the compiler reported rather
-    than a vocabulary invented here -- a target whose plan reports different lanes needs no change. A
-    lane the plan does not report (or reports empty) comes back in ``unexercised``, NAMED: an unnamed
-    failure would turn a composition capsule into a single-backend capsule nobody notices.
-
-    A lane counts as exercised when the plan carries a non-empty entry for it. An absent key and a key
-    mapped to an empty dict mean the same thing -- no work went there -- and both fail closed.
+    * **A routing plan is not an execution.** ``plan["on_mesh"]`` lists the ops the router ASSIGNED to the
+      mesh; whether they ran there is a different fact, recorded in ``mesh_execution``. Measured on the
+      same submission: 15 matmuls assigned to the mesh, 15 host fallbacks at run time. So when per-layer
+      accounting exists it decides ``on_mesh``, and the plan is only consulted where no accounting does.
+    * **Not every key of the plan is a lane.** The plan also carries ``n_mesh_ops``, ``n_scalar_ops``,
+      ``mesh_matmul_extents`` and ``note``; scanning it for truthy keys reported those as lanes that
+      "carried work". A lane entry is a MAPPING of op -> count, so only dict-valued keys are lanes.
     """
     req = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
     if not req:
         return None
     plan = routing_plan or {}
-    return {"required": req,
-            "observed": sorted(k for k, v in plan.items() if v),
-            "unexercised": [ln for ln in req if not (plan.get(ln) or {})]}
+    lanes = {k: v for k, v in plan.items() if isinstance(v, dict)}
+    carried = {k for k, v in lanes.items() if v}
+    me = mesh_execution or {}
+    # The mesh lane is the one we have real per-layer accounting for; when it exists, believe it.
+    if me:
+        on = me.get("matmul_layers_on_mesh")
+        if on is not None:
+            if int(on) > 0:
+                carried.add("on_mesh")
+            else:
+                carried.discard("on_mesh")
+    unexercised = [ln for ln in req if ln not in carried]
+    out = {"required": req, "observed": sorted(carried), "unexercised": unexercised,
+           "evidence": ("execution" if me.get("matmul_layers_on_mesh") is not None else "routing_plan")}
+    if out["evidence"] == "routing_plan":
+        out["caveat"] = ("no per-layer execution accounting was recorded, so this reports what the "
+                         "router PLANNED, not what ran; a lane can appear here and still have executed "
+                         "nothing")
+    return out
 
 def _absent_outputs(nrep: dict) -> list[str]:
     """Outputs the kernel DECLARED (present in the interface/golden) but never wrote — or wrote at the
@@ -1044,8 +1056,14 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     # Derive it instead: a capsule whose semantic block asserts must_accelerate runs on the mesh lane,
     # everything else keeps the host lane. The env var still overrides, for a deliberate diagnostic run.
     _sem = capsule.get("semantic") or {}
+    # WHICH LANE THE MODEL RUNS ON. must_accelerate implies the mesh lane. So does an interop capsule
+    # that REQUIRES on_mesh: it withholds must_accelerate on purpose (host work is the behaviour under
+    # test), but running it on the host lane means the mesh never executes and its own lane requirement
+    # becomes unverifiable -- which is exactly how the first such capsule passed while executing nothing
+    # on the accelerator.
+    _req_lanes = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
     run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or (
-        "mesh" if _sem.get("must_accelerate") else "host")
+        "mesh" if (_sem.get("must_accelerate") or "on_mesh" in _req_lanes) else "host")
     # MERLIN_MESH_VERIFY additionally EXECUTES each mesh-routed matmul as a single systolic tile on the
     # target's real mesh oracle (compile_model mesh_verify) — proving the matmul layers run ON the mesh, not
     # just that a routing plan was produced. Off by default (the oracle build/run is heavy); the whole-model
@@ -1174,7 +1192,7 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         # `scalar_rvv_lane`), so this asserts against what the compiler reported rather than a vocabulary
         # invented here; a capsule naming a lane the plan does not report fails closed with that lane
         # named, which is the actionable direction.
-        _lane_rep = lane_report(capsule, result.get("routing_plan"))
+        _lane_rep = lane_report(capsule, result.get("routing_plan"), model_exec)
         if _lane_rep is not None:
             result["lane_report"] = _lane_rep
             _model_ok = not _lane_rep["unexercised"]
