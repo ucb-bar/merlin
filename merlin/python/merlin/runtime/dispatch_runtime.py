@@ -582,10 +582,30 @@ def _classify_mesh_contraction(kfn, accept: tuple[str, ...] = ("f32",)) -> dict 
             "via": "generic"}
 
 
+def _oracle_unreachable(decline: str) -> bool:
+    """Whether a mesh decline describes our MEASUREMENT failing rather than the backend refusing.
+
+    A timed-out simulator, a missing binary, a build that did not produce an oracle: none of these say
+    anything about whether the mesh can run the layer. Treating them as refusals turned a whole model
+    whose every layer the mesh executes correctly into "15 of 15 fell back to the host", and that number
+    then failed a must_accelerate gate -- a compiler blamed for a simulator budget.
+
+    Matched structurally on the oracle's own words (no regex, repo rule); anything unrecognized is
+    treated as a genuine refusal, which is the conservative direction: an unknown cause must not be able
+    to excuse a real fallback."""
+    d = (decline or "").lower()
+    if not d:
+        return False
+    return any(tok in d for tok in ("timed out", "timeout", "invocation failed",
+                                    "no such file", "not found", "unreachable",
+                                    "build failed", "oracle unavailable"))
+
+
 def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             entry: str = "forward", cache_dir: str | Path | None = None,
             tap=None, qinner: dict | None = None,
-            kernel_backend: str | None = None, mesh_target: str | None = None) -> list[np.ndarray]:
+            kernel_backend: str | None = None, mesh_target: str | None = None,
+            mesh_package: str | None = None) -> list[np.ndarray]:
     """Run the outlined model on bound arguments; return the driver's result arrays.
 
     ``cache_dir`` persists compiled kernel ``.so``s keyed by kernel-body hash, so repeated
@@ -663,7 +683,14 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         execute.last_mesh_routed = len(mesh_routes)
         execute.mesh_ran = 0
         execute.mesh_fell_back = 0
+        # A LAYER THE ORACLE COULD NOT MEASURE IS NOT A LAYER THE MESH REFUSED. Kept apart from
+        # mesh_fell_back because the two license opposite conclusions: a refusal says something about the
+        # backend's shape space, an unavailable oracle says only that our measurement did not finish.
+        # Conflating them reported "the model fell back to the host" for a whole model whose every layer
+        # the mesh runs correctly -- the simulator had simply timed out.
+        execute.mesh_unavailable = 0
         execute.mesh_fallbacks = []                  # per-layer reasons, so a fallback is actionable
+        execute.mesh_unavailable_detail = []
         # Layers whose capacity_fit obligation the RUNTIME discharged on the backend's behalf. A
         # whole-model pass that needed this is a statement about runtime+backend, not about the backend.
         execute.mesh_capacity_fit_delegated = []
@@ -820,8 +847,14 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                             for key, val in _repr[side].items():
                                 _acc[key] = _acc.get(key, 0) + val
                 _obs: dict = {}
+                # THE BACKEND UNDER TEST MUST REACH THE MESH. Without it this resolved to the
+                # target's DEFAULT package -- which for a target that ships none is no oracle at all, so
+                # every layer returned None with no verdict and was recorded as a host fallback. That is
+                # how a model whose layers the mesh runs correctly reported "15 of 15 fell back": not a
+                # refusal, not even a timeout, simply nothing to ask.
                 mesh_out = run_matmul_on_mesh(mesh_target, qa, qb,
-                                              operand_dtype=op_dt, accum_dtype=acc_dt, observed=_obs)
+                                              operand_dtype=op_dt, accum_dtype=acc_dt,
+                                              package=mesh_package, observed=_obs)
                 _cf = _obs.get("capacity_fit")
                 if _cf is not None:
                     _d = getattr(execute, "mesh_capacity_fit_delegated", None)
@@ -857,11 +890,23 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                         + (str(_detail)[:300] if _detail
                            else "no result and no reason recorded — unreachable oracle, or a path that "
                                 "returns None without a verdict"))
-            execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
-            _fb = getattr(execute, "mesh_fallbacks", None)
-            if _fb is not None and len(_fb) < 64:            # bounded: a diagnostic, not a full trace
-                _fb.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
-                            "reason": _why})
+            # SEPARATE "the oracle could not tell us" FROM "the mesh refused". The host kernel runs
+            # either way -- the model must still compute -- but only the second is evidence about the
+            # backend. `_oracle_unreachable` keys on the oracle's OWN reported cause, never on a guess.
+            _decl = str((locals().get("_obs") or {}).get("decline") or "")
+            _unavailable = _oracle_unreachable(_decl)
+            if _unavailable:
+                execute.mesh_unavailable = getattr(execute, "mesh_unavailable", 0) + 1
+                _ud = getattr(execute, "mesh_unavailable_detail", None)
+                if _ud is not None and len(_ud) < 64:
+                    _ud.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
+                                "reason": _why})
+            else:
+                execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
+                _fb = getattr(execute, "mesh_fallbacks", None)
+                if _fb is not None and len(_fb) < 64:        # bounded: a diagnostic, not a full trace
+                    _fb.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
+                                "reason": _why})
         model = kernel_model(symbol)
         args, keep = [], []
         for o in op.operands:
@@ -989,7 +1034,8 @@ def _propagate_quant_inner(module) -> int:
 def run_model(model_dir: str | Path, workdir: str | Path,
               cache_dir: str | Path | None = None, tap=None,
               int8_compute: bool = False,
-              kernel_backend: str | None = None, mesh_target: str | None = None) -> dict[str, Any]:
+              kernel_backend: str | None = None, mesh_target: str | None = None,
+              mesh_package: str | None = None) -> dict[str, Any]:
     """Outline + bind + execute a captured model; gate against ``golden.npy``.
 
     Returns ``{output, golden, cos, rel, ok, n_kernels, n_unique_kernels}``.
@@ -1042,7 +1088,8 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     if kernel_backend is None and _os.environ.get("MERLIN_XNNPACK_HOST") == "1":
         kernel_backend = "xnnpack"
     results = execute(outlined, args, Path(workdir), cache_dir=cache_dir, tap=tap,
-                      qinner=qinner, kernel_backend=kernel_backend, mesh_target=mesh_target)
+                      qinner=qinner, kernel_backend=kernel_backend, mesh_target=mesh_target,
+                      mesh_package=mesh_package)
     # widen bf16 (stored as uint16 bit patterns) to f32 for the golden comparison
     raw = results[0]
     out = (bf16_to_f32(raw) if _elem_str(out_types[0]) == "bf16"

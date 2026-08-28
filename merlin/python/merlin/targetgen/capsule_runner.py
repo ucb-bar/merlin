@@ -1256,6 +1256,23 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                                              "per-layer mesh accounting; cannot confirm the model "
                                              "reached the accelerator"})
             return result
+        # AN UNMEASURED LAYER IS NOT A FALLEN-BACK LAYER. When the oracle could not tell us whether the
+        # mesh runs a layer, the honest verdict is `incomplete` (NOT_RUN_IS_NOT_PASS), not a compiler
+        # failure -- the same rule the tier ladder already applies one level up. Measured: a whole model
+        # whose every layer the mesh executes correctly reported "15 of 15 fell back" because the
+        # simulator timed out at its per-layer budget, and that number failed must_accelerate.
+        _unavail = int(model_exec.get("matmul_layers_oracle_unavailable") or 0)
+        if int(_on) == 0 and _unavail and not _fb:
+            result.update(status="incomplete",
+                          numeric=_numeric_when_not_accelerated(
+                              st, gate, _v, _cos, engine, measured_on="host_lane_unmeasured"),
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"the mesh oracle could not measure {_unavail} of this "
+                                             f"model's matmul layer(s) (timed-out or unreachable "
+                                             f"simulator), so whether they run on the {target} mesh is "
+                                             f"UNKNOWN -- not a fallback, and not evidence about the "
+                                             f"backend. Re-run with an oracle that completes."})
+            return result
         if int(_on) == 0 or _fb:
             result.update(status="fail",
                           numeric=_numeric_when_not_accelerated(

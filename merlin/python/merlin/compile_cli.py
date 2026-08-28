@@ -266,7 +266,7 @@ def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
 def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: str | None,
                 auto_capture: bool, timeout: int, harts: int = 1, iters: int = 1,
                 warmup: int = 0, kernel_backend: str | None = None,
-                mesh_target: str | None = None) -> dict:
+                mesh_target: str | None = None, mesh_package: str | None = None) -> dict:
     """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
 
     ``kernel_backend='mesh'`` + ``mesh_target`` runs the model's matmul LAYERS on that target's
@@ -333,7 +333,8 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         from .runtime.dispatch_runtime import run_model
 
         res = run_model(bundle, work, int8_compute=pkg.is_int8,
-                        kernel_backend=kernel_backend, mesh_target=mesh_target)
+                        kernel_backend=kernel_backend, mesh_target=mesh_target,
+                        mesh_package=mesh_package)
         if kernel_backend == "mesh":
             from .runtime import dispatch_runtime as _dr
             # THIS MODEL's own layers: how many of its matmuls reached the accelerator and how many
@@ -346,6 +347,13 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                                      # WHICH layers fell back and why -- a count alone fails the
                                      # must_accelerate gate without saying what to fix.
                                      "host_fallback_detail": getattr(_dr.execute, "mesh_fallbacks", None),
+                                     # Layers the ORACLE could not measure (timed-out / unreachable
+                                     # simulator). Counted apart from a fallback because it is not
+                                     # evidence about the backend: the mesh may well run these.
+                                     "matmul_layers_oracle_unavailable":
+                                         getattr(_dr.execute, "mesh_unavailable", None),
+                                     "oracle_unavailable_detail":
+                                         getattr(_dr.execute, "mesh_unavailable_detail", None),
                                      # layers whose capacity_fit obligation the RUNTIME discharged for
                                      # the backend; non-empty means this result is runtime+backend
                                      "capacity_fit_delegated_to_runtime":
@@ -1651,7 +1659,7 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
     if run == "mesh":
         out = compile_rvv(workload, dtype, run="host", verify=verify, package=package,
                           auto_capture=auto_capture, timeout=timeout,
-                          kernel_backend="mesh", mesh_target=target)
+                          kernel_backend="mesh", mesh_target=target, mesh_package=mesh_package)
     else:
         out = compile_rvv(workload, dtype, run=run, verify=verify, package=package,
                           auto_capture=auto_capture, timeout=timeout)
