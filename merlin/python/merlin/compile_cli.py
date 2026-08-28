@@ -575,6 +575,31 @@ def _operand_store_capacity_elems(target: str, operand_dtype: str | None) -> int
     return (int(nbytes) * 8) // max(1, _dtype_bits(operand_dtype)) if nbytes else None
 
 
+def _accumulator_capacity_elems(target: str, accum_dtype: str | None) -> int | None:
+    """The ACCUMULATOR's capacity in elements of ``accum_dtype``, or None when it cannot be derived.
+
+    Separate from the operand store because it is a separate, much smaller SRAM, and it binds a
+    different quantity: the operand store bounds the INPUT working set (weight tile + activation tile),
+    the accumulator bounds the OUTPUT tile that the contraction accumulates into. A layer can sit
+    comfortably inside a 256 KiB scratchpad and still overrun a 64 KiB accumulator, because the output
+    grows as M*N while the operands grow as K*(M+N).
+
+    Measured: the whole-model capsule routed four layers whose operands fit the scratchpad by a wide
+    margin -- (345,32)@(32,256) and (96,64)@(64,512) -- so nothing tiled them, and every one aborted the
+    simulator with ``vector::_M_range_check: __n (which is 1024) >= this->size() (which is 1024)``: the
+    1024 accumulator rows (65536 B / (16 elems * 4 B)) addressed one past the end. The tiles that DID
+    run all passed, so this cost four unmeasurable layers rather than four wrong ones -- the capsule
+    failed for want of a measurement, not for a wrong answer.
+    """
+    from .targetgen.rtl import mlc_bridge as _mb
+    try:
+        caps = _mb.discovered_capacities(target) or {}
+    except Exception:  # noqa: BLE001 -- mlc unavailable => undecidable, never assumed
+        return None
+    nbytes = caps.get("accumulator_bytes")
+    return (int(nbytes) * 8) // max(1, _dtype_bits(accum_dtype)) if nbytes else None
+
+
 def declared_primitive_tile(package: str | Path | None) -> tuple[int, int, int] | None:
     """The (m, k, n) tile a backend DECLARES it implements, from its ``manifest.yaml``, or ``None``.
 
@@ -603,29 +628,58 @@ def declared_primitive_tile(package: str | Path | None) -> tuple[int, int, int] 
         return None
 
 
-def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int) -> tuple[int, int, int, int]:
-    """Shrink a matmul (M,K,N) to the largest D-aligned tile whose on-chip working set — the weight
-    tile K·N plus the activation tile M·K — fits ``cap_elems``, and return (mt,kt,nt,n_tiles) where
-    n_tiles is how many such tiles cover the layer. Keeps M whole (the row dim streams); halves the
-    larger of K/N (never below D) until the tile fits. Pure arithmetic, target-agnostic."""
-    def _fits(mt, kt, nt):
+def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int,
+                       acc_elems: int | None = None) -> tuple[int, int, int, int]:
+    """Shrink a matmul (M,K,N) to the largest D-aligned tile that fits on chip, and return
+    (mt,kt,nt,n_tiles) where n_tiles is how many such tiles cover the layer.
+
+    TWO stores bound the tile, and they bind different dimensions:
+      * the OPERAND store holds the weight tile K·N plus the activation tile M·K (``cap_elems``);
+      * the ACCUMULATOR holds the OUTPUT tile M·N (``acc_elems``), when it can be derived.
+
+    Modelling only the first is what let four layers through whose operands fit the scratchpad easily
+    while their output overran the accumulator. Output residency is the constraint that can force the
+    ROW dim to split: with nt already at the tile edge, shrinking K does nothing for M·N, so M is the
+    only dimension left to give. That is why M is no longer unconditionally whole -- but only when an
+    accumulator bound is known AND the output actually exceeds it, so a caller that passes no
+    ``acc_elems`` gets exactly the previous extents. Pure arithmetic, target-agnostic."""
+    def _half(x):
+        return max(D, (x // 2 // D) * D or D)
+
+    def _operands_fit(mt, kt, nt):
         return kt * nt + mt * kt <= cap_elems
 
+    def _output_fits(mt, nt):
+        return (not acc_elems) or mt * nt <= acc_elems
+
     mt, kt, nt = M, K, N
-    while not _fits(mt, kt, nt) and (kt > D or nt > D):
-        if nt >= kt and nt > D:
-            nt = max(D, (nt // 2 // D) * D or D)
-        elif kt > D:
-            kt = max(D, (kt // 2 // D) * D or D)
+    while not (_operands_fit(mt, kt, nt) and _output_fits(mt, nt)):
+        if not _output_fits(mt, nt):
+            # the OUTPUT is what does not fit: only M or N relieve it (K does not appear in M·N)
+            if nt >= mt and nt > D:
+                nt = _half(nt)
+            elif mt > D:
+                mt = _half(mt)
+            elif nt > D:
+                nt = _half(nt)
+            else:
+                break                       # already a single tile edge: nothing left to give
+        elif kt > D or nt > D:
+            if nt >= kt and nt > D:
+                nt = _half(nt)
+            elif kt > D:
+                kt = _half(kt)
+            else:
+                nt = _half(nt)
         else:
-            nt = max(D, (nt // 2 // D) * D or D)
+            break
     import math
     n_tiles = math.ceil(M / mt) * math.ceil(K / kt) * math.ceil(N / nt)
     return mt, kt, nt, n_tiles
 
 
 def capacity_fit(target: str, m: int, k: int, n: int, operand_dtype: str | None,
-                 tile_dim: int) -> dict:
+                 tile_dim: int, accum_dtype: str | None = None) -> dict:
     """Evaluate the ``capacity_fit`` CONTRACT OBLIGATION for one contraction on ``target``.
 
     ``capacity_fit`` is not a heuristic of ours — it is a predicate the interface contract already
@@ -658,11 +712,27 @@ def capacity_fit(target: str, m: int, k: int, n: int, operand_dtype: str | None,
     """
     cap = _operand_store_capacity_elems(target, operand_dtype)
     need = int(k) * int(n) + int(m) * int(k)      # weight tile + activation tile, both resident
+    # The OUTPUT must also be resident, in the accumulator -- a separate and much smaller store. It is
+    # reported and conjoined separately because it fails on different layers: the output grows as M*N
+    # while the operands grow as K*(M+N), so a wide-output layer overruns the accumulator while its
+    # operands sit well inside the scratchpad. Undecidable (None) stays undecidable, never assumed true.
+    acc = _accumulator_capacity_elems(target, accum_dtype)
+    out_need = int(m) * int(n)
+    op_holds = None if not cap else bool(need <= cap)
+    acc_holds = None if not acc else bool(out_need <= acc)
+    # Three-valued conjunction, fail-closed: a violated term convicts, but an UNEVALUATED one leaves the
+    # obligation undecidable -- never "holds". Reporting True because the one term we could evaluate
+    # passed would claim an obligation nobody checked.
+    _terms = (op_holds, acc_holds)
+    holds = (False if False in _terms else None if None in _terms else True)
     return {"obligation": "capacity_fit",
-            "holds": None if not cap else bool(need <= cap),
+            "holds": holds,
             "required_elems": need, "capacity_elems": cap,
+            "output_elems": out_need, "accumulator_capacity_elems": acc,
+            "operands_hold": op_holds, "output_holds": acc_holds,
             "tile_dim": int(tile_dim or 0),
-            "assumes": "operands resident (a streaming lowering needs far less and always fits)"}
+            "assumes": "operands resident (a streaming lowering needs far less and always fits) "
+                       "and the output tile resident in the accumulator"}
 
 
 def _mesh_tile_binding(target: str, operand_dtype: str | None, accum_dtype: str | None,
@@ -970,8 +1040,9 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
             padded = bool(declared_extent and declared_extent != layer_extent)
             n_subtiles = 1
             sp_cap = _operand_store_capacity_elems(target, binding.operand_dtype)
-            if sp_cap and (K * N + M * K) > sp_cap:
-                M, K, N, n_subtiles = _capacity_fit_tile(M, K, N, D, sp_cap)
+            acc_cap = _accumulator_capacity_elems(target, binding.accum_dtype)
+            if sp_cap and ((K * N + M * K) > sp_cap or (acc_cap and M * N > acc_cap)):
+                M, K, N, n_subtiles = _capacity_fit_tile(M, K, N, D, sp_cap, acc_cap)
             entry = {"name": f"mesh_tile_{i}_{op}", "op": op, "kind": "op",
                      "source_role": "mesh_tile_synthesized",
                      "source_reference": f"whole-model op {d.op} [{d.site}]: layer {layer_extent} on the "
@@ -1197,8 +1268,9 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
     _mt, _kt, _nt = M, K, N
     _n_sub = 1
     _tiled_by = None
+    _acc_cap = _accumulator_capacity_elems(target, binding.accum_dtype)
     if _cap:
-        _mt, _kt, _nt, _n_sub = _capacity_fit_tile(M, K, N, max(1, _D), _cap)
+        _mt, _kt, _nt, _n_sub = _capacity_fit_tile(M, K, N, max(1, _D), _cap, _acc_cap)
         _tiled_by = "capacity"
     else:
         # NO CLASSIFIABLE OPERAND STORE -> the capacity tiler cannot even be evaluated, and this branch
