@@ -20,7 +20,7 @@ matrix-unit shim to know which dtypes exist.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 __all__ = ["KernelAbi", "ShimUnit", "emit_translation_unit", "kernel_abi_for"]
@@ -52,8 +52,12 @@ typedef struct {{
   intptr_t strides[3];
 }} merlin_memref_3d;
 
-/* The device kernel, per the OOT backend contract's kernel_abi. Supplied by the archive. */
-extern void {kernel}(void *weight, void *lhs_0, void *out_0);
+/* The device kernels, per the OOT backend contract's kernel_abi. Supplied by the archive.
+ * One per signature: the package emits its entry under a single contract-declared name, so a model
+ * with several distinct extents produces several objects that all define it. They are renamed apart
+ * at build time and declared apart here; sharing one name links, and silently binds every call to
+ * whichever object the linker happened to resolve first. */
+{externs}
 
 {entries}
 /* {n} entry point(s) emitted. */
@@ -109,7 +113,10 @@ class ShimUnit:
 
     text: str
     symbols: tuple[str, ...] = ()
+    #: The contract's base kernel name (what the package emits before renaming).
     kernel: str = ""
+    #: Every distinct kernel symbol this unit calls, i.e. what the archive must define.
+    kernels: tuple[str, ...] = ()
     skipped: tuple[tuple[str, str], ...] = ()
 
 
@@ -146,7 +153,9 @@ def _elem_bytes(token: str) -> int | None:
 
 def emit_translation_unit(device: str,
                           signatures: Mapping[str, Sequence[int]],
-                          dtypes: Mapping[str, Sequence[str]]) -> ShimUnit:
+                          dtypes: Mapping[str, Sequence[str]],
+                          *,
+                          kernel_symbol_for: "Callable[[str], str] | None" = None) -> ShimUnit:
     """One entry per signature, adapting the MLIR ABI to ``device``'s kernel.
 
     ``signatures`` is ``{symbol: (M, N, K)}`` as minted by the offload rewrite; ``dtypes`` is
@@ -160,6 +169,10 @@ def emit_translation_unit(device: str,
     abi = kernel_abi_for(device)
     if abi is None:
         return ShimUnit(text="", skipped=(("all", "no readable kernel_abi in the backend contract"),))
+    # One kernel per signature by default is WRONG for a package that emits a single contract-named
+    # entry, and one shared kernel is wrong for a model with several extents. The caller decides,
+    # because only the caller knows how the objects were built and renamed.
+    kernel_for = kernel_symbol_for or (lambda _sym: abi.symbol)
 
     entries: list[str] = []
     emitted: list[str] = []
@@ -179,10 +192,14 @@ def emit_translation_unit(device: str,
                                  f"would be a guess"))
             continue
         m, n, k = key
-        entries.append(_ENTRY_2D.format(symbol=sym, m=m, n=n, k=k, dtypes=dt, kernel=abi.symbol,
+        entries.append(_ENTRY_2D.format(symbol=sym, m=m, n=n, k=k, dtypes=dt,
+                                        kernel=kernel_for(sym),
                                         lhs_bytes=widths[0], rhs_bytes=widths[1], out_bytes=widths[2]))
         emitted.append(sym)
 
-    text = (_PREAMBLE.format(device=device, kernel=abi.symbol, entries="".join(entries),
+    kernels = sorted({kernel_for(sym) for sym in emitted})
+    externs = "\n".join(f"extern void {k}(void *weight, void *lhs_0, void *out_0);" for k in kernels)
+    text = (_PREAMBLE.format(device=device, externs=externs, entries="".join(entries),
                              n=len(emitted)) if emitted else "")
-    return ShimUnit(text=text, symbols=tuple(emitted), kernel=abi.symbol, skipped=tuple(skipped))
+    return ShimUnit(text=text, symbols=tuple(emitted), kernel=abi.symbol,
+                    kernels=tuple(kernels), skipped=tuple(skipped))
