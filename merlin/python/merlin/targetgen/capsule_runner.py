@@ -1026,7 +1026,8 @@ def _numeric_when_not_accelerated(st, gate, verify: dict, cos: float, engine: st
             "model_status": st}
 
 
-def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int) -> dict:
+def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int,
+                         package_dir: str | Path | None = None) -> dict:
     """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
     (``compile_model``): route each op across the target's compute units (matmul/systolic -> the mesh, the
     rest -> the vector/scalar lane), compile the functional whole model (the scalar/RVV reference,
@@ -1081,9 +1082,22 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         # exact datapath format in operation.attributes.dtype -- pass that for routing so a demand is
         # matched against the unit's declared format rather than against a compile-mode token.
         _attrs = (capsule.get("operation") or {}).get("attributes") or {}
+        # THE PACKAGE UNDER TEST MUST REACH THE MESH ORACLE. `run_capsule` is handed the submission
+        # being graded, but this function never took it and called `compile_model(package=None)`, so a
+        # whole-model capsule was compiled and mesh-verified against the DEFAULT path -- not against the
+        # submission. Every whole-model number that resulted (numeric verdict, layers-on-mesh accounting,
+        # tile certification) was therefore a statement about the reference flow, not about the backend
+        # the capsule was supposed to be judging. Measured: mesh verification reported
+        # `n_tiles: 0, reason: "no default OOT backend package for target"` while a perfectly good
+        # submission sat in the caller's hand.
+        #
+        # It goes to `mesh_package` (the OOT ACCELERATOR backend that certifies tiles), not to `package`
+        # (the RVV whole-model codegen package) -- two different things that a single name would conflate.
+        _pkg = str(package_dir) if package_dir else None
         out = compile_model(model, dtype, target=target, run=run_where, verify=True, package=None,
                             auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir,
-                            mesh_verify=mesh_verify, routing_dtype=_attrs.get("dtype"))
+                            mesh_verify=mesh_verify, mesh_package=_pkg,
+                            routing_dtype=_attrs.get("dtype"))
     except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
         result.update(status="incomplete",
                       failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
@@ -1375,7 +1389,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
     # same capsule_result.json shape so downstream reporting is uniform.
     if capsule.get("kind") == "model":
-        result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout)
+        result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout,
+                                      package_dir=package_dir)
         (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         # Persist the ARR coverage certificate as its own durable artifact (not only inside
         # capsule_result.json) so the report/grader can read it back per compilation.

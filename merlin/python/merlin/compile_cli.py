@@ -950,6 +950,16 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
             # repeating unit — a fit tile that passes proves the layer runs on the mesh once tiled. When
             # the capacity fact is absent we keep the untiled extent (prior behavior).
             layer_extent = f"{M}x{K}x{N}"
+            # RECORD THE PADDING. `layer_extent` above is the extent AFTER rounding each dim up to the
+            # mesh edge, and it was the only extent recorded -- so a layer whose real M is a partial tile
+            # was certified at the padded M and reported as though that were the layer. Measured: a model
+            # whose every matmul is M=8 on a 16-row mesh had 15/15 tiles "pass" at M=16 while the model
+            # execution path declined the real M=8 on all 15, and nothing in the tile record showed the
+            # two were different shapes. Keep the declared extent beside the certified one; when they
+            # differ, the tile is evidence about a PADDED shape, which is a weaker claim.
+            declared_extent = (f"{int(d.m)}x{int(d.k)}x{int(d.n)}"
+                               if (d.m and d.k and d.n) else None)
+            padded = bool(declared_extent and declared_extent != layer_extent)
             n_subtiles = 1
             sp_cap = _operand_store_capacity_elems(target, binding.operand_dtype)
             if sp_cap and (K * N + M * K) > sp_cap:
@@ -969,8 +979,13 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
         # target's own oracle and ignores it, so record it only where it is the truth and let the
         # executor stamp ``oracle_kind`` with what actually ran.
         rec.update(M=M, K=K, N=N, layer_extent=layer_extent, n_subtiles=n_subtiles,
+                   declared_layer_extent=declared_extent, padded_to_mesh_edge=padded,
                    operand_dtype=binding.cap_dtype(binding.operand_dtype),
                    output_dtype=binding.cap_dtype(binding.accum_dtype))
+        if padded:
+            rec["evidence_note"] = (f"certified at {layer_extent}, but this layer is {declared_extent}; "
+                                    f"a dim was rounded UP to the mesh edge, so this tile is evidence "
+                                    f"that the PADDED shape runs, not the layer's own extent")
         if _via_oot:
             rec["sim"] = sim
         if _via_oot:
