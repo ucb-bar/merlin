@@ -81,7 +81,13 @@ Emit a single `llvm.func` named `radiance_kernel`. Its parameters are plain poin
     [weight tensors] ++ [input tensors in command order] ++ [output tensors in command order]
 
 Read the operands through `llvm.getelementptr` + `llvm.load`, compute, and `llvm.store` into the
-output pointers. Plain scalar compute is correct and sufficient -- warps, barriers and scheduling are
+output pointers.
+
+**Every operand is 32-bit float in memory, whatever dtype the interface declares.** The harness
+decodes a declared f16 / bf16 / fp8 operand to its numeric value and stores it as one `f32` per
+element, so a 16x32 f16 tensor arrives as 512 consecutive `f32` values -- NOT as packed halves.
+Load `f32`, compute in `f32`, store `f32`. The declared dtype tells you the numeric PRECISION the
+values were rounded to; it does not describe the memory layout. Plain scalar compute is correct and sufficient -- warps, barriers and scheduling are
 supplied by the runtime, so do not emit them. Do not emit `.insn`, raw `.word`, DRAM addresses, or a
 halt.
 
