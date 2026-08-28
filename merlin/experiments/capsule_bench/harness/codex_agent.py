@@ -259,6 +259,52 @@ def prepare_codex_home(dest: Path, *, model: str, effort: str) -> dict:
     }
 
 
+def access_token_remaining_s() -> float | None:
+    """Seconds until the mounted credential's access token expires, or None if unreadable.
+
+    Reads ONLY the ``exp`` claim; no token material is returned, logged or recorded anywhere.
+
+    This exists because the sandbox mounts ``auth.json`` READ-ONLY on purpose -- a graded agent must not
+    be able to rewrite the operator's shared credential -- and the documented consequence was that "a
+    refresh attempt fails loudly". In practice it failed as five stderr lines: a run whose token expired
+    mid-flight logged `Failed to refresh token: Read-only file system`, then 401ed every call, and kept
+    its process alive for five more hours producing nothing while the score sat unchanged. Loud enough to
+    read afterwards, far too quiet to act on.
+
+    Knowing the remaining lifetime up front turns that into a decision at t=0."""
+    import base64
+    import json as _json
+    import time
+    auth = real_codex_home() / "auth.json"
+    if not auth.is_file():
+        return None
+    try:
+        tok = (_json.loads(auth.read_text()).get("tokens") or {}).get("access_token") or ""
+        payload = tok.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        exp = _json.loads(base64.urlsafe_b64decode(payload)).get("exp")
+        return float(exp) - time.time() if exp else None
+    except Exception:                                    # noqa: BLE001 — unreadable is not fatal
+        return None
+
+
+def check_token_outlasts_run(planned_s: float) -> dict:
+    """Whether the credential will still be valid when a run of ``planned_s`` finishes.
+
+    Returned, not raised: the caller decides whether a short-lived token is a refusal or a warning. The
+    sandbox cannot refresh (by design), so a token that expires mid-run takes the run with it."""
+    rem = access_token_remaining_s()
+    if rem is None:
+        return {"known": False, "ok": None,
+                "detail": "credential lifetime unreadable; a mid-run expiry cannot be ruled out"}
+    ok = rem > planned_s
+    return {"known": True, "ok": ok, "remaining_s": int(rem), "planned_s": int(planned_s),
+            "detail": (f"token has {rem/3600:.1f} h left against a planned {planned_s/3600:.1f} h run"
+                       + ("" if ok else " -- it will expire MID-RUN, and the sandbox mounts the "
+                                       "credential read-only so codex cannot refresh it in place. "
+                                       "Refresh on the host first (codex login status), then relaunch."))}
+
+
 def codex_runtime_binds(codex_home: Path) -> list[str]:
     """bwrap args that make ``codex`` runnable and authenticated inside the sandbox.
 
