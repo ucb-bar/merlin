@@ -3,9 +3,9 @@ title: Compiling a whole model onto an accelerator
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-08-27
+last_verified: 2026-08-28
 related: [compilation_strategies, targetgen, adding_a_target, gemmini_experiment]
-code_refs: [merlin/python/merlin/compile_cli.py, merlin/python/merlin/runtime/dispatch_runtime.py, merlin/python/merlin/targetgen/routing.py]
+code_refs: [merlin/python/merlin/compile_cli.py, merlin/python/merlin/runtime/dispatch_runtime.py, merlin/python/merlin/targetgen/routing.py, merlin/python/merlin/system, merlin/python/merlin/llvmlower/device_offload.py, merlin/python/merlin/llvmlower/device_build.py]
 ---
 
 # Compiling a whole model onto an accelerator
@@ -21,12 +21,24 @@ evidence. Keep them apart; conflating them is the easiest way to overstate what 
 
 This guide covers the third. For the first two see `rvv_e2e.md` and `gemmini_experiment.md`.
 
-## There is no CLI for this path
+## Two ways to run a model on a device
 
-`merlin-compile` dispatches to exactly two places — `compile_rvv` for `--target rvv`, and
-`compile_oot` for a per-capsule accelerator run. `--run` offers `{none,host,k1,spike,zephyr,verilator}`
-and has **no `mesh` choice**, and there is no flag for a package override on that path. The whole-model
-mesh entrypoint is reachable only from Python. Everything below was run that way.
+They are genuinely different, and the difference is what a result means.
+
+**Interpreted** (`compile_model(..., run="mesh")`). The host side is a Python tree-walking interpreter
+over the driver function; each matmul layer becomes an interface capsule, is shipped out of process to
+the target's oracle, and the result is read back as a numpy array. Nothing is emitted into a host
+binary. This is the path the L3 capsule results were measured on, and it is the right one for grading:
+the oracle is the same one the capsule ladder certifies against.
+
+**Compiled** (`device=` on the whole-model build). The contractions are rewritten into calls to private
+symbols, the target's own package emits a kernel per distinct extent, a generated shim adapts the MLIR
+calling convention to the device's kernel ABI, and the objects are linked beside the model object. The
+output is one artifact that runs on a board with no Python and no simulator in the loop.
+
+There is no CLI for either: `merlin-compile` dispatches to exactly two places — `compile_rvv` for
+`--target rvv` and `compile_oot` for a per-capsule accelerator run. `--run` offers
+`{none,host,k1,spike,zephyr,verilator}` with **no `mesh` choice**. Both paths are reached from Python.
 
 ## Compiling a model onto the mesh
 
@@ -53,6 +65,39 @@ Environment:
 norms, activations and elementwise to the vector/scalar lane), then executes each mesh matmul layer on
 the target's own oracle with the real operands injected, handing every layer's on-device output to the
 op that consumes it. An op no unit supports is an honest scalar/RVV fallback, never a silent drop.
+
+## The compiled path
+
+```python
+from merlin.llvmlower.device_build import DeviceRouting
+from merlin.runtime.backends import spike_model
+
+routing = DeviceRouting(device="<target>", package_dir="<backend package>",
+                        operand_dtype="int8", accum_dtype="i32",
+                        select=lambda shape: True)   # the placement decision, made elsewhere
+spike_model.build(model_dir, work, device=routing, int8_compute=True)
+```
+
+What happens, and where to look when it does not:
+
+1. `prepare_for_lowering` rewrites each selected contraction into a call to a private symbol and
+   writes `device_signatures.json` beside the prepared module. One symbol per distinct `(M,N,K)` —
+   MLIR function types are monomorphic, so two extents cannot share a callee.
+2. The build reads that sidecar, runs the target's package once per signature to emit a device kernel,
+   renames each kernel to a distinct symbol, generates the shim, and links them with the model object.
+3. `select=None` (or `device=None`) makes the whole path inert. The placement decision belongs to
+   `merlin.system.place`, and a build that took it for itself would disagree with the router.
+
+**Why the rename matters.** Every emitted kernel carries the single entry name the backend contract
+declares. Linking several without renaming is not an error — the linker binds every call to whichever
+object it resolved first, so the model runs one layer's kernel for every layer, produces numbers, and
+is wrong.
+
+**Fail-closed points.** A device whose datapath cannot be derived offloads nothing rather than
+assuming a precision. A signature whose dtype has no MLIR type, or a sub-byte format whose element
+offset is not a byte count, is declined and reported rather than approximated. A sidecar carrying
+signatures with no `device=` routing to build them against is refused with that stated, rather than
+failing later as an unresolved symbol.
 
 ## Reading the result
 
