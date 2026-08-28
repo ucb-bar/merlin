@@ -1049,6 +1049,30 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
     return out
 
 
+def _mesh_layer_id(m: int, k: int, n: int, binding, epilogue: list | None,
+                   acc_scale: float | None) -> str:
+    """A per-layer artifact identity for the mesh run directory.
+
+    Every mesh layer used the SAME run_id ("mesh_layer"), so all of a model's layers wrote to and read
+    from one artifact directory and clobbered each other. The failure was not subtle once seen: two
+    layers of two different models each received the OTHER's interface --
+    ``(8,344)@(344,128)`` was handed ``(288,96)`` and ``(64,288)@(288,96)`` was handed ``(352,128)`` --
+    and three further layers all expected one stale ``(128,128)``. A layer that fails this way runs
+    perfectly in isolation, which is why it read as a shape bug rather than a collision.
+
+    The id is CONTENT-ADDRESSED on what actually changes the emitted kernel: extent, operand and
+    accumulator dtype, and the epilogue (an acc_scale requant emits a different kernel). Two genuinely
+    identical layers therefore still share one directory -- small_llama repeats the same extent eight
+    times and should compile once -- while two different layers can never collide."""
+    parts = [f"{m}x{k}x{n}",
+             binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)]
+    if epilogue:
+        parts.append("-".join(str(e) for e in epilogue))
+    if acc_scale is not None:
+        parts.append(f"s{float(acc_scale):.6g}")
+    return "mesh_layer_" + "_".join(parts).replace(".", "p").replace("-", "_")
+
+
 def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | None = None,
                        accum_dtype: str | None = None, simulator: str | None = None,
                        package: str | None = None, epilogue: list | None = None,
@@ -1137,11 +1161,15 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
             if observed is not None:
                 observed["path"] = "bespoke_sim"
             return _matmul_via_bespoke_sim(target, _mlir, _A, _W, package=package, timeout=timeout,
+                                           layer_id=_mesh_layer_id(len(_A), len(_A[0]), len(_W[0]),
+                                                                   binding, epilogue, acc_scale),
                                            observed=observed)
         if endpoint in (None, "inline_asm_insn", "upstream_target"):
             if observed is not None:
                 observed["path"] = "oot_cert"
             return _matmul_via_oot_cert(target, _mlir, _A, _W, simulator=simulator, package=package,
+                                        layer_id=_mesh_layer_id(len(_A), len(_A[0]), len(_W[0]),
+                                                                binding, epilogue, acc_scale),
                                         timeout=timeout, observed=observed)
         if endpoint == "external_backend":
             if observed is not None:
@@ -1284,6 +1312,7 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
 
 
 def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
+                         layer_id: str = "mesh_layer",
                          observed: dict | None = None) -> list | None:
     """Systolic/RoCC path: certify the matmul through the target's generated OOT package on its ELF/mesh
     oracle, with the real operands injected (``inputs`` -> the package harness's ``materialize_inputs``).
@@ -1299,11 +1328,12 @@ def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
     pkg = package or _default_oot_package(target)
     if pkg is None:
         return None
-    with tempfile.TemporaryDirectory(prefix="mesh_layer_") as td:
-        iface = Path(td) / "mesh_layer.interface.mlir"
+    _lid = layer_id
+    with tempfile.TemporaryDirectory(prefix=_lid + "_") as td:
+        iface = Path(td) / f"{_lid}.interface.mlir"
         iface.write_text(mlir, encoding="utf-8")
         res = oot_runner.certify(pkg, iface, runs_root=str(runs_root(target, "mesh_run")),
-                                 run_id="mesh_layer", simulator=sim, target=target, timeout=timeout,
+                                 run_id=_lid, simulator=sim, target=target, timeout=timeout,
                                  inputs={"A0": A, "W": W})
     if observed is not None:
         # the cert reports its oracle as a record ({kind, derived_from_rtl, ...}); the simulator that ran
@@ -1339,6 +1369,7 @@ def _matmul_via_program_oracle(target, mlir, A, W, *, model_ext, package, timeou
 
 
 def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout,
+                            layer_id: str = "mesh_layer",
                             observed: dict | None = None) -> list | None:
     """Exclusive bespoke-sim path: a self-hosted SIMT core (endpoint ``external_backend``) graded on the
     kernel its OWN generated package emits, by its OWN declared bespoke oracle (e.g. cyclotron via the muon
@@ -1380,11 +1411,12 @@ def _matmul_via_bespoke_sim(target, mlir, A, W, *, package, timeout,
         cdir = tdp / "cap"
         cdir.mkdir(parents=True, exist_ok=True)
         (cdir / "capsule.interface.mlir").write_text(mlir, encoding="utf-8")
-        capsule = {"name": "mesh_layer", "kind": "op", "interface_mlir": "capsule.interface.mlir",
+        _bid = layer_id
+        capsule = {"name": _bid, "kind": "op", "interface_mlir": "capsule.interface.mlir",
                    "operation": {"op": "matmul", "attributes": {}}, "__dir__": str(cdir),
                    "required_oracle_tiers": ["L2"]}
-        paths = make_run_paths(runs_root(target, "mesh_bsim"), "mesh_layer", suite="mesh",
-                               target=target, dtype="prog", benchmark="mesh_layer")
+        paths = make_run_paths(runs_root(target, "mesh_bsim"), _bid, suite="mesh",
+                               target=target, dtype="prog", benchmark=_bid)
         try:
             _pkg, cb, kernel_text = CC.run_entrypoints(None, pkg, capsule, paths, contract=None,
                                                        timeout=timeout, fourth_output_name="kernel.cpp")
