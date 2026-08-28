@@ -339,3 +339,86 @@ class TestTheKernelRepoWasEnough:
         from merlin.kernels.decode import derived_isa as D
         src = inspect.getsource(D.decode_stream)
         assert "space in cede_funct7_in" in src, "the cede must be scoped to named spaces"
+
+
+class TestUnaccountedIsIntersectedNotMinimised:
+    """A word is only 'unaccounted' for a TARGET when NO endpoint could place it.
+
+    ``merge_audits`` used to take ``min()`` over each endpoint's unplaced COUNT. A minimum is an
+    upper bound on an intersection, and the accumulator discarded a genuine zero, so the answer
+    depended on the order the audits arrived in. Both are pinned here.
+    """
+
+    @staticmethod
+    def _a(endpoint, engine, unplaced, *, total=1000, stream="k.elf", **kw):
+        return A.AsmAudit(target="t", endpoint=endpoint, engine=engine, stream=stream,
+                          total=total, unaccounted=len(unplaced),
+                          unaccounted_indices=tuple(unplaced), **kw)
+
+    def test_order_does_not_change_the_answer(self):
+        a = self._a("epA", "vector", [])
+        b = self._a("epB", "spatial", range(500))
+        assert A.merge_audits([a, b])["unaccounted"] == A.merge_audits([b, a])["unaccounted"] == 0
+
+    def test_one_endpoint_placing_everything_means_nothing_is_unaccounted(self):
+        a = self._a("epA", "vector", [])
+        b = self._a("epB", "spatial", range(500))
+        assert A.merge_audits([a, b])["unaccounted"] == 0
+
+    def test_disjoint_failures_are_not_a_shared_gap(self):
+        # Each endpoint fails on 500 words, but on DIFFERENT words: every word was placed by someone.
+        a = self._a("epA", "vector", range(0, 500))
+        b = self._a("epB", "spatial", range(500, 1000))
+        assert A.merge_audits([a, b])["unaccounted"] == 0
+
+    def test_a_genuinely_shared_gap_survives(self):
+        a = self._a("epA", "vector", range(0, 600))
+        b = self._a("epB", "spatial", range(400, 1000))
+        assert A.merge_audits([a, b])["unaccounted"] == 200      # the overlap 400..599
+
+    def test_positions_from_different_streams_are_never_intersected(self):
+        # Same positions, different kernels: two separate gaps, not one shared one.
+        a = self._a("epA", "vector", range(0, 10), stream="k1.elf")
+        b = self._a("epA", "vector", range(0, 10), stream="k2.elf")
+        m = A.merge_audits([a, b])
+        assert m["unaccounted"] == 20 and m["total"] == 2000 and m["n_streams"] == 2
+
+    def test_a_count_without_positions_is_UNKNOWN_not_zero(self):
+        """THE NEGATIVE CASE: the arithmetic path cannot say WHICH words were unplaced."""
+        a = A.AsmAudit(target="t", endpoint="", engine="vector", stream="k.elf",
+                       total=10, unaccounted=3, positions_known=False)
+        assert A.merge_audits([a])["unaccounted"] is None
+
+    def test_positions_known_with_nothing_unplaced_is_zero_not_unknown(self):
+        a = self._a("epA", "vector", [])
+        assert A.merge_audits([a])["unaccounted"] == 0
+
+    def test_two_text_sources_are_two_streams_even_with_no_name(self):
+        """A text source has no name to key on, and object identity will NOT do: a freed list's id
+        is reused, so two files could alias to one stream and be counted once instead of twice."""
+        lines = ["VMATMUL.MXU0 0, 0, 0"]
+        got = {a.stream for a in A.audit_every_endpoint(list(lines), "atlas", text=True)}
+        got |= {a.stream for a in A.audit_every_endpoint(list(lines), "atlas", text=True)}
+        assert len(got) == 2, got
+
+    def test_width_composition_covers_exactly_the_intersected_words(self):
+        """A single 'unaccounted' number cannot distinguish a real instruction we failed to decode
+        from a byte objdump could not form into one. Measured on the pinned radiance corpus: 878
+        unplaced entries = 84 thirty-two-bit words (the genuine custom surface) + 484 sixteen-bit
+        + 310 EIGHT-bit, and a RISC-V instruction is never 8 bits."""
+        a = A.AsmAudit(target="t", endpoint="epA", engine="vector", stream="k.elf", total=100,
+                       unaccounted=3, unaccounted_indices=(1, 2, 3),
+                       unaccounted_width_at={1: 32, 2: 16, 3: 8})
+        b = A.AsmAudit(target="t", endpoint="epB", engine="spatial", stream="k.elf", total=100,
+                       unaccounted=2, unaccounted_indices=(1, 2),
+                       unaccounted_width_at={1: 32, 2: 16})
+        m = A.merge_audits([a, b])
+        assert m["unaccounted"] == 2                       # 3 was placed by epB
+        assert m["unaccounted_widths"] == {16: 1, 32: 1}   # and 8-bit entry 3 is NOT counted
+        assert sum(m["unaccounted_widths"].values()) == m["unaccounted"]
+
+    def test_a_position_no_decoder_sized_is_reported_as_unknown_width(self):
+        """NEGATIVE CASE: width 0 means 'nobody said', and must not be guessed into a real width."""
+        a = A.AsmAudit(target="t", endpoint="epA", engine="vector", stream="k.elf", total=10,
+                       unaccounted=1, unaccounted_indices=(5,), unaccounted_width_at={})
+        assert A.merge_audits([a])["unaccounted_widths"] == {0: 1}

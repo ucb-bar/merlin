@@ -90,6 +90,11 @@ class DerivedIsaInsn:
     mnemonic: str = ""
     operands: tuple[str, ...] = ()
     fields: dict[str, int] = field(default_factory=dict)
+    #: Width IN BITS of the objdump hex column this came from, 0 when unknown. Kept because an entry
+    #: narrower than the ISA's minimum instruction width is not an instruction at all -- objdump emits
+    #: byte fallbacks where it cannot form one -- and counting those as unplaced INSTRUCTIONS inflates
+    #: both the denominator and the gap. Recorded as the observation (a width), not the conclusion.
+    hex_bits: int = 0
 
 
 #: RISC-V R-type funct3 position, for resolving WHICH instruction a custom opcode space holds. The
@@ -123,7 +128,8 @@ def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
     mine = {str(s).upper().replace("-", "_") for s in spaces}
     out: list[DerivedIsaInsn] = []
     for i, insn in enumerate(insns):
-        word = _word_of(getattr(insn, "hexcode", ""), width)
+        _hex = str(getattr(insn, "hexcode", "") or "").strip().replace(" ", "")
+        word = _word_of(_hex, width)
         f = fields_of(word, layout) if word is not None else {}
         space = by_value.get(f.get("opcode"), "") if f else ""
         # Inside a custom opcode space the SPACE name says nothing about the operation. When the
@@ -155,7 +161,7 @@ def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
             from_endpoint=bool(identity) and space.upper() in mine,
             mnemonic=str(getattr(insn, "mnemonic", "")),
             operands=tuple(getattr(insn, "operands", ()) or ()),
-            fields=f))
+            fields=f, hex_bits=len(_hex) * 4))
     return out
 
 

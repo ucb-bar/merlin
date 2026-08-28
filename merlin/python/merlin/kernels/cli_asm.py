@@ -21,7 +21,7 @@ def _audits(target: str, patterns):
             try:
                 # EVERY endpoint: auditing a multi-engine target through one hides the other engine's
                 # work silently, which is the failure the engine model exists to prevent.
-                out.extend(A.audit_every_endpoint(path, target))
+                out.extend(A.audit_every_endpoint(path, target, stream=path))
             except Exception as exc:  # noqa: BLE001 — a stream we cannot read is REPORTED, not dropped
                 out.append(A.AsmAudit(target=target, notes=(f"{path}: {type(exc).__name__}: {exc}",)))
     return out
@@ -45,7 +45,8 @@ def main(argv: list[str] | None = None) -> int:
     for pat in a.asm:
         for path in sorted(glob.glob(pat)):
             with open(path, encoding="utf-8", errors="replace") as fh:
-                audits.extend(A.audit_every_endpoint(fh.read().splitlines(), a.target, text=True))
+                audits.extend(A.audit_every_endpoint(fh.read().splitlines(), a.target,
+                                                    text=True, stream=path))
 
     report = A.target_report(a.target, audits)
     hist: dict = {}
@@ -57,9 +58,10 @@ def main(argv: list[str] | None = None) -> int:
     # One stream read through several endpoints is still ONE stream. Summing per audit multiplies the
     # instruction count by the number of engines and deflates every coverage fraction by the same
     # factor -- a number that looks like a measurement and is an artefact of how it was gathered.
-    n_endpoints = max(1, len({x.endpoint for x in audits if x.endpoint}))
-    total = sum(x.total for x in audits) // n_endpoints
     merged = A.merge_audits(audits) if audits else {"per_engine": {}}
+    # Counted ONCE per stream by the merge, rather than divided by the endpoint count: dividing is
+    # only right when every endpoint read every stream, and it silently rounds when they did not.
+    total = merged.get("total") or 0
     report["per_engine"] = merged.get("per_engine", {})
     # Opportunities are derived PER ENGINE: a lane engine's elementwise work and an array's accumulate
     # are different work on different silicon, and a pooled histogram reads as one machine doing all
@@ -88,6 +90,26 @@ def main(argv: list[str] | None = None) -> int:
     if audits:
         sem = report["observed"]["semantic_fraction"]
         print(f"  observed: {total} instruction(s), {sem:.1%} carry a role")
+        # The four-way split is the invariant this command exists to state, so it is printed, not
+        # only serialized. Per endpoint, because one stream read two ways yields two readings.
+        cov = report.get("coverage") or {}
+        for ep, c in sorted((cov.get("per_endpoint") or {}).items()):
+            flag = "" if c.get("sums") else "   !! DOES NOT SUM"
+            print(f"    {ep:16s} named={c['named_by_tool']:7d} roled={c['role_tagged']:6d} "
+                  f"claimed_no_role={c['claimed_no_role']:5d} unaccounted={c['unaccounted']:6d}{flag}")
+        una, frac = cov.get("unaccounted_by_every_endpoint"), cov.get("unaccounted_fraction")
+        if una is None:
+            print("    unaccounted by EVERY endpoint: UNKNOWN (a count derived by subtraction "
+                  "cannot be intersected) — not zero")
+        else:
+            print(f"    unaccounted by EVERY endpoint: {una}"
+                  + (f" ({frac:.2%})" if frac is not None else ""))
+            widths = cov.get("unaccounted_widths") or {}
+            if widths:
+                # An entry narrower than the ISA's minimum instruction width is not an instruction at
+                # all, so a single total conflates a decoder gap with bytes objdump could not form.
+                parts = ", ".join(f"{b}b:{n}" for b, n in sorted(widths.items(), key=lambda kv: int(kv[0])))
+                print(f"      by hex-column width: {parts}")
         # PER ENGINE, not pooled. Roles shared by two endpoints (every endpoint moves data) would be
         # counted once per endpoint in a pooled line, and a lane engine's elementwise work pooled with
         # an array's accumulate reads as one machine doing all of it.

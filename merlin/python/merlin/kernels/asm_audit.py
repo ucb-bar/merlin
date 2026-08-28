@@ -43,6 +43,9 @@ class AsmAudit:
     target: str
     endpoint: str = ""
     engine: str = ""
+    #: Which stream this is a reading OF. Several endpoints read the same stream, and their unplaced
+    #: words can only be intersected within one stream -- across streams the positions are unrelated.
+    stream: str = ""
     total: int = 0
     named_by_tool: int = 0
     role_tagged: int = 0
@@ -52,8 +55,28 @@ class AsmAudit:
     role_histogram: dict[str, int] = field(default_factory=dict)
     #: Identities the derived table claims but no role covers — a mapping gap WE own.
     unroled_identities: tuple[str, ...] = ()
-    #: Words nothing could place — a decoder gap or a mis-encoding.
+    #: Words nothing could place — a decoder gap or a mis-encoding. Capped, for display.
     unaccounted_samples: tuple[dict[str, Any], ...] = ()
+    #: EVERY unplaced word's position in the stream, uncapped. The samples above are for a human to
+    #: read; this is what lets several endpoints' readings of ONE stream be intersected, which is the
+    #: only way to say how much of a stream NO endpoint could place. A count cannot be intersected —
+    #: two endpoints that each fail on 500 different words are not 500 words nobody can place.
+    #: Empty when the reading did not track positions; see ``positions_known``.
+    unaccounted_indices: tuple[int, ...] = ()
+    #: Whether ``unaccounted_indices`` is a complete record. False means the count came from
+    #: arithmetic, so it may be summarized but MUST NOT be intersected.
+    positions_known: bool = True
+    #: Bit-width of the objdump hex column -> how many unplaced entries had it. THE OBSERVATION, not a
+    #: conclusion. Measured on the pinned radiance corpus: of 878 entries no endpoint could place, 84
+    #: were 32-bit words (the genuine custom surface) and 794 were 8- or 16-bit fragments. A RISC-V
+    #: instruction is never 8 bits, so those are objdump's byte fallbacks where it could not form one
+    #: -- counting them as unplaced INSTRUCTIONS inflates the denominator and the gap together, and a
+    #: reader cannot tell the two apart from a single number.
+    unaccounted_widths: dict[int, int] = field(default_factory=dict)
+    #: stream position -> hex-column width in bits, for the unplaced entries. Keyed by position so a
+    #: merge can histogram exactly the words it INTERSECTED, rather than combining per-endpoint
+    #: histograms that describe different sets of words.
+    unaccounted_width_at: dict[int, int] = field(default_factory=dict)
     notes: tuple[str, ...] = ()
 
     @property
@@ -96,6 +119,7 @@ class AsmAudit:
                 "total": self.total, "named_by_tool": self.named_by_tool,
                 "role_tagged": self.role_tagged, "claimed_no_role": self.claimed_no_role,
                 "unaccounted": self.unaccounted,
+                "unaccounted_widths": {str(k): v for k, v in sorted(self.unaccounted_widths.items())},
                 "semantic_fraction": round(self.semantic_fraction, 4),
                 "endpoint_fraction": round(self.endpoint_fraction, 4),
                 "role_histogram": dict(sorted(self.role_histogram.items())),
@@ -106,6 +130,9 @@ class AsmAudit:
 
 _UNKNOWN = "<unknown>"
 
+#: Monotonic id for text sources that carry no name of their own. See ``audit_every_endpoint``.
+_STREAM_SEQ = 0
+
 
 def _classify(decoded, endpoint, target: str, engine: str, notes=()) -> AsmAudit:
     """Split a decoded stream four ways. Shared by every decoder's output shape."""
@@ -113,6 +140,7 @@ def _classify(decoded, endpoint, target: str, engine: str, notes=()) -> AsmAudit
                  notes=tuple(notes))
     unroled: list[str] = []
     unaccounted: list[dict] = []
+    positions: list[int] = []
     for d in decoded:
         a.total += 1
         roles = tuple(getattr(d, "roles", ()) or ())
@@ -131,12 +159,23 @@ def _classify(decoded, endpoint, target: str, engine: str, notes=()) -> AsmAudit
             a.named_by_tool += 1
         else:
             a.unaccounted += 1
+            # Position is the STREAM offset, so the same word has the same position in every
+            # endpoint's reading of it. `d.index` when the decoder supplies one, else the position we
+            # are at -- never None, because a None position silently drops out of an intersection and
+            # would make a word nobody placed look placed.
+            idx = getattr(d, "index", None)
+            positions.append(int(idx) if idx is not None else a.total - 1)
+            bits = int(getattr(d, "hex_bits", 0) or 0)
+            a.unaccounted_widths[bits] = a.unaccounted_widths.get(bits, 0) + 1
+            a.unaccounted_width_at[positions[-1]] = bits
             if len(unaccounted) < 8:
                 unaccounted.append({"index": getattr(d, "index", None),
                                     "addr": getattr(d, "addr", None),
                                     "fields": dict(getattr(d, "fields", {}) or {})})
     a.unroled_identities = tuple(unroled)
     a.unaccounted_samples = tuple(unaccounted)
+    a.unaccounted_indices = tuple(positions)
+    a.positions_known = True
     return a
 
 
@@ -161,6 +200,9 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
                             "read as base ISA, and no endpoint semantics are claimed",))
         a.named_by_tool = sum(1 for r in raws if str(getattr(r, "mnemonic", "")) != _UNKNOWN)
         a.unaccounted = a.total - a.named_by_tool
+        # Derived by subtraction, so WHICH words are unplaced is unknown. Marked, so a merge refuses
+        # to intersect it instead of treating an empty index tuple as "nothing was unplaced".
+        a.positions_known = False
         return a
 
     block = ((_ep._spec().get("endpoints") or {}).get(endpoint.name) or {})
@@ -297,7 +339,8 @@ def _matrix_encodings(target: str, block: dict) -> tuple[dict, str]:
                     f"({type(exc).__name__}: {exc}) — no table, and no guessed one either")
 
 
-def audit_every_endpoint(source, target: str, *, text: bool = False) -> list[AsmAudit]:
+def audit_every_endpoint(source, target: str, *, text: bool = False,
+                         stream: str = "") -> list[AsmAudit]:
     """Audit ``source`` through EVERY endpoint the target declares, one audit each.
 
     Picking a single endpoint for a multi-engine target hides the other engine's work completely, and
@@ -311,9 +354,28 @@ def audit_every_endpoint(source, target: str, *, text: bool = False) -> list[Asm
     from merlin.kernels import endpoints as _ep
 
     eps = [e for e in _ep.endpoints_for(target) if e.roles]
+    # A caller that knows the source's name passes it. For a text source there is nothing to derive a
+    # name FROM -- and object identity will not do: a freed list's id is reused, so two different
+    # files can alias to one stream and their words get counted once instead of twice. A counter is
+    # unique for the life of the process, which is the scope a merge spans.
+    global _STREAM_SEQ
+    if stream:
+        label = stream
+    elif text:
+        _STREAM_SEQ += 1
+        label = f"<text:{_STREAM_SEQ}>"
+    else:
+        label = str(source)
     if not eps:
-        return [audit_text(source, target) if text else audit_stream(source, target)]
-    return [audit_text(source, target, e) if text else audit_stream(source, target, e) for e in eps]
+        out = [audit_text(source, target) if text else audit_stream(source, target)]
+    else:
+        out = [audit_text(source, target, e) if text else audit_stream(source, target, e)
+               for e in eps]
+    # One source, one label -- so a merge can tell "two endpoints reading one kernel" apart from
+    # "two kernels", which is the difference between intersecting positions and summing them.
+    for a in out:
+        a.stream = label
+    return out
 
 
 def merge_audits(audits) -> dict:
@@ -322,10 +384,23 @@ def merge_audits(audits) -> dict:
     Roles are summed per engine rather than pooled, because a lane engine's elementwise work and an
     array's accumulate are different work on different silicon; a single pooled histogram would read
     as one machine doing all of it.
+
+    ``unaccounted`` is the number of words NO endpoint could place, computed by INTERSECTING each
+    endpoint's set of unplaced positions within a stream and summing those intersections across
+    streams. It used to be ``min()`` over the per-endpoint counts, which was wrong twice: a minimum
+    is an upper bound on an intersection (two endpoints failing on 500 DIFFERENT words is not 500
+    words nobody placed), and the accumulator discarded a genuine zero, which made the result depend
+    on the order the audits arrived in — the same two audits reported 500 or 0 depending on which
+    came first. An order-dependent measurement is not a measurement.
+
+    ``unaccounted`` is ``None`` — UNKNOWN, never 0 — when any contributing audit derived its count by
+    subtraction and so cannot say WHICH words were unplaced. A number that cannot be intersected must
+    not be silently intersected.
     """
     by_engine: dict = {}
-    shared = {"total": 0, "role_tagged": 0, "unaccounted": 0}
-    seen_totals = False
+    by_stream: dict = {}
+    totals_by_stream: dict = {}
+    positions_unknown = False
     for a in audits:
         eng = a.engine or "?"
         slot = by_engine.setdefault(eng, {"endpoints": [], "roles": {}})
@@ -333,17 +408,38 @@ def merge_audits(audits) -> dict:
             slot["endpoints"].append(a.endpoint)      # the endpoint SET, not one entry per stream
         for k, v in a.role_histogram.items():
             slot["roles"][k] = slot["roles"].get(k, 0) + v
-        if not seen_totals:
-            # The instruction TOTAL is one stream read several ways, so counting it per endpoint would
-            # multiply it. Take it once.
-            shared["total"] = a.total
-            seen_totals = True
-        shared["unaccounted"] = min(shared["unaccounted"] or a.unaccounted, a.unaccounted)
+        key = a.stream or ""
+        # The instruction TOTAL is one stream read several ways, so counting it per endpoint would
+        # multiply it. Take it once PER STREAM, then sum over streams.
+        totals_by_stream[key] = max(totals_by_stream.get(key, 0), a.total)
+        if a.unaccounted and not getattr(a, "positions_known", True):
+            positions_unknown = True
+        cur = frozenset(a.unaccounted_indices)
+        prev = by_stream.get(key)
+        by_stream[key] = cur if prev is None else (prev & cur)
+
+    unaccounted = None if positions_unknown else sum(len(v) for v in by_stream.values())
+    # Width composition of exactly the INTERSECTED words. Any endpoint that recorded a width for a
+    # position may supply it (the width is a property of the stream, not of who read it); a position
+    # no decoder gave a width for is reported under 0 = unknown, never guessed.
+    width_at: dict[tuple, int] = {}
+    for a in audits:
+        for pos, bits in (getattr(a, "unaccounted_width_at", None) or {}).items():
+            if bits:
+                width_at.setdefault((a.stream or "", pos), bits)
+    widths: dict[int, int] = {}
+    if not positions_unknown:
+        for key, common in by_stream.items():
+            for pos in common:
+                b = width_at.get((key, pos), 0)
+                widths[b] = widths.get(b, 0) + 1
     union_roles: set = set()
     for slot in by_engine.values():
         union_roles |= set(slot["roles"])
-    return {"per_engine": by_engine, "total": shared["total"],
-            "roles_union": sorted(union_roles), "unaccounted": shared["unaccounted"]}
+    return {"per_engine": by_engine, "total": sum(totals_by_stream.values()),
+            "roles_union": sorted(union_roles), "unaccounted": unaccounted,
+            "unaccounted_widths": dict(sorted(widths.items())),
+            "n_streams": len(totals_by_stream)}
 
 
 def audit_text(lines, target: str, endpoint=None) -> AsmAudit:
@@ -462,10 +558,31 @@ def target_report(target: str, streams=()) -> dict:
             "facets": _facets_reachable(set(e.roles), e.engine),
         })
 
+    streams = list(streams)
     audits = [a.to_dict() for a in streams]
     observed_roles: set = set()
     for a in audits:
         observed_roles |= set(a.get("role_histogram") or {})
+
+    # The four-way split, POOLED and per endpoint. This is the invariant the audit exists to state,
+    # and it belongs in the report rather than only on each individual audit object.
+    #
+    # Pooled, not averaged: a mean of per-stream fractions weights a 3-instruction kernel the same as
+    # a 3000-instruction one, so a corpus of tiny stubs can carry the headline number. `coverage`
+    # below divides totals by totals. `semantic_fraction` keeps its old mean-of-fractions meaning so
+    # existing readers do not silently change under them; the two are named differently on purpose.
+    merged = merge_audits(streams) if streams else {}
+    by_ep: dict = {}
+    for a in streams:
+        c = by_ep.setdefault(a.endpoint or "<none>", {
+            "engine": a.engine, "total": 0, "named_by_tool": 0, "role_tagged": 0,
+            "claimed_no_role": 0, "unaccounted": 0})
+        for k in ("total", "named_by_tool", "role_tagged", "claimed_no_role", "unaccounted"):
+            c[k] += getattr(a, k)
+    for c in by_ep.values():
+        c["sums"] = c["total"] == (c["named_by_tool"] + c["role_tagged"]
+                                   + c["claimed_no_role"] + c["unaccounted"])
+        c["semantic_fraction_pooled"] = round(c["role_tagged"] / c["total"], 4) if c["total"] else None
 
     return {
         "target": target,
@@ -478,6 +595,21 @@ def target_report(target: str, streams=()) -> dict:
                 {r for e in eps for r in e.roles} - observed_roles) if audits else [],
             "semantic_fraction": (round(sum(a["semantic_fraction"] for a in audits) / len(audits), 4)
                                   if audits else None),
+        },
+        "coverage": {
+            # Instruction words, counted ONCE per stream however many endpoints read them.
+            "instructions": merged.get("total"),
+            "per_endpoint": by_ep,
+            # Words NO endpoint could place -- the intersection, not any one endpoint's column and
+            # not the minimum of them. `None` means UNKNOWN (a count derived by subtraction cannot be
+            # intersected), which is not the same as zero.
+            "unaccounted_by_every_endpoint": merged.get("unaccounted"),
+            # Composition of what nothing placed, by objdump hex-column width. An entry narrower than
+            # the ISA's minimum instruction width is not an instruction; see AsmAudit.unaccounted_widths.
+            "unaccounted_widths": merged.get("unaccounted_widths"),
+            "unaccounted_fraction": (
+                round(merged["unaccounted"] / merged["total"], 4)
+                if merged.get("unaccounted") is not None and merged.get("total") else None),
         },
         "blocking": _blocking(eps, observed_roles, bool(audits)),
     }
