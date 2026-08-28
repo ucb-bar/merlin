@@ -17,6 +17,8 @@ from typing import Any
 
 import yaml
 
+from . import measurement as _measurement
+
 
 def cca_key(op: str, dtype: str, shape: tuple | list, target: str) -> str:
     sh = "x".join(str(x) for x in shape) if shape else "?"
@@ -76,22 +78,32 @@ def _our_cycles(runs_root: Path) -> dict[str, int]:
                     if f is not None:
                         return f
             return None
-        cyc = find(r, "cycles")
         wl = find(r, "workload") or rd.parent.name
         # workload bundle name encodes op + shape, e.g. matmul_f32_64x64x64
         parts = str(wl).split("_")
         op = parts[0] if parts else "?"
         dtype = parts[1] if len(parts) > 1 else "?"
         shape = tuple(parts[2].split("x")) if len(parts) > 2 and "x" in parts[2] else ()
-        # Run target lives in the measurement entry ("spike"/"k1"); the top-level
-        # ``target`` is the backend family ("rvv"), which is NOT the join axis.
+        # WHICH SUBSTRATE'S CYCLES THESE ARE is a declared per-target fact, not a guess. This used to
+        # take `measurement[0]` -- whichever entry happened to be first -- and, failing that, guess
+        # "spike" unless a `vlen` field was present. Both are the pick-by-field-name bug that
+        # `kernels.measurement` exists to abolish: two substrates can each emit `cycles` while only
+        # one is authoritative, and the other is a timer-derived estimate.
+        #
+        # The backend family (e.g. "rvv") is what declares the authority; the substrate label
+        # ("spike"/"k1"/"gsim") is what the measurement entry carries, and it is the join axis.
         meas = r.get("measurement") if isinstance(r, dict) else None
-        target = None
-        if isinstance(meas, list) and meas and isinstance(meas[0], dict):
-            target = meas[0].get("target")
-        target = target or find(r, "target") or ("spike" if not find(r, "vlen") else "k1")
-        if cyc is not None:
-            out[cca_key(op, dtype, shape, target)] = int(cyc)
+        backend = (r.get("target") if isinstance(r, dict) else None) or ""
+        auth = _measurement.authority_for(str(backend)) if backend else None
+        cyc, target = (None, None)
+        if auth is not None and isinstance(meas, list):
+            cyc, target = _measurement.pick(meas, auth, "cycles")
+        if cyc is None:
+            # Fail closed. An undeclared authority, or an authority whose substrate did not report,
+            # yields NO cycle count for this run rather than somebody else's -- a wrong attainment
+            # ratio is worse than a missing one, because a missing one is visibly missing.
+            continue
+        out[cca_key(op, dtype, shape, target)] = int(cyc)
     return out
 
 

@@ -49,3 +49,20 @@ runtime_promises:
 - metrics
 status: prototype
 version: '0.1'
+# WHICH SUBSTRATE MAY PRODUCE WHICH NUMBER -- see the radiance/gemmini residuals for the rationale.
+# This target is the in-tree reference lane engine: functional cycles from spike, wall time from the
+# real K1 board. Declared explicitly because the beam previously reached this pairing by a hardcoded
+# `"spike" if not vlen else "k1"` heuristic, which is the pick-by-field-name bug the authority model
+# exists to abolish.
+measurement:
+  cycles_from: spike
+  wall_from: k1
+  cycles_tier: functional
+  wall_tier: silicon
+  speed_of_light: rvv_lane_peak
+  citable_tier: rtl
+  notes:
+    - "The K1 board's measured noise floor is >=1.9% (band 2.6%), so a wall-time delta below that
+       margin is a tie, not a win."
+    - "`rvv_lane_peak` is a NAME, not an implementation: nothing computes this denominator yet, so
+       attainment against it is UNKNOWN rather than available."

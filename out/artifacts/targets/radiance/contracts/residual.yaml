@@ -210,3 +210,30 @@ unmaterializable_families:
   synchronization: >-
     an ordering/visibility family with no output tensor: there is nothing for a numeric oracle to compare.
     Coverage for it belongs to the instruction-class trace check, not to a materialized probe.
+# WHICH SUBSTRATE MAY PRODUCE WHICH NUMBER. A declaration, not a derived fact: no RTL introspection
+# can say which of two substrates that both emit a `cycles` field is authoritative, nor which tier a
+# number must reach before it is a hardware claim. Read by `merlin.kernels.measurement.authority_for`.
+#
+# VERIFIED, not assumed: with MERLIN_MUON_GSIM_EMU set, this target's L3 adapter IS the GSIM one
+# (`muon_oracles.gsim_muon_adapter`, emitting `kind: rtl_gsim_muon`, `derived_from_rtl: true`); with
+# it unset, L3 is the Verilator adapter. Both grade the SAME fork-free ELF on the SAME RTL completion
+# contract, so the TIER claim holds either way and only the substrate label differs -- which is
+# exactly why the label has to be declared rather than inferred from whichever field is present.
+# MERLIN_MUON_L3_VERILATOR_ALSO runs Verilator alongside as an advisory cross-check; use it before
+# citing GSIM cycles as authoritative, since otherwise nothing independent checks them.
+measurement:
+  cycles_from: gsim
+  wall_from: null             # no board and no silicon for this target: wall time is UNKNOWN, not zero
+  cycles_tier: rtl
+  wall_tier: silicon
+  # No speed-of-light model is IMPLEMENTED for this target. Naming one here would make every
+  # attainment ratio look declared while nothing computes it; null keeps it honestly UNKNOWN.
+  speed_of_light: null
+  citable_tier: rtl
+  notes:
+    - "GSIM is gated on MERLIN_MUON_GSIM_EMU. With it unset the L3 cert is Verilator, which is the
+       same tier on the same contract but a DIFFERENT substrate label, so a number produced that way
+       is not picked by this declaration -- deliberately: it must be re-run or re-declared, never
+       silently accepted as the authoritative one."
+    - "The L2 tier is the cyclotron perf model, which carries a bracketed SIMT-GEMM overcount that
+       must be carried through to any number quoted from it rather than absorbed into the result."

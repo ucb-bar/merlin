@@ -92,3 +92,23 @@ unmaterializable_families:
   elementwise_map: >-
     no probe path today: an elementwise capsule is authored through the PyTorch/linalg source with a host-eager golden (needs the m2m venv, so not a deterministic offline probe), and capsule_golden._recompute_golden has no elementwise op, so it cannot be graded at all on an exact-integer datapath.
     Needs a merlin_iface elementwise mnemonic + a recompute entry.
+# WHICH SUBSTRATE MAY PRODUCE WHICH NUMBER -- see the radiance/gemmini residuals for the rationale.
+# This target's ISA is SELF-HOSTED, so it has no FIRRTL leg the GSIM path can lower: its cycles come
+# from the arc program oracle (`targetgen.program_oracle.run_program`), which reports
+# `derived_from_rtl: false` / `fidelity: rtl_derived_model`. That is a cycle MODEL, not an RTL
+# simulation, and the tier says so -- calling it `rtl` because it is the most expensive tier this
+# target has would be a claim the substrate does not support.
+measurement:
+  cycles_from: arc_program
+  wall_from: null             # no board and no silicon: wall time is UNKNOWN, not zero
+  cycles_tier: cycle_model
+  wall_tier: silicon
+  speed_of_light: null
+  citable_tier: cycle_model
+  notes:
+    - "A speed-of-light model for this target EXISTS on disk but merlin has never referenced it
+       (npu-model/npu_speed_of_light/simple_throughput_model.py). Until it is wired in, attainment is
+       UNKNOWN; wiring it is what would let this be a number instead of a name."
+    - "The corpus is a conformance/perf/stress set, not a measurement set, and earlier rounds used
+       degenerate stimulus. Attainment must come from the oracle plus that model, never from the
+       corpus's own declared @PERF_MACS headers alone."

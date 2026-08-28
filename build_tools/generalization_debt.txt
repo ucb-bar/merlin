@@ -54,3 +54,22 @@ gemmini:corpus_contains_unexecutable:GF5_gelu_bf16_pt
 # rank-limited: a batched/4-D contraction on a target whose declared contraction ranks exclude it.
 atlas:corpus_contains_unexecutable:AF12_gemv_batched_bf16_pt
 radiance:corpus_contains_unexecutable:RP14_patch_embed_bf16_pt
+
+# --- surfaced by regenerating radiance's contract (its on-disk capability_evidence was STALE) ---
+# These two are not new reality; they are pre-existing reality a stale generated artifact was masking.
+# Recorded rather than "fixed" because the obvious fix moves a published denominator the WRONG way.
+#
+# missing_axis: the deriver reports elementwise_map dtypes [int8, mxfp4, mxfp6, mxfp8] that the
+# contract does not declare. Widening the declaration to match would be wrong: the evidence's own
+# `source` is `unit_intent` -- "unit 'simt_cluster' declares op 'elementwise'" -- and that rule
+# attributes a unit's ENTIRE dtype set to EVERY op the unit declares. The simt_cluster's MX dtypes
+# come from its matmul accumulate matrix, so this says the lanes do elementwise on mxfp4 when nothing
+# established that. Resolve by making the derivation per-OP rather than per-UNIT, which will either
+# ground these dtypes or drop them; do NOT resolve by declaring them.
+radiance:missing_axis:elementwise_map
+# unaudited_axis: the contract declares contraction ranks [2, 3] that no rung can confirm -- the
+# evidence ladder decides FAMILIES, not shape axes. Resolve by giving the ladder a rank-deciding rung.
+# ⚠️ Do NOT resolve by deleting the ranks: an empty rank list ADMITS EVERY RANK (`is_eligible` guards
+# the check with `if c.ranks`), so removing them silently widens the axis instead of narrowing it --
+# the same trap that produced the gemmini conv2d denominator bug.
+radiance:unaudited_axis:contraction

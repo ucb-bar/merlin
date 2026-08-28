@@ -114,3 +114,51 @@ class TestTheRealTargets:
         if not a.declared:
             pytest.skip("muon contract not resolvable")
         assert M.citable(a, "functional") is False
+
+
+class TestEveryRegisteredTargetDeclaresAnAuthority:
+    """An undeclared authority is not a small gap: `pick` returns nothing, so cycles, wall time and
+    attainment are all UNKNOWN for that target. radiance, atlas and rvv were all undeclared — and not
+    by oversight. All three resolve a GENERATED contract, and the contract deriver never emitted a
+    `measurement` block at all, so no generated target COULD declare one. The block now lives in each
+    target's residual (the per-target declaration side-input) and is carried through by the deriver.
+    """
+
+    TARGETS = ("gemmini", "muon", "saturn", "radiance", "atlas", "rvv")
+
+    def test_all_six_declare(self):
+        from merlin.kernels import measurement as M
+        undeclared = [t for t in self.TARGETS if not M.authority_for(t).declared]
+        assert not undeclared, f"no measurement authority declared for {undeclared}"
+
+    def test_a_cycle_tier_is_never_stronger_than_its_substrate(self):
+        """atlas's cycles come from the arc PROGRAM oracle, which reports `derived_from_rtl: false`.
+        Calling that `rtl` because it is the most expensive tier the target has would claim a
+        fidelity the substrate does not provide."""
+        from merlin.kernels import measurement as M
+        a = M.authority_for("atlas")
+        assert a.cycles_tier == "cycle_model" and a.citable_tier == "cycle_model"
+
+    def test_an_unimplemented_denominator_is_null_not_a_name(self):
+        """A `speed_of_light` NAME that nothing computes makes attainment look declared while it is
+        UNKNOWN. radiance and atlas declare null and say so in `gaps()`."""
+        from merlin.kernels import measurement as M
+        for t in ("radiance", "atlas"):
+            a = M.authority_for(t)
+            assert a.speed_of_light is None
+            assert any("speed-of-light" in g for g in a.gaps()), a.gaps()
+
+
+class TestAttainmentPicksByAuthorityNotByFieldName:
+    def test_the_authoritative_substrate_wins_over_the_first_entry(self):
+        from merlin.kernels import measurement as M
+        auth = M.MeasurementAuthority(target="t", cycles_from="spike", declared=True)
+        meas = [{"target": "k1", "cycles": 999}, {"target": "spike", "cycles": 42}]
+        assert M.pick(meas, auth, "cycles") == (42, "spike")
+
+    def test_a_non_authoritative_substrate_is_not_a_fallback(self):
+        """NEGATIVE CASE: the authoritative substrate did not report, and another one did. The answer
+        is UNKNOWN, not the other one's number."""
+        from merlin.kernels import measurement as M
+        auth = M.MeasurementAuthority(target="t", cycles_from="spike", declared=True)
+        assert M.pick([{"target": "k1", "cycles": 999}], auth, "cycles") == (None, None)

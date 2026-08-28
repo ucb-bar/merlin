@@ -114,6 +114,22 @@ compute_units:
 # bundle by consumers; the supported ops/layouts follow from the agent's own target dialect, verified
 # against the oracle. (Kept as a present key for schema compliance.)
 capabilities: {}
+# WHICH SUBSTRATE MAY PRODUCE WHICH NUMBER. A declaration, not a derived fact: no RTL introspection can
+# say which of two substrates that both emit a `cycles` field is the authoritative one, nor which tier a
+# number must reach before it may be quoted as a hardware result. It therefore belongs in the residual
+# with the other declarations, and lives here rather than only in the emitted contract -- hand-adding it
+# downstream meant the deriver could not reproduce its own curated contract, which is drift by
+# construction. Read by `merlin.kernels.measurement.authority_for`.
+measurement:
+  cycles_from: spike          # the functional-cycles reference for this path
+  wall_from: k1               # real silicon: the only wall-time authority
+  cycles_tier: functional
+  wall_tier: silicon
+  speed_of_light: mesh_macs_per_cycle
+  citable_tier: rtl           # below this a number is not a hardware claim
+  notes:
+    - "k1 also carries a `cycles` field, but it is an rdtime-derived ESTIMATE, not authoritative.
+       Picking cycles by field name rather than by authority gets that estimate."
 memory_model:
   resident: true
   accumulators: true

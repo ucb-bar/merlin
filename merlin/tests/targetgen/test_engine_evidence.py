@@ -234,14 +234,35 @@ class TestAgainstTheRealTargets:
         _, drift = self._report("gemmini")
         assert drift == [], f"gemmini's 16x16 mesh matches its declaration; got {drift}"
 
-    def test_atlas_has_an_undeclared_lane_engine(self):
+    def test_atlas_has_a_lane_engine_its_author_never_declared(self):
         """The finding the whole exercise is for.
 
-        Atlas declares one systolic unit with ops ('matmul',). Its own ISA census reports tensor-compute
-        roles, and 50 of its 137 expert kernels drive that engine exclusively.
+        Atlas's residual declares ONE systolic unit with ops ('matmul',). Its own ISA census reports
+        tensor-compute roles, and 50 of its 137 expert kernels drive a vector engine exclusively.
+
+        The drift list is now EMPTY, and that is the fix rather than the finding being lost: the
+        deriver synthesizes the evidenced-but-undeclared unit into the shipping manifest (so the
+        eligibility oracle stops attributing lane work to the array) and records it under
+        ``derived_compute_units`` so it is never mistaken for something the author declared. Asserting
+        on the drift alone would have made "we fixed it" indistinguishable from "we stopped looking",
+        so this asserts the evidence AND the provenance of the declaration.
         """
+        import yaml
+        from merlin.targetgen import target_registry as _R
+
         d, drift = self._report("atlas")
         if not d.rungs:
             pytest.skip("atlas ISA taxonomy unavailable in this checkout")
         assert "vector" in d.engines(), d.engines()
-        assert any(x.startswith("undeclared_engine vector") for x in drift), drift
+
+        contract = yaml.safe_load(_R.resolve("atlas").contract_path.read_text()) or {}
+        # The lane engine is present in the shipping manifest ...
+        kinds = {u.get("kind") for u in contract.get("compute_units") or []}
+        assert "vector" in kinds, contract.get("compute_units")
+        # ... and it got there by DERIVATION, not by declaration.
+        assert "vector_unit" in (contract.get("derived_compute_units") or []), \
+            "the lane engine must stay marked as derived — a synthesized unit that looks author-" \
+            "declared erases the finding it exists to record"
+        # With it declared, the audit has nothing left to report. If the synthesis were removed the
+        # drift would return, which is what makes this a fix and not a suppression.
+        assert not [x for x in drift if x.startswith("undeclared_engine vector")], drift
