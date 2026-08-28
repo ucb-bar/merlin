@@ -1,0 +1,29 @@
+# Kernel-generation arm A3 — Gemini on Google's own API.
+#
+# Runs in parallel with, and BLIND to, the codex and bedrock arms.
+method: gemini_kernel
+driver: opencode                    # the multi-provider driver; codex speaks only the OpenAI wire
+                                    # protocol and converse only Bedrock, so neither can carry this
+model: google/gemini-3.5-flash
+provider: google
+billing_mode: metered
+effort: high
+seeds: [1, 2, 3]
+max_spend_usd: 60                   # its own budget; a Google bill is not an AWS bill
+
+# WHY A THIRD ROUTE. Gemini is NOT on Bedrock -- Google's Bedrock presence is Gemma only
+# (3-4b / 12b / 27b, open-weight and far smaller). Verified with list_foundation_models in both
+# us-east-1 and us-west-2. The prior Radiance campaign reached Gemini through GOOGLE_API_KEY on
+# Google's own API, so matching it means adding the route rather than pretending Bedrock has it.
+#
+# WHY THIS MODEL. It is campaign-proven on this target: 1400 calls / $57.19, the second most-called
+# model of the prior campaign after qwen3-coder-480b.
+credentials:
+  # A SEPARATE credential and budget from Bedrock's. The ledger must keep them apart -- a Google bill
+  # and an AWS bill are different accounts, and summing them hides which one a cost landed on.
+  env: GOOGLE_API_KEY
+  source: /scratch2/agustin/ModelBlaster/.env
+accounting:
+  # Priced per token like Bedrock, but on Google's rates, so it needs its own entry in the price
+  # table. Without a real rate the run reports no dollar figure rather than a guessed one.
+  needs_own_price_entry: true

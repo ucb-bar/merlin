@@ -117,23 +117,39 @@ never exercise norms, softmax or elementwise. Two consequences:
 
 ## Agent routing — a standing constraint
 
-**Every agent run goes through the Codex subscription or Bedrock.** Anthropic and OpenAI models
-rate-cap quickly on this account, and a capped run does not fail loudly: it yields short rounds and a
-small constant score, which reads as a weak agent rather than a throttled one. A comparison run that
-way measures quota, not capability.
+**Every agent run goes through the Codex seat, Bedrock, or the Google API — nothing else.** Anthropic
+and OpenAI models rate-cap quickly on this account, and a capped run does not fail loudly: it yields
+short rounds and a small constant score, which reads as a weak agent rather than a throttled one. A
+comparison run that way measures quota, not capability.
 
-| arm | driver | model | billing |
-|---|---|---|---|
-| `codex_kernel` | codex (ChatGPT seat) | `gpt-5.6-sol` | `subscription_notional` — billed 0, any figure is a projection |
-| `bedrock_kernel` | converse (Bedrock) | `qwen.qwen3-coder-480b-a35b-v1:0` | `metered`, hard cap $100 |
+| arm | provider | driver | model | billing |
+|---|---|---|---|---|
+| `codex_kernel` | subscription | codex | `gpt-5.6-sol` | `subscription_notional` — billed 0, any figure is a projection |
+| `bedrock_kernel` | bedrock (**us-west-2**) | converse | `qwen.qwen3-coder-480b-a35b-v1:0` | `metered`, cap $100 |
+| `gemini_kernel` | google | opencode | `google/gemini-3.5-flash` | `metered`, cap $60, **separate credential** |
 
-The Bedrock model is the campaign-proven pick rather than a guess: it is the most-called model of the
-prior Radiance campaign (2955 calls). Note `model_tiers` aliases `qwen-coder` to qwen3-coder-**next**,
-a different model the campaign never used, so the id is pinned explicitly.
+Both open-model picks are campaign-proven rather than guesses — they are the two most-called models of
+the prior Radiance campaign (qwen 2955 calls, gemini 1400).
 
-The two arms run **in parallel and blind to each other**. The policy is enforced by
-`scripts/check_method_models.py`, which is driver-aware because the same id means different things by
-route: `gpt-5.6-sol` is the seat's own model on codex and an OpenAI-on-Bedrock profile on converse.
+Three facts that would each have failed at launch, all verified against the live account:
+
+- **Gemini is not on Bedrock.** Google's Bedrock presence is Gemma only (3-4b/12b/27b, open-weight
+  and far smaller). Checked with `list_foundation_models` in both regions. Matching the prior campaign
+  means adding Google's own API as a third route, not pretending Bedrock has it.
+- **`qwen3-coder-480b` exists only in us-west-2.** `us-east-1` — where prior capsule-bench runs
+  authenticated — offers `qwen3-coder-next` and `-30b` but not the 480b. Region is part of this
+  model's identity, so the config pins it.
+- **`model_tiers` aliases `qwen-coder` to qwen3-coder-next**, a different model the campaign never
+  used. The id is pinned explicitly rather than taken from the alias.
+
+The arms run **in parallel and blind to each other**. Enforced by `scripts/check_method_models.py`,
+keyed on **provider** rather than driver because one driver reaches several — opencode carries both
+Bedrock and Google, so the driver alone does not say which budget a run spends.
+
+**Codex is live** (verified 2026-08-27): a real `codex exec --json` round returned `PONG` with
+`auth_mode: chatgpt` and usage `input_tokens 17929 / cached 11008 / output 6`, which also confirms the
+accounting mandate that `input_tokens` already contains the cached count. Note `--skip-git-repo-check`
+is required outside a git repo.
 
 ## Not ready
 

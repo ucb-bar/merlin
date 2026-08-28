@@ -5,6 +5,11 @@ method: bedrock_kernel
 driver: converse                    # capsule_bench/harness/bedrock_agent.py
 model: qwen.qwen3-coder-480b-a35b-v1:0
 provider: bedrock
+# ⚠️ REGION IS PART OF THE MODEL'S IDENTITY HERE. This id exists ONLY in us-west-2; us-east-1 --
+# where the prior capsule-bench runs authenticated -- offers qwen3-coder-next and -30b but NOT the
+# 480b. Verified by list_foundation_models against both regions. The prior campaign ran us-west-2,
+# which is why it could use this model at all.
+aws_region: us-west-2
 billing_mode: metered
 effort: high
 seeds: [1, 2, 3]

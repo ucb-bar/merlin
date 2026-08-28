@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Every agent run goes through the Codex subscription or Bedrock -- and nothing else.
+"""Every agent run goes through an approved route -- the Codex seat, Bedrock, or the Google API.
 
 A standing constraint on this study, enforced here rather than remembered. Two reasons, and only the
 first is about money:
@@ -8,9 +8,10 @@ first is about money:
 it produces short rounds and a small constant score, which reads as a weak agent rather than a
 throttled one. That turns a capability comparison into a quota measurement, silently.
 
-**The two routes must stay separable in the ledger.** A Codex seat run is
-``subscription_notional`` -- billed_usd is 0 and any dollar figure is a projection -- while a Bedrock
-run is ``metered`` real spend. Mixing them into one total makes a projection consume a real budget.
+**The routes must stay separable in the ledger.** A Codex seat run is ``subscription_notional`` --
+billed_usd is 0 and any dollar figure is a projection -- while Bedrock and the Google API are
+``metered`` real spend, on two DIFFERENT credentials and budgets. Summing them makes a projection
+consume a real budget and hides which account a cost landed on.
 
 The check is DRIVER-AWARE, because the same model id means different things by route: `gpt-5.6-sol`
 is the ChatGPT seat's own model on the codex driver (allowed, and the point of that arm) and an
@@ -31,11 +32,20 @@ import yaml
 HERE = Path(__file__).resolve().parent
 EXP = HERE.parent
 
-#: Routes an agent run may take, and the billing mode each MUST declare.
-ALLOWED_ROUTES = {
-    "codex": "subscription_notional",   # ChatGPT seat: billed 0, notional projection only
-    "converse": "metered",              # Bedrock Converse: real metered spend
-    "opencode": "metered",              # Bedrock via OpenCode: real metered spend
+#: Approved PROVIDERS, and the billing mode each MUST declare. Keyed on provider rather than driver
+#: because a driver can reach more than one provider: opencode drives Bedrock and the Google API both,
+#: so the driver alone does not say which budget a run spends.
+ALLOWED_PROVIDERS = {
+    "subscription": "subscription_notional",  # ChatGPT seat: billed 0, notional projection only
+    "bedrock": "metered",                     # AWS, bearer auth
+    "google": "metered",                      # Google API key -- a SEPARATE credential and budget
+}
+
+#: Which drivers can carry which provider. A mismatch here is a launch failure, not a policy call.
+PROVIDER_DRIVERS = {
+    "subscription": frozenset({"codex"}),
+    "bedrock": frozenset({"converse", "opencode"}),
+    "google": frozenset({"opencode"}),        # opencode is the multi-provider driver
 }
 
 #: Vendor tokens refused on a metered Bedrock route. Matched against the FIRST dotted segment of the
@@ -45,11 +55,16 @@ CAPPED_VENDORS = frozenset({"anthropic", "openai"})
 
 
 def _vendor_of(model_id: str) -> str:
-    """Bedrock's vendor segment. `us.anthropic.claude-x` -> anthropic; `qwen.q3` -> qwen.
+    """The vendor an id names, for either id style in use.
 
-    A leading region qualifier (`us.`, `eu.`) is skipped, so the vendor is found whether or not the
-    id carries one.
+    Bedrock writes `us.anthropic.claude-x` (dotted, optional region first); opencode writes
+    `google/gemini-x` (provider-slash). Taking the slash form first matters -- splitting
+    `google/gemini-3.5-flash` on "." would yield `google/gemini-3` as the vendor and match nothing.
+
+    A leading region qualifier (`us.`, `eu.`) is skipped, so the vendor is found either way.
     """
+    if "/" in model_id:
+        return model_id.split("/", 1)[0].strip().lower()
     parts = [p for p in model_id.split(".") if p]
     for p in parts:
         low = p.lower()
@@ -65,23 +80,30 @@ def violations(cfg: dict, *, where: str) -> list[str]:
     driver = str(cfg.get("driver") or "")
     model = str(cfg.get("model") or "")
     billing = str(cfg.get("billing_mode") or "")
+    provider = str(cfg.get("provider") or "")
 
-    if driver not in ALLOWED_ROUTES:
+    if provider not in ALLOWED_PROVIDERS:
         out.append(
-            f"{where}: driver {driver!r} is not an allowed route "
-            f"(allowed: {sorted(ALLOWED_ROUTES)}). Every agent run uses the Codex subscription "
-            f"or Bedrock."
+            f"{where}: provider {provider!r} is not approved "
+            f"(allowed: {sorted(ALLOWED_PROVIDERS)}). Every agent run uses the Codex seat, "
+            f"Bedrock, or the Google API."
         )
         return out                      # nothing else can be judged against an unknown route
 
-    expected = ALLOWED_ROUTES[driver]
+    if driver not in PROVIDER_DRIVERS[provider]:
+        out.append(
+            f"{where}: driver {driver!r} cannot carry provider {provider!r} "
+            f"(drivers for it: {sorted(PROVIDER_DRIVERS[provider])})"
+        )
+
+    expected = ALLOWED_PROVIDERS[provider]
     if billing != expected:
         out.append(
             f"{where}: driver {driver!r} must declare billing_mode {expected!r}, got {billing!r}. "
             "A seat projection and metered spend must never share a total."
         )
 
-    if expected == "metered":
+    if provider == "bedrock":
         vendor = _vendor_of(model)
         if vendor in CAPPED_VENDORS:
             out.append(
@@ -125,14 +147,16 @@ def main(argv: list[str] | None = None) -> int:
         bad += v
         mark = "FAIL" if v else "ok  "
         print(f"  [{mark}] {cfg.get('method', p.parent.name):18s} "
-              f"driver={cfg.get('driver')!s:10s} model={cfg.get('model')}")
+              f"provider={cfg.get('provider')!s:13s} driver={cfg.get('driver')!s:10s} "
+              f"model={cfg.get('model')}")
 
     if bad:
         print()
         for b in bad:
             print(f"  !! {b}")
         return 1
-    print(f"\n  {len(found)} method(s): every agent run routes through the Codex seat or Bedrock.")
+    print(f"\n  {len(found)} method(s): every agent run routes through an approved provider "
+          f"({', '.join(sorted(ALLOWED_PROVIDERS))}).")
     return 0
 
 
