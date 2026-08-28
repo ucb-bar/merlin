@@ -141,3 +141,66 @@ def test_the_sidecar_carries_what_the_build_step_needs(tmp_path):
 
 def test_an_absent_sidecar_reads_as_empty_not_an_error():
     assert load_sidecar("/nonexistent/path/for/a/sidecar") == {}
+
+
+# --------------------------------------------------------------- the on-disk seam a build uses
+
+_TWO_SHAPES = """
+module {
+  func.func @forward(%a: tensor<16x32xi8>, %b: tensor<32x16xi8>,
+                     %c: tensor<8x128xi8>, %d: tensor<128x64xi8>) -> tensor<8x64xi32> {
+    %z = arith.constant 0 : i32
+    %e1 = tensor.empty() : tensor<16x16xi32>
+    %f1 = linalg.fill ins(%z : i32) outs(%e1 : tensor<16x16xi32>) -> tensor<16x16xi32>
+    %o1 = linalg.matmul ins(%a, %b : tensor<16x32xi8>, tensor<32x16xi8>)
+                        outs(%f1 : tensor<16x16xi32>) -> tensor<16x16xi32>
+    %e2 = tensor.empty() : tensor<8x64xi32>
+    %f2 = linalg.fill ins(%z : i32) outs(%e2 : tensor<8x64xi32>) -> tensor<8x64xi32>
+    %o2 = linalg.matmul ins(%c, %d : tensor<8x128xi8>, tensor<128x64xi8>)
+                        outs(%f2 : tensor<8x64xi32>) -> tensor<8x64xi32>
+    return %o2 : tensor<8x64xi32>
+  }
+}
+"""
+
+
+def _rewrite_on_disk(tmp_path, select=lambda _s: True):
+    from merlin.llvmlower.device_offload import rewrite_prepared_file
+    dev = _int8_device()
+    prep = tmp_path / "prepared.mlir"
+    prep.write_text(_TWO_SHAPES, encoding="utf-8")
+    with IR_LOCK:
+        r = rewrite_prepared_file(prep, tmp_path, dev, select=select)
+    return r, prep
+
+
+def test_distinct_extents_get_distinct_callees(tmp_path):
+    """MLIR function types are monomorphic, so two shapes cannot share one symbol."""
+    r, prep = _rewrite_on_disk(tmp_path)
+    assert r.moved == 2 and len(r.signatures) == 2
+    assert set(r.signatures.values()) == {(16, 16, 32), (8, 64, 128)}
+    text = prep.read_text(encoding="utf-8")
+    assert "linalg.matmul" not in text and text.count("func.call") == 2
+
+
+def test_the_written_module_keeps_its_access_attributes(tmp_path):
+    """xDSL prints arg_attrs only for a function WITH a body, so a bodyless declaration loses them
+    on the round trip -- and one-shot-bufferize then copies the weight operand of every routed
+    contraction. Silent, and a large amount of pointless memcpy in a shipped model."""
+    r, prep = _rewrite_on_disk(tmp_path)
+    text = prep.read_text(encoding="utf-8")
+    assert text.count("bufferization.access") == 3 * len(r.signatures)
+
+
+def test_the_sidecar_is_written_even_when_nothing_moved(tmp_path):
+    """An absent sidecar and an empty one mean different things to a build: 'the rewrite never ran'
+    versus 'it ran and routed nothing'."""
+    from merlin.llvmlower.device_offload import load_sidecar
+    r, _ = _rewrite_on_disk(tmp_path, select=lambda _s: False)
+    assert r.moved == 0
+    assert load_sidecar(tmp_path).get("signatures") == {}
+
+
+def test_the_module_is_untouched_when_nothing_moved(tmp_path):
+    _r, prep = _rewrite_on_disk(tmp_path, select=lambda _s: False)
+    assert prep.read_text(encoding="utf-8").count("linalg.matmul") == 2

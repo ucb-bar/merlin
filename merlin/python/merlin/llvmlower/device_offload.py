@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 __all__ = ["DeviceRewrite", "SIDECAR_NAME", "load_sidecar", "rewrite_contractions_to_device",
+           "rewrite_prepared_file",
            "symbol_stem"]
 
 #: Where the rewrite records what it minted, beside the prepared module. One file per device, so two
@@ -212,3 +213,42 @@ def rewrite_contractions_to_device(module, device: str, *,
     if sidecar_dir is not None:
         out.write_sidecar(sidecar_dir)
     return out
+
+
+def rewrite_prepared_file(prepared: str | Path, work: str | Path, device: str, *,
+                          select: Callable[[Any], bool] | None) -> DeviceRewrite:
+    """Rewrite a prepared module ON DISK in place and record what it minted.
+
+    This is the seam a whole-model build uses: read the module the preparation passes produced, move
+    the selected contractions onto ``device``, print it back, repair the declarations the printer
+    drops, and write the sidecar the build's device side reads.
+
+    It REFUSES to write a module whose declarations lost their access attributes, and that is not
+    belt-and-braces. xDSL stores ``arg_attrs`` correctly but prints them only for a function WITH a
+    body; for a bodyless declaration it prints the types alone, so the attributes never reach the text
+    that gets parsed, and one-shot-bufferize then defensively copies the weight operand of every
+    routed contraction. A large amount of pointless memcpy in a shipped model is exactly the kind of
+    regression nothing would attribute back to here.
+
+    The repair itself is shared with the matrix-unit path rather than reimplemented: both need the
+    same fixup for the same printer, and two copies would drift.
+    """
+    from ..frontends.linalg_mlir import parse_mlir_file
+    from ..xdsl_dialects._common import text as to_text
+    from .passes_opu import patch_declaration_arg_attrs, unpatched_declarations
+
+    prepared, work = Path(prepared), Path(work)
+    module = parse_mlir_file(prepared)
+    rewrite = rewrite_contractions_to_device(module, device, select=select)
+    if rewrite.moved:
+        text = patch_declaration_arg_attrs(to_text(module), rewrite)
+        missing = unpatched_declarations(text, rewrite)
+        if missing:
+            raise RuntimeError(
+                f"declarations {list(missing)} carry no bufferization.access attributes, so "
+                "one-shot-bufferize would copy the weight operand of every contraction routed to "
+                "them; refusing to write the module")
+        prepared.write_text(text, encoding="utf-8")
+    work.mkdir(parents=True, exist_ok=True)
+    rewrite.write_sidecar(work)
+    return rewrite
