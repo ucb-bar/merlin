@@ -25,6 +25,7 @@ generated:
 - layers/B1_linear_relu_i8
 - layers/B2_linear_acc_scale_relu_i8
 - layers/GC0_conv2d_i8
+- model/GX0_interop_rvv_lane
 - model/M0_small_llama_gemmini
 - model/M1_lstmnetvit_gemmini
 - model_slices/C0_mlp_linear1
