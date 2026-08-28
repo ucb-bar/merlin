@@ -121,3 +121,59 @@ def test_the_kernel_is_extern_not_regenerated(tmp_path):
     unit, _ = _emit(tmp_path)
     assert f"extern void {unit.kernel}(" in unit.text
     assert unit.text.count(f"void {unit.kernel}(") == 1, "the kernel must be declared, never defined"
+
+
+# --------------------------------------------------------------- the tile-edge padding contract
+
+def test_extents_on_the_tile_edge_need_no_staging(tmp_path):
+    """The fast path: nothing to pad, so nothing is copied."""
+    unit = emit_translation_unit("gemmini", {"s": (16, 32, 16)}, {"s": ("i8", "i8", "i32")},
+                                 kernel_symbol_for=lambda _s: "k", tile_edge=16)
+    assert unit.symbols == ("s",)
+    assert "static unsigned char" not in unit.text
+
+
+def test_extents_off_the_tile_edge_are_staged_into_padded_buffers(tmp_path):
+    """The kernel ABI states its operands are zero-padded to a multiple of the tile edge. Handing it
+    raw buffers does not fault -- it strides by the padded width through unpadded data, reads a
+    neighbouring row as its own, and returns plausible wrong numbers.
+
+    Measured on a real model: every offloaded layer had M=8 against a 16-wide mesh, and the compiled
+    artifact scored cos 0.9847 where the interpreted path scores 0.99993. With staging it scores
+    0.999929 -- the padding was the entire gap."""
+    unit = emit_translation_unit("gemmini", {"s": (8, 344, 128)}, {"s": ("i8", "i8", "i32")},
+                                 kernel_symbol_for=lambda _s: "k", tile_edge=16)
+    assert unit.symbols == ("s",)
+    # M 8 -> 16, N 344 -> 352, K 128 already on the edge
+    assert "s_a[16 * 128 * 1]" in unit.text
+    assert "s_b[128 * 352 * 1]" in unit.text
+    assert "s_c[16 * 352 * 4]" in unit.text
+
+
+def test_a_padded_entry_compiles_and_round_trips(tmp_path):
+    """Staging is real generated code with real index arithmetic; only building it proves it."""
+    if _CC is None:
+        pytest.skip("no C compiler available")
+    unit = emit_translation_unit("gemmini", {"merlin_dev_test_0": (8, 16, 32)},
+                                 {"merlin_dev_test_0": ("i8", "i8", "i32")},
+                                 kernel_symbol_for=lambda _s: "gemmini_kernel", tile_edge=16)
+    (tmp_path / "shim.c").write_text(unit.text, encoding="utf-8")
+    p = subprocess.run([_CC, "-Wall", "-Wextra", "-Werror", "-c", str(tmp_path / "shim.c"),
+                        "-o", str(tmp_path / "shim.o")], capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+
+
+def test_the_tile_edge_is_derived_from_the_device_not_assumed():
+    """Padding to a guessed edge is worse than not padding: it is differently wrong."""
+    from merlin.llvmlower.device_shim import tile_edge_for
+    assert tile_edge_for("definitely_not_a_target") is None
+    edge = tile_edge_for("gemmini")
+    if edge is None:
+        pytest.skip("no mesh facts derivable here")
+    assert edge > 0
+
+
+def test_an_underivable_edge_declines_rather_than_guessing():
+    unit = emit_translation_unit("definitely_not_a_target", {"s": (8, 24, 8)},
+                                 {"s": ("i8", "i8", "i32")})
+    assert unit.symbols == () or "s" not in unit.symbols

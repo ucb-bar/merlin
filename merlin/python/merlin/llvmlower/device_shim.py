@@ -98,6 +98,63 @@ merlin_memref_2d {symbol}(
 """
 
 
+_ENTRY_2D_PADDED = """
+/* {symbol}: M={m} N={n} K={k}, datapath {dtypes}, tile edge {edge}.
+ *
+ * The kernel ABI states its operands are row-major with edge tiles ZERO-PADDED to a multiple of the
+ * tile edge. These extents are not, so the raw buffers cannot be handed over: the kernel would stride
+ * by the padded width through unpadded data and read a neighbouring row as if it were its own. That
+ * does not fault -- it returns plausible, wrong numbers.
+ *
+ * Padded staging is therefore part of the contract, not an optimisation. Copies are byte-wise so this
+ * stays independent of the element type; the row loop is the only place the extents appear. */
+static unsigned char {symbol}_a[{mp} * {kp} * {lhs_bytes}];
+static unsigned char {symbol}_b[{kp} * {np_} * {rhs_bytes}];
+static unsigned char {symbol}_c[{mp} * {np_} * {out_bytes}];
+
+merlin_memref_2d {symbol}(
+    void *a_alloc, void *a_aligned, intptr_t a_off, intptr_t a_s0, intptr_t a_s1,
+    intptr_t a_st0, intptr_t a_st1,
+    void *b_alloc, void *b_aligned, intptr_t b_off, intptr_t b_s0, intptr_t b_s1,
+    intptr_t b_st0, intptr_t b_st1,
+    void *c_alloc, void *c_aligned, intptr_t c_off, intptr_t c_s0, intptr_t c_s1,
+    intptr_t c_st0, intptr_t c_st1)
+{{
+  if (a_s0 != {m} || a_s1 != {k} || b_s0 != {k} || b_s1 != {n} || c_s0 != {m} || c_s1 != {n}) {{
+    merlin_memref_2d bad;
+    bad.allocated = 0; bad.aligned = 0; bad.offset = 0;
+    bad.sizes[0] = 0; bad.sizes[1] = 0; bad.strides[0] = 0; bad.strides[1] = 0;
+    return bad;
+  }}
+  (void)a_alloc; (void)b_alloc; (void)a_st0; (void)a_st1; (void)b_st0; (void)b_st1;
+  {{
+    const unsigned char *src_a = (const unsigned char *)a_aligned + a_off * {lhs_bytes};
+    const unsigned char *src_b = (const unsigned char *)b_aligned + b_off * {rhs_bytes};
+    unsigned char *dst_c = (unsigned char *)c_aligned + c_off * {out_bytes};
+    long i, j;
+    for (i = 0; i < {mp} * {kp} * {lhs_bytes}; ++i) {symbol}_a[i] = 0;
+    for (i = 0; i < {kp} * {np_} * {rhs_bytes}; ++i) {symbol}_b[i] = 0;
+    for (i = 0; i < {mp} * {np_} * {out_bytes}; ++i) {symbol}_c[i] = 0;
+    for (i = 0; i < {m}; ++i)
+      for (j = 0; j < {k} * {lhs_bytes}; ++j)
+        {symbol}_a[i * {kp} * {lhs_bytes} + j] = src_a[i * {k} * {lhs_bytes} + j];
+    for (i = 0; i < {k}; ++i)
+      for (j = 0; j < {n} * {rhs_bytes}; ++j)
+        {symbol}_b[i * {np_} * {rhs_bytes} + j] = src_b[i * {n} * {rhs_bytes} + j];
+    {kernel}({symbol}_b, {symbol}_a, {symbol}_c);
+    for (i = 0; i < {m}; ++i)
+      for (j = 0; j < {n} * {out_bytes}; ++j)
+        dst_c[i * {n} * {out_bytes} + j] = {symbol}_c[i * {np_} * {out_bytes} + j];
+  }}
+  merlin_memref_2d r;
+  r.allocated = c_alloc; r.aligned = c_aligned; r.offset = c_off;
+  r.sizes[0] = c_s0; r.sizes[1] = c_s1;
+  r.strides[0] = c_st0; r.strides[1] = c_st1;
+  return r;
+}}
+"""
+
+
 @dataclass(frozen=True)
 class KernelAbi:
     """The device kernel's symbol and argument order, from the OOT backend contract."""
@@ -142,6 +199,24 @@ def kernel_abi_for(device: str) -> KernelAbi | None:
         return None
 
 
+def tile_edge_for(device: str) -> int | None:
+    """The device's mesh tile edge, derived from its own RTL facts; None when not derivable.
+
+    None is a real answer and the caller must then refuse to emit a padded entry: padding to a guessed
+    edge is worse than not padding, because it produces a differently-wrong buffer.
+    """
+    try:
+        from merlin.targetgen.rtl import facts as _f
+        body = (_f.load_facts(device) or {}).get("facts") or {}
+    except Exception:            # noqa: BLE001
+        return None
+    for arr in (body.get("arrays") or ()):
+        rows, cols = arr.get("rows"), arr.get("cols")
+        if rows and cols:
+            return int(min(int(rows), int(cols)))
+    return None
+
+
 def _elem_bytes(token: str) -> int | None:
     """Bytes per element, or None for a sub-byte format (whose offset arithmetic is not a byte count)."""
     try:
@@ -155,7 +230,8 @@ def emit_translation_unit(device: str,
                           signatures: Mapping[str, Sequence[int]],
                           dtypes: Mapping[str, Sequence[str]],
                           *,
-                          kernel_symbol_for: "Callable[[str], str] | None" = None) -> ShimUnit:
+                          kernel_symbol_for: "Callable[[str], str] | None" = None,
+                          tile_edge: int | None = None) -> ShimUnit:
     """One entry per signature, adapting the MLIR ABI to ``device``'s kernel.
 
     ``signatures`` is ``{symbol: (M, N, K)}`` as minted by the offload rewrite; ``dtypes`` is
@@ -192,9 +268,26 @@ def emit_translation_unit(device: str,
                                  f"would be a guess"))
             continue
         m, n, k = key
-        entries.append(_ENTRY_2D.format(symbol=sym, m=m, n=n, k=k, dtypes=dt,
-                                        kernel=kernel_for(sym),
-                                        lhs_bytes=widths[0], rhs_bytes=widths[1], out_bytes=widths[2]))
+        edge = tile_edge if tile_edge is not None else tile_edge_for(device)
+        if not edge:
+            # Without the edge we cannot know whether this entry needs staging, and emitting the
+            # unpadded form "because we did not find out" is the exact failure that produced a model
+            # scoring cos 0.9847 where it should score 0.99993. Not knowing is a decline.
+            skipped.append((sym, "no derivable tile edge, so whether these extents need padded "
+                                 "staging is unknown; declining rather than emitting the raw form"))
+            continue
+        needs_pad = any(int(x) % int(edge) for x in (m, n, k))
+        if needs_pad:
+            def _up(v):
+                return ((int(v) + int(edge) - 1) // int(edge)) * int(edge)
+            entries.append(_ENTRY_2D_PADDED.format(
+                symbol=sym, m=m, n=n, k=k, dtypes=dt, edge=int(edge), kernel=kernel_for(sym),
+                mp=_up(m), np_=_up(n), kp=_up(k),
+                lhs_bytes=widths[0], rhs_bytes=widths[1], out_bytes=widths[2]))
+        else:
+            entries.append(_ENTRY_2D.format(symbol=sym, m=m, n=n, k=k, dtypes=dt,
+                                            kernel=kernel_for(sym), lhs_bytes=widths[0],
+                                            rhs_bytes=widths[1], out_bytes=widths[2]))
         emitted.append(sym)
 
     kernels = sorted({kernel_for(sym) for sym in emitted})
