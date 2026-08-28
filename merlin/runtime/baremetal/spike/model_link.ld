@@ -10,6 +10,15 @@
  * MERLIN_WEIGHTS_BASE is set at link time (-Wl,--defsym). spike -m must cover
  * 0x80000000 .. MERLIN_WEIGHTS_BASE + sizeof(weights).
  */
+/* Every loadable section is padded to an 8-byte multiple BELOW, not merely aligned above.
+ * A segment's p_filesz is the extent of its contents, so a section that happens to end on an
+ * odd 32-bit word leaves the whole segment ending there -- and a loader that moves the image in
+ * 8-byte beats must then issue a half-masked final beat for it. Over TileLink that beat is a
+ * PutPartial, which a manager is free not to support (testchipip's TSIToTileLink builds its mask
+ * from which 32-bit words of the beat are valid, so an odd tail is exactly what produces one);
+ * the chip-side manager reached over serial TL does not, and the load aborts on a monitor
+ * assertion. `. = ALIGN(8);` INSIDE a section grows the section, and so the segment; the same
+ * statement between sections only moves the location counter and does not pad anything. */
 OUTPUT_ARCH("riscv")
 ENTRY(_start)
 MERLIN_WEIGHTS_BASE = DEFINED(MERLIN_WEIGHTS_BASE) ? MERLIN_WEIGHTS_BASE : 0x200000000;
@@ -21,14 +30,14 @@ MERLIN_WEIGHTS_BASE = DEFINED(MERLIN_WEIGHTS_BASE) ? MERLIN_WEIGHTS_BASE : 0x200
 MERLIN_STACK_BYTES = DEFINED(MERLIN_STACK_BYTES) ? MERLIN_STACK_BYTES : 0x40000;
 SECTIONS {
   . = 0x80000000;
-  .text : { *(.text.init) *(.text*) }
+  .text : { *(.text.init) *(.text*) . = ALIGN(8); }
   . = ALIGN(0x1000);
-  .htif : { *(.htif) }
+  .htif : { *(.htif) . = ALIGN(8); }
   . = ALIGN(8);
   .rodata : { *(EXCLUDE_FILE(*weights_blob.o) .rodata*)
-              *(EXCLUDE_FILE(*weights_blob.o) .srodata*) }
+              *(EXCLUDE_FILE(*weights_blob.o) .srodata*)   . = ALIGN(8); }
   . = ALIGN(8);
-  .data : { *(EXCLUDE_FILE(*weights_blob.o) .data*) *(.sdata*) }
+  .data : { *(EXCLUDE_FILE(*weights_blob.o) .data*) *(.sdata*) . = ALIGN(8); }
   . = ALIGN(8);
   _bss_start = .;
   .bss : { *(.bss*) *(.sbss*) *(COMMON) }
@@ -39,5 +48,5 @@ SECTIONS {
 
   /* weight blob at its absolute high address (loaded by spike from the ELF) */
   . = MERLIN_WEIGHTS_BASE;
-  .weights : { *weights_blob.o(.data .data.* .rodata .rodata.*) }
+  .weights : { *weights_blob.o(.data .data.* .rodata .rodata.*) . = ALIGN(8); }
 }

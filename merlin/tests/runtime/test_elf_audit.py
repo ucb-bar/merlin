@@ -83,3 +83,56 @@ def test_the_report_serialises_for_a_delivery_package():
 
     json.dumps(d)                     # must be JSON-serialisable to ship next to the binary
     assert d["board"] == "chipyard_kodiak" and "facts" in d and "segments" in d
+
+
+def _synthetic(monkeypatch, *sizes):
+    """Audit an image whose LOAD segments have the given file sizes, without needing a real ELF."""
+    base = boards.board("chipyard_kodiak").dram_base
+    segs = [elf_audit.Segment(kind="LOAD", vaddr=base + i * 0x10000, filesz=n, memsz=n, flags="RW")
+            for i, n in enumerate(sizes)]
+    monkeypatch.setattr(elf_audit, "read_elf", lambda _e: (base, segs, {".htif": (base, 16, "PROGBITS")}))
+    monkeypatch.setattr(elf_audit.Path, "is_file", lambda _s: True)
+    return elf_audit.audit("synthetic.elf", boards.board("chipyard_kodiak"),
+                           expect_htif=False, require_vector=False)
+
+
+def _beat_problems(rep):
+    return [p for p in rep.problems if "beat" in p]
+
+
+def test_segment_ending_mid_beat_is_a_problem(monkeypatch):
+    """A ragged segment makes a beat-oriented loader emit a partially masked final beat.
+
+    Over TileLink that is a PutPartialData the chip-side manager may reject, and the load then dies
+    having printed only the UART banner — indistinguishable from the model hanging, which is why this
+    is a problem (fail closed) rather than a warning.
+    """
+    rep = _synthetic(monkeypatch, 0x3e234, 0x1f54)   # both 4 bytes past an 8-byte beat
+    assert len(_beat_problems(rep)) == 2, rep.render()
+    assert not rep.ok
+
+
+def test_padded_segments_pass(monkeypatch):
+    rep = _synthetic(monkeypatch, 0x3e238, 0x1f58, 0x91a80)
+    assert _beat_problems(rep) == [], rep.render()
+
+
+def test_beat_width_is_reported_with_its_basis(monkeypatch):
+    """The audit says which beat it checked against, and whether the board declared it."""
+    rep = _synthetic(monkeypatch, 0x40)
+    assert rep.facts["loader_beat_bytes"] == elf_audit.LOADER_BEAT_BYTES
+    assert "not board-declared" in rep.facts["loader_beat_basis"]
+
+
+def test_a_board_may_declare_its_own_beat(monkeypatch):
+    """A board whose loader moves 4-byte beats accepts an image this default would reject."""
+    brd = boards.board("chipyard_kodiak")
+    object.__setattr__(brd, "loader_beat_bytes", 4) if hasattr(brd, "__dataclass_fields__") else None
+    base = brd.dram_base
+    segs = [elf_audit.Segment(kind="LOAD", vaddr=base, filesz=0x3e234, memsz=0x3e234, flags="RW")]
+    monkeypatch.setattr(elf_audit, "read_elf", lambda _e: (base, segs, {}))
+    monkeypatch.setattr(elf_audit.Path, "is_file", lambda _s: True)
+    rep = elf_audit.audit("synthetic.elf", brd, expect_htif=False, require_vector=False)
+    assert rep.facts["loader_beat_bytes"] == 4
+    assert rep.facts["loader_beat_basis"] == "board"
+    assert _beat_problems(rep) == [], rep.render()
