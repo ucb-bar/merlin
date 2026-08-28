@@ -55,8 +55,8 @@ def _load_method(name: str) -> dict:
     return yaml.safe_load(p.read_text()) or {}
 
 
-def _task_card(capsule_dir: Path, iface: str, rnd: int, *, stage: str = "functional",
-               best: dict | None = None) -> str:
+def _task_card(capsule_dir: Path, iface: str, rnd: int, *, kernel_path: Path,
+               stage: str = "functional", best: dict | None = None) -> str:
     """What the agent is told. Contains the interface and the ABI -- never a reference answer.
 
     Two stages, because they ask for different things. The functional stage asks for a correct kernel
@@ -68,9 +68,12 @@ def _task_card(capsule_dir: Path, iface: str, rnd: int, *, stage: str = "functio
 
 You are writing ONE compute kernel for a SIMT accelerator, as **LLVM-dialect MLIR**.
 
-Write it to exactly this path, and nothing else:
+Write it to exactly this ABSOLUTE path, and nothing else:
 
-    {KERNEL_REL}
+    {kernel_path}
+
+(Absolute, because an agent CLI may resolve a relative path against a project root that is not your
+working directory -- a kernel written to the wrong root is not graded.)
 
 ## The operation
 
@@ -110,12 +113,12 @@ Correctness first. A kernel that is fast and wrong scores nothing.
 ## Rules
 
 - Your kernel may not import the grader, read a golden file, or shell out. This is scanned.
-- Do not modify anything outside `{KERNEL_REL}`.
+- Do not modify anything outside `{kernel_path}`.
 
 Round {rnd}.
 """ + (_optimization_brief(best) if stage == "optimization" else
-       "If `qa/verdict.json` exists, it is the grader's verdict on your previous attempt -- read it "
-       "first and fix what it reports.\n")
+       f"If `{kernel_path.parent.parent / 'qa' / 'verdict.json'}` exists, it is the grader's verdict "
+       "on your previous attempt -- read it first and fix what it reports.\n")
 
 
 def _optimization_brief(best: dict | None) -> str:
@@ -184,6 +187,49 @@ print("<<<KVC>>>" + json.dumps({{"full": ev.to_dict(), "redacted": ev.redact()}}
             "redacted": {"status": "error", "correct": False,
                          "failure_detail": (r.stderr or r.stdout)[-600:]}}
 
+
+
+def _find_misrouted_kernel(transcript: Path | None, *, expected: Path) -> Path | None:
+    """A kernel the agent wrote somewhere other than where the harness looks.
+
+    Exists because the failure it catches is indistinguishable, in the score, from a model that could
+    not write a kernel -- and that mistake has now been made once. The transcript records the path the
+    agent actually wrote, so the harness asks it rather than guessing.
+
+    Parses each line as JSON and walks it for `filePath` values, rather than matching the text: a
+    string match would depend on the emitter's spacing, and would go quietly blind the day a CLI
+    pretty-printed its output -- reinstating the exact silent failure this exists to catch.
+    """
+    if transcript is None or not transcript.is_file():
+        return None
+
+    def paths(node) -> list[str]:
+        found: list[str] = []
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "filePath" and isinstance(v, str):
+                    found.append(v)
+                else:
+                    found.extend(paths(v))
+        elif isinstance(node, list):
+            for v in node:
+                found.extend(paths(v))
+        return found
+
+    want, best = expected.name, None
+    for line in transcript.read_text(errors="replace").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue                      # a partial or non-JSON line is not evidence either way
+        for cand in paths(rec):
+            q = Path(cand)
+            if q.name == want and q != expected and q.is_file():
+                best = q
+    return best
 
 
 def _run_agent(cfg: dict, ws: Path, run_dir: Path, rnd: int, prompt: str,
@@ -281,6 +327,14 @@ def main(argv: list[str] | None = None) -> int:
         str(repo / "out" / "artifacts" / "targets" / "muon" / "reference_v0" / "muon-opt"))
 
 
+    # An agent CLI resolves relative paths against the PROJECT ROOT IT DETECTS, not the cwd it was
+    # given -- and it detects that root by walking up for a `.git`. With the workspace nested under a
+    # checkout, opencode rooted at the repo and wrote every kernel to <repo>/submission/, where the
+    # harness never looked. Three arms were scored 0/3 for kernels they had actually written.
+    # Making the workspace its own repository puts the detected root back inside it.
+    if not (ws / ".git").exists():
+        subprocess.run(["git", "init", "-q"], cwd=str(ws), capture_output=True)
+
     kernel = ws / KERNEL_REL
     history: list[dict] = []
     t_start = time.time()
@@ -318,7 +372,7 @@ def main(argv: list[str] | None = None) -> int:
         stage = "functional" if best is None else "optimization"
         if stage == "functional" and rnd >= a.rounds:
             break                          # never became correct; the optimization budget is unusable
-        card = _task_card(capsule_dir, iface, rnd, stage=stage, best=best)
+        card = _task_card(capsule_dir, iface, rnd, kernel_path=kernel, stage=stage, best=best)
         prev = (ws / "qa" / "verdict.json")
         if rnd and prev.is_file():
             card += ("\n## The grader's verdict on your previous attempt\n\n```json\n"
@@ -328,10 +382,23 @@ def main(argv: list[str] | None = None) -> int:
         rc, transcript = _run_agent(cfg, ws, run_dir, rnd, card, a.round_timeout)
         agent_s = time.time() - t0
 
+        misroute = None
+        if not kernel.is_file():
+            misroute = _find_misrouted_kernel(transcript, expected=kernel)
+
         rec: dict = {"round": rnd, "stage": stage, "rc": rc,
                      "agent_seconds": round(agent_s, 1),
                      "transcript": str(transcript) if transcript else None,
-                     "kernel_written": kernel.is_file()}
+                     "kernel_written": kernel.is_file() or bool(misroute)}
+        if misroute:
+            # The agent DID the work; the harness looked in the wrong place. Recording this as an
+            # incorrect kernel is how a harness defect gets published as a model result, so it is
+            # named as a harness fault and the kernel is graded where it actually landed.
+            rec["harness_misroute"] = {"found_at": str(misroute), "expected_at": str(kernel)}
+            print(f"  !! HARNESS MISROUTE: agent wrote {misroute}, harness expected {kernel}. "
+                  f"Grading the kernel it wrote; the run is flagged.", flush=True)
+            kernel.parent.mkdir(parents=True, exist_ok=True)
+            kernel.write_text(Path(misroute).read_text())
         if kernel.is_file():
             t1 = time.time()
             res = _evaluate(kernel, capsule_dir, shim_pkg=shim_pkg, runs_root=a.runs_root,
