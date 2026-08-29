@@ -22,13 +22,22 @@ def _mvin_count(cb: dict) -> int:
 
 
 def _with_scratchpad_rows(rows, cb):
-    """Emit `cb`'s MVIN count with the scratchpad-depth budget overridden (restores the derived one)."""
-    saved = gm.SCRATCHPAD_ROWS
+    """Emit `cb`'s MVIN count with the scratchpad-depth budget overridden (restores the derived one).
+
+    Overrides the field ON THE CACHED ISA OBJECT, because that is what the emitter reads. Two seams
+    make the obvious override inert: the lazy refactor moved these facts behind `_isa()` and binds
+    them as LOCALS inside the emitter, so setting the module attribute `gm.SCRATCHPAD_ROWS` (which
+    the module's PEP 562 __getattr__ serves to outside readers) never reaches the residency decision;
+    and `_isa` is lru_cached, so replacing the function does not change the object already handed out.
+    With the wrong seam both arms returned the same schedule and the lever measured nothing.
+    """
+    isa = gm._isa()
+    saved = isa.SCRATCHPAD_ROWS
     try:
-        gm.SCRATCHPAD_ROWS = rows
+        isa.SCRATCHPAD_ROWS = rows
         return _mvin_count(cb)
     finally:
-        gm.SCRATCHPAD_ROWS = saved
+        isa.SCRATCHPAD_ROWS = saved          # shared cached object: must be put back
 
 
 def test_panel_residency_cuts_mvins_on_a_tiled_n_sweep():
