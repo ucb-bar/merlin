@@ -14,6 +14,22 @@ from merlin.baselines import ggml
 
 # --- symbol -> region mapping -----------------------------------------------------------------
 
+def _needs_correctness_bundle(model: str):
+    """Skip unless THIS machine holds a capture bundle the ggml comparison can be graded against.
+
+    The bundles are multi-GB and deliberately untracked, so which variant a checkout has is a
+    property of the machine. `_CORRECTNESS_BUNDLE` names the variant whose golden a ggml GGUF forward
+    can actually reproduce -- int8 for tiny_llama -- and a checkout holding only the fp32 capture
+    resolves to None. The comparison then honestly reports UNCOMPARABLE, and asserting against that
+    tests the absence of a dataset rather than the comparator. Widening the accepted variants here
+    would instead ASSERT that a ggml forward reproduces the fp32 golden, which is a claim about
+    numerics nobody has measured.
+    """
+    from merlin.baselines import ggml as _g
+    return pytest.mark.skipif(_g._correctness_bundle(model) is None,
+                              reason=f"no ggml-reproducible capture bundle for {model} on this machine")
+
+
 def test_region_of_symbol():
     assert ggml._region_of_symbol("ggml_gemm_q4_K_16x1_q8_K") == "gemm"
     assert ggml._region_of_symbol("ggml_gemv_iq4_nl_16x1_q8_0") == "gemm"
@@ -188,6 +204,7 @@ def test_ggml_not_built_when_toolchain_absent(monkeypatch):
 
 # --- correctness gate: comparable for tiny_llama, uncomparable elsewhere ----------------------
 
+@_needs_correctness_bundle("tiny_llama")
 def test_tiny_llama_offboard_cos_none_board_gated(monkeypatch, tmp_path):
     # tiny_llama now HAS a real-checkpoint correctness bundle, so the "uncomparable" note is NOT
     # emitted; but off-board (run_board=False) the logits-dump gate is skipped, so cos stays None
@@ -204,6 +221,8 @@ def test_tiny_llama_offboard_cos_none_board_gated(monkeypatch, tmp_path):
     r.validate()
 
 
+
+@_needs_correctness_bundle("tiny_llama")
 def test_correctness_bundle_resolution():
     # tiny_llama resolves to the real full checkpoint (int8_full); small_llama resolves to its
     # fp32 capture (the GGUF is built from the SAME weights, so its golden IS reproducible); VLA
