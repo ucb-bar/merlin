@@ -4,11 +4,13 @@ kind: guide
 status: current
 owner: compiler
 last_verified: 2026-08-28
-related: [compilation_strategies, targetgen, adding_a_target, gemmini_experiment]
+related: [compilation_strategies, targetgen, adding_a_target, gemmini_experiment, reproducing_whole_model_on_rtl]
 code_refs: [merlin/python/merlin/compile_cli.py, merlin/python/merlin/runtime/dispatch_runtime.py, merlin/python/merlin/targetgen/routing.py, merlin/python/merlin/system, merlin/python/merlin/llvmlower/device_offload.py, merlin/python/merlin/llvmlower/device_build.py]
 ---
 
 # Compiling a whole model onto an accelerator
+
+To actually reproduce these results on a fresh machine — the build flags, the two simulators, and the traps — see [reproducing_whole_model_on_rtl](reproducing_whole_model_on_rtl.md).
 
 Three different things get called "compiling a model with Merlin", and they carry very different
 evidence. Keep them apart; conflating them is the easiest way to overstate what the compiler does.
