@@ -21,7 +21,7 @@ Bedrock ceiling is shared with prior work.
 | 0.4 | Pick + track the authoritative radiance contract, register pins | **PARTIAL** — 9 pins declared and green; the chosen residual is still untracked, so the ARR denominator has no version history |
 | 0.5 | Inherit readiness fixes; work in a worktree | **DONE** — `feat/kernel-vs-compiler` |
 | 0.6 | Phase-0 exit gate: `readiness_check` GO, `preflight` GO_FOR_PILOT, oracle available, TinyLlama visible | **PARTIAL** — oracle + TinyLlama confirmed; the two gate scripts have not been re-run since the merge |
-| 0.7 | Tests must exercise the tree they live in | **DONE** — several worktrees share one venv, which installs `merlin` from the primary checkout, so `import merlin` inside a worktree resolved to the *other* tree and a green suite proved nothing about the edit under test. `merlin/tests/conftest.py` now prepends its own tree; a no-op in the primary checkout. It immediately exposed `test_cli_smoke::test_design_pressure_cli_writes_artifacts`, which reads a **generated** `out/artifacts/` file a fresh worktree does not have |
+| 0.7 | Tests must exercise the tree they live in | **DONE** — several worktrees share one venv, which installs `merlin` from the primary checkout, so `import merlin` inside a worktree resolved to the *other* tree and a green suite proved nothing about the edit under test. `merlin/tests/conftest.py` now prepends its own tree; a no-op in the primary checkout. It immediately exposed the worktree's real gaps: 10 of 661 infra tests now fail here and pass in the primary checkout, all of them reading **untracked** inputs a worktree does not carry — the live-bwrap golden-masking cases (goldens are deliberately untracked) and one CLI smoke test reading a generated `out/artifacts/` file. Those are environment gaps made visible, not regressions; the library tests are green |
 
 ## Phase 1 — Library modules (`merlin/python/merlin/benchharness/`)
 
@@ -188,9 +188,9 @@ Nothing on that path is blocked by a missing measurement; it is all buildable fr
 
 ## Standing risks
 
-- **A harness limit reads as a model defect.** Seven occurrences on this project, four in the last
+- **A harness limit reads as a model defect.** Eight occurrences on this project, five in the last
   three days (kernel misroute, zero token accounting, cross-arm reads, codex's sandbox nested inside
-  ours). Any new number gets an adversarial pass over the *trace* before it is quoted, not just the
+  ours, worktree tests importing another tree's library). Any new number gets an adversarial pass over the *trace* before it is quoted, not just the
   score. The bedrock 0/9 above survived that pass; the earlier codex 0/9 did not.
 - **The harness is a first-order variable.** Codex runs on its own CLI, the other two on opencode.
   Cross-driver comparisons are a harness band, never agent capability.
