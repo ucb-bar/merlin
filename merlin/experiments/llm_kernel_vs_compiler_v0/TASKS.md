@@ -21,6 +21,7 @@ Bedrock ceiling is shared with prior work.
 | 0.4 | Pick + track the authoritative radiance contract, register pins | **PARTIAL** — 9 pins declared and green; the chosen residual is still untracked, so the ARR denominator has no version history |
 | 0.5 | Inherit readiness fixes; work in a worktree | **DONE** — `feat/kernel-vs-compiler` |
 | 0.6 | Phase-0 exit gate: `readiness_check` GO, `preflight` GO_FOR_PILOT, oracle available, TinyLlama visible | **PARTIAL** — oracle + TinyLlama confirmed; the two gate scripts have not been re-run since the merge |
+| 0.7 | Tests must exercise the tree they live in | **DONE** — several worktrees share one venv, which installs `merlin` from the primary checkout, so `import merlin` inside a worktree resolved to the *other* tree and a green suite proved nothing about the edit under test. `merlin/tests/conftest.py` now prepends its own tree; a no-op in the primary checkout. It immediately exposed `test_cli_smoke::test_design_pressure_cli_writes_artifacts`, which reads a **generated** `out/artifacts/` file a fresh worktree does not have |
 
 ## Phase 1 — Library modules (`merlin/python/merlin/benchharness/`)
 
@@ -72,6 +73,7 @@ Bedrock ceiling is shared with prior work.
 | 4.11 | Arm B `Merlin+Seed` — mine TinyLlama trajectories through the promotion ladder | **OPEN** |
 | 4.12 | Anti-specialization audit (5 mechanical tests) | **OPEN** — blocks any claim that mined policy is general rather than a lookup table |
 | 4.13 | Freeze + sequential reveal, zero-LLM **enforced** (no creds bound, ledger asserts 0 calls) | **OPEN** |
+| 4.14 | Does the optimization stage pay for itself? | **OPEN** — measured and non-monotone: gemini's best R4 kernel was **round 0**, and five optimization rounds made it worse; codex improved to round 3 then regressed. The loop keeps the best so no result is wrong, but most of the token spend currently buys nothing |
 
 ## Phase 5 — Accounting, metrics, plots
 
@@ -88,6 +90,8 @@ Bedrock ceiling is shared with prior work.
 | 5.9 | Time-to-first-correct and time-to-within-X%-of-best curves | **OPEN** — *addition to the plan*; inputs already recorded |
 | 5.10 | Model × family capability matrix | **OPEN** — *addition to the plan*; may be a headline finding if model choice dominates the kernel arm |
 | 5.11 | Cert (GSIM) pass over accepted kernels | **PARTIAL** — tier validated at 84 s; not yet run across the accepted set. Yields RTL-backed correctness, **not** cycle-accurate latency |
+| 5.12 | Reference baseline every arm is relative to | **DONE** — `scripts/baseline.py`; reference_v0 at L2/fast: R0 631,721 · R4 284,694 · R3 673,923. Until it existed the study recorded absolute cycle counts and nothing else |
+| 5.13 | Failure taxonomy: an unparseable submission is not a `tool_crash` | **OPEN** — it currently reads as our infrastructure breaking, which would understate the model's failure and overstate ours |
 
 ## Phase 6 — Pilot gate
 
@@ -124,7 +128,30 @@ every agent in its own bwrap box with an empty grant bundle.
 | gemini_kernel | gemini-3.5-flash | **9/9** | 117.7 M | $54.11 billed | 3.05 h |
 | bedrock_kernel | qwen3-coder-480b | **0/9** | 1.69 M | $0.50 billed | 0.19 h |
 
-Three things this table already says, and one it does not:
+### Performance, against a reference for the first time
+
+`reference_v0` is the hand-curated, correct, unoptimized lowering — by its own manifest the ceiling an
+agentic backend has to re-derive and beat. Measured through the same runner, oracle and fidelity as
+every arm:
+
+| task | reference | codex median | gemini median | best seen |
+|---|---|---|---|---|
+| R0_gemm_fp32 | 631,721 | 526,151 (1.20x) | 549,377 (1.15x) | 517,301 (1.22x) |
+| R4_rmsnorm_fp32 | 284,694 | 243,968 (1.17x) | 243,670 (1.17x) | 243,670 (1.17x) |
+| R3_attention_qk_fp16 | 673,923 | 557,531 (1.21x) | 571,776 (1.18x) | 470,727 (1.43x) |
+| **geomean** | — | **1.192x** | **1.166x** | — |
+
+Every accepted kernel beats the reference, by 1.15–1.43x. Two qualifications that must travel with
+those numbers:
+
+- **They are estimates.** All of it is the L2 functional model. Only the cycle-accurate tier may be
+  quoted as a measurement, and it has not been run over the accepted set (5.11).
+- **The metric does discriminate, which was worth checking.** Re-running stored candidates through
+  the same path reproduces every recorded count exactly, and within a single run the counts move with
+  the kernel: codex spans 284,694 -> 243,723 across its rounds, gemini 243,670 -> 303,822. An earlier
+  read that the arms had converged was an artifact of comparing each arm's *best* round.
+
+Three things the solved/cost table already says, and one it does not:
 
 - **The arms are three orders of magnitude apart in token cost for the same result.** Gemini and codex
   both solve 9/9; gemini spends ~20x the tokens and is the only arm with a real dollar bill. If the

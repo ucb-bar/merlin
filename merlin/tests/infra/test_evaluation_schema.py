@@ -168,3 +168,29 @@ def test_a_cycle_accurate_tier_that_reports_cycles_needs_no_caveat():
     assert ev.cycles == 12345 and ev.cycles_tier == "L3"
     assert ev.cycles_cycle_accurate is True
     assert "latency_is_a_model_estimate" not in {c.code for c in ev.caveats}
+
+
+# --- derived verdicts must survive serialization ---------------------------------------------------
+
+def test_the_stored_record_states_correctness_rather_than_leaving_it_null():
+    """`correct` is derived, so `asdict` dropped it and every stored result read back null.
+
+    Null is the schema's own word for "the oracle could not say". A matched, certified round that
+    serializes to null is therefore indistinguishable from an unavailable one -- the exact confusion
+    this module's unavailable-is-not-zero rule exists to prevent.
+    """
+    ev = EV.EvaluationResult(task_id="t", config_id="C0", target="x")
+    ev.verdict = "match"
+    ev.certifying_tier = "L2"
+    ev.status = "pass"
+    d = ev.to_dict()
+    assert d["correct"] is True
+    assert d["is_scoreable"] is True
+
+
+def test_a_ran_but_uncertified_round_serializes_as_not_correct():
+    ev = EV.EvaluationResult(task_id="t", config_id="C0", target="x")
+    ev.verdict = "not_certified"
+    ev.certifying_tier = None
+    ev.status = "pass"
+    assert ev.to_dict()["correct"] is False

@@ -118,12 +118,58 @@ def read_matrices(runs_root: Path) -> dict:
             acc["unpriced_rounds"] += cost.get("rounds_unpriced") or 0
             if r.get("model"):
                 acc["models"].add(r["model"])
-            if r.get("best_cycles") is not None:
+            if r.get("best_cycles") is not None and r.get("solved"):
                 acc["cycles"].setdefault(r.get("task", "?"), []).append(r["best_cycles"])
     for acc in list(by_method.values()) + list(voided.values()):
         acc["models"] = sorted(acc["models"])
         acc["void_reasons"] = sorted(acc["void_reasons"])
     return {"matrices": matrices, "by_method": by_method, "voided": voided}
+
+
+def read_baselines(runs_root: Path) -> dict:
+    """The reference numbers every arm is relative to, or an explicit absence."""
+    path = runs_root / "baselines.json"
+    if not path.is_file():
+        return {"available": False, "reason": f"no {path.name}; run scripts/baseline.py"}
+    doc = json.loads(path.read_text())
+    doc["available"] = True
+    return doc
+
+
+def performance(measured: dict, baselines: dict) -> dict:
+    """Reference-relative speedup per task and arm, plus the geometric mean over tasks.
+
+    Two rules the numbers depend on, both of which have been got wrong on this project before:
+    an INCORRECT kernel earns no performance credit and is absent here rather than scoring 1.0; and a
+    speedup may only compare counts from the SAME fidelity, because the functional model's estimate
+    and the cycle-accurate measurement are different quantities wearing the same unit.
+    """
+    if not baselines.get("available"):
+        return {"available": False, "reason": baselines.get("reason")}
+    base = {t: v.get("cycles") for t, v in baselines.get("tasks", {}).items()
+            if v.get("cycles") is not None}
+    per_arm: dict[str, dict] = {}
+    for arm, runs in measured.items():
+        rows = {}
+        for task, cycles in sorted(runs.items()):
+            if task not in base or not cycles:
+                continue
+            best, med = min(cycles), sorted(cycles)[len(cycles) // 2]
+            rows[task] = {
+                "baseline_cycles": base[task], "n": len(cycles),
+                "best_cycles": best, "median_cycles": med,
+                "speedup_best": base[task] / best, "speedup_median": base[task] / med,
+                "seed_spread": max(cycles) / min(cycles),
+            }
+        if rows:
+            product = 1.0
+            for r in rows.values():
+                product *= r["speedup_median"]
+            per_arm[arm] = {"tasks": rows, "geomean_speedup": product ** (1.0 / len(rows)),
+                            "tasks_scored": len(rows)}
+    return {"available": True, "fidelity": baselines.get("fidelity"),
+            "cycle_accurate": baselines.get("fidelity") == "cert",
+            "baseline_label": baselines.get("label"), "by_arm": per_arm}
 
 
 def read_tests(repo: Path) -> dict:
@@ -154,15 +200,20 @@ def critical_path(tasks: list[dict]) -> list[dict]:
 
 def build(runs_root: Path, repo: Path) -> dict:
     tasks = read_register(EXP / "TASKS.md")
+    baselines = read_baselines(runs_root)
     counts = {s: sum(1 for t in tasks if t["state"] == s) for s in STATES}
     counts["UNRECOGNISED"] = sum(1 for t in tasks if t["state"] == "UNRECOGNISED")
+    measured = read_matrices(runs_root)
     return {
         "experiment": EXP.name,
         "runs_root": str(runs_root),
         "tasks": tasks,
         "counts": counts,
         "critical_path": critical_path(tasks),
-        "measured": read_matrices(runs_root),
+        "measured": measured,
+        "baselines": baselines,
+        "performance": performance({k: v["cycles"] for k, v in measured["by_method"].items()},
+                                   baselines),
         "tests": read_tests(repo),
     }
 
@@ -206,6 +257,22 @@ def render(state: dict) -> str:
         else:
             lines.append(f"  matrix {mx['tag']:6s} {mx['solved']:2d}/{mx['runs']:<2d} solved   "
                          f"{(mx['wall_seconds'] or 0)/60:.0f} min wall")
+    perf = state["performance"]
+    lines.append("")
+    if not perf.get("available"):
+        lines.append(f"PERFORMANCE  unavailable -- {perf.get('reason')}")
+    else:
+        est = "" if perf["cycle_accurate"] else "  (ESTIMATE: functional model, not cycle-accurate)"
+        lines.append(f"PERFORMANCE vs {perf['baseline_label']} at fidelity "
+                     f"{perf['fidelity']}{est}")
+        for arm, a in sorted(perf["by_arm"].items()):
+            lines.append(f"  {arm:16s} geomean {a['geomean_speedup']:.3f}x "
+                         f"over {a['tasks_scored']} task(s)")
+            for task, r in sorted(a["tasks"].items()):
+                lines.append(f"  {'':16s}  {task:22s} base {r['baseline_cycles']:>8,}  "
+                             f"med {r['median_cycles']:>8,} ({r['speedup_median']:.3f}x)  "
+                             f"best {r['best_cycles']:>8,} ({r['speedup_best']:.3f}x)  "
+                             f"seed spread {r['seed_spread']:.3f}x")
     t = state["tests"]
     lines.append("")
     lines.append(f"TESTS     {t['cases']} cases across {t['files']} study files"

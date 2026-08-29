@@ -128,7 +128,17 @@ class EvaluationResult:
         self.caveats.append(Caveat(code=code, detail=detail))
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        """The full record, INCLUDING the derived verdicts.
+
+        `correct`, `is_scoreable` and `perf_valid` are properties, so `asdict` drops them and every
+        stored result read back `correct: null` -- on rounds that had in fact matched at a certifying
+        tier. A reader cannot tell that null from "the oracle could not say", which is the precise
+        confusion the schema's own honesty rule exists to prevent, so they are written down.
+        """
+        out = asdict(self)
+        out["correct"] = self.counts_as_correct
+        out["is_scoreable"] = self.is_scoreable
+        return out
 
     def redact(self) -> dict:
         """The agent-facing view: only what a developer could obtain without the answer key.
