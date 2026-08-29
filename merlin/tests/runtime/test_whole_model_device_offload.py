@@ -89,3 +89,32 @@ def test_the_link_refuses_offloaded_symbols_it_cannot_build(tmp_path):
     src = inspect.getsource(spike_model.build)
     assert "were offloaded but no `device=` routing" in src, (
         "the build must refuse offloaded signatures it has no way to build")
+
+
+def test_device_objects_are_built_for_the_caller_s_isa(monkeypatch, tmp_path):
+    """The device shim must be compiled for the ISA the rest of the image is built for.
+
+    `_flags` defaulted to RISCV_FLAGS, which names `-march=rv64gcv` -- an assumption about the
+    hardware. The kernels come out clean because they are translated from the target's own lowering,
+    but this C shim was compiled against that default, so a whole-model image carried 224 vector
+    instructions onto a Rocket whose own DTS reads `rv64imafdcbzicsr_..._xrocket`, with no `v`. It
+    trapped mid-run on a `vsetvli` (`mcause=2`, mtval opcode 0x57) after 45M cycles of simulation --
+    a failure that costs an hour to observe and names nothing about its cause.
+    """
+    from merlin.llvmlower import device_build as DB
+
+    default = DB._flags("riscv")
+    assert any(f.startswith("-march=") for f in default), default
+
+    mine = ["--target=riscv64-unknown-elf", "-march=rv64gc_zba_zbb_zbs_zfh", "-mabi=lp64d"]
+    assert DB._flags("riscv", mine) == mine
+    assert not any("rv64gcv" in f for f in DB._flags("riscv", mine))
+
+
+def test_build_device_objects_accepts_cflags():
+    """The seam exists on the public entry point, not only on the private helper."""
+    import inspect
+
+    from merlin.llvmlower.device_build import build_device_objects
+
+    assert "cflags" in inspect.signature(build_device_objects).parameters

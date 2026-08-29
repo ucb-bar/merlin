@@ -143,6 +143,7 @@ def build_device_objects(device: str,
                          operand_dtype: str,
                          accum_dtype: str,
                          codegen_target: str = "riscv",
+                         cflags: "Sequence[str] | None" = None,
                          timeout: int = 900) -> DeviceBuild:
     """One kernel object per signature plus the shim object, ready to archive.
 
@@ -228,7 +229,7 @@ def build_device_objects(device: str,
             continue
 
         raw = stem.with_suffix(".raw.o")
-        c = _run([clang(), *_flags(codegen_target), "-c", str(ll), "-o", str(raw)], timeout=timeout)
+        c = _run([clang(), *_flags(codegen_target, cflags), "-c", str(ll), "-o", str(raw)], timeout=timeout)
         if c.returncode != 0:
             skipped.append((sym, f"clang: {(c.stderr or '').strip()[:200]}"))
             continue
@@ -257,7 +258,7 @@ def build_device_objects(device: str,
     shim_c = work / "device_shim.c"
     shim_c.write_text(unit.text, encoding="utf-8")
     shim_o = work / "device_shim.o"
-    s = _run([clang(), *_flags(codegen_target), "-c", str(shim_c), "-o", str(shim_o)], timeout=timeout)
+    s = _run([clang(), *_flags(codegen_target, cflags), "-c", str(shim_c), "-o", str(shim_o)], timeout=timeout)
     if s.returncode != 0:
         skipped.append(("shim", f"clang: {(s.stderr or '').strip()[:300]}"))
         return DeviceBuild(device=device, objects=tuple(objs), kernels=kernels,
@@ -267,7 +268,18 @@ def build_device_objects(device: str,
                        kernels=kernels, skipped=tuple(skipped))
 
 
-def _flags(codegen_target: str) -> list[str]:
+def _flags(codegen_target: str, cflags: "Sequence[str] | None" = None) -> list[str]:
+    """Compile flags for the device objects: the CALLER's when it supplied them.
+
+    The defaults name an ISA (`-march=rv64gcv`), and a default ISA is an assumption about the
+    hardware. Baking it in here meant the device shim was compiled with the vector extension for a
+    core that does not have one: the whole-model image trapped mid-run on its first `vsetvli`
+    (`mcause=2`, mtval opcode 0x57) on a Rocket whose own DTS reads
+    `rv64imafdcbzicsr_..._xrocket` -- no `v`. The kernels themselves came out clean because they are
+    translated from the target's own lowering; only this C shim was compiled against the default.
+    The matrix/OPU shim path already took its flags from the caller; this one now does too."""
+    if cflags:
+        return list(cflags)
     from .codegen import RISCV_FLAGS, X86_FLAGS
 
     return list(RISCV_FLAGS if codegen_target == "riscv" else X86_FLAGS)

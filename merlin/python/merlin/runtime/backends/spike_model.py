@@ -332,7 +332,9 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
         _dev_build = build_device_objects(
             device.device, _dev_sigs, _dev_dts, package_dir=device.package_dir,
             workdir=work / "device", operand_dtype=device.operand_dtype,
-            accum_dtype=device.accum_dtype, codegen_target="riscv")
+            accum_dtype=device.accum_dtype, codegen_target="riscv",
+            # the SAME ISA the rest of the image is built for -- see device_build._flags
+            cflags=[CLANG_TARGET, *clang_cflags])
         if not _dev_build.ok:
             raise RuntimeError(
                 f"device offload produced no linkable objects for {device.device!r}: "
