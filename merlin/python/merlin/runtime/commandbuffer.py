@@ -142,7 +142,28 @@ def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None)
 #: declares its ``abi_version``), not a fact about any target — every command-buffer endpoint names its
 #: result with one of these, whatever its opcodes are called. Kept next to :func:`materialize_inputs`,
 #: which uses the same notion of "produced" to decide what is a leaf.
+#: Operand keys that name a WRITE by spelling. Not exhaustive by construction -- the schema lets a
+#: buffer spell its destination `result`, `y`, or anything else -- so :func:`dataflow_operands` also
+#: accepts a key whose tensor DECLARES `role: output`. See `_produces` there.
 PRODUCING_KEYS = ("dst", "out", "output")
+
+
+def _produces(key: str, name: str, tensors: dict) -> bool:
+    """Is this operand position a WRITE?
+
+    By key spelling first, then by the named tensor's declared ``role``. Keying on spelling alone made
+    the binder's reach depend on which words someone had listed: a buffer spelling its destination
+    ``result`` or ``y`` -- both allowed by the schema -- had its output counted as a READ, so no
+    produced tensor was declared and the whole buffer bound to nothing.
+
+    This does NOT reintroduce role as the way to CHOOSE the output; that stays dataflow, for the reason
+    in :func:`dataflow_operands` (a fused buffer declares three ``role: output`` tensors and two are
+    intermediates). Role decides only whether a POSITION writes; dataflow still decides which write is
+    the result.
+    """
+    if key in PRODUCING_KEYS:
+        return True
+    return str((tensors.get(name) or {}).get("role", "")).lower() == "output"
 
 
 def dataflow_operands(cb: dict[str, Any]) -> tuple[list[str], str] | None:
@@ -184,7 +205,7 @@ def dataflow_operands(cb: dict[str, Any]) -> tuple[list[str], str] | None:
         for key, name in ops.items():
             if not isinstance(name, str):
                 continue
-            (produced if key in PRODUCING_KEYS else consumed).append(name)
+            (produced if _produces(key, name, tensors) else consumed).append(name)
 
     produced_set = set(produced)
     # leaves, in first-consumption order, de-duplicated
