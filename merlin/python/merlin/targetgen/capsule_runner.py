@@ -1100,6 +1100,65 @@ def _numeric_when_not_accelerated(st, gate, verify: dict, cos: float, engine: st
             "model_status": st}
 
 
+def _numeric_not_compared(engine: str, measured_on: str, verify: dict | None,
+                          detail: str) -> dict:
+    """The numeric block for a verdict where NOTHING WAS COMPARED against the accelerator.
+
+    The single home for this status, deliberately: it is the honest answer when no declared tier ran,
+    and the wrong one everywhere a number does exist -- a measured mismatch reported as `not_compared`
+    hides a real defect behind an absence. Every path that DID measure reports its verdict through
+    :func:`_numeric_when_not_accelerated` instead."""
+    return {"status": "not_compared", "engine": engine, "measured_on": measured_on,
+            "gate": verify or None, "detail": detail}
+
+
+def _model_tier_map(declared: list[str], target: str | None, model_exec: dict | None,
+                    ) -> "dict[str, TierResult]":
+    """The tier block for a WHOLE-MODEL capsule, derived from the model's OWN layer accounting.
+
+    A model capsule used to carry no tier block at all on most paths -- the derivation ran only when
+    per-tile verification was present, and every fail-closed branch returned before it. So a capsule
+    could report a verdict beside `tiers: {}`, which is how a suite reads N/N while nothing was
+    certified. The tests that pin this read `tiers[<rtl tier>]["status"]`, so it must exist on EVERY
+    path, including the ones that refuse.
+
+    L0/L1 interpret a COMMAND BUFFER. A whole model has none, so they are honestly not_applicable --
+    a legitimate skip, not a tier that failed to run.
+
+    The RTL tier reads the model's own counters, and the four cases are deliberately distinct:
+
+      * layers ran and none fell back  -> pass
+      * no layer ran at all            -> skipped   (the target never ran this model)
+      * some layer fell back           -> fail      (a hole in the claim, not a rounding error)
+      * counters absent                -> unavailable (nobody could tell; absent must never read as 0)
+    """
+    tiers: dict[str, TierResult] = {}
+    for t in declared:
+        if t in ("L0", "L1"):
+            tiers[t] = TierResult(t, "skipped", True, not_applicable=True,
+                                  reason="a whole model has no command buffer to interpret")
+    _rtl = [x for x in declared if x in _rtl_tiers_of(target)]
+    tier = _rtl[-1] if _rtl else (declared[-1] if declared else None)
+    if tier is None or tier in tiers:
+        return tiers
+    on = (model_exec or {}).get("matmul_layers_on_mesh")
+    fb = (model_exec or {}).get("matmul_layers_host_fallback")
+    if on is None:
+        tiers[tier] = TierResult(tier, "unavailable", True,
+                                 reason="no mesh execution counters were reported, so whether this "
+                                        "model's layers ran on the accelerator is UNKNOWN")
+    elif int(fb or 0) > 0:
+        tiers[tier] = TierResult(tier, "fail", True,
+                                 reason=f"{int(fb)} matmul layer(s) fell back to the host kernel")
+    elif int(on) == 0:
+        tiers[tier] = TierResult(tier, "skipped", True,
+                                 reason="no matmul layer executed on the accelerator")
+    else:
+        tiers[tier] = TierResult(tier, "pass", True,
+                                 reason=f"{int(on)} matmul layer(s) executed on the accelerator")
+    return tiers
+
+
 def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int,
                          package_dir: str | Path | None = None) -> dict:
     """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
@@ -1124,8 +1183,14 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     # becomes unverifiable -- which is exactly how the first such capsule passed while executing nothing
     # on the accelerator.
     _req_lanes = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
-    run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or (
-        "mesh" if (_sem.get("must_accelerate") or "on_mesh" in _req_lanes) else "host")
+    # THE TARGET'S OWN MESH IS THE ORACLE WHENEVER WE HAVE A TARGET. This used to key on the capsule's
+    # must_accelerate / required lanes, which left a capsule declaring neither graded on the HOST even
+    # when a target was named -- and merlin's x86 dispatch runtime is OUR compiler, so however well it
+    # does it is evidence about us, never about the submission. Keying on the target subsumes both
+    # declarations: a capsule demanding acceleration on a target with no mesh has nothing to run on
+    # either way. The env var still overrides for a deliberate diagnostic run.
+    run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or ("mesh" if target else "host")
+    _ = _req_lanes  # still read below by the lane report
     # MERLIN_MESH_VERIFY additionally EXECUTES each mesh-routed matmul as a single systolic tile on the
     # target's real mesh oracle (compile_model mesh_verify) — proving the matmul layers run ON the mesh, not
     # just that a routing plan was produced. Off by default (the oracle build/run is heavy); the whole-model
@@ -1206,6 +1271,28 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     _cos = max(float(_v.get("fp32_cos", 0.0)), float(_v.get("w8a8_cos", 0.0)))
     _quant = dtype in ("int8", "i8", "fp8", "fp8_e4m3")
     _quant_floor = float(os.environ.get("MERLIN_MODEL_QUANT_COS", "0.90") or "0.90")
+
+    # A HOST RUN NEVER PASSES A MODEL CAPSULE, and never fails one either. It is merlin's own x86
+    # dispatch runtime -- our compiler -- so however well or badly it does, it is evidence about US and
+    # not about the submission. Reporting its mismatch as the capsule's `fail` attributes a defect in
+    # our reference to a backend that never executed; reporting its match as `pass` is how a suite reads
+    # N/N while the submitted backend never ran. So the diagnostic is RECORDED and the verdict WITHHELD.
+    # No provenance stamp rides a withheld verdict: it makes no hardware claim to attribute.
+    if run_where == "host":
+        result["host_reference"] = {"status": st, "gate": _v, "engine": engine,
+                                    "note": "merlin's own dispatch runtime — a diagnostic, never an "
+                                            "oracle for a submitted backend"}
+        result.update(status="not_gradeable_no_oracle",
+                      numeric=_numeric_not_compared(
+                          engine, "host_reference", _v,
+                          "the whole model ran on merlin's host dispatch runtime; the numeric verdict "
+                          "is withheld because that is our compiler, not the target"),
+                      failure={"plane": "not_gradeable_no_oracle",
+                               "category": "NOT_GRADEABLE_NO_ORACLE",
+                               "detail": f"no target mesh ran this model (run={run_where}); a host "
+                                         f"reference cannot certify a submitted backend"})
+        result.pop("provenance", None)
+        return result
     # FAIL CLOSED ON AN UNEXERCISED TIER. A whole-model capsule declares required_oracle_tiers like any
     # other, but this function never entered the tier ladder, so those tiers were dead metadata and a
     # capsule could report `pass` with `tiers == {}` -- a verdict backed by no oracle at all. Worse, the
@@ -1219,6 +1306,10 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     mesh_exec = out.get("mesh_tile_verification") or {}
     model_exec = out.get("mesh_execution") or {}
     n_tiles = int(mesh_exec.get("n_tiles") or 0) if isinstance(mesh_exec, dict) else 0
+    # Set BEFORE the fail-closed branches below, every one of which returns early: a refusal must still
+    # say which tier refused it, and this block used to be attached only on the success path.
+    _model_tiers = _model_tier_map(declared, target, model_exec)
+    result["tiers"] = {k: v.to_dict() for k, v in _model_tiers.items()}
     exercised: dict[str, str] = {}
     if n_tiles:
         # The verdict comes from the per-tile COUNTS. Reading a boolean `ok` key -- which this dict does
@@ -1287,7 +1378,11 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                            "the runtime AND the backend, not about the backend alone."),
             }
         }
-    result["tiers"] = exercised
+    # Overlay the per-tile verdict where one exists; the counter-derived map is the floor.
+    for _t, _s in exercised.items():
+        base = _model_tiers.get(_t)
+        _model_tiers[_t] = TierResult(_t, _s, True, reason=(base.reason if base else None))
+    result["tiers"] = {k: v.to_dict() for k, v in _model_tiers.items()}
     # The tile record, kept beside the verdict as the SEPARATE and weaker evidence it is: it speaks about
     # synthesized tiles of this model's shapes, never about the model.
     if mesh_exec:
@@ -1335,6 +1430,18 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
                                              f"UNKNOWN -- not a fallback, and not evidence about the "
                                              f"backend. Re-run with an oracle that completes."})
             return result
+        if int(_on) == 0 and not _fb and not n_tiles:
+            # NOTHING RAN AT ALL -- no certified tile and no layer of the model itself. That is not a
+            # fallback (nothing was claimed and then missed); it is the absence of a run, and the
+            # difference matters: a fallback is evidence about the backend's reach, an empty record is
+            # evidence about nothing. Withheld, never failed.
+            result.update(status="incomplete",
+                          numeric=_numeric_not_compared(engine, run_where, _v, "nothing was compared ON THE ACCELERATOR: no declared tier ran, so the host-side number is not a verdict about this backend. A comparison that did not happen is not a passing comparison."),
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"neither a certified tile nor a single matmul layer of "
+                                             f"this model executed on the {target} mesh, so there is no "
+                                             f"verdict to report either way"})
+            return result
         if int(_on) == 0 or _fb:
             result.update(status="fail",
                           numeric=_numeric_when_not_accelerated(
@@ -1350,7 +1457,11 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
     # only refuses the case where nothing ran at all, so a failing accelerator tier still reported
     # `status: pass` beside `tiers: {L3: fail}` -- the two halves of the same result contradicting each
     # other, with the flattering half being the one anybody reads.
-    _failed_tiers = sorted(t for t, v in exercised.items() if v != "pass")
+    # Counter-derived failures gate too. Reading only the per-tile record let a model with three layers
+    # fallen back report `pass` beside `tiers: {L2: fail}` -- the two halves of one result contradicting
+    # each other, with the flattering half being the one anybody reads.
+    _failed_tiers = sorted({t for t, v in exercised.items() if v != "pass"}
+                           | {k for k, v in _model_tiers.items() if v.status == "fail"})
     if _failed_tiers:
         result.update(status="fail",
                       numeric=_numeric_when_not_accelerated(
@@ -1366,12 +1477,15 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
             result["tiers_unexercised"] = _unexercised_note(unexercised, exercised)
         return result
 
-    if declared and not exercised:
+    # A tier the model's own counters resolved COUNTS as exercised. Keying this only on the per-tile
+    # record made every run without tile verification report `incomplete`, including one whose layers
+    # demonstrably ran on the mesh.
+    _counter_ran = {k for k, v in _model_tiers.items() if v.status in ("pass", "fail")}
+    if declared and not exercised and not _counter_ran:
         # Same reasoning as the branches above: the arithmetic WAS measured before we got here, so report
         # it. The verdict stays `incomplete` -- no declared tier ran, and a number alone is not a tier.
         result.update(status="incomplete",
-                      numeric=_numeric_when_not_accelerated(
-                          st, gate, _v, _cos, engine, measured_on=run_where),
+                      numeric=_numeric_not_compared(engine, run_where, _v, "nothing was compared ON THE ACCELERATOR: no declared tier ran, so the host-side number is not a verdict about this backend. A comparison that did not happen is not a passing comparison."),
                       failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
                                "detail": f"declares required oracle tiers {declared} and ran NONE of them "
                                          f"(the functional gate here is the {run_where} reference, not the "
@@ -1387,6 +1501,13 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         # off `status` alone erases the difference.
         _v = out.get("verify") or {}
         _guarded = _v.get("per_element_guarded")
+        # A PASS EARNED ON THE TARGET IS A HARDWARE CLAIM, so it must say which tree produced it. A
+        # result attributed to the wrong revision is worse than no result, because it gets cited.
+        try:
+            from ..common import provenance as _prov
+            result["provenance"] = _prov.record(extra={"target": target, "run": run_where})
+        except Exception as _pe:                            # noqa: BLE001 - never block a verdict
+            result["provenance"] = {"status": "UNKNOWN", "detail": f"{type(_pe).__name__}: {_pe}"}
         result.update(status="pass",
                       numeric={"status": "pass", "engine": engine, "gate": _v,
                                "gate_tier": _v.get("tier_ok"),

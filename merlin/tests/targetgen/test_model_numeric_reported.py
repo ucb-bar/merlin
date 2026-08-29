@@ -67,10 +67,18 @@ def test_the_number_is_labelled_with_the_lane_it_came_from():
 
 def test_every_rejection_path_carries_the_numeric_verdict():
     seg = _fn("_grade_model_capsule")
-    # the three places a model capsule is turned down after the gate has already run
+    # The places a model capsule is turned down after the gate has already run and its arithmetic IS
+    # known: unmeasurable layers, must_accelerate fallback, and a tier that ran and failed. A path where
+    # NOTHING ran is deliberately not among them -- it reports `not_compared`, because a comparison that
+    # never happened against the accelerator is not a passing comparison.
+    for category in ("NOT_RUN_IS_NOT_PASS", "FALLBACK_ON_ELIGIBLE_REGION", "FUNCTIONAL_MISMATCH"):
+        assert category in seg, f"rejection path {category} is gone — was it renamed?"
     assert seg.count("_numeric_when_not_accelerated(") == 3, (
-        "each rejection path (must_accelerate fallback, failed tier, unexercised tier) must report the "
-        "numeric result that was already measured")
+        "each rejection path with a measured number (unmeasurable layers, must_accelerate fallback, "
+        "failed tier) must report it rather than overwrite it with a placeholder")
+    # and the paths where nothing was compared are deliberately NOT among them: they go through
+    # _numeric_not_compared, which is a different statement from a measured rejection.
+    assert "_numeric_not_compared(" in seg
 
 
 def test_reporting_the_number_never_promotes_the_verdict():
