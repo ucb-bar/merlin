@@ -23,8 +23,36 @@ def test_manifest_covers_every_capsule_exactly_once():
     # This MANIFEST describes THIS (gemmini) corpus — its capsules sit at <category>/<cap> (rel-depth 2).
     # Another target's corpus nested under the same root (e.g. atlas/<category>/<cap>, depth 3) has its own
     # provenance and must not be conflated here.
-    on_disk = {str(rel) for p in CAP_ROOT.rglob("capsule.yaml")
-               if len((rel := p.parent.relative_to(CAP_ROOT)).parts) == 2}
+    #
+    # HIDDEN capsules are excluded, and a hidden capsule that appears here is a FAILURE.
+    #
+    # MANIFEST.yaml is tracked; the hidden capsules are deliberately not (0 of 11 on this tree). The
+    # completeness rule and the answer-key rule collide on exactly this set, and secrecy wins: listing
+    # them would publish the holdout's composition -- which capsules a submission is measured on that
+    # it cannot see -- in a file anyone who clones the repo reads. A submitter who knows the holdout
+    # is "matmul, acc_scale, k_accum, movement, conv" can target it, and the set stops measuring
+    # generalization. Keyed on the capsule's OWN `label: hidden`, not on the directory name, so a
+    # hidden capsule filed anywhere is still excluded.
+    #
+    # This also explains why the check never fired before: it passes on a machine WITHOUT the hidden
+    # set and fails on one that has it, which is backwards for a rule about the hidden set.
+    def _label(cap_yaml: Path) -> str:
+        try:
+            return str((yaml.safe_load(cap_yaml.read_text(encoding="utf-8")) or {}).get("label", ""))
+        except Exception:                                  # noqa: BLE001 -- unreadable != hidden
+            return ""
+
+    on_disk, hidden_on_disk = set(), set()
+    for p in CAP_ROOT.rglob("capsule.yaml"):
+        rel = p.parent.relative_to(CAP_ROOT)
+        if len(rel.parts) != 2:
+            continue
+        (hidden_on_disk if _label(p) == "hidden" else on_disk).add(str(rel))
+
+    leaked = listed & hidden_on_disk
+    assert not leaked, (
+        f"MANIFEST names hidden capsule(s): {sorted(leaked)}. MANIFEST.yaml is tracked and the hidden "
+        f"set is not; naming them publishes the holdout's composition.")
     assert listed == on_disk, (
         f"MANIFEST out of sync with the tree — missing: {on_disk - listed}; "
         f"stale: {listed - on_disk}. Re-run generate_corpus.py.")

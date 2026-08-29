@@ -304,7 +304,28 @@ def _has_model_captures() -> bool:
     return bool(M.discover_model_captures())
 
 
-@pytest.mark.skipif(not _has_model_captures(), reason="no model.mlir captures under output/")
+def _needs_captures(*names: str):
+    """Skip unless EVERY named model capture is present on this machine.
+
+    `_has_model_captures()` only asks whether ANY capture exists, which is true on any machine that
+    has ever recaptured anything. The tests below index specific models -- `captures["openvla"]` --
+    so on a machine holding a different subset of the zoo they did not skip, they raised KeyError and
+    reported four FAILURES for one absent dataset. A test that cannot run has produced no evidence;
+    reporting that as a defect is how a suite trains its readers to ignore red.
+
+    The captures are multi-GB and deliberately untracked, so which ones a given checkout holds is a
+    property of the machine, not of the code."""
+    from merlin.dse_guidance import models as M
+    try:
+        have = set(M.discover_model_captures())
+    except Exception:                                    # noqa: BLE001 -- absent tree, not a failure
+        have = set()
+    missing = sorted(set(names) - have)
+    return pytest.mark.skipif(
+        bool(missing), reason=f"model capture(s) not present on this machine: {', '.join(missing)}")
+
+
+@_needs_captures("openvla", "rdt2", "xr0")
 def test_model_zoo_discovery_and_specs():
     from merlin.dse_guidance import models as M
     captures = M.discover_model_captures()
@@ -320,6 +341,7 @@ def test_model_zoo_discovery_and_specs():
 
 
 @pytest.mark.skipif(not _has_model_captures(), reason="no model.mlir captures under output/")
+@_needs_captures("openvla")
 def test_model_flat_vs_multirate_legality_flip():
     # On a real captured model, residency is illegal under the flat (single-pass) capture and
     # becomes legal under the multi-rate decode/denoise loop — the central thesis on real data.
@@ -1009,6 +1031,7 @@ def test_attribution_reads_real_prov_provenance_from_capture():
 
 
 @pytest.mark.skipif(not _has_model_captures(), reason="no model.mlir captures under output/")
+@_needs_captures("openvla")
 def test_model_capture_residency_is_unquantified_not_fabricated():
     # A whole-model capture cannot separate head from backbone -> residency must be legal but
     # report gap_closure = null, never a fabricated magnitude.
@@ -1287,6 +1310,7 @@ def test_case_study_emits_envelope_and_certificate_tables(tmp_path):
 
 
 @pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+@_needs_captures("openvla", "rdt2", "xr0")
 def test_independent_verification_harness_passes():
     # The standalone verifier independently re-derives every key number from the raw captures and
     # cross-checks them against the emitted artifacts; --check-only means it does not write the report.

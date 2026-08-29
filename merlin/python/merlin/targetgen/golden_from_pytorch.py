@@ -48,7 +48,20 @@ _DTYPES = {
     "bf16": "bfloat16",
     "fp32": "float32", "f32": "float32", "float": "float32",
     "fp64": "float64", "f64": "float64",
+    # INTEGER operands. A capsule that takes token ids (an embedding lookup, a gather) declares an
+    # integer input, and without these it failed closed with "unmapped dtype 'i64'" and got no golden
+    # at all -- so the capsule could not be graded, which reads as a missing answer key rather than as
+    # the generator lacking a dtype.
+    "i8": "int8", "int8": "int8", "u8": "uint8", "uint8": "uint8",
+    "i16": "int16", "int16": "int16",
+    "i32": "int32", "int32": "int32",
+    "i64": "int64", "int64": "int64",
 }
+
+#: Torch dtypes that INDEX rather than carry a value. They must never be widened to the accumulation
+#: dtype: `nn.Embedding` and `gather` require integer indices and raise on a float tensor, and a
+#: token id has no meaningful reduced-precision rounding to model.
+_INDEX_DTYPES = frozenset({"int8", "uint8", "int16", "int32", "int64"})
 
 
 class GoldenGenError(RuntimeError):
@@ -172,7 +185,10 @@ def build_golden(capsule_dir: str | Path) -> dict:
                            "float32")
     acc = getattr(torch, acc_name)
     with torch.no_grad():
-        result = model(*[o.to(dtype=acc) for o in cast_ops])
+        # Integer operands are passed THROUGH: see _INDEX_DTYPES. Casting them to the accumulation
+        # width would hand an embedding lookup a float index tensor and raise inside the reference.
+        result = model(*[o if o.dtype.is_floating_point is False else o.to(dtype=acc)
+                         for o in cast_ops])
     produced = _as_tuple(result)
 
     names = _out_names(capsule)

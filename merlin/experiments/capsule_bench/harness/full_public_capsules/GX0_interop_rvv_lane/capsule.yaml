@@ -1,7 +1,8 @@
-name: M1_lstmnetvit_gemmini
+name: GX0_interop_rvv_lane
 kind: model
 source_role: pytorch_model_slice
-source_reference: "lstmnetvit int8 \u2014 vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)"
+source_reference: "small_llama int8 composed across the systolic mesh and the host\
+  \ scalar/RVV lane \u2014 asserts both lanes carried work"
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -9,33 +10,17 @@ inputs:
   role: input
   shape:
   - 1
-  - 1
-  - 60
-  - 90
-  dtype: i8
-- name: I1
-  role: input
-  shape:
-  - 1
-  - 1
-  dtype: i8
-- name: I2
-  role: input
-  shape:
-  - 1
-  - 4
+  - 8
   dtype: i64
 operation:
   op: model
   attributes:
-    model: lstmnetvit
+    model: small_llama
     dtype: i8
     out: Y0
     compile_dtype: int8
     arg_order:
     - I0
-    - I1
-    - I2
     - Y0
     weights: capsule.weights.safetensors
 numeric_policy:
@@ -61,6 +46,10 @@ vcs: optional
 firesim: optional
 gate:
   after_op_pass_fraction: 0.8
+lanes:
+  require:
+  - on_mesh
+  - scalar_rvv_lane
 pytorch_ref:
   op: model
   dtype: i8
@@ -69,5 +58,5 @@ linalg_mlir: capsule.interface.mlir
 semantic:
   semantic_family: contraction
   generalization_axis: model
-  must_accelerate: true
+  must_accelerate: false
   eligible: auto

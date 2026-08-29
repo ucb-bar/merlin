@@ -28,7 +28,15 @@ numeric_policy:
   atol: 0.03125
   rtol: 0.02
 expected:
-  instruction_classes: []
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
 required_oracle_tiers:
 - L0
 - L1
@@ -43,6 +51,7 @@ pytorch_ref:
   loader: capsule.pytorch.py
 linalg_mlir: capsule.interface.mlir
 semantic:
+  semantic_family: contraction
   generalization_axis: model
-  must_accelerate: false
+  must_accelerate: true
   eligible: auto
