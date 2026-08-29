@@ -1435,6 +1435,150 @@ def _merge_match_policy(force: dict | None, capsule: dict | None) -> dict | None
     return merged
 
 
+def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: dict | None,
+                             tiers: dict, trace_check_res: dict, numeric: dict, required,
+                             no_oracle: bool, eff_target: str, paths, run_id: str, cfg,
+                             contract=None, executability: dict | None = None,
+                             declined: dict | None = None, extra: dict | None = None) -> dict:
+    """Turn a graded capsule's parts into its result row, and write it.
+
+    Lifted VERBATIM out of :func:`run_capsule`, whose tail this was, for two reasons.
+
+    The MODEL capsule path finalizes separately, so every rule enforced here -- a mandatory tier that
+    did not run cannot yield a pass, a screened capsule is not a pass, a capsule with no runnable
+    required tier does not pass on our own command-buffer interpretation alone -- applied to ISA
+    capsules and silently did not apply to model ones.
+
+    And the behaviour becomes testable directly, on the row this returns, instead of only through a
+    full graded run. Pinning it to a source line inside `run_capsule` is testing where code lives
+    rather than what it does, which is how that assertion broke when the block last moved.
+
+    Pure with respect to grading: it decides `status`/`failure` from what it is handed and never
+    re-runs an oracle. Its side effects are the artifacts the row implies -- capsule_result.json and
+    the run manifest -- plus a self-validation warning."""
+    # Imported here, as run_capsule did: this module's import of .provenance is deferred to call time.
+    from .provenance import toolchain_shas
+
+    # not_run_is_not_pass: a mandatory tier that did not pass closed (unavailable/skipped/absent) makes
+    # the capsule incomplete — never a silent pass. A tier that is honestly N/A for this capsule's
+    # datatype (``not_applicable``; the integer L0/L1 floor on a float datapath) is the ONE exception —
+    # a legitimate skip like a dropped RoCC gate, not a missing oracle. An unavailable/absent RTL oracle
+    # is never not_applicable, so it still fails closed here.
+    if status == "pass" and any(getattr(t, "budget_deferred", False) for t in tiers.values()):
+        # SCREENED, NOT CERTIFIED. Distinct from `incomplete` (something that should have run did not)
+        # and from `pass` (it certified). The capsule cleared the cheap screen and the expensive tier was
+        # deliberately not bought, because a capsule in the covering set already certifies the axes this
+        # one exercises. Excluded from the pass/fail denominators and reported by name — the one thing it
+        # must never do is read as a pass.
+        _def = sorted(t for t, r in tiers.items() if getattr(r, "budget_deferred", False))
+        status = "screened_only"
+        failure = {"plane": "budget", "category": "SCREENED_NOT_CERTIFIED",
+                   "tier": _def[0] if _def else None,
+                   "detail": (f"passed the screen tier; certify tier(s) {', '.join(_def)} not purchased "
+                              f"(outside the derived covering set, certify budget exhausted). This is "
+                              f"NOT a verdict on this capsule.")}
+    if status == "pass":
+        for tier in required:
+            tr = tiers.get(tier)
+            if tr is not None and getattr(tr, "not_applicable", False):
+                continue
+            if tr is None or tr.status in ("unavailable", "skipped"):
+                if no_oracle:
+                    # Explicit --no-oracle STRUCTURE-ONLY smoke: NO numeric oracle was requested this run,
+                    # so a mandatory numeric tier that did not run is NOT a fixable failure — it is
+                    # honestly NOT GRADEABLE. Record a DISTINCT status/plane so the agent is not handed a
+                    # phantom `oracle_unavailable` "fix this" signal it can never satisfy. INTEGRITY: this
+                    # is NEVER reported as a pass — the numeric verdict is simply withheld. The
+                    # not_run_is_not_pass gate for GRADED (oracle-present) runs is the `else` branch below,
+                    # unchanged; keep no_oracle False for every real grade.
+                    status = "not_gradeable_no_oracle"
+                    if failure is None:
+                        failure = {"plane": "not_gradeable_no_oracle",
+                                   "category": "NOT_GRADEABLE_NO_ORACLE",
+                                   "detail": f"numeric oracle unavailable this run (--no-oracle): "
+                                             f"mandatory tier {tier} not graded — structural tiers "
+                                             f"(L0/L1/trace) only"}
+                else:
+                    status = "incomplete"
+                    if failure is None:
+                        # The tier's OWN reason is the only actionable half of this message, and it was
+                        # being dropped. Measured on a self-hosted-ISA target: every capsule carried
+                        # "program did not halt within N instructions" while the agent was shown only
+                        # "mandatory tier L# did not run (unavailable)". Ten rounds of a fully conformant
+                        # model went into feedback naming nothing it could fix; effort decayed each round.
+                        # An oracle that is ABSENT and a program that RAN AND HUNG are different events;
+                        # when the tier reported a reason, that reason leads.
+                        _why = (getattr(tr, "reason", None) or "").strip() if tr else ""
+                        _st = tr.status if tr else "absent"
+                        failure = {"plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "tier": tier, "tier_status": _st, "tier_reason": _why or None,
+                                   "detail": (f"{_why} (mandatory tier {tier}, status {_st})" if _why
+                                              else f"mandatory tier {tier} did not run ({_st})")}
+                break
+
+    # Fail-open guard (complements the loop above, which never fires for an EMPTY/all-N/A required set):
+    # a capsule that declares no runnable oracle requirement must NOT grade 'pass' on the L0/L1 command-
+    # buffer interpretation alone — that is our own engine, not an independent oracle. A real grade
+    # (not --no-oracle) requires at least one runnable, non-N/A required tier to have certified it.
+    if status == "pass" and not no_oracle:
+        ran_required = [t for t in required
+                        if tiers.get(t) is not None
+                        and not getattr(tiers[t], "not_applicable", False)
+                        and tiers[t].status == "pass"]
+        if not ran_required:
+            status = "incomplete"
+            if failure is None:
+                # When the phase capped a DECLARED tier away, name it: "this phase cannot reach the tier
+                # your capsule requires" is a configuration fact the operator can fix, and it is a
+                # different statement from "the oracle is missing". The materializer records the dropped
+                # declared tiers on the capsule precisely so this message can be specific.
+                _unreach = capsule.get("unreachable_required_oracle_tiers") or []
+                _ceil = capsule.get("oracle_tier_ceiling")
+                failure = {"plane": "declared_tier_unreachable" if _unreach else "oracle_unavailable",
+                           "category": "NOT_RUN_IS_NOT_PASS",
+                           "unreachable_required_oracle_tiers": sorted(_unreach) or None,
+                           "detail": (
+                               f"this capsule declares required oracle tier(s) {sorted(_unreach)} that "
+                               f"this phase cannot reach (ceiling {_ceil}); the tiers it can reach "
+                               f"({sorted(required)}) are not applicable to this capsule's datapath, so "
+                               f"nothing certified it. Refusing to substitute a tier the capsule never "
+                               f"declared." if _unreach else
+                               f"no runnable required oracle tier certified this capsule "
+                               f"(required={sorted(required)}) — refusing to pass on the L0/L1 "
+                               f"command-buffer interpretation alone")}
+
+    result = {
+        "capsule": name, "kind": capsule.get("kind"), "label": capsule.get("label"),
+        "status": status, "contract_version": CONTRACT_VERSION,
+        "tiers": {t: r.to_dict() for t, r in tiers.items()},
+        "trace_check": trace_check_res, "numeric": numeric,
+        "failure": failure, "toolchain_shas": toolchain_shas(eff_target),
+    }
+    # Advisory RTL-executability smoke (never a gate): record it as its own field when one ran, so a
+    # reader sees the RTL-legality backstop verdict without it ever touching the pass/fail status.
+    if executability:
+        result["executability"] = executability
+    # The refusal rides the result BY NAME AND SHAPE, so the round feedback can quote what was declined
+    # rather than reporting a numeric mismatch on a program that was never emitted.
+    if declined:
+        result["declined"] = declined
+    # Caller-supplied evidence (the whole-model path attaches its routing plan and mesh counters).
+    # Merged AFTER status and failure are decided, and with setdefault so it can never overwrite an
+    # authoritative field: a routing plan is something a reader interprets, never an input to the
+    # verdict it is reported alongside.
+    for _k, _v in (extra or {}).items():
+        result.setdefault(_k, _v)
+    (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
+                                                        encoding="utf-8")
+    _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite)
+    try:
+        schemas.validate(result, "capsule_result", contract=contract)
+    except schemas.ContractViolation as e:
+        import sys
+        sys.stderr.write(f"WARNING: capsule_result self-validation failed: {e}\n")
+    return result
+
+
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
@@ -2024,118 +2168,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                    "detail": f"{type(e).__name__}: {e}",
                    "traceback": _traceback.format_exc()}
 
-    # not_run_is_not_pass: a mandatory tier that did not pass closed (unavailable/skipped/absent) makes
-    # the capsule incomplete — never a silent pass. A tier that is honestly N/A for this capsule's
-    # datatype (``not_applicable``; the integer L0/L1 floor on a float datapath) is the ONE exception —
-    # a legitimate skip like a dropped RoCC gate, not a missing oracle. An unavailable/absent RTL oracle
-    # is never not_applicable, so it still fails closed here.
-    if status == "pass" and any(getattr(t, "budget_deferred", False) for t in tiers.values()):
-        # SCREENED, NOT CERTIFIED. Distinct from `incomplete` (something that should have run did not)
-        # and from `pass` (it certified). The capsule cleared the cheap screen and the expensive tier was
-        # deliberately not bought, because a capsule in the covering set already certifies the axes this
-        # one exercises. Excluded from the pass/fail denominators and reported by name — the one thing it
-        # must never do is read as a pass.
-        _def = sorted(t for t, r in tiers.items() if getattr(r, "budget_deferred", False))
-        status = "screened_only"
-        failure = {"plane": "budget", "category": "SCREENED_NOT_CERTIFIED",
-                   "tier": _def[0] if _def else None,
-                   "detail": (f"passed the screen tier; certify tier(s) {', '.join(_def)} not purchased "
-                              f"(outside the derived covering set, certify budget exhausted). This is "
-                              f"NOT a verdict on this capsule.")}
-    if status == "pass":
-        for tier in required:
-            tr = tiers.get(tier)
-            if tr is not None and getattr(tr, "not_applicable", False):
-                continue
-            if tr is None or tr.status in ("unavailable", "skipped"):
-                if no_oracle:
-                    # Explicit --no-oracle STRUCTURE-ONLY smoke: NO numeric oracle was requested this run,
-                    # so a mandatory numeric tier that did not run is NOT a fixable failure — it is
-                    # honestly NOT GRADEABLE. Record a DISTINCT status/plane so the agent is not handed a
-                    # phantom `oracle_unavailable` "fix this" signal it can never satisfy. INTEGRITY: this
-                    # is NEVER reported as a pass — the numeric verdict is simply withheld. The
-                    # not_run_is_not_pass gate for GRADED (oracle-present) runs is the `else` branch below,
-                    # unchanged; keep no_oracle False for every real grade.
-                    status = "not_gradeable_no_oracle"
-                    if failure is None:
-                        failure = {"plane": "not_gradeable_no_oracle",
-                                   "category": "NOT_GRADEABLE_NO_ORACLE",
-                                   "detail": f"numeric oracle unavailable this run (--no-oracle): "
-                                             f"mandatory tier {tier} not graded — structural tiers "
-                                             f"(L0/L1/trace) only"}
-                else:
-                    status = "incomplete"
-                    if failure is None:
-                        # The tier's OWN reason is the only actionable half of this message, and it was
-                        # being dropped. Measured on a self-hosted-ISA target: every capsule carried
-                        # "program did not halt within N instructions" while the agent was shown only
-                        # "mandatory tier L# did not run (unavailable)". Ten rounds of a fully conformant
-                        # model went into feedback naming nothing it could fix; effort decayed each round.
-                        # An oracle that is ABSENT and a program that RAN AND HUNG are different events;
-                        # when the tier reported a reason, that reason leads.
-                        _why = (getattr(tr, "reason", None) or "").strip() if tr else ""
-                        _st = tr.status if tr else "absent"
-                        failure = {"plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
-                                   "tier": tier, "tier_status": _st, "tier_reason": _why or None,
-                                   "detail": (f"{_why} (mandatory tier {tier}, status {_st})" if _why
-                                              else f"mandatory tier {tier} did not run ({_st})")}
-                break
-
-    # Fail-open guard (complements the loop above, which never fires for an EMPTY/all-N/A required set):
-    # a capsule that declares no runnable oracle requirement must NOT grade 'pass' on the L0/L1 command-
-    # buffer interpretation alone — that is our own engine, not an independent oracle. A real grade
-    # (not --no-oracle) requires at least one runnable, non-N/A required tier to have certified it.
-    if status == "pass" and not no_oracle:
-        ran_required = [t for t in required
-                        if tiers.get(t) is not None
-                        and not getattr(tiers[t], "not_applicable", False)
-                        and tiers[t].status == "pass"]
-        if not ran_required:
-            status = "incomplete"
-            if failure is None:
-                # When the phase capped a DECLARED tier away, name it: "this phase cannot reach the tier
-                # your capsule requires" is a configuration fact the operator can fix, and it is a
-                # different statement from "the oracle is missing". The materializer records the dropped
-                # declared tiers on the capsule precisely so this message can be specific.
-                _unreach = capsule.get("unreachable_required_oracle_tiers") or []
-                _ceil = capsule.get("oracle_tier_ceiling")
-                failure = {"plane": "declared_tier_unreachable" if _unreach else "oracle_unavailable",
-                           "category": "NOT_RUN_IS_NOT_PASS",
-                           "unreachable_required_oracle_tiers": sorted(_unreach) or None,
-                           "detail": (
-                               f"this capsule declares required oracle tier(s) {sorted(_unreach)} that "
-                               f"this phase cannot reach (ceiling {_ceil}); the tiers it can reach "
-                               f"({sorted(required)}) are not applicable to this capsule's datapath, so "
-                               f"nothing certified it. Refusing to substitute a tier the capsule never "
-                               f"declared." if _unreach else
-                               f"no runnable required oracle tier certified this capsule "
-                               f"(required={sorted(required)}) — refusing to pass on the L0/L1 "
-                               f"command-buffer interpretation alone")}
-
-    result = {
-        "capsule": name, "kind": capsule.get("kind"), "label": capsule.get("label"),
-        "status": status, "contract_version": CONTRACT_VERSION,
-        "tiers": {t: r.to_dict() for t, r in tiers.items()},
-        "trace_check": trace_check_res, "numeric": numeric,
-        "failure": failure, "toolchain_shas": toolchain_shas(eff_target),
-    }
-    # Advisory RTL-executability smoke (never a gate): record it as its own field when one ran, so a
-    # reader sees the RTL-legality backstop verdict without it ever touching the pass/fail status.
-    if executability:
-        result["executability"] = executability
-    # The refusal rides the result BY NAME AND SHAPE, so the round feedback can quote what was declined
-    # rather than reporting a numeric mismatch on a program that was never emitted.
-    if declined:
-        result["declined"] = declined
-    (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
-                                                        encoding="utf-8")
-    _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite)
-    try:
-        schemas.validate(result, "capsule_result", contract=contract)
-    except schemas.ContractViolation as e:
-        import sys
-        sys.stderr.write(f"WARNING: capsule_result self-validation failed: {e}\n")
-    return result
+    return _finalize_capsule_result(
+        name=name, capsule=capsule, status=status, failure=failure, tiers=tiers,
+        trace_check_res=trace_check_res, numeric=numeric, required=required,
+        no_oracle=no_oracle, eff_target=eff_target, paths=paths, run_id=run_id,
+        cfg=cfg, contract=contract, executability=executability, declined=declined)
 
 
 def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
