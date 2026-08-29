@@ -93,8 +93,17 @@ def test_the_command_buffer_is_the_certified_c0_shape(descent):
     assert cb["target"] == "gemmini"
     assert [c["opcode"] for c in cb["commands"]] == [
         "RES_PACK", "MATMUL_RESIDENT", "COMMIT", "MATMUL_RESIDENT", "COMMIT", "EVICT"]
-    dtypes = {t["dtype"] for t in cb["tensors"].values()}
-    assert dtypes == {"i8"}, dtypes
+    # OPERANDS are i8; the ACCUMULATOR/output is i32, and declaring it is correct -- a weight-stationary
+    # i8 mesh accumulates in i32 and commits from there. This once asserted i8 everywhere, which held
+    # only while the output tensor went undeclared; a buffer that declares its accumulator is a better
+    # buffer, not a changed shape. Assert the ROLES so the claim is about the datapath rather than
+    # about which tensors happen to be written down.
+    by_role = {}
+    for name, spec in cb["tensors"].items():
+        by_role.setdefault(str(spec.get("role", "")).lower(), set()).add(spec["dtype"])
+    inputs = by_role.get("input", set()) | by_role.get("weight", set())
+    assert inputs == {"i8"}, f"operands must be i8: {by_role}"
+    assert by_role.get("output", {"i32"}) <= {"i32", "i8"}, f"output must be i32 (or i8 requant): {by_role}"
 
 
 def test_the_command_buffer_simulates_against_an_independent_reference(descent):

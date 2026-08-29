@@ -127,9 +127,18 @@ def test_saturn_targetgen_plans_validate(tmp_path):
     assert "rvv" in tc["features"]
     assert tc["runtime"]["backends"] == ["simulator", "baremetal", "vcs", "zephyr"]
     dp = result.plans["dialect_plan"]
-    assert {r["from"]: r["to"] for r in dp["lowering"]} == {
+    lowering = {r["from"]: r["to"] for r in dp["lowering"]}
+    # The RESIDENT-MATMUL spine must be present and must lower to this target's own ops. Asserted as a
+    # subset, not an equality: the plan is SYNTHESIZED from the target's declared capabilities, so it
+    # grows when the target gains one (vector_map / vector_reduce arrived this way) and an equality
+    # here turns every such gain into a failure that names nothing about the spine.
+    assert lowering.items() >= {
         "interface.resident_pack": "saturn.pack",
         "interface.matmul": "saturn.matmul",
         "interface.commit": "saturn.commit",
         "interface.resident_evict": "saturn.release",
-    }
+    }.items()
+    # Every rule still has to stay inside this target's namespace -- a plan lowering to another
+    # target's dialect is the failure worth catching, and a subset check alone would not see it.
+    assert all(v.startswith("saturn.") for v in lowering.values()), lowering
+    assert all(k.startswith("interface.") for k in lowering), lowering
