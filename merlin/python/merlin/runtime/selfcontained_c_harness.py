@@ -134,6 +134,16 @@ def _shape2d(shape: list) -> tuple[int, int]:
     return rows, dims[-1]
 
 
+def _flatten_floats(v) -> list[float]:
+    """Flatten a nested sequence of numbers to a flat row-major list, at ANY rank."""
+    out: list[float] = []
+    if isinstance(v, (int, float)):
+        return [float(v)]
+    for x in v:
+        out.extend(_flatten_floats(x))
+    return out
+
+
 def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
     """Build the self-contained harness program for a capsule directly from its COMMAND BUFFER, or return
     None when the artifact is already a full program (has ``main``) — the caller then compiles it directly.
@@ -149,13 +159,63 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
     tensors = cb.get("tensors") or {}
     values = cb.get("canonical_inputs") or {}
     if not values:
-        return None                                   # no operands attached -> let the caller compile as-is
+        # NO RECORDED RAWS -> MATERIALIZE THE SAME ONES THE GOLDEN USES, rather than declining. The
+        # runner attaches canonical_inputs from the golden when a capsule ships them; a capsule that
+        # ships none is not un-harnessable, it just has no recorded raws, and `materialize_inputs` is
+        # the one deterministic synthesis the reference, the simulator and this harness all share.
+        # Declining here compiled the kernel UNFED instead, which reads downstream as a numeric defect
+        # in a kernel that was never given operands. Not a false-pass risk: a capsule that DID ship
+        # raws still gets them, and a wrong-operand run fails the golden rather than passing it.
+        try:
+            from .commandbuffer import materialize_inputs
+            env = materialize_inputs(cb)
+        except Exception:                             # noqa: BLE001 - unmaterializable -> old behaviour
+            return None
+        values = {}
+        for _nm, _tv in (env or {}).items():
+            try:
+                values[_nm] = {"values": [float(x) for x in _flatten_floats(_tv.to_list())]}
+            except Exception:                         # noqa: BLE001 - skip what will not flatten
+                continue
+        if not values:
+            return None
 
     def _pick(operands: dict, *keys: str) -> str | None:
         for k in keys:
             if operands.get(k):
                 return operands[k]
         return None
+
+    # RESOLVE THROUGH THE ALIASES FIRST. A resident-matmul buffer does not name its declared tensors on
+    # the matmul itself: the weight arrives as a RESIDENT COPY made earlier (`RES_PACK src=W dst=W_res`)
+    # and the result leaves through a COMMIT of the accumulator (`COMMIT src=acc0 dst=Y0`). Reading the
+    # matmul's operands literally binds `W_res` and `acc0`, and neither is in `tensors` -- so every
+    # operand lookup missed and the whole buffer fell back to compiling the kernel unfed.
+    #
+    # Both maps are built from the DATAFLOW, not from opcode names: any command that copies a declared
+    # tensor to an undeclared one makes an alias, and any command that copies an undeclared one to a
+    # declared one is a commit. So a target spelling these differently still resolves.
+    alias_of: dict[str, str] = {}          # undeclared producer name -> the declared tensor behind it
+    commits_to: dict[str, str] = {}        # undeclared name -> the declared tensor it is committed to
+    for cmd in cb.get("commands", []):
+        o = cmd.get("operands", {}) or {}
+        src, dst = _pick(o, "src"), _pick(o, "dst", "out")
+        if not (isinstance(src, str) and isinstance(dst, str)):
+            continue
+        if src in tensors and dst not in tensors:
+            alias_of.setdefault(dst, src)          # a declared tensor copied to a resident slot
+        elif src not in tensors:
+            # An UNDECLARED source being copied somewhere is an intermediate leaving the accumulator;
+            # the destination is the result's name whether or not the buffer bothered to declare it.
+            # Requiring the destination to be declared missed exactly the common case -- `tensors` is
+            # optional in the schema, so a buffer routinely names its output only on the COMMIT.
+            commits_to.setdefault(src, dst)
+
+    def _resolve(nm: str | None) -> str | None:
+        """The DECLARED tensor a matmul operand stands for, following one alias/commit hop."""
+        if nm is None or nm in tensors:
+            return nm
+        return alias_of.get(nm) or commits_to.get(nm) or nm
 
     weights, lhses, outs, seen = [], [], [], set()
     for cmd in cb.get("commands", []):
@@ -164,7 +224,7 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
             continue
         o = cmd.get("operands", {})
         for role, bucket in ((("weight", "rhs"), weights), (("lhs",), lhses), (("out", "dst"), outs)):
-            nm = _pick(o, *role)
+            nm = _resolve(_pick(o, *role))
             if nm and nm not in seen:
                 seen.add(nm)
                 bucket.append(nm)
@@ -173,6 +233,14 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
 
     def _arg(name: str, with_values: bool) -> TensorArg | None:
         shp = (tensors.get(name) or {}).get("shape")
+        if shp is None and not with_values and lhses and weights:
+            # An output the buffer never declared. Its extent follows from the contraction it is the
+            # result OF -- rows of the lhs by columns of the weight -- which is not a guess about an
+            # arbitrary op, only about the matmul this branch already matched on.
+            lr, _lc = _shape2d((tensors.get(lhses[0]) or {}).get("shape"))
+            _wr, wc = _shape2d((tensors.get(weights[0]) or {}).get("shape"))
+            if lr and wc:
+                shp = [lr, wc]
         r, c = _shape2d(shp)
         if with_values:
             v = (values.get(name) or {}).get("values")

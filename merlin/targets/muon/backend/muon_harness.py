@@ -1020,10 +1020,16 @@ def why_no_operands(cb: dict) -> str:
             return ("the runner attached no canonical_inputs for this capsule, so there are no operand "
                     "values to bind even once the buffer declares its tensors")
         names = sorted({val for _slot, val in _refs})
-        return (f"the command buffer declares no `tensors`, so none of its operand names resolve to a "
-                f"buffer. Declare each of {names} in the `tensors` map with a `shape`, a `dtype` and a "
-                f"`role` (\"input\", \"weight\" or \"output\"); the operand slots already name them "
-                f"correctly, and the opcodes are supported")
+        # Says BOTH things, because the block is empty for two different reasons and the fix differs.
+        # A backend whose slots hold real names just has to declare them. One that put SHAPES in the
+        # slots ('16x16', 'tensor<16x16xf32>') is guessing the format, and telling it to declare
+        # '16x16' as a tensor sends it further down that path -- so the message also states what a slot
+        # holds. Naming the offending values is what lets the reader tell which case it is in.
+        return (f"the command buffer declares NO tensors: it declares no `tensors` map, so none of its "
+                f"operand names resolve to a buffer. Its commands reference {names}. An operand slot "
+                f"holds the NAME of a tensor declared in `tensors` (e.g. \"Y0\"), not a shape, a type "
+                f"or a dimension list. Declare each one there with a `shape`, a `dtype` and a `role` "
+                f"(\"input\", \"weight\" or \"output\"); the opcodes themselves are supported")
     if not have:
         return "the runner attached no canonical_inputs for this capsule's golden"
 
