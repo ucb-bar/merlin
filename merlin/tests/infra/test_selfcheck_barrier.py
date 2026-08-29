@@ -17,7 +17,7 @@ import pytest
 
 
 def score(tiers: dict, status: str, declared: str, declared_ran: bool = False,
-          mandatory: bool = True) -> tuple[bool, str]:
+          mandatory: bool = True, blocked_by_selection: bool = False) -> tuple[bool, str]:
     """Mirror of agent_selfcheck's barrier resolution (kept in sync by the tests below).
 
     `declared_ran` is the whole-corpus fact: did the declared tier produce a verdict for ANY capsule?
@@ -30,11 +30,15 @@ def score(tiers: dict, status: str, declared: str, declared_ran: bool = False,
         if ran:
             used = max(ran)
             bar = tiers.get(used)
-    # A tier that did not run gates only when THIS capsule requires it; a tier that ran and
-    # FAILED always gates, so an explicitly requested cert failure is never reported as success.
-    bar_did_not_run = bar in (None, "unavailable", "skipped")
-    ok = (status == "pass") and (bar == "pass" or (bar_did_not_run and not mandatory))
-    return ok, used
+    # SCORING, as shipped. A capsule is CERTIFIED when it passed and the bar itself passed. It is
+    # SCREENED when the bar could not run because this oracle selection supplies no adapter for it,
+    # every tier that DID run was clean, and nothing failed -- absence of evidence about the backend,
+    # not evidence against it. `passed` is either; only `certified` clears a mandatory tier, so a
+    # screen can eliminate but can never certify.
+    certified = (status == "pass") and (bar == "pass")
+    screened = (not certified) and blocked_by_selection and bar in ("pass", None) \
+        and all(v == "pass" for v in tiers.values() if v not in (None, "skipped", "unavailable"))
+    return (certified or screened), used
 
 
 ATLAS = {"L0": "skipped", "L1": "skipped", "L2": "pass"}
@@ -98,9 +102,13 @@ def test_the_helper_matches_the_shipped_implementation():
     """Guard against the mirror above drifting from agent_selfcheck."""
     from merlin.common.paths import repo_root
     src = (repo_root() / "merlin/experiments/capsule_bench/harness/agent_selfcheck.py").read_text()
-    assert 'bar_did_not_run = bar in (None, "unavailable", "skipped")' in src
+    # The BARRIER RESOLUTION lines (unchanged), then the SCORING lines as shipped. The scoring moved
+    # from a mandatory/did-not-run test to certified-vs-screened during branch integration; the mirror
+    # above tracks the shipped form, and this guard is what stops the two drifting apart again.
     assert "bar_used = max(ran)" in src
-    assert 'bar_mandatory = bool(tier_objs.get(bar_used, {}).get("mandatory"))' in src
+    assert 'certified = (d.get("status") == "pass") and (bar == "pass")' in src
+    assert "screened = (not certified) and _blocked_by_selection" in src
+    assert "passed = certified or screened" in src
     # the whole-corpus gate: without it the fallback is a leniency hole
     assert "if bar is None and not _declared_ran:" in src
     assert "_declared_ran = True" in src
