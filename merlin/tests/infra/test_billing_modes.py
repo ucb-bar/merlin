@@ -198,3 +198,91 @@ def test_a_seat_run_logs_zero_cost_and_a_notional_metric(monkeypatch, tmp_path):
     assert calls["cost"] == [0.0], "a subscription seat must add zero money to the spend store"
     assert calls["metrics"]["cost.subscription_notional_usd"] == 12.5
     assert calls["params"]["billing_mode"] == "subscription_notional"
+
+
+# --- repricing: dollars are re-DERIVED from stored tokens, never hand-edited ----------------------
+
+def _cost_rec(**over):
+    rec = {"available": True, "billing_mode": ET.SUBSCRIPTION_NOTIONAL, "model": "gpt-5.6-sol",
+           "tokens_input": 1_000_000, "tokens_cached": 0, "tokens_cache_write": 0,
+           "tokens_output": 100_000, "reasoning_is_subset_of_output": True,
+           "estimated_cost_usd": None,
+           "cost_unavailable_reason": "no price entry for model(s): gpt-5.6-sol"}
+    rec.update(over)
+    return rec
+
+
+def _write_run(tmp_path, rec, manifest_process=None):
+    import yaml
+    d = tmp_path / "a_run"
+    d.mkdir()
+    (d / "cost_time_toolcalls.yaml").write_text(yaml.safe_dump(rec, sort_keys=False))
+    if manifest_process is not None:
+        (d / "run_manifest.yaml").write_text(
+            yaml.safe_dump({"run_id": "a_run", "process": manifest_process}, sort_keys=False))
+    return d
+
+
+def test_reprice_fills_a_notional_figure_the_table_can_now_price(tmp_path, monkeypatch):
+    monkeypatch.setattr(ET, "_OVERRIDES", {"gpt-5.6-sol": (5e-6, 30e-6)})
+    d = _write_run(tmp_path, _cost_rec())
+    r = ET.reprice_run(d)
+    assert r["changed"]["subscription_notional_usd"][1] == 8.0   # 1M*$5 + 100k*$30 per 1M
+    import yaml
+    got = yaml.safe_load((d / "cost_time_toolcalls.yaml").read_text())
+    assert got["subscription_notional_usd"] == 8.0
+    assert got["estimated_cost_usd"] is None, "a seat run never reports a spend"
+    assert "no price entry" not in got["cost_unavailable_reason"]
+
+
+def test_reprice_syncs_the_manifest_copy_so_the_two_files_cannot_disagree(tmp_path, monkeypatch):
+    monkeypatch.setattr(ET, "_OVERRIDES", {"gpt-5.6-sol": (5e-6, 30e-6)})
+    # The exact drift seen in the wild: the cost file was repriced, its manifest copy was not.
+    d = _write_run(tmp_path, _cost_rec(subscription_notional_usd=8.0,
+                                       cost_unavailable_reason="subscription_notional: ..."),
+                   manifest_process={"subscription_notional_usd": None,
+                                     "cost_unavailable_reason": "no price entry for model(s): gpt-5.6-sol"})
+    r = ET.reprice_run(d)
+    assert r["manifest_changed"]["subscription_notional_usd"] == (None, 8.0)
+    import yaml
+    man = yaml.safe_load((d / "run_manifest.yaml").read_text())
+    assert man["process"]["subscription_notional_usd"] == 8.0
+
+
+def test_check_mode_reports_drift_and_writes_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(ET, "_OVERRIDES", {"gpt-5.6-sol": (5e-6, 30e-6)})
+    d = _write_run(tmp_path, _cost_rec())
+    before = (d / "cost_time_toolcalls.yaml").read_text()
+    r = ET.reprice_run(d, write=False)
+    assert r["changed"], "drift must be reported"
+    assert (d / "cost_time_toolcalls.yaml").read_text() == before, "--check must not write"
+
+
+def test_reprice_never_overwrites_a_cost_the_provider_cli_reported(tmp_path, monkeypatch):
+    # Our list-price table is an ESTIMATE; the CLI priced the call it actually made. A reprice may
+    # correct our own arithmetic, never the provider's figure.
+    monkeypatch.setattr(ET, "_OVERRIDES", {"opus": (1e-9, 1e-9)})
+    rec = _cost_rec(billing_mode=ET.METERED, model="claude-opus-4-8", estimated_cost_usd=168.541)
+    rec.pop("cost_unavailable_reason")
+    d = _write_run(tmp_path, rec)
+    r = ET.reprice_run(d)
+    assert r["changed"] == {}
+    import yaml
+    assert yaml.safe_load((d / "cost_time_toolcalls.yaml").read_text())["estimated_cost_usd"] == 168.541
+
+
+def test_an_unpriced_model_still_yields_no_dollar_figure(tmp_path, monkeypatch):
+    monkeypatch.setattr(ET, "_OVERRIDES", {})
+    d = _write_run(tmp_path, _cost_rec(model="some-unknown-model-id"))
+    ET.reprice_run(d)
+    import yaml
+    got = yaml.safe_load((d / "cost_time_toolcalls.yaml").read_text())
+    assert "subscription_notional_usd" not in got
+    assert "no metered rate" in got["cost_unavailable_reason"]
+
+
+def test_a_run_without_usage_metadata_is_skipped_not_priced_at_zero(tmp_path):
+    d = _write_run(tmp_path, {"available": False, "reason": "no usage metadata in transcript"})
+    r = ET.reprice_run(d)
+    assert r["skipped"]
+    assert r["changed"] == {}

@@ -475,6 +475,146 @@ def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
     return rec
 
 
+# --- repricing an already-parsed run --------------------------------------------------------------
+# A cost record keeps the per-model TOKEN COUNTS, so its dollar fields are a pure function of those
+# counts and the price table. When a rate is added or corrected, the honest move is to RE-DERIVE from
+# the stored tokens rather than hand-edit the number -- and to re-derive every copy of it, because the
+# run manifest holds a snapshot of the same fields. Two hand-edited copies is exactly how a run ended
+# up reporting `no price entry for model(s): gpt-5.6-sol` in its manifest while its own cost file
+# carried the priced figure.
+
+#: the money/provenance fields a reprice owns; everything else in a record is left untouched.
+MONEY_FIELDS = ("estimated_cost_usd", "subscription_notional_usd", "cost_unavailable_reason",
+                "cost_source")
+
+#: the process-block keys a run manifest mirrors from the cost record (see the harness's grader).
+_MANIFEST_PROCESS_KEYS = ("wall_time_seconds", "tokens_total", "tokens_input", "tokens_output",
+                          "tokens_reasoning", "estimated_cost_usd", "billing_mode",
+                          "subscription_notional_usd", "cost_unavailable_reason", "tool_calls")
+
+
+def _cost_from_tokens(rec: dict) -> tuple[float | None, list[str]]:
+    """Price a stored record from its own token counts. Returns ``(cost, unpriced_models)``.
+
+    ``cost`` is ``None`` when the record carries no usable token breakdown at all -- which is NOT the
+    same as a zero-cost run, and must never be reported as one.
+    """
+    by_model = rec.get("tokens_native_by_model")
+    if isinstance(by_model, dict) and by_model:
+        cost, unpriced = 0.0, []
+        for model, m in by_model.items():
+            if not isinstance(m, dict):
+                continue
+            rate = _rate(model)
+            if rate is None:
+                unpriced.append(model)
+                continue
+            rin, rout = rate
+            cost += int(m.get("input", 0) or 0) * rin
+            cost += int(m.get("cache_create", 0) or 0) * rin * _CACHE_WRITE_MULT
+            cost += int(m.get("cache_read", 0) or 0) * rin * _CACHE_READ_MULT
+            cost += int(m.get("output", 0) or 0) * rout
+        return (None if unpriced and cost == 0.0 else cost), unpriced
+    # Flat shape (the codex/`turn.completed` path): fresh input is already net of the cached prefix.
+    model = rec.get("model")
+    if not model:
+        return None, []
+    rate = _rate(str(model))
+    if rate is None:
+        return None, [str(model)]
+    rin, rout = rate
+    billable_out = int(rec.get("tokens_output", 0) or 0)
+    if not rec.get("reasoning_is_subset_of_output", True):
+        billable_out += int(rec.get("tokens_reasoning", 0) or 0)
+    cost = (int(rec.get("tokens_input", 0) or 0) * rin
+            + int(rec.get("tokens_cache_write", 0) or 0) * rin * _CACHE_WRITE_MULT
+            + int(rec.get("tokens_cached", 0) or 0) * rin * _CACHE_READ_MULT
+            + billable_out * rout)
+    return cost, []
+
+
+def price_fields(rec: dict) -> dict:
+    """The money fields ``rec`` SHOULD carry, re-derived from its stored tokens + the current table.
+
+    A metered figure the provider's own CLI reported is authoritative and is never overwritten -- our
+    list-price table is an estimate and the CLI priced the call it actually made. Such a record is
+    returned unchanged, so a reprice can only ever fill in or correct OUR OWN arithmetic.
+    """
+    billing_mode = rec.get("billing_mode") or METERED
+    cli_priced = (billing_mode == METERED and rec.get("estimated_cost_usd") is not None
+                  and rec.get("cost_source") not in ("price_table",))
+    if cli_priced:
+        return {k: rec[k] for k in MONEY_FIELDS if k in rec}
+
+    cost, unpriced = _cost_from_tokens(rec)
+    out: dict = {}
+    if billing_mode != METERED:
+        out["estimated_cost_usd"] = None
+        reason = (f"{billing_mode}: a subscription seat is not billed per token; any dollar figure is "
+                  "what the same traffic would have cost metered, not money spent")
+        if cost is not None and not unpriced:
+            out["subscription_notional_usd"] = round(cost, 4)
+        else:
+            named = ", ".join(sorted(unpriced)) if unpriced else repr(rec.get("model"))
+            reason += f"; no metered rate for {named} either"
+        out["cost_unavailable_reason"] = reason
+    elif cost is None or unpriced:
+        out["estimated_cost_usd"] = None
+        named = ", ".join(sorted(unpriced)) if unpriced else repr(rec.get("model"))
+        out["cost_unavailable_reason"] = f"no price entry for model(s): {named}"
+    else:
+        out["estimated_cost_usd"] = round(cost, 4)
+        out["cost_source"] = "price_table"
+    return out
+
+
+def reprice_run(run_dir: str | Path, *, write: bool = True) -> dict:
+    """Re-derive one run's dollar fields and keep its manifest copy in step.
+
+    Returns ``{"path", "changed": {field: (was, now)}, "manifest_changed": {...}}``. With
+    ``write=False`` nothing is touched, which is the drift CHECK: a non-empty ``changed`` means the
+    file on disk disagrees with what its own tokens price out to.
+    """
+    import yaml
+
+    d = Path(run_dir)
+    cost_path = d if d.is_file() else d / "cost_time_toolcalls.yaml"
+    if not cost_path.is_file():
+        return {"path": str(cost_path), "changed": {}, "manifest_changed": {},
+                "skipped": "no cost_time_toolcalls.yaml"}
+    rec = yaml.safe_load(cost_path.read_text(encoding="utf-8")) or {}
+    if not rec.get("available", False):
+        return {"path": str(cost_path), "changed": {}, "manifest_changed": {},
+                "skipped": "run recorded no usage metadata"}
+
+    want = price_fields(rec)
+    changed = {k: (rec.get(k), want.get(k)) for k in MONEY_FIELDS
+               if (k in want) != (k in rec) or rec.get(k) != want.get(k)}
+    if changed and write:
+        for k in MONEY_FIELDS:
+            rec.pop(k, None)
+        rec.update(want)
+        cost_path.write_text(yaml.safe_dump(rec, sort_keys=False), encoding="utf-8")
+
+    # The manifest mirrors these fields; re-derive its copy from the SAME record so the two files can
+    # never state different money for one run.
+    man_changed: dict = {}
+    man_path = cost_path.parent / "run_manifest.yaml"
+    if man_path.is_file():
+        man = yaml.safe_load(man_path.read_text(encoding="utf-8")) or {}
+        proc = man.get("process")
+        if isinstance(proc, dict):
+            merged = {**rec, **want}
+            for k in _MANIFEST_PROCESS_KEYS:
+                if k in proc and proc.get(k) != merged.get(k):
+                    man_changed[k] = (proc.get(k), merged.get(k))
+            if man_changed and write:
+                for k, (_was, now) in man_changed.items():
+                    proc[k] = now
+                man_path.write_text(yaml.safe_dump(man, sort_keys=False), encoding="utf-8")
+    return {"path": str(cost_path), "changed": changed, "manifest_changed": man_changed}
+
+
 def write_cost_yaml(summary: dict, out: str | Path, *, wall_time_seconds=None,
                     model=None, exit_code=None) -> None:
     import yaml
@@ -485,14 +625,43 @@ def write_cost_yaml(summary: dict, out: str | Path, *, wall_time_seconds=None,
 def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Extract tokens/cost/tool-calls from a transcript")
-    ap.add_argument("transcript")
+    ap.add_argument("transcript", nargs="?",
+                    help="transcript to parse (omit when using --reprice)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--wall", type=float, default=None)
     ap.add_argument("--model", default=None)
     ap.add_argument("--billing-mode", default=METERED,
                     choices=[METERED, SUBSCRIPTION_NOTIONAL],
                     help="how the run is billed (a subscription seat reports notional dollars only)")
+    ap.add_argument("--reprice", nargs="+", metavar="RUN_DIR",
+                    help="re-derive the dollar fields of already-parsed runs from their STORED token "
+                         "counts and the current price table, and re-sync each run manifest's copy. "
+                         "Accepts run dirs or cost_time_toolcalls.yaml paths.")
+    ap.add_argument("--check", action="store_true",
+                    help="with --reprice: report drift and exit non-zero, writing nothing")
     a = ap.parse_args(argv)
+
+    if a.reprice:
+        drifted = 0
+        for target in a.reprice:
+            r = reprice_run(target, write=not a.check)
+            if r.get("skipped"):
+                print(f"skip  {r['path']}: {r['skipped']}")
+                continue
+            if not r["changed"] and not r["manifest_changed"]:
+                print(f"ok    {r['path']}")
+                continue
+            drifted += 1
+            verb = "DRIFT" if a.check else "fixed"
+            print(f"{verb} {r['path']}")
+            for k, (was, now) in r["changed"].items():
+                print(f"        cost_time_toolcalls.yaml  {k}: {was!r} -> {now!r}")
+            for k, (was, now) in r["manifest_changed"].items():
+                print(f"        run_manifest.yaml         {k}: {was!r} -> {now!r}")
+        return 1 if (a.check and drifted) else 0
+
+    if not a.transcript:
+        ap.error("a transcript is required unless --reprice is given")
     s = parse_transcript(a.transcript, billing_mode=a.billing_mode)
     if a.out:
         write_cost_yaml(s, a.out, wall_time_seconds=a.wall, model=a.model)
