@@ -29,6 +29,7 @@ from .fork_from_action import propose_forks_from_cca
 from .from_strategy import mint_fork
 from .registry import load_rvv_package
 from .runner import certify_rvv
+from .baseline import UNRECORDED as _BASELINE_UNRECORDED, attainment as _baseline_attainment
 from .prior import landing_prior_fn, seam_evidence_from_nodes
 from .select import select_proposals
 from .sweep import rank_results, run_sweep
@@ -172,6 +173,18 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict,
     return out
 
 
+def _baseline_identity(value) -> dict[str, Any] | None:
+    """What the expert baseline says about itself, for the run record. A bare number says nothing,
+    which is itself the fact worth writing down."""
+    from .baseline import ExpertBaseline
+    b = ExpertBaseline.of(value)
+    if b is None:
+        return None
+    return {"wall_ns": b.wall_ns, "workload": b.workload, "dtype": b.dtype,
+            "substrate": b.substrate, "revision": b.revision,
+            "provenance_recorded": b.provenance_recorded}
+
+
 def _resolve_margin(noise_margin: float | None) -> float:
     """The noise-floor margin a fork must beat its parent by. Explicit param wins; else the env
     override; else the measured board default (2% >= the >=1.9% K1 floor)."""
@@ -242,6 +255,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     sub-margin deltas rank as ties. INERT forks (emitted code byte-identical to the parent) are
     excluded from the survivor set and can never be credited a win."""
     runs_root = Path(runs_root)
+    model_dir_name = Path(model_dir).name
     margin = _resolve_margin(noise_margin)
     curated = RvvFingerprint.from_curated(curated_text, op_key, "curated")
     # CCA mode: when an expert CCA is supplied, drive the search from OUR-vs-EXPERT CCA divergences
@@ -289,11 +303,21 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
         return round(seed_k1_wall / w, 3) if seed_k1_wall and w else None
 
     def _attainment_vs_expert(node: dict) -> float | None:
-        """The REAL scoreboard the user cares about: fork wall vs the EXPERT (XNNPACK) wall for this
-        workload. >= 1.0 means we matched/beat XNNPACK; 0.56 means 56% of XNNPACK (1.8x slower). This
-        is what re-targets the beam at XNNPACK instead of the naive baseline. None if no expert wall."""
+        """The REAL scoreboard: fork wall vs the EXPERT (XNNPACK) wall for this workload. >= 1.0 means
+        we matched/beat the expert; 0.56 means 56% of it (1.8x slower).
+
+        Refuses the comparison when the baseline's DECLARED identity disagrees with this run's -- two
+        recorded int8 runs were scored against their fp32 sibling's wall time and both reported
+        beating the expert, which was the baseline's dtype rather than our code. A bare number still
+        works and is stamped `expert_baseline_provenance: unrecorded`, so it can be excluded from
+        anything that claims to be a verified comparison."""
         w = node.get("k1_wall_ns")
-        return round(expert_wall_ns / w, 3) if expert_wall_ns and w else None
+        value, problems, recorded = _baseline_attainment(
+            expert_wall_ns, w, workload=str(model_dir_name), dtype=op_key.get("dtype"))
+        if problems:
+            node["attainment_problems"] = list(problems)
+        node["expert_baseline_provenance"] = "recorded" if recorded else _BASELINE_UNRECORDED
+        return value
 
     seed_node["speedup"] = 1.0 if seed_k1_wall else None
     seed_node["attainment_vs_expert"] = _attainment_vs_expert(seed_node)
@@ -499,7 +523,8 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     tree = {"target": target, "seed": str(seed_pkg), "op_key": op_key,
             "baseline_frozen": {"digest": seed_digest_pre, "verified_unchanged": True},
             "width": width, "depth": depth, "top_k": top_k,
-            "expert_wall_ns": expert_wall_ns, "noise_margin": margin,
+            "expert_wall_ns": getattr(expert_wall_ns, "wall_ns", expert_wall_ns),
+            "expert_baseline": (_baseline_identity(expert_wall_ns)), "noise_margin": margin,
             "two_phase": validate_fn is not None,
             "best": {k: best.get(k) for k in ("run_id", "structural_match", "speedup",
                                               "attainment_vs_expert", "cycles", "lever")}
