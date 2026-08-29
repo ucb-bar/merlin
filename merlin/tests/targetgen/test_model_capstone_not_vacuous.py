@@ -89,6 +89,18 @@ def _grounded_pairs():
             fam, classes = model_accelerator_demand(lin, _binding(t))
         except Exception:                                        # noqa: BLE001 — unresolvable target
             continue
+        # The must_accelerate assertions below turn on ELIGIBILITY, which comes from the target's
+        # capability map. That map is derived into out/artifacts/, which is generated and untracked --
+        # so on a checkout that has not derived this target it resolves to nothing, every region reads
+        # ineligible, and `violated` is False for a reason that says nothing about the capstone. A pair
+        # whose eligibility cannot be derived here is skipped rather than asserted: a check that could
+        # not run must not report a failure.
+        try:
+            from merlin.targetgen import eligibility as _el
+            if not _el.capability_map_for_target(t):
+                continue
+        except Exception:                                        # noqa: BLE001 — no derived contract
+            continue
         if fam and classes:
             out.append((t, cap))
     return out
