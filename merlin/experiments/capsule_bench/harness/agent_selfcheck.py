@@ -25,6 +25,39 @@ import argparse, json, shutil, sys
 from pathlib import Path
 
 
+# Restored during branch integration: the merge took this file whole from the other side, which
+# dropped select_tiers and left the six tests that pin it failing on a missing attribute.
+def select_tiers(full: dict, default: dict, requested: str) -> tuple[dict, str | None]:
+    """Which tiers this self-check runs: the target's cheap LOOP ladder by default, or exactly the tiers
+    ``--tiers`` names, validated against everything the endpoint can REACH.
+
+    The two maps are a deliberate distinction and were being conflated. Resolving the DEFAULT from the
+    loop ladder is what keeps a sweep cheap -- a cert tier is minutes per capsule against seconds for the
+    functional one, and paying it on every capsule of every sweep was 80% of an agent round. Validating
+    the REQUEST against that same shrunken map is a different question, and answering it with the loop
+    map made the flag useless for the one job it exists to do: on this repo's SIMT target the loop ladder
+    is {L2}, so ``--tiers L2,L3`` was refused as "unreachable" by an endpoint whose full map is
+    {L2, L3}.
+
+    The same conflation silently disabled automatic promotion. ``tier_promote.resolve_tiers`` derives its
+    cert tier as ``oracle_adapters - qa_loop_adapters`` -- i.e. precisely a tier the loop map never
+    contains -- and the broker forwards it as ``--tiers <cert>``. So every promoted job asked for a tier
+    this validation could only refuse. Promotion was not merely untested in production; it could not fire
+    even in principle.
+
+    Returns ``(adapters, error)``. An unreachable tier is still NAMED, never silently dropped: a
+    self-check that quietly grades fewer tiers than it was asked for reads as a pass.
+    """
+    want = {t.strip().upper() for t in requested.split(",") if t.strip()}
+    if not want:
+        return default, None
+    missing = sorted(want - set(full))
+    if missing:
+        return {}, (f"--tiers names {missing}, which this endpoint does not reach; "
+                    f"reachable: {sorted(full)}")
+    return {t: ad for t, ad in full.items() if t in want}, None
+
+
 def _strip_build_state(root: Path) -> None:
     """Delete ALL cmake/ninja build state under `root` so a graded copy configures from scratch in its own
     absolute path. `ignore_patterns("build")` only drops a dir literally named 'build'; a stale CMakeCache /

@@ -30,7 +30,9 @@ def _clean_caches():
 
 def _fake_backend(monkeypatch, *, ceiling: int, seen: list | None = None):
     """A backend that computes A@W exactly, but refuses any extent whose working set exceeds `ceiling`."""
-    def _run(target, mlir, A, W, *, package, timeout, observed=None):
+    # `layer_id` rides along so each layer gets its own artifact directory; the double accepts and
+    # ignores it, the same as any other caller-side detail it does not model.
+    def _run(target, mlir, A, W, *, package, timeout, observed=None, layer_id=None):
         M, K, N = len(A), len(A[0]), len(W[0])
         if seen is not None:
             seen.append((M, K, N))
@@ -49,9 +51,17 @@ def _fake_backend(monkeypatch, *, ceiling: int, seen: list | None = None):
     monkeypatch.setitem(CR._SIM_ORACLES, "fake",
                         type("SO", (), {"exclusive": True, "adapters": staticmethod(lambda t: {}),
                                         "available": staticmethod(lambda t: (True, ""))})())
+    # The double must carry `cap_dtype` too: the real binding is a corpus_spec.CorpusBinding, and the
+    # per-layer artifact id content-addresses on the CANONICAL dtype spelling. Delegating to the same
+    # dtype_info the real binding uses keeps the double honest -- a stubbed constant here would let the
+    # id collapse two different dtypes onto one directory, which is the collision that id exists to stop.
+    from merlin.targetgen.corpus_spec import dtype_info as _dtype_info
     monkeypatch.setattr(CC, "_mesh_tile_binding",
-                        lambda t, o, a, **k: type("B", (), {"tile_dim": 16, "operand_dtype": "fp32",
-                                                            "accum_dtype": "f32", "integer": False})())
+                        lambda t, o, a, **k: type("B", (), {
+                            "tile_dim": 16, "operand_dtype": "fp32", "accum_dtype": "f32",
+                            "integer": False,
+                            "cap_dtype": staticmethod(lambda token: _dtype_info(token)[0]),
+                        })())
     monkeypatch.setattr(CS, "build", lambda entry, binding: (None, "<mlir>"))
 
 

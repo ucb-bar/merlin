@@ -10,8 +10,15 @@ from merlin.runtime.backends.base import BackendKind, TargetClass
 #: to actually be out-of-tree, rather than pinning a global total that any discovery breaks. Asserting
 #: equality made this test fail for a target package that had merely been loaded earlier in the run,
 #: which reports as "the taxonomy is wrong" when nothing about the taxonomy changed.
-IN_TREE = {"spike", "saturn_vec", "gemmini", "muon", "spike_model", "zephyr_model",
+#: gemmini, muon and saturn_vec are NOT here: each was evicted to its own target package and now
+#: registers from merlin._oot_backends.*, which is the eviction working as intended. They are still
+#: registered and still classified — the class assertions below check them by name — they are simply
+#: no longer implemented in this repo's core tree.
+IN_TREE = {"spike", "spike_model", "zephyr_model",
            "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
+
+#: The evicted reference backends, by the class each must still report.
+EVICTED = {"gemmini": "NPU", "muon": "GPU", "saturn_vec": "CPU"}
 
 
 def _in_tree(names):
@@ -28,11 +35,17 @@ def test_registry_taxonomy():
     assert base.class_of("muon") is TargetClass.GPU
     assert base.class_of("spike") is TargetClass.CPU
     # NPU=gemmini, GPU=muon; everything else (RVV/host CPU kernels, whole-model, matmul-route) is CPU
-    assert _in_tree(base.backends_of_class(TargetClass.NPU)) == {"gemmini"}
-    assert _in_tree(base.backends_of_class(TargetClass.GPU)) == {"muon"}
+    # Class membership is asserted over the FULL registry, not the in-tree slice: an evicted backend
+    # still has a class, and asking only about in-tree names would silently assert nothing about it.
+    assert set(base.backends_of_class(TargetClass.NPU)) >= {"gemmini"}
+    assert set(base.backends_of_class(TargetClass.GPU)) >= {"muon"}
     assert _in_tree(base.backends_of_class(TargetClass.CPU)) == {
-        "spike", "saturn_vec", "spike_model", "zephyr_model",
+        "spike", "spike_model", "zephyr_model",
         "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
+    for name, cls in EVICTED.items():
+        assert base.info(name).module.startswith("merlin._oot_backends."), (
+            f"{name} is registering from core again — the eviction regressed")
+        assert base.class_of(name).name == cls
 
 
 def test_backend_kinds():
