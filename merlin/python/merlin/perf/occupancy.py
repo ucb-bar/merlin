@@ -44,8 +44,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 __all__ = [
-    "Occupancy", "align_offset", "calibrate_state_idle", "joint_counts", "merge_engines",
-    "subsumed_columns",
+    "Occupancy", "align_offset", "calibrate_state_idle", "declared_engines", "joint_counts",
+    "merge_engines", "subsumed_columns", "unit_bindings",
 ]
 
 
@@ -99,6 +99,42 @@ def subsumed_columns(hot: Mapping[str, Sequence[bool]],
                 out[a] = b
                 break
     return out
+
+
+def declared_engines(contract: Mapping) -> dict[str, dict]:
+    """The target's own declaration of its engines: ``{name: {kind, contains}}``.
+
+    Read from the contract's compute-unit declaration rather than restated here, because that
+    declaration is the one the RTL audit already corrected -- on at least one target it originally
+    described a cluster while the silicon also held a systolic array embedded inside it, and
+    ``contains`` is how that composition is expressed. An occupancy vector that re-derived the unit
+    set would re-make exactly that mistake.
+
+    A device with one engine yields one entry; the rules elsewhere in this module do not care how
+    many there are, only that columns belonging to different ones are never folded together.
+    """
+    from merlin.targetgen.compute_units import compute_units
+
+    return {u.name: {"kind": u.kind, "contains": tuple(u.contains)}
+            for u in compute_units(dict(contract))}
+
+
+def unit_bindings(columns: Sequence[str], binding: Mapping[str, str],
+                  engines: Mapping[str, dict]) -> tuple[dict[str, str], list[str]]:
+    """``(unit_of, unbound)`` for ``columns``, validated against the declared engines.
+
+    ``binding`` is the producer's column -> engine map: which engine each traced signal belongs to.
+    It is declared, never inferred from a signal's spelling. A binding naming an engine the contract
+    does not declare is an error worth raising, because it means the trace and the contract disagree
+    about what the device is; a column with no binding is merely unbound, and is returned so the
+    caller can report it rather than quietly folding it somewhere.
+    """
+    unknown = sorted({e for e in binding.values() if e not in engines})
+    if unknown:
+        raise ValueError(f"trace binds column(s) to undeclared engine(s) {unknown}; "
+                         f"the contract declares {sorted(engines)}")
+    unit_of = {c: binding[c] for c in columns if c in binding}
+    return unit_of, [c for c in columns if c not in binding]
 
 
 def calibrate_state_idle(traces: Sequence[Mapping[str, Sequence[str]]],

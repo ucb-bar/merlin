@@ -183,3 +183,93 @@ class TestDeclaredHierarchy:
         hot = _cols(a="1100", b="0011")
         jc = joint_counts(hot, unit_of={"a": "a"})
         assert jc["unbound_columns"] == ["b"]
+
+
+class TestDeclaredEngines:
+    """The unit set comes from the target's own contract, not from this module."""
+
+    CONTRACT = {"compute_units": [
+        {"name": "cluster", "kind": "simt", "dtypes": ["float32"], "ops": ["matmul"],
+         "contains": ["embedded_pe"]},
+        {"name": "embedded_pe", "kind": "systolic", "dtypes": ["int8"], "ops": ["matmul"]},
+    ]}
+
+    def test_a_composed_device_yields_both_engines_and_the_containment(self):
+        from merlin.perf.occupancy import declared_engines
+        eng = declared_engines(self.CONTRACT)
+        assert set(eng) == {"cluster", "embedded_pe"}
+        assert eng["cluster"]["kind"] == "simt"
+        assert eng["embedded_pe"]["kind"] == "systolic"
+        assert eng["cluster"]["contains"] == ("embedded_pe",)
+
+    def test_a_binding_to_an_undeclared_engine_raises(self):
+        # The trace and the contract disagreeing about what the device is must be loud.
+        from merlin.perf.occupancy import declared_engines, unit_bindings
+        eng = declared_engines(self.CONTRACT)
+        try:
+            unit_bindings(["a"], {"a": "ghost_unit"}, eng)
+        except ValueError as exc:
+            assert "ghost_unit" in str(exc)
+        else:
+            raise AssertionError("expected a ValueError for an undeclared engine")
+
+    def test_an_unbound_column_is_returned_not_folded(self):
+        from merlin.perf.occupancy import declared_engines, unit_bindings
+        eng = declared_engines(self.CONTRACT)
+        unit_of, unbound = unit_bindings(["x", "y"], {"x": "cluster"}, eng)
+        assert unit_of == {"x": "cluster"}
+        assert unbound == ["y"]
+
+    def test_end_to_end_the_contained_engine_survives(self):
+        from merlin.perf.occupancy import declared_engines, unit_bindings
+        eng = declared_engines(self.CONTRACT)
+        hot = _cols(cluster_busy="1111111100", pe_busy="0011110000")
+        unit_of, _ = unit_bindings(list(hot),
+                                   {"cluster_busy": "cluster", "pe_busy": "embedded_pe"}, eng)
+        jc = joint_counts(hot, unit_of=unit_of)
+        assert set(jc["joint_columns"]) == {"cluster_busy", "pe_busy"}
+        assert jc["overlap_any"] == 4
+
+
+class TestGeneralisesAcrossRealTargets:
+    """The anti-overfit proof: one code path, every shipped target's own declaration.
+
+    The archetypes differ (systolic, simt, vector, spatial) and so do the topologies (flat, nested,
+    sibling). If reading the engine set needed a branch per target, this module would be overfit to
+    whichever one it was written against.
+    """
+
+    def _contract(self, name):
+        import pytest
+        import yaml
+        from merlin.common.paths import merlin_dir
+        p = merlin_dir() / "targets" / name / "contracts" / "target_contract.yaml"
+        if not p.is_file():
+            pytest.skip(f"{name} declares no target contract in this checkout")
+        return yaml.safe_load(p.read_text())
+
+    def test_every_declared_engine_has_a_kind(self):
+        from merlin.perf.occupancy import declared_engines
+        seen = set()
+        for name in ("gemmini", "muon", "saturn", "toy_npu"):
+            for engine, rec in declared_engines(self._contract(name)).items():
+                assert rec["kind"], f"{name}.{engine} declares no kind"
+                seen.add(rec["kind"])
+        assert len(seen) >= 3, f"only saw kinds {sorted(seen)}; the corpus should span archetypes"
+
+    def test_a_nested_heterogeneous_device_keeps_both_engines_separable(self):
+        # The case derived containment gets wrong: an engine of one archetype inside another.
+        from merlin.perf.occupancy import declared_engines, unit_bindings
+        eng = declared_engines(self._contract("muon"))
+        outer = [n for n, r in eng.items() if r["contains"]]
+        assert outer, "muon should declare a composed engine"
+        inner = eng[outer[0]]["contains"][0]
+        assert eng[inner]["kind"] != eng[outer[0]]["kind"], "the two engines are different archetypes"
+        hot = _cols(a="1111111100", b="0011110000")
+        unit_of, _ = unit_bindings(list(hot), {"a": outer[0], "b": inner}, eng)
+        assert joint_counts(hot, unit_of=unit_of)["overlap_any"] == 4
+
+    def test_sibling_engines_are_separable_too(self):
+        from merlin.perf.occupancy import declared_engines
+        eng = declared_engines(self._contract("saturn"))
+        assert len(eng) >= 2 and not any(r["contains"] for r in eng.values())
