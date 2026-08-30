@@ -311,12 +311,16 @@ sweeps:
   base: {cat: perf, kind: model_slice, source: pytorch, operand_dtype: bf16, out: Y0,
          label: dev, source_role: derived_sweep,
          performance: {level: L5_fusion, lever: epilogue_fusion,
-                       note: 'the cheapest level to build and the only one whose comparand needs no
-                         model at all: cycles(fused) against cycles(A) + cycles(B) at the identical
-                         shape. `comparison_group` has been a declared field on four capsules since
-                         they were written and is consumed by nothing, which is the same thing as not
-                         existing -- the missing halves were the PARTS to compare a fused capsule
-                         against, and a reader that does the arithmetic'}}
+                       note: 'the only level whose comparand needs no model at all: cycles(fused)
+                         against cycles(A) + cycles(B) at the identical shape. NOT the cheapest to
+                         build -- that reading was wrong and is corrected here because it was quoted:
+                         the comparand is free, the KERNELS are not. Two of the three members need an
+                         emitter the generator does not have (no bias_add, no fused epilogue), so
+                         these capsules cannot run until that exists. It is the cheapest EMITTER
+                         INCREMENT, which is a different sentence. `comparison_group` was a declared
+                         field on four capsules and consumed by nothing for a structural reason --
+                         each of them sits alone in its own group, so there was never a second member
+                         to compare against; the missing halves are the PARTS'}}
   axes:
     M: [tile]
     N: [tile]
