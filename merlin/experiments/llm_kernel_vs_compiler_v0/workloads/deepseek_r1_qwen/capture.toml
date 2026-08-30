@@ -1,3 +1,3 @@
-venv = "/scratch/agustin/projects/model2MLIR/.venv"
+venv = "${MERLIN_M2M_DIR}/.venv"
 python = "3.12"
 deps = ["transformers"]

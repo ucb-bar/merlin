@@ -12,6 +12,26 @@ import pytest
 from merlin.kernels import asm_audit as A
 from merlin.kernels import endpoints as EP
 
+import os
+
+from merlin.common.paths import _dotenv
+
+
+def _ext(pattern: str) -> str:
+    """Expand ``${KEY}`` in an external-corpus path against the process env, then .env.
+
+    These corpora are checkouts of other repos, so the location is per-machine. A missing key expands
+    to "" and the caller's glob simply finds nothing — the same skip a machine without the checkout
+    already took. Never a baked absolute path: this file is public.
+    """
+    out = pattern
+    while "${" in out:
+        i = out.index("${"); j = out.index("}", i)
+        key = out[i + 2:j]
+        out = out[:i] + (os.environ.get(key) or _dotenv().get(key) or "") + out[j + 1:]
+    return out
+
+
 
 class _D:
     def __init__(self, i, roles=(), mnemonic="", claimed=False, identity=""):
@@ -137,7 +157,7 @@ class TestAgainstRealStreams:
         """Measured: 76% unknown with the tool's default, 15% with the extensions given. A probe that
         does not pin its ISA settings reports the TOOL's ignorance as the corpus's nature."""
         import glob
-        elfs = sorted(glob.glob("/scratch2/agustin/radiance-kernels/kernels/*/kernel.radiance.elf"))
+        elfs = sorted(glob.glob(_ext("${MERLIN_RADIANCE_KERNELS}/kernels/*/kernel.radiance.elf")))
         if not elfs:
             pytest.skip("no radiance ELF in this checkout")
         from merlin.kernels.decode import rvv as R
@@ -167,7 +187,7 @@ class TestEveryTargetDecodesRealExpertCode:
             pytest.skip(f"no artifact matching {pattern} in this checkout")
         return hits[0]
 
-    _GEMMINI = ("/scratch2/agustin/chipyard/generators/gemmini/software/gemmini-rocc-tests/"
+    _GEMMINI = _ext("${MERLIN_EXT_CHIPYARD}/generators/gemmini/software/gemmini-rocc-tests/"
                 "build/bareMetalC/")
 
     def test_a_real_rocc_expert_binary_decodes_with_nothing_unaccounted(self):
@@ -199,7 +219,7 @@ class TestEveryTargetDecodesRealExpertCode:
 
     def test_a_real_matrix_extension_binary_role_tags(self):
         a = A.audit_stream(
-            self._first("/scratch2/agustin/chipyard/generators/saturn/benchmarks/opu-*.riscv"),
+            self._first(_ext("${MERLIN_EXT_CHIPYARD}/generators/saturn/benchmarks/opu-*.riscv")),
             "saturn")
         if not a.total:
             pytest.skip("saturn benchmark not decodable in this checkout")
@@ -209,8 +229,8 @@ class TestEveryTargetDecodesRealExpertCode:
     def test_a_hand_written_corpus_resolves_its_core_instructions(self):
         """The corpus and the model spell these differently; joined by encoding, not by name."""
         import glob
-        files = sorted(glob.glob("/scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/"
-                                 "baremetal/assembly/*.S"))
+        files = sorted(glob.glob(_ext("${MERLIN_MLC_DIR}/../modeling/third_party/atlas-npu/"
+                                 "baremetal/assembly/*.S")))
         if not files:
             pytest.skip("atlas corpus not present in this checkout")
         hist = {}
@@ -230,8 +250,8 @@ class TestAMultiEngineTargetIsNotAuditedThroughOneEngine:
 
     def _corpus(self):
         import glob
-        files = sorted(glob.glob("/scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/"
-                                 "baremetal/assembly/*.S"))
+        files = sorted(glob.glob(_ext("${MERLIN_MLC_DIR}/../modeling/third_party/atlas-npu/"
+                                 "baremetal/assembly/*.S")))
         if not files:
             pytest.skip("atlas corpus not present in this checkout")
         return files[:40]
@@ -281,7 +301,7 @@ class TestTheKernelRepoWasEnough:
 
     def _elfs(self):
         import glob
-        f = sorted(glob.glob("/scratch2/agustin/radiance-kernels/kernels/*/kernel.radiance.elf"))
+        f = sorted(glob.glob(_ext("${MERLIN_RADIANCE_KERNELS}/kernels/*/kernel.radiance.elf")))
         if not f:
             pytest.skip("radiance kernels not present in this checkout")
         return f[:6]
@@ -292,7 +312,7 @@ class TestTheKernelRepoWasEnough:
         RTL — the source differs, the derivation does not."""
         from merlin.kernels.decode import insn_header as H
         insns, problems = H.parse_insn_header(
-            "/scratch2/agustin/radiance-kernels/lib/include/vx_intrinsics.h")
+            _ext("${MERLIN_RADIANCE_KERNELS}/lib/include/vx_intrinsics.h"))
         names = {i.name for i in insns}
         assert {"vx_barrier", "vx_split", "vx_join", "vx_wspawn"} <= names, sorted(names)
         assert problems == (), problems
@@ -308,7 +328,7 @@ class TestTheKernelRepoWasEnough:
 
     def test_the_mx_array_is_a_second_endpoint_read_from_the_repos_own_isa_header(self):
         import glob
-        mx = sorted(glob.glob("/scratch2/agustin/radiance-kernels/kernels/*mxgemm*/*.elf"))
+        mx = sorted(glob.glob(_ext("${MERLIN_RADIANCE_KERNELS}/kernels/*mxgemm*/*.elf")))
         if not mx:
             pytest.skip("no MX kernels in this checkout")
         ep = EP.load_endpoint("radiance_mx")

@@ -9,10 +9,15 @@ from __future__ import annotations
 
 import pytest
 
+import os
+
+from merlin.common.paths import _dotenv
+
 from merlin.kernels import space as S
 from merlin.kernels.ingest import autocomp as A
 
-_REPO = "/scratch/agustin/projects/autocomp"
+# External checkout; the test skips when unset rather than pointing at one machine.
+_REPO = os.environ.get("MERLIN_EXT_AUTOCOMP") or _dotenv().get("MERLIN_EXT_AUTOCOMP") or ""
 
 # The measured shape of a real sweep: deliberately IRREGULAR, which is the normal case.
 _SWEEP = ([{"m": 32, "n": 32, "k": k} for k in (32, 64, 128, 256)]

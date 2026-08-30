@@ -4,7 +4,7 @@
 # M2M_LLAMA_LAYERS=2 -- which the loader documents as a smoke path with RANDOM
 # INIT. So the pin must be removed for the duration, then restored.
 set -uo pipefail
-M=/scratch/agustin/projects/model2MLIR
+M=${MERLIN_M2M_DIR:?set MERLIN_M2M_DIR in .env}
 model="$1"; shift
 fmts="${1:-fp32}"
 toml="$M/workloads/$model/capture.toml"
@@ -19,7 +19,7 @@ fi
 echo "[$model] capture.toml now:"; cat "$toml" 2>/dev/null
 
 cd "$M"
-export TMPDIR=/scratch/agustin/tmp HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
+export TMPDIR="${TMPDIR:-/tmp}" HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
 timeout 7200 "$M/.venv/bin/python" workloads/capture.py "$model" --formats "$fmts" 2>&1 | tail -40
 echo "[$model] exit=$?"
 ls -la "$M/workloads/$model/"*.mlir 2>/dev/null

@@ -164,6 +164,7 @@ def _evaluate(kernel: Path, capsule_dir: Path, *, shim_pkg: Path, runs_root: Pat
 import json, pathlib, sys
 from merlin.runtime.backends.base import get_backend
 from merlin.benchharness import evaluation as EV
+from merlin.common.paths import runs_dir
 MR = get_backend("muon").muon_capsule_runner
 d = pathlib.Path({str(capsule_dir)!r})
 try:
@@ -367,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--round-timeout", type=int, default=1800)
     ap.add_argument("--eval-timeout", type=int, default=900)
     ap.add_argument("--runs-root", type=Path,
-                    default=Path("/scratch/agustin/tmp/kvc-runs"))
+                    default=runs_dir() / "kvc")
     ap.add_argument("--sandbox", default="bwrap", choices=("bwrap", "none"),
                     help="bwrap (default) isolates the agent so it cannot read other arms' runs")
     ap.add_argument("--seed", type=int, default=1)

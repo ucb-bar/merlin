@@ -27,6 +27,9 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+
+from merlin.common.paths import _dotenv
 import subprocess
 import sys
 from pathlib import Path
@@ -38,6 +41,12 @@ EXP = HERE.parent
 #: ran to completion is an execution cert and may never set "correct".
 CERTIFYING_TIERS = frozenset({"L2"})
 
+
+def _from_env(key: str) -> str:
+    """The value for `key` from the process env or .env, or "" when this machine has none."""
+    return os.environ.get(key) or _dotenv().get(key) or ""
+
+
 #: Environment each fidelity needs. Declared as data so a run records WHICH ladder it used, and so a
 #: missing dependency is visible rather than silently degrading to the other tier.
 FIDELITY_ENV = {
@@ -45,15 +54,17 @@ FIDELITY_ENV = {
     "fast": {"MERLIN_MUON_SKIP_RTL_L3": "1"},
     # Cycle-accurate. GSIM is ~23x faster than the Verilator path in practice (115 s vs ~45 min),
     # which is what makes a per-candidate cert tier possible at all rather than a once-per-run luxury.
+    # Both machine-specific values come from the environment / .env; a baked path would silently
+    # point every clone at one developer's build. Absent -> the key is simply not set, and the
+    # fail-closed behaviour described below is what the caller sees.
     "cert": {
         "MERLIN_MUON_SKIP_RTL_L3": "0",
-        "MERLIN_MUON_GSIM_EMU":
-            "/scratch/agustin/projects/gsim/build/radiance_gsim/emu_radiance_gsimconfig",
+        "MERLIN_MUON_GSIM_EMU": _from_env("MERLIN_MUON_GSIM_EMU"),
         "MERLIN_MUON_GSIM_MAXCYCLES": "2000000",
         # ⚠️ Without this the derived ISA encoding is absent and EVERY fork-free compile fails closed.
         # A prior sweep scored 6/38 for exactly this reason, and the six "passes" were fixtures that
         # need no oracle -- i.e. it looks like a bad submission, not a missing variable.
-        "MERLIN_MLC_DIR": "/scratch2/agustin/mvp-lhwir/modeling",
+        "MERLIN_MLC_DIR": _from_env("MERLIN_MLC_DIR"),
     },
 }
 
@@ -139,7 +150,7 @@ print("<<<KVC>>>" + json.dumps({{"full": ev.to_dict(), "redacted": ev.redact()}}
     env["MERLIN_KVC_KERNEL_FILE"] = str(kernel_file)
     env.setdefault("MERLIN_KVC_REFERENCE_TOOL",
                    str(repo / "out/artifacts/targets/muon/reference_v0/muon-opt"))
-    env.setdefault("TMPDIR", "/scratch/agustin/tmp")
+    env.setdefault("TMPDIR", tempfile.gettempdir())
     env.update(FIDELITY_ENV[fidelity])
 
     try:

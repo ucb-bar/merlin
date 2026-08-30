@@ -28,6 +28,7 @@ import subprocess
 import sys
 import threading
 import time
+from merlin.common.paths import runs_dir
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -115,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--round-timeout", type=int, default=900)
     ap.add_argument("--sandbox", default="bwrap")
     ap.add_argument("--tag", default="mx")
-    ap.add_argument("--runs-root", type=Path, default=Path("/scratch/agustin/tmp/kvc-runs"))
+    ap.add_argument("--runs-root", type=Path, default=runs_dir() / "kvc")
     ap.add_argument("--caps", default="",
                     help="override provider caps, e.g. 'bedrock=2,google=6'")
     ap.add_argument("--dry-run", action="store_true")

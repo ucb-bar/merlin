@@ -9,7 +9,7 @@ cp -r loader.py capture.toml $MERLIN_M2M_DIR/workloads/deepseek_r1_qwen/
 scripts/kvc_capture.sh deepseek_r1_qwen fp32
 ```
 
-Weights come from the HF cache (`HF_HOME=/scratch/agustin/cache/huggingface`); the checkpoint is
+Weights come from the HF cache (`HF_HOME=$HF_HOME`); the checkpoint is
 ~3.4 GB and was not present, unlike TinyLlama and SmolVLA.
 
 ## Why it is not a copy of the Llama loader

@@ -14,7 +14,7 @@ sources:
   family_evidence: eligibility/family_evidence.yaml
   provenance: eligibility/provenance/kernel_provenance.yaml
   evidence_repo:
-    path: /scratch2/agustin/radiance-kernels
+    path: ${MERLIN_RADIANCE_KERNELS}
     commit: 399757f6da3b2c75980821b2479e9f1ca732e8ea
     pin: radiance_kernels
     provenance_verdict_required: hand

@@ -7,7 +7,7 @@
 # Same capture.toml trap as kvc_capture.sh: [env] beats the process env, and the
 # tiny_llama pin means RANDOM INIT, so it is removed for the run and restored after.
 set -uo pipefail
-M=/scratch/agustin/projects/model2MLIR
+M=${MERLIN_M2M_DIR:?set MERLIN_M2M_DIR in .env}
 model="$1"; fmt="${2:-fp32}"; out="$3"
 toml="$M/workloads/$model/capture.toml"
 
@@ -20,7 +20,7 @@ if [ -f "$toml" ] && grep -q 'M2M_LLAMA_LAYERS' "$toml"; then
 fi
 
 cd "$M"
-export TMPDIR=/scratch/agustin/tmp HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
+export TMPDIR="${TMPDIR:-/tmp}" HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
 timeout 10800 "$M/.venv/bin/python" workloads/capture_consistent.py "$model" "$fmt" "$out" 2>&1 | tail -30
 rc=$?
 echo "[$model/$fmt] consistent-capture exit=$rc -> $out"

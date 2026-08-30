@@ -37,7 +37,7 @@ different and narrower question; a run that uses it says so in its own record.
 
 Run it under AutoComp's own venv (it needs boto3, google-genai and the framework itself):
 
-    /scratch/agustin/projects/autocomp/.venv/bin/python run_autocomp.py --method bedrock_kernel \\
+    ${MERLIN_EXT_AUTOCOMP}/.venv/bin/python run_autocomp.py --method bedrock_kernel \\
         --capsule merlin/contract/capsules/radiance/isa/R0_gemm_fp32 --run-id ac_qwen_R0
 
 The bootstrap runs under merlin's interpreter, which this script locates itself -- so this venv only
@@ -60,6 +60,7 @@ EXP = HERE.parent
 sys.path.insert(0, str(HERE))
 
 import kvc_eval  # noqa: E402
+from merlin.common.paths import runs_dir
 from autocomp_bridge import KvcMuonEvalBackend  # noqa: E402
 
 #: AutoComp addresses a model as "<provider>::<id>". Mapping the study's provider names onto that
@@ -202,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="generation rounds allowed to reach a correct kernel under --start scratch")
     ap.add_argument("--bootstrap-round-timeout", type=int, default=900)
     ap.add_argument("--seed-kernel", type=Path, default=None, help="starting kernel for --start file")
-    ap.add_argument("--runs-root", type=Path, default=Path("/scratch/agustin/tmp/kvc-runs"))
+    ap.add_argument("--runs-root", type=Path, default=runs_dir() / "kvc")
     a = ap.parse_args(argv)
 
     import yaml

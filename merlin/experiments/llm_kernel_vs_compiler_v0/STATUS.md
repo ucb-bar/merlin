@@ -1,6 +1,6 @@
 # STATUS — LLM kernel generation vs. compiler generation on Radiance
 
-Branch `feat/kernel-vs-compiler`, worktree `/scratch/agustin/tmp/wt-kvc`. Last updated 2026-08-27.
+Branch `feat/kernel-vs-compiler`, worktree `$KVC_WORKTREE`. Last updated 2026-08-27.
 
 The study asks where two ways of bringing workloads to a new accelerator cross over: repeatedly
 LLM-generating kernels per workload, versus spending LLM effort once to generate a compiler, freezing
@@ -185,12 +185,12 @@ is required outside a git repo.
 ## Commands
 
 ```sh
-cd /scratch/agustin/tmp/wt-kvc && export PYTHONPATH=$PWD/merlin/python TMPDIR=/scratch/agustin/tmp
+cd $KVC_WORKTREE && export PYTHONPATH=$PWD/merlin/python TMPDIR=$TMPDIR
 E=merlin/experiments/llm_kernel_vs_compiler_v0
 
 .venv/bin/python $E/scripts/audit_kernel_provenance.py \
-  --repo /scratch2/agustin/radiance-kernels --repo /scratch/agustin/projects/radiance-kernels \
-  --agent-tree /scratch/agustin/projects/autocomp \
+  --repo ${MERLIN_RADIANCE_KERNELS} --repo ${MERLIN_RADIANCE_KERNELS_E2E} \
+  --agent-tree ${MERLIN_EXT_AUTOCOMP} \
   --out $E/eligibility/provenance/kernel_provenance.yaml
 
 .venv/bin/python $E/scripts/build_eligibility_manifest.py --target radiance \

@@ -26,7 +26,7 @@ target: radiance
 requires_human_review: true
 evidence_repo:
   # The merlin-PINNED checkout. Two checkouts of this repo exist on this host and only one is read.
-  path: /scratch2/agustin/radiance-kernels
+  path: ${MERLIN_RADIANCE_KERNELS}
   commit: 399757f6da3b2c75980821b2479e9f1ca732e8ea
   pin: radiance_kernels
   provenance_verdict_required: hand

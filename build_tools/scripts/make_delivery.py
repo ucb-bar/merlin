@@ -29,6 +29,7 @@ a final manual step if that is how it is being sent.
 from __future__ import annotations
 
 import argparse
+import os
 import hashlib
 import json
 import shutil
@@ -44,7 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"
 import numpy as np                                                          # noqa: E402
 
 from merlin.common.artifacts import new_product                             # noqa: E402
-from merlin.common.paths import repo_root                                   # noqa: E402
+from merlin.common.paths import _dotenv, repo_root                          # noqa: E402
 from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME                 # noqa: E402
 from merlin.runtime import boards, elf_audit                                # noqa: E402
 from merlin.runtime.boards import CONSOLE_HTIF                              # noqa: E402
@@ -1389,8 +1390,11 @@ def main(argv=None) -> int:
     # where our own RTL executes the whole model, so it says something no simulator can: real cycle
     # counts, and a multicore split proven bit-identical on hardware.
     firesim_evidence = {}
-    fs_dir = Path("/scratch2/agustin/merlin_firesim_builds")
-    for model in models:
+    # Machine-specific: set MERLIN_EXT_FIRESIM_BUILDS in .env. Absent -> this section is skipped
+    # rather than pointed at one developer's home directory.
+    _fs = os.environ.get("MERLIN_EXT_FIRESIM_BUILDS") or _dotenv().get("MERLIN_EXT_FIRESIM_BUILDS")
+    fs_dir = Path(_fs) if _fs else None
+    for model in (models if fs_dir else []):
         f = fs_dir / f"results_{model}.json"
         if not f.is_file():
             continue

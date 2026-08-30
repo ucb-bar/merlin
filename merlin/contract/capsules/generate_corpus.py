@@ -31,6 +31,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
+from merlin.common.paths import _dotenv                   # noqa: E402
 from merlin.targetgen import capsule_golden as CG            # noqa: E402
 from merlin.targetgen import corpus_spec as CS               # noqa: E402
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
@@ -134,7 +135,7 @@ def _scrub_capsule_dir(d) -> None:
 # float golden engine (generation-time only; needs the external specir refmodel)
 # ------------------------------------------------------------------------------------------------
 def _specir():
-    root = os.environ.get("SPECIR_ROOT", "/scratch2/agustin/mvp-lhwir/spec")
+    root = os.environ.get("SPECIR_ROOT") or _dotenv().get("SPECIR_ROOT")
     if root not in sys.path:
         sys.path.insert(0, root)
     from specir.oracle import dtypes as D
@@ -281,7 +282,7 @@ def _float_golden(entry, binding):
 def _mx_ref():
     """Import mlc's ``validate/mx_ref.py`` BY FILE PATH (like the specir import) so we do NOT trigger
     ``mlc/validate/__init__.py`` (which carries concurrent work and heavy imports)."""
-    root = os.environ.get("MERLIN_MLC_DIR", "/scratch2/agustin/mvp-lhwir/modeling")
+    root = os.environ.get("MERLIN_MLC_DIR") or _dotenv().get("MERLIN_MLC_DIR")
     path = Path(root) / "mlc" / "validate" / "mx_ref.py"
     if not path.exists():
         raise FileNotFoundError(f"mx_ref not found at {path} (set MERLIN_MLC_DIR to the mlc modeling root)")

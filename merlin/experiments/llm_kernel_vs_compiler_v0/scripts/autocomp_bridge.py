@@ -96,7 +96,7 @@ class KvcMuonEvalBackend:
             self.trajectory.append({"index": index, **rec})
             return rec
 
-        tmp = Path(tempfile.mkdtemp(prefix="kvc-ac-", dir="/scratch/agustin/tmp"))
+        tmp = Path(tempfile.mkdtemp(prefix="kvc-ac-"))  # honours $TMPDIR
         kernel = tmp / "kernel.llvm.mlir"
         kernel.write_text(code)
 
