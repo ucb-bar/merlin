@@ -24,6 +24,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as _dt
 import json
+import os
 import sys
 import threading
 import traceback as _traceback
@@ -103,6 +104,31 @@ class TierResult:
                                       # another's is a model — so a reader of the record could not tell
                                       # a hardware verdict from a model one.
 
+    concurrency: dict | None = None   # WHAT ELSE THE HOST WAS DOING WHILE THIS WAS MEASURED --
+                                      # {workers, nproc, load_avg, serial}, stamped at the moment of
+                                      # measurement. CYCLES are concurrency-invariant (verified:
+                                      # identical serial and at 16 workers); WALL TIMES are not (the
+                                      # same query measured 3.7 s serial and 23.4 s at 16 workers, a
+                                      # 6.3x spread). So every ``timing`` block is only interpretable
+                                      # next to the concurrency it was taken at, and a block without
+                                      # one is not comparable with any other. Absent -> the run
+                                      # predates the stamp; see merlin.perf.observations.
+                                      # concurrency_of, which marks that rather than assuming it.
+    submission: dict | None = None    # WHICH SUBMISSION these numbers are about, stated rather than
+                                      # inferred from where the file sits. Cycles are a property of
+                                      # the submission, not of the capsule: the SAME capsule has
+                                      # measured 1090 / 3078 / 8889 across three submissions of one
+                                      # task, an 8.2x spread on identical inputs. A path heuristic
+                                      # that mis-keys them pools three different programs into one
+                                      # "latency", so the field is explicit and the heuristic becomes
+                                      # the fallback it should always have been.
+    timing_capability: dict | None = None
+                                      # WHAT THE INSTRUMENT COULD AND COULD NOT SEE, beside the
+                                      # observations it produced: which units went unread, whether
+                                      # its buckets partition the timeline, its alias accounting, and
+                                      # everything it refused. An unread signal is UNMEASURED, never
+                                      # zero, and this is where that distinction is recorded.
+
     toolchain: str | None = None      # WHICH PROGRAM was graded, as reported by the adapter. A block-
                                       # scaled MX capsule is graded on the harness's own reference MX
                                       # kernel rather than the submission, so a pass there measures the
@@ -130,11 +156,66 @@ class TierResult:
             d["utilization"] = dict(self.utilization)
         if self.timing_observations:
             d["timing_observations"] = list(self.timing_observations)
+        if self.timing_capability:
+            d["timing_capability"] = dict(self.timing_capability)
+        # Concurrency and submission ride the record ONLY when they were established. An absent
+        # field is "unrecorded", which is the honest state for every run taken before the stamp
+        # existed; a defaulted one would be a claim.
+        if self.concurrency:
+            d["concurrency"] = dict(self.concurrency)
+        if self.submission:
+            d["submission"] = dict(self.submission)
         # unchanged. This is what separates "the submission passed" from "the harness fixture passed":
         # a block-scaled MX capsule is graded on the reference MX kernel, not the submitted backend.
         if self.toolchain:
             d["toolchain"] = self.toolchain
         return d
+
+
+def concurrency_stamp(workers: int | None = None) -> dict:
+    """What else the host was doing at the moment of measurement.
+
+    Taken at measurement time, not at suite start: load average moves, and a stamp that describes the
+    machine an hour ago describes nothing. ``workers`` is the fan-out this suite was told to use;
+    ``None`` means the caller did not state one (a direct :func:`run_capsule` call), and it stays
+    ``None`` rather than being guessed at 1 -- other processes share this host.
+
+    Why this exists at all: cycle counts are concurrency-invariant and wall times are not, by a
+    measured factor of 6.3x. Every wall number in a ``timing`` block is uninterpretable without it,
+    and 22,845 blocks already on disk have to be read as "concurrency unrecorded" because it did not
+    exist when they were written. They are NOT retro-labelled: the concurrency they ran at is gone.
+    """
+    try:
+        load = round(os.getloadavg()[0], 2)
+    except (OSError, AttributeError):                          # no load average on this platform
+        load = None
+    return {"workers": None if workers is None else int(workers),
+            "nproc": os.cpu_count(),
+            "load_avg": load,
+            "serial": None if workers is None else bool(int(workers) <= 1),
+            "sampled": "at the adapter's return, so the load average covers the measurement itself"}
+
+
+def submission_identity(package_dir: "str | Path", *, run_id: str | None = None) -> dict:
+    """WHICH SUBMISSION a measurement belongs to, stated explicitly.
+
+    The harvest layer has had to infer this from where a file sits (the parent of the nearest
+    enclosing ``runs`` directory), and a path heuristic mis-keys as soon as a layout changes -- which
+    pools incomparable programs into one series. The package directory is the submission and is known
+    here for certain, so it is recorded; the campaign labels (run id, arm, round) are supplied by
+    whichever harness is driving, through the environment, and are ``None`` when nothing supplied
+    them rather than being reconstructed from a guess.
+    """
+    pkg = Path(package_dir)
+    env = os.environ
+    ident = {
+        "package": str(pkg.resolve()) if pkg.exists() else str(pkg),
+        "run_id": run_id or env.get("MERLIN_SUBMISSION_RUN_ID") or None,
+        "arm": env.get("MERLIN_SUBMISSION_ARM") or None,
+        "round": env.get("MERLIN_SUBMISSION_ROUND") or None,
+    }
+    ident["stated"] = sorted(k for k, v in ident.items() if k != "package" and v)
+    return ident
 
 
 # An oracle adapter: (cb, llvm_text, workdir, timeout) -> {outputs, cycles, oracle, console}
@@ -1614,7 +1695,8 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
                              tiers: dict, trace_check_res: dict, numeric: dict, required,
                              no_oracle: bool, eff_target: str, paths, run_id: str, cfg,
                              contract=None, executability: dict | None = None,
-                             declined: dict | None = None, extra: dict | None = None) -> dict:
+                             declined: dict | None = None, extra: dict | None = None,
+                             submission: dict | None = None) -> dict:
     """Turn a graded capsule's parts into its result row, and write it.
 
     Lifted VERBATIM out of :func:`run_capsule`, whose tail this was, for two reasons.
@@ -1722,6 +1804,14 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
                                f"(required={sorted(required)}) — refusing to pass on the L0/L1 "
                                f"command-buffer interpretation alone")}
 
+    # STAMP THE SUBMISSION ON EVERY TIER RECORD before it is serialised. Stated here, once, rather
+    # than left for a reader to infer from the file's path: cycles are a property of the submission,
+    # and a path heuristic that mis-keys two submissions of one capsule pools an 8.2x spread into a
+    # single "latency". A record that already carries one keeps it.
+    if submission:
+        for _r in tiers.values():
+            if getattr(_r, "submission", None) is None:
+                _r.submission = dict(submission)
     result = {
         "capsule": name, "kind": capsule.get("kind"), "label": capsule.get("label"),
         "status": status, "contract_version": CONTRACT_VERSION,
@@ -1760,7 +1850,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 pkg: Package | None = None, timeout: int = 600,
                 target: str | None = None, suite: str | None = None, dtype: str = "i8xi8_i32",
                 config=None, perf_extractor: Callable | None = None,
-                no_oracle: bool = False) -> dict:
+                no_oracle: bool = False, workers: int | None = None) -> dict:
     """Run one capsule through the package; write artifacts; return a capsule_result dict.
 
     ``config`` (a :class:`runner_config.RunnerConfig`) supplies the per-target grading knobs — the
@@ -1770,7 +1860,12 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     equality uses the capsule's ``numeric_policy`` (exact for integer, tolerance for float). ``perf_extractor``
     (cb -> flops) feeds the SIMT gflops/pct_fp_peak. ``oracle_adapters`` is the per-target oracle set: the
     L0/L1 math floor always runs; RTL tiers grade only if an adapter is present + available (arc or a
-    bespoke sim), else honestly ``unavailable`` — arc is never assumed."""
+    bespoke sim), else honestly ``unavailable`` — arc is never assumed.
+
+    ``workers`` is the fan-out the CALLER is running this capsule inside; it is recorded on every
+    measured tier (:func:`concurrency_stamp`). Cycle counts do not move with it, wall times move by
+    up to 6.3x, so a ``timing`` block without it cannot be compared with any other run's. ``None`` (a
+    direct call) records "not stated" rather than assuming serial -- this host is shared."""
     from ..runtime.reference import reference_outputs
     from ..runtime.simulator import simulate
     from .provenance import toolchain_shas
@@ -2183,6 +2278,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _acct = (_tm.get("build_s") or 0.0) + (_tm.get("sim_active_s") or 0.0)
                 _tm["oracle_wait_s"] = round(max(0.0, _adapter_wall - _acct), 3)
             _tm["adapter_wall_s"] = round(_adapter_wall, 3)
+            # STAMPED HERE, at the moment of measurement -- not at suite start. The load average this
+            # reads is the one covering the adapter call whose wall time sits beside it.
+            _conc = concurrency_stamp(workers)
             _tier_policy.record_cost(str(cfg.target or target or ""), tier, _adapter_wall)
             if tier != _screen_tier:
                 _tier_policy.note_spend(str(cfg.target or target or ""), _adapter_wall)
@@ -2203,7 +2301,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 tiers[tier] = TierResult(
                     tier, "pass" if ex.get("legal") else "fail", mandatory=False,
                     reason=ex.get("reason"), cycles=ex.get("cycles"), derived_from_rtl=True,
-                    evidence=f"{_sim_name}_console.log", timing=_tm, not_applicable=True)
+                    evidence=f"{_sim_name}_console.log", timing=_tm, not_applicable=True,
+                    concurrency=_conc)
                 continue
             if res.get("completion_only"):
                 # An RTL cert that ran the emitted kernel to completion but cannot surface its outputs
@@ -2217,7 +2316,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                         tier, "unavailable", mand,
                         reason="RTL cert ran to completion but cannot surface outputs for a mandatory "
                                "correctness check (use the functional tier as the required gate)",
-                        cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers, timing=_tm)
+                        cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers, timing=_tm,
+                        concurrency=_conc)
                     continue
                 _cg = _cp = None
                 _cu: dict | None = None
@@ -2236,7 +2336,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers,
                     cycle_accurate=tier in cfg.rtl_tiers, evidence=f"{_sim_name}_console.log",
                     timing=_tm, gflops=_cg, pct_fp_peak=_cp, utilization=_cu,
-                    timing_observations=res.get("timing_observations"))
+                    timing_observations=res.get("timing_observations"),
+                    timing_capability=res.get("timing_capability"), concurrency=_conc)
                 continue
             if independent_float:
                 # Float grade: the RTL program-oracle output vs the INDEPENDENT golden.yaml (tolerance_float).
@@ -2322,7 +2423,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 cycles=res.get("cycles"), derived_from_rtl=_derived_from_rtl,
                 cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{_ev_name}_console.log",
                 timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, utilization=_util,
-                timing_observations=res.get("timing_observations"), fidelity=_fidelity)
+                timing_observations=res.get("timing_observations"),
+                timing_capability=res.get("timing_capability"), fidelity=_fidelity,
+                concurrency=_conc)
             if res.get("console") is not None:
                 (paths.artifacts_dir / f"{_ev_name}_console.log").write_text(
                     res["console"], encoding="utf-8")
@@ -2377,6 +2480,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                    "traceback": _traceback.format_exc()}
 
     return _finalize_capsule_result(
+        submission=submission_identity(package_dir, run_id=run_id),
         name=name, capsule=capsule, status=status, failure=failure, tiers=tiers,
         trace_check_res=trace_check_res, numeric=numeric, required=required,
         no_oracle=no_oracle, eff_target=eff_target, paths=paths, run_id=run_id,
@@ -2445,11 +2549,15 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     integrity_scan(pkg)
     build_package(pkg)
 
-    def _one(cap: dict) -> dict:
+    def _one(cap: dict, workers: int = 1) -> dict:
+        # ``workers`` is what THIS capsule ran inside, not what the suite was configured for: the
+        # calibration head is serial by construction, and recording the suite's max_workers for it
+        # would describe contention its numbers never saw.
         return run_capsule(cap, package_dir, runs_root=runs_root, run_id=cap["name"],
                            contract=contract, oracle_adapters=oracle_adapters,
                            pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype,
-                           config=config, perf_extractor=perf_extractor, no_oracle=no_oracle)
+                           config=config, perf_extractor=perf_extractor, no_oracle=no_oracle,
+                           workers=workers)
 
     def _run_all(caps: list[dict]) -> list[dict]:
         if max_workers <= 1 or not caps:
@@ -2487,7 +2595,8 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
             return head
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            return head + list(ex.map(_one, rest))
+            _n = min(max_workers, len(rest))
+            return head + list(ex.map(lambda c: _one(c, _n), rest))
 
     # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op
     # suite proves itself (its ``gate.after_op_pass_fraction`` of the graded op capsules passed). Grade the

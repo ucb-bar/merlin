@@ -30,8 +30,10 @@ import base64
 import importlib
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+from collections.abc import Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
@@ -295,6 +297,7 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
                                words, preload=preload, max_cycles=max_cycles)
     if not res.halted:
         raise ProgramDidNotHalt(f"{target} program did not halt within {max_cycles} cycles")
+    _obs, _cap = _timing_block(res)      # only if THIS oracle grows the capability; never invented
 
     # resolve EVERY output tensor spec from the cb (generation-declared) or the program's own golden and
     # read each one back: a module that commits twice has two results, and capturing only the first
@@ -309,9 +312,18 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
     # (gemmini) means genuinely-RTL, so classifying by tier NAME credited a model as RTL certification.
     # Declaring `derived_from_rtl` here is the seam capsule_runner already reads (it defaults to the tier
     # name only when the adapter stays silent) and the shape muon's gsim adapter already returns.
-    return {"outputs": outputs, "cycles": int(res.cycles),
-            "oracle": {"kind": f"{target}-arc-arcilator-cosim", "derived_from_rtl": False,
-                       "fidelity": "rtl_derived_model"}}
+    arc_out: dict[str, Any] = {"outputs": outputs, "cycles": int(res.cycles),
+                               "oracle": {"kind": f"{target}-arc-arcilator-cosim",
+                                          "derived_from_rtl": False,
+                                          "fidelity": "rtl_derived_model"}}
+    # Same pass-through as the Verilator tier, and for the same reason: if this cosim ever reports a
+    # decomposition it is harvested the moment it does. Today it reports none, so nothing is added
+    # here -- which is the correct output for an oracle without the capability, and is NOT zeros.
+    if _obs:
+        arc_out["timing_observations"] = _obs
+    if _cap:
+        arc_out["timing_capability"] = _cap
+    return arc_out
 
 
 def derive_cycle_budget(cb: dict, *, floor: int = 20000, per_element: int = 64) -> int:
@@ -731,6 +743,35 @@ def run_command_buffer_debug(target: str, *, cb: dict, capsule_dir) -> dict[str,
 # resolved from the target's registered vsim dir (MERLIN_EXT_<TARGET>_VSIM), never a literal here.
 # --------------------------------------------------------------------------------------------------
 
+def _timing_block(res: Any) -> "tuple[list[dict] | None, dict | None]":
+    """``(timing_observations, timing_capability)`` an oracle result carries, VALIDATED -- or
+    ``(None, None)`` when the oracle has no timing capability at all.
+
+    The rules are :mod:`merlin.perf.observations`'; this only routes. Two things it does not do, both
+    load-bearing: it never invents the block for an oracle that did not emit one (an oracle with no
+    timing capability contributes nothing -- not the key, not zeros), and it never drops a block that
+    was emitted but failed validation. A refused block still travels, as a capability record naming
+    what was refused, because "the producer emitted a block we could not believe" is a fact about the
+    instrument that has to be visible.
+    """
+    from merlin.perf import observations as _OBS
+    raw = res if isinstance(res, Mapping) else {
+        k: getattr(res, k) for k in (_OBS.TIMING_OBSERVATIONS_KEY, _OBS.UNMEASURED_UNITS_KEY,
+                                     _OBS.PARTITIONED_KEY, _OBS.ALIAS_COLLISIONS_KEY)
+        if hasattr(res, k)}
+    block = _OBS.validate_block(raw)
+    if block is None:
+        return None, None
+    cap = block.to_dict()
+    if isinstance(raw, Mapping) and raw.get("alias_wrapped_accesses") is not None:
+        # Wrapping is not colliding: with one page in play every access wraps identically and nothing
+        # is lost. Carried beside the collision count so the distinction survives.
+        cap["alias_wrapped_accesses"] = raw["alias_wrapped_accesses"]
+    if isinstance(raw, Mapping) and raw.get("unmeasured_note"):
+        cap["unmeasured_note"] = raw["unmeasured_note"]
+    return ([dict(o) for o in block.observations] or None), cap
+
+
 def _load_verilator_runner(vsim_dir: Path):
     """Import the vsim dir's conventional ``verilator_run.py`` (``run_program`` symmetric with
     ``cosim_atlas.run_program``) BY PATH — target-agnostic (merlin never names the sim binary). Raises
@@ -749,7 +790,8 @@ def _load_verilator_runner(vsim_dir: Path):
 def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: dict | None = None,
                                  kernel_s: Path | None = None, program: str | None = None,
                                  inputs: list[dict] | None = None, fix_itype_rd: bool = True,
-                                 max_cycles: int = 20000, workdir, timeout: int = 600) -> dict[str, Any]:
+                                 max_cycles: int = 20000, workdir, timeout: int = 600,
+                                 per_cycle_csv: "str | Path | None" = None) -> dict[str, Any]:
     """Assemble (model venv / stock LLVM) → run on the target's program-driven Verilator RTL sim → read
     back. Mirrors :func:`run_program_oracle` (same ``emit_bundle`` words+preload, same output-layout
     resolution) but the runner is the external Verilator ``run_program`` instead of the arc cosim. The
@@ -768,9 +810,21 @@ def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: d
     # the cosim path carried). The wrapper's ``reads`` is already a list of regions, so this needs no
     # change on the sim side; the returned regions come back in the order they were requested.
     specs = _resolve_out_specs(target, cb, bundle)
+    _kw: dict[str, Any] = {}
+    if per_cycle_csv:
+        # OPTIONAL, and only if THIS runner accepts it. A runner built before the per-cycle dump
+        # existed must keep working unchanged rather than raising a TypeError that would be recorded
+        # as the submission's crash -- the same "a harness limit reported as the agent's bug" class.
+        import inspect as _inspect
+        try:
+            if "per_cycle_csv" in _inspect.signature(runner.run_program).parameters:
+                Path(per_cycle_csv).parent.mkdir(parents=True, exist_ok=True)
+                _kw["per_cycle_csv"] = str(per_cycle_csv)
+        except (TypeError, ValueError):                       # unintrospectable runner: skip the dump
+            pass
     res = runner.run_program(words, preload=preload,
                              reads=[(int(s["base"]), _out_nbytes(s)) for s in specs.values()],
-                             max_cycles=max_cycles, timeout=timeout)
+                             max_cycles=max_cycles, timeout=timeout, **_kw)
     if not res.get("halted"):
         raise ProgramDidNotHalt(f"{target} program did not halt within {max_cycles} cycles (verilator)")
     outs = res.get("outputs") or []
@@ -783,9 +837,19 @@ def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: d
         outputs[name] = _decode_output(bytes(raw), spec["shape"], spec["dtype"],
                                        spec["physical"]).tolist()
     # The one tier here that runs the ELABORATED Verilog, so the only one entitled to say RTL.
-    return {"outputs": outputs, "cycles": int(res.get("cycles") or 0),
-            "oracle": {"kind": f"{target}-verilator-rtl", "derived_from_rtl": True,
-                       "fidelity": "elaborated_rtl"}}
+    out: dict[str, Any] = {"outputs": outputs, "cycles": int(res.get("cycles") or 0),
+                           "oracle": {"kind": f"{target}-verilator-rtl", "derived_from_rtl": True,
+                                      "fidelity": "elaborated_rtl"}}
+    # WHATEVER FINER TIMING THIS ORACLE COULD SEE, carried instead of discarded. The run already paid
+    # for it: the sim evaluated the RTL's own top-level activity ports on every cycle whether anyone
+    # read them or not, so the marginal cost of keeping the decomposition is a load per cycle. A
+    # runner with no timing capability sets nothing here and the result is byte-identical to before.
+    _obs, _cap = _timing_block(res)
+    if _obs:
+        out["timing_observations"] = _obs
+    if _cap:
+        out["timing_capability"] = _cap
+    return out
 
 
 def program_verilator_adapter(target: str, *, model_ext: str) -> Callable | None:
@@ -807,6 +871,12 @@ def program_verilator_adapter(target: str, *, model_ext: str) -> Callable | None
         ks = wd / "kernel.S"
         if fourth_text:
             ks.write_text(fourth_text)
+        # PER-CYCLE OCCUPANCY, opt-in. It is ~34 B/cycle of PURGEABLE, replay-regenerable detail, so
+        # it goes to the cache root and never into a product, and it is off unless asked for.
+        _csv = None
+        if os.environ.get("MERLIN_PERF_PER_CYCLE") == "1":
+            from merlin.common.artifacts import cache_dir
+            _csv = cache_dir("occupancy") / target / f"{wd.parent.name or wd.name}.csv"
         # Size the budget from the workload exactly as the arc tier does. Omitting it left every
         # capsule on run_program's 20000 default while the arc tier scaled with the command buffer, so
         # a correct kernel that simply needed longer raised ProgramDidNotHalt -- which the runner books
@@ -814,5 +884,5 @@ def program_verilator_adapter(target: str, *, model_ext: str) -> Callable | None
         # asymmetry between two tiers of the same target had no reason behind it.
         return run_program_verilator_oracle(target, model_ext=model_ext, vsim_dir=vsim_dir, cb=cb,
                                             kernel_s=ks, workdir=wd, timeout=timeout,
-                                            max_cycles=derive_cycle_budget(cb))
+                                            max_cycles=derive_cycle_budget(cb), per_cycle_csv=_csv)
     return run

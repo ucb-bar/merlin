@@ -67,6 +67,7 @@ from typing import Any
 from merlin.common.paths import artifacts_dir, merlin_dir, runs_dir
 from merlin.common.yaml import load_yaml
 from merlin.kernels.measurement import MeasurementAuthority, authority_for, citable
+from merlin.perf.observations import TIMING_OBSERVATIONS_KEY as _TIMING_OBSERVATIONS_KEY
 from merlin.perf.profile import TargetProfile
 from merlin.perf.record import (SUITE_SCHEMA, SuiteSchema, compose_unit_busy, derive_delay_mnemonic,
                                 derive_unit_roles, fill_cycles)
@@ -336,7 +337,9 @@ def _submission_of(path: Path) -> str:
 #: never does is unaffected. THE RULE FOR ADAPTER AUTHORS: an adapter with no timing capability emits
 #: NOTHING -- not the key, not an empty list of zeros. An entry whose ``value`` is null is skipped
 #: here for the same reason: "the instrument did not report this" is not "this cost nothing".
-TIMING_OBSERVATIONS_KEY = "timing_observations"
+#: The key and the rules a producer must keep to fill it live in :mod:`merlin.perf.observations`
+#: (one spelling, one validator); this name is re-exported so existing readers are unaffected.
+TIMING_OBSERVATIONS_KEY = _TIMING_OBSERVATIONS_KEY
 
 
 def harvest_capsule_result(path: "str | Path", *, authority: MeasurementAuthority,
