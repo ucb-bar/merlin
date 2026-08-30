@@ -1,1 +1,1 @@
-/scratch2/agustin/chipyard/generators/gemmini/software/gemmini-rocc-tests/bareMetalC/matmul_ws.c
+../../../../../../../../third_party/ext/chipyard/generators/gemmini/software/gemmini-rocc-tests/bareMetalC/matmul_ws.c

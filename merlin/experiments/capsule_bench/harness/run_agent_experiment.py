@@ -96,16 +96,17 @@ def _derive_missing_grant(src: Path) -> Path | None:
 
     Returns None — never raises — when the artifact cannot be derived here (no RTL toolchain). The
     caller reports that as an undelivered grant; silently proceeding is what this exists to end.
+
+    The rule for WHICH grants are derivable lives in ``merlin.targetgen.bundle_grants``, shared with
+    the gate that lints the manifests, so the stager and the gate cannot drift into disagreeing about
+    what a manifest promises.
     """
-    parts = src.parts
-    if len(parts) < 3 or parts[-1] != "rtl_facts" or parts[-2] != "contracts":
-        return None
-    try:
-        from merlin.targetgen.rtl.facts import ensure_facts
-        return ensure_facts(parts[-3]).parent
-    except Exception as e:  # noqa: BLE001 — an underivable artifact is a reported gap, not a crash
-        print(f"[grants] could not derive {src}: {type(e).__name__}: {e}", file=sys.stderr)
-        return None
+    from merlin.targetgen.bundle_grants import derive_grant
+
+    got = derive_grant(str(src))
+    if got is None:
+        print(f"[grants] cannot derive {src} here", file=sys.stderr)
+    return got
 
 
 def assemble_workspace(bundle: dict, ws: Path) -> list[str]:

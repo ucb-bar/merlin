@@ -28,6 +28,13 @@ echo "[pre-commit] overfit register (tree)…"
 echo "[pre-commit] no-answer-keys (tracked)…"
 "$PY" build_tools/scripts/check_no_answer_keys.py
 
+# Whole-tree, not --staged: a grant is a claim about what an arm can READ, and it dies when the file it
+# names moves or is deleted -- a change that may touch neither the manifest nor the descriptor. The
+# failure mode is silent (the stager skipped an absent grant; the arm was credited with a tool it never
+# carried), so this has to be judged against the tree, not against the diff.
+echo "[pre-commit] bundle grants (tree)…"
+"$PY" build_tools/scripts/check_bundle_grants.py
+
 echo "[pre-commit] hardware provenance (staged)…"
 "$PY" build_tools/scripts/check_provenance.py --staged
 

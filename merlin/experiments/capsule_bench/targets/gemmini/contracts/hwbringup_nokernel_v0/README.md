@@ -1,1 +1,1 @@
-/scratch2/agustin/chipyard/generators/gemmini/README.md
+../../../../../../../third_party/ext/chipyard/generators/gemmini/README.md

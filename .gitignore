@@ -220,6 +220,11 @@ CMakeFiles/
 compile_commands.json
 
 # --- Vendored LLVM/MLIR toolchain build + install (Phase 0; never committed) ---
+# One symlink per EXTERNAL dependency, each pointing at its MERLIN_EXT_<NAME> location from .env.
+# Tracked content points at third_party/ext/<name>/... so the committed bytes stay repo-relative
+# and portable; the machine-specific half lives here, untracked. Create with
+#   python build_tools/scripts/link_externals.py
+/third_party/ext/
 /third_party/llvm-build/
 /third_party/llvm-install/
 /third_party/llvm-build.log

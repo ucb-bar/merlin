@@ -194,6 +194,34 @@ def env(key: str, default: str | None = None) -> str | None:
     return os.environ.get(key) or _dotenv().get(key) or default
 
 
+def ext_root() -> Path:
+    """The gitignored directory holding one symlink per external dependency.
+
+    Tracked content must never spell a machine-local path. Content that genuinely lives OUTSIDE the repo
+    (a vendor RTL checkout, a toolchain) is reached through a link here, whose own name is generic and
+    whose target comes from ``.env``. A tracked file may then point at ``third_party/ext/<name>/...``:
+    the committed bytes stay repo-relative and portable, and the one machine-specific fact sits in the
+    one gitignored place that is already the convention for it.
+
+    The alternative -- committing an absolute symlink -- resolves for whoever created it and dangles for
+    everyone else, silently, because a dangling grant is skipped exactly like an absent one.
+    """
+    return repo_root() / "third_party" / "ext"
+
+
+def ext_link(name: str, *, refresh: bool = True) -> Path:
+    """``third_party/ext/<name>``, pointed at ``ext_path(name)``. Raises KeyError if the var is unset."""
+    target = ext_path(name)
+    link = ext_root() / name
+    if refresh:
+        link.parent.mkdir(parents=True, exist_ok=True)
+        if link.is_symlink() and Path(os.readlink(link)) != target:
+            link.unlink()
+        if not link.is_symlink() and not link.exists():
+            link.symlink_to(target)
+    return link
+
+
 def ext_path(name: str) -> Path:
     """Resolve an external, machine-specific dependency location by short key.
 

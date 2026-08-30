@@ -11,14 +11,18 @@ rtl:
   via: mlc            # RTL facts are DERIVED from mlc discovery (MERLIN_MLC_DIR, the target above)
 
 # The shared hardware spec given to ALL arms (a correct backend needs the target's defined ISA — this is
-# a constant input, not Merlin assistance). Repo-root-relative.
+# a constant input, not Merlin assistance).
 # Path strings are given EXACTLY as the arm bundles grant them (the bundle-stager convention:
-# tmp/... is repo-root-relative, experiments/... resolves under merlin/). This lets the descriptor be
-# the single source of truth the bundle-consistency check compares against.
+# experiments/... resolves under merlin/, anything else is repo-root-relative). This lets the descriptor
+# be the single source of truth the bundle-consistency check compares against, and every declared path
+# is resolved by check_bundle_grants.py so a grant cannot name a file that is not there.
 hardware_spec:
   isa_headers:
-    - tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h
-    - tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
+    # The headers ship with the curated harness below. They previously named a tmp/dialects/... path
+    # that exists nowhere in the repo, so the grant resolved to nothing and every arm was assembled
+    # without the ISA definition all arms are supposed to share.
+    - experiments/capsule_bench/targets/gemmini/contracts/harness_curated/gemmini-rocc-tests/include/gemmini.h
+    - experiments/capsule_bench/targets/gemmini/contracts/harness_curated/gemmini-rocc-tests/include/gemmini_params.h
   hwbringup_set: experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0
   # Curated baremetal C harness (linker/crt/headers only, NO kernels) the agent's rv64 compiler links
   # against — per-target setup, relative to this experiment dir. arc/cyclotron targets omit it.

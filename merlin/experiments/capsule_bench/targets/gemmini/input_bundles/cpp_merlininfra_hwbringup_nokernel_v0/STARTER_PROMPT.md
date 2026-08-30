@@ -111,8 +111,8 @@ The real gemmini ISA is shipped read-only in your bundle. Derive EVERY instructi
 exact encoding from these files. Do NOT invent opcodes, mnemonics, instruction classes, or a
 bit layout: a plausible-but-invented encoding assembles cleanly yet decodes to garbage on the
 target and scores 0 (this is the single most common failure on a self-hosted ISA).
-- `tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h`
-- `tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h`
+- `experiments/capsule_bench/targets/gemmini/contracts/harness_curated/gemmini-rocc-tests/include/gemmini.h`
+- `experiments/capsule_bench/targets/gemmini/contracts/harness_curated/gemmini-rocc-tests/include/gemmini_params.h`
 - `experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/` (also mounted as `gemmini/`) — RTL + ISA headers + README + a WORKED
   example kernel under `example_kernel/`. Translate the example's real instructions into
   your emitted encoding using the exact field layout the ISA definition specifies; the

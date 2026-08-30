@@ -36,6 +36,12 @@ jobs:
         run: uv run python build_tools/scripts/check_overfit_register.py
       - name: semantic-coverage gate (generalization debt may only shrink)
         run: uv run python build_tools/scripts/check_semantic_coverage.py
+      # A grant is a claim about what an arm can READ. It dies when the file it names moves or is
+      # deleted -- neither of which need touch the manifest -- and the stager then skipped it in
+      # silence, so the arm was credited with a tool it never carried. CI is where that has to be
+      # caught: a fresh clone is also the machine on which a committed absolute symlink dangles.
+      - name: bundle-grants gate (every grant resolves; tracked bytes stay portable)
+        run: uv run python build_tools/scripts/check_bundle_grants.py
       - name: docs anti-drift gate
         run: uv run python build_tools/scripts/check_docs.py
       - name: tests (fast subset; hardware buckets self-skip via skipif)

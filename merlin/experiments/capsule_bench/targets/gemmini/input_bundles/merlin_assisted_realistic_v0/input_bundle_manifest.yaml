@@ -14,15 +14,15 @@ allowed:
   mode: ro
 - path: merlin/contract/capsules/model_slices/
   mode: ro
-- path: tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h
+- path: experiments/capsule_bench/targets/gemmini/contracts/harness_curated/gemmini-rocc-tests/include/gemmini.h
   mode: ro
-- path: tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
+- path: experiments/capsule_bench/targets/gemmini/contracts/harness_curated/gemmini-rocc-tests/include/gemmini_params.h
   mode: ro
 - path: experiments/capsule_bench/targets/gemmini/task/
   mode: ro
 - path: third_party/llvm-install/
   mode: ro
-- path: /path/to/chipyard/generators/gemmini
+- path: third_party/ext/chipyard/generators/gemmini
   as: gemmini
   mode: ro
   note: "VANILLA GEMMINI REPO: RTL (Chisel) + README/docs + ~114 example kernels (software/)\
