@@ -74,6 +74,16 @@ class TierResult:
     timing: dict | None = None        # {build_s, sim_active_s, oracle_wait_s} — active vs waiting
     gflops: float | None = None       # perf (SIMT); None -> omitted so systolic output is unchanged
     pct_fp_peak: float | None = None
+    timing_observations: list | None = None
+                                      # FINER TIMING THE ORACLE COULD ACTUALLY SEE: a list of
+                                      # {quantity, value, unit, concurrent, note} entries (per-unit
+                                      # busy, per-op latency, per-cycle activity). Every functional
+                                      # run already executes on a real oracle, and discarding what it
+                                      # timed throws away calibration evidence the run already paid
+                                      # for. An adapter with NO timing capability emits nothing here
+                                      # — not the key, not a list of zeros, because "not reported"
+                                      # and "cost nothing" are different facts. None -> omitted, so
+                                      # an adapter that carries none is byte-identical to before.
     utilization: dict | None = None   # WHERE THE TIME WENT, as fractions of the oracle's own cycle
                                       # window (warp occupancy, per-unit busy, memory conflicts).
                                       # Latency says a kernel is slow; this says why, which is the
@@ -92,6 +102,12 @@ class TierResult:
                                       # NAME cannot carry this — one target's L3 is Verilator and
                                       # another's is a model — so a reader of the record could not tell
                                       # a hardware verdict from a model one.
+
+    toolchain: str | None = None      # WHICH PROGRAM was graded, as reported by the adapter. A block-
+                                      # scaled MX capsule is graded on the harness's own reference MX
+                                      # kernel rather than the submission, so a pass there measures the
+                                      # fixture. Recording it keeps a score decomposable instead of
+                                      # silently overstating the backend by the size of the MX set.
 
     def to_dict(self) -> dict:
         d = {"status": self.status, "mandatory": self.mandatory,
@@ -112,6 +128,12 @@ class TierResult:
             d["pct_fp_peak"] = self.pct_fp_peak
         if self.utilization:
             d["utilization"] = dict(self.utilization)
+        if self.timing_observations:
+            d["timing_observations"] = list(self.timing_observations)
+        # unchanged. This is what separates "the submission passed" from "the harness fixture passed":
+        # a block-scaled MX capsule is graded on the reference MX kernel, not the submitted backend.
+        if self.toolchain:
+            d["toolchain"] = self.toolchain
         return d
 
 
@@ -2213,7 +2235,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                            "required functional tier)",
                     cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers,
                     cycle_accurate=tier in cfg.rtl_tiers, evidence=f"{_sim_name}_console.log",
-                    timing=_tm, gflops=_cg, pct_fp_peak=_cp, utilization=_cu)
+                    timing=_tm, gflops=_cg, pct_fp_peak=_cp, utilization=_cu,
+                    timing_observations=res.get("timing_observations"))
                 continue
             if independent_float:
                 # Float grade: the RTL program-oracle output vs the INDEPENDENT golden.yaml (tolerance_float).
@@ -2298,7 +2321,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 reason=None if okt else _mismatch_reason,
                 cycles=res.get("cycles"), derived_from_rtl=_derived_from_rtl,
                 cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{_ev_name}_console.log",
-                timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, utilization=_util, fidelity=_fidelity)
+                timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, utilization=_util,
+                timing_observations=res.get("timing_observations"), fidelity=_fidelity)
             if res.get("console") is not None:
                 (paths.artifacts_dir / f"{_ev_name}_console.log").write_text(
                     res["console"], encoding="utf-8")
