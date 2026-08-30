@@ -626,6 +626,38 @@ scheduled as such rather than kept on the register as the cheap next step.
 `op: matmul` at 224x224x224 and 224x448x224, and `PC00`/`PC01` declare `op: k_chain` at 128x128x128
 and 128x256x128 — all of which the existing emitter covers.
 
+## L2 and L3 RUN — the settle lever is scale-invariant, measured across a 12x span
+
+`PL00`/`PL01` (intra-layer matmul) and `PC00`/`PC01` (inter-layer k-chain shapes), each run at the
+device contract's uniform 2x margin and at the measured per-class floor. **All 8 runs bit-exact**,
+139 s of oracle wall total.
+
+    capsule              shape            contract 128    floor 32/64/64   lever    cyc/pass
+    PC00_m128k128n128    128x128x128            54,472           21,704   2.510x    851 -> 339
+    PC01_m128k256n128    128x256x128           101,384           39,944   2.538x    792 -> 312
+    PL00_m224k224n224    224x224x224          274,509          108,301   2.535x    800 -> 316
+    PL01_m224k448n224    224x448x224          525,928          206,056   2.552x    767 -> 300
+
+**Placed against the points already measured, the lever is scale-invariant and its size dependence
+is explained:**
+
+    32x32x32        1,217 ->      513    2.372x     <- intercept dominates
+    128x128x128    54,472 ->   21,704    2.510x
+    224x224x224   274,509 ->  108,301    2.535x
+    416x832x416 3,300,328 -> 1,288,552   2.561x     <- previously recorded
+
+The ratio RISES with size and asymptotes near 2.56, which is what a fixed intercept amortizing
+predicts, and cycles-per-tile-pass falls 339 -> 293 over the same span. Before this the lever was a
+single tile-scale measurement plus one layer point; it is now five points spanning 2.1M to 3.6G MACs,
+so "the win is not a toy-scale artifact" is measured rather than argued.
+
+**What was NOT measured, and the register should not imply otherwise.** `PC00`/`PC01` declare
+`lever: dma_issue_before_wait` — hoisting a transfer's issue ahead of the wait it currently sits
+behind. **That lever was not exercised.** The capsules declare `op: k_chain`, which the existing
+emitter covers only as a larger K, so what ran at those shapes was the SETTLE lever again. Measuring
+the declared L3 lever needs an emitter variant that reorders issue against wait, and until that
+exists L3 is closed for *shape coverage* and open for *its own lever*.
+
 ## W1.0 — the free fidelity run, and what it found
 
 `mlc/spec/validate_fidelity.py` against the 2,219 totals already on disk. **Zero new measurement.**
