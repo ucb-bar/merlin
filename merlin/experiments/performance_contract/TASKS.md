@@ -221,8 +221,12 @@ sign-confused, not the tool.)
 - Not an *optimality* claim. We beat the shipped kernels; we do not know the machine's floor. The
   structural bound says a 32×32×32 matmul cannot finish before `fill(62) + completion(96) = 158` MXU
   cycles plus its movement, and 705 is well above that.
-- Not a claim the shipped kernels are badly written. They are hand-written demo programs whose movement
-  pattern was never the point; the comparison is fair on cycles and unfair on intent.
+- Not a claim the shipped kernels are badly written, and here is the concrete reason. Decoding
+  `matmul.hex`: its DMA descriptors take their transfer length from register **x6, which the program
+  NEVER WRITES** (it writes only x1, x2, x3, x10, x11). The size is **inherited harness state**, not a
+  size chosen for the computation — which is exactly why it moves 16x what it needs. So the 16x is an
+  inherited default rather than a considered choice, and the comparison is fair on cycles and unfair on
+  intent. What our generator does differently is *choose its own descriptors*.
 - Not a claim about the other 18 kernels — three were run.
 
 ## W1.0 — the free fidelity run, and what it found
