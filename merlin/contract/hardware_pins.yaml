@@ -502,3 +502,35 @@ artifacts:
       a result must not be reported at a tier this substrate cannot reach. The npu_model Python simulator's
       own cycle counts are a DIFFERENT and much weaker thing: they disagree with the arc totals here by up
       to 3x, so they may be recorded as a diagnostic but may never source a performance term.
+
+  atlas_core_firrtl_gsim:
+    description: >-
+      The FIRRTL the fast RTL simulator elaborates to run the Atlas core. It is the same top module the
+      Verilator oracle verilates, reached by a different route: Verilator builds from the gold emitted
+      SystemVerilog, this builds from the design's FIRRTL. Pinned because a cycle count produced on it is
+      a claim about THIS elaboration, and because the file cannot be identified any other way (see below).
+    root_env: SPECIR_ROOT
+    path: out/build/lifting-build/atlas-npu/AT0/AtlasCore.fir
+    digest: "eb99a31f19eed99bd05005e82236999660df664e6ac87d64fce303b548863d69"
+    built_from:
+      - atlas_npu
+    config: AT0
+    notes: >-
+      A COMMIT CANNOT IDENTIFY THIS FILE, so the digest is not a convenience — it is the only provenance
+      available. The file lives under `out/build/lifting-build`, which the producing repository gitignores
+      (.gitignore:51), inside a checkout that carries 67 uncommitted changes. Recording the producing
+      commit alone would name a recipe that does not determine this output.
+      THE TASK DIRECTORY IS PART OF THE IDENTITY. The lifting build emits one AtlasCore.fir per task
+      directory and they are NOT interchangeable: 13 directories yield 12 DISTINCT digests (only AT0 and
+      AT3W agree). Citing "the AtlasCore FIRRTL" without naming the task directory names 12 different
+      files. AT0 is the one measured; another directory is a different design until shown otherwise.
+      WHY WE BELIEVE IT IS THE SAME DESIGN THE VERILATOR TIER RUNS, and why that is evidence rather than
+      identity. Its FIRRTL io bundle matches the gold emitted AtlasCore.sv port list exactly
+      (imemTL/csrTL/dmaTL/vmemTL, same widths), and across 17 real capsule kernels the two independently
+      built simulators agree EXACTLY on cycles, output bytes, and DMA read and write counts. That is a
+      strong argument from content and it is the right kind of argument — but two artifacts agreeing on 17
+      programs is not a proof that they were elaborated from the same source, and this note should not be
+      read as one. A divergence found later is a finding about this pin, not a surprise.
+      WHAT IT DOES NOT FIX. The 1 MiB DRAM window that silently wraps is a property of the harnesses and
+      is present on every Atlas tier; elaborating this FIRRTL neither introduces nor repairs it. A result
+      whose footprint approaches that window is suspect regardless of which simulator produced it.

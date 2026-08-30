@@ -36,6 +36,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.liveness` | HW-agnostic *liveness / progress* oracle — an L2.5 tier between functional (L2) and RTL (L3). |
 | `merlin.llvmlower` | Whole-model lowering: linalg-on-tensors MLIR -> LLVM IR -> RVV objects. |
 | `merlin.mining` | RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect |
+| `merlin.perf` | The performance layer: what a target's legal choices cost. |
 | `merlin.plotting` | Shared plotting house style (palette + card/callout/style_ax helpers). |
 | `merlin.runtime` | Merlin-owned runtime substrate (real, dependency-free). |
 | `merlin.runtime.backends` | Merlin runtime execution backends. |
