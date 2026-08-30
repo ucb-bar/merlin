@@ -68,4 +68,5 @@ def test_runtime_discharge_is_attributed_not_hidden():
     from merlin.targetgen import capsule_runner
     assert "discharged_by" in inspect.getsource(compile_cli.run_matmul_on_mesh)
     assert "capacity_fit_delegated_to_runtime" in inspect.getsource(compile_cli.compile_rvv)
-    assert "contract_obligations" in inspect.getsource(capsule_runner._grade_model_capsule)
+    # `_grade_model_capsule` is the budget wrapper; the grade itself is `_grade_model_capsule_inline`.
+    assert "contract_obligations" in inspect.getsource(capsule_runner._grade_model_capsule_inline)

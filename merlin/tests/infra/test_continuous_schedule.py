@@ -92,3 +92,31 @@ def test_promotion_is_not_coupled_to_the_schedule():
     # and the loop's own promotion must not be gated on the schedule flag
     seg = src.split("tier_promote", 1)[1][:600]
     assert "schedule" not in seg, "promotion must fire in BOTH schedules"
+
+
+# --- the whole-model capstone must be bounded inside a round ------------------------------------
+# MEASURED (merlincirct_defcal1, 2026-08-29): the agent round finished in 40 min, the capstone then
+# ran 5h30m -- past the round's own 4h --round-timeout -- and the round never graded. --qa-timeout is
+# a PER-STEP subprocess cap, so a grade that makes many such calls is not bounded by it.
+
+def test_the_model_budget_defaults_to_the_qa_timeout():
+    """Derived, not invented: the capstone may cost at most what the operator already said one grading
+    step may. An explicit value wins; 0 means no ceiling (an operator certification run wants that)."""
+    loop = _mod("run_baseline_qa_loop")
+    import inspect
+
+    src = inspect.getsource(loop.main)
+    assert '"--model-budget-s"' in src
+    assert "a.qa_timeout if a.model_budget_s is None else a.model_budget_s" in src
+    assert 'os.environ["MERLIN_MODEL_BUDGET_S"]' in src
+    assert 'os.environ.pop("MERLIN_MODEL_BUDGET_S", None)' in src, "0 must CLEAR the ceiling"
+
+
+def test_the_batch_launcher_forwards_the_budget():
+    """A per-arm terminator the batch does not forward is a batch setting that is a lie."""
+    launcher = _mod("launch_ab_batch")
+    import inspect
+
+    src = inspect.getsource(launcher._arm_cmd)
+    assert '"--model-budget-s"' in src
+    assert 'getattr(a, "model_budget_s", None) is not None' in src, "unset must stay byte-identical"

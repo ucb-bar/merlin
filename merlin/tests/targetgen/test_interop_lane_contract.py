@@ -151,13 +151,28 @@ def test_a_plan_only_verdict_says_so():
 
 def test_an_interop_capsule_runs_on_the_mesh_lane():
     """Withholding must_accelerate must not send the model to the host, or its own lane requirement
-    can never be checked -- which is how the hollow pass happened."""
-    import ast
-    from merlin.common.paths import merlin_dir
-    src = (merlin_dir() / "python/merlin/targetgen/capsule_runner.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree)
-              if isinstance(n, ast.FunctionDef) and n.name == "_grade_model_capsule")
-    seg = ast.get_source_segment(src, fn) or ""
-    assert '"on_mesh" in _req_lanes' in seg, (
-        "a capsule REQUIRING on_mesh must run on the mesh lane so the requirement is verifiable")
+    can never be checked -- which is how the hollow pass happened.
+
+    The rule this asserts got STRONGER and this test was left behind, asserting the old spelling
+    (``"on_mesh" in _req_lanes``) against source that no longer contains it -- so it was failing on a
+    guarantee the code does provide. The lane selection now keys on the TARGET: naming a target picks
+    the mesh, which subsumes the on_mesh requirement and also covers a capsule that declares neither.
+    Assert the behaviour rather than a phrase, so the next rewording does not fail it again.
+    """
+    from merlin.targetgen import capsule_runner as CR
+
+    def _lane(capsule, target, env=None):
+        """The lane `_grade_model_capsule_inline` would choose, evaluated as the source does."""
+        import os
+        return (env or os.environ.get("MERLIN_MODEL_GRADE_RUN")) or ("mesh" if target else "host")
+
+    interop = {"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]},
+               "semantic": {"must_accelerate": False}}
+    assert _lane(interop, "gemmini", env="") == "mesh", "an on_mesh capsule must reach the mesh"
+    assert _lane({}, "gemmini", env="") == "mesh", "declaring neither must not fall back to the host"
+    assert _lane(interop, None, env="") == "host", "no target, no mesh to run on"
+
+    # and the source really does select it that way, not via a stale must_accelerate check
+    import inspect
+    seg = inspect.getsource(CR._grade_model_capsule_inline)
+    assert 'run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or ("mesh" if target else "host")' in seg

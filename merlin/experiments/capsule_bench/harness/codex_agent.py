@@ -50,6 +50,7 @@ import selectors
 import shlex
 import signal
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -436,6 +437,20 @@ def _link_for_aet(run_dir: Path, raw_path: Path, rnd: int) -> Path | None:
         return None
 
 
+def last_message_path(ws: Path, final_path: Path, sandbox: str) -> Path:
+    """Where codex may actually WRITE its last message (``-o``).
+
+    ``final_path`` lives under the run directory, which is on /scratch -- and the sandbox tmpfs-hides
+    /scratch* by design, so codex could not create it and reported ``Failed to write last message file
+    ... (os error 2)`` on every sandboxed round. The read afterwards is guarded, so the loss was
+    SILENT: the round's ``result`` was simply empty. Inside the sandbox the workspace is the one
+    writable tree, so the file goes there and is copied out (and removed) once the process exits.
+    """
+    if sandbox != "bwrap":
+        return final_path
+    return ws / ".codex_out" / final_path.name
+
+
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
               effort: str = "", prompt: str | None = None, **_ignored) -> tuple[int, Path]:
@@ -478,7 +493,9 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "real oracle (goldens withheld), and iterate until capsules pass. Begin now.")
     prompt_path.write_text(msg)
 
-    run_cmd = build_cmd(ws, model=resolved, effort=effort, final_path=final_path,
+    inner_final = last_message_path(ws, final_path, sandbox)
+    inner_final.parent.mkdir(parents=True, exist_ok=True)
+    run_cmd = build_cmd(ws, model=resolved, effort=effort, final_path=inner_final,
                         sandbox=sandbox, codex_bin=codex_bin)
     home_info: dict = {}
     if sandbox == "bwrap":
@@ -660,6 +677,14 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
             except OSError:
                 pass
 
+    # Copy the last message out of the workspace, then drop it: the agent's own final message is not
+    # part of its next round's inputs, and leaving it in the workspace would make it one.
+    if inner_final != final_path and inner_final.is_file():
+        try:
+            final_path.write_text(inner_final.read_text())
+            inner_final.unlink()
+        except OSError as _e:
+            print(f"[codex] could not recover the final message: {_e}", file=sys.stderr)
     final_text = final_path.read_text() if final_path.is_file() else ""
     usage_complete = turns_started > 0 and turns_reported >= turns_started
     summary = {

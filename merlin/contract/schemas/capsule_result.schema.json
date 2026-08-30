@@ -42,6 +42,7 @@
         "error",
         "not_gradeable_no_oracle",
         "screened_only",
+        "budget_exhausted",
         "declined"
       ]
     },

@@ -55,6 +55,7 @@ def test_the_model_capsule_records_the_gate_strength():
     import inspect
 
     from merlin.targetgen import capsule_runner
-    src = inspect.getsource(capsule_runner._grade_model_capsule)
+    # the grade itself; `_grade_model_capsule` is the wall-clock budget wrapper around it
+    src = inspect.getsource(capsule_runner._grade_model_capsule_inline)
     assert "per_element_guarded" in src, "the capsule must record whether a per-element bound applied"
     assert "AGGREGATE ONLY" in src, "a cosine-only verdict must say so in words, not only as a flag"

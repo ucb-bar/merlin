@@ -3,7 +3,7 @@ title: Gemmini target-dialect-generation experiment (case study)
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-07-22
+last_verified: 2026-08-30
 related: [getting_started, reproducibility, targetgen, adding_a_target, target_publishing, experiment_abi]
 code_refs:
   - merlin/experiments/capsule_bench/targets/gemmini
@@ -103,6 +103,26 @@ verdicts in `qa_history/` + `cost_time_toolcalls.yaml` with the active-vs-rate-l
 For unattended survival across session/usage limits, the QA loop's own watchdog handles the five-hour
 window; for weekly-limit or process-death resilience use `--resume`, or drive through `aet run --resume`.
 
+### Bound the whole-model capstone, or the round grade never ends
+
+`--qa-timeout` (default 900 s) is a **per-step** subprocess cap. A whole-model capsule (`kind: model`,
+e.g. `GX0_interop_rvv_lane`) makes many such calls, so nothing bounds the capsule itself — and once the
+op suite clears its `gate.after_op_pass_fraction`, the round grade runs a cycle-accurate simulation of
+the entire model.
+
+Measured (`merlincirct_defcal1`, 2026-08-29): the agent round finished in 40 min, the capstone was
+scheduled at 18/22 = 0.82 against a 0.8 gate, and then ran **5 h 30 m** — past the round's own 4 h
+timeout — writing nothing into its run directory. The round never graded.
+
+`--model-budget-s` (default: `--qa-timeout`, so the capstone may cost at most what you already
+said one grading step may) is the ceiling on the capsule. Exceeding it stops the grade **and its
+oracle subprocesses** and records `status: budget_exhausted` — in neither the numerator nor the
+denominator, listed by name in the score, and never a verdict on the submission. Pass `0` for no
+ceiling; an operator certification run (`capsule_grade`, no `MERLIN_MODEL_BUDGET_S`) has none by
+default, which is where a capstone is meant to be certified. A run in progress leaves
+`model_grade_started.json` in the capsule's run directory, so a long grade is distinguishable from a
+wedged one.
+
 ## 3. Certify (RTL conformance)
 
 ```bash
@@ -148,4 +168,7 @@ remote `ucb-bar/rvv-mlir`). **A real GitHub push (drop the `file://`) needs an e
   example, adjudicated at `finalize`).
 - Runs are high-variance — compare distributions (n≥3), never a single run; keep round budgets equal
   across arms for a fair comparison.
+- A capsule that was not measured (`not_graded`, `gated`, `screened_only`, `budget_exhausted`) is in
+  neither the numerator nor the denominator, and is listed by name — counting one as a failure makes
+  `all_pass` unreachable and costs the loop its only early exit.
 - Publishing is verified against a `file://` remote; GitHub push is human-gated.

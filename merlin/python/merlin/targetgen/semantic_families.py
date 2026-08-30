@@ -139,13 +139,25 @@ _OP_FAMILY: dict[str, str] = {
     "conv3d": "contraction",
     "depthwise_conv2d": "contraction",
     "convolution": "contraction",
-    # attention: the fused scaled-dot-product pattern and its QK / PV / MX pieces
+    # attention: the FUSED scaled-dot-product pattern is the composite (contraction + reduction +
+    # elementwise_map). Its QK and PV PIECES are not: each is a single reduce-over-k product --
+    # `Q @ K^T` and `P @ V` -- with no reduction and no per-element map, so each is a plain
+    # contraction, differing from a matmul only in that one operand arrives untransposed.
+    #
+    # Calling a piece by the composite's name made it unrunnable on paper. Measured on gemmini:
+    # `C7_attention_qk_i8` (declares `op: attention_qk`) resolved to the `attention` composite, whose
+    # primitives include `reduction`, which the target does not declare -- verdict "target declares no
+    # capability for family 'attention'". The identical computation with K pre-transposed
+    # (`C5_attention_qk_matmul`, `op: matmul`) resolved to `contraction` and passed at the RTL tier.
+    # The hardware was never the constraint: gemmini's contraction capability already declares
+    # `transpose: True`. The taxonomy was.
     "sdpa": "attention",
     "attention": "attention",
-    "attention_qk": "attention",
-    "attention_pv": "attention",
-    "attention_mx": "attention",
     "attention_full": "attention",
+    "attention_qk": "contraction",
+    "attention_pv": "contraction",
+    # the MX-format piece keeps the composite: it carries the scale-block handling, not just a product
+    "attention_mx": "attention",
     # softmax / normalization: reduction + elementwise composites
     "softmax": "softmax",
     "layer_norm": "normalization",

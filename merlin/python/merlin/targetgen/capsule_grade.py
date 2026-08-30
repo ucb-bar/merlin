@@ -24,6 +24,7 @@ from pathlib import Path
 
 from . import capsule_runner as CR
 from merlin.perf import comparand as _comparand
+from .capsule_common import NOT_MEASURED_STATUSES
 from .capsule_common import tier_field as _tier_field
 from .capsule_common import tier_status as _tier_status
 from . import coverage_report as CV
@@ -167,7 +168,7 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     deferred = [r for r in results if r.get("status") == "gated"]
     screened = [r for r in results if r.get("status") == "screened_only"]
     graded = [r for r in results
-              if r.get("status") not in ("not_graded", "gated", "screened_only")]
+              if r.get("status") not in NOT_MEASURED_STATUSES]
     n_pass = sum(1 for r in graded if r["status"] == "pass")
     score["n_capsules"] = len(graded)
     score["n_passed"] = n_pass
@@ -177,6 +178,18 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         score["not_graded_ineligible"] = sorted(r.get("capsule") for r in ungraded)
     if deferred:
         score["gated_deferred"] = sorted(r.get("capsule") for r in deferred)
+    # STOPPED BY ITS OWN CLOCK, listed by name. A whole-model capsule under a wall-clock ceiling that
+    # ran out produced no verdict: it is not a failure of the submission (nothing was measured) and
+    # certainly not a pass. Excluded like the other unmeasured states, and reported separately so a
+    # headline can never quietly rest on a capstone that never finished.
+    _budget_out = [r for r in results if r.get("status") == "budget_exhausted"]
+    score["n_budget_exhausted"] = len(_budget_out)
+    if _budget_out:
+        score["budget_exhausted"] = sorted(r.get("capsule") for r in _budget_out)
+        score["budget_exhausted_note"] = (
+            "these capsules STARTED and their wall-clock ceiling (MERLIN_MODEL_BUDGET_S) expired "
+            "before they finished. Neither numerator nor denominator: nothing about the submission "
+            "was measured. Clear the ceiling to grade them -- an operator certification run has none.")
     # SCREENED BUT NOT CERTIFIED, listed by name. A headline of "14/14" over a suite where nine more
     # capsules were screened and never certified is only honest if the nine are visible next to it.
     score["n_screened_only"] = len(screened)

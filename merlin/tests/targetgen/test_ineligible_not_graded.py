@@ -92,7 +92,13 @@ def test_the_measured_corpora_split_as_expected():
     import pathlib as _p, yaml as _y
     from merlin.targetgen.target_experiment import load_target_experiment
     from merlin.common.paths import repo_root as _rr
-    for target, expect in (("gemmini", 11), ("atlas", 1)):
+    # gemmini withholds its 11 bf16 capsules: no declared capability holds that operand format.
+    # atlas withholds NOTHING -- it declares fp8_e4m3 and bf16, and every capsule in its corpus uses
+    # one of them. This read `("atlas", 1)` and had been failing since a36d9fd0 (2026-08-26, "grade a
+    # rank the compiler can lower away"): the one atlas capsule it counted was withheld on RANK, and
+    # rank stopped withholding three days after this expectation was written. Withholding is now
+    # exactly one fact -- an operand dtype no datapath holds.
+    for target, expect in (("gemmini", 11), ("atlas", 0)):
         te = load_target_experiment(
             str(_p.Path(_rr()) / f"merlin/experiments/capsule_bench/targets/{target}/target_experiment.yaml"))
         caps = []

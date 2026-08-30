@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import threading
+import time
 import traceback as _traceback
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,7 +50,8 @@ from . import trace_check as TCK
 from .contract import compile as oot_compile
 from .contract import schemas
 # shared, target-agnostic capsule I/O (also re-exported: callers use CR.discover_capsules/load_capsule)
-from .capsule_common import (_cat, _flat, discover_capsules, load_capsule,  # noqa: F401
+from .capsule_common import (NOT_MEASURED_STATUSES, _cat, _flat,  # noqa: F401
+                             discover_capsules, load_capsule,
                              make_run_paths, run_entrypoints)
 from .oot_runner import (BackendDeclined, CertFailure, Package, build_package, integrity_scan,
                          load_package, run_entrypoint)
@@ -892,6 +894,35 @@ def _match_by_policy(a: dict, b: dict, policy: dict | None) -> bool:
     return True
 
 
+def _dtype_has_no_datapath(region, cmap, _el) -> tuple[bool, str]:
+    """Is the region's operand dtype absent from EVERY capability this target declares?
+
+    This is the ONLY hard structural fact in an eligibility verdict, and so the only ground on which a
+    capsule may be withheld from a suite. If no datapath holds the operand format, no arrangement of the
+    program puts it on the device.
+
+    The other two axes of the verdict are NOT hard, and both have cost us a real capability:
+
+    * **family** — families compose. Attention on a systolic array is a contraction plus a transposing
+      movement, so "no capability for family X" is not proof the device cannot do X. Measured: a float
+      target PASSED two capsules its contract calls ineligible on family grounds.
+    * **rank** — rank is the one thing a compiler exists to change. A rank-4 convolution reaches a
+      rank-2 mesh through im2col, and this compiler ships that lowering
+      (``convolution_im2col_matmul``). Measured: ``RP14_patch_embed_bf16_pt`` was withheld as
+      "rank 4 not in contraction legal ranks [2, 3]" while the lowering that turns it into a rank-2
+      contraction sat unused in the tree.
+
+    Compares through eligibility's OWN alias-aware check, never string equality: a contract spells the
+    format ``int8`` while a capsule region reports ``i8``, and a raw ``!=`` reads a native-dtype capsule
+    as having no datapath at all.
+    """
+    dt = getattr(region, "in_dtype", None)
+    all_dtypes = tuple({x for cap in cmap.values() for x in (getattr(cap, "dtypes", ()) or ())})
+    if dt is None or not all_dtypes or _el._dtype_ok(dt, all_dtypes):
+        return False, ""
+    return True, f"operand dtype {dt!r} is in no capability this target declares"
+
+
 def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], list[dict]]:
     """Partition op capsules into (to grade, not-gradeable-on-this-target).
 
@@ -931,34 +962,13 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
         # Compare dtypes through eligibility's OWN alias-aware check, never by string equality: the
         # contract spells the format `int8` while a capsule region reports `i8`, so a raw `!=` reads a
         # native-dtype capsule as having no datapath at all and withholds it for a spelling difference.
-        # RANK IS NOT A HARD FACT — it is the one thing a compiler exists to change.
-        #
-        # The dtype test above IS hard: if no datapath holds the operand format, no arrangement of the
-        # program puts it on the device. Rank fails that test by exactly the argument the paragraph above
-        # makes for family. Ranks compose: a rank-4 convolution reaches a rank-2 mesh through im2col, and
-        # this compiler already SHIPS that lowering (`convolution_im2col_matmul` in linalg_lower, which
-        # derives the conv geometry from the operand shapes and emits an (m,k,n) matmul).
-        #
-        # Measured on radiance: RP14_patch_embed_bf16_pt was withheld as "rank 4 not in contraction legal
-        # ranks [2, 3]" and never graded, while the lowering that turns it into a rank-2 contraction sat
-        # in the tree unused. Withholding it did not report a hardware limit — it hid a reachable
-        # capability behind the SOURCE shape of the op, which is the question a library of kernels asks,
-        # not the question a compiler answers.
-        #
-        # So rank now only DOWNGRADES to graded: if the compiler cannot in fact lower it, the capsule
-        # fails honestly and visibly, which is the finding we want. Withholding on doubt is how a suite
-        # shrinks itself into a better score.
-        dt = getattr(region, "in_dtype", None)
-        all_dtypes = tuple({x for cap in cmap.values() for x in (getattr(cap, "dtypes", ()) or ())})
-        dtype_absent = bool(dt is not None and all_dtypes and not _el._dtype_ok(dt, all_dtypes))
+        # See :func:`_dtype_has_no_datapath` for why the dtype is the only hard fact here, and why
+        # family and rank must not withhold. State the fact that ACTUALLY triggered withholding:
+        # eligibility's own reason describes its FAMILY verdict, which would send someone to fix the
+        # taxonomy when the hardware is the constraint.
+        dtype_absent, why = _dtype_has_no_datapath(region, cmap, _el)
         if not dtype_absent:
             keep.append(c); continue
-        # State the fact that ACTUALLY triggered withholding. eligibility's reason describes its own
-        # family verdict, which can read "unrecognized semantic family" for a capsule withheld purely
-        # because its dtype has no datapath -- true but misleading about the cause, and it would send
-        # someone to fix the taxonomy when the hardware is the constraint.
-        # Only the dtype reaches here now; rank is graded (see above), so the reason cannot be about it.
-        why = f"operand dtype {dt!r} is in no capability this target declares"
         withheld.append({
             "capsule": c.get("name"), "kind": c.get("kind"), "label": c.get("label"),
             "status": "not_graded", "ineligible": True,
@@ -972,10 +982,18 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
 def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
     """Whether a graded op-capsule result belongs in the whole-model gate's denominator.
 
-    True unless the capsule is provably ineligible for this target -- i.e. the contract declares no
-    capability covering its family/dtype, so no compiler could ever make it pass. Fails OPEN (counts the
-    capsule) whenever eligibility cannot be decided: an undetermined region must not be silently dropped
-    from a gate, which would make the gate easier to satisfy than the evidence warrants.
+    True unless the capsule is provably ineligible -- and "provably" means the SAME hard structural fact
+    that :func:`_split_ineligible` uses to withhold a capsule from the suite: no declared capability
+    holds its operand dtype. Fails OPEN whenever that cannot be decided.
+
+    These two ran different tests and disagreed. This read the raw ``is_eligible`` verdict, so a capsule
+    whose FAMILY the taxonomy cannot name was dropped from the gate denominator while the suite graded
+    it and counted it in the score. Measured on gemmini: ``C7_attention_qk_i8`` (declared
+    ``op: attention_qk``, which the taxonomy maps to the ``attention`` composite) was excluded here,
+    lifting the gate fraction from 18/23 = 0.78 to 18/22 = 0.82 and launching a whole-model capstone
+    that should have deferred -- a five-and-a-half-hour simulation inside a four-hour round. Meanwhile
+    the identical computation spelled ``op: matmul`` (``C5_attention_qk_matmul``) counted normally.
+    One test, used by both, or the suite and its gate are scoring different corpora.
     """
     name = result.get("capsule")
     cap = next((c for c in capsules if c.get("name") == name), None)
@@ -986,12 +1004,14 @@ def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
         cmap = _el.capability_map_for_target(target)
         if not cmap:
             return True
-        verdict = _el.is_eligible(_cr._capsule_region(cap), cmap)
+        region = _cr._capsule_region(cap)
+        verdict = _el.is_eligible(region, cmap)
     except Exception:                                     # noqa: BLE001 - a gate must not crash a grade
         return True
-    if getattr(verdict, "undetermined", False):
+    if getattr(verdict, "undetermined", False) or getattr(verdict, "eligible", True):
         return True
-    return bool(getattr(verdict, "eligible", True))
+    dtype_absent, _why = _dtype_has_no_datapath(region, cmap, _el)
+    return not dtype_absent
 
 
 
@@ -1294,8 +1314,163 @@ def _model_tier_map(declared: list[str], target: str | None, model_exec: dict | 
     return tiers
 
 
+def model_budget_seconds() -> float | None:
+    """Wall-clock ceiling for ONE whole-model capsule, or ``None`` for unlimited (the default).
+
+    Unlimited is the right default for an operator certification run: a whole model on a
+    cycle-accurate oracle legitimately takes hours, and a ceiling that silently truncates it would
+    hide coverage rather than buy anything. It is the WRONG default inside an agent loop's per-round
+    gate, which is why the loop sets one explicitly.
+
+    The ``timeout`` threaded through this file is a PER-STEP subprocess ceiling. A whole-model grade
+    makes many such calls, so their sum is unbounded and a step timeout can never bound the capsule.
+    MEASURED (2026-08-29, gemmini arm-4 calibration ``merlincirct_defcal1``): the agent round finished
+    in 40 min, the capstone then ran 5 h 30 m past the round's own 4 h timeout, wrote not one byte into
+    its run directory, and the round never graded. Its own step timeout was 900 s.
+    """
+    raw = os.environ.get("MERLIN_MODEL_BUDGET_S", "").strip()
+    if not raw:
+        return None
+    try:
+        v = float(raw)
+    except ValueError:
+        return None
+    return v if v > 0 else None
+
+
+def _descendants(pid: int) -> list[int]:
+    """Every live descendant of *pid*, deepest first, read from /proc.
+
+    Must be collected BEFORE any signal is sent: once a process is orphaned its parent link is gone.
+    A process GROUP is not enough. MEASURED (2026-08-30): a budgeted whole-model grade's Verilator
+    child had called ``setsid`` of its own, so it sat in neither the grade child's group nor its
+    session; ``killpg`` reaped the python and left the simulator running with PPID 1, holding a core
+    on a shared host.
+    """
+    kids: dict[int, list[int]] = {}
+    try:
+        entries = list(Path("/proc").iterdir())
+    except OSError:
+        return []
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            # /proc/<pid>/stat is "pid (comm) state ppid ..."; comm may itself contain spaces and
+            # parentheses, so split after the LAST ')' rather than on whitespace from the left.
+            ppid = int((entry / "stat").read_text().rpartition(")")[2].split()[1])
+        except (OSError, ValueError, IndexError):
+            continue
+        kids.setdefault(ppid, []).append(int(entry.name))
+    out: list[int] = []
+    frontier = list(kids.get(pid, ()))
+    while frontier:
+        out.extend(frontier)
+        frontier = [g for p in frontier for g in kids.get(p, ())]
+    out.reverse()                                  # deepest generation first
+    return out
+
+
+def _running(pid: int) -> bool:
+    """True while *pid* is a live process. A ZOMBIE is not: it has exited and merely awaits a wait(),
+    so ``/proc/<pid>`` still exists and a liveness check written that way waits out its whole grace."""
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text().rpartition(")")[2].split()[0]
+    except (OSError, IndexError):
+        return False
+    return state != "Z"
+
+
+def _kill_tree(pid: int, *, grace: float = 5.0) -> None:
+    """SIGTERM then SIGKILL *pid* and every descendant it had when we looked."""
+    import signal as _signal
+    victims = _descendants(pid) + [pid]
+    for sig in (_signal.SIGTERM, _signal.SIGKILL):
+        for victim in victims:
+            try:
+                os.kill(victim, sig)
+            except OSError:                        # already gone, or not ours
+                pass
+        try:                                       # and the group, for anything spawned since the scan
+            os.killpg(os.getpgid(pid), sig)
+        except OSError:
+            pass
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            if not any(_running(v) for v in victims):
+                return
+            time.sleep(0.1)
+
+
 def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int,
-                         package_dir: str | Path | None = None) -> dict:
+                         package_dir: str | Path | None = None,
+                         budget_s: float | None = None) -> dict:
+    """Grade a whole-model capsule, under a wall-clock budget when one is set.
+
+    ``budget_s`` (default: :func:`model_budget_seconds`) is a ceiling on the CAPSULE, not on a step.
+    Exceeding it is reported as ``budget_exhausted`` with the elapsed time: a budget that ran out is
+    the absence of evidence, so it is neither a pass nor a fail of the submission and sits in neither
+    side of the score (see ``NOT_MEASURED_STATUSES``). With no budget the grade runs inline, exactly
+    as before.
+
+    A budgeted grade runs in a CHILD PROCESS in its own session. Two reasons, both load-bearing: an
+    in-process call cannot be interrupted (this runs on a ThreadPool worker, so signals are out), and
+    the grade spawns oracle subprocesses (verilator, spike) that must die with it -- killing only the
+    direct child leaves them competing for the CPU the next capsule needs. A plain subprocess rather
+    than ``multiprocessing``: ``spawn`` re-imports the caller's ``__main__`` (the harness entry points
+    are scripts, so that re-runs them) and ``fork`` is unsafe from a thread.
+    """
+    budget = model_budget_seconds() if budget_s is None else budget_s
+    if not budget or budget <= 0:
+        return _grade_model_capsule_inline(capsule, target=target, timeout=timeout,
+                                           package_dir=package_dir)
+
+    import subprocess as _sp
+    import tempfile as _tf
+
+    def _stopped(detail: str, status: str = "incomplete", **extra) -> dict:
+        return {"capsule": capsule["name"], "kind": "model", "label": capsule.get("label"),
+                "contract_version": CONTRACT_VERSION, "status": status, **extra,
+                "failure": {"plane": "model", "category": "NOT_RUN_IS_NOT_PASS", "detail": detail}}
+
+    with _tf.TemporaryDirectory(prefix="model_grade_") as _td:
+        spec_p, out_p = Path(_td) / "spec.json", Path(_td) / "result.json"
+        spec_p.write_text(json.dumps({"capsule": capsule, "target": target, "timeout": timeout,
+                                      "package_dir": str(package_dir) if package_dir else None}),
+                          encoding="utf-8")
+        cmd = [sys.executable, "-m", "merlin.targetgen.capsule_runner",
+               "--model-grade", str(spec_p), "--model-grade-out", str(out_p)]
+        started = time.monotonic()
+        proc = _sp.Popen(cmd, stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True,
+                         env=dict(os.environ), start_new_session=True)
+        try:
+            tail = (proc.communicate(timeout=budget)[0] or "")[-2000:]
+        except _sp.TimeoutExpired:
+            elapsed = time.monotonic() - started
+            _kill_tree(proc.pid)
+            try:
+                proc.wait(timeout=10)
+            except _sp.TimeoutExpired:
+                pass
+            # `budget_exhausted`, not `incomplete`: nothing about the submission was measured, so it
+            # belongs in neither bucket. Scoring it as a failure would make all_pass unreachable and
+            # cost an agent loop its only early exit -- see NOT_MEASURED_STATUSES.
+            return _stopped(
+                f"whole-model grade exceeded its {budget:.0f}s budget (ran {elapsed:.0f}s) and was "
+                f"stopped. Raise MERLIN_MODEL_BUDGET_S, or clear it for no ceiling, to grade it. "
+                f"NOT a verdict on the submission.",
+                status="budget_exhausted", model_budget_s=budget, elapsed_s=round(elapsed, 1))
+        if not out_p.is_file():
+            return _stopped(f"whole-model grade process exited {proc.returncode} without a "
+                            f"result: {tail[-400:]}")
+        try:
+            return json.loads(out_p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return _stopped(f"whole-model grade result unreadable: {type(exc).__name__}: {exc}")
+
+
+def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, timeout: int,
+                                package_dir: str | Path | None = None) -> dict:
     """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
     (``compile_model``): route each op across the target's compute units (matmul/systolic -> the mesh, the
     rest -> the vector/scalar lane), compile the functional whole model (the scalar/RVV reference,
@@ -1900,8 +2075,20 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
     # same capsule_result.json shape so downstream reporting is uniform.
     if capsule.get("kind") == "model":
+        # LEAVE A TRACE BEFORE THE LONG PART. A whole-model grade can legitimately run for hours, and
+        # with nothing written until it finishes an operator cannot tell a working run from a wedged
+        # one -- which is exactly how a 5h30m stall was read as progress. Written first, so the run
+        # directory says what started, when, and under what ceiling.
+        _budget = model_budget_seconds()
+        paths.run_path.mkdir(parents=True, exist_ok=True)
+        (paths.run_path / "model_grade_started.json").write_text(json.dumps({
+            "capsule": name, "started_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+            "model_budget_s": _budget, "step_timeout_s": timeout,
+            "note": "whole-model capsule; absent capsule_result.json means it is still running or "
+                    "was killed",
+        }, indent=2), encoding="utf-8")
         result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout,
-                                      package_dir=package_dir)
+                                      package_dir=package_dir, budget_s=_budget)
         (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         # Persist the ARR coverage certificate as its own durable artifact (not only inside
         # capsule_result.json) so the report/grader can read it back per compilation.
@@ -2656,7 +2843,7 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     # evidence for nor against. Unlike an ERROR (which used to slip out of here unexplained), this is an
     # opt-in choice whose coverage is guaranteed by the covering set and whose members are listed.
     graded = [r for r in op_results
-              if r.get("status") not in ("not_graded", "gated", "screened_only")]
+              if r.get("status") not in NOT_MEASURED_STATUSES]
     eligible = [r for r in graded if _gate_counts(r, capsules, target)]
     denom = eligible or graded          # fall back rather than divide by zero if nothing is classifiable
     frac = (sum(1 for r in denom if r.get("status") == "pass") / len(denom)) if denom else 0.0
@@ -2690,6 +2877,22 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
+    # The child half of a BUDGETED whole-model grade (see _grade_model_capsule). Parsed before the
+    # normal arguments because it shares none of them: the whole invocation is one spec file in and
+    # one result file out, so the parent can kill the process group without losing what it knows.
+    _av = list(sys.argv[1:] if argv is None else argv)
+    if "--model-grade" in _av:
+        sub = argparse.ArgumentParser(add_help=False)
+        sub.add_argument("--model-grade", required=True)
+        sub.add_argument("--model-grade-out", required=True)
+        sa, _ = sub.parse_known_args(_av)
+        spec = json.loads(Path(sa.model_grade).read_text(encoding="utf-8"))
+        res = _grade_model_capsule_inline(spec["capsule"], target=spec.get("target"),
+                                          timeout=int(spec["timeout"]),
+                                          package_dir=spec.get("package_dir"))
+        Path(sa.model_grade_out).write_text(json.dumps(res, indent=2), encoding="utf-8")
+        return 0
+
     ap = argparse.ArgumentParser(description="capsule_bench_v0 runner")
     ap.add_argument("--package", required=True)
     ap.add_argument("--capsule", help="path to a single capsule dir")

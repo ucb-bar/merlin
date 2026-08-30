@@ -411,15 +411,33 @@ def test_generated_capsules_carry_their_generalization_block():
     now stamped at the one point every writer passes through."""
     import yaml
     caps = repo_root() / "merlin" / "contract" / "capsules"
-    for sub in ("isa", "atlas", "radiance"):
-        for f in sorted((caps / sub).rglob("capsule.yaml")):
+    # EVERY capsule root, not the three subdirs this used to scan. The declaration<->op consistency
+    # rule is what keeps a capsule from being judged against capabilities its computation never needs,
+    # and the trap it exists to catch shipped in `model_slices` and in the harness's public corpus --
+    # both outside the old scan. Measured: four capsules across three targets declared
+    # `semantic_family: attention` with `op: attention_qk`, so each was judged as the fused composite,
+    # inherited a `reduction` primitive no mesh here declares, and read ineligible on paper while the
+    # identical computation spelled `op: matmul` passed at the RTL tier.
+    roots = [caps, repo_root() / "merlin/experiments/capsule_bench/harness/full_public_capsules"]
+    seen = 0
+    for root in roots:
+        for f in sorted(root.rglob("capsule.yaml")):
             c = yaml.safe_load(f.read_text()) or {}
             sem = c.get("semantic") or {}
-            assert sem.get("generalization_axis"), f"{c.get('name')}: no generalization block"
+            if root is caps and f.relative_to(caps).parts[0] not in ("isa", "atlas", "radiance"):
+                pass                                   # generalization block only stamped on those
+            elif not sem:
+                continue
+            else:
+                assert sem.get("generalization_axis"), f"{c.get('name')}: no generalization block"
             fam, op = sem.get("semantic_family"), (c.get("operation") or {}).get("op")
             derived = sf.from_op(op)
             if fam and derived:
-                assert fam == derived, f"{c.get('name')}: declares {fam!r}, op derives {derived!r}"
+                seen += 1
+                assert fam == derived, (
+                    f"{c.get('name')} ({f}): declares {fam!r}, op {op!r} derives {derived!r} — a "
+                    f"declaration coarser than the computation makes the capsule unrunnable on paper")
+    assert seen > 50, f"the scan collapsed to {seen} capsules; it is no longer a corpus-wide gate"
 
 
 # --- a headline recall must say WHICH families it is a claim about --------------------------------

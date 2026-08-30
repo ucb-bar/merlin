@@ -93,6 +93,12 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
     # the caller set it explicitly (None), so a batch that does not mention it stays byte-identical.
     if getattr(a, "plateau_rounds", None) is not None:
         cmd += ["--plateau-rounds", str(a.plateau_rounds)]
+    # The whole-model capsule's wall-clock ceiling, forwarded like the two above (only when set, so an
+    # older driver in the batch is invoked exactly as before). Without a ceiling a capstone that clears
+    # its op-pass gate runs a cycle-accurate simulation of the entire model inside the round grade --
+    # measured at 5h30m past a round's own 4h timeout, with the round never grading.
+    if getattr(a, "model_budget_s", None) is not None:
+        cmd += ["--model-budget-s", str(a.model_budget_s)]
     cmd += extra
     # Agent driver + optional tier-within-agent models (default "" -> the per-driver default tier).
     if getattr(a, "driver", "auto") != "auto":
@@ -224,6 +230,9 @@ def main(argv=None):
                          "still failing (0 = disabled). Passed through to the arm driver.")
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
     ap.add_argument("--round-timeout", type=int, default=14400, help="per-round agent wall cap (s); large = effectively no timeout")
+    ap.add_argument("--model-budget-s", type=int, default=None,
+                    help="wall-clock ceiling for ONE whole-model capsule inside a round grade (s). "
+                         "Unset = the driver's default; 0 = no ceiling.")
     ap.add_argument("--max-spend-usd", type=float, default=0.0,
                     help="batch DOLLAR ceiling across ALL arms (0=off). Each arm appends its per-round cost "
                          "to a shared ledger and stops before its next round once the total crosses this "

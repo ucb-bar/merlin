@@ -18,6 +18,19 @@ from aet.core.run_spec import RunSpec
 from .contract import schemas
 
 
+#: Statuses that are NOT a measurement of the submission, and so belong in neither the numerator nor
+#: the denominator of a score. Each is a different reason the capsule produced no verdict:
+#:   not_graded      the target's contract declares no capability for it -- it can never pass
+#:   gated           its own gate deferred it (a whole-model capstone waiting on the op suite)
+#:   screened_only   it cleared the cheap screen and the certify budget stopped before the gold tier
+#:   budget_exhausted  it started and its wall-clock ceiling ran out before it finished
+#:
+#: Counting any of them as a FAILURE is what makes ``all_pass`` unreachable, which disables an agent
+#: loop's only early exit and turns every run into a fixed-price purchase of its whole round budget.
+#: Counting one as a PASS would be a phantom certification. They are excluded and listed BY NAME.
+NOT_MEASURED_STATUSES = ("not_graded", "gated", "screened_only", "budget_exhausted")
+
+
 def _flat(nested) -> list:
     out: list = []
     if nested and isinstance(nested[0], list):

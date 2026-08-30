@@ -1438,6 +1438,15 @@ def main(argv: list[str] | None = None) -> int:
                          "rate-limit-boundary exposure, and can cut a productive round mid-fix (rc=124). "
                          "The original abc runs used 4h and converged in ~1 productive round.")
     ap.add_argument("--qa-timeout", type=int, default=900)
+    ap.add_argument("--model-budget-s", type=int, default=None,
+                    help="wall-clock ceiling for ONE whole-model capsule inside a round grade (s). "
+                         "Default: --qa-timeout, i.e. the capstone may cost at most what this operator "
+                         "already said one grading step may. --qa-timeout itself is a PER-STEP "
+                         "subprocess cap and a whole-model grade makes many such calls, so it cannot "
+                         "bound the capsule. MEASURED: with no ceiling the gemmini capstone ran 5h30m "
+                         "past its round's own 4h timeout, wrote nothing, and the round never graded. "
+                         "0 = no ceiling (an operator certification run wants that; a per-round gate "
+                         "does not).")
     ap.add_argument("--continuous", action="store_true",
                     help="CONTINUOUS mode: one long-lived agent session instead of round relaunches. "
                          "A background grader re-grades the workspace every --grade-interval seconds and "
@@ -1492,6 +1501,14 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSING: a real run requires --sandbox bwrap (or explicit --allow-unsandboxed). "
               "Workspace assembly alone does not hide denied absolute paths.", file=sys.stderr)
         return 4
+    # BOUND THE CAPSTONE. The round grade includes any whole-model capsule whose op-pass gate is met,
+    # and that grade is unbounded by --qa-timeout (a per-step cap, not a per-capsule one). Set the
+    # ceiling the runner reads before any grading happens; 0 clears it for an unlimited operator run.
+    _mb = a.qa_timeout if a.model_budget_s is None else a.model_budget_s
+    if _mb:
+        os.environ["MERLIN_MODEL_BUDGET_S"] = str(_mb)
+    else:
+        os.environ.pop("MERLIN_MODEL_BUDGET_S", None)
     arm = a.arm
     global _EXPERIMENT, _ARM, _DRIVER, _SUBAGENT_MODEL, _BACKGROUND_MODEL, _ADD_TOOLS, _DROP_TOOLS
     _EXPERIMENT = a.experiment

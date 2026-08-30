@@ -468,3 +468,26 @@ def test_an_unsupported_tiering_request_is_recorded_rather_than_silently_dropped
     records = [json.loads(l) for l in tpath.read_text().splitlines() if l.strip()]
     init = _by_type(records, "system")[0]
     assert init["tiering_requested_but_unsupported"] is True
+
+
+# --- the last message must survive the sandbox -------------------------------------------------
+# MEASURED (gemmini arm-4 calibration, 2026-08-29): every sandboxed round logged
+#   Failed to write last message file ".../round_00.final.txt": No such file or directory (os error 2)
+# because `-o` pointed under the run directory, which is on /scratch -- and the sandbox tmpfs-hides
+# /scratch* on purpose. The read is guarded, so nothing failed: the round's `result` was just empty.
+
+def test_the_last_message_target_is_writable_inside_the_sandbox(tmp_path):
+    ws = tmp_path / "ws"
+    final = tmp_path / "run" / "rounds" / "round_03.final.txt"
+
+    inner = CA.last_message_path(ws, final, "bwrap")
+    assert ws in inner.parents, "the sandbox hides /scratch*; the workspace is the writable tree"
+    assert inner.name == final.name
+
+    assert CA.last_message_path(ws, final, "none") == final
+
+
+def test_an_unsandboxed_round_still_recovers_its_final_message(tmp_path):
+    _rc, tpath, records = _run(tmp_path, _fake_codex(tmp_path, _stream(), final="ALL DONE"))
+    assert (tpath.parent / "round_00.final.txt").read_text().strip() == "ALL DONE"
+    assert _by_type(records, "result")[0]["result"].strip() == "ALL DONE"
