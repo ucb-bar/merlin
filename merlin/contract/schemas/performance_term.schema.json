@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/contract/performance_term.schema.json",
+  "title": "Performance term",
+  "description": "One quantity in a performance record, carrying what evidence produced it, over what regime it is claimed, and whether it is known at all. UNKNOWN is a distinct inhabited state spelled as the string \"UNKNOWN\" -- NEVER as 0, null or a missing key, each of which a consumer can read as a number. A term whose value is \"UNKNOWN\" must carry unknown_reason. Implemented by merlin.perf.term.PerformanceTerm.",
+  "type": "object",
+  "required": ["name", "value", "unit", "provenance", "confidence", "validity", "bounds"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What this term quantifies, e.g. total_cycles / dma_busy_cycles / moved_bytes. Kept identical across targets so a target-vs-target diff is trivial."
+    },
+    "value": {
+      "description": "The quantity, or the token \"UNKNOWN\". Booleans and null are rejected: a bool priced as 1 and a null read as 0 are both fabricated numbers.",
+      "oneOf": [
+        {"type": "number"},
+        {"const": "UNKNOWN"}
+      ]
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The unit the value is in (cycles, bytes, ratio, ...). Required: an unlabelled number is not a measurement."
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Where the value came from. The kind vocabulary is merlin.dse_guidance.evidence.EVIDENCE_TYPES, strongest to weakest, shared with the DSE-guidance layer so confidence is one scale across the repo.",
+      "required": ["kind", "evidence"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["measured", "trace_derived", "calibrated", "structural_bound", "analytical", "assumed"]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1},
+          "description": "The specific things the value rests on: source ids declared in the record, files, derivations. Required and non-empty -- a term that names nothing cites nothing. Naming a source the record declares with role 'diagnostic' is rejected by merlin.perf.record."
+        }
+      },
+      "additionalProperties": false
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence WEIGHT, defaulted from the provenance kind (merlin.dse_guidance.evidence.confidence_for). A ranking weight, not an accuracy claim."
+    },
+    "validity": {
+      "type": "object",
+      "description": "The regime over which the value is claimed to hold. Field-shape-compatible with ModeLIR's mlc/validate/fidelity.py::FidelityContract so the two can be converted once enough real terms exist to say what the unified lattice is (the unification is deliberately deferred).",
+      "required": ["validated_regime"],
+      "properties": {
+        "validated_regime": {"type": "string", "minLength": 1, "description": "Where the value was actually established. Required: a value with no stated domain is a value claimed everywhere."},
+        "expected_error": {"type": "string", "description": "The error to expect inside the validated regime."},
+        "weak_regime": {"type": "string", "description": "Where the value is known to degrade, stated rather than discovered later."},
+        "escalate_when": {"type": "string", "description": "The predicate under which this term must not be used and a stronger measurement is required."}
+      },
+      "additionalProperties": false
+    },
+    "bounds": {
+      "type": "object",
+      "description": "Admissible range. Either end may be \"UNKNOWN\", which is NOT an infinity -- 'no bound was derived' must not read as 'the bound is infinite', because a comparison against infinity always passes.",
+      "required": ["lower", "upper"],
+      "properties": {
+        "lower": {"oneOf": [{"type": "number"}, {"const": "UNKNOWN"}]},
+        "upper": {"oneOf": [{"type": "number"}, {"const": "UNKNOWN"}]}
+      },
+      "additionalProperties": false
+    },
+    "unknown_reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Why the value could not be established. REQUIRED when value is \"UNKNOWN\" and forbidden otherwise: 'not established' and 'nobody looked' demand different follow-up, and only the reason separates them."
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {"properties": {"value": {"const": "UNKNOWN"}}, "required": ["value"]},
+      "then": {"required": ["unknown_reason"]},
+      "else": {"not": {"required": ["unknown_reason"]}}
+    }
+  ]
+}
