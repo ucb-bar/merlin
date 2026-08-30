@@ -534,3 +534,34 @@ artifacts:
       WHAT IT DOES NOT FIX. The 1 MiB DRAM window that silently wraps is a property of the harnesses and
       is present on every Atlas tier; elaborating this FIRRTL neither introduces nor repairs it. A result
       whose footprint approaches that window is suspect regardless of which simulator produced it.
+
+  atlas_core_hw_dialect:
+    description: >-
+      The elaborated HW-dialect MLIR that RTL fact extraction and the per-module pipeline-depth walk both
+      read. Pipeline depths are counted by walking this graph, so a depth is a claim about THIS
+      elaboration -- the same RTL at the same commit yields different depths when elaboration parameters
+      change, because a pipeline-cut count is a constructor parameter and the derived latency is
+      literally numPipeCuts+1.
+    root_env: MERLIN_MLC_DIR
+    path: runs/circt-arc/atlas/outputs/atlas_hw.mlir
+    digest: "d0b4135afad84c6ac2c8f8cfe53129f5582f90c3931e8f1dc1becee6d9ae43d0"
+    built_from:
+      - muon_arc_model
+      - atlas_npu
+    config: circt-arc elaboration
+    notes: >-
+      A MEASUREMENT PRODUCT, so it is pinned by digest rather than by commit, for the same reason the arc
+      cycle table is: the commit names a recipe that does not determine this output.
+      IT IS NOT THE FILE THE CACHED FACTS CLAIM TO HAVE READ, and that gap is the reason this entry
+      exists. Two different resolvers are in play. `circt_introspect._soc_hw_path()` builds a cache-dir
+      path `<target>_soc.hw.mlir` that its own docstring calls a legacy fallback; for atlas that file does
+      not exist anywhere, so `_sha()` returned nothing and the cached facts record
+      `inputs.hw_mlir: "atlas_soc.hw.mlir"`, `inputs.hw_sha: "missing"`. Meanwhile
+      `mlc_bridge.core_hw_mlir()` globs mlc's arc outputs and resolves THIS file, which is what discovery
+      and the depth walk actually consume. So the facts name an input they did not read and do not name
+      the input they did. Pinning the real one is half the fix; making `inputs` record it is the other
+      half, and that half is not done.
+      CONSEQUENCE FOR ANY VALIDITY DOMAIN. A performance term derived from these facts cannot yet state
+      which elaboration it is valid for, because the artifact does not carry that field. Until `inputs`
+      records the resolved dialect, a term's domain is asserted rather than evidenced -- and this pin is
+      the only place the true input is written down.
