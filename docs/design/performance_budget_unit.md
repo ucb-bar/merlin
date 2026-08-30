@@ -36,22 +36,56 @@ Producing the `kernel.S` that those queries evaluate costs, per run,
 `merlincirct_atlassg1`, took 31,061 s / 222 M tokens / $147 notional). A complete 14-capsule
 L3+L4 sweep is ~68 s of serial wall.
 
-> **The oracle is 0.2-0.4% of the cost of producing one Atlas performance datapoint.**
+> **At capsule scale, the oracle is 0.2-0.4% of the cost of producing one Atlas datapoint.**
+
+## The regime this measures, and the regime that matters
+
+That ratio is real but it is **scoped to the corpus it was measured on, and that corpus is
+toy-scale.** The largest tensor anywhere in the Atlas capsule corpus is 5,400 elements; nearly
+every capsule is a 32x32 tile halting in 178-2,614 cycles. Wall time was small because the work
+was trivial, not because the simulators are fast.
+
+The rates say so plainly. **0.255 ms/cycle is ~4,000 cycles/s**, which is *slow* for Verilator;
+arc's 3.63 ms/cycle is ~275 cycles/s. Neither is a fast simulator. On a 32x32 tile that does not
+matter. On a model layer it decides everything: the same linear law that gives a 0.28 s query at
+1,090 cycles gives hours at layer scale.
+
+**Pricing a scaling behaviour from a single regime is the error this repo has already recorded
+once** — a tiled matrix unit cannot be priced by one `macs_per_cycle`, because cost is a rate term
+plus a fixed overhead and one point cannot separate them. Taking a toy-scale ratio as the budget
+verdict repeats it at the level of the experiment design.
 
 ## The decision
 
-**The scarce unit on Atlas is the agent synthesis call, not the simulator query.** Budgeting,
-value-of-information ranking and convergence curves are denominated in synthesis calls and
-dollars. A query-budget mechanism denominated in simulations would ration the cheapest thing in
-the loop while ignoring the expensive one.
+**Which unit is scarce is regime-dependent, and the honest answer needs both regimes measured.**
+At capsule scale the synthesis call dominates by two to three orders of magnitude and simulation
+is free. At layer scale the same law projects hours per arc query, and the comparison may invert.
+The verdict is therefore recorded as: *scarce unit at capsule scale = synthesis call; scarce unit
+at layer scale = pending measurement*, and the search machinery must read the unit from
+measurement rather than bake one in.
 
-This is target-dependent and must stay so. The same machinery on Radiance faces GSIM at ~115 s
-and Verilator at ~45 min per kernel, where simulation genuinely is scarce. What generalizes is
-the rule: **measure the tiers, then ration whichever is actually scarce** — never assume.
+What generalizes is the rule, not the number: **measure the tiers in the regime you will actually
+work in, then ration whichever is scarce there** — never assume, and never extrapolate a cost
+ratio across two decades of problem size without saying so.
 
-Consequence for search: cheap evaluation is not a constraint on Atlas, so exhaustive or
-near-exhaustive evaluation of a small candidate space is affordable, and the selection problem
-is about spending synthesis calls well.
+The same machinery on Radiance faces GSIM at ~115 s and Verilator at ~45 min per kernel, where
+simulation is scarce even at capsule scale.
+
+## The corpus cannot answer the question it is being asked
+
+The deeper finding behind the regime problem: **there is no layer-scale Atlas workload anywhere.**
+The 21 perf-eligible capsules are 32x32 tiles; the 25 shipped npu_model Programs bind a static
+`.S` at class-definition time with hardcoded immediates, so a new shape is a hand-written
+assembly file; and the "full model shapes" the program docstrings cite ([241,960], 1024x3072,
+(50,720)) have no program, no golden and no run. `ParameterizedMatmul32x32x32Program` and its
+siblings are referenced only by merlin's orphaned `dse/calibrate_npu.py` and **do not exist** in
+npu_model at all, which is independent confirmation that that file is dead.
+
+So layer-scale performance work has a prerequisite: the layer-scale workloads must be generated,
+and the only thing on hand that can generate them is merlin's own emitter, which produces
+`kernel.S` word streams for an arbitrary command buffer. That makes "predict cycles at a shape
+merlin emitted" the primary experiment and "recover a fraction of a shipped reference" the
+secondary one, because off the 21-capsule corpus **no reference implementation exists to recover**.
 
 ## Two numbers that were wrong, and why
 
