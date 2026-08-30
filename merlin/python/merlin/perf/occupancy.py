@@ -283,7 +283,14 @@ def joint_counts(hot: Mapping[str, Sequence[bool]],
             ovl += 1
         if len({kinds[c] for c in live if c in kinds}) >= 2:
             ovl_kind += 1
+    # Overlap needs two things that can overlap. A vector with fewer than two live columns reports
+    # zero by construction -- arithmetically right and evidentially empty -- and that zero is
+    # indistinguishable from a machine that genuinely serialises unless the distinction is carried.
+    # A column that is constant across the run is not live: nothing was observed of it either way.
+    live = [c for c in cols if any(hot[c]) and not all(hot[c])] or [c for c in cols if any(hot[c])]
     return {"sampled_cycles": n, "joint_columns": cols, "subsumed_columns": subsumed,
+            "overlap_observable": len(live) >= 2,
+            "live_columns": live,
             "busy": {c: sum(hot[c]) for c in hot}, "idle_cycles": idle, "overlap_any": ovl,
             "overlap_across_kinds": ovl_kind,
             "overlap_across_kinds_is_lower_bound": bool(undeclared),

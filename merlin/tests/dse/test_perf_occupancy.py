@@ -273,3 +273,26 @@ class TestGeneralisesAcrossRealTargets:
         from merlin.perf.occupancy import declared_engines
         eng = declared_engines(self._contract("saturn"))
         assert len(eng) >= 2 and not any(r["contains"] for r in eng.values())
+
+
+class TestOverlapObservability:
+    """Zero overlap from a vector that could not have shown overlap is not a measurement."""
+
+    def test_a_single_live_column_cannot_observe_overlap(self):
+        out = joint_counts(_cols(only="1100"))
+        assert out["overlap_any"] == 0
+        assert out["overlap_observable"] is False      # the zero is empty, not evidence
+
+    def test_a_column_that_never_fires_does_not_make_overlap_observable(self):
+        # The measured case: two controllers constant at idle while a third does all the work.
+        out = joint_counts(_cols(active="1100", dark="0000", also_dark="0000"))
+        assert out["live_columns"] == ["active"]
+        assert out["overlap_observable"] is False
+
+    def test_two_live_columns_make_a_zero_meaningful(self):
+        out = joint_counts(_cols(a="1100", b="0011"))
+        assert out["overlap_any"] == 0 and out["overlap_observable"] is True
+
+    def test_and_a_real_overlap_is_still_reported(self):
+        out = joint_counts(_cols(a="1100", b="0110"))
+        assert out["overlap_any"] == 1 and out["overlap_observable"] is True
