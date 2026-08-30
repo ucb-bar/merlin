@@ -15,6 +15,41 @@ Rationale for the cost decisions: `docs/design/performance_budget_unit.md`.
 
 ---
 
+## The deliverable is TOOLS, not findings
+
+Everything in this register that reads as an Atlas fact was derived **by hand, in one session**. That
+is the failure mode this program exists to end: a target should be onboarded by *running tooling*, not
+by an agent re-deriving "is this DMA-bound?", "where is the headroom?", "which capsules are the right
+instrument?" from scratch each time.
+
+So the rule for every task below:
+
+> **Ship a generic, trait-gated analysis. The Atlas numbers already measured are its regression
+> fixtures — the tool is wrong if it does not reproduce them, and overfit if it cannot produce a
+> different, correct answer for a second target.**
+
+Gating is on **traits**, never on archetype and never on a target name (`archetype` is only a prior —
+it decides *which questions to ask*; the RTL-derived traits decide *which of them apply*). The
+no-target-name gate over `merlin/python/merlin/**` enforces this by construction.
+
+| hand-derived today | becomes | trait that gates it | must reproduce (Atlas) |
+|---|---|---|---|
+| "Atlas is DMA-bound, 60–93.7%" | `perf/decompose.py` — bottleneck decomposition from any per-unit activity source | target exposes a per-unit activity decomposition | matmul dma 86.2% / mxu 6.6% |
+| "overlap headroom is 14.7%, not 2×" | `perf/headroom.py` — Amdahl bound `min(a,b)` over any concurrency-capable resource pair | ≥2 engines with independent ports + explicit completion | 4,457 cyc total; gelu_tanh 23.9%; matmul 6.6% |
+| "amplification is 9–28×" | `perf/amplification.py` — bytes moved vs bytes useful | explicit DMA / managed scratchpad | matmul 16.0×, rms_norm 24.0×, gelu_tanh 28.0× |
+| "these 12 capsules are the optimize set" (N22) | `perf/workload_roles.py` — classify each workload by dominant term and available headroom | any target with a cost decomposition | the 12/1/3 OPTIMIZE / dma-calib / fixed-calib split |
+| "cost = a + b·cycles + c·words" (R0.1b) | `perf/oracle_cost.py` — two-term fit **plus the isolation protocol** (a program whose first word is the halt separates the load term) | any substrate that runs a program | L4 0.131 ms/cyc, L3 1.553; 2.8% median error on held-out |
+| "these RTL facts matter" | `perf/feature_rules.py` + `merlin/contract/perf_rules/*.yaml` | — (it *is* the registry) | emits exactly the experiment set that re-derives DIM, `2·DIM−2`, `beat_bytes`, DMA base latency |
+
+**The anti-overfit gate, applied to every one of them:** the same code must run on Atlas *and* Gemmini
+and produce **different, correct** answers. A tool that only works where it was written is the manual
+overfitting with extra steps. Gemmini is the right second target here precisely because it is a
+different archetype (decoupled queue/systolic vs tensor/dataflow), so a tool that silently assumes
+Atlas's shape will visibly fail rather than quietly agree.
+
+**What stays hand-derived, legitimately:** the *fixtures*. Someone has to measure Atlas once to know
+what the tool should say. The error is stopping there.
+
 ## The flow
 
 ```text
