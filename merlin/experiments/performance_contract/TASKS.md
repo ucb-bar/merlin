@@ -330,6 +330,36 @@ already carries `[unit, mnemonic, n]` per op.
 | 5.8 | Registry re-derives the known constants and nothing else | **OPEN** — `DIM`, `fill = 2·DIM−2`, `beat_bytes`, DMA `base_latency`. `npu_model_suite.json`'s `_meta` gives beat_bytes 32, mxu_dim 32, vpu_lanes 16, reset_cycles 12 |
 | 5.9 | Give `cycles_diagnostic` a comparand | **OPEN** — pairs with N3; a small change, **not** a new capsule kind |
 
+## R8 — Relative comparison: ordering schedules without pricing them  *(added; not in the original plan)*
+
+**The plan's own §23 says ranking accuracy matters more than absolute error, and the machinery was
+built absolute-first.** R7 then measured the consequence: only **2 of 21** workloads bound end to end,
+which reads as near-fatal. It is not, for ranking. If two schedules leave the **same** resources
+unresolved and ask the **same** work of them, those resources cost the same in both and **cancel out of
+the difference** — what remains is a difference between the parts the compiler actually controls.
+
+That is the common case for the two axes that matter: retiling a transfer changes movement and leaves
+compute demand alone; changing overlap policy changes composition and leaves every demand alone.
+
+**Demonstrated on real evidence** (`gelu_tanh`, dma 3592, vpu 1234 unresolved) — three tiling variants,
+**no computable total for any of them**, all three pairs ordered exactly:
+
+    serial   vs tiled_2x -> exact: tiled_2x faster by 1006 cycles (1 unresolved resource cancelled)
+    serial   vs tiled_4x -> exact: tiled_4x faster by 1401 cycles
+    tiled_2x vs tiled_4x -> exact: tiled_4x faster by  395 cycles
+
+| id | task | state |
+|---|---|---|
+| 8.1 | `perf/differential.py` — `compare`, `comparable`, `rank_schedules` | **DONE** (`9e1934df`, 11 tests) |
+| 8.2 | **A matching unresolved SET is not sufficient** | **DONE** — the trap: same unpriceable unit, *different work* asked of it. Differencing there hands a real gap to the wrong term and returns a confident number. Unequal demand is REFUSED; silence about demand is refused too, since silence is not evidence of equality |
+| 8.3 | What each operator permits, derived not assumed | **DONE** — `SUM` is additive so ordering **and** magnitude transfer (EXACT); `MAX` is monotone but not additive, so only the ordering transfers, because an unresolved resource may dominate both and shrink the true gap to nothing (ORDERING_ONLY, magnitude withheld); `PARTIAL` couples pairs so neither survives — REFUSED rather than approximated |
+| 8.4 | Incomparable pairs are returned, not dropped | **DONE** — a candidate excluded for want of evidence is a hole in the search, not a verdict about the candidate |
+
+**What this changes.** The 19 workloads R7 could not bound are not unusable — they are unusable for
+*absolute prediction* and usable for *choosing*. Since choosing is what a compiler does, this converts
+the headline limitation from fatal to bounded. It resolves no missing peak and needs no new
+measurement: the same evidence, differenced instead of totalled.
+
 ## R6 — Bounded candidate selection  *(unit set by 0.1b)*
 
 | id | task | state |
