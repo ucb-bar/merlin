@@ -807,6 +807,12 @@ def program_verilator_adapter(target: str, *, model_ext: str) -> Callable | None
         ks = wd / "kernel.S"
         if fourth_text:
             ks.write_text(fourth_text)
+        # Size the budget from the workload exactly as the arc tier does. Omitting it left every
+        # capsule on run_program's 20000 default while the arc tier scaled with the command buffer, so
+        # a correct kernel that simply needed longer raised ProgramDidNotHalt -- which the runner books
+        # as the SUBMISSION's defect. A harness limit must not be reported as an agent's bug, and the
+        # asymmetry between two tiers of the same target had no reason behind it.
         return run_program_verilator_oracle(target, model_ext=model_ext, vsim_dir=vsim_dir, cb=cb,
-                                            kernel_s=ks, workdir=wd, timeout=timeout)
+                                            kernel_s=ks, workdir=wd, timeout=timeout,
+                                            max_cycles=derive_cycle_budget(cb))
     return run
