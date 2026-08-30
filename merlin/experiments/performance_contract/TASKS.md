@@ -539,63 +539,69 @@ x86, not RVV, with no per-lane cycle accounting and two clocks with no common de
 re-verified this session. Any end-to-end number there stays a **vector, never a sum** — the failure
 mode is a router win reported as a backend win.
 
-## W3.5 RUN — the graph confronted with GSIM, and what it refuted
+## W3.5 RUN — the graph confronted with GSIM, and what it did NOT refute
 
 The dependence graph priced its edges from published latencies and from UNKNOWNs read as zero, so
 it was **plausible, not falsifiable**. GSIM's per-cycle `pc_reg` settles it: the cycle each
-instruction issued is observable, and a run that was BIT-EXACT left at least the required separation.
+instruction executed is observable, and a run that was BIT-EXACT left at least the required
+separation. For an edge `u -> v` with required separation `R`, a correct run left `S`, so `S >= R`:
+`S` is an **UPPER bound on the requirement** and may never be promoted to "the latency"; a predicted
+weight `W > S` is **refuted**, the one direction a single run can falsify the model.
 
-That asymmetry is the method. For an edge `u -> v` with required separation `R`, a correct run left
-`S = issue(v) - issue(u)`, so `S >= R`:
+**RETRACTED — the first run of this reported two refuted edge weights. It was wrong.** It read the
+traced counter as the index of the executing instruction. It is not: the counter is a pipeline
+register that **leads the executing instruction by 2 slots** on this target, so a correctly
+separated pair whose counter values arrive 2 cycles apart looked like it violated a 32-cycle weight
+it had actually respected. The concrete case, from the emitted kernel:
 
-* `S` is an **UPPER bound on the requirement**, never the requirement — every schedule in this
-  corpus over-delays, so `S` sits far above `R`. It narrows an UNKNOWN from above and may not be
-  promoted to "the latency".
-* a predicted weight `W > S` is **REFUTED**: the graph demands more separation than a correct
-  execution used. The one direction a single run can falsify the model outright.
+    [23] VLOAD vd=1, rs1=7, imm=0
+    [24] DELAY imm=32          <- the separation IS emitted, right between them
+    [25] VTRPOSE_XLU vd=1, vs1=1
 
-**Result on the generated 32x32x32 matmul** (59 instructions, straight-line, each issued exactly
-once — so issue times are unambiguous): 46 edges, **all 46 checked, 0 skipped**.
+Reported as "predicted 32.125 > measured 2" — while a 32-cycle stall sits between the two
+instructions. The stall was real; the reading of it was not.
 
-    FALSIFIED   23->25 raw   predicted 32.125  measured 2     <- robust: both counters
-    FALSIFIED   35->37 raw   predicted 32.125  measured 2     <- robust: both counters
-    FALSIFIED   41->44 raw   predicted 64.25   measured 3     <- pc only, NOT fetch_pc
+**The lead is derived, not assumed.** Two runs of the same program differing only in the DELAY
+immediates: the counter values whose dwell changed are the changed instructions displaced by the
+lead. All 8 sites map with a single shift, and the dwell is `imm + 1` exactly:
 
-    priced 27 / unpriced 19; slack (measured - predicted) median 138, max 501
-    UNKNOWN classes narrowed from above:  separation.ADDI n=16 tightest 2
-                                          separation.LUI  n= 3 tightest 1
+    DELAY at  24 26 28 36 38 42 45 48
+    dwell at  26 28 30 38 40 44 47 50      -> lead = 2 slots, 8 of 8 explained
+    128 -> 129 cycles      32 -> 33      64 -> 65
 
-**Two edge weights are robustly refuted**: the graph demands ~32 cycles of RAW separation where a
-correct run used **2**, a 16x overstatement. That is the *mechanism* behind the settle result — the
-emitted separations are far above what those dependences require — and it is now measured on the
-edges rather than inferred from a whole-kernel cycle count.
+`derive_counter_offset` requires EVERY changed instruction to be explained before it reports
+`established`, and an underived offset leaves per-instruction claims unavailable rather than off by
+a pipeline depth.
 
-**The falsification's own caveat, stated because it is the same trap as the inert `vpu` class:** one
-correct run cannot separate "the requirement really is 2" from "these operands did not exercise the
-hazard". A refutation of an over-large weight is sound (the run happened, and it was bit-exact); a
-*floor* is not established by it.
+**Result with the offset applied** (generated 32x32x32 matmul, 59 instructions, straight-line, each
+executed once): 46 edges, **all 46 checked, 0 skipped, ZERO refuted** — minimum slack **+1 cycle**.
+The graph's weights survive their first confrontation with a machine. Two UNKNOWN classes were
+narrowed from above (`separation.ADDI` n=16 tightest 2; `separation.LUI` n=3 tightest 1) — the first
+numbers those unknowns have carried that are not guesses.
 
-### Per-instruction attribution is a distribution, NOT a labelled one — a limit, recorded
+**Where the 513 cycles actually go**, charged to the executing instruction and reconciling exactly
+with the emitted stalls (6 sites at 33 + 2 at 65 = 328):
 
-Charging each cycle to the instruction the counter waited on gives a robust shape: **11 of 60
-instructions hold ~99% of the 513 cycles**, in two clusters — eight at ~33 and three at ~65.
-Independently, the decoded program contains **exactly 8 `DELAY` instructions**, which re-derives the
-register's "8 stall sites" from program text rather than from counting emitted stalls.
+    DELAY           328   63.9%
+    DMA_LOAD_CH0     68   13.3%
+    DMA_STORE_CH0    68   13.3%
+    ADDI             28    5.5%
+    ADD               7    1.4%
+    LUI               3    0.6%
 
-But **which mnemonic holds the time is not established**, because the two counters disagree:
-
-    charged by pc        ADDI 158 (30.9%)  ADD 136  DELAY 104  VSTORE 98
-    charged by fetch_pc  ADDI 189 (36.8%)  DMA_CONFIG 136  ADD 69  VTRPOSE 33 ...
-
-Both cannot be right. Attributing a stall to an instruction needs the machine's pc-update semantics
-(there is one architectural delay slot, per N17), and that is a target fact nobody has derived. Until
-it is, **the distribution is citable and the per-mnemonic labels are not** — including the tempting
-reading that "only 20% of the time is in the DELAY instructions", which holds under one counter and
-not the other.
+**Nearly two thirds of the kernel is separation padding**, which is why the settle lever alone took
+1217 -> 513, and it is now measured per instruction rather than inferred from a whole-kernel total.
+The 8 `DELAY` sites in the decoded program independently re-derive the register's "8 stall sites".
 
 **Dropped as unsound:** a longest path over MEASURED separations. Elapsed time is not a dependence,
 so on a straight-line kernel that path degenerates to the span — it returned "506 of 513 over 2
 instructions", recovering the makespan from one early-to-late edge and explaining nothing.
+
+**The lesson, which is this register's recurring one.** The first result was produced by tooling that
+ran cleanly and returned a plausible, interesting number. What caught it was reading ONE concrete
+example — an emitted kernel with the stall visible between the two instructions the tool called
+under-separated. A number that survives its tooling has not been checked; a number that survives an
+example has.
 
 ## W1.0 — the free fidelity run, and what it found
 
