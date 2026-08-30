@@ -658,6 +658,52 @@ emitter covers only as a larger K, so what ran at those shapes was the SETTLE le
 the declared L3 lever needs an emitter variant that reorders issue against wait, and until that
 exists L3 is closed for *shape coverage* and open for *its own lever*.
 
+## RETRACTED — "a whole-model cycle count is impossible on this target"
+
+This register carried, and I repeated, that whole-model measurement is blocked because the weights
+exceed a 1 MiB DRAM window. **That is wrong, and it is this project's own recurring error made
+again: a property of OUR HARNESS reported as a property of the machine.**
+
+`DRAM_WINDOW` is a one-line constant in our own test harnesses — a host-side `std::vector<uint8_t>`
+allocation, present identically in both the Verilator and the GSIM harness:
+
+    static const uint32_t DRAM_WINDOW = 1u << 20;
+    DramSlave() : mem(DRAM_WINDOW, 0), mask(DRAM_WINDOW - 1) { }
+
+It has nothing to do with the Atlas hardware. Rebuilding the GSIM harness at `1u << 28` took
+**1.7 seconds** (27 design objects were already compiled; only the harness recompiles) and reproduced
+`AT3`, `AF3` and `CT0` with **byte-identical output and identical cycles**.
+
+**And enlarging it is not even the right fix.** The measured addresses say so:
+
+    raw_min = 2,415,919,104 (0x90000000)    <- the DRAM base
+    raw_span = 6,112 B  (AT3)  /  7,136 B  (CT0)
+    alias_collisions = 0
+    wrap_hits = every access
+
+Every access "wraps" because the base is 0x90000000 and the slave indexes from zero; the actual
+footprint is ~7 KB. So `wrap_hits` never measured a capacity problem at all — `alias_collisions` is
+the real hazard and it is 0. The correct fix is to **offset by the DRAM base (a derived RTL fact) and
+allocate the observed span**, after which nothing wraps and the ceiling is host RAM.
+
+**Precedent, which should have been checked first:** whole models have already been compiled and run
+on FireSim for the RVV and OPU targets with real DRAM. The methodology exists in this repo; the
+1 MiB figure was never a property of the approach.
+
+**Consequences that must be reversed, not merely noted:**
+
+* The perf-corpus plan's cut #1 — "whole-model L4 cycle capsule, cut PERMANENTLY, weights exceed the
+  window 6x" — rests on a premise *I supplied to that planning agent*. The cut is **invalid** and the
+  family goes back on the table.
+* N13/N26 ("the 1 MiB window that wraps silently") is not a hazard needing a detector; it is a
+  harness parameter needing a base offset. Reclassify.
+* Any sizing statement in this register that begins "bounded by the DRAM window" is bounded by a
+  constant we chose, and must be re-derived before it constrains a capsule.
+
+**The lesson is the one already written three times here and evidently not yet learned:** a limit
+discovered in our own instrument is evidence about the instrument. Check whether the number is ours
+before promoting it to a fact about the machine.
+
 ## W1.0 — the free fidelity run, and what it found
 
 `mlc/spec/validate_fidelity.py` against the 2,219 totals already on disk. **Zero new measurement.**
