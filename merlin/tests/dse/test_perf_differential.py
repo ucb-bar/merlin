@@ -121,3 +121,95 @@ def test_the_claim_never_states_a_magnitude_it_cannot_support() -> None:
     exact = compare(_c(1000, unresolved=("vpu",)), _c(1400, unresolved=("vpu",)),
                     demands_a=d, demands_b=d)
     assert "400" in exact.claim()
+
+
+# --------------------------------------------------------------------------------------------
+# Per-engine comparison: a heterogeneous device has no total order over "faster"
+# --------------------------------------------------------------------------------------------
+from merlin.perf.differential import INCOMPARABLE, compare_by_engine  # noqa: E402
+
+
+def test_a_schedule_better_on_every_engine_dominates() -> None:
+    a = {"simt": _c(100), "systolic": _c(200)}
+    b = {"simt": _c(80), "systolic": _c(150)}
+    out = compare_by_engine(a, b, engines_compose=Composition.SUM)
+    assert out.faster == "b"
+    assert out.basis == EXACT
+    assert out.total_delta_cycles == -70.0        # b - a summed, negative means b is faster
+    assert "dominates" in out.claim()
+
+
+def test_winning_on_one_engine_and_losing_on_another_is_incomparable() -> None:
+    # The case a scalar comparator cannot express: it would pick a winner that does not exist.
+    a = {"simt": _c(100), "systolic": _c(300)}
+    b = {"simt": _c(150), "systolic": _c(200)}
+    out = compare_by_engine(a, b, engines_compose=Composition.SUM)
+    assert out.faster is None
+    assert out.basis == INCOMPARABLE
+    assert dict(out.traded) == {"simt": "a", "systolic": "b"}
+    assert "neither dominates" in out.claim()
+
+
+def test_per_engine_deltas_may_not_be_summed_when_the_engines_overlap() -> None:
+    # Adding per-engine differences on a device whose engines run concurrently double-counts the
+    # overlapped cycles. The ordering still holds; the magnitude does not.
+    a = {"simt": _c(100), "systolic": _c(200)}
+    b = {"simt": _c(80), "systolic": _c(150)}
+    out = compare_by_engine(a, b, engines_compose=Composition.PARTIAL)
+    assert out.faster == "b"
+    assert out.basis == ORDERING_ONLY
+    assert out.total_delta_cycles is None
+    assert "may not be summed" in out.reason
+
+
+def test_an_undeclared_cross_engine_operator_also_blocks_the_sum() -> None:
+    a = {"simt": _c(100), "systolic": _c(200)}
+    b = {"simt": _c(80), "systolic": _c(150)}
+    out = compare_by_engine(a, b)                  # engines_compose not supplied
+    assert out.faster == "b" and out.basis == ORDERING_ONLY
+    assert out.total_delta_cycles is None
+
+
+def test_an_engine_named_on_one_side_only_is_refused_never_scored_as_zero() -> None:
+    # The router-win trap: moving work off an engine must not read as making that engine faster.
+    a = {"simt": _c(100), "systolic": _c(200)}
+    b = {"simt": _c(100)}
+    out = compare_by_engine(a, b)
+    assert out.faster is None and out.basis == REFUSED
+    assert "not zero" in out.reason
+
+
+def test_one_engine_refusing_blocks_a_dominance_claim() -> None:
+    # A dominance claim over a set containing an unmeasured engine asserts something unmeasured.
+    a = {"simt": _c(100), "systolic": _c(200, unresolved=("mxu_ii",))}
+    b = {"simt": _c(80), "systolic": _c(150, unresolved=("dma_rate",))}
+    out = compare_by_engine(a, b)
+    assert out.basis == REFUSED
+    assert out.undecided_engines == ("systolic",)
+    assert out.per_engine["simt"].faster == "b"      # the detail survives the refusal
+
+
+def test_a_disagreement_is_reported_even_when_another_engine_refused() -> None:
+    # Knowing the two engines disagree is stronger than "undecidable", and it is what a scheduler
+    # has to act on, so the trade-off outranks the hole.
+    a = {"simt": _c(100), "systolic": _c(300), "dma": _c(50, unresolved=("x",))}
+    b = {"simt": _c(150), "systolic": _c(200), "dma": _c(50, unresolved=("y",))}
+    out = compare_by_engine(a, b)
+    assert out.basis == INCOMPARABLE
+    assert out.undecided_engines == ("dma",)
+    assert dict(out.traded) == {"simt": "a", "systolic": "b"}
+
+
+def test_equal_on_every_engine_is_a_tie() -> None:
+    a = {"simt": _c(100), "systolic": _c(200)}
+    out = compare_by_engine(a, dict(a), engines_compose=Composition.SUM)
+    assert out.faster == "tie" and out.total_delta_cycles == 0.0
+
+
+def test_a_single_engine_device_reduces_to_the_scalar_answer() -> None:
+    # The generalization must not change what a one-engine target already reported.
+    a, b = {"e": _c(1217)}, {"e": _c(705)}
+    scalar = compare(a["e"], b["e"])
+    vec = compare_by_engine(a, b, engines_compose=Composition.SUM)
+    assert vec.faster == scalar.faster == "b"
+    assert vec.total_delta_cycles == scalar.delta_cycles == -512.0

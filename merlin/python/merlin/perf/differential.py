@@ -184,3 +184,128 @@ def rank_schedules(candidates: "Mapping[str, Composed]", *,
                 refusals.append(c)
     order = sorted(names, key=lambda n: candidates[n].partial_cycles)
     return order, refusals
+
+
+INCOMPARABLE = "incomparable"
+
+
+@dataclass(frozen=True)
+class VectorComparison:
+    """Two schedules compared engine by engine, and what the set of answers jointly supports.
+
+    A single number cannot order two schedules on a device with more than one engine, because
+    "faster" is no longer a total order: a schedule can win on the systolic array and lose on the
+    SIMT lanes, and which one is better then depends on a trade the evidence does not contain. The
+    honest object is a VECTOR of per-engine comparisons plus a DOMINANCE verdict over them -- b beats
+    a only when it is no worse on every engine and strictly better on at least one.
+    """
+
+    #: engine -> the comparison on that engine alone.
+    per_engine: dict[str, Comparison]
+    #: ``label_a`` / ``label_b`` / ``"tie"``, or None when the engines disagree or an engine refused.
+    faster: str | None
+    #: EXACT | ORDERING_ONLY | INCOMPARABLE | REFUSED.
+    basis: str
+    reason: str
+    #: The summed difference. Present ONLY when every engine compared EXACT *and* the engines are
+    #: known to compose additively. Adding per-engine deltas on a device whose engines overlap
+    #: double-counts the overlapped cycles, so this stays None rather than becoming a plausible
+    #: number -- which is the same rule the scalar comparator applies one level down.
+    total_delta_cycles: float | None = None
+    #: Engines whose comparison refused. A dominance claim over a set containing one of these would
+    #: be asserting something about an engine nobody measured.
+    undecided_engines: tuple[str, ...] = ()
+    #: ``(engine, winner)`` for engines that disagree about the winner -- the actual trade-off.
+    traded: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def decided(self) -> bool:
+        return self.faster is not None
+
+    def claim(self) -> str:
+        """The strongest sentence this vector supports."""
+        if self.basis == REFUSED:
+            return f"undecidable: {self.reason}"
+        if self.basis == INCOMPARABLE:
+            traded = ", ".join(f"{e} favours {w}" for e, w in self.traded)
+            return f"incomparable: neither dominates ({traded})"
+        if self.faster == "tie":
+            return "the two schedules are equal on every engine"
+        if self.total_delta_cycles is not None:
+            return (f"{self.faster} dominates on all {len(self.per_engine)} engine(s), "
+                    f"by {abs(self.total_delta_cycles):.0f} cycles summed")
+        return (f"{self.faster} dominates: no worse on every engine and strictly better on at least "
+                f"one, by a margin this evidence cannot sum")
+
+
+def compare_by_engine(a: "Mapping[str, Composed]", b: "Mapping[str, Composed]", *,
+                      demands_a: "Mapping[str, Mapping[str, Any]] | None" = None,
+                      demands_b: "Mapping[str, Mapping[str, Any]] | None" = None,
+                      label_a: str = "a", label_b: str = "b",
+                      engines_compose: "Composition | None" = None) -> VectorComparison:
+    """Compare two schedules engine by engine and report which, if either, DOMINATES.
+
+    ``a`` and ``b`` map engine name -> that engine's composed bound. ``engines_compose`` is how the
+    device's engines combine with one another -- derived from a joint occupancy vector, never
+    assumed. It gates the summed delta only; the dominance verdict never needs it, which is why
+    dominance is available on targets where no total is.
+
+    **An engine named on one side only is a refusal, not a zero.** Two schedules that use different
+    engine sets are doing different work, and scoring the absent engine as zero cycles is exactly how
+    moving work off an accelerator reads as making the accelerator faster.
+    """
+    ea, eb = set(a), set(b)
+    if ea != eb:
+        only_a, only_b = sorted(ea - eb), sorted(eb - ea)
+        return VectorComparison(
+            per_engine={}, faster=None, basis=REFUSED,
+            reason=(f"the schedules name different engines (only in {label_a}: {only_a}; only in "
+                    f"{label_b}: {only_b}); an engine absent on one side is unmeasured there, not "
+                    "zero, and treating it as zero reports moving work off an engine as speeding it up"))
+
+    per: dict[str, Comparison] = {}
+    for e in sorted(ea):
+        per[e] = compare(a[e], b[e],
+                         demands_a=(demands_a or {}).get(e), demands_b=(demands_b or {}).get(e),
+                         label_a=label_a, label_b=label_b)
+
+    undecided = tuple(e for e, c in per.items() if c.basis == REFUSED)
+    winners = {e: c.faster for e, c in per.items() if c.basis != REFUSED}
+    non_tie = {e: w for e, w in winners.items() if w != "tie"}
+    distinct = set(non_tie.values())
+
+    if len(distinct) > 1:
+        # A real trade-off. Report it EVEN IF an engine refused: knowing the two disagree is a
+        # stronger statement than "undecidable", and it is the answer a scheduler has to act on.
+        return VectorComparison(
+            per_engine=per, faster=None, basis=INCOMPARABLE,
+            reason="neither schedule is at least as good on every engine",
+            undecided_engines=undecided,
+            traded=tuple(sorted(non_tie.items())))
+
+    if undecided:
+        return VectorComparison(
+            per_engine=per, faster=None, basis=REFUSED,
+            reason=(f"engine(s) {list(undecided)} could not be compared, so no claim covers every "
+                    "engine; the engines that did compare do not disagree"),
+            undecided_engines=undecided)
+
+    if not distinct:
+        return VectorComparison(per_engine=per, faster="tie", basis=EXACT,
+                                reason="every engine is a tie", total_delta_cycles=0.0)
+
+    winner = distinct.pop()
+    all_exact = all(c.basis == EXACT for c in per.values())
+    if all_exact and engines_compose in _ADDITIVE:
+        total = sum(c.delta_cycles or 0.0 for c in per.values())
+        return VectorComparison(
+            per_engine=per, faster=winner, basis=EXACT,
+            reason=("every engine compared exactly and the engines compose additively, so the "
+                    "per-engine differences sum"),
+            total_delta_cycles=total)
+    why = ("not every engine compared exactly" if not all_exact else
+           f"the engines compose by {engines_compose.name if engines_compose else 'an undeclared operator'}, "
+           "so per-engine differences may not be summed")
+    return VectorComparison(
+        per_engine=per, faster=winner, basis=ORDERING_ONLY,
+        reason=f"{winner} is no worse on every engine and better on at least one, but {why}")
