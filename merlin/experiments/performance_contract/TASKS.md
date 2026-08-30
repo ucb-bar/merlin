@@ -174,6 +174,34 @@ architectural floor, not a lucky value, and 705 is a legitimate result rather th
 independently re-confirms the 14/14 tier-agreement finding. The baseline is arc-measured and ours is
 quoted on arc.
 
+### The comparison set is complete, not cherry-picked
+
+Of the 21 shipped kernels, exactly **7 have MXU work**, and of those exactly **3 are pure matmul** —
+`matmul`, `smolvla_matmul`, `smolvla_matmul_k_chain`. Those are precisely the three compared. The other
+four (`gemma_attention` 5 vector ops, `smolvla_attention` 8, `gemma_mlp` 1, `fused_matmul_bias` 1) mix
+in vector work that `plan_matmul` cannot emit, so they are not a fair comparison rather than an
+unfavourable one. **3 of 3 of the fair set, not 3 of 21 cherry-picked.**
+
+### The differential comparator, validated against measured hardware
+
+The two settle variants differ **only** in resolved stall cycles; the MXU initiation interval and the
+movement rate are UNKNOWN in both, with identical demand. So they must cancel, and the difference must
+be exactly predictable with **no absolute model**:
+
+    emitted stall sites: 8    (counted in the kernel, both variants)
+    settle delta:        128 -> 64 = 64 cycles per site
+    PREDICTED delta:     8 x 64 = 512
+    MEASURED delta:      1217 - 705 = 512          exact
+
+`differential.compare` returns `basis=exact`, `faster=settle_64`, `|delta|=512`, `cancelled=('mxu_ii',
+'dma_rate')` — **while neither total is computable** (`a.cycles is UNKNOWN`). That is R8's thesis
+confirmed against hardware rather than against a fixture: two schedules ordered exactly, with the
+unknowns cancelling, on a workload neither model can price.
+
+(One correction to my own first reading: `delta_cycles` is `b - a` with *positive means `a` is faster*,
+so the tool's `-512.0` is the right sign for "b is faster by 512" and my equality check was
+sign-confused, not the tool.)
+
 **What this does NOT claim:**
 - Not a whole-model or layer-scale win — these are 32-tile kernels, the scale the shipped corpus has.
 - Not an *optimality* claim. We beat the shipped kernels; we do not know the machine's floor. The
