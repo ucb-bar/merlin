@@ -22,12 +22,27 @@ measurement, the decision it forced, and two corrections it produced.
 capsule. Halt cycle counts reproduce the historic run exactly, so these are faithful
 re-executions rather than stubs.
 
-| tier | oracle | median | min | max | cost per halt cycle |
+| tier | oracle | median query | ms/cycle | **cycles/s** | ms/IMEM word |
 |---|---|---:|---:|---:|---:|
-| L3 | mlc arc cosim | 3.68 s | 0.44 s | 9.43 s | 3.63 ms |
-| L4 | Verilator `VAtlasCore` | 0.276 s | 0.044 s | 0.673 s | 0.255 ms |
+| L3 | mlc arc cosim | 3.68 s | 1.553 | **644** | 3.105 |
+| L4 | Verilator `VAtlasCore` | 0.276 s | 0.131 | **7,641** | 0.264 |
 
-There is **no build step**. Assembling the agent's `kernel.S` with stock `llvm-mc` +
+**The cost law has two terms, not one.** `sim_s = a + b·cycles + c·words`, where `words` is the
+program's IMEM load. A cycles-only fit charges the load to the cycles, because kernel size and cycle
+count are correlated across the corpus — which inflated an earlier reading of these same tiers by
+1.77x on L4 (0.231 ms/cycle apparent vs 0.131 ms/cycle real). The word term is **~2x the cycle term
+on both tiers**. It was isolated by running a program whose *first* word is the halt: all W words
+still load, ~1 instruction retires. Fitted on synthetic programs only, the two-term law predicts all
+52 held-out corpus queries at **2.8% median error**.
+
+Linear across **12,500x** — L4 from 178 to 2,233,280 cycles, r² = 0.99997; L3 to 139,651, r² = 0.9998.
+No bend. Reaching that range meant *looping* a real capsule body at constant IMEM and constant DRAM
+footprint, which required two RTL facts first: the PC is a **word index** with
+`branch_target = s1_pc + (imm>>1)`, and there is **one architectural delay slot**. Encoding a byte
+offset — the RISC-V reading — silently never closes the loop and reads as "this core has no control
+flow at all."
+
+L4 is **11.9x faster than L3** and is also the tier that runs elaborated Verilog. There is **no build step**. Assembling the agent's `kernel.S` with stock `llvm-mc` +
 `llvm-objcopy` takes a median of 5.7 ms — 0.15% of an L3 query. The arc shared object and
 `VAtlasCore` are prebuilt; nothing compiles per query. Cost is linear in halt cycles.
 
@@ -70,6 +85,40 @@ ratio across two decades of problem size without saying so.
 
 The same machinery on Radiance faces GSIM at ~115 s and Verilator at ~45 min per kernel, where
 simulation is scarce even at capsule scale.
+
+## Cost is not the binding constraint — correctness is
+
+Pricing the tiers at layer scale answered a different question than the one worth asking. At toy
+scale one serial pass over all 26 capsules is 77 s at L3 and 7 s at L4, against a median agent run of
+2,184 s (28 runs: wall 903–65,401 s, recorded cost $0.51–$103.17, median $25.33) — the oracle is
+**3.8%** of a run. At layer scale L4 stays cheap (worst projected layer ~35 min) while **L3 becomes
+binding**: at 644 cycles/s a single large-activation layer is a 1.6–6.8 h query, 2.7–11.3x a median
+agent run, and L3 is the tier most Atlas capsules declare.
+
+But two of four real layers **cannot be asked of either tier without getting a wrong or a false
+answer**, and that outranks any cost argument:
+
+1. **A 1 MiB DRAM window that WRAPS, on both tiers** (`cosim_atlas._DRAM_WINDOW`,
+   `sim_main_prog.cpp:32`): addresses are masked with `window-1`, with a silent byte-drop past the
+   end. A `gelu_tanh` 1024x3072 layer aliases **12x** over it. Nothing in the returned dict flags
+   this — **it is the only cap that returns a wrong number rather than an error.** A slow oracle
+   costs money; a silently-aliasing one costs the result.
+2. **L4 never passes a cycle budget.** `program_verilator_adapter.run()` omits `max_cycles`, so every
+   capsule runs at the 20000 default, while L3 sizes its budget with `derive_cycle_budget`. Probed:
+   a 25,096-cycle program raises `ProgramDidNotHalt` on the shipped path. No truncated number is
+   returned — but `capsule_runner.py` converts that raise into a tier FAIL **explicitly attributed to
+   "the AGENT's bug."** A harness limit is being booked as a submission defect.
+3. **L3 has no wall clock at all.** `timeout` reaches only `emit_bundle`; the arc cycle loop is
+   unbounded. A layer-scale command buffer authorising ~10^8 cycles runs for days, holding a worker,
+   undetectably.
+
+Fix order: widen or error on the DRAM window; pass `derive_cycle_budget` on L4 as L3 already does;
+give L3 a wall clock; prefer L4 where available, since it is both 11.9x faster and higher fidelity.
+
+One hazard checked and **cleared**: there is no per-instruction or per-cycle stdout on either tier. A
+2,049x longer run produced 0.13% more output (8,277 -> 8,288 bytes, exactly the extra digits of the
+cycle count) at identical peak RSS. The 72 GB buffered-trace OOM seen on another simulator in this
+repo cannot happen here.
 
 ## The corpus cannot answer the question it is being asked
 
