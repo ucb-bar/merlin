@@ -38,6 +38,26 @@ datapath:
   # model-vs-RTL disagreements point the same way: the functional core treats VMEM as BYTE-addressed
   # where the RTL treats it as WORD-addressed, and reads VUNPACK_FP8_BF16's scale as a divisor where the
   # RTL reads a biased exponent. The RTL tiers (arc cosim L3, Verilator L4) carry the grade.
+  #
+  # ⚠️ AMENDED 2026-08-29 — the collision is NOT the cause of the cycle disagreement. Measured by
+  # instrumenting `_resolve_collision` and counting how often the ambiguity actually fires, on the
+  # three capsules where L2-vs-RTL is measured (same `_tierpolicy_v3` submission for all tiers):
+  #
+  #     capsule                    L2      L3      L4    L2/RTL    dma collisions hit
+  #     AT1_mvin_mvout            543     178     178     3.05x            0
+  #     AT2_single_tile_matmul   3081    1090    1090     2.83x            0
+  #     CT0_mlp_linear1          6781    2614    2614     2.59x            0
+  #
+  # Zero, on all three, while L3 and L4 agree EXACTLY. So a second, unidentified defect drives a
+  # uniform ~2.6-3x overcount, and the collision cannot be cited as the reason L2 disagrees. (An older
+  # measurement points the same way: npu_model's shipped known-good MatmulProgram runs 2392 cycles on
+  # L2 against 463 on L3 — 5.2x — a program that exercises no capsule lowering at all.)
+  #
+  # What survives: the collision is real, and the reference-kernel measurement above stands for a
+  # program that needs BOTH dma ops. What does not survive is using it to explain these numbers. L2
+  # stays inapplicable — the disagreement is real either way — but the CAUSE is open, and a fix that
+  # only resolves the collision should not be expected to close it. Gate any fix on landing exactly
+  # 178 / 1090 / 2614 for the `_tierpolicy_v3` kernels; a new third number is not a fix.
   inapplicable_oracle_tiers:
     L2: >-
       functional core cannot corroborate an RTL result for this target: the ISA encodes dma.config.chN
