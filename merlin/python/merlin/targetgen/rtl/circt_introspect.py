@@ -483,6 +483,24 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16] if path.is_file() else "missing"
 
 
+def _core_hw_input(target: str) -> dict[str, str]:
+    """The CORE HW dialect that mlc discovery and the pipeline-depth walk read, as provenance fields.
+
+    Distinct from the SoC dialect ``_soc_hw_path`` resolves: that one feeds the legacy accumulator
+    port-parse and is absent for most targets. Target-agnostic -- the path comes from mlc, never from a
+    per-target literal. Three outcomes are kept apart rather than collapsed onto one sentinel, because
+    "mlc could not resolve a dialect" and "the dialect is resolved but not on disk" are different facts
+    and only the second is fixable by rebuilding."""
+    from . import mlc_bridge
+    try:
+        path = mlc_bridge.core_hw_mlir(target)
+    except Exception:
+        path = None
+    if path is None:
+        return {"core_hw_mlir": "unresolved", "core_hw_sha": "unresolved"}
+    return {"core_hw_mlir": Path(path).name, "core_hw_sha": _sha(Path(path))}
+
+
 def _facts_from_discovery(target: str, facts: dict) -> list[str]:
     """Override mesh + operand-scratchpad + accumulator facts with mlc RTL discovery (target-agnostic:
     DIM from the discovered mesh, capacities summed from the discovered banks). Mutates ``facts`` in
@@ -614,8 +632,25 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
         "inputs": {
             "target": target,
             "hw_mlir": hw_path.name, "hw_sha": _sha(hw_path),
+            # The SoC dialect above is only one of the two HW inputs, and for most targets it is the
+            # one that is ABSENT: it feeds the legacy accumulator port-parse. What mlc discovery and
+            # the pipeline-depth walk actually read is the CORE dialect, resolved separately by
+            # ``mlc_bridge.core_hw_mlir``. Recording only the SoC path made these facts name an input
+            # they had not read (``hw_sha: "missing"``) while omitting the one they had, which reads as
+            # provenance rather than as the gap it is. Both are recorded now, and the three states are
+            # kept distinct: a digest, ``missing`` for a resolved-but-absent file, and ``unresolved``
+            # when mlc cannot resolve one at all. A term's validity domain cannot name its elaboration
+            # unless this field does.
+            **_core_hw_input(target),
             "fir_sha": fir_sha, "isa_sha": isa_sha,
-            "extractor_sha": _sha(Path(__file__)),  # code change -> cache invalidates
+            "extractor_sha": _sha(Path(__file__)),  # recorded; NOT yet an invalidation trigger
+            # NOTE: this field records the extractor that produced the artifact, but nothing
+            # compares it. ``facts.ensure_facts`` regenerates only when the cache is COLD
+            # (``if p.is_file(): return p``), so a change here does not invalidate anything and a
+            # stale cache can serve facts from an older extractor indefinitely. Comparing it is
+            # the obvious fix and deliberately not done here: it would force a live CIRCT
+            # re-extraction on the next read for every target at once, which is expensive and
+            # can fail closed where the toolchain is absent. Purge the cache to pick up a change.
         },
         "facts": v1,
     }
