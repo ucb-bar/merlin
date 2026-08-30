@@ -11,7 +11,7 @@
 # against a LOCAL bare remote (file://...) and is NEVER pushed to GitHub by the harness/tests.
 layout_version: "1.0"
 targets:
-  rvv: git@github.com:ucb-bar/host-mlir.git
+  rvv: git@github.com:ucb-bar/rvv-mlir.git
   gemmini: git@github.com:ucb-bar/gemmini-mlir.git
 
 # Branch-per-version publishing (BB0 / C5). The FROZEN unoptimized baseline publishes to a shared
@@ -24,11 +24,10 @@ branches:
   rvv: {}
   gemmini: {}
 
-# Public repo names. The target KEY is not the repo name: `rvv` keys the host target because its
-# payload is a vector schedule, but the repo holds ALL host codegen -- scalar is simply the case
-# where no vector unit is declared, not a separate target -- so it publishes as `host-mlir`. A
-# separate scalar repo would split the ABI, the calling convention and the lowering across two
-# places while having no payload of its own. Precedence: --repo-name > env
-# MERLIN_PUBLISH_REPO_NAME_<TARGET> > this map > the default `<target>-mlir`.
-repo_names:
-  rvv: host-mlir
+# Public repo names. Default is `<target>-mlir`, which is what both targets use: gemmini-mlir and
+# rvv-mlir. The `rvv` repo holds ALL host codegen -- scalar is simply the case where no vector unit
+# is declared, not a separate target -- so there is no second scalar repo to split the ABI, the
+# calling convention and the lowering across. (An earlier plan named it `host-mlir` for that reason;
+# the repo that actually exists is `rvv-mlir`, so the default applies and no override is needed.)
+# Precedence: --repo-name > env MERLIN_PUBLISH_REPO_NAME_<TARGET> > this map > `<target>-mlir`.
+repo_names: {}

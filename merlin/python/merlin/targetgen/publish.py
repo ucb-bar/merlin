@@ -540,6 +540,40 @@ def _index_readme(target: str, entries: list[dict[str, Any]]) -> str:
             "",
         ]
     lines += [
+        "## Compiling a model with it",
+        "",
+        "This repository is the **backend**: the target's codegen payload plus its capability "
+        "contract. The thing that compiles a model is Merlin, which consumes this repo. You need "
+        "both, and the loop is three commands.",
+        "",
+        "```sh",
+        "# 1. Merlin itself (the driver, the frontend, the runtime)",
+        "git clone https://github.com/ucb-bar/merlin.git && cd merlin",
+        "cp .env.example .env          # then point MERLIN_* at your toolchain / simulators",
+        "",
+        "# 2. Fetch THIS repo as the target's out-of-tree backend",
+        f"merlin-target-fetch {target} --champion <branch from the table above>",
+        "",
+        "# 3. Compile a workload onto it",
+        f"merlin-compile --workload <workload> --target {target} --verify",
+        "```",
+        "",
+        f"`merlin-target-fetch` clones the chosen branch into `out/build/generated/{target}/`, and "
+        "the target registry then resolves the capability contract and this codegen payload "
+        "together — so which champion you compile against is the branch you fetched, recorded "
+        "rather than implied.",
+        "",
+        "`merlin-compile` takes `--run {none,host,spike,verilator,zephyr,k1}` and `--verify`. "
+        "Start with `--run host` to check the lowering is numerically right, then move up the "
+        "oracle ladder; `--verify` gates the answer against the workload's golden rather than "
+        "reporting that something merely ran.",
+        "",
+        "**What you need beyond this repo**: an LLVM/MLIR install matching the `llvm:` block of "
+        "the package manifest (the out-of-tree C++ API moves between versions), a RISC-V "
+        "toolchain, and whichever simulator your chosen `--run` needs. Merlin's "
+        "`docs/guides/getting_started.md` is the base install; `docs/guides/adding_a_target.md` "
+        "explains the contract this repo carries.",
+        "",
         "## Provenance",
         "",
         "Each commit on a package branch is one promotion, and its message embeds the champion "
@@ -550,6 +584,35 @@ def _index_readme(target: str, entries: list[dict[str, Any]]) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+def _cert_phrase(manifest: dict[str, Any]) -> str:
+    """The tier a package EARNED, for a package whose flat ``status`` field is empty.
+
+    A landing page that prints `unknown` beside a package certified on cycle-accurate RTL
+    understates it, and a reader cannot tell that from a package with no evidence at all -- which
+    is the failure the "quote the tier, never a bare score" rule exists to prevent. The tier is
+    already recorded per rung by ``record_certification``; this reads it back rather than inventing
+    a status. Returns "" when there is genuinely nothing recorded, so `unknown` still means unknown.
+    """
+    pub = manifest.get("publication")
+    if not isinstance(pub, dict):
+        return ""
+    tier = pub.get("certification_tier")
+    if not isinstance(tier, dict):
+        return ""
+    oracles = [str(o) for o in (tier.get("oracles") or []) if o]
+    if not oracles:
+        return ""
+    # The weakest qualifier wins: one rung on a functional model does not make the package
+    # cycle-accurate, and overstating that is exactly the citation error to avoid.
+    rungs = [r for r in (pub.get("certified_rungs") or []) if isinstance(r, dict)]
+    accurate = bool(tier.get("cycle_accurate")) and all(r.get("cycle_accurate") for r in rungs)
+    from_rtl = bool(tier.get("derived_from_rtl")) and all(r.get("derived_from_rtl") for r in rungs)
+    qualifier = ("cycle-accurate RTL" if accurate and from_rtl
+                 else "RTL-derived" if from_rtl else "functional")
+    n = len(rungs) or len(oracles)
+    return f"certified ({qualifier}, {n} rung{'s' if n != 1 else ''}, {'/'.join(sorted(set(oracles)))})"
 
 
 def index_entries(target: str, *, artifacts_root: str | Path | None = None
@@ -574,7 +637,7 @@ def index_entries(target: str, *, artifacts_root: str | Path | None = None
             "branch": resolve_branch(sel),
             "package_id": sel.package_id,
             "dtype": package_dtype(man_path.parent),
-            "status": sel.status or "unknown",
+            "status": sel.status or _cert_phrase(man) or "unknown",
             "role": ("frozen unoptimized control (the before/after reference)" if is_base
                      else "certified champion"),
         })

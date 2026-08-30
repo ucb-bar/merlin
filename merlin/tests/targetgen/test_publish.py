@@ -151,11 +151,12 @@ def test_resolve_remote_precedence(out_root, monkeypatch):
     monkeypatch.setenv("MERLIN_PUBLISH_REMOTE_RVV", "file:///from-env")
     assert pub.resolve_remote("rvv") == "file:///from-env"
     monkeypatch.delenv("MERLIN_PUBLISH_REMOTE_RVV")
-    # falls back to merlin/targets/publish.yaml
-    # host-mlir, not rvv-mlir: the repo holds ALL host codegen, and scalar is the case where
-    # no vector unit is declared rather than a separate target, so the target key (`rvv`,
-    # named for its vector-schedule payload) and the public repo name deliberately differ.
-    assert pub.resolve_remote("rvv").endswith("host-mlir.git")
+    # falls back to merlin/targets/publish.yaml. The repo holds ALL host codegen -- scalar is the
+    # case where no vector unit is declared, not a separate target -- so there is no second scalar
+    # repo. An earlier plan called it `host-mlir` for that reason; the repo that actually exists is
+    # `rvv-mlir`, which is also the `<target>-mlir` default, so no name override is configured.
+    assert pub.resolve_remote("rvv").endswith("rvv-mlir.git")
+    assert pub.resolve_repo_name("rvv") == "rvv-mlir"
 
 
 # --------------------------------------------------------------------------- (b) dry-run
