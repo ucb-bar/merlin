@@ -93,11 +93,28 @@ unmaterializable_families:
     no probe path today: an elementwise capsule is authored through the PyTorch/linalg source with a host-eager golden (needs the m2m venv, so not a deterministic offline probe), and capsule_golden._recompute_golden has no elementwise op, so it cannot be graded at all on an exact-integer datapath.
     Needs a merlin_iface elementwise mnemonic + a recompute entry.
 # WHICH SUBSTRATE MAY PRODUCE WHICH NUMBER -- see the radiance/gemmini residuals for the rationale.
-# This target's ISA is SELF-HOSTED, so it has no FIRRTL leg the GSIM path can lower: its cycles come
-# from the arc program oracle (`targetgen.program_oracle.run_program`), which reports
-# `derived_from_rtl: false` / `fidelity: rtl_derived_model`. That is a cycle MODEL, not an RTL
-# simulation, and the tier says so -- calling it `rtl` because it is the most expensive tier this
-# target has would be a claim the substrate does not support.
+# CORRECTION (measured): the sentence that stood here said this target "has no FIRRTL leg the GSIM path
+# can lower". That is FALSE. The core's FIRRTL was already on disk, a fast FIRRTL simulator was built on
+# it in 62 s with no regeneration, and across 17 real capsule kernels it agrees EXACTLY with the
+# independently-built Verilator tier on cycles, output bytes and DMA read/write counts -- at ~50x
+# Verilator's rate. The earlier attempt concluded otherwise because it targeted two designs that are not
+# the one the oracle runs. Recording the refutation rather than deleting the claim, because the claim is
+# what stopped anyone retrying.
+#
+# The authority below is UNCHANGED and still names the arc program oracle
+# (`targetgen.program_oracle.run_program`, `derived_from_rtl: false` / `fidelity: rtl_derived_model`) --
+# a cycle MODEL, not an RTL simulation, and the tier says so. Switching it is a VERDICT-AFFECTING edit
+# and is deliberately not made here: `citable` is a floor (`TIER_ORDER.index(reached) >=
+# TIER_ORDER.index(citable_tier)`), so raising `citable_tier` to `rtl` would retroactively make every
+# result already reached at `cycle_model` non-citable, and changing `cycles_from` would stop `pick()`
+# matching records labelled `arc_program`. Both are correct changes to want and neither should land
+# quietly while other sessions are grading against this contract.
+#
+# What the evidence supports when that switch IS coordinated: the Verilator tier is BOTH cheaper and
+# higher fidelity than arc -- 11.9x the per-cycle rate, `derived_from_rtl: true` /
+# `fidelity: elaborated_rtl`, and identical cycle counts on 14 of 14 capsules where both tiers ran. The
+# FIRRTL simulator is faster still but is NOT declared here, because it is not yet wired as a merlin
+# tier and declaring an authority no adapter can run is the failure this field exists to prevent.
 measurement:
   cycles_from: arc_program
   wall_from: null             # no board and no silicon: wall time is UNKNOWN, not zero
