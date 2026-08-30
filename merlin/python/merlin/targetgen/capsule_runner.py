@@ -1501,11 +1501,21 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
     # either way. The env var still overrides for a deliberate diagnostic run.
     run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or ("mesh" if target else "host")
     _ = _req_lanes  # still read below by the lane report
-    # MERLIN_MESH_VERIFY additionally EXECUTES each mesh-routed matmul as a single systolic tile on the
-    # target's real mesh oracle (compile_model mesh_verify) — proving the matmul layers run ON the mesh, not
-    # just that a routing plan was produced. Off by default (the oracle build/run is heavy); the whole-model
-    # functional gate stays compile_rvv either way.
-    mesh_verify = os.environ.get("MERLIN_MESH_VERIFY", "").lower() in ("1", "true", "yes", "on")
+    # MESH VERIFICATION IS THE CAPSULE'S DEMAND, NOT AN OPERATOR'S OPT-IN. It EXECUTES each mesh-routed
+    # matmul as a single systolic tile on the target's real mesh oracle (compile_model mesh_verify),
+    # which is the only evidence that the matmul layers run ON the mesh rather than that a routing plan
+    # was produced.
+    #
+    # It used to be off unless an env var said otherwise, because the oracle build/run is heavy. The
+    # cost is real; the default was still wrong. A capsule that declares `must_accelerate`, or that
+    # names `on_mesh` in `lanes.require`, is asking for exactly this evidence -- and without it the tier
+    # ladder below has nothing to record, so the capstone reports a verdict backed by the functional
+    # lane alone. That is `capstone-graded-tiles-not-the-model` with the accelerator left out entirely.
+    # Derive the default from what the capsule demands; the env var still overrides in BOTH directions,
+    # for a deliberate diagnostic run. The wall-clock cost is bounded by MERLIN_MODEL_BUDGET_S.
+    _demands_mesh = bool(_sem.get("must_accelerate")) or "on_mesh" in _req_lanes
+    _mv_env = os.environ.get("MERLIN_MESH_VERIFY", "").strip().lower()
+    mesh_verify = (_mv_env in ("1", "true", "yes", "on")) if _mv_env else _demands_mesh
     result: dict = {"capsule": capsule["name"], "kind": "model", "label": capsule.get("label"),
                     "operation": {"op": "model", "model": model, "dtype": dtype, "run": run_where,
                                   "target": target},

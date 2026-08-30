@@ -376,3 +376,78 @@ def test_the_two_mesh_records_never_share_a_key():
     assert 'out["mesh_tile_verification"] = _mesh_verify(' in src, \
         "the synthesized-tile record must not be written to the model-execution key"
     assert 'out["mesh_execution"] = _mesh_verify(' not in src
+
+
+# --- the accelerator evidence must be collected by DEFAULT ---------------------------------------
+# A third way the capstone came out vacuous, and the quietest: `MERLIN_MESH_VERIFY` defaulted OFF, so
+# the tile certification that proves the matmul layers ran ON the mesh was simply never collected. The
+# tier ladder then had nothing to record, and the capsule reported a verdict backed by the functional
+# lane alone. The cost of collecting it is real -- it is bounded by MERLIN_MODEL_BUDGET_S, not by
+# declining to look.
+
+def _mesh_verify_default(capsule: dict, env: str | None) -> bool:
+    """The decision under test, evaluated exactly as `_grade_model_capsule_inline` writes it."""
+    sem = capsule.get("semantic") or {}
+    req = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
+    demands = bool(sem.get("must_accelerate")) or "on_mesh" in req
+    e = (env or "").strip().lower()
+    return (e in ("1", "true", "yes", "on")) if e else demands
+
+
+def test_mesh_verification_follows_the_capsules_own_demand():
+    must = {"semantic": {"must_accelerate": True}}
+    interop = {"semantic": {"must_accelerate": False},
+               "lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}
+    neither = {"semantic": {"must_accelerate": False}}
+
+    assert _mesh_verify_default(must, None) is True
+    assert _mesh_verify_default(interop, None) is True, (
+        "an interop capsule withholds must_accelerate on purpose — host work is the behaviour under "
+        "test — but it REQUIRES on_mesh, and that requirement is unverifiable without the evidence")
+    assert _mesh_verify_default(neither, None) is False
+
+    # the env var still overrides, in BOTH directions, for a deliberate diagnostic run
+    assert _mesh_verify_default(must, "0") is False
+    assert _mesh_verify_default(neither, "1") is True
+
+
+def test_every_capstone_either_demands_the_evidence_or_records_why_it_cannot():
+    """The pair invariant. A capstone may withhold the demand -- six do, because the derivation could
+    not ground one against the target's declared capabilities and role census -- but withholding must be
+    RECORDED, never silent, and it must not buy a pass: a capsule that demands nothing collects no mesh
+    verification, so every tier it declared is unexercised and the ladder fails it closed.
+
+    What must never happen is the third state: no demand, no reason, and a verdict anyway.
+    """
+    from merlin.common.paths import merlin_dir
+
+    roots = [merlin_dir() / "experiments/capsule_bench/harness/full_public_capsules",
+             merlin_dir() / "contract/capsules"]
+    demanding = withheld = 0
+    for root in roots:
+        for f in sorted(root.rglob("capsule.yaml")):
+            c = yaml.safe_load(f.read_text()) or {}
+            if c.get("kind") != "model":
+                continue
+            if _mesh_verify_default(c, None):
+                demanding += 1
+                continue
+            withheld += 1
+            reason = ((c.get("semantic") or {}).get("not_asserted_reason") or "").strip()
+            assert reason, (
+                f"{c.get('name')} ({f}) demands no accelerator evidence and records no reason — "
+                f"silence here is indistinguishable from 'this target has no accelerator demand'")
+    assert demanding >= 3, f"expected the grounded capstones, found {demanding}"
+    assert withheld >= 1, "the withholding path is real and must stay exercised by the corpus"
+
+
+def test_a_withheld_demand_cannot_buy_a_pass():
+    """Withholding is honest, not free: with no demand there is no mesh verification, so no tier the
+    capsule declared is exercised, and the ladder refuses to call that a pass."""
+    ungrounded = {"semantic": {"must_accelerate": False, "not_asserted_reason": "could not derive"},
+                  "required_oracle_tiers": ["L0", "L1", "L2", "L3"]}
+    assert _mesh_verify_default(ungrounded, None) is False
+    # no mesh verification -> no tile record -> nothing exercised -> every declared tier unexercised
+    exercised: dict[str, str] = {}
+    unexercised = [t for t in ungrounded["required_oracle_tiers"] if t not in exercised]
+    assert unexercised == ["L0", "L1", "L2", "L3"]

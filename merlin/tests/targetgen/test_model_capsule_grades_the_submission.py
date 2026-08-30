@@ -44,7 +44,8 @@ def test_model_grading_accepts_the_package_under_test():
 
 
 def test_the_package_is_threaded_as_the_accelerator_backend_not_the_codegen_package():
-    seg = _fn_src(_RUNNER, "_grade_model_capsule")
+    # the grade itself; `_grade_model_capsule` is the wall-clock budget wrapper around it
+    seg = _fn_src(_RUNNER, "_grade_model_capsule_inline")
     assert "mesh_package=_pkg" in seg, (
         "the submission is the OOT accelerator backend that certifies tiles -> mesh_package")
     assert "package=None" in seg, (
@@ -55,7 +56,7 @@ def test_the_package_is_threaded_as_the_accelerator_backend_not_the_codegen_pack
 def test_run_capsule_passes_the_package_to_the_model_path():
     src = _RUNNER.read_text(encoding="utf-8")
     assert "_grade_model_capsule(capsule, target=eff_target, timeout=timeout,\n" in src
-    assert "package_dir=package_dir)" in src
+    assert "package_dir=package_dir, budget_s=_budget)" in src
 
 
 def test_a_padded_tile_records_the_layer_extent_it_did_not_certify():
