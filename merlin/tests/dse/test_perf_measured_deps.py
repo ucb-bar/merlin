@@ -109,3 +109,37 @@ class TestTimeAttribution:
 
     def test_an_empty_run_reports_no_concentration_rather_than_dividing_by_zero(self):
         assert time_attribution([]).concentration() == 0.0
+
+
+class TestCounterOffset:
+    """A traced counter is a pipeline register; reading it as the executing index mis-attributes."""
+
+    def test_the_lead_is_derived_from_which_dwells_moved(self):
+        from merlin.perf.deps.measured import derive_counter_offset
+        # Instructions 4 and 8 got cheaper; the counter values that moved are 6 and 10.
+        off = derive_counter_offset({6: 33, 10: 33}, {6: 129, 10: 129}, [4, 8])
+        assert off.slots == 2 and off.established is True
+
+    def test_a_partial_match_is_not_established(self):
+        from merlin.perf.deps.measured import derive_counter_offset
+        off = derive_counter_offset({6: 33, 99: 5}, {6: 129, 99: 9}, [4, 8])
+        assert off.matched < off.total and off.established is False
+
+    def test_no_change_pins_nothing(self):
+        from merlin.perf.deps.measured import derive_counter_offset
+        off = derive_counter_offset({1: 2}, {1: 2}, [])
+        assert off.established is False and "nothing pins" in off.detail
+
+    def test_the_offset_shifts_issue_times_onto_the_executing_instruction(self):
+        assert issue_times([5, 5, 6], offset=2) == {3: (0,), 4: (2,)}
+
+    def test_an_unapplied_offset_manufactures_a_falsification(self):
+        # The regression this exists for: with the counter read raw, a correctly separated pair
+        # looks like it ran 2 cycles apart and refutes a weight it actually respected.
+        dag = _Dag([_E(2, 4, cycles=32.0)], n=8)
+        pcs = [2, 3] + [4] * 40 + [5, 6]                 # the counter leads the stall by 2 slots
+        raw, _ = measured_separations(dag, issue_times(pcs))
+        assert raw[0].measured == 2 and raw[0].falsified is True
+
+        aligned, _ = measured_separations(dag, issue_times(pcs, offset=2))
+        assert aligned[0].measured == 41 and aligned[0].falsified is False

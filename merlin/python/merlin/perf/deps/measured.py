@@ -31,12 +31,67 @@ from dataclasses import dataclass
 from merlin.perf.decompose import UNKNOWN
 
 __all__ = [
-    "ClassPricing", "SeparationObservation", "TimeAttribution", "issue_times",
-    "measured_separations", "price_unknown_classes", "time_attribution",
+    "ClassPricing", "CounterOffset", "SeparationObservation", "TimeAttribution",
+    "derive_counter_offset", "issue_times", "measured_separations", "price_unknown_classes",
+    "time_attribution",
 ]
 
 
-def issue_times(pc_by_cycle: "Sequence[int]") -> dict[int, tuple[int, ...]]:
+@dataclass(frozen=True)
+class CounterOffset:
+    """How far the traced counter leads the instruction actually executing, DERIVED.
+
+    A traced program counter is a pipeline register, so the index it shows is not in general the
+    index of the instruction whose cost the machine is paying. Reading it as if it were mis-attributes
+    every stall by a fixed number of slots -- which silently turned a correctly separated pair into a
+    "falsified" edge, because the arrival separation of two instructions is not the separation
+    between their executions.
+
+    The offset is a target fact and is measurable rather than guessable: change the cost of some
+    known instructions and see which counter values change their dwell. It is never defaulted -- an
+    undetermined offset leaves every per-instruction claim unavailable rather than off by a
+    pipeline depth.
+    """
+
+    slots: int
+    #: How many changed instructions the offset explains, and how many changed at all.
+    matched: int
+    total: int
+    detail: str = ""
+
+    @property
+    def established(self) -> bool:
+        return self.total > 0 and self.matched == self.total
+
+
+def derive_counter_offset(dwell_a: Mapping[int, int], dwell_b: Mapping[int, int],
+                          changed_instructions: "Sequence[int]",
+                          candidates: "Sequence[int]" = tuple(range(0, 9))) -> CounterOffset:
+    """The constant lead between the traced counter and the executing instruction.
+
+    ``dwell_*`` are ``{counter value: cycles spent there}`` from two runs of the SAME program that
+    differ only in the cost of ``changed_instructions``. The counter values whose dwell changed are
+    exactly the changed instructions displaced by the pipeline lead, so the offset is the shift that
+    maps one set onto the other. Requiring EVERY changed instruction to be explained is what makes
+    this a derivation and not a fit: a partial match returns ``established`` False.
+    """
+    moved = {pc for pc in set(dwell_a) | set(dwell_b)
+             if dwell_a.get(pc, 0) != dwell_b.get(pc, 0)}
+    want = set(int(i) for i in changed_instructions)
+    if not want:
+        return CounterOffset(0, 0, 0, "no instruction was changed, so nothing pins the offset")
+    best = None
+    for k in candidates:
+        hit = len({i + k for i in want} & moved)
+        if best is None or hit > best[1]:
+            best = (k, hit)
+    k, hit = best
+    return CounterOffset(slots=k, matched=hit, total=len(want),
+                         detail=(f"{hit} of {len(want)} changed instruction(s) explained by a lead of "
+                                 f"{k} slot(s); counter values that moved: {sorted(moved)}"))
+
+
+def issue_times(pc_by_cycle: "Sequence[int]", *, offset: int = 0) -> dict[int, tuple[int, ...]]:
     """``{instruction index: cycles it issued}`` from the per-cycle program counter.
 
     An instruction issues on the cycle the counter ARRIVES at it; cycles where the counter does not
@@ -49,7 +104,7 @@ def issue_times(pc_by_cycle: "Sequence[int]") -> dict[int, tuple[int, ...]]:
     prev = None
     for cycle, pc in enumerate(pc_by_cycle):
         if pc != prev:
-            out.setdefault(int(pc), []).append(cycle)
+            out.setdefault(int(pc) - offset, []).append(cycle)
         prev = pc
     return {k: tuple(v) for k, v in sorted(out.items())}
 
