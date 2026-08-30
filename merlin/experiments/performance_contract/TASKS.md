@@ -152,9 +152,11 @@ Head-to-head, **same computation, same oracle tier the baseline was measured on*
 
 | shipped kernel | shape | shipped | ours | speedup | bit-exact | bytes moved |
 |---|---|---:|---:|---:|:--:|---|
-| `matmul` | 32×32×32 | 2383 | **705** | **3.38×** | ✅ | 65,536 → **4,096** |
-| `smolvla_matmul` | 32×32×32 | 1485 | **705** | **2.11×** | ✅ | 36,864 → **4,096** |
-| `smolvla_matmul_k_chain` | 32×64×32 | 3102 | **1121** | **2.77×** | ✅ | 81,920 → **6,144** |
+| `matmul` | 32×32×32 | 2383 | **513** | **4.64×** | ✅ | 65,536 → **4,096** |
+| `smolvla_matmul` | 32×32×32 | 1485 | **513** | **2.90×** | ✅ | 36,864 → **4,096** |
+| `smolvla_matmul_k_chain` | 32×64×32 | 3102 | **801** | **3.87×** | ✅ | 81,920 → **6,144** |
+
+(Superseding the first run at 705/705/1121 = 3.38/2.11/2.77×, before the third lever below.)
 
 **Where the win comes from — two levers, both previously only estimated:**
 
@@ -165,6 +167,18 @@ Head-to-head, **same computation, same oracle tier the baseline was measured on*
    own descriptors instead of inheriting a movement pattern.
 2. **The settle margin.** The device contract carries settle at **2× the measured minimum** (128 vs
    64). At the minimum, `matmul` drops 1217 → **705**.
+3. **Per-class settle — a third lever, found by decomposing our own result.** At 705 cycles the kernel
+   is **stall-dominated, not DMA-dominated**: 8 stall sites × 64 = **512 of those 705 cycles are
+   settle**. And `Settle` carries separate `tensor`/`mxu`/`vpu` fields that `probe_settle` fills with
+   **one uniform value**. Probing each class independently:
+
+       tensor=32  bit-exact on 5/5 operand salts     ->  705 → 513
+       tensor=24  WRONG on 5/5                       ->  a real boundary, not data luck
+       mxu=32     WRONG                              ->  the matrix class genuinely needs 64
+
+   So the uniform floor was over-delaying the tensor class by 2×. Measuring three numbers instead of
+   one is strictly more information by the same method — the safety argument is unchanged, and the
+   failure at 24 across every operand set is what makes it a floor rather than a lucky value.
 
 **The falsifier fired correctly, and it is what makes this a measurement.** At settle=32 — below the
 measured minimum — the kernel runs in 449 cycles and is **`bit_exact: false`**. So 64 is a real
