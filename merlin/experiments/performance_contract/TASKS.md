@@ -162,38 +162,44 @@ suite-wide.
 | 2.4 | Falsifier | **OPEN** — if structural prediction fails, the cycle claim is downgraded **in writing** to "given the byte volume" |
 
 
-### R2 result — the falsifier FIRED, and the blocker is one level lower than recorded
+### R2 result — the falsifier did NOT fire; my first conclusion was wrong
 
-**Attempted directly** (no role table needed for identification: `dma` is its own mnemonic family, so
-structural splitting avoids the `vredmax.bf16` substring trap). Feasibility looked good — all 25 program
-hex files are on disk and `fields_of('dma.load.ch0')` returns `{'rd':[7..11], 'rs1':[15..19],
-'rs2':[20..24]}`. **It is not enough.**
+**Retracted:** I first reported that movement volume was unpredictable because the derived ISA model
+carries no encoding for that family — `opcode_table` empty, `by_mnemonic['dma.load.ch0'] is None`, and
+all 146 decoded movement instructions collapsing into one class with all-zero operands. Every one of
+those observations is true. **The conclusion drawn from them was not.**
 
-Measured over all 25 shipped programs:
+The encodings exist upstream, in the target's own shipped ISA definition:
 
-    146 of 146 DMA instructions decode to ALL-ZERO operands (100%)
-    all 146 collapse into ONE class, `DMARegUnary`
+    DMA_LOAD_CH0 : opcode=0b1111011, funct3=0b000, funct7=0b0000000   (funct3 = channel)
+    DMA_STORE_CH0: opcode=0b1111011, funct3=0b000, funct7=0b0000001
+    DMA_WAIT_CH0 : opcode=0b1111111, funct3=0b000, funct7=0b0000001
 
-Cause, verified on the derived model: **`opcode_table` is EMPTY (0 entries)** for this target, and
-`by_mnemonic['dma.load.ch0']` is **`None`** — the 32 DMA mnemonics exist in `asm_mnemonics` and have
-field layouts, but carry **no encoding record**. So `disassemble` returns instruction-*class* names, not
-mnemonics, and `dma.load.chN` / `dma.wait.chN` / `dma.config.chN` are indistinguishable after decode:
-direction, channel and operands are all unrecoverable. The raw words *do* differ (`0x0200007f` vs
-`0x0200107f`, bit 12), so the information is present in the program and absent from the model.
+Decoded against those fields, **all 242 movement instructions across the 25 shipped programs resolve
+cleanly: 67 loads, 29 stores, 146 waits** — with real register operands (`load.ch0 rd=4 rs1=1 rs2=7`),
+and the length register shared across the loads of a program. merlin's disassembler had seen only the
+146 waits and missed every load and store, because *its* extraction drops the family; the information
+was in the programs and in the vendor ISA the whole time.
 
-**The blocker is NOT "the mnemonics carry no merlin role"** — that framing sent this to another lane.
-Roling them would let the CCA facets answer, but it would not put an encoding in the ISA model, and
-without that no decoder on any path can read a descriptor's size. The real prerequisite is **encoding
-extraction for the DMA family**, which is upstream of both the role table and this predictor.
+**The lesson is the session's own recurring one, and I walked into it while writing it down.** I
+concluded "underivable" from *merlin's view of the ISA* rather than from the ISA. A missing field in a
+derived model is evidence about the derivation, not about the machine. Checking one file upstream
+turned a blocker into a build.
 
-**R2.4 fires as specified: the cycle claim stays "given the byte volume."** `footprint_bytes` remains a
-workload INPUT, `compose_program_cycles`'s "Finding 6" stays open, and **R2.5's amplification ratios
-stay half-derived** — `useful_bytes` is not recoverable this way either. A precise negative, recorded
-rather than fitted.
+**Shipped:** `merlin/python/merlin/perf/dma_volume.py` + 10 tests (`ce975bc0`). Identification is by
+ENCODING, not by role — which is why the role table was never the real prerequisite, and why nothing
+in the module names a target, a mnemonic spelling or a channel count. The two R2.1 rules are enforced
+and pinned: the size operand comes from the ISA's declared field layout (a form declaring no size
+field yields `None`, never "operand 2"), and any unresolved descriptor demotes the **whole kernel** to
+a lower bound rather than letting a partial sum present as a total. Constant propagation kills a
+register it cannot evaluate and a backward branch invalidates everything, since a loop-carried value
+is not a constant.
 
-**What would close it**, in order: extract the DMA encodings into the ISA model (bit 12 separates at
-least two of the forms, so the information is there to be lifted); then the constant-propagation
-predictor is straightforward and the three rules already specified in R2.1 apply unchanged.
+**Still open, honestly:** end-to-end validation against the arc-measured `(reads+writes)·beat_bytes`
+for >=18 of 21 kernels (R2.2) is not run — that needs merlin's own extraction to carry the family
+encodings so the decode path feeds this module in production. The predictor and its degradation rules
+are in place and tested; wiring the encodings into `isa_model` is the remaining step, and it is now a
+concrete extraction task rather than an unexplained block.
 
 ## R3 — Target profile + performance contract  *(Lane A; after 1.2)*
 
