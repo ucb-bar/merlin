@@ -1,0 +1,76 @@
+name: PK00_k32
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: 'reduction-depth sweep at a fixed single-tile parallel extent: 1,
+  2, 4 and 8 tile passes, which is the smallest set that can fit a rate and an intercept
+  and still leave a residual to look at (tile=32; K=32, M=32, N=32)'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 32
+  dtype: bf16
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: bf16
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  modes:
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L3
+- L4
+vcs: optional
+firesim: optional
+inapplicable_oracle_tiers:
+  L2: 'functional core cannot corroborate an RTL result for this target: the ISA encodes
+    dma.config.chN and dma.wait.chN to the same word, so an assembled program that
+    needs both cannot be decoded back (resolving it as wait leaves the DMA channel
+    unarmed and the kernel stalls at its first VLOAD; resolving it as config deletes
+    the barriers and every output reads back zero). The core also treats VMEM as byte-addressed
+    where the RTL treats it as word-addressed, and reads the fp8->bf16 unpack scale
+    as a divisor where the RTL reads a biased exponent. Graded on the RTL tiers instead.'
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+pytorch_ref:
+  op: matmul
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.linalg.mlir
+performance:
+  level: L1_tile
+  lever: reduction_depth
+  note: 'four K points is the minimum that separates a per-tile-pass RATE from a fixed
+    fill/drain INTERCEPT (the repo rule is two points per fitted parameter, and there
+    are two) AND leaves the k-chain accumulate excess visible as a residual rather
+    than absorbing it into the rate: the naive per-step count is 254 against a measured
+    284, and a two-point fit has nowhere to put the 30'

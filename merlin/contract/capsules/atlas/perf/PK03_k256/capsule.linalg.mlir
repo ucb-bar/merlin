@@ -1,0 +1,9 @@
+builtin.module attributes {prov.level = "linalg-on-tensors"} {
+  func.func @forward(%0: tensor<32x256xbf16>, %1: tensor<256x32xbf16>) -> tensor<32x32xbf16> {
+    %2 = tensor.empty() : tensor<32x32xbf16>
+    %3 = arith.constant 0.000000e+00 : bf16
+    %4 = linalg.fill {prov.op = "fill", prov.family = "fill"} ins(%3 : bf16) outs(%2 : tensor<32x32xbf16>) -> tensor<32x32xbf16>
+    %5 = linalg.matmul {prov.region_id = "matmul_0", prov.op = "matmul", prov.family = "contraction", prov.aten = "aten.mm.default", prov.orig_dtype = "bfloat16"} ins(%0, %1 : tensor<32x256xbf16>, tensor<256x32xbf16>) outs(%4 : tensor<32x32xbf16>) -> tensor<32x32xbf16>
+    func.return %5 : tensor<32x32xbf16>
+  }
+}

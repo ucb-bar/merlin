@@ -1,0 +1,83 @@
+name: PF03_fused_matmul_bias_m32k64n32
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: 'a fusion triple at one shape, twice: X@W+B fused, against X@W and
+  X+B as the two ops it replaces. The three members are generated from ONE shape statement,
+  so they cannot drift apart (tile=32; K=64, M=32, N=32; op=fused_matmul_bias)'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 32
+  - 64
+  dtype: bf16
+- name: W
+  role: input
+  shape:
+  - 64
+  - 32
+  dtype: bf16
+- name: B
+  role: input
+  shape:
+  - 32
+  dtype: bf16
+operation:
+  op: fused_matmul_bias
+  attributes:
+    out: Y0
+    arg_order:
+    - X
+    - W
+    - B
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L3
+- L4
+vcs: optional
+firesim: optional
+inapplicable_oracle_tiers:
+  L2: 'functional core cannot corroborate an RTL result for this target: the ISA encodes
+    dma.config.chN and dma.wait.chN to the same word, so an assembled program that
+    needs both cannot be decoded back (resolving it as wait leaves the DMA channel
+    unarmed and the kernel stalls at its first VLOAD; resolving it as config deletes
+    the barriers and every output reads back zero). The core also treats VMEM as byte-addressed
+    where the RTL treats it as word-addressed, and reads the fp8->bf16 unpack scale
+    as a divisor where the RTL reads a biased exponent. Graded on the RTL tiers instead.'
+pytorch_ref:
+  op: fused_matmul_bias
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L5_fusion
+  lever: epilogue_fusion
+  note: 'the cheapest level to build and the only one whose comparand needs no model
+    at all: cycles(fused) against cycles(A) + cycles(B) at the identical shape. `comparison_group`
+    has been a declared field on four capsules since they were written and is consumed
+    by nothing, which is the same thing as not existing -- the missing halves were
+    the PARTS to compare a fused capsule against, and a reader that does the arithmetic'
+comparison_group:
+  name: fmb_m32k64n32
+  role: fused

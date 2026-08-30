@@ -197,3 +197,135 @@ capsules:
    operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'lstmnetvit fp8 — vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)',
    label: public, gate: {after_op_pass_fraction: 0.8}}
+
+# ====================================================================================================
+# PERFORMANCE CAPSULES — a corpus organized by OPTIMIZATION LEVEL, not by op
+# ====================================================================================================
+# The functional corpus above asks "is the answer right". These ask "where did the cycles go", and they
+# are separated from it in three ways so neither can be mistaken for the other:
+#
+#   * `cat: perf` puts them in their own corpus directory. There is deliberately NO new capsule `kind`
+#     and no new `op`: both enums are closed and test-pinned (a `kind` is a grading contract and an `op`
+#     is only expressible if a builder and a golden exist for it), while `cat` is a free directory name
+#     and the capsule schema is `additionalProperties: true`. So the level lives in a `performance:`
+#     block, which is data.
+#   * `label: dev` keeps them OUT of the quotable public headline. A perf capsule is not a functional
+#     conformance claim, and silently growing `public_passed`'s denominator with capsules authored to
+#     measure a schedule would corrupt the one number that gets quoted.
+#   * Every shape is TILE-RELATIVE and expanded by a sweep. Nothing here writes an extent down, so the
+#     same corpus brackets a different array edge without an edit -- and, more to the point, the members
+#     of a comparison group are guaranteed to sit at the IDENTICAL shape because there is only one place
+#     the shape is stated.
+#
+# WHY bf16/pytorch RATHER THAN THE fp8 SPECIR ENGINE. The fp8 golden is a triple Python loop with a
+# per-product bf16 rounding call, which is exactly right at tile scale and quadratic-times-K at layer
+# scale: the L2 shape below is 22.5M rounded products and does not finish in a session. The bf16
+# host-eager reference computes the same shapes in milliseconds, and the corpus already grades a dozen
+# bf16 model slices on this target, so it is an established reference here rather than a new one.
+#
+# ⚠️ COST, AND THE PROMOTION THAT IS NOT WIRED. `cat: perf` becomes a graded sibling root automatically
+# (a directory holding capsule dirs IS a category), and the default label filter is `public,dev`, so a
+# plain grade now buys these too -- about 1.4M projected cycles at the certifying tier, most of it in the
+# two L2 layers. The two-stage protocol that should prevent that (screen at tile scale, promote only the
+# passing capsule's LAYER-SCALE SIBLING into the certify stage) is not wired: `gate.after_op_pass_fraction`
+# is honored for `kind: model` only, so declaring a gate on a `model_slice` would be a silent no-op and
+# none is declared. Until stage 2 exists, grade the layer-scale levels deliberately (`--labels public` to
+# exclude them, `--labels dev` to run only them).
+#
+# SIZING IS PRE-FLIGHTED, NOT GUESSED. Every shape below was checked by `merlin.perf.preflight` against
+# this target's own derived facts (array edge, element widths, the program runner's 1 MiB DRAM window,
+# instruction memory) BEFORE being written here. The projected cycle counts in each sweep's prose come
+# from a rate of ~751 cycles per tile pass, which is an EXTRAPOLATION FROM ONE DATAPOINT (3,300,328
+# cycles over 4,394 tile passes) and is labelled as such wherever it is used -- it is not a law, and of
+# those 751 cycles the contraction unit accounts for only about 158.
+sweeps:
+# ---- L1: the tile, swept on the reduction axis alone ----------------------------------------------
+- id: PK
+  base: {cat: perf, kind: model_slice, source: pytorch, operand_dtype: bf16, out: Y0,
+         label: dev, source_role: derived_sweep, op: matmul,
+         performance: {level: L1_tile, lever: reduction_depth,
+                       note: 'four K points is the minimum that separates a per-tile-pass RATE from a
+                         fixed fill/drain INTERCEPT (the repo rule is two points per fitted parameter,
+                         and there are two) AND leaves the k-chain accumulate excess visible as a
+                         residual rather than absorbing it into the rate: the naive per-step count is
+                         254 against a measured 284, and a two-point fit has nowhere to put the 30'}}
+  axes:
+    M: [tile]
+    N: [tile]
+    K: [tile, 2*tile, 4*tile, 8*tile]
+  name: '{id}{i:02d}_k{K}'
+  source_reference: >-
+    reduction-depth sweep at a fixed single-tile parallel extent: 1, 2, 4 and 8 tile passes, which is
+    the smallest set that can fit a rate and an intercept and still leave a residual to look at
+
+# ---- L2: one layer, at a scale where the per-tile cost amortizes -----------------------------------
+- id: PL
+  base: {cat: perf, kind: model_slice, source: pytorch, operand_dtype: bf16, out: Y0,
+         label: dev, source_role: derived_sweep, op: matmul,
+         performance: {level: L2_intra_layer, lever: tiling_and_amplification,
+                       note: 'at tile scale the transfer-amplification ratio is dominated by a fixed
+                         per-tile transfer cost that proper tiling amortizes away, so a 9-28x measured
+                         on a demo tile OVERSTATES the available win. These are the shapes at which the
+                         question can be asked honestly. They also DECLARE their shapes and dtypes,
+                         which is what makes useful_bytes derivable instead of hand-entered'}}
+  axes:
+    M: [7*tile]
+    N: [7*tile]
+    K: [7*tile, 14*tile]
+  name: '{id}{i:02d}_m{M}k{K}n{N}'
+  source_reference: >-
+    intra-layer square and rectangular contractions (343 and 686 tile passes) -- large enough that the
+    fixed per-tile transfer cost is amortized, and inside the program runner's DRAM window with room
+
+# ---- L3: the inter-layer transition — a REAL producer-consumer dependence ---------------------------
+- id: PC
+  base: {cat: perf, kind: model_slice, source: pytorch, operand_dtype: bf16, out: Y0,
+         label: dev, source_role: derived_sweep, op: k_chain,
+         performance: {level: L3_inter_layer, lever: dma_issue_before_wait,
+                       note: 'THE LEVEL WITH A LEVER AND NO COVERAGE. Stage two consumes stage one''s
+                         output, so the transition is a real dependence and not two independent kernels
+                         side by side -- which is what makes the question "was the next stage''s
+                         transfer issued before this stage''s wait" mean anything at all. It is proven
+                         AVAILABLE: 2,567 DMA descriptors pair with 2,567 waits, 0 unpaired, distance 0
+                         on 95.4% but a real tail out to 50, so the ISA expresses overlap and the
+                         hardware does it while 97 of 114 programs do not. ⚠️ The headline "14.7%
+                         corpus-wide, 23.9% on gelu" is PROVENANCE-SUSPECT and must not be quoted as
+                         measured: it was computed as min(dma, compute) over buckets that PARTITION
+                         cycles, so a kernel whose compute is already hidden underneath its transfers
+                         reads as having no compute to hide and contributes zero. One kernel is known
+                         to do exactly that -- 428 cycles of vector work priced by an exact model,
+                         reported as vpu=0 while the same op classes register 621 elsewhere. It is the
+                         right order of magnitude to size this level against and nothing more; a joint
+                         occupancy vector is what settles it'}}
+  axes:
+    M: [4*tile]
+    N: [4*tile]
+    K: [4*tile, 8*tile]
+  name: '{id}{i:02d}_m{M}k{K}n{N}'
+  source_reference: >-
+    two chained contractions where the second reads the first's output: the inter-layer transition, at
+    two reduction depths so the transition cost can be separated from the stages' own
+
+# ---- L5: fusion — a triple whose comparand is arithmetic and needs no model -------------------------
+- id: PF
+  base: {cat: perf, kind: model_slice, source: pytorch, operand_dtype: bf16, out: Y0,
+         label: dev, source_role: derived_sweep,
+         performance: {level: L5_fusion, lever: epilogue_fusion,
+                       note: 'the cheapest level to build and the only one whose comparand needs no
+                         model at all: cycles(fused) against cycles(A) + cycles(B) at the identical
+                         shape. `comparison_group` has been a declared field on four capsules since
+                         they were written and is consumed by nothing, which is the same thing as not
+                         existing -- the missing halves were the PARTS to compare a fused capsule
+                         against, and a reader that does the arithmetic'}}
+  axes:
+    M: [tile]
+    N: [tile]
+    K: [tile, 2*tile]
+  variants:
+  - {op: fused_matmul_bias, comparison_group: {name: 'fmb_m{M}k{K}n{N}', role: fused}}
+  - {op: matmul, comparison_group: {name: 'fmb_m{M}k{K}n{N}', role: part}}
+  - {op: bias_add, comparison_group: {name: 'fmb_m{M}k{K}n{N}', role: part}}
+  name: '{id}{i:02d}_{op}_m{M}k{K}n{N}'
+  source_reference: >-
+    a fusion triple at one shape, twice: X@W+B fused, against X@W and X+B as the two ops it replaces.
+    The three members are generated from ONE shape statement, so they cannot drift apart

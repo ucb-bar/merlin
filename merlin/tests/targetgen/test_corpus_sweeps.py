@@ -235,3 +235,105 @@ def test_the_sweep_provenance_role_is_a_registered_one():
 def test_every_generated_entry_carries_that_role():
     entries = GC.expand_sweeps(_sweep_profile(), _binding(16))
     assert {e["source_role"] for e in entries} == {"derived_sweep"}
+
+
+# ---------------------------------------------------------------------------
+# Variants: crossing the extents with non-extent overrides
+# ---------------------------------------------------------------------------
+# A fusion comparison needs three capsules at the IDENTICAL shape differing only in which op they ask
+# for, so that `cycles(fused)` and `cycles(part) + cycles(part)` are about the same work. That cannot
+# be an axis (an axis value is an extent resolved against the tile), and writing three hand-authored
+# entries would state the shape in three places, where the entire point is that it is one shape.
+
+
+def _variant_profile(**over):
+    sweep = {
+        "id": "PF",
+        "base": {"cat": "perf", "kind": "model_slice", "out": "Y0", "label": "dev"},
+        "axes": {"M": ["tile"], "N": ["tile"], "K": ["tile", "2*tile"]},
+        "variants": [
+            {"op": "fused_matmul_bias", "comparison_group": {"name": "g_m{M}k{K}n{N}", "role": "fused"}},
+            {"op": "matmul", "comparison_group": {"name": "g_m{M}k{K}n{N}", "role": "part"}},
+            {"op": "bias_add", "comparison_group": {"name": "g_m{M}k{K}n{N}", "role": "part"}},
+        ],
+        "name": "{id}{i:02d}_{op}_m{M}k{K}n{N}",
+        "source_reference": "fusion triple",
+    }
+    sweep.update(over)
+    return {"capsules": [], "sweeps": [sweep]}
+
+
+def test_variants_cross_with_the_extents():
+    entries = GC.expand_sweeps(_variant_profile(), _binding(16))
+    assert len(entries) == 6                       # 2 K points x 3 ops
+    assert [e["op"] for e in entries[:3]] == ["fused_matmul_bias", "matmul", "bias_add"]
+
+
+def test_every_member_of_a_group_sits_at_exactly_one_shape():
+    """The load-bearing property: the comparand subtracts these numbers from one another, so a
+    difference in shape between a fused capsule and its parts would be read as a fusion saving."""
+    entries = GC.expand_sweeps(_variant_profile(), _binding(16))
+    by_group: dict[str, set] = {}
+    for e in entries:
+        by_group.setdefault(e["comparison_group"]["name"], set()).add((e["M"], e["K"], e["N"]))
+    assert len(by_group) == 2
+    assert all(len(shapes) == 1 for shapes in by_group.values()), by_group
+
+
+def test_a_variant_string_is_resolved_against_the_shape_it_is_paired_with():
+    entries = GC.expand_sweeps(_variant_profile(), _binding(16))
+    names = sorted({e["comparison_group"]["name"] for e in entries})
+    assert names == ["g_m16k16n16", "g_m16k32n16"]
+
+
+def test_a_variant_field_with_no_placeholder_is_copied_through_untouched():
+    prof = _variant_profile(variants=[{"op": "matmul", "performance": {"level": "L5_fusion"}}])
+    entries = GC.expand_sweeps(prof, _binding(16))
+    assert all(e["performance"] == {"level": "L5_fusion"} for e in entries)
+
+
+def test_names_stay_unique_across_the_whole_cross_product():
+    entries = GC.expand_sweeps(_variant_profile(), _binding(16))
+    assert len({e["name"] for e in entries}) == len(entries)
+
+
+def test_a_malformed_variants_block_raises_rather_than_being_ignored():
+    with pytest.raises(ValueError):
+        GC.expand_sweeps(_variant_profile(variants="fused_matmul_bias"), _binding(16))
+    with pytest.raises(ValueError):
+        GC.expand_sweeps(_variant_profile(variants=["fused_matmul_bias"]), _binding(16))
+
+
+def test_a_sweep_with_no_variants_behaves_exactly_as_before():
+    entries = GC.expand_sweeps(_sweep_profile(), _binding(16))
+    assert len(entries) == 4 and all("comparison_group" not in e for e in entries)
+
+
+# ---------------------------------------------------------------------------
+# Declared intent blocks survive generation
+# ---------------------------------------------------------------------------
+# Three of the four capsule writers build their capsule dict themselves and return early, so a key
+# handled in only one of them is silently absent from two thirds of the corpus -- the failure that
+# left 14 of one target's 33 capsules with no generalization block.
+
+
+def test_the_declared_blocks_are_carried_onto_the_capsule():
+    entry = {"performance": {"level": "L3_inter_layer"},
+             "comparison_group": {"name": "g", "role": "fused"}}
+    cap: dict = {"name": "X"}
+    assert GC._carry_declared_blocks(entry, cap) is True
+    assert cap["performance"] == {"level": "L3_inter_layer"}
+    assert cap["comparison_group"] == {"name": "g", "role": "fused"}
+
+
+def test_a_block_already_on_the_capsule_is_never_overwritten():
+    """A hand-authored capsule is the frozen source of record; a regeneration must not rewrite it."""
+    cap = {"name": "X", "comparison_group": "authored_by_hand"}
+    assert GC._carry_declared_blocks({"comparison_group": {"name": "g"}}, cap) is False
+    assert cap["comparison_group"] == "authored_by_hand"
+
+
+def test_a_block_the_entry_does_not_declare_is_never_invented():
+    cap: dict = {"name": "X"}
+    assert GC._carry_declared_blocks({}, cap) is False
+    assert "performance" not in cap and "comparison_group" not in cap
