@@ -210,6 +210,11 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
         "dispatch.dma_overlap", LEVER, ("dispatch",),
         "bulk movement issued to overlap with compute -> derived for any endpoint binding a dma role; "
         "governed by the hw-sync region"),
+    "dispatch.dma_issue_to_wait": FieldSpec(
+        "dispatch.dma_issue_to_wait", METRIC, ("dispatch",),
+        "instructions between a DMA issue and the sync that waits for it (0 = strictly serial) -> the "
+        "MAGNITUDE behind dispatch.dma_overlap's boolean, so a stream that overlaps by one instruction "
+        "is distinguishable from one that overlaps a whole tile"),
     # --- communication: what crosses a boundary (dispatch/program scope) ---
     # ALL BACKEND_STUB. There is no lifter for this facet yet and therefore no route: a field that
     # cannot be routed is a stub, never a quiet LEVER. They are declared now, rather than when the

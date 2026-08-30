@@ -124,6 +124,7 @@ class DispatchFacet:
     loop_offloaded: bool | None = None         # a loop nest handed to the endpoint's own sequencer
     double_buffered_banks: int | None = None   # distinct on-chip banks alternated across tiles
     dma_overlap: bool | None = None            # bulk movement issued to overlap with compute
+    dma_issue_to_wait: int | None = None       # METRIC: instructions between a DMA issue and its wait
 
 
 @dataclass
@@ -691,6 +692,7 @@ def lift_asm_roles(decoded, endpoint, *, op: str, source: str,
 
     # --- dispatch: engine-agnostic, and the largest gap this closes ---
     n_config = counts.get("config", 0)
+    _overlapped, _issue_to_wait = _dma_overlap(decoded)
     dispatch = DispatchFacet(
         n_dispatches=total or None,
         config_fraction=(n_config / total) if total else None,
@@ -698,7 +700,8 @@ def lift_asm_roles(decoded, endpoint, *, op: str, source: str,
         # for many accumulates is reuse; one per accumulate is not.
         descriptor_reuse=(n_config <= 1) if counts.get("accumulate") else None,
         loop_offloaded=bool(counts.get("loop_descriptor")) if total else None,
-        dma_overlap=bool(counts.get("dma")) if total else None,
+        dma_overlap=_overlapped,
+        dma_issue_to_wait=_issue_to_wait,
     )
 
     # --- compute: shared across every engine ---
@@ -749,6 +752,49 @@ def lift_asm_roles(decoded, endpoint, *, op: str, source: str,
                     "role_counts": dict(sorted(counts.items())),
                     "missing_contraction_roles": list(missing)},
     )
+
+
+def _dma_overlap(decoded) -> tuple[bool | None, int | None]:
+    """Was bulk movement issued so it OVERLAPS the compute it feeds, or waited on immediately?
+
+    Returns ``(overlapped, max_issue_to_wait)``. The second is the largest number of instructions
+    between a ``dma`` issue and the ``sync`` that waits for it -- 0 means strictly serial, which is
+    the shape that leaves a movement-bound kernel idle while the engine waits.
+
+    This used to be ``bool(counts["dma"])``, which reports whether the stream CONTAINS bulk movement
+    -- a different question, and one that can never answer False while any DMA is present. On a
+    corpus whose every transfer is immediately awaited it returned True for every kernel, i.e. the
+    exact opposite of the fact, on the axis that carries the largest available win.
+
+    Fails closed in two distinct ways, because they are different states:
+      * no ``dma`` role in the stream -> the question does not arise (None), NOT False: "nothing was
+        overlapped" would read as a scheduling failure where there is simply no movement;
+      * ``dma`` but no ``sync`` anywhere -> UNKNOWN (None). Either the hardware interlocks and the
+        overlap is implicit, or this decoder cannot see the waits. Calling that True would credit a
+        target for an overlap nobody observed.
+    """
+    positions = []
+    for idx, d in enumerate(decoded):
+        roles = set(getattr(d, "roles", ()) or ())
+        if roles:
+            positions.append((idx, roles))
+    issues = [i for i, r in positions if "dma" in r]
+    if not issues:
+        return None, None
+    waits = [i for i, r in positions if "sync" in r]
+    if not waits:
+        return None, None
+
+    gaps: list[int] = []
+    for issue in issues:
+        wait = next((w for w in waits if w > issue), None)
+        if wait is None:
+            continue  # issued and never awaited HERE: this stream cannot say, so it votes on nothing
+        # Work between issue and wait -- instructions that are neither more movement nor more waiting.
+        gaps.append(sum(1 for i, r in positions if issue < i < wait and not (r & {"dma", "sync"})))
+    if not gaps:
+        return None, None
+    return any(g > 0 for g in gaps), max(gaps)
 
 
 def _accumulator_resident(decoded, loop_spans) -> bool | None:

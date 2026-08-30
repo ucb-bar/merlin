@@ -89,7 +89,18 @@ FROM_ISA_ROLE: dict[str, str] = {
     "acc_readout_scaled": "readout",
     "tensor_compute_unary": "elementwise",
     "tensor_compute_binary": "elementwise",
-    "memory": "dma",
+    # A derived-ISA role named "memory" says an instruction touches memory. It does NOT say the
+    # movement is BULK or ASYNCHRONOUS, which is what `dma` means here ("bulk asynchronous movement
+    # between memories, not through the compute datapath"). Mapping it to `dma` fabricated that
+    # claim: on the one target that sources roles this way the ISA's "memory" role names a
+    # VMEM->register load, so every such load was counted as bulk async movement while the target's
+    # ACTUAL DMA engine instructions -- which carry no ISA role at all -- were counted as nothing.
+    # Three facets read the `dma` role (dispatch.dma_overlap, dispatch.double_buffered_banks,
+    # memory.dma_pattern), so all three answered confidently about a DMA engine they had never seen.
+    # `operand_load` is what the instruction demonstrably is; a target whose ISA model distinguishes
+    # asynchronous channel movement should name that role separately rather than have this one widened
+    # back, because the widening is unobservable from the name.
+    "memory": "operand_load",
 }
 
 
