@@ -31,10 +31,15 @@ import _pbcommon as PB
 
 import sys
 sys.path.insert(0, str(PB.REPO / "merlin" / "python"))
+from merlin.common.paths import ext_path  # noqa: E402
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 
-CHIPYARD = "/path/to/chipyard"
-QUEUE = "/path/to/firesim_queue/bin/firesim-queue"
+# Machine-specific locations come from .env (`MERLIN_EXT_CHIPYARD`, `MERLIN_EXT_FIRESIM_QUEUE`) —
+# never a literal, so a fresh clone configures once and every FireSim script agrees. `ext_path` raises
+# a named KeyError when a key is unset, which is the honest failure: a placeholder path would fail
+# later, inside the queue, looking like an FPGA problem.
+CHIPYARD = str(ext_path("chipyard"))
+QUEUE = str(ext_path("firesim_queue") / "bin" / "firesim-queue")
 WORKLOAD = "merlin-perfbench"
 BOOTBINARY = "merlin-perfbench.elf"
 RESULTS_ROOT = Path(CHIPYARD) / "sims/firesim/deploy/results-workload"
