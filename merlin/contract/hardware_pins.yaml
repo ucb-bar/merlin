@@ -182,7 +182,7 @@ pins:
     repo_observed_note: >-
       No upstream is known for this repository; the personal remote above is its only recorded home.
       Written down rather than left implicit, so nobody reproducing this looks for one that does not exist.
-    commit: "d38e5adc1b40b112a1199a2770dc49345249a9e9"
+    commit: "add52b0a7c96d72e0079b7938e07ca5080871e82"
     branch: feature/discover-datapaths
     root_env: MERLIN_MLC_DIR
     path: ""
@@ -210,6 +210,22 @@ pins:
       the two commits and is clean in the working tree. The other two entries are BUILT products whose
       identity a commit cannot carry at all, which is why the digest requirement above stands regardless
       of what this field says.
+      PIN ADVANCED a13439e9 -> d38e5adc -> the sha above. Unlike the previous move this one IS a
+      fast-forward: the old commit is an ancestor of the new one and `mlc/backends/cosim_muon.py` is
+      unchanged between them, so nothing the oracle depends on moved. The advance records source that had
+      been sitting untracked in the working tree -- the activity-energy and boundary-traffic passes, the
+      circt_study/ abstraction frontier, and the characterization evidence base -- which mattered because
+      mlc is installed into merlin's venv as a PEP-660 editable package, so that untracked source was the
+      code merlin actually executed. Tree state and commit described different programs until now.
+      STILL DIRTY BY DESIGN, AND LESS SO. The checkout went from 35 dirty entries to 17. What remains is
+      generated: rendered figures under runs/plots/, one arc output, and the two third_party submodules
+      that carry their own pins (atlas_npu, gemmini_rtl). The digest requirement above therefore still
+      stands for the two BUILT products in requires_paths.
+      A CAUTION FOR ANYONE VERIFYING THIS BY HAND. mlc lives at $MERLIN_MLC_DIR, which is the `modeling/`
+      SUBDIRECTORY of a larger checkout that is itself a separate git repository tracking the same files.
+      Running git at the parent reports a different branch, a different HEAD, and ~971 dirty entries, and
+      reports this pin's commit as a missing object. That reading is wrong and looks alarming; resolve the
+      path the way the code does (`provenance.verify("muon_arc_model", checkout=mlc_bridge.mlc_dir())`).
 
   gemmini_rtl:
     description: >-
@@ -456,3 +472,33 @@ artifacts:
       REPRODUCIBILITY CAVEAT: FireSimOPUV128D64ShuttleConfig no longer exists in the checkout's source, so
       this bitstream can be USED but not REBUILT. `built_from` is empty rather than guessed — nothing records
       which saturn revision it was elaborated from, and inventing one would be worse than admitting it.
+
+  atlas_arc_cycle_suite:
+    description: >-
+      The Atlas ground-truth cycle table: 21 kernels, each carrying the arc cosim's measured total and its
+      decomposition into dma_busy / mxu / vpu / none, plus the DMA read and write beat counts. Every
+      performance claim about Atlas is a claim against these numbers, so the table's own identity is part
+      of the result. Pinned by digest and not only by commit because it is a MEASUREMENT product: the same
+      source at the same sha produces a different table if the arc model, the program hex, or the geometry
+      in its `_meta` block changes.
+    root_env: MERLIN_MLC_DIR
+    path: mlc/validate/npu_model_suite.json
+    digest: "1c36e13f12e1451b7922d3d57d63d777936e4c55aa899fbb333e77720b873eaa"
+    built_from:
+      - muon_arc_model
+      - atlas_npu_model
+    config: DefaultHardwareConfig
+    notes: >-
+      The `_meta` block declares the geometry the table was measured under — beat_bytes 32, mxu_dim 32,
+      vpu_lanes 16, reset_cycles 12 — and names the arc shared object and state manifest it was produced
+      from. Those four numbers are DERIVED facts, not settings: a rule registry that re-derives them from
+      the RTL must reproduce these values, and a mismatch means the table and the model have drifted apart
+      rather than that the derivation is wrong.
+      WHY THE DIGEST IS THE FACT HERE. The table lives in a checkout that reports dirty by design (see
+      muon_arc_model), so its commit cannot carry its identity. A consumer that cites a cycle number from
+      this suite must record this digest, not the mlc sha.
+      NOT AN RTL TIER. These are arc cosim numbers — the authority Atlas itself declares
+      (`cycles_from: arc_program`, `cycles_tier: cycle_model`). They are not Verilator and not silicon, and
+      a result must not be reported at a tier this substrate cannot reach. The npu_model Python simulator's
+      own cycle counts are a DIFFERENT and much weaker thing: they disagree with the arc totals here by up
+      to 3x, so they may be recorded as a diagnostic but may never source a performance term.
