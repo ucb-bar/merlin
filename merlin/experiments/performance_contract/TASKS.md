@@ -145,6 +145,44 @@ R1 and R3 share Lane A. R4 is disjoint until it imports the record type.
 | 1.6 | Test: npu_model cycles/`exu_stats` can never source a term | **DONE** — they disagree with arc by up to **4.92×** (elementwise trio 3387 vs 688; 3972/1273 is `gemma_rms_norm` at 3.12×); diagnostic only |
 | 1.7 | Defer the five-lattice provenance unification | **DEFERRED by design** — until ~10 real terms exist. Five representations exist today; unifying before there is anything to unify will churn |
 
+## PROVEN: generated kernels beat the shipped atlas kernels, bit-exact
+
+Head-to-head, **same computation, same oracle tier the baseline was measured on**, bit-exactness by
+`plan.matches()`. Artifact: `out/artifacts/headtohead/atlas/v1/`.
+
+| shipped kernel | shape | shipped | ours | speedup | bit-exact | bytes moved |
+|---|---|---:|---:|---:|:--:|---|
+| `matmul` | 32×32×32 | 2383 | **705** | **3.38×** | ✅ | 65,536 → **4,096** |
+| `smolvla_matmul` | 32×32×32 | 1485 | **705** | **2.11×** | ✅ | 36,864 → **4,096** |
+| `smolvla_matmul_k_chain` | 32×64×32 | 3102 | **1121** | **2.77×** | ✅ | 81,920 → **6,144** |
+
+**Where the win comes from — two levers, both previously only estimated:**
+
+1. **Transfer amplification, now demonstrated rather than projected.** The shipped `matmul` moves
+   **65,536 B for a computation needing 4,096 B — 16×**. Ours moves the minimum. Since DMA is
+   **2054 of the shipped kernel's 2383 cycles (86%)**, cutting movement is nearly the whole win. This
+   is `compose_program_cycles`'s open "Finding 6", closed by construction: the generator computes its
+   own descriptors instead of inheriting a movement pattern.
+2. **The settle margin.** The device contract carries settle at **2× the measured minimum** (128 vs
+   64). At the minimum, `matmul` drops 1217 → **705**.
+
+**The falsifier fired correctly, and it is what makes this a measurement.** At settle=32 — below the
+measured minimum — the kernel runs in 449 cycles and is **`bit_exact: false`**. So 64 is a real
+architectural floor, not a lucky value, and 705 is a legitimate result rather than an under-delayed one.
+
+**Tier confound removed:** arc and vsim return **identical cycles** on every generated variant, which
+independently re-confirms the 14/14 tier-agreement finding. The baseline is arc-measured and ours is
+quoted on arc.
+
+**What this does NOT claim:**
+- Not a whole-model or layer-scale win — these are 32-tile kernels, the scale the shipped corpus has.
+- Not an *optimality* claim. We beat the shipped kernels; we do not know the machine's floor. The
+  structural bound says a 32×32×32 matmul cannot finish before `fill(62) + completion(96) = 158` MXU
+  cycles plus its movement, and 705 is well above that.
+- Not a claim the shipped kernels are badly written. They are hand-written demo programs whose movement
+  pattern was never the point; the comparison is fair on cycles and unfair on intent.
+- Not a claim about the other 18 kernels — three were run.
+
 ## W1.0 — the free fidelity run, and what it found
 
 `mlc/spec/validate_fidelity.py` against the 2,219 totals already on disk. **Zero new measurement.**
