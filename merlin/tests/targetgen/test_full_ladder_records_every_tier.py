@@ -8,8 +8,10 @@ absent. Measured on `merlincirct_atlassg1` (26 public capsules):
     fail  L3=ABSENT  L4=fail     11
     fail  L3=fail    L4=ABSENT    1
 
-Atlas's Verilator tier costs 0.29 s and its arc cosim 24.5 s, so the cheap tier refuted first and the
-expensive one never ran. That makes "these 12 capsules failed" unanswerable at the other tier — which
+Atlas's Verilator tier is the cheaper of the two (measured serially over 42 samples: Verilator median
+0.276 s, arc cosim median 3.68 s -- NOT the 24.5 s that appears in tier_policy's docstring, which is a
+throughput figure under 16-way parallelism), so the cheap tier refuted first and the dearer one never
+ran. That makes "these 12 capsules failed" unanswerable at the other tier — which
 is exactly the question to ask once a shared defect is fixed. `not_run_is_not_pass` already says an
 unrun tier is not a pass; this says it must also not be INVISIBLE.
 """

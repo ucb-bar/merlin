@@ -2039,7 +2039,12 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         _inapplicable = capsule.get("inapplicable_oracle_tiers") or {}
         # CHEAPEST MEASURED TIER FIRST, not lexicographic. The ladder aborts on the first mandatory
         # tier that refutes a capsule, so the ORDER decides what a failing capsule costs -- and sorting
-        # by name meant one target paid its 24.5 s arc cosim before reaching the 0.29 s Verilator tier
+        # by name meant one target paid its arc cosim before reaching the cheaper Verilator tier
+        # (⚠️ the 24.5 s / 0.29 s pair quoted here and below is a THROUGHPUT figure measured under 16-way
+        # parallelism, not a latency. Measured serially over 42 samples 2026-08-29: arc median 3.68 s,
+        # Verilator median 0.276 s, both linear in halt cycles (3.63 vs 0.255 ms/cyc) with no build step.
+        # The ordering conclusion is unchanged -- 0.276 < 3.68 either way -- but anything PRICED off
+        # 24.5 s is wrong by 6.3x. See docs/design/performance_budget_unit.md.)
         # that refutes the same capsules (measured: 12 of 12, identical signature). See tier_policy.
         _tier_seq = _tier_policy.tier_order(str(cfg.target or target or ""),
                                             set(cfg.oracle_tiers) | set(adapters or {}))
@@ -2297,7 +2302,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 # COMPLETE THE LADDER, then fail. Raising here aborts the loop, so every tier ordered
                 # AFTER the refuting one is left with no record at all -- not "skipped", absent. Measured
                 # on atlas: 11 of 26 capsules carried an L4 fail and NO L3 entry, 1 the reverse, because
-                # tier_order runs the 0.29s Verilator before the 24.5s arc cosim. A tier with no record
+                # tier_order runs the cheaper Verilator tier before the arc cosim. A tier with no record
                 # is not evidence (`not_run_is_not_pass`), and it makes "these 12 failed" unanswerable at
                 # the other tier -- which is exactly what you need when the shared defect is fixed.
                 # The capsule still fails, on the FIRST refuting plane; only the remaining tiers now run.
