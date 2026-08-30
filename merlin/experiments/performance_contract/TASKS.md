@@ -333,6 +333,72 @@ separately**: a 32×32×32 matmul has one K-step, so there is no independent wor
 measured tightened kernel is **513**, so the estimate is conservative. The *bound* (130.5) is the sound
 number; the estimates rank correctly but should not be quoted as cycle predictions.
 
+## W1.2 RUN — the whole corpus on both RTL engines, and the overlap question settled
+
+`cycle_sweep.py` (`merlin/perf/occupancy.py` + 19 tests). **27 capsules, both elaborated-RTL
+engines, per-cycle traces, 10 s wall serially.** GSIM and Verilator return **identical cycles on
+27/27** — extending the previous 17/17 cross-validation to the whole corpus.
+
+The two engines are blind to different things, which is the point of running both: the Verilator tap
+reads all 8 DMA channel ports but no unit lacking a top-level port; the GSIM trace reads the internal
+FSMs and the PC but only one aggregate DMA signal. **Each engine alone charges its own blind spot to
+idle.** The union is the honest denominator.
+
+**Three ways a per-cycle trace fabricates an answer — all three fired here, all three now gated:**
+
+1. **A signal counted beside its own components.** `lsuBusy == vloadBusy + vstoreBusy` exactly, and
+   `lsuBusy` is *never* busy alone. Counted naively this produced **204 cycles of "overlap"** on a
+   kernel with none.
+2. **A unit with no busy port, read as permanently idle.** The **VPU has no top-level busy port** and
+   is invisible to the Verilator tap — yet it is the busiest unit on the vector kernels (AF3: 1493
+   cycles). The harness's `unmeasured_units` said only `[scaleRegs, dbg0, dbg1]`, so it **claimed a
+   completeness it did not have**. Including the VPU moves AF0's idle from **89.9% to 39.2%**.
+3. **Two instruments' views of one unit, merged as two.** GSIM lags Verilator by exactly one cycle
+   (derived, not assumed), so shared units land in adjacent cycles and read as overlap; and an
+   aggregate bus-valid signal beside the per-channel ports of the same bus added **6.8% fabricated
+   overlap**. Both folded by containment, derived from the measurement.
+
+**The corrected corpus figures** (union, 42,661 cycles, 27 capsules):
+
+    idle by the top-level ports alone : 25,308  (59.3%)
+    idle by the UNION of both engines : 17,752  (41.6%)
+    overlap                           :      0  (0.0%)
+
+**So the motivating number of this whole plan was substantially an instrument gap.** AF3's idle is
+**46.2%**, not the 76.7% the plan quotes — the rest was a unit nobody could see. The 76.7% figure
+should not be requoted.
+
+### The zero overlap is a property of the SCHEDULES, not of the machine — CORRECTION
+
+`composition_operator` now returns an operator instead of `Unavailable`: **SUM, eta = 0.0000**, over
+27 joint (`partitioned=False`) workloads. **That is true of this corpus and must NOT be stated as a
+device trait.** Generating the *same* kernel at tightening separations and re-measuring the joint
+vector:
+
+    settle (t/m/v)   cycles   idle   overlap>=2
+    128/128/128       1217     726        0
+     64/ 64/ 64        705     240       26
+     32/ 64/ 64        513      79       57
+     32/ 64/ 32        481      47       57
+
+**Tightening the separations creates overlap.** The engine busy vectors are byte-identical across all
+four rows — only idle moves — so this is the schedule changing, not the work. Measured twice by
+independent routes (the ablation, and a separate re-derivation through this module's own path).
+
+Consequence: the operator's validity domain is **"schedules at or above the 2x settle margin"**. On
+the shipped corpus eta is 0; outside it, it is not. Quoting SUM as what the hardware does would
+repeat the exact error the joint vector was built to prevent, one level up. `compose_program_cycles`'s
+`overlap_cycles = 0` default remains refuted.
+
+### What the corpus sweep also exposed
+
+- **`mxu1` is never busy on any of the 27 capsules**, and **dma4-7 are never used**. Half the matrix
+  units and half the DMA channels are dark corpus-wide.
+- **6 capsules are byte-identical programs** (`AS0`, `AT0`, `AT2`, `AT7`, `AT8`, `BT0` — all 1090
+  cycles, identical busy vectors). `AT7_matmul_mxu0` and `AT8_matmul_mxu1` are supposed to exercise
+  *different* MXUs; they emit the same program and `mxu1` never fires, so **AT8 does not test what its
+  name claims**.
+
 ## W1.0 — the free fidelity run, and what it found
 
 `mlc/spec/validate_fidelity.py` against the 2,219 totals already on disk. **Zero new measurement.**
