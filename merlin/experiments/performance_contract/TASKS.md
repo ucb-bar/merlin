@@ -266,6 +266,35 @@ against: any schedule it proposes must beat 513 while staying bit-exact.
   intent. What our generator does differently is *choose its own descriptors*.
 - Not a claim about the other 18 kernels — three were run.
 
+## The new perf capsules, RUN — and the L1 sweep separates rate from intercept
+
+W2's L1 K-sweep (`PK00`–`PK03`, K = 32/64/128/256 at m=n=32), generated kernels at the per-class settle
+floor, all bit-exact:
+
+    PK00   K=32    1 k-tile     513
+    PK01   K=64    2 k-tiles    801
+    PK02   K=128   4 k-tiles   1370
+    PK03   K=256   8 k-tiles   2510
+
+    least squares:  cycles = 229.3 + 285.1 x k_tiles
+    residuals:      [-1.4, +1.5, +0.2, -0.3]   -- +/-1.5 cycles across an 8x span of K
+
+**This is the measurement the shipped corpus could not produce.** It has only two K points, and the
+repo's own rule says a unit whose cost is a rate *plus* a fixed overhead cannot be priced by one rate —
+two points fit a line through any two numbers and cannot show it is a line. Four points give
+±1.5-cycle residuals, which is what makes the split credible rather than merely fitted.
+
+The intercept is consistent with the structural terms already measured independently: fill/drain **62**
+(read from the circuit, `handshake.py`) plus reset **12** leaves ~155 cycles of prologue, epilogue and
+store — a residual with a plausible home rather than a fudge.
+
+`PK00 = 513` reproduces the standalone 32×32×32 measurement exactly, so the capsule path and the
+direct path agree.
+
+**What this does not settle:** the k-chain Δ30 (measured MXU 284 vs naive 254) is about *MXU busy
+cycles* from the activity buckets, a different quantity from these whole-kernel totals. It stays
+UNKNOWN; this sweep does not touch it.
+
 ## W3 — dependence graph: DONE, and it answers the 76.7%
 
 `aeb464aa` (operand direction) + `8f37632c` (graph + liveness + driver), 34 tests.
