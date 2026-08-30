@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.common.paths import repo_root
+from merlin.common.paths import merlin_dir, repo_root
 
 
 @dataclass(frozen=True)
@@ -207,6 +207,28 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         backend_package_dir=(lambda s: str(s) if s else None)(doc.get("backend_package_dir")),
         graded_exclude=tuple(str(x) for x in ((doc.get("grading") or {}).get("exclude_capsules") or ())),
     )
+
+
+def descriptor_for(target: str) -> Path | None:
+    """The ``target_experiment.yaml`` for ``target`` — honoring ``MERLIN_TARGET_EXPERIMENT`` when it
+    names THIS target, else the standard capsule-bench location. ``None`` when neither exists.
+
+    Public because more than one accessor needs to reach a target's DECLARED facts (notably
+    ``backend_package``/:attr:`TargetExperiment.rtl_facts_pin`, which is the only thing that knows an
+    experiment target may be served by a differently-named backend package). Two copies of this lookup
+    are two chances for an accessor to resolve somewhere the bundle does not."""
+    import os
+
+    env = os.environ.get("MERLIN_TARGET_EXPERIMENT")
+    if env:
+        p = Path(env)
+        try:
+            if p.is_file() and load_target_experiment(p).target == target:
+                return p
+        except Exception:  # noqa: BLE001 — a malformed env pointer must not mask the standard location
+            pass
+    std = merlin_dir() / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
+    return std if std.is_file() else None
 
 
 def declared_vs_resolved_contract(te: TargetExperiment) -> tuple[Path | None, Path | None, str]:

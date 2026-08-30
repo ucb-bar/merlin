@@ -53,9 +53,31 @@ def rtl_facts_path(target: str, *, explicit: str | Path | None = None) -> Path:
 def _committed_facts_path(target: str):
     """The reviewed, in-tree RTL-facts artifact for ``target``, or None when it ships none.
 
-    Derived from the targets root -- no per-target literal -- so a new target is covered by dropping its
-    facts file in the same place."""
-    from merlin.common.paths import targets_dir
+    Resolution order, both derived -- no per-target literal:
+
+    1. The pin the TARGET'S OWN DESCRIPTOR declares (``backend_package_dir`` ->
+       :attr:`TargetExperiment.rtl_facts_pin`). An experiment target need not share a name with the
+       backend package holding its contracts: a SIMT experiment is served by its core's package, which
+       is exactly why the descriptor carries that field and says it "cannot be inferred from the target
+       name".
+    2. Otherwise ``merlin/targets/<target>/contracts/rtl_facts/`` -- true whenever the two names agree.
+
+    Step 1 used to be missing, and the cost was silent and total: the BUNDLE GENERATOR reads the
+    descriptor and mounted the right artifact, while this accessor assumed the target name and looked
+    somewhere that can never exist. For such a target the cache (not granted in the sandbox) and the
+    committed pin both missed, regeneration produced ``facts: {}``, and every granted RTL generator --
+    ``gen_isa_module``, ``gen_numeric_facts``, ``gen_rtl_digest`` -- raised ``FactsEmpty``. Measured on
+    radiance: 0 fact groups from the accessor against 7 in the artifact its own bundle mounted."""
+    from merlin.common.paths import repo_root, targets_dir
+    try:
+        from merlin.targetgen.target_experiment import descriptor_for, load_target_experiment
+        d = descriptor_for(target)
+        if d is not None:
+            pin = repo_root() / load_target_experiment(d).rtl_facts_pin / "facts.json"
+            if pin.is_file():
+                return pin
+    except Exception:  # noqa: BLE001 - a missing/malformed descriptor falls back to the name convention
+        pass
     try:
         p = targets_dir() / target / "contracts" / "rtl_facts" / "facts.json"
     except Exception:  # noqa: BLE001 - no targets root here means no committed artifact
@@ -107,6 +129,18 @@ def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
         _REGENERATING.discard(target)
     if not p.is_file():
         raise RuntimeError(f"RTL-facts regeneration produced no artifact at {p}")
+    # A regeneration that produced an artifact carrying NO facts is a missing input, not a result. It
+    # used to be returned as success, so `load_facts(target)` handed back `{}` and only a consumer that
+    # happened to route through `facts_body`/`decode_body` ever failed -- an agent (or any caller) that
+    # read the dict directly saw "no ISA, no registers, no address map" and no error at all. FactsEmpty
+    # documents exactly this state; raise it where the emptiness is produced.
+    if not (json.loads(p.read_text(encoding="utf-8")).get("facts") or {}):
+        raise FactsEmpty(
+            f"{target}: RTL-facts regeneration produced an EMPTY artifact (facts: {{}}) at {p}. The "
+            f"extractor found no RTL. If this target's contracts live under a differently-named backend "
+            f"package, declare it as `backend_package_dir` in its target_experiment.yaml so the "
+            f"committed pin is found; otherwise re-run introspection with the RTL reachable "
+            f"(MERLIN_MLC_DIR / the design's hw.mlir).")
     return p
 
 
