@@ -704,6 +704,56 @@ on FireSim for the RVV and OPU targets with real DRAM. The methodology exists in
 discovered in our own instrument is evidence about the instrument. Check whether the number is ours
 before promoting it to a fact about the machine.
 
+## A3 — joint occupancy on a hardware-interlocked target: the instrument works, the workload does not yet
+
+**The measurement layer ports.** Tracing the three decoupled controllers of a command-driven
+accelerator per cycle works: wrap the co-simulation model's own clock, peek the controller state
+registers, feed `perf/occupancy.joint_counts`. Two matmuls traced clean and **bit-exact** at 125 and
+574 cycles. So the occupancy vector is not atlas-shaped.
+
+**Two refusals fired, and both were right.**
+
+1. *The idle encoding could not be derived.* The pairing needs a busy port that varies; on a workload
+   whose operands are written straight into the scratchpad, no memory-path port ever asserts. The
+   driver falls back to the encoding the modelling repo's own occupancy engine declares and carries
+   `basis: declared_by_producer` on every number downstream — declared, not derived, and
+   unverifiable until a workload exercises a port.
+2. *Overlap was unobservable, not zero.* Only the execute controller ever left idle, because
+   `RealCoreBackend.poke_spad_row` places operands directly and `read_acc_row` reads results
+   directly — **no movement commands at all**, so two of three engines are structurally unexercised.
+
+**A library rule came out of the second one.** `joint_counts` now reports `overlap_observable` and the
+live column set: **a vector with fewer than two live columns reports zero by construction** —
+arithmetically right, evidentially empty, and indistinguishable from a machine that genuinely
+serialises unless the distinction is carried. Without it this would have been written up as "the
+second target also shows zero overlap", which would have been false about the machine and would have
+looked like corroboration.
+
+### Exercising the movement path — where it stands
+
+`gemmini_dma_occupancy.py` attaches a memory responder to the design's own DMA bundle (the responder
+already binds that bundle by name) and issues the target's own movement commands, every code and
+packing read from the derived ISA rather than written down.
+
+    all three controllers LIVE:  ex 30 | load 30 | store 33 busy cycles
+    overlap_observable: True     <- the question is now askable
+    bit_exact: FALSE             <- so nothing may be quoted from it
+
+**The remaining fault is localised.** The result region reads back all zeros while the responder
+counts the store beats, and the only non-zero span in the responder's memory is the preloaded
+operands. So the store path runs and the accumulator it reads is empty: **the compute is not
+landing**, and the fault is in the preload/compute operand pairing, not in movement.
+
+**No overlap number is quoted, and the zero this currently produces is not evidence.** A wrong
+kernel's controller occupancy is not the machine's behaviour on that workload. Closing this needs the
+preload/compute pairing fixed — or, better, replaying the certified emitter's own command stream
+instead of a hand-written one, which needs the emitted operands resolved rather than just decoded.
+
+**One side-observation, recorded but not a result:** draining the queue before changing a
+configuration word dropped load-controller busy from 41 to 30 cycles. Consistent with movement and
+compute genuinely overlapping when not forced apart, but measured on a workload that computes the
+wrong answer, so it establishes nothing.
+
 ## W1.0 — the free fidelity run, and what it found
 
 `mlc/spec/validate_fidelity.py` against the 2,219 totals already on disk. **Zero new measurement.**
