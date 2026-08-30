@@ -6,7 +6,8 @@ Gemmini dialect via IREE) and compares cycles / wall-time / utilization / correc
 capsule_bench_v0 libraries (capsule emit, deterministic golden, ELF->sim->cycles path).
 
 Repo-root discovery + run/report routing are shared via ``merlin.benchharness``; the perf-specific
-constants + math (DIM, PEAK, align/matmul_macs/utilization_pct) stay here.
+math (align/matmul_macs/utilization_pct) stays here; the array geometry it needs is
+derived from the target's RTL facts, not declared.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ REPO = Path(_git) if _git else _HERE.parents[4]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
 from merlin.benchharness import runs_root, reports_root  # noqa: E402
+from merlin.perf.workload_gen import tile_geometry  # noqa: E402
 from merlin.common.paths import env as _env  # noqa: E402
 
 EXP = REPO / "merlin" / "experiments" / "gemmini_perf_bench"
@@ -31,9 +33,16 @@ REPORTS = reports_root("plots", "gemmini", "perf-bench")   # artifacts/plots/gem
 # External model corpus — resolve via .env (MERLIN_M2M_DIR), NOT a "/path/to/..." placeholder.
 MODEL2MLIR = Path(_env("MERLIN_M2M_DIR", "/scratch/agustin/projects/model2MLIR")) / "workloads"
 
-# Gemmini systolic array dimension (16x16 PE) -> peak 256 MACs/cycle. Used for utilization.
-DIM = 16
-PEAK_MACS_PER_CYCLE = DIM * DIM
+# The systolic array's edge, DERIVED from this target's own RTL discovery rather than written down.
+# The hardcoded 16 was correct for the config this bench happened to run and silently wrong for the
+# 8x8 and 32x32 Gemmini configs that are also built on disk: every utilization number would have been
+# off by the square of the ratio, with nothing in the output saying which array it was about.
+# `tile_geometry` fails closed when RTL discovery reports no array, so an underivable edge is an error
+# here rather than a plausible default that produces a wrong percentage.
+TARGET = "gemmini"                       # this bench is ABOUT one target; the geometry still is not
+_MESH = tile_geometry(TARGET)
+DIM = _MESH.rows
+PEAK_MACS_PER_CYCLE = _MESH.rows * _MESH.cols
 
 
 def align(n: int, m: int = DIM) -> int:

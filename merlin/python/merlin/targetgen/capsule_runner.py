@@ -87,6 +87,17 @@ class TierResult:
                                       # — not the key, not a list of zeros, because "not reported"
                                       # and "cost nothing" are different facts. None -> omitted, so
                                       # an adapter that carries none is byte-identical to before.
+    counters: dict | None = None      # COUNTS the oracle reported alongside the cycle total — bytes
+                                      # moved, reuse hits, commits. Deliberately NOT `utilization`:
+                                      # those are fractions of a cycle window and these are integers
+                                      # of a different kind, and filing a byte count under a name
+                                      # that means "fraction of time" is how a number gets read as
+                                      # something it is not. A model that computes these and an
+                                      # adapter that drops them are indistinguishable downstream,
+                                      # which is what happened: the arc oracle has reported movement
+                                      # and residency counts all along and the adapter returned only
+                                      # cycles. None -> omitted, so a target reporting none is
+                                      # byte-identical to before.
     utilization: dict | None = None   # WHERE THE TIME WENT, as fractions of the oracle's own cycle
                                       # window (warp occupancy, per-unit busy, memory conflicts).
                                       # Latency says a kernel is slow; this says why, which is the
@@ -154,6 +165,8 @@ class TierResult:
             d["gflops"] = self.gflops
         if self.pct_fp_peak is not None:
             d["pct_fp_peak"] = self.pct_fp_peak
+        if self.counters:
+            d["counters"] = dict(self.counters)
         if self.utilization:
             d["utilization"] = dict(self.utilization)
         if self.timing_observations:
@@ -389,8 +402,14 @@ def mlc_arc_adapter(target: str) -> Callable:
                 f"{sorted(ignored)}: it returned identical outputs with the epilogue declared and "
                 f"stripped, so its answer is the pre-epilogue accumulator and cannot grade this "
                 f"capsule (the hardware does apply it — this is a gap in the model, not in the RTL)")
+        _metrics = dict(res.get("metrics") or {})
+        # The model reports movement and residency counts beside the cycle total; keeping only
+        # `cycles` threw away the direct feedback for the levers a scheduler actually has on this
+        # kind of target (how many bytes moved, how often an operand stayed resident).
+        _counters = {k: v for k, v in _metrics.items() if k != "cycles" and v is not None}
         return {"outputs": res.get("outputs"),
-                "cycles": (res.get("metrics") or {}).get("cycles"),
+                "cycles": _metrics.get("cycles"),
+                "counters": _counters or None,
                 "oracle": res.get("oracle"), "console": ""}
     return run
 
@@ -2534,6 +2553,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     cycle_accurate=tier in cfg.rtl_tiers, evidence=f"{_sim_name}_console.log",
                     timing=_tm, gflops=_cg, pct_fp_peak=_cp, utilization=_cu,
                     timing_observations=res.get("timing_observations"),
+                    counters=res.get("counters"),
                     timing_capability=res.get("timing_capability"), concurrency=_conc)
                 continue
             if independent_float:
@@ -2621,6 +2641,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{_ev_name}_console.log",
                 timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, utilization=_util,
                 timing_observations=res.get("timing_observations"),
+                counters=res.get("counters"),
                 timing_capability=res.get("timing_capability"), fidelity=_fidelity,
                 concurrency=_conc)
             if res.get("console") is not None:

@@ -55,3 +55,23 @@ def test_config_is_frozen_pure_data():
     assert isinstance(cfg, RunnerConfig)
     import dataclasses
     assert dataclasses.is_dataclass(cfg) and cfg.__dataclass_params__.frozen
+
+
+def test_counters_ride_the_tier_record_only_when_reported() -> None:
+    """Counts the oracle reported beside the cycle total, kept apart from `utilization`.
+
+    A model that computes movement and residency counts and an adapter that drops them are
+    indistinguishable downstream — which is what happened, so this pins the passthrough. They are NOT
+    filed under `utilization`: that field is fractions of a cycle window, and a byte count under a
+    name meaning "fraction of time" reads as something it is not.
+    """
+    from merlin.targetgen.capsule_runner import TierResult
+
+    with_counts = TierResult("L3", "pass", True, cycles=100,
+                             counters={"bytes_moved": 4096, "resident_hits": 3}).to_dict()
+    assert with_counts["counters"] == {"bytes_moved": 4096, "resident_hits": 3}
+    assert "utilization" not in with_counts          # counts are not fractions
+
+    # A target whose oracle reports none is byte-identical to before.
+    assert "counters" not in TierResult("L3", "pass", True, cycles=100).to_dict()
+    assert "counters" not in TierResult("L3", "pass", True, cycles=100, counters={}).to_dict()
