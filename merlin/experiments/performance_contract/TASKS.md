@@ -312,7 +312,36 @@ fabricated result. The machinery is exercised end-to-end in tests instead.
 ## R7 — Headline experiment  *(split; no reference exists off-corpus)*
 
 | id | task | state |
+|
+### R7 result — and the number NOT to quote
+
+`6a19c5d2`, 5 tests. Run: `headline.py report --target <t>`.
+
+| claim | n | result |
 |---|---|---|
+| **7.1 RECOVERS** — fraction of a *shipped reference's* cycles | **2 of 21** | **0.916** |
+| **7.2 PREDICTS** — fraction of *merlin's own emitted program* | 8 of 8 shapes | 0.2646 corpus-calibrated; **1.0095** adding the program's own scheduled stalls |
+
+**The 1.0095 is a falsification, not a fit — do not quote it as accuracy.** It is a *lower* bound
+sitting **above** its measurement on all 8 shapes. A structural bound that exceeds the thing it bounds
+means an input is wrong. It is the single most quotable-looking number the experiment produced and it
+is the one that must not be quoted; the driver emits it as a WARNING and a test pins that wording.
+
+**7.1's n is 2, not 21** — only two workloads bound end to end (the vector engine's demand proxy is
+refuted, and `VectorEngine` refuses structurally). The 19 partial bounds are reported beside it under
+their own name and never averaged in: a bound over a subset of resources answers a different question
+from a bound over all of them.
+
+**The two claims are not the same measurement.** 7.1's denominator is somebody else's kernel; 7.2's is
+merlin's own — *"a perfect 7.2 would still say nothing about whether the emitted code is fast."*
+
+**Four things the experiment states it does NOT support:** any % of peak or attainment (no denominator
+is derived — `speed_of_light` is null); a fraction-of-reference at generated shapes (no reference
+exists off the corpus); a claim that the model discriminates between *alternatives* (0 iso-work shapes
+— rank agreement over differently-sized shapes is mostly the ordering of the work itself); and an
+end-to-end bound at generated shapes (every one carries an unresolved resource).
+
+---|---|---|
 | 7.1 | **"Recovers"** — fraction of reference on the 21 eligible capsules | **OPEN** — kernel-relative only (N8: no % of peak) |
 | 7.2 | **"Predicts"** — prediction accuracy at shapes merlin emits | **UNBLOCKED (N1 done)** — no shipped reference exists off-corpus, so only predicted-vs-measured is claimable |
 | 7.3 | Report 7.1 and 7.2 **separately** | **OPEN** — conflating them reports a prediction result as a recovery result |
