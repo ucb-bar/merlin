@@ -42,6 +42,28 @@ Set these in `.env` (copy `.env.example`); every path below is read from there, 
 Everything below uses `small_llama_int8_consistent` and the `GemminiRocketConfig` simulator. Both are
 parameters, not requirements.
 
+### Which models fit, and which do not
+
+The model is a parameter, but not a free one — two properties of the device decide it, and getting
+either wrong costs an hour of simulation before it shows.
+
+| | requirement | why |
+|---|---|---|
+| **dtype** | int8 (W8A8) | the mesh path is integer; an fp32 capture has nothing to offload to it |
+| **weights + activations + arena** | must fit `GemminiRocketConfig`'s **256 MB** | `memory@80000000 reg = <0x80000000 0x10000000>`; the other memory node in that DTS is `status = "disabled"` |
+
+`small_llama_int8_consistent` is a 1.3 MB capture and fits with room to spare.
+
+**A 1.1B-parameter model does not fit.** TinyLlama-1.1B int8 is ~1.1 GB of weights against 256 MB, and
+the only TinyLlama capture in `recaptures/` is `tiny_llama_fp32_full` (4.2 GB, fp32) — wrong dtype and
+16x the DRAM. Do not start there. (`cache/kc_tiny_llama_int8_full` is a kernel cache of `.so` files, not
+a model capture; it will not load.)
+
+Models of that size DO run whole-model in this repo, but on a different substrate: TinyLlama-1.1B W8A8
+runs on `alveo_u250_firesim_dual_saturn_v256d128` — Saturn/RVV under FireSim + Zephyr, 16 GB of DRAM,
+no Gemmini involved. See [firesim](firesim.md). Getting a model that size onto Rocket+Gemmini needs a
+larger-DRAM SoC config or weight streaming, and neither has been done.
+
 ## 1. Find out what the SoC actually is
 
 Two facts decide whether the image can run at all, and **both must come from the target, not from a
