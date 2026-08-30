@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 
 from . import capsule_runner as CR
+from merlin.perf import comparand as _comparand
 from .capsule_common import tier_field as _tier_field
 from .capsule_common import tier_status as _tier_status
 from . import coverage_report as CV
@@ -112,7 +113,7 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         "public_passed": None, "hidden_passed": None, "headline": None,
         "per_capsule": [], "tier_reached": {}, "first_failure_planes": {},
         "numeric_all_exact": None, "trace_all_pass": None,
-        "cycles_diagnostic": {}, "highest_tier": None,
+        "cycles_diagnostic": {}, "cycles_provenance": {}, "highest_tier": None,
         "timing_diagnostic": {}, "timing_rollup": {},
     }
 
@@ -362,6 +363,16 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         _cyc_by_tier = cycles_by_tier(r.get("tiers"), ladder=tiers)
         if _cyc_by_tier:
             score["cycles_diagnostic"][r["capsule"]] = _cyc_by_tier
+        # WHICH PROGRAM produced each of those cycle counts. A block-scaled capsule is graded on the
+        # harness's own reference kernel rather than the submission, so a cycle number and a fixture's
+        # cycle number are indistinguishable in `cycles_diagnostic` alone -- the shape of the recorded
+        # run that reported 40/40 where 9 passes were the fixture. Attribution rides ALONGSIDE rather
+        # than inside, so `cycles_diagnostic` keeps the integer shape its pinned test and the audit
+        # renderer expect.
+        _prov = _comparand.cycles_provenance(r.get("tiers"), submission=score.get("package"),
+                                             ladder=tiers)
+        if _prov:
+            score.setdefault("cycles_provenance", {})[r["capsule"]] = _prov
         # active-vs-waiting timing: sum across every tier that actually ran an oracle for this capsule
         cap_tm = {"build_s": 0.0, "sim_active_s": 0.0, "oracle_wait_s": 0.0, "by_tier": {}}
         for t in ("L2", "L3", "L4", "L5"):
