@@ -211,21 +211,80 @@ def _isa_block() -> dict[str, Any]:
     }
 
 
+#: The hardware pin this introspect derives against. Named here because this module IS the Muon
+#: introspect (a genuine per-target edge, not shared code): its whole job is to read THIS device's RTL,
+#: so the revision it must be attributed to is not a parameter it can take from anywhere else.
+RTL_PIN = "radiance_muon_rtl"
+
+
+def _sources_read(gs: Path, cfg_path: Path) -> list[Path]:
+    """The exact files this derivation reads, for the source digest. The commit says which revision was
+    checked out; the digest says what was actually READ, which differs whenever the tree is dirty --
+    and this pin's own notes record that its checkout carries uncommitted changes."""
+    out = [p for p in (cfg_path, gs / f"chipyard.harness.TestHarness.{VCS_CONFIG}.fir") if p.is_file()]
+    out += sorted(gs.glob("*.memmap.json")) + sorted(gs.glob("*.dts"))
+    return out
+
+
+def _provenance(sources: list[Path]) -> dict[str, Any]:
+    """The provenance block for the emitted artifact: which RTL revision it is attributed to, and a
+    digest of the bytes actually read.
+
+    Recorded rather than raised. A checkout without the RTL genuinely cannot verify the pin, and this
+    module must still be able to report that the facts are UNKNOWN; what it must never do is emit an
+    artifact that does not say which device it describes. The failure this closes is real and named in
+    the repo's conventions: a result attributed to the wrong revision is worse than no result, because
+    it gets cited -- and until now this artifact carried no revision at all."""
+    try:
+        from merlin.common import provenance as _prov
+    except Exception as e:  # noqa: BLE001 — never let stamping break the derivation itself
+        return {"pin": RTL_PIN, "gap": f"provenance unavailable: {type(e).__name__}: {e}"}
+    pins = {}
+    try:
+        pins[RTL_PIN] = _prov.verify(RTL_PIN)
+    except Exception as e:  # noqa: BLE001 — an unverifiable pin is a recorded GAP, not a silent pass
+        return {"pin": RTL_PIN, "gap": f"pin not verifiable here: {type(e).__name__}: {e}",
+                "source_digest": _prov.source_digest(sources) if sources else None}
+    return _prov.record(pins=pins, sources=sources)
+
+
 def build_facts() -> dict[str, Any]:
-    """Merge cyclotron-config geometry + RTL hierarchy/FIRRTL evidence + ISA-doc facts -> facts dict."""
+    """Merge cyclotron-config geometry + RTL hierarchy/FIRRTL evidence + ISA-doc facts -> facts dict.
+
+    FAILS CLOSED on the geometry. ``_read`` swallows OSError and returns "", so an unreadable
+    ``config_muon.toml`` used to leave ``cfg`` empty and the four geometry values fell through to the
+    literals 16/8/2/256 -- which were then written out under the evidence string
+    ``"config_muon.toml: num_lanes=16, ..."``, naming a file that was never opened. The artifact
+    committed under this target is in exactly that state (``inputs.config_toml`` is the
+    ``/path/to/...`` placeholder), so its ``simt``/``fp_datapath`` groups are code constants wearing a
+    derived label. They happen to match this cyclotron config, which is why nothing caught it, and they
+    would be silently wrong for any other Muon configuration.
+
+    ``address_map`` and ``console`` below already do the right thing (``None`` + an UNKNOWN evidence
+    string when the elaboration output is absent). This applies the same rule to the geometry."""
     gs = _gen_src_dir()
-    cfg = _parse_config(_read(config_path()))
+    cfg_path = config_path()
+    cfg_text = _read(cfg_path)
+    cfg = _parse_config(cfg_text)
     hier = _hierarchy_counts(gs)
     smem = _smem_evidence(gs)
     amap = _address_map(gs)
     console = _console_device(gs, amap)
 
-    lanes = cfg.get("num_lanes", 16)
-    warps = cfg.get("num_warps", 8)
-    cores = cfg.get("num_cores", 2)
-    regs = cfg.get("num_regs", 256)
-    peak_flops_cycle = cores * lanes * 2
-    peak_gflops = peak_flops_cycle * CLOCK_HZ / 1e9
+    #: None (not a default) for anything the config did not supply -- an absent fact is recorded as
+    #: absent, never substituted. Downstream, `facts_body`/`hollowed_facts` already treat a hollowed
+    #: fact as a missing input worth fixing rather than a result.
+    lanes = cfg.get("num_lanes")
+    warps = cfg.get("num_warps")
+    cores = cfg.get("num_cores")
+    regs = cfg.get("num_regs")
+    cfg_read = bool(cfg_text)
+    geom_evidence = (
+        f"config_muon.toml: num_lanes={lanes}, num_warps={warps}, num_cores={cores}"
+        if cfg else f"geometry UNKNOWN — no readable [muon] config at {cfg_path} "
+                    f"(set MERLIN_MUON_CONFIG); nothing was substituted")
+    peak_flops_cycle = cores * lanes * 2 if (cores is not None and lanes is not None) else None
+    peak_gflops = peak_flops_cycle * CLOCK_HZ / 1e9 if peak_flops_cycle is not None else None
 
     facts = {
         "schema_version": "1.0",
@@ -236,16 +295,20 @@ def build_facts() -> dict[str, Any]:
                        "RadianceMuonConfig elaborated FIRRTL/module-hierarchy evidence + Radiance ISA docs"),
         },
         "inputs": {
-            "config_toml": str(config_path()),
+            "config_toml": str(cfg_path),
+            # Whether that path was actually READ, recorded beside it. The committed artifact names a
+            # config it never opened; a reader could not tell, because the only signal was a
+            # `/path/to/...` default that looks like any other path.
+            "config_read": cfg_read,
             "rtl_generated_src": str(gs),
             "rtl_present": gs.is_dir(),
         },
         "facts": {
             "simt": {
                 "lanes_per_warp": lanes, "warps_per_core": warps, "cores": cores,
-                "threads_per_core": lanes * warps,
-                "evidence": (f"config_muon.toml: num_lanes={lanes}, num_warps={warps}, "
-                             f"num_cores={cores}; RTL hierarchy MuonCore/MuonTile present="
+                "threads_per_core": (lanes * warps
+                                     if (lanes is not None and warps is not None) else None),
+                "evidence": (f"{geom_evidence}; RTL hierarchy MuonCore/MuonTile present="
                              f"{bool(hier.get('MuonCore'))}"),
             },
             "registers": {
@@ -270,12 +333,16 @@ def build_facts() -> dict[str, Any]:
                 "dtype": "f32", "flop_per_fma": 2,
                 "peak_flops_per_cycle": peak_flops_cycle,
                 "clock_hz": CLOCK_HZ, "peak_gflops": peak_gflops,
-                "evidence": f"{cores} cores x {lanes} lanes x 2 flop/FMA = {peak_flops_cycle} flop/cycle "
-                            f"@ {CLOCK_HZ/1e6:g} MHz = {peak_gflops:g} GFLOP/s",
+                "evidence": (f"{cores} cores x {lanes} lanes x 2 flop/FMA = {peak_flops_cycle} "
+                             f"flop/cycle @ {CLOCK_HZ/1e6:g} MHz = {peak_gflops:g} GFLOP/s"
+                             if peak_flops_cycle is not None else
+                             f"peak UNKNOWN — the SIMT geometry it multiplies is UNKNOWN "
+                             f"({geom_evidence})"),
             },
             "isa": _isa_block(),
         },
         "rtl_hierarchy_counts": hier,
+        "provenance": _provenance(_sources_read(gs, cfg_path)),
     }
     return facts
 

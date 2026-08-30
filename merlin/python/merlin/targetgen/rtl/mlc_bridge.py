@@ -1311,6 +1311,30 @@ def _simt_fact_bundle(target: str) -> dict:
             "n_derived": sum(1 for v in fields.values() if v["derived"])}
 
 
+def _stamped_simt_geometry(target: str) -> dict | None:
+    """The SIMT geometry from ``target``'s committed, provenance-carrying facts artifact, or None.
+
+    Used only when LIVE derivation cannot read its inputs. This is not a substitute for deriving: the
+    artifact IS a derivation, written by the introspect from the RTL and config, and it travels with the
+    evidence string that says what it was read from. What it replaces is the old behaviour of inventing
+    16/8/2/256 inline, which no consumer could tell apart from a real reading."""
+    from .facts import _committed_facts_path
+    try:
+        p = _committed_facts_path(target)
+        if p is None:
+            return None
+        import json as _json
+        geo = ((_json.loads(p.read_text(encoding="utf-8")).get("facts") or {}).get("simt")) or {}
+    except Exception:  # noqa: BLE001 - an unreadable artifact is simply no second source
+        return None
+    if not isinstance(geo.get("lanes_per_warp"), int):
+        return None
+    out = {k: geo[k] for k in ("lanes_per_warp", "warps_per_core", "cores")
+           if isinstance(geo.get(k), int)}
+    out["evidence"] = f"live introspect unavailable; read from the stamped artifact {p}"
+    return out
+
+
 def simt_facts(target: str) -> dict:
     """SIMT self-hosted-ISA facts adapted to the ``facts.json`` body shape, so the generic manifest
     deriver (:func:`merlin.targetgen.capability_manifests.derive_manifest`) grounds ``endpoint_kind``
@@ -1336,6 +1360,23 @@ def simt_facts(target: str) -> dict:
     if isinstance(simt.get("lanes_per_warp"), int):
         body["simt"] = {k: simt[k] for k in ("lanes_per_warp", "warps_per_core", "cores")
                         if isinstance(simt.get(k), int)}
+    elif simt:
+        # The introspect produced a SIMT block whose geometry is explicitly UNKNOWN: it could not read
+        # this target's config, and it now records that absence instead of substituting the literals
+        # 16/8/2/256 under an evidence string naming a file it never opened.
+        #
+        # Live derivation is the FIRST source, not the only one. An environment without the RTL
+        # toolchain (CI, a fresh clone, the agent sandbox) cannot introspect at all, and dropping the
+        # block there turns "we could not derive the lane count" into "this endpoint has no lane
+        # count" -- which the manifest deriver cannot distinguish from a non-SIMT target. So fall back
+        # to the target's own STAMPED artifact, which is a previous derivation carrying its evidence,
+        # and only give up when neither source can answer.
+        stamped = _stamped_simt_geometry(target)
+        if stamped:
+            body["simt"] = stamped
+        else:
+            body["simt"] = {"lanes_per_warp": None, "warps_per_core": None, "cores": None,
+                            "evidence": simt.get("evidence")}
     smem = (fields.get("shared_memory") or {}).get("value") or {}
     if isinstance(smem.get("bytes_per_cluster"), int):
         body["memories"] = [{"name": "shared_memory", "bytes": smem["bytes_per_cluster"]}]

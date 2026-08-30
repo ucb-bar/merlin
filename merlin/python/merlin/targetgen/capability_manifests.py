@@ -475,6 +475,11 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
         caps["simt"] = {**(caps.get("simt") or {}),
                         **{k: simt_geo[k] for k in ("lanes_per_warp", "warps_per_core", "cores")
                            if isinstance(simt_geo.get(k), int)}}
+    # NOTE: a SIMT block whose geometry is UNKNOWN reaches here only if `simt_facts` could neither
+    # derive it live nor read it from the target's stamped artifact. Publishing a SIMT manifest with no
+    # lanes/warps/cores would be a false document, but REFUSING here breaks every environment without
+    # the RTL toolchain (CI, a fresh clone), so the refusal belongs at the point where the two sources
+    # are both exhausted, not at assembly. See `mlc_bridge.simt_facts`.
     if spatial is not None:                       # OPU tile geometry (cluster x cell) + MRF bank depth
         caps.update(_spatial_capabilities_from_fields(spatial))
     manifest["capabilities"] = caps
