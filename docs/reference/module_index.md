@@ -37,6 +37,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.llvmlower` | Whole-model lowering: linalg-on-tensors MLIR -> LLVM IR -> RVV objects. |
 | `merlin.mining` | RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect |
 | `merlin.perf` | The performance layer: what a target's legal choices cost. |
+| `merlin.perf.deps` | Dependence primitives: what an instruction defines and uses, what is live, and what that costs. |
 | `merlin.plotting` | Shared plotting house style (palette + card/callout/style_ax helpers). |
 | `merlin.runtime` | Merlin-owned runtime substrate (real, dependency-free). |
 | `merlin.runtime.backends` | Merlin runtime execution backends. |
