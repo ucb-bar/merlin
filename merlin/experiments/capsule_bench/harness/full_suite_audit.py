@@ -8,7 +8,7 @@ the real RTL oracle (L3 verilator; opportunistically L4 VCS), in PARALLEL. No ag
 
 It is honest about partial pass: backends built only against the pilot are expected to fail capsule
 classes they never implemented (conv/im2col, attention) — those show as failures with their first
-failure plane, never hidden. Per-capsule L3 cycles and an active-vs-waiting timing rollup
+failure plane, never hidden. Per-capsule cycles keyed by tier and an active-vs-waiting timing rollup
 (sim_active vs oracle/queue wait, parallel speedup) are reported per the user's directive.
 
 Usage:
@@ -170,7 +170,9 @@ def main(argv: list[str] | None = None) -> int:
         for rid in scores:
             p = pc.get(rid, {}).get(n, {})
             row[f"{rid}__status"] = p.get("status")
-            row[f"{rid}__cycles"] = cyc.get(rid, {}).get(n)
+            # cycles_diagnostic is KEYED BY TIER ({"L3": 944, "L4": 1378}) -- which tier holds a
+            # capsule's cycle count varies per run, so the cell names the tier it came from.
+            row[f"{rid}__cycles"] = cyc.get(rid, {}).get(n) or {}
         out["matrix"].append(row)
 
     (C.REPORTS / "full_suite_audit.json").write_text(json.dumps(out, indent=2))
@@ -206,17 +208,18 @@ def _write_md(out: dict, scores: dict) -> None:
            "|---|---|" + "|".join(["---"] * len(rids)) + "|"]
     for cls, cc in out["class_coverage"].items():
         md.append(f"| {cls} | {cc['n']} | " + " | ".join(f"{cc.get(r,0)}/{cc['n']}" for r in rids) + " |")
-    md += ["", "## Per-capsule matrix (status · L3 cycles)", "",
+    md += ["", "## Per-capsule matrix (status · cycles per tier)", "",
            "| capsule | label | class | " + " | ".join(rids) + " |",
            "|---|---|---|" + "|".join(["---"] * len(rids)) + "|"]
     for row in out["matrix"]:
         cells = []
         for rid in rids:
             st = row.get(f"{rid}__status")
-            cy = row.get(f"{rid}__cycles")
-            cells.append(f"{st}" + (f" · {cy}cyc" if cy is not None else ""))
+            cy = row.get(f"{rid}__cycles") or {}
+            cells.append(f"{st}" + ("".join(f" · {t} {c}cyc" for t, c in cy.items())))
         md.append(f"| {row['capsule']} | {row['label']} | {row['class']} | " + " | ".join(cells) + " |")
-    md += ["", "_Legend: cycles = L3 verilator RTL cycles (rdcycle-bracketed). oracle_wait(s) is time "
+    md += ["", "_Legend: cycles are labelled with the TIER that reported them; a capsule can carry a "
+           "count at one tier and not another, so the tier travels with the number. oracle_wait(s) is time "
            "blocked on a queue/FPGA slot (≈0 for local verilator; nonzero only for queued VCS/FireSim). "
            "speedup = sum(active_sim)/wall under parallel workers._"]
     (C.REPORTS / "full_suite_audit.md").write_text("\n".join(md) + "\n")

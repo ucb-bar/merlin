@@ -30,6 +30,32 @@ from .corpora import source_experiment_env
 from .oot_runner import CertFailure, build_package, integrity_scan, load_package
 
 
+def cycles_by_tier(tiers: dict | None, *, ladder: list[str] | tuple[str, ...] = ()) -> dict[str, int]:
+    """Every tier record that REPORTS a cycle count, keyed by the tier that reported it.
+
+    Which tier holds a capsule's cycle count is a property of the run, not a constant. The ladder runs
+    a target's cheapest oracle first and that ordering differs per target, so a capsule can carry a
+    count under one tier and nothing under another. Harvesting a single fixed tier therefore drops
+    counts silently and asymmetrically: measured on one graded run, 11 of 12 FAILING capsules carried
+    an elaborated-RTL record with no entry at the tier the diagnostic read, so the cycle count of
+    nearly every failure — exactly the capsules a diagnostic exists to explain — never reached the
+    summary, while the passes (which cleared every tier) were all present. That reads as "failures
+    have no cycles", which is the opposite of true.
+
+    Keyed by tier rather than flattened, so two tiers' counts for one capsule sit side by side and can
+    be compared. ``ladder`` orders the result (tiers outside it are appended in encounter order); a
+    tier record in the bare-string form (``"pass"``) reports no fields and contributes nothing.
+    """
+    found: dict[str, int] = {}
+    for name, record in (tiers or {}).items():
+        cycles = _tier_field(record, "cycles")
+        if cycles is not None:
+            found[name] = cycles
+    ordered = {t: found[t] for t in ladder if t in found}
+    ordered.update({t: c for t, c in found.items() if t not in ordered})
+    return ordered
+
+
 def default_grade_workers(n_capsules: int | None = None) -> int:
     """How many per-capsule oracle instances (verilator/VCS/cyclotron) to fan out in parallel — the
     per-capsule sim runs are independent, so grading N capsules serially wastes wall-clock. Derived from
@@ -333,9 +359,9 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
 
     _agg = {"build_s": 0.0, "sim_active_s": 0.0, "oracle_wait_s": 0.0}
     for r in results:
-        _cyc = _tier_field((r.get("tiers") or {}).get("L3"), "cycles")
-        if _cyc is not None:
-            score["cycles_diagnostic"][r["capsule"]] = _cyc
+        _cyc_by_tier = cycles_by_tier(r.get("tiers"), ladder=tiers)
+        if _cyc_by_tier:
+            score["cycles_diagnostic"][r["capsule"]] = _cyc_by_tier
         # active-vs-waiting timing: sum across every tier that actually ran an oracle for this capsule
         cap_tm = {"build_s": 0.0, "sim_active_s": 0.0, "oracle_wait_s": 0.0, "by_tier": {}}
         for t in ("L2", "L3", "L4", "L5"):
