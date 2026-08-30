@@ -195,11 +195,39 @@ a lower bound rather than letting a partial sum present as a total. Constant pro
 register it cannot evaluate and a backward branch invalidates everything, since a loop-carried value
 is not a constant.
 
-**Still open, honestly:** end-to-end validation against the arc-measured `(reads+writes)·beat_bytes`
-for >=18 of 21 kernels (R2.2) is not run — that needs merlin's own extraction to carry the family
-encodings so the decode path feeds this module in production. The predictor and its degradation rules
-are in place and tested; wiring the encodings into `isa_model` is the remaining step, and it is now a
-concrete extraction task rather than an unexplained block.
+**R2.2 RUN — the acceptance criterion is not met, and the reason is measured.**
+`movement_volume.py --target <t>` (`632bf16e`), over all 21 kernels of the pinned suite:
+
+    5 exact,  16 consistent floors,  0 bound violations,  of 21 kernels
+    60 of 83 movement descriptors unresolved
+
+**R2.2 asked for >=18 of 21 within tolerance. It is 5.** But the shape of the failure is the finding:
+
+- **Where a program sets its own transfer lengths, the prediction is EXACT** — all 5 land at ratio
+  1.000, not merely inside a tolerance. The derivation is right.
+- **Where it does not, the floor holds.** 16 consistent lower bounds and **zero bound violations**:
+  the predictor never once claimed more traffic than was measured. The demotion rule works on real
+  data, not just in its unit tests.
+- **The cause: 52 of 83 descriptors (63%) name a length register the program NEVER WRITES.** The
+  shipped programs are not self-contained — they inherit register state from the harness that runs
+  them. No amount of constant propagation over the program text can recover a value the text does not
+  contain.
+
+**So >=18/21 is unreachable from program text alone on this corpus, for a named reason** — not a gap
+in the predictor. Closing it needs the harness's entry state (or a target whose programs set their own
+descriptors), and that is a different input, not a better analysis.
+
+**Consequences, carried forward honestly:** the cycle claim stays *"given the byte volume"* for the 16;
+`compose_program_cycles`'s Finding 6 stays open; and R2.5's amplification ratios stay half-derived,
+since `useful_bytes` needs the same lengths. What DID change: `footprint_bytes` is no longer purely an
+input — for 5 of 21 kernels it is now predicted exactly from the program, and for the rest there is a
+sound floor with its shortfall attributed to a specific missing input.
+
+**One thing this corrected in the module.** The size operand is now read from the register each form's
+own executable body reads to size its transfer (`length = state.read_xrf(self.<operand>)`, recovered by
+`ast`), not from a name-order fallback. My first version listed a generic register name as a last-resort
+guess — which is the pick-by-position bug wearing a different hat, in the very module written to
+prevent it.
 
 ## R3 — Target profile + performance contract  *(Lane A; after 1.2)*
 
