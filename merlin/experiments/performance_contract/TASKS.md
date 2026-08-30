@@ -469,6 +469,76 @@ elsewhere as a new best; it is bit-exact, but it inherits the same precondition 
 Corollary for the corpus: `mxu1` and `dma1-7` are never busy in this kernel either, so any
 separation the emitter inserts for them is inert here by the same argument, and has not been probed.
 
+## Generalizing the occupancy layer — Gemmini, and Radiance especially
+
+Radiance is the hard case and therefore the useful one: it declares a **SIMT cluster that CONTAINS a
+systolic MX PE** (`simt_cluster.contains: [mx_pe]`, kinds `simt` and `systolic`), so one device holds
+two microarchitectures whose concurrency is exactly what a perf layer should measure.
+
+### A live bug this exposed, fixed before anything else
+
+Derived containment **cannot** distinguish a unit's own sub-signals from an engine nested inside
+another: both nest identically in the data. On a Radiance-shaped trace the shipped rule folded
+`mx_pe` into `simt_cluster` and reported **overlap 0** between the two microarchitectures — deleting
+half the silicon, which is the very error the muon contract's own comment records ("Declaring only
+the SIMT cluster described half the silicon"). Fixed (`833a7e8d`): the engine a column belongs to is
+**declared**, and columns in different declared engines are never folded into each other; folding
+still applies *within* an engine, where it is right.
+
+`declared_engines()` reads the engine set from each target's own compute-unit declaration
+(`c1937f89`). One code path, four shipped declarations, four archetypes, three topologies:
+
+    gemmini   systolic_mesh (systolic)                          flat
+    muon      simt_cluster (simt) CONTAINS mx_pe (systolic)     nested, heterogeneous
+    saturn    rvv_lanes (vector) + opu (spatial)                siblings
+    toy_npu   pe_array (systolic)                               flat
+
+### What still has to change, in order
+
+| id | task | why |
+|---|---|---|
+| **R-2** | Activity semantics beyond a busy bit: `width` (active/total lanes) and `commit`, alongside `binary_busy` | A divergent warp is 100% *busy* on 1 of 32 lanes. Radiance is also the only target with a real denominator (`speed_of_light: simt_lane_peak`; atlas's is `null`), so lane-cycles are computable there and utilization must never be read off a busy bit |
+| **R-3** | Open cyclotron's `on_cycle` tap | `cosim_muon.run()` **already takes `on_cycle`** and already returns `per_core_active` (cycles each core had a valid **commit**) — merlin passes neither. Same "built, never called" shape as the atlas io.dbg tap. A commit signal is strictly better than the pc-advance proxy. **Measure callback overhead first**: a Python callback per cycle on a slow engine can double wall |
+| **R-4** | Cross-instance contention, and **the falsifier for the whole method** | Atlas returned overlap 0 everywhere. If the same tooling reports 0 on a device with two concurrent microarchitectures and multiple cores, **the instrument is broken, not the machine**. Radiance is where this method earns trust or loses it |
+| **R-5** | The MX PE <-> SIMT interaction | The question the layer exists to answer. mlc's G12 already found a composition-level effect neither component's isolated model predicts (the SIMT offload stream exceeding the MX scratchpad DMA-queue depth — a real RTL backpressure assertion) |
+| **R-6** | **Gemmini first**, as the cheap validation | mlc's GSIM full-SoC harness already emits `commit_valid, wb_pc, wb_inst, is_rocc, gem_ex_state, gem_load_state, gem_store_state, gem_rs_busy, axi_ar_valid, axi_aw_valid` — CPU + accel + memory in exactly the right shape, and `gem_rs_busy` pairs with the `gem_*_state` FSMs for the idle calibration. Validates the generalization before the harder Radiance work. **Not run**: no raw trace on disk, the harness needs building |
+
+Order: R-0 (done) -> R-6 -> R-2 -> R-3 -> R-4/R-5.
+
+**Limits to carry, not paper over.** Radiance's `facts.json` is EMPTY, so occupancy cannot be tied to
+derived geometry. Its citable tier is `cycle_model` (cyclotron), **not** elaborated RTL, so any
+Radiance occupancy claim is weaker in provenance than the atlas ones by construction. 9 MX capsules
+are unwinnable on the fork-free MLIR path, and radiance declares 8 semantic families while evidencing
+2. None of this blocks the occupancy work; all of it bounds what a Radiance perf claim may say.
+
+## CPU <-> accelerator on atlas — measured
+
+The GSIM trace carries `pc_reg`, so the cycles with no accelerator unit busy can be split by whether
+the scalar core retired an instruction. Over 42,688 cycles:
+
+    accelerator unit busy         24,943   58.4%
+    SCALAR CORE only (pc advances) 13,684   32.1%
+    nothing advancing (true stall)  4,034    9.4%
+
+**81% of the "idle" time is the scalar core executing control code** — address arithmetic, loop
+bookkeeping, descriptor setup — and with overlap at zero on these schedules it is fully serialized
+with the accelerator. The spread is workload-dependent and large: `AF8_rope` 54.4% scalar,
+`AT3_k_accumulation` 50.7%, the matmuls 37.2%, `AF4_gelu` 2.2%.
+
+So the largest remaining lever on this target is **hiding scalar control under accelerator
+execution**, not more MXU or less DMA. No instrument before the joint vector could see it.
+
+**Caveat on the method:** "pc advances" is a proxy that leans on atlas being a single non-interlocked
+scalar core with one delay slot. On gemmini use `commit_valid`; on a SIMT device neither works. The
+control-processor activity signal must become a **declared producer input**, exactly like unit kinds
+and engine bindings — that is part of R-2.
+
+**The external host lane is a separate question and is NOT honest yet**: `scalar_rvv_lane` exists in
+routing/place and `lane_report()` fails closed, but the lane actually executed in the capsule path is
+x86, not RVV, with no per-lane cycle accounting and two clocks with no common denominator. Not
+re-verified this session. Any end-to-end number there stays a **vector, never a sum** — the failure
+mode is a router win reported as a backend win.
+
 ## W1.0 — the free fidelity run, and what it found
 
 `mlc/spec/validate_fidelity.py` against the 2,219 totals already on disk. **Zero new measurement.**
