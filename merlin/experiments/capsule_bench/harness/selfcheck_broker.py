@@ -48,12 +48,18 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--ws", required=True)
     ap.add_argument("--poll", type=float, default=0.5)
+    ap.add_argument("--plateau-checks", type=int, default=0,
+                    help="stop serving self-checks after N consecutive full-corpus checks that made no "
+                         "progress (0 = never). The round-level --plateau-rounds terminator cannot fire "
+                         "inside a single round; this is the same test at self-check granularity.")
     a = ap.parse_args(argv)
     ws = Path(a.ws)
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
     orig_ppid = os.getppid()
     seen: set[str] = set()
+    import plateau as _PL
+    stall = _PL.Detector(a.plateau_checks)
     while True:
         why = _should_stop(ch, orig_ppid)
         if why:
@@ -81,6 +87,18 @@ def main(argv=None):
         except Exception:
             resp.write_text(json.dumps({"error": "broker: unreadable request"}))
             (ch / f"done_{rid}").write_text("err")
+            continue
+        # A STALLED round stops BUYING self-checks. Each full-corpus check costs the oracle 80-120s and
+        # the agent blocks on it, so a loop that has stopped improving spends most of its remaining wall
+        # here. Answer immediately and truthfully instead: the request is not dropped (a silent drop
+        # would hang the agent's poll), it is served a terminal verdict naming why.
+        if stall.stalled():
+            resp.write_text(json.dumps({
+                "error": "self-check closed for this round: " + stall.why(),
+                "plateau": True, "n_checks_stalled": stall.stall,
+                "note": "Further self-checks will not be served this round. Your last verdict stands. "
+                        "If you have an untried idea, make the edit and let the ROUND grade judge it."}))
+            (ch / f"done_{rid}").write_text("plateau")
             continue
         to = int(r.get("timeout", 1800))
         argv2 = [sys.executable, str(SELFCHECK),
@@ -141,6 +159,17 @@ def main(argv=None):
                     _promote(ws, ch, _v, _loop, _cert, _cover, sys.stderr)
         except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
             print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
+        # Fold this verdict into the in-round plateau test. AFTER the response is written, so a stall is
+        # never the reason a completed check goes unanswered -- the agent always gets the verdict it
+        # waited for, and only the NEXT request is refused.
+        try:
+            if resp.exists():
+                _sv = json.loads(resp.read_text())
+                if isinstance(_sv, dict) and stall.observe(_sv, str(r.get("capsules", "all"))):
+                    print(f"[plateau] {stall.why()} — closing the self-check loop for this round",
+                          file=sys.stderr, flush=True)
+        except Exception as _se:  # noqa: BLE001 -- detection must never break serving
+            print(f"[plateau] skipped: {type(_se).__name__}: {_se}", file=sys.stderr, flush=True)
         if not (ch / f"done_{rid}").exists():
             (ch / f"done_{rid}").write_text("ok")
 

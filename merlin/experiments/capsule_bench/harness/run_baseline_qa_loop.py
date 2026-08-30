@@ -219,6 +219,7 @@ _DROP_TOOLS: tuple = () # set in main(): --without-tool (ABLATION: withhold thes
 _DRIVER = "auto"        # set in main(): agent driver (auto|converse|claudecode|opencode); auto routes by model
 _SUBAGENT_MODEL = ""    # set in main(): delegate/subagent model for tier-within-agent (converse driver)
 _BACKGROUND_MODEL = ""  # set in main(): background/mechanical model (converse driver; reserved)
+_PLATEAU_CHECKS = 0     # set in main(): --plateau-checks (IN-round plateau; 0 = off, prior behaviour)
 READY_MARKER = "READY_FOR_BARRIER"  # realistic: agent drops submission/<this> to self-declare done
 # Merlin-arm-only docs staged into the workspace alongside the (shared) graded task.
 MERLIN_WS_DOCS = ("TASK_ADDENDUM.md", "ALLOWED_MERLIN_TOOLS.md", "MERLIN_PROVENANCE_TEMPLATE.md")
@@ -1081,9 +1082,12 @@ def _start_selfcheck_broker(ws: Path):
         broker_specs.append((bs.module, bs.log))
     brokers = []
     for name, log in broker_specs:
+        argv = [sys.executable, str(SCRIPTS / name), "--ws", str(ws)]
+        # Only the self-check broker sees verdicts, so only it can detect an in-round plateau.
+        if name == "selfcheck_broker.py" and _PLATEAU_CHECKS:
+            argv += ["--plateau-checks", str(_PLATEAU_CHECKS)]
         brokers.append(subprocess.Popen(
-            [sys.executable, str(SCRIPTS / name), "--ws", str(ws)],
-            stdout=open(ch / log, "w"), stderr=subprocess.STDOUT))
+            argv, stdout=open(ch / log, "w"), stderr=subprocess.STDOUT))
     return brokers
 
 
@@ -1431,6 +1435,18 @@ def main(argv: list[str] | None = None) -> int:
                          "have fired on the productive glm5 15/20 run, whose flat-pass stretches kept "
                          "reducing mismatch). Enable it only for a run you know is pathologically stuck "
                          "(re-sending its uncached context each round with zero movement), e.g. N=3-4.")
+    ap.add_argument("--plateau-checks", type=int, default=0,
+                    help="OPT-IN (0 = disabled, the default). The SAME no-progress test as "
+                         "--plateau-rounds, applied WITHIN a round to the agent's own full-corpus "
+                         "self-checks. --plateau-rounds cannot fire on a run that takes one round, which "
+                         "is what a wall-capped continuous schedule produces (the wall is checked between "
+                         "rounds). Measured on a four-arm ladder where every arm reached its final score "
+                         "in the first ~50 min of a 90-136 min round: one arm then spent 48 further "
+                         "minutes and 13 further self-checks without moving. When N consecutive "
+                         "full-corpus self-checks make no progress the broker stops serving them and says "
+                         "so; the agent keeps its last verdict and the round grade still runs. Subset "
+                         "checks and degenerate verdicts (build failure, empty) are never counted, so a "
+                         "transient broken build cannot end a round. e.g. N=4-6.")
     ap.add_argument("--round-timeout", type=int, default=14400,
                     help="per-round agent wall cap (s). Default 4h (matches launch_ab_batch): a TIGHT "
                          "cap is net-detrimental — it doesn't cut the work (fixed by difficulty), it "
@@ -1486,11 +1502,13 @@ def main(argv: list[str] | None = None) -> int:
         return 4
     arm = a.arm
     global _EXPERIMENT, _ARM, _DRIVER, _SUBAGENT_MODEL, _BACKGROUND_MODEL, _ADD_TOOLS, _DROP_TOOLS
+    global _PLATEAU_CHECKS
     _EXPERIMENT = a.experiment
     _ARM = arm
     _DRIVER = a.driver
     _SUBAGENT_MODEL = a.subagent_model
     _BACKGROUND_MODEL = a.background_model
+    _PLATEAU_CHECKS = a.plateau_checks
     # Fail closed on an unknown tool name BEFORE any spend: a typo would otherwise ablate nothing and
     # the cell would silently be a duplicate of its own rung.
     for _n in (*a.with_tool, *a.without_tool):
@@ -1732,17 +1750,11 @@ def main(argv: list[str] | None = None) -> int:
     _plateau_stall = 0               # consecutive rounds with no progress
     rl_waits_used = 0
 
-    def _progress_key(v: dict) -> tuple:
-        """Round progress, higher is better: (#passed, -total residual numeric mismatch). A non-passing
-        capsule with no numeric mismatch (a structural fail) counts as a large residual, so a structural
-        stall never reads as 'solved'. Used only to detect a plateau — never to grade."""
-        tot = 0
-        for pc in (v.get("per_capsule") or []):
-            if pc.get("status") == "pass":
-                continue
-            mc = pc.get("mismatch_count")
-            tot += int(mc) if isinstance(mc, int) else 1_000_000
-        return (v.get("n_passed") or 0, -tot)
+    # Round progress uses the SHARED definition (harness/plateau.py), the same one the self-check broker
+    # applies within a round. Two plateau detectors that disagree about what "progress" means is how one
+    # of them ends up watching the wrong signal.
+    import plateau as _PL
+    _progress_key = _PL.progress_key
     active_wall_s = 0.0              # cumulative time DOING work (launch+grade) across all invocations
     rate_limit_wait_s = 0.0         # cumulative time slept waiting for five-hour window resets
     started_at = datetime.now(timezone.utc).isoformat()
