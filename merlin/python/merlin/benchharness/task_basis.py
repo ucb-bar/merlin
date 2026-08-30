@@ -208,9 +208,16 @@ def derive_basis(census: Any, cap_map: Mapping[str, Any], *,
     plainly does -- the census simply does not enumerate normalization. Supplying the scope splits
     that list into families the model really lacks and families nothing looked for. Left empty, the
     distinction cannot be drawn and the certificate says so rather than implying the stronger claim.
+    Left unset it is read off the census, which knows what it walked; pass it only to override.
     """
     if not 0 < cover_target <= 1:
         raise ValueError(f"cover_target must be in (0, 1]; got {cover_target}")
+
+    # A census that states its own scope is the better authority than a caller remembering to. Every
+    # caller forgetting was the actual failure mode: the seed model reported seven families
+    # "declared but not evidenced" when nothing had looked for them.
+    if not census_enumerates:
+        census_enumerates = tuple(getattr(census, "scope", ()) or ())
 
     buckets: dict[str, list[Any]] = {}
     sigs: dict[str, Signature] = {}

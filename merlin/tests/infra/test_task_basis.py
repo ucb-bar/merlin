@@ -24,8 +24,9 @@ class _Row:
 
 
 class _Census:
-    def __init__(self, rows, total_work=None, model_ticks=None, model="m", stage="s"):
+    def __init__(self, rows, total_work=None, model_ticks=None, model="m", stage="s", scope=()):
         self.rows = tuple(rows)
+        self.scope = tuple(scope)
         self.total_work = total_work if total_work is not None else sum(r.work for r in rows)
         self.model_ticks = model_ticks
         self.model, self.stage, self.source = model, stage, "src"
@@ -320,4 +321,31 @@ def test_an_unknown_census_scope_makes_no_claim_about_absence(monkeypatch):
     b = TB.derive_basis(_Census([_Row(index=0, family="matmul", ticks=1, key="a")], model_ticks=1),
                         _Cap(("contraction", "normalization")))
     assert b.certificate["census_scope_known"] is False
+    assert b.certificate["families_outside_census_scope"] == []
+
+
+def test_the_scope_is_read_off_the_census_when_the_caller_does_not_pass_it(monkeypatch):
+    """Every caller forgot, and forgetting is not a neutral default.
+
+    Unsupplied, the seed model's seven unsearched families were reported as declared-but-unevidenced
+    -- a claim about the MODEL made from a fact about the census. The census knows what it walked,
+    so it is the authority.
+    """
+    monkeypatch.setattr(TB.EL, "is_eligible", lambda *_a, **_k: TB.EL.EligibilityVerdict(
+        True, "contraction", "ok"))
+    b = TB.derive_basis(_Census([_Row(index=0, family="matmul", ticks=1, key="a")], model_ticks=1,
+                                scope=("contraction",)),
+                        _Cap(("contraction", "normalization")))
+    assert b.certificate["census_scope_known"] is True
+    assert b.certificate["families_outside_census_scope"] == ["normalization"]
+    assert b.certificate["families_declared_not_evidenced"] == []
+
+
+def test_an_explicit_scope_overrides_the_census(monkeypatch):
+    monkeypatch.setattr(TB.EL, "is_eligible", lambda *_a, **_k: TB.EL.EligibilityVerdict(
+        True, "contraction", "ok"))
+    b = TB.derive_basis(_Census([_Row(index=0, family="matmul", ticks=1, key="a")], model_ticks=1,
+                                scope=("contraction",)),
+                        _Cap(("contraction", "normalization")),
+                        census_enumerates=("contraction", "normalization"))
     assert b.certificate["families_outside_census_scope"] == []

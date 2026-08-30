@@ -49,9 +49,9 @@ Bedrock ceiling is shared with prior work.
 
 | id | task | state |
 |---|---|---|
-| 3.1 | Weight-free census of all five workloads (`work_dir=` mandatory) | **PARTIAL** — `inventory_models.py` written and tested; not run across all five into a tracked manifest |
+| 3.1 | Weight-free census of all five workloads (`work_dir=` mandatory) | **DONE** — run across all five captured models; 0 opaque ops, so `priced_fraction` is 1.0 everywhere. Contraction is 97.2–99.9% of FLOPs in every one |
 | 3.2 | Captures for the reveal set | **PARTIAL** — TinyLlama / Gemma-2 / LSTMNetVIT have full bundles; DeepSeek + SmolVLA have `model.mlir` only (census-capable, not executable); SmolVLA has 1 opaque op |
-| 3.3 | Task basis: signature key, eligibility filter, cost weight, greedy cover ≥95%, family floor | **PARTIAL** — derivation lands and runs on TinyLlama; the basis is not yet materialised into capsules, so **every number measured so far is still three pilot capsules, not TinyLlama** |
+| 3.3 | Task basis: signature key, eligibility filter, cost weight, greedy cover ≥95%, family floor | **PARTIAL** — derivation lands and runs on TinyLlama (2 of 5 groups, 97.77% of the eligible denominator); the basis is not yet materialised into capsules, so **every number measured so far is still three pilot capsules, not TinyLlama** |
 | 3.4 | `basis_certificate.json` | **PARTIAL** — emitted by `derive_basis`, incl. `families_declared_not_evidenced` vs `families_outside_census_scope`; not yet written to a tracked path |
 | 3.5 | Config ladder C0–C4 (~5 per task) | **OPEN** |
 | 3.6 | `holdout_certificate.json` proving shape-tuple disjointness | **OPEN** — prior "hidden" sets on other targets were renames; a nominal hidden score is not transfer |
@@ -82,7 +82,7 @@ Bedrock ceiling is shared with prior work.
 | 5.1 | Token/cost telemetry per round incl. failures | **DONE** — `parse_agent_transcript` for codex + opencode; 17 tests. Was reading **zero** for every arm |
 | 5.2 | Preserve all intermediates | **DONE** — per-round candidate kernels archived; transcripts already kept |
 | 5.3 | AET emission (`emit_to_aet`, `MERLIN_AET_SINK=1`) + `agg_by_model` | **OPEN** |
-| 5.4 | Coverage metric: % independently eligible execution cost accelerated | **OPEN** — manifest exists; the per-run number is not computed. CPU fallback for an eligible region must count *against* |
+| 5.4 | Coverage metric: % independently eligible execution cost accelerated | **OPEN** — manifest exists; the per-run number is not computed. CPU fallback for an eligible region must count *against*. ⚠️ **The denominator is FLOPs, and FLOPs flatter it**: no measured tick profile exists for any reveal model on radiance, so cost falls back to `work_share`, where contraction is 99.93% of TinyLlama and 87.2% of its ops weigh 0.07%. Prior measurement on another substrate found elementwise/scalar work dominating wall time at a comparable FLOP share — see `elementwise-runs-scalar-f32`. Quote coverage as FLOP-weighted until a tick profile exists |
 | 5.5 | Performance metric vs reference and best-observed, geomeans, %peak | **PARTIAL** — cycles/gflops/%peak captured per run; no aggregation |
 | 5.6 | Break-even per reveal prefix, independently for tokens / time / notional $ | **OPEN** — the headline result |
 | 5.7 | Statistics: median, geomean, bootstrap CIs; failures stay in the distribution | **OPEN** — needs 4.6 to land |
@@ -165,6 +165,50 @@ Three things the solved/cost table already says, and one it does not:
   category before any failure breakdown is published.
 - **It does not say anything about TinyLlama.** These are three pre-existing pilot capsules. The task
   basis (3.3) is derived but not materialised, so no measured number here is about a workload yet.
+
+---
+
+## Kernel and coverage inventory (measured 2026-08-29)
+
+**Kernels.** 226 kernel files, 168 distinct texts, across 58 agent run dirs. Of those, **18 are
+claim-bearing accepted kernels** — 9 codex (`s4`) + 9 gemini (`s3`), one per (capsule x seed) over
+3 capsules x 3 seeds. Bedrock accepted none. The rest are 141 per-round candidates (kept on purpose,
+see 5.2), plus voided-round and exploratory dirs. Accepted kernels span 76 to 13,335 lines; size does
+not track cycles (a 336-line codex R4 and a 2,410-line gemini R4 land 0.1% apart).
+
+**Model inventory** (weight-free, `model.mlir` only; 0 opaque ops anywhere, so `priced_fraction` = 1.0):
+
+| model | linalg ops | total work (FLOP) | contraction share |
+|---|---:|---:|---:|
+| gemma2_2b (int8) | 2,300 | 673,182,195,592 | 99.93% |
+| tiny_llama (fp32) | 1,557 | 16,573,632,084 | 99.93% |
+| spectformer (int8) | 762 | 3,754,493,304 | 98.03% |
+| lstmnetvit (int8) | 387 | 114,073,736 | 97.24% |
+| small_llama (fp32) | 198 | 6,994,320 | 98.85% |
+
+**Coverage of the seed model (TinyLlama), the number the study will be asked for:**
+
+| step | value |
+|---|---|
+| census scope | 200 of 1,557 ops (12.8%), carrying 99.93% of FLOPs |
+| eligible / census | 99.93% (2 rank-4 `batch_matmul` groups ineligible: legal ranks are [2, 3]) |
+| chosen cover / eligible | 97.77% — 2 of 5 signature groups |
+| **basis vs whole model** | **97.63% of FLOPs; 87.2% of ops unsearched, weighing 0.07%** |
+| basis vs model, *measured* | **0%** — no basis capsule exists yet (3.5) |
+
+⚠️ **Read the 97.63% as FLOP-weighted, never as execution cost.** `kernels.census` walks
+`observe_contractions`, so contraction is the only family it can see, and no measured tick profile
+exists for any reveal model on radiance — so `derive_basis` falls back to `work_share`. On another
+substrate, elementwise and scalar-f32 work at a comparable FLOP share dominated measured wall time
+(`elementwise-runs-scalar-f32`, `wholemodel-slowness-is-memory-not-mix`). A coverage claim built on
+FLOPs credits the compiler for the 99.93% that is easy and stays silent about the 87.2% of ops that
+decide the clock. 5.4 must state which weighting it used.
+
+**Fixed while measuring this.** `derive_basis` reported TinyLlama's seven unsearched families as
+`families_declared_not_evidenced` — a claim about the *model* ("it never normalizes") derived from a
+fact about the *census*. The full inventory disproves it directly: TinyLlama has 66 normalization ops
+and 542 elementwise ops. `Census` now carries the scope it walked (`census.CENSUS_SCOPE`) and
+`derive_basis` reads it, so those seven land in `families_outside_census_scope` instead.
 
 ---
 

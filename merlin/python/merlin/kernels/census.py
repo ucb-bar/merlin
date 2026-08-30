@@ -101,6 +101,12 @@ class Census:
     stage: str                     # which IR the rows were read from
     source: str                    # path of that IR
     target: str | None = None
+    #: The semantic families this census LOOKED FOR, which is not the same as the ones it found.
+    #: ``census`` walks ``shapes.observe_contractions``, so a family it never enumerates is absent
+    #: from the rows whether or not the model exercises it. Consumers that report "family not
+    #: evidenced" must be able to tell that apart from "nothing looked", so the scope travels with
+    #: the census rather than being assumed by each caller.
+    scope: tuple[str, ...] = ()
     rows: tuple[CensusRow, ...] = ()
     total_work: int = 0
     model_ticks: int | None = None   # whole-model ticks, i.e. the pct_model denominator
@@ -280,6 +286,12 @@ def _ticks_by_key(prof_table: Sequence[Mapping[str, Any]] | None,
 # ---------------------------------------------------------------------------------------------
 
 
+#: What :func:`census` enumerates. It walks ``shapes.observe_contractions``, so contraction is the
+#: only family it can see; every other family is absent from its rows by construction. Named here so
+#: consumers read the scope off the census instead of assuming one.
+CENSUS_SCOPE: tuple[str, ...] = ("contraction",)
+
+
 def census(src: "str | Path | Any", *, model: str, stage: str = "unspecified",
            target: str | None = None,
            prof_table: Sequence[Mapping[str, Any]] | None = None,
@@ -339,7 +351,7 @@ def census(src: "str | Path | Any", *, model: str, stage: str = "unspecified",
         notes += (f"{partial} row(s) have a partially recovered iteration space: work is a lower bound",)
 
     return Census(model=model, stage=stage, source=str(src) if isinstance(src, (str, Path)) else "",
-                  target=target, rows=tuple(rows),
+                  target=target, scope=CENSUS_SCOPE, rows=tuple(rows),
                   total_work=sum(r.work for r in rows), model_ticks=model_ticks,
                   ranked_by=ranked_by, notes=notes)
 
@@ -382,8 +394,8 @@ def census_bundle(bundle: "str | Path", *, model: str = "", target: str | None =
     got = census(observed, model=model, stage=stage, target=target,
                  prof_table=prof_table, prof_ticks=prof_ticks, profile_note=profile_note)
     return Census(model=got.model, stage=got.stage, source=str(observed), target=got.target,
-                  rows=got.rows, total_work=got.total_work, model_ticks=got.model_ticks,
-                  ranked_by=got.ranked_by, notes=got.notes + extra)
+                  scope=got.scope, rows=got.rows, total_work=got.total_work,
+                  model_ticks=got.model_ticks, ranked_by=got.ranked_by, notes=got.notes + extra)
 
 
 # ---------------------------------------------------------------------------------------------

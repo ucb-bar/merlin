@@ -336,3 +336,13 @@ class TestProfileUsability:
                                           "ticks": None}]
         _, ticks, _ = cs.load_profile(self._write(tmp_path, doc))
         assert set(ticks) == {0}, "a missing measurement is unmeasured, not zero"
+
+
+def test_a_census_states_which_families_it_looked_for():
+    """The rows say what was found; only the scope says what was searched.
+
+    A consumer reading absence off the rows alone concludes a transformer never normalizes, because
+    `observe_contractions` never enumerates normalization in the first place.
+    """
+    assert cs.CENSUS_SCOPE == ("contraction",)
+    assert cs.census(_MATMUL_I8, model="m").scope == cs.CENSUS_SCOPE
