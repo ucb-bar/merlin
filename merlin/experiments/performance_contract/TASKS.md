@@ -145,6 +145,53 @@ R1 and R3 share Lane A. R4 is disjoint until it imports the record type.
 | 1.6 | Test: npu_model cycles/`exu_stats` can never source a term | **DONE** — they disagree with arc by up to **4.92×** (elementwise trio 3387 vs 688; 3972/1273 is `gemma_rms_norm` at 3.12×); diagnostic only |
 | 1.7 | Defer the five-lattice provenance unification | **DEFERRED by design** — until ~10 real terms exist. Five representations exist today; unifying before there is anything to unify will churn |
 
+## W1.0 — the free fidelity run, and what it found
+
+`mlc/spec/validate_fidelity.py` against the 2,219 totals already on disk. **Zero new measurement.**
+
+**Result 1 — the spec formula and the RTL-derived model agree EXACTLY.** `dev% = 0.000` on all 21
+kernels, every row `normative`, no discrepancies. Two independently-written cost models, one from a
+spec formula and one compiled from RTL, land on the same integer 21 times. That is a real cross-check
+and it had never been run.
+
+**Result 2 — against MEASURED arc, one kernel is a 16.5% outlier** while the other 20 are under 2.5%:
+
+    smolvla_rms_norm   spec 3824   arc 3282   +16.5%
+    (next worst: gelu_tanh 2.44%, fused_silu_gate 1.75%, gemma_rms_norm 1.65%)
+
+**Result 3 — the cause, and it refutes a premise this whole layer rests on.** The component drift:
+
+    vpu            spec 428   |   arc measured vpu = 0
+    data_movement  spec 3072  |   arc dma_busy    = 3075
+    overhead       spec 324   |   arc none        = 208
+
+The program contains **7 real vector ops** (`vsquare, vredsum, vmul, vadd, vsqrt, vrecip, vmul`), and
+`perf/vector_cycles.py` — exact on 15/17 kernels — prices them at **428 cycles, complete**. Arc reports
+**vpu = 0**. The instrument is not blind to them: **`gemma_rms_norm` uses the SAME op classes and
+registers 621 vpu cycles.** The difference between the two is DMA saturation — 93.7% vs 30.5%.
+
+So those 428 cycles of vector work ran **while DMA was busy**, and the partition charged them to
+`dma_busy`. **That is measured overlap.** It contradicts the "both-active fraction EXACTLY 0.0000"
+claim that `compose_program_cycles` defaults `overlap_cycles = 0` on, and it is a second independent
+demonstration of the partition problem (the first being `buckets == truth + 1` on all 21).
+
+**Two consequences that change other tasks:**
+
+- **A correction to my own classification.** `workload_roles` called `smolvla_rms_norm` the cleanest
+  memory-term calibration instrument, on the basis of *93.7% DMA and 0% compute*. That reading is
+  wrong: it is not a compute-free kernel, it is a kernel whose compute is **already fully overlapped**.
+  That makes it a *poor* DMA calibration instrument — its `dma_busy` silently contains 428 cycles of
+  vector work — and an *excellent* overlap demonstrator. W2's role classification needs re-deriving
+  once a joint-occupancy instrument exists.
+- **The 14.7% overlap headroom is measured on the wrong instrument.** It was computed as
+  `min(dma, compute)` from the same partitioned buckets, so a kernel whose compute is already hidden
+  reads as having no compute to hide. The number is not necessarily wrong, but its provenance cannot
+  support it, and W1.2's joint occupancy vector is what settles it.
+
+**What this does NOT establish:** how much overlap, on which kernels, or whether it is deliberate. A
+partition can only show that a bucket is *missing* work; it cannot count concurrent cycles. Only the
+joint occupancy vector (W1.2) can.
+
 ## R2 — DMA byte-volume and overlap  *(Lane B; mlc repo only)*
 
 **The highest-leverage item in the program.** DMA is 60–93.7% of every Atlas cycle count and the MXU
