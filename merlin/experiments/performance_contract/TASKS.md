@@ -399,6 +399,76 @@ repeat the exact error the joint vector was built to prevent, one level up. `com
   *different* MXUs; they emit the same program and `mxu1` never fires, so **AT8 does not test what its
   name claims**.
 
+## The lever ablation — what is separable, and one claim NOT confirmed
+
+A 2x2 over (descriptor byte volume) x (settle), run twice by independent routes.
+
+    cell                    cycles    idle   overlap>=2   dma0 busy
+    amp= 1  128/128/128       1217     726        0           133
+    amp= 1   32/ 64/ 64        513      79       57           133
+    amp=16  128/128/128       2625     726        0          1541
+    amp=16   32/ 64/ 64       1921      79       57          1541
+
+**The interaction is exactly 0** — the settle effect is -704 in both rows and the descriptor effect
+is -1408 in both. Confirmed independently by two constructions. The per-unit ports say why the two
+levers are separable rather than merely appearing so: **the descriptor lever moves only `dma` busy;
+the settle lever moves only idle.** Every engine total is byte-identical across the settle factor,
+and `mxu0Comp+mxu0Data = 158` in every cell — the same 158 the shipped kernel's own bucket reports,
+and the same 158 that `fill(2*DIM-2 = 62) + completion(96)` predicts. Three independent routes to one
+number.
+
+**So the win is dominated by movement, not by scheduling.** The MXU term is identical between the
+shipped kernel and ours; what we changed is how many bytes get moved to feed it.
+
+**NOT CONFIRMED — the "settle alone loses" reversal.** A concurrent ablation reported that the settle
+lever at the shipped byte volume gives 2598 against the shipped 2383, i.e. that we *lose* without the
+descriptor lever. This construction gives **1921**, which still wins by 1.24x. The two disagree
+because **neither reproduces the shipped kernel's movement cost**: the shipped `matmul` spends 2054
+cycles in DMA, while these amplified cells reach 1541 and 2128 respectively. The amplified cell is a
+stand-in for the shipped movement pattern, not a reproduction of it, so **no reversal claim should be
+quoted from it in either direction** until a cell matches 2054. What both routes DO support is the
+sign and the rough magnitude: movement is the dominant term, worth roughly 75-100% of the 1870-cycle
+win, and the scheduling terms net near zero or slightly against us.
+
+**A new lever, measured here and previously untested: the `vpu` settle class.** `32/64/32` runs in
+**481** cycles (4.95x against the shipped 2383) versus 513 at `32/64/64`. The `vpu` class had never
+been probed separately. **Bit-exactness for this variant is NOT yet verified in this tree** — the
+concurrent ablation reports 6/6 operand salts clean, and until that is reproduced here 481 is a
+measured cycle count with an unverified correctness claim, which is not yet a result. 513 remains the
+citable number.
+
+### The `vpu` settle class is INERT on this kernel — and the occupancy vector is what proves it
+
+Probing the third settle class, six operand salts each, through the same oracle path the record used:
+
+    32/64/64   513   bit-exact 6/6
+    32/64/32   481   bit-exact 6/6
+    32/64/16   465   bit-exact 6/6
+    32/64/ 0   449   bit-exact 6/6      <- the falsifier NEVER fires
+
+**A class that never fails has established nothing.** The reason it never fails is measurable, and
+GSIM measures it: `vpu_fsm_state` is **0 on every cycle of this kernel** (the Verilator tap cannot
+see it at all — the VPU has no top-level busy port). The generated matmul never uses the VPU, so the
+emitter is inserting VPU separations into a kernel with no VPU hazard to protect against. Those 64
+cycles are pure padding — **12.5% of the 513**.
+
+Contrast with the classes that DO bind: `tensor` fails bit-exactness at 24 on 5/5 salts, and `mxu`
+fails at 32. Those floors are real because the falsifier fired at them.
+
+**The rule this yields is derived and checkable, not a constant:** *a settle class may be zeroed for
+a kernel in which the joint occupancy vector shows that unit is never busy.* That makes "which
+separations can I drop?" a measured per-kernel question instead of a global constant, and it is
+exactly the kind of fact this layer is supposed to produce.
+
+**What may and may not be quoted.** **513 stays the citable number** for the 32x32x32 matmul under
+the general device contract. 449 (5.31x) is legitimate *for this kernel with its precondition
+stated* — VPU unused, proven by occupancy — and quoting it without that precondition would be an
+overclaim of exactly the kind this register exists to catch. The intermediate 481 was reported
+elsewhere as a new best; it is bit-exact, but it inherits the same precondition and is not a floor.
+
+Corollary for the corpus: `mxu1` and `dma1-7` are never busy in this kernel either, so any
+separation the emitter inserts for them is inert here by the same argument, and has not been probed.
+
 ## W1.0 — the free fidelity run, and what it found
 
 `mlc/spec/validate_fidelity.py` against the 2,219 totals already on disk. **Zero new measurement.**
