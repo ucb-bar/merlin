@@ -154,10 +154,17 @@ does not mean anything.
 
 ## Correction: the cheaper tier is the better one
 
-L4 Verilator is **13x faster than L3 arc** and is the higher-fidelity substrate:
+L4 Verilator is faster than L3 arc **and** is the higher-fidelity substrate. Two ratios, both true,
+measuring different things: **13.3x** on median query wall (3.68 s vs 0.276 s) and **11.9x** on the
+per-cycle rate (644 vs 7,641 cycles/s). The wall ratio is the one confounded by the word term, so the
+per-cycle figure is the one to quote when projecting. Fidelity:
 `derived_from_rtl: true`, `fidelity: elaborated_rtl`, against arc's `derived_from_rtl: false`,
-`fidelity: rtl_derived_model`. Across all 21 perf-eligible capsules the two report **identical
-cycle counts**, capsule for capsule.
+`fidelity: rtl_derived_model`. The two report **identical cycle counts on 14 of 14 capsules where
+both tiers ran** -- directly measured, 42 samples. Note the provenance: `score_capsule.json` cannot
+support that claim, because its tier records are bare strings (`"L3": "pass"`) and its cycles
+diagnostic is L3-only, so no per-tier cycle count is persisted anywhere. An earlier citation of
+"identical across all 21, e.g. AT2 = 3078 at both" was wrong on count and on number: 3078 is one
+submission's L3 value, and a different submission of the same capsule gives 1090 at both tiers.
 
 Atlas's declared authority (`cycles_from: arc_program`, `cycles_tier: cycle_model`) therefore
 understates what is available: the same numbers are obtainable at measurement tier `rtl`, at a
