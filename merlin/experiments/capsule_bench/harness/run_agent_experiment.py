@@ -77,20 +77,63 @@ def _link_filtered(src: Path, dst: Path) -> None:
         dst.symlink_to(src)
 
 
+def _derive_missing_grant(src: Path) -> Path | None:
+    """Where a granted path that is GENERATED rather than tracked can be read from, or None.
+
+    An RTL-facts grant names ``<backend package>/contracts/rtl_facts/``, which is gitignored: the
+    artifact is derived from the target's RTL, not committed. So on any checkout that has not run the
+    introspect the grant names a directory that does not exist — and the loop below used to skip a
+    missing grant silently, producing a workspace with no facts in it while the manifest recorded that
+    the arm had been granted them. Measured across the declared targets, one of six had that directory
+    on disk. Derive instead, using the backend-package name the path itself carries (read from the
+    path, never assumed from a target name).
+
+    Returns the DERIVED artifact's own location and does NOT write into the granted path. Populating
+    that path would change what every other consumer resolves: ``_committed_facts_path`` prefers it
+    over the purgeable cache, so materializing it for a workspace silently re-pointed manifest
+    derivation repo-wide — measured as 27 test failures across the manifest and routing suites, from
+    nothing but staging a sandbox. Staging a workspace must not mutate what the rest of the tree sees.
+
+    Returns None — never raises — when the artifact cannot be derived here (no RTL toolchain). The
+    caller reports that as an undelivered grant; silently proceeding is what this exists to end.
+    """
+    parts = src.parts
+    if len(parts) < 3 or parts[-1] != "rtl_facts" or parts[-2] != "contracts":
+        return None
+    try:
+        from merlin.targetgen.rtl.facts import ensure_facts
+        return ensure_facts(parts[-3]).parent
+    except Exception as e:  # noqa: BLE001 — an underivable artifact is a reported gap, not a crash
+        print(f"[grants] could not derive {src}: {type(e).__name__}: {e}", file=sys.stderr)
+        return None
+
+
 def assemble_workspace(bundle: dict, ws: Path) -> list[str]:
     """Symlink each allowed path into the workspace (RO intent); return the denied basenames to verify.
     Answer surfaces (goldens / expected command buffers) are filtered out of the materialized tree — the
-    workspace the agent sees is answer-free by construction (defense-in-depth to the bwrap answer mask)."""
+    workspace the agent sees is answer-free by construction (defense-in-depth to the bwrap answer mask).
+
+    A grant that cannot be materialized is REPORTED, never silently dropped: a manifest that records a
+    grant the workspace does not contain makes an arm look like it carried a tool it never had, and an
+    ablation that never took effect reads as evidence that the tool does not help."""
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "submission").mkdir(exist_ok=True)
+    undelivered: list[str] = []
     for entry in bundle.get("allowed", []):
         # Grants are repo-root-relative with the documented ``experiments/... resolves under merlin/``
         # shorthand — resolve exactly as the sandbox binder does so both stay in lockstep.
-        src = C.REPO / entry["path"]
+        canonical = C.REPO / entry["path"]
+        src = canonical
         if not src.exists():
             src = C.REPO / "merlin" / entry["path"]
         if not src.exists():
-            continue
+            # Ask about the CANONICAL path, not whichever read-alias the loop landed on, and mount the
+            # derived artifact where it actually lives rather than copying it into the grant.
+            derived = _derive_missing_grant(canonical)
+            if derived is None:
+                undelivered.append(entry["path"])
+                continue
+            src = derived
         # Honor an explicit ``as:`` alias (e.g. hwbringup set mounted as ``<target>/``) so the workspace
         # entry matches the name the prompt tells the agent to read; else fall back to the basename.
         dst = ws / (entry.get("as") or Path(entry["path"]).name)
@@ -100,6 +143,11 @@ def assemble_workspace(bundle: dict, ws: Path) -> list[str]:
             _link_filtered(src, dst)          # answer surfaces omitted from the materialized tree
         except FileExistsError:
             pass
+    if undelivered:
+        print(f"[grants] {len(undelivered)} granted path(s) are NOT in the workspace for arm "
+              f"{bundle.get('arm')!r}: {undelivered}. The manifest records these as granted; the agent "
+              f"cannot read them. An arm measured this way did not carry the tools it is credited with.",
+              file=sys.stderr)
     return [Path(d["path"]).name for d in bundle.get("denied", [])]
 
 

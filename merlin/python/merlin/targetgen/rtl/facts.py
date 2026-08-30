@@ -135,6 +135,15 @@ def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
     # read the dict directly saw "no ISA, no registers, no address map" and no error at all. FactsEmpty
     # documents exactly this state; raise it where the emptiness is produced.
     if not (json.loads(p.read_text(encoding="utf-8")).get("facts") or {}):
+        # Remove it before raising. The cache-hit branch at the top of this function returns whatever is
+        # on disk WITHOUT re-checking, so leaving an empty artifact behind poisons every later call: the
+        # first attempt raises, and every one after it silently succeeds with a body of {}. Measured by
+        # leaving three such files in the cache -- 27 tests across the manifest and routing suites went
+        # red, from targets whose facts had simply never been derivable here.
+        try:
+            p.unlink()
+        except OSError:
+            pass
         raise FactsEmpty(
             f"{target}: RTL-facts regeneration produced an EMPTY artifact (facts: {{}}) at {p}. The "
             f"extractor found no RTL. If this target's contracts live under a differently-named backend "
