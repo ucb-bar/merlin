@@ -19,7 +19,6 @@ merlin/python/merlin/cost_model/gemmini.py                   # gemmini cost mode
 merlin/python/merlin/cost_model/calibrate.py                 # gemmini cost calibration (reference target)
 merlin/python/merlin/targetgen/eval/gemmini_dispatcher.py    # gemmini eval dispatcher (reference target)
 merlin/python/merlin/targetgen/eval/saturn_vec_conformance.py # saturn vector conformance (reference target)
-merlin/python/merlin/dse/calibrate_npu.py                    # npu_model DSE calibration (reference target)
 merlin/python/merlin/targetgen/eval/gemmini_suite.py         # gemmini conformance suite (reference target)
 merlin/python/merlin/targetgen/eval/gemmini_conformance.py   # gemmini conformance battery (reference target)
 merlin/python/merlin/targetgen/eval/gemmini_contract_sweep.py # gemmini battery migration (reference target)

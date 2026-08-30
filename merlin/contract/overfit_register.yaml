@@ -87,7 +87,6 @@ entries:
     owner: targetgen
     items:
       - merlin/python/merlin/cost_model/calibrate.py
-      - merlin/python/merlin/dse/calibrate_npu.py
       - merlin/python/merlin/targetgen/oracle_helpers/npu_emit.py
     why: >-
       `cost_model/gemmini.py` is already a clean split — an EVENTS tuple, a byte ratio, a coefficient
