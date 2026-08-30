@@ -54,3 +54,46 @@ def test_it_is_scoped_by_derived_routing_not_a_target_name():
     seg = src[src.index("PREREQUISITE FIRST"):src.index("from .isa_model import")]
     assert "_bespoke_sim_via(target)" in seg, "the guard is not routed from derived facts"
     assert '"radiance"' not in seg, "the guard hardcodes a target name"
+
+
+# --- a check that DID NOT RUN is not a pass ------------------------------------------------------
+# The prerequisite hole above was one instance of a recurring class: a check that could not run
+# reporting success. `merlincirct_gemarm4_codex3` recorded `codegen_ok: true` (reason "n/a (ISA is not
+# fixed-format …)") on a submission an independent regrade scored 1/23 — 22 capsules passing the
+# command-buffer tiers and failing on verilator. Every run sampled, gemmini and atlas, both arms,
+# carried the same true/n-a pair. The verdict is now tri-state: True ran+passed, False ran+failed,
+# None did not run.
+
+def test_no_n_a_return_reports_a_pass():
+    """The literal hole: `return True, "n/a (…)"`. Any occurrence is the bug coming back."""
+    src = inspect.getsource(CR.codegen_smoke)
+    lines = [l.strip() for l in src.splitlines()]
+    offenders = [l for l in lines if l.startswith("return True") and "n/a" in l]
+    assert not offenders, f"a check that did not run reports a pass: {offenders}"
+
+
+def test_every_did_not_run_path_returns_none():
+    """Each n/a branch must be spelled None, so the artifact records null rather than true."""
+    src = inspect.getsource(CR.codegen_smoke)
+    na = [l.strip() for l in src.splitlines() if '"n/a' in l or "f\"n/a" in l]
+    assert na, "no n/a branches found — the function shape changed; re-read this test"
+    for l in na:
+        if l.startswith("return"):
+            assert l.startswith("return None"), f"n/a branch is not None: {l}"
+
+
+def test_the_signature_admits_the_middle_value():
+    """A `-> tuple[bool, str]` annotation cannot express 'did not run', and invites `not ok`."""
+    assert "bool | None" in str(inspect.signature(CR.codegen_smoke)) or \
+           "bool | None" in inspect.getsource(CR.codegen_smoke).split("\n")[0], \
+        "the return type does not admit None"
+
+
+def test_the_caller_gates_on_is_false_not_falsiness():
+    """`if not ok` would refuse every target the smoke does not cover; `is False` is the contract."""
+    from merlin.common.paths import merlin_dir
+    src = (merlin_dir() / "experiments/capsule_bench/harness/run_baseline_qa_loop.py").read_text()
+    i = src.index("codegen_smoke(")
+    seg = src[i:i + 1200]
+    assert "if _cg_ok is False:" in seg, "the launcher no longer gates on `is False`"
+    assert "if not _cg_ok:" not in seg, "falsiness gate is back — None would become a NO_GO"

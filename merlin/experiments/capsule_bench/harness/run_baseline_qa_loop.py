@@ -1713,7 +1713,10 @@ def main(argv: list[str] | None = None) -> int:
         _cg_ok, _cg_why = _CRpf.codegen_smoke(_te_pf.target)
         (run_dir / "codegen_smoke.yaml").write_text(yaml.safe_dump(
             {"target": _te_pf.target, "codegen_ok": _cg_ok, "reason": _cg_why}, sort_keys=False))
-        if not _cg_ok:
+        # `is False`, not falsy: None means the smoke DID NOT RUN (n/a for this emit path), which is
+        # neither a pass nor a NO_GO. Gating on falsiness would refuse every target the smoke does not
+        # cover; recording None as True is what let a doomed run look verified.
+        if _cg_ok is False:
             print(f"NO_GO: codegen smoke failed — the target's emit path cannot produce a runnable "
                   f"kernel: {_cg_why}. Refusing to launch (zero tokens spent).", file=sys.stderr)
             return 4

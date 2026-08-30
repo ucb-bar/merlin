@@ -594,7 +594,19 @@ def _arc_answers_a_buffer(target: str) -> tuple[bool, str]:
     return True, f"answered a {tile}x{tile} probe buffer matching the reference"
 
 
-def codegen_smoke(target: str) -> tuple[bool, str]:
+def _full_ladder_enabled() -> bool:
+    """Whether a mandatory tier failure completes the ladder before failing the capsule.
+
+    ON by default: a GRADE must be able to say what every declared tier thought, and a tier with no
+    record is not evidence. The cost is real -- a failing capsule now pays the tiers ordered after the
+    one that refuted it -- so a fast iteration loop can turn it off with MERLIN_FULL_LADDER=0. Never
+    turn it off for a run whose numbers will be quoted.
+    """
+    import os
+    return (os.environ.get("MERLIN_FULL_LADDER", "1") or "1").strip().lower() not in ("0", "false", "no")
+
+
+def codegen_smoke(target: str) -> tuple[bool | None, str]:
     """Pre-spend check that the target's OWN compiler backend can emit a RUNNABLE kernel — the codegen
     analogue of :func:`runtime_build.compiler_smoke` (which validates the *oracle's* compile toolchain).
     ``oracle_available`` proves we can GRADE; this proves we can PRODUCE the artifact being graded, so a
@@ -606,6 +618,13 @@ def codegen_smoke(target: str) -> tuple[bool, str]:
     (BSP regenerated from source) -> reference sim -> assert the computed result — so the exact pipeline is
     exercised offline and a live run never debugs it. Any other target returns n/a (the oracle-side
     compiler_smoke covers a compile-based backend)."""
+    # TRI-STATE, and the middle value is the point. True = the smoke RAN and passed. False = it RAN and
+    # FAILED (a NO_GO; the caller refuses to launch). None = it did NOT run — this target's emit path is
+    # not covered, or a dependency is absent. None must never be spelled True: a check that could not run
+    # reporting success is a recurring failure class here, and it is how `merlincirct_gemarm4_codex3`
+    # recorded `codegen_ok: true` on a submission an independent regrade scored 1/23. The caller gates on
+    # `is False` so an n/a still launches, and the artifact records null so nothing downstream can read a
+    # skipped check as evidence.
     # PREREQUISITE FIRST, AND IT FAILS CLOSED.
     #
     # Everything below early-returns `True, "n/a (…)"` for a target whose emit path this smoke does not
@@ -631,19 +650,19 @@ def codegen_smoke(target: str) -> tuple[bool, str]:
     try:
         from .isa_model import isa_model_for_target
         if not isa_model_for_target(target).is_fixed_format():
-            return True, "n/a (ISA is not fixed-format — no fork-free re-encode smoke for this emit path)"
+            return None, "n/a (ISA is not fixed-format — no fork-free re-encode smoke for this emit path)"
     except Exception as e:  # noqa: BLE001 — no derived model -> nothing to smoke here
-        return True, f"n/a (no fixed-format ISA model: {str(e)[-120:]})"
+        return None, f"n/a (no fixed-format ISA model: {str(e)[-120:]})"
     if _bespoke_sim_via(target) != "cyclotron":
-        return True, "n/a (fixed-format ISA but no cyclotron reference sim declared for the fork-free smoke)"
+        return None, "n/a (fixed-format ISA but no cyclotron reference sim declared for the fork-free smoke)"
     try:
         from ..runtime.backends import base as _bk
         _muon = _bk.get_backend("muon")   # the evicted SIMT reference backend, resolved via discovery
     except Exception as e:  # noqa: BLE001
-        return True, f"n/a (fork-free backend unimportable: {str(e)[-120:]})"
+        return None, f"n/a (fork-free backend unimportable: {str(e)[-120:]})"
     if not _muon.available("cyclotron"):
         # cyclotron absence is already reported by oracle_available; not this gate's job to double-block.
-        return True, "n/a (reference sim absent — oracle_available reports this separately)"
+        return None, "n/a (reference sim absent — oracle_available reports this separately)"
     # a self-contained, relocation-free kernel: derives its own inputs, prints via inline MMIO, guarded to
     # one thread so the byte stream is clean. C[i]=A[i]+B[i] with A[i]=i+1, B[i]=10(i+1) -> 11,22,...,88.
     kernel = ("#include <stdint.h>\n"
@@ -2025,6 +2044,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         _tier_seq = _tier_policy.tier_order(str(cfg.target or target or ""),
                                             set(cfg.oracle_tiers) | set(adapters or {}))
         _screen_tier = _tier_seq[0] if _tier_seq else None
+        # When set, a mandatory tier failure does not abort the ladder: the remaining tiers still run and
+        # record, and the FIRST failure is raised once the loop completes. Costs the later tiers on a
+        # failing capsule, which is the price of being able to say what every tier thought.
+        _complete_ladder = _full_ladder_enabled()
+        _first_cert_failure: "CertFailure | None" = None
         for tier in _tier_seq:
             mand = tier in required
             # THE SCREEN IS ALWAYS PAID FOR; the tiers above it are what a budget can decline. A capsule
@@ -2266,10 +2290,24 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # required RTL oracle that follows in the sorted ladder — the same "a cheaper check short-
             # circuits the authoritative oracle" class we fixed on the trace side, here on the oracle side.
             if not okt and mand:
-                raise CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"),
+                _cf = CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"),
                                   _mismatch_reason + _encoding_divergence_hint(
                                       trace_check_res, independent_float,
                                       cb=cb, capsule=capsule, trace=decoded_trace))
+                # COMPLETE THE LADDER, then fail. Raising here aborts the loop, so every tier ordered
+                # AFTER the refuting one is left with no record at all -- not "skipped", absent. Measured
+                # on atlas: 11 of 26 capsules carried an L4 fail and NO L3 entry, 1 the reverse, because
+                # tier_order runs the 0.29s Verilator before the 24.5s arc cosim. A tier with no record
+                # is not evidence (`not_run_is_not_pass`), and it makes "these 12 failed" unanswerable at
+                # the other tier -- which is exactly what you need when the shared defect is fixed.
+                # The capsule still fails, on the FIRST refuting plane; only the remaining tiers now run.
+                if _first_cert_failure is None:
+                    _first_cert_failure = _cf
+                if not _complete_ladder:
+                    raise _cf
+
+        if _first_cert_failure is not None:
+            raise _first_cert_failure
 
     except BackendDeclined as bd:
         # A STATED REFUSAL IS NOT A WRONG ANSWER. It is still not a pass -- the capsule stays in the
