@@ -1216,8 +1216,98 @@ def resolve_extent(token, tile: int) -> int:
     return value
 
 
-def expand_sweeps(profile: dict, binding) -> list[dict]:
+def _corpus_traits(binding) -> dict:
+    """Per-target traits a perf sweep may gate on, DERIVED -- never hand-set per target.
+
+    Each value is True, False, or **None for undeterminable**, and the three are kept apart because
+    :func:`evaluate_gate` treats them differently. A trait this function cannot establish must come
+    back None: reading "I could not tell" as False silently deletes a capsule family that may well
+    apply, and leaves no record that the question was asked.
+
+    Traits are read off the binding (already derived from the descriptor) and off the target's own
+    declarations. Nothing here inspects a target by name.
+    """
+    traits: dict = {}
+    tile = int(getattr(binding, "tile_dim", 0) or 0)
+    traits["tiled_unit"] = bool(tile >= 1) if tile is not None else None
+
+    tiers = list(getattr(binding, "tiers", ()) or ())
+    traits["has_oracle_tier"] = bool(tiers) if tiers is not None else None
+
+    # An engine set of two or more is what makes a per-engine comparison meaningful at all; on one
+    # engine the vector comparison collapses to the scalar answer and the family is pointless.
+    #
+    # Read through the CAPABILITY MANIFEST rather than a contract file: a target's declaration does
+    # not live at one path across targets (some carry it in the target contract, some in the
+    # capability residual), and the manifest is the accessor that already resolves that AND folds in
+    # engines the declaration itself missed. Reaching for one filename would report "one engine" for
+    # any target that files its declaration elsewhere -- an absent-vs-undeterminable confusion in the
+    # one place this function exists to avoid it.
+    engines = None
+    for source in (_engines_from_manifest, _engines_from_contract):
+        try:
+            engines = source(binding.target)
+        except Exception:                   # this source cannot see this target; try the next
+            continue
+        if engines:
+            break
+    if engines:
+        traits["multiple_engines"] = len(engines) > 1
+        traits["nested_engines"] = any(r["contains"] for r in engines.values())
+    else:                                   # no source reachable: undeterminable, NOT absent
+        traits["multiple_engines"] = None
+        traits["nested_engines"] = None
+    return traits
+
+
+def _engines_from_manifest(target: str) -> dict:
+    from merlin.perf.occupancy import declared_engines
+    from merlin.targetgen.capability_manifests import manifest_for
+    return declared_engines(manifest_for(target))
+
+
+def _engines_from_contract(target: str) -> dict:
+    import yaml
+
+    from merlin.perf.occupancy import declared_engines
+    from merlin.targetgen.rtl.facts import target_contract_path
+    return declared_engines(yaml.safe_load(target_contract_path(target).read_text()))
+
+
+def evaluate_gate(gate: dict, traits: "dict | None") -> tuple[bool, str]:
+    """Whether a sweep's declared trait requirements are met. ``(ok, reason)``.
+
+    Three states, never two. A trait the target DECLARES FALSE and a trait nobody could DETERMINE are
+    different facts, and collapsing them is how a family silently vanishes from a corpus with no
+    record that it was ever considered. An absent or None trait therefore skips with its own reason
+    rather than being read as False.
+
+    Requirements are named traits, derived per target (RTL facts, the capability manifest, the
+    compute-unit declaration) and passed in -- this function never inspects a target itself.
+    """
+    requires = list((gate or {}).get("requires") or [])
+    if not requires:
+        return True, "no requirements declared"
+    have = traits or {}
+    missing = [t for t in requires if t not in have or have[t] is None]
+    if missing:
+        return False, (f"trait(s) {missing} could not be determined for this target; the family is "
+                       "skipped as UNDETERMINED, which is not the same as the target lacking them")
+    absent = [t for t in requires if not have[t]]
+    if absent:
+        return False, f"the target does not have trait(s) {absent}; the family does not apply to it"
+    return True, f"traits {requires} all present"
+
+
+def expand_sweeps(profile: dict, binding, *, traits: "dict | None" = None,
+                  skipped: "list | None" = None) -> list[dict]:
     """Return the profile's capsule entries with any ``sweeps:`` block expanded.
+
+    ``traits`` gates a sweep on DERIVED per-target facts via its ``gate: {requires: [...]}`` block: a
+    family whose requirements a target does not meet generates NO capsules and appends its reason to
+    ``skipped``. That is what lets one shared sweep declaration serve every target -- the alternative,
+    authoring a perf corpus per target, is the thing this generator exists to avoid, and a family that
+    quietly produced zero capsules with no reason would be indistinguishable from one nobody wrote.
 
     A sweep is a cross-product over named axes plus a shared ``base``, producing
     exactly the flat entry dicts the per-capsule pipeline already consumes — so
@@ -1254,6 +1344,11 @@ def expand_sweeps(profile: dict, binding) -> list[dict]:
         sweep_id = str(sweep.get("id") or "").strip()
         if not sweep_id:
             raise ValueError("every sweep needs an `id` (it prefixes the generated names)")
+        ok, why = evaluate_gate(sweep.get("gate") or {}, traits)
+        if not ok:
+            if skipped is not None:
+                skipped.append({"sweep": sweep_id, "reason": why})
+            continue
         base = dict(sweep.get("base") or {})
         axes = sweep.get("axes") or {}
         if not isinstance(axes, dict) or not axes:
@@ -1287,6 +1382,22 @@ def expand_sweeps(profile: dict, binding) -> list[dict]:
         variants = sweep.get("variants") or [{}]
         if not isinstance(variants, list) or any(not isinstance(v, dict) for v in variants):
             raise ValueError(f"sweep {sweep_id!r}: `variants` must be a list of mappings")
+
+        # A comparison group whose members cannot be compared is a declaration with no content. The
+        # field was carried on four shipped capsules for a year while every one of them sat alone in
+        # its group, so nothing could ever do the arithmetic it exists for.
+        _groups: dict[str, int] = {}
+        for v in variants:
+            g = v.get("comparison_group")
+            gname = g.get("name") if isinstance(g, dict) else g
+            if gname:
+                _groups[str(gname)] = _groups.get(str(gname), 0) + 1
+        _lonely = sorted(g for g, n in _groups.items() if n < 2)
+        if _lonely:
+            raise ValueError(
+                f"sweep {sweep_id!r} declares comparison group(s) {_lonely} with a single member; a "
+                "group of one cannot be compared to anything, so declare the other members or drop "
+                "the group")
 
         template = str(sweep.get("name") or "{id}_{i:02d}")
         index = 0
@@ -1370,7 +1481,11 @@ def generate_target(target: str) -> list[Path]:
     out_root = Path(te.capsule_corpus).parent                 # target's corpus root, derived (no move)
     # `sweeps:` (if any) expand into the same flat entries `capsules:` holds, so
     # everything downstream — builders, goldens, coverage — is unchanged.
-    entries = expand_sweeps(profile, binding)
+    _sweep_skips: list = []
+    entries = expand_sweeps(profile, binding, traits=_corpus_traits(binding),
+                            skipped=_sweep_skips)
+    for _s in _sweep_skips:
+        print(f"  [skip] sweep {_s['sweep']}: {_s['reason']}")
     written = [w for w in (_write_capsule(e, binding, out_root) for e in entries) if w]
     for d in written:                                         # tracked-file hygiene: no local paths ship
         _scrub_capsule_dir(d)

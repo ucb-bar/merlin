@@ -337,3 +337,95 @@ def test_a_block_the_entry_does_not_declare_is_never_invented():
     cap: dict = {"name": "X"}
     assert GC._carry_declared_blocks({}, cap) is False
     assert "performance" not in cap and "comparison_group" not in cap
+
+
+# ---------------------------------------------------------------------------------------------
+# Gating: one shared sweep declaration must serve every target, and a family that does not apply
+# must leave a RECORD rather than silently producing nothing.
+# ---------------------------------------------------------------------------------------------
+def _gated_profile(requires):
+    return {"sweeps": [{"id": "PG", "gate": {"requires": requires},
+                        "base": {"cat": "perf", "kind": "isa", "op": "matmul"},
+                        "axes": {"M": ["tile"], "K": ["tile", "2*tile"]},
+                        "name": "PG{i:02d}"}]}
+
+
+def test_a_met_gate_generates_the_family() -> None:
+    skips = []
+    entries = GC.expand_sweeps(_gated_profile(["explicit_dma"]), _binding(16),
+                               traits={"explicit_dma": True}, skipped=skips)
+    assert len(entries) == 2 and skips == []
+
+
+def test_a_target_lacking_the_trait_generates_nothing_and_says_so() -> None:
+    skips = []
+    entries = GC.expand_sweeps(_gated_profile(["explicit_dma"]), _binding(16),
+                               traits={"explicit_dma": False}, skipped=skips)
+    assert entries == []
+    assert skips[0]["sweep"] == "PG" and "does not have" in skips[0]["reason"]
+
+
+def test_an_undeterminable_trait_is_not_the_same_as_an_absent_one() -> None:
+    # The distinction this repo keeps having to relearn: "I could not tell" must never read as False.
+    skips = []
+    assert GC.expand_sweeps(_gated_profile(["explicit_dma"]), _binding(16),
+                            traits={"explicit_dma": None}, skipped=skips) == []
+    assert "could not be determined" in skips[0]["reason"]
+
+    skips2 = []
+    GC.expand_sweeps(_gated_profile(["explicit_dma"]), _binding(16), traits={}, skipped=skips2)
+    assert "could not be determined" in skips2[0]["reason"]
+
+
+def test_gating_is_optional_so_existing_profiles_are_untouched() -> None:
+    assert len(GC.expand_sweeps(_sweep_profile(), _binding(16))) > 0
+
+
+def test_a_comparison_group_of_one_is_refused() -> None:
+    # A group with a single member cannot be compared to anything; four shipped capsules carried the
+    # field for a year in exactly that state.
+    prof = {"sweeps": [{"id": "PF", "base": {"cat": "perf", "kind": "isa"},
+                        "axes": {"M": ["tile"], "K": ["tile", "2*tile"]},
+                        "name": "PF{i:02d}",
+                        "variants": [{"op": "fused_matmul_bias",
+                                      "comparison_group": {"name": "fmb_{M}x{K}", "role": "fused"}}]}]}
+    with pytest.raises(ValueError, match="single member"):
+        GC.expand_sweeps(prof, _binding(16))
+
+
+def test_a_group_with_the_parts_declared_is_accepted() -> None:
+    prof = {"sweeps": [{"id": "PF", "base": {"cat": "perf", "kind": "isa"},
+                        "axes": {"M": ["tile"], "K": ["tile", "2*tile"]},
+                        "name": "PF{i:02d}",
+                        "variants": [
+                            {"op": "fused_matmul_bias",
+                             "comparison_group": {"name": "fmb_{M}x{K}", "role": "fused"}},
+                            {"op": "matmul",
+                             "comparison_group": {"name": "fmb_{M}x{K}", "role": "part"}},
+                            {"op": "bias_add",
+                             "comparison_group": {"name": "fmb_{M}x{K}", "role": "part"}}]}]}
+    entries = GC.expand_sweeps(prof, _binding(16))
+    assert len(entries) == 6                      # 2 shape points x 3 members
+    groups = {}
+    for e in entries:
+        groups.setdefault(e["comparison_group"]["name"], []).append(e["comparison_group"]["role"])
+    assert all(sorted(v) == ["fused", "part", "part"] for v in groups.values())
+
+
+def test_traits_derive_for_every_shipped_target_and_refuse_for_an_unknown_one() -> None:
+    # The anti-overfit proof for gating: one derivation, every target's own declaration, and the
+    # engine set is filed in DIFFERENT places across targets -- so consulting one path would report
+    # "one engine" for whichever targets file it elsewhere.
+    from types import SimpleNamespace
+    seen = {}
+    for t in ("atlas", "gemmini", "muon", "radiance", "saturn", "toy_npu"):
+        tr = GC._corpus_traits(SimpleNamespace(target=t, tile_dim=32, tiers=["L0"]))
+        seen[t] = tr["multiple_engines"]
+    determined = [t for t, v in seen.items() if v is not None]
+    assert len(determined) >= 4, f"engine set undeterminable for too many targets: {seen}"
+    assert any(seen[t] for t in determined) and not all(seen[t] for t in determined), (
+        f"gating cannot discriminate: every target reports the same engine count ({seen})")
+
+    unknown = GC._corpus_traits(
+        SimpleNamespace(target="definitely_not_a_target", tile_dim=32, tiers=["L0"]))
+    assert unknown["multiple_engines"] is None      # undeterminable, never False
