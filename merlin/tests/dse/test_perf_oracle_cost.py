@@ -114,15 +114,33 @@ def test_the_word_term_is_about_twice_the_cycle_term_on_both_substrates():
         assert law.per_word.value / law.per_cycle.value == pytest.approx(2.0, abs=0.05)
 
 
-def test_linear_across_four_orders_of_magnitude_with_no_bend():
-    """r2 0.99997 over a 12,500x cycle range, and the large-only slope matches the whole range."""
+def test_the_large_cycle_slope_matches_the_whole_range_so_the_law_has_not_bent():
     whole = _law("elaborated_rtl", min_cycles=None)
     large = _law("elaborated_rtl")
     assert whole.per_cycle.r2 > 0.9999
-    lo, hi = whole.per_cycle.domain
-    assert hi / lo > 2000
     assert large.per_cycle.value == pytest.approx(whole.per_cycle.value, rel=0.005), (
         "a slope that changes on the large-cycle subset means the law has bent")
+
+
+@pytest.mark.skipif(not LAYERSCALE.exists(), reason=f"DID NOT RUN: fixture absent at {LAYERSCALE}")
+def test_linear_across_a_12500x_cycle_range_at_r2_0_99997():
+    """The claim that makes a projection defensible: no bend anywhere in four orders of magnitude."""
+    corpus = _corpus_samples()["elaborated_rtl"]
+    cycle_samples = [CostSample(seconds=s, cycles=c, words=w, concurrency=1, kind=ProbeKind.CYCLE)
+                     for c, w, s in CYCLE_LADDER["elaborated_rtl"]]
+    # the corpus points sit BELOW the synthetic ladder's floor, extending the range down to 178
+    corpus_as_cycle = [CostSample(seconds=s.seconds, cycles=s.cycles, words=s.words,
+                                  concurrency=1, kind=ProbeKind.CYCLE, label=s.label)
+                       for s in corpus]
+    law = fit_cost_law(
+        [CostSample(seconds=s, cycles=2, words=w, concurrency=1, kind=ProbeKind.LOAD)
+         for w, s in LOAD_LADDER["elaborated_rtl"]] + cycle_samples + corpus_as_cycle,
+        substrate="elaborated_rtl")
+    lo, hi = law.per_cycle.domain
+    assert hi / lo == pytest.approx(12_547, rel=0.01)
+    assert law.per_cycle.r2 == pytest.approx(0.99997, abs=2e-5)
+    assert law.per_cycle.value * 1e3 == pytest.approx(0.130531, rel=1e-3), (
+        "the published whole-range slope, within 0.3% of the large-cycle-only slope")
 
 
 # --- the mistake the tool exists to prevent ---------------------------------------------------------
