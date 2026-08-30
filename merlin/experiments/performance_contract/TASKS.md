@@ -603,6 +603,29 @@ example — an emitted kernel with the stall visible between the two instruction
 under-separated. A number that survives its tooling has not been checked; a number that survives an
 example has.
 
+## L5 fusion is NOT the cheap level — a scoping error, corrected
+
+This register called L5 fusion "the cheapest level to build and the only one whose comparand needs no
+model at all". **The comparand half is right and the cheap half is wrong.** `cycles(fused)` against
+`cycles(A) + cycles(B)` needs no model — but it needs three KERNELS at one shape, and two of the
+three cannot be emitted:
+
+* `plan_matmul` emits matmul only. There is no `bias_add` and no fused epilogue in the generator.
+* The shipped corpus cannot supply the missing halves either. `AF9_fused_matmul_bias` is
+  **16x16x16 bf16**, `AF10_bias_add` is **16x16 bf16**, and the nearest shipped matmul
+  (`AT2_single_tile_matmul`) is **32x32x32 fp8** — a different shape AND a different dtype. There is
+  no matmul at AF9's shape anywhere in the corpus.
+* `comparison_group` is declared on `AF9`/`AF10`/`AF11`/`AF12` but each capsule sits ALONE in its own
+  group, so the field was never consumable: the groups have one member each.
+
+So L5 needs a bias-epilogue emitter (a vector add over the accumulator drain, a golden, and its own
+falsifier) before any fusion number exists. That is real work, not a free run, and it should be
+scheduled as such rather than kept on the register as the cheap next step.
+
+**The levels that ARE runnable with today's generator** are L2 and L3: `PL00`/`PL01` declare
+`op: matmul` at 224x224x224 and 224x448x224, and `PC00`/`PC01` declare `op: k_chain` at 128x128x128
+and 128x256x128 — all of which the existing emitter covers.
+
 ## W1.0 — the free fidelity run, and what it found
 
 `mlc/spec/validate_fidelity.py` against the 2,219 totals already on disk. **Zero new measurement.**
