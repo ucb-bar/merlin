@@ -231,6 +231,28 @@ This is a **self-comparison, not a vs-shipped number** — the shipped corpus ha
 compare against. What it establishes is that the win is **not a toy-scale artifact**: the per-pass stall
 saving multiplies by the tile-pass count, so the lever is worth *more* at realistic sizes, not less.
 
+### What is left on the table, and which tool would take it
+
+Our 513 cycles against a **crude serial floor of ~286** — MXU busy 158 (measured, and the same on the
+shipped kernel) plus 128 beats of movement at the measured 0.999 beats/cycle. So we are at roughly
+**56% of a naive serial bound**, with ~227 cycles unaccounted.
+
+That remainder is almost entirely **compiler-inserted separations**: on a non-interlocked machine every
+producer→consumer pair needs its stall, and ours are now at their measured per-class floors. The only
+way to remove a separation that is architecturally required is to **cover it with independent work** —
+which is precisely the DMA/compute overlap lever, still unused, and precisely what a dependence-aware
+scheduler decides.
+
+Two honest limits on taking it:
+- A 32×32×32 matmul has **one K-step**, so there is no cross-step work to overlap with. The lever needs
+  `k_chain` or larger, where the next step's movement is independent of this step's compute.
+- Reordering is an **emitter** change, not a settle constant, so it risks bit-exactness in a way the
+  settle work did not. It should be ranked by `differential` before it is emitted — which is exactly the
+  rank-before-generate split this plan already committed to.
+
+So the next increment is W3's dependence graph, and the measurement above is what it would be judged
+against: any schedule it proposes must beat 513 while staying bit-exact.
+
 **What this does NOT claim:**
 - Not a whole-model or layer-scale win — these are 32-tile kernels, the scale the shipped corpus has.
 - Not an *optimality* claim. We beat the shipped kernels; we do not know the machine's floor. The
