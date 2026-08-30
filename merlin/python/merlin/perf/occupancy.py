@@ -25,9 +25,19 @@ duplicates land in *adjacent* cycles and read as overlap. :func:`merge_engines` 
 offset instead of assuming it, and admits a column from the second engine only if it carries a cycle
 the first could not see.
 
+**An engine nested inside another, folded away as if it were a sub-signal.** This is the one thing
+containment CANNOT decide, because both cases look identical in the data: a unit's load and store
+halves nest inside it (fold -- one unit), and so does an accelerator embedded in the cluster that
+drives it (do not fold -- two engines, and their concurrency is the measurement). So the unit a
+column belongs to is DECLARED, via ``unit_of``, and columns in different declared units are never
+folded into each other. On a heterogeneous device -- a SIMT cluster containing a systolic array,
+say -- deriving it instead deletes the inner engine and reports zero overlap between the two.
+
 Nothing here names a target, a unit, an opcode or a bit-width: every rule is a property of the
-measurement. A column whose meaning cannot be established stays out of the joint counts and is
-reported as unmeasured -- never defaulted to idle, which is the reading that flatters the result.
+measurement, and the two facts that are NOT properties of the measurement -- what kind a unit is,
+and which unit a column belongs to -- are declared by the producer rather than guessed. A column
+whose meaning cannot be established stays out of the joint counts and is reported as unmeasured --
+never defaulted to idle, which is the reading that flatters the result.
 """
 from __future__ import annotations
 
@@ -48,8 +58,17 @@ class Occupancy(dict):
 
 
 def subsumed_columns(hot: Mapping[str, Sequence[bool]],
-                     prefer=lambda a, b: False) -> dict[str, str]:
+                     prefer=lambda a, b: False,
+                     unit_of: Mapping[str, str] | None = None) -> dict[str, str]:
     """Columns that are a sub-signal or a duplicate of another, derived from the trace itself.
+
+    ``unit_of`` maps a column to the DECLARED unit it belongs to, and two columns declared to
+    different units are never folded into each other however their busy cycles nest. That
+    distinction cannot be derived, because containment in the data looks identical either way: a
+    unit's own load and store halves nest inside it (fold -- they are one unit), and so does an
+    accelerator embedded in the cluster that drives it (do NOT fold -- they are two engines that can
+    run at once). Deriving it would silently delete the inner engine and report zero overlap between
+    the two, which on a heterogeneous device is the single quantity worth measuring.
 
     ``a`` is subsumed by ``b`` when every cycle ``a`` is high ``b`` is high too and ``a`` is high at
     least once. Containment must hold on *every* cycle, so a column that merely correlates is not
@@ -60,6 +79,7 @@ def subsumed_columns(hot: Mapping[str, Sequence[bool]],
     """
     out: dict[str, str] = {}
     cols = list(hot)
+    units = unit_of or {}
     for a in cols:
         n_a = sum(hot[a])
         if n_a == 0:
@@ -67,6 +87,9 @@ def subsumed_columns(hot: Mapping[str, Sequence[bool]],
         for b in cols:
             if a == b or b in out:              # never fold a column into an already-folded one
                 continue
+            ua, ub = units.get(a), units.get(b)
+            if ua is not None and ub is not None and ua != ub:
+                continue                        # separately declared engines; nesting is structure
             n_b = sum(hot[b])
             if n_b < n_a:
                 continue
@@ -202,13 +225,14 @@ def merge_engines(primary: Mapping[str, Sequence[bool]],
 
 
 def joint_counts(hot: Mapping[str, Sequence[bool]],
-                 kinds: Mapping[str, str] | None = None) -> dict:
+                 kinds: Mapping[str, str] | None = None,
+                 unit_of: Mapping[str, str] | None = None) -> dict:
     """Idle, overlap and per-column busy over an occupancy vector, after subsumption.
 
     ``overlap_across_kinds`` counts only columns whose kind the producer DECLARED, so it is a lower
     bound whenever any column is undeclared -- reported, never silently absorbed into one side.
     """
-    subsumed = subsumed_columns(hot)
+    subsumed = subsumed_columns(hot, unit_of=unit_of)
     cols = [c for c in hot if c not in subsumed]
     n = len(next(iter(hot.values()))) if hot else 0
     kinds = kinds or {}
@@ -227,4 +251,5 @@ def joint_counts(hot: Mapping[str, Sequence[bool]],
             "busy": {c: sum(hot[c]) for c in hot}, "idle_cycles": idle, "overlap_any": ovl,
             "overlap_across_kinds": ovl_kind,
             "overlap_across_kinds_is_lower_bound": bool(undeclared),
-            "undeclared_columns": undeclared}
+            "undeclared_columns": undeclared,
+            "unbound_columns": sorted(c for c in cols if c not in (unit_of or {}))}

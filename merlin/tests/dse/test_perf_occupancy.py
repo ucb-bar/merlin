@@ -148,3 +148,38 @@ class TestJointCounts:
         out = joint_counts(_cols(unit="1110", half="1100"))
         assert out["busy"] == {"unit": 3, "half": 2}
         assert out["joint_columns"] == ["unit"]
+
+
+class TestDeclaredHierarchy:
+    """A device whose engines NEST is the case derived containment gets wrong."""
+
+    def test_a_contained_engine_is_not_folded_into_its_container(self):
+        # An accelerator embedded in the cluster that drives it: the busy cycles nest exactly as a
+        # sub-signal's would, but these are two engines and their concurrency is the measurement.
+        hot = _cols(cluster="1111111100", embedded_pe="0011110000")
+        units = {"cluster": "cluster", "embedded_pe": "embedded_pe"}
+        assert subsumed_columns(hot, unit_of=units) == {}
+        jc = joint_counts(hot, kinds={"cluster": "compute", "embedded_pe": "compute"},
+                          unit_of=units)
+        assert jc["joint_columns"] == ["cluster", "embedded_pe"]
+        assert jc["overlap_any"] == 4          # the two microarchitectures running together
+
+    def test_without_the_declaration_the_inner_engine_disappears(self):
+        # The failure this exists to prevent, kept as a regression: undeclared, the inner engine is
+        # folded away and the overlap between two engines reads zero.
+        hot = _cols(cluster="1111111100", embedded_pe="0011110000")
+        assert subsumed_columns(hot) == {"embedded_pe": "cluster"}
+        assert joint_counts(hot)["overlap_any"] == 0
+
+    def test_sub_signals_of_ONE_declared_unit_still_fold(self):
+        # The declaration must not disable folding where folding is right: both halves belong to the
+        # same declared unit, so they are one measurement, not three.
+        hot = _cols(lsu="111100", load_half="110000", store_half="001100")
+        units = {"lsu": "lsu", "load_half": "lsu", "store_half": "lsu"}
+        assert subsumed_columns(hot, unit_of=units) == {"load_half": "lsu", "store_half": "lsu"}
+        assert joint_counts(hot, unit_of=units)["overlap_any"] == 0
+
+    def test_a_column_bound_to_no_unit_is_reported(self):
+        hot = _cols(a="1100", b="0011")
+        jc = joint_counts(hot, unit_of={"a": "a"})
+        assert jc["unbound_columns"] == ["b"]
