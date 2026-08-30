@@ -161,6 +161,40 @@ suite-wide.
 | **2.5** | **DMA transfer amplification — the actual lever** | **OPEN — this is R2's headline, not overlap.** **PROVENANCE WARNING — half of this is hand-entered, not derived.** The *moved* bytes are measured (`(reads+writes)·beat_bytes`), but `npu_model_suite.json` carries **no shape or dtype field** (`['arc','footprint_bytes','npu_cycles','op_stream','program','vpu_tile_elems']`), so `useful_bytes` **cannot be derived from the pinned artifact**. The ratios below used operand sizes typed in by hand from the program sources; they are plausible and the shapes were separately confirmed, but `amplification.py` cannot reproduce them from the suite and its family routing is tested on observations explicitly labelled SYNTHETIC. **Wiring real shapes in is a prerequisite before any amplification number is cited as measured.** The demo tiles move 9–28× more bytes than they use: `matmul` moves 65,536 B (2,048 beats × 32) for ~4,096 B of useful operand+output data = **16.0×**; `rms_norm` 24.0×; `gelu_tanh` 28.0×; `elementwise_add` only 2.0×. With DMA at 60–93.7% of cycles, cutting amplification is worth **multiples** where overlap is worth ≤15%. This is `compose_program_cycles.py`'s open "Finding 6" (transfer amplification) and it makes R2.1's structural footprint predictor the *optimization instrument*, not just an accuracy requirement — you cannot reduce what you cannot predict. **Caveat to check at layer scale:** part of this ratio is an artifact of a 32×32 demo tile paying a fixed per-tile transfer cost; proper layer tiling amortizes it, so the toy-scale amplification likely OVERSTATES the available win. Measure it again under N1 before claiming it |
 | 2.4 | Falsifier | **OPEN** — if structural prediction fails, the cycle claim is downgraded **in writing** to "given the byte volume" |
 
+
+### R2 result — the falsifier FIRED, and the blocker is one level lower than recorded
+
+**Attempted directly** (no role table needed for identification: `dma` is its own mnemonic family, so
+structural splitting avoids the `vredmax.bf16` substring trap). Feasibility looked good — all 25 program
+hex files are on disk and `fields_of('dma.load.ch0')` returns `{'rd':[7..11], 'rs1':[15..19],
+'rs2':[20..24]}`. **It is not enough.**
+
+Measured over all 25 shipped programs:
+
+    146 of 146 DMA instructions decode to ALL-ZERO operands (100%)
+    all 146 collapse into ONE class, `DMARegUnary`
+
+Cause, verified on the derived model: **`opcode_table` is EMPTY (0 entries)** for this target, and
+`by_mnemonic['dma.load.ch0']` is **`None`** — the 32 DMA mnemonics exist in `asm_mnemonics` and have
+field layouts, but carry **no encoding record**. So `disassemble` returns instruction-*class* names, not
+mnemonics, and `dma.load.chN` / `dma.wait.chN` / `dma.config.chN` are indistinguishable after decode:
+direction, channel and operands are all unrecoverable. The raw words *do* differ (`0x0200007f` vs
+`0x0200107f`, bit 12), so the information is present in the program and absent from the model.
+
+**The blocker is NOT "the mnemonics carry no merlin role"** — that framing sent this to another lane.
+Roling them would let the CCA facets answer, but it would not put an encoding in the ISA model, and
+without that no decoder on any path can read a descriptor's size. The real prerequisite is **encoding
+extraction for the DMA family**, which is upstream of both the role table and this predictor.
+
+**R2.4 fires as specified: the cycle claim stays "given the byte volume."** `footprint_bytes` remains a
+workload INPUT, `compose_program_cycles`'s "Finding 6" stays open, and **R2.5's amplification ratios
+stay half-derived** — `useful_bytes` is not recoverable this way either. A precise negative, recorded
+rather than fitted.
+
+**What would close it**, in order: extract the DMA encodings into the ISA model (bit 12 separates at
+least two of the forms, so the information is there to be lifted); then the constant-propagation
+predictor is straightforward and the three rules already specified in R2.1 apply unchanged.
+
 ## R3 — Target profile + performance contract  *(Lane A; after 1.2)*
 
 | id | task | state |
