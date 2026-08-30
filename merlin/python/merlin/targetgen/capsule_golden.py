@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.runtime.tensor import Tensor
+from merlin.targetgen import mx_flash_ref as _MXF
 
 
 # --------------------------------------------------------------------------------------------
@@ -447,6 +448,30 @@ def is_independent_float_golden(capsule: dict, capsule_dir: str | Path | None = 
     compare = (capsule.get("numeric_policy") or {}).get("compare", "exact_int")
     float_policy = compare not in ("exact_int", "exact")
     return float_policy and golden_source(capsule, capsule_dir) != "merlin_tensor_int"
+
+
+def golden_is_datapath_faithful(capsule: dict, capsule_dir: str | Path | None = None) -> bool:
+    """Whether this capsule's golden was produced by a reference that computes the SAME arithmetic the
+    hardware does.
+
+    A golden generator can hit a gap in its own reference and COMPOSE a golden around it -- a different
+    but plausible-looking arithmetic for the same operation. A submission graded against such a golden
+    cannot pass however correct it is, and the resulting numeric mismatch reads as the submission's
+    defect. Measured: two sub-byte MX flash capsules reported ~1000-element mismatches with max relative
+    error in the thousands, in every arm of a four-arm comparison, because the fused flash reference
+    exists only for e4m3 -- the generator says so in its own comment, and nothing carried that fact
+    forward to the grade.
+
+    The generator RECORDS its fidelity in the golden (``oracle_provenance.reference_fidelity``); this
+    reads what was recorded rather than re-deriving it from a dtype, so the answer cannot drift from
+    what actually produced the numbers. FAIL-OPEN (True) when the field is absent: a golden written
+    before this field existed is graded exactly as it was, so the change is additive.
+    """
+    if capsule_dir is None:
+        capsule_dir = capsule.get("__dir__")
+    prov = (_load_golden_yaml(capsule_dir) or {}).get("oracle_provenance") or {}
+    fidelity = prov.get("reference_fidelity")
+    return fidelity != _MXF.FIDELITY_APPROXIMATE if fidelity else True
 
 
 # --------------------------------------------------------------------------------------------

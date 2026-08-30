@@ -850,6 +850,41 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
     return keep, withheld
 
 
+def _split_no_reference(op_caps: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Partition op capsules into (to grade, no-faithful-reference-exists).
+
+    Distinct from :func:`_split_ineligible`, which withholds on what the HARDWARE cannot do. Here the
+    hardware may well be capable and the gap is OURS: the golden generator hit a hole in its own
+    reference and composed a golden with different arithmetic than the datapath executes. No submission
+    can match such a golden, so grading it produces a numeric FAIL that reads as the submission's defect
+    and is not. That is the same mislabelling the ``not_gradeable_no_oracle`` path exists to prevent --
+    an absent oracle and an absent REFERENCE are both "the suite learned nothing here", and neither is
+    evidence against the compiler.
+
+    Fails OPEN: a golden that does not record its fidelity is graded exactly as before.
+    """
+    keep, withheld = [], []
+    for c in op_caps:
+        try:
+            faithful = CG.golden_is_datapath_faithful(c, c.get("__dir__"))
+        except Exception:                                 # noqa: BLE001 - never block a grade
+            keep.append(c); continue
+        if faithful:
+            keep.append(c); continue
+        withheld.append({
+            "capsule": c.get("name"), "kind": c.get("kind"), "label": c.get("label"),
+            "status": "not_gradeable_no_reference",
+            "failure": {"plane": "not_gradeable_no_reference", "category": "NOT_GRADEABLE_NO_REFERENCE",
+                        "detail": "this capsule's golden was COMPOSED around a gap in our own reference "
+                                  "(golden.yaml records reference_fidelity=composition_approximate), so "
+                                  "it computes a different arithmetic than the datapath. No submission "
+                                  "can match it; the numeric verdict is withheld rather than charged to "
+                                  "the submission. Fix by supplying a datapath-faithful reference for "
+                                  "this operand format, then regenerate the golden."},
+        })
+    return keep, withheld
+
+
 def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
     """Whether a graded op-capsule result belongs in the whole-model gate's denominator.
 
@@ -2374,6 +2409,10 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     # Each is reported as ``not_graded`` with the derived reason, counted in neither numerator nor
     # denominator, and visible in the result list.
     op_caps, ungradeable = _split_ineligible(op_caps, target)
+    # ...and the same for a capsule whose GOLDEN we cannot produce faithfully. Withheld BEFORE the cover
+    # is computed, for the reason the cover excludes ineligible capsules: spending a cover slot -- or an
+    # RTL certification -- on a capsule that cannot be passed buys nothing.
+    op_caps, noref = _split_no_reference(op_caps)
     # CERTIFY THE COVERING SET FIRST. The derived cover is the fewest capsules whose declared axes span
     # every axis the eligible corpus declares, so a run that is interrupted, times out, or exhausts a
     # certify budget still has every axis represented rather than a lexicographic prefix. Computed over
@@ -2387,7 +2426,12 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
         print(f"  tier plan: {len(_cover)}/{len(op_caps)} eligible capsule(s) form the derived covering "
               f"set (certified first); budget="
               f"{_tier_policy.budget_seconds() or 'unlimited'}", flush=True, file=sys.stderr)
-    op_results = _run_all(op_caps) + ungradeable
+    op_results = _run_all(op_caps) + ungradeable + noref
+    if noref:
+        print(f"  {len(noref)} capsule(s) NOT GRADEABLE — no datapath-faithful reference exists for "
+              f"their operand format, so their golden is our composition rather than the hardware's "
+              f"arithmetic: {', '.join(r['capsule'] for r in noref[:6])}"
+              f"{' ...' if len(noref) > 6 else ''}", flush=True, file=sys.stderr)
     if ungradeable:
         print(f"  {len(ungradeable)} capsule(s) NOT GRADED — outside this target's declared capability: "
               f"{', '.join(r['capsule'] for r in ungradeable[:6])}"

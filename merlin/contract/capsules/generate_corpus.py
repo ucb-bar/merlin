@@ -277,7 +277,14 @@ def _float_golden(entry, binding):
 # (specir is the atlas fp8 refmodel; MX is a different datapath: 16-deep systolic per-column accumulate
 # schedule + one E8M0 scale per 32-element K group). mx_ref is transcribed bit-exactly from the target's
 # own reference (radiance-kernels lib/golden/{mx_fp_math.h,mx_golden.cpp}, mirroring the RTL).
+#
+# Every MX golden records the FIDELITY of the reference that produced it (see
+# ``mx_flash_ref.reference_fidelity``): a golden the engine computed directly is datapath-faithful, one
+# COMPOSED around a gap in the engine is not, and grading must be able to tell them apart.
 # ------------------------------------------------------------------------------------------------
+from merlin.targetgen.mx_flash_ref import FIDELITY_FAITHFUL as _MXF_FAITHFUL
+
+
 def _mx_ref():
     """Import mlc's ``validate/mx_ref.py`` BY FILE PATH (like the specir import) so we do NOT trigger
     ``mlc/validate/__init__.py`` (which carries concurrent work and heavy imports)."""
@@ -1057,16 +1064,26 @@ def _write_capsule_inner(entry, binding, out_root):
                       "lib/golden/mx_golden.cpp) + numpy bf16 row-softmax; P requantized to mxfp8 per-row")
             datapath = ("O = mx_matmul(softmax(mx_matmul(Q,K^T)/sqrt(H) [+softcap]), V); E8M0 per 32-elt "
                         "K group; bf16 accumulate + bf16 softmax")
+            # The fused flash composition is datapath-faithful only where mx_flash_ref says it is. For a
+            # sub-byte format the branch below composes a normalized-softmax + palette-requant golden,
+            # which is a DIFFERENT arithmetic than the kernel's (unnormalized P, e4m3 block requant,
+            # 1/l finalize). Record which one this golden is, so grading can withhold a verdict instead
+            # of reporting our own composition gap as the submission's numeric failure.
+            from merlin.runtime.fp8_formats import canonical_float as _cf
+            from merlin.targetgen import mx_flash_ref as _MXF
+            fidelity = _MXF.reference_fidelity(_cf(eb.operand_dtype))
         elif entry.get("op") == "gemv_batched":
             outputs, prov = _mx_gemv_batched_golden(entry, eb)
             engine = ("mlc.validate.mx_ref.mx_matmul x B (independent batched MX GEMMs stacked row-major)")
             datapath = ("B x [M,H]@[H,N] on the mx_pe; one E8M0 scale per 32-elt K group; bf16 accumulate")
+            fidelity = _MXF_FAITHFUL                       # mx_ref IS the datapath; nothing is composed
         else:
             outputs, prov = _mx_golden(entry, eb)
             engine = ("mlc.validate.mx_ref.mx_matmul (transcribed from radiance-kernels "  # target-ok: provenance string (source repo radiance-kernels), not control flow
                       "lib/golden/{mx_fp_math.h,mx_golden.cpp}; mirrors the RTL, bit-exact vs spike)")
             datapath = ("16-deep systolic per-column acc schedule (ACC_E/ACC_M); one E8M0 scale per "
                         "32-elt K group; bf16 accumulate")
+            fidelity = _MXF_FAITHFUL                      # mx_ref IS the datapath; nothing is composed
         (d / "golden.yaml").write_text(yaml.safe_dump({
             "golden_source": "mlc_mx_ref_hardware_semantics",
             "oracle_provenance": {
@@ -1074,6 +1091,7 @@ def _write_capsule_inner(entry, binding, out_root):
                 "datapath": datapath,
                 "operand_dtype": eb.cap_dtype(eb.operand_dtype), "block_scale": "e8m0", "output_dtype": "bf16",
                 "note": "NOT specir (specir is atlas fp8); MX is a distinct block-scaled datapath.",  # target-ok: descriptive note contrasting atlas-fp8 vs mx datapath, not control flow
+                "reference_fidelity": fidelity,
                 "grade_policy": {"compare": eb.compare, "atol": eb.atol, "rtol": eb.rtol},
                 "inputs": prov},
             "outputs": outputs}, sort_keys=False), encoding="utf-8")

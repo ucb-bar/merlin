@@ -136,11 +136,19 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     # a 28-capsule grade of {pass 14, fail 12, not_graded 1, gated 2} could never reach all_pass no
     # matter what the agent did. The gate fraction it is waiting on is reported separately, as OP
     # COVERAGE -- it is not a verdict on the model.
+    # A capsule with NO DATAPATH-FAITHFUL REFERENCE is in neither bucket either, for the same reason and
+    # with a different cause: not the hardware's limits but ours. Its golden was composed around a hole
+    # in our own reference, so it computes a different arithmetic than the device and no submission can
+    # match it. Scoring that as a numeric FAIL charged our reference gap to the compiler -- measured on
+    # two sub-byte MX flash capsules that failed identically in all four arms of a ladder comparison,
+    # which also made `all_pass` (and therefore the loop's only early exit) unreachable from round 0.
     ungraded = [r for r in results if r.get("status") == "not_graded"]
     deferred = [r for r in results if r.get("status") == "gated"]
     screened = [r for r in results if r.get("status") == "screened_only"]
+    noref = [r for r in results if r.get("status") == "not_gradeable_no_reference"]
     graded = [r for r in results
-              if r.get("status") not in ("not_graded", "gated", "screened_only")]
+              if r.get("status") not in ("not_graded", "gated", "screened_only",
+                                         "not_gradeable_no_reference")]
     n_pass = sum(1 for r in graded if r["status"] == "pass")
     score["n_capsules"] = len(graded)
     score["n_passed"] = n_pass
@@ -150,6 +158,15 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         score["not_graded_ineligible"] = sorted(r.get("capsule") for r in ungraded)
     if deferred:
         score["gated_deferred"] = sorted(r.get("capsule") for r in deferred)
+    score["n_not_gradeable_no_reference"] = len(noref)
+    if noref:
+        score["not_gradeable_no_reference"] = sorted(r.get("capsule") for r in noref)
+        score["not_gradeable_no_reference_note"] = (
+            "these capsules are in NEITHER the numerator nor the denominator. Their golden was composed "
+            "around a gap in our own reference (no datapath-faithful reference exists for their operand "
+            "format), so it computes a different arithmetic than the hardware and no submission can "
+            "match it. This is OUR gap, not the compiler's: do not read it as a coverage deficit. "
+            "Supplying a faithful reference and regenerating the golden returns them to the denominator.")
     # SCREENED BUT NOT CERTIFIED, listed by name. A headline of "14/14" over a suite where nine more
     # capsules were screened and never certified is only honest if the nine are visible next to it.
     score["n_screened_only"] = len(screened)
