@@ -3,8 +3,8 @@ title: Compiling a whole model onto an accelerator
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-08-28
-related: [compilation_strategies, targetgen, adding_a_target, gemmini_experiment, reproducing_whole_model_on_rtl]
+last_verified: 2026-08-29
+related: [compilation_strategies, targetgen, adding_a_target, gemmini_experiment, reproducing_whole_model_on_rtl, firesim]
 code_refs: [merlin/python/merlin/compile_cli.py, merlin/python/merlin/runtime/dispatch_runtime.py, merlin/python/merlin/targetgen/routing.py, merlin/python/merlin/system, merlin/python/merlin/llvmlower/device_offload.py, merlin/python/merlin/llvmlower/device_build.py]
 ---
 
@@ -151,44 +151,54 @@ whole-model RTL run remains unavailable on the substrates here.
 | substrate | whole-model artifact | why |
 |---|---|---|
 | spike (`--extension=<target>`) | **yes** | measured; the numbers above |
-| chipyard Verilator | **no** on either gemmini config tried | harness RAM rejects sub-word writes |
+| chipyard Verilator | **yes**, once the image is fitted | completed on `GemminiRocketConfig`: 22,024,854 cycles, clean `$finish`. Hours per run. |
+| FireSim | **kernels yes; whole model not yet tried** | a capsule ELF ran on the gemmini bitstream 2026-08-29, byte-identical to Verilator |
 | GSIM | not yet, but unblocked | DRAM path works; needs a loader + result readback |
 
-The Verilator block is worth stating precisely, because it looks like a compiler failure and is not.
-The harness monitor aborts with `'A' channel carries PutPartial type which is unexpected` — a
-sub-word write on the TileLink A channel. A whole-model image produces those routinely; the capsules
-do not, because they are scratchpad-resident with no sub-word DRAM traffic, which is why the same sim
-certifies capsules happily. **Measured control, on two configs:** the identical model built with NO device offload
-aborts at the same monitor, so this is the sim's memory model and not the offload path. Running a
-whole model on RTL needs a config whose memory accepts sub-word writes.
+### Correction: the Verilator block was the image, not the harness
 
-Checked on a second config rather than inferred from one. `GemminiAndOPUShuttleConfig` aborts at the
-same monitor and the same simulation timestamp, so this is the harness memory these builds share, not
-a property of the config first tried. (An offloaded image on that config exits quietly WITHOUT the
-abort, which is not evidence the block is absent: gemmini sits on a different custom opcode slot when
-the OPU is also present, so its kernels trap early and the run never reaches the writes that trip the
-monitor.) FireSim is the substrate to try next -- it models DDR rather than this harness RAM, and its
-gemmini bitstream exists.
+An earlier version of this page said Verilator "rejects sub-word writes" and that a whole-model image
+could not run there. **That was wrong, and it is recorded here because the wrong theory survived a
+control experiment.** The monitor abort (`'A' channel carries PutPartial type which is unexpected`)
+was real, but its cause was not the harness memory: the image was built with `dram_bytes=None`, which
+puts the arena at `0xC0000000` — memory that config does not have. A padded-image experiment aborted
+at exactly the same point, which is what disproved the sub-word-write theory.
 
-The GSIM situation is different in kind, and better than it first appeared. That SoC build bakes its
-kernel into the BootROM constants because SimTSI was pruned, so an ELF still cannot simply be handed
-to it. What was ALSO believed — that its DRAM path had never worked — is false, and the correction is
-worth recording because the evidence was misread twice.
+Two settings, both derived from the target rather than defaulted, are what make it run:
 
-The chip-boundary AXI port backed by testchipip's `mm_magic_t` DOES work. A probe that preloads two
-distinct values at `0x8000_0000` and loads them retires both with exactly the preloaded bytes
-(`deadbeefcafebabe`, `0123456789abcdef`), with `ar=1` at `0x8000_0000` and eight read-data beats — a
-full cache line. Both halves matter: a memory answering with zeros still fires `ar`, so it is the
-value check that makes it evidence.
+- **`dram_bytes` from the design's own DTS.** `GemminiRocketConfig` is 256 MB at `0x80000000`.
+- **`-march` from the DTS's `riscv,isa` string.** That core declares no `v`, and the default
+  `-march=rv64gcv` traps on the first `vsetvli` about 45 M cycles in.
 
-The reason it looked dead is latency. The first DRAM load retires at cycle ~1044 against an
-instruction issued at cycle 20 — about 1024 cycles for a cold miss out to memory — and the probe
-harness stopped at 400. At that bound every AXI counter reads zero, which is indistinguishable from a
-request that never left the SoC. Run it for 5000 cycles and the path is plainly alive.
+Both are in [reproducing_whole_model_on_rtl](reproducing_whole_model_on_rtl.md), with the pre-flight
+checks that catch each in seconds.
 
-What GSIM still needs is a loader (write the ELF's PT_LOAD segments into the backing store with
-`gemmini_dram_write`, and boot at `0x8000_0000`) and result readback (`gemmini_dram_read`, which also
-removes the need for a console). Both functions already exist.
+**What the completed run showed is not agreement.** The same artifact is bit-identical to the host-only
+build on spike + `libgemmini`, and on RTL it diverges: `cos = 0.973`, every one of 2048 elements
+differing, mean `|diff|` 0.096. All elements differing rules out a single wrong layer — this is a
+systematic arithmetic difference between the spike extension and the gemmini RTL (accumulation order,
+rounding, or requant scaling), and it is **unexplained**. The device kernels are separately L3-certified
+on that same RTL, so the individual kernels are right. Never cite the spike bit-exactness as an RTL
+result.
+
+A host-only RTL control is not a practical discriminator: without offload the model needs ~336 M cycles
+against the offloaded 13.5 M — days of Verilator. Estimate the cycle budget before launching one.
+
+### Where each target actually stands
+
+The compiled path is not equally far along on every target. Read this before planning work.
+
+| target | compiled whole-model artifact | RTL / hardware | what "pass" means today |
+|---|---|---|---|
+| **gemmini** | **yes** — one archive, host + device, 15 contractions offloaded across 4 signatures | spike bit-exact; Verilator completes (cos 0.973); kernels L3-certified; capsule ELF runs on FPGA | a compiled artifact executed |
+| **radiance** | **no** | none for whole models | `run: host` — the Python interpreter, `tiers: {}`, no oracle tier ran |
+
+Radiance's whole-model capsules report `pass` with `cos = 0.9999999`, and that number is real — but the
+`operation` block reads `"run": "host"`, which is the tree-walking interpreter over the driver function,
+and the tier map is **empty**. Nothing was compiled into a host binary and nothing touched RTL. Its
+declared ladder is `tier_sim: {L2: cyclotron, L3: verilator}` for *kernels*; there is also **no radiance
+bitstream in `config_hwdb.yaml`**, so FireSim is not an option for it at all. Bringing radiance onto the
+compiled path is Stage B work (see the host+device plan), not a documentation gap.
 
 ## Reading the result
 

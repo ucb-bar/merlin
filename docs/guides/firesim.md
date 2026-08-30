@@ -3,8 +3,8 @@ title: FireSim — whole-model cycle truth on the FPGA
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-07-26
-related: [zephyr, tinyllama_int8_rvv_zephyr, getting_started, reproducibility]
+last_verified: 2026-08-29
+related: [zephyr, tinyllama_int8_rvv_zephyr, getting_started, reproducibility, reproducing_whole_model_on_rtl, whole_model_on_accelerator]
 code_refs: [merlin/python/merlin/runtime/backends/zephyr_model.py, build_tools/chipyard/setup_multicore_saturn.py, build_tools/chipyard/MerlinSaturnConfigs.scala, build_tools/scripts/firesim_sweep.py, build_tools/scripts/fsq.py, build_tools/firesim/README.md, build_tools/firesim/preflight.py]
 ---
 
@@ -32,6 +32,10 @@ bitstream: **25.08 MHz effective** (3.67 G target cycles in 148 s, read off `hea
 That is roughly 2500× Verilator. A 10¹⁰-cycle inference is ~7 minutes; a 10¹¹-cycle one is
 ~1.1 hours. Both are impossible in RTL simulation and routine here.
 
+A second measurement, 2026-08-29 on `alveo_u250_firesim_shuttle_gemmini_opu`: **30.0 MHz host frequency, FMR 1.00**, 567,348,497 target cycles in **18.9 s** wallclock. Same order as the dual-Saturn figure and from a different design, which is the point of the next paragraph.
+
+That design is **not** the `GemminiRocketConfig` the Verilator numbers come from: it reports two cores, vector-load channels, and `MainMemory_0 -> [0x0, 0x3FFFFFFFF]` (**16 GB**, against 256 MB on the Verilator target). Cycle counts from the two are **not interchangeable** — the same capsule reads 510 cycles here and 317 on Verilator, same accelerator, different host core. Keep them in separate columns.
+
 Do not carry that number forward as a constant. The effective clock is a property of the
 design + bitstream + host, and it is *measured per run* (see [Reading a run](#reading-a-run)).
 An earlier single-vector-unit bitstream ran considerably slower.
@@ -48,8 +52,9 @@ Be exact about this before planning work on it.
 | Whole models run end-to-end on FireSim through the **Zephyr** path, accuracy-gated | **verified**, RVV backend, `small_llama` int8: 1 hart `cos=0.9999999`, 362,862,321 cycles |
 | The **RVV** backend on a real Saturn tile under Zephyr | **verified** (2026-07-26) — see below; this was previously recorded as unsolved |
 | **Multicore** RVV (OpenMP over 2 pinned harts, both Saturn tiles) | **verified** — `cos=0.9999999`, 230,548,059 cycles, **bit-identical** to the 1-hart run, **1.574×** |
-| The **bare-metal** ELF path on FireSim (`build_tools/firesim/firesim_baremetal.ld`) | **not run on the FPGA** — derived from the validated spike layout |
-| Gemmini / capsule-bench L5 FireSim oracle | **not wired** — `heavy_oracles.firesim_adapter` builds the ELF and then reports `OracleUnavailable` rather than fabricate a result |
+| The **bare-metal** ELF path on FireSim | **verified** (2026-08-29) — a gemmini capsule ELF (`A2_single_tile_matmul`, LOAD at `0x80000000`) ran on `alveo_u250_firesim_shuttle_gemmini_opu` and its `OUT Y0` line is **byte-identical** to the cycle-accurate Verilator run of the same capsule |
+| Gemmini / capsule-bench L5 FireSim **oracle** | still **not wired** — a run is manual (submit an ELF, read `OUT`/`METRIC` from the uartlog). `heavy_oracles.firesim_adapter` builds the ELF and then reports `OracleUnavailable` rather than fabricate a result |
+| **Radiance** on FireSim | **impossible today** — no radiance/vortex/muon bitstream exists in `config_hwdb.yaml`. Radiance's ladder is `{L2: cyclotron, L3: verilator}`; FireSim is not on it |
 | Multi-GB (>2 GB) images booting and loading on the FPGA | links, but **HW-unconfirmed** |
 
 ## Prerequisites
@@ -179,6 +184,67 @@ gates `cos` against `golden.npy`, and appends to a JSONL ledger so a re-run skip
 passed. `fsq.py` exists because the native `status` labels every merlin job by its staged
 bootbinary (`zephyr0-zephyr.elf`) — indistinguishable across model × dtype — so it recovers the
 bundle name from each job's `stage_from` path.
+
+### The four-step sequence is non-negotiable
+
+Every FireSim run is **`kill` -> `infrasetup` -> `runworkload` -> `kill`**, in that order, always —
+including when the bitstream has not changed. Skipping the leading `kill` or the `infrasetup` is what
+leaves a stale simulator attached to `/dev/xdma0_*`, and the next `runworkload` then takes the host
+down; the reset looks like a build or bitstream fault rather than a dirty device.
+
+You do not run those steps yourself. `firesim-queue runworkload-full` **is** the sequence — it is the
+only client entry point, and the tool deliberately exposes no bare `infrasetup`/`kill` subcommands so
+it cannot be partially executed. Reference implementation:
+`_run_one_job_runworkload_full()` in the queue's `firesim_queue.py` —
+
+| phase | what the daemon runs | guarantee |
+|---|---|---|
+| `STAGING` | copy `--stage-from` to `workloads/<w>/<boot>` | happens **under the lock**, so nothing swaps the ELF mid-run |
+| `INFRASETUP` | `firesim kill` (best-effort), then `firesim -c <per-job yaml> infrasetup` | unconditional; a non-zero rc aborts before the FPGA is touched |
+| `RUNNING` | `firesim runworkload` | reached only if infrasetup returned 0 |
+| `TEARDOWN` | `firesim kill` | in a `finally:` — runs on **every** path: success, failure, cancel, timeout |
+
+All four sit inside one continuously-held `fcntl.flock(fpga.lock, LOCK_EX)`. That trailing kill is why
+the next run's leading kill is normally a no-op. `--timeout` bounds only the `RUNNING` phase, so a long
+`infrasetup` is never cut off part-way.
+
+### `--hw-config` — which bitstream the job flashes
+
+**Pass it whenever more than one design is registered.** Without it, the design comes from the shared
+`deploy/config_runtime.yaml::target_config.default_hw_config` — global mutable state. Two users wanting
+different designs race, and the loser *silently runs the other's hardware*: a gemmini job executing on
+whatever the template last pointed at, with no error and plausible-looking output.
+
+```bash
+$Q/bin/firesim-queue runworkload-full \
+    --chipyard "$MERLIN_EXT_CHIPYARD" --workload merlin-perfbench \
+    --bootbinary merlin-perfbench.elf --stage-from /path/to/your.elf \
+    --hw-config alveo_u250_firesim_shuttle_gemmini_opu \
+    --priority 5 --project my-project --timeout 900
+```
+
+The daemon rewrites that one key in the per-job `config_runtime.yaml` and leaves every other setting —
+and the shared template — untouched. Omit the flag to inherit the template, which is the older
+behaviour. Registered designs come from `deploy/config_hwdb.yaml`; **check which one the template
+defaults to before assuming**, because it is frequently not the one you want.
+
+### Before you submit
+
+Three checks, in order. Each has silently cost hours here.
+
+1. **`firesim-queue status` must say `daemon: ALIVE`.** A dead daemon strands every submission as
+   `QUEUED` forever, with no error on your side — indistinguishable from a slow job. It has been found
+   down for ten days.
+2. **Look for an orphaned `RUNNING` row.** A daemon that dies mid-job leaves one behind permanently.
+   Check `cancel_requested` and `pid` in `queue.db`: a row with `pid: None` and a cancel already
+   requested is a zombie its owner asked to end, and clearing it (`cancel <id> --force`) completes
+   their request rather than killing live work. Never assume a `RUNNING` row means a running job.
+3. **Pre-flight the ELF**, seconds well spent against an hour of simulation: `readelf -lW` for LOAD
+   segments inside the design's DRAM, and `objdump -d | grep -c` for instructions the core does not
+   implement. See [reproducing_whole_model_on_rtl](reproducing_whole_model_on_rtl.md).
+
+A daemon this host runs cannot write another user's job dir; it logs `not runnable by this daemon …
+skipping it and continuing` and moves on. Their queued jobs neither run nor block yours.
 
 ## Reading a run
 
