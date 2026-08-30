@@ -216,6 +216,21 @@ unknowns cancelling, on a workload neither model can price.
 so the tool's `-512.0` is the right sign for "b is faster by 512" and my equality check was
 sign-confused, not the tool.)
 
+### The levers scale — measured at layer scale, 4,394 tile passes
+
+| 416×832×416 | cycles | bit-exact | wall |
+|---|---:|:--:|---:|
+| uniform 128 (2× margin) | **3,300,328** | ✅ | 493 s |
+| per-class 32/64/64 | **1,288,552** | ✅ | 196 s |
+
+**2.56×**, 2,011,776 cycles saved over 4,394 tile passes (≈458 cycles/pass). The baseline reproduces the
+recorded N1 layer measurement of **3,300,328 exactly**, which validates the setup rather than just the
+result.
+
+This is a **self-comparison, not a vs-shipped number** — the shipped corpus has no layer-scale kernel to
+compare against. What it establishes is that the win is **not a toy-scale artifact**: the per-pass stall
+saving multiplies by the tile-pass count, so the lever is worth *more* at realistic sizes, not less.
+
 **What this does NOT claim:**
 - Not a whole-model or layer-scale win — these are 32-tile kernels, the scale the shipped corpus has.
 - Not an *optimality* claim. We beat the shipped kernels; we do not know the machine's floor. The
