@@ -216,6 +216,19 @@ def _cb_with_leaf_values(cb: dict) -> dict:
     return out
 
 
+
+def suppressed_tier_result(tier: str, mandatory: bool, failed_tier: str, *, from_rtl: bool = False):
+    """The TierResult for a tier the ladder did NOT run because a mandatory tier already failed.
+
+    ``skipped``, never ``fail``. ``not_run_is_not_pass`` treats a recorded ``fail`` as evidence the capsule
+    was certified at that tier and found wrong; a tier that never executed has no such evidence, and
+    fabricating one would put a cycle-accurate verdict on a capsule no RTL ever saw.
+    """
+    return TierResult(tier, "skipped", mandatory,
+                      reason=(f"not run: mandatory tier {failed_tier} already failed, so this deeper tier "
+                              f"could not change the verdict and was not worth its cost"),
+                      derived_from_rtl=from_rtl)
+
 def _epilogue_stages_ignored(prepared: dict, res: dict, target: str, mlc_bridge) -> set[str]:
     """Which declared commit-epilogue stages this arc model demonstrably IGNORES (empty set if none).
 
@@ -2309,6 +2322,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 if _first_cert_failure is None:
                     _first_cert_failure = _cf
                 if not _complete_ladder:
+                    # The opt-out still records: a tier the ladder declined to run says `skipped`,
+                    # with the reason, never `fail` and never nothing at all.
+                    for _later in _tier_seq[_tier_seq.index(tier) + 1:]:
+                        if _later not in tiers:
+                            tiers[_later] = suppressed_tier_result(
+                                _later, _later in required, tier,
+                                from_rtl=_later in cfg.rtl_tiers)
                     raise _cf
 
         if _first_cert_failure is not None:

@@ -61,3 +61,26 @@ def test_the_first_refuting_plane_is_the_one_reported():
     seg = src[src.index("if not okt and mand:"):src.index("if not _complete_ladder:")]
     assert "if _first_cert_failure is None:" in seg, \
         "a later tier could overwrite the first refuter and misreport the failure plane"
+
+
+# --- the OPT-OUT path must still record ------------------------------------------------------------
+# MERLIN_FULL_LADDER=0 restores the short-circuit for a fast iteration loop. That is a cost choice, not
+# a licence to record nothing: a tier the ladder declined to run must still SAY it was not run.
+# `suppressed_tier_result` is what says it, and it was silently dropped by a merge while its test kept
+# importing it -- so the invariant it encodes (a skipped tier says `skipped`, never `fail`) went
+# unenforced. Recording `fail` would be worse than recording nothing: `not_run_is_not_pass` reads a
+# recorded fail as evidence the capsule WAS certified at that tier and found wrong, which would put a
+# cycle-accurate verdict on a capsule no RTL ever saw.
+
+def test_the_short_circuit_path_fills_the_tiers_it_skipped():
+    src = inspect.getsource(CR.run_capsule)
+    seg = src[src.index("if not _complete_ladder:"):src.index("raise _cf")]
+    assert "suppressed_tier_result" in seg, \
+        "the opt-out path raises without recording the tiers it skipped — absent tiers are back"
+
+
+def test_a_suppressed_tier_is_skipped_never_failed():
+    r = CR.suppressed_tier_result("L3", mandatory=True, failed_tier="L2", from_rtl=True)
+    assert r.status == "skipped", "a tier that never executed must not be recorded as a failure"
+    assert r.mandatory is True and r.derived_from_rtl is True
+    assert "not run" in (r.reason or ""), "the record must say it was not run, and why"
