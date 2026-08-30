@@ -355,6 +355,34 @@ def check_workload_constants() -> tuple[bool, list[str]]:
 _HOLDOUT_STORE_PARTS = ("hidden",)
 
 
+def _holdout_stores() -> list[Path]:
+    """Every ``hidden/`` store on disk, whether or not its contents can be listed.
+
+    ``Path.exists()`` survives ``chmod 000`` while listing does not, and that difference is the only
+    thing that separates "this checkout has no holdouts" from "this run answer-locked them". Walking
+    for ``hidden/*/capsule.yaml`` cannot tell them apart -- both yield nothing.
+    """
+    caps = REPO / "merlin/contract/capsules"
+    if not caps.is_dir():
+        return []
+    out: list[Path] = []
+    for d in caps.rglob("hidden"):
+        if d.is_dir():
+            out.append(d)
+    return sorted(out)
+
+
+def _unreadable_holdout_stores() -> list[Path]:
+    """The stores that EXIST but cannot be listed -- the blind case, which must never read as a pass."""
+    blind: list[Path] = []
+    for d in _holdout_stores():
+        try:
+            next(iter(d.iterdir()), None)
+        except OSError:
+            blind.append(d)
+    return blind
+
+
 def _holdout_names() -> set[str]:
     """Every held-out capsule name on disk, across ALL targets -- the grader can see them, the agent
     cannot. Derived by walking, so a new target's holdouts are covered the day they appear."""
@@ -414,16 +442,34 @@ def _scan_root(root: Path, seen: set) -> list[Path]:
 
 
 def check_holdout_not_specified() -> tuple[bool, list[str]]:
+    # FAIL CLOSED WHEN BLIND. A preflighted run answer-locks the holdout store (chmod 000) -- correctly,
+    # the agent must not read it -- but that also empties the walk, and "no names" used to mean "nothing
+    # to check" and report PASS. The check then went green precisely when it could not see, and its
+    # success was indistinguishable from its blindness. This is the check that stops a held-out spec
+    # reaching the granted tree, and a real leak of exactly that kind was found in this corpus.
+    blind = _unreadable_holdout_stores()
+    if blind:
+        return False, [f"holdout store {d.relative_to(REPO)} exists but could not be read "
+                       f"({'permission' if d.exists() else 'missing'}) — this check cannot see the "
+                       f"names it exists to look for, so it reports FAIL rather than a vacuous pass"
+                       for d in blind]
     names = _holdout_names()
     if not names:
         return True, ["(no holdout capsules on disk — nothing to check)"]
     bad = []
+    n_scanned = 0
     for f in _granted_readable_files():
+        n_scanned += 1
         txt = f.read_text(errors="ignore")
         for n in sorted(names):
             if n in txt:
                 bad.append(f"{f.relative_to(REPO)} names holdout capsule {n!r}")
-    return (not bad), bad
+    if bad:
+        return False, bad
+    # A silent pass is not evidence of coverage: "found nothing" and "looked at nothing" print the same.
+    # Say what was actually examined, so a scan that quietly stopped granting files is visible.
+    return True, [f"scanned {n_scanned} granted file(s) for {len(names)} holdout capsule name(s) "
+                  f"across {len(_holdout_stores())} store(s); none appear"]
 
 
 CHECKS = [
