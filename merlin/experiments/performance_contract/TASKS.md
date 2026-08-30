@@ -70,6 +70,9 @@ R1 and R3 share Lane A. R4 is disjoint until it imports the record type.
 | N6 | Audit `max_cycles` caps on both tiers | **IN PROGRESS** (folded into 0.1b) — `atlas_verilator_run.py::run_program` defaults to `max_cycles=20000`, which a real layer blows through. A run that silently truncates and reports a cycle number is a *wrong* number, not a slow one |
 | N7 | mlc `test_discover_runtime_abi.py` — 8 failures | **OPEN, low priority** — pre-existing (`ae8314f`, none of ours). Test-harness bug: a Scala source string passed where a path is expected → `OSError: File name too long`. ModeLIR's SIMT discover layer; unused by Atlas |
 | N8 | `speed_of_light: null` — no attainment denominator | **OPEN** — the one candidate model is GEMM-only (3 of 21 kernels) and imports matplotlib at module scope. Until a denominator is *derived*, performance claims are **kernel-relative only** and "% of peak" is unclaimable. Record the reason in `residual.yaml` rather than leaving the field null |
+| N9 | Three measured defects in mlc's Atlas **L2 functional core** | **OPEN — a peer session offered to take it.** In `mlc/backends/func_program_atlas.py`: (a) `dma.config.chN` and `dma.wait.chN` encode to the identical word — `RType.to_bytecode` never encodes the `imm` field that separates them; (b) VMEM read as byte-addressed where the RTL is word-addressed; (c) `VUNPACK_FP8_BF16`'s scale read as a divisor where the RTL reads a biased exponent. **Corroborated three ways**: the atlas descriptor already declares L2 inapplicable citing (a); and L2 reports 3081 cycles for AT2 where both RTL tiers report 1090 (2.8×). Payoff if fixed: a cheap tier that can see inside the 12 currently-undiagnosable atlas failures, **and** per-op observability for R5 we otherwise have to get from GSIM |
+| N10 | `DispatchFacet.dma_overlap` reports overlap that does not exist | **OPEN — owned by a peer session.** `merlin/python/merlin/kernels/cca.py:701` computes `bool(counts.get("dma"))` while documented as "movement issued to OVERLAP with compute", returning True for all 114 atlas kernels that provably have none (DMA ops 2567, DMA.WAIT 2567 — exactly 1:1). Matches our independent measurement of overlap **exactly 0.0** across all 21 kernels. Asked that the fixed facet distinguish *DMA present* from *DMA overlapped* — R2.3 needs the second |
+| N11 | Consume the peer's RTL-derived `timing` fact class; do not build a second | **OPEN — integration point.** A peer is adding per-unit pipeline depth / initiation interval / in-flight depth to `targetgen/rtl/circt_introspect.py`, derived structurally, UNKNOWN when the walk cannot establish it. R3 consumes these as terms with provenance. Their finding, which R5.8 must respect: npu-model ships a flat `MXU_OP_LATENCIES{vmatmul.acc.mxu0: 96}` that **conflates II with completion latency** — the RTL carries two numbers (II 33, completion ~94, `inflightDepth` 3), and the shipped corpus schedules to both (matmul `op_stream` delays: 34, 34, 32, **96**, 32). Importing the flat dict would have made merlin conclude the corpus was under-delaying. Cross-check against the zero-fit characterization terms (MXU0 per-tile 192 = 130 + 2·DIM−2; MXU1 132 = 130 + numPipeCuts+1); a disagreement is a finding, not noise |
 
 ---
 
@@ -172,6 +175,11 @@ already carries `[unit, mnemonic, n]` per op.
   There is no `perf` bucket and the list is an enum. Profile/contract/record → `targetgen`;
   envelope/attribution/selection → `dse`.
 - **A check that could not run is `not_run`**, never a pass and never a zero.
+- **mlc lives in a NESTED git repo.** `$MERLIN_MLC_DIR` = `/scratch2/agustin/mvp-lhwir/modeling` is its own
+  repo (`copparihollmann/ModeLIR`, branch `feature/discover-datapaths`); the outer `mvp-lhwir` repo
+  separately tracks copies of the same files and reports a different branch, a different HEAD, ~971 dirty
+  paths, and this pin's commit as a *missing object*. Two sessions have now lost time to it. Resolve the
+  path the way the code does: `provenance.verify("muon_arc_model", checkout=mlc_bridge.mlc_dir())`.
 
 ## Explicit non-goals
 
