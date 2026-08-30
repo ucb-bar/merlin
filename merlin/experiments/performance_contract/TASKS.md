@@ -266,6 +266,44 @@ against: any schedule it proposes must beat 513 while staying bit-exact.
   intent. What our generator does differently is *choose its own descriptors*.
 - Not a claim about the other 18 kernels — three were run.
 
+## W3 — dependence graph: DONE, and it answers the 76.7%
+
+`aeb464aa` (operand direction) + `8f37632c` (graph + liveness + driver), 34 tests.
+
+**3.1 operand direction, derived behaviourally.** Seed state, execute one instruction, observe what
+changed. Of 374 operands: **54 DEF, 96 USE, 224 UNKNOWN, 0 refused** — and the refusals separate two
+cases that look alike: *"the effect was identical at every probed value"* (provably didn't matter)
+versus *"the instruction changed no observable state"* (may be real and simply unobserved). Neither is
+reported as established.
+
+**3.3 the critical path is a real bound.** On our 32×32×32 kernel: 59 instructions, **46 edges (23 RAW,
+5 WAR, 18 WAW)**, critical path **130.5 cycles** against a measured **513** —
+`"consistent: the bound sits below the measurement, as a bound must"`. That is the first number in this
+tree that speaks to the 76.7% idle, because it prices *separations* rather than occupancy.
+
+**3.4 the ranking is EXACT, and it independently reproduced a prediction I had made by hand:**
+
+    stalls_tightened   693.5   (-384.5 vs as-emitted)
+    as_emitted        1078.0
+    movement_hoisted  1079.0   (+1.0 -- SLOWER)
+
+All three pairwise comparisons come back `basis: exact` with the unresolved class cancelling. And
+**`movement_hoisted` being 1 cycle slower is the tool deriving, unprompted, what I had reasoned
+separately**: a 32×32×32 matmul has one K-step, so there is no independent work to hoist movement over.
+
+**Three honesty properties worth keeping:**
+- **Loop-carried edges are excluded, not weighted.** *"Its separation is UNKNOWN and measured to exceed
+  the naive sum of the published per-operation latencies, so giving it a weight would be fitting rather
+  than deriving."* Every per-region number is therefore a bound on ONE iteration.
+- **Register pressure refuses where capacity is unknown**: `mrf 2 of 64 live -- fits`; `scalar 10 live,
+  capacity UNKNOWN, so whether that fits was NOT checked`.
+- **Unpriced separations are tracked, not dropped** (`separation.scalar × 19`), so the critical path
+  reports `complete: false` and claims `AT LEAST 130 cycles`.
+
+**The one caveat:** the schedule *estimates* are not bounds. `stalls_tightened` predicts 693.5 where the
+measured tightened kernel is **513**, so the estimate is conservative. The *bound* (130.5) is the sound
+number; the estimates rank correctly but should not be quoted as cycle predictions.
+
 ## W1.0 — the free fidelity run, and what it found
 
 `mlc/spec/validate_fidelity.py` against the 2,219 totals already on disk. **Zero new measurement.**
