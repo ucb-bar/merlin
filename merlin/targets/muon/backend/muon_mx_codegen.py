@@ -317,9 +317,17 @@ def _emit_flash_kernel(mx: dict, out_name: str) -> str:
             raise MxCodegenError("flash kernel.cpp layout changed: post-QK bar2 anchor missing (softcap)")
         softcap_loop = bar2 + r"""
     {   // @softcap: S <- cap*tanh(bf16(S*att_scale)/cap); online_softmax then uses scale 1.0.
-        // EXACT transcription of radiance-kernels flash_attention_mx_gemma bf16_softcap (the validated
-        // Gemma-2 primitive): x=s/cap; e=exp(-2|x|) (nonpositive fexp arg -> stable/precise);
-        // t=(1-e)/(1+e); cap*sign(x)*t.  All bf16 (fexp + a few bf16 ops + one bounded bf16 divide).
+        // Derives from radiance-kernels flash_attention_mx_gemma bf16_softcap, but evaluates tanh as
+        // t=(p-1)/(p+1) with p=exp(2y) rather than upstream's (1-e)/(1+e) with e=exp(-2|x|): the bf16
+        // divide and the abs/sign branches miscompile on this SIMT target, and the p form needs
+        // neither.  KEEP IN LOCKSTEP with merlin.targetgen.mx_flash_ref._softcap, which is the golden.
+        //
+        // *** DO NOT convert between _Float16 and float with a C cast here. ***  This loop is the only
+        // place in the emitted flash kernel that leaves bf16 for fp32, and MEASURED ON THE ORACLE the
+        // two casts do not round-trip the value: with them the capsule lands 8 of 256 elements outside
+        // tolerance, and with the explicit conversions below the SAME loop reproduces the reference
+        // bit-exactly on all 512 elements (2 of 256 remain, from a stage after this one).  bf16 is the
+        // top half of an f32, so widening is a shift and narrowing is an RNE -- write both out.
         volatile __shared uint16_t *_Sh = reinterpret_cast<volatile __shared uint16_t *>(S_SMEM);
         const _Float16 _att = as_bf16(FA_SOFTCAP_ATT_BF16);
         const _Float16 _inv2 = as_bf16(FA_SOFTCAP_2OVERCAP_BF16);
@@ -327,11 +335,13 @@ def _emit_flash_kernel(mx: dict, out_name: str) -> str:
         for (uint32_t _i = tid; _i < (uint32_t)(FA_SQ*FA_SK); _i += thr) {
             _Float16 _x = (_Float16)(as_bf16(_Sh[_i]) * _att);            // scaled score
             _Float16 _p = mu_fexp((_Float16)(_x * _inv2));                // e^{2y}, y=s/cap, bf16
-            // tanh(y)=(p-1)/(p+1) then *cap, in fp32 (bf16 divide + abs/sign-branches miscompile on this
-            // SIMT target; the plain (p-1)/(p+1) needs no sign handling). RNE bf16 at the end.
-            float _pf = (float)_p;
-            float _tf = (_pf - 1.0f) / (_pf + 1.0f);
-            _Sh[_i] = __builtin_bit_cast(uint16_t, (_Float16)((float)_cap * _tf));
+            // bf16 -> f32: exact widening, no rounding (bf16 IS the top 16 bits of the f32).
+            float _pf = __builtin_bit_cast(float, (uint32_t)__builtin_bit_cast(uint16_t, _p) << 16);
+            float _cf = __builtin_bit_cast(float, (uint32_t)__builtin_bit_cast(uint16_t, _cap) << 16);
+            float _tf = (_pf - 1.0f) / (_pf + 1.0f);                      // tanh(y), fp32
+            // f32 -> bf16: round to nearest even, written out (add half an ULP, break ties to even).
+            uint32_t _ob = __builtin_bit_cast(uint32_t, _cf * _tf);
+            _Sh[_i] = (uint16_t)((_ob + 0x7fffu + ((_ob >> 16) & 1u)) >> 16);
         }
         mu_fence_smem(); mu_barrier(2, wpb);
     }"""

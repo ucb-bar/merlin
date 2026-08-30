@@ -28,6 +28,29 @@ code depends on no particular accelerator and bakes in no opcode/encoding consta
 """
 from __future__ import annotations
 
+#: The operand formats whose fused flash composition this module reproduces DATAPATH-FAITHFULLY. The
+#: fused kernel requantizes the UNNORMALIZED probabilities to e4m3 -- ``bf16_to_e4m3_scaled`` below is
+#: written to the e4m3 exponent bounds -- so e4m3 is the only format for which the arithmetic here is
+#: the arithmetic the hardware executes. Declared as data (not asserted in a docstring) so a caller can
+#: ASK instead of assuming, and so adding a sub-byte flash reference is a one-line change here.
+FAITHFUL_FORMATS: tuple[str, ...] = ("fp8_e4m3",)
+
+#: The two values :func:`reference_fidelity` returns, named so callers compare against a constant.
+FIDELITY_FAITHFUL = "datapath_faithful"
+FIDELITY_APPROXIMATE = "composition_approximate"
+
+
+def reference_fidelity(fmt: str) -> str:
+    """Whether this module's flash composition matches the kernel's arithmetic for ``fmt``.
+
+    ``FIDELITY_APPROXIMATE`` is NOT "unsupported input": a golden can still be COMPOSED for such a
+    format (a normalized softmax plus a palette requant), it simply computes a DIFFERENT arithmetic
+    than the datapath does. Grading a submission against that golden measures our composition, not the
+    submission -- so the distinction has to be recorded with the golden rather than inferred later from
+    a mismatch count. Callers route on the recorded value; they never re-derive it from a dtype name.
+    """
+    return FIDELITY_FAITHFUL if fmt in FAITHFUL_FORMATS else FIDELITY_APPROXIMATE
+
 
 def bf16_to_e4m3_scaled(b: int, se: int) -> int:
     """Quantize a bf16 value (given as its 16-bit pattern ``b``) divided by ``2**se`` to an e4m3 code,
@@ -107,8 +130,27 @@ def flash_attention_fp8(mx, S_scores, V, SB_v, *, M, Skv, Dv, att_scale, softcap
 
     _softcap = None
     if softcap is not None:
-        # EXACT transcription of the kernel's bf16_softcap (Gemma-2): x=s/cap; e=exp(-2|x|);
-        # t=(1-e)/(1+e); cap*sign(x)*t. All bf16 (bounded bf16 divide via f32). Mirrors the kernel.
+        # Mirrors the soft-cap the emitted flash kernel ACTUALLY executes (muon_mx_codegen's injected
+        # @softcap loop), which is deliberately NOT the upstream primitive it derives from.
+        #
+        #   upstream (radiance-kernels flash_mx_impl.hpp::bf16_softcap):
+        #       x = s*inv_cap; e = mu_fexp(-2|x|); t = (1-e)/(1+e); cap*sign(x)*t
+        #   here and in the kernel:
+        #       p = mu_fexp(bf16(s * 2/cap)); t = (p-1)/(p+1) in fp32; bf16(cap*t)
+        #
+        # The deviation is intentional and load-bearing: the bf16 divide and the abs/sign branches
+        # MISCOMPILE on this SIMT target, so the emitter folds 2/cap into one constant and evaluates
+        # tanh in fp32, where (p-1)/(p+1) needs no sign handling. The golden must match the kernel, not
+        # the upstream source -- a golden that transcribes upstream instead was measured to move the one
+        # soft-capped flash capsule's worst element from 0.15625 to 0.53125 away from the hardware.
+        # KEEP THESE TWO IN LOCKSTEP: if the emitter's loop changes, this changes with it.
+        #
+        # The two fp32 boundaries below are the whole game. The kernel used to cross them with C casts
+        # between _Float16 and float; MEASURED ON THE ORACLE over these capsules' own 512 scores, that
+        # loop disagreed with this code on 432 of them, and the emitter now widens by a shift and
+        # narrows by an explicit RNE instead, which agrees on all 512. So `np.float32(p)` here is an
+        # EXACT widening (bf16 is the top half of an f32) and the final `bf16(...)` is RNE -- do not
+        # "simplify" either into a plain float() round-trip.
         cap = float(softcap)
         two_over_cap = bf16(2.0 / cap)
         capv = bf16(cap)
