@@ -41,7 +41,7 @@ from .facts import rtl_cache_dir
 
 _REPO = repo_root()  # the repo root (contains merlin/)
 
-GENERATOR_VERSION = "rtl-introspect-v3-slot-derived-opcode"
+GENERATOR_VERSION = "rtl-introspect-v4-timing"
 # RISC-V ISA STANDARD custom-N major opcodes — fixed by the base ISA for EVERY RISC-V chip, NOT a
 # per-target fact. WHICH custom slot a RoCC accelerator is wired to IS target-specific; it is resolved
 # from the target's own reviewed encoding (contract ``encoding.rocc_custom_slot``) — never a baked
@@ -524,6 +524,32 @@ def _facts_from_discovery(target: str, facts: dict) -> list[str]:
     return sourced
 
 
+def _timing_from_discovery(target: str, facts: dict) -> list[str]:
+    """Add RTL-DERIVED per-module pipeline depth (:mod:`.timing`). Mutates ``facts``; returns the
+    provenance names sourced.
+
+    Timing is the fact class merlin never had, and it is the one a statically-scheduled target cannot
+    be compiled correctly without: where the ISA has no interlocks, the delays live in the PROGRAM, so
+    a wrong latency is a wrong ANSWER rather than a slow one. It is derived by counting register
+    stages in the target's own RTL -- never read from a vendor performance model, which is a
+    hand-written artifact that may disagree with the RTL it claims to describe and will not exist for
+    the next target.
+
+    Absent (not empty) when the RTL is unreachable: an empty list would say "this design has no
+    timing", which is a claim about hardware, where the truth is that nobody could look.
+    """
+    from . import timing as _timing
+    try:
+        recs = _timing.discovered_timing(target)
+    except Exception:  # noqa: BLE001 -- unreachable/unparseable RTL is UNKNOWN, never a fabricated depth
+        return []
+    if not recs:
+        return []
+    facts["timing"] = recs
+    resolved = sum(1 for r in recs if r.get("pipeline_depth") is not None)
+    return [f"timing({resolved}/{len(recs)} modules)"]
+
+
 def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None = None,
                 chipyard_root: str | Path | None = None, target: str | None = None) -> dict[str, Any]:
     """Assemble the RTL facts for ``target``. PREFERS mlc RTL discovery (target-agnostic: mesh DIM +
@@ -561,6 +587,7 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
 
     # PREFER mlc discovery (target-agnostic) for mesh + memory capacities.
     sourced = _facts_from_discovery(target, v1)
+    sourced += _timing_from_discovery(target, v1)
 
     # Funct decode table: PREFER the decoder-derived legal set (the ISA the silicon implements) over the
     # name parse; fall back to the names when mlc / a version-matched HW dialect is unavailable. NAMES
