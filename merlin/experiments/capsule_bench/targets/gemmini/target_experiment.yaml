@@ -37,3 +37,51 @@ answer_surfaces:
 # How the simulator runs (correctness L2 / RTL L3). spike + verilator come from the chipyard conda env.
 toolchain:
   sim_via: chipyard
+
+# ---------------------------------------------------------------------------------------------------
+# THE FROZEN HOST LANE — pinned INFRASTRUCTURE, never a thing under test.
+#
+# This experiment measures the TARGET lane: the target dialect, the target transforms, the partitioning
+# decision and the boundary/dispatch across it. It does not measure, and must never reward, a second CPU
+# backend. A submission that wins by rewriting the host compiler has moved the work off the accelerator
+# and off the question, and its score would be read as a compiler result about the target.
+#
+# So the host lane is declared here, beside `hardware_spec`, and for the same reason: it is irreducible
+# SETUP a run needs and cannot derive. It is granted to every arm READ-ONLY (an agent that cannot see
+# what the host lane does cannot reason about where the boundary should fall), and the surface that
+# would let it be CHANGED is denied to every arm.
+#
+# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as merlin/contract/hardware_pins.yaml.
+# `branch` is informational: branches move, and the same branch name on a fork and on upstream are
+# different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
+# a checkout that is the right repo on a plausible branch and missing the schedule is caught.
+host_lane:
+  description: >-
+    The RVV host compiler: the scalar/vector lane every partitioned capsule falls back to for the work
+    the accelerator does not admit (normalization, reduction, activation tails). Frozen for the
+    duration of the experiment.
+  repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
+  branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
+  # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
+  # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
+  # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
+  # CONTENT check over the bytes this experiment actually reads. Fill the sha in the moment a checkout
+  # exists; never invent one.
+  commit: UNKNOWN
+  # The pinned artifact as it exists in this tree: the transform schedule + knobs that ARE the host
+  # lane's codegen. Repo-root-relative.
+  package: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
+  requires_paths:
+    - manifest.yaml
+    - schedule.mlir
+    - knobs.yaml
+  # Granted READ-ONLY to every arm. Reading the frozen lane is necessary; it is how an agent knows what
+  # the host side costs and therefore where to put the boundary.
+  read_only:
+    - out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
+  # DENIED to every arm: the host compiler's implementation. This is the surface a submission would have
+  # to touch to become a second CPU backend. It is deliberately a DIFFERENT path from the read-only
+  # grant above — deny wins in the sandbox binder, so a path listed on both sides grants nothing at all,
+  # and "read-only" would silently become "invisible".
+  deny_modification:
+    - merlin/python/merlin/llvmlower/

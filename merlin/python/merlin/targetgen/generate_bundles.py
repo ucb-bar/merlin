@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pathlib import Path
+
 from . import tool_registry as TR
 from .target_experiment import TargetExperiment
 
@@ -54,6 +56,58 @@ def _tool_paths(te: TargetExperiment, name: str) -> list[str]:
     return list(t.bundle_paths) + [getattr(te, attr) for attr in t.derived_paths]
 
 
+def _host_lane(te: TargetExperiment) -> dict:
+    """The descriptor's ``host_lane:`` block, or ``{}`` when it declares none.
+
+    Read off the descriptor FILE rather than a ``TargetExperiment`` field: the dataclass is owned
+    elsewhere and enumerates its fields explicitly, so threading a new one is a change to a shared type.
+    Reading it here keeps the declaration where it belongs (beside ``hardware_spec``, which is the other
+    irreducible setup a run cannot derive) and keeps this generator target-agnostic — nothing below
+    knows which compiler the host lane is, only that the descriptor names one.
+    """
+    import yaml
+    doc = yaml.safe_load(Path(te.path).read_text(encoding="utf-8")) or {}
+    lane = doc.get("host_lane") or {}
+    if not isinstance(lane, dict):
+        raise ValueError(f"{te.path}: `host_lane` must be a mapping, got {type(lane).__name__}")
+    return lane
+
+
+def _host_lane_grants(te: TargetExperiment) -> tuple[list[dict], list[dict]]:
+    """``(allow, deny)`` for the frozen host lane: read-only on what it IS, denied on what would CHANGE it.
+
+    The experiment measures the target dialect, the target transforms, the partitioning and the
+    boundary/dispatch. It does not measure a second CPU backend, and a submission that wins by rewriting
+    the host compiler has answered a different question under this one's name. So the lane is pinned as
+    infrastructure: readable (an agent that cannot see what the host side costs cannot decide where the
+    boundary goes) and unwritable.
+
+    The two sides MUST name different paths. Deny wins in the sandbox binder (see
+    ``merlin.targetgen.sandbox.bwrap.base_argv``), so a path on both lists is tmpfs-masked and the
+    "read-only" grant silently becomes no grant at all. That is checked here rather than documented,
+    because a grant that quietly evaporates is exactly the class of bug this repo has already shipped.
+    """
+    lane = _host_lane(te)
+    if not lane:
+        return [], []
+    read_only = [str(p) for p in (lane.get("read_only") or [])]
+    deny = [str(p) for p in (lane.get("deny_modification") or [])]
+    if not read_only and not deny:
+        raise ValueError(f"{te.path}: `host_lane` declares neither `read_only` nor `deny_modification`; "
+                         f"a lane that is pinned by nothing is not pinned")
+    clash = sorted(set(read_only) & set(deny))
+    if clash:
+        raise ValueError(
+            f"{te.path}: host_lane path(s) {clash} are listed BOTH read-only and denied. Deny wins in "
+            f"the sandbox, so those grants would bind nothing and the arm would simply not see the "
+            f"frozen lane. Deny the implementation surface, not the artifact you are granting.")
+    allow = [{"path": p, "mode": "ro", "note": "frozen host lane (pinned infrastructure, read-only)"}
+             for p in read_only]
+    denied = [{"path": p, "reason": "frozen host lane: the experiment measures the target lane, not a "
+                                    "second CPU backend"} for p in deny]
+    return allow, denied
+
+
 def _shared_allow(te: TargetExperiment) -> list[dict]:
     """The target/experiment-parameterized allow block present in EVERY arm."""
     exp = te.exp_name
@@ -68,6 +122,7 @@ def _shared_allow(te: TargetExperiment) -> list[dict]:
                     "note": "shared hardware spec: RTL + ISA headers + README + example (ALL arms)"})
     out.append({"path": f"experiments/{exp}/scripts/agent_selfcheck.py", "as": "agent_selfcheck.py",
                 "mode": "ro", "note": "redacted self-check"})
+    out += _host_lane_grants(te)[0]
     return out
 
 
@@ -82,6 +137,7 @@ def _shared_deny(te: TargetExperiment) -> list[dict]:
         out.append({"path": te.hidden_corpus(), "reason": "hidden capsules + goldens"})
     out += [{"path": f"experiments/{exp}/input_bundles/grader_private_v0/", "reason": "grader-private"},
             {"path": f"experiments/{exp}/runs/", "reason": "prior submissions"}]
+    out += _host_lane_grants(te)[1]
     return out
 
 

@@ -1,6 +1,7 @@
 merlin/contract/
 merlin/contract/capsules/isa/
 merlin/contract/capsules/layers/
+merlin/contract/capsules/model/
 merlin/contract/capsules/model_slices/
 tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h
 tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
@@ -8,6 +9,8 @@ experiments/capsule_bench/targets/gemmini/task/
 third_party/llvm-install/
 experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0
 experiments/capsule_bench/targets/gemmini/scripts/agent_selfcheck.py
+out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
+merlin/python/merlin/common/
 merlin/python/merlin/targetgen/synthesize/
 merlin/python/merlin/targetgen/generate/
 merlin/python/merlin/xdsl_dialects/
@@ -22,4 +25,3 @@ merlin/python/merlin/kernels/microkernel.py
 merlin/python/merlin/targetgen/rtl_backend.py
 merlin/python/merlin/targetgen/contraction_egraph.py
 merlin/python/merlin/targetgen/persistent_equivalence.py
-merlin/python/merlin/common/

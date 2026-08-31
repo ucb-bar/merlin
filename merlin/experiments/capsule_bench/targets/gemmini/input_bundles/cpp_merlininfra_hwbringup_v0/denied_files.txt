@@ -19,3 +19,4 @@ out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot/
 merlin/contract/capsules/hidden/
 experiments/capsule_bench/targets/gemmini/input_bundles/grader_private_v0/
 experiments/capsule_bench/targets/gemmini/runs/
+merlin/python/merlin/llvmlower/
