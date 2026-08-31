@@ -181,8 +181,21 @@ def eta_from_counters(values: dict, counters: OccupancyCounters) -> dict:
     falsifier use, so this η and theirs are one number rather than two that share a name.
 
     A per-engine busy total must include the cycles that engine spent overlapping, so a single counter
-    that counts "this engine ALONE" is summed with every combination containing it. Reading the singles
-    as whole-engine totals instead understates the busiest engine and inflates η.
+    is summed with every combination containing it. Reading the singles as whole-engine totals instead
+    understates the busiest engine and inflates η.
+
+    ⚠️ THAT SUM IS EXACT, NOT AN APPROXIMATION, and it is worth knowing why. Verified in the pinned RTL
+    of the target measured here: the increment conditions are mutually exclusive by construction --
+    each counter fires only on its own combination, with the other engines' busy bits explicitly
+    negated (``ld.busy && !st.busy && !ex.busy`` for the load single, and so on up to
+    ``ld.busy && st.busy && ex.busy``). So the seven counters PARTITION busy time rather than
+    overlapping in their own accounting, no cycle is counted twice, and adding a single to the
+    combinations containing it recovers that engine's true busy total.
+
+    A target whose counters are NOT mutually exclusive would double-count, and this arithmetic would
+    silently over-report both the per-engine totals and the realised overlap. Nothing here can detect
+    that from the header alone -- the exclusivity is a property of the RTL, not of the ``#define`` list
+    -- so a new target's counter block should be read once before its η is cited.
     """
     missing = sorted(n for n in counters.by_combination.values() if n not in (values or {}))
     if missing:
