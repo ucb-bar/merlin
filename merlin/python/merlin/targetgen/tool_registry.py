@@ -101,9 +101,28 @@ TOOLS: dict[str, ToolSpec] = {
     # removes several.
     "merlin_infra": ToolSpec(
         "merlin_infra",
-        "Path/YAML/schema helpers every other granted tool imports. Not an oracle, grader or answer "
-        "surface — granting it widens no moat, and withholding it disables the tools above it.",
-        bundle_paths=(f"{_PY}common/",),
+        "Answer-free support modules imported transitively by the xDSL, CCA and RTL-profile authoring "
+        "tools. Not an oracle, grader or answer surface — granting them widens no moat, and withholding "
+        "one disables the advertised tool that imports it.",
+        bundle_paths=(
+            f"{_PY}common/",
+            # ``targetgen.synthesize`` imports these at package import time.  Grant exact modules rather
+            # than all of targetgen: that tree also contains the grader and callable oracle routes.
+            f"{_PY}targetgen/families.py",
+            f"{_PY}targetgen/compute_units.py",
+            f"{_PY}targetgen/semantic_families.py",
+            f"{_PY}targetgen/target_experiment.py",
+            f"{_PY}targetgen/evidence/store.py",
+            # ``interface_emit`` needs these only for a pooled COMMIT, which is why import-only smoke
+            # missed them. They are pure command-buffer shape helpers; the oracle-bearing runtime
+            # reference/simulator modules remain explicitly denied.
+            f"{_PY}runtime/commandbuffer.py",
+            f"{_PY}runtime/tensor.py",
+            # ``rtl_backend.derived_levers`` consults endpoint roles.  Again keep the closure exact:
+            # the complete kernels tree contains unrelated implementation and benchmark surfaces.
+            f"{_PY}kernels/endpoints.py",
+            f"{_PY}kernels/roles.py",
+        ),
         note="ALLOWED tool: xDSL kit / CCA spine",
         ablatable=False),
 

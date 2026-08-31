@@ -42,9 +42,54 @@ class TargetProfile:
         return (self.legal_opcodes is None and self.memory_map is None and self.dim is None)
 
 
+def _profile_from_reviewed_facts(target: str) -> TargetProfile | None:
+    """Build the structural profile from the target's reviewed RTL-facts artifact.
+
+    ``rtl.mlc_bridge`` also contains the bit-exact cosim/readback oracle, so the experiment sandbox
+    correctly masks that module.  The reviewed ``facts.json`` pin is the answer-free output of the same
+    discovery and is the right authoring input: arrays, memories, and the decoder's legal funct set,
+    without a callable route to expected outputs.  ``None`` means no populated artifact was available;
+    callers may then try live discovery outside the sandbox.
+    """
+    try:
+        from .rtl.facts import load_facts
+        body = (load_facts(target) or {}).get("facts") or {}
+    except Exception:  # noqa: BLE001 — absent/unreadable reviewed artifact: try live discovery below
+        return None
+    if not body:
+        return None
+
+    arrays = body.get("arrays") or ()
+    mesh = next((a for a in arrays
+                 if a.get("name") == "mesh" and a.get("rows") is not None), None)
+    if mesh is None:
+        mesh = next((a for a in arrays
+                     if a.get("rows") is not None and a.get("cols") is not None), None)
+    dim = int(mesh["rows"]) if mesh is not None else None
+
+    memories = {str(m.get("name")): m for m in (body.get("memories") or ()) if m.get("name")}
+    memory_map: dict = {"memories": memories}
+    if "scratchpad" in memories:
+        memory_map["operand_mem"] = memories["scratchpad"]
+    if "accumulator" in memories:
+        memory_map["accum_mem"] = memories["accumulator"]
+
+    decoder = next((i for i in (body.get("interfaces") or ())
+                    if i.get("legal_funct") is not None), None)
+    legal = tuple(sorted({int(v) for v in (decoder.get("legal_funct") or ())})) if decoder else ()
+    return TargetProfile(target=target, legal_opcodes=legal or None, memory_map=memory_map, dim=dim)
+
+
 def target_profile(target: str) -> TargetProfile:
-    """Derive the target's profile from mlc discovery. Fields are None when mlc / the artifact is
-    unavailable — the caller degrades honestly (never fabricates a fact)."""
+    """Derive the target profile from reviewed RTL facts, then live discovery when needed.
+
+    Fields are ``None`` when neither source is available — the caller degrades honestly and never
+    fabricates a hardware fact.  Preferring the reviewed pin also makes this promised authoring command
+    runnable in the deny-by-default sandbox, where the oracle-bearing live bridge is intentionally masked.
+    """
+    reviewed = _profile_from_reviewed_facts(target)
+    if reviewed is not None:
+        return reviewed
     from .rtl import mlc_bridge
     ops = mlc_bridge.discover_legal_opcodes(target) if mlc_bridge.mlc_available()[0] else {}
     return TargetProfile(

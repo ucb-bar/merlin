@@ -11,6 +11,15 @@ experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0
 experiments/capsule_bench/targets/gemmini/scripts/agent_selfcheck.py
 out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/
 merlin/python/merlin/common/
+merlin/python/merlin/targetgen/families.py
+merlin/python/merlin/targetgen/compute_units.py
+merlin/python/merlin/targetgen/semantic_families.py
+merlin/python/merlin/targetgen/target_experiment.py
+merlin/python/merlin/targetgen/evidence/store.py
+merlin/python/merlin/runtime/commandbuffer.py
+merlin/python/merlin/runtime/tensor.py
+merlin/python/merlin/kernels/endpoints.py
+merlin/python/merlin/kernels/roles.py
 merlin/python/merlin/targetgen/synthesize/
 merlin/python/merlin/targetgen/generate/
 merlin/python/merlin/xdsl_dialects/

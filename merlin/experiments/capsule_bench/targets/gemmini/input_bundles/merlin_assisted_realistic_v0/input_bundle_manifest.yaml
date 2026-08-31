@@ -43,6 +43,33 @@ allowed:
 - path: merlin/python/merlin/common/
   mode: ro
   note: 'ALLOWED tool: xDSL kit / CCA spine'
+- path: merlin/python/merlin/targetgen/families.py
+  mode: ro
+  note: 'ALLOWED tool: xDSL kit / CCA spine'
+- path: merlin/python/merlin/targetgen/compute_units.py
+  mode: ro
+  note: 'ALLOWED tool: xDSL kit / CCA spine'
+- path: merlin/python/merlin/targetgen/semantic_families.py
+  mode: ro
+  note: 'ALLOWED tool: xDSL kit / CCA spine'
+- path: merlin/python/merlin/targetgen/target_experiment.py
+  mode: ro
+  note: 'ALLOWED tool: xDSL kit / CCA spine'
+- path: merlin/python/merlin/targetgen/evidence/store.py
+  mode: ro
+  note: 'ALLOWED tool: xDSL kit / CCA spine'
+- path: merlin/python/merlin/runtime/commandbuffer.py
+  mode: ro
+  note: 'ALLOWED tool: xDSL kit / CCA spine'
+- path: merlin/python/merlin/runtime/tensor.py
+  mode: ro
+  note: 'ALLOWED tool: xDSL kit / CCA spine'
+- path: merlin/python/merlin/kernels/endpoints.py
+  mode: ro
+  note: 'ALLOWED tool: xDSL kit / CCA spine'
+- path: merlin/python/merlin/kernels/roles.py
+  mode: ro
+  note: 'ALLOWED tool: xDSL kit / CCA spine'
 - path: merlin/python/merlin/targetgen/synthesize/
   mode: ro
   note: 'ALLOWED tool: xDSL kit / CCA spine'

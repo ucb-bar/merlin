@@ -26,6 +26,15 @@ If older static prose names another mode, those run artifacts win.
 - `experiments/capsule_bench/targets/gemmini/scripts/agent_selfcheck.py` — redacted self-check
 - `out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/` — frozen host lane (pinned infrastructure, read-only)
 - `merlin/python/merlin/common/` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/families.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/compute_units.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/semantic_families.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/target_experiment.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/evidence/store.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/runtime/commandbuffer.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/runtime/tensor.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/kernels/endpoints.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/kernels/roles.py` — ALLOWED tool: xDSL kit / CCA spine
 - `merlin/python/merlin/targetgen/synthesize/` — ALLOWED tool: xDSL kit / CCA spine
 - `merlin/python/merlin/targetgen/generate/` — ALLOWED tool: xDSL kit / CCA spine
 - `merlin/python/merlin/xdsl_dialects/` — ALLOWED tool: xDSL kit / CCA spine

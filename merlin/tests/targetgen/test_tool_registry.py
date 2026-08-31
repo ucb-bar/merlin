@@ -119,6 +119,33 @@ def test_shared_infrastructure_cannot_be_ablated_alone(te):
         _arm_manifest(te, "merlin_rtlchecks", "bid", drop_tools=("merlin_infra",))
 
 
+def test_shared_infrastructure_closes_the_promised_authoring_imports(te):
+    """Exact support modules are grants, not accidental visibility from the live checkout.
+
+    These are transitive imports of the advertised synthesize, CCA and RTL-profile entry points.  A
+    missing one made the package import on the host and fail in the real deny-by-default sandbox.
+    Whole ``targetgen``/``kernels`` grants are intentionally forbidden: both trees also contain oracle
+    and grader routes.
+    """
+    py = "merlin/python/merlin/"
+    expected = {
+        f"{py}targetgen/families.py",
+        f"{py}targetgen/compute_units.py",
+        f"{py}targetgen/semantic_families.py",
+        f"{py}targetgen/target_experiment.py",
+        f"{py}targetgen/evidence/store.py",
+        f"{py}runtime/commandbuffer.py",
+        f"{py}runtime/tensor.py",
+        f"{py}kernels/endpoints.py",
+        f"{py}kernels/roles.py",
+    }
+    infra = set(TR.TOOLS["merlin_infra"].bundle_paths)
+    assert expected <= infra
+    assert f"{py}targetgen/" not in infra and f"{py}kernels/" not in infra
+    arm4, _, _ = _sets(te, "merlin_rtlchecks")
+    assert expected <= arm4
+
+
 def test_an_unknown_tool_name_fails_closed(te):
     """A typo must not silently produce a cell identical to its own rung."""
     with pytest.raises(TR.UnknownTool):

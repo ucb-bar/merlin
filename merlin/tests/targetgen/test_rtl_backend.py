@@ -33,11 +33,36 @@ def test_derived_levers_come_from_discovered_structure():
 
 
 def test_profile_degrades_honestly_without_mlc(monkeypatch):
+    from merlin.targetgen.rtl import facts as F
+
+    monkeypatch.setattr(F, "load_facts", lambda target: {})
     monkeypatch.setattr(B, "mlc_available", lambda: (False, "unavailable"))
     monkeypatch.setattr(B, "discovered_memory_map", lambda t: None)
     monkeypatch.setattr(B, "discovered_dim", lambda t: None)
     prof = RB.target_profile("any_target")
     assert prof.legal_opcodes is None and prof.dim is None and not prof.has_mesh
+
+
+def test_profile_prefers_the_reviewed_rtl_facts_pin_without_importing_the_oracle_bridge(monkeypatch):
+    """The authoring sandbox masks ``mlc_bridge`` because it is also a callable cosim oracle.
+
+    The structural profile promised to Arm4 must therefore be derivable from the reviewed facts pin;
+    reaching the bridge on this path would make the advertised command fail only inside bwrap.
+    """
+    from merlin.targetgen.rtl import facts as F
+
+    monkeypatch.setattr(F, "load_facts", lambda target: {"facts": {
+        "arrays": [{"name": "mesh", "rows": 8, "cols": 8}],
+        "memories": [{"name": "scratchpad", "bytes": 4096},
+                     {"name": "accumulator", "bytes": 2048}],
+        "interfaces": [{"name": "funct_decode_table", "legal_funct": [1, 4, 7]}],
+    }})
+    monkeypatch.setattr(B, "mlc_available",
+                        lambda: (_ for _ in ()).throw(AssertionError("oracle bridge was consulted")))
+
+    prof = RB.target_profile("any_target")
+    assert prof.legal_opcodes == (1, 4, 7)
+    assert prof.dim == 8 and prof.has_mesh and prof.has_accumulator
 
 
 _MESH_ACC = RB.TargetProfile("t", legal_opcodes=(0, 1), memory_map={"accum_mem": "acc"}, dim=16)
