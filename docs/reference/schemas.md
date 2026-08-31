@@ -32,6 +32,7 @@ The schemas are the cross-workstream coordination contract (see [Contracts](cont
 | `rvv_package_manifest` | RVV Target-Package Manifest | Provenance + identity for one isolated RVV codegen package under artifacts/targets/rvv/<run_id>/. RVV is a transform-dialect SCHEDULE + cflags, not a residen… |
 | `rvv_result` | RVV Experiment Result | One certify_rvv run of (RVV package x workload) across coupled targets. Records the K-ladder verdict, correctness gate, per-target cycles (with cycle_accurat… |
 | `search_space` | Search Space | Declarative description of a search over candidate compiler artifacts: which candidate type, which method (grid \| evolutionary \| map_elites), the parameter s… |
+| `session_contract` | Stateful Inference Session Contract | Capture-owned mapping from semantic inference steps to the compiled forward ABI. Declares stage semantics, output-to-input state carry, and per-observation i… |
 | `target_contract` | Target Contract | Describes a hardware/software target: its capabilities, the obligations it places on the compiler, and the promises the hardware/runtime makes. Owned by the… |
 | `target_source_manifest` | Target Source Manifest | Records the inputs TargetGen was pointed at for a target: local source directories, files, Scala roots, example directories, plus optional URLs and a branch/… |
 | `temporal_workload_metadata` | Temporal Workload Metadata | A small multi-rate wrapper around an existing workload region. Captures the temporal structure that flat captures hide: the K-step denoise/action loop, the a… |

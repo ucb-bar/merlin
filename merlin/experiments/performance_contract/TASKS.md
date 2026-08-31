@@ -754,6 +754,43 @@ configuration word dropped load-controller busy from 41 to 30 cycles. Consistent
 compute genuinely overlapping when not forced apart, but measured on a workload that computes the
 wrong answer, so it establishes nothing.
 
+## The lever on a hardware-interlocked target is FINE-GRAINED scheduling — correcting the plan
+
+The exploration recorded the hardware-loop macros (`LOOP_WS` funct 8 + 6 configs, `LOOP_CONV_WS`
+funct 15 + 6 configs) as "RTL-legal, named in the contract, emitted by nothing in-tree — a plausible
+part of the gap against the vendor baseline". **That framing is backwards and is corrected here.**
+
+A hardware-loop macro expands a whole tiled matmul inside the accelerator on a fixed, hardware-chosen
+schedule. It is convenient and it is exactly what the vendor library uses — which means emitting it
+concedes the scheduling decision and can, at best, tie the baseline. The compiler's advantage is the
+opposite: emit the FINE-GRAINED command stream (move-in, preload, compute, move-out) and schedule it,
+because that is the only level at which movement can be overlapped with compute, an operand kept
+resident across tiles, or a loop software-pipelined.
+
+**Two measured facts support this, and one of them is an asymmetry against the first target.**
+
+* **Reordering is SAFE here, and it was not there.** This target resolves hazards in a reservation
+  station, so a reordered command stream is still correct by construction. On the non-interlocked
+  target the equivalent lever was *removing* compiler-inserted separations, where every step risked
+  the answer — three of that target's four falsifiers were correctness failures at faster settings.
+  The scheduling search space is therefore explorable here in a way it never was there.
+* **Serializing the stream measurably destroys concurrency.** Inserting a drain before a
+  configuration change dropped load-controller busy from **41 to 30 cycles** on the same workload.
+  Small, and on a run that is not yet bit-exact, so it is an observation and not a result — but it is
+  the mechanism, seen directly: what the command stream permits is what the controllers do.
+
+**What this changes downstream.** The `LOOP_WS` family stays UNUSED deliberately, not as debt. The
+perf capsule families for this target are the scheduling ones — movement hoisted across an operator
+boundary, loop order, operand residency, and issue order against the wait — and their comparand is a
+paired A/B on identical work, which is what `perf/differential.py` was built for. The occupancy
+vector is the instrument that says whether a reordering actually bought overlap, which is why it had
+to come first.
+
+**What it does NOT change.** The whole-model and coverage claims are unaffected, and the vendor
+baseline stays the RECOVERS denominator — beating a hardware-scheduled macro with a
+compiler-scheduled fine-grained stream is precisely the claim worth making, and it is only meaningful
+against that baseline.
+
 ## W1.0 — the free fidelity run, and what it found
 
 `mlc/spec/validate_fidelity.py` against the 2,219 totals already on disk. **Zero new measurement.**
