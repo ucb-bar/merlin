@@ -54,6 +54,38 @@ try:
 except Exception:  # noqa: BLE001 — keep the broker importable even if merlin isn't on the path
     CE = "/path/to/chipyard/.conda-env"
 GLOBAL_VERIL_SLOTS = Path("/tmp/merlin_veril_slots")   # cross-arm verilator semaphore
+
+
+#: Wall budget for a NON-verilator oracle run. It used to be a bare ``900`` here, which was TIGHTER than
+#: the grader's own ``--timeout`` default (1800) and overrode it silently, so the deadline a capsule was
+#: actually held to appeared in neither place a reader would look. It also did not move with the sim's own
+#: cycle budget: raising a cycle cap bought a longer run that this cap then cut off.
+#:
+#: Measured on radiance, where the cert engine is an RTL-derived emulator: certs completed at up to 889 s
+#: against a 900 s deadline, and 3-4 capsules PER ARM came back ``unavailable`` with "wall-timed out after
+#: 900s" -- reported not as a failure of the submission but as a tier that could not run, which is the
+#: honest label and also the easiest one to overlook. Whole capsules were dropped from the cert tier by a
+#: constant nobody had revisited.
+#:
+#: The default is set from what certs are MEASURED to need, not from a round number. On radiance the
+#: completed ones run 15-889 s (mean 165 s), so 900 s was cutting into the top of the real distribution
+#: rather than catching outliers, and the grader's own 1800 s default is only about twice the longest
+#: success -- too close to the same edge to trust as a ceiling. 3600 s leaves real headroom above the
+#: slowest observed cert while staying well under the round timeout, so a genuinely non-terminating
+#: kernel still cannot eat a whole round: it is a bound on runaway work, not a schedule.
+#:
+#: Raise it with the env knob when a deeper cycle budget needs it. Kept target-agnostic: no engine's env
+#: is read here, and nothing about one simulator's cycle cap is encoded in this number.
+_DEFAULT_CERT_TIMEOUT_S = 3600
+
+
+def _cert_timeout_s() -> int:
+    """Seconds a non-verilator oracle run may take (``MERLIN_SIMJOB_TIMEOUT_S``)."""
+    raw = os.environ.get("MERLIN_SIMJOB_TIMEOUT_S", "").strip()
+    try:
+        return max(1, int(raw)) if raw else _DEFAULT_CERT_TIMEOUT_S
+    except ValueError:
+        return _DEFAULT_CERT_TIMEOUT_S
 _CAP_RE = re.compile(r"^[A-Za-z0-9_]+$")
 # debug-flag whitelist: symbolic name -> (currently a no-op passthrough; real sim args wired later).
 DEBUG_WHITELIST = {"trace", "cycles", "verbose"}
@@ -264,7 +296,7 @@ def main(argv=None):
                 workers = max(1, min(int(r.get("workers", 1)), 2 if sim == "verilator" else 8))
                 capspec = "all" if caps == ["all"] else ",".join(caps)
                 ncaps = len(_valid_capsules("all") or []) if caps == ["all"] else len(caps)
-                to = (vpc * ncaps) if sim == "verilator" else 900
+                to = (vpc * ncaps) if sim == "verilator" else _cert_timeout_s()
                 resp_tmp = ch / f"simtmp_{jid}.json"
                 argv2 = [PY, str(SELFCHECK), "--submission", str(ws / "submission"),
                          "--capsules", capspec, "--workers", str(workers),
