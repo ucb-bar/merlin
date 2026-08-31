@@ -25,3 +25,10 @@ gemmini cell:movement/i8/partial
 # presents this shape; the corpus proves it nowhere, and the pass-rate cannot express that because every
 # capsule that exists still passes.
 gemmini composition:A->H->A
+
+# gemmini — the corpus is 100% fits_double and its largest capsule uses 2.34% of the operand store,
+# while 90.1% of real contraction regions across 20 captures exceed that store however they are
+# allocated. Nothing in the corpus can detect a memory-mapping failure, and on a hardware-interlocked
+# target nothing else reports one either: the schedule is correct whatever it chooses.
+gemmini memory:fits_single
+gemmini memory:spills

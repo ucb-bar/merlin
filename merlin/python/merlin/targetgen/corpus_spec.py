@@ -989,7 +989,53 @@ def _semantic_block(entry: dict, binding: CorpusBinding) -> dict:
     must_default = False if kind == "model" else bool(defaults.get("must_accelerate", False))
     block["must_accelerate"] = bool(authored.get("must_accelerate", must_default))
     block["eligible"] = authored.get("eligible", defaults.get("eligible", "auto"))
+    # FAMILIES THIS CAPSULE FUSES, so that a fused-only family can be covered at all.
+    #
+    # A target may declare a family reachable ONLY in composition -- `elementwise_map` with
+    # `composed_with: [contraction]` on the target measured here. A standalone elementwise capsule would
+    # then be the WRONG capsule (the eligibility oracle refuses it as a false fallback), so the only
+    # capsule that can ever evidence that cell is a contraction with an epilogue. Crediting a capsule for
+    # exactly one family therefore left such a cell permanently uncoverable while the requirement kept
+    # demanding it -- a gap no capsule could close, reported forever as corpus debt.
+    #
+    # Derived, not declared: each epilogue stage the capsule carries is resolved to its family through
+    # the same op->family table everything else uses, and kept only when the manifest says that family
+    # composes with this capsule's own. A stage whose family does not resolve is recorded rather than
+    # dropped, because silently withholding coverage a capsule earned is the failure this replaces.
+    fused, unresolved = _fused_families(entry, fam, binding)
+    if fused:
+        block["composed_families"] = sorted(fused)
+    if unresolved:
+        block["composed_families_unresolved"] = sorted(unresolved)
     return block
+
+
+def _fused_families(entry: dict, family: str | None, binding: CorpusBinding) -> tuple[set, set]:
+    """``(families this capsule's epilogue exercises, stage names that did not resolve)``.
+
+    Empty for a capsule with no epilogue: a plain contraction must not claim the epilogue cell, or every
+    capsule in the corpus would cover a family none of them exercises.
+    """
+    from merlin.targetgen import semantic_families as _sf
+
+    stages = [str(s) for s in (entry.get("epilogue") or []) if s]
+    if not stages or not family:
+        return set(), set()
+    try:
+        from merlin.targetgen.eligibility import capability_map_for_target
+        cap_map = capability_map_for_target(getattr(binding, "target", "") or "")
+    except Exception:                                      # noqa: BLE001 — unresolvable manifest
+        return set(), set()
+    fused, unresolved = set(), set()
+    for stage in stages:
+        sfam = _sf.from_op(stage)
+        if sfam is None:
+            unresolved.add(stage)
+            continue
+        cap = cap_map.get(sfam)
+        if cap is not None and family in (getattr(cap, "composed_with", ()) or ()):
+            fused.add(sfam)
+    return fused, unresolved
 
 
 def build(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:

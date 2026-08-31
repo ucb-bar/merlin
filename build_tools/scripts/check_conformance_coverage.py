@@ -20,11 +20,14 @@ Modes, mirroring the other gates in this directory:
   --ratchet PATH       pre-existing debt that MAY ONLY SHRINK; unlisted new gaps fail
   --fail-on-uncovered  exit non-zero when any non-ratcheted cell is uncovered (default: report only)
 
-Two axes are measured. The ``(semantic_family, dtype, tile_alignment)`` cells say WHAT the corpus
+Three axes are measured. The ``(semantic_family, dtype, tile_alignment)`` cells say WHAT the corpus
 computes; the COMPOSITION axis (:mod:`merlin.targetgen.boundary`) says how the work is assembled --
 ``A``, ``A->A``, ``H->A->H``, ``A->H->A``, ``routing``, ``H``. They are reported side by side and never
 crossed: a cross product would demand cells no real model presents. Composition debt is ratcheted under a
-``composition:`` prefix so the two axes cannot collide in one flat ratchet file.
+``composition:`` prefix so the axes cannot collide in one flat ratchet file. The MEMORY-MAPPING axis
+(:mod:`merlin.targetgen.memory_regime`) says which regime the program puts the target's on-chip operand
+store in -- ``fits_double`` / ``fits_single`` / ``fits_on_reuse`` / ``spills`` -- because a corpus whose
+capsules all fit the store many times over cannot detect a memory-mapping failure at all.
 
 Reporting-only by default because the derivation is new and the corpus predates it: turning a 35-cell gap
 into a hard failure on day one would only teach everyone to pass `--no-verify`.
@@ -112,6 +115,7 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
                       for c in gap["uncovered"]],
         "corpus_cells_not_required": gap["extra_cells"],
         "composition": gap.get("composition") or {"status": "not_measured"},
+        "memory_mapping": gap.get("memory_mapping") or {"status": "not_measured"},
         "diagnostics": doc.get("diagnostics") or {},
     }
 
@@ -212,6 +216,23 @@ def main(argv=None) -> int:
                         print(f"     ? {name:32s} {why}")
             elif comp:
                 print(f"   composition   : {comp.get('status')} — {comp.get('detail', '')}")
+            mem = r.get("memory_mapping") or {}
+            if mem.get("status") == "ok":
+                print(f"   memory regime : {mem['n_covered']} / {mem['n_required']} required regime(s)"
+                      f"   (operand store {mem.get('capacity_rows')} rows)")
+                counts = mem.get("region_counts") or {}
+                total = sum(counts.values()) or 1
+                for kind in mem["uncovered"]:
+                    mark = " " if _debt(r["target"], kind, "memory") in ratchet else "*"
+                    n = counts.get(kind, 0)
+                    print(f"     {mark} {kind:34s} no capsule reaches it; {n} real region(s) "
+                          f"({100.0 * n / total:.1f}% of what the captures contain) do")
+                lw = mem.get("largest_working_set") or {}
+                if lw.get("name"):
+                    print(f"       largest capsule working set: {lw['name']} at "
+                          f"{100.0 * float(lw.get('fraction_of_capacity') or 0):.2f}% of capacity")
+            elif mem:
+                print(f"   memory regime : {mem.get('status')} — {mem.get('detail', '')}")
             if r["corpus_cells_not_required"]:
                 print(f"   corpus cells not in the requirement: {r['corpus_cells_not_required']}")
                 print("     (a cell the hardware does not admit for that family — e.g. an int8 movement "
@@ -227,6 +248,9 @@ def main(argv=None) -> int:
     bad += [_debt(r["target"], k, "composition") for r in reports if r["status"] == "ok"
             for k in ((r.get("composition") or {}).get("uncovered") or [])
             if _debt(r["target"], k, "composition") not in ratchet]
+    bad += [_debt(r["target"], k, "memory") for r in reports if r["status"] == "ok"
+            for k in ((r.get("memory_mapping") or {}).get("uncovered") or [])
+            if _debt(r["target"], k, "memory") not in ratchet]
     if bad and a.fail_on_uncovered:
         print(f"\nFAIL: {len(bad)} required cell(s) uncovered and not ratcheted", file=sys.stderr)
         return 1

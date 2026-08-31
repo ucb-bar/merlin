@@ -353,11 +353,19 @@ def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None,
                 # "partial" if ANY extent leaves a remainder: one ragged axis is enough to exercise the
                 # tile-edge path, and that is what we are trying to certify.
                 align = "partial" if any(e % tile_dim for e in extents) else "aligned"
+            # A capsule covers its own family AND any family it FUSES. A target may declare a family
+            # reachable only in composition (`composed_with: [contraction]`), which makes a standalone
+            # capsule for it the wrong capsule -- the eligibility oracle refuses one as a false fallback.
+            # Crediting only `semantic_family` therefore left such a cell permanently uncoverable while
+            # the requirement kept demanding it: a gap no capsule could close, reported forever as debt.
+            fams = [sem.get("semantic_family")] + list(sem.get("composed_families") or ())
             rows.append({"name": cap.get("name") or cy.parent.name,
-                         "family": sem.get("semantic_family"), "dtypes": dts, "align": align})
+                         "family": sem.get("semantic_family"),
+                         "families": tuple(f for f in fams if f),
+                         "dtypes": dts, "align": align})
 
     def _cells(r):
-        return {(r["family"], dt, r["align"]) for dt in r["dtypes"]}
+        return {(f, dt, r["align"]) for f in r["families"] for dt in r["dtypes"]}
 
     cells = {c for r in rows for c in _cells(r)}
     uncovered, chosen = set(cells), []

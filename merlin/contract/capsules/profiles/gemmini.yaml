@@ -421,3 +421,50 @@ capsules:
    source_reference: 'small_llama int8 composed across the systolic mesh and the host scalar/RVV lane — asserts both lanes carried work',
    label: public, gate: {after_op_pass_fraction: 0.8},
    lanes: {require: [on_mesh, scalar_rvv_lane]}}
+
+# ---------------------------------------------------------------------------------------------------
+# TAIL-PATH COVERAGE, generated rather than typed.
+#
+# Every capsule above is authored in WHOLE TILES (`M_tiles`/`K_tiles`/`N_tiles`), so the corpus could not
+# express a partial tile at all and the derived requirement reported `movement/i8/partial` and
+# `elementwise_map/i8/partial` uncovered for as long as it has existed. That is the tail path, which is
+# where tiling bugs live: this repo has already shipped a taped-out unit that computed partial N tiles
+# wrongly while every functional check passed.
+#
+# Extents are tile-RELATIVE, so the same declaration produces the right edge cases for any array edge and
+# nothing here hardcodes a geometry.
+sweeps:
+- id: FT
+  name: '{id}{i:02d}_movement_tail_{M}x{N}'
+  source_reference: >-
+    derived tail-path coverage for the movement family: a load/store round-trip on extents that do not
+    divide the array edge, one below it and one above
+  base: {kind: isa, cat: isa, op: movement, label: public, src: X, out: Y0, modes: {movement: true}}
+  axes:
+    M: [tile-1, tile+1]
+    N: [tile-1]
+
+- id: FE
+  name: '{id}{i:02d}_fused_epilogue_tail_{M}x{K}x{N}'
+  source_reference: >-
+    derived tail-path coverage for the fused epilogue: this target declares elementwise_map reachable
+    ONLY composed with a contraction, so a standalone elementwise capsule would be the wrong capsule --
+    the eligibility oracle refuses one as a false fallback. The epilogue is therefore the only way the
+    cell can be evidenced, and it had never been evidenced at a partial tile
+  base:
+    kind: isa
+    cat: isa
+    op: matmul
+    label: public
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: [acc_scale, relu]
+    acc_scale: 0.0625
+    modes: {i8: true, relu: true, acc_scale: true}
+  axes:
+    M: [tile-1]
+    # Two K points, because one reduction depth cannot separate a tiled unit's rate from its
+    # per-tile-pair overhead -- the generator enforces this rather than documenting it.
+    K: [tile, 2*tile]
+    N: [tile+1]

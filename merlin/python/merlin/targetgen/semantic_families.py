@@ -194,6 +194,8 @@ _OP_FAMILY: dict[str, str] = {
     "bias": "elementwise_map",
     "bias_add": "elementwise_map",
     "gelu": "elementwise_map",
+    "relu": "elementwise_map",
+    "acc_scale": "elementwise_map",
     "silu": "elementwise_map",
     "geglu": "elementwise_map",
     "erf": "elementwise_map",
@@ -206,6 +208,11 @@ _OP_FAMILY: dict[str, str] = {
     "logit_softcap": "elementwise_map",
     "embed_scale": "elementwise_map",
     "requant": "elementwise_map",
+    # `relu` and `acc_scale` sit above beside the other activations because they are the spellings the
+    # COMMAND-BUFFER ABI itself uses for its epilogue stages ("ordered subset of [bias_add, requant,
+    # acc_scale, relu]"), and two of the four resolved while two did not. That asymmetry is not
+    # cosmetic: a fused capsule is credited for the family its epilogue exercises, so an unresolved
+    # stage name silently withheld coverage a capsule had genuinely earned.
     # ...and the per-element spellings a CAPTURED model actually contains beyond the hand corpus. Each is
     # a spelling of the same primitive, not a new capability: an integer bitwise op, a predicate, and a
     # dtype conversion are all per-element maps, and an index generator is a map over the index

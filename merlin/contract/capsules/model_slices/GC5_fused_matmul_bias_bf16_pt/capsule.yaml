@@ -56,3 +56,4 @@ semantic:
   generalization_axis: composition
   must_accelerate: true
   eligible: auto
+comparison_group: fused_matmul_bias

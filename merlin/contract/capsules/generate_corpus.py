@@ -1486,12 +1486,40 @@ def generate_target(target: str) -> list[Path]:
                             skipped=_sweep_skips)
     for _s in _sweep_skips:
         print(f"  [skip] sweep {_s['sweep']}: {_s['reason']}")
-    written = [w for w in (_write_capsule(e, binding, out_root) for e in entries) if w]
-    for d in written:                                         # tracked-file hygiene: no local paths ship
-        _scrub_capsule_dir(d)
+    # SCRUB EACH CAPSULE AS IT IS WRITTEN, not after the whole corpus succeeds. Scrubbing at the end
+    # means one unrelated failure -- a capture that needs an external exporter, say -- aborts the run
+    # with every capsule written so far still carrying its absolute `prov.weights_file` path. Measured:
+    # a run that died on the last entry left `/scratch/.../capsule_m2m_<rand>/weights.safetensors` in
+    # tracked MLIR across six capsules, in a repo that is published. Hygiene that only holds on the
+    # happy path is not hygiene.
+    #
+    # ONE FAILING CAPSULE MUST NOT DESTROY THE WHOLE CORPUS. Letting the exception propagate meant a
+    # single entry that needs an external exporter took every entry after it down with it: measured, a
+    # capture that torch.export refuses (an LSTM whose `_flat_weights` are assigned rather than
+    # registered) aborted the run before any of the tail-path sweep capsules were written, so a coverage
+    # gap stayed open for a reason that had nothing to do with it. Failures are COLLECTED, reported by
+    # name, and re-raised at the end -- the run still fails, it just fails after doing the work it could.
+    written, failures = [], []
+    for e in entries:
+        try:
+            w = _write_capsule(e, binding, out_root)
+        except Exception as exc:                              # noqa: BLE001 — reported, never swallowed
+            failures.append((e.get("name", "?"), f"{type(exc).__name__}: {str(exc)[:300]}"))
+            continue
+        if w:
+            _scrub_capsule_dir(w)
+            written.append(w)
+    if failures:
+        print(f"  [FAIL] {len(failures)} capsule(s) could not be written:")
+        for name, why in failures:
+            print(f"    - {name}: {why}")
     # Record provenance for what we just emitted. The MANIFEST header has always CLAIMED the generator
     # rewrites it, but no writer existed, so it drifted silently as soon as the corpus grew.
     update_provenance_manifest(written)
+    if failures:
+        raise RuntimeError(
+            f"{len(failures)} capsule(s) failed to generate: {', '.join(n for n, _ in failures)}; the "
+            f"rest of the corpus was written, so re-running after fixing them is cheap")
     return written
 
 

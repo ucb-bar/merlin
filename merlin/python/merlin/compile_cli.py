@@ -1357,7 +1357,7 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
             observed["blocked"] = {"tile": [_mt, _kt, _nt], "n_subtiles": _n_sub,
                                    "capacity_elems": _cap, "tiled_by": _tiled_by}
             observed["capacity_fit"] = {
-                **capacity_fit(target, M, K, N, binding.operand_dtype, _D),
+                **capacity_fit(target, M, K, N, binding.operand_dtype, _D, binding.accum_dtype),
                 # WHICH TILER CHOSE THIS EXTENT. Derived here: the fitting extent was computed from
                 # the target's own RTL-derived operand-store capacity. The other tiler below finds a
                 # width by probing until the backend stops refusing, and "derived from a hardware
@@ -1409,7 +1409,15 @@ def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | No
     # FULL extent: the blocked path above already attributes each sub-tile it chose to fit.
     if observed is not None:
         try:
-            observed["capacity_fit_check"] = capacity_fit(target, M, K, N, binding.operand_dtype, _D)
+            # THE ACCUMULATOR DTYPE IS PASSED, and leaving it out was not cosmetic. It defaults to
+            # 8 bits, so the accumulator term was evaluated at 4x the capacity this target
+            # actually has (65536 elements against 16384), and the obligation recorded a fit for
+            # layers the tiler standing beside it was already splitting. Measured: (96,64)@(64,512)
+            # -- a shape whose own regression docstring records spike aborting on it -- reported
+            # holds=True without it and holds=False with it. The binding has carried the real
+            # accumulate type all along; the tiler passes it and these two sites did not.
+            observed["capacity_fit_check"] = capacity_fit(
+                target, M, K, N, binding.operand_dtype, _D, binding.accum_dtype)
         except Exception:                        # noqa: BLE001 — unresolvable target: no obligation known
             pass
     out = _dispatch(mlir, A, W)

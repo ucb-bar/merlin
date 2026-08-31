@@ -178,6 +178,82 @@ composition:
     demand cells like `movement/i8/partial/routing` that no real model presents, manufacturing uncovered
     cells nobody should build; composition is a property of how a program is assembled, not of the arithmetic
     in it
+memory_mapping:
+  required:
+    fits_double:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - spectformer_int8_full
+    - tiny_llama_fp32_full
+    fits_single:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - spectformer_int8_full
+    - tiny_llama_fp32_full
+    spills:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - small_llama
+    - small_llama_fp8
+    - spectformer_int8_full
+    - tiny_llama_fp32_full
+  region_counts:
+    fits_double: 9882
+    fits_single: 2626
+    spills: 9247
+  capacity_rows: 16384
+  captures_unreadable: {}
+  why: ''
+  axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
+    own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
+    capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
+    on a hardware-interlocked target nothing else will report it either -- the schedule is correct whatever
+    it chooses
 diagnostics:
   n_cells: 6
   captures_read:

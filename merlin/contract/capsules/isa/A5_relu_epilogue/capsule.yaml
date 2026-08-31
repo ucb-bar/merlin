@@ -53,3 +53,5 @@ semantic:
   generalization_axis: seen
   must_accelerate: true
   eligible: auto
+  composed_families:
+  - elementwise_map

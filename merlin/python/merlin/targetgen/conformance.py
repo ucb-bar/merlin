@@ -438,7 +438,9 @@ def spec(target: str, captures: dict[str, str | Path], *,
     cells, diag = required_cells(target, captures, declared=declared)
     bnd = boundaries(target)
     from merlin.targetgen import boundary as BD
+    from merlin.targetgen import memory_regime as MR
     comp = BD.required_boundaries(captures, target)
+    mem = MR.required_regimes(captures, target)
     return {
         "target": target,
         "generated_by": "merlin.targetgen.conformance.spec",
@@ -467,6 +469,19 @@ def spec(target: str, captures: dict[str, str | Path], *,
                 "demand cells like `movement/i8/partial/routing` that no real model presents, "
                 "manufacturing uncovered cells nobody should build; composition is a property of how a "
                 "program is assembled, not of the arithmetic in it"),
+        },
+        "memory_mapping": {
+            "required": mem.get("by_regime") or {},
+            "region_counts": mem.get("region_counts") or {},
+            "capacity_rows": mem.get("capacity_rows"),
+            "captures_unreadable": mem.get("captures_unreadable") or {},
+            "why": mem.get("why", ""),
+            "axis_basis": (
+                "the regimes real captured models put this target's operand store in, derived from the "
+                "store's own geometry (bytes / row width from the compute array and the datapath "
+                "element type). A corpus whose capsules all fit the store many times over cannot detect "
+                "a memory-mapping failure of any kind, and on a hardware-interlocked target nothing "
+                "else will report it either -- the schedule is correct whatever it chooses"),
         },
         "diagnostics": diag,
         "personas": personas or {},
@@ -515,4 +530,19 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
         gap["status"] = "ok"
         gap["covered_by"] = corpus["by_kind"]
         out["composition"] = gap
+
+    mem_req = (spec_doc.get("memory_mapping") or {}).get("required")
+    if mem_req is None:
+        out["memory_mapping"] = {"status": "not_measured",
+                                 "detail": "this spec predates the memory-mapping axis; regenerate it "
+                                           "with --write to derive the requirement"}
+    else:
+        from merlin.targetgen import memory_regime as MR
+        mem_corpus = MR.corpus_regimes(corpus_roots, str(spec_doc.get("target") or ""),
+                                       labels=labels, exclude=exclude)
+        mgap = MR.uncovered_regimes({"by_regime": mem_req}, mem_corpus)
+        mgap["status"] = "ok"
+        mgap["covered_by"] = mem_corpus["by_regime"]
+        mgap["region_counts"] = (spec_doc.get("memory_mapping") or {}).get("region_counts") or {}
+        out["memory_mapping"] = mgap
     return out
