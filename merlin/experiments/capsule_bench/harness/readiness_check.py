@@ -444,6 +444,14 @@ def test_bundles():
     _ok("every API the prompts name imports", api_ok, detail)
 
 
+def test_sandbox_authoring_tools():
+    """The paid Arm4 path, not the host checkout: frozen grants + bwrap + live broker requests."""
+    section("F2. promised authoring tools in the assembled bwrap snapshot")
+    import tooling_readiness
+    check = tooling_readiness.sandbox_authoring_readiness(TARGET, "merlin_assisted_rtlchecks")
+    _ok(check["check"], check["ok"], check["evidence"])
+
+
 def _oracle_sim_via() -> str:
     """The target's declared bespoke sim (``toolchain.sim_via``) — ``"chipyard"`` for gemmini, ``""``
     (arc-only / program oracle) for a self-hosted-ISA target like atlas. Routes section G, no literal."""
@@ -715,6 +723,7 @@ def main() -> int:
     for fn in (test_starter_kit, test_generators, test_circt_gate, test_harness,
                test_oracles_endtoend, test_verify_no_cheat, test_corpus_fits_the_endpoint,
                test_graded_path_is_the_declared_one, test_contract_provenance, test_bundles,
+               test_sandbox_authoring_tools,
                test_semantic_coverage_measurable):
         try:
             fn()
