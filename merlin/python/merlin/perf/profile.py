@@ -551,12 +551,62 @@ def _t_banked_memory(sources: Sources) -> tuple[Trait, str]:
         return Trait("banked_memory", None,
                      evidence="no memory is discovered in these facts",
                      missing=("a memory fact carrying a bank count",)), TIER_NONE
+    # THE BANK COUNT IS DERIVABLE, and this trait used to say it was not.
+    #
+    # The old reasoning -- "bytes and depth give a row WIDTH, which is not a bank count" -- was sound
+    # while a row width was all anyone computed. It is not sound now. `depth` in these facts is the
+    # PER-BANK row count, so once the row WIDTH is known (the compute array's column count times the
+    # datapath element width) the total row count follows from the capacity, and total_rows / depth is
+    # the number of banks. Reading `depth` as the whole address space instead under-addresses by exactly
+    # that factor.
+    #
+    # Measured on the interlocked target here: scratchpad 262144 B at a 16 B row = 16384 rows over a
+    # declared depth of 4096 -> 4 banks; accumulator 65536 B at a 64 B row = 1024 rows over 512 -> 2.
+    # Both corroborate against the sibling SRAM groups mlc discovers in the RTL, so this is two
+    # independent instruments agreeing rather than one arithmetic guess.
+    #
+    # Three states are kept apart, because the whole value of this trait is that a perf family gets
+    # gated on it. The division must be EXACT -- a residue means the geometry is not what we think and
+    # the honest answer is "we cannot tell", not a rounded bank count. And a single bank is FALSE, not
+    # None: a memory genuinely has no banking to exploit, which is a fact about the target rather than
+    # a hole in our evidence.
     have = sorted({k for m in mems for k in m})
-    return Trait("banked_memory", None,
-                 evidence=f"facts.memories record {have}; bytes and depth give a row WIDTH, which "
-                          "is not a bank count -- a banked and an unbanked memory of the same "
-                          "capacity are indistinguishable in this fact",
-                 missing=("a per-bank port or bank-count fact",)), TIER_NONE
+    try:
+        from merlin.targetgen.address_space import derive_address_space
+        space = derive_address_space(sources.target)
+    except Exception as e:                                     # noqa: BLE001 — unresolvable target
+        return Trait("banked_memory", None,
+                     evidence=f"facts.memories record {have}, but the address space could not be "
+                              f"derived to turn a capacity into a bank count: "
+                              f"{type(e).__name__}: {str(e)[:120]}",
+                     missing=("a derivable row width (an array column count and a datapath element "
+                              "width) so capacity/depth resolves to banks",)), TIER_NONE
+
+    counted = {s.name: int(s.banks) for s in (getattr(space, "stores", ()) or ())
+               if getattr(s, "banks", None) and not getattr(s, "bank_residue_rows", 0)}
+    inexact = sorted(s.name for s in (getattr(space, "stores", ()) or ())
+                     if getattr(s, "bank_residue_rows", 0))
+    if not counted:
+        undecidable = sorted(s.name for s in (getattr(space, "stores", ()) or ()))
+        return Trait("banked_memory", None,
+                     evidence=f"facts.memories record {have}; no store's bank count divides exactly "
+                              f"(stores {undecidable or 'none'}"
+                              + (f", inexact {inexact}" if inexact else "") + ")",
+                     missing=("a store whose capacity divides exactly into rows of the derived width, "
+                              "and those rows into its declared per-bank depth",)), TIER_NONE
+    banked = {n: b for n, b in counted.items() if b > 1}
+    detail = ", ".join(f"{n}={b}" for n, b in sorted(counted.items()))
+    if banked:
+        return Trait("banked_memory", True,
+                     evidence=f"derived from facts.memories capacity and declared per-bank depth "
+                              f"against the row width the compute array and datapath element imply: "
+                              f"{detail} bank(s)"
+                              + (f"; {inexact} did not divide exactly and are excluded" if inexact
+                                 else "")), TIER_FACTS
+    return Trait("banked_memory", False,
+                 evidence=f"every derived store resolves to a single bank ({detail}), so there is no "
+                          f"banking to exploit -- a fact about this target, not missing evidence"), \
+        TIER_FACTS
 
 
 def _t_persistent_configuration_state(sources: Sources) -> tuple[Trait, str]:
