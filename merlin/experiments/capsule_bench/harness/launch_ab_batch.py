@@ -202,12 +202,21 @@ def main(argv=None):
     ap.add_argument("--tag", required=True, help="batch label, e.g. abc1 -> rb_abc1 / merlin_abc1 / merlincirct_abc1")
     ap.add_argument("--arms", default="baseline,merlin,merlin_rtlchecks")
     ap.add_argument("--mode", choices=["parallel", "sequential"], default="parallel")
-    ap.add_argument("--model", default="claude-opus-4-8")
+    # THE AGENT IS DECLARED, NOT INFERRED. These experiments run on the codex subscription seat, and
+    # both defaults used to point elsewhere: `--model claude-opus-4-8` with `--driver auto` launched
+    # Claude Code, and `auto` can NEVER resolve to codex -- it routes a non-Anthropic id to the Bedrock
+    # Converse loop (metered, real money against the campaign ceiling) and everything else to the
+    # `claude` CLI. So a batch launched without both flags silently measured a different agent, on a
+    # different account, than every stored result it would be compared against.
+    ap.add_argument("--model", default="gpt-5.6-sol")
     ap.add_argument("--effort", default="high")
     # Agent driver + tier-within-agent models (Claude-Code-like). auto preserves route-by-model-id behavior.
     ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode", "codex"],
-                    default="auto",
-                    help="agent driver for every arm (auto|converse|claudecode|opencode|codex)")
+                    default="codex",
+                    help="agent driver for every arm. Default codex (the subscription seat these "
+                         "experiments run on). NOTE that `auto` cannot select codex: it routes by "
+                         "model id to the Bedrock Converse loop or the claude CLI, so it is a way to "
+                         "run a different agent than intended, not a way to pick this one.")
     ap.add_argument("--subagent-model", default="", help="delegate/subagent model (alias or Bedrock id)")
     ap.add_argument("--background-model", default="", help="background/mechanical model (alias or Bedrock id)")
     # Provider for the agent CLI (experiments-only; interactive Claude Code keeps the subscription).
@@ -291,7 +300,21 @@ def main(argv=None):
     if acct and not Path(acct).exists():
         problems.append(f"account-config-dir not found: {acct}")
 
-    print(f"=== A/B/C batch '{a.tag}' — arms={arms} mode={a.mode} model={a.model} effort={a.effort} "
+    # SAY WHICH AGENT AND WHOSE ACCOUNT, BEFORE ANY SPEND. A batch is only comparable with stored
+    # results if it ran the same agent on the same account, and both are decided by flags whose effect
+    # is invisible in the run-id. Resolve them through the loop's own routing (never re-implemented
+    # here) and print the answer, so a batch that would silently bill Bedrock or drive the claude CLI
+    # is caught while reading the banner rather than afterwards in the artifacts.
+    _agent = f"driver={a.driver} model={a.model}"
+    try:
+        sys.path.insert(0, str(C.EXP / "harness"))
+        import run_baseline_qa_loop as _L
+        _L._DRIVER = a.driver
+        _agent = (f"driver={a.driver} -> resolved={_L._driver_for(a.model)} model={a.model} "
+                  f"billing={_L._billing_mode(a.model)}")
+    except Exception as _e:  # noqa: BLE001 — a banner must never block a launch
+        _agent += f" (resolution unavailable: {type(_e).__name__})"
+    print(f"=== A/B/C batch '{a.tag}' — arms={arms} mode={a.mode} {_agent} effort={a.effort} "
           f"repeats={a.repeats} condition={a.condition} ({len(planned)} runs) ===")
     for arm, rid, rd, cond in planned:
         print(f"  {arm:16s} [{cond:10s}] run-id={rid:22s} -> {rd}")

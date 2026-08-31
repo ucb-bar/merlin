@@ -1357,6 +1357,48 @@ def model_budget_seconds() -> float | None:
     return v if v > 0 else None
 
 
+#: The self-protection a budgeted child runs BEFORE anything else: ask the kernel to SIGKILL it when
+#: its parent goes away. Kept as a string prefix, not a function, because a function would have to be
+#: imported -- and importing merlin takes seconds, during which the child is unprotected. A parent
+#: killed inside that window orphans it, which is measured, not hypothetical.
+_CHILD_GUARD = (
+    "import ctypes,os,signal,sys;"
+    "ctypes.CDLL('libc.so.6').prctl(1, signal.SIGKILL);"          # PR_SET_PDEATHSIG
+    "os.getppid()==1 and os._exit(1);"                            # already orphaned: no signal coming
+)
+
+#: Child entry for a budgeted whole-model grade: protect first, then delegate to ``main``.
+_CHILD_PREAMBLE = _CHILD_GUARD + (
+    "__import__('merlin.targetgen.capsule_runner', fromlist=['main']).main(sys.argv[1:])"
+)
+
+
+def _die_with_parent() -> None:
+    """Ask the kernel to SIGKILL this process when its parent goes away.
+
+    The budgeted whole-model grade runs in its OWN SESSION so the parent can kill the process group
+    when the ceiling expires. That protects against a grade overrunning; it does nothing when the
+    PARENT is killed, because the parent's cleanup never runs. MEASURED (2026-08-30): stopping a
+    regrade left the model-grade child and its Verilator alive on a shared host, reparented to init,
+    with nothing left that knew to reap them.
+
+    Set from inside the CHILD rather than through ``preexec_fn``: the parent grades capsules on a
+    ThreadPoolExecutor, and ``preexec_fn`` is documented as unsafe in a threaded process. The cost is a
+    small race -- the parent could die during interpreter startup -- which the getppid() re-check
+    below closes.
+    """
+    try:
+        import ctypes
+        import signal as _sig
+        ppid = os.getppid()
+        PR_SET_PDEATHSIG = 1
+        ctypes.CDLL("libc.so.6", use_errno=True).prctl(PR_SET_PDEATHSIG, _sig.SIGKILL)
+        if os.getppid() != ppid:            # already reparented: the signal will never come
+            os._exit(1)
+    except Exception:                       # noqa: BLE001 — a best-effort safeguard, never a blocker
+        pass
+
+
 def _descendants(pid: int) -> list[int]:
     """Every live descendant of *pid*, deepest first, read from /proc.
 
@@ -1457,7 +1499,11 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         spec_p.write_text(json.dumps({"capsule": capsule, "target": target, "timeout": timeout,
                                       "package_dir": str(package_dir) if package_dir else None}),
                           encoding="utf-8")
-        cmd = [sys.executable, "-m", "merlin.targetgen.capsule_runner",
+        # `-c` rather than `-m`: the preamble sets PR_SET_PDEATHSIG in the first milliseconds, before
+        # importing merlin. Importing first leaves a multi-second window in which the child is
+        # unprotected, and a parent killed inside that window orphans it -- measured, and the reason
+        # this is a preamble and not a call at the top of main().
+        cmd = [sys.executable, "-c", _CHILD_PREAMBLE,
                "--model-grade", str(spec_p), "--model-grade-out", str(out_p)]
         started = time.monotonic()
         proc = _sp.Popen(cmd, stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True,
@@ -2917,6 +2963,7 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_argument("--model-grade", required=True)
         sub.add_argument("--model-grade-out", required=True)
         sa, _ = sub.parse_known_args(_av)
+        _die_with_parent()
         spec = json.loads(Path(sa.model_grade).read_text(encoding="utf-8"))
         res = _grade_model_capsule_inline(spec["capsule"], target=spec.get("target"),
                                           timeout=int(spec["timeout"]),

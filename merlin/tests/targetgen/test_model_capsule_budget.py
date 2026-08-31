@@ -162,3 +162,47 @@ def test_the_kill_reaches_a_grandchild_that_left_the_process_group(tmp_path):
     assert time.monotonic() - t0 < 8, "a zombie is not alive; the wait must not sit out its grace"
     proc.wait(timeout=10)
     assert not CR._running(grandchild), "the grandchild outside the group must be dead too"
+
+
+def test_the_child_dies_when_its_parent_is_killed(tmp_path):
+    """The budget protects against an overrun. It does nothing when the PARENT is killed -- the
+    parent's cleanup never runs -- so the child asks the kernel to reap it instead.
+
+    MEASURED (2026-08-30): stopping a regrade left the model-grade child and its Verilator alive on a
+    shared host, reparented to init, with nothing left that knew to reap them. The guard therefore runs
+    BEFORE merlin is imported; a first attempt that set it after the import left a multi-second window
+    in which exactly this still happened, and this test caught it.
+    """
+    import subprocess
+    import sys as _sys
+
+    parent_py = tmp_path / "parent.py"
+    parent_py.write_text(
+        "import subprocess, sys, time\n"
+        f"kid = subprocess.Popen([sys.executable, '-c', {CR._CHILD_GUARD + 'print(os.getpid(),flush=True);import time;time.sleep(600)'!r}],\n"
+        "    start_new_session=True, stdout=subprocess.PIPE, text=True)\n"
+        "print(kid.stdout.readline().strip(), flush=True)\n"   # the child prints once PROTECTED
+        "time.sleep(600)\n")
+
+    proc = subprocess.Popen([_sys.executable, str(parent_py)], stdout=subprocess.PIPE, text=True)
+    try:
+        child = int(proc.stdout.readline().strip())
+        assert CR._running(child)
+        proc.kill()
+        proc.wait(timeout=10)
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline and CR._running(child):
+            time.sleep(0.2)
+        assert not CR._running(child), (
+            "the child outlived its parent — on a shared host that is an hours-long simulator that "
+            "nothing is left to reap")
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+
+
+def test_the_guard_runs_before_merlin_is_imported():
+    """The ordering IS the fix. If the guard ever moves after the import, the window comes back."""
+    assert CR._CHILD_PREAMBLE.startswith(CR._CHILD_GUARD)
+    assert "prctl" in CR._CHILD_GUARD
+    assert CR._CHILD_GUARD.index("prctl") < CR._CHILD_PREAMBLE.index("merlin.targetgen")
