@@ -3,9 +3,10 @@
 Works on the real artifacts: ``workloads/smolvla/smolvla.mlir`` (25k lines) parses in
 a few seconds. Two model2MLIR/xDSL impedance notes, both handled here:
 
-- xDSL 0.65's linalg parser rejects the parenthesized multi-result form
+- xDSL's linalg parser rejects the parenthesized multi-result form
   ``} -> (tensor<...>, tensor<...>)`` that MLIR prints for multi-result
-  ``linalg.generic``; :data:`PAREN_RESULTS` normalizes it textually before parsing.
+  ``linalg.generic`` (re-verified on the pinned xDSL 0.68: ``Expected '->'``);
+  :func:`strip_paren_results` normalizes it textually before parsing.
 - model2MLIR's *section splitter* can emit use-before-def SSA references
   (e.g. ``sections/smolvla.model.mlir`` references ``%2034`` which is never defined
   in that file) — invalid SSACFG IR. Parse the **full** artifact, not the sections,
@@ -14,13 +15,59 @@ a few seconds. Two model2MLIR/xDSL impedance notes, both handled here:
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# xDSL 0.65 linalg custom syntax does not accept `} -> (T1, T2)`.
-PAREN_RESULTS = re.compile(r"(\}\s*->\s*)\(([^()]+)\)")
+
+def strip_paren_results(text: str) -> str:
+    """Drop the parentheses from a multi-result ``linalg`` region terminator.
+
+    MLIR prints a multi-result ``linalg.generic`` as (real line from
+    ``out/runs/rvv/beam/matmul/.../generated/v/model.prepared.mlir``)::
+
+        } -> (tensor<1x32xf32>, tensor<1x32xi64>)
+
+    and xDSL's linalg custom syntax rejects the parenthesized form — still true on the
+    xDSL pinned here (0.68), verified by parsing that exact text: ``Expected '->'``. So the
+    parens are removed BEFORE the parse; this repair is what makes the module parseable at
+    all, which is why it is textual.
+
+    Scanned structurally: a ``}``, optional whitespace, ``->``, optional whitespace, then a
+    parenthesized group holding no further parentheses. Anything else is left verbatim —
+    in particular a nested-paren type list is NOT something this normalizer understands, so
+    it reaches the parser unchanged and fails there loudly instead of being mangled here.
+    """
+    out: list[str] = []
+    i = 0
+    while True:
+        brace = text.find("}", i)
+        if brace < 0:
+            out.append(text[i:])
+            return "".join(out)
+        k = brace + 1
+        while k < len(text) and text[k].isspace():
+            k += 1
+        if text[k:k + 2] == "->":
+            k += 2
+            while k < len(text) and text[k].isspace():
+                k += 1
+        else:
+            k = -1
+        if k < 0 or k >= len(text) or text[k] != "(":
+            out.append(text[i:brace + 1])   # not a `} -> (...)` terminator
+            i = brace + 1
+            continue
+        close = k + 1
+        while close < len(text) and text[close] not in "()":
+            close += 1
+        if close >= len(text) or text[close] != ")" or close == k + 1:
+            out.append(text[i:brace + 1])   # unbalanced / nested / empty — leave alone
+            i = brace + 1
+            continue
+        out.append(text[i:k])               # `} -> ` verbatim, whitespace included
+        out.append(text[k + 1:close])       # the result-type list, parens dropped
+        i = close + 1
 
 
 def make_context():
@@ -52,7 +99,7 @@ def parse_mlir_text(text: str, ctx=None):
 
     from ..common.ir_lock import IR_LOCK
 
-    text = PAREN_RESULTS.sub(r"\1\2", text)
+    text = strip_paren_results(text)
     # THE serialization point for xDSL parsing, held here rather than at call sites because the call
     # sites are not discoverable by inspection: locking the two obvious ones in `build_app` still left
     # `c_runtime.generate` parsing twice for the @forward signature, and the resulting race surfaced as

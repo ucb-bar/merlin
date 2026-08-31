@@ -32,7 +32,6 @@ is disassembled (``rvv_audit``) and every compute-bearing scalar symbol is recor
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -329,13 +328,68 @@ def prepare_model_mlir(bundle: _bundle.CaptureBundle, work: Path) -> Path:
 # the source rank — invalid IR (MLIR's bufferizer rejects "mixed offsets rank (R) vs sizes rank (1)").
 # We reconstruct the rank-R `static_sizes` so the slice is well-formed and its rank-reduction to the
 # (already-correct) result type is legal: exactly one kept dim holds the size, the rest are 1.
-# One malformed extract_slice op. Captures: (1) offsets, (2) sizes, (3) strides, (4) the tail from
-# after strides through the op's type signature (kept verbatim). The source dims are recovered from
-# the tail's first `(tensor<DIMSxELEM>)` operand type.
-_EXTRACT_SLICE_RE = re.compile(
-    r'static_offsets = array<i64: ([^>]*)>, static_sizes = array<i64: ([^>]*)>, '
-    r'static_strides = array<i64: ([^>]*)>(.*?: \(tensor<([0-9x]+)x[a-z0-9]+>\) -> tensor<[^>]*>)',
-    re.DOTALL)
+# One malformed op looks like this (real line, bitvla `model.mlir`, abridged):
+#   %58 = "tensor.extract_slice"(%57) <{static_offsets = array<i64: 0, 0, 31, 0>,
+#          static_sizes = array<i64: 32>, static_strides = array<i64: 1, 1, 1, 1>, ...}>
+#          {prov.op = "select", ...} : (tensor<1x1x32x32xf32>) -> tensor<32xf32>
+# The three static_* lists are read as data; everything from the end of static_strides through the
+# op's type signature is the TAIL, kept byte-for-byte. The source dims come from the tail's first
+# `(tensor<DIMSxELEM>)` operand type. Scanned on fixed literals (`static_offsets = array<i64: `,
+# `: (tensor<`, …) rather than a pattern, because the text is invalid IR and cannot be parsed yet.
+_OFFSETS_ANCHOR = "static_offsets = array<i64: "
+_SIZES_ANCHOR = ">, static_sizes = array<i64: "
+_STRIDES_ANCHOR = ">, static_strides = array<i64: "
+_OPERAND_ANCHOR = ": (tensor<"
+_RESULT_ANCHOR = ">) -> tensor<"
+_DIM_CHARS = frozenset("0123456789x")
+_TYPE_CHARS = frozenset("0123456789abcdefghijklmnopqrstuvwxyz")
+
+
+def _split_shaped_type(body: str) -> tuple[str, str] | None:
+    """Split a tensor type body ``"1x8xi64"`` into its dims ``"1x8"`` and element type ``"i64"``.
+
+    The element type is everything after the LAST ``x`` that still has only digits and ``x``
+    before it — the longest possible dim list, which is what makes ``32000xi64`` split at the
+    single ``x`` and ``1x8xi64`` at the second one. Returns ``None`` when ``body`` is not that
+    shape (an unranked, dynamic, or non-lowercase element type), so the caller leaves the op
+    untouched rather than guessing a rank.
+    """
+    if not body or any(ch not in _TYPE_CHARS for ch in body):
+        return None
+    prefix = 0
+    while prefix < len(body) and body[prefix] in _DIM_CHARS:
+        prefix += 1
+    for split in range(min(prefix, len(body) - 2), 0, -1):
+        if body[split] == "x":
+            return body[:split], body[split + 1:]
+    return None
+
+
+def _find_slice_signature(text: str, start: int) -> tuple[str, list[int]] | None:
+    """From ``start``, find the op's ``: (tensor<SRC>) -> tensor<RES>`` signature.
+
+    Returns the tail (everything from ``start`` through that signature, verbatim) plus the
+    source dims. The first candidate `: (tensor<` that actually parses wins, mirroring how the
+    op's own type signature is the first one after its attribute dict. ``None`` when no
+    candidate parses — the op is then left alone for the bufferizer to reject loudly.
+    """
+    probe = start
+    while True:
+        at = text.find(_OPERAND_ANCHOR, probe)
+        if at < 0:
+            return None
+        probe = at + 1
+        body_at = at + len(_OPERAND_ANCHOR)
+        end = body_at
+        while end < len(text) and text[end] in _TYPE_CHARS:
+            end += 1
+        split = _split_shaped_type(text[body_at:end])
+        if split is None or not text.startswith(_RESULT_ANCHOR, end):
+            continue
+        close = text.find(">", end + len(_RESULT_ANCHOR))
+        if close < 0:
+            continue
+        return text[start:close + 1], [int(d) for d in split[0].split("x")]
 
 
 def _repair_malformed_select_slices(text: str) -> tuple[str, int]:
@@ -347,33 +401,60 @@ def _repair_malformed_select_slices(text: str) -> tuple[str, int]:
     others to 1. Deterministic when one offset is non-zero (bitvla: dim identified by the select
     index); for all-zero offsets (smolvla) it takes the canonical last-matching dim. A wrong guess
     can only LOWER the on-board cos (never a false pass — correctness stays gated vs golden)."""
-    import re as _re
-
-    count = [0]
-
-    def repl(m: "_re.Match") -> str:
-        offs = [int(x) for x in m.group(1).split(",")]
-        sizes = [x.strip() for x in m.group(2).split(",")]
-        strides = [x.strip() for x in m.group(3).split(",")]
-        tail = m.group(4)
-        src = [int(x) for x in m.group(5).split("x")]
+    out: list[str] = []
+    count = 0
+    i = 0
+    while True:
+        at = text.find(_OFFSETS_ANCHOR, i)
+        if at < 0:
+            out.append(text[i:])
+            break
+        # The three lists are `[^>]`-only, so each ends at the next `>`; the literal that must
+        # follow is what distinguishes a real static_offsets/sizes/strides triple from a lookalike.
+        offs_at = at + len(_OFFSETS_ANCHOR)
+        offs_end = text.find(">", offs_at)
+        sizes_at = offs_end + len(_SIZES_ANCHOR)
+        sizes_end = text.find(">", sizes_at) if offs_end >= 0 else -1
+        strides_at = sizes_end + len(_STRIDES_ANCHOR)
+        strides_end = text.find(">", strides_at) if sizes_end >= 0 else -1
+        if (offs_end < 0 or sizes_end < 0 or strides_end < 0
+                or not text.startswith(_SIZES_ANCHOR, offs_end)
+                or not text.startswith(_STRIDES_ANCHOR, sizes_end)):
+            out.append(text[i:at + 1])          # not the attribute triple — resume just past it
+            i = at + 1
+            continue
+        found = _find_slice_signature(text, strides_end + 1)
+        if found is None:
+            out.append(text[i:at + 1])
+            i = at + 1
+            continue
+        tail, src = found
+        offs_text, strides_text = text[offs_at:offs_end], text[strides_at:strides_end]
+        offs = [int(x) for x in offs_text.split(",")]
+        sizes = [x.strip() for x in text[sizes_at:sizes_end].split(",")]
+        strides = [x.strip() for x in strides_text.split(",")]
+        end_of_op = strides_end + 1 + len(tail)
         r = len(offs)
         if len(sizes) != 1 or len(offs) == len(sizes) or len(strides) != r or len(src) != r:
-            return m.group(0)  # well-formed or not the rank-1 malformation
+            out.append(text[i:end_of_op])       # well-formed or not the rank-1 malformation
+            i = end_of_op
+            continue
         v = int(sizes[0])
         kept = None
-        for i in range(r):
-            if src[i] == v and offs[i] + v <= src[i]:
-                kept = i  # last matching dim
+        for dim in range(r):
+            if src[dim] == v and offs[dim] + v <= src[dim]:
+                kept = dim  # last matching dim
         if kept is None:
-            return m.group(0)  # can't safely reconstruct — leave (fails loudly, not silently)
-        new_sizes = ", ".join(str(v if i == kept else 1) for i in range(r))
-        count[0] += 1
-        return (f"static_offsets = array<i64: {m.group(1)}>, static_sizes = array<i64: {new_sizes}>, "
-                f"static_strides = array<i64: {m.group(3)}>{tail}")
-
-    out = _EXTRACT_SLICE_RE.sub(repl, text)
-    return out, count[0]
+            out.append(text[i:end_of_op])       # can't safely reconstruct — leave (fails loudly)
+            i = end_of_op
+            continue
+        new_sizes = ", ".join(str(v if dim == kept else 1) for dim in range(r))
+        count += 1
+        out.append(text[i:at])
+        out.append(f"{_OFFSETS_ANCHOR}{offs_text}{_SIZES_ANCHOR}{new_sizes}"
+                   f"{_STRIDES_ANCHOR}{strides_text}>{tail}")
+        i = end_of_op
+    return "".join(out), count
 
 
 def lower_to_llvmir(mlir_path: Path, work: Path, *, timeout: int = 1200) -> Path:

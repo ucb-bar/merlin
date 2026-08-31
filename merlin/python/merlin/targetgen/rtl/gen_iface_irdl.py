@@ -19,7 +19,6 @@ Usage: python -m merlin.targetgen.rtl.gen_iface_irdl [--out <irdl.mlir>] [--veri
 """
 from __future__ import annotations
 import argparse
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -33,6 +32,20 @@ _MLIROPT = _LLVM / "bin" / "mlir-opt"
 # interface_grammar.md in merlin/contract/, NOT under a per-target dir.
 _DEFAULT_OUT = _REPO / "merlin/contract/merlin_iface.irdl.mlir"
 _CAPSULES = _REPO / "merlin/contract" / "capsules"
+
+
+# tblgen-to-irdl renders every `StrAttr` operand constraint as the literal line
+#     %2 = irdl.base "!builtin.string"
+# and mlir-opt's IRDL runtime refuses to register that base, so the whole dialect fails to
+# load. Relaxing it to `irdl.any` keeps REGISTRATION working (attribute-VALUE checking is
+# the grader's job, unchanged). Only spaces/tabs after the literal are absorbed, never the
+# newline — swallowing it would join two SSA defs onto one line and corrupt the IRDL.
+_STR_BASE = 'irdl.base "!builtin.string"'
+
+
+def _relax_string_base(raw: str) -> str:
+    head, *rest = raw.split(_STR_BASE)
+    return "irdl.any".join([head] + [chunk.lstrip(" \t") for chunk in rest])
 
 
 def _discover_ref_ods_inc() -> Path:
@@ -57,10 +70,7 @@ def generate(out: Path, ref_ods_inc: Path | None = None) -> Path:
         [str(_T2I), str(td), "-I", str(_REF_ODS_INC), "-I", str(_LLVM / "include"),
          "--gen-dialect-irdl-defs", "--dialect=merlin_iface"],
         capture_output=True, text=True, check=True).stdout
-    # normalize StrAttr base refs the IRDL runtime can't register -> irdl.any.
-    # IMPORTANT: only consume trailing spaces/tabs, NOT the newline (\s* would join SSA defs onto one
-    # line and corrupt the IRDL). Each `%N = irdl.base "!builtin.string"` stays its own line as `%N = irdl.any`.
-    norm = re.sub(r'irdl\.base "!builtin\.string"[ \t]*', 'irdl.any', raw)
+    norm = _relax_string_base(raw)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(norm)
     return out
