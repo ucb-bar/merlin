@@ -236,8 +236,26 @@ def boundaries(target: str) -> Boundaries:
         b.tile_edge = edge
         caps = contract.get("capabilities") or {}
         hw = bool((caps.get("mesh") or {}).get("rows") or (caps.get("tile") or {}).get("rows"))
-        b.tile_edge_is_hardware_fact = hw or (edge is not None and edge != _DEFAULT_SW_TILE)
+        # A target may DECLINE to restate its geometry in the contract and leave it to RTL discovery --
+        # one does exactly that, with `capabilities: {}` and a comment saying the mesh is a CIRCT-extracted
+        # fact. Asking only the contract then reports a real hardware mesh as a software guess, and it is
+        # worst precisely when the mesh edge happens to equal the default, because the numeric fallback
+        # below cannot tell them apart either. The value already comes from the RTL fact; the PROVENANCE
+        # has to come from the same place or the two disagree about what is known.
+        rtl_rows = None
+        if not hw:
+            try:
+                from merlin.targetgen.rtl.facts import load_facts
+                arrays = ((load_facts(target) or {}).get("facts") or {}).get("arrays") or []
+                mesh = next((a for a in arrays if a.get("rows") and a.get("cols")), None)
+                rtl_rows = int(mesh["rows"]) if mesh else None
+            except Exception:                              # noqa: BLE001 — absent facts: not a hardware fact
+                rtl_rows = None
+        from_rtl = rtl_rows is not None and edge is not None and int(rtl_rows) == int(edge)
+        b.tile_edge_is_hardware_fact = hw or from_rtl or (edge is not None and edge != _DEFAULT_SW_TILE)
         b.tile_edge_source = ("capability manifest (declared mesh/tile rows)" if hw else
+                              "RTL facts arrays[].rows (the target leaves geometry to discovery rather "
+                              "than restating it in the contract)" if from_rtl else
                               f"software-tiling default ({_DEFAULT_SW_TILE}); this target declares no "
                               f"fixed hardware mesh, so it is NOT a hardware boundary")
     except Exception as e:                                 # noqa: BLE001

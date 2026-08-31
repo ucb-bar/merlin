@@ -92,3 +92,26 @@ def test_composite_cells_name_the_primitives_that_evidence_them(spec_path):
     bad = [c["cell"] for c in (doc.get("cells") or [])
            if c.get("basis") == CF.OBSERVED_VIA_PRIMITIVES and not c.get("via_primitives")]
     assert not bad, f"composite cell(s) with no recorded primitives: {bad}"
+
+
+def test_a_mesh_left_to_rtl_discovery_is_still_a_hardware_boundary() -> None:
+    """Provenance must come from wherever the VALUE came from.
+
+    A target may decline to restate its geometry in the contract and leave it to RTL discovery. Asking
+    only the contract then reports a real hardware mesh as a software guess -- and it fails worst when
+    the mesh edge happens to equal the software default, because the numeric fallback cannot separate
+    them either. Both targets that declare a mesh must read as hardware facts, by whichever route.
+    """
+    from merlin.targetgen.conformance import boundaries
+
+    for target in ("gemmini", "atlas"):
+        b = boundaries(target)
+        assert b.tile_edge, f"{target}: no tile edge derived"
+        assert b.tile_edge_is_hardware_fact is True, (
+            f"{target}: a declared/discovered mesh reported as a software default "
+            f"({b.tile_edge_source})")
+
+    # And the flag still discriminates: a target that genuinely declares no fixed mesh stays False,
+    # so this is not a blanket true.
+    rad = boundaries("radiance")
+    assert rad.tile_edge_is_hardware_fact is False
