@@ -211,8 +211,25 @@ def eta_from_counters(values: dict, counters: OccupancyCounters) -> dict:
             busy[e] = busy.get(e, 0) + v
         if len(combo) >= 2:
             realised += v
+    # HOW MUCH OVERLAP WAS AVAILABLE, for any number of engines.
+    #
+    # The second-largest per-engine total is the right bound for TWO engines and is wrong for three:
+    # with three engines overlapping in disjoint pairs the numerator counts every pair while the
+    # denominator only admits the top pair's ceiling, and η comes out above 1. Measured on the first
+    # real run of this instrument -- a bit-exact A/B on the pinned RTL reported η of 1.1726 and 1.0253,
+    # which is not a fraction and cannot be quoted as one.
+    #
+    # Two facts bound it, and the binding one is whichever is smaller. Every cycle in which two or more
+    # engines are busy consumes at least TWO engine-busy-cycles, so overlap <= floor(total / 2). And in
+    # every such cycle at least one engine other than the busiest is busy, so overlap <= total minus
+    # the busiest engine's own total.
+    #
+    # For two engines this REDUCES to the second-largest exactly (checked: [100,60] -> 60, [80,80] ->
+    # 80, [500,7] -> 7), so it generalises the existing convention rather than replacing it, and the
+    # falsifier's denominator and this one stay the same quantity wherever they were already equal.
     ordered = sorted(busy.values(), reverse=True)
-    available = ordered[1] if len(ordered) >= 2 else 0
+    total = sum(ordered)
+    available = min(total - ordered[0], total // 2) if len(ordered) >= 2 else 0
     if available <= 0:
         return {"state": "unknown", "eta": None, "busy_cycles": busy, "realised_cycles": realised,
                 "why": "the second-busiest engine has no busy cycles, so no overlap was AVAILABLE; "
@@ -221,8 +238,9 @@ def eta_from_counters(values: dict, counters: OccupancyCounters) -> dict:
             "busy_cycles": busy, "realised_cycles": realised, "available_cycles": available,
             "complete": counters.complete(),
             "note": ("realised counts every cycle with two or more engines busy; available is the "
-                     "second-largest per-engine busy total, the same quantity headroom and the "
-                     "falsifier use")}
+                     "most overlap the per-engine totals admit -- min(total - busiest, total // 2) -- "
+                     "which equals the second-largest total when there are two engines, the case the "
+                     "falsifier and headroom were written for")}
 
 
 # ---------------------------------------------------------------------------------------------------

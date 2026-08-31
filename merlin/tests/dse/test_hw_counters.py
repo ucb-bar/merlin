@@ -82,13 +82,42 @@ class TestEta:
         assert got["state"] == "measured" and got["eta"] == 0.0
 
     def test_an_overlapped_schedule_measures_more(self):
+        # 60 overlapped cycles against three engines each busy 100. Available is min(total - busiest,
+        # total // 2) = min(200, 150) = 150, so eta is 0.4.
+        #
+        # It was 0.6 here, under a denominator that took the second-largest per-engine total. That is
+        # right for TWO engines and wrong for three: with three engines overlapping in disjoint pairs
+        # the numerator counts every pair while the denominator admits only the top pair's ceiling, and
+        # eta exceeds 1. The first real run of this instrument on hardware returned 1.1726 and 1.0253 --
+        # not fractions, and not quotable as percentages. The bound is now what the per-engine totals
+        # actually admit.
         got = H.eta_from_counters(
             self._vals(WHOLE_ALPHA_BETA_CYCLES=60, WHOLE_ALPHA_CYCLES=40, WHOLE_BETA_CYCLES=40),
             self._oc())
-        assert got["state"] == "measured" and got["eta"] == 0.6
+        assert got["state"] == "measured" and got["eta"] == 0.4
+        assert got["available_cycles"] == 150
         # The busy totals are unchanged -- the same work, differently scheduled, which is the whole
         # premise of the A/B this feeds.
         assert got["busy_cycles"] == {"ALPHA": 100, "BETA": 100, "GAMMA": 100}
+
+    def test_eta_never_exceeds_one(self):
+        # The property the old denominator broke. Three engines overlapping in disjoint pairs is the
+        # case that produced it, so it is the case tested.
+        got = H.eta_from_counters(
+            self._vals(WHOLE_ALPHA_BETA_CYCLES=100, WHOLE_ALPHA_GAMMA_CYCLES=100,
+                       WHOLE_BETA_GAMMA_CYCLES=100, WHOLE_ALPHA_CYCLES=0,
+                       WHOLE_BETA_CYCLES=0, WHOLE_GAMMA_CYCLES=0),
+            self._oc())
+        assert got["state"] == "measured" and got["eta"] <= 1.0
+
+    def test_two_engines_still_use_the_second_largest_total(self):
+        # The generalisation must REDUCE to the convention headroom and the falsifier were written for,
+        # or this eta and theirs stop being the same quantity wherever both apply.
+        hdr = ("#define P_A_CYCLES 1\n#define P_B_CYCLES 2\n#define P_A_B_CYCLES 3\n")
+        oc = H.derive_occupancy_counters(hdr)
+        got = H.eta_from_counters({"P_A_CYCLES": 40, "P_B_CYCLES": 0, "P_A_B_CYCLES": 60}, oc)
+        # busy: A=100, B=60 -> second-largest 60; min(160-100, 160//2) = min(60, 80) = 60.
+        assert got["available_cycles"] == 60 and got["eta"] == 1.0
 
     def test_a_per_engine_total_includes_its_overlapping_cycles(self):
         # Reading a single as the whole-engine total understates the busiest engine and inflates eta.
