@@ -145,9 +145,19 @@ def toolchain_binds(te: TargetExperiment) -> list[str]:
 
 
 def sandbox_env(te: TargetExperiment, ws: Path) -> str:
-    """Shell ``export``s prepended to the in-sandbox command. PYTHONPATH points at the WORKSPACE's curated
-    merlin pkg (the repo editable-install path is masked), so only granted modules import. PATH/LD are
-    universal (venv/llvm/clang + compat shim) plus the sim family's dirs — derived, not per-target."""
+    """Shell ``export``s prepended to the in-sandbox command.
+
+    ``PYTHONPATH`` points at this checkout's package root.  The checkout itself is tmpfs-masked, then the
+    immutable bundle snapshot re-mounts only the granted package children at their original absolute
+    destinations, so Python sees exactly the curated module closure and nothing else.  Pointing at
+    ``ws/merlin/python`` was illusory: workspace assembly creates friendly basename links, not a package
+    tree.  It only appeared to work in the primary checkout because the shared venv's editable-install
+    ``.pth`` happened to point back to that same path; a detached launch worktree correctly failed with
+    ``ModuleNotFoundError``.  The explicit checkout path removes that ambient dependency.
+
+    PATH/LD are universal (venv/llvm/clang + compat shim) plus the sim family's dirs — derived, not
+    per-target.
+    """
     sim = _sim(te)
     path = ":".join((f"{VENV}/bin", f"{LLVM}/bin", CLANG_BIN, *sim.path_dirs))
     ld = ":".join((COMPAT_LIB, *sim.ld_dirs))
@@ -161,7 +171,7 @@ def sandbox_env(te: TargetExperiment, ws: Path) -> str:
     # NOTE: do NOT put {LLVM}/lib on LD_LIBRARY_PATH — it shadows system libLLVM and breaks the host C/C++
     # compilers. mlir-opt/llc find their libs via rpath.
     parts.append(f'export LD_LIBRARY_PATH={ld}${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}; ')
-    parts.append(f'export PYTHONPATH={ws}/merlin/python${{PYTHONPATH:+:$PYTHONPATH}}; ')
+    parts.append(f'export PYTHONPATH={_REPO}/merlin/python${{PYTHONPATH:+:$PYTHONPATH}}; ')
     harness = curated_harness_dir(te)
     if harness:
         # A target-neutral var + the per-target-named one back-compat consumers read. The per-target name

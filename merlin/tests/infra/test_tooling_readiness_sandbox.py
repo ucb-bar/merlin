@@ -8,7 +8,8 @@ import sys
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import merlin_dir, repo_root
+from merlin.targetgen.sandbox import toolchain
 from merlin.targetgen.target_experiment import load_target_experiment
 
 
@@ -40,6 +41,14 @@ def test_tool_only_bundle_refuses_a_missing_promised_grant():
 
     with pytest.raises(RuntimeError, match="missing promised authoring grant"):
         readiness._tool_only_bundle(te, "merlin_assisted_rtlchecks", stale)
+
+
+def test_sandbox_pythonpath_names_the_frozen_checkout_not_an_unbuilt_workspace_tree(tmp_path):
+    exp = merlin_dir() / "experiments/capsule_bench/targets/gemmini"
+    te = load_target_experiment(exp / "target_experiment.yaml")
+    value = toolchain.sandbox_env(te, tmp_path / "workspace")
+    assert f"export PYTHONPATH={repo_root()}/merlin/python" in value
+    assert f"{tmp_path}/workspace/merlin/python" not in value
 
 
 def test_gemmini_promised_tools_run_in_frozen_bwrap_with_live_brokers():
