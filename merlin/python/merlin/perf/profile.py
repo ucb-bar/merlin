@@ -682,14 +682,43 @@ def _t_explicit_completion(sources: Sources) -> tuple[Trait, str]:
     that reads as a property of the machine.
     """
     ifaces = sorted(sources.interfaces())
+    # READ THE PORTS. `facts.interfaces` carries a name and an evidence string and no port list, so
+    # this trait used to conclude from their absence that the target does not signal completion -- a
+    # statement about our extractor delivered as a statement about the hardware. The elaborated FIRRTL
+    # the facts THEMSELVES name is the authority for what this configuration emitted, and a decoupled
+    # `completed` channel is what a scheduling family needs in order to price an issue against a wait.
+    #
+    # Decoupled is the bar, deliberately. A bare `completed` wire says a unit finished SOMETHING; a
+    # ready/valid handshake carries a tag and lets a consumer attribute the completion to a command,
+    # which is the difference between knowing a unit is done and knowing WHICH work it finished.
+    try:
+        from merlin.targetgen.rtl.ports import port_facts
+        pf = port_facts(sources.target, fields=("completed",))
+    except Exception as e:                                     # noqa: BLE001
+        pf = {"status": "unavailable", "why": f"{type(e).__name__}: {str(e)[:120]}", "fields": {}}
+    if pf.get("status") == "derived":
+        got = (pf.get("fields") or {}).get("completed") or {}
+        handshaken = list(got.get("decoupled") or ())
+        if handshaken:
+            return Trait("explicit_completion", True,
+                         evidence=f"{len(handshaken)} module(s) in this target's own elaborated FIRRTL "
+                                  f"expose a DECOUPLED completion channel ({', '.join(handshaken)}); "
+                                  f"read from the .fir the facts name, so it describes what this "
+                                  f"configuration emitted rather than what the generator can emit"), \
+                TIER_FACTS
+        named = list(got.get("modules") or ())
+        return Trait("explicit_completion", None,
+                     evidence=f"the elaboration exposes a completion field on {len(named)} module(s) "
+                              f"{named or 'none'}, none of them a ready/valid handshake, so a "
+                              f"completion cannot be attributed to a particular command",
+                     missing=("a decoupled (ready/valid) completion channel, or an activity source "
+                              "declaring completion_observable "
+                              "(merlin.perf.decompose.ActivitySource)",)), TIER_NONE
     return Trait("explicit_completion", None,
-                 evidence=f"the facts declare interfaces {ifaces or 'none'}, each carrying a name and "
-                          f"an evidence string and NO port list; a completion port therefore cannot "
-                          f"appear in this bundle even where the RTL drives one. This is an extraction "
-                          f"gap, not evidence that the target lacks completion signalling",
-                 missing=("a per-engine completion port in the RTL facts -- the extractor would have "
-                          "to record module ports, not just interface names, so a decoupled "
-                          "completion/response channel on each command controller becomes a fact; "
+                 evidence=f"the facts declare interfaces {ifaces or 'none'} and carry no port list, and "
+                          f"the elaborated FIRRTL could not be read to recover one "
+                          f"({pf.get('why', 'unavailable')}). UNKNOWN, not absent",
+                 missing=("the elaborated .fir this target's facts name, so module ports can be read; "
                           "or an activity source declaring completion_observable "
                           "(merlin.perf.decompose.ActivitySource) -- headroom.concurrency_traits "
                           "never defaults this",)), TIER_NONE
