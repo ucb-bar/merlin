@@ -107,6 +107,16 @@ def test_generated_xdsl_dialect_verifies_and_roundtrips(tmp_path):
     mod.roundtrip(m).verify()
 
 
+def test_generated_dialect_verifiers_share_maxpool_epilogue_vocabulary(tmp_path):
+    """The authoring kits must recognize the fused-pooling capsules' public spelling."""
+    result = _build(tmp_path / "repo")
+    xdsl_text = (result.out / "xdsl/toynpu_dialect.py").read_text()
+    assert '"maxpool"' in xdsl_text
+
+    ops_cpp = next((result.out / "lib").rglob("*Ops.cpp"))
+    assert '"maxpool"' in ops_cpp.read_text()
+
+
 def test_contract_only_still_structurally_valid(tmp_path):
     result = pipeline.build("toy_npu", out=tmp_path / "co", emit=["contract-only"])
     assert result.schema_problems == []

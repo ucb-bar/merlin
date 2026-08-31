@@ -43,7 +43,7 @@ except Exception:  # noqa: BLE001 - xDSL is an optional prototyping dependency
     HAS_XDSL = False
 
 
-_KNOWN_EPILOGUE = {{"bias_add", "bias", "requant", "relu"}}
+_KNOWN_EPILOGUE = {{"bias_add", "bias", "requant", "relu", "maxpool"}}
 
 if HAS_XDSL:
 

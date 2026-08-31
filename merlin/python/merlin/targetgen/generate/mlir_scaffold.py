@@ -224,7 +224,7 @@ using namespace merlin::{dialect};
 // Real verifier: every epilogue stage must be one of the known kinds.
 LogicalResult CommitOp::verify() {{
   static const llvm::SmallPtrSet<llvm::StringRef, 4> known = {{
-      "bias_add", "bias", "requant", "relu"}};
+      "bias_add", "bias", "requant", "relu", "maxpool"}};
   for (Attribute a : getEpilogue()) {{
     auto s = llvm::dyn_cast<StringAttr>(a);
     if (!s)
