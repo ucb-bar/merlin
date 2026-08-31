@@ -93,6 +93,29 @@ class TestInterfaceGrammar:
             '  %Y0 = merlin_iface.commit')
         assert B.profile_iface_text(acc).kind == B.A
 
+    def test_a_whole_op_command_is_a_dispatch_even_though_it_never_commits(self):
+        # MEASURED the moment the grammar gained `conv2d`: all three shipped conv capsules parse as
+        # RES_PACK, CONV2D, EVICT -- no COMMIT anywhere, because a whole-op command carries its own
+        # output. Counting only COMMIT reported them as zero dispatches and described a real convolution
+        # as "configuration or movement only", so a capsule with two convolutions would have read `A`
+        # instead of `A->A`.
+        conv = _IFACE.replace(
+            '  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n'
+            '  %Y0 = merlin_iface.commit %acc0 {name = "Y0", epilogue = [], output_dtype = "i32"} : (!merlin_iface.acc<i32>) -> tensor<16x16xi32>\n',
+            '  %Y0 = merlin_iface.conv2d %A0, %W_res {name = "Y0"} : (tensor<16x16xi8>, !merlin_iface.resident) -> tensor<16x16xi32>\n')
+        p = B.profile_iface_text(conv)
+        if p.kind == B.UNKNOWN:
+            pytest.skip(f"this grammar revision does not define conv2d: {p.detail}")
+        assert p.n_accel_regions == 1 and p.kind == B.A
+
+    def test_the_whole_op_set_is_read_from_the_parser_not_listed_here(self):
+        # One authority. A newly-defined op class must count as a dispatch for free, or this check
+        # silently stops seeing the newest ops -- which is how it broke for conv2d in the first place.
+        whole = B._whole_op_opcodes()
+        assert whole, "the parser defines no whole-op classes; the derivation has lost its source"
+        from merlin.targetgen.contract import interface_emit as IE
+        assert whole == frozenset(str(v) for v in IE._NAMED_OP_TO_OPCODE.values())
+
     def test_the_grammar_cannot_express_a_host_seam(self):
         # Tensors enter and leave through host MEMORY, but host memory is not host COMPUTATION. Counting
         # it as one would label every capsule H->A->H and make the axis say nothing at all.

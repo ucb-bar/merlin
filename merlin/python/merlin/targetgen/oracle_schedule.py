@@ -24,7 +24,12 @@ Three rules do the work:
 
 1. **Content-address every verdict.** A verdict is keyed by ``(capsule, digest, tier)`` where ``digest``
    is the submission bytes that produced it. Unchanged bytes therefore need no re-run *ever*, and changed
-   bytes invalidate exactly the capsules they affect -- not the corpus.
+   bytes invalidate exactly the capsules they affect -- not the corpus. A capsule may narrow that further
+   by declaring ``depends_on: [<component>, ...]``, and then only those components' digests are compared
+   (see :meth:`CapsuleState.invalidated_by`). Declaring nothing means depending on everything: an
+   optimization pass that edits the compiler on every iteration would otherwise re-buy the cycle-accurate
+   tier for the whole corpus per edit, and a round that re-certifies 35 capsules at minutes each to learn
+   about one never finishes.
 2. **The cheap tier gates the expensive one.** A deeper tier is scheduled only for a capsule that has
    PASSED the shallower one, so RTL time is only ever spent on work that could plausibly certify.
 3. **The expensive tier runs on a representative subset.** Full coverage at the functional tier,
@@ -43,28 +48,123 @@ from dataclasses import dataclass, field
 # A tier's verdict can be one of these; only PASS promotes.
 PASS, FAIL, UNKNOWN = "pass", "fail", "unknown"
 
+# Pseudo-components. These are NOT names from a target's component vocabulary -- they are the two buckets
+# that exist whether or not anything was declared, and they are spelled with delimiters no path-derived
+# component name can produce so they can never collide with a real one.
+WHOLE_SUBMISSION = "<whole-submission>"   # "this capsule rides on every byte" -- the undeclared default
+UNATTRIBUTED = "<unattributed>"           # submission bytes no declared component claims
+
+# Why a verdict is not a verdict about the current bytes. Kept as three distinct reasons because they are
+# three distinct states: NO_VERDICT is not-yet-known (nobody has run it), CHANGED is known-to-be-stale,
+# and UNDETERMINABLE is "the decomposition could not be computed, so staleness cannot be decided". The
+# last one must never be folded into either of the others: read as NO_VERDICT it loses the fact that the
+# tooling failed, and read as "fresh" it would let a stale certificate stand.
+CHANGED, UNDETERMINABLE, NO_VERDICT = "changed", "undeterminable", "no_verdict"
+
+
+@dataclass(frozen=True)
+class Staleness:
+    """One reason a recorded verdict does not describe the submission currently on disk."""
+    component: str      # a component name, or one of the pseudo-components above
+    reason: str         # CHANGED | UNDETERMINABLE | NO_VERDICT
+
+    def __str__(self) -> str:
+        return f"{self.component} ({self.reason})"
+
 
 @dataclass(frozen=True)
 class Verdict:
-    """What is known about one (capsule, tier), and for WHICH bytes it was known."""
+    """What is known about one (capsule, tier), and for WHICH bytes it was known.
+
+    ``components`` is the per-component digest map AS OF THE RUN THAT EARNED THIS VERDICT. A verdict
+    recorded before per-component digests existed carries an empty map, which makes every declared
+    dependency UNDETERMINABLE and re-runs the capsule -- the fail-closed direction.
+    """
     status: str
     digest: str
+    components: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class CapsuleState:
-    """Everything the scheduler knows about one capsule."""
+    """Everything the scheduler knows about one capsule.
+
+    ``digest`` is the whole submission; ``components`` decomposes those same bytes by component, and
+    ``depends_on`` is what the capsule itself declared it rides on.
+
+    The reason the decomposition exists: Phase P forks a functionally-complete compiler and then edits it
+    continuously, and a whole-submission digest makes EVERY edit invalidate EVERY certificate. The cert
+    tier is minutes per capsule, so a corpus-wide invalidation per edit means the round never finishes.
+    Comparing only the components a capsule declared requeues the handful that actually moved.
+    """
     name: str
     digest: str                                    # the submission bytes currently on disk for it
     verdicts: dict[str, Verdict] = field(default_factory=dict)   # tier -> Verdict
+    components: dict[str, str] = field(default_factory=dict)     # component -> digest of the CURRENT bytes
+    depends_on: tuple[str, ...] | None = None      # None/() == undeclared == depends on the whole submission
+
+    def _dep_components(self) -> tuple[str, ...] | None:
+        """The components this capsule's certificate rides on, or ``None`` for "the whole submission".
+
+        FAIL CLOSED, in both directions that matter:
+
+        * an undeclared (or empty) ``depends_on`` means "depends on everything", never "depends on
+          nothing". Getting this backwards makes a stale certificate look valid, which is far worse than
+          re-running a capsule that did not need it;
+        * a submission with no computable decomposition (``components`` empty) also falls back to the
+          whole digest, so a broken/absent component map degrades to today's behaviour rather than
+          silently certifying against a decomposition nobody produced.
+
+        ``UNATTRIBUTED`` is appended to every declared set. A submission byte that no component claims
+        could be anything -- the entrypoint script, a shared helper, the manifest itself -- so it is a
+        dependency of every capsule. Without that, an agent could shrink the attributed set and keep
+        certificates alive across edits nobody accounted for.
+        """
+        if not self.depends_on or not self.components:
+            return None
+        deps = list(dict.fromkeys(self.depends_on))
+        if UNATTRIBUTED in self.components and UNATTRIBUTED not in deps:
+            deps.append(UNATTRIBUTED)
+        return tuple(deps)
+
+    def invalidated_by(self, tier: str) -> tuple[Staleness, ...]:
+        """Why the recorded verdict for ``tier`` is not about the current bytes; empty == it is.
+
+        This is the "which component requeued me" report: a reader of the queue sees the component name,
+        not just that something moved.
+        """
+        v = self.verdicts.get(tier)
+        if v is None:
+            return (Staleness(WHOLE_SUBMISSION, NO_VERDICT),)
+        deps = self._dep_components()
+        if deps is None:
+            return () if v.digest == self.digest else (Staleness(WHOLE_SUBMISSION, CHANGED),)
+        out = []
+        for c in deps:
+            now, then = self.components.get(c), v.components.get(c)
+            if now is None or then is None:
+                # Either this run could not digest the component (an unknown name, an undeclared
+                # component) or the verdict predates the decomposition. Neither is evidence of freshness.
+                out.append(Staleness(c, UNDETERMINABLE))
+            elif now != then:
+                out.append(Staleness(c, CHANGED))
+        return tuple(out)
 
     def known(self, tier: str) -> str:
         """The verdict for the CURRENT bytes, or UNKNOWN. A verdict earned by different bytes is not a
         verdict about this submission -- that is the whole point of content-addressing it."""
         v = self.verdicts.get(tier)
-        if v is None or v.digest != self.digest:
+        if v is None or self.invalidated_by(tier):
             return UNKNOWN
         return v.status
+
+
+def _why(stale: tuple[Staleness, ...]) -> str | None:
+    """The human-readable "what requeued this", or ``None`` when nothing was ever known."""
+    named = [s for s in stale if s.reason != NO_VERDICT]
+    if not named:
+        return None
+    return "invalidated by " + ", ".join(str(s) for s in named)
 
 
 @dataclass(frozen=True)
@@ -116,8 +216,11 @@ def schedule(states, *, tier_order, cert_tiers=(), cert_cover=None, cost_s=None,
                 if cert_cover is not None and st.name not in cert_cover:
                     break
                 reason = f"{prev_tier} passed and {st.name} is in the cert cover"
+                why = _why(st.invalidated_by(tier))
+                if why:                             # a certificate that EXISTED and was invalidated
+                    reason = f"{reason}; {why}"
             else:
-                reason = "no verdict for the current submission bytes"
+                reason = _why(st.invalidated_by(tier)) or "no verdict for the current submission bytes"
 
             items.append(WorkItem(st.name, tier, float(cost_s.get(tier, 1.0)), reason))
             break                                   # one item per capsule at a time: its next open tier
@@ -156,8 +259,17 @@ def explain(states, *, tier_order, cert_tiers=(), cert_cover=None, cost_s=None, 
         if w.key not in qkeys:
             over_budget.append(w.key)
 
+    invalidated = []
     for st in states:
         opens = [t for t in tier_order if st.known(t) == UNKNOWN]
+        # WHICH component requeued this capsule. Only tiers that HAD a verdict are reported: a tier
+        # nobody ever ran was not invalidated by anything, and listing it as such would drown the signal
+        # (every capsule is "unknown" at the cert tier on the first round).
+        for t in tier_order:
+            if t in st.verdicts:
+                for s in st.invalidated_by(t):
+                    invalidated.append({"capsule": st.name, "tier": t,
+                                        "component": s.component, "reason": s.reason})
         if not opens:
             unchanged.append(st.name)
             continue
@@ -174,6 +286,7 @@ def explain(states, *, tier_order, cert_tiers=(), cert_cover=None, cost_s=None, 
                   for w in queued],
         "queued_cost_s": round(sum(w.cost_s for w in queued), 3),
         "unchanged": sorted(unchanged),
+        "invalidated_by": sorted(invalidated, key=lambda r: (r["capsule"], r["tier"], r["component"])),
         "blocked_on_shallower_tier": sorted(blocked),
         "outside_cert_cover": sorted(not_covered),
         "deferred_over_budget": sorted(over_budget),

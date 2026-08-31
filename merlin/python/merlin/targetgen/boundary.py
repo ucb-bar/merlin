@@ -218,17 +218,36 @@ def undefined_mnemonics(text: str) -> list[str]:
     known = grammar_mnemonics()
     return sorted({m for m in iface_mnemonics(text) if m not in known})
 
+def _whole_op_opcodes() -> frozenset[str]:
+    """Opcodes that are a WHOLE op — they produce their output tensor themselves, with no separate
+    commit. Read from the parser's own table so a newly-defined op class is counted for free."""
+    from merlin.targetgen.contract import interface_emit as IE
+
+    return frozenset(str(v) for v in (getattr(IE, "_NAMED_OP_TO_OPCODE", {}) or {}).values())
+
+
 def _accel_dispatches(commands) -> int:
     """How many separate accelerator dispatches a ``merlin_iface`` command list issues.
 
-    A dispatch is a COMMIT: the point at which an accumulator becomes a tensor the host can see. Counting
-    ``MATMUL_RESIDENT`` instead would miscount K-accumulation, where several matmuls feed ONE commit and
-    the intermediate never becomes a value at all -- that is one dispatch, and calling it two would report
-    an accumulation capsule as proving composition it does not prove.
+    A dispatch is the point at which the accelerator produces a tensor the host can see. That is a
+    COMMIT for the residency path -- and counting ``MATMUL_RESIDENT`` instead would miscount
+    K-accumulation, where several matmuls feed ONE commit and the intermediate never becomes a value at
+    all; that is one dispatch, and calling it two would report an accumulation capsule as proving
+    composition it does not prove.
+
+    But it is ALSO a whole-op command, which carries its own output and never commits. Counting only
+    COMMIT made every such capsule read as zero dispatches and fall into the "commands but no commit"
+    branch, which then described a real convolution as "configuration or movement only". Measured the
+    moment the grammar gained ``conv2d``: all three conv capsules parsed as ``RES_PACK, CONV2D, EVICT``
+    and reported no dispatch at all, so a capsule with two of them would have read ``A`` instead of
+    ``A->A``. The whole-op set is read from the parser's own table rather than listed here, so this
+    cannot drift the next time an op class is added.
     """
+    whole = _whole_op_opcodes()
     n = 0
     for cmd in commands or ():
-        if str((cmd or {}).get("opcode") or "") == "COMMIT":
+        opcode = str((cmd or {}).get("opcode") or "")
+        if opcode == "COMMIT" or opcode in whole:
             n += 1
     return n
 
@@ -284,8 +303,9 @@ def profile_iface_text(text: str) -> BoundaryProfile:
             return BoundaryProfile(grammar="merlin_iface", detail="module declares no accelerator op")
         return BoundaryProfile(kind=A, grammar="merlin_iface", contains=(A,),
                                n_accel_regions=len(commands), accel_segments=1,
-                               detail="accelerator commands with no commit (configuration or movement "
-                                      "only): one accelerator region, no dispatch seam")
+                               detail="accelerator commands that produce no host-visible tensor "
+                                      "(configuration or residency only): one accelerator region, no "
+                                      "dispatch seam")
     return BoundaryProfile(kind=A_A if n >= 2 else A, grammar="merlin_iface",
                            contains=((A, A_A) if n >= 2 else (A,)),
                            n_accel_regions=n, accel_segments=1,

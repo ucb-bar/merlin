@@ -1,0 +1,26 @@
+# Accepted capability-manifest drift — MAY ONLY SHRINK.
+#
+# Read by build_tools/scripts/check_capability_drift.py, which compares what each target's own sources
+# EVIDENCE (RTL fact bundle + its pinned ISA header, via merlin.targetgen.capability_discovery) against
+# what its capability manifest DECLARES.
+#
+# Format, one entry per line:
+#
+#     <target> <direction>:<kind>:<name>          # rationale
+#
+#   direction : `under` (evidenced, not declared) | `over` (declared, and the deciding rung ran and
+#               evidenced nothing)
+#   kind      : `family` | `feature` | `operand_dtype`
+#
+# Entries are SCOPED TO THEIR TARGET on purpose. A bare `contraction` would let one target's accepted
+# debt silently excuse another's, and that family is a real entry on more than one target here.
+#
+# THIS FILE STARTS EMPTY, DELIBERATELY. Nothing has been accepted yet: the gate is reporting-only until
+# a `--fail-on-under-declared` / `--fail-on-over-declared` is wired into pre-commit, and the first
+# delta it found is being FIXED in the manifest rather than forgiven here. An entry belongs here only
+# with a written rationale that says why the drift is correct and what would retire it — never to quiet
+# a line somebody did not want to read.
+#
+# UNDETERMINABLE IS NOT DEBT. A capability nothing could decide (no fact bundle, no readable ISA source,
+# no parseable contract) is reported in its own list and is not ratchetable. The fix for one of those is
+# to make the target's evidence readable, not to write it down here.
