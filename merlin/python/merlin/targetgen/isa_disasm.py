@@ -62,9 +62,15 @@ def _disassemble_fixed(model: IsaModel, words: list[int]) -> list[dict]:
         if not mnems:
             rec.update({"illegal": True, "mnemonic": None})
         else:
+            # A fixed-format ISA selects the op directly by opcode, so its class and its mnemonic are
+            # the same name. Both keys are still populated so a consumer can read one granularity
+            # without knowing which decode regime produced the record.
             rec["mnemonic"] = mnems[0]
+            rec["class"] = mnems[0]
+            rec["isa_mnemonic"] = mnems[0]
             if len(mnems) > 1:
                 rec["ambiguous"] = list(mnems)
+                rec["ambiguous_mnemonics"] = list(mnems)
         recs.append(rec)
     return recs
 
@@ -91,10 +97,20 @@ def disassemble(model: IsaModel, words: list[int]) -> list[dict]:
             continue
         ent = hits[0]
         ops = {attr: _decode_operand(bits, w) for attr, bits in (ent.get("fields") or {}).items()}
+        # BOTH granularities, because they answer different questions and only one of them was reported.
+        # ``mnemonic``/``class`` is the semantic CLASS (what kind of instruction this is); ``isa_mnemonic``
+        # is the exact op the ISA defines. A class can cover several ops that differ in the unit they
+        # drive -- one target's matmul class covers a distinct op per matrix unit -- so a coverage
+        # expectation written at class granularity is satisfied by ANY of them. Measured: two capsules
+        # naming different matrix units emitted byte-identical kernels, and both passed, because the only
+        # thing separating them was invisible at class granularity; the second unit's ops were never
+        # executed by any capsule in that target's corpus.
         rec = {"index": i, "word": f"0x{w:08x}", "mnemonic": ent.get("class"),
+               "class": ent.get("class"), "isa_mnemonic": ent.get("mnemonic"),
                "role": ent.get("role"), "operands": ops}
         if len(hits) > 1:
             rec["ambiguous"] = [e.get("class") for e in hits]
+            rec["ambiguous_mnemonics"] = [e.get("mnemonic") for e in hits]
         recs.append(rec)
     return recs
 
@@ -110,6 +126,21 @@ def present_classes(records: list[dict]) -> list[str]:
     return out
 
 
+def present_mnemonics(records: list[dict]) -> list[str]:
+    """Ordered, deduped exact ISA mnemonics present in a disassembled stream (recognized instructions only).
+
+    The finer sibling of :func:`present_classes`. Two ops of the SAME class that drive different hardware
+    units are ONE entry there and two here -- the difference between a coverage claim that can fail and one
+    that cannot."""
+    seen, out = set(), []
+    for r in records:
+        m = r.get("isa_mnemonic")
+        if m and not r.get("illegal") and m not in seen:
+            seen.add(m)
+            out.append(m)
+    return out
+
+
 def coverage(model: IsaModel, records: list[dict], *, required: list[str] | None = None,
              op: str = "matmul", output_dtype: str | None = None,
              epilogue: tuple[str, ...] = (), movement: bool = False) -> dict:
@@ -122,6 +153,13 @@ def coverage(model: IsaModel, records: list[dict], *, required: list[str] | None
         required = IT.required_classes_from_roles(model.roles, op=op, output_dtype=output_dtype,
                                                   epilogue=epilogue, movement=movement)
     present = present_classes(records)
-    missing = [c for c in required if c not in present]
+    present_m = present_mnemonics(records)
+    # A required entry may name EITHER a semantic class or an exact ISA mnemonic, and is checked at the
+    # granularity it was written at. That is what makes a unit-specific demand falsifiable: the class
+    # covers every unit's op, so a class-granularity demand is satisfied by whichever op the backend
+    # happened to pick.
+    satisfied = set(present) | set(present_m)
+    missing = [c for c in required if c not in satisfied]
     n_illegal = sum(1 for r in records if r.get("illegal"))
-    return {"required": list(required), "present": present, "missing": missing, "n_illegal": n_illegal}
+    return {"required": list(required), "present": present, "present_mnemonics": present_m,
+            "missing": missing, "n_illegal": n_illegal}
