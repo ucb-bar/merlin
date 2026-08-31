@@ -43,6 +43,8 @@ import _ratelimit as RL  # five-hour rate-limit detection + reset epoch (shared)
 import resume_on_quota as ROQ  # cut-short (timeout / weekly-quota) detection + checkpoint/resume policy
 
 SCRIPTS = Path(__file__).resolve().parent  # this scripts/ dir (selfcheck_broker.py, selfcheck_shim.py)
+_MODEL_HOST_SNAPSHOT_ROOT_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"
+_MODEL_HOST_SNAPSHOT_REQUIRED_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED"
 
 
 def _strip_build_state(root: Path) -> None:
@@ -695,6 +697,10 @@ def bwrap_cmd(inner: str, ws: Path, bundle: dict, extra_binds: list[str] | None 
     from merlin.targetgen.sandbox import bwrap as _BW
     from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as _surfaces
     parts = RX.bwrap_argv(ws, bundle) + claude_runtime_binds() + TC.toolchain_binds()
+    # These point at operator-only snapshot storage for the out-of-sandbox grader. The agent receives
+    # the declared bytes through read-only mounts and never needs (or gets) their host storage path.
+    parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_ROOT_ENV,
+              "--unsetenv", _MODEL_HOST_SNAPSHOT_REQUIRED_ENV]
     # Per-driver runtime binds (e.g. the Codex CLI's package dir + an isolated
     # CODEX_HOME) go in BEFORE the mask pass, so a bind can never re-expose an
     # answer surface: masking is applied last and therefore wins.
@@ -1676,6 +1682,26 @@ def main(argv: list[str] | None = None) -> int:
         copy_report = assemble_copy_workspace(bundle, ws)
         denied_names = [Path(d["path"]).name for d in bundle.get("denied", [])]
         viol = []  # copy workspace contains no symlinks into denied paths by construction
+    _bundle_snapshot_record = None
+    _model_host_lane_snapshot = None
+    if a.sandbox == "bwrap":
+        # Both fresh setup and resume arrive here. Verify before exporting the host-only pointer; every
+        # in-process grade and every operator-side broker inherits it, while bwrap_cmd strips it from the
+        # agent environment. The model grader independently re-verifies the aggregate before use.
+        _BWS.verify_bundle_snapshot(ws, bundle, repo=C.REPO)
+        _snapshot_root = _BWS.bundle_snapshot_root(ws).resolve(strict=True)
+        _bundle_snapshot_record = _BWS.snapshot_record(ws)
+        _te_setup = _te()
+        if _te_setup.host_lane is not None:
+            _, _model_host_lane_snapshot = _te_setup.resolve_host_lane(
+                root=_snapshot_root / "repo")
+            _model_host_lane_snapshot["run_snapshot"] = _bundle_snapshot_record
+        os.environ[_MODEL_HOST_SNAPSHOT_ROOT_ENV] = str(_snapshot_root)
+        os.environ[_MODEL_HOST_SNAPSHOT_REQUIRED_ENV] = "1"
+    else:
+        # Do not let an inherited pointer bind an explicitly unsandboxed diagnostic to another run.
+        os.environ.pop(_MODEL_HOST_SNAPSHOT_ROOT_ENV, None)
+        os.environ.pop(_MODEL_HOST_SNAPSHOT_REQUIRED_ENV, None)
     mask = mask_selftest(ws, bundle, a.sandbox)
     (run_dir / "environment.yaml").write_text(yaml.safe_dump({
         "run_id": a.run_id, "arm": arm, "model": a.model, "effort": a.effort,
@@ -1686,7 +1712,8 @@ def main(argv: list[str] | None = None) -> int:
         "subagent_model": _SUBAGENT_MODEL or None, "background_model": _BACKGROUND_MODEL or None,
         "sandbox": a.sandbox, "qa_loop": True, "pilot": ["A0", "A2", "A4", "B0"],
         "workspace_path": str(ws), "workspace_copy_report": copy_report,
-        "bundle_input_snapshot": _BWS.snapshot_record(ws) if a.sandbox == "bwrap" else None,
+        "bundle_input_snapshot": _bundle_snapshot_record,
+        "model_host_lane_snapshot": _model_host_lane_snapshot,
         "repo_sha": C.repo_sha(), "bundle_id": bundle["bundle_id"],
         "started_at": datetime.now(timezone.utc).isoformat(),
         "isolation_violations": viol, "denied_paths_checked": denied_names,

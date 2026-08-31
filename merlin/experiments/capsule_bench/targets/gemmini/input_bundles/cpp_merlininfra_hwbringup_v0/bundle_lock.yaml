@@ -12,5 +12,5 @@ allowed_tree_sha256:
   merlin/python/merlin/targetgen/generate/llvm_plan.py: d67dcfed302c91ff10355981417b5426f0cd5db0fe86778219f28154097f2f9e
   merlin/python/merlin/targetgen/generate/mlir_scaffold.py: aeb74d5c458d2f55549e7c389fc90dc9bb4b7fba5b2e625fee3c1d6dd91eb12a
   merlin/python/merlin/targetgen/generate/target_repo.py: 8ceb4429bcb8aa88e288f89459875843dabc073cc410fee391790d44c3a9da12
-  out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct: cc8a6bd4aad01c878d5dfdf4c9ce4c69398f4618f5a3f8cf78f55df93a60fea9
+  out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8: 32d265324cba85abc6760a151d56b03bdc3e95c79e8ebf0bc392207c0a041d8b
   third_party/llvm-install: 95bfc5318ac13a12f6fb80a9060c1484e2bc8dfb237dc59dfcd2e425c146d7eb

@@ -57,11 +57,12 @@ toolchain:
 # a checkout that is the right repo on a plausible branch and missing the schedule is caught.
 host_lane:
   description: >-
-    The RVV host compiler: the scalar/vector lane every partitioned capsule falls back to for the work
-    the accelerator does not admit (normalization, reduction, activation tails). Frozen for the
-    duration of the experiment.
+    The int8 RVV host compiler: the scalar/vector lane every partitioned Gemmini model capsule falls
+    back to for the work the accelerator does not admit (normalization, reduction, activation tails).
+    All of this experiment's whole-model capstones declare compile_dtype=int8, so the frozen package
+    must declare dtype_strategy=int8_w8a8. Frozen for the duration of the experiment.
   repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
-  branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
+  branch: UNKNOWN
   # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
   # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
   # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
@@ -70,7 +71,7 @@ host_lane:
   commit: UNKNOWN
   # The pinned artifact as it exists in this tree: the transform schedule + knobs that ARE the host
   # lane's codegen. Repo-root-relative.
-  package: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
+  package: out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8
   requires_paths:
     - manifest.yaml
     - schedule.mlir
@@ -78,7 +79,7 @@ host_lane:
   # Granted READ-ONLY to every arm. Reading the frozen lane is necessary; it is how an agent knows what
   # the host side costs and therefore where to put the boundary.
   read_only:
-    - out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
+    - out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/
   # DENIED to every arm: the host compiler's implementation. This is the surface a submission would have
   # to touch to become a second CPU backend. It is deliberately a DIFFERENT path from the read-only
   # grant above — deny wins in the sandbox binder, so a path listed on both sides grants nothing at all,

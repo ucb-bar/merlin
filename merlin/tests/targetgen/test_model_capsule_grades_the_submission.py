@@ -48,9 +48,9 @@ def test_the_package_is_threaded_as_the_accelerator_backend_not_the_codegen_pack
     seg = _fn_src(_RUNNER, "_grade_model_capsule_inline")
     assert "mesh_package=_pkg" in seg, (
         "the submission is the OOT accelerator backend that certifies tiles -> mesh_package")
-    assert "package=None" in seg, (
-        "`package` is the RVV whole-model codegen package and is a different thing; conflating the two "
-        "would be a subtler version of the same bug")
+    assert "package=_host_package_arg" in seg, (
+        "`package` is the descriptor-pinned RVV host lane; it must not fall back to a certified/default "
+        "package merely because the submitted accelerator package is a different artifact")
 
 
 def test_run_capsule_passes_the_package_to_the_model_path():

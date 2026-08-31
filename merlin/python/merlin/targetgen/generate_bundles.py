@@ -56,23 +56,6 @@ def _tool_paths(te: TargetExperiment, name: str) -> list[str]:
     return list(t.bundle_paths) + [getattr(te, attr) for attr in t.derived_paths]
 
 
-def _host_lane(te: TargetExperiment) -> dict:
-    """The descriptor's ``host_lane:`` block, or ``{}`` when it declares none.
-
-    Read off the descriptor FILE rather than a ``TargetExperiment`` field: the dataclass is owned
-    elsewhere and enumerates its fields explicitly, so threading a new one is a change to a shared type.
-    Reading it here keeps the declaration where it belongs (beside ``hardware_spec``, which is the other
-    irreducible setup a run cannot derive) and keeps this generator target-agnostic — nothing below
-    knows which compiler the host lane is, only that the descriptor names one.
-    """
-    import yaml
-    doc = yaml.safe_load(Path(te.path).read_text(encoding="utf-8")) or {}
-    lane = doc.get("host_lane") or {}
-    if not isinstance(lane, dict):
-        raise ValueError(f"{te.path}: `host_lane` must be a mapping, got {type(lane).__name__}")
-    return lane
-
-
 def _host_lane_grants(te: TargetExperiment) -> tuple[list[dict], list[dict]]:
     """``(allow, deny)`` for the frozen host lane: read-only on what it IS, denied on what would CHANGE it.
 
@@ -87,11 +70,11 @@ def _host_lane_grants(te: TargetExperiment) -> tuple[list[dict], list[dict]]:
     "read-only" grant silently becomes no grant at all. That is checked here rather than documented,
     because a grant that quietly evaporates is exactly the class of bug this repo has already shipped.
     """
-    lane = _host_lane(te)
+    lane = te.host_lane
     if not lane:
         return [], []
-    read_only = [str(p) for p in (lane.get("read_only") or [])]
-    deny = [str(p) for p in (lane.get("deny_modification") or [])]
+    read_only = list(lane.read_only)
+    deny = list(lane.deny_modification)
     if not read_only and not deny:
         raise ValueError(f"{te.path}: `host_lane` declares neither `read_only` nor `deny_modification`; "
                          f"a lane that is pinned by nothing is not pinned")

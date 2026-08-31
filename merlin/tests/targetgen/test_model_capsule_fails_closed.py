@@ -15,6 +15,16 @@ import pytest
 from merlin.targetgen import capsule_runner as CR
 
 
+@pytest.fixture(autouse=True)
+def _descriptor_pinned_host_lane(monkeypatch):
+    """These tests isolate tier accounting from the independently tested host-lane resolver."""
+    from merlin.common.paths import repo_root
+    monkeypatch.setattr(CR, "_resolve_model_host_lane", lambda target, dtype: (
+        None, repo_root() / "frozen-test-host", {
+            "package_sha256": "a" * 64, "dtype_strategy": "int8_w8a8",
+        }))
+
+
 def _capsule(tiers):
     return {"name": "M0_x", "kind": "model", "label": "public",
             "required_oracle_tiers": list(tiers),

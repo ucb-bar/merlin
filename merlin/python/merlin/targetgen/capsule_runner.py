@@ -1542,6 +1542,119 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
             return _stopped(f"whole-model grade result unreadable: {type(exc).__name__}: {exc}")
 
 
+def _resolve_model_host_lane(target: str, dtype: str):
+    """Return ``(experiment, package_path, identity)`` for targeted whole-model compilation.
+
+    Kept as a small seam because descriptor resolution, package-content validation and datatype
+    compatibility are one fail-closed decision; callers must not independently recreate part of it.
+    """
+    from .corpora import descriptor_path
+    from .target_experiment import load_target_experiment
+
+    descriptor = descriptor_path(target)
+    if not descriptor.is_file():
+        raise ValueError(f"target {target!r} has no experiment descriptor at {descriptor}")
+    experiment = load_target_experiment(descriptor)
+    if experiment.target != target:
+        raise ValueError(
+            f"descriptor {descriptor} names target {experiment.target!r}, not {target!r}")
+    snapshot_repo, snapshot_identity = _verified_model_host_lane_snapshot()
+    package, identity = experiment.resolve_host_lane(root=snapshot_repo)
+    if snapshot_identity is not None:
+        identity["run_snapshot"] = snapshot_identity
+
+    # An explicit package bypasses compile_rvv's datatype-aware default selection. Reject a known
+    # cross-datatype substitution: otherwise an int8 model with an fp32 package sets
+    # ``int8_compute=False`` and the numeric outcome is about a different host program. Dtypes such as
+    # fp8 deliberately have no scalar strategy; compile_rvv derives their scalar lane from captured IR,
+    # so only a strategy it can decide here is gated here.
+    from .. import compile_cli as _compile_cli
+    expected_strategy = _compile_cli._DTYPE_STRATEGY.get(dtype)
+    if expected_strategy is not None and identity["dtype_strategy"] != expected_strategy:
+        raise ValueError(
+            f"descriptor host package declares dtype_strategy={identity['dtype_strategy']!r}, but "
+            f"model compile_dtype={dtype!r} requires {expected_strategy!r}")
+    return experiment, package, identity
+
+
+_MODEL_HOST_SNAPSHOT_ROOT_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"
+_MODEL_HOST_SNAPSHOT_REQUIRED_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED"
+
+
+def _verified_model_host_lane_snapshot() -> tuple[Path | None, dict[str, Any] | None]:
+    """Return the verified run-snapshot repo root used for host-lane grading.
+
+    A bwrap experiment sets ``*_REQUIRED`` and points ``*_ROOT`` at its host-only
+    ``bundle_inputs`` directory. The aggregate was recomputed immediately before export; resolving and
+    hashing the declared host package below joins the bytes mounted for the agent to the bytes passed
+    into ``compile_model``. Using the live worktree instead would let a post-launch edit change only the
+    grader's compiler.
+
+    Callers outside the bwrap experiment remain compatible: with neither variable set, the descriptor
+    resolves against the live repository exactly as before. A declared/required snapshot never falls
+    back to that path.
+    """
+    raw_required = os.environ.get(_MODEL_HOST_SNAPSHOT_REQUIRED_ENV, "").strip().lower()
+    if raw_required not in ("", "0", "false", "no", "off", "1", "true", "yes", "on"):
+        raise ValueError(
+            f"{_MODEL_HOST_SNAPSHOT_REQUIRED_ENV} has invalid boolean value {raw_required!r}")
+    required = raw_required in ("1", "true", "yes", "on")
+    raw_root = os.environ.get(_MODEL_HOST_SNAPSHOT_ROOT_ENV, "").strip()
+    if not raw_root:
+        if required:
+            raise ValueError(
+                f"bwrap model grading requires {_MODEL_HOST_SNAPSHOT_ROOT_ENV}; no verified run "
+                "snapshot was provided")
+        return None, None
+
+    lexical_root = Path(raw_root)
+    if not lexical_root.is_absolute() or lexical_root.is_symlink():
+        raise ValueError(
+            f"{_MODEL_HOST_SNAPSHOT_ROOT_ENV} must name a non-symlink absolute directory")
+    try:
+        root = lexical_root.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError(f"model host-lane run snapshot is missing at {lexical_root}") from exc
+    marker = root / "snapshot.json"
+    if not root.is_dir() or marker.is_symlink() or not marker.is_file():
+        raise ValueError(f"model host-lane run snapshot is incomplete or unsafe at {root}")
+    try:
+        manifest = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"model host-lane run snapshot marker is unreadable at {marker}") from exc
+    if not isinstance(manifest, dict) or manifest.get("version") != 2:
+        raise ValueError("model host-lane run snapshot marker has an unsupported format")
+
+    # Setup/resume has already recomputed this aggregate through verify_bundle_snapshot before it is
+    # exported. Preserve that run identity here, while HostLane.resolve below independently hashes the
+    # exact (small) compiler package before and after compilation. Re-hashing an entire bundle here would
+    # read its LLVM toolchain twice for every capstone and add no host-package evidence.
+    digest = manifest.get("content_sha256")
+    n_files = manifest.get("n_files")
+    n_bytes = manifest.get("n_bytes")
+    if (not isinstance(digest, str) or len(digest) != 64 or digest != digest.lower() or
+            any(ch not in "0123456789abcdef" for ch in digest) or
+            not isinstance(n_files, int) or n_files < 1 or
+            not isinstance(n_bytes, int) or n_bytes < 1):
+        raise ValueError("model host-lane run snapshot marker has invalid aggregate identity")
+
+    repo = root / "repo"
+    if repo.is_symlink() or not repo.is_dir():
+        raise ValueError(f"model host-lane run snapshot has no safe repository payload at {repo}")
+    resolved_repo = repo.resolve(strict=True)
+    if root not in resolved_repo.parents:
+        raise ValueError(f"model host-lane run snapshot repository escapes {root}")
+    return resolved_repo, {
+        "root": str(root),
+        "repo_root": str(resolved_repo),
+        "content_sha256": digest,
+        "n_files": n_files,
+        "n_bytes": n_bytes,
+        "version": 2,
+        "source_repo": manifest.get("repo"),
+    }
+
+
 def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, timeout: int,
                                 package_dir: str | Path | None = None) -> dict:
     """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
@@ -1598,6 +1711,25 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
                       failure={"plane": "model", "category": "RUNNER_CRASH",
                                "detail": "model capsule missing operation.attributes.model"})
         return result
+
+    # The target submission and the scalar/vector host lane are TWO compiler packages. The former is
+    # threaded below as ``mesh_package``; the latter is frozen experiment infrastructure and MUST come
+    # from this target's descriptor. Passing None used ``default_package`` (the currently certified RVV
+    # champion), which could differ from the package granted read-only to the agent. The resulting
+    # boundary/interop verdict then depended on a compiler the experiment neither declared nor exposed.
+    _host_package = None
+    _host_identity = None
+    _host_experiment = None
+    if target:
+        try:
+            _host_experiment, _host_package, _host_identity = _resolve_model_host_lane(target, dtype)
+            result["host_lane"] = _host_identity
+        except Exception as e:  # noqa: BLE001 — an unpinned host compiler cannot produce a verdict
+            result.update(status="incomplete",
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"frozen host lane unavailable: {type(e).__name__}: "
+                                             f"{str(e)[:300]}"})
+            return result
     # The captured linalg (visible grounding) drives the per-op mesh routing when present. Read the name
     # the CAPSULE DECLARES -- every model capsule ships `linalg_mlir: capsule.interface.mlir`, while this
     # looked only for `capsule.linalg.mlir`, so it never found one. `linalg_mlir` was therefore always
@@ -1650,10 +1782,12 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
         # `n_tiles: 0, reason: "no default OOT backend package for target"` while a perfectly good
         # submission sat in the caller's hand.
         #
-        # It goes to `mesh_package` (the OOT ACCELERATOR backend that certifies tiles), not to `package`
-        # (the RVV whole-model codegen package) -- two different things that a single name would conflate.
+        # It goes to `mesh_package` (the OOT ACCELERATOR backend that certifies tiles), while `package`
+        # is the independently frozen RVV host lane -- two things that a single name would conflate.
         _pkg = str(package_dir) if package_dir else None
-        out = compile_model(model, dtype, target=target, run=run_where, verify=True, package=None,
+        _host_package_arg = str(_host_package) if _host_package is not None else None
+        out = compile_model(model, dtype, target=target, run=run_where, verify=True,
+                            package=_host_package_arg,
                             auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir,
                             mesh_verify=mesh_verify, mesh_package=_pkg,
                             routing_dtype=_attrs.get("dtype"))
@@ -1667,6 +1801,36 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
                       failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
                                "detail": f"whole-model grade error: {type(e).__name__}: {str(e)[:300]}"})
         return result
+    # Detect drift across the compile, not only before it. For a bwrap run this re-verifies the same
+    # immutable snapshot aggregate and resolves the package inside its repo payload; it NEVER switches
+    # to the live worktree. Direct/non-bwrap grading retains its live-tree pre/post check.
+    if _host_experiment is not None and _host_identity is not None:
+        try:
+            _snapshot_repo_after, _snapshot_after = _verified_model_host_lane_snapshot()
+            _snapshot_before = _host_identity.get("run_snapshot")
+            if (_snapshot_before is None) != (_snapshot_after is None):
+                raise ValueError("model host-lane run snapshot context changed during grading")
+            if _snapshot_before is not None:
+                if (_snapshot_after.get("root") != _snapshot_before.get("root") or
+                        _snapshot_after.get("content_sha256") !=
+                        _snapshot_before.get("content_sha256")):
+                    result["host_lane_snapshot_after"] = _snapshot_after
+                    raise ValueError("model host-lane run snapshot changed during grading")
+            _, _host_after = _host_experiment.resolve_host_lane(root=_snapshot_repo_after)
+        except Exception as e:  # noqa: BLE001
+            result.update(status="incomplete",
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"frozen host lane became unreadable during grading: "
+                                             f"{type(e).__name__}: {str(e)[:300]}"})
+            return result
+        if _host_after["package_sha256"] != _host_identity["package_sha256"]:
+            result.update(status="incomplete", host_lane_after=_host_after,
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": "frozen host-lane package changed during grading "
+                                             f"({_host_identity['package_sha256'][:12]} -> "
+                                             f"{_host_after['package_sha256'][:12]}); refusing a "
+                                             "mixed-compiler verdict"})
+            return result
     st, gate = out.get("status"), (out.get("verify") or {}).get("gate_ok")
     engine = f"merlin-compile model --target {target} --run {run_where} --verify"
     if out.get("routing_plan") is not None:                   # per-op mesh routing for the target

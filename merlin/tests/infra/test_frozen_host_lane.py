@@ -165,8 +165,7 @@ def test_a_lane_granted_and_denied_at_once_is_refused(tmp_path):
     bad = tmp_path / "target_experiment.yaml"
     bad.write_text(yaml.safe_dump(doc, sort_keys=False))
 
-    te = load_target_experiment(src)
-    object.__setattr__(te, "path", bad)          # TargetExperiment is a frozen dataclass
+    te = load_target_experiment(bad)
     with pytest.raises(ValueError, match="Deny wins"):
         GB._host_lane_grants(te)
 
@@ -179,7 +178,6 @@ def test_a_lane_that_pins_nothing_is_refused(tmp_path):
     bad = tmp_path / "target_experiment.yaml"
     bad.write_text(yaml.safe_dump(doc, sort_keys=False))
 
-    te = load_target_experiment(src)
-    object.__setattr__(te, "path", bad)
+    te = load_target_experiment(bad)
     with pytest.raises(ValueError, match="not pinned"):
         GB._host_lane_grants(te)

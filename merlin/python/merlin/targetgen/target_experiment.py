@@ -13,10 +13,166 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
 from merlin.common.paths import repo_root
+
+
+def _safe_relative(value: str, *, field: str) -> Path:
+    """Parse one descriptor path without letting it escape the repository/package it names."""
+    path = Path(str(value))
+    if path.is_absolute() or not path.parts or any(part == ".." for part in path.parts):
+        raise ValueError(f"host_lane.{field} must be a non-empty repo-relative path, got {value!r}")
+    return path
+
+
+def _is_within(path: Path, parent: Path) -> bool:
+    return path == parent or parent in path.parents
+
+
+@dataclass(frozen=True)
+class HostLane:
+    """Descriptor-owned identity of the frozen scalar/vector compiler used beside an accelerator.
+
+    This is infrastructure, not the submitted accelerator package.  ``package`` identifies the exact
+    artifact grading must pass to ``compile_rvv``; ``read_only`` and ``deny_modification`` describe the
+    corresponding agent grant boundary.
+    """
+
+    description: str
+    repo_canonical: str
+    branch: str
+    commit: str
+    package: str
+    requires_paths: tuple[str, ...]
+    read_only: tuple[str, ...]
+    deny_modification: tuple[str, ...]
+
+    @classmethod
+    def from_mapping(cls, value: Any, *, descriptor: Path) -> "HostLane | None":
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError(
+                f"{descriptor}: `host_lane` must be a mapping, got {type(value).__name__}")
+        required = ("description", "repo_canonical", "branch", "commit", "package",
+                    "requires_paths", "read_only", "deny_modification")
+        missing = [name for name in required if name not in value]
+        if missing:
+            raise ValueError(f"{descriptor}: host_lane is missing required field(s) {missing}")
+
+        def paths(name: str) -> tuple[str, ...]:
+            raw = value[name]
+            if not isinstance(raw, (list, tuple)) or any(not isinstance(path, str) for path in raw):
+                raise ValueError(f"{descriptor}: host_lane.{name} must be a list of paths")
+            return tuple(raw)
+
+        return cls(
+            description=str(value["description"]),
+            repo_canonical=str(value["repo_canonical"]),
+            branch=str(value["branch"]),
+            commit=str(value["commit"]),
+            package=str(value["package"]),
+            requires_paths=paths("requires_paths"),
+            read_only=paths("read_only"),
+            deny_modification=paths("deny_modification"),
+        )
+
+    def resolve(self, *, root: Path | None = None, descriptor: Path | None = None) \
+            -> tuple[Path, dict[str, Any]]:
+        """Validate, load and identify the exact package grading is allowed to use.
+
+        The content digest uses the same tree-hash implementation as bundle locks.  It therefore joins
+        the descriptor-selected path to the bytes the experiment granted at launch and gives every model
+        result an independently checkable host-compiler identity.
+        """
+        root = (root or repo_root()).resolve()
+        package_rel = _safe_relative(self.package, field="package")
+        read_only = tuple(_safe_relative(path, field="read_only") for path in self.read_only)
+        denied = tuple(_safe_relative(path, field="deny_modification")
+                       for path in self.deny_modification)
+        if not read_only:
+            raise ValueError("host_lane grants no read-only path; its package is not pinned")
+        if not self.requires_paths:
+            raise ValueError("host_lane.requires_paths is empty; package content is not pinned")
+        if not any(_is_within(package_rel, grant) for grant in read_only):
+            raise ValueError(
+                f"host_lane package {self.package!r} is outside every read-only grant; the agent and "
+                "grader would not share the declared compiler")
+        masked_by = [str(path) for path in denied if _is_within(package_rel, path)]
+        if masked_by:
+            raise ValueError(
+                f"host_lane package {self.package!r} is masked by denied path(s) {masked_by}")
+
+        package_lexical = root / package_rel
+        try:
+            package = package_lexical.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError(f"host_lane package {self.package!r} is missing or unreadable") from exc
+        if not _is_within(package, root) or not package.is_dir():
+            raise ValueError(
+                f"host_lane package {self.package!r} does not resolve to a directory inside {root}")
+
+        # A symlink would let a path that looks pinned consume bytes outside the hashed/granted tree.
+        # The sandbox snapshot rejects the same shape, so grading and agent visibility stay congruent.
+        relative = package_lexical.relative_to(root)
+        prefixes = (root.joinpath(*relative.parts[:i]) for i in range(1, len(relative.parts) + 1))
+        symlinks = [path for path in prefixes if path.is_symlink()]
+        symlinks += [path for path in package.rglob("*") if path.is_symlink()]
+        if symlinks:
+            raise ValueError(f"host_lane package contains a symlink: {symlinks[0]}")
+
+        required_paths: list[str] = []
+        missing_required: list[str] = []
+        for raw in self.requires_paths:
+            rel = _safe_relative(raw, field="requires_paths")
+            required_paths.append(rel.as_posix())
+            if not (package / rel).exists():
+                missing_required.append(rel.as_posix())
+        if missing_required:
+            raise ValueError(
+                f"host_lane package {self.package!r} is missing required path(s) {missing_required}")
+
+        # The real loader is part of validation: presence alone is insufficient if the manifest/knobs
+        # are malformed or if knobs redirect the schedule outside the package whose digest we record.
+        from ..mining.registry import load_rvv_package
+        loaded = load_rvv_package(package)
+        schedule_rel = _safe_relative(
+            str(loaded.knobs.get("schedule_file", "schedule.mlir")), field="schedule_file")
+        schedule = package / schedule_rel
+        if not schedule.is_file() or schedule.is_symlink():
+            raise ValueError(
+                f"host_lane schedule {schedule_rel.as_posix()!r} is not a regular in-package file")
+        try:
+            schedule.resolve(strict=True).relative_to(package)
+        except (OSError, ValueError) as exc:
+            raise ValueError(
+                f"host_lane schedule {schedule_rel.as_posix()!r} escapes the pinned package") from exc
+
+        from merlin.benchharness import hash_tree
+        hashed = hash_tree(package)
+        digest = hashed.get("sha256")
+        if not hashed.get("present") or not digest or int(hashed.get("n_files") or 0) < 1:
+            raise ValueError(f"host_lane package {self.package!r} has no hashable content")
+        identity = {
+            "descriptor": str(descriptor) if descriptor else None,
+            "package": package_rel.as_posix(),
+            "resolved_package": str(package),
+            "package_sha256": str(digest),
+            "n_files": int(hashed["n_files"]),
+            "required_paths": required_paths,
+            "read_only_grants": [path.as_posix() for path in read_only],
+            "repo_canonical": self.repo_canonical,
+            "branch": self.branch,
+            "commit": self.commit,
+            "target": loaded.name,
+            "run_id": loaded.run_id,
+            "dtype_strategy": loaded.dtype_strategy,
+            "schedule_file": schedule_rel.as_posix(),
+        }
+        return package, identity
 
 
 @dataclass(frozen=True)
@@ -85,6 +241,15 @@ class TargetExperiment:
     # instruction memory is LARGER than its operand file, so "the biggest one" picks IMEM), so the
     # descriptor names it and the bytes are still read out of the RTL.
     operand_store: str | None = None
+    # OPTIONAL for legacy/minimal descriptors. Targeted whole-model grading requires it and fails closed
+    # when absent; keeping None loadable lets descriptor tooling report the omission instead of making
+    # unrelated onboarding helpers crash while parsing an otherwise useful partial descriptor.
+    host_lane: HostLane | None = None
+
+    def resolve_host_lane(self, *, root: Path | None = None) -> tuple[Path, dict[str, Any]]:
+        if self.host_lane is None:
+            raise ValueError(f"{self.path}: targeted whole-model grading requires a host_lane declaration")
+        return self.host_lane.resolve(root=root, descriptor=self.path)
 
     def declared_contract_path(self) -> Path | None:
         """The declared contract as an absolute path, if the descriptor names one that exists."""
@@ -206,6 +371,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         declared_contract=(lambda s: str(s) if s else None)(hw.get("target_contract")),
         backend_package_dir=(lambda s: str(s) if s else None)(doc.get("backend_package_dir")),
         graded_exclude=tuple(str(x) for x in ((doc.get("grading") or {}).get("exclude_capsules") or ())),
+        host_lane=HostLane.from_mapping(doc.get("host_lane"), descriptor=p),
     )
 
 

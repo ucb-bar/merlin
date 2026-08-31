@@ -25,6 +25,17 @@ from merlin.targetgen import eligibility as el
 from merlin.targetgen.capsule_source import model_accelerator_demand
 
 
+@pytest.fixture(autouse=True)
+def _descriptor_pinned_host_lane(monkeypatch):
+    """These tests isolate capstone verdict logic from the independently tested host-lane resolver."""
+    from merlin.targetgen import capsule_runner as CR
+    monkeypatch.setattr(CR, "_resolve_model_host_lane", lambda target, dtype: (
+        None, repo_root() / "frozen-test-host", {
+            "package_sha256": "a" * 64,
+            "dtype_strategy": "int8_w8a8" if dtype == "int8" else "fp32",
+        }))
+
+
 def _capstones():
     """(target, capsule dict, linalg text) for every locally generated model capsule.
 

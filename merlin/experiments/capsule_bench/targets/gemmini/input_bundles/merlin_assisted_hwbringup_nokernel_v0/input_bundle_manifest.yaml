@@ -37,7 +37,7 @@ allowed:
   as: agent_selfcheck.py
   mode: ro
   note: redacted self-check
-- path: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
+- path: out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/
   mode: ro
   note: frozen host lane (pinned infrastructure, read-only)
 - path: merlin/python/merlin/common/
