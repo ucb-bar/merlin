@@ -18,8 +18,11 @@ Run:  PYTHONPATH=$SPECIR_ROOT .venv/bin/python \
 from __future__ import annotations
 
 import argparse
+import copy
 import dataclasses
+import hashlib
 import importlib.util
+import json
 import os
 import sys
 from fractions import Fraction
@@ -32,6 +35,8 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
 from merlin.common.paths import _dotenv                   # noqa: E402
+from merlin.perf import workload_gen as WG                   # noqa: E402
+from merlin.perf.profile import TRAITS, derive_profile       # noqa: E402
 from merlin.targetgen import capsule_golden as CG            # noqa: E402
 from merlin.targetgen import corpus_spec as CS               # noqa: E402
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
@@ -39,9 +44,227 @@ from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E
 HERE = Path(__file__).resolve().parent
 PROFILES = HERE / "profiles"
 
+_PERFORMANCE_FIELDS = frozenset({
+    "level", "family", "lever", "comparand", "falsifier", "gate", "regime", "emitter", "cost",
+})
+_PERFORMANCE_CLAIMS = frozenset({"RECOVERS", "PREDICTS", "DIFFERENTIAL"})
+_PERFORMANCE_NESTED_FIELDS = {
+    "comparand": frozenset({"kind", "against", "cancels", "demand_equal"}),
+    "falsifier": frozenset({"observation", "fires_when", "negative_control"}),
+    "gate": frozenset({"traits", "instrument", "capacity", "on_missing"}),
+    "regime": frozenset({"separation", "layout"}),
+    "emitter": frozenset({"status", "entry", "knobs"}),
+    "cost": frozenset({"tier", "runs", "projected_cycles", "basis"}),
+}
+
+
+def _document_digest(document) -> str:
+    """Stable digest for a parsed declaration/fact document."""
+    encoded = json.dumps(document, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_performance_block(block, *, owner: str) -> dict:
+    """Validate the claim-bearing contract before a family can be admitted.
+
+    Performance metadata is consumed later than corpus generation, so a partial
+    block otherwise succeeds here and turns into an unmeasurable family only
+    after an expensive run.  All claim, comparison, falsifier, applicability,
+    regime, emitter, and cost fields therefore fail closed at profile load.
+    """
+    if not isinstance(block, dict):
+        raise ValueError(f"{owner}: `performance` must be a mapping")
+    missing = sorted(_PERFORMANCE_FIELDS - block.keys())
+    if missing:
+        raise ValueError(f"{owner}: performance block missing required field(s) {missing}")
+    for field in ("level", "family", "lever"):
+        if not isinstance(block[field], str) or not block[field].strip():
+            raise ValueError(f"{owner}: performance.{field} must be a non-empty string")
+    claim = block.get("claim")
+    if claim not in _PERFORMANCE_CLAIMS:
+        raise ValueError(
+            f"{owner}: performance.claim must be one of {sorted(_PERFORMANCE_CLAIMS)}, got {claim!r}")
+    gate_value = block.get("gate")
+    if isinstance(gate_value, dict) and "requires" in gate_value:
+        raise ValueError(
+            f"{owner}: performance.gate.requires is not accepted; use canonical `gate.traits`")
+    for field, required in _PERFORMANCE_NESTED_FIELDS.items():
+        value = block[field]
+        if not isinstance(value, dict):
+            raise ValueError(f"{owner}: performance.{field} must be a mapping")
+        absent = sorted(required - value.keys())
+        if absent:
+            raise ValueError(
+                f"{owner}: performance.{field} missing required field(s) {absent}")
+        for key in required - {"knobs"}:
+            nested = value[key]
+            if (nested is None or (isinstance(nested, str) and not nested.strip())
+                    or (isinstance(nested, (list, tuple, dict)) and not nested)):
+                raise ValueError(
+                    f"{owner}: performance.{field}.{key} must be non-empty")
+    gate = block["gate"]
+    names = gate["traits"]
+    if (not isinstance(names, list) or not names
+            or any(not isinstance(name, str) or not name for name in names)):
+        raise ValueError(f"{owner}: performance.gate.traits must be a non-empty list of trait names")
+    if len(set(names)) != len(names):
+        raise ValueError(f"{owner}: performance.gate.traits contains duplicate names {names}")
+    unknown = sorted(set(names) - set(TRAITS))
+    if unknown:
+        raise ValueError(
+            f"{owner}: unknown performance trait(s) {unknown}; canonical traits are {list(TRAITS)}")
+    if gate["on_missing"] != "skip_with_evidence":
+        raise ValueError(
+            f"{owner}: performance.gate.on_missing must be 'skip_with_evidence'")
+    emitter = block["emitter"]
+    if not isinstance(emitter["status"], str) or not emitter["status"]:
+        raise ValueError(f"{owner}: performance.emitter.status must be non-empty")
+    if not isinstance(emitter["entry"], str) or not emitter["entry"]:
+        raise ValueError(f"{owner}: performance.emitter.entry must be non-empty")
+    if not isinstance(emitter["knobs"], dict):
+        raise ValueError(f"{owner}: performance.emitter.knobs must be a mapping")
+    return block
+
+
+def _comparison_roles(sweep: dict) -> list[str]:
+    roles = {str(role) for role in (sweep.get("comparison_roles") or []) if str(role)}
+    roles |= {str(group["role"])
+              for variant in (sweep.get("variants") or [])
+              if isinstance(variant, dict)
+              if isinstance((group := variant.get("comparison_group")), dict)
+              if group.get("role")}
+    return sorted(roles)
+
+
+def _validate_declared_fit_axes(sweep: dict, *, owner: str) -> None:
+    fit_axes = sweep.get("fit_axes") or []
+    if (not isinstance(fit_axes, list) or not fit_axes
+            or any(not isinstance(axis, str) or not axis for axis in fit_axes)):
+        raise ValueError(f"{owner}: fit_axes must be a non-empty list of axis names")
+    axes = sweep.get("axes") or {}
+    unknown = [axis for axis in fit_axes if axis not in axes]
+    if unknown:
+        raise ValueError(f"{owner}: fitted axes {unknown} are not declared in axes")
+    for axis in fit_axes:
+        points = axes[axis]
+        if not isinstance(points, list) or len({repr(point) for point in points}) < 2:
+            raise ValueError(
+                f"{owner}: fitted axis {axis} must declare at least two distinct points")
+
+
+def _performance_family_record(sweep: dict) -> dict:
+    performance = (sweep.get("base") or {}).get("performance") or sweep.get("performance") or {}
+    return {
+        "family": performance.get("family") or sweep.get("id"),
+        "claim": performance.get("claim"),
+        "fit_axes": list(sweep.get("fit_axes") or []),
+        "comparison_roles": _comparison_roles(sweep),
+    }
+
+
+def _target_local_perf_declarations(profile: dict) -> list[str]:
+    """Names of performance entries embedded in a target-owned profile.
+
+    Functional sweeps remain target-owned: they describe operation coverage for
+    that target.  Performance families do not.  Their shapes and comparison
+    structure must come from the one shared ``_perf.yaml`` template, otherwise
+    onboarding a target can quietly fork the experiment it is compared under.
+    """
+    found: list[str] = []
+    for entry in profile.get("capsules") or []:
+        if (isinstance(entry, dict)
+                and (entry.get("cat") in {"perf", "_perf"} or "performance" in entry)):
+            found.append(str(entry.get("name") or "<unnamed capsule>"))
+    for sweep in profile.get("sweeps") or []:
+        if not isinstance(sweep, dict):
+            continue
+        base = sweep.get("base") or {}
+        variants = sweep.get("variants") or []
+        if ((isinstance(base, dict)
+             and (base.get("cat") in {"perf", "_perf"} or "performance" in base))
+                or any(isinstance(v, dict)
+                       and (v.get("cat") in {"perf", "_perf"} or "performance" in v)
+                       for v in variants)):
+            found.append(str(sweep.get("id") or "<unnamed sweep>"))
+    return found
+
+
+def _merge_shared_perf(profile: dict, *, source: Path) -> None:
+    """Merge the sole shared performance template into one target profile."""
+    shared_path = PROFILES / "_perf.yaml"
+    shared = yaml.safe_load(shared_path.read_text(encoding="utf-8")) or {}
+    misplaced = _target_local_perf_declarations(profile)
+    if misplaced:
+        raise ValueError(
+            f"{source} declares target-local performance template entries {misplaced}; "
+            f"move them to the shared {shared_path}")
+    if shared.get("capsules"):
+        raise ValueError(
+            f"shared performance template {shared_path} must generate entries through `sweeps`, "
+            "not hand-author `capsules`")
+    non_perf = [
+        str(s.get("id") or "<unnamed sweep>")
+        for s in (shared.get("sweeps") or [])
+        if not isinstance(s, dict) or (s.get("base") or {}).get("cat") != "_perf"
+    ]
+    if non_perf:
+        raise ValueError(
+            f"shared performance template {shared_path} contains non-performance sweeps {non_perf}")
+    sweeps = list(shared.get("sweeps") or [])
+    blocked = list(shared.get("blocked_unimplemented") or [])
+    family_records: list[dict] = []
+    seen: set[str] = set()
+    for sweep in sweeps:
+        sweep_id = str(sweep.get("id") or "").strip()
+        if not sweep_id:
+            raise ValueError(f"shared performance template {shared_path} has a sweep without an id")
+        performance = _validate_performance_block(
+            (sweep.get("base") or {}).get("performance"), owner=f"shared sweep {sweep_id}")
+        _validate_declared_fit_axes(sweep, owner=f"shared sweep {sweep_id}")
+        if performance["family"] != sweep_id:
+            raise ValueError(
+                f"shared sweep {sweep_id}: performance.family must equal the sweep id")
+        if sweep_id in seen:
+            raise ValueError(f"shared performance template repeats family {sweep_id!r}")
+        seen.add(sweep_id)
+        family_records.append(_performance_family_record(sweep))
+    for item in blocked:
+        if not isinstance(item, dict):
+            raise ValueError(f"shared {shared_path}: blocked_unimplemented entries must be mappings")
+        family = str(item.get("family") or "").strip()
+        if not family or not str(item.get("reason") or "").strip():
+            raise ValueError(
+                f"shared {shared_path}: blocked_unimplemented needs family and reason")
+        performance = _validate_performance_block(
+            item.get("performance"), owner=f"blocked performance family {family}")
+        if performance["family"] != family:
+            raise ValueError(
+                f"blocked family {family}: performance.family must equal its family")
+        if family in seen:
+            raise ValueError(f"shared performance template repeats family {family!r}")
+        seen.add(family)
+        family_records.append({
+            "family": family,
+            "claim": performance.get("claim"),
+            "fit_axes": list(item.get("fit_axes") or []),
+            "comparison_roles": list(item.get("comparison_roles") or []),
+        })
+    profile["sweeps"] = list(profile.get("sweeps") or []) + sweeps
+    try:
+        template_path = str(shared_path.relative_to(REPO))
+    except ValueError:
+        template_path = str(shared_path)
+    profile["_performance_template"] = {
+        "path": template_path,
+        "sha256": _document_digest(shared),
+        "families": family_records,
+        "blocked_unimplemented": copy.deepcopy(blocked),
+    }
+
 
 def load_profile(target: str, *, include_holdouts: bool = True) -> dict:
-    """The target's capsule profile: the tracked public half plus the UNTRACKED holdout sidecar.
+    """The target's functional profile plus shared perf and the private holdout sidecar.
 
     The holdout spec (op + dtype + exact shape) is an answer, not a contract: the tracked profile lives
     inside the ``merlin/contract/`` tree every arm is granted read-only, so a holdout declared there is
@@ -53,10 +276,17 @@ def load_profile(target: str, *, include_holdouts: bool = True) -> dict:
     ``include_holdouts=False`` for any caller whose OUTPUT is public: a published artifact that
     enumerates the holdouts leaks them just as the profile did.
     """
-    prof = yaml.safe_load((PROFILES / f"{target}.yaml").read_text())
+    public = PROFILES / f"{target}.yaml"
+    prof = yaml.safe_load(public.read_text(encoding="utf-8")) or {}
+    _merge_shared_perf(prof, source=public)
     side = PROFILES / f"{target}.hidden.yaml"
     if include_holdouts and side.is_file():
-        held = yaml.safe_load(side.read_text()) or {}
+        held = yaml.safe_load(side.read_text(encoding="utf-8")) or {}
+        misplaced = _target_local_perf_declarations(held)
+        if misplaced:
+            raise ValueError(
+                f"{side} declares target-local performance template entries {misplaced}; "
+                f"move them to the shared {PROFILES / '_perf.yaml'}")
         prof["capsules"] = list(prof.get("capsules") or []) + list(held.get("capsules") or [])
         # HOLDOUTS ARE GENERATED TOO, and without this line the sidecar's `sweeps:` block is read and
         # silently dropped -- the points expand for the disjointness gate, which reads the sidecar
@@ -66,6 +296,13 @@ def load_profile(target: str, *, include_holdouts: bool = True) -> dict:
         # sweep states the OBLIGATION and lets the tile edge compute the points.
         prof["sweeps"] = list(prof.get("sweeps") or []) + list(held.get("sweeps") or [])
     return prof
+
+
+def profile_targets() -> list[str]:
+    """Target profile stems, excluding shared templates and private sidecars."""
+    return sorted(
+        path.stem for path in PROFILES.glob("*.yaml")
+        if not path.name.startswith("_") and not path.name.endswith(".hidden.yaml"))
 
 
 # ------------------------------------------------------------------------------------------------
@@ -1223,98 +1460,119 @@ def resolve_extent(token, tile: int) -> int:
     return value
 
 
-def _corpus_traits(binding) -> dict:
-    """Per-target traits a perf sweep may gate on, DERIVED -- never hand-set per target.
+def _performance_facts(target: str) -> dict:
+    """Canonical tri-state performance facts, derived once for this target."""
+    document = derive_profile(target).to_dict()
+    return {
+        "target": target,
+        "traits": document["traits"],
+        "sha256": _document_digest(document),
+    }
 
-    Each value is True, False, or **None for undeterminable**, and the three are kept apart because
-    :func:`evaluate_gate` treats them differently. A trait this function cannot establish must come
-    back None: reading "I could not tell" as False silently deletes a capsule family that may well
-    apply, and leaves no record that the question was asked.
 
-    Traits are read off the binding (already derived from the descriptor) and off the target's own
-    declarations. Nothing here inspects a target by name.
+def evaluate_gate(gate: dict, trait_facts: "dict | None") -> tuple[bool, dict]:
+    """Require every canonical trait to be exactly ``True`` and retain evidence.
+
+    The structured decision deliberately carries False and None separately. A
+    refuted capability makes a family inapplicable; an unestablished one means
+    the instrument/fact coverage is incomplete. Neither is admitted, and
+    neither is silently reduced to Python truthiness.
     """
-    traits: dict = {}
-    tile = int(getattr(binding, "tile_dim", 0) or 0)
-    traits["tiled_unit"] = bool(tile >= 1) if tile is not None else None
-
-    tiers = list(getattr(binding, "tiers", ()) or ())
-    traits["has_oracle_tier"] = bool(tiers) if tiers is not None else None
-
-    # An engine set of two or more is what makes a per-engine comparison meaningful at all; on one
-    # engine the vector comparison collapses to the scalar answer and the family is pointless.
-    #
-    # Read through the CAPABILITY MANIFEST rather than a contract file: a target's declaration does
-    # not live at one path across targets (some carry it in the target contract, some in the
-    # capability residual), and the manifest is the accessor that already resolves that AND folds in
-    # engines the declaration itself missed. Reaching for one filename would report "one engine" for
-    # any target that files its declaration elsewhere -- an absent-vs-undeterminable confusion in the
-    # one place this function exists to avoid it.
-    engines = None
-    for source in (_engines_from_manifest, _engines_from_contract):
-        try:
-            engines = source(binding.target)
-        except Exception:                   # this source cannot see this target; try the next
-            continue
-        if engines:
-            break
-    if engines:
-        traits["multiple_engines"] = len(engines) > 1
-        traits["nested_engines"] = any(r["contains"] for r in engines.values())
-    else:                                   # no source reachable: undeterminable, NOT absent
-        traits["multiple_engines"] = None
-        traits["nested_engines"] = None
-    return traits
-
-
-def _engines_from_manifest(target: str) -> dict:
-    from merlin.perf.occupancy import declared_engines
-    from merlin.targetgen.capability_manifests import manifest_for
-    return declared_engines(manifest_for(target))
-
-
-def _engines_from_contract(target: str) -> dict:
-    import yaml
-
-    from merlin.perf.occupancy import declared_engines
-    from merlin.targetgen.rtl.facts import target_contract_path
-    return declared_engines(yaml.safe_load(target_contract_path(target).read_text()))
+    if not isinstance(gate, dict):
+        raise ValueError("performance gate must be a mapping")
+    if "requires" in gate:
+        raise ValueError("performance gate.requires is not accepted; use canonical gate.traits")
+    names = gate.get("traits")
+    if (not isinstance(names, list) or not names
+            or any(not isinstance(name, str) or not name for name in names)):
+        raise ValueError("performance gate.traits must be a non-empty list")
+    unknown = sorted(set(names) - set(TRAITS))
+    if unknown:
+        raise ValueError(f"unknown performance trait(s) {unknown}; canonical traits are {list(TRAITS)}")
+    facts = (trait_facts or {}).get("traits", trait_facts or {})
+    selected: dict[str, dict] = {}
+    for name in names:
+        raw = facts.get(name)
+        if not isinstance(raw, dict):
+            raw = {
+                "satisfied": None,
+                "tier": "not_established",
+                "evidence": "canonical trait fact was not supplied",
+                "missing": ["derive_profile(target) result for this trait"],
+            }
+        selected[name] = {
+            "satisfied": raw.get("satisfied") if raw.get("satisfied") in (True, False) else None,
+            "tier": raw.get("tier") or "not_established",
+            "evidence": raw.get("evidence") or "no evidence recorded",
+            "missing": list(raw.get("missing") or []),
+        }
+    refuted = [name for name, fact in selected.items() if fact["satisfied"] is False]
+    unestablished = [name for name, fact in selected.items() if fact["satisfied"] is None]
+    satisfied = [name for name, fact in selected.items() if fact["satisfied"] is True]
+    outcome = "refuted" if refuted else ("unestablished" if unestablished else "satisfied")
+    decision = {
+        "outcome": outcome,
+        "required_traits": list(names),
+        "satisfied": satisfied,
+        "refuted": refuted,
+        "unestablished": unestablished,
+        "facts": selected,
+    }
+    return outcome == "satisfied", decision
 
 
-def evaluate_gate(gate: dict, traits: "dict | None") -> tuple[bool, str]:
-    """Whether a sweep's declared trait requirements are met. ``(ok, reason)``.
+def _materialize_performance_entry(entry: dict, binding) -> dict:
+    """Resolve a performance member onto a runnable direct corpus path.
 
-    Three states, never two. A trait the target DECLARES FALSE and a trait nobody could DETERMINE are
-    different facts, and collapsing them is how a family silently vanishes from a corpus with no
-    record that it was ever considered. An absent or None trait therefore skips with its own reason
-    rather than being read as False.
-
-    Requirements are named traits, derived per target (RTL facts, the capability manifest, the
-    compute-unit declaration) and passed in -- this function never inspects a target itself.
+    Dtypes come from workload_gen's capability-manifest accessor and must agree
+    with the corpus binding selected for the same target.  The shared template
+    therefore contains neither a target dtype nor a frontend choice.
     """
-    requires = list((gate or {}).get("requires") or [])
-    if not requires:
-        return True, "no requirements declared"
-    have = traits or {}
-    missing = [t for t in requires if t not in have or have[t] is None]
-    if missing:
-        return False, (f"trait(s) {missing} could not be determined for this target; the family is "
-                       "skipped as UNDETERMINED, which is not the same as the target lacking them")
-    absent = [t for t in requires if not have[t]]
-    if absent:
-        return False, f"the target does not have trait(s) {absent}; the family does not apply to it"
-    return True, f"traits {requires} all present"
+    target = str(getattr(binding, "target", "") or "")
+    if not target:
+        raise ValueError("performance materialization needs binding.target")
+    binding_operand = getattr(binding, "operand_dtype", None)
+    binding_accum = getattr(binding, "accum_dtype", None)
+    if binding_operand and binding_accum:
+        # This is the binding _write_capsule will actually consume, derived by
+        # corpus_spec from the target experiment + numeric profile. Prefer it
+        # over re-deriving through a second capability-manifest representation.
+        operand_dtype, accum_dtype = str(binding_operand), str(binding_accum)
+        datatype_basis = "corpus_binding"
+    else:
+        operand_dtype, accum_dtype = WG.datapath_formats(target, accum_dtype=binding_accum)
+        datatype_basis = "merlin.perf.workload_gen.datapath_formats"
+    op = str(entry.get("op") or "")
+    if op not in CS.BUILDERS:
+        raise ValueError(
+            f"performance member {entry.get('name', '?')}: direct corpus source has no runnable "
+            f"builder for {op!r}")
+    entry["source"] = "direct"
+    entry["operand_dtype"] = operand_dtype
+    performance = copy.deepcopy(entry["performance"])
+    performance["emitter"] = copy.deepcopy(performance["emitter"])
+    performance["emitter"]["resolved"] = {
+        "source": "direct",
+        "operand_dtype": operand_dtype,
+        "accum_dtype": accum_dtype,
+        "datatype_basis": datatype_basis,
+        "builder": "merlin.targetgen.corpus_spec.build",
+    }
+    entry["performance"] = performance
+    return entry
 
 
-def expand_sweeps(profile: dict, binding, *, traits: "dict | None" = None,
-                  skipped: "list | None" = None) -> list[dict]:
+def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
+                  skipped: "list | None" = None,
+                  blocked_unimplemented: "list | None" = None,
+                  errors: "list | None" = None,
+                  traits: "dict | None" = None) -> list[dict]:
     """Return the profile's capsule entries with any ``sweeps:`` block expanded.
 
-    ``traits`` gates a sweep on DERIVED per-target facts via its ``gate: {requires: [...]}`` block: a
-    family whose requirements a target does not meet generates NO capsules and appends its reason to
-    ``skipped``. That is what lets one shared sweep declaration serve every target -- the alternative,
-    authoring a perf corpus per target, is the thing this generator exists to avoid, and a family that
-    quietly produced zero capsules with no reason would be indistinguishable from one nobody wrote.
+    A performance family's ``performance.gate.traits`` are evaluated against
+    :func:`derive_profile`'s canonical tri-state records. Every trait must be
+    exactly True. False and None both skip admission but remain distinct, with
+    their evidence and evidence tier, in ``skipped``.
 
     A sweep is a cross-product over named axes plus a shared ``base``, producing
     exactly the flat entry dicts the per-capsule pipeline already consumes — so
@@ -1322,10 +1580,10 @@ def expand_sweeps(profile: dict, binding, *, traits: "dict | None" = None,
 
     Two rules are enforced rather than documented:
 
-    * **A sweep over K needs at least two distinct K points.** One reduction depth
-      cannot separate a tiled unit's rate from its per-tile-pair overhead, so a
-      corpus built at a single K prices the unit confidently and wrongly. A
-      one-point K axis is a mistake, and this raises on it.
+    * **Every fitted axis needs at least two distinct points.** K is always
+      fitted when present because one reduction depth cannot separate a tiled
+      unit's rate from fixed overhead. Other axes opt in through ``fit_axes``;
+      a one-point fit prices a parameter confidently and wrongly.
     * **Names must be unique across generated and hand-authored entries.** A
       collision would have one capsule overwrite another's directory, silently
       shrinking the corpus.
@@ -1337,6 +1595,10 @@ def expand_sweeps(profile: dict, binding, *, traits: "dict | None" = None,
     sweeps = profile.get("sweeps") or []
     if not sweeps:
         return entries
+    # Compatibility for the public/holdout disjointness checker, which passes
+    # this old keyword even for purely functional profiles. It is never used to
+    # admit performance: the first performance sweep below rejects it.
+    legacy_traits_supplied = traits is not None
 
     tile = int(getattr(binding, "tile_dim", 0) or 0)
     if tile < 1:
@@ -1351,12 +1613,56 @@ def expand_sweeps(profile: dict, binding, *, traits: "dict | None" = None,
         sweep_id = str(sweep.get("id") or "").strip()
         if not sweep_id:
             raise ValueError("every sweep needs an `id` (it prefixes the generated names)")
-        ok, why = evaluate_gate(sweep.get("gate") or {}, traits)
-        if not ok:
-            if skipped is not None:
-                skipped.append({"sweep": sweep_id, "reason": why})
-            continue
         base = dict(sweep.get("base") or {})
+        variant_performance = [i for i, variant in enumerate(sweep.get("variants") or [])
+                               if isinstance(variant, dict) and "performance" in variant]
+        if variant_performance:
+            raise ValueError(
+                f"sweep {sweep_id!r}: performance blocks belong on `base`, not variants "
+                f"{variant_performance}; every member of a family shares one claim contract")
+        performance = base.get("performance")
+        is_performance = base.get("cat") in {"perf", "_perf"} or performance is not None
+        if is_performance:
+            if legacy_traits_supplied:
+                raise ValueError(
+                    f"performance sweep {sweep_id}: legacy ad-hoc `traits` cannot gate performance; "
+                    "pass canonical derive_profile(target) records through `trait_facts`")
+            performance = _validate_performance_block(
+                performance, owner=f"performance sweep {sweep_id}")
+            if performance["family"] != sweep_id:
+                raise ValueError(
+                    f"performance sweep {sweep_id}: performance.family must equal the sweep id")
+            facts = trait_facts
+            if facts is None:
+                target = str(getattr(binding, "target", "") or "")
+                if not target:
+                    raise ValueError(
+                        f"performance sweep {sweep_id}: no trait facts supplied and binding.target is absent")
+                facts = _performance_facts(target)
+            ok, decision = evaluate_gate(performance["gate"], facts)
+            if not ok:
+                if skipped is not None:
+                    skipped.append({
+                        "family": sweep_id,
+                        "sweep": sweep_id,
+                        "status": "skipped_inapplicable",
+                        "gate": decision,
+                        "fit_axes": list(sweep.get("fit_axes") or []),
+                        "comparison_roles": _comparison_roles(sweep),
+                    })
+                continue
+            emitter_status = str(performance["emitter"]["status"])
+            if emitter_status != "existing":
+                if blocked_unimplemented is not None:
+                    blocked_unimplemented.append({
+                        "family": sweep_id,
+                        "status": "blocked_unimplemented",
+                        "reason": f"declared emitter {emitter_status!r} is not implemented",
+                        "emitter": copy.deepcopy(performance["emitter"]),
+                        "fit_axes": list(sweep.get("fit_axes") or []),
+                        "comparison_roles": _comparison_roles(sweep),
+                    })
+                continue
         axes = sweep.get("axes") or {}
         if not isinstance(axes, dict) or not axes:
             raise ValueError(f"sweep {sweep_id!r} declares no axes")
@@ -1369,10 +1675,24 @@ def expand_sweeps(profile: dict, binding, *, traits: "dict | None" = None,
                 raise ValueError(f"sweep {sweep_id!r} axis {axis!r} must be a non-empty list")
             resolved[axis] = [resolve_extent(t, tile) for t in tokens]
 
-        if "K" in resolved and len(set(resolved["K"])) < 2:
+        declared_fit_axes = sweep.get("fit_axes") or []
+        if not isinstance(declared_fit_axes, list) or any(
+                not isinstance(axis, str) or not axis for axis in declared_fit_axes):
+            raise ValueError(f"sweep {sweep_id!r}: `fit_axes` must be a list of axis names")
+        fitted_axes = list(dict.fromkeys(
+            (["K"] if "K" in resolved else []) + declared_fit_axes))
+        unknown_fit_axes = [axis for axis in fitted_axes if axis not in resolved]
+        if unknown_fit_axes:
             raise ValueError(
-                f"sweep {sweep_id!r} sweeps K over {resolved['K']} — a tiled unit needs at least TWO "
-                f"distinct K points, because one cannot separate the rate from the per-tile overhead")
+                f"sweep {sweep_id!r} fits undeclared axis/axes {unknown_fit_axes}; "
+                f"declared axes are {sorted(resolved)}")
+        for axis in fitted_axes:
+            if len(set(resolved[axis])) < 2:
+                detail = ("a tiled unit needs at least TWO distinct K points, because one cannot "
+                          "separate the rate from the per-tile overhead" if axis == "K" else
+                          "every fitted parameter needs at least TWO distinct points")
+                raise ValueError(
+                    f"sweep {sweep_id!r} fits {axis} over {resolved[axis]} — {detail}")
 
         combos = _cross_product(resolved)
         if len(combos) > _MAX_SWEEP_CAPSULES:
@@ -1410,7 +1730,7 @@ def expand_sweeps(profile: dict, binding, *, traits: "dict | None" = None,
         index = 0
         for combo in combos:
             for variant in variants:
-                entry = dict(base)
+                entry = copy.deepcopy(base)
                 entry.update(combo)
                 entry.update(_render_variant(variant, combo))
                 entry["name"] = template.format(id=sweep_id, i=index, **{**combo, **variant})
@@ -1427,6 +1747,20 @@ def expand_sweeps(profile: dict, binding, *, traits: "dict | None" = None,
                     raise ValueError(
                         f"sweep {sweep_id!r} generated duplicate capsule name {entry['name']!r}")
                 seen.add(entry["name"])
+                if is_performance:
+                    try:
+                        _materialize_performance_entry(entry, binding)
+                    except Exception as exc:  # noqa: BLE001 - persisted as a generation error
+                        if errors is None:
+                            raise
+                        errors.append({
+                            "family": sweep_id,
+                            "member": entry["name"],
+                            "status": "error",
+                            "error_type": type(exc).__name__,
+                            "detail": str(exc)[:500],
+                        })
+                        continue
                 generated.append(entry)
 
     return entries + generated
@@ -1488,11 +1822,26 @@ def generate_target(target: str) -> list[Path]:
     out_root = Path(te.capsule_corpus).parent                 # target's corpus root, derived (no move)
     # `sweeps:` (if any) expand into the same flat entries `capsules:` holds, so
     # everything downstream — builders, goldens, coverage — is unchanged.
+    facts = _performance_facts(target)
     _sweep_skips: list = []
-    entries = expand_sweeps(profile, binding, traits=_corpus_traits(binding),
-                            skipped=_sweep_skips)
+    _runtime_blocked: list = []
+    _performance_errors: list = []
+    entries = expand_sweeps(
+        profile, binding, trait_facts=facts, skipped=_sweep_skips,
+        blocked_unimplemented=_runtime_blocked, errors=_performance_errors)
     for _s in _sweep_skips:
-        print(f"  [skip] sweep {_s['sweep']}: {_s['reason']}")
+        print(f"  [skip] performance family {_s['family']}: gate {_s['gate']['outcome']}")
+    template = copy.deepcopy(profile.get("_performance_template") or {})
+    declared_families = [dict(row) for row in (template.get("families") or [])]
+    family_counts = {
+        row["family"]: {"admitted_members": 0, "written_members": 0}
+        for row in declared_families
+    }
+    for entry in entries:
+        family = (entry.get("performance") or {}).get("family")
+        if family:
+            family_counts.setdefault(family, {"admitted_members": 0, "written_members": 0})
+            family_counts[family]["admitted_members"] += 1
     # SCRUB EACH CAPSULE AS IT IS WRITTEN, not after the whole corpus succeeds. Scrubbing at the end
     # means one unrelated failure -- a capture that needs an external exporter, say -- aborts the run
     # with every capsule written so far still carrying its absolute `prov.weights_file` path. Measured:
@@ -1508,21 +1857,65 @@ def generate_target(target: str) -> list[Path]:
     # name, and re-raised at the end -- the run still fails, it just fails after doing the work it could.
     written, failures = [], []
     for e in entries:
+        family = (e.get("performance") or {}).get("family")
         try:
             w = _write_capsule(e, binding, out_root)
         except Exception as exc:                              # noqa: BLE001 — reported, never swallowed
-            failures.append((e.get("name", "?"), f"{type(exc).__name__}: {str(exc)[:300]}"))
+            detail = f"{type(exc).__name__}: {str(exc)[:300]}"
+            failures.append((e.get("name", "?"), detail))
+            if family:
+                _performance_errors.append({
+                    "family": family, "member": e.get("name", "?"), "status": "error",
+                    "error_type": type(exc).__name__, "detail": str(exc)[:500],
+                })
             continue
         if w:
             _scrub_capsule_dir(w)
             written.append(w)
+            if family:
+                family_counts[family]["written_members"] += 1
+        elif family:
+            _performance_errors.append({
+                "family": family, "member": e.get("name", "?"), "status": "error",
+                "error_type": "NoOutput", "detail": "capsule writer returned no output",
+            })
     if failures:
         print(f"  [FAIL] {len(failures)} capsule(s) could not be written:")
         for name, why in failures:
             print(f"    - {name}: {why}")
     # Record provenance for what we just emitted. The MANIFEST header has always CLAIMED the generator
     # rewrites it, but no writer existed, so it drifted silently as soon as the corpus grew.
-    update_provenance_manifest(written)
+    declared_blocked = [{
+        "family": row["family"],
+        "status": "blocked_unimplemented",
+        "reason": row["reason"],
+        "emitter": copy.deepcopy(row["performance"]["emitter"]),
+        "fit_axes": list(row.get("fit_axes") or []),
+        "comparison_roles": list(row.get("comparison_roles") or []),
+    } for row in (template.get("blocked_unimplemented") or [])]
+    generated_members = sum(row["written_members"] for row in family_counts.values())
+    performance_record = {
+        "shared_template": {"path": template.get("path"), "sha256": template.get("sha256")},
+        "facts": {"target": target, "sha256": facts["sha256"]},
+        "phase": {
+            "category": "_perf",
+            "label": "dev",
+            "included_in_functional_grade": False,
+            "exclusion": "TargetExperiment.corpus_siblings excludes underscore-prefixed categories",
+        },
+        "families": declared_families,
+        "counts": {
+            "declared_families": len(declared_families),
+            "generated_families": sum(1 for row in family_counts.values()
+                                      if row["written_members"] > 0),
+            "generated_members": generated_members,
+            "by_family": family_counts,
+        },
+        "skipped_inapplicable": _sweep_skips,
+        "blocked_unimplemented": declared_blocked + _runtime_blocked,
+        "errors": _performance_errors,
+    }
+    update_provenance_manifest(written, target=target, performance_record=performance_record)
     if failures:
         raise RuntimeError(
             f"{len(failures)} capsule(s) failed to generate: {', '.join(n for n, _ in failures)}; the "
@@ -1530,7 +1923,8 @@ def generate_target(target: str) -> list[Path]:
     return written
 
 
-def update_provenance_manifest(written, cap_root=None) -> Path:
+def update_provenance_manifest(written, cap_root=None, *, target: str | None = None,
+                               performance_record: "dict | None" = None) -> Path:
     """Rewrite ``MANIFEST.yaml``'s generated/hand_authored split from what this run actually emitted.
 
     The file's own header has always claimed the generator rewrites it, but no writer existed, so it was
@@ -1584,6 +1978,10 @@ def update_provenance_manifest(written, cap_root=None) -> Path:
     man["generated"] = sorted(gen)
     man["hand_authored"] = sorted(hand)
     man["held_out"] = {"n_generated": len(held_gen), "n_hand_authored": len(held_hand)}
+    if target is not None:
+        per_target = dict(man.get("performance_generation") or {})
+        per_target[target] = copy.deepcopy(performance_record or {})
+        man["performance_generation"] = per_target
     head = man_path.read_text(encoding="utf-8").split("generated_by:")[0] if man_path.is_file() else ""
     man_path.write_text(head + yaml.safe_dump(man, sort_keys=False), encoding="utf-8")
     return man_path
@@ -1628,12 +2026,12 @@ def main(argv=None) -> int:
     ap.add_argument("--comparison-manifest", action="store_true",
                     help="also emit the cross-target op-comparison manifest under out/artifacts/compare/")
     a = ap.parse_args(argv)
-    targets = [a.target] if a.target else sorted(p.stem for p in PROFILES.glob("*.yaml"))
+    targets = [a.target] if a.target else profile_targets()
     for t in targets:
         written = generate_target(t)
         print(f"{t}: wrote {len(written)} capsules -> {written[0].parent.parent if written else '(none)'}")
     if a.comparison_manifest or not a.target:
-        allt = sorted(p.stem for p in PROFILES.glob("*.yaml"))
+        allt = profile_targets()
         m = write_comparison_manifest(allt)
         print(f"comparison manifest: {m} ({len(build_comparison_manifest(allt)['comparison_sets'])} sets)")
     return 0

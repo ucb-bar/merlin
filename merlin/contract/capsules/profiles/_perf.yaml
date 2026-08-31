@@ -1,0 +1,242 @@
+# The one generated performance-corpus template. Target-owned profiles may
+# describe functional coverage only; applicability comes from the target's own
+# canonical merlin.perf.profile traits.
+#
+# Claim vocabulary is intentionally disjoint:
+#   RECOVERS     measured shipped reference / measured reference
+#   PREDICTS     predicted cycles for Merlin's kernel / its measured cycles
+#   DIFFERENTIAL same work and demand, one compiler lever changed
+# This template currently makes one PREDICTS family and two DIFFERENTIAL
+# declarations. It makes no RECOVERS claim.
+
+sweeps:
+
+# Minimum runnable coverage: a direct matmul capsule on the target's own
+# workload_gen/corpus-binding dtype. On Gemmini this resolves to int8 -> i32.
+- id: PK
+  fit_axes: [K]
+  comparison_roles: [prediction, measurement]
+  base:
+    cat: _perf
+    kind: model_slice
+    op: matmul
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    performance:
+      level: L1_tile
+      family: PK
+      lever: reduction_depth
+      claim: PREDICTS
+      comparand:
+        kind: fitted_prediction
+        against: measured_cycles_same_member
+        cancels: [identical_M, identical_N, identical_datapath]
+        demand_equal: [operation, M, N, operand_dtype, accum_dtype]
+      falsifier:
+        observation: residual_cycles_by_K
+        fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+        negative_control: fixed_M_and_N_across_all_K_points
+      gate:
+        traits: [structural_pipeline_depth]
+        instrument: cycle_count
+        capacity: four_distinct_reduction_depths
+        on_missing: skip_with_evidence
+      regime:
+        separation: K_is_the_only_varied_shape_axis
+        layout: target_native_direct_corpus_builder
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs: {operation: matmul, varied_axis: K}
+      cost:
+        tier: 1
+        runs: 4
+        projected_cycles: derived_at_preflight
+        basis: four_members_before_repetition
+  axes:
+    M: [tile]
+    N: [tile]
+    K: [tile, 2*tile, 4*tile, 8*tile]
+  name: '{id}{i:02d}_k{K}'
+  source_reference: >-
+    shared reduction-depth sweep at fixed single-tile parallel extents
+
+# Declared now so an inapplicable target leaves an evidence-bearing skip. Even
+# where the traits resolve true, admission remains blocked until the settle
+# lever is wired into capsule materialization.
+- id: PS
+  fit_axes: [K]
+  comparison_roles: [contract_settle, reduced_settle]
+  base:
+    cat: _perf
+    kind: model_slice
+    op: matmul
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    performance:
+      level: L1_separation_floor
+      family: PS
+      lever: per_class_settle
+      claim: DIFFERENTIAL
+      comparand:
+        kind: paired_run
+        against: same_kernel_with_descending_settle
+        cancels: [operation, shape, operands, instruction_multiset]
+        demand_equal: [operation, M, N, K, operand_salt]
+      falsifier:
+        observation: bit_exactness_and_cycle_delta
+        fires_when: bit_exactness_fails_within_the_declared_settle_range
+        negative_control: contract_settle_member
+      gate:
+        traits: [self_hosted_program, explicit_completion]
+        instrument: per_class_completion_and_cycle_count
+        capacity: at_least_two_settle_levels_per_class
+        on_missing: skip_with_evidence
+      regime:
+        separation: fixed_before_each_paired_settle_comparison
+        layout: identical_kernel_and_operands
+      emitter:
+        status: new:settle_sweep_materializer
+        entry: merlin.perf.workload_gen.plan_matmul
+        knobs: {varied_parameter: settle_by_instruction_class}
+      cost:
+        tier: 1
+        runs: 60
+        projected_cycles: derived_at_preflight
+        basis: three_classes_by_five_levels_by_four_salts
+  axes:
+    M: [tile]
+    N: [tile]
+    K: [tile, 2*tile]
+  name: '{id}{i:02d}_k{K}'
+  source_reference: shared separation-floor declaration; emitter not yet admitted
+
+# Likewise: Gemmini's independent engine ports are established, but explicit
+# completion currently is not, so it must be a structured UNKNOWN skip rather
+# than a generated no-op overlap capsule.
+- id: PC
+  fit_axes: [K]
+  comparison_roles: [not_hoisted, hoisted]
+  base:
+    cat: _perf
+    kind: model_slice
+    op: matmul
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    performance:
+      level: L3_inter_layer
+      family: PC
+      lever: dma_issue_before_wait
+      claim: DIFFERENTIAL
+      comparand:
+        kind: paired_run
+        against: identical_dependence_chain_without_hoist
+        cancels: [operation, shape, operands, instruction_multiset]
+        demand_equal: [operation, M, N, K, separation_regime]
+      falsifier:
+        observation: paired_cycle_delta
+        fires_when: hoisting_does_not_improve_any_declared_separation_regime
+        negative_control: single_K_step_hoist
+      gate:
+        traits: [independent_engine_ports, explicit_completion]
+        instrument: per_engine_completion_and_cycle_count
+        capacity: at_least_two_separation_regimes
+        on_missing: skip_with_evidence
+      regime:
+        separation: fixed_within_each_pair_and_repeated_at_two_levels
+        layout: real_producer_consumer_dependence
+      emitter:
+        status: new:instruction_reorder
+        entry: merlin.perf.workload_gen.plan_matmul
+        knobs: {transformation: issue_stage_two_transfer_before_stage_one_wait}
+      cost:
+        tier: 1
+        runs: derived_from_two_pairs_plus_negative_control
+        projected_cycles: derived_at_preflight
+        basis: paired_differential_at_two_separation_regimes
+  axes:
+    M: [4*tile]
+    N: [4*tile]
+    K: [4*tile, 8*tile]
+  name: '{id}{i:02d}_m{M}k{K}n{N}'
+  source_reference: shared inter-layer declaration; reorder emitter not yet admitted
+
+# These families are contract-complete but are not sweeps: putting them under
+# `sweeps` would falsely claim their lever can be emitted. Generation persists
+# them as blocked_unimplemented with their fit axes and comparison roles.
+blocked_unimplemented:
+
+- family: PL
+  reason: layer-scale lever and preflight promotion are not capsule-runnable
+  fit_axes: [K]
+  comparison_roles: [tile_regime, layer_regime]
+  performance:
+    level: L2_intra_layer
+    family: PL
+    lever: cross_regime_amortization
+    claim: DIFFERENTIAL
+    comparand:
+      kind: paired_regime
+      against: same_lever_at_tile_and_layer_scale
+      cancels: [operation, datapath, lever]
+      demand_equal: [per_tile_pass_work, operand_dtype, accum_dtype]
+    falsifier:
+      observation: per_tile_pass_saving_by_regime
+      fires_when: saving_changes_beyond_the_declared_band
+      negative_control: tile_scale_member
+    gate:
+      traits: [structural_pipeline_depth]
+      instrument: cycle_count_and_preflight
+      capacity: non_aliasing_DRAM_and_non_binding_IMEM
+      on_missing: skip_with_evidence
+    regime:
+      separation: tile_scale_versus_promoted_layer_scale
+      layout: identical_lever_with_looped_layer_emission
+    emitter:
+      status: new:layer_promotion_materializer
+      entry: merlin.perf.workload_gen.plan_matmul
+      knobs: {promotion: passing_tile_member_to_layer_sibling}
+    cost:
+      tier: 2
+      runs: derived_after_tier_one_promotion
+      projected_cycles: derived_at_preflight
+      basis: only_passing_tier_one_members_are_promoted
+
+- family: PF
+  reason: bias-add and fused-epilogue corpus builders are not runnable
+  fit_axes: [K]
+  comparison_roles: [fused, part]
+  performance:
+    level: L5_fusion
+    family: PF
+    lever: epilogue_fusion
+    claim: DIFFERENTIAL
+    comparand:
+      kind: group_arithmetic
+      against: sum_of_unfused_parts
+      cancels: [operation_shape, operands, numeric_policy]
+      demand_equal: [M, N, K, operand_dtype, accum_dtype]
+    falsifier:
+      observation: fused_cycles_minus_sum_of_parts
+      fires_when: fused_cycles_are_not_lower_than_the_sum_of_parts
+      negative_control: unfused_matmul_plus_bias_add
+    gate:
+      traits: [structural_pipeline_depth]
+      instrument: cycle_count
+      capacity: complete_fused_and_part_comparison_group
+      on_missing: skip_with_evidence
+    regime:
+      separation: one_identical_shape_per_group
+      layout: fused_member_and_all_parts_share_inputs
+    emitter:
+      status: new:fused_epilogue_and_bias_add_builders
+      entry: merlin.targetgen.corpus_spec.build
+      knobs: {members: [fused_matmul_bias, matmul, bias_add]}
+    cost:
+      tier: 1
+      runs: three_per_shape
+      projected_cycles: derived_at_preflight
+      basis: one_fused_member_and_two_parts

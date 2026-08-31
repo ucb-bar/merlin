@@ -12,8 +12,9 @@ target's performance corpus is checked by the same file without an edit.
 """
 from __future__ import annotations
 
+import sys
+
 import pytest
-import yaml
 
 from merlin.common.paths import repo_root
 from merlin.perf import comparand as C
@@ -22,6 +23,9 @@ from merlin.targetgen.contract.schemas import validate_capsule
 
 CAPSULES = repo_root() / "merlin" / "contract" / "capsules"
 PERF_ROOTS = sorted(p for p in CAPSULES.glob("*/perf") if p.is_dir())
+if str(CAPSULES) not in sys.path:
+    sys.path.insert(0, str(CAPSULES))
+import generate_corpus as GC  # noqa: E402
 
 
 def _load(root):
@@ -146,12 +150,15 @@ def test_the_generated_capsules_match_their_profile_declaration():
     build the capsule dict themselves, so a key handled in only one of them vanishes from most of the
     corpus -- which is how the ``comparison_group`` field came to be declared and consumed by nothing."""
     for root in PERF_ROOTS:
-        profile = CAPSULES / "profiles" / f"{root.parent.name}.yaml"
-        if not profile.is_file():
+        profile_path = CAPSULES / "profiles" / f"{root.parent.name}.yaml"
+        if not profile_path.is_file():
             continue
-        doc = yaml.safe_load(profile.read_text(encoding="utf-8")) or {}
+        doc = GC.load_profile(root.parent.name, include_holdouts=False)
         declared_levels = {(s.get("base") or {}).get("performance", {}).get("level")
                            for s in (doc.get("sweeps") or [])}
+        declared_levels |= {
+            (row.get("performance") or {}).get("level")
+            for row in (doc.get("_performance_template") or {}).get("blocked_unimplemented", [])}
         declared_levels.discard(None)
         on_disk = {(c.get("performance") or {}).get("level") for c in _load(root)}
         assert on_disk <= declared_levels or not declared_levels, (on_disk, declared_levels)

@@ -5,18 +5,20 @@ produces tile-edge cases for a 16-wide command-buffer tile and for a 64-wide
 VLMAX tile without being edited. Two rules are enforced rather than documented,
 and both are tested here because both encode something learned from a failure:
 
-  * a K axis needs at least TWO distinct points, since one reduction depth cannot
-    separate a tiled unit's rate from its per-tile-pair overhead;
+  * every fitted axis needs at least TWO distinct points (K is always fitted),
+    since one point cannot separate a rate from fixed overhead;
   * a sweep that would exceed the capsule cap RAISES instead of truncating,
     because a silently shortened corpus reads as "covered everything".
 """
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from merlin.common.paths import merlin_dir
 
@@ -28,7 +30,38 @@ import generate_corpus as GC  # noqa: E402
 
 
 def _binding(tile: int = 16):
-    return SimpleNamespace(tile_dim=tile)
+    return SimpleNamespace(
+        target="fixture", tile_dim=tile, operand_dtype="int8", accum_dtype="i32")
+
+
+def _performance_block(*, family="PG", traits=None, emitter_status="existing"):
+    """Small but complete performance contract for focused generator tests."""
+    return {
+        "level": "L1_test",
+        "family": family,
+        "lever": "test_lever",
+        "claim": "DIFFERENTIAL",
+        "comparand": {"kind": "paired", "against": "control", "cancels": ["shape"],
+                       "demand_equal": ["M", "K"]},
+        "falsifier": {"observation": "cycles", "fires_when": "delta_is_zero",
+                       "negative_control": "control"},
+        "gate": {"traits": list(traits or ["explicit_dma"]), "instrument": "cycles",
+                 "capacity": "two_points", "on_missing": "skip_with_evidence"},
+        "regime": {"separation": "fixed", "layout": "identical"},
+        "emitter": {"status": emitter_status, "entry": "merlin.targetgen.corpus_spec.build",
+                    "knobs": {}},
+        "cost": {"tier": 1, "runs": 2, "projected_cycles": "preflight",
+                 "basis": "two_members"},
+    }
+
+
+def _trait_facts(**values):
+    return {"traits": {
+        name: {"satisfied": value, "tier": "test_tier",
+               "evidence": f"test evidence for {name}={value}",
+               "missing": ([f"measurement for {name}"] if value is None else [])}
+        for name, value in values.items()
+    }}
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +186,19 @@ def test_two_K_tokens_that_resolve_to_the_same_extent_are_still_one_point():
         GC.expand_sweeps(profile, _binding(16))
 
 
+def test_every_axis_declared_as_fitted_needs_two_distinct_points():
+    profile = _sweep_profile(axes={"M": ["tile"], "N": ["tile", "2*tile"],
+                                   "K": [64, 256]}, fit_axes=["M", "N"])
+    with pytest.raises(ValueError, match="fits M.*TWO distinct points"):
+        GC.expand_sweeps(profile, _binding(16))
+
+
+def test_a_fitted_axis_must_name_an_axis_the_sweep_declares():
+    profile = _sweep_profile(fit_axes=["B"])
+    with pytest.raises(ValueError, match="fits undeclared axis"):
+        GC.expand_sweeps(profile, _binding(16))
+
+
 def test_an_oversized_sweep_raises_rather_than_truncating():
     profile = _sweep_profile(axes={"M": list(range(1, 13)), "N": list(range(1, 13)), "K": [64, 256]})
     with pytest.raises(ValueError, match="cap"):
@@ -249,7 +295,7 @@ def test_every_generated_entry_carries_that_role():
 def _variant_profile(**over):
     sweep = {
         "id": "PF",
-        "base": {"cat": "perf", "kind": "model_slice", "out": "Y0", "label": "dev"},
+        "base": {"cat": "isa", "kind": "model_slice", "out": "Y0", "label": "dev"},
         "axes": {"M": ["tile"], "N": ["tile"], "K": ["tile", "2*tile"]},
         "variants": [
             {"op": "fused_matmul_bias", "comparison_group": {"name": "g_m{M}k{K}n{N}", "role": "fused"}},
@@ -287,9 +333,9 @@ def test_a_variant_string_is_resolved_against_the_shape_it_is_paired_with():
 
 
 def test_a_variant_field_with_no_placeholder_is_copied_through_untouched():
-    prof = _variant_profile(variants=[{"op": "matmul", "performance": {"level": "L5_fusion"}}])
+    prof = _variant_profile(variants=[{"op": "matmul", "annotation": {"level": "L5_fusion"}}])
     entries = GC.expand_sweeps(prof, _binding(16))
-    assert all(e["performance"] == {"level": "L5_fusion"} for e in entries)
+    assert all(e["annotation"] == {"level": "L5_fusion"} for e in entries)
 
 
 def test_names_stay_unique_across_the_whole_cross_product():
@@ -343,9 +389,12 @@ def test_a_block_the_entry_does_not_declare_is_never_invented():
 # Gating: one shared sweep declaration must serve every target, and a family that does not apply
 # must leave a RECORD rather than silently producing nothing.
 # ---------------------------------------------------------------------------------------------
-def _gated_profile(requires):
-    return {"sweeps": [{"id": "PG", "gate": {"requires": requires},
-                        "base": {"cat": "perf", "kind": "isa", "op": "matmul"},
+def _gated_profile(traits, *, emitter_status="existing"):
+    return {"sweeps": [{"id": "PG",
+                        "fit_axes": ["K"],
+                        "base": {"cat": "_perf", "kind": "isa", "op": "matmul",
+                                 "performance": _performance_block(
+                                     traits=traits, emitter_status=emitter_status)},
                         "axes": {"M": ["tile"], "K": ["tile", "2*tile"]},
                         "name": "PG{i:02d}"}]}
 
@@ -353,28 +402,65 @@ def _gated_profile(requires):
 def test_a_met_gate_generates_the_family() -> None:
     skips = []
     entries = GC.expand_sweeps(_gated_profile(["explicit_dma"]), _binding(16),
-                               traits={"explicit_dma": True}, skipped=skips)
+                               trait_facts=_trait_facts(explicit_dma=True), skipped=skips)
     assert len(entries) == 2 and skips == []
+    assert {entry["source"] for entry in entries} == {"direct"}
+    assert {entry["operand_dtype"] for entry in entries} == {"int8"}
 
 
 def test_a_target_lacking_the_trait_generates_nothing_and_says_so() -> None:
     skips = []
     entries = GC.expand_sweeps(_gated_profile(["explicit_dma"]), _binding(16),
-                               traits={"explicit_dma": False}, skipped=skips)
+                               trait_facts=_trait_facts(explicit_dma=False), skipped=skips)
     assert entries == []
-    assert skips[0]["sweep"] == "PG" and "does not have" in skips[0]["reason"]
+    assert skips[0]["family"] == "PG"
+    assert skips[0]["gate"]["outcome"] == "refuted"
+    assert skips[0]["gate"]["facts"]["explicit_dma"] == {
+        "satisfied": False, "tier": "test_tier",
+        "evidence": "test evidence for explicit_dma=False", "missing": []}
 
 
 def test_an_undeterminable_trait_is_not_the_same_as_an_absent_one() -> None:
     # The distinction this repo keeps having to relearn: "I could not tell" must never read as False.
     skips = []
     assert GC.expand_sweeps(_gated_profile(["explicit_dma"]), _binding(16),
-                            traits={"explicit_dma": None}, skipped=skips) == []
-    assert "could not be determined" in skips[0]["reason"]
+                            trait_facts=_trait_facts(explicit_dma=None), skipped=skips) == []
+    assert skips[0]["gate"]["outcome"] == "unestablished"
+    assert skips[0]["gate"]["facts"]["explicit_dma"]["satisfied"] is None
+    assert skips[0]["gate"]["facts"]["explicit_dma"]["tier"] == "test_tier"
+    assert skips[0]["gate"]["facts"]["explicit_dma"]["missing"]
 
     skips2 = []
-    GC.expand_sweeps(_gated_profile(["explicit_dma"]), _binding(16), traits={}, skipped=skips2)
-    assert "could not be determined" in skips2[0]["reason"]
+    GC.expand_sweeps(_gated_profile(["explicit_dma"]), _binding(16),
+                     trait_facts={"traits": {}}, skipped=skips2)
+    assert skips2[0]["gate"]["outcome"] == "unestablished"
+    assert skips2[0]["gate"]["facts"]["explicit_dma"]["tier"] == "not_established"
+
+
+def test_gate_requires_and_unknown_trait_vocabularies_are_refused() -> None:
+    block = _performance_block()
+    block["gate"] = {"requires": ["explicit_dma"], "instrument": "cycles",
+                     "capacity": "two", "on_missing": "skip_with_evidence"}
+    with pytest.raises(ValueError, match="requires is not accepted"):
+        GC._validate_performance_block(block, owner="fixture")
+    block = _performance_block(traits=["not_a_canonical_trait"])
+    with pytest.raises(ValueError, match="unknown performance trait"):
+        GC._validate_performance_block(block, owner="fixture")
+
+
+def test_a_true_gate_with_an_unimplemented_emitter_is_blocked_not_generated() -> None:
+    blocked = []
+    entries = GC.expand_sweeps(
+        _gated_profile(["explicit_dma"], emitter_status="new:test_emitter"), _binding(),
+        trait_facts=_trait_facts(explicit_dma=True), blocked_unimplemented=blocked)
+    assert entries == []
+    assert blocked == [{
+        "family": "PG", "status": "blocked_unimplemented",
+        "reason": "declared emitter 'new:test_emitter' is not implemented",
+        "emitter": {"status": "new:test_emitter",
+                    "entry": "merlin.targetgen.corpus_spec.build", "knobs": {}},
+        "fit_axes": ["K"], "comparison_roles": [],
+    }]
 
 
 def test_gating_is_optional_so_existing_profiles_are_untouched() -> None:
@@ -384,7 +470,7 @@ def test_gating_is_optional_so_existing_profiles_are_untouched() -> None:
 def test_a_comparison_group_of_one_is_refused() -> None:
     # A group with a single member cannot be compared to anything; four shipped capsules carried the
     # field for a year in exactly that state.
-    prof = {"sweeps": [{"id": "PF", "base": {"cat": "perf", "kind": "isa"},
+    prof = {"sweeps": [{"id": "PF", "base": {"cat": "isa", "kind": "isa"},
                         "axes": {"M": ["tile"], "K": ["tile", "2*tile"]},
                         "name": "PF{i:02d}",
                         "variants": [{"op": "fused_matmul_bias",
@@ -394,7 +480,7 @@ def test_a_comparison_group_of_one_is_refused() -> None:
 
 
 def test_a_group_with_the_parts_declared_is_accepted() -> None:
-    prof = {"sweeps": [{"id": "PF", "base": {"cat": "perf", "kind": "isa"},
+    prof = {"sweeps": [{"id": "PF", "base": {"cat": "isa", "kind": "isa"},
                         "axes": {"M": ["tile"], "K": ["tile", "2*tile"]},
                         "name": "PF{i:02d}",
                         "variants": [
@@ -412,20 +498,251 @@ def test_a_group_with_the_parts_declared_is_accepted() -> None:
     assert all(sorted(v) == ["fused", "part", "part"] for v in groups.values())
 
 
-def test_traits_derive_for_every_shipped_target_and_refuse_for_an_unknown_one() -> None:
-    # The anti-overfit proof for gating: one derivation, every target's own declaration, and the
-    # engine set is filed in DIFFERENT places across targets -- so consulting one path would report
-    # "one engine" for whichever targets file it elsewhere.
-    from types import SimpleNamespace
-    seen = {}
-    for t in ("atlas", "gemmini", "muon", "radiance", "saturn", "toy_npu"):
-        tr = GC._corpus_traits(SimpleNamespace(target=t, tile_dim=32, tiers=["L0"]))
-        seen[t] = tr["multiple_engines"]
-    determined = [t for t, v in seen.items() if v is not None]
-    assert len(determined) >= 4, f"engine set undeterminable for too many targets: {seen}"
-    assert any(seen[t] for t in determined) and not all(seen[t] for t in determined), (
-        f"gating cannot discriminate: every target reports the same engine count ({seen})")
+def test_performance_facts_are_the_canonical_derived_profile_with_a_digest() -> None:
+    facts = GC._performance_facts("gemmini")
+    assert set(facts["traits"]) == set(GC.TRAITS)
+    assert len(facts["sha256"]) == 64
+    for fact in facts["traits"].values():
+        assert fact["satisfied"] in (True, False, None)
+        assert fact["tier"] and fact["evidence"]
 
-    unknown = GC._corpus_traits(
-        SimpleNamespace(target="definitely_not_a_target", tile_dim=32, tiers=["L0"]))
-    assert unknown["multiple_engines"] is None      # undeterminable, never False
+
+# ---------------------------------------------------------------------------------------------
+# One shared perf template. Target profiles may keep functional sweeps but may
+# neither copy a perf sweep nor hand-author a perf capsule.
+# ---------------------------------------------------------------------------------------------
+def _minimal_shared_perf():
+    return {"sweeps": [{"id": "PX", "base": {"cat": "_perf", "kind": "isa", "op": "matmul",
+                                                  "performance": _performance_block(family="PX")},
+                         "fit_axes": ["K"],
+                         "axes": {"M": ["tile"], "K": ["tile", "2*tile"]}}],
+            "blocked_unimplemented": []}
+
+
+def test_load_profile_merges_one_shared_perf_template_for_every_target(tmp_path, monkeypatch):
+    (tmp_path / "_perf.yaml").write_text(
+        yaml.safe_dump(_minimal_shared_perf()), encoding="utf-8")
+    functional = {"id": "FX", "base": {"cat": "isa"},
+                  "axes": {"M": ["tile"], "K": ["tile", "2*tile"]}}
+    for target in ("alpha", "beta"):
+        (tmp_path / f"{target}.yaml").write_text(
+            yaml.safe_dump({"capsules": [], "sweeps": [functional]}), encoding="utf-8")
+    monkeypatch.setattr(GC, "PROFILES", tmp_path)
+
+    alpha = GC.load_profile("alpha", include_holdouts=False)
+    beta = GC.load_profile("beta", include_holdouts=False)
+    assert [s["id"] for s in alpha["sweeps"]] == ["FX", "PX"]
+    assert [s["id"] for s in beta["sweeps"]] == ["FX", "PX"]
+    assert GC.profile_targets() == ["alpha", "beta"]
+
+
+@pytest.mark.parametrize("local", [
+    {"capsules": [{"cat": "perf", "name": "local_perf"}]},
+    {"sweeps": [{"id": "LOCAL", "base": {"cat": "perf"}}]},
+    {"sweeps": [{"id": "DISGUISED", "base": {"cat": "isa", "performance": {}}}]},
+])
+def test_load_profile_refuses_every_target_local_perf_template(tmp_path, monkeypatch, local):
+    (tmp_path / "_perf.yaml").write_text(
+        yaml.safe_dump(_minimal_shared_perf()), encoding="utf-8")
+    (tmp_path / "target.yaml").write_text(yaml.safe_dump(local), encoding="utf-8")
+    monkeypatch.setattr(GC, "PROFILES", tmp_path)
+
+    with pytest.raises(ValueError, match="target-local performance template"):
+        GC.load_profile("target", include_holdouts=False)
+
+
+def test_shipped_targets_all_consume_the_same_claim_separated_perf_template():
+    shared = yaml.safe_load((GC.PROFILES / "_perf.yaml").read_text(encoding="utf-8"))
+    shared_ids = [s["id"] for s in shared["sweeps"]]
+    claims = {s["base"]["performance"]["claim"] for s in shared["sweeps"]}
+    assert claims == {"PREDICTS", "DIFFERENTIAL"}
+    assert all(s["base"]["cat"] == "_perf" and s["base"]["label"] == "dev"
+               for s in shared["sweeps"])
+    assert [s["id"] for s in shared["sweeps"]] == ["PK", "PS", "PC"]
+    assert {row["family"] for row in shared["blocked_unimplemented"]} == {"PL", "PF"}
+    assert all("source" not in s["base"] and "operand_dtype" not in s["base"]
+               for s in shared["sweeps"])
+
+    for target in GC.profile_targets():
+        target_doc = yaml.safe_load(
+            (GC.PROFILES / f"{target}.yaml").read_text(encoding="utf-8")) or {}
+        assert GC._target_local_perf_declarations(target_doc) == []
+        merged = GC.load_profile(target, include_holdouts=False)
+        assert [s["id"] for s in merged["sweeps"][-len(shared_ids):]] == shared_ids
+
+
+@pytest.mark.parametrize("missing", sorted(GC._PERFORMANCE_FIELDS))
+def test_every_required_performance_contract_field_is_fail_closed(missing):
+    block = _performance_block()
+    block.pop(missing)
+    with pytest.raises(ValueError, match="missing required field"):
+        GC._validate_performance_block(block, owner="fixture")
+
+
+def test_gemmini_admits_only_runnable_PK_and_records_PS_PC_trait_skips():
+    profile = GC.load_profile("gemmini", include_holdouts=False)
+    shared_sweeps = profile["sweeps"][-3:]
+    skips, blocked, errors = [], [], []
+    experiment = GC.load_target_experiment(GC._descriptor_for("gemmini"))
+    binding = GC.CS.derive_binding(experiment, profile.get("datapath") or {})
+    entries = GC.expand_sweeps(
+        {"sweeps": shared_sweeps}, binding,
+        trait_facts=GC._performance_facts("gemmini"), skipped=skips,
+        blocked_unimplemented=blocked, errors=errors)
+
+    assert [entry["performance"]["family"] for entry in entries] == ["PK"] * 4
+    assert {entry["operand_dtype"] for entry in entries} == {"int8"}
+    assert {entry["performance"]["emitter"]["resolved"]["accum_dtype"]
+            for entry in entries} == {"i32"}
+    assert {entry["source"] for entry in entries} == {"direct"}
+    assert {entry["cat"] for entry in entries} == {"_perf"}
+    assert {entry["label"] for entry in entries} == {"dev"}
+    assert {entry["cat"] for entry in entries}.isdisjoint(
+        {"isa", "layers", "model", "model_slices", "hidden"})
+    assert [(row["family"], row["gate"]["outcome"]) for row in skips] == [
+        ("PS", "refuted"), ("PC", "unestablished")]
+    assert skips[0]["gate"]["facts"]["self_hosted_program"]["satisfied"] is False
+    assert skips[0]["gate"]["facts"]["explicit_completion"]["satisfied"] is None
+    assert skips[1]["gate"]["facts"]["independent_engine_ports"]["satisfied"] is True
+    assert blocked == [] and errors == []
+    assert {row["family"] for row in profile["_performance_template"]["blocked_unimplemented"]} == {
+        "PL", "PF"}
+    capsule, mlir = GC.CS.build(entries[0], binding)
+    assert capsule["numeric_policy"] == {"compare": "exact_int", "dtype": "i32"}
+    assert capsule["label"] == "dev" and "merlin_iface.matmul" in mlir
+
+
+def test_underscore_perf_phase_is_excluded_from_functional_graded_roots(tmp_path, monkeypatch):
+    from merlin.targetgen import target_experiment as TE
+
+    descriptor = (GC.REPO / "experiments" / "capsule_bench" / "targets"
+                  / "gemmini" / "target_experiment.yaml")
+    loaded = TE.load_target_experiment(descriptor)
+    functional = tmp_path / "isa"
+    (functional / "A0").mkdir(parents=True)
+    (functional / "A0" / "capsule.yaml").write_text("name: A0\n", encoding="utf-8")
+    (tmp_path / "layers" / "L0").mkdir(parents=True)
+    (tmp_path / "layers" / "L0" / "capsule.yaml").write_text("name: L0\n", encoding="utf-8")
+    (tmp_path / "_perf" / "PK00").mkdir(parents=True)
+    (tmp_path / "_perf" / "PK00" / "capsule.yaml").write_text("name: PK00\n", encoding="utf-8")
+    monkeypatch.setattr(TE, "repo_root", lambda: tmp_path)
+    experiment = dataclasses.replace(loaded, capsule_corpus=functional)
+
+    assert experiment.corpus_siblings() == ["layers/"]
+    assert experiment.graded_roots() == [functional, tmp_path / "layers"]
+
+
+def test_materialization_failure_is_an_error_not_an_unimplemented_block(monkeypatch):
+    class DatapathFailure(RuntimeError):
+        pass
+
+    monkeypatch.setattr(
+        GC.WG, "datapath_formats",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(DatapathFailure("no declared datapath")))
+    binding = SimpleNamespace(target="fixture", tile_dim=16, operand_dtype=None, accum_dtype=None)
+    blocked, errors = [], []
+    entries = GC.expand_sweeps(
+        _gated_profile(["explicit_dma"]), binding,
+        trait_facts=_trait_facts(explicit_dma=True),
+        blocked_unimplemented=blocked, errors=errors)
+    assert entries == [] and blocked == []
+    assert len(errors) == 2
+    assert {row["error_type"] for row in errors} == {"DatapathFailure"}
+    assert {row["status"] for row in errors} == {"error"}
+
+
+def test_generation_persists_complete_performance_record(tmp_path):
+    record = {
+        "shared_template": {"path": "profiles/_perf.yaml", "sha256": "a" * 64},
+        "facts": {"target": "fixture", "sha256": "b" * 64},
+        "families": [{"family": "PX", "fit_axes": ["K"], "comparison_roles": []}],
+        "counts": {"declared_families": 1, "generated_families": 0,
+                   "generated_members": 0,
+                   "by_family": {"PX": {"admitted_members": 0, "written_members": 0}}},
+        "skipped_inapplicable": [{"family": "PX", "status": "skipped_inapplicable"}],
+        "blocked_unimplemented": [],
+        "errors": [],
+    }
+    path = GC.update_provenance_manifest(
+        [], cap_root=tmp_path, target="fixture", performance_record=record)
+    manifest = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert manifest["performance_generation"]["fixture"] == record
+
+
+def test_generate_target_passes_gate_skips_to_provenance(tmp_path, monkeypatch):
+    captured = {}
+    profile = _gated_profile(["explicit_dma"])
+    profile["_performance_template"] = {
+        "path": "profiles/_perf.yaml", "sha256": "a" * 64,
+        "families": [{"family": "PG", "claim": "DIFFERENTIAL", "fit_axes": ["K"],
+                      "comparison_roles": []}],
+        "blocked_unimplemented": [],
+    }
+    binding = _binding(16)
+    te = SimpleNamespace(capsule_corpus=str(tmp_path / "isa"))
+    monkeypatch.setattr(GC, "_descriptor_for", lambda _target: tmp_path / "target.yaml")
+    monkeypatch.setattr(GC, "_ensure_contract_on_path", lambda _descriptor: None)
+    monkeypatch.setattr(GC, "load_target_experiment", lambda _descriptor: te)
+    monkeypatch.setattr(GC, "load_profile", lambda _target: profile)
+    monkeypatch.setattr(GC.CS, "derive_binding", lambda _te, _datapath: binding)
+    monkeypatch.setattr(
+        GC, "_performance_facts",
+        lambda _target: {**_trait_facts(explicit_dma=False), "target": "fixture", "sha256": "b" * 64})
+
+    def record(_written, **kwargs):
+        captured.update(kwargs)
+        return tmp_path / "MANIFEST.yaml"
+
+    monkeypatch.setattr(GC, "update_provenance_manifest", record)
+    assert GC.generate_target("fixture") == []
+    assert captured["target"] == "fixture"
+    perf = captured["performance_record"]
+    assert perf["skipped_inapplicable"][0]["status"] == "skipped_inapplicable"
+    assert perf["phase"] == {
+        "category": "_perf", "label": "dev", "included_in_functional_grade": False,
+        "exclusion": "TargetExperiment.corpus_siblings excludes underscore-prefixed categories",
+    }
+    assert perf["counts"]["generated_members"] == 0
+    assert perf["blocked_unimplemented"] == []
+    assert perf["errors"] == []
+
+
+def test_generate_target_persists_family_and_member_counts(tmp_path, monkeypatch):
+    captured = {}
+    profile = _gated_profile(["explicit_dma"])
+    profile["_performance_template"] = {
+        "path": "profiles/_perf.yaml", "sha256": "a" * 64,
+        "families": [{"family": "PG", "claim": "DIFFERENTIAL", "fit_axes": ["K"],
+                      "comparison_roles": []}],
+        "blocked_unimplemented": [],
+    }
+    binding = _binding(16)
+    te = SimpleNamespace(capsule_corpus=str(tmp_path / "isa"))
+    monkeypatch.setattr(GC, "_descriptor_for", lambda _target: tmp_path / "target.yaml")
+    monkeypatch.setattr(GC, "_ensure_contract_on_path", lambda _descriptor: None)
+    monkeypatch.setattr(GC, "load_target_experiment", lambda _descriptor: te)
+    monkeypatch.setattr(GC, "load_profile", lambda _target: profile)
+    monkeypatch.setattr(GC.CS, "derive_binding", lambda _te, _datapath: binding)
+    monkeypatch.setattr(
+        GC, "_performance_facts",
+        lambda _target: {**_trait_facts(explicit_dma=True), "target": "fixture", "sha256": "b" * 64})
+
+    def write(entry, _binding, out_root):
+        destination = out_root / entry["cat"] / entry["name"]
+        destination.mkdir(parents=True)
+        return destination
+
+    monkeypatch.setattr(GC, "_write_capsule", write)
+    monkeypatch.setattr(GC, "_scrub_capsule_dir", lambda _path: None)
+
+    def record(_written, **kwargs):
+        captured.update(kwargs)
+        return tmp_path / "MANIFEST.yaml"
+
+    monkeypatch.setattr(GC, "update_provenance_manifest", record)
+    assert len(GC.generate_target("fixture")) == 2
+    counts = captured["performance_record"]["counts"]
+    assert counts == {
+        "declared_families": 1, "generated_families": 1, "generated_members": 2,
+        "by_family": {"PG": {"admitted_members": 2, "written_members": 2}},
+    }
