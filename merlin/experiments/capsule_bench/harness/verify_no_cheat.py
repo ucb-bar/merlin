@@ -442,11 +442,10 @@ def _scan_root(root: Path, seen: set) -> list[Path]:
 
 
 def check_holdout_not_specified() -> tuple[bool, list[str]]:
-    # FAIL CLOSED WHEN BLIND. A preflighted run answer-locks the holdout store (chmod 000) -- correctly,
-    # the agent must not read it -- but that also empties the walk, and "no names" used to mean "nothing
-    # to check" and report PASS. The check then went green precisely when it could not see, and its
-    # success was indistinguishable from its blindness. This is the check that stops a held-out spec
-    # reaching the granted tree, and a real leak of exactly that kind was found in this corpus.
+    # FAIL CLOSED WHEN BLIND. Older preflights chmod-000-locked the holdout store, which also emptied the
+    # host walk; "no names" then meant "nothing to check" and reported PASS. Current preflight keeps the
+    # host tree owner-readable and relies on bwrap to hide it from the agent, but blindness must remain a
+    # hard failure so a stale permission state cannot resurrect the vacuous pass.
     blind = _unreadable_holdout_stores()
     if blind:
         return False, [f"holdout store {d.relative_to(REPO)} exists but could not be read "

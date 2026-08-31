@@ -126,37 +126,55 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
     return cmd
 
 
-# Host-side answer surfaces locked (chmod 000) right before any spend — defence-in-depth on top of the
-# per-bundle workspace assembly + the bwrap answer masks. DERIVED from the descriptor so a new target
-# locks ITS OWN surfaces: the per-target hidden holdout dir (the answers) + stale prior results. NOTE
+# Host-side answer surfaces are owner-only but remain readable to the host grader. The agent boundary is
+# the deny-by-default bwrap mount table, not a same-UID chmod trick that also blinds grading and readiness.
+# DERIVED from the descriptor so a new target protects ITS OWN surfaces: the per-target hidden holdout
+# dir (the answers) + stale prior results. NOTE
 # the target's contract dir (out/artifacts/targets/<target>) is deliberately NOT locked — it holds the
 # capability contract, not an answer, and locking it would break the run's own contract resolution.
-def _answer_surfaces_to_lock(te) -> list[str]:
-    locks: list[str] = []
+def _host_answer_surfaces(te) -> list[Path]:
+    surfaces: list[Path] = []
     if te is not None:
         h = te.hidden_corpus()                                # per-target hidden set (capsules/<t>/hidden)
         if h:
-            locks.append(str(C.REPO / h.rstrip("/")))
-    locks.append(str(C.REPO / f"out/artifacts/capsule-bench/{C.TARGET}"))  # stale prior results
-    return locks
+            surfaces.append(C.REPO / h.rstrip("/"))
+    surfaces.append(C.REPO / f"out/artifacts/capsule-bench/{C.TARGET}")  # stale prior results
+    return surfaces
+
+
+def _make_host_owner_only(root: Path) -> int:
+    """Keep a surface host-readable while denying other host users; return entries protected.
+
+    Symlinks are refused instead of followed: recursively changing a linked tree would expand the
+    preflight's authority beyond the descriptor-derived surface.
+    """
+    if root.is_symlink():
+        raise RuntimeError(f"answer surface must not be a symlink: {root}")
+    entries = [root] + sorted(root.rglob("*"))
+    for entry in entries:
+        if entry.is_symlink():
+            raise RuntimeError(f"answer surface contains a symlink: {entry}")
+        entry.chmod(0o700 if entry.is_dir() else 0o600)
+    return len(entries)
 
 
 def _run_preflight() -> int:
-    """Lock answer surfaces + run verify_no_cheat.py (the authoritative gate). Returns 0 iff safe."""
+    """Prepare host-only surfaces + run verify_no_cheat.py. Returns 0 iff safe."""
     C.require_scaffolding()   # fail loudly if MERLIN_TARGET_EXPERIMENT points at a scaffolding-less dir
     from merlin.targetgen.target_experiment import load_target_experiment, bundles_match_descriptor
     desc = C.EXP / "target_experiment.yaml"          # C.EXP honors MERLIN_TARGET_EXPERIMENT
     te = load_target_experiment(desc) if desc.is_file() else None
-    # ORDER MATTERS: verify BEFORE locking, then lock.
-    #
-    # The held-out check derives every holdout capsule NAME by walking `hidden/*/capsule.yaml` and then
-    # looks for those names inside the tree the bundles grant. Locking first (chmod -R 000) makes that walk
-    # return nothing, so the check cannot see the very thing it exists to check. While it treated "no names"
-    # as "nothing to check" that was invisible; once it was made to fail closed, lock-then-check turned into
-    # a guaranteed failure -- which is the honest symptom of an ordering bug that was always there.
-    #
-    # Verifying first costs nothing: the lock still lands before any agent process starts, which is the
-    # invariant that matters ("before any spend"), and no agent has been launched at this point.
+    # Recover from a prior launch that left mode-000 trees behind, then keep them owner-only. This must
+    # precede verification because the host-side anti-cheat and hidden grader need to enumerate the set.
+    protected = []
+    try:
+        for path in _host_answer_surfaces(te):
+            if path.exists():
+                protected.append(f"{path} ({_make_host_owner_only(path)} entries)")
+    except (OSError, RuntimeError) as exc:
+        print(f"  ⚠ could not prepare host-only answer surfaces: {exc}")
+        return 1
+    print(f"  host-only answer surfaces (dirs 0700, files 0600): {protected or '(none present)'}")
     vnc = SCRIPTS / "verify_no_cheat.py"
     if not vnc.is_file():
         print(f"  ⚠ verify_no_cheat.py not found at {vnc} — build it before launch (#167).")
@@ -165,12 +183,6 @@ def _run_preflight() -> int:
     r = subprocess.run([sys.executable, str(vnc)], cwd=str(C.REPO))
     if r.returncode:
         return r.returncode
-    locked = []
-    for p in _answer_surfaces_to_lock(te):
-        if Path(p).exists():
-            subprocess.run(["chmod", "-R", "000", p], capture_output=True)
-            locked.append(p)
-    print(f"  locked answer surfaces (chmod 000): {locked or '(none present)'}")
     # Descriptor governs the shared hardware spec: refuse if any active arm bundle drifted from it (so
     # every arm gets exactly the ISA/RTL the target_experiment.yaml declares — a fair, honest run).
     try:
@@ -262,8 +274,8 @@ def main(argv=None):
                          "— only granted bundle files + the legit toolchain visible, all answers masked "
                          "(proven by test_sandbox.py 18/18 per arm). 'none' = legacy reachable-fs + audit.")
     ap.add_argument("--preflight", action="store_true",
-                    help="lock all answer surfaces (chmod 000) + dry-run + assert cheat-clean BEFORE any "
-                         "spend; launches NOTHING (use this immediately before a real launch).")
+                    help="make host answer surfaces owner-only + dry-run + assert cheat-clean BEFORE "
+                         "any spend; bwrap masks them from the agent; launches NOTHING.")
     ap.add_argument("--with-tool", action="append", default=[], metavar="NAME",
                     help="ABLATION: grant this arm-gated tool on top of every launched arm's rung "
                          "(repeatable). Generate the matching bundles first with "
@@ -326,7 +338,7 @@ def main(argv=None):
         return 2
 
     if a.preflight:
-        print("\n=== --preflight: lock answer surfaces + assert cheat-clean (launches NOTHING) ===")
+        print("\n=== --preflight: protect host surfaces + assert cheat-clean (launches NOTHING) ===")
         rc = _run_preflight()
         print(f"\n[preflight] {'PASS — safe to launch (drop --preflight, keep flags)' if rc == 0 else 'FAILED — DO NOT launch'}")
         return rc

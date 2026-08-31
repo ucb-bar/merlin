@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     # Honour the verdict. This return code was DISCARDED, so a preflight that printed
     # "VERIFY_NO_CHEAT: FAIL -- DO NOT launch" went on to launch anyway, and the gate that exists
     # to stop a compromised run from spending was decorative. Observed on a live launch.
-    _pf = LB._run_preflight()   # lock answer surfaces + verify_no_cheat before any spend
+    _pf = LB._run_preflight()   # host-only surfaces + verify_no_cheat before any spend
     if _pf:
         print("preflight FAILED — refusing to launch (nothing has been spent)", file=sys.stderr)
         return _pf

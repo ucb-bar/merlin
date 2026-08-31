@@ -1,11 +1,10 @@
 """The launch preflight must be able to see what it checks, and its verdict must stop the launch.
 
-Both halves failed on a live launch, and they hid each other:
+Two independent failures occurred on a live launch:
 
-  * ``_run_preflight`` locked every answer surface (``chmod -R 000``) BEFORE running verify_no_cheat. The
-    held-out check derives holdout capsule NAMES by walking ``hidden/*/capsule.yaml``, so after the lock it
-    saw nothing. While "no names" was read as "nothing to check" this was invisible; once the check was made
-    to fail closed it became a guaranteed failure -- the honest symptom of an ordering bug always present.
+  * ``_run_preflight`` chmod-000-locked every answer surface. The host anti-cheat and hidden grader run as
+    the same user, so this blinded both of them. The real isolation boundary is bwrap; host trees must stay
+    owner-readable while the sandbox mount table masks them from the agent.
   * ``chia_ab_batch`` called ``LB._run_preflight()`` and discarded the return code, so the run printed
     "VERIFY_NO_CHEAT: FAIL -- DO NOT launch" and launched.
 
@@ -33,27 +32,30 @@ def _fn(name: str, mod: str) -> ast.FunctionDef:
     raise AssertionError(f"{name} not found in {mod}")
 
 
-def test_verification_runs_before_the_answer_lock():
-    """Structural, not textual: compare the LINE where the chmod happens to where verify runs."""
+def test_host_access_is_restored_before_verification():
+    """A stale mode-000 run must be repaired before the host tries to enumerate hidden capsules."""
     fn = _fn("_run_preflight", "launch_ab_batch.py")
-    chmod_lines, vnc_lines = [], []
+    prepare_lines, vnc_lines = [], []
     for node in ast.walk(fn):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id == "_make_host_owner_only":
+                prepare_lines.append(node.lineno)
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if node.value == "000":
-                chmod_lines.append(node.lineno)
-            elif node.value == "verify_no_cheat.py":
+            if node.value == "verify_no_cheat.py":
                 vnc_lines.append(node.lineno)
-    assert chmod_lines, "the answer-surface lock disappeared from the preflight"
+    assert prepare_lines, "the host-readable answer-surface preparation disappeared"
     assert vnc_lines, "verify_no_cheat is no longer invoked by the preflight"
-    assert min(vnc_lines) < min(chmod_lines), (
-        "verify_no_cheat must run BEFORE the chmod 000 lock — locking first blinds the held-out check, "
-        "which must read hidden/*/capsule.yaml to know what to look for")
+    assert min(prepare_lines) < min(vnc_lines), (
+        "host access must be restored before verify_no_cheat walks hidden/*/capsule.yaml")
 
 
-def test_the_lock_still_happens_in_the_preflight():
-    """Verifying first must not become 'not locking': the surfaces are locked before any agent spends."""
-    fn = _fn("_run_preflight", "launch_ab_batch.py")
-    assert any(isinstance(n, ast.Constant) and n.value == "000" for n in ast.walk(fn))
+def test_host_protection_is_owner_only_never_mode_zero():
+    """The host grader retains access; the agent is isolated by the separately tested bwrap masks."""
+    fn = _fn("_make_host_owner_only", "launch_ab_batch.py")
+    modes = {node.value for node in ast.walk(fn)
+             if isinstance(node, ast.Constant) and isinstance(node.value, int)}
+    assert 0o700 in modes and 0o600 in modes
+    assert 0 not in modes, "mode 000 blinds same-UID host grading and is not an agent security boundary"
 
 
 def test_the_preflight_verdict_gates_the_launch():
