@@ -328,16 +328,37 @@ def test_graded_path_is_the_declared_one():
     pub_roots, hid_roots = _TE.graded_roots(), _TE.hidden_roots()
     contract = str(REPO / "merlin/contract")
     try:
-        n_pub = len(CR.discover_capsules(pub_roots, labels={"public", "dev"}, contract=contract))
+        source_caps = CR.discover_capsules(pub_roots, labels={"public", "dev"}, contract=contract)
+        source_by_name = {str(c.get("name")): c for c in source_caps}
+        excluded = set(getattr(_TE, "graded_exclude", ()) or ())
+        unknown_exclusions = sorted(excluded - set(source_by_name))
+
+        # An experiment may move a capsule out of its formal denominator only at this declared boundary,
+        # and only when the frozen hardware contract proves that no target datapath holds its operand
+        # dtype.  This prevents an operator from cherry-picking a failing but reachable capsule while
+        # retaining the useful property that an int8 accelerator is not asked to certify bf16 work.
+        op_source = [c for c in source_caps if c.get("kind") != "model"]
+        _eligible, hardware_ineligible = CR._split_ineligible(op_source, TARGET)
+        proven_excluded = {str(r.get("capsule")) for r in hardware_ineligible}
+        exclusion_mismatch = sorted(excluded ^ proven_excluded)
+
+        caps = [c for c in source_caps if str(c.get("name")) not in excluded]
+        n_pub = len(caps)
         n_hid = len(CR.discover_capsules(hid_roots, labels={"hidden"}, contract=contract)) if hid_roots else 0
     except Exception as exc:  # noqa: BLE001
         _ok("the resolved capsule roots load", False,
             f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]} "
             f"(roots={[str(r) for r in pub_roots]})")
         return
+    _ok("formal exclusions are known and exactly hardware-proven ineligible",
+        not unknown_exclusions and not exclusion_mismatch,
+        f"source_pool={len(source_caps)}, admitted={n_pub}, declared_excluded={len(excluded)}, "
+        f"hardware_proven_ineligible={len(proven_excluded)}"
+        + (f", unknown={unknown_exclusions}, mismatch={exclusion_mismatch}" if
+           unknown_exclusions or exclusion_mismatch else ""))
     _ok("the public grade resolves to a non-empty suite", n_pub > 0,
-        f"{n_pub} capsule(s) over {len(pub_roots)} root(s): "
-        + ", ".join(r.name for r in pub_roots))
+        f"{n_pub} admitted capsule(s) from {len(source_caps)} source-pool capsule(s) over "
+        f"{len(pub_roots)} root(s): " + ", ".join(r.name for r in pub_roots))
     _ok("the hidden grade resolves to its OWN capsules", n_hid > 0,
         f"{n_hid} capsule(s) at {hid_roots[0].name if hid_roots else '(none declared)'}"
         if hid_roots else "no hidden/ beside this corpus — the hidden phase would score 0/0")
@@ -349,7 +370,6 @@ def test_graded_path_is_the_declared_one():
     # would have made this check pass for the wrong reason (0 graded, 0 passed, "fails" ✓). Package
     # integrity is its own plane and section A already covers it; what is under test here is that the
     # resolved suite is real and that nothing in it passes without a submission.
-    caps = CR.discover_capsules(pub_roots, labels={"public", "dev"}, contract=contract)
     with tempfile.TemporaryDirectory() as td:
         pkg, runs = Path(td) / "submission", Path(td) / "runs"
         pkg.mkdir(parents=True)

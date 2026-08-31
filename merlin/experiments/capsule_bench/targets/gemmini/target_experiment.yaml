@@ -28,6 +28,26 @@ hardware_spec:
 # and the hidden set are discovered beside it (globbed), not hardcoded.
 capsule_corpus: merlin/contract/capsules/isa
 
+# The shared, legacy Gemmini source pool also contains bf16 PyTorch model slices.  The frozen Gemmini
+# capability contract exposes only int8 operand datapaths, so those slices cannot be admitted to this
+# experiment's formal denominator.  Keep the boundary explicit and name every excluded source-pool
+# member: the readiness gate independently proves that this list is exactly the set whose operand dtype
+# is absent from every declared Gemmini capability.  Everything admitted after this boundary must reach
+# the formal L3 tier; the post-freeze grader rejects even one unmeasured admitted capsule.
+grading:
+  exclude_capsules:
+    - GC1_depthwise_bf16_pt
+    - GC2_maxpool_bf16_pt
+    - GC3_avgpool_bf16_pt
+    - GC4_global_avg_bf16_pt
+    - GC5_fused_matmul_bias_bf16_pt
+    - GC6_bias_add_bf16_pt
+    - GF1_softmax_bf16_pt
+    - GF2_attn_full_bf16_pt
+    - GF3_geglu_bf16_pt
+    - GF4_add_bf16_pt
+    - GF5_gelu_bf16_pt
+
 # Prior backends / reference exemplars the agent must NOT read or copy (denied answer surfaces). This is
 # an experiment CHOICE (which finished backends to hide), so it is declared here rather than derived.
 # Names resolve under artifacts/targets/<target>/.
