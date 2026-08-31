@@ -82,6 +82,17 @@ def test_rocc_endpoint_is_routed_to_the_rocc_tools():
     assert BR.is_rocc_endpoint(None) is False
 
 
+def test_rocc_endpoint_executes_the_live_package_imports_end_to_end():
+    """Catch stale broker import aliases before an agent spends a round discovering them."""
+    BR = _load_broker()
+    ctx = BR.BrokerCtx(endpoint=BR.ROCC_ENDPOINT, target="gemmini")
+    assembled = BR._handle({"cmd": "asm", "text": "CONFIG_EX 0 0\nFENCE\n"}, ctx)
+    assert assembled["n"] == 2 and "error" not in assembled
+    linted = BR._handle({"cmd": "lint", "mlir": assembled["mlir"]}, ctx)
+    assert linted["n"] == 2
+    assert linted["n_unknown"] == 0
+
+
 def test_asm_returns_words(broker):
     BR, ctx = broker
     out = BR._handle({"cmd": "asm", "text": "MatMul rd=1, rs1=1\nHalt\n"}, ctx)

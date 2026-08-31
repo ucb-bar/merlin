@@ -118,7 +118,11 @@ def _rocc_handle(req: dict, target: str) -> dict:
     """RoCC / ``inline_asm_insn`` target (e.g. gemmini): the derived ISA facts live in
     ``rocc_decode.isa_constants`` (not the atlas IsaModel), and the canonical artifact is
     ``llvm.inline_asm`` MLIR, not a ``.word`` kernel — so route to rocc_asm/rocc_decode."""
-    from merlin.targetgen import rocc_asm, rocc_decode
+    # The RoCC tools are a package, not legacy top-level ``targetgen`` modules.  Importing the old
+    # names made every live Arm4 request fail only after launch, while the fixed-format broker tests
+    # continued to pass because they never exercised this endpoint.
+    from merlin.targetgen.rocc import asm as rocc_asm
+    from merlin.targetgen.rocc import decode as rocc_decode
     cmd = req.get("cmd")
     if cmd == "asm":
         try:
