@@ -104,6 +104,102 @@ def _save_tier_state(ws, st) -> None:
     f.write_text(_j.dumps(st, indent=2))
 
 
+#: A cert job that never reached the simulator is NOT a verdict about the hardware. It is recorded under
+#: its own status so it neither certifies nor fabricates a failure -- and, because the scheduler treats
+#: anything that is not ``unknown`` as settled for those bytes, it also does not spin re-running a job
+#: that crashes deterministically. It is surfaced in the log instead, which is how it gets fixed.
+CERT_ERROR = "error"
+
+
+def _cert_recorded(ws) -> set:
+    """The cert response ids already folded into the tier state."""
+    import json as _j
+    f = Path(ws, "qa", "cert_recorded.json")
+    try:
+        return set(_j.loads(f.read_text()))
+    except Exception:  # noqa: BLE001 -- absent or unreadable: nothing recorded yet
+        return set()
+
+
+def _save_cert_recorded(ws, seen: set) -> None:
+    import json as _j
+    f = Path(ws, "qa", "cert_recorded.json")
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(_j.dumps(sorted(seen)))
+
+
+def _cert_row_status(row: dict) -> tuple[str, str]:
+    """``(status, note)`` for one graded capsule row of a cert response.
+
+    A row that carries no tier verdict did not certify anything -- the package crashed, or the runner
+    timed out -- and calling that ``fail`` would attribute a hardware verdict to a tooling failure. The
+    two are told apart by whether the run produced a tier result at all, not by guessing from the plane.
+    """
+    if row.get("pass"):
+        return "pass", ""
+    fail = row.get("failure") or {}
+    plane, cat = fail.get("plane") or "", fail.get("category") or ""
+    if row.get("tiers"):
+        return "fail", ""
+    return CERT_ERROR, f"{plane}/{cat}".strip("/") or "no tier result"
+
+
+def drain_cert_responses(ws, ch, cert_tier, log) -> dict:
+    """Fold every completed cert response into the tier state. Returns ``{status: count}`` for this call.
+
+    The cert tier was written as ``pending`` when the job was enqueued and NOTHING ever wrote it back, so
+    a capsule stayed ``pending`` for the life of the run however its certification actually went. Across
+    nineteen radiance runs that produced 3523 completed certs and not one recorded verdict -- and because
+    the state never moved, the fact that every one of them crashed at the parse plane was invisible too.
+    A verdict nobody records is indistinguishable from a verdict nobody produced.
+
+    The digest comes from the RESPONSE ID, not from the tree as it stands now: the id is
+    ``promo<n>_<digest>_<capsule>``, and that digest is the submission the cert actually graded. Keying it
+    to the current tree would attribute an old verdict to new bytes, which is the one thing the
+    content-addressing exists to prevent.
+    """
+    import json as _j
+    seen = _cert_recorded(ws)
+    st = _tier_state(ws)
+    counts: dict[str, int] = {}
+    fresh = []
+    for f in sorted(Path(ch).glob("simresp_promo*.json")):
+        jid = f.name[len("simresp_"):-len(".json")]
+        if jid in seen:
+            continue
+        try:
+            doc = _j.loads(f.read_text())
+        except Exception:  # noqa: BLE001 -- a half-written response is read again next call
+            continue
+        # Prefer the digest the grade REPORTS over the one the job was named for. They differ whenever
+        # the agent edited between enqueue and execution, and the verdict belongs to the bytes that were
+        # actually graded -- attributing it to the requested bytes would mark a submission certified on
+        # evidence from a different one. Older responses predate the reported field and fall back to the
+        # job name, which is the best available answer for them.
+        parts = jid.split("_", 2)
+        digest = (doc.get("submission_digest") or (parts[1] if len(parts) >= 3 else "")) or ""
+        for row in (doc.get("per_capsule") or []):
+            name = row.get("capsule")
+            if not name or not digest:
+                continue
+            status, note = _cert_row_status(row)
+            st.setdefault(name, {})[cert_tier] = {"status": status, "digest": digest}
+            counts[status] = counts.get(status, 0) + 1
+            if status == CERT_ERROR:
+                fresh.append(f"{name}:{note}")
+        seen.add(jid)
+    if counts:
+        _save_tier_state(ws, st)
+        _save_cert_recorded(ws, seen)
+        print(f"[promote] recorded {cert_tier} verdicts: {counts}", file=log, flush=True)
+        if fresh:
+            # Loud on purpose: a cert that cannot run is a TOOLING failure and reads exactly like an
+            # agent failure in every downstream score.
+            print(f"[promote] {cert_tier} could not certify (tooling, not the submission): "
+                  f"{sorted(set(fresh))[:6]}", file=log, flush=True)
+    return counts
+
+
 def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     """Record what the loop tier just learned, and enqueue cert jobs for what it unlocked.
 
@@ -113,6 +209,10 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     """
     import json as _j
     from merlin.targetgen.oracle_schedule import CapsuleState, Verdict, schedule
+
+    # Fold in everything the cert tier finished since last time FIRST, so the scheduler sees those
+    # verdicts on this pass rather than re-enqueueing work that is already done.
+    drain_cert_responses(ws, ch, cert_tier, log)
 
     digest = _submission_digest(ws)
     st = _tier_state(ws)

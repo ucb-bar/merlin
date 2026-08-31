@@ -21,7 +21,7 @@ What it does NOT reveal: golden output tensors, hidden capsules, or the referenc
 WHETHER and roughly WHERE you are wrong (mismatch_count, failing plane) — not the answer.
 """
 from __future__ import annotations
-import argparse, json, shutil, sys
+import argparse, json, os, shutil, sys
 from pathlib import Path
 
 
@@ -229,6 +229,43 @@ def _shape_coverage(sub: Path, out_path: str) -> int:
     return 0 if cov.get("all_covered") else 1
 
 
+def _tree_digest(root: Path) -> str:
+    """Content address of a submission tree: every file's path and bytes, in sorted order."""
+    import hashlib
+    h = hashlib.sha256()
+    for f in sorted(Path(root).rglob("*")):
+        if f.is_file() and "__pycache__" not in f.parts:
+            h.update(f.relative_to(root).as_posix().encode())
+            h.update(f.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def _copy_submission_consistently(src: Path, dest: Path, tries: int = 3):
+    """Copy the submission for grading, and prove the copy is a CONSISTENT snapshot of it.
+
+    ``copytree`` walks a live directory. The agent edits that directory continuously, so a copy taken
+    while a multi-file change lands captures half of it -- an entrypoint from after the edit beside
+    modules from before it. The graded package then fails to import its own code, at the parse plane,
+    with a tool crash that looks exactly like the agent shipping something broken. Measured on radiance:
+    3523 completed cert runs, 3408 of them ``parse/tool_crash``, zero passes, across nineteen runs and
+    both arms -- the whole cert tier, never once reaching a simulator.
+
+    Detection is the digest of the source before and after the copy: if the tree did not change while it
+    was read, the copy is a snapshot of it. If it did, retry -- and if it keeps moving, say so rather than
+    grade a tree that never existed.
+
+    Returns ``(dest, digest, attempts)``; ``digest`` is ``None`` when no consistent copy could be taken.
+    """
+    for attempt in range(1, tries + 1):
+        before = _tree_digest(src)
+        if dest.exists():
+            shutil.rmtree(dest, ignore_errors=True)
+        shutil.copytree(src, dest, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+        if _tree_digest(src) == before:
+            return dest, before, attempt
+    return dest, None, tries
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Agent self-check runner (redacted; spike/verilator/vcs).")
     ap.add_argument("--submission", default="submission", help="path to your package (with manifest.yaml)")
@@ -275,9 +312,18 @@ def main(argv=None):
     # LLVM/MLIR is prebuilt, the OOT project is small).
     import tempfile as _tf2
     _isodir = Path(_tf2.mkdtemp(prefix="selfcheck_iso_"))
-    shutil.copytree(sub, _isodir / "submission",
-                    ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
-    sub = _isodir / "submission"
+    # The isolated copy is deleted when this process exits. It used to leak one tree per grade -- 7337 of
+    # them had accumulated in one TMPDIR -- and TMPDIR here is a scratch filesystem shared with the builds.
+    if not os.environ.get("MERLIN_SELFCHECK_KEEP_ISO"):
+        import atexit as _atexit
+        _atexit.register(shutil.rmtree, _isodir, True)
+    sub, _sub_digest, _copy_tries = _copy_submission_consistently(sub, _isodir / "submission")
+    if _sub_digest is None:
+        print(json.dumps({
+            "error": "submission changed while it was being copied for grading, in every attempt -- "
+                     "refusing to grade a torn tree",
+            "torn_copy": True, "attempts": _copy_tries}))
+        return 2
     _strip_build_state(sub)   # every grade builds from scratch in its OWN path — see helper
 
     _tgt, _sim_via = _target_sim_via()
@@ -330,7 +376,8 @@ def main(argv=None):
         f = _score["failure"]
         out = {"sim": sim, "barrier_tier": barrier_tier, "n_passed": 0, "n_capsules": 0,
                "all_pass": False, "per_capsule": [],
-               "build_failed": True, "failure_plane": f.get("plane"),
+               "build_failed": True,
+           "submission_digest": _sub_digest, "failure_plane": f.get("plane"),
                "failure_category": f.get("category"), "detail": f.get("detail"),
                "note": "Your package did NOT build/scan, so ZERO capsules ran — this is NOT a stubbed "
                        "grader. Fix the build first (see 'detail' for the cmake/compiler stderr). NOTE: "
@@ -477,6 +524,7 @@ def main(argv=None):
     if n == 0:
         out = {"sim": sim, "barrier_tier": barrier_tier, "n_passed": 0, "n_capsules": 0,
                "all_pass": False, "per_capsule": [], "no_results": True,
+           "submission_digest": _sub_digest,
                "caps_discovered": sum(1 for _ in PUBLIC_CAPSULES.glob("*/capsule.yaml")),
                "results_root": str(cb_root),
                "note": "HARNESS ISSUE: the build did not fail, but ZERO capsule results were found at "
@@ -498,6 +546,7 @@ def main(argv=None):
                          and (r.get("failure") or {}).get("tier_status") == "unavailable"} - {None})
     out = {"sim": sim, "barrier_tier": barrier_tier, "n_passed": npass, "n_capsules": n,
            "all_pass": npass == n and n > 0, "per_capsule": rows,
+           "submission_digest": _sub_digest,
            "n_declined": n_declined,
            "note": f"Self-check on {sim} ({barrier_tier}). You see EVERYTHING your dialect produced — "
                    "command buffer, decoded trace + instruction counts, sim console, and your artifacts "
