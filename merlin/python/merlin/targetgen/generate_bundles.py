@@ -224,14 +224,66 @@ def _grant_txt(manifest: dict[str, Any], key: str) -> str:
     return "\n".join(paths) + ("\n" if paths else "")
 
 
+def _allowed_merlin_tools_doc(manifest: dict[str, Any]) -> str:
+    """Human-readable tool policy derived from the exact bundle manifest.
+
+    This document deliberately does not choose an isolation mode.  A bundle declares capabilities;
+    the launcher chooses and records the sandbox for one run.  Mixing those two layers produced a
+    committed document that continued to claim ``sandbox=none`` long after scored launches required
+    bwrap.
+    """
+    def entries(key: str, detail: str) -> str:
+        rows = []
+        for entry in manifest.get(key, ()):
+            if not isinstance(entry, dict) or not entry.get("path"):
+                continue
+            why = str(entry.get(detail) or "declared by the generated bundle manifest")
+            rows.append(f"- `{entry['path']}` — {why}")
+        return "\n".join(rows) if rows else "- (none)"
+
+    bundle_id = manifest.get("bundle_id", "unknown")
+    arm = manifest.get("arm", "unknown")
+    return f"""# Allowed Merlin tooling — generated for `{bundle_id}`
+
+This is the human-readable view of the **authoring** grants for arm `{arm}`. It is generated from
+`input_bundle_manifest.yaml`; the manifest remains the machine-readable authority.
+
+## Runtime isolation (launch-derived)
+
+This bundle does **not** select a sandbox. Read `TASK.md` → **Runtime scope** (`Active sandbox`) and the
+run's `environment.yaml` → `sandbox` for the mode actually used. Both fields are written from the
+launcher's real `--sandbox` argument. A scored, trusted run requires deny-by-default `bwrap` plus its
+frozen input snapshot. An explicit `none` run is diagnostic only and supports no trusted isolation claim.
+If older static prose names another mode, those run artifacts win.
+
+## Allowed authoring inputs
+
+{entries("allowed", "note")}
+
+## Denied inputs
+
+{entries("denied", "reason")}
+
+## Submission boundary
+
+The grants above may help author and debug the package. The submitted package must remain self-contained
+and integrity-clean: it is graded only through its declared CLI entrypoints and may not import Merlin,
+call an oracle/reference implementation, copy a prior backend or kernel, or embed expected outputs.
+Denied paths and answer surfaces remain masked even when a broader parent directory is allowed.
+"""
+
+
 def _materialize_prompt_and_grants(te: TargetExperiment, bdir, bundle_id: str, variant: str,
                                    manifest: dict[str, Any], cap, written: list) -> None:
-    """Emit the derivable, non-manifest bundle files IDEMPOTENTLY (never overwrite a file that already
-    exists, so hand-authored bundles — e.g. gemmini's committed prompts — are untouched):
+    """Emit the derivable, non-manifest bundle files idempotently:
       * ``STARTER_PROMPT.md`` — the target-general task prompt (``generate_prompt.render_prompt``); passed
         the bundle STEM as the arm so the assisted/CIRCT arms get their seam menu (``_is_assisted_arm``
         keys on the ``merlin_assisted`` substring, which the stem — not the short arm key — carries).
+        It is written only when absent so a curated prompt is preserved.
       * ``allowed_files.txt`` / ``denied_files.txt`` — the manifest's allow/deny path lists.
+      * ``ALLOWED_MERLIN_TOOLS.md`` — for assisted arms, the exact human-readable grants and the
+        launch-derived isolation contract. These three policy files are pure manifest derivations and
+        are rewritten when stale.
     ``cap`` is the target's capability manifest (or ``None`` if it could not be loaded — then the prompt is
     skipped with the grants still written)."""
     from pathlib import Path
@@ -249,12 +301,11 @@ def _materialize_prompt_and_grants(te: TargetExperiment, bdir, bundle_id: str, v
     def _w_always(name: str, text: str) -> None:
         """Rewrite a file that is a PURE DERIVATION of the manifest.
 
-        The grant lists are exactly that (see :func:`_grant_txt`), and they had been written only-when-
-        absent alongside the hand-authored prompt. That let them go stale while the manifest — which is
-        always regenerated — moved on, and the two are read by DIFFERENT consumers: the sandbox binds
-        from the manifest, the prompt's tool block is derived from ``allowed_files.txt``. Ten shipped
-        bundles drifted that way, the worst by nine paths, so their arms were bound tools their prompt
-        never named. Regenerating them is not a policy change; it restores the file to its definition.
+        The grant lists and generated tooling document are exactly that (see :func:`_grant_txt` and
+        :func:`_allowed_merlin_tools_doc`). They had been written only-when-absent beside the curated
+        prompt. That let them go stale while the manifest — which is always regenerated — moved on, and
+        they are read by DIFFERENT consumers: the sandbox binds from the manifest while the agent reads
+        the text files. Regenerating them is not a policy change; it restores each file to its definition.
         """
         p = bdir / name
         if not p.exists() or p.read_text() != text:
@@ -272,6 +323,8 @@ def _materialize_prompt_and_grants(te: TargetExperiment, bdir, bundle_id: str, v
         _w_if_absent("STARTER_PROMPT.md", render_prompt(te, cap, experiment, stem, granted_tools=granted))
     _w_always("allowed_files.txt", _grant_txt(manifest, "allowed"))
     _w_always("denied_files.txt", _grant_txt(manifest, "denied"))
+    if manifest.get("arm") in {"merlin_assisted", "merlin_rtlchecks", "merlin_eqsat"}:
+        _w_always("ALLOWED_MERLIN_TOOLS.md", _allowed_merlin_tools_doc(manifest))
 
 
 def materialize_bundles(te: TargetExperiment, dest, *,
@@ -280,8 +333,8 @@ def materialize_bundles(te: TargetExperiment, dest, *,
                         arms: tuple[str, ...] = ()) -> list["Path"]:
     """Write every generated bundle under ``dest/<bundle_id>/`` for each requested ``variant``:
     ``input_bundle_manifest.yaml`` (always, overwritten — the manifest is fully generated) plus the
-    derivable non-manifest files (``STARTER_PROMPT.md`` + ``allowed/denied_files.txt``) written only when
-    ABSENT so hand-authored bundles stay untouched. Target-agnostic. Returns the written paths.
+    derivable non-manifest files (a preserved ``STARTER_PROMPT.md`` plus always-derived grant lists and
+    assisted-arm ``ALLOWED_MERLIN_TOOLS.md``). Target-agnostic. Returns the written paths.
 
     ``dest`` is typically ``experiments/<exp>/input_bundles`` — the same tracked location the launcher and
     ``require_scaffolding`` read (bundles are curated inputs, not ``out/`` generated output)."""

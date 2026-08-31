@@ -7,7 +7,10 @@ from pathlib import Path
 
 from merlin.targetgen.target_experiment import load_target_experiment
 from merlin.targetgen import tool_registry as TR
-from merlin.targetgen.generate_bundles import generate_bundles
+from merlin.targetgen.generate_bundles import (
+    _materialize_prompt_and_grants,
+    generate_bundles,
+)
 from merlin.common.paths import repo_root
 
 
@@ -82,3 +85,35 @@ def test_target_specific_paths_come_from_descriptor():
     assert te.corpus_rel() in mer_a and all(h in mer_a for h in te.isa_headers)
     _, rtl_d = _sets(gen["merlin_assisted_hwbringup_v0"])
     assert te.rtl_facts_pin in rtl_d and f"merlin/targets/{te.target}/" in te.rtl_facts_pin
+
+
+def test_assisted_tool_doc_is_regenerated_from_manifest_without_static_sandbox_claim(tmp_path):
+    manifest = {
+        "bundle_id": "merlin_assisted_rtlchecks_hwbringup_v0",
+        "arm": "merlin_rtlchecks",
+        "allowed": [{"path": "merlin/python/merlin/targetgen/rtl/", "note": "RTL generators"}],
+        "denied": [{"path": "merlin/python/merlin/runtime/reference.py", "reason": "oracle route"}],
+    }
+    written = []
+
+    _materialize_prompt_and_grants(
+        _te(), tmp_path, manifest["bundle_id"], "hwbringup_v0", manifest, None, written)
+
+    doc = (tmp_path / "ALLOWED_MERLIN_TOOLS.md").read_text()
+    assert "does **not** select a sandbox" in doc
+    assert "TASK.md" in doc and "environment.yaml" in doc
+    assert "launcher\'s real `--sandbox` argument" in doc
+    assert "scored, trusted run requires deny-by-default `bwrap`" in doc
+    assert "explicit `none` run is diagnostic only" in doc
+    assert "bwrap crashes" not in doc and "the mode both arms run" not in doc
+    assert "merlin/python/merlin/targetgen/rtl/" in doc
+    assert "merlin/python/merlin/runtime/reference.py" in doc
+    assert tmp_path / "ALLOWED_MERLIN_TOOLS.md" in written
+
+
+def test_non_assisted_bundle_does_not_claim_merlin_tooling(tmp_path):
+    manifest = {"bundle_id": "raw_baseline_hwbringup_v0", "arm": "raw_baseline",
+                "allowed": [], "denied": []}
+    _materialize_prompt_and_grants(
+        _te(), tmp_path, manifest["bundle_id"], "hwbringup_v0", manifest, None, [])
+    assert not (tmp_path / "ALLOWED_MERLIN_TOOLS.md").exists()

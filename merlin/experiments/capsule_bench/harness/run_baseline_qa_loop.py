@@ -788,14 +788,57 @@ def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
             "symlinks_into_capsules": bad_links[:10], "spec_present": spec.exists()}
 
 
-def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
+def _task_runtime_scope(te, sandbox: str) -> dict:
+    """Facts the served task states, derived from this launch's real inputs."""
+    from merlin.targetgen.capsule_common import discover_capsules
+
+    contract = C.REPO / "merlin" / "contract"
+    public = discover_capsules(te.graded_roots(), labels={"public", "dev"}, contract=contract)
+    excluded = set(getattr(te, "graded_exclude", ()) or ())
+    public = [cap for cap in public if cap.get("name") not in excluded]
+    hidden = discover_capsules(te.hidden_roots(), labels={"hidden"}, contract=contract)
+    if not public:
+        raise RuntimeError(
+            f"{te.target}: descriptor-derived public/dev task scope is empty; refusing to serve a "
+            "vacuous completion target")
+    return {
+        "target": te.target,
+        "required_public_dev_capsules": len(public),
+        "held_out_capsules": len(hidden),
+        "sandbox": sandbox,
+        "scope_source": "TargetExperiment.graded_roots + labels public,dev + graded_exclude",
+    }
+
+
+def _task_runtime_scope_block(te, sandbox: str) -> str:
+    """Agent-facing launch facts; authoritative over static bundle prose."""
+    scope = _task_runtime_scope(te, sandbox)
+    if sandbox == "bwrap":
+        isolation = ("deny-by-default bwrap; allowed inputs are the frozen run snapshot and answer "
+                     "surfaces are masked")
+    else:
+        isolation = ("unsandboxed diagnostic override; this launch cannot support a trusted isolation "
+                     "claim")
+    return (
+        "\n\n## Runtime scope (generated for this launch; authoritative)\n"
+        f"- Required public/dev capsules: **{scope['required_public_dev_capsules']}**, derived from "
+        "the descriptor's graded roots, label filter, and exclusions. Completion is non-vacuous only "
+        "when every required member passes.\n"
+        f"- Held-out capsules: **{scope['held_out_capsules']}**, derived from the descriptor's hidden "
+        "roots; their contents remain sealed.\n"
+        f"- Active sandbox: **`{sandbox}`** ({isolation}).\n"
+        "- If an older bundled document states a fixed capsule count or a different isolation mode, "
+        "this launch-generated block wins.\n")
+
+
+def _build_task(arm: str, ws: Path, run_dir: Path, sandbox: str = "bwrap") -> None:
     """Stage the workspace TASK.md. Both arms get the IDENTICAL graded contract (TASK_pilot.md). The
     merlin arm appends TASK_ADDENDUM.md (merlin-specific tool guidance + provenance ask) and stages
     the merlin-only docs into the workspace so the agent can read them. The graded pilot contract is
     never altered — the addendum only adds allowances, so grading stays apples-to-apples."""
     if _EXPERIMENT == "realistic":
         # whole-repo + self-check tool + self-paced READY marker; TASK_realistic is self-contained,
-        # so skip the abc1 "20-public / verilator-checkpoint" addendum appended below.
+        # so skip the full experiment's grading-tier addendum appended below.
         ws_task = ws / "TASK.md"
         # A target that ships a hand-authored realistic task uses it (gemmini); a descriptor-only target
         # (e.g. atlas) has none, so fall back to the GENERATED target-agnostic prompt — exactly what the
@@ -830,6 +873,7 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
             (bdir / "STARTER_PROMPT.md").read_text() if (bdir / "STARTER_PROMPT.md").exists() else "")
         if starter:
             body += "\n\n---\n\n# Starter plan / approach for THIS arm (read this)\n\n" + starter
+        body += _task_runtime_scope_block(_te(), sandbox)
         if arm == "merlin_assisted":
             add = (bdir / "TASK_ADDENDUM.md").read_text() if (bdir / "TASK_ADDENDUM.md").exists() else ""
             ws_task.write_text(body + ("\n\n---\n\n" + add if add else ""))
@@ -844,8 +888,9 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
     # The graded contract is now the GENERATED (target-agnostic) prompt: ONE shared skeleton + slots
     # DERIVED from {descriptor + RTL fact bundle + endpoint}, so a per-target committed TASK_full.md is no
     # longer the source of truth (its content is covered by the generated body — proven by the dry-run
-    # diff). The runtime-only operational blocks below (language mandate + the 20-public/L3 scope note) are
-    # still appended: they carry run-specific numbers the target-agnostic template deliberately omits.
+    # diff). The runtime-only operational blocks below (language mandate + descriptor-derived scope and
+    # grading tiers) are still appended: they carry run-specific facts the target-agnostic template
+    # deliberately omits.
     from merlin.targetgen.generate_prompt import render_prompt
     pilot = render_prompt(_te(), _manifest(), _EXPERIMENT, arm, granted_tools=_granted_merlin_tools(arm))
     # Language mandate (env PILOT_LANG=cpp|python). The C++ arms (baseline/cpp_merlininfra) are forced to
@@ -885,11 +930,9 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
     _loop = min(CR.qa_loop_adapters(_te().target, _te().sim_via,
                                     declared_tiers=_declared_loop_tiers()) or {"L3": 1})
     _ckpt = max(CR.qa_checkpoint_adapters(_te().target, _te().sim_via) or {"L3": 1})
+    pilot += _task_runtime_scope_block(_te(), sandbox)
     pilot += (
-        "\n\n## Scope & grading (READ THIS)\n"
-        "- You are graded on the **20 public capsules** (isa A0–A7, layers B0–B4, model_slices C0–C6). "
-        "Iterate until ALL of them pass. There are also **5 hidden** capsules you cannot see; aim for a "
-        "general, correct dialect so it generalizes to them too (the goal is all 25).\n"
+        "\n\n## Grading tiers (READ THIS)\n"
         f"- Each round the QA gate runs **L0+L1+trace + your fast RTL oracle tier ({_loop})** and returns "
         "a redacted verdict (pass/fail + failure plane, never goldens). Use it to fix failures.\n"
         f"- When your public capsules pass the loop tier, the harness runs the **cycle-accurate RTL "
@@ -973,7 +1016,7 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
     # so a stdin redirect from run_dir/TASK.md is invisible inside the sandbox (empty stdin).
     ws_task = ws / "TASK.md"
     if rnd == 0:
-        _build_task(arm, ws, run_dir)
+        _build_task(arm, ws, run_dir, sandbox=sandbox)
     # Under bwrap the oracle is masked, so the agent's self-check (agent_selfcheck.py) can't grade in-box.
     # Start the driver-side BROKER (oracle available, outside the sandbox) + stage the in-box shim, so the
     # agent gets a REDACTED on-demand self-check (numeric diff, no goldens) without the oracle ever entering
@@ -2073,7 +2116,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- cycle-accurate L3 (verilator) checkpoint -------------------------------------------------
     # The loop gate is spike (L2) only; this is where kernels are validated on the real RTL. Runs only
-    # when the agent is "ready" (spike-converged on the 20 public). Up to VERILATOR_ATTEMPTS chances
+    # when the agent is "ready" (loop-oracle-converged on the descriptor-derived public/dev set). Up to
+    # VERILATOR_ATTEMPTS chances
     # with a fix-round between each; parallel (max_workers) so 20 capsules don't serialize. Each attempt
     # recorded to verilator_checkpoints.json (the cycle-accurate result the agg/plots report).
     def _verilator_grade(attempt: int) -> dict:

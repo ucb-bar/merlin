@@ -1,6 +1,6 @@
-# Allowed Merlin tooling — generated for `merlin_assisted_rtlchecks_realistic_v0`
+# Allowed Merlin tooling — generated for `merlin_assisted_eqsat_hwbringup_v0`
 
-This is the human-readable view of the **authoring** grants for arm `merlin_rtlchecks`. It is generated from
+This is the human-readable view of the **authoring** grants for arm `merlin_eqsat`. It is generated from
 `input_bundle_manifest.yaml`; the manifest remains the machine-readable authority.
 
 ## Runtime isolation (launch-derived)
@@ -38,11 +38,13 @@ If older static prose names another mode, those run artifacts win.
 - `merlin/python/merlin/kernels/action_catalog.py` — ALLOWED tool: xDSL kit / CCA spine
 - `merlin/python/merlin/kernels/microkernel.py` — ALLOWED tool: xDSL kit / CCA spine
 - `merlin/python/merlin/targetgen/rtl_backend.py` — ALLOWED tool: xDSL kit / CCA spine
-- `merlin/python/merlin/targetgen/rtl/` — ALLOWED (CIRCT arm): RTL-facts generators
-- `merlin/targets/gemmini/contracts/rtl_facts/` — ALLOWED (CIRCT arm): RTL-extracted facts
+- `merlin/python/merlin/targetgen/contraction_egraph.py` — ALLOWED (eqsat arm): the equivalence seam
+- `merlin/python/merlin/targetgen/persistent_equivalence.py` — ALLOWED (eqsat arm): the equivalence seam
 
 ## Denied inputs
 
+- `merlin/python/merlin/targetgen/rtl/` — CIRCT RTL generators (CIRCT arm only)
+- `merlin/targets/gemmini/contracts/rtl_facts/` — RTL facts (CIRCT arm only)
 - `merlin/python/merlin/runtime/reference.py` — oracle-callable route
 - `merlin/python/merlin/runtime/simulator.py` — oracle-callable route
 - `merlin/python/merlin/targetgen/generate/runtime_adapter.py` — oracle-callable route

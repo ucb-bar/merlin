@@ -1,58 +1,64 @@
-# Allowed Merlin tooling — `merlin_assisted` arm
+# Allowed Merlin tooling — generated for `merlin_assisted_rtlchecks_hwbringup_nokernel_v0`
 
-This file is the authoritative, human-readable statement of what the **merlin_assisted** agent may and
-may not use. The machine-readable source of truth is `input_bundle_manifest.yaml` (allowed/denied); if
-the two ever disagree, the manifest wins. The *only* legitimate difference between this arm and
-`raw_baseline` is the extra **authoring** tooling listed here — everything about grading is identical
-(see `../../COORDINATION.md`).
+This is the human-readable view of the **authoring** grants for arm `merlin_rtlchecks`. It is generated from
+`input_bundle_manifest.yaml`; the manifest remains the machine-readable authority.
 
-## The one rule that governs everything
+## Runtime isolation (launch-derived)
 
-> Merlin tools may help you **author and debug** the package. The **final submitted package must be
-> self-contained and integrity-clean**: it is graded only through its 4 CLI entrypoints, never imported,
-> and it must pass the non-exempt integrity scan (no `import merlin` / `from merlin`, no
-> `merlin.runtime.reference` / `merlin.runtime.simulator`, no `reference_outputs`, no copied/called
-> kernels, no embedded outputs).
+This bundle does **not** select a sandbox. Read `TASK.md` → **Runtime scope** (`Active sandbox`) and the
+run's `environment.yaml` → `sandbox` for the mode actually used. Both fields are written from the
+launcher's real `--sandbox` argument. A scored, trusted run requires deny-by-default `bwrap` plus its
+frozen input snapshot. An explicit `none` run is diagnostic only and supports no trusted isolation claim.
+If older static prose names another mode, those run artifacts win.
 
-An authoring aid you used to *think* is fine; a runtime dependency on Merlin in the shipped package is a
-hard fail.
+## Allowed authoring inputs
 
-## ALLOWED (authoring aids)
+- `merlin/contract/` — frozen ABI v0.1
+- `merlin/contract/capsules/isa/` — capsule corpus
+- `merlin/contract/capsules/layers/` — declared by the generated bundle manifest
+- `merlin/contract/capsules/model/` — declared by the generated bundle manifest
+- `merlin/contract/capsules/model_slices/` — declared by the generated bundle manifest
+- `experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini.h` — ISA header (shared hardware spec)
+- `experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini_params.h` — ISA header (shared hardware spec)
+- `experiments/capsule_bench/targets/gemmini/task/` — declared by the generated bundle manifest
+- `third_party/llvm-install/` — LLVM/MLIR 23 toolchain
+- `experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0` — shared hardware spec: RTL + ISA headers + README + example (ALL arms)
+- `experiments/capsule_bench/targets/gemmini/scripts/agent_selfcheck.py` — redacted self-check
+- `out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/` — frozen host lane (pinned infrastructure, read-only)
+- `merlin/python/merlin/common/` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/synthesize/` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/generate/` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/xdsl_dialects/` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/contract/interface_emit.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/contract/linalg_iface.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/oot_starterkit/` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/kernels/cca.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/kernels/cca_compare.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/kernels/cca_contract.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/kernels/action_catalog.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/kernels/microkernel.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/rtl_backend.py` — ALLOWED tool: xDSL kit / CCA spine
+- `merlin/python/merlin/targetgen/rtl/` — ALLOWED (CIRCT arm): RTL-facts generators
+- `merlin/targets/gemmini/contracts/rtl_facts/` — ALLOWED (CIRCT arm): RTL-extracted facts
 
-| Tool | Path | What it's for |
-|---|---|---|
-| Target/dialect/runtime **plan synthesis** | `merlin/python/merlin/targetgen/synthesize/` | Produce a *plan/spec* for a dialect, lowering, runtime adapter (scaffolding intent, not the answer). |
-| **Scaffold generators** (xDSL + MLIR) | `merlin/python/merlin/targetgen/generate/` **except `runtime_adapter.py`** | Emit empty/structural dialect + pass + tablegen scaffolds you then fill in. |
-| **xDSL dialect patterns** | `merlin/python/merlin/xdsl_dialects/` **except `lowering/`** | Reference IRDL op/type/verifier patterns for prototyping your input + target dialects. |
-| **Interface grammar emit/parse** | `merlin/python/merlin/targetgen/contract/interface_emit.py` | Serialize/parse the `merlin_iface` v0.1 grammar (clean; imports only `re`/`typing`). |
-| Public Gemmini facts | `tmp/.../gemmini-rocc-tests/include/gemmini.h`, `gemmini_params.h` | ISA encoding, DIM, dtypes. |
-| Public capsule contract | `merlin/contract/` (schemas, grammar, command-buffer ABI, integrity policy) + public/dev capsule inputs | The interface you compile and the schemas you must satisfy. |
-| Toolchain | `third_party/llvm-install/` | LLVM/MLIR 23 to build the OOT package. |
+## Denied inputs
 
-## FORBIDDEN (would break comparability or integrity)
+- `merlin/python/merlin/runtime/reference.py` — oracle-callable route
+- `merlin/python/merlin/runtime/simulator.py` — oracle-callable route
+- `merlin/python/merlin/targetgen/generate/runtime_adapter.py` — oracle-callable route
+- `merlin/python/merlin/xdsl_dialects/lowering/` — oracle-callable route
+- `out/artifacts/targets/gemmini/merlin_native_v0/` — prior backend / exemplar (answer surface)
+- `out/artifacts/targets/gemmini/hand_smoke_oot/` — prior backend / exemplar (answer surface)
+- `out/artifacts/targets/gemmini/agent_spec_v0_mlir_oot/` — prior backend / exemplar (answer surface)
+- `out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot/` — prior backend / exemplar (answer surface)
+- `merlin/contract/capsules/hidden/` — hidden capsules + goldens
+- `experiments/capsule_bench/targets/gemmini/input_bundles/grader_private_v0/` — grader-private
+- `experiments/capsule_bench/targets/gemmini/runs/` — prior submissions
+- `merlin/python/merlin/llvmlower/` — frozen host lane: the experiment measures the target lane, not a second CPU backend
 
-| Forbidden | Why |
-|---|---|
-| `merlin.runtime.reference` / `merlin.runtime.simulator` / `reference_outputs` / `outputs_match` | The oracle. Using it = self-grading against the true answer instead of the redacted QA verdict. |
-| `merlin/python/merlin/targetgen/generate/runtime_adapter.py` | Emits a `semantics.py` that does `from merlin.runtime import reference_outputs` — a **callable oracle route**. Denied even though `generate/` is allowed (deny-wins; the launcher stages `generate/` minus this file). |
-| `merlin/python/merlin/xdsl_dialects/lowering/` | `pipeline.execute()` calls `reference_outputs()` and returns a correctness verdict — a **callable oracle route**. Denied even though `xdsl_dialects/` is allowed (launcher stages it minus `lowering/`). |
-| Grader internals: `rocc_decode`, `trace_check.py`, `capsule_grade`, `capsule_golden`, `capsule_runner`, `oot_runner` | Reading the grader to conform to/reverse-engineer it instead of deriving from public facts. |
-| Hidden capsules / hidden outputs / withheld `golden.yaml` / `expected_command_buffer*` | Answers. Masked + denied. |
-| Prior backends: `agent_spec_v0/v1_mlir_oot`, `hand_smoke_oot`, `merlin_native_v0` | Copying a finished package. Denied + canary-guarded. |
-| Copied/called C kernels, bareMetalC, high-level Gemmini C lib (`tiled_matmul_auto`) | The device path must be MLIR-lowered RoCC, computed genuinely. |
-| Any embedded/hardcoded capsule outputs | Hidden capsules after freeze will fail a memorizer. |
+## Submission boundary
 
-## How "denied inside an allowed dir" is enforced
-
-Under `--sandbox none` (the mode both arms run — bwrap crashes the `claude` binary here), the real
-`merlin` package is importable from disk, so a deny-list alone cannot *prevent* access. The boundary is
-enforced in layers:
-1. **Workspace staging** copies the allowed tool dirs **minus** the denied sub-paths, so the workspace
-   you're given carries no pointer to `runtime_adapter.py` or `lowering/`.
-2. **Post-run transcript audit** (operator-side) flags any read of a denied/oracle/grader path *and*
-   any oracle import/call in code you write or run (`from merlin.runtime`, `reference_outputs(`,
-   `pipeline.execute(`, `outputs_match(`).
-3. **Integrity scan** on the submitted package is the final gate.
-
-Don't try to work around the sandbox or reach denied paths on the real filesystem — it is detected, and
-it invalidates the run's comparability.
+The grants above may help author and debug the package. The submitted package must remain self-contained
+and integrity-clean: it is graded only through its declared CLI entrypoints and may not import Merlin,
+call an oracle/reference implementation, copy a prior backend or kernel, or embed expected outputs.
+Denied paths and answer surfaces remain masked even when a broader parent directory is allowed.
