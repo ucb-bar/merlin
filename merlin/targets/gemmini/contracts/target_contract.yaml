@@ -93,7 +93,18 @@ compute_units:
     requant: {ref: gemmini.accumulator_scale}
     # Semantic-family capability (ARR denominator): a GEMM accelerator — int8 contraction on the mesh
     # (matmul + conv2d via im2col), the fused relu/requant/bias epilogue (elementwise_map on readout),
-    # and mvin/mvout DMA (movement). No general reduction / softmax / attention / normalization hardware.
+    # mvin/mvout DMA (movement), and max pooling fused on the store path (reduction).
+    #
+    # ⚠️ WHAT IS ENCODABLE IS NOT WHAT IS BUILT, and this is the one place that distinction bites.
+    # The shipped ISA header defines five activation modes -- `NO_ACTIVATION 0, RELU 1, LAYERNORM 2,
+    # IGELU 3, SOFTMAX 4`. Only RELU exists in THIS design. `AccumulatorScale.scala` gates the
+    # LAYERNORM / IGELU / SOFTMAX arms on `has_nonlinear_activations && has_normalizations`;
+    # `GemminiConfigs.scala` declares `has_normalizations: Boolean = false`, and the `defaultConfig`
+    # this build elaborates never sets it. So the encodings are real and the hardware is not, and
+    # declaring `normalization` or `softmax` here on the strength of the header would over-declare --
+    # which is precisely how a corpus acquires capsules the RTL cannot execute. They stay out until a
+    # build that sets `has_normalizations = true` is pinned, at which point this is a one-line change.
+    # No attention hardware in any configuration.
     semantic_capabilities:
       # rank 4 is the im2col convolution path, not an assumption: the RTL funct table carries a
       # dedicated LOOP_CONV_WS (funct 15) plus LOOP_CONV_WS_CONFIG_1/2/3 (16-18), so a rank-4 conv
@@ -104,6 +115,16 @@ compute_units:
       # elementwise map exists ONLY fused behind a contraction. Standalone would be a false_fallback.
       - {family: elementwise_map, dtypes: [int8], composed_with: [contraction]}
       - {family: movement, dtypes: [int8]}
+      # Max pooling, fused on the readout/store path -- NOT a standalone reduction unit, which is why
+      # it composes with the two families that can produce the values it pools. Derived, and derived
+      # from the ELABORATED design rather than from the ISA: the fact bundle records
+      # `facts.source.config = GemminiRocketConfig`, that config elaborates this generator's
+      # `defaultConfig`, and that config sets `has_max_pool = true` (Configs.scala). The ISA side
+      # agrees -- `gemmini_extended2_config_st(..., pool_stride, pool_size, pool_out_dim, ...)` and
+      # `gemmini_loop_conv_ws(..., pool_size, pool_stride, pool_padding, ..., no_pool, ...)` -- so
+      # both rungs evidence it. Undeclared until now, which excluded every pooling region in every
+      # captured model from the requirement as "the hardware declares no capability for it".
+      - {family: reduction, dtypes: [int8], composed_with: [contraction, movement]}
 # capabilities is intentionally empty: op/layout support is not pre-declared here. Mesh geometry +
 # scratchpad/accumulator capacities are CIRCT-extracted facts (arrays/memories), read from the fact
 # bundle by consumers; the supported ops/layouts follow from the agent's own target dialect, verified

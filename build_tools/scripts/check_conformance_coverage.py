@@ -209,6 +209,9 @@ def main(argv=None) -> int:
                 for kind, names in thin:
                     print(f"       {kind:32s} covered by ONE capsule ({names[0]}) — a single point of "
                           f"evidence for a whole composition shape")
+                for kind in (comp.get("covered_only_incidentally") or []):
+                    print(f"       {kind:32s} covered only INCIDENTALLY — every capsule containing it "
+                          f"is named for a different shape, so nothing is built to prove it")
                 if comp.get("unreadable_capsules"):
                     print(f"   UNREADABLE    : {len(comp['unreadable_capsules'])} capsule(s) whose "
                           f"composition could not be determined")

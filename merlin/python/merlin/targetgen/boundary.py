@@ -69,9 +69,14 @@ class BoundaryProfile:
     accel_segments: int = 0
     host_segments: int = 0
     detail: str = ""
+    #: EVERY composition shape the capsule contains, not only ``kind`` (the strongest one it is named
+    #: by). Coverage is measured on this; ``kind`` is what a reader sees. Keeping them apart is what
+    #: lets the gate say a shape is covered only INCIDENTALLY -- by a capsule that is about something
+    #: else -- rather than silently treating that as equivalent to a capsule built to prove it.
+    contains: tuple = ()
 
     def to_dict(self) -> dict:
-        return {"boundary": self.kind, "grammar": self.grammar,
+        return {"boundary": self.kind, "contains": sorted(self.contains), "grammar": self.grammar,
                 "n_accel_regions": self.n_accel_regions, "n_host_regions": self.n_host_regions,
                 "n_unresolved": self.n_unresolved, "accel_segments": self.accel_segments,
                 "host_segments": self.host_segments, "detail": self.detail}
@@ -277,11 +282,12 @@ def profile_iface_text(text: str) -> BoundaryProfile:
         # with no dispatch boundary, not host work -- and not UNKNOWN either, because we read it fine.
         if not commands:
             return BoundaryProfile(grammar="merlin_iface", detail="module declares no accelerator op")
-        return BoundaryProfile(kind=A, grammar="merlin_iface", n_accel_regions=len(commands),
-                               accel_segments=1,
+        return BoundaryProfile(kind=A, grammar="merlin_iface", contains=(A,),
+                               n_accel_regions=len(commands), accel_segments=1,
                                detail="accelerator commands with no commit (configuration or movement "
                                       "only): one accelerator region, no dispatch seam")
     return BoundaryProfile(kind=A_A if n >= 2 else A, grammar="merlin_iface",
+                           contains=((A, A_A) if n >= 2 else (A,)),
                            n_accel_regions=n, accel_segments=1,
                            detail=f"{n} accelerator dispatch(es); the merlin_iface grammar carries no "
                                   f"host computation, so no host seam can exist in it")
@@ -311,7 +317,8 @@ def profile_path(path: str | Path, target: str) -> BoundaryProfile:
     seq, unresolved = _sequence_from_linalg(module, target)
     segs = segments(seq)
     return BoundaryProfile(
-        kind=classify_sequence(seq), grammar="linalg",
+        kind=classify_sequence(seq), contains=tuple(sorted(patterns_in_sequence(seq))),
+        grammar="linalg",
         n_accel_regions=sum(1 for s in seq if s == ACCEL),
         n_host_regions=sum(1 for s in seq if s == HOST),
         n_unresolved=unresolved,
@@ -364,6 +371,7 @@ def corpus_boundaries(corpus_roots, target: str, *, labels=None, exclude=None) -
     exclude = set(exclude or ())
     roots = [corpus_roots] if isinstance(corpus_roots, (str, Path)) else list(corpus_roots)
     by_kind: dict[str, list[str]] = {}
+    primary: dict[str, list[str]] = {}
     unread: dict[str, str] = {}
     for root in roots:
         for cy in sorted(Path(root).glob("*/capsule.yaml")):
@@ -380,8 +388,18 @@ def corpus_boundaries(corpus_roots, target: str, *, labels=None, exclude=None) -
             if prof.kind == UNKNOWN:
                 unread[name] = prof.detail
                 continue
-            by_kind.setdefault(prof.kind, []).append(name)
-    return {"by_kind": {k: sorted(v) for k, v in sorted(by_kind.items())}, "unreadable": unread}
+            primary.setdefault(prof.kind, []).append(name)
+            # CREDIT EVERY SHAPE THE CAPSULE CONTAINS, not only the strongest one it is named by.
+            # The requirement side already reads a capture's CONTAINED shapes, and crediting the corpus
+            # side with one label each made the two sides ask different questions: a whole-model capsule
+            # whose sequence genuinely opens an accelerator region, crosses to the host and comes back is
+            # named `routing`, and `A->H->A` was then reported uncovered while a graded capsule was
+            # exercising it. That is the same under-crediting as scoring a fused capsule for one family.
+            for kind in sorted(prof.contains or {prof.kind}):
+                by_kind.setdefault(kind, []).append(name)
+    return {"by_kind": {k: sorted(v) for k, v in sorted(by_kind.items())},
+            "primary": {k: sorted(v) for k, v in sorted(primary.items())},
+            "unreadable": unread}
 
 
 def required_boundaries(captures: dict, target: str) -> dict:
@@ -421,6 +439,9 @@ def uncovered_boundaries(required: dict, corpus: dict) -> dict:
         "uncovered": missing,
         "corpus_kinds": sorted(have),
         "extra_kinds": sorted(have - set(want)),
+        "covered_only_incidentally": sorted(
+            k for k in set(want) & have
+            if k not in ((corpus or {}).get("primary") or {})),
         "unreadable_capsules": dict((corpus or {}).get("unreadable") or {}),
         "note": ("a required composition shape with no capsule means the corpus proves families but not "
                  "composition; the pass-rate cannot express it because every capsule that exists passes"),

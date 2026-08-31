@@ -1,0 +1,49 @@
+name: FT00_movement_tail_15x15
+kind: isa
+source_role: derived_sweep
+source_reference: 'derived tail-path coverage for the movement family: a load/store
+  round-trip on extents that do not divide the array edge, one below it and one above
+  (tile=16; M=15, N=15)'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 15
+  - 15
+  dtype: i8
+operation:
+  op: movement
+  attributes:
+    out: Y0
+    src: X
+    semantic: mvin_mvout
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    movement: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: movement
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
