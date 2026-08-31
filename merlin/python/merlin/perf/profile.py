@@ -666,14 +666,33 @@ def _t_independent_engine_ports(sources: Sources) -> tuple[Trait, str]:
 
 
 def _t_explicit_completion(sources: Sources) -> tuple[Trait, str]:
+    """Whether a unit SIGNALS that it finished, per engine.
+
+    Still not established for any target here, and the reason is worth stating precisely rather than
+    as "no completion signal": on at least one target the signal EXISTS IN THE RTL and the fact
+    extractor does not look for it. Its three command controllers each carry
+    ``val completed = Decoupled(UInt(log2Up(reservation_station_entries).W))`` driven from a command
+    tracker and tagged with the reservation-station id -- which is exactly a per-engine completion
+    port, and exactly what a scheduling family needs in order to price an issue against a wait.
+
+    So the honest state is "our extractor cannot see it", not "the hardware does not have it", and the
+    two must not read alike. ``facts.interfaces`` records a NAME and an evidence string per interface
+    and no port list at all, so nothing in the bundle could carry this even when the RTL does. Naming
+    the shape of the missing extraction is the difference between a blocker somebody can close and one
+    that reads as a property of the machine.
+    """
     ifaces = sorted(sources.interfaces())
     return Trait("explicit_completion", None,
-                 evidence=f"the facts declare interfaces {ifaces or 'none'}, none of which reports "
-                          "per-engine completion; static facts describe what a unit IS, not what it "
-                          "signals when it finishes",
-                 missing=("a completion/response signal in the RTL facts, or an activity source "
-                          "declaring completion_observable (merlin.perf.decompose.ActivitySource) "
-                          "-- headroom.concurrency_traits never defaults this",)), TIER_NONE
+                 evidence=f"the facts declare interfaces {ifaces or 'none'}, each carrying a name and "
+                          f"an evidence string and NO port list; a completion port therefore cannot "
+                          f"appear in this bundle even where the RTL drives one. This is an extraction "
+                          f"gap, not evidence that the target lacks completion signalling",
+                 missing=("a per-engine completion port in the RTL facts -- the extractor would have "
+                          "to record module ports, not just interface names, so a decoupled "
+                          "completion/response channel on each command controller becomes a fact; "
+                          "or an activity source declaring completion_observable "
+                          "(merlin.perf.decompose.ActivitySource) -- headroom.concurrency_traits "
+                          "never defaults this",)), TIER_NONE
 
 
 def _t_structural_pipeline_depth(sources: Sources) -> tuple[Trait, str]:
