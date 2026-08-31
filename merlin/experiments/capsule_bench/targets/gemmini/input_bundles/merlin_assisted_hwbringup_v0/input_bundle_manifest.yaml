@@ -18,10 +18,10 @@ allowed:
   mode: ro
 - path: merlin/contract/capsules/model_slices/
   mode: ro
-- path: tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h
+- path: experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini.h
   mode: ro
   note: ISA header (shared hardware spec)
-- path: tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
+- path: experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini_params.h
   mode: ro
   note: ISA header (shared hardware spec)
 - path: experiments/capsule_bench/targets/gemmini/task/

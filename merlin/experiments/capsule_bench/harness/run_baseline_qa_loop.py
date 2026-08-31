@@ -699,6 +699,10 @@ def bwrap_cmd(inner: str, ws: Path, bundle: dict, extra_binds: list[str] | None 
     # CODEX_HOME) go in BEFORE the mask pass, so a bind can never re-expose an
     # answer surface: masking is applied last and therefore wins.
     parts += list(extra_binds or [])
+    # A trusted toolchain bind may overlap a declared arm grant (LLVM is both).
+    # Reassert the frozen per-run bundle after every such bind so no live
+    # worktree/tool input can override the snapshot, then apply answer masks.
+    parts = _BW.reapply_bundle_snapshot(parts, ws, bundle, repo=C.REPO)
     parts = _BW.apply_answer_masks(parts, _surfaces(_te()))
     payload = f"{TC.sandbox_env(ws)} {inner}"
     # Single-quote the whole payload for the OUTER `bash -c`, escaping any embedded single quotes (the
@@ -1638,6 +1642,7 @@ def main(argv: list[str] | None = None) -> int:
             return 6
 
     bundle = RX._load_bundle(arm)
+    from merlin.targetgen.sandbox import bwrap as _BWS
     run_dir = C.RUNS / arm / a.run_id
     _resuming = run_dir.exists() and a.resume
     if run_dir.exists() and not a.resume:
@@ -1652,6 +1657,7 @@ def main(argv: list[str] | None = None) -> int:
     # stale workspace and re-stages from the golden-masked bundle.
     _have_ws = _resuming and (ws / "submission").exists()
     if ws_root.exists() and not _have_ws:
+        _BWS.remove_bundle_snapshot(ws)
         shutil.rmtree(ws_root)
     run_dir.mkdir(parents=True, exist_ok=_resuming)
     shutil.copy(C.BUNDLES / RX.ARM_BUNDLE[arm] / "input_bundle_manifest.yaml",
@@ -1659,6 +1665,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if _have_ws:
         print(f"[resume] reusing existing workspace + submission at {ws}")
+        _BWS.verify_bundle_snapshot(ws, bundle, repo=C.REPO)
         denied_names = [Path(d["path"]).name for d in bundle.get("denied", [])]
         viol, copy_report = [], None
     elif a.sandbox == "bwrap":
@@ -1679,6 +1686,7 @@ def main(argv: list[str] | None = None) -> int:
         "subagent_model": _SUBAGENT_MODEL or None, "background_model": _BACKGROUND_MODEL or None,
         "sandbox": a.sandbox, "qa_loop": True, "pilot": ["A0", "A2", "A4", "B0"],
         "workspace_path": str(ws), "workspace_copy_report": copy_report,
+        "bundle_input_snapshot": _BWS.snapshot_record(ws) if a.sandbox == "bwrap" else None,
         "repo_sha": C.repo_sha(), "bundle_id": bundle["bundle_id"],
         "started_at": datetime.now(timezone.utc).isoformat(),
         "isolation_violations": viol, "denied_paths_checked": denied_names,

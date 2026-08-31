@@ -77,10 +77,19 @@ def _link_filtered(src: Path, dst: Path) -> None:
         dst.symlink_to(src)
 
 
-def assemble_workspace(bundle: dict, ws: Path) -> list[str]:
-    """Symlink each allowed path into the workspace (RO intent); return the denied basenames to verify.
-    Answer surfaces (goldens / expected command buffers) are filtered out of the materialized tree — the
-    workspace the agent sees is answer-free by construction (defense-in-depth to the bwrap answer mask)."""
+def assemble_workspace(bundle: dict, ws: Path, *,
+                       _policy_test_live_inputs: bool = False) -> list[str]:
+    """Freeze the bundle inputs, then expose friendly links in the workspace.
+
+    The links retain the paths prompts already teach, but the real bwrap mount at
+    each link target comes from the run-private snapshot, never from the live
+    worktree.  Answer surfaces are still filtered from this convenience view and
+    independently masked by the canonical bwrap answer-surface pass.
+    """
+    from merlin.targetgen.sandbox import bwrap as _BW
+
+    if not _policy_test_live_inputs:
+        _BW.materialize_bundle_inputs(ws, bundle, repo=C.REPO)
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "submission").mkdir(exist_ok=True)
     for entry in bundle.get("allowed", []):
@@ -178,7 +187,10 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copy(C.BUNDLES / ARM_BUNDLE[a.arm] / "input_bundle_manifest.yaml",
                 run_dir / "input_bundle_manifest.yaml")
     shutil.copy(a.task, run_dir / "TASK.md")
-    denied_names = assemble_workspace(bundle, ws)
+    denied_names = assemble_workspace(
+        bundle, ws, _policy_test_live_inputs=a.sandbox != "bwrap")
+    from merlin.targetgen.sandbox import bwrap as _BW
+    snapshot = _BW.snapshot_record(ws) if a.sandbox == "bwrap" else None
     # Verification-spec contract: the QA acceptance spec the agent builds to (target ops, dtypes, numeric
     # acceptance policy, datapath coverage) — DERIVED from the answer-free capsule declarations, never a
     # golden. Written into the workspace so it sits alongside the RTL/docs; TASK.md points at it. Advisory:
@@ -207,6 +219,7 @@ def main(argv: list[str] | None = None) -> int:
         "started_at": datetime.now(timezone.utc).isoformat(),
         "isolation_violations": viol,
         "denied_paths_checked": denied_names,
+        "bundle_input_snapshot": snapshot,
     }, sort_keys=False))
     if viol:
         print(f"ISOLATION FAILURE: {viol}", file=sys.stderr)

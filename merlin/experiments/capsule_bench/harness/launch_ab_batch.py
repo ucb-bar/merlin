@@ -31,19 +31,20 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import yaml
+
 from merlin.common.paths import ext_path  # noqa: E402
 import _common as C
 
 SCRIPTS = C.EXP / "scripts"
-# arm -> (driver, extra args, run-id prefix, run-dir subdir)
-# arm -> (driver, extra args, run-id prefix, run-dir subdir, realistic bundle id)
+# arm -> (driver, extra args, run-id prefix, run-dir subdir, realistic bundle id, full bundle id)
 # realistic (abc3+) = HW-bringup info set: RTL + ISA + README + ONE example kernel (not the full suite).
 ARMS = {
-    "baseline":         (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "raw_baseline"], "rb", "raw_baseline", "raw_baseline_hwbringup_v0"),
-    "merlin":           (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "merlin_assisted"], "merlin", "merlin_assisted", "merlin_assisted_hwbringup_v0"),
-    "merlin_rtlchecks": (SCRIPTS / "run_rtlchecks_qa_loop.py", [], "merlincirct", "merlin_assisted", "merlin_assisted_rtlchecks_hwbringup_v0"),
-    "cpp_merlininfra":  (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "cpp_merlininfra"], "rbinfra", "cpp_merlininfra", "cpp_merlininfra_hwbringup_v0"),
-    "merlin_eqsat":     (SCRIPTS / "run_eqsat_qa_loop.py", [], "merlineqsat", "merlin_assisted", "merlin_assisted_eqsat_hwbringup_v0"),
+    "baseline":         (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "raw_baseline"], "rb", "raw_baseline", "raw_baseline_hwbringup_v0", "raw_baseline_public_v0"),
+    "merlin":           (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "merlin_assisted"], "merlin", "merlin_assisted", "merlin_assisted_hwbringup_v0", "merlin_assisted_public_v0"),
+    "merlin_rtlchecks": (SCRIPTS / "run_rtlchecks_qa_loop.py", [], "merlincirct", "merlin_assisted", "merlin_assisted_rtlchecks_hwbringup_v0", "merlin_assisted_rtlchecks_public_v0"),
+    "cpp_merlininfra":  (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "cpp_merlininfra"], "rbinfra", "cpp_merlininfra", "cpp_merlininfra_hwbringup_v0", "cpp_merlininfra_hwbringup_v0"),
+    "merlin_eqsat":     (SCRIPTS / "run_eqsat_qa_loop.py", [], "merlineqsat", "merlin_assisted", "merlin_assisted_eqsat_hwbringup_v0", "merlin_assisted_eqsat_public_v0"),
 }
 
 
@@ -66,7 +67,11 @@ def _run_dir(arm: str, run_id: str) -> Path:
     return C.RUNS / ARMS[arm][3] / run_id
 
 
-def _bundle_for(arm: str, cond: str) -> str:
+def _bundle_for(arm: str, cond: str, experiment: str) -> str:
+    if experiment == "full":
+        return ARMS[arm][5]
+    if experiment != "realistic":
+        raise ValueError(f"unknown experiment {experiment!r}")
     b = ARMS[arm][4]                                   # *_hwbringup_v0 (kernels condition)
     if cond == "no-kernels":
         b = b.replace("_hwbringup_v0", "_hwbringup_nokernel_v0")
@@ -74,7 +79,7 @@ def _bundle_for(arm: str, cond: str) -> str:
 
 
 def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
-    driver, extra, _, _, _ = ARMS[arm]
+    driver, extra, _, _, _, _ = ARMS[arm]
     cmd = [sys.executable, str(driver), "--run-id", run_id,
            "--model", a.model, "--effort", a.effort,
            "--max-rounds", str(a.max_rounds), "--max-rate-limit-waits", str(a.max_rate_limit_waits),
@@ -107,8 +112,12 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
         cmd += ["--subagent-model", a.subagent_model]
     if getattr(a, "background_model", ""):
         cmd += ["--background-model", a.background_model]
-    if a.experiment == "realistic":
-        cmd += ["--experiment", "realistic", "--bundle", _bundle_for(arm, cond)]
+    # Pin the bundle explicitly for EVERY experiment. Several driver wrappers replace their arm's
+    # process-global default before delegating to the common loop, so inferring the bundle from the arm
+    # name here is wrong (most importantly, the rtlchecks full cell serves *_rtlchecks_public_v0). Making
+    # it an argv fact lets preflight validate the exact manifest the launched process will load.
+    cmd += ["--experiment", a.experiment,
+            "--bundle", _bundle_for(arm, cond, a.experiment)]
     if a.skip_hidden:
         cmd += ["--skip-hidden"]
     cmd += ["--sandbox", a.sandbox]
@@ -158,12 +167,60 @@ def _make_host_owner_only(root: Path) -> int:
     return len(entries)
 
 
-def _run_preflight() -> int:
+def _bundle_id_from_command(command: list[str]) -> str:
+    """Return the one explicit bundle id from a planned launch command, or fail closed."""
+    values = [command[i + 1] for i, token in enumerate(command[:-1]) if token == "--bundle"]
+    if len(values) != 1:
+        raise ValueError(f"planned command must name exactly one --bundle (found {len(values)}): {command}")
+    bundle_id = values[0].strip()
+    if not bundle_id or Path(bundle_id).name != bundle_id or bundle_id in (".", ".."):
+        raise ValueError(f"invalid bundle id in planned command: {bundle_id!r}")
+    return bundle_id
+
+
+def _planned_bundle_manifests(planned_commands: list[list[str]]) -> list[Path]:
+    """Resolve exactly the manifests named by the selected cells, checking identity and existence."""
+    if not planned_commands:
+        raise ValueError("preflight received no planned commands")
+    manifests: list[Path] = []
+    seen: set[str] = set()
+    for command in planned_commands:
+        bundle_id = _bundle_id_from_command(command)
+        if bundle_id in seen:
+            continue
+        seen.add(bundle_id)
+        manifest = C.BUNDLES / bundle_id / "input_bundle_manifest.yaml"
+        if not manifest.is_file():
+            raise FileNotFoundError(f"selected bundle manifest does not exist: {manifest}")
+        body = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+        if body.get("bundle_id") != bundle_id:
+            raise ValueError(
+                f"selected bundle identity mismatch: command names {bundle_id!r}, "
+                f"manifest declares {body.get('bundle_id')!r} at {manifest}")
+        manifests.append(manifest)
+    return manifests
+
+
+def _run_preflight(planned_commands: list[list[str]]) -> int:
     """Prepare host-only surfaces + run verify_no_cheat.py. Returns 0 iff safe."""
     C.require_scaffolding()   # fail loudly if MERLIN_TARGET_EXPERIMENT points at a scaffolding-less dir
     from merlin.targetgen.target_experiment import load_target_experiment, bundles_match_descriptor
     desc = C.EXP / "target_experiment.yaml"          # C.EXP honors MERLIN_TARGET_EXPERIMENT
-    te = load_target_experiment(desc) if desc.is_file() else None
+    try:
+        if not desc.is_file():
+            raise FileNotFoundError(f"active target descriptor does not exist: {desc}")
+        te = load_target_experiment(desc)
+        manifests = _planned_bundle_manifests(planned_commands)
+        drift = bundles_match_descriptor(te, manifests)
+        if drift:
+            print(f"  ⚠ selected bundles drifted from {desc.name}'s shared spec: {drift}")
+            return 1
+        names = [manifest.parent.name for manifest in manifests]
+        print(f"  descriptor consistency: OK ({len(manifests)} selected bundle(s) vs {desc.name}: "
+              f"{', '.join(names)})")
+    except Exception as exc:  # noqa: BLE001 — a missing/invalid selected bundle must stop all spend
+        print(f"  ⚠ selected-bundle consistency check errored: {exc}")
+        return 1
     # Recover from a prior launch that left mode-000 trees behind, then keep them owner-only. This must
     # precede verification because the host-side anti-cheat and hidden grader need to enumerate the set.
     protected = []
@@ -183,21 +240,6 @@ def _run_preflight() -> int:
     r = subprocess.run([sys.executable, str(vnc)], cwd=str(C.REPO))
     if r.returncode:
         return r.returncode
-    # Descriptor governs the shared hardware spec: refuse if any active arm bundle drifted from it (so
-    # every arm gets exactly the ISA/RTL the target_experiment.yaml declares — a fair, honest run).
-    try:
-        if te is not None:
-            bundles = C.BUNDLES
-            manifests = [bundles / ARMS[arm][4] / "input_bundle_manifest.yaml" for arm in ARMS
-                         if (bundles / ARMS[arm][4] / "input_bundle_manifest.yaml").is_file()]
-            drift = bundles_match_descriptor(te, manifests)
-            if drift:
-                print(f"  ⚠ bundles drifted from {desc.name}'s shared spec: {drift}")
-                return 1
-            print(f"  descriptor consistency: OK ({len(manifests)} active arm bundles vs {desc.name})")
-    except Exception as e:  # noqa: BLE001 — a missing/invalid descriptor must not silently pass a run
-        print(f"  ⚠ descriptor consistency check errored: {e}")
-        return 1
     return 0
 
 
@@ -272,7 +314,7 @@ def main(argv=None):
     ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap",
                     help="bwrap (default, now that claude 2.1.185 runs under it): true filesystem allow-list "
                          "— only granted bundle files + the legit toolchain visible, all answers masked "
-                         "(proven by test_sandbox.py 18/18 per arm). 'none' = legacy reachable-fs + audit.")
+                         "(proven by test_sandbox.py per arm). 'none' = legacy reachable-fs + audit.")
     ap.add_argument("--preflight", action="store_true",
                     help="make host answer surfaces owner-only + dry-run + assert cheat-clean BEFORE "
                          "any spend; bwrap masks them from the agent; launches NOTHING.")
@@ -339,12 +381,14 @@ def main(argv=None):
 
     if a.preflight:
         print("\n=== --preflight: protect host surfaces + assert cheat-clean (launches NOTHING) ===")
-        rc = _run_preflight()
+        commands = [_arm_cmd(arm, rid, a, cond) for arm, rid, _rd, cond in planned]
+        rc = _run_preflight(commands)
         print(f"\n[preflight] {'PASS — safe to launch (drop --preflight, keep flags)' if rc == 0 else 'FAILED — DO NOT launch'}")
         return rc
 
     if a.dry_run:
-        print(f"\n[dry-run] preflight OK ({a.mode}); nothing launched. Drop --dry-run to launch.")
+        print(f"\n[dry-run] plan checks OK ({a.mode}); the authoritative --preflight was NOT run and "
+              "nothing launched. Run once with --preflight before dropping both flags.")
         return 0
 
     # HARD pre-flight: verilator timing must be FRESH (readiness_check measured it on a known-good backend

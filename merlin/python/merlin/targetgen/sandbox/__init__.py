@@ -67,15 +67,20 @@ class Sandbox:
     kind: str | None
     answer_surfaces: list[AnswerSurface]
     required_tools: list[ToolProbe]
+    _policy_test_live_inputs: bool = False
 
     def argv(self) -> list[str]:
-        return bwrap.full_argv(self.te, self.ws, self.bundle)
+        return bwrap.full_argv(
+            self.te, self.ws, self.bundle,
+            _policy_test_live_inputs=self._policy_test_live_inputs)
 
     def env(self) -> str:
         return toolchain.sandbox_env(self.te, self.ws)
 
     def wrap(self, inner: str) -> str:
-        return bwrap.wrap(self.te, self.ws, inner, self.bundle)
+        return bwrap.wrap(
+            self.te, self.ws, inner, self.bundle,
+            _policy_test_live_inputs=self._policy_test_live_inputs)
 
     def coverage_gap(self) -> list[AnswerSurface]:
         """The answer surfaces still reachable under the built argv — MUST be empty (hermetic guard)."""
@@ -83,9 +88,11 @@ class Sandbox:
 
 
 def build_sandbox(descriptor: str | Path | TargetExperiment, ws: Path,
-                  bundle: dict | None = None) -> Sandbox:
+                  bundle: dict | None = None, *,
+                  _policy_test_live_inputs: bool = False) -> Sandbox:
     """Build the sandbox for a target from its descriptor (path or loaded ``TargetExperiment``) + an
     optional arm bundle. This is the single seam the experiment scripts + the CI isolation test call."""
     te = descriptor if isinstance(descriptor, TargetExperiment) else load_target_experiment(descriptor)
     return Sandbox(te=te, ws=Path(ws), bundle=bundle or {}, kind=resolve_kind(te),
-                   answer_surfaces=answer_surfaces(te), required_tools=required_tool_probes(te))
+                   answer_surfaces=answer_surfaces(te), required_tools=required_tool_probes(te),
+                   _policy_test_live_inputs=_policy_test_live_inputs)

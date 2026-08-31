@@ -138,7 +138,8 @@ def test_the_sandbox_actually_exposes_the_lane_and_hides_its_implementation(desc
     ws = tmp_path / "ws"
     ws.mkdir()
     for bid, manifest in bundles.items():
-        argv = BW.base_argv(ws, manifest, repo=repo_root())
+        argv = BW.base_argv(ws, manifest, repo=repo_root(),
+                            _policy_test_live_inputs=True)
         for rel in lane["read_only"]:
             p = BW.resolve_grant(rel, repo_root())
             assert BW.is_exposed(argv, p), f"{bid}: the frozen host lane {rel!r} is NOT readable"

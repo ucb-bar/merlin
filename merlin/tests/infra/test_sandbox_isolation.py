@@ -19,6 +19,7 @@ developer box still gets the end-to-end proof.
 """
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import tempfile
@@ -55,6 +56,176 @@ def _ids(paths):
 ROSTER = _roster()
 
 
+def test_missing_declared_grant_refuses_snapshot(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    ws = tmp_path / "run" / "workspace"
+    bundle = {"allowed": [{"path": "does/not/exist.txt"}]}
+
+    with pytest.raises(FileNotFoundError, match="unresolvable allowed grant"):
+        BW.materialize_bundle_inputs(ws, bundle, repo=repo)
+
+    assert not BW.bundle_snapshot_root(ws).exists()
+
+
+def test_snapshot_bytes_do_not_follow_later_source_edits(tmp_path):
+    """Falsifier for the live-worktree race: both sandbox views stay frozen."""
+    if not shutil.which("bwrap"):
+        pytest.skip("bwrap unavailable — immutable mount tested structurally only")
+    repo = tmp_path / "repo"
+    source = repo / "inputs" / "contract.txt"
+    source.parent.mkdir(parents=True)
+    source.write_text("before\n", encoding="utf-8")
+    ws = tmp_path / "run" / "workspace"
+    bundle = {"allowed": [{"path": "inputs/contract.txt"}]}
+
+    try:
+        manifest = BW.materialize_bundle_inputs(ws, bundle, repo=repo)
+        assert manifest["n_files"] == 1
+        assert manifest["n_bytes"] == len("before\n")
+        assert len(manifest["content_sha256"]) == 64
+        frozen = BW.bundle_snapshot_root(ws) / manifest["grants"][0]["snapshot"]
+        assert not (frozen.stat().st_mode & 0o222)
+        assert not (BW.bundle_snapshot_root(ws).stat().st_mode & 0o222)
+        ws.mkdir(parents=True)
+        (ws / "contract.txt").symlink_to(source)
+        source.write_text("after\n", encoding="utf-8")
+        # Resume reuses and verifies the completed snapshot rather than
+        # recopying the now-mutated source or raising FileExistsError.
+        assert BW.materialize_bundle_inputs(ws, bundle, repo=repo) == manifest
+        source.unlink()
+
+        argv = BW.base_argv(ws, bundle, repo=repo)
+        # The source side of the grant is private frozen storage.  Even after
+        # the original destination disappears, the pinned destination and the
+        # workspace's absolute symlink both resolve to the snapshotted bytes.
+        grant = [(argv[i + 1], argv[i + 2]) for i, token in enumerate(argv[:-2])
+                 if token == "--ro-bind" and argv[i + 2] == str(source)]
+        assert grant and all(src != str(source) for src, _ in grant)
+        probe = f'cat "{source}"; cat "{ws / "contract.txt"}"'
+        out = subprocess.run([*argv, "bash", "-c", probe], capture_output=True,
+                             text=True, timeout=30)
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.splitlines() == ["before", "before"]
+    finally:
+        BW.remove_bundle_snapshot(ws)
+
+
+def test_tampered_snapshot_payload_refuses_resume(tmp_path):
+    repo = tmp_path / "repo"
+    source = repo / "input.txt"
+    source.parent.mkdir(parents=True)
+    source.write_text("original", encoding="utf-8")
+    ws = tmp_path / "run" / "workspace"
+    bundle = {"allowed": [{"path": "input.txt"}]}
+
+    manifest = BW.materialize_bundle_inputs(ws, bundle, repo=repo)
+    frozen = BW.bundle_snapshot_root(ws) / manifest["grants"][0]["snapshot"]
+    try:
+        frozen.chmod(0o600)
+        frozen.write_text("tampered", encoding="utf-8")
+        with pytest.raises(RuntimeError, match="content verification failed"):
+            BW.verify_bundle_snapshot(ws, bundle, repo=repo)
+    finally:
+        BW.remove_bundle_snapshot(ws)
+
+
+def test_nested_file_named_snapshot_json_is_in_payload_digest(tmp_path):
+    repo = tmp_path / "repo"
+    nested = repo / "inputs" / "nested" / "snapshot.json"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("granted payload", encoding="utf-8")
+    ws = tmp_path / "run" / "workspace"
+    bundle = {"allowed": [{"path": "inputs"}]}
+
+    manifest = BW.materialize_bundle_inputs(ws, bundle, repo=repo)
+    frozen = BW.bundle_snapshot_root(ws) / "repo" / "inputs" / "nested" / "snapshot.json"
+    try:
+        assert manifest["n_files"] == 1
+        frozen.chmod(0o600)
+        frozen.write_text("changed", encoding="utf-8")
+        with pytest.raises(RuntimeError, match="content verification failed"):
+            BW.verify_bundle_snapshot(ws, bundle, repo=repo)
+    finally:
+        BW.remove_bundle_snapshot(ws)
+
+
+def test_tampered_snapshot_marker_cannot_escape_root(tmp_path):
+    repo = tmp_path / "repo"
+    source = repo / "input.txt"
+    source.parent.mkdir(parents=True)
+    source.write_text("original", encoding="utf-8")
+    escape = tmp_path / "escape.txt"
+    escape.write_text("live external bytes", encoding="utf-8")
+    ws = tmp_path / "run" / "workspace"
+    bundle = {"allowed": [{"path": "input.txt"}]}
+
+    manifest = BW.materialize_bundle_inputs(ws, bundle, repo=repo)
+    marker = BW.bundle_snapshot_root(ws) / "snapshot.json"
+    try:
+        manifest["grants"][0]["snapshot"] = "../escape.txt"
+        marker.chmod(0o600)
+        marker.write_text(json.dumps(manifest), encoding="utf-8")
+        with pytest.raises(RuntimeError, match="escapes its root"):
+            BW.verify_bundle_snapshot(ws, bundle, repo=repo)
+    finally:
+        BW.remove_bundle_snapshot(ws)
+
+
+def test_tampered_snapshot_marker_cannot_follow_payload_symlink(tmp_path):
+    repo = tmp_path / "repo"
+    source = repo / "input.txt"
+    source.parent.mkdir(parents=True)
+    source.write_text("original", encoding="utf-8")
+    external = tmp_path / "external.txt"
+    external.write_text("live external bytes", encoding="utf-8")
+    ws = tmp_path / "run" / "workspace"
+    bundle = {"allowed": [{"path": "input.txt"}]}
+
+    manifest = BW.materialize_bundle_inputs(ws, bundle, repo=repo)
+    root = BW.bundle_snapshot_root(ws)
+    marker = root / "snapshot.json"
+    frozen = root / manifest["grants"][0]["snapshot"]
+    try:
+        frozen.parent.chmod(0o700)
+        frozen.chmod(0o600)
+        frozen.unlink()
+        frozen.symlink_to(external)
+        with pytest.raises(RuntimeError, match="escapes its root|contains a symlink"):
+            BW.verify_bundle_snapshot(ws, bundle, repo=repo)
+        with pytest.raises(RuntimeError, match="refusing to chmod.*symlink"):
+            BW.remove_bundle_snapshot(ws)
+    finally:
+        if frozen.is_symlink():
+            frozen.unlink()
+        BW.remove_bundle_snapshot(ws)
+
+
+def test_snapshotted_executable_remains_runnable(tmp_path):
+    if not shutil.which("bwrap"):
+        pytest.skip("bwrap unavailable")
+    repo = tmp_path / "repo"
+    tool = repo / "bin" / "frozen-tool"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("#!/bin/sh\necho SNAPSHOT_TOOL_OK\n", encoding="utf-8")
+    tool.chmod(0o755)
+    ws = tmp_path / "run" / "workspace"
+    bundle = {"allowed": [{"path": "bin/frozen-tool"}]}
+
+    manifest = BW.materialize_bundle_inputs(ws, bundle, repo=repo)
+    frozen = BW.bundle_snapshot_root(ws) / manifest["grants"][0]["snapshot"]
+    try:
+        assert frozen.stat().st_mode & 0o111
+        ws.mkdir(parents=True)
+        tool.unlink()
+        out = subprocess.run([*BW.base_argv(ws, bundle, repo=repo), str(tool)],
+                             capture_output=True, text=True, timeout=30)
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip() == "SNAPSHOT_TOOL_OK"
+    finally:
+        BW.remove_bundle_snapshot(ws)
+
+
 @pytest.mark.parametrize("descriptor", ROSTER, ids=_ids(ROSTER))
 def test_answer_surface_is_derived_and_complete(descriptor):
     """The mask set is DERIVED from the descriptor + declared registry (never hand-listed) and covers the
@@ -82,7 +253,8 @@ def test_no_answer_surface_reachable_under_worst_case_bundle(descriptor):
     with tempfile.TemporaryDirectory() as td:
         ws = Path(td) / "ws"
         ws.mkdir()
-        sb = build_sandbox(te, ws, _max_exposure_bundle(te.target))
+        sb = build_sandbox(te, ws, _max_exposure_bundle(te.target),
+                           _policy_test_live_inputs=True)
         gap = sb.coverage_gap()
         assert gap == [], f"{te.target}: answer surfaces reachable in sandbox: {[s.label for s in gap]}"
 
@@ -98,7 +270,8 @@ def test_coverage_guard_is_not_vacuous(descriptor):
         ws.mkdir()
         # base + toolchain binds, WITHOUT apply_answer_masks -> the contract bind re-exposes the goldens
         from merlin.targetgen.sandbox import toolchain as TC
-        unmasked = (BW.base_argv(ws, _max_exposure_bundle(te.target))
+        unmasked = (BW.base_argv(ws, _max_exposure_bundle(te.target),
+                                 _policy_test_live_inputs=True)
                     + BW.claude_runtime_binds() + TC.toolchain_binds(te))
         gap = BW.coverage_gap(unmasked, surfaces)
         assert gap, f"{te.target}: guard found nothing unmasked even without the mask pass (vacuous)"
@@ -161,7 +334,8 @@ def test_live_bwrap_tools_work_and_golden_masked(descriptor):
     with tempfile.TemporaryDirectory() as td:
         ws = Path(td) / "ws"
         (ws / "merlin" / "python").mkdir(parents=True)
-        sb = build_sandbox(te, ws, _max_exposure_bundle(te.target))
+        sb = build_sandbox(te, ws, _max_exposure_bundle(te.target),
+                           _policy_test_live_inputs=True)
         # (a) universal tools run
         for probe in UNIVERSAL_PROBES:
             cmd = sb.wrap(f"{probe.cmd} >/dev/null 2>&1 && echo OK || echo FAIL")

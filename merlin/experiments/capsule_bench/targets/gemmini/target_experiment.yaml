@@ -17,8 +17,8 @@ rtl:
 # the single source of truth the bundle-consistency check compares against.
 hardware_spec:
   isa_headers:
-    - tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h
-    - tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
+    - experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini.h
+    - experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini_params.h
   hwbringup_set: experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0
   # Curated baremetal C harness (linker/crt/headers only, NO kernels) the agent's rv64 compiler links
   # against — per-target setup, relative to this experiment dir. arc/cyclotron targets omit it.

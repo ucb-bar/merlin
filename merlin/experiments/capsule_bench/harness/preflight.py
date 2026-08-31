@@ -123,13 +123,19 @@ def check_canary_isolation() -> dict:
         bundle = load_bundle_by_id(bundle_id)
         with tempfile.TemporaryDirectory() as td:        # honours TMPDIR
             ws = Path(td) / "workspace"
-            RAE.assemble_workspace(bundle, ws)
+            # This is a mount-policy canary across every shipped bundle, not a
+            # runtime input-freeze test.  Copying each bundle's multi-GiB grants
+            # here would turn preflight into ~150 GiB of redundant I/O.  The
+            # mandatory runtime snapshot and its byte-immutability falsifier are
+            # exercised separately; this probe deliberately replays live grants.
+            RAE.assemble_workspace(bundle, ws, _policy_test_live_inputs=True)
             # The FULL isolation argv -- deny-by-default base, the runtime + toolchain binds, and the
             # derived answer-mask pass -- because that is what a real agent runs under. Probing the base
             # alone tested a WEAKER sandbox than the experiment uses (it does not re-mask an answer surface
             # that a broad legit grant re-exposes), and so reported a leak for every surface masking is
             # responsible for hiding.
-            argv = _BW.full_argv(_te, ws, bundle) + ["bash", "-c", probe]
+            argv = _BW.full_argv(
+                _te, ws, bundle, _policy_test_live_inputs=True) + ["bash", "-c", probe]
             r = subprocess.run(argv, capture_output=True, text=True, timeout=120)
             reachable = [ln for ln in r.stdout.splitlines() if ln.startswith("REACHABLE")]
             grep_hits = [ln for ln in r.stdout.splitlines() if "CANARY" in ln and not ln.startswith("REACHABLE")]
@@ -333,16 +339,28 @@ def check_bundle_hash_repro() -> dict:
     instead of an unpinned one.
     """
     out = {}
+    # Two independent caches preserve the two-pass reproducibility check while
+    # hashing a shared 8+ GiB grant only once in each pass, not once per bundle.
+    pass1: dict[Path, str] = {}
+    pass2: dict[Path, str] = {}
     for bundle_id in bundles_to_check():
         bundle = load_bundle_by_id(bundle_id)
         paths = [str(e.get("path", "")).strip("/") for e in bundle.get("allowed", [])]
         resolved = {p: bwrap.resolve_grant(p, C.REPO) for p in paths if p}
         unresolvable = sorted(p for p, r in resolved.items() if bwrap.path_kind(r) == "missing")
 
-        def _hash() -> dict:
-            return {p: C.hash_tree(r)["sha256"] for p, r in resolved.items() if r.is_dir()}
+        def _hash(cache: dict[Path, str]) -> dict:
+            hashes = {}
+            for declared, grant in resolved.items():
+                if bwrap.path_kind(grant) == "missing":
+                    continue
+                key = grant.absolute()
+                if key not in cache:
+                    cache[key] = _hash_granted_path(grant)["sha256"]
+                hashes[declared] = cache[key]
+            return hashes
 
-        h1, h2 = _hash(), _hash()
+        h1, h2 = _hash(pass1), _hash(pass2)
         out[bundle_id] = {"reproducible": h1 == h2, "n_paths": len(h1),
                           "unresolvable": unresolvable}
         lock = {"allowed_tree_sha256": h1}
@@ -350,6 +368,27 @@ def check_bundle_hash_repro() -> dict:
             lock["unresolvable_grants"] = unresolvable
         (C.BUNDLES / bundle_id / "bundle_lock.yaml").write_text(yaml.safe_dump(lock, sort_keys=True))
     return out
+
+
+def _hash_granted_path(path: Path) -> dict:
+    """Hash one allowed path, including a grant that names a plain file.
+
+    ``hash_tree`` intentionally walks directory descendants.  Calling it on a
+    file produces the empty-tree digest, and the old lock writer avoided that
+    by dropping every file grant entirely.  ISA headers and single-file tools
+    are load-bearing bundle inputs, so hash their bytes directly.
+    """
+    if path.is_dir():
+        return C.hash_tree(path)
+    import hashlib
+    digest = hashlib.sha256()
+    n_bytes = 0
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+            n_bytes += len(chunk)
+    return {"present": True, "sha256": digest.hexdigest(), "n_files": 1,
+            "n_bytes": n_bytes}
 
 
 def _codex_token_witness() -> Path | None:
