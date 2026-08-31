@@ -14,6 +14,13 @@ WHAT IS CHECKED, in increasing severity:
 2. Tracked reports that CLAIM a verdict (``certified: true``) carry a ``provenance`` block naming the
    revision. Enforced for reports not in the ratchet list below.
 3. Where the checkout is reachable, pins are verified and material drift is reported.
+4. For a pin that verifies its read set by CONTENT (a nested submodule's ISA headers, say), the per-FILE
+   verdict is printed and an UNDETERMINABLE one FAILS the gate. Added after a measured miss: the headers
+   every int8 dtype claim about the systolic target is derived from sit in a nested submodule off the
+   gitlink its container records, and the containing pin verified CLEAN because its own three Scala files
+   were clean. An OFF_PIN file is a loud note (the fix is in someone else's checkout and this gate cannot
+   make it); an UNDETERMINABLE one is a failure, because a check that could not run must never report
+   success.
 
 ADVISORY BY DEFAULT, RATCHETED. Existing reports predate this convention and are listed in
 ``provenance_ratchet.txt``; the list may only shrink. New claims are enforced immediately, which is the
@@ -145,6 +152,62 @@ def _claims_a_verdict(payload: object) -> bool:
     return False
 
 
+def _surface_sources(prov, pins: dict, got, notes: list[str], seen: set[str]) -> list[str]:
+    """Print the per-file verdict for a pin that verifies its read set by CONTENT, and fail the gate on
+    any UNDETERMINABLE one. Recurses into covered pins.
+
+    WHY THIS IS SEPARATE FROM THE DRIFT LINE. A drift line is a NOTE here — advisory by design, because
+    two pins in this registry are documented as permanently drifting on a development checkout and a
+    permanently-red line nobody can distinguish from a regression stops being read. But the finding this
+    surfaces is per-FILE and directional, and one of its three states must not be advisory:
+
+    * PINNED           — the bytes are the pin's commit's bytes. A claim from them is a pinned claim.
+    * OFF_PIN          — loud note. The bytes are known and are the wrong revision's; the fix is in
+                         someone else's checkout, and this gate deliberately cannot make it.
+    * UNDETERMINABLE   — PROBLEM. Nobody could tell which revision the bytes belong to, and a check that
+                         could not run must never report success. This repo has been bitten by that shape
+                         repeatedly (a codegen smoke check that was n/a and reported true burned 101
+                         minutes); reporting "could not determine" as OK is the same bug.
+
+    Only when the checkout is PRESENT. An absent checkout means this host simply does not have the
+    hardware sources, which is a note, not a failure — otherwise the gate fails for everyone who has not
+    cloned every external repo.
+    """
+    problems: list[str] = []
+    declared = pins.get(got.pin)
+    if declared is None:                                  # a covered pin that vanished mid-run
+        notes.append(f"pin {got.pin}: verified but no longer declared; per-file verdict not surfaced")
+        return problems
+    # A covered pin is reached twice -- once on its own turn through the registry, once through its
+    # container -- and printing the same per-file verdict twice reads as two separate findings.
+    if got.pin in seen:
+        return problems
+    seen.add(got.pin)
+    if declared.nested_in:
+        rec = got.nested_recorded or "UNDETERMINABLE"
+        notes.append(f"pin {got.pin}: nested in {declared.nested_in} at {declared.nested_path} — "
+                     f"container records {rec[:12]}, pin declares {declared.commit[:12]}, checkout is at "
+                     f"{got.observed.commit[:12]}")
+        if got.observed.present and not got.nested_recorded:
+            problems.append(f"pin {got.pin}: the revision {declared.nested_in} records at "
+                            f"{declared.nested_path} is UNDETERMINABLE, so nothing can say which revision "
+                            "the sources read from this nested checkout belong to. Not a pass.")
+    for s in got.sources:
+        if s.status == prov.PINNED:
+            notes.append(f"pin {got.pin}: {s.rel} PINNED by content ({s.digest[:12]})")
+        elif s.status == prov.OFF_PIN:
+            notes.append(f"pin {got.pin}: {s.rel} OFF-PIN — {s.reason} (read {s.digest[:12]}, pinned "
+                         f"revision {s.pinned_digest[:12]}). A claim derived from this file is NOT a "
+                         "pinned claim and must not be reported as one.")
+        else:
+            problems.append(f"pin {got.pin}: {s.rel} is UNDETERMINABLE against its pin — {s.reason}. A "
+                            "claim derived from it can be neither confirmed nor refuted, which is not the "
+                            "same as clean.")
+    for child in got.covered:
+        problems.extend(_surface_sources(prov, pins, child, notes, seen))
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     staged = "--staged" in argv
@@ -219,16 +282,18 @@ def main(argv: list[str] | None = None) -> int:
                 notes.append(f"artifact {name}: ok ({got.digest[:12]})")
             else:
                 notes.append(f"artifact {name}: NOT VERIFIED — {'; '.join(got.gaps)}")
+        surfaced: set[str] = set()
         for name in sorted(pins):
             got = P.verify(name)
             if got.ok:
                 notes.append(f"pin {name}: ok at {got.observed.commit[:12]}")
-                continue
-            detail = "; ".join([*got.drift,
-                                *([f"missing {list(got.missing_paths)}"] if got.missing_paths else []),
-                                *([f"forbidden present {list(got.forbidden_present)}"]
-                                  if got.forbidden_present else [])])
-            notes.append(f"pin {name}: DRIFT — {detail}")
+            else:
+                detail = "; ".join([*got.drift,
+                                    *([f"missing {list(got.missing_paths)}"] if got.missing_paths else []),
+                                    *([f"forbidden present {list(got.forbidden_present)}"]
+                                      if got.forbidden_present else [])])
+                notes.append(f"pin {name}: DRIFT — {detail}")
+            problems.extend(_surface_sources(P, pins, got, notes, surfaced))
 
     # Surface what could not be examined. A gate that says OK while it silently skipped reports is the
     # failure mode this whole convention exists to prevent, so the count is always printed when non-zero.

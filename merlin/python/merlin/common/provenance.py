@@ -19,6 +19,21 @@ failure above: a checkout can be the right repository, on a plausible branch, an
 unit. Comparing a SHA would also have caught it, but only if someone had written the SHA down — whereas a
 missing file is detectable without knowing what the revision was supposed to be.
 
+**A pin covers only its own checkout, so containment is declared.** Second measured failure: the ISA
+headers every int8 dtype claim about the systolic target is derived from live in a git repository NESTED
+inside a pinned one. ``verify`` reported the containing pin CLEAN — the three Scala files it listed were
+clean — while the nested checkout sat on a different revision than the gitlink its container records, with
+one of the headers locally edited on top. Presence, HEAD and dirtiness all said nothing was wrong. So a
+pin may declare ``nested_in`` (read the gitlink the container records), ``covers`` (fold a child pin's
+verification into this one's, so verifying the coarse pin cannot miss the fine one), and ``content_check``
+(compare the read paths' BYTES against the same paths at the pin's commit — see :func:`source_status`,
+which is the only comparison that is right when HEAD itself is off the pin).
+
+**Three states, never two.** A file is :data:`PINNED`, :data:`OFF_PIN`, or :data:`UNDETERMINABLE`. The
+last is not a softer version of the second: "this is the wrong revision" tells you to reconcile a
+checkout, "nobody could tell which revision this is" tells you not to publish the claim at all, and a
+check that renders the second as either the first or as OK is how an off-pin header read as pinned.
+
 **Nothing here mutates a checkout.** It verifies and records. On a shared host other people are working in
 those trees, and a tool that quietly moves someone's HEAD to satisfy a pin would be a worse failure than
 the one it prevents.
@@ -37,9 +52,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["Artifact", "ArtifactCheck", "Observation", "Pin", "PinsError", "Verification",
-           "load_artifacts", "load_pins", "observe", "pin", "pins_path", "record", "require",
-           "source_digest", "verify", "verify_artifact"]
+__all__ = ["Artifact", "ArtifactCheck", "Observation", "Pin", "PinsError", "SourceStatus",
+           "Verification", "load_artifacts", "load_pins", "observe", "pin", "pins_path", "record",
+           "require", "source_digest", "source_status", "verify", "verify_artifact"]
 
 #: Recorded where a fact could not be read. Never compares equal to a real value, and callers must not
 #: treat it as "unchanged" — see :mod:`merlin.targetgen.artifact_dag` for the same convention.
@@ -88,6 +103,42 @@ class Pin:
     #: This is a declaration to be REVIEWED, not a way to silence a check. An undeclared edit to a source
     #: a derivation reads is still drift, exactly as before.
     local_edits: tuple[tuple[str, str], ...] = ()
+    #: The pin whose checkout CONTAINS this one at a gitlink, and the gitlink path inside it.
+    #:
+    #: WHY: a pin verifies its OWN checkout and says nothing about a git repository nested inside it. The
+    #: measured failure -- the one this pair exists for -- is that the ISA headers every int8 dtype claim
+    #: about the systolic target is derived from live in a nested submodule, `verify` reported the
+    #: containing pin CLEAN (its three Scala files were clean), and the containing repo reported the whole
+    #: nested tree as one dirty entry `software/gemmini-rocc-tests` that intersected no declared read path.
+    #: So the headers were off the recorded gitlink AND locally edited, and the verdict was "ok".
+    #:
+    #: Declaring the containment lets `verify` read the gitlink sha the PARENT records and compare it
+    #: against both this pin's declared commit and the nested checkout's actual HEAD -- three revisions
+    #: that can all disagree, and did.
+    nested_in: str = ""
+    nested_path: str = ""
+    #: Child pins whose verification is PART of this one's. A caller that verifies only the coarse pin
+    #: must not be able to miss a nested surface its claims depend on: the ISA headers were exactly that,
+    #: and the only pin anything declared was the generator's.
+    covers: tuple[str, ...] = ()
+    #: Compare the BYTES of each read path against the same path AT THIS PIN'S COMMIT, read out of the
+    #: git object store (never a checkout mutation). None = on iff `nested_in` is set.
+    #:
+    #: WHY THIS AND NOT THE DIRTY CHECK: `git status` answers "does this file differ from HEAD", which is
+    #: the wrong question when HEAD is not the pinned revision. Measured on this host: the instruction
+    #: header `include/gemmini.h` is CLEAN -- and carries the off-pin fp6 revision's ISA surface (a
+    #: CONFIG_SCALE_MEM funct value and MX-format fields the pinned RTL does not implement), while
+    #: `include/gemmini_params.h` is reported MODIFIED and its bytes are byte-identical to the pinned
+    #: revision's. The dirty check gets both cases exactly backwards; content gets both right.
+    #:
+    #: Default-off for pins that are not nested, deliberately. Turning it on everywhere in one change
+    #: would re-litigate every existing pin's declared dirty-tree debt at once, and the ratchet
+    #: convention says that debt shrinks on purpose, not in a burst.
+    content_check: bool | None = None
+
+    @property
+    def checks_content(self) -> bool:
+        return bool(self.nested_in) if self.content_check is None else self.content_check
 
     def declared_edit(self, rel: str) -> str | None:
         """The declared digest for ``rel``, or None if this pin declares no edit to it."""
@@ -131,6 +182,46 @@ class Observation:
                 "dirty_paths": list(self.dirty_paths)}
 
 
+#: The only status that licenses calling a claim derived from a file a PINNED claim.
+PINNED = "pinned"
+#: The file is readable and its provenance is known — and it is not the pinned revision's.
+OFF_PIN = "off_pin"
+#: Neither could be established. NEVER merged into ``OFF_PIN``: "this is the wrong revision" and "nobody
+#: could tell which revision this is" call for different actions, and a check that reports the second as
+#: the first is the same collapse that let a header-derived dtype read as pinned in the first place.
+UNDETERMINABLE = "undeterminable"
+
+
+@dataclass(frozen=True)
+class SourceStatus:
+    """Whether ONE file a claim depends on belongs to the revision its pin declares.
+
+    Answered by CONTENT: the file's bytes are compared against the same path at the pin's commit, read
+    from the git object store. That is the only comparison that is right in both directions of the
+    measured failure — a file reported modified whose bytes ARE the pinned revision's, and a file
+    reported clean whose bytes are a DIFFERENT revision's because HEAD moved off the pin.
+
+    Three states, never two: :data:`PINNED`, :data:`OFF_PIN`, :data:`UNDETERMINABLE`.
+    """
+
+    pin: str
+    rel: str
+    status: str = UNDETERMINABLE
+    digest: str = UNKNOWN                  # sha256 of the bytes on disk
+    pinned_digest: str = UNKNOWN           # sha256 of the same path at the pin's commit
+    declared_digest: str = ""              # the pin's local_edits entry, when it declares one
+    reason: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.status == PINNED
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"pin": self.pin, "rel": self.rel, "status": self.status, "ok": self.ok,
+                "digest": self.digest, "pinned_digest": self.pinned_digest,
+                "declared_digest": self.declared_digest, "reason": self.reason}
+
+
 @dataclass(frozen=True)
 class Verification:
     """How a checkout differs from its pin. ``ok`` only when nothing MATERIAL differs.
@@ -152,15 +243,36 @@ class Verification:
     missing_paths: tuple[str, ...] = ()
     forbidden_present: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
+    #: The gitlink sha the CONTAINING pin's repository records for this nested checkout, when this pin
+    #: declares ``nested_in``. Recorded because it is a third revision that can disagree with both the
+    #: declared commit and the nested checkout's HEAD — and on this host all three do.
+    nested_recorded: str = ""
+    #: Per-file content verdicts for the read set, when the pin does content checking. This is what a
+    #: caller must consult before calling a file-derived claim a pinned claim.
+    sources: tuple[SourceStatus, ...] = ()
+    #: Verifications of the pins this one ``covers``. Their material findings are also folded into
+    #: ``drift`` (name-prefixed) so ``ok`` and :func:`require`'s message cannot silently omit them.
+    covered: tuple["Verification", ...] = ()
 
     @property
     def ok(self) -> bool:
         return not (self.drift or self.missing_paths or self.forbidden_present)
 
+    def source(self, rel: str) -> SourceStatus | None:
+        """The content verdict for one read path, or None when this pin did not check it."""
+        norm = str(rel).lstrip("./")
+        for s in self.sources:
+            if str(s.rel).lstrip("./") == norm:
+                return s
+        return None
+
     def to_dict(self) -> dict[str, Any]:
         return {"pin": self.pin, "ok": self.ok, "observed": self.observed.to_dict(),
                 "drift": list(self.drift), "missing_paths": list(self.missing_paths),
-                "forbidden_present": list(self.forbidden_present), "notes": list(self.notes)}
+                "forbidden_present": list(self.forbidden_present), "notes": list(self.notes),
+                "nested_recorded": self.nested_recorded,
+                "sources": [s.to_dict() for s in self.sources],
+                "covered": [v.to_dict() for v in self.covered]}
 
 
 @dataclass(frozen=True)
@@ -307,8 +419,53 @@ def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
             description=str(body.get("description") or ""), notes=str(body.get("notes") or ""),
             used_by=tuple(body.get("used_by") or ()),
             repo_observed_note=str(body.get("repo_observed_note") or ""),
-            local_edits=_local_edits(p, name, body.get("local_edits")))
+            local_edits=_local_edits(p, name, body.get("local_edits")),
+            nested_in=str(body.get("nested_in") or ""),
+            nested_path=str(body.get("nested_path") or ""),
+            covers=tuple(str(c) for c in (body.get("covers") or ())),
+            content_check=_tri(p, name, "content_check", body.get("content_check")))
+    _check_references(p, out)
     return out
+
+
+def _tri(src: Path, name: str, field_name: str, raw: Any) -> bool | None:
+    """A three-valued flag. Absent means "let the pin's shape decide", which is NOT the same as false."""
+    if raw is None:
+        return None
+    if not isinstance(raw, bool):
+        raise PinsError(f"{src}: pin {name!r} {field_name} must be a boolean or absent, got "
+                        f"{type(raw).__name__}; absent means 'decided by the pin's shape' and spelling "
+                        "that as a string would silently pick one of the two")
+    return raw
+
+
+def _check_references(src: Path, pins: "Mapping[str, Pin]") -> None:
+    """A pin that names another pin must name one that exists, and containment needs a path.
+
+    Fail closed at LOAD time. A dangling ``nested_in`` would otherwise make the gitlink comparison
+    unresolvable at verify time, and an unresolvable comparison is the state that reads as "nothing to
+    report" — exactly how the nested headers stayed invisible.
+    """
+    for name, p in pins.items():
+        if p.nested_in:
+            if p.nested_in not in pins:
+                raise PinsError(f"{src}: pin {name!r} declares nested_in {p.nested_in!r}, which is not a "
+                                f"declared pin; declared: {sorted(pins)}")
+            if p.nested_in == name:
+                raise PinsError(f"{src}: pin {name!r} declares itself as its own container")
+            if not p.nested_path:
+                raise PinsError(f"{src}: pin {name!r} declares nested_in {p.nested_in!r} but no "
+                                "nested_path; without the gitlink path the revision the container "
+                                "records cannot be read, and the check would pass by being unable to run")
+        elif p.nested_path:
+            raise PinsError(f"{src}: pin {name!r} declares nested_path but no nested_in, so there is no "
+                            "repository to read that gitlink out of")
+        for child in p.covers:
+            if child not in pins:
+                raise PinsError(f"{src}: pin {name!r} covers {child!r}, which is not a declared pin; "
+                                f"declared: {sorted(pins)}")
+            if child == name:
+                raise PinsError(f"{src}: pin {name!r} covers itself")
 
 
 def _local_edits(src: Path, name: str, raw: Any) -> tuple[tuple[str, str], ...]:
@@ -392,20 +549,96 @@ def _touches(dirty_paths: "Sequence[str]", reads: "Sequence[str]") -> tuple[str,
     A read path matches a dirty entry when they are equal or when the dirty entry is a DIRECTORY prefix of
     it — git reports an untracked directory as a single entry with a trailing slash, so comparing only for
     equality would miss every file inside a newly-added tree.
+
+    A GITLINK IS ALSO A DIRECTORY PREFIX and git spells it WITHOUT the trailing slash. Measured: the
+    systolic generator reported ``software/gemmini-rocc-tests`` (one dirty submodule entry) while the ISA
+    headers a claim was derived from sit at ``software/gemmini-rocc-tests/include/gemmini_params.h``. The
+    trailing-slash-only rule matched nothing, so ``verify`` concluded "none of them a source this reads"
+    and returned ok. Comparing path COMPONENTS — ``<entry>/`` as a prefix, whether or not git wrote the
+    slash — is right for both shapes and cannot match a sibling whose name merely starts the same way
+    (``foo`` never covers ``foobar/x``).
     """
     hit: set[str] = set()
     for rel in reads:
         norm = str(rel).lstrip("./")
         for d in dirty_paths:
             dn = str(d).lstrip("./")
-            if norm == dn or (dn.endswith("/") and norm.startswith(dn)):
+            if norm == dn or norm.startswith(dn.rstrip("/") + "/"):
                 hit.add(norm)
     return tuple(sorted(hit))
 
 
+def _git_blob(repo: Path, commit: str, rel: str) -> bytes | None:
+    """The raw bytes of ``rel`` at ``commit``, or None when they cannot be read.
+
+    Read-only, out of the object store: never a checkout, never a fetch, never an index touch. Other
+    sessions work in these trees and a provenance check that moved a HEAD to answer a question would be a
+    worse failure than the one it is here to prevent.
+
+    None covers every reason it could not be read — not a repo, commit absent (a shallow or partial
+    clone), path absent at that revision — and the caller must render that as UNDETERMINABLE rather than
+    as agreement or as drift.
+    """
+    try:
+        got = subprocess.run(("git", "-C", str(repo), "cat-file", "blob", f"{commit}:{rel}"),
+                             capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return got.stdout if got.returncode == 0 else None
+
+
+def source_status(pin_name: str, rel: str, *, checkout: "str | Path | None" = None,
+                  path: "str | Path | None" = None) -> SourceStatus:
+    """Does the file at ``rel`` belong to the revision pin ``pin_name`` declares?
+
+    The question a header-derived claim has to answer before it may call itself pinned. Answered by
+    content, in three states, because the two failing ones need different responses: OFF_PIN means
+    somebody must reconcile the checkout (or the claim must stop saying "pinned"), UNDETERMINABLE means
+    nobody can currently tell and a claim must not be published either way.
+    """
+    p = pin(pin_name, path)
+    target = Path(checkout) if checkout is not None else p.checkout()
+    norm = str(rel).lstrip("./")
+    if target is None:
+        return SourceStatus(pin=pin_name, rel=norm, status=UNDETERMINABLE,
+                            reason=f"${p.root_env} is unset, so the file cannot be located")
+    full = Path(target) / norm
+    if not full.is_file():
+        return SourceStatus(pin=pin_name, rel=norm, status=UNDETERMINABLE,
+                            reason=f"no file at {full}")
+    have = file_digest(full)
+    declared = p.declared_edit(norm) or ""
+    blob = _git_blob(Path(target), p.commit, norm)
+    if blob is None:
+        return SourceStatus(pin=pin_name, rel=norm, status=UNDETERMINABLE, digest=have,
+                            declared_digest=declared,
+                            reason=f"{norm} at {p.commit[:12]} could not be read from {target}'s object "
+                                   "store, so whether these bytes are the pinned revision's is UNKNOWN "
+                                   "— not 'no' and not 'yes'")
+    want = hashlib.sha256(blob).hexdigest()
+    if have == want:
+        return SourceStatus(pin=pin_name, rel=norm, status=PINNED, digest=have, pinned_digest=want,
+                            declared_digest=declared,
+                            reason=f"bytes are byte-identical to {norm} at {p.commit[:12]}")
+    if declared and have == declared:
+        return SourceStatus(pin=pin_name, rel=norm, status=OFF_PIN, digest=have, pinned_digest=want,
+                            declared_digest=declared,
+                            reason="bytes differ from the pinned revision and match the local edit the "
+                                   "pin declares; this is a REVIEWED off-pin file, and a claim citing it "
+                                   "must say '<commit> plus these bytes', never 'pinned'")
+    return SourceStatus(pin=pin_name, rel=norm, status=OFF_PIN, digest=have, pinned_digest=want,
+                        declared_digest=declared,
+                        reason=("bytes differ from the pinned revision AND from the local edit the pin "
+                                "declares, so the reviewed content is not the content that would be read"
+                                if declared else
+                                "bytes differ from the pinned revision and the pin declares no local "
+                                "edit for this path, so nothing describes what would be read"))
+
+
 def verify(name: str, *, checkout: "str | Path | None" = None,
            path: "str | Path | None" = None,
-           reads: "Sequence[str] | None" = None) -> Verification:
+           reads: "Sequence[str] | None" = None,
+           _seen: "frozenset[str] | None" = None) -> Verification:
     """Compare a checkout against its pin and report every disagreement.
 
     ``reads`` is the set of repo-relative paths the caller will actually consume; it defaults to the pin's
@@ -414,6 +647,13 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
     the failure this exists to catch, whereas a stray build artifact elsewhere in the tree changes nothing
     and reporting it as drift only teaches people to ignore the check. A dirty tree that touches nothing
     read is still recorded, in ``notes``.
+
+    THREE THINGS THIS ALSO CHECKS, each added after a measured miss (see :class:`Pin`):
+
+    * a nested checkout's revision against the gitlink its CONTAINER records (``nested_in``),
+    * the BYTES of every read path against the same path at the pin's commit (``content_check``), which is
+      the only comparison that is right when HEAD itself is off the pin,
+    * the pins this one ``covers``, folded in, so verifying the coarse pin cannot miss a nested surface.
     """
     p = pin(name, path)
     target = Path(checkout) if checkout is not None else p.checkout()
@@ -424,6 +664,8 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
     read_set = tuple(reads) if reads is not None else p.requires_paths
     drift: list[str] = []
     notes: list[str] = []
+    statuses: tuple[SourceStatus, ...] = ()
+    nested_recorded = ""
     if not got.present:
         drift.append(f"no checkout at {got.path}")
     else:
@@ -433,7 +675,43 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
             drift.append(f"commit is {got.commit[:12]} but the pin declares {p.commit[:12]}")
         if p.branch and got.branch not in (UNKNOWN, p.branch):
             drift.append(f"branch is {got.branch!r} but the pin declares {p.branch!r}")
-        if got.dirty:
+
+        # A nested checkout has a THIRD revision beyond its HEAD and its pin: the gitlink its container
+        # records. All three disagreed on the host this was written for, and the disagreement was
+        # invisible because nothing read the gitlink.
+        if p.nested_in:
+            nested_recorded, nested_drift, nested_notes = _nested_gitlink(p, got, path)
+            drift.extend(nested_drift)
+            notes.extend(nested_notes)
+
+        if p.checks_content:
+            # CONTENT SUPERSEDES THE DIRTY HEURISTIC for the read set. `git status` answers "differs from
+            # HEAD", and when HEAD is off the pin that question has the wrong subject: measured here, it
+            # called an off-pin instruction header clean and a byte-identical-to-the-pin parameter header
+            # modified. Comparing against the pinned revision's blob is right in both directions. The
+            # dirty accounting still runs for dirt OUTSIDE the read set.
+            statuses = tuple(source_status(name, rel, checkout=got.path, path=path)
+                             for rel in read_set)
+            off = [s for s in statuses if s.status == OFF_PIN]
+            unknown = [s for s in statuses if s.status == UNDETERMINABLE]
+            for s in off:
+                drift.append(f"{s.rel} is OFF-PIN: {s.reason} (bytes {s.digest[:16]}, pinned revision "
+                             f"has {s.pinned_digest[:16]})")
+            for s in unknown:
+                drift.append(f"{s.rel} is UNDETERMINABLE against this pin: {s.reason}")
+            if statuses and not off and not unknown:
+                notes.append(f"{len(statuses)} read path(s) are byte-identical to the pin's commit, so "
+                             "claims derived from them are pinned claims regardless of what `git status` "
+                             "says about the tree")
+            if not read_set:
+                drift.append("content_check is on but the pin declares no read set, so there is nothing "
+                             "to verify by content and whether a claim would be pinned is UNKNOWN")
+            outside = tuple(d for d in got.dirty_paths
+                            if not _touches([d], read_set)) if got.dirty else ()
+            if outside:
+                notes.append(f"{len(outside)} uncommitted change(s) outside the read set; content "
+                             "verified per-path above, so these do not bear on the claims")
+        elif got.dirty:
             touched = _touches(got.dirty_paths, read_set)
             # A touched source whose CONTENT the pin declares (see Pin.local_edits) is accounted for:
             # the revision alone does not describe it, but "<commit> plus this digest" does, and that is
@@ -475,17 +753,94 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
                     if got.present and not (Path(got.path) / rel).exists())
     forbidden = tuple(rel for rel in p.forbids_paths
                       if got.present and (Path(got.path) / rel).exists())
+
+    # Covered pins. Their findings are FOLDED INTO this pin's drift, name-prefixed, rather than parked in
+    # a side field: `ok` and `require`'s message are what callers act on, and a nested surface that only
+    # showed up in a field nobody reads is the exact shape of the failure this closes.
+    covered: list[Verification] = []
+    seen = (_seen or frozenset()) | {name}
+    for child in p.covers:
+        if child in seen:
+            notes.append(f"coverage cycle: {child!r} already verified in this chain, not re-entered")
+            continue
+        try:
+            cv = verify(child, path=path, _seen=seen)
+        except PinsError as e:
+            drift.append(f"[{child}] could not be verified, so whether the surface it covers is pinned "
+                         f"is UNKNOWN: {e}")
+            continue
+        covered.append(cv)
+        for item in cv.drift:
+            drift.append(f"[{child}] {item}")
+        if cv.missing_paths:
+            drift.append(f"[{child}] missing required path(s) {list(cv.missing_paths)}")
+        if cv.forbidden_present:
+            drift.append(f"[{child}] path(s) {list(cv.forbidden_present)} present but declared absent")
+        for item in cv.notes:
+            notes.append(f"[{child}] {item}")
+
     return Verification(pin=name, observed=got, drift=tuple(drift), missing_paths=missing,
-                        forbidden_present=forbidden, notes=tuple(notes))
+                        forbidden_present=forbidden, notes=tuple(notes),
+                        nested_recorded=nested_recorded, sources=statuses, covered=tuple(covered))
+
+
+def _nested_gitlink(p: Pin, got: Observation,
+                    path: "str | Path | None") -> tuple[str, list[str], list[str]]:
+    """The revision the CONTAINER records for this nested checkout, and how it disagrees.
+
+    Measured failure this exists for: the systolic generator (pinned, verified clean) records gitlink
+    7c540b3a for ``software/gemmini-rocc-tests`` while that nested checkout's HEAD is e6df8b9f ("128x128
+    fp6 sw"), and the ISA headers every int8 dtype claim is derived from are in it. Nothing read the
+    gitlink, so the container's own statement about which revision belongs there was never compared to
+    anything.
+    """
+    drift: list[str] = []
+    notes: list[str] = []
+    try:
+        parent = pin(p.nested_in, path)
+    except PinsError as e:
+        return "", [f"nested_in {p.nested_in!r} is not readable, so the revision the container records "
+                    f"for {p.nested_path!r} is UNDETERMINABLE: {e}"], notes
+    parent_co = parent.checkout()
+    if parent_co is None or not parent_co.is_dir():
+        return "", [f"the containing checkout for {p.nested_in!r} is not present, so the gitlink it "
+                    f"records for {p.nested_path!r} is UNDETERMINABLE — not absent, and not agreement"], notes
+    entry = _git(parent_co, "ls-files", "-s", p.nested_path)
+    fields = (entry or "").split()
+    recorded = fields[1] if len(fields) > 1 else ""
+    if not recorded:
+        return "", [f"{p.nested_in!r} records no gitlink at {p.nested_path!r}, so which revision belongs "
+                    "in this nested checkout is UNDETERMINABLE"], notes
+    if recorded != p.commit:
+        drift.append(f"the containing repo {p.nested_in!r} records {recorded[:12]} at {p.nested_path} but "
+                     f"this pin declares {p.commit[:12]}: the pin and the superproject disagree about "
+                     "which revision this nested checkout is")
+    else:
+        notes.append(f"{p.nested_in!r} records {recorded[:12]} at {p.nested_path}, agreeing with this "
+                     "pin's declared commit")
+    if got.commit not in (UNKNOWN, recorded):
+        drift.append(f"the nested checkout is at {got.commit[:12]} but {p.nested_in!r} records "
+                     f"{recorded[:12]} at {p.nested_path}: this working tree is OFF THE RECORDED GITLINK, "
+                     "so anything read from it belongs to a revision the container does not claim")
+    return recorded, drift, notes
 
 
 def require(name: str, *, checkout: "str | Path | None" = None,
             path: "str | Path | None" = None,
             reads: "Sequence[str] | None" = None) -> Verification:
-    """:func:`verify`, raising on any disagreement. Use before producing anything that claims a result."""
+    """:func:`verify`, raising on any disagreement. Use before producing anything that claims a result.
+
+    This is the call that must stand between a file-derived claim and a report that says "pinned": a read
+    path that is off-pin or undeterminable raises here, and the three states stay distinguishable in the
+    message rather than collapsing into one "does not match".
+    """
     got = verify(name, checkout=checkout, path=path, reads=reads)
     if not got.ok:
         parts = list(got.drift)
+        for s in got.sources:
+            if s.status != PINNED:
+                parts.append(f"{s.rel}: {s.status.upper()} — a claim derived from these bytes "
+                             f"({s.digest[:16]}) is NOT a pinned claim")
         if got.missing_paths:
             parts.append(f"missing required path(s) {list(got.missing_paths)} — this checkout does not "
                          "contain what the work needs")

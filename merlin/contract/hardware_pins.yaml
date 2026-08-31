@@ -17,6 +17,27 @@
 # branch, and still be missing the unit entirely. Checking a path is cheap and does not care how the
 # revision was spelled.
 #
+# A PIN COVERS ONLY ITS OWN CHECKOUT, so containment is declared. Second measured failure, and the
+# reason `gemmini_isa_headers` exists below: `verify("gemmini_rtl")` returned ok=true while every int8
+# dtype claim about that target came out of ISA headers in a git repository NESTED inside the pinned one,
+# off the gitlink the container records, with one header locally edited on top. Presence, HEAD and
+# dirtiness all said nothing was wrong. Four fields address it, all optional:
+#   nested_in / nested_path  read the gitlink sha the CONTAINING pin's repo records, and compare it to
+#                            both this pin's commit and this checkout's HEAD (three revisions, all of
+#                            which can disagree)
+#   covers                   fold a child pin's verification into this one's, so verifying the coarse pin
+#                            cannot miss the fine one a claim actually depends on
+#   content_check            compare each read path's BYTES against that path at this pin's commit, out
+#                            of the object store. On by default when `nested_in` is set. This is the only
+#                            comparison that is right when HEAD itself is off the pin: `git status`
+#                            answers "differs from HEAD", which has the wrong subject then, and it got
+#                            both of the two real cases here exactly backwards.
+#   local_edits              path -> sha256 of bytes that are KNOWINGLY not the pinned revision's. Pins
+#                            the content so a DIFFERENT edit is still refused; never a way to quiet a
+#                            check, and never a claim that the file matches upstream.
+# Three states per file, never two: pinned / off_pin / undeterminable. "Nobody could tell which revision
+# these bytes are" is not a softer "wrong revision" — it means do not publish the claim at all.
+#
 # Consumed by `merlin.common.provenance`; gated by `build_tools/scripts/check_provenance.py`.
 version: 1
 
@@ -244,6 +265,13 @@ pins:
       - src/main/scala/gemmini/Configs.scala
       - src/main/scala/gemmini/GemminiISA.scala
       - src/main/scala/gemmini/Mesh.scala
+    # The ISA HEADERS this generator ships are a SEPARATE nested repository with its own revision, and
+    # every dtype claim about this target is read out of them. This pin cannot describe them (see the
+    # sibling below), so it declares that verifying it INCLUDES verifying them: a caller that verified
+    # only this pin and then reported an int8 dtype as "pinned" is the failure the sibling documents,
+    # and `covers` is what makes that impossible rather than merely discouraged.
+    covers:
+      - gemmini_isa_headers
     used_by:
       - RoCC encoding + mesh/capacity fact extraction (targetgen/rtl/introspect.py)
       - run records for the systolic capsule suites (targetgen.provenance.toolchain_shas)
@@ -251,6 +279,115 @@ pins:
       Detached HEAD is normal here — a submodule is checked out at the sha its superproject records,
       not on a branch, so `branch` is informational and the sha is the fact. Shares a checkout root
       with radiance_muon_rtl (the same chipyard tree), which is why both are verified by CONTENT.
+
+      EXPECT THIS PIN TO REPORT DRIFT VIA `[gemmini_isa_headers]` ON A DEVELOPMENT CHECKOUT, and read it
+      as the coverage working rather than as a fault in this pin. Its own three Scala files are clean at
+      8c3f9923; what is off-pin is the nested header repository, and the whole point of `covers` is that
+      that no longer hides behind this pin's clean verdict.
+
+  gemmini_isa_headers:
+    description: >-
+      The systolic target's own ISA HEADERS — the software interface `targetgen.capability_discovery`
+      parses, and the sole source of every dtype claim about this target (elem_t / acc_t / full_t /
+      scale_t typedefs, the activation-mode enumeration, the feature #defines). They ship in a
+      repository NESTED inside the generator (`software/gemmini-rocc-tests`, a submodule), which has its
+      own revision, so the generator's pin cannot describe them.
+
+      WHY THIS IS A SIBLING PIN AND NOT MORE PATHS ON `gemmini_rtl`. A pin has exactly ONE `commit`, and
+      these headers do not belong to the generator's revision — they belong to 7c540b3a, the gitlink the
+      generator records, while the generator itself is 8c3f9923. Adding the header paths to
+      `gemmini_rtl.requires_paths` would make the presence check fire but would leave nowhere to write
+      down WHICH revision the headers are from, i.e. it would fix the symptom by collapsing two
+      revisions into one field — the exact ambiguity `gemmini_rtl`'s own description argues against
+      ("the outer tree can move while this one does not ... recording only one of the two leaves the
+      result ambiguous"). `atlas_fp_units` is pinned apart from `atlas_npu` for the same reason.
+
+      MEASURED FAILURE THIS PIN EXISTS FOR. `verify("gemmini_rtl")` returned ok=true while every int8
+      dtype claim came from a header that is not the pinned revision's. Three separate reasons it stayed
+      invisible, all now checked:
+        1. The headers were in no pin's `requires_paths` at all, so nothing looked at them.
+        2. The containing repo reported the whole nested tree as ONE dirty entry
+           `software/gemmini-rocc-tests` (a gitlink, spelled WITHOUT a trailing slash). The read-set
+           intersection matched only equality or a trailing-slash directory prefix, so it matched
+           nothing and `verify` concluded "8 uncommitted change(s), none of them a source this reads".
+        3. `git status` was the wrong question. Measured content, on this host:
+             include/gemmini.h        clean vs HEAD, bytes 007826db = e6df8b9f  -> OFF-PIN, silently
+             include/gemmini_params.h  MODIFIED vs HEAD, bytes 3758ae96 = 7c540b3a -> PINNED by content
+           The dirty check gets both cases exactly backwards. Hence `content_check`, which compares each
+           read path's bytes against that path at 7c540b3a out of the object store.
+    repo_canonical: https://github.com/ucb-bar/gemmini-rocc-tests.git
+    commit: "7c540b3adf1b86ad93d07f893abe3a73489b568e"
+    branch: null                      # a submodule sits at a sha, not on a branch; the gitlink is the fact
+    root_env: MERLIN_CHIPYARD
+    path: generators/gemmini/software/gemmini-rocc-tests
+    # The container and the gitlink inside it. `verify` reads the sha `gemmini_rtl`'s repository records
+    # here and compares it to BOTH this pin's declared commit and this checkout's actual HEAD — three
+    # revisions that can disagree, and on this host do:
+    #   pin declares / gemmini records : 7c540b3a  (int8: elem_t int8_t, acc_t int32_t)
+    #   this checkout's HEAD           : e6df8b9f  ("128x128 fp6 sw" — elem_t uint8_t,
+    #                                               ELEM_T_IS_LOWPREC_FLOAT, EXP_BITS 3, acc_t uint64_t)
+    nested_in: gemmini_rtl
+    nested_path: software/gemmini-rocc-tests
+    content_check: true               # implied by nested_in; stated because it is the load-bearing check
+    requires_paths:
+      - include/gemmini.h
+      - include/gemmini_params.h
+    # DECLARED LOCAL EDIT, with the digest of the bytes actually read.
+    #
+    # `include/gemmini_params.h` is reported modified by git because this checkout's HEAD is e6df8b9f (the
+    # fp6 revision), and the edit is a REVERT of the fp6 parameter block back to the int8 one. The bytes
+    # are byte-identical to 7c540b3a's, which is why `source_status` reports this path PINNED by content
+    # and not merely "declared": the digest below and the digest of `7c540b3a:include/gemmini_params.h`
+    # are the same string. It is recorded anyway so that a DIFFERENT edit to this file is still refused —
+    # the digest stops matching and the path drops to OFF_PIN with a message naming both digests.
+    #
+    # The int8 dtypes these bytes declare are independently corroborated by `merlin.targetgen.rtl.facts`
+    # straight from the RTL (operand int8, accumulate int32 — the discovery surface prints the agreement).
+    # That corroboration is why the claims are BELIEVED; it is not why they are pinned, and the two were
+    # being conflated. Nothing in the pin recorded which bytes the dtypes came from until now.
+    local_edits:
+      include/gemmini_params.h: "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924"
+    used_by:
+      - every dtype / activation-mode / feature claim in the discovered capability surface
+        (targetgen/capability_discovery.py, via hardware_spec.isa_headers)
+      - the hwbringup ISA contract handed to every capsule-bench arm
+        (experiments/capsule_bench/targets/gemmini/.../isa_include -> a symlink into THIS checkout)
+    notes: >-
+      HOW THE HEADERS ARE REACHED, because it is not obvious and it is why nothing associated them with a
+      pin. The descriptor declares them as repo-relative paths under
+      `experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/`, and
+      `isa_include` is a tracked SYMLINK to
+      $MERLIN_CHIPYARD/generators/gemmini/software/gemmini-rocc-tests/include. So
+      `capability_discovery._resolve_declared_path` resolves them at its FIRST candidate (`merlin_dir`)
+      and never reaches its pin-checkout branch — the resolved source therefore recorded `pin: None`, and
+      a source with no pin cannot be off-pin from anything. The bytes read are nonetheless this
+      checkout's, which is what this pin now describes.
+
+      EXPECT DRIFT ON A DEVELOPMENT CHECKOUT, AND DO NOT SILENCE IT. Two findings are expected here until
+      someone reconciles the submodule:
+        - the nested checkout is at e6df8b9f but gemmini_rtl records 7c540b3a (off the recorded gitlink);
+        - include/gemmini.h is OFF-PIN by content (007826db vs the pinned 18801f4e).
+      The second is the one that matters and it is NOT cosmetic: e6df8b9f's instruction header adds
+      `CONFIG_SCALE_MEM 26` and MX-format fields to `gemmini_extended3_config_ex` (act/wgt/out_mx_fmt,
+      uselut) that the pinned RTL revision 8c3f9923 does not implement. A capability surface derived from
+      it can therefore declare an ISA surface the pinned hardware cannot execute.
+
+      TWO DIFFERENT DIGESTS ARE IN PLAY AND THEY ARE NOT COMPARABLE — a trap for anyone reconciling a
+      capability surface against this pin. This registry's digests (`local_edits`, and what
+      `provenance.source_status` compares) are the PLAIN sha256 of a file's bytes, so they are stable
+      across hosts. `capability_discovery.ResolvedSource.digest` is `provenance.source_digest([abs_path])`,
+      which hashes the absolute PATH STRING together with the bytes and is therefore host-specific and
+      will never equal the value here. Measured on this host: the same
+      `include/gemmini_params.h` reads 3758ae96 as a content digest and 5d31e5b4 as that surface's
+      source_digest. Neither is wrong; they answer different questions. Compare like with like.
+
+      THE FIX IS IN THE CHECKOUT, NOT IN THIS FILE. `git -C generators/gemmini submodule update
+      --checkout software/gemmini-rocc-tests` would put the nested tree back on 7c540b3a — and this
+      registry's tooling deliberately CANNOT do that, because other sessions build from that tree and a
+      provenance check that moves someone's HEAD is a worse failure than the one it prevents. Do not
+      "fix" the drift by re-pinning this commit to e6df8b9f: that would attribute the int8 claims to the
+      fp6 revision, which is precisely the mis-attribution the registry exists to prevent. If the fp6
+      revision is genuinely what a piece of work wants, it needs its own pin and its own goldens.
 
   atlas_npu:
     description: >-
