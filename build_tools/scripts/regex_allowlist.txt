@@ -18,7 +18,6 @@ merlin/python/merlin/kernels/ingest/xnnpack.py                # XNNPACK in-file 
 merlin/python/merlin/kernels/ingest/autocomp.py               # Autocomp bespoke test() C-signature + kernel_<hash>.c filename
 merlin/python/merlin/kernels/ingest/triton.py                 # Triton .py source scrape; could move to `ast` (optional, low value)
 merlin/python/merlin/baselines/executorch.py                  # ExecuTorch executor_runner STDOUT — no --json mode
-merlin/python/merlin/targetgen/contract/interface_emit.py     # contract round-trip; xDSL dep forbidden by design + ingests external capsules
 merlin/python/merlin/targetgen/rtl/gen_iface_irdl.py          # normalizes a known tblgen-to-irdl output quirk
 merlin/python/merlin/targetgen/rtl/gen_arc_ports.py           # C-identifier sanitization of a name already read from JSON
 merlin/python/merlin/llvmlower/pipeline.py                    # f0x float-literal fixup: MLIR printer emits text LLVM's parser rejects (emitter bug)
