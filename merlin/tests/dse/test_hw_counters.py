@@ -135,3 +135,67 @@ class TestThreeStatesForATarget:
                 assert got["header"].endswith(".h")
                 return
         pytest.skip("no target in this checkout ships a combination-counter header")
+
+
+class TestBracket:
+    def _oc(self):
+        return _counters()
+
+    def _codes(self):
+        return H.event_codes(_HDR)
+
+    def test_every_derived_counter_gets_a_slot_and_its_own_event_code(self):
+        b = H.counter_bracket_c(self._oc(), self._codes(), slots=8)
+        assert len(b["slot_of"]) == 7
+        assert sorted(b["slot_of"].values()) == list(range(7))
+        for name, code in ((n, self._codes()[n]) for n in b["slot_of"]):
+            assert f"counter_configure({b['slot_of'][name]}, {code})" in b["prologue"]
+
+    def test_a_missing_event_code_is_refused(self):
+        # A read at an unconfigured slot returns whatever that slot last held, which would be
+        # reported as this run's overlap.
+        codes = dict(self._codes())
+        codes.pop("WHOLE_ALPHA_BETA_GAMMA_CYCLES")
+        try:
+            H.counter_bracket_c(self._oc(), codes, slots=8)
+        except ValueError as e:
+            assert "unconfigured slot" in str(e)
+        else:
+            raise AssertionError("a missing event code must be refused, not skipped")
+
+    def test_too_few_slots_is_refused_rather_than_partially_emitted(self):
+        # A missing combination makes the realised total a LOWER BOUND; emitting a partial bracket
+        # would have that reported as the total.
+        try:
+            H.counter_bracket_c(self._oc(), self._codes(), slots=3)
+        except ValueError as e:
+            assert "lower" in str(e)
+        else:
+            raise AssertionError("a counter set larger than the slot count must be refused")
+
+    def test_the_reader_attributes_by_name_not_by_position(self):
+        # A simulator console interleaves writers; a positional reader mis-attributes silently.
+        console = ("garbage from another writer\n"
+                   f"{H.COUNTER_MARKER} WHOLE_BETA_CYCLES 22\n"
+                   "more noise\n"
+                   f"{H.COUNTER_MARKER} WHOLE_ALPHA_CYCLES 11\n")
+        assert H.parse_counter_output(console) == {"WHOLE_ALPHA_CYCLES": 11, "WHOLE_BETA_CYCLES": 22}
+
+    def test_a_truncated_value_is_dropped_not_coerced(self):
+        # A truncated console is a MISSING reading, which eta already refuses on -- never a zero.
+        got = H.parse_counter_output(f"{H.COUNTER_MARKER} WHOLE_ALPHA_CYCLES \n")
+        assert got == {}
+
+    def test_an_empty_console_yields_nothing(self):
+        assert H.parse_counter_output("") == {}
+
+    def test_bracket_to_eta_round_trips(self):
+        # The whole path: derive the counters, emit the bracket, read a console back, compute eta.
+        oc = self._oc()
+        b = H.counter_bracket_c(oc, self._codes(), slots=8)
+        assert b["epilogue"].count("counter_read(") == 7
+        console = "\n".join(
+            f"{H.COUNTER_MARKER} {n} {60 if len(k) >= 2 else 40}"
+            for k, n in oc.by_combination.items())
+        got = H.eta_from_counters(H.parse_counter_output(console), oc)
+        assert got["state"] == "measured" and got["eta"] > 0

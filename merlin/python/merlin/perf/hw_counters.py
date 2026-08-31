@@ -223,3 +223,80 @@ def eta_from_counters(values: dict, counters: OccupancyCounters) -> dict:
             "note": ("realised counts every cycle with two or more engines busy; available is the "
                      "second-largest per-engine busy total, the same quantity headroom and the "
                      "falsifier use")}
+
+
+# ---------------------------------------------------------------------------------------------------
+# turning the derived counter set into something a host harness can run
+# ---------------------------------------------------------------------------------------------------
+
+#: The marker a bracketed run prints before each counter value. Chosen to be greppable out of a
+#: console log that also carries the capsule's own output, and parsed by exact prefix rather than by
+#: position, because a simulator console interleaves writers and a positional reader silently
+#: mis-attributes when something else prints mid-run.
+COUNTER_MARKER = "MERLIN_HWCOUNTER"
+
+
+def counter_bracket_c(counters: OccupancyCounters, codes: dict, *, slots: int) -> dict:
+    """C for configuring, then reading, this target's combination counters around a kernel.
+
+    Returns ``{"prologue": str, "epilogue": str, "slot_of": {...}}`` — text a harness generator can
+    place before and after the work, plus which slot each counter was assigned so the epilogue's
+    output can be attributed. Emitting text rather than editing a harness is deliberate: nothing on
+    the graded path changes until a caller chooses to place it.
+
+    ``codes`` maps a counter NAME to the numeric event code the target's own header declares, and
+    ``slots`` is how many counter slots the hardware exposes — on the target measured here the config
+    register masks the index with three bits and the RTL's counter bundle carries an
+    ``external_values`` array, so eight, and the seven combination counters fit exactly. Both are
+    supplied rather than assumed: a target with fewer slots than counters must be told so it can
+    FAIL rather than silently read whichever ones happened to fit.
+    """
+    names = [counters.by_combination[k] for k in sorted(counters.by_combination, key=lambda s: sorted(s))]
+    missing = [n for n in names if n not in (codes or {})]
+    if missing:
+        raise ValueError(
+            f"no event code for {missing}; a counter read at an unconfigured slot returns whatever "
+            f"that slot last held, which would be reported as this run's overlap")
+    if len(names) > int(slots):
+        raise ValueError(
+            f"{len(names)} counter(s) need slots but the target exposes {slots}; refusing to emit a "
+            f"partial bracket, because a missing combination makes the realised-overlap total a lower "
+            f"bound that would be reported as the total")
+    slot_of = {n: i for i, n in enumerate(names)}
+    pro = ["  // merlin: joint-occupancy counters, configured from this target's own event codes.",
+           "  counter_reset();"]
+    for n in names:
+        pro.append(f"  counter_configure({slot_of[n]}, {int(codes[n])});  // {n}")
+    epi = ["  // merlin: read the counters back. Marker-prefixed so a reader attributes by NAME, not",
+           "  // by position -- a simulator console interleaves writers.",
+           "  counter_snapshot_take();"]
+    for n in names:
+        epi.append(f'  printf("{COUNTER_MARKER} {n} %u\\n", counter_read({slot_of[n]}));')
+    return {"prologue": "\n".join(pro) + "\n", "epilogue": "\n".join(epi) + "\n", "slot_of": slot_of}
+
+
+def parse_counter_output(console: str) -> dict:
+    """``counter name -> value`` from a bracketed run's console output.
+
+    Attributes by the NAME the line carries, so an interleaved or reordered console still reads
+    correctly, and a line whose value is not an integer is skipped rather than coerced -- a truncated
+    console is a missing reading, which η already refuses on, and never a zero.
+    """
+    out: dict = {}
+    for raw in (console or "").splitlines():
+        line = raw.strip()
+        at = line.find(COUNTER_MARKER)
+        if at == -1:
+            continue
+        parts = line[at + len(COUNTER_MARKER):].split()
+        if len(parts) < 2:
+            continue
+        name, value = parts[0], parts[1]
+        if value.isdigit():
+            out[name] = int(value)
+    return out
+
+
+def event_codes(text: str) -> dict:
+    """``NAME -> code`` for every integer ``#define`` in a counter header, for :func:`counter_bracket_c`."""
+    return _defines(text)
