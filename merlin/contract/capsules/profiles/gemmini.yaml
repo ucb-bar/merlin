@@ -536,6 +536,109 @@ capsules:
     k_accumulate: true
 
 # ---------------------------------------------------------------------------------------------------
+# POOLING COVERAGE (the `reduction` family, int8, at both alignments).
+#
+# The target's elaborated config sets has_max_pool, so its capability manifest declares
+# `{family: reduction, dtypes: [int8], composed_with: [contraction, movement]}` and the derived
+# conformance requirement demands `reduction/i8/aligned` and `reduction/i8/partial`. Both were
+# UNCOVERED (6/8 cells) for as long as the requirement has existed, and no standalone pooling capsule
+# could have closed them: pooling on this target is FUSED onto the store path -- the store config
+# carries pool_size/pool_stride/pool_out_dim/porows/pocols/orows/ocols/upad/lpad and the mvout writes
+# the pooled window -- so the eligibility oracle refuses a standalone pool capsule as a false fallback.
+# `composed_with` says the same thing in the manifest's own words. The only honest capsule is therefore
+# a contraction (or a conv) whose EPILOGUE pools, which is what these three are.
+#
+# The extents are absolute rather than tile-relative, for the same reason GM0/GM1 above are: the axis
+# these capsules probe is the POOLING WINDOW against the image, and an image extent is not a fact about
+# the array edge. M is chosen so that it factors into the declared pool_in_dims -- the row count of an
+# [M, N] accumulator carries no spatial extent of its own (25 rows is 5x5 or 25x1), so the builder
+# refuses a pool_in_dims that does not divide it rather than picking a factorization.
+- name: GP0_matmul_maxpool_i8
+  kind: layer
+  cat: layers
+  op: matmul
+  source_role: handauthored_compiler_test
+  source_reference: >-
+    derived pooling coverage: an int8 contraction whose accumulator readout pools 2x2, the store-path
+    fusion the capability manifest declares (has_max_pool) and which no capsule exercised -- every
+    extent a whole tile, so this is the `reduction/i8/aligned` cell
+  label: public
+  comment: 'GP0: 16x16x16 int8 matmul whose commit fuses a 2x2/2 max-pool over the 4x4 output plane.'
+  M: 16
+  K: 16
+  N: 16
+  lhs: A0
+  weight: W
+  out: Y0
+  epilogue: [maxpool]
+  # 16 committed rows read as one 4x4 plane; a 2x2 window at stride 2 tiles it exactly, so this capsule
+  # says nothing about the ragged case -- that is GP1's job.
+  pool_in_dims: [4, 4]
+  pool_size: [2, 2]
+  pool_stride: [2, 2]
+  generalization: {generalization_axis: composition}
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+- name: GP1_matmul_maxpool_tail_i8
+  kind: layer
+  cat: layers
+  op: matmul
+  source_role: handauthored_compiler_test
+  source_reference: >-
+    derived pooling coverage at the tail: a 5x5 output plane pooled by a 2x2/2 window (the fifth row and
+    column fall outside every window and must be DROPPED, not folded in) with an output extent that does
+    not divide the array edge -- the `reduction/i8/partial` cell
+  label: public
+  comment: 'GP1: 25x16x17 int8 matmul; the commit pools a ragged 5x5 plane 2x2/2 down to 2x2.'
+  # 25 = 5x5, and 5 is odd: the last row and the last column of the plane are covered by no window.
+  # A pooling store that folded them in (or that rounded the output extent up) still returns a
+  # well-formed tensor, which is why the tail is where this family's bugs live.
+  M: 25
+  K: 16
+  # N = tile+1: the pooled result is ALSO a partial tile on the channel axis, so a backend cannot pass
+  # by handling the ragged pool while still tiling the store to whole array edges.
+  N: 17
+  lhs: A0
+  weight: W
+  out: Y0
+  epilogue: [maxpool]
+  pool_in_dims: [5, 5]
+  pool_size: [2, 2]
+  pool_stride: [2, 2]
+  generalization: {generalization_axis: composition}
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+- name: GP2_conv2d_maxpool_i8
+  kind: layer
+  cat: layers
+  op: conv2d
+  source_role: handauthored_compiler_test
+  source_reference: >-
+    derived pooling coverage in its NATIVE form: the fused conv loop takes the pooling window directly
+    (pool_size/pool_stride/pool_padding) and stores the pooled result, so a conv+pool is the shape the
+    hardware actually offers -- the conv-with-epilogue counterpart of GP0/GP1
+  label: public
+  comment: 'GP2: 3x3 int8 conv over 8x8x4 -> 6x6x16, with a 2x2/2 max-pool fused onto the store.'
+  Himg: 8
+  Wimg: 8
+  ci: 4
+  N: 16
+  kh: 3
+  kw: 3
+  epilogue: [maxpool]
+  # pool_in_dims is NOT declared here: for a conv it is the conv's own 6x6 output extent, derived by the
+  # builder and cross-checked by the simulator against the geometry it re-derives. Two hand-typed copies
+  # of one extent is how a golden and an engine come to pool different images.
+  pool_size: [2, 2]
+  pool_stride: [2, 2]
+  generalization: {generalization_axis: composition}
+
+
+# ---------------------------------------------------------------------------------------------------
 # TAIL-PATH COVERAGE, generated rather than typed.
 #
 # Every capsule above is authored in WHOLE TILES (`M_tiles`/`K_tiles`/`N_tiles`), so the corpus could not

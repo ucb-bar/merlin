@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .commandbuffer import materialize_inputs
+from .commandbuffer import apply_pool_stage, materialize_inputs
 from .tensor import Tensor
 
 
@@ -102,6 +102,27 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
                 t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
             elif stage == "relu":
                 t = t.relu()
+            elif stage == "maxpool":
+                # Pooling fused into the accumulator readout, exactly where the store-path ABI puts it
+                # (``config_st(..., pool_stride, pool_size, pool_out_dim, porows, pocols, orows, ocols,
+                # upad, lpad)`` immediately before the mvout). At COMMIT the accumulator is ``[M, N]``
+                # with no conv geometry in scope, so the window and the spatial extent the rows
+                # unflatten to are read from THIS command's attributes -- the same ones the golden reads,
+                # through the same parser.
+                t = apply_pool_stage(t, stage, attrs, op=f"COMMIT {ops.get('dst')!r}")
+            else:
+                # FAIL CLOSED, matching the golden engine and the simulator. This loop had no terminal
+                # branch, so an epilogue stage the reference did not know was skipped in SILENCE and the
+                # buffer's committed value came out un-transformed. That is worse here than anywhere
+                # else: the reference is one half of the L0 comparison, so a stage dropped on both sides
+                # (golden and reference each skipping it) AGREES, and the capsule passes having proved
+                # nothing about the stage it declared. That is precisely how a pooling epilogue could be
+                # "covered" by arithmetic no engine performed.
+                raise ValueError(
+                    f"COMMIT {ops.get('dst')!r} declares epilogue stage {stage!r}, which this reference "
+                    f"engine does not implement (implemented: bias_add/bias, requant, acc_scale, relu, "
+                    f"maxpool). It is not skipped: a silently dropped stage would make the golden and "
+                    f"the reference agree on a value neither of them computed")
         if attrs.get("output_dtype", "i8") == "i8":
             t = t.to_i8()
         outputs[ops["dst"]] = t.to_list()

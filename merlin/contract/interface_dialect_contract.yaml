@@ -27,17 +27,55 @@ dialect:
       maps_to: MATMUL_RESIDENT
     - name: merlin_iface.commit
       operands: ["!merlin_iface.acc<i32>"]
-      result: "tensor<MxNxDT>"
+      result: "tensor<MxNxDT>   # M pools to batch*Ho*Wo when the epilogue contains maxpool"
       attrs:
         name: string
-        epilogue: "ordered subset of [bias_add, requant, acc_scale, relu]"
+        epilogue: "ordered subset of [bias_add, requant, acc_scale, relu, maxpool]"
         output_dtype: "enum[i32,i8]"
         acc_scale: "f32 (required iff acc_scale in epilogue)"
+        pool_in_dims: "[H, W] (required iff maxpool in epilogue) -- the extent the M rows unflatten to"
+        pool_size: "[ph, pw] (required iff maxpool in epilogue; no default)"
+        pool_stride: "[sh, sw] (required iff maxpool in epilogue; no default)"
+        pool_padding: "[top, left, bottom, right] (default [0, 0, 0, 0])"
+        pool_pad_value: "int (required iff any pool_padding entry is nonzero)"
       maps_to: COMMIT
     - name: merlin_iface.evict
       operands: ["!merlin_iface.resident"]
       result: "()"
       maps_to: EVICT
+    - name: merlin_iface.movement
+      operands: ["tensor<MxNxDT>"]
+      result: "tensor<MxNxDT2>"
+      attrs: {name: string, semantic: string, output_dtype: string}
+      maps_to: MOVEMENT
+    - name: merlin_iface.attention_pv
+      operands: ["tensor<MxSxDT>", "tensor<SxDxDT>"]
+      result: "tensor<MxDxDT2>"
+      attrs: {name: string, output_dtype: string, block_scale: "string (optional)"}
+      maps_to: ATTENTION_PV
+    - name: merlin_iface.conv2d
+      operands: ["tensor<NxHxWxCixDT>", "!merlin_iface.resident"]
+      result: "tensor<PxCoxDT2>   # P = N*Ho*Wo, the im2col row count"
+      attrs:
+        name: string
+        kernel: "[kh, kw, ci, co] (required)"
+        stride: "[sh, sw]"
+        padding: "[top, left, bottom, right]"
+        dilation: "[dh, dw]"
+        layout: "nhwc only"
+        epilogue: "ordered subset of [acc_scale, requant, relu, maxpool]"
+        output_dtype: "an integer dtype (i32/i8/...)"
+        pool_in_dims: "[Ho, Wo] (required iff maxpool in epilogue) -- cross-checked against the conv's own derived output extent"
+        pool_size: "[ph, pw] (required iff maxpool in epilogue; no default)"
+        pool_stride: "[sh, sw] (required iff maxpool in epilogue; no default)"
+        pool_padding: "[top, left, bottom, right] (default [0, 0, 0, 0])"
+        pool_pad_value: "int (required iff any pool_padding entry is nonzero)"
+      maps_to: CONV2D
 acceptance:
   - "A package must parse every examples/*.interface.mlir without error (K2)."
   - "An unknown merlin_iface.version must be rejected (fail-closed)."
+  - >-
+    An op mnemonic this contract does not define must be REJECTED, naming the mnemonic -- never
+    skipped. Silently dropping unreadable ops mis-read 15 of 160 shipped interface capsules
+    (5 movement capsules to zero commands, 7 flash-attention capsules without their P@V matmul)
+    while reporting success, which is a wrong answer that looks like a right one.

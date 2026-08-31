@@ -25,8 +25,14 @@ from xdsl.irdl import (IRDLOperation, irdl_attr_definition, irdl_op_definition,
 from xdsl.utils.exceptions import VerifyException
 from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, StringAttr
 
-# Must stay aligned with interface.KNOWN_EPILOGUE and the runtime engine.
-KNOWN_EPILOGUE = {"bias", "bias_add", "requant", "relu"}
+# The pooling-geometry requirement is SHARED with the interface dialect rather than re-typed here:
+# two copies of "which properties a maxpool stage needs" is exactly the drift this module was written
+# to remove (the per-target dialects it replaced were ~90% hand-copied).
+from merlin.xdsl_dialects.interface import missing_pool_props
+
+# Must stay aligned with interface.KNOWN_EPILOGUE and the runtime engine (`maxpool` included:
+# see that module for why a windowed stage belongs in the accepted set).
+KNOWN_EPILOGUE = {"bias", "bias_add", "requant", "relu", "maxpool"}
 # Must stay aligned with interface.KNOWN_{COMBINE,ACTIVATION,REDUCE} and the runtime engine.
 KNOWN_COMBINE = {"add", "mul", "identity"}
 KNOWN_ACTIVATION = {"relu"}
@@ -111,6 +117,12 @@ def build_dialect(target: str, *, plan: dict[str, Any] | None = None,
         if ("bias" in stages or "bias_add" in stages) and self.bias is None:
             raise VerifyException(
                 f"{dname}.{commit_n} epilogue has a bias stage but no `bias` tensor name")
+        missing = missing_pool_props(stages, self.properties)
+        if missing:
+            raise VerifyException(
+                f"{dname}.{commit_n} epilogue has `maxpool` but no "
+                f"{', '.join(repr(k) for k in missing)}; a pooling stage with no window cannot be "
+                f"executed, and defaulting one would commit a tensor of the wrong extent")
 
     commit_op = _op(f"{dname}_{commit_n}", {
         "name": f"{dname}.{commit_n}", "acc": operand_def(accumulator_type),

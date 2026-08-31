@@ -23,7 +23,28 @@ TYPES = ["resident_tensor", "streaming_tile", "accumulator", "committed_tensor",
 
 # Epilogue stages `interface.commit` accepts — must stay aligned with the runtime
 # engine's COMMIT semantics (merlin/python/merlin/runtime/simulator.py).
-KNOWN_EPILOGUE = {"bias", "bias_add", "requant", "relu"}
+# `maxpool` is the windowed-reduction stage the store path fuses: unlike the other four it CHANGES
+# the committed extent (the accumulator's rows unflatten to a plane and pool down), which is why the
+# geometry rides on the op's own attributes and why the result type of a pooled commit is not the
+# accumulator's shape. Rejecting it here while the runtime implemented it would let a module verify
+# and then compute something the verifier had declared impossible.
+KNOWN_EPILOGUE = {"bias", "bias_add", "requant", "relu", "maxpool"}
+
+#: The properties a ``maxpool`` epilogue stage needs to be executable. Checked by NAME on the raw
+#: property dict rather than declared as ``opt_prop_def``s: the op's declared property set is part of
+#: the dialect's shape (the target factory reproduces the hand-written dialects byte for byte), and the
+#: geometry is carried through to the runtime command whatever the op declares. Same fail-closed rule
+#: the ``requant``/``bias`` stages already follow -- a stage whose parameters are missing cannot be
+#: executed, and a module that verified without them would fail (or worse, be defaulted) downstream.
+POOL_REQUIRED_PROPS = ("pool_in_dims", "pool_size", "pool_stride")
+
+
+def missing_pool_props(stages, properties) -> list[str]:
+    """The ``maxpool`` geometry properties an op is missing, or ``[]`` when it needs none."""
+    if "maxpool" not in stages:
+        return []
+    return [k for k in POOL_REQUIRED_PROPS if properties.get(k) is None]
+
 
 # Output dtypes `interface.commit` can produce: integer commits (engine to_i8()/raw i32) and
 # float commits (whole-model layers that stay in float — the accumulator element type is carried
@@ -307,6 +328,12 @@ if HAS_XDSL:
             if "requant" in stages and self.requant_shift is None:
                 raise VerifyException(
                     "interface.commit epilogue has `requant` but no `requant_shift`")
+            missing = missing_pool_props(stages, self.properties)
+            if missing:
+                raise VerifyException(
+                    "interface.commit epilogue has `maxpool` but no %s; a pooling stage with no window "
+                    "cannot be executed, and defaulting one would commit a tensor of the wrong extent"
+                    % ", ".join(f"`{k}`" for k in missing))
             if self.output_dtype is not None:
                 dtype = self.output_dtype.data
                 if dtype not in KNOWN_OUTPUT_DTYPES:

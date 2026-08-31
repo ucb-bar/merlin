@@ -1,0 +1,93 @@
+name: GP2_conv2d_maxpool_i8
+kind: layer
+source_role: handauthored_compiler_test
+source_reference: 'derived pooling coverage in its NATIVE form: the fused conv loop
+  takes the pooling window directly (pool_size/pool_stride/pool_padding) and stores
+  the pooled result, so a conv+pool is the shape the hardware actually offers -- the
+  conv-with-epilogue counterpart of GP0/GP1'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 36
+  - 16
+  dtype: i8
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 8
+  - 8
+  - 4
+  dtype: i8
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y0
+    ci: 4
+    kh: 3
+    kw: 3
+    stride:
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    epilogue:
+    - maxpool
+    output_dtype: i32
+    semantic: conv2d_im2col
+    pool_in_dims:
+    - 6
+    - 6
+    pool_size:
+    - 2
+    - 2
+    pool_stride:
+    - 2
+    - 2
+    pool_padding:
+    - 0
+    - 0
+    - 0
+    - 0
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    conv2d: true
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+  composed_families:
+  - reduction

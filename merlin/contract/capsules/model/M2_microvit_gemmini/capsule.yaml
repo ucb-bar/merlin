@@ -1,0 +1,73 @@
+name: M2_microvit_gemmini
+kind: model
+source_role: pytorch_model_slice
+source_reference: "microvit int8 \u2014 tile-sized vision+recurrent control net (overlapping\
+  \ patch-merge, pooled-reduction attention, depthwise MixFFN, pixel-shuffle/max-pool\
+  \ fusion, LSTM cell), composed across the systolic mesh and the host lane"
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: I0
+  role: input
+  shape:
+  - 1
+  - 1
+  - 16
+  - 16
+  dtype: i8
+- name: I1
+  role: input
+  shape:
+  - 1
+  - 16
+  dtype: i8
+operation:
+  op: model
+  attributes:
+    model: microvit
+    dtype: i8
+    out: Y0
+    compile_dtype: int8
+    arg_order:
+    - I0
+    - I1
+    - Y0
+    weights: capsule.weights.safetensors
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+gate:
+  after_op_pass_fraction: 0.8
+lanes:
+  require:
+  - on_mesh
+  - scalar_rvv_lane
+pytorch_ref:
+  op: model
+  dtype: i8
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: contraction
+  generalization_axis: model
+  must_accelerate: false
+  eligible: auto

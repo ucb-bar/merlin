@@ -21,6 +21,21 @@ def _i8_clamp(x: int) -> int:
     return -128 if x < -128 else (127 if x > 127 else x)
 
 
+def pool_out_dims(H: int, W: int, pool_size, pool_stride, pool_padding) -> tuple[int, int]:
+    """Pooled spatial extent, the floor form (``(H + pt + pb - ph) // sh + 1``).
+
+    Lives here rather than beside ``conv_out_dims`` in :mod:`merlin.runtime.commandbuffer` only because
+    :meth:`Tensor.maxpool2d_rows` needs it and that module imports THIS one; ``commandbuffer`` re-exports
+    it so callers of the conv geometry find the pool geometry in the same place. One definition either
+    way -- an engine that computed its own output extent could disagree with the tensor the golden
+    produced and the mismatch would read as a numeric defect rather than a geometry one.
+    """
+    ph, pw = int(pool_size[0]), int(pool_size[1])
+    sh, sw = int(pool_stride[0]), int(pool_stride[1])
+    pt, pl, pb, pr = (int(x) for x in pool_padding)
+    return (H + pt + pb - ph) // sh + 1, (W + pl + pr - pw) // sw + 1
+
+
 @dataclass
 class Tensor:
     """A 1-D or 2-D integer tensor stored row-major in a flat list."""
@@ -183,6 +198,87 @@ class Tensor:
     def reduce_sum(self) -> "Tensor":
         """Sum all elements -> a length-1 tensor."""
         return Tensor((1,), [sum(self.data)], self.dtype)
+
+    def maxpool2d_rows(self, *, in_dims, pool_size, pool_stride,
+                       pool_padding=(0, 0, 0, 0), pad_value: int | None = None) -> "Tensor":
+        """Windowed MAX over the spatial axes of a 2-D ``[batch*H*W, C]`` tensor -> ``[batch*Ho*Wo, C]``.
+
+        THE ONLY windowed-max primitive in the runtime, on purpose. ``reduce_sum`` above is a TOTAL
+        reduction, so before this there was nothing an engine could call to pool -- and the golden, the
+        reference and the simulator each grade the others' arithmetic. Had any one of them grown its own
+        pooling loop the three would have been free to disagree about window order, the ragged tail, or
+        the padded cell, and the numeric gate would have enforced whichever one it asked first. One
+        implementation here is what makes "golden == reference == simulate" mean something for a pooled
+        capsule.
+
+        The tensor is 2-D because that is the shape pooling actually reaches on this substrate: the
+        accumulator readout is ``[M, N]`` and a conv's im2col result is ``[N*Ho*Wo, Co]``. Neither
+        carries its own spatial extent, so ``in_dims`` (the ``orows``/``ocols`` of the store-path ABI)
+        is a REQUIRED parameter rather than something inferred from the row count -- ``rows = 25`` is
+        5x5 or 25x1 or 1x25 and nothing in the buffer says which.
+
+        ``pad_value`` is required whenever any pad is nonzero and has NO default. The identity element
+        of a max over a padded cell is not derivable: mathematically it is -inf, a hardware store path
+        typically feeds zero, and picking either silently would produce a full tensor of plausible wrong
+        numbers -- the exact silent-wrong-answer this repo fails closed against.
+        """
+        if len(self.shape) != 2:
+            raise ValueError(
+                f"maxpool2d_rows expects a 2-D [rows, C] tensor, got shape {self.shape}")
+        rows, channels = self.shape
+        H, W = int(in_dims[0]), int(in_dims[1])
+        ph, pw = int(pool_size[0]), int(pool_size[1])
+        sh, sw = int(pool_stride[0]), int(pool_stride[1])
+        pt, pl, pb, pr = (int(x) for x in pool_padding)
+        if H <= 0 or W <= 0:
+            raise ValueError(f"maxpool2d_rows in_dims must be positive, got {(H, W)}")
+        if ph <= 0 or pw <= 0:
+            raise ValueError(f"maxpool2d_rows pool_size must be positive, got {(ph, pw)}")
+        if sh <= 0 or sw <= 0:
+            raise ValueError(f"maxpool2d_rows pool_stride must be positive, got {(sh, sw)}")
+        plane = H * W
+        if rows % plane:
+            # A row count that is not a whole number of HxW planes means the declared geometry does not
+            # describe this tensor. Rounding down would pool a truncated image and still return a
+            # well-formed result, which is the failure mode that is impossible to spot downstream.
+            raise ValueError(
+                f"maxpool2d_rows: {rows} rows is not a whole multiple of the declared plane "
+                f"{H}x{W}={plane}; the pool geometry does not describe this tensor")
+        if (pt or pl or pb or pr) and pad_value is None:
+            raise ValueError(
+                f"maxpool2d_rows: pool_padding {(pt, pl, pb, pr)} is nonzero but no pad_value was "
+                f"declared; the identity element for a max over a padded cell is a property of the "
+                f"datapath (-inf mathematically, commonly 0 in a store path) and is not derivable here")
+        batch = rows // plane
+        Ho, Wo = pool_out_dims(H, W, (ph, pw), (sh, sw), (pt, pl, pb, pr))
+        if Ho < 1 or Wo < 1:
+            raise ValueError(
+                f"maxpool2d_rows: window {(ph, pw)} stride {(sh, sw)} padding {(pt, pl, pb, pr)} "
+                f"leaves no output position over a {H}x{W} plane (got {Ho}x{Wo})")
+        src = self.data
+        out = [0] * (batch * Ho * Wo * channels)
+        oi = 0
+        for n in range(batch):
+            base_n = n * plane * channels
+            for oy in range(Ho):
+                y0 = oy * sh - pt
+                for ox in range(Wo):
+                    x0 = ox * sw - pl
+                    for c in range(channels):
+                        best: int | None = None
+                        for ky in range(ph):
+                            y = y0 + ky
+                            for kx in range(pw):
+                                x = x0 + kx
+                                if 0 <= y < H and 0 <= x < W:
+                                    v = src[base_n + (y * W + x) * channels + c]
+                                else:
+                                    v = pad_value
+                                if best is None or v > best:
+                                    best = v
+                        out[oi] = best
+                        oi += 1
+        return Tensor((batch * Ho * Wo, channels), out, self.dtype)
 
     def dequant_per_channel(self, scale: "Tensor", axis: int = 1) -> "Tensor":
         """Dequantize a 2-D integer weight by a per-channel float scale -> a float32 weight.

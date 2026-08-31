@@ -79,10 +79,27 @@ Maps to `MATMUL_RESIDENT` (`operands: {lhs, rhs, dst}`). `dst` rows × resident 
       } : (!merlin_iface.acc<i32>) -> tensor<16x16xi8>
 ```
 Maps to `COMMIT` (`operands: {src, dst}`, `attributes: {epilogue, output_dtype, acc_scale?}`).
-- `epilogue` — ordered subset of `["bias_add", "requant", "acc_scale", "relu"]`.
+- `epilogue` — ordered subset of `["bias_add", "requant", "acc_scale", "relu", "maxpool"]`.
 - `output_dtype ∈ {i32, i8}` — `i32` = full-width readout, `i8` = scaled/clamped readout.
 - `acc_scale : f32` — required iff `"acc_scale"` is in `epilogue`. The `: f32` suffix is honest:
   the requant applies an **f32 multiply, round-to-nearest-even, clamp to i8**.
+- `"maxpool"` — the one epilogue stage that CHANGES the result extent, because the store path fuses
+  pooling into the accumulator readout. It reshapes the `M` rows to `[batch, H, W]` using
+  `pool_in_dims = [H, W]`, walks `pool_size` at `pool_stride` over `pool_padding`, and commits
+  `batch*Ho*Wo` rows (`Ho = (H + pt + pb - ph) / sh + 1`, floor; `Wo` likewise). `pool_in_dims`,
+  `pool_size` and `pool_stride` are **required** with no defaults — an `[M, N]` accumulator carries no
+  spatial extent, so `25` rows is `5x5` or `25x1` and only the declaration says which. Integer-list
+  attributes: `pool_size = [2, 2]`, never `["2", "2"]`.
+- `pool_pad_value : i64` — required iff any `pool_padding` entry is nonzero. The identity element of a
+  max over a padded cell is a datapath property (`-inf` mathematically, commonly `0` in a store path),
+  so it is declared rather than assumed.
+
+```mlir
+%Y0 = merlin_iface.commit %acc0 {
+        name = "Y0", epilogue = ["maxpool"], output_dtype = "i32",
+        pool_in_dims = [4, 4], pool_size = [2, 2], pool_stride = [2, 2], pool_padding = [0, 0, 0, 0]
+      } : (!merlin_iface.acc<i32>) -> tensor<4x16xi32>
+```
 
 ### `merlin_iface.evict` — release a resident weight
 ```mlir
@@ -94,6 +111,9 @@ Maps to `EVICT` (`operands: {handle}`).
 
 - string: `k = "v"`; string list: `k = ["a", "b"]` (empty: `k = []`)
 - integer: `k = 4 : i64`; float: `k = 0.0625 : f32`
+- integer list (geometry — `kernel`, `stride`, `padding`, `dilation`, `pool_*`): `k = [2, 2]`,
+  **unquoted**. A quoted geometry parses back as strings and fails an arity/type check far from the
+  spelling that caused it.
 
 ## Worked example (g0 — matmul only, i32)
 

@@ -31,10 +31,14 @@ generated:
 - layers/GC0_conv2d_i8
 - layers/GM0_deep_k_fits_single_i8
 - layers/GM1_deep_k_spills_i8
+- layers/GP0_matmul_maxpool_i8
+- layers/GP1_matmul_maxpool_tail_i8
+- layers/GP2_conv2d_maxpool_i8
 - model/GX0_interop_rvv_lane
 - model/M0_small_llama_gemmini
 - model/M1_lstmnetvit_gemmini
 - model/M2_microvit_gemmini
+- model/M3_host_island_seam_gemmini
 - model_slices/C0_mlp_linear1
 - model_slices/C1_mlp_activation_linear2
 - model_slices/C2_attention_q_projection

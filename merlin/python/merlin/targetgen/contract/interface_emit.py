@@ -15,6 +15,9 @@ Design constraints (see the plan / contract):
   Merlin and the package regenerate identical data and map outputs by name.
 - Round-trips: ``parse_interface_mlir(emit_interface_mlir(cb))`` reproduces ``cb``'s
   abi_version / target / tensors (leaves) / commands (opcode, operands, attributes).
+- FAILS CLOSED on an op the grammar does not define (:class:`InterfaceGrammarError`). It used to
+  return only the commands it recognised and say nothing about the rest, which silently mis-read 15
+  of 160 shipped interface capsules; see the exception's docstring for the measurement.
 """
 from __future__ import annotations
 
@@ -22,6 +25,20 @@ import re
 from typing import Any
 
 GRAMMAR_VERSION = "0.1"
+
+
+class InterfaceGrammarError(ValueError):
+    """A module uses a ``merlin_iface`` op mnemonic the frozen grammar does not define.
+
+    Raised, never warned, because the alternative was measured and is worse: this parser used to
+    return only the commands it recognised and report nothing about the rest, so a module using an
+    undefined op parsed "successfully" into a SHORTER command list. Across the shipped corpora that
+    silently mis-read 15 of 160 interface capsules — 5 ``movement`` capsules parsed to zero commands
+    (their only op vanished) and 7 flash-attention capsules lost their second matmul. A backend
+    package built on that output computes the wrong thing with nothing to point at. Subclasses
+    ``ValueError`` so existing ``except ValueError`` callers keep working.
+    """
+
 
 # command-buffer opcode  <->  merlin_iface op mnemonic
 _OPCODE_TO_OP = {
@@ -39,9 +56,27 @@ _OP_TO_OPCODE = {v: k for k, v in _OPCODE_TO_OP.items()}
 _NAMED_OP_OPERAND_KEYS = {
     "rmsnorm": ["src", "gamma"],
     "attention_qk": ["q", "k"],
+    # P @ V, the second matmul of flash attention and the sibling of attention_qk (which contracts
+    # over the trailing head dim of both operands; this one is a plain [m,s] x [s,d] contraction).
+    # Undefined until now, so all 7 shipped flash-attention capsules parsed WITHOUT their second
+    # matmul and the parser reported success — the measured wrong-answer this table row closes.
+    "attention_pv": ["p", "v"],
     "rope": ["src"],
     "matmul_batched": ["a", "w"],
     "softmax": ["src"],
+    # Identity round-trip through the accelerator (load -> store, operand dtype in / accumulate dtype
+    # out; see corpus_spec.build_movement). Its capsules carry exactly ONE op, so leaving it undefined
+    # made all 5 of them parse to ZERO commands while still reporting success.
+    "movement": ["src"],
+    # im2col convolution: an NHWC activation contracted against a PRE-im2col'd weight
+    # [Kh*Kw*Ci, Co] that has been made resident, producing [N*Ho*Wo, Co] (see
+    # corpus_spec.build_conv2d, which writes the only spelling this grammar accepts). The geometry
+    # rides in the attributes — ``kernel = [kh, kw, ci, co]``, ``stride``, ``padding``, ``dilation``,
+    # ``layout`` — not in extra operands, so the operand list is just the activation and the weight.
+    # Undefined until now, so all 3 shipped conv capsules lost their ONLY compute op and were left
+    # with resident_pack + evict; the fail-closed parse surfaced that instead of hiding it, and this
+    # row is what finally lets them read whole.
+    "conv2d": ["ifm", "weight"],
 }
 # Most mnemonics map to their upper-case opcode; a few need an explicit target opcode because the emitter /
 # harness / simulator spell it differently (``matmul_batched`` -> the ``BATCHED_MATMUL`` those consume, not
@@ -92,7 +127,11 @@ def _fmt_attrs(attrs: dict[str, Any]) -> str:
         elif isinstance(v, str):
             parts.append(f'{k} = "{v}"')
         elif isinstance(v, list):
-            inner = ", ".join(f'"{x}"' for x in v)
+            # Element-wise, NOT blanket-quoted. Quoting every element turned an integer geometry
+            # (``pool_size = [2, 2]``) into ``["2", "2"]``, which the parser reads back as STRINGS --
+            # so a round-tripped pooling command lost its window to a typing mismatch reported far from
+            # the spelling that caused it. String stages (``epilogue = ["relu"]``) are unchanged.
+            inner = ", ".join(f'"{x}"' if isinstance(x, str) else str(x) for x in v)
             parts.append(f"{k} = [{inner}]")
         else:  # pragma: no cover - defensive
             raise TypeError(f"unsupported attribute type for {k!r}: {type(v)}")
@@ -141,7 +180,7 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
             out_attrs = dict(attrs)
             out_attrs = {"name": dst, **out_attrs}
             odt = attrs.get("output_dtype", "i8")
-            m, n = _commit_out_shape(cb, src)
+            m, n = _commit_out_shape(cb, src, attrs)
             lines.append(f'  %{dst} = merlin_iface.commit %{src} {_fmt_attrs(out_attrs)} : '
                          f'(!merlin_iface.acc<{acc_t}>) -> tensor<{m}x{n}x{odt}>')
             val_type[dst] = f"tensor<{m}x{n}x{odt}>"
@@ -155,8 +194,15 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _commit_out_shape(cb: dict[str, Any], acc_name: str) -> tuple[int, int]:
-    """(m, n) for a commit: m from the matmul lhs rows, n from the resident weight cols."""
+def _commit_out_shape(cb: dict[str, Any], acc_name: str,
+                      attrs: dict[str, Any] | None = None) -> tuple[int, int]:
+    """(m, n) for a commit: m from the matmul lhs rows, n from the resident weight cols.
+
+    A POOLING epilogue reduces m: the accumulator's rows unflatten to a ``pool_in_dims`` plane and the
+    window walks it, so the committed tensor has fewer rows than the matmul produced. Printing the
+    matmul's row count for a pooled commit would emit a module whose declared result type disagrees
+    with what any engine executing it computes -- a type error the grammar cannot catch because the
+    grammar is what would be lying."""
     tensors = cb.get("tensors", {})
     res_src: dict[str, str] = {}
     for cmd in cb.get("commands", []):
@@ -167,9 +213,16 @@ def _commit_out_shape(cb: dict[str, Any], acc_name: str) -> tuple[int, int]:
             lhs = cmd["operands"]["lhs"]
             rhs = cmd["operands"]["rhs"]
             w = res_src.get(rhs, rhs)
-            m = tensors[lhs]["shape"][0]
-            n = tensors[w]["shape"][1]
-            return int(m), int(n)
+            m = int(tensors[lhs]["shape"][0])
+            n = int(tensors[w]["shape"][1])
+            if "maxpool" in ((attrs or {}).get("epilogue") or []):
+                from merlin.runtime.commandbuffer import pool_params
+                from merlin.runtime.tensor import pool_out_dims
+                p = pool_params(attrs or {}, op=f"COMMIT of {acc_name!r}")
+                H, W = p["pool_in_dims"]
+                Ho, Wo = pool_out_dims(H, W, p["pool_size"], p["pool_stride"], p["pool_padding"])
+                m = (m // (H * W)) * Ho * Wo
+            return m, n
     raise ValueError(f"no matmul produces accumulator {acc_name!r}")
 
 
@@ -260,12 +313,86 @@ def _shape_dtype(ttype: str) -> tuple[list[int], str]:
     return dims, dtype
 
 
+#: Grammar ops that declare structure rather than issue a command — they produce no command-buffer
+#: entry, so the per-line parse loop handles them but they are still DEFINED mnemonics.
+_STRUCTURAL_OPS = frozenset({"tensor"})
+
+_IFACE_MARKER = "merlin_iface."
+#: A type in this grammar always carries the ``!`` sigil (``!merlin_iface.resident``,
+#: ``!merlin_iface.acc<i32>``) and a type never opens a statement; an op does. Module attributes
+#: (``merlin_iface.version``/``.target``/``.abi_version``) only ever occur on the ``module`` line.
+_TYPE_SIGIL = "!"
+#: Characters that terminate a mnemonic in this grammar (whitespace, the attribute/operand/type
+#: punctuation). Split structurally rather than pattern-matched: a too-narrow mnemonic pattern is
+#: precisely how valid-but-differently-spelled input gets dropped.
+_MNEMONIC_STOPS = (" ", "\t", "{", "(", ")", "<", ">", ":", ",", "%", "!", '"')
+
+
+def defined_mnemonics() -> frozenset[str]:
+    """The op mnemonics grammar v0.1 defines, read from this module's OWN dispatch tables.
+
+    Derived from the tables the parse loop actually consults, so adding an op is one table row and
+    this follows for free — a second hand-maintained list would be a thing that can drift from the
+    parser, which is the class of bug this whole function exists to prevent.
+    """
+    return frozenset(set(_OP_TO_OPCODE) | set(_NAMED_OP_OPERAND_KEYS) | _STRUCTURAL_OPS)
+
+
+def op_mnemonics(text: str) -> list[str]:
+    """Every ``merlin_iface`` OP mnemonic in a module, in program order (a tokenizer, not a parser).
+
+    Structural, per the no-regex rule: partition each line on the dialect marker and cut the mnemonic
+    at the first grammar delimiter. Deliberately independent of which ops are *defined*, so a mnemonic
+    outside the frozen grammar is still SEEN — that is what lets the parser fail closed on it instead
+    of skipping the line.
+    """
+    out: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        # `module attributes {merlin_iface.version = ...}` carries ATTRIBUTES, not ops.
+        if not line or line.startswith("//") or line.startswith("module") or line.startswith("}"):
+            continue
+        head, sep, rest = line.partition(_IFACE_MARKER)
+        while sep:
+            if not head.endswith(_TYPE_SIGIL):        # `!merlin_iface.resident` is a type, not an op
+                mnem = rest
+                for stop in _MNEMONIC_STOPS:
+                    mnem = mnem.partition(stop)[0]
+                # An ATTRIBUTE is immediately assigned (`merlin_iface.version = "0.1"`); no op in this
+                # grammar is. Checking that as well as the `module` line means a header wrapped across
+                # lines cannot be misread as three ops named version/target/abi_version — a false
+                # "undefined mnemonic" would be as unhelpful as the silent drop it replaces.
+                if mnem and not rest[len(mnem):].lstrip().startswith("="):
+                    out.append(mnem)
+            head, sep, rest = rest.partition(_IFACE_MARKER)
+    return out
+
+
+def undefined_op_mnemonics(text: str) -> list[str]:
+    """Mnemonics a module uses that grammar v0.1 does not define, sorted and de-duplicated."""
+    known = defined_mnemonics()
+    return sorted({m for m in op_mnemonics(text) if m not in known})
+
+
 def parse_interface_mlir(text: str) -> dict[str, Any]:
     """Parse ``merlin_iface`` contract text back into a command-buffer dict.
 
     Reconstructs abi_version / target / tensors (leaf inputs) / commands so that
     ``parse_interface_mlir(emit_interface_mlir(cb)) == cb`` for the supported op set.
+
+    Raises :class:`InterfaceGrammarError`, naming the mnemonic, for any ``merlin_iface`` op grammar
+    v0.1 does not define. FAIL CLOSED: the returned command list is the program, and a caller cannot
+    tell a short list from a complete one, so an unreadable op must stop the parse rather than
+    shorten its result. See the class docstring for the 15-of-160 measurement.
     """
+    undefined = undefined_op_mnemonics(text)
+    if undefined:
+        raise InterfaceGrammarError(
+            f"interface grammar v{GRAMMAR_VERSION} does not define merlin_iface op(s) "
+            f"{', '.join(repr(m) for m in undefined)}; it defines "
+            f"{', '.join(repr(m) for m in sorted(defined_mnemonics()))}. Parsing would drop the "
+            f"undefined op(s) and return a command list that is missing that work")
+
     mod = _RE_MOD.search(text)
     mod_attrs = _parse_attr_block(mod.group(1)) if mod else {}
     cb: dict[str, Any] = {

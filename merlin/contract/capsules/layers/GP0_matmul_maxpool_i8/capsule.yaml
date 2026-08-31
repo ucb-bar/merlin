@@ -1,0 +1,76 @@
+name: GP0_matmul_maxpool_i8
+kind: layer
+source_role: handauthored_compiler_test
+source_reference: 'derived pooling coverage: an int8 contraction whose accumulator
+  readout pools 2x2, the store-path fusion the capability manifest declares (has_max_pool)
+  and which no capsule exercised -- every extent a whole tile, so this is the `reduction/i8/aligned`
+  cell'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue:
+    - maxpool
+    output_dtype: i32
+    pool_in_dims:
+    - 4
+    - 4
+    pool_size:
+    - 2
+    - 2
+    pool_stride:
+    - 2
+    - 2
+    pool_padding:
+    - 0
+    - 0
+    - 0
+    - 0
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+  composed_families:
+  - reduction

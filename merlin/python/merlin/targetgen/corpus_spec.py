@@ -412,6 +412,95 @@ def _default_modes(binding: CorpusBinding, output_dtype: str, epilogue: list[str
     return modes
 
 
+def _pool_epilogue(entry: dict, *, rows: int, in_dims: tuple[int, int] | None,
+                   op: str) -> tuple[dict[str, Any], int]:
+    """``(pool-geometry attributes, the row count the op commits)`` for a ``maxpool`` epilogue.
+
+    Pooling on this class of target is FUSED onto the store path -- the store config carries
+    ``pool_size``/``pool_stride``/``pool_out_dim``/``porows``/``pocols``/``orows``/``ocols``/``upad``/
+    ``lpad`` and the mvout writes the pooled window -- so a standalone pooling capsule is not the
+    honest capsule for it (the eligibility oracle refuses one as a false fallback). The geometry
+    therefore rides on the fused op's own attributes, in the ABI's own vocabulary.
+
+    ``in_dims`` is the spatial extent the committed ROWS unflatten to. A conv2d DERIVES it (it is the
+    conv's own ``Ho x Wo``); a contraction has no spatial extent of its own, so its entry must DECLARE
+    ``pool_in_dims`` -- 25 rows is 5x5 or 25x1 and nothing else in the capsule says which. There is no
+    default for the window either: a pool size or stride this generator picked would be a target fact
+    invented in library code, and every engine downstream would then be grading a window nobody chose.
+
+    Declaring a ``pool_*`` knob WITHOUT the stage also raises. A parameter that is read by nothing is
+    the same silent-wrong-answer shape as a stage applied by nobody, just pointing the other way.
+    """
+    from merlin.runtime.tensor import pool_out_dims
+
+    stages = [str(x) for x in (entry.get("epilogue") or [])]
+    declared = sorted(k for k in entry if k.startswith("pool_"))
+    if "maxpool" not in stages:
+        if declared:
+            raise ValueError(
+                f"{entry.get('name', op)}: declares {declared} but no 'maxpool' epilogue stage; the "
+                f"pool geometry would be carried into the capsule and read by nothing")
+        return {}, rows
+    if in_dims is None:
+        want = entry.get("pool_in_dims")
+        if not isinstance(want, (list, tuple)) or len(want) != 2:
+            raise ValueError(
+                f"{entry.get('name', op)}: a 'maxpool' epilogue on {op} needs pool_in_dims = [H, W] "
+                f"(the extent the {rows} committed rows unflatten to); got {want!r}")
+        in_dims = (int(want[0]), int(want[1]))
+    elif entry.get("pool_in_dims") is not None:
+        raise ValueError(
+            f"{entry.get('name', op)}: pool_in_dims is DERIVED for {op} (it is the op's own output "
+            f"extent {list(in_dims)}); declaring it invites the two to disagree")
+    size, stride = entry.get("pool_size"), entry.get("pool_stride")
+    for key, val in (("pool_size", size), ("pool_stride", stride)):
+        if not isinstance(val, (list, tuple)) or len(val) != 2:
+            raise ValueError(
+                f"{entry.get('name', op)}: a 'maxpool' epilogue needs {key} = [h, w]; got {val!r}. "
+                f"There is no default -- the window is a property of the workload, not of this builder")
+    padding = list(entry.get("pool_padding", [0, 0, 0, 0]))
+    if len(padding) != 4:
+        raise ValueError(
+            f"{entry.get('name', op)}: pool_padding must be [top, left, bottom, right]; got {padding!r}")
+    attrs: dict[str, Any] = {
+        "pool_in_dims": [int(in_dims[0]), int(in_dims[1])],
+        "pool_size": [int(x) for x in size],
+        "pool_stride": [int(x) for x in stride],
+        "pool_padding": [int(x) for x in padding],
+    }
+    if entry.get("pool_pad_value") is not None:
+        attrs["pool_pad_value"] = int(entry["pool_pad_value"])
+    plane = in_dims[0] * in_dims[1]
+    if plane <= 0 or rows % plane:
+        raise ValueError(
+            f"{entry.get('name', op)}: {rows} committed rows are not a whole number of "
+            f"{in_dims[0]}x{in_dims[1]} planes, so pool_in_dims does not describe this operation")
+    Ho, Wo = pool_out_dims(in_dims[0], in_dims[1], attrs["pool_size"],
+                           attrs["pool_stride"], attrs["pool_padding"])
+    if Ho < 1 or Wo < 1:
+        raise ValueError(
+            f"{entry.get('name', op)}: window {attrs['pool_size']} stride {attrs['pool_stride']} "
+            f"padding {attrs['pool_padding']} leaves no output position over "
+            f"{in_dims[0]}x{in_dims[1]}")
+    return attrs, (rows // plane) * Ho * Wo
+
+
+def _pool_mlir_attrs(pool_attrs: dict[str, Any]) -> str:
+    """Render pool geometry as interface-grammar attribute text (``, pool_size = [2, 2]`` ...).
+
+    Integer LISTS, unquoted: the grammar's attribute parser reads ``[2, 2]`` back as ints and ``["2",
+    "2"]`` back as strings, and a geometry that arrived as strings would fail arity/typing checks far
+    from here with a message about the window rather than about the spelling.
+    """
+    out = ""
+    for k, v in pool_attrs.items():
+        if isinstance(v, list):
+            out += f", {k} = [{', '.join(str(int(x)) for x in v)}]"
+        else:
+            out += f", {k} = {int(v)} : i64"
+    return out
+
+
 def _matmul_inputs(lhs: str, weight: str, M: int, K: int, N: int, idt: str,
                    binding: CorpusBinding) -> list[dict]:
     """The declared leaf operands of a matmul capsule.
@@ -453,6 +542,11 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     idt = binding.cap_dtype(binding.operand_dtype)
     attrs: dict[str, Any] = {"lhs": lhs, "weight": weight, "out": out,
                              "epilogue": epilogue, "output_dtype": odt}
+    # A pooling epilogue rides on the SAME attributes the store path configures, and it changes the
+    # committed extent -- the commit result type below is the POOLED row count, not M. A contraction
+    # carries no spatial extent of its own, so the entry declares pool_in_dims (see _pool_epilogue).
+    pool_attrs, commit_rows = _pool_epilogue(entry, rows=M, in_dims=None, op=op)
+    attrs.update(pool_attrs)
     if acc_scale is not None:
         attrs["acc_scale"] = acc_scale
     if entry.get("semantic"):
@@ -477,6 +571,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     mlir = MSE.emit_interface_mlir(
         lhs=lhs, weight=weight, out=out, M=M, K=K, N=N, epilogue=epilogue, output_dtype=odt,
         acc_scale=acc_scale, comment=entry.get("comment", ""),
+        pool_attrs=pool_attrs or None, commit_rows=commit_rows,
         target=binding.target, operand_dtype=binding.mlir_dtype(binding.operand_dtype),
         acc_dtype=binding.mlir_dtype(binding.accum_dtype),
         scale_block=(binding.scale_block if is_block_scaled(binding.operand_dtype) else None))
@@ -899,6 +994,13 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     attrs = {"ifm": ifm, "weight": weight, "out": out, "ci": ci, "kh": kh, "kw": kw,
              "stride": stride, "padding": padding, "dilation": dilation, "layout": "nhwc",
              "epilogue": epilogue, "output_dtype": odt, "semantic": "conv2d_im2col"}
+    # A pooling epilogue is fused onto the conv's store path (the fused conv loop takes the window and
+    # stores the pooled result), so it rides on this op's own attributes. ``pool_in_dims`` is DERIVED
+    # from the conv's output extent rather than declared: the golden sees only the flat [N*Ho*Wo, Co]
+    # product and has to trust the declaration, so deriving it is what keeps the golden and the
+    # simulator pooling the same image. The result extent below is the POOLED one.
+    pool_attrs, out_rows = _pool_epilogue(entry, rows=Ho * Wo, in_dims=(Ho, Wo), op="conv2d")
+    attrs.update(pool_attrs)
     cap = {
         "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
         "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
@@ -923,8 +1025,8 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         f'  %{out} = merlin_iface.conv2d %{ifm}, %{weight}_res {{kernel = [{kh}, {kw}, {ci}, {cout}], '
         f'stride = [{stride[0]}, {stride[1]}], padding = [{padding[0]}, {padding[1]}, {padding[2]}, {padding[3]}], '
         f'dilation = [{dilation[0]}, {dilation[1]}], name = "{out}", epilogue = [{epi}], '
-        f'output_dtype = "{odt}", layout = "nhwc"}} '
-        f': (tensor<1x{H}x{W}x{ci}x{midt}>, !merlin_iface.resident) -> tensor<{Ho * Wo}x{cout}x{modt}>',
+        f'output_dtype = "{odt}", layout = "nhwc"{_pool_mlir_attrs(pool_attrs)}}} '
+        f': (tensor<1x{H}x{W}x{ci}x{midt}>, !merlin_iface.resident) -> tensor<{out_rows}x{cout}x{modt}>',
         f'  merlin_iface.evict %{weight}_res : (!merlin_iface.resident) -> ()', "}"]
     return cap, "\n".join(L) + "\n"
 
@@ -1044,6 +1146,24 @@ def build(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     if op not in BUILDERS:
         raise ValueError(f"no corpus builder for op {op!r} (have {sorted(BUILDERS)})")
     cap, mlir = BUILDERS[op](entry, binding)
+    # AN EPILOGUE THE BUILDER DID NOT CARRY IS A COVERAGE LIE, so it is refused here rather than in each
+    # builder. Only `matmul` and `conv2d` read the entry's `epilogue:`; every other builder writes its
+    # own (often empty) list, so a stage declared on, say, a `movement` entry vanished from the capsule
+    # -- while `_semantic_block` still credited that stage's FAMILY in `composed_families` off the same
+    # entry. The capsule would then be counted as evidence for a family whose arithmetic no engine ever
+    # performed, which is the exact failure the pooling epilogue was implemented to close. One check
+    # here covers every present and future builder; per-matmul epilogues (resident_reuse) use their own
+    # key and are unaffected.
+    declared_epilogue = [str(x) for x in (entry.get("epilogue") or [])]
+    if declared_epilogue:
+        carried = [str(x) for x in ((cap.get("operation") or {}).get("attributes") or {}).get(
+            "epilogue", [])]
+        dropped = [x for x in declared_epilogue if x not in carried]
+        if dropped:
+            raise ValueError(
+                f"{entry.get('name', op)}: the {op!r} builder dropped epilogue stage(s) {dropped} "
+                f"(carried: {carried}). The capsule would still be CREDITED for those stages' semantic "
+                f"families, so it would count as evidence for arithmetic nothing computed")
     # Stamped once here rather than in each builder, so every capsule a target emits carries the same
     # declaration and a new builder cannot silently forget it.
     if binding.inapplicable_tiers:

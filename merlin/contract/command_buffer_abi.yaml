@@ -29,14 +29,80 @@ opcodes:
   COMMIT:
     operands: {src: acc_handle, dst: output_tensor, bias: "tensor (optional)"}
     attributes:
-      epilogue: "ordered subset of [bias_add, requant, acc_scale, relu]"
+      epilogue: "ordered subset of [bias_add, requant, acc_scale, relu, maxpool]"
       output_dtype: "i32 (full readout) | i8 (scaled/clamped readout)"
       acc_scale: "f32; applied as clamp_i8(round_near_even(acc * scale)); required iff acc_scale in epilogue"
       requant_shift: "int; only for the integer requant stage (round-half-up arithmetic shift)"
-    semantics: "apply epilogue stages in listed order, then cast to output_dtype"
+      # Pooling geometry -- REQUIRED iff "maxpool" is in epilogue, defaulted by nothing. These are the
+      # store-path configuration fields (config_st's pool_size / pool_stride / orows / ocols / upad /
+      # lpad), which is where this class of target fuses pooling, so they ride on the command that
+      # reads the accumulator out.
+      pool_in_dims: "[H, W] -- the spatial extent the committed ROWS unflatten to (the ABI's orows/ocols). REQUIRED: an [M, N] accumulator carries no spatial extent, and 25 rows is 5x5 or 25x1"
+      pool_size: "[ph, pw] pooling window. REQUIRED -- no default"
+      pool_stride: "[sh, sw] pooling stride. REQUIRED -- no default"
+      pool_padding: "[top, left, bottom, right]; default [0, 0, 0, 0]"
+      pool_pad_value: "int; REQUIRED iff any pool_padding entry is nonzero -- the identity element of a max over a padded cell is a datapath property (-inf mathematically, commonly 0 in a store path) and is never assumed"
+    semantics: >-
+      apply epilogue stages in listed order, then cast to output_dtype. Every stage but `maxpool` is
+      elementwise and preserves the accumulator's [M, N] shape; `maxpool` is a WINDOWED MAX that
+      reshapes the M rows to [batch, H, W] (batch = M / (H*W)), walks the window, and commits
+      [batch*Ho*Wo, N] with Ho = (H + pt + pb - ph) // sh + 1 (Wo likewise). A stage this engine does
+      not implement is REJECTED BY NAME, never skipped: golden and reference both skipping one AGREE,
+      and the capsule then passes having proved nothing about the stage it declared.
   EVICT:
     operands: {handle: resident_handle}
     semantics: "release the resident weight's working-set budget"
+  # Whole-op opcodes (no residency decomposition). The authoritative enumeration of the interface
+  # mnemonics that reach them is targetgen.contract.interface_emit.defined_mnemonics(), read from the
+  # parser's own tables; an op the parser does not define now RAISES rather than being dropped.
+  MOVEMENT:
+    operands: {src: tensor, dst: output_tensor}
+    attributes:
+      output_dtype: "the container dtype the values land in (operand dtype in, accumulate dtype out)"
+      semantic: "string; the movement form being exercised (e.g. mvin_mvout)"
+    semantics: >-
+      identity load->store round-trip through the accelerator: dst holds src's values UNCHANGED,
+      only the container dtype widens. No clamp, no requantize -- the point of the capsule is that
+      the data survives the trip bit-for-bit.
+  ATTENTION_PV:
+    operands: {p: tensor, v: tensor, dst: output_tensor}
+    attributes:
+      epilogue: "ordered subset of [acc_scale, requant, relu]"
+      output_dtype: "i32 (full readout) | i8 (scaled/clamped readout)"
+    semantics: >-
+      dst = p @ v, the second matmul of attention: p is [m, s] over s keys, v is [s, d].
+      NO transpose (unlike ATTENTION_QK, which contracts the trailing head dim of both operands).
+  CONV2D:
+    operands: {ifm: tensor, weight: resident_handle_or_tensor, dst: output_tensor}
+    attributes:
+      kernel: "[kh, kw, ci, co] -- REQUIRED; ci must equal the ifm's channel dim"
+      stride: "[stride_h, stride_w]; default [1, 1]"
+      padding: "[top, left, bottom, right] zero-pad; default [0, 0, 0, 0]"
+      dilation: "[dilation_h, dilation_w]; default [1, 1]"
+      layout: "nhwc (the ONLY layout defined; anything else is rejected by name)"
+      epilogue: "ordered subset of [acc_scale, requant, relu, maxpool]"
+      output_dtype: "an INTEGER dtype: i32/i64 read out whole, i8/i16/... saturate to that width"
+      # Pooling geometry -- REQUIRED iff "maxpool" is in epilogue, defaulted by nothing. These are the
+      # store-path configuration fields (config_st's pool_size / pool_stride / orows / ocols / upad /
+      # lpad), which is where this class of target fuses pooling, so they ride on the command that
+      # reads the accumulator out.
+      pool_in_dims: "[Ho, Wo] -- the conv's OWN output extent. Declared so the flat [N*Ho*Wo, Co] product can be unflattened, and CROSS-CHECKED against the geometry derived from kernel/stride/padding/dilation: a disagreement is rejected, never reconciled"
+      pool_size: "[ph, pw] pooling window. REQUIRED -- no default"
+      pool_stride: "[sh, sw] pooling stride. REQUIRED -- no default"
+      pool_padding: "[top, left, bottom, right]; default [0, 0, 0, 0]"
+      pool_pad_value: "int; REQUIRED iff any pool_padding entry is nonzero -- the identity element of a max over a padded cell is a datapath property (-inf mathematically, commonly 0 in a store path) and is never assumed"
+    semantics: >-
+      dst = im2col(ifm) @ resolve(weight): the NHWC activation is gathered into its
+      [N*Ho*Wo, Kh*Kw*Ci] im2col matrix (column order kh, kw, ci; out-of-bounds taps read zero) and
+      contracted against the PRE-im2col'd weight [Kh*Kw*Ci, Co], giving [N*Ho*Wo, Co]. Ho/Wo follow
+      the usual (H + pt + pb - (dh*(kh-1)+1)) // sh + 1. There is no separate COMMIT: the epilogue
+      and the narrowing happen here -- including a fused `maxpool`, which pools the [N*Ho*Wo, Co]
+      product down to [N*Hp*Wp, Co] exactly as the fused conv loop's pooling store does.
+    unsupported: >-
+      Grouped/depthwise convolution (no groups attribute exists), a non-nhwc layout, a bias_add
+      epilogue (the op carries no bias operand), and a non-integer output_dtype. Each is REJECTED by
+      name rather than ignored -- an ignored conv parameter is exactly the silent wrong answer this
+      opcode was added to stop.
 correctness_gate: >-
   Integer workloads => exact equality (==), never a tolerance. reference_outputs(cb) and
   simulate(cb)["outputs"] MUST be equal (L0), and equal to the oracle output (L1/L2).

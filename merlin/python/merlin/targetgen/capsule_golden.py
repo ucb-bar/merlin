@@ -39,7 +39,8 @@ def materialize_capsule_leaves(capsule: dict) -> dict[str, Tensor]:
 # --------------------------------------------------------------------------------------------
 # im2col (shared by golden + runner harness for conv2d)
 # --------------------------------------------------------------------------------------------
-from merlin.runtime.commandbuffer import conv_im2col, conv_out_dims  # noqa: E402  (single source of truth)
+from merlin.runtime.commandbuffer import (  # noqa: E402  (single source of truth)
+    apply_pool_stage, conv_im2col, conv_out_dims)
 
 
 def im2col(ifm: Tensor, ci: int, kh: int, kw: int, *, stride, padding, dilation,
@@ -123,6 +124,18 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor]) -> Tensor:
             t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
         elif stage == "relu":
             t = t.relu()
+        elif stage == "maxpool":
+            # The pooling epilogue this target FUSES into the store/conv path. The geometry rides on the
+            # operation's attributes (``pool_in_dims``/``pool_size``/``pool_stride``/``pool_padding``,
+            # the ABI's ``orows``/``ocols``/``pool_size``/``pool_stride``/``upad``/``lpad``) rather than
+            # being inferred, because by this point ``t`` is 2-D for EVERY op that reaches here: a
+            # matmul commits ``[M, N]`` and the conv branch above has already contracted its im2col
+            # matrix down to ``[N*Ho*Wo, Co]``. Neither shape says what spatial extent its rows
+            # unflatten to. Parsed by the runtime's one ``pool_params``, so this golden and the
+            # reference/simulator it is compared against cannot disagree about the window.
+            t = apply_pool_stage(
+                t, stage, attrs,
+                op=f"golden epilogue of {attrs.get('out', 'the output')!r}")
         else:
             # FAIL CLOSED ON AN EPILOGUE STAGE THIS ENGINE CANNOT APPLY. There was no terminal branch
             # here, so an unrecognised stage was silently skipped and the capsule shipped a golden that
@@ -133,7 +146,8 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor]) -> Tensor:
             # discover months later that a cell was covered by arithmetic nobody performed.
             raise ValueError(
                 f"epilogue stage {stage!r} is declared but the integer Tensor engine does not implement "
-                f"it (implemented: bias_add/bias, requant, acc_scale, relu). Implement it here -- and in "
+                f"it (implemented: bias_add/bias, requant, acc_scale, relu, maxpool). Implement it here -- "
+                f"and in "
                 f"the reference and simulator, which grade against this -- rather than shipping a golden "
                 f"that skips it")
     return _narrow_to_dtype(t, attrs.get("output_dtype", "i32"))

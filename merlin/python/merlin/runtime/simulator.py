@@ -5,19 +5,90 @@ buffer, performs the actual tensor math (via :mod:`merlin.runtime.tensor`), reco
 metrics and a trace, and returns the committed output tensors. The ToyNPU opcodes
 (RES_PACK / MATMUL_RESIDENT / COMMIT / EVICT) are handled directly; the design generalizes to
 target-supplied semantics.
+
+Every whole-op opcode here (RMSNORM / SOFTMAX / GELU / SOFTCAP / ROPE / ATTENTION_QK / ATTENTION_PV /
+CONV2D / MOVEMENT / …) implements the SAME definition as the golden engine's op of that name
+(:mod:`merlin.targetgen.capsule_golden`), so the functional tier and the numeric oracle cannot
+disagree about what a conformant command buffer means. An opcode with no definition here raises
+``SimulationError`` rather than being skipped.
 """
 from __future__ import annotations
 
 import math
 from typing import Any
 
-from .commandbuffer import materialize_inputs, validate_command_buffer
+from .commandbuffer import (apply_pool_stage, conv_im2col, conv_out_dims,
+                            materialize_inputs, pool_params, validate_command_buffer)
 from .metrics import Metrics
 from .tensor import Tensor
 
 
 class SimulationError(RuntimeError):
     pass
+
+
+#: The ONLY attributes ``CONV2D`` implements. Anything else raises, naming it — a conv whose stride
+#: or dilation was quietly ignored produces a full, plausible-looking tensor of wrong numbers, which
+#: is the failure mode the whole fail-closed interface grammar exists to prevent. Widening the
+#: supported subset means adding the key here AND the code that honours it, in that order.
+_CONV2D_ATTRS = frozenset({"kernel", "stride", "padding", "dilation", "layout",
+                           "epilogue", "output_dtype", "acc_scale", "requant_shift", "semantic",
+                           # Pooling fused onto the conv's store path (the fused conv loop's
+                           # pool_size/pool_stride/pool_padding, configured by config_st). Listed here
+                           # AND honoured in the CONV2D branch below -- the rejection above is what
+                           # forces those two to land together, so a pool parameter can never arrive
+                           # and be quietly ignored.
+                           "pool_in_dims", "pool_size", "pool_stride", "pool_padding",
+                           "pool_pad_value"})
+
+
+def _pool(t: Tensor, stage: str, attrs: dict[str, Any], op: str) -> Tensor:
+    """Apply a pooling epilogue stage, translating the runtime's ``ValueError`` into this engine's
+    ``SimulationError``. The arithmetic and the attribute parsing stay in
+    :func:`merlin.runtime.commandbuffer.apply_pool_stage` -- the single definition the golden and the
+    reference call too -- so this wrapper only reconciles the exception type callers of ``simulate``
+    are documented to catch."""
+    try:
+        return apply_pool_stage(t, stage, attrs, op=op)
+    except ValueError as e:
+        raise SimulationError(str(e)) from e
+
+
+def _conv_geom(attrs: dict[str, Any], key: str, arity: int, default: list[int]) -> tuple[int, ...]:
+    """A conv geometry vector (``stride`` / ``padding`` / ``dilation``) as ``arity`` ints.
+
+    A vector of the wrong length is REJECTED rather than padded or truncated: ``padding`` is
+    ``[top, left, bottom, right]``, and silently reading a 2-element ``[h, w]`` as ``[top, left]``
+    with zero bottom/right would change the output geometry without saying so.
+    """
+    v = attrs.get(key, default)
+    if not isinstance(v, list) or len(v) != arity:
+        raise SimulationError(
+            f"CONV2D {key} must be a list of {arity} int(s) (got {v!r})")
+    return tuple(int(x) for x in v)
+
+
+def _narrow_int_readout(t: Tensor, dtype: str, op: str) -> Tensor:
+    """Saturating readout of the i32 accumulator into the command's DECLARED integer output dtype.
+
+    Same definition as the golden engine's ``_narrow_to_dtype`` (bitwidth parsed structurally from the
+    token, ``i8`` routed through :meth:`Tensor.to_i8` so it stays byte-identical to the historical
+    path, width >= 32 read out whole), so the functional tier and the numeric oracle cannot disagree
+    about a narrowed conv. A NON-integer dtype raises instead of passing through: this engine's matmul
+    is integer, so a float readout it "supported" by ignoring would be a wrong answer.
+    """
+    kind, digits = (dtype[:1], dtype[1:]) if dtype else ("", "")
+    if kind not in ("i", "u") or not digits.isdigit():
+        raise SimulationError(
+            f"{op} output_dtype {dtype!r} is not an integer dtype; this integer engine has no "
+            f"definition for it")
+    bits, signed = int(digits), kind == "i"
+    if bits >= 32:
+        return t
+    if dtype == "i8":
+        return t.to_i8()
+    lo, hi = (-(1 << (bits - 1)), (1 << (bits - 1)) - 1) if signed else (0, (1 << bits) - 1)
+    return Tensor(t.shape, [lo if x < lo else (hi if x > hi else x) for x in t.data], dtype)
 
 
 def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -94,6 +165,14 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
                     t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
                 elif stage == "relu":
                     t = t.relu()
+                elif stage == "maxpool":
+                    # Pooling fused into the accumulator readout -- where the store-path ABI configures
+                    # it (config_st's pool_stride/pool_size/pool_out_dim/porows/pocols/orows/ocols/
+                    # upad/lpad, issued just before the mvout). The accumulator here is [M, N] with no
+                    # spatial extent of its own, so the window and the extent its rows unflatten to come
+                    # off THIS command's attributes, through the same parser the golden and the
+                    # reference use -- one definition, so the three engines cannot disagree.
+                    t = _pool(t, stage, attrs, f"COMMIT {dst!r}")
                 else:
                     raise SimulationError(f"unknown epilogue stage '{stage}'")
             if attrs.get("output_dtype", "i8") == "i8":
@@ -254,6 +333,155 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             metrics.bytes_moved += qt.nbytes + kt.nbytes + t.nbytes
             metrics.cycles += base_matmul_cycles(m, d, n)
             trace.append({"name": "attention_qk", "object": dst, "count": 1})
+
+        elif op == "ATTENTION_PV":
+            # O = P @ V, the SECOND matmul of flash attention and the sibling of ATTENTION_QK: p is
+            # [m, s] probabilities over s keys, v is [s, d] values, o is [m, d]. Unlike QK there is no
+            # transpose — the contraction is p's trailing axis against v's leading axis, exactly what
+            # the golden engine computes (``attention_pv``: ``p.matmul(v)``). The interface grammar did
+            # not define this op until now, so all 7 shipped flash-attention capsules parsed without it
+            # and the runner scored a program that never multiplied by V.
+            p, v, dst = ops["p"], ops["v"], ops["dst"]
+            pt, vt = env[p], env[v]
+            (m, s), (s2, d) = pt.shape, vt.shape
+            if s != s2:
+                raise SimulationError(
+                    f"ATTENTION_PV key-count mismatch: {p}{pt.shape} vs {v}{vt.shape}")
+            t = pt.matmul(vt)
+            for stage in attrs.get("epilogue", []):
+                if stage == "acc_scale":
+                    t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+                elif stage == "requant":
+                    t = t.requant(int(attrs.get("requant_shift", default_shift)))
+                elif stage == "relu":
+                    t = t.relu()
+                else:
+                    raise SimulationError(f"unknown epilogue stage '{stage}'")
+            if attrs.get("output_dtype", "i32") == "i8":
+                t = t.to_i8()
+            env[dst] = t
+            outputs[dst] = t.to_list()
+            metrics.dispatch_count += 1
+            metrics.bytes_read += pt.nbytes + vt.nbytes
+            metrics.bytes_written += t.nbytes
+            metrics.bytes_moved += pt.nbytes + vt.nbytes + t.nbytes
+            metrics.cycles += base_matmul_cycles(m, s, d)
+            trace.append({"name": "attention_pv", "object": dst, "count": 1})
+
+        elif op == "CONV2D":
+            # dst = im2col(ifm) @ resolve(weight). The activation is NHWC, the weight is ALREADY
+            # im2col-packed [Kh*Kw*Ci, Co], and the result is the [N*Ho*Wo, Co] im2col product — the
+            # exact definition the golden engine computes (``capsule_golden`` conv2d branch:
+            # ``im2col(ifm, ...).matmul(w)``), reached through the SAME :func:`conv_im2col` so the two
+            # cannot drift on a padding edge or a column order. Undefined until now, which left all 3
+            # shipped conv capsules with resident_pack + evict and no compute at all.
+            #
+            # The supported subset is deliberately narrow and every parameter outside it is REJECTED BY
+            # NAME below rather than ignored: silently ignoring a conv parameter is the failure this
+            # opcode exists to close, and a conv that quietly drops its stride is a wrong answer that
+            # still looks like a plausible tensor.
+            ifm_n, w_n, dst = ops["ifm"], ops["weight"], ops["dst"]
+            ifm, w = env[ifm_n], env[w_n]
+            unknown = sorted(set(attrs) - _CONV2D_ATTRS)
+            if unknown:
+                raise SimulationError(
+                    f"CONV2D does not implement attribute(s) {unknown}; it implements "
+                    f"{sorted(_CONV2D_ATTRS)}. Applying a conv with a parameter this engine ignored "
+                    f"would be a wrong answer that still looks like a tensor")
+            layout = str(attrs.get("layout", "nhwc"))
+            if layout != "nhwc":
+                raise SimulationError(f"CONV2D layout {layout!r} unsupported (nhwc only)")
+            kernel = attrs.get("kernel")
+            if not isinstance(kernel, list) or len(kernel) != 4:
+                raise SimulationError(
+                    f"CONV2D needs kernel = [kh, kw, ci, co]; got {kernel!r}")
+            kh, kw, ci, co = (int(v) for v in kernel)
+            stride = _conv_geom(attrs, "stride", 2, [1, 1])
+            padding = _conv_geom(attrs, "padding", 4, [0, 0, 0, 0])   # [top, left, bottom, right]
+            dilation = _conv_geom(attrs, "dilation", 2, [1, 1])
+            if len(ifm.shape) != 4:
+                raise SimulationError(
+                    f"CONV2D activation {ifm_n}{ifm.shape} is not rank-4 NHWC")
+            if ifm.shape[3] != ci:
+                raise SimulationError(
+                    f"CONV2D channel mismatch: {ifm_n}{ifm.shape} has C={ifm.shape[3]} but "
+                    f"kernel declares ci={ci}")
+            cols = conv_im2col(ifm, kh=kh, kw=kw, ci=ci, stride=stride, padding=padding,
+                               dilation=dilation, layout=layout)
+            if w.shape != (kh * kw * ci, co):
+                raise SimulationError(
+                    f"CONV2D weight {w_n}{w.shape} is not the im2col-packed "
+                    f"[Kh*Kw*Ci, Co] = [{kh * kw * ci}, {co}] the kernel attribute declares")
+            if w_n in resident:
+                metrics.resident_hits += 1
+            else:
+                metrics.resident_misses += 1
+                metrics.bytes_read += w.nbytes
+                metrics.bytes_moved += w.nbytes
+                metrics.cycles += len(w.data)
+            t = cols.matmul(w)
+            for stage in attrs.get("epilogue", []):
+                if stage == "acc_scale":
+                    t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+                elif stage == "requant":
+                    t = t.requant(int(attrs.get("requant_shift", default_shift)))
+                elif stage == "relu":
+                    t = t.relu()
+                elif stage == "maxpool":
+                    # Pooling fused onto the conv, the form the hardware actually offers (the fused conv
+                    # loop takes pool_size/pool_stride/pool_padding and stores the POOLED window). The
+                    # conv result is already contracted to [N*Ho*Wo, Co], so the declared
+                    # ``pool_in_dims`` is cross-checked against the (Ho, Wo) THIS branch just derived and
+                    # a disagreement raises: the capsule golden has only the flat 2-D tensor to work
+                    # from and must trust the declaration, so if the two ever diverged the golden and
+                    # the simulator would pool different images and blame the numbers.
+                    Ho, Wo = conv_out_dims(ifm.shape[1], ifm.shape[2], kh, kw,
+                                           stride, padding, dilation)
+                    try:
+                        p_in = pool_params(attrs, op=f"CONV2D {dst!r}")["pool_in_dims"]
+                    except ValueError as e:
+                        raise SimulationError(str(e)) from e
+                    if p_in != (Ho, Wo):
+                        raise SimulationError(
+                            f"CONV2D {dst!r}: pool_in_dims {list(p_in)} disagrees with the conv's own "
+                            f"output extent [{Ho}, {Wo}]; the pooled image is the conv's output, so the "
+                            f"declaration is wrong (or the conv geometry is)")
+                    t = _pool(t, stage, attrs, f"CONV2D {dst!r}")
+                else:
+                    # bias_add lands here on purpose: the conv2d op carries no bias operand, so there
+                    # is nothing to add and pretending otherwise would fabricate a result.
+                    raise SimulationError(
+                        f"CONV2D does not implement epilogue stage '{stage}'")
+            t = _narrow_int_readout(t, str(attrs.get("output_dtype", "i32")), "CONV2D")
+            env[dst] = t
+            outputs[dst] = t.to_list()
+            p, kdim = cols.shape
+            metrics.dispatch_count += 1
+            metrics.bytes_read += ifm.nbytes
+            metrics.bytes_written += t.nbytes
+            metrics.bytes_moved += ifm.nbytes + t.nbytes
+            metrics.cycles += len(cols.data) + base_matmul_cycles(p, kdim, co)
+            trace.append({"name": "conv2d", "object": dst, "count": 1})
+
+        elif op == "MOVEMENT":
+            # A load->store round-trip through the accelerator: values are carried unchanged, only the
+            # container dtype widens (operand dtype in, accumulate dtype out — see
+            # corpus_spec.build_movement). The golden engine agrees exactly (``movement``:
+            # ``src.to_list()``), so this must NOT clamp or requantize: a movement capsule's whole point
+            # is that the data survives the trip bit-for-bit. Undefined until now, which made all 5
+            # shipped movement capsules parse to ZERO commands — their only op vanished.
+            if "src" not in ops:
+                raise SimulationError("MOVEMENT needs operands src/dst")
+            src, dst = ops["src"], ops["dst"]
+            t = env[src]
+            moved = Tensor(t.shape, list(t.data), str(attrs.get("output_dtype", t.dtype)))
+            env[dst] = moved
+            outputs[dst] = moved.to_list()
+            metrics.bytes_read += t.nbytes
+            metrics.bytes_written += moved.nbytes
+            metrics.bytes_moved += t.nbytes + moved.nbytes
+            metrics.cycles += len(moved.data)
+            trace.append({"name": "movement", "object": dst, "count": len(moved.data)})
 
         elif op == "VREDUCE":
             src, dst = env[ops["src"]], ops["dst"]
