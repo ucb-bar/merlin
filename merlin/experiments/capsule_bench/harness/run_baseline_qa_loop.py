@@ -32,6 +32,7 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -95,9 +96,87 @@ def _l3_barrier_decision(l3_all_pass: bool, rnd: int, max_rounds: int) -> str:
     return "iterate"
 
 
-def _formal_completion(numeric_all_pass: bool, workflow_conformant: bool) -> bool:
-    """The Arm result is complete only when both independent gates are evidenced."""
+def _authoring_completion(numeric_all_pass: bool, workflow_conformant: bool) -> bool:
+    """The agent may leave the authoring loop only when both in-sandbox gates are evidenced."""
     return bool(numeric_all_pass and workflow_conformant)
+
+
+def _formal_completion(numeric_all_pass: bool, workflow_conformant: bool,
+                       official_grade_complete: bool) -> bool:
+    """Formal success additionally requires the outer, post-freeze public+hidden L3 grade."""
+    return bool(numeric_all_pass and workflow_conformant and official_grade_complete)
+
+
+def _official_grade_result(returncode: int, run_dir: Path, *, required_tier: str = "L3") -> dict:
+    """Validate the official grader's exit status *and* its claim-bearing manifest.
+
+    The subprocess return code is necessary but not sufficient: this rejects a stale/malformed manifest,
+    a vacuous 0/0 phase, and a phase whose status says complete without the matching L3/RTL evidence.
+    """
+    failures: list[str] = []
+    if returncode != 0:
+        failures.append(f"grader_exit_nonzero:{returncode}")
+    manifest_path = run_dir / "run_manifest.yaml"
+    try:
+        manifest = yaml.safe_load(manifest_path.read_text()) or {}
+    except Exception as exc:  # noqa: BLE001 — malformed/missing evidence is a refusal, not a crash
+        manifest = {}
+        failures.append(f"manifest_unreadable:{type(exc).__name__}")
+    if not isinstance(manifest, Mapping):
+        manifest = {}
+        failures.append("manifest_malformed")
+
+    completion = manifest.get("completion")
+    if not isinstance(completion, Mapping):
+        failures.append("completion_status_missing")
+    else:
+        if completion.get("formal_grade_complete") is not True:
+            failures.append("grader_reported_incomplete")
+        if completion.get("required_tier") != required_tier:
+            failures.append("required_tier_mismatch")
+
+    for phase_name in ("public_dev", "hidden"):
+        phase = manifest.get(phase_name)
+        if not isinstance(phase, Mapping):
+            failures.append(f"{phase_name}:status_missing")
+            continue
+        n_capsules, n_passed = phase.get("n_capsules"), phase.get("n_passed")
+        if (not isinstance(n_capsules, int) or isinstance(n_capsules, bool)
+                or n_capsules <= 0):
+            failures.append(f"{phase_name}:capsule_set_empty_or_malformed")
+        if (not isinstance(n_passed, int) or isinstance(n_passed, bool)
+                or not isinstance(n_capsules, int) or isinstance(n_capsules, bool)
+                or n_passed != n_capsules):
+            failures.append(f"{phase_name}:not_all_capsules_passed")
+        if phase.get("formal_complete") is not True:
+            failures.append(f"{phase_name}:formal_complete_not_true")
+        if phase.get("gradeable") is not True:
+            failures.append(f"{phase_name}:not_gradeable")
+        if phase.get("integrity_status") != "clean":
+            failures.append(f"{phase_name}:integrity_not_clean")
+        if phase.get("numeric_all_exact") is not True:
+            failures.append(f"{phase_name}:numeric_exactness_not_complete")
+        if phase.get("trace_all_pass") is not True:
+            failures.append(f"{phase_name}:trace_conformance_not_complete")
+        unmeasured = phase.get("unmeasured_counts")
+        for field in (
+            "n_not_graded_ineligible", "n_gated_deferred", "n_screened_only",
+            "n_budget_exhausted", "n_incomplete", "n_not_gradeable_no_oracle",
+        ):
+            if not isinstance(unmeasured, Mapping) or unmeasured.get(field) != 0:
+                failures.append(f"{phase_name}:{field}_not_zero")
+        tiers = phase.get("tier_reached")
+        if not isinstance(tiers, Mapping) or tiers.get(required_tier) != n_capsules:
+            failures.append(f"{phase_name}:not_all_capsules_reached_{required_tier}")
+        evidence = phase.get("pass_evidence")
+        if not isinstance(evidence, Mapping) or evidence.get("rtl_backed") != n_capsules:
+            failures.append(f"{phase_name}:not_all_capsules_rtl_backed")
+    return {
+        "complete": not failures,
+        "grader_returncode": int(returncode),
+        "manifest": str(manifest_path),
+        "failures": failures,
+    }
 
 
 def _spend_over_cap(this_round_cost) -> tuple[bool, float, float]:
@@ -1876,15 +1955,15 @@ def main(argv: list[str] | None = None) -> int:
               f"active={active_wall_s:.0f}s rate_limit_wait={rate_limit_wait_s:.0f}s "
               f"waits_used={rl_waits_used}")
 
-    def _formal_complete() -> bool:
-        """Numeric/RTL success is necessary but the arm's mandatory workflow must also be evidenced."""
-        return _formal_completion(bool(verdict.get("all_pass")), workflow_conformant)
+    def _authoring_complete() -> bool:
+        """Pre-freeze gate: enough evidence to stop editing and begin the official grade."""
+        return _authoring_completion(bool(verdict.get("all_pass")), workflow_conformant)
 
     def _checkpoint(next_round: int) -> None:
         state_p.write_text(yaml.safe_dump({
             "run_id": a.run_id, "arm": arm, "model": a.model, "effort": a.effort,
             "rounds": rounds_summary, "next_round": next_round,
-            "converged": _formal_complete(),
+            "converged": _authoring_complete(),
             "numeric_all_pass": bool(verdict.get("all_pass", False)),
             "workflow_conformant": workflow_conformant,
             "cumulative": {"active_wall_s": round(active_wall_s, 3),
@@ -1945,16 +2024,19 @@ def main(argv: list[str] | None = None) -> int:
                                "grades": state["tick"] + 1,
                                "all_pass": verdict.get("all_pass", False),
                                "workflow_conformant": workflow_conformant,
-                               "formal_complete": _formal_complete(),
+                               "authoring_complete": _authoring_complete(),
                                "conformance": conf,
                                "n_passed": verdict.get("n_passed"),
                                "n_capsules": verdict.get("n_capsules")})
         _checkpoint(state["tick"] + 1)
         print(f"\ncontinuous run complete: {run_dir}  numeric_all_pass="
               f"{verdict.get('all_pass', False)} workflow_conformant={workflow_conformant} "
-              f"formal_complete={_formal_complete()} "
+              f"authoring_complete={_authoring_complete()} formal_complete=False "
               f"grades={state['tick'] + 1}")
-        return 0 if _formal_complete() else 1
+        # This legacy single-session path does not run the common L3 barrier or the post-freeze hidden
+        # grader.  It can report progress, but can never report a formal success.  Use
+        # ``--schedule continuous`` for the continuous, fully certified path.
+        return 1
 
     cost_capped = False             # set if the batch dollar ceiling (MERLIN_MAX_SPEND_USD) is reached
 
@@ -1972,7 +2054,7 @@ def main(argv: list[str] | None = None) -> int:
         A safety cap remains via --max-rounds only if the caller explicitly lowers it; the default 12 is
         ignored in continuous mode so it cannot silently reimpose the very bound this removes.
         """
-        if _formal_complete():
+        if _authoring_complete():
             return False
         if a.schedule == "rounds":
             return rnd < a.max_rounds
@@ -2077,7 +2159,7 @@ def main(argv: list[str] | None = None) -> int:
         rounds_summary.append({"round": rnd, "agent_rc": rc, "conformance": conf,
                                "all_pass": verdict.get("all_pass"),
                                "workflow_conformant": workflow_conformant,
-                               "formal_complete": _formal_complete(),
+                               "authoring_complete": _authoring_complete(),
                                "n_passed": verdict.get("n_passed"),
                                "n_capsules": verdict.get("n_capsules"),
                                "tool_calls": rsum.get("tool_calls"),
@@ -2143,7 +2225,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[round {rnd-1}] agent dropped {READY_MARKER}, but mandatory tooling is not "
                   "successfully evidenced — marker cleared, continuing", flush=True)
             ready = False
-        if _formal_complete() or ready:
+        if _authoring_complete() or ready:
             if ready:
                 print(f"[round {rnd-1}] agent dropped {READY_MARKER} — proceeding to verilator barrier")
             break
@@ -2282,7 +2364,7 @@ def main(argv: list[str] | None = None) -> int:
     # VERIFIED result (the relaunch design means the converging round's agent never saw the passing
     # verdict, so its self-reported status lags by one round). Guarantees the frozen report matches.
     finalize = None
-    if _formal_complete():
+    if _authoring_complete():
         print("[finalize] converged — running bounded report-finalize turn")
         _fin_start = time.time()
         finalize = finalize_report(ws, run_dir, a.model, a.effort, a.sandbox, bundle, arm, verdict,
@@ -2319,13 +2401,15 @@ def main(argv: list[str] | None = None) -> int:
     _cd.update({"active_wall_s": active_wall_s, "rate_limit_wait_s": round(rate_limit_wait_s, 3),
                 "rate_limit_waits_used": rl_waits_used})
     _cy.write_text(yaml.safe_dump(_cd, sort_keys=False))
-    (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(
-        {"rounds": rounds_summary, "converged": _formal_complete(),
-         "numeric_all_pass": bool(verdict.get("all_pass", False)),
-         "workflow_conformant": workflow_conformant,
-         "cost_capped": cost_capped,   # stopped by the batch dollar ceiling, not convergence/max_rounds
-         "n_rounds": len(rounds_summary), "wall_seconds": wall, "finalize": finalize,
-         "timing": timing}, sort_keys=False))
+    qa_summary = {
+        "rounds": rounds_summary,
+        "authoring_complete": _authoring_complete(),
+        "numeric_all_pass": bool(verdict.get("all_pass", False)),
+        "workflow_conformant": workflow_conformant,
+        "cost_capped": cost_capped,   # stopped by the batch dollar ceiling, not convergence/max_rounds
+        "n_rounds": len(rounds_summary), "wall_seconds": wall, "finalize": finalize,
+        "timing": timing,
+    }
 
     # Additionally sink this run's agentic telemetry into the shared aet store (opt-in,
     # MERLIN_AET_SINK=1) so it shows up in `aet spend` / `aet plot` across experiments. This is
@@ -2339,6 +2423,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # capture the final submission and run the OFFICIAL public+hidden record
     wsub = ws / "submission"
+    official_grade = {"complete": False, "grader_returncode": None,
+                      "manifest": str(run_dir / "run_manifest.yaml"),
+                      "failures": ["submission_missing"]}
     if wsub.exists():
         dst = run_dir / "submission"
         if dst.exists():
@@ -2360,7 +2447,18 @@ def main(argv: list[str] | None = None) -> int:
             grade_cmd.append("--no-oracle")
         if a.skip_hidden:
             grade_cmd.append("--skip-hidden")
-        subprocess.run(grade_cmd, cwd=str(C.REPO))
+        grade_proc = subprocess.run(grade_cmd, cwd=str(C.REPO))
+        official_grade = _official_grade_result(grade_proc.returncode, run_dir)
+    formal_complete = _formal_completion(bool(verdict.get("all_pass")), workflow_conformant,
+                                         official_grade["complete"])
+    qa_summary.update({"converged": formal_complete, "formal_complete": formal_complete,
+                       "official_grade": official_grade})
+    (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(qa_summary, sort_keys=False))
+    # The detailed usage record is written before the potentially long outer grade so the grader can
+    # include it in its manifest.  Correct its launcher exit code once the authoritative grade exists.
+    _cd = yaml.safe_load(_cy.read_text()) or {}
+    _cd["exit_code"] = 0 if formal_complete else 1
+    _cy.write_text(yaml.safe_dump(_cd, sort_keys=False))
     # auto-emit a per-run timing decomposition (best-effort; the detailed cross-arm view is the analysis
     # script, but this gives each run its own think+gen / tool / sim split + CIRCT-gate skips at finish).
     try:
@@ -2368,9 +2466,10 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:
         print(f"[timing] decomposition skipped: {e}")
     print(f"\nrun complete: {run_dir}  numeric_all_pass={verdict.get('all_pass')} "
-          f"workflow_conformant={workflow_conformant} formal_complete={_formal_complete()} "
+          f"workflow_conformant={workflow_conformant} "
+          f"official_grade_complete={official_grade['complete']} formal_complete={formal_complete} "
           f"rounds={len(rounds_summary)}")
-    return 0 if _formal_complete() else 1
+    return 0 if formal_complete else 1
 
 
 def _emit_run_timing(run_dir: Path, rounds_summary: list) -> None:

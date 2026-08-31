@@ -44,6 +44,7 @@ def test_fully_conformant_run(tmp_path):
     sub = _submission(tmp_path, {"backend.py": "import ast  # xdsl pipeline, no regex\n"})
     tp = _transcript(tmp_path / "t.jsonl", [
         ("bash", {"command": "python cca_contract.py check-bijection atlas"}),
+        ("bash", {"command": "python action_catalog.py escalation-ladder atlas"}),
         ("bash", {"command": "python isa_tools.py asm ops.txt"}),
         ("bash", {"command": "python isa_tools.py lint submission/kernel.S"}),
         ("bash", {"command": "python3 agent_selfcheck.py --submission submission --capsules all"}),
@@ -106,6 +107,7 @@ def test_asm_not_applicable_off_external_backend(tmp_path):
     sub = _submission(tmp_path, {"backend.py": "import ast\n"})
     tp = _transcript(tmp_path / "t.jsonl", [
         ("bash", {"command": "python cca_contract.py check-bijection gemmini"}),
+        ("bash", {"command": "python action_catalog.py escalation-ladder gemmini"}),
         ("bash", {"command": "python isa_tools.py lint submission/x.mlir"}),
         ("bash", {"command": "python3 agent_selfcheck.py --capsules all"}),
     ])

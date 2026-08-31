@@ -39,10 +39,34 @@ import run_baseline_qa_loop as L                # noqa: E402  (imported AFTER th
 _RTLCHECKS_BUNDLE = "merlin_assisted_rtlchecks_public_v0"
 
 
+def _option_values(argv: list[str], option: str) -> list[str | None]:
+    """Return every spelling of an argparse value option, preserving malformed missing values."""
+    values: list[str | None] = []
+    for i, token in enumerate(argv):
+        if token == option:
+            values.append(argv[i + 1] if i + 1 < len(argv) and not argv[i + 1].startswith("--") else None)
+        elif token.startswith(option + "="):
+            values.append(token.split("=", 1)[1])
+    return values
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if "--arm" not in argv:                     # this track is always the merlin arm + checks
+    requested_bundles = _option_values(argv, "--bundle")
+    if any(value != _RTLCHECKS_BUNDLE for value in requested_bundles):
+        print(f"REFUSING: the Arm-4 RTL-checks track serves only {_RTLCHECKS_BUNDLE!r}; "
+              f"received --bundle {requested_bundles!r}", file=sys.stderr)
+        return 4
+    requested_arms = _option_values(argv, "--arm")
+    if any(value != "merlin_assisted" for value in requested_arms):
+        print("REFUSING: the Arm-4 RTL-checks wrapper requires --arm merlin_assisted", file=sys.stderr)
+        return 4
+    if not requested_arms:                       # this track is always the merlin arm + checks
         argv += ["--arm", "merlin_assisted"]
+    # Reassert immediately before the baseline parser applies an allowed, identical --bundle.  This
+    # makes an earlier in-process mutation fail closed too, while still permitting launchers to pin the
+    # canonical bundle explicitly in their auditable command line.
+    RX.ARM_BUNDLE["merlin_assisted"] = _RTLCHECKS_BUNDLE
     assert RX.ARM_BUNDLE["merlin_assisted"] == _RTLCHECKS_BUNDLE, "bundle swap did not take"
     assert sys.modules.get("qa_check") is qa_check_rtlchecks, "qa_check injection did not take"
     return L.main(argv)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -20,6 +21,100 @@ sys.path.insert(0, str(C.REPO / "merlin" / "python"))
 from merlin.targetgen import capsule_grade as CG  # noqa: E402
 from merlin.targetgen import capsule_runner as CR  # noqa: E402
 import freeze_run  # noqa: E402
+
+
+# This is the certification tier for the Arm-4 Gemmini functional experiment.  A cheaper-tier pass is
+# useful iteration feedback, but is not a completed formal run.  Keep the requirement next to the
+# post-freeze grader: this is the only process allowed to read the hidden capsules.
+FORMAL_REQUIRED_TIER = "L3"
+
+
+def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUIRED_TIER) -> tuple[bool, list[str]]:
+    """Fail-closed completion predicate for one official grading phase.
+
+    ``functional_pass`` alone is insufficient: an empty/mis-rooted suite used to look like ``0/0`` and
+    the headline can omit which tier supplied the evidence.  A formal phase therefore has to be
+    non-vacuous, fully passing, gradeable, complete at the predeclared L3 tier, and RTL-backed for every
+    passing capsule.  Malformed or absent fields are refusals, never inferred successes.
+    """
+    if not isinstance(score, Mapping):
+        return False, ["score_missing_or_malformed"]
+
+    reasons: list[str] = []
+    n_capsules = score.get("n_capsules")
+    n_passed = score.get("n_passed")
+    if not isinstance(n_capsules, int) or isinstance(n_capsules, bool) or n_capsules <= 0:
+        reasons.append("capsule_set_empty_or_malformed")
+    if not isinstance(n_passed, int) or isinstance(n_passed, bool):
+        reasons.append("pass_count_missing_or_malformed")
+    elif isinstance(n_capsules, int) and not isinstance(n_capsules, bool) and n_passed != n_capsules:
+        reasons.append("not_all_capsules_passed")
+    if score.get("functional_pass") != 1:
+        reasons.append("functional_pass_not_true")
+    if score.get("gradeable") is not True:
+        reasons.append("numeric_grade_not_gradeable")
+    if score.get("integrity_status") != "clean":
+        reasons.append("submission_integrity_not_clean")
+    if score.get("numeric_all_exact") is not True:
+        reasons.append("numeric_exactness_not_complete")
+    if score.get("trace_all_pass") is not True:
+        reasons.append("trace_conformance_not_complete")
+
+    # The diagnostic score denominator deliberately excludes work that was never measured. Formal
+    # completion must not inherit that smaller denominator: otherwise a screen budget, model timeout,
+    # deferred capstone, or hidden capsule marked ineligible can disappear while the surviving subset
+    # reports all-pass. Require each unmeasured count explicitly and require zero.
+    unmeasured_counts = (
+        "n_not_graded_ineligible", "n_gated_deferred", "n_screened_only",
+        "n_budget_exhausted", "n_incomplete", "n_not_gradeable_no_oracle",
+    )
+    for field in unmeasured_counts:
+        value = score.get(field)
+        if not isinstance(value, int) or isinstance(value, bool):
+            reasons.append(f"{field}_missing_or_malformed")
+        elif value != 0:
+            reasons.append(f"{field}_nonzero")
+
+    tier_reached = score.get("tier_reached")
+    tier_count = tier_reached.get(required_tier) if isinstance(tier_reached, Mapping) else None
+    if not isinstance(tier_count, int) or isinstance(tier_count, bool):
+        reasons.append(f"{required_tier}_count_missing_or_malformed")
+    elif isinstance(n_capsules, int) and not isinstance(n_capsules, bool) and tier_count != n_capsules:
+        reasons.append(f"not_all_capsules_reached_{required_tier}")
+
+    evidence = score.get("pass_evidence")
+    rtl_backed = evidence.get("rtl_backed") if isinstance(evidence, Mapping) else None
+    if not isinstance(rtl_backed, int) or isinstance(rtl_backed, bool):
+        reasons.append("rtl_backed_count_missing_or_malformed")
+    elif isinstance(n_capsules, int) and not isinstance(n_capsules, bool) and rtl_backed != n_capsules:
+        reasons.append("not_all_capsules_rtl_backed")
+    return not reasons, reasons
+
+
+def _phase_manifest(score: Mapping, *, required_tier: str) -> dict:
+    complete, failures = phase_completion(score, required_tier=required_tier)
+    return {
+        "passed": score.get("public_passed") or score.get("hidden_passed")
+        or f"{score.get('n_passed')}/{score.get('n_capsules')}",
+        "functional_pass": score.get("functional_pass"),
+        "n_passed": score.get("n_passed"),
+        "n_capsules": score.get("n_capsules"),
+        "gradeable": score.get("gradeable"),
+        "integrity_status": score.get("integrity_status"),
+        "numeric_all_exact": score.get("numeric_all_exact"),
+        "trace_all_pass": score.get("trace_all_pass"),
+        "unmeasured_counts": {
+            field: score.get(field) for field in (
+                "n_not_graded_ineligible", "n_gated_deferred", "n_screened_only",
+                "n_budget_exhausted", "n_incomplete", "n_not_gradeable_no_oracle",
+            )
+        },
+        "highest_tier": score.get("highest_tier"),
+        "tier_reached": score.get("tier_reached"),
+        "pass_evidence": score.get("pass_evidence"),
+        "formal_complete": complete,
+        "completion_failures": failures,
+    }
 
 
 def _roots(spec: str) -> list[str]:
@@ -104,6 +199,23 @@ def main(argv: list[str] | None = None) -> int:
                      str(run_dir / "grading_hidden"), {"hidden"}, a.no_oracle)
         (run_dir / "grading_hidden" / "score_capsule.json").write_text(json.dumps(hid, indent=2))
 
+    public_phase = _phase_manifest(pub, required_tier=FORMAL_REQUIRED_TIER)
+    hidden_phase = _phase_manifest(hid, required_tier=FORMAL_REQUIRED_TIER)
+    public_phase.update({
+        "numeric_all_exact": pub.get("numeric_all_exact"),
+        "trace_all_pass": pub.get("trace_all_pass"),
+        "first_failure_planes": pub.get("first_failure_planes"),
+    })
+    if a.skip_hidden:
+        hidden_phase["passed"] = "not_run"
+        hidden_phase["completion_failures"] = ["hidden_grade_skipped"]
+        hidden_phase["formal_complete"] = False
+    formal_grade_complete = bool(public_phase["formal_complete"] and hidden_phase["formal_complete"])
+    completion_failures = [
+        *(f"public:{reason}" for reason in public_phase["completion_failures"]),
+        *(f"hidden:{reason}" for reason in hidden_phase["completion_failures"]),
+    ]
+
     # --- process metrics (from launcher), env, run_manifest ---
     ctt = {}
     ctt_path = run_dir / "cost_time_toolcalls.yaml"
@@ -116,16 +228,13 @@ def main(argv: list[str] | None = None) -> int:
         "frozen_at": frozen["frozen_at"],
         "integrity_status": pub.get("integrity_status"),
         "integrity_exempt": pub.get("integrity_exempt"),
-        "public_dev": {"functional_pass": pub.get("functional_pass"),
-                       "passed": pub.get("public_passed") or f"{pub.get('n_passed')}/{pub.get('n_capsules')}",
-                       "highest_tier": pub.get("highest_tier"),
-                       "numeric_all_exact": pub.get("numeric_all_exact"),
-                       "trace_all_pass": pub.get("trace_all_pass"),
-                       "first_failure_planes": pub.get("first_failure_planes")},
-        "hidden": {"passed": hid.get("public_passed") or hid.get("hidden_passed")
-                   or (f"{hid.get('n_passed')}/{hid.get('n_capsules')}" if hid.get("available", True)
-                       else "not_run"),
-                   "functional_pass": hid.get("functional_pass")},
+        "public_dev": public_phase,
+        "hidden": hidden_phase,
+        "completion": {
+            "formal_grade_complete": formal_grade_complete,
+            "required_tier": FORMAL_REQUIRED_TIER,
+            "failures": completion_failures,
+        },
         "cycles_diagnostic": pub.get("cycles_diagnostic", {}),
         "process": {"wall_time_seconds": ctt.get("wall_time_seconds"),
                     "tokens_total": ctt.get("tokens_total"),
@@ -166,8 +275,8 @@ def main(argv: list[str] | None = None) -> int:
     (run_dir / "final_report.md").write_text("\n".join(fr) + "\n")
     print(f"graded {run_dir.name}: public functional_pass={pub.get('functional_pass')} "
           f"({manifest['public_dev']['passed']}), hidden={manifest['hidden']['passed']}, "
-          f"integrity={manifest['integrity_status']}")
-    return 0
+          f"integrity={manifest['integrity_status']} formal_grade_complete={formal_grade_complete}")
+    return 0 if formal_grade_complete else 1
 
 
 if __name__ == "__main__":
