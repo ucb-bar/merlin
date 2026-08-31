@@ -135,6 +135,29 @@ def _answer_surfaces_to_lock(te) -> list[str]:
     return locks
 
 
+def _unlock_answer_surfaces(te) -> list[str]:
+    """Restore read access to the surfaces THIS preflight locks, so the next launch can verify them.
+
+    The lock is deliberately one-way within a run: it lands before any agent starts and must survive for
+    the run's whole life. But nothing ever lifted it, so it also survived the run -- and the next launch
+    inherited a chmod-000 holdout store, which is precisely what the held-out check has to READ. That
+    check fails closed rather than reporting a pass it cannot substantiate, so a completed run left the
+    next one unlaunchable, and the only way forward was a hand-typed chmod on an answer-key directory --
+    the one operation that should never become routine.
+
+    Scope is exactly ``_answer_surfaces_to_lock``: the same paths, restored and then re-locked a few lines
+    later. It cannot widen access to anything the preflight does not already own, and no agent exists yet
+    at this point in the launch, so the "locked before any spend" invariant is untouched. Restoring is
+    announced rather than silent -- an unlock of an answer surface is not something to do quietly.
+    """
+    restored = []
+    for path in _answer_surfaces_to_lock(te):
+        if Path(path).exists():
+            subprocess.run(["chmod", "-R", "u+rwX,g+rwX,o+rX", path], capture_output=True)
+            restored.append(path)
+    return restored
+
+
 def _run_preflight() -> int:
     """Lock answer surfaces + run verify_no_cheat.py (the authoritative gate). Returns 0 iff safe."""
     C.require_scaffolding()   # fail loudly if MERLIN_TARGET_EXPERIMENT points at a scaffolding-less dir
@@ -151,6 +174,9 @@ def _run_preflight() -> int:
     #
     # Verifying first costs nothing: the lock still lands before any agent process starts, which is the
     # invariant that matters ("before any spend"), and no agent has been launched at this point.
+    # A prior run's lock is still on disk (nothing lifts it), and the check below has to read through it.
+    restored = _unlock_answer_surfaces(te)
+    print(f"  restored read access on answer surfaces (re-locked below): {restored or '(none present)'}")
     vnc = SCRIPTS / "verify_no_cheat.py"
     if not vnc.is_file():
         print(f"  ⚠ verify_no_cheat.py not found at {vnc} — build it before launch (#167).")
