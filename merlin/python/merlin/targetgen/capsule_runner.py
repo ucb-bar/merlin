@@ -1506,8 +1506,16 @@ def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: i
         cmd = [sys.executable, "-c", _CHILD_PREAMBLE,
                "--model-grade", str(spec_p), "--model-grade-out", str(out_p)]
         started = time.monotonic()
+        _child_env = dict(os.environ)
+        # A budgeted model grade runs in another interpreter, so the parent's ContextVar cannot carry
+        # the capsule attribution into it. The pass recorder already accepts this explicit environment
+        # fallback; set it on the child only so concurrent model grades cannot cross-attribute calls.
+        if _child_env.get("MERLIN_PASS_LOG"):
+            _child_env["MERLIN_PASS_LOG_CAPSULE"] = str(capsule["name"])
+            _child_env["MERLIN_PASS_LOG_REQUIREMENTS"] = json.dumps(
+                list(capsule.get("pass_requirements") or []))
         proc = _sp.Popen(cmd, stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True,
-                         env=dict(os.environ), start_new_session=True)
+                         env=_child_env, start_new_session=True)
         try:
             tail = (proc.communicate(timeout=budget)[0] or "")[-2000:]
         except _sp.TimeoutExpired:
@@ -1597,6 +1605,7 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
     # certificate AND the mesh verification were all skipped on every whole-model capsule ever graded --
     # silently, because a skipped block leaves no trace in the result.
     linalg_mlir = None
+    linalg_path = None
     cdir = capsule.get("__dir__")
     if cdir:
         for _name in (capsule.get("linalg_mlir"), capsule.get("interface_mlir"), "capsule.linalg.mlir"):
@@ -1604,9 +1613,29 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
                 continue
             lp = _P(cdir) / str(_name)
             if lp.is_file():
+                linalg_path = lp
                 linalg_mlir = lp.read_text(encoding="utf-8")
                 break
+    from ..xdsl_dialects.lowering.passes import MODEL_BOUNDARY_CAPSTONE
+    _requires_boundary_plane = MODEL_BOUNDARY_CAPSTONE in (
+        capsule.get("pass_requirements") or ())
+    if _requires_boundary_plane and linalg_path is None:
+        result.update(status="incomplete",
+                      failure={"plane": "pass_obligations", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": "model capsule has no readable declared linalg/interface module; "
+                                         "the production boundary passes cannot be exercised"})
+        return result
     try:
+        # This is the production, in-process boundary plane: outline the REAL model, materialize and
+        # verify its dispatch DAG, partition it, and attach the C ABI. It is deliberately separate from
+        # the OOT package's four subprocess stages, which run below on each mesh tile. A pass-obligation
+        # failure is structural and blocks the capsule before expensive oracle work.
+        if _requires_boundary_plane:
+            from ..frontends.linalg_mlir import parse_mlir_file
+            from ..xdsl_dialects.lowering.passes import run_dialect_plane
+            _plane = run_dialect_plane(parse_mlir_file(linalg_path), n_harts=1)
+            result["pass_obligations"] = _plane.stats
+
         from ..compile_cli import compile_model
         # `dtype` is the capsule's compile_dtype (an RVV compile mode). The capsule ALSO declares the
         # exact datapath format in operation.attributes.dtype -- pass that for routing so a demand is
@@ -2813,15 +2842,32 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     integrity_scan(pkg)
     build_package(pkg)
 
+    # Pass evidence is opt-in through MERLIN_PASS_LOG. When enabled, install before any capsule work and
+    # attribute in-process calls to the capsule that caused them. Package entrypoints remain subprocesses
+    # and are certified by the mandatory manifest-command contract; this recorder covers only Merlin's
+    # production whole-model boundary plane.
+    _pass_recorder = None
+    if os.environ.get("MERLIN_PASS_LOG"):
+        from ..xdsl_dialects.lowering import passes as _pass_recorder
+        _pass_recorder.install_pass_recorder()
+
     def _one(cap: dict, workers: int = 1) -> dict:
         # ``workers`` is what THIS capsule ran inside, not what the suite was configured for: the
         # calibration head is serial by construction, and recording the suite's max_workers for it
         # would describe contention its numbers never saw.
-        return run_capsule(cap, package_dir, runs_root=runs_root, run_id=cap["name"],
-                           contract=contract, oracle_adapters=oracle_adapters,
-                           pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype,
-                           config=config, perf_extractor=perf_extractor, no_oracle=no_oracle,
-                           workers=workers)
+        if _pass_recorder is None:
+            return run_capsule(cap, package_dir, runs_root=runs_root, run_id=cap["name"],
+                               contract=contract, oracle_adapters=oracle_adapters,
+                               pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype,
+                               config=config, perf_extractor=perf_extractor, no_oracle=no_oracle,
+                               workers=workers)
+        with _pass_recorder.pass_run_context(
+                str(cap["name"]), cap.get("pass_requirements") or ()):
+            return run_capsule(cap, package_dir, runs_root=runs_root, run_id=cap["name"],
+                               contract=contract, oracle_adapters=oracle_adapters,
+                               pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype,
+                               config=config, perf_extractor=perf_extractor, no_oracle=no_oracle,
+                               workers=workers)
 
     def _run_all(caps: list[dict]) -> list[dict]:
         if max_workers <= 1 or not caps:

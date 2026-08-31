@@ -4,6 +4,8 @@ source_role: pytorch_model_slice
 source_reference: 'int8 GEMM -> host LayerNorm -> int8 GEMM: the A->H->A seam as the
   subject of a capsule rather than a by-product of a whole model'
 label: public
+pass_requirements:
+- model-boundary-capstone
 interface_mlir: capsule.interface.mlir
 inputs:
 - name: I0

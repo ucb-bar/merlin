@@ -94,6 +94,12 @@
       "minItems": 1,
       "items": {"type": "string", "enum": ["L0", "L1", "L2", "L3", "L4", "L5"]}
     },
+    "pass_requirements": {
+      "description": "Target-independent compiler requirement classes this capsule must exercise.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
     "depends_on": {
       "type": "array",
       "minItems": 1,
