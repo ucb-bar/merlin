@@ -1,311 +1,255 @@
 #!/usr/bin/env python3
-"""Cross-approach Gemmini performance runner.
+"""Run the Gemmini performance corpus on one frozen, functionally complete Arm-4 compiler.
 
-Drives every kernel in the corpus through each Gemmini code-gen APPROACH on the SAME
-ELF->spike(L2)/verilator(L3)->cycles harness, and records cycles + utilization + wall + correctness.
-Approaches (extensible; Phase C adds the IREE C++ dialect arm):
-  golden          - canonical Gemmini C library `tiled_matmul_auto` (hardware-loop WS), the perf ref;
-  baseline        - generated MLIR OOT backend agent_spec_v0_mlir_oot;
-  merlin_targetgen- generated MLIR OOT backend agent_spec_v1_mlir_oot;
-  merlin_native   - the integrity-exempt Merlin reference lowering (merlin_native_v0).
-
-Correctness = exact-int output == the kernel's shared capsule golden. Utilization is post-hoc
-(macs/(cycles*256)); never gates. Per-cell timeout + honest failure recording so the giant LLM
-kernels (which generated backends may unroll past feasibility) don't hang the sweep.
-
-Usage:
-  run_perf_bench.py [--kernels id1,id2|all] [--approaches golden,baseline,merlin_targetgen,merlin_native]
-                    [--sims auto|spike|spike,verilator] [--timeout 900] [--run-id perf_0001]
+The runner deliberately has no "latest submission" discovery and no alternate learned/compiler arm.
+The caller supplies the exact functional run ID and submission SHA-256.  The submission is copied into
+this campaign, mounted read-only in a credential-free/networkless bwrap, and checked against its
+functional fork before and after the corpus.  A campaign is GO only when every expected Arm-4
+kernel/simulator cell is correct and reports a positive cycle count.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import shutil
-import sys
-import time
+import traceback
 from pathlib import Path
 
 import yaml
 
 import _pbcommon as PB
-from merlin.common import stimulus as STIM  # noqa: E402  (one source of truth for leaf data)
-from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402  (golden C build/run reuse)
-from merlin.targetgen import capsule_golden as CG  # noqa: E402
-from merlin.targetgen import capsule_runner as CR  # noqa: E402
-
-from merlin.benchharness import runs_root as _runs_root  # noqa: E402
-_CB_RUNS = _runs_root("gemmini", "capsule-bench")  # out/runs/gemmini/capsule-bench
+import perf_campaign as PC
+from merlin.benchharness import runs_root as _runs_root
+from merlin.targetgen import capsule_runner as CR
+from merlin.targetgen.target_experiment import load_target_experiment
 
 
-def _latest_submission(subdir: str, rtlchecks=None):
-    """The latest capsule-bench <arm> submission/ under out/runs (or None if the arm hasn't run yet).
-    Replaces the retired hard-coded in-experiment runs/<arm>/<abc11|abc9>/submission paths — the perf
-    profile now consumes whatever the CURRENT sweep produced. merlin_assisted holds BOTH the python and
-    the CIRCT arm, distinguished by run_dir/TRACK_RTLCHECKS (same marker agg_agentic_results reads)."""
-    base = _CB_RUNS / subdir
-    if not base.is_dir():
-        return None
-    best = None
-    for d in base.iterdir():
-        sub = d / "submission"
-        if not sub.is_dir():
-            continue
-        has = (d / "TRACK_RTLCHECKS").exists()
-        if rtlchecks is True and not has:
-            continue
-        if rtlchecks is False and has:
-            continue
-        mt = d.stat().st_mtime
-        if best is None or mt > best[0]:
-            best = (mt, sub)
-    return best[1] if best else None
+_FUNCTIONAL_RUNS = _runs_root(PB.TARGET, "capsule-bench")
+_CONTRACT = str(PB.REPO / "merlin/contract")
+_DESCRIPTOR = (PB.REPO / "merlin/experiments/capsule_bench/targets" / PB.TARGET
+               / "target_experiment.yaml")
 
 
-APPROACH_PKG = {
-    "baseline": PB.REPO / "out/artifacts/targets" / "gemmini" / "agent_spec_v0_mlir_oot",
-    "merlin_targetgen": PB.REPO / "out/artifacts/targets" / "gemmini" / "agent_spec_v1_mlir_oot",
-    "merlin_native": PB.REPO / "out/artifacts/targets" / "gemmini" / "merlin_native_v0",
-    # --- the 4 agentic capsule-bench backends, resolved LIVE from out/runs (latest per arm) ---
-    "agentic_raw_cpp":      _latest_submission("raw_baseline"),
-    "agentic_scaffold_cpp": _latest_submission("cpp_merlininfra"),
-    "agentic_python":       _latest_submission("merlin_assisted", rtlchecks=False),
-    "agentic_circt":        _latest_submission("merlin_assisted", rtlchecks=True),
-}
-CONTRACT = str(PB.REPO / "merlin/contract")
-
-# ---- golden approach (a): cycle-instrumented tiled_matmul_auto (hardware-loop WS) ----------------
-_GOLDEN_C = r"""
-#include <stdint.h>
-#include <stddef.h>
-#include <stdio.h>
-#include "include/gemmini_testutils.h"
-#define MI {M}
-#define MK {K}
-#define MJ {N}
-#define SEED_A {seed_a}
-#define SEED_B {seed_b}
-static elem_t A[MI][MK] row_align(1);
-static elem_t B[MK][MJ] row_align(1);
-{cdecl}
-{mix_fn}
-int main() {{
-{fill_a}
-{fill_b}
-  uint64_t c0 = read_cycles();
-  tiled_matmul_auto(MI, MJ, MK, (elem_t*)A, (elem_t*)B, NULL, (void*)C,
-      MK, MJ, MJ, MJ,
-      MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY,
-      {act}, {scale}, 0, false, false, false, {full_C}, false, 0, WS);
-  gemmini_fence();
-  uint64_t c1 = read_cycles();
-  printf("OUT Y0 %d %d", MI, MJ);
-  for (int i=0;i<MI;i++) for (int j=0;j<MJ;j++) printf(" %d", (int){celem});
-  printf("\n");
-  printf("METRIC cycles %llu\n", (unsigned long long)(c1-c0));
-  printf("DONE\n");
-  exit(0);
-}}
-"""
+def _selected_corpus(selection: str, kernels_root: Path = PB.KERNELS) -> list[dict]:
+    doc = yaml.safe_load((kernels_root / "kernel_corpus.yaml").read_text(encoding="utf-8"))
+    if not isinstance(doc, dict):
+        raise PC.CampaignGateError("performance kernel corpus is not a mapping")
+    corpus = [row for section in ("golden_kernels", "model_kernels", "attention_kernels",
+                                  "conv_kernels", "movement_kernels")
+              for row in (doc.get(section) or [])]
+    if selection != "all":
+        wanted = {value.strip() for value in selection.split(",") if value.strip()}
+        known = {str(row.get("id")) for row in corpus}
+        missing = sorted(wanted - known)
+        if missing:
+            raise PC.CampaignGateError(f"unknown performance kernel id(s): {missing}")
+        corpus = [row for row in corpus if str(row.get("id")) in wanted]
+    if not corpus:
+        raise PC.CampaignGateError("performance selection contains zero kernels")
+    names = [str(row.get("id") or "") for row in corpus]
+    if any(not name for name in names) or len(names) != len(set(names)):
+        raise PC.CampaignGateError("performance corpus has missing or duplicate kernel ids")
+    return corpus
 
 
-# Movement golden: mvin each DIM tile to scratchpad then mvout (identity round-trip), matching the
-# capsule `movement` op (Y0 == X). Seeds match the capsule's source leaf name.
-_GOLDEN_MOVE_C = r"""
-#include <stdint.h>
-#include <stddef.h>
-#include <stdio.h>
-#include "include/gemmini_testutils.h"
-#define MI {M}
-#define MJ {N}
-#define SEED_X {seed_x}
-static elem_t In[MI][MJ] row_align(1);
-static elem_t Out[MI][MJ] row_align(1);
-{mix_fn}
-int main() {{
-{fill_x}
-  gemmini_flush(0);
-  gemmini_config_ld(MJ * sizeof(elem_t));
-  gemmini_config_st(MJ * sizeof(elem_t));
-  uint64_t c0 = read_cycles();
-  for (int i=0;i<MI;i+=DIM) for (int j=0;j<MJ;j+=DIM) {{
-    gemmini_mvin(&In[i][j], i*0 + (i/DIM)*0);  /* spad row reused per tile */
-    gemmini_mvout(&Out[i][j], 0);
-  }}
-  gemmini_fence();
-  uint64_t c1 = read_cycles();
-  printf("OUT Y0 %d %d", MI, MJ);
-  for (long k=0;k<(long)MI*MJ;k++) printf(" %d", (int)((elem_t*)Out)[k]);
-  printf("\n");
-  printf("METRIC cycles %llu\n", (unsigned long long)(c1-c0));
-  printf("DONE\n");
-  exit(0);
-}}
-"""
+def _sims_for(kernel: dict, requested: str) -> tuple[str, ...]:
+    if requested == "auto":
+        return ("spike", "verilator") if kernel.get("sim_hint") == "L2+L3" else ("spike",)
+    sims = tuple(value.strip() for value in requested.split(",") if value.strip())
+    if not sims or len(sims) != len(set(sims)) or any(s not in ("spike", "verilator") for s in sims):
+        raise PC.CampaignGateError("--sims must be auto, spike, or a unique spike,verilator list")
+    return sims
 
 
-def _golden_src(M, K, N, epilogue, acc_scale, lhs_name, weight_name) -> str:
-    """tiled_matmul_auto golden, seeds matching the capsule's actual lhs/weight leaf names (so
-    attention QK/PV [Q,Kt / P,V] fill correctly, not just X/W)."""
-    i8out = "acc_scale" in epilogue
-    act = "RELU" if "relu" in epilogue else "NO_ACTIVATION"
-    scale = f"{acc_scale}f" if (acc_scale and i8out) else "ACC_SCALE_IDENTITY"
-    cdecl = "static elem_t C[MI][MJ] row_align(1);" if i8out else "static acc_t C[MI][MJ];"
-    full_C = "false" if i8out else "true"
-    return _GOLDEN_C.format(M=M, K=K, N=N, seed_a=BMC.det_seed(lhs_name), seed_b=BMC.det_seed(weight_name),
-                            mix_fn=STIM.C_MIX_FN,
-                            fill_a=STIM.c_fill_loop_2d("A", "MI", "MK", "SEED_A"),
-                            fill_b=STIM.c_fill_loop_2d("B", "MK", "MJ", "SEED_B"),
-                            act=act, scale=scale, full_C=full_C, cdecl=cdecl, celem="C[i][j]")
-
-
-def run_golden(k: dict, kdir: Path, sims: list[str], workdir: Path, timeout: int) -> dict:
-    """Capsule-driven golden (bareMetalC C lib): dispatch by op. matmul/attention -> tiled_matmul_auto;
-    movement -> mvin/mvout identity; conv2d -> deferred (tiled_conv_auto wiring; spike skips conv)."""
-    cap = yaml.safe_load((kdir / "capsule.yaml").read_text())
-    op = cap["operation"]["op"]
-    attrs = cap["operation"].get("attributes", {})
-    gold = CG.golden(cap).get("Y0")
-    res = {"approach": "golden", "ok_build": False, "per_sim": {}}
-    if op in ("matmul", "linear", "attention_qk", "attention_pv"):
-        ins = {i["name"]: i["shape"] for i in cap["inputs"]}
-        lhs, w = attrs.get("lhs"), attrs.get("weight")
-        M, K = ins[lhs]
-        N = ins[w][1]
-        src = _golden_src(M, K, N, attrs.get("epilogue", []), attrs.get("acc_scale"), lhs, w)
-    elif op == "movement":
-        src_name = attrs.get("src", "X")
-        M, N = next(i["shape"] for i in cap["inputs"] if i["name"] == src_name)
-        src = _GOLDEN_MOVE_C.format(M=M, N=N, seed_x=BMC.det_seed(src_name), mix_fn=STIM.C_MIX_FN,
-                                    fill_x=STIM.c_fill_loop_2d("In", "MI", "MJ", "SEED_X"))
-    else:  # conv2d (+ any other): golden C-lib wiring pending; honest skip (MLIR arms still run it)
-        res["error"] = f"golden({op}) C-lib template not wired (deferred; baseline/merlin/native run it)"
-        return res
-    try:
-        elf = BMC.build(src, f"golden_{k['id']}", workdir)
-        res["ok_build"] = True
-    except Exception as e:
-        res["error"] = str(e)[-300:]
-        return res
-    for sim in sims:
-        t0 = time.time()
-        try:
-            r = BMC.run(elf, sim, timeout=timeout)
-            got = r["outputs"].get("Y0")
-            res["per_sim"][sim] = {"cycles": r["cycles"], "wall_s": round(time.time() - t0, 1),
-                                   "correct": got == gold,
-                                   "util_pct": PB.utilization_pct(k["macs"], r["cycles"])}
-        except Exception as e:
-            res["per_sim"][sim] = {"error": str(e)[-200:], "wall_s": round(time.time() - t0, 1)}
-    return res
-
-
-def run_mlir(approach: str, k: dict, kdir: Path, sims: list[str], runs_root: Path,
-             timeout: int) -> dict:
-    """Run a generated MLIR backend package through capsule_runner on this kernel's capsule."""
-    pkg = APPROACH_PKG[approach]
-    if pkg is None:
-        # an agentic backend whose capsule-bench arm hasn't produced a submission yet -> honest skip,
-        # never a crash (the perf profile just omits it until the sweep has run).
-        return {"approach": approach, "ok_build": False, "per_sim": {},
-                "skipped": "no submission yet (run the capsule-bench arm first)"}
-    res = {"approach": approach, "ok_build": True, "per_sim": {}}
-    cap = CR.load_capsule(kdir, contract=CONTRACT)
-    # required tiers per feasibility: always L0/L1/trace; L2 spike always; L3 verilator only if feasible
-    tiers = ["L0", "L1", "L2"] + (["L3"] if "verilator" in sims else [])
-    cap = dict(cap); cap["required_oracle_tiers"] = tiers
-    # run_capsule iterates every tier that HAS an adapter (required_oracle_tiers only marks the
-    # integrity gate), so to skip verilator we must drop the L3 adapter — else it runs L3 regardless.
+def run_arm4(package: Path, kernel: dict, kernel_dir: Path, sims: tuple[str, ...],
+             capsule_runs: Path, timeout: int, target: str) -> dict:
+    """Run one kernel through the frozen Arm-4 package; entrypoints are boxed by the caller."""
+    result = {"approach": "arm4", "ok_build": True, "per_sim": {}}
+    capsule = CR.load_capsule(kernel_dir, contract=_CONTRACT)
+    capsule = dict(capsule)
+    capsule["required_oracle_tiers"] = ["L0", "L1", "L2"] + (
+        ["L3"] if "verilator" in sims else [])
     adapters = CR.default_adapters()
     if "verilator" not in sims:
-        adapters = {k: v for k, v in adapters.items() if k != "L3"}
-    t0 = time.time()
+        adapters = {tier: adapter for tier, adapter in adapters.items() if tier != "L3"}
     try:
-        r = CR.run_capsule(cap, str(pkg), runs_root=str(runs_root), run_id=f"{approach}_{k['id']}",
-                           contract=CONTRACT, oracle_adapters=adapters, timeout=timeout)
-    except Exception as e:
-        res["error"] = str(e)[-300:]
-        res["wall_s"] = round(time.time() - t0, 1)
-        return res
-    res["status"] = r.get("status")
-    res["numeric"] = (r.get("numeric") or {}).get("status") if isinstance(r.get("numeric"), dict) else r.get("numeric")
-    res["wall_s_total"] = round(time.time() - t0, 1)
-    rtiers = r.get("tiers", {})
+        grade = CR.run_capsule(
+            capsule,
+            str(package),
+            runs_root=str(capsule_runs),
+            run_id=f"arm4_{kernel['id']}",
+            contract=_CONTRACT,
+            oracle_adapters=adapters,
+            timeout=timeout,
+            target=target,
+            workers=1,
+        )
+    except Exception as exc:  # one failed cell is recorded; the global completion gate still refuses
+        result.update({"ok_build": False, "status": "error",
+                       "error": f"{type(exc).__name__}: {str(exc)[:500]}",
+                       "traceback": traceback.format_exc()[-1600:]})
+        return result
+    result["status"] = grade.get("status")
+    numeric = grade.get("numeric")
+    result["numeric"] = numeric.get("status") if isinstance(numeric, dict) else numeric
+    tiers = grade.get("tiers") or {}
     for sim, tier in (("spike", "L2"), ("verilator", "L3")):
         if sim not in sims:
             continue
-        tr = rtiers.get(tier) or {}
-        st = tr.get("status") if isinstance(tr, dict) else tr
-        cyc = tr.get("cycles") if isinstance(tr, dict) else None
-        res["per_sim"][sim] = {"cycles": cyc, "tier_status": st,
-                               "correct": st == "pass",
-                               "util_pct": PB.utilization_pct(k["macs"], cyc)}
-    if r.get("failure"):
-        res["failure"] = {kk: r["failure"].get(kk) for kk in ("plane", "category", "detail")}
-    return res
+        tier_result = tiers.get(tier) or {}
+        status = tier_result.get("status") if isinstance(tier_result, dict) else tier_result
+        cycles = tier_result.get("cycles") if isinstance(tier_result, dict) else None
+        result["per_sim"][sim] = {
+            "cycles": cycles,
+            "tier_status": status,
+            "correct": status == "pass",
+            "util_pct": PB.utilization_pct(kernel["macs"], cycles),
+        }
+    if grade.get("failure"):
+        result["failure"] = {key: grade["failure"].get(key)
+                             for key in ("plane", "category", "detail")}
+    return result
+
+
+def _write_json(path: Path, doc: object) -> None:
+    path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--kernels", default="all")
-    ap.add_argument("--approaches", default="golden,baseline,merlin_targetgen,merlin_native")
-    ap.add_argument("--sims", default="auto", help="auto (per kernel sim_hint) | spike | spike,verilator")
-    ap.add_argument("--timeout", type=int, default=900)
-    ap.add_argument("--run-id", default="perf_0001")
-    a = ap.parse_args(argv)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--functional-run-id", required=True,
+                        help="exact completed Arm-4 functional run directory name")
+    parser.add_argument("--functional-submission-sha256", required=True,
+                        help="exact frozen functional submission SHA-256")
+    parser.add_argument("--kernels", default="all")
+    parser.add_argument("--approach", choices=("arm4",), default="arm4",
+                        help="only the Arm-4 compiler lane is admitted in this campaign")
+    parser.add_argument("--sims", default="auto",
+                        help="auto (per-kernel hint), spike, verilator, or spike,verilator")
+    parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--run-id", default="perf_0001")
+    args = parser.parse_args(argv)
+    if Path(args.run_id).name != args.run_id or args.run_id in (".", ".."):
+        raise PC.CampaignGateError("performance run id must be a simple directory name")
+    if args.timeout <= 0:
+        raise PC.CampaignGateError("performance cell timeout must be positive")
 
-    corpus_doc = yaml.safe_load((PB.KERNELS / "kernel_corpus.yaml").read_text())
-    corpus = [k for sec in ("golden_kernels", "model_kernels", "attention_kernels",
-                            "conv_kernels", "movement_kernels")
-              for k in (corpus_doc.get(sec) or [])]
-    if a.kernels != "all":
-        want = set(a.kernels.split(","))
-        corpus = [k for k in corpus if k["id"] in want]
-    approaches = [s.strip() for s in a.approaches.split(",") if s.strip()]
+    functional = PC.inspect_functional_run(
+        _FUNCTIONAL_RUNS, args.functional_run_id, args.functional_submission_sha256)
+    _selected_corpus(args.kernels)  # validate the requested IDs before allocating the fresh run dir
+    out_dir = PB.RUNS / args.run_id
+    if out_dir.exists() or out_dir.is_symlink():
+        raise PC.CampaignGateError(
+            f"performance run directory already exists; choose a fresh --run-id: {out_dir}")
 
-    # Runs live under the canonical runs/ root (PB.RUNS is re-rooted in _pbcommon.py); the
-    # whole perf-bench pipeline (firesim/iree arms, assemble, report) shares PB.RUNS / run_id.
-    out_dir = PB.RUNS / a.run_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    work = out_dir / "_work"
-    work.mkdir(exist_ok=True)
-    results = []
-    for k in corpus:
-        if a.sims == "auto":
-            sims = ["spike", "verilator"] if k.get("sim_hint") == "L2+L3" else ["spike"]
-        else:
-            sims = [s.strip() for s in a.sims.split(",")]
-        disp = k.get("shape") or (f"{k.get('M')}x{k.get('K')}x{k.get('N')}"
-                                   if k.get("M") is not None else "?")
-        print(f"\n=== kernel {k['id']}  ({disp} {k.get('output_dtype','')}, "
-              f"sims={sims}, macs={k['macs']:,}) ===", flush=True)
-        kdir = PB.KERNELS / k["id"]
-        cell = {"kernel": k["id"], "shape": disp, "macs": k["macs"],
-                "output_dtype": k.get("output_dtype", ""), "source": k["source"],
-                "sim_hint": k.get("sim_hint"), "approaches": {}}
-        for ap_name in approaches:
-            t0 = time.time()
-            # FAULT-TOLERANT: a crash in one approach/kernel records an error cell and continues
-            # (the user's "if something crashes the run shouldn't stop"). Never aborts the batch.
-            try:
-                if ap_name == "golden":
-                    r = run_golden(k, kdir, sims, work / k["id"], a.timeout)
-                else:
-                    r = run_mlir(ap_name, k, kdir, sims, out_dir / "_capsule_runs", a.timeout)
-            except Exception as e:
-                import traceback
-                r = {"approach": ap_name, "ok_build": False, "status": "error",
-                     "error": f"{type(e).__name__}: {str(e)[:300]}",
-                     "traceback": traceback.format_exc()[-1200:], "per_sim": {}}
-                print(f"  [{ap_name:16s}] CRASHED (recorded, continuing): {type(e).__name__}: {str(e)[:160]}", flush=True)
-            cell["approaches"][ap_name] = r
-            summ = {s: (v.get("cycles"), v.get("util_pct"), v.get("correct"))
-                    for s, v in r.get("per_sim", {}).items()}
-            print(f"  [{ap_name:16s}] {summ}  ({round(time.time()-t0,0)}s)", flush=True)
-        results.append(cell)
-        (out_dir / f"{k['id']}.json").write_text(json.dumps(cell, indent=2))
-    (out_dir / "perf_results.json").write_text(json.dumps(results, indent=2))
-    print(f"\nwrote {out_dir}/perf_results.json  ({len(results)} kernels x {len(approaches)} approaches)")
+    snapshot = PC.materialize_perf_workspace(functional, out_dir / "_frozen_functional")
+    workload_root = out_dir / "_frozen_workload" / "kernels"
+    workload_digest = PC.materialize_readonly_tree(PB.KERNELS, workload_root)
+    corpus = _selected_corpus(args.kernels, workload_root)
+    expected = {str(kernel["id"]): _sims_for(kernel, args.sims) for kernel in corpus}
+    fork = PC.functional_fork(functional)
+    before = PC.check_fork(fork, snapshot)
+    if before.ok is not True:
+        raise PC.CampaignGateError(f"functional fork does not hold before performance: {before.reason}")
+    fork_record = fork.to_dict()
+    fork_record.update({"functional_run_id": functional.run_id,
+                        "functional_submission_sha256": functional.digest,
+                        "copied_submission": str(snapshot)})
+    _write_json(out_dir / "functional_fork.json", fork_record)
+
+    target_experiment = load_target_experiment(_DESCRIPTOR)
+    probe_workspace = out_dir / "_probe_workspace"
+    probe_workspace.mkdir()
+    probe_policy = PC.package_sandbox_policy(target_experiment, probe_workspace, snapshot)
+    campaign = {
+        "status": "NO_GO",
+        "approach": args.approach,
+        "functional_run_id": functional.run_id,
+        "functional_submission_sha256": functional.digest,
+        "functional_public_capsules": functional.public_capsules,
+        "functional_hidden_capsules": functional.hidden_capsules,
+        "snapshot": str(snapshot),
+        "snapshot_sha256": functional.digest,
+        "workload_snapshot": str(workload_root),
+        "workload_sha256": workload_digest,
+        "fork_before": before.to_dict(),
+        "fork_after": None,
+        "sandbox": {
+            "engine": "bwrap",
+            "network": "unshared",
+            "package_read_only": True,
+            "answer_surface_coverage_gap": list(probe_policy.coverage_gap),
+            "required_tool_probes": [probe.label for probe in probe_policy.required_tools],
+            "tool_probe_results": [],
+        },
+        "completion": PC.completion_report([], expected),
+        "refusal": "campaign has not completed",
+    }
+    _write_json(out_dir / "campaign_manifest.json", campaign)
+
+    results: list[dict] = []
+    refusal: str | None = None
+    try:
+        campaign["sandbox"]["tool_probe_results"] = PC.run_tool_probes(probe_policy)
+        _write_json(out_dir / "campaign_manifest.json", campaign)
+        cells_root = out_dir / "_cell_workspaces"
+        cells_root.mkdir()
+        for kernel in corpus:
+            name = str(kernel["id"])
+            sims = expected[name]
+            shape = kernel.get("shape") or (
+                f"{kernel.get('M')}x{kernel.get('K')}x{kernel.get('N')}"
+                if kernel.get("M") is not None else "?")
+            print(f"\n=== Arm-4 kernel {name} ({shape}, sims={list(sims)}) ===", flush=True)
+            # Each kernel gets a fresh writable mount. The package cannot inspect oracle/result files
+            # from an earlier cell; capsule_runner copies this cell's interface MLIR into generated/
+            # before the first boxed entrypoint and keeps the source corpus outside the mount.
+            cell_workspace = cells_root / name
+            cell_workspace.mkdir()
+            capsule_runs = cell_workspace / "capsule_runs"
+            capsule_runs.mkdir()
+            cell_policy = PC.package_sandbox_policy(
+                target_experiment, cell_workspace, snapshot)
+            with PC.boxed_entrypoints(cell_policy):
+                arm = run_arm4(snapshot, kernel, workload_root / name, sims,
+                               capsule_runs, args.timeout, target_experiment.target)
+            cell = {"kernel": name, "shape": shape, "macs": kernel["macs"],
+                    "output_dtype": kernel.get("output_dtype", ""),
+                    "source": kernel.get("source"), "sim_hint": kernel.get("sim_hint"),
+                    "approaches": {"arm4": arm}}
+            results.append(cell)
+            _write_json(out_dir / f"{name}.json", cell)
+            campaign["completion"] = PC.completion_report(results, expected)
+            _write_json(out_dir / "campaign_manifest.json", campaign)
+            summary = {sim: (row.get("cycles"), row.get("correct"))
+                       for sim, row in arm.get("per_sim", {}).items()}
+            print(f"  [arm4] {summary}", flush=True)
+    except Exception as exc:
+        refusal = f"{type(exc).__name__}: {exc}"
+    finally:
+        _write_json(out_dir / "perf_results.json", results)
+        after = PC.check_fork(fork, snapshot)
+        campaign["fork_after"] = after.to_dict()
+        if after.ok is not True:
+            refusal = f"functional fork changed during performance: {after.reason}"
+        try:
+            campaign["completion"] = PC.completion_report(results, expected)
+            if refusal is None and not campaign["completion"]["complete"]:
+                counts = campaign["completion"]
+                refusal = (f"Arm-4 performance reported {counts['reported']} of "
+                           f"{counts['expected']} expected cells; {counts['failed']} reported "
+                           "cell(s) failed correctness or positive-cycle measurement")
+        except PC.CampaignGateError as exc:
+            if refusal is None:
+                refusal = str(exc)
+        campaign["refusal"] = refusal
+        campaign["status"] = "GO" if refusal is None else "NO_GO"
+        _write_json(out_dir / "campaign_manifest.json", campaign)
+
+    if refusal is not None:
+        print(f"\nNO-GO: {refusal}\nmanifest: {out_dir / 'campaign_manifest.json'}", flush=True)
+        return 2
+    print(f"\nGO: completed {campaign['completion']['expected']} Arm-4 cells; "
+          f"manifest: {out_dir / 'campaign_manifest.json'}", flush=True)
     return 0
 
 
