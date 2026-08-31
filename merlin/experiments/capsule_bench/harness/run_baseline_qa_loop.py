@@ -95,6 +95,11 @@ def _l3_barrier_decision(l3_all_pass: bool, rnd: int, max_rounds: int) -> str:
     return "iterate"
 
 
+def _formal_completion(numeric_all_pass: bool, workflow_conformant: bool) -> bool:
+    """The Arm result is complete only when both independent gates are evidenced."""
+    return bool(numeric_all_pass and workflow_conformant)
+
+
 def _spend_over_cap(this_round_cost) -> tuple[bool, float, float]:
     """Enforce the experiment's DOLLAR ceiling in code. Append this round's cost to a SHARED spend ledger
     (all arm processes of the batch write to ``MERLIN_SPEND_LEDGER``) and return ``(over_cap, total, cap)``
@@ -1853,26 +1858,35 @@ def main(argv: list[str] | None = None) -> int:
     rate_limit_wait_s = 0.0         # cumulative time slept waiting for five-hour window resets
     started_at = datetime.now(timezone.utc).isoformat()
     verdict = {"all_pass": False}
+    workflow_conformant = False
     rnd = 0
     if _resuming and state_p.exists():
         st = yaml.safe_load(state_p.read_text()) or {}
         rounds_summary = st.get("rounds", []) or []
         rnd = int(st.get("next_round", 0))
         verdict = {"all_pass": bool(st.get("converged", False))}
+        workflow_conformant = bool(st.get("workflow_conformant", False))
         cum = st.get("cumulative", {}) or {}
         active_wall_s = float(cum.get("active_wall_s", 0.0))
         rate_limit_wait_s = float(cum.get("rate_limit_wait_s", 0.0))
         rl_waits_used = int(cum.get("rl_waits_used", 0))
         started_at = cum.get("started_at", started_at)
         print(f"[resume] restored from checkpoint: next_round={rnd} converged={verdict['all_pass']} "
+              f"workflow_conformant={workflow_conformant} "
               f"active={active_wall_s:.0f}s rate_limit_wait={rate_limit_wait_s:.0f}s "
               f"waits_used={rl_waits_used}")
+
+    def _formal_complete() -> bool:
+        """Numeric/RTL success is necessary but the arm's mandatory workflow must also be evidenced."""
+        return _formal_completion(bool(verdict.get("all_pass")), workflow_conformant)
 
     def _checkpoint(next_round: int) -> None:
         state_p.write_text(yaml.safe_dump({
             "run_id": a.run_id, "arm": arm, "model": a.model, "effort": a.effort,
             "rounds": rounds_summary, "next_round": next_round,
-            "converged": verdict.get("all_pass", False),
+            "converged": _formal_complete(),
+            "numeric_all_pass": bool(verdict.get("all_pass", False)),
+            "workflow_conformant": workflow_conformant,
             "cumulative": {"active_wall_s": round(active_wall_s, 3),
                            "rate_limit_wait_s": round(rate_limit_wait_s, 3),
                            "rl_waits_used": rl_waits_used, "started_at": started_at},
@@ -1921,15 +1935,26 @@ def main(argv: list[str] | None = None) -> int:
         # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
         # the run's verdict is a grade of the submission as the session left it.
         verdict = qa_grade(ws, run_dir, state["tick"] + 1, a.no_oracle, a.qa_timeout)
+        try:
+            import conformance as _CONF
+            conf = _CONF.compute(tpath, ws / "submission", arm, _endpoint_kind)
+        except Exception as _e:  # noqa: BLE001
+            conf = {"conformant": False, "error": f"{type(_e).__name__}: {_e}"}
+        workflow_conformant = conf.get("conformant") is True
         rounds_summary.append({"round": 0, "mode": "continuous", "agent_rc": rc,
                                "grades": state["tick"] + 1,
                                "all_pass": verdict.get("all_pass", False),
+                               "workflow_conformant": workflow_conformant,
+                               "formal_complete": _formal_complete(),
+                               "conformance": conf,
                                "n_passed": verdict.get("n_passed"),
                                "n_capsules": verdict.get("n_capsules")})
         _checkpoint(state["tick"] + 1)
-        print(f"\ncontinuous run complete: {run_dir}  converged={verdict.get('all_pass', False)}  "
+        print(f"\ncontinuous run complete: {run_dir}  numeric_all_pass="
+              f"{verdict.get('all_pass', False)} workflow_conformant={workflow_conformant} "
+              f"formal_complete={_formal_complete()} "
               f"grades={state['tick'] + 1}")
-        return 0
+        return 0 if _formal_complete() else 1
 
     cost_capped = False             # set if the batch dollar ceiling (MERLIN_MAX_SPEND_USD) is reached
 
@@ -1947,7 +1972,7 @@ def main(argv: list[str] | None = None) -> int:
         A safety cap remains via --max-rounds only if the caller explicitly lowers it; the default 12 is
         ignored in continuous mode so it cannot silently reimpose the very bound this removes.
         """
-        if verdict.get("all_pass"):
+        if _formal_complete():
             return False
         if a.schedule == "rounds":
             return rnd < a.max_rounds
@@ -2041,14 +2066,18 @@ def main(argv: list[str] | None = None) -> int:
         try:
             import conformance as _CONF
             conf = _CONF.compute(tpath, ws / "submission", arm, _endpoint_kind)
+            workflow_conformant = conf.get("conformant") is True
             _bad = _CONF.failing_checks(conf)
             if _bad:
                 print(f"[round {rnd}] NOT CONFORMANT — failing: {', '.join(_bad)} "
-                      "(flag only; the capsule grade still reports)")
+                      "(numeric grade still reports; formal completion remains blocked)")
         except Exception as _e:  # noqa: BLE001
-            conf = {"conformant": None, "error": f"{type(_e).__name__}: {_e}"}
+            workflow_conformant = False
+            conf = {"conformant": False, "error": f"{type(_e).__name__}: {_e}"}
         rounds_summary.append({"round": rnd, "agent_rc": rc, "conformance": conf,
                                "all_pass": verdict.get("all_pass"),
+                               "workflow_conformant": workflow_conformant,
+                               "formal_complete": _formal_complete(),
                                "n_passed": verdict.get("n_passed"),
                                "n_capsules": verdict.get("n_capsules"),
                                "tool_calls": rsum.get("tool_calls"),
@@ -2109,7 +2138,12 @@ def main(argv: list[str] | None = None) -> int:
                   f"{verdict.get('n_passed')}/{verdict.get('n_capsules')} — DECLINED "
                   f"(--min-rounds {a.min_rounds}); marker cleared, continuing", flush=True)
             ready = False
-        if verdict.get("all_pass") or ready:
+        if ready and not workflow_conformant:
+            (ws / "submission" / READY_MARKER).unlink(missing_ok=True)
+            print(f"[round {rnd-1}] agent dropped {READY_MARKER}, but mandatory tooling is not "
+                  "successfully evidenced — marker cleared, continuing", flush=True)
+            ready = False
+        if _formal_complete() or ready:
             if ready:
                 print(f"[round {rnd-1}] agent dropped {READY_MARKER} — proceeding to verilator barrier")
             break
@@ -2187,7 +2221,8 @@ def main(argv: list[str] | None = None) -> int:
     _run_l3, _l3_reason = _cycle_accurate_checkpoint_enabled()
     if not _run_l3:
         print(f"[verilator] cycle-accurate RTL (L3) barrier SKIPPED — {_l3_reason}")
-    if _run_l3 and (verdict.get("all_pass") or (_EXPERIMENT == "realistic" and _ready_marker)):
+    if _run_l3 and workflow_conformant and (
+            verdict.get("all_pass") or (_EXPERIMENT == "realistic" and _ready_marker)):
         # ready = spike-converged OR (realistic) the agent declared done -> run the L3 verilator barrier.
         # In realistic mode this barrier IS the definition of done; the agent already self-checked on the
         # tool, so this confirms on the operator side. Up to VERILATOR_ATTEMPTS with a fix-round between.
@@ -2247,7 +2282,7 @@ def main(argv: list[str] | None = None) -> int:
     # VERIFIED result (the relaunch design means the converging round's agent never saw the passing
     # verdict, so its self-reported status lags by one round). Guarantees the frozen report matches.
     finalize = None
-    if verdict.get("all_pass"):
+    if _formal_complete():
         print("[finalize] converged — running bounded report-finalize turn")
         _fin_start = time.time()
         finalize = finalize_report(ws, run_dir, a.model, a.effort, a.sandbox, bundle, arm, verdict,
@@ -2285,7 +2320,9 @@ def main(argv: list[str] | None = None) -> int:
                 "rate_limit_waits_used": rl_waits_used})
     _cy.write_text(yaml.safe_dump(_cd, sort_keys=False))
     (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(
-        {"rounds": rounds_summary, "converged": verdict.get("all_pass", False),
+        {"rounds": rounds_summary, "converged": _formal_complete(),
+         "numeric_all_pass": bool(verdict.get("all_pass", False)),
+         "workflow_conformant": workflow_conformant,
          "cost_capped": cost_capped,   # stopped by the batch dollar ceiling, not convergence/max_rounds
          "n_rounds": len(rounds_summary), "wall_seconds": wall, "finalize": finalize,
          "timing": timing}, sort_keys=False))
@@ -2330,8 +2367,10 @@ def main(argv: list[str] | None = None) -> int:
         _emit_run_timing(run_dir, rounds_summary)
     except Exception as e:
         print(f"[timing] decomposition skipped: {e}")
-    print(f"\nrun complete: {run_dir}  converged={verdict.get('all_pass')}  rounds={len(rounds_summary)}")
-    return 0 if verdict.get("all_pass") else 1
+    print(f"\nrun complete: {run_dir}  numeric_all_pass={verdict.get('all_pass')} "
+          f"workflow_conformant={workflow_conformant} formal_complete={_formal_complete()} "
+          f"rounds={len(rounds_summary)}")
+    return 0 if _formal_complete() else 1
 
 
 def _emit_run_timing(run_dir: Path, rounds_summary: list) -> None:

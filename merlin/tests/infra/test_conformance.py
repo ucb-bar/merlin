@@ -1,4 +1,4 @@
-"""Dev-conformance verdict (capsule-bench harness): the FLAG that catches a run scoring 0 by NOT using
+"""Dev-conformance verdict (capsule-bench harness): the completion gate that catches a run scoring 0 by NOT using
 the mandated tooling (invented encoding / regex parser / no lever enumeration / partial self-check),
 which the numeric grade alone cannot distinguish from a real capability wall. Hermetic — synthetic
 transcript + submission, no live run, no target.
@@ -15,11 +15,19 @@ sys.path.insert(0, str(repo_root() / "merlin" / "experiments" / "capsule_bench" 
 import conformance as C  # noqa: E402
 
 
-def _transcript(path: Path, calls: list[tuple[str, dict]]) -> Path:
-    """Write a claude-compatible transcript with one assistant event carrying the given tool_use calls."""
+def _transcript(path: Path, calls: list[tuple[str, dict]], *, failed: set[int] | None = None,
+                missing: set[int] | None = None) -> Path:
+    """Write a Codex-compatible transcript with correlated tool requests and results."""
+    failed, missing = failed or set(), missing or set()
     ev = {"type": "assistant", "message": {"content": [
         {"type": "tool_use", "id": f"t{i}", "name": name, "input": inp} for i, (name, inp) in enumerate(calls)]}}
-    path.write_text(json.dumps({"type": "system", "subtype": "init"}) + "\n" + json.dumps(ev) + "\n")
+    results = {"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": f"t{i}", "content": "ok" if i not in failed else "failed",
+         "is_error": i in failed}
+        for i in range(len(calls)) if i not in missing]}}
+    path.write_text("\n".join((
+        json.dumps({"type": "system", "subtype": "init", "driver": "codex"}),
+        json.dumps(ev), json.dumps(results), "")))
     return path
 
 
@@ -71,6 +79,25 @@ def test_prose_mention_is_not_a_tool_use(tmp_path):
     v = C.compute(tp, sub, "merlin_rtlchecks", "external_backend")
     assert v["checks"]["asm_used"] is False                                        # mentioned, never run
     assert v["checks"]["cca_used"] is False
+
+
+def test_failed_or_unanswered_required_commands_do_not_satisfy_conformance(tmp_path):
+    sub = _submission(tmp_path, {"backend.py": "import ast\n"})
+    calls = [
+        ("bash", {"command": "python cca_contract.py check-bijection gemmini"}),
+        ("bash", {"command": "python isa_tools.py asm ops.txt"}),
+        ("bash", {"command": "python isa_tools.py lint submission/kernel.mlir"}),
+        ("bash", {"command": "python3 agent_selfcheck.py --capsules all"}),
+    ]
+    tp = _transcript(tmp_path / "t.jsonl", calls, failed={1}, missing={0})
+    v = C.compute(tp, sub, "merlin_rtlchecks", "external_backend")
+    assert v["conformant"] is False
+    assert v["checks"]["cca_used"] is False
+    assert v["checks"]["asm_used"] is False
+    assert v["checks"]["isa_tools_used"] is True  # the separate successful lint call still counts
+    assert v["tool_evidence"] == {
+        "n_calls": 4, "n_successful": 2, "n_failed": 1, "n_missing_results": 1,
+    }
 
 
 def test_asm_not_applicable_off_external_backend(tmp_path):

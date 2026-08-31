@@ -71,6 +71,14 @@ def test_a_pass_is_always_terminal_whatever_the_cap():
         assert loop._l3_barrier_decision(True, rnd=0, max_rounds=cap) == "done"
 
 
+def test_formal_completion_requires_numeric_and_successful_mandatory_tooling():
+    loop = _mod("run_baseline_qa_loop")
+    assert loop._formal_completion(True, True) is True
+    assert loop._formal_completion(True, False) is False
+    assert loop._formal_completion(False, True) is False
+    assert loop._formal_completion(False, False) is False
+
+
 def test_continuous_never_reports_budget_at_the_l3_barrier():
     """With the effectively-unbounded cap continuous passes in, the decision can only be done/iterate —
     an L3 that has not passed keeps being worked rather than stopping on arithmetic."""
