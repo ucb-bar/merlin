@@ -123,6 +123,19 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor]) -> Tensor:
             t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
         elif stage == "relu":
             t = t.relu()
+        else:
+            # FAIL CLOSED ON AN EPILOGUE STAGE THIS ENGINE CANNOT APPLY. There was no terminal branch
+            # here, so an unrecognised stage was silently skipped and the capsule shipped a golden that
+            # did not match the semantics it declared -- a wrong answer, produced quietly, and one the
+            # numeric gate then enforced. Concretely: a capsule declaring a pooling epilogue would ship
+            # an UNPOOLED golden while its cover credited it for the pooled family. Refusing names the
+            # stage and the stages that exist, so the fix is to implement it here rather than to
+            # discover months later that a cell was covered by arithmetic nobody performed.
+            raise ValueError(
+                f"epilogue stage {stage!r} is declared but the integer Tensor engine does not implement "
+                f"it (implemented: bias_add/bias, requant, acc_scale, relu). Implement it here -- and in "
+                f"the reference and simulator, which grade against this -- rather than shipping a golden "
+                f"that skips it")
     return _narrow_to_dtype(t, attrs.get("output_dtype", "i32"))
 
 

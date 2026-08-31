@@ -421,6 +421,119 @@ capsules:
    source_reference: 'small_llama int8 composed across the systolic mesh and the host scalar/RVV lane — asserts both lanes carried work',
    label: public, gate: {after_op_pass_fraction: 0.8},
    lanes: {require: [on_mesh, scalar_rvv_lane]}}
+# CYCLE-ACCURATE WHOLE MODEL. The three capstones above are the corpus's strongest claim and the one
+# claim no hardware ever checked: at 497 KB of interface MLIR against 6.6 MB of weights, none of them
+# can be afforded at the cycle-accurate tier, so "the compiler handles a real network end to end" rests
+# on a functional oracle whose own descriptor says derived_from_rtl: false. This one is sized to run
+# THERE. What it must contain is derived (merlin.targetgen.micro_model), not chosen: one layer per
+# (family, dtype) cell this target's manifest admits, plus the families real captures contain that it
+# does NOT admit -- normalization and reduction, which therefore have nowhere but the host lane to go --
+# interleaved so the host work sits BETWEEN accelerator work. Its network is defined in the capsule's
+# own capsule.pytorch.py: unlike M1 it needs no external model checkout, so a clean clone can rebuild it.
+- {cat: model, name: M2_microvit_gemmini, kind: model, op: model, model: microvit,
+   loader: merlin/contract/capsules/model/M2_microvit_gemmini/capsule.pytorch.py,
+   operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'microvit int8 — tile-sized vision+recurrent control net (overlapping patch-merge, pooled-reduction attention, depthwise MixFFN, pixel-shuffle/max-pool fusion, LSTM cell), composed across the systolic mesh and the host lane',
+   label: public, gate: {after_op_pass_fraction: 0.8},
+   lanes: {require: [on_mesh, scalar_rvv_lane]}}
+
+# ---------------------------------------------------------------------------------------------------
+# COMPOSITION COVERAGE: the host-island seam, on its own.
+#
+# `A->H->A` -- an accelerator region, a host island, another accelerator region -- is the expensive seam
+# and the one a placement decision gets wrong. The composition axis reported it COVERED, but covered
+# INCIDENTALLY: the only capsules containing it are the four whole models, every one of which classifies
+# as `routing`, so the shape was exercised by accident rather than proven. When a 155-region routing
+# capsule fails, nothing says whether the seam or one of its other regions was the cause.
+#
+# What sits on each side is derived, not chosen: int8 contraction is the only (family, dtype) this
+# target's manifest admits on its mesh, and normalization is a family real captures contain 249 regions
+# of that the manifest declares NO capability for -- so the island is host work because the hardware
+# cannot do it, not because an author put it there. Small enough for the cycle-accurate tier: two
+# 16x32 by 32x32 GEMMs and one 16x32 LayerNorm.
+#
+# It is a `model` capsule because that is the only authoring route to the linalg grammar: the merlin_iface
+# command grammar carries no host computation at all (boundary.py), so a capsule in it can only ever be
+# `A` or `A->A`, and the op-level pytorch path takes no custom loader and refuses an int8 dtype. The gate
+# is 0.0 rather than the model default 0.8 -- this capsule is three tiles of arithmetic, so deferring it
+# behind the op suite buys nothing and would leave the seam unproven whenever the suite is short.
+- {cat: model, name: M3_host_island_seam_gemmini, kind: model, op: model, model: host_island_seam,
+   loader: merlin/contract/capsules/model/M3_host_island_seam_gemmini/capsule.pytorch.py,
+   operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'int8 GEMM -> host LayerNorm -> int8 GEMM: the A->H->A seam as the subject of a capsule rather than a by-product of a whole model',
+   label: public, gate: {after_op_pass_fraction: 0.0},
+   comment: 'M3: the A->H->A seam as the subject of a capsule. An int8 GEMM on the mesh, a LayerNorm
+     on the host lane (this target declares no normalization capability, so the island is host work
+     because the hardware cannot do it), and the value back to the mesh for a second int8 GEMM. The
+     four whole models all CONTAIN this shape and all classify as `routing`, so the seam was covered
+     only incidentally; one region more on either side of this one would retitle it `routing` too.'}
+
+# ---------------------------------------------------------------------------------------------------
+# MEMORY-MAPPING COVERAGE (merlin.targetgen.memory_regime).
+#
+# Every other capsule above fits the target's operand store TWICE over -- the largest of the 37 public
+# ones uses 2.34% of its 16384 rows -- while 12.1% of the contraction regions in the 20 real captures
+# land in `fits_single` and 42.5% land in `spills`. So the corpus exercises the easiest regime
+# exclusively and cannot detect a memory-mapping failure of any kind: a schedule that loads every weight
+# tile up front is not punished by any capsule, and the one time it mattered a graded backend addressed
+# all kt*nt tiles as simultaneously resident, asked for 16384 rows against 16384, and the simulator
+# aborted three layers away in a range check -- a failure indistinguishable from an unreachable oracle.
+#
+# Both are deep-K contractions with a single output tile, which is the SMALLEST program that can reach
+# each regime: residency is (M*K + K*N) elements, so pressure has to come from K, and putting it there
+# keeps the graded output at one 16x16 tile. A wider-output shape of the same residency would multiply
+# the cycle-accurate tier's cost (which is dominated by how much data the harness materialises and
+# prints) without making the mapping problem any harder.
+#
+# The extents are NOT tile-relative here on purpose: the regime boundary is a property of the store's
+# row count, not of the array edge, and the two are independent facts about the target. They are stated
+# as absolute extents and the test `merlin/tests/targetgen/test_required_cell_capsules.py` re-derives
+# the regime from the target's own operand store, so a target whose store changes fails the test loudly
+# instead of silently authoring a capsule in the wrong regime.
+- name: GM0_deep_k_fits_single_i8
+  kind: layer
+  cat: layers
+  op: matmul
+  source_role: handauthored_compiler_test
+  source_reference: >-
+    derived memory-mapping coverage: a contraction whose operands occupy 12288 of the operand store's
+    16384 rows (75.0%) -- it fits ONCE and cannot be double-buffered, so serialising movement against
+    compute is correct here and failing to stage is not a defect
+  label: public
+  comment: 'GM0: deep-K int8 contraction sized to the fits_single regime (75.0% of the operand store).'
+  M: 16
+  K: 6144
+  N: 16
+  lhs: X
+  weight: W
+  out: Y0
+  # The axis this capsule probes is the EXTENT, not a new composition: it is the same fused-free
+  # contraction the corpus already has, at a size that changes where the operands can live.
+  generalization: {generalization_axis: shape}
+  modes:
+    k_accumulate: true
+- name: GM1_deep_k_spills_i8
+  kind: layer
+  cat: layers
+  op: matmul
+  source_role: handauthored_compiler_test
+  source_reference: >-
+    derived memory-mapping coverage: the SMALLEST tile-aligned contraction whose operands exceed the
+    operand store (16416 of 16384 rows, 100.2%) -- no allocation makes it fit, so the compiler must
+    choose a loop order and pay re-load traffic instead of holding everything resident
+  label: public
+  comment: 'GM1: deep-K int8 contraction sized past the operand store (100.2%) -- the spills regime.'
+  M: 16
+  K: 8208
+  N: 16
+  lhs: X
+  weight: W
+  out: Y0
+  # The axis this capsule probes is the EXTENT, not a new composition: it is the same fused-free
+  # contraction the corpus already has, at a size that changes where the operands can live.
+  generalization: {generalization_axis: shape}
+  modes:
+    k_accumulate: true
 
 # ---------------------------------------------------------------------------------------------------
 # TAIL-PATH COVERAGE, generated rather than typed.

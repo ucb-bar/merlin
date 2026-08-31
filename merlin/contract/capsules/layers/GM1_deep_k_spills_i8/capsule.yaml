@@ -1,0 +1,57 @@
+name: GM1_deep_k_spills_i8
+kind: layer
+source_role: handauthored_compiler_test
+source_reference: 'derived memory-mapping coverage: the SMALLEST tile-aligned contraction
+  whose operands exceed the operand store (16416 of 16384 rows, 100.2%) -- no allocation
+  makes it fit, so the compiler must choose a loop order and pay re-load traffic instead
+  of holding everything resident'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 8208
+  - 16
+  dtype: i8
+- name: X
+  role: input
+  shape:
+  - 16
+  - 8208
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: shape
+  must_accelerate: true
+  eligible: auto
