@@ -54,6 +54,75 @@ def test_the_ladder_is_nested():
         assert set(TR.ARM_TOOLS[lo]) <= set(TR.ARM_TOOLS[hi]), f"{hi} is not a superset of {lo}"
 
 
+def _granted(path: str, allow: set[str]) -> bool:
+    """Is ``path`` reachable in ``allow`` — literally, or through a directory grant that contains it?
+
+    Containment has to be directory-aware or the property is untestable where it matters most: arm-2
+    grants three FILES under ``targetgen/generate/`` and arm-3 grants that whole DIRECTORY, so a literal
+    subset test says arm-2 escapes the ladder when in fact it is contained.
+    """
+    return path in allow or any(g.endswith("/") and path.startswith(g) for g in allow)
+
+
+def _tool_paths(te, name):
+    """Every repo path one tool grants — literal plus the descriptor-derived one."""
+    t = TR.spec(name)
+    return [*t.bundle_paths, *(getattr(te, attr) for attr in t.derived_paths)]
+
+
+def test_every_rung_is_contained_in_the_rung_above_it(te):
+    """Path-level nesting across the WHOLE ladder, not just the three arms whose tool NAMES nest.
+
+    ``test_the_ladder_is_nested`` compares tool-name sets, and by that measure arm-2 is not a rung at all:
+    ``cpp_oot_generators`` is not in ``_ASSISTED``. But arm-2's three file grants sit inside the directory
+    arm-3 grants, so the ladder IS nested where it counts -- in what the sandbox can actually read. Nothing
+    asserted that, which left the real invariant resting on a coincidence of spelling: replace arm-3's
+    ``targetgen/generate/`` directory grant with individual files and arm-2 silently stops being a subset,
+    with no test to notice.
+    """
+    for lo, hi in (("raw_baseline", "cpp_merlininfra"),
+                   ("cpp_merlininfra", "merlin_assisted"),
+                   ("merlin_assisted", "merlin_rtlchecks")):
+        a_lo, _, _ = _sets(te, lo)
+        a_hi, _, _ = _sets(te, hi)
+        escaped = [p for p in a_lo if not _granted(p, a_hi)]
+        assert not escaped, f"{lo} grants what {hi} does not: {escaped}"
+
+
+def _readable(path: str, allow: set[str], deny: set[str]) -> bool:
+    """Can the sandbox actually read ``path`` under this manifest? Granted (directly or by a directory
+    grant) and not masked by a denial (likewise directory-aware, since deny wins)."""
+    return _granted(path, allow) and not _granted(path, deny)
+
+
+def test_a_rung_cannot_read_any_tool_the_rungs_above_it_add(te):
+    """The arm-to-arm contrast has to be symmetric: no rung may reach a tool that defines a higher rung.
+
+    Stated as REACHABILITY rather than as "is explicitly denied", because the ladder legitimately uses two
+    mechanisms and only the effect is the invariant. ``targetgen/rtl/`` is explicitly denied to arm-3
+    (belt and braces: it would otherwise be one broadened grant away from exposure), while the eqsat seam
+    modules sit at a path no arm-3 grant covers and are excluded by deny-by-default alone. Demanding an
+    explicit denial for both would fail on a manifest that is perfectly correct, and demanding neither
+    would miss the case this exists to catch -- a shared grant widening to re-expose a higher rung's tool
+    while the arms still claim to differ by one thing.
+
+    This covers the two grants most likely to drift and previously untested: ``rtl_facts``, whose path is
+    DERIVED from the descriptor rather than spelled in the registry, and ``eqsat_seam``, whose entire claim
+    to attribution is that the eqsat arm differs from arm-3 in exactly one way.
+    """
+    for lower, higher in (("merlin_assisted", "merlin_rtlchecks"),
+                          ("merlin_assisted", "merlin_eqsat"),
+                          ("cpp_merlininfra", "merlin_assisted")):
+        allow, deny, _ = _sets(te, lower)
+        added = set(TR.ARM_TOOLS[higher]) - set(TR.ARM_TOOLS[lower])
+        assert added, f"precondition: {higher} adds nothing to {lower}"
+        for tool in sorted(added):
+            for path in _tool_paths(te, tool):
+                assert not _readable(path, allow, deny), (
+                    f"{lower} can read {path!r} (from tool {tool!r}, which is supposed to be what "
+                    f"{higher} ADDS) -- the two arms no longer differ by that tool")
+
+
 def test_dropping_the_rtl_tools_from_arm4_reproduces_arm3(te):
     """The headline identity: arm-4 minus its own additions IS arm-3. If this drifts, the ablation and
     the A/B are measuring different contrasts."""
