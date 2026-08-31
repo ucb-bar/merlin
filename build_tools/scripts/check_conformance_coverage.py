@@ -20,6 +20,12 @@ Modes, mirroring the other gates in this directory:
   --ratchet PATH       pre-existing debt that MAY ONLY SHRINK; unlisted new gaps fail
   --fail-on-uncovered  exit non-zero when any non-ratcheted cell is uncovered (default: report only)
 
+Two axes are measured. The ``(semantic_family, dtype, tile_alignment)`` cells say WHAT the corpus
+computes; the COMPOSITION axis (:mod:`merlin.targetgen.boundary`) says how the work is assembled --
+``A``, ``A->A``, ``H->A->H``, ``A->H->A``, ``routing``, ``H``. They are reported side by side and never
+crossed: a cross product would demand cells no real model presents. Composition debt is ratcheted under a
+``composition:`` prefix so the two axes cannot collide in one flat ratchet file.
+
 Reporting-only by default because the derivation is new and the corpus predates it: turning a 35-cell gap
 into a hard failure on day one would only teach everyone to pass `--no-verify`.
 """
@@ -105,8 +111,19 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
                        "admitted_by": by_cell.get(c, {}).get("admitted_by", [])}
                       for c in gap["uncovered"]],
         "corpus_cells_not_required": gap["extra_cells"],
+        "composition": gap.get("composition") or {"status": "not_measured"},
         "diagnostics": doc.get("diagnostics") or {},
     }
+
+
+def _debt(target: str, item: str, axis: str = "cell") -> str:
+    """A ratchet entry, SCOPED TO ITS TARGET.
+
+    A bare cell name would let one target's accepted debt silently excuse another's: `contraction/f32/
+    aligned` is a real gap on more than one target here, and a flat entry forgives every one of them at
+    once. The axis tag keeps a composition shape and a coverage cell from ever colliding in one file.
+    """
+    return f"{target} {axis}:{item}"
 
 
 def _load_ratchet(p: Path | None) -> set[str]:
@@ -171,13 +188,30 @@ def main(argv=None) -> int:
             print(f"   captures used : {r['captures_used']}")
             print(f"   tile edge     : {r['tile_edge']}")
             print(f"   covered       : {r['n_covered']} / {r['n_required']} required cell(s)")
-            new = [u for u in r["uncovered"] if u["cell"] not in ratchet]
+            new = [u for u in r["uncovered"] if _debt(r["target"], u["cell"]) not in ratchet]
             if r["uncovered"]:
                 print(f"   UNCOVERED     : {len(r['uncovered'])}"
                       + (f" ({len(new)} not in the ratchet)" if ratchet else ""))
                 for u in r["uncovered"]:
-                    mark = " " if u["cell"] in ratchet else "*"
+                    mark = " " if _debt(r["target"], u["cell"]) in ratchet else "*"
                     print(f"     {mark} {u['cell']:34s} basis={u['basis']} by={u['admitted_by']}")
+            comp = r.get("composition") or {}
+            if comp.get("status") == "ok":
+                print(f"   composition   : {comp['n_covered']} / {comp['n_required']} required shape(s)")
+                for kind in comp["uncovered"]:
+                    mark = " " if _debt(r["target"], kind, "composition") in ratchet else "*"
+                    print(f"     {mark} {kind:34s} no capsule assembles work this way")
+                thin = [(k, v) for k, v in sorted((comp.get("covered_by") or {}).items()) if len(v) == 1]
+                for kind, names in thin:
+                    print(f"       {kind:32s} covered by ONE capsule ({names[0]}) — a single point of "
+                          f"evidence for a whole composition shape")
+                if comp.get("unreadable_capsules"):
+                    print(f"   UNREADABLE    : {len(comp['unreadable_capsules'])} capsule(s) whose "
+                          f"composition could not be determined")
+                    for name, why in sorted(comp["unreadable_capsules"].items()):
+                        print(f"     ? {name:32s} {why}")
+            elif comp:
+                print(f"   composition   : {comp.get('status')} — {comp.get('detail', '')}")
             if r["corpus_cells_not_required"]:
                 print(f"   corpus cells not in the requirement: {r['corpus_cells_not_required']}")
                 print("     (a cell the hardware does not admit for that family — e.g. an int8 movement "
@@ -186,8 +220,13 @@ def main(argv=None) -> int:
             for n in (r["diagnostics"].get("notes") or []):
                 print(f"   note: {n}")
 
-    bad = [u["cell"] for r in reports if r["status"] == "ok"
-           for u in r["uncovered"] if u["cell"] not in ratchet]
+    bad = [_debt(r["target"], u["cell"]) for r in reports if r["status"] == "ok"
+           for u in r["uncovered"] if _debt(r["target"], u["cell"]) not in ratchet]
+    # Composition gaps carry a `composition` axis tag so a shape and a cell can never collide in one flat
+    # file, and so a reader of the ratchet can see which axis each debt belongs to.
+    bad += [_debt(r["target"], k, "composition") for r in reports if r["status"] == "ok"
+            for k in ((r.get("composition") or {}).get("uncovered") or [])
+            if _debt(r["target"], k, "composition") not in ratchet]
     if bad and a.fail_on_uncovered:
         print(f"\nFAIL: {len(bad)} required cell(s) uncovered and not ratcheted", file=sys.stderr)
         return 1

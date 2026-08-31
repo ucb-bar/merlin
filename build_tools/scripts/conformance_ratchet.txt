@@ -1,0 +1,27 @@
+# Conformance-coverage debt that MAY ONLY SHRINK.
+#
+# Each line is `<target> <axis>:<item>` — target-scoped on purpose, because a bare cell name would let one
+# target's accepted debt silently excuse another's (`contraction/f32/aligned` is a real gap on more than
+# one target here). `cell:` entries are (semantic_family, dtype, tile_alignment) coverage cells;
+# `composition:` entries are host/accelerator composition shapes.
+#
+# NEVER ADD A LINE. A new gap means a corpus that no longer evidences something a real model needs — write
+# the capsule instead. Regenerate the requirement with:
+#   build_tools/scripts/check_conformance_coverage.py --target <t> --write \
+#       merlin/contract/capsules/conformance/<t>.yaml
+#
+# ---------------------------------------------------------------------------------------------------
+# gemmini — the fused epilogue and the partial-tile move round-trip.
+#
+# `elementwise_map` is declared `composed_with: [contraction]`, so a standalone elementwise capsule would
+# be the WRONG capsule: the requirement is a FUSED epilogue on a contraction, at whole tiles and at the
+# tail. `movement/i8/partial` is the move round-trip on extents that do not divide the 16-row mesh edge —
+# the tail path, which is where tiling bugs live.
+gemmini cell:elementwise_map/i8/aligned
+gemmini cell:elementwise_map/i8/partial
+gemmini cell:movement/i8/partial
+
+# gemmini — no capsule assembles work as accelerator, host island, accelerator. Every real capture
+# presents this shape; the corpus proves it nowhere, and the pass-rate cannot express that because every
+# capsule that exists still passes.
+gemmini composition:A->H->A

@@ -437,6 +437,8 @@ def spec(target: str, captures: dict[str, str | Path], *,
     """
     cells, diag = required_cells(target, captures, declared=declared)
     bnd = boundaries(target)
+    from merlin.targetgen import boundary as BD
+    comp = BD.required_boundaries(captures, target)
     return {
         "target": target,
         "generated_by": "merlin.targetgen.conformance.spec",
@@ -450,6 +452,22 @@ def spec(target: str, captures: dict[str, str | Path], *,
                                "this spec without a second definition of a cell",
         },
         "boundaries": bnd.to_dict(),
+        "composition": {
+            "required": comp["by_kind"],
+            "whole_model_shape": comp["whole_model_shape"],
+            "captures_unreadable": comp["captures_unreadable"],
+            "axis_basis": (
+                "the composition shapes the real captures CONTAIN — not just the shape each capture has "
+                "as a whole. A model classifies as `routing` end to end, yet it contains isolated "
+                "dispatches, adjacent accelerator pairs and host islands, and each of those is a "
+                "composition the corpus must exercise somewhere. Taking only the whole-model label would "
+                "demand `routing` and nothing else, the narrowest reading of the richest evidence"),
+            "why_orthogonal": (
+                "the composition axis is NOT crossed with family/dtype/alignment. A cross product would "
+                "demand cells like `movement/i8/partial/routing` that no real model presents, "
+                "manufacturing uncovered cells nobody should build; composition is a property of how a "
+                "program is assembled, not of the arithmetic in it"),
+        },
         "diagnostics": diag,
         "personas": personas or {},
         "cells": [{"cell": c.key(), "family": c.family, "dtype": c.dtype,
@@ -471,7 +489,7 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
     have = set(got.get("cells") or ())
     want = [c["cell"] for c in (spec_doc.get("cells") or ())]
     missing = sorted(set(want) - have)
-    return {
+    out = {
         "n_required": len(want),
         "n_covered": len(set(want) & have),
         "uncovered": missing,
@@ -480,3 +498,21 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
         "note": ("a required cell with no capsule means the corpus cannot evidence a family/dtype/"
                  "alignment the hardware admits and a real target-model uses"),
     }
+    # THE COMPOSITION AXIS, measured on the same corpus and reported beside the cells rather than folded
+    # into them. A spec written before this axis existed carries no `composition` block; that is reported
+    # as "not measured", never as "nothing required" -- an axis a stale spec cannot express must not read
+    # as an axis with no gaps.
+    comp_req = (spec_doc.get("composition") or {}).get("required")
+    if comp_req is None:
+        out["composition"] = {"status": "not_measured",
+                              "detail": "this spec predates the composition axis; regenerate it with "
+                                        "--write to derive the requirement"}
+    else:
+        from merlin.targetgen import boundary as BD
+        corpus = BD.corpus_boundaries(corpus_roots, str(spec_doc.get("target") or ""),
+                                      labels=labels, exclude=exclude)
+        gap = BD.uncovered_boundaries({"by_kind": comp_req}, corpus)
+        gap["status"] = "ok"
+        gap["covered_by"] = corpus["by_kind"]
+        out["composition"] = gap
+    return out
