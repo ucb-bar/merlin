@@ -15,12 +15,13 @@ separately, by looking in the source for the macros that endpoint's own header d
 (:func:`endpoint_markers`, derived from the declared compute endpoints). A kernel carrying those
 markers is attributed to that endpoint's target and records why.
 
-This module is a PERMANENT regex-allowlist entry: the symbol grammar it parses is a real grammar, and
-the fix for the trap above was the classification, not removing the regex.
+The symbol grammar is a real grammar, so it is *tokenized* here (:func:`find_ukernel_symbol`) rather
+than pattern-matched: the identifier run is walked and each field validated. A file whose symbol does
+not fit falls back to the filename tokens, and a shape token that fits neither form is preserved
+verbatim as ``{"tile": <token>}`` — never dropped.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Iterator
 
@@ -40,12 +41,46 @@ _OP_KEYWORDS = (
 DEFAULT_ISA = "rvv"
 
 
-def _symbol_re(isa: str):
-    """The ukernel-symbol pattern for one base ISA suffix."""
-    return re.compile(r"xnn_([a-z0-9_]+)_ukernel_([0-9a-z]+)__" + re.escape(isa))
+#: The ukernel symbol grammar: ``xnn_<core>_ukernel_<shape>__<isa>``. ``core`` is lowercase
+#: alphanumerics plus ``_``; ``shape`` is lowercase alphanumerics with NO separator.
+_SYM_PREFIX, _UKERNEL_INFIX, _ISA_SEP = "xnn_", "_ukernel_", "__"
+_CORE_ALPHABET = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_")
+_SHAPE_ALPHABET = frozenset("abcdefghijklmnopqrstuvwxyz0123456789")
 
 
-_SYMBOL_RE = _symbol_re(DEFAULT_ISA)
+def find_ukernel_symbol(text: str, isa: str) -> tuple[str, str] | None:
+    """``(core, shape_token)`` for the first ukernel symbol of base ISA ``isa``, else ``None``.
+
+    Walks each ``xnn_`` occurrence left to right and reads the maximal identifier run of the symbol
+    alphabet — so an uppercase or punctuation character ends the symbol, as it did before. Within one
+    run the LAST ``_ukernel_`` wins (the old greedy ``core`` capture), and the ISA is a PREFIX test of
+    what follows ``__``: ``…__rvvfp16arith`` is ingested under base ISA ``rvv``, which is how the
+    fp16 kernels reach the corpus at all.
+    """
+    at = text.find(_SYM_PREFIX)
+    while at != -1:
+        end = at + len(_SYM_PREFIX)
+        while end < len(text) and text[end] in _CORE_ALPHABET:
+            end += 1
+        found = _split_ukernel_run(text[at + len(_SYM_PREFIX):end], isa)
+        if found is not None:
+            return found
+        at = text.find(_SYM_PREFIX, at + 1)
+    return None
+
+
+def _split_ukernel_run(run: str, isa: str) -> tuple[str, str] | None:
+    """Split one ``<core>_ukernel_<shape>__<isa>…`` run; last ``_ukernel_`` first (greedy core)."""
+    at = run.rfind(_UKERNEL_INFIX)
+    while at > 0:                        # > 0: `core` must be non-empty
+        tail = run[at + len(_UKERNEL_INFIX):]
+        sep = tail.find(_ISA_SEP)
+        shape = tail[:sep] if sep != -1 else ""
+        if (sep > 0 and tail[sep + len(_ISA_SEP):].startswith(isa)
+                and all(ch in _SHAPE_ALPHABET for ch in shape)):
+            return run[:at], shape
+        at = run.rfind(_UKERNEL_INFIX, 0, at)
+    return None
 
 
 def endpoint_markers() -> dict[str, tuple[str, ...]]:
@@ -94,7 +129,9 @@ def attribute_target(text: str, default_target: str,
         if hit:
             return target, hit
     return default_target, ()
-_SHAPE_RE = re.compile(r"(\d+)x(\d+)(vc?|c)?|(\d+)p(\d+)?(vc?)?")
+#: Shape-token suffixes that qualify a tile: ``v`` scalable, ``c`` channel, ``vc`` both. Longest
+#: first, since the token continues past them (``4x8vc`` and ``4x8vcx`` both read as ``vc``).
+_TILE_SUFFIXES = ("vc", "v", "c")
 
 
 def _guess_op(text_lower: str) -> str:
@@ -104,22 +141,56 @@ def _guess_op(text_lower: str) -> str:
     return "other"
 
 
+def _decimal_run(token: str, start: int) -> int:
+    """End index of the decimal-digit run at ``start`` (``str.isdecimal()`` == the old ``\\d``)."""
+    i = start
+    while i < len(token) and token[i].isdecimal():
+        i += 1
+    return i
+
+
+def _suffix_at(token: str, start: int, allowed: tuple[str, ...]) -> str:
+    """The longest of ``allowed`` present at ``start``, or ``""``."""
+    return next((s for s in allowed if token.startswith(s, start)), "")
+
+
+def parse_shape_token(token: str) -> dict[str, object] | None:
+    """``4x8vc`` -> MRxNR tile; ``9p2v`` -> kernel-points tile; ``None`` when it is neither.
+
+    Both forms are read as a PREFIX of the token (as the old pattern's ``match`` was), so a token
+    with trailing text still yields its leading tile. The MRxNR reading is tried first, exactly as
+    the alternation was ordered, and ``vc``/``v``/``c`` are optional in both.
+    """
+    a = _decimal_run(token, 0)
+    if a:
+        if token.startswith("x", a):                       # <MR>x<NR>[vc|v|c]
+            b = _decimal_run(token, a + 1)
+            if b > a + 1:
+                return {"MR": int(token[:a]),
+                        "NR": f"{token[a + 1:b]}{_suffix_at(token, b, _TILE_SUFFIXES)}"}
+        if token.startswith("p", a):                       # <points>p[<channels>][vc|v]
+            b = _decimal_run(token, a + 1)
+            # `c` alone is NOT a suffix of this form -- the old alternation spelled it `(vc?)?`.
+            return {"kernel_points": int(token[:a]),
+                    "channel_tile": f"{token[a + 1:b]}{_suffix_at(token, b, ('vc', 'v'))}"}
+    return None
+
+
 def _parse_shape(token: str) -> dict[str, object]:
-    """Parse an MRxNR or NpKvc shape token into a small dict (best effort)."""
-    m = _SHAPE_RE.match(token)
-    if not m:
-        return {"tile": token}
-    if m.group(1) is not None:  # MR x NR form
-        return {"MR": int(m.group(1)), "NR": f"{m.group(2)}{m.group(3) or ''}"}
-    return {"kernel_points": int(m.group(4)), "channel_tile": f"{m.group(5) or ''}{m.group(6) or ''}"}
+    """Parse an MRxNR or NpKvc shape token into a small dict.
+
+    A token fitting neither form is kept verbatim as ``{"tile": token}`` rather than discarded — the
+    shape is then visibly unparsed instead of silently absent.
+    """
+    return parse_shape_token(token) or {"tile": token}
 
 
 def _record_from_file(path: Path, repo: Path, target: str,
                       markers: "dict[str, tuple[str, ...]] | None" = None) -> NormalizedKernel:
     text = path.read_text(encoding="utf-8", errors="replace")
-    sym = _SYMBOL_RE.search(text)
+    sym = find_ukernel_symbol(text, target)
     if sym:
-        core, shape_tok = sym.group(1), sym.group(2)
+        core, shape_tok = sym
         dtype = normalize_dtype(core.split("_", 1)[0])
         op = _guess_op(core)
         shape = _parse_shape(shape_tok)
@@ -128,7 +199,8 @@ def _record_from_file(path: Path, repo: Path, target: str,
         toks = stem.split("-")
         dtype = normalize_dtype(toks[0] if toks else "")
         op = _guess_op(stem.replace("-", "_"))
-        shape_tok = next((t for t in toks if _SHAPE_RE.match(t) and any(c.isdigit() for c in t)), "")
+        shape_tok = next((t for t in toks
+                          if parse_shape_token(t) and any(c.isdigit() for c in t)), "")
         shape = _parse_shape(shape_tok) if shape_tok else {}
     try:
         rel = str(path.relative_to(repo))

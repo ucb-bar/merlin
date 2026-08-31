@@ -85,7 +85,9 @@ class TestTheIngestAttributionTrap:
     def test_the_isa_suffix_is_a_parameter_not_a_target(self):
         from merlin.kernels.ingest import xnnpack as X
         assert X.DEFAULT_ISA == "rvv"
-        assert X._symbol_re("foo").pattern.endswith("foo")
+        # the base ISA is threaded in, never baked: the same symbol grammar parses any suffix
+        assert X.find_ukernel_symbol("xnn_f32_gemm_ukernel_2x2__foo(", "foo") == ("f32_gemm", "2x2")
+        assert X.find_ukernel_symbol("xnn_f32_gemm_ukernel_2x2__foo(", "rvv") is None
 
 
 class TestTheMiningCliNamesItsTarget:

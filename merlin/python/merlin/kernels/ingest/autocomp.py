@@ -6,52 +6,178 @@ manifest carries no shape/dtype, so we parse the C entry signature
 ``void test(<dtype> A[..][..], <dtype> B[..][..], <dtype> C[..][..])`` to recover op/shape/
 dtype. The Autocomp ``score`` is recorded in ``meta`` only (provenance/tie-break) and is NOT
 treated as a correctness signal.
+
+The signature is read with a small C declarator scanner rather than a pattern: the entry point is
+located by token, its parameter list split, and each ``<type> <name><dims>`` parameter walked
+field by field. A parameter the scanner cannot read is not skipped silently — it is reported by
+:func:`parse_signature`, which returns the unreadable text alongside the shape.
 """
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Iterator
 
 from merlin.kernels.types import NormalizedKernel, normalize_dtype
 
-# Matches the test() entry point and captures its parameter list.
-_SIG_RE = re.compile(r"void\s+test\s*\(([^)]*)\)", re.DOTALL)
-# One parameter: <type> <name> <dims like [3][3][128]>
-_PARAM_RE = re.compile(r"(\w+)\s+(\w+)\s*((?:\[\s*\d+\s*\])+)")
-_DIM_RE = re.compile(r"\[\s*(\d+)\s*\]")
+_ENTRY_RETURN, _ENTRY_NAME = "void", "test"
+
+#: Parameter names that make a signature a convolution regardless of rank.
+_CONV_NAMES = frozenset({"inp", "input", "weights", "weight", "output"})
+
+
+def _word_run(text: str, start: int) -> int:
+    """End of the identifier run at ``start``. ``str.isalnum()`` plus ``_`` is the old ``\\w``:
+    Unicode-aware, so a non-ASCII type or parameter name still reads as one word."""
+    i = start
+    while i < len(text) and (text[i] == "_" or text[i].isalnum()):
+        i += 1
+    return i
+
+
+def _space_run(text: str, start: int) -> int:
+    """End of the whitespace run at ``start`` (the old ``\\s*``; ``\\s`` spans newlines too)."""
+    i = start
+    while i < len(text) and text[i].isspace():
+        i += 1
+    return i
+
+
+def _entry_params(text: str) -> str | None:
+    """The parameter-list text of the ``void test(...)`` entry point, else ``None``.
+
+    Deliberately keeps the old accept set, which has NO word boundary before ``void``: ``avoid
+    test(...)`` is read as an entry point, as it always was. The list ends at the first ``)``, so a
+    function-pointer parameter still truncates it — same as before, and the truncated remainder
+    surfaces as an unreadable parameter rather than as a missing one.
+    """
+    at = text.find(_ENTRY_RETURN)
+    while at != -1:
+        i = at + len(_ENTRY_RETURN)
+        j = _space_run(text, i)
+        if j > i and text.startswith(_ENTRY_NAME, j):
+            k = _space_run(text, j + len(_ENTRY_NAME))
+            close = text.find(")", k + 1) if text.startswith("(", k) else -1
+            if close != -1:
+                return text[k + 1:close]
+        at = text.find(_ENTRY_RETURN, at + 1)  # an unclosed list is not the entry point; keep looking
+    return None
+
+
+def _param_at(params: str, start: int) -> tuple[tuple[str, str, list[int]], int] | None:
+    """One ``<type> <name><dims>`` parameter starting at ``start`` -> ``((type, name, dims), end)``.
+
+    Every field is required: a word, whitespace, a word, optional whitespace, then one or more
+    ``[<decimal>]`` dimensions. Qualifiers fall out for free — ``const int8_t A[8][8]`` starts a
+    failed read at ``const`` and a successful one at ``int8_t``, which is what the old scan did.
+    """
+    tname = _word_run(params, start)
+    if tname == start:
+        return None
+    i = _space_run(params, tname)
+    if i == tname:                                  # the separator between type and name
+        return None
+    pname = _word_run(params, i)
+    if pname == i:
+        return None
+    j = _space_run(params, pname)
+    dims: list[int] = []
+    # DELIBERATELY WIDER than the pattern this replaces: that one allowed whitespace inside a
+    # dimension (`A[ 8 ]`) but not BETWEEN two (`A[8] [4]`), so a legal C declarator read as rank 1
+    # and the operand was mis-measured with no sign that anything was missed. Both are read here.
+    while params.startswith("[", _space_run(params, j)):
+        j = _space_run(params, j)
+        a = _space_run(params, j + 1)
+        b = a
+        while b < len(params) and params[b].isdecimal():
+            b += 1
+        c = _space_run(params, b)
+        if b == a or not params.startswith("]", c):
+            break                                   # not a constant dimension: stop the run
+        dims.append(int(params[a:b]))
+        j = c + 1
+    if not dims:
+        return None
+    return (params[start:tname], params[i:pname], dims), j
+
+
+def parse_signature(text: str) -> tuple[str, str, dict[str, object], tuple[str, ...]]:
+    """``(op, dtype, shape, unreadable)`` for the ``void test(...)`` entry point.
+
+    ``unreadable`` holds the parameter-list fragments the scanner could not read as a dimensioned
+    parameter (a pointer parameter, a macro'd type, a truncated list). They are REPORTED rather than
+    dropped: a signature this scanner half-understands must not be mistaken for one it read whole.
+    """
+    params = _entry_params(text)
+    if params is None:
+        return "unknown", "unknown", {}, ()
+    parsed: list[tuple[str, str, list[int]]] = []
+    covered: list[tuple[int, int]] = []
+    i = 0
+    while i < len(params):
+        got = _param_at(params, i)
+        if got is None:                             # not a parameter here: step one char and retry
+            i += 1
+            continue
+        param, end = got
+        parsed.append(param)
+        covered.append((i, end))
+        i = end
+    # Report by comma-separated element, so a leading qualifier (`const`) is not mistaken for an
+    # unread parameter: an element is unreadable only when NO parameter was read inside it.
+    skipped: list[str] = []
+    at = 0
+    for element in params.split(","):
+        lo, hi = at, at + len(element)
+        at = hi + 1
+        if element.strip() and not any(lo <= a and b <= hi for a, b in covered):
+            skipped.append(element.strip())
+    if not parsed:
+        return "unknown", "unknown", {}, tuple(skipped)
+    dtype = normalize_dtype(parsed[0][0])
+    names = {name.lower() for _t, name, _d in parsed}
+    dims = {name: list(d) for _t, name, d in parsed}
+    # Convolution: 4-D tensors or conv-flavored names.
+    is_conv = any(len(d) >= 4 for d in dims.values()) or bool(names & _CONV_NAMES)
+    if is_conv:
+        return "conv", dtype, {k: v for k, v in dims.items()}, tuple(skipped)
+    # Matmul: three 2-D operands A[M][K], B[K][N], C[M][N].
+    twod = [(n, dims[n]) for _t, n, _d in parsed if len(dims[n]) == 2]
+    if len(twod) >= 3:
+        (_a_n, a), (_b_n, b), (_c_n, _c) = twod[0], twod[1], twod[2]
+        shape: dict[str, object] = {"M": a[0], "K": a[1], "N": b[1]}
+    else:
+        shape = {k: v for k, v in dims.items()}
+    return "matmul", dtype, shape, tuple(skipped)
 
 
 def _parse_signature(text: str) -> tuple[str, str, dict[str, object]]:
     """Return (op, dtype, shape) parsed from the ``void test(...)`` signature."""
-    sig = _SIG_RE.search(text)
-    if not sig:
-        return "unknown", "unknown", {}
-    params = _PARAM_RE.findall(sig.group(1))
-    if not params:
-        return "unknown", "unknown", {}
-    dtype = normalize_dtype(params[0][0])
-    names = {name.lower() for _t, name, _d in params}
-    dims = {name: [int(d) for d in _DIM_RE.findall(d)] for _t, name, d in params}
-    # Convolution: 4-D tensors or conv-flavored names.
-    is_conv = any(len(d) >= 4 for d in dims.values()) or bool(
-        names & {"inp", "input", "weights", "weight", "output"}
-    )
-    if is_conv:
-        return "conv", dtype, {k: v for k, v in dims.items()}
-    # Matmul: three 2-D operands A[M][K], B[K][N], C[M][N].
-    twod = [(n, d) for _t, n, _ in params for n, d in [(n, dims[n])] if len(d) == 2]
-    shape: dict[str, object] = {}
-    if len(twod) >= 3:
-        (a_n, a), (b_n, b), (c_n, c) = twod[0], twod[1], twod[2]
-        shape = {"M": a[0], "K": a[1], "N": b[1]}
-    else:
-        shape = {k: v for k, v in dims.items()}
-    return "matmul", dtype, shape
+    op, dtype, shape, _unreadable = parse_signature(text)
+    return op, dtype, shape
 
 
-_HASH_RE = re.compile(r"kernel_([0-9a-f]+)\.c$")
+_KERNEL_STEM, _KERNEL_EXT = "kernel_", ".c"
+_HEX = frozenset("0123456789abcdef")
+
+
+def kernel_hash(name: str) -> str | None:
+    """The hex hash of a ``kernel_<hash>.c`` path, else ``None``.
+
+    Accepts the same set the old pattern did: the name must END in ``.c`` and the hash must be a
+    non-empty run of LOWERCASE hex (``kernel_ABC.c`` is not one). The leftmost ``kernel_`` whose
+    remainder is all hex wins, so ``kernel_kernel_abc.c`` yields ``abc`` — as before.
+    """
+    if not name.endswith(_KERNEL_EXT):
+        return None
+    stem = name[:-len(_KERNEL_EXT)]
+    at = stem.find(_KERNEL_STEM)
+    while at != -1:
+        digits = stem[at + len(_KERNEL_STEM):]
+        if digits and all(ch in _HEX for ch in digits):
+            return digits
+        at = stem.find(_KERNEL_STEM, at + 1)
+    return None
 
 
 def _manifest_index(manifest: Path) -> dict[str, dict]:
@@ -69,9 +195,8 @@ def _manifest_index(manifest: Path) -> dict[str, dict]:
             except json.JSONDecodeError:
                 continue
             h = entry.get("code_hash") or ""
-            key = h[:12] or _HASH_RE.search(entry.get("dest_path", "") or "")
-            if isinstance(key, re.Match):
-                key = key.group(1)[:12]
+            dest = kernel_hash(entry.get("dest_path", "") or "")
+            key = h[:12] or (dest[:12] if dest else "")
             if key:
                 index[key] = {
                     "score": entry.get("score"),
@@ -178,9 +303,13 @@ def ingest_autocomp(repo: str, target: str, limit: int | None = None) -> Iterato
         text = path.read_text(encoding="utf-8", errors="replace")
         if not text.strip() or "void test" not in text:
             continue  # empty placeholder or no entry point
-        op, dtype, shape = _parse_signature(text)
-        m = _HASH_RE.search(path.name)
-        meta = dict(index.get(m.group(1)[:12], {})) if m else {}
+        op, dtype, shape, unreadable = parse_signature(text)
+        h = kernel_hash(path.name)
+        meta: dict = dict(index.get(h[:12], {})) if h else {}
+        if unreadable:
+            # A parameter the scanner could not read leaves the shape PARTIAL. Recording it keeps
+            # the record honest instead of letting a half-read signature pass as a whole one.
+            meta["unreadable_params"] = list(unreadable)
         try:
             rel = str(path.relative_to(root))
         except ValueError:
