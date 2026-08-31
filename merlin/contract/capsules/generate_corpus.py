@@ -58,6 +58,13 @@ def load_profile(target: str, *, include_holdouts: bool = True) -> dict:
     if include_holdouts and side.is_file():
         held = yaml.safe_load(side.read_text()) or {}
         prof["capsules"] = list(prof.get("capsules") or []) + list(held.get("capsules") or [])
+        # HOLDOUTS ARE GENERATED TOO, and without this line the sidecar's `sweeps:` block is read and
+        # silently dropped -- the points expand for the disjointness gate, which reads the sidecar
+        # itself, and then never become capsules. Generating them is the point: a hand-authored holdout
+        # is written by someone who has just read the public profile, and an audit of this repo found
+        # holdouts that were public capsules under another name, scoring memorisation as transfer. A
+        # sweep states the OBLIGATION and lets the tile edge compute the points.
+        prof["sweeps"] = list(prof.get("sweeps") or []) + list(held.get("sweeps") or [])
     return prof
 
 
