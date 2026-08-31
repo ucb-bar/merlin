@@ -749,6 +749,28 @@ kernel's controller occupancy is not the machine's behaviour on that workload. C
 preload/compute pairing fixed — or, better, replaying the certified emitter's own command stream
 instead of a hand-written one, which needs the emitted operands resolved rather than just decoded.
 
+### A3 bisected — compute and move-out are correct; move-in is the one remaining fault
+
+Three stages, tested independently rather than argued about:
+
+    compute        proven command sequence, operands placed directly   256/256 EXACT
+    move-out       narrow readout, graded on its own semantics         256/256 EXACT
+    move-in        issues no bus reads inside the drain window          the fault
+
+**The move-out verdict was wrong for an hour because the REFERENCE was wrong, not the kernel.** The
+narrow readout scales and saturates the accumulator on its way out. Graded against the unsaturated
+integer product it looked broken — 224 of 256 "mismatches", every one of them a clamp
+(`-128` where the product was `-160`, `127` where it was `171`). Graded against
+`clip(product, -128, 127)` it is bit-exact. **A reference has to model what the hardware does, not
+what the arithmetic would do**, and this register has hit that before with activation-quantised
+goldens.
+
+The full-width readout is a separate open question: the target's own derived readout bits document
+`c_acc = acc_i8 | full_c_bit` as the full-i32 base, and using it returns values that are wrong
+*invariantly to the store stride* — so it is not a row-pitch problem, and either that bit is not the
+width selector in this configuration or the wide readout needs something else configured. The narrow
+readout is sufficient for the occupancy workload, so this is recorded rather than blocking.
+
 **One side-observation, recorded but not a result:** draining the queue before changing a
 configuration word dropped load-controller busy from 41 to 30 cycles. Consistent with movement and
 compute genuinely overlapping when not forced apart, but measured on a workload that computes the

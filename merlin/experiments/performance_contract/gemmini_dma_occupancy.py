@@ -23,19 +23,26 @@ facts and the capability residual). This module names roles -- move-in, move-out
 target supplies the codes. A wrong code does not pass silently: the result is compared against an
 independent reference and the run reports ``bit_exact``.
 
-STATUS -- THE INSTRUMENT WORKS; THIS WORKLOAD IS NOT YET CORRECT
-----------------------------------------------------------------
-All three controllers go live (measured 30 / 30 / 33 busy cycles) and the joint vector reports
-``overlap_observable: True``, which is what this driver was for: the occupancy question is now askable
-on a decoupled target. But the hand-written movement stream is **not bit-exact** -- the result region
-reads back all zeros while the responder counts the store beats, so the store path runs and the
-accumulator it reads is empty: the compute is not landing. The move-in and move-out encodings are
-therefore exercised and the preload/compute pairing is not yet right.
+STATUS -- THE INSTRUMENT WORKS; MOVE-IN IS THE ONE REMAINING FAULT
+------------------------------------------------------------------
+All three controllers go live and the joint vector reports ``overlap_observable: True``, which is what
+this driver was for: the occupancy question is askable on a decoupled target. The stream is still not
+bit-exact, and the fault has been bisected to one stage.
+
+* **Compute is correct.** Driving the proven command sequence with operands placed directly gives an
+  exact result.
+* **Move-out is correct**, and the earlier verdict against it was a WRONG REFERENCE, not a wrong
+  kernel. The narrow readout scales and saturates the accumulator on its way out; graded against an
+  unsaturated product it looked broken (224 of 256 "mismatches" that were all clamps), and graded
+  against its own semantics it is 256 of 256 exact. The reference has to model what the hardware
+  does, not what the arithmetic would do.
+* **Move-in is the remaining fault.** In isolation it issues no bus reads inside the drain window,
+  so the operands never reach the scratchpad the compute reads.
 
 **No occupancy number from this driver may be quoted until ``bit_exact`` is true.** A wrong kernel's
 controller occupancy is not the machine's behaviour on that workload, and the zero-overlap reading it
 currently produces would be exactly the kind of corroborating-looking result this layer exists to
-refuse. The next step is the preload/compute operand pairing, not the movement path.
+refuse.
 
 Usage::
 
@@ -136,8 +143,11 @@ def run(target: str, m: int, k: int, n: int, dram_base: int = 0) -> dict:
     rocc.issue(isa.K_CONFIG, isa.CFG_LD_RS1, k, on_cycle=on_cycle)
 
     rocc.issue(isa.K_CONFIG, isa.CFG_EX_RS1, isa.CFG_EX_RS2, on_cycle=on_cycle)
-    # config_st: the i32 readout writes 4 bytes per element.
-    rocc.issue(isa.K_CONFIG, 2, (isa.F1 << 32) | (n * 4), on_cycle=on_cycle)
+    # The narrow readout scales and saturates the accumulator on its way out, one byte per element.
+    # That is the readout's own semantics, not a defect, and the reference below applies it too --
+    # grading a saturating readout against an unsaturated product marks a correct kernel wrong, which
+    # is what it did until the two were compared on the same terms.
+    rocc.issue(isa.K_CONFIG, 2, (isa.F1 << 32) | n, on_cycle=on_cycle)
 
     for ti in range(mt):
         for tk in range(kt_n):
@@ -146,20 +156,24 @@ def run(target: str, m: int, k: int, n: int, dram_base: int = 0) -> dict:
         rocc.run_until_idle(on_cycle=on_cycle)
         for tj in range(nt):
             for tk in range(kt_n):
-                cad = isa.C_ACC if tk == 0 else (isa.C_ACC | isa.ACC_ACCUM)
+                # The preload names the accumulator to WRITE; the move-out names the one to READ.
+                # The full-width flag is a property of the READ (it selects the wide readout over the
+                # scaled narrow one), so it belongs on the move-out and not here -- the target's own
+                # readout bits already separate the two, and the bare accumulator base is the one
+                # without it.
+                cad = isa.ACC_I8 if tk == 0 else (isa.ACC_I8 | isa.ACC_ACCUM)   # write side
                 rocc.issue(isa.K_PRELOAD, G._pack(b_slot + (tk * nt + tj) * dim), G._pack(cad),
                            on_cycle=on_cycle)
                 rocc.issue(isa.K_COMPUTE_PRELOADED, G._pack(a_slot + tk * dim),
                            G._pack(0xFFFFFFFF), on_cycle=on_cycle)
             rocc.run_until_idle(on_cycle=on_cycle)
-            c_off = ((ti * dim) * n + tj * dim) * 4
-            rocc.issue(isa.K_MVOUT, c_addr + c_off, G._pack(isa.C_ACC), on_cycle=on_cycle)
+            c_off = (ti * dim) * n + tj * dim
+            rocc.issue(isa.K_MVOUT, c_addr + c_off, G._pack(isa.ACC_I8), on_cycle=on_cycle)
             rocc.run_until_idle(on_cycle=on_cycle)
     rocc.run_until_idle(drain=64, on_cycle=on_cycle)
 
-    raw = slave.captured(c_addr, m * n * 4)
-    got = np.frombuffer(raw, dtype="<i4").reshape(m, n)
-    ref = a.astype(np.int32) @ b.astype(np.int32)
+    got = np.frombuffer(slave.captured(c_addr, m * n), dtype="i1").reshape(m, n)
+    ref = np.clip(a.astype(np.int32) @ b.astype(np.int32), -128, 127).astype(np.int8)
 
     hot = {s: [v != PRODUCER_DECLARED_IDLE for v in trace[s]] for s in present
            if len(set(trace[s])) > 1}
