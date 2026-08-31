@@ -42,6 +42,40 @@ def _ok(name, cond, detail=""):
     print(f"  [{'PASS' if cond else 'FAIL'}] {name}" + (f"  — {detail}" if detail else ""))
 
 
+def _screen_completion(verdict: dict) -> tuple[bool, str]:
+    """Validate a complete, non-vacuous screen without calling it certification.
+
+    A cheap oracle may pass every capsule it can measure while a mandatory deeper tier remains
+    unrun.  In that case ``n_passed == n_capsules`` is true, ``n_screened_only`` is non-zero, and
+    ``all_pass`` must remain false.  Conversely, a target whose selected oracle reaches its complete
+    contract may legitimately certify here.  Require the explicit counters to agree in either case.
+    """
+    rows = verdict.get("per_capsule") or []
+    n_capsules = verdict.get("n_capsules")
+    n_passed = verdict.get("n_passed")
+    n_certified = verdict.get("n_certified")
+    n_screened = verdict.get("n_screened_only")
+    counts_are_explicit = all(isinstance(v, int) for v in (
+        n_capsules, n_passed, n_certified, n_screened))
+    complete = bool(
+        counts_are_explicit
+        and n_capsules > 0
+        and len(rows) == n_capsules
+        and n_passed == n_capsules
+        and n_certified + n_screened == n_capsules
+        and verdict.get("all_pass") is (n_certified == n_capsules)
+        and all(row.get("pass") is True
+                and row.get("barrier_tier")
+                and row.get("barrier_status") == "pass"
+                for row in rows)
+    )
+    tiers = sorted({str(row.get("barrier_tier")) for row in rows if row.get("barrier_tier")})
+    detail = (f"measured={n_passed}/{n_capsules} certified={n_certified} "
+              f"screened_only={n_screened} all_pass={verdict.get('all_pass')} "
+              f"tiers={','.join(tiers) or 'none'}")
+    return complete, detail
+
+
 def _bwrap(ws: Path, bundle: dict, inner: str) -> str:
     """The SAME sandbox the agent runs in — delegated to the run path, never rebuilt here.
 
@@ -316,10 +350,9 @@ def main(argv=None):
                         verdict = d.get("result") or {}
                         break
                     time.sleep(5)
-            cap0 = (verdict.get("per_capsule") or [{}])[0]
-            _ok("async spike job -> real L2=pass through bwrap",
-                verdict.get("all_pass") and cap0.get("barrier_status") == "pass",
-                f"n={verdict.get('n_passed')}/{verdict.get('n_capsules')}")
+            screen_ok, screen_detail = _screen_completion(verdict)
+            _ok("async oracle job -> complete measured-tier pass through bwrap",
+                screen_ok, screen_detail)
             # the oracle must NOT have become readable in-box during the brokered run
             rc2, oout, _ = _run(ws, bundle,
                                 f'head -c1 "{C.REPO}/merlin/python/merlin/runtime/reference.py" >/dev/null 2>&1 && echo LEAK || echo masked',

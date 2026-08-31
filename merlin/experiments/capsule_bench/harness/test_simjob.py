@@ -10,6 +10,7 @@ Usage: test_simjob.py  (uses the prebuilt known-good backend out/artifacts/targe
 from __future__ import annotations
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -36,6 +37,34 @@ def _shim(ws, *args, timeout=60):
                           capture_output=True, text=True, timeout=timeout)
 
 
+def _screen_only_l2_completion(verdict: dict) -> tuple[bool, str]:
+    """A1 requires L3, so a spike-only L2 pass is measured but not certified."""
+    rows = verdict.get("per_capsule") or []
+    n_capsules = verdict.get("n_capsules")
+    n_passed = verdict.get("n_passed")
+    n_certified = verdict.get("n_certified")
+    n_screened = verdict.get("n_screened_only")
+    counts_are_explicit = all(isinstance(v, int) for v in (
+        n_capsules, n_passed, n_certified, n_screened))
+    complete = bool(
+        counts_are_explicit
+        and n_capsules == 1
+        and n_passed == 1
+        and n_certified == 0
+        and n_screened == 1
+        and verdict.get("all_pass") is False
+        and len(rows) == 1
+        and rows[0].get("pass") is True
+        and rows[0].get("barrier_tier") == "L2"
+        and rows[0].get("barrier_status") == "pass"
+    )
+    detail = (f"measured={n_passed}/{n_capsules} certified={n_certified} "
+              f"screened_only={n_screened} all_pass={verdict.get('all_pass')} "
+              f"barrier={rows[0].get('barrier_tier') if rows else None}/"
+              f"{rows[0].get('barrier_status') if rows else None}")
+    return complete, detail
+
+
 def main():
     if not (REF / "manifest.yaml").exists():
         print("FAIL: reference backend missing"); return 1
@@ -48,7 +77,8 @@ def main():
         shutil.copy(HERE / "simjob_shim.py", ws / "simjob.py")
         (ws / "submission").symlink_to(REF)             # broker reads <ws>/submission via agent_selfcheck
         broker = subprocess.Popen([PY, str(HERE / "simjob_broker.py"), "--ws", str(ws), "--max-jobs", "2"],
-                                  env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                  env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                  start_new_session=True)
         try:
             # 1. async submit returns immediately
             t0 = time.time(); r = _shim(ws, "submit", "--sim", "spike", "--capsules", "A1_mvin_mvout")
@@ -58,9 +88,10 @@ def main():
             # 2. constraint: malicious capsule rejected
             rj = _shim(ws, "submit", "--sim", "spike", "--capsules", "../../etc/passwd")
             jbad = json.loads(rj.stdout).get("job_id")
-            # 3. constraint: bad sim rejected by argparse (choices) -> nonzero
+            # 3. The untrusted shim accepts an opaque sim token; the trusted broker owns the derived,
+            # closed allowlist and must reject the bad value visibly.
             rs = _shim(ws, "submit", "--sim", "evil", "--capsules", "A1_mvin_mvout")
-            _ok("bad --sim rejected", rs.returncode != 0)
+            jevil = json.loads(rs.stdout).get("job_id") if rs.returncode == 0 else None
             # 4. poll spike job to completion (fast)
             st = None
             for _ in range(40):
@@ -70,10 +101,9 @@ def main():
                     break
                 time.sleep(5)
             res = (d.get("result") or {})
-            cap0 = (res.get("per_capsule") or [{}])[0]
-            _ok("spike job returns real L2=pass on known-good backend",
-                st == "done" and res.get("all_pass") and cap0.get("barrier_status") == "pass",
-                f"state={st} n={res.get('n_passed')}/{res.get('n_capsules')}")
+            screen_ok, screen_detail = _screen_only_l2_completion(res)
+            _ok("spike job returns a complete screen-only L2 pass on known-good backend",
+                st == "done" and screen_ok, f"state={st} {screen_detail}")
             # 5. malicious job ended as error (rejected), not run
             stbad = None
             for _ in range(6):
@@ -82,6 +112,20 @@ def main():
                     break
                 time.sleep(1)
             _ok("malicious capsule -> error (constrained, not executed)", stbad == "error", f"state={stbad}")
+            evil_state = None
+            evil_result = {}
+            if jevil:
+                for _ in range(6):
+                    pe = _shim(ws, "poll", "--job-id", jevil)
+                    ed = json.loads(pe.stdout)
+                    evil_state = ed["state"]
+                    evil_result = ed.get("result") or {}
+                    if evil_state in ("error", "done"):
+                        break
+                    time.sleep(1)
+            _ok("bad --sim rejected by the trusted broker",
+                evil_state == "error" and evil_result.get("rejected_field") == "sim",
+                f"state={evil_state} field={evil_result.get('rejected_field')}")
             # 6. redaction: no 'expected'/'golden' KEY anywhere in the responses (the descriptive `note`
             # text legitimately mentions the words — check structure, not substring).
             def _has_golden_key(o):
@@ -107,14 +151,22 @@ def main():
                 if vstate in ("running", "done", "error"):
                     break
                 time.sleep(2)
-            _ok("verilator job accepted + scheduled (running/done)", vstate in ("running", "done"), f"state={vstate}")
+            # A shared host may have every global verilator slot occupied by another campaign. Queued is
+            # therefore a valid accepted state; readiness separately proves an actual L3 execution.
+            _ok("verilator job accepted + queued/scheduled without rejection",
+                bool(jv) and vstate in ("queued", "running", "done"), f"state={vstate}")
         finally:
             (ws / ".qa_channel" / "STOP").write_text("stop")
             try:
                 broker.wait(timeout=10)
             except Exception:
                 broker.kill()
-            subprocess.run(["pkill", "-9", "-f", "simulator-chipyard"], capture_output=True)
+            # Kill only this test broker's process group and any simulator children it owns. A broad
+            # pkill would terminate unrelated experiments on the shared host.
+            try:
+                os.killpg(os.getpgid(broker.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
     n = sum(1 for _, ok in results if ok)
     print(f"\nT1 simjob: {n}/{len(results)} passed")
     return 0 if n == len(results) else 1
