@@ -11,7 +11,61 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .tensor import Tensor
+from .tensor import Tensor, pool_out_dims  # noqa: F401  (pool_out_dims re-exported: see its docstring)
+
+#: The attribute names a POOLING epilogue stage reads, and the arity each one must have.
+#:
+#: They ride on the COMMAND's attributes because that is where the hardware carries them: this target
+#: family fuses pooling into the STORE path (``config_st(..., pool_stride, pool_size, pool_out_dim,
+#: porows, pocols, orows, ocols, upad, lpad)``) and into the fused conv loop, so the pool parameters are
+#: configured on the same instruction that reads the accumulator out. By the time an engine reaches the
+#: readout the tensor is a 2-D ``[rows, channels]`` and no conv geometry is in scope, so the extent the
+#: rows unflatten to (``pool_in_dims`` = the ABI's ``orows``/``ocols``) must be declared, not guessed.
+POOL_ATTR_ARITY = {"pool_in_dims": 2, "pool_size": 2, "pool_stride": 2, "pool_padding": 4}
+#: Optional companion: the value a padded cell contributes to the max. No default on purpose -- see
+#: :meth:`Tensor.maxpool2d_rows`.
+POOL_PAD_VALUE_ATTR = "pool_pad_value"
+
+
+def pool_params(attrs: dict[str, Any], *, op: str) -> dict[str, Any]:
+    """Read a pooling epilogue's geometry out of a command's attributes, FAILING CLOSED.
+
+    Every engine that applies a pooling stage (the capsule golden, the reference recomputation and the
+    simulator) parses it through this one function, so they cannot disagree about which attribute names
+    carry the geometry or about what an absent one means. An absent or wrong-arity attribute RAISES and
+    names itself: a pooling stage whose window silently defaulted would return a correctly-shaped tensor
+    of numbers nobody computed, and the integer gate would then enforce it.
+    """
+    out: dict[str, Any] = {}
+    for key, arity in POOL_ATTR_ARITY.items():
+        v = attrs.get(key)
+        if v is None:
+            if key == "pool_padding":                 # the one parameter with a meaningful "none"
+                out[key] = (0, 0, 0, 0)
+                continue
+            raise ValueError(
+                f"{op}: a pooling epilogue stage needs attribute {key!r} "
+                f"({arity} int(s)) and the command does not declare it")
+        if not isinstance(v, (list, tuple)) or len(v) != arity:
+            raise ValueError(
+                f"{op}: pooling attribute {key!r} must be a list of {arity} int(s), got {v!r}")
+        try:
+            out[key] = tuple(int(x) for x in v)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"{op}: pooling attribute {key!r} has a non-integer entry: {v!r}") from e
+    pv = attrs.get(POOL_PAD_VALUE_ATTR)
+    out["pad_value"] = None if pv is None else int(pv)
+    return out
+
+
+def apply_pool_stage(t: Tensor, stage: str, attrs: dict[str, Any], *, op: str) -> Tensor:
+    """Apply the named pooling stage to ``t``. The single definition all three engines call."""
+    if stage != "maxpool":                            # pragma: no cover - callers dispatch on the name
+        raise ValueError(f"{op}: {stage!r} is not a pooling stage this runtime defines")
+    p = pool_params(attrs, op=op)
+    return t.maxpool2d_rows(in_dims=p["pool_in_dims"], pool_size=p["pool_size"],
+                            pool_stride=p["pool_stride"], pool_padding=p["pool_padding"],
+                            pad_value=p["pad_value"])
 
 
 def load_command_buffer(path: str | Path) -> dict[str, Any]:
