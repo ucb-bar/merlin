@@ -28,7 +28,7 @@ from typing import Any
 from merlin.runtime.metrics import COMMON_METRIC_NAMES
 from merlin.runtime.reference import outputs_match, reference_outputs
 from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
-from .gemmini_codegen import generate_driver   # sibling — moves with this backend package
+from .gemmini_codegen import DIM, generate_driver   # sibling — moves with this backend package
 
 # Self-register this reference NPU backend with the class registry (base._REGISTRY). Discovery in
 # base._ensure_discovered imports this module to run the call, so the core carries no name -> module
@@ -266,6 +266,53 @@ def run_command_buffer(cb: dict[str, Any], *, workdir: str | Path | None = None,
         "elf": str(elf),
         "console": console,
     }
+
+
+def preflight_codegen_smoke(*, target: str) -> tuple[bool, str]:
+    """Compile the production command-buffer emitter and run it bit-exact on RTL.
+
+    This is the target-owned implementation of the generic pre-spend codegen-smoke hook.  It exercises
+    the same ``generate_driver -> riscv gcc -> Verilator -> parse -> reference equality`` path used by a
+    real grade.  Merely finding the simulator or compiling an empty file is insufficient: both have been
+    true while the emitted kernel itself was wrong.
+    """
+    if not available("verilator"):
+        return False, ("Gemmini production codegen smoke cannot run: the Verilator RTL oracle, "
+                       "RISC-V compiler, or curated harness is unavailable")
+    tile = int(DIM)
+    cb = {
+        "abi_version": "0.1",
+        "target": target,
+        "tensors": {
+            "probe_w": {"shape": [tile, tile], "dtype": "i8", "role": "weight"},
+            "probe_a": {"shape": [tile, tile], "dtype": "i8", "role": "input"},
+            "probe_y": {"shape": [tile, tile], "dtype": "i32", "role": "output"},
+        },
+        "commands": [
+            {"opcode": "RES_PACK", "operands": {"src": "probe_w", "dst": "probe_w_res"},
+             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT",
+             "operands": {"lhs": "probe_a", "rhs": "probe_w_res", "dst": "probe_acc"}},
+            {"opcode": "COMMIT", "operands": {"src": "probe_acc", "dst": "probe_y"},
+             "attributes": {"epilogue": [], "output_dtype": "i32"}},
+            {"opcode": "EVICT", "operands": {"handle": "probe_w_res"}},
+        ],
+    }
+    try:
+        with tempfile.TemporaryDirectory(prefix="merlin_gemmini_codegen_smoke_") as td:
+            result = run_command_buffer(cb, workdir=td, simulator="verilator", timeout=600)
+            elf_present = Path(str(result.get("elf") or "")).is_file()
+    except Exception as e:  # noqa: BLE001 — this is the failure the launch gate exists to surface
+        return False, f"Gemmini production codegen smoke failed: {type(e).__name__}: {str(e)[-240:]}"
+    oracle = result.get("oracle") or {}
+    output = (result.get("outputs") or {}).get("probe_y")
+    if (result.get("correct") is not True or not output or not elf_present
+            or oracle.get("derived_from_rtl") is not True):
+        return False, ("Gemmini production codegen smoke ran but lacked a bit-exact RTL proof "
+                       f"(correct={result.get('correct')!r}, output={bool(output)}, "
+                       f"elf={elf_present}, oracle={oracle!r})")
+    return True, (f"production command-buffer codegen compiled and ran a {tile}x{tile} kernel "
+                  "bit-exact on Verilator RTL")
 
 
 def harness_build_recipe():

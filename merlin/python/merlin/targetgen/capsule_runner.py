@@ -784,6 +784,33 @@ def codegen_smoke(target: str) -> tuple[bool | None, str]:
                            f"{str(e)[-160:]}. Every capsule would fail to compile and the run would "
                            f"grade only capsules needing no oracle. Derive the encoding fact / set "
                            f"MERLIN_MLC_DIR before spending.")
+
+    # A target may own a compile-and-run backend that is wholly different from the fixed-format path
+    # below (including a command-buffer compiler exposed through an inline-insn endpoint). Let that
+    # backend provide the production smoke instead of declaring the check inapplicable. The hook is
+    # deliberately optional: an arc-only target has no emitted native artifact to smoke.
+    # A hook that exists but raises/returns a malformed result is a BROKEN smoke and therefore fails
+    # closed; otherwise a typo here could turn the exact pre-spend proof into another silent skip.
+    try:
+        from ..runtime.backends import base as _bk_cb
+        backend = _bk_cb.get_backend(target)
+    except Exception:  # noqa: BLE001 — no target-owned backend hook; the fixed-format path may still apply
+        backend = None
+    hook = getattr(backend, "preflight_codegen_smoke", None)
+    if hook is not None:
+        if not callable(hook):
+            return False, (f"backend for {target!r} exposes a non-callable "
+                           "preflight_codegen_smoke")
+        try:
+            result = hook(target=target)
+        except Exception as e:  # noqa: BLE001 — the production emit path failed its pre-spend probe
+            return False, (f"production codegen smoke raised {type(e).__name__}: "
+                           f"{str(e)[-200:]}")
+        if (not isinstance(result, tuple) or len(result) != 2
+                or not isinstance(result[0], bool) or not isinstance(result[1], str)):
+            return False, (f"backend for {target!r} returned a malformed "
+                           "preflight_codegen_smoke result")
+        return result
     try:
         from .isa_model import isa_model_for_target
         if not isa_model_for_target(target).is_fixed_format():

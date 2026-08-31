@@ -97,3 +97,35 @@ def test_the_caller_gates_on_is_false_not_falsiness():
     seg = src[i:i + 1200]
     assert "if _cg_ok is False:" in seg, "the launcher no longer gates on `is False`"
     assert "if not _cg_ok:" not in seg, "falsiness gate is back — None would become a NO_GO"
+
+
+def test_command_buffer_backend_runs_its_production_smoke(monkeypatch):
+    """A compile-based command-buffer backend gets a real hook, not the fixed-format n/a path."""
+    from merlin.runtime.backends import base as backends
+
+    class Backend:
+        @staticmethod
+        def preflight_codegen_smoke(*, target):
+            return True, f"{target}: production RTL smoke passed"
+
+    monkeypatch.setattr(CR, "_bespoke_sim_via", lambda _target: "chipyard")
+    monkeypatch.setattr(CR, "_endpoint_of", lambda _target: ("command_buffer", None))
+    monkeypatch.setattr(backends, "get_backend", lambda _target: Backend())
+    assert CR.codegen_smoke("some_accelerator") == (
+        True, "some_accelerator: production RTL smoke passed")
+
+
+def test_command_buffer_backend_smoke_failure_is_not_an_n_a(monkeypatch):
+    from merlin.runtime.backends import base as backends
+
+    class Backend:
+        @staticmethod
+        def preflight_codegen_smoke(*, target):
+            raise RuntimeError(f"{target} emitted a broken kernel")
+
+    monkeypatch.setattr(CR, "_bespoke_sim_via", lambda _target: "chipyard")
+    monkeypatch.setattr(CR, "_endpoint_of", lambda _target: ("command_buffer", None))
+    monkeypatch.setattr(backends, "get_backend", lambda _target: Backend())
+    ok, reason = CR.codegen_smoke("some_accelerator")
+    assert ok is False
+    assert "broken kernel" in reason

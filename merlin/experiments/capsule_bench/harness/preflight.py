@@ -657,7 +657,7 @@ def main() -> int:
          not neg_unavailable),
         ("freeze tamper detected (hash changes → hidden-phase recheck refuses)", freeze_ok),
         ("input-bundle tree hashes reproduce + bundle_lock.yaml written", bundle_ok),
-        ("token/cost captured on a REAL claude stream-json (not synthetic)", tokens_ok),
+        ("token usage captured on a REAL agent event stream (not synthetic)", tokens_ok),
         (f"numeric oracle runnable for a gradeable run ({R['oracle'].get('reason')})", oracle_ok),
         (f"our codegen backend emits a runnable kernel ({R['oracle'].get('codegen_smoke', {}).get('reason')})",
          R["oracle"].get("codegen_smoke", {}).get("ok", True)),
