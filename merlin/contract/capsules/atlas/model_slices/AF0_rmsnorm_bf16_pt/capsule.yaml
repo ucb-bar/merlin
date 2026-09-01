@@ -32,7 +32,10 @@ numeric_policy:
   atol: 0.25
   rtol: 0.02
 expected:
-  instruction_classes: []
+  instruction_classes:
+  - TensorBaseOffset
+  - TensorComputeUnary
+  - TensorComputeBinary
   modes:
     rmsnorm: true
 required_oracle_tiers:

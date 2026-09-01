@@ -199,8 +199,27 @@ def required_role_slots(*, op: str = "matmul", output_dtype: str | None = None,
     # elementwise_map), so an attention capsule DOES owe the systolic sequence, while `softmax` and
     # `normalization` decompose to (reduction, elementwise_map) and owe nothing. An op the vocabulary
     # does not recognise owes nothing either -- the caller records that rather than inventing a demand.
-    if "contraction" not in _sf.primitives_of(family or ""):
-        return []
+    prims = _sf.primitives_of(family or "")
+    if not prims:
+        return []          # an op the closed vocabulary does not recognise owes nothing (recorded, not invented)
+    if "contraction" not in prims:
+        # NOT nothing. This used to return an empty list for every non-contraction op, and an empty
+        # requirement is satisfied by emitting anything at all -- the same unfalsifiable shape as a
+        # coverage expectation written too coarsely. Measured on the atlas corpus: 13 elementwise and
+        # reduction capsules owed no instruction whatsoever, so no static check could observe whether
+        # the backend had used the machine's vector units or ignored them.
+        #
+        # What such an op DOES owe is expressed in the same derived role vocabulary: its operands have to
+        # be moved, and its arithmetic has to happen on a compute unit. Which compute role is target-
+        # dependent (one target files its reductions under the vector-unary role), so both are offered
+        # and the first that resolves wins -- and a target declaring neither role adds nothing rather
+        # than inventing a demand it cannot meet.
+        slots = [("memory",)]
+        if "reduction" in prims:
+            slots.append(("tensor_compute_unary", "tensor_compute_binary"))
+        if "elementwise_map" in prims:
+            slots.append(("tensor_compute_binary", "tensor_compute_unary"))
+        return slots
     slots: list[tuple[str, ...]] = [
         ("memory",),                                      # load operands
         ("weight_load",),                                 # push stationary weight
