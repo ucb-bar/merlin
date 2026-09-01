@@ -126,16 +126,21 @@ def test_a_failing_baseline_refuses_to_attribute_anything_to_shape(monkeypatch):
     ("gemmini",
      "out/runs/gemmini/capsule-bench/merlin_assisted/merlincirct_gemarm4_codex/submission", []),
 ])
-def test_the_frozen_submissions_reproduce_their_measured_holdout_boundary(target, pkg, expected_axes):
+def test_the_frozen_submissions_reproduce_their_measured_holdout_boundary(target, pkg, expected_axes,
+                                                                          monkeypatch):
     """The whole point, end to end: this finds -- with no holdout, no golden and no oracle -- the same
     boundary that previously took a post-freeze holdout on a paid run."""
     from merlin.common.paths import repo_root
     p = repo_root() / pkg
     if not (p / "manifest.yaml").is_file():
         pytest.skip(f"frozen submission not present: {pkg}")
-    import os
-    os.environ["MERLIN_TARGET_EXPERIMENT"] = str(
-        repo_root() / f"merlin/experiments/capsule_bench/targets/{target}/target_experiment.yaml")
+    # monkeypatch, NOT os.environ: pytest unwinds it after the test. Setting it directly leaked the
+    # descriptor into every later test in the process -- and because this file sorts before
+    # test_model_grade.py, the eight tests holding "a model capsule only passes if its layers actually
+    # ran on the mesh" resolved a different target, failed closed, and reported `incomplete`. They
+    # passed in isolation and failed in the full suite, which is the shape of a guard nobody trusts.
+    monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(
+        repo_root() / f"merlin/experiments/capsule_bench/targets/{target}/target_experiment.yaml"))
     cov = LC.sweep(p, target=target, contract=str(repo_root() / "merlin/contract"))
     assert cov["baseline_tile_lowered"] is True, "the one-tile baseline must lower for this to mean anything"
     assert cov["multi_tile_axes_uncovered"] == expected_axes

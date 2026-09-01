@@ -23,10 +23,16 @@ _PKG = repo_root() / "out/artifacts/targets/radiance/reference_v0"
 def gd():
     if not _DESC.is_file() or not _PKG.exists():
         pytest.skip("radiance descriptor / reference_v0 package not present")
-    os.environ["MERLIN_TARGET_EXPERIMENT"] = str(_DESC)
-    sys.path.insert(0, str(repo_root() / "merlin/experiments/capsule_bench/harness"))
+    # Undone when the module finishes. Setting os.environ directly leaked this descriptor into every
+    # later test in the process -- the same defect that made test_model_grade.py's eight mesh-verdict
+    # guards fail in the full suite while passing in isolation. It is latent here rather than active
+    # only because the fixture skips when reference_v0 is absent.
+    mp = pytest.MonkeyPatch()
+    mp.setenv("MERLIN_TARGET_EXPERIMENT", str(_DESC))
+    mp.syspath_prepend(str(repo_root() / "merlin/experiments/capsule_bench/harness"))
     import generalization_difftest as G  # noqa: PLC0415
-    return G
+    yield G
+    mp.undo()
 
 
 @pytest.mark.parametrize("family,probe_name,op", [
