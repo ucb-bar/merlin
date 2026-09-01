@@ -254,6 +254,44 @@ def _load_capsule(name: str, index: dict[str, Path]) -> dict | None:
     return yaml.safe_load(p.read_text()) if p else None
 
 
+def _screen_object(run_capsule_dir: Path, facts_rec: dict, capsule: dict | None, fc: str | None,
+                   target: str, *, write: bool) -> dict | None:
+    """The EMITTED-OBJECT check family: screen the machine-code words the target's emit path recorded at
+    ``generated/<rtl_object_screen.WORDS_ARTIFACT>``. Returns None when this run recorded none (the caller
+    then reports the family as not applicable — the coverage census makes that visible), and never
+    substitutes a clean result for a missing one."""
+    from . import rtl_object_screen as OS
+    from .isa_model import isa_model_for_target
+
+    doc = OS.load_words(run_capsule_dir / "generated")
+    if doc is None:
+        return None
+    words = [int(w) for w in doc.get("words") or []]
+    try:
+        model = isa_model_for_target(target)
+    except Exception as e:  # noqa: BLE001 — no derived ISA model -> the family cannot run, honestly
+        return {"capsule": (capsule or {}).get("name") or run_capsule_dir.name, "filecheck": {},
+                "screen": {"verdict": "unknown", "checks": [],
+                           "dropped": {"all": f"no derived ISA model for {target!r}: {e!r}"}},
+                "verdict": "unknown"}
+    rep = OS.screen(words, model, facts_rec, capsule, lint_enforced=bool(doc.get("lint_enforced")))
+    res: dict[str, Any] = {"capsule": (capsule or {}).get("name") or run_capsule_dir.name,
+                           "filecheck": {}, "screen": rep, "object_source": doc.get("source"),
+                           "object_decode": OS.render(rep)}
+    checks = OS.compile_object_checks(capsule or {}, rep)
+    # Do NOT FileCheck a screen that grounded nothing: its render carries only '-' values, so the run would
+    # come back ``ok`` beside a verdict of ``unknown`` and read as a pass. No assertion, no reassurance.
+    if fc and checks and rep.get("grounded"):
+        ok, diag = run_filecheck(fc, checks, res["object_decode"], ["OBJECT"])
+        res["filecheck"]["object"] = {"ok": ok, "diag": diag}
+    fc_fail = (res["filecheck"].get("object") or {}).get("ok") is False
+    res["verdict"] = "reject" if (fc_fail or rep["verdict"] == "reject") else (
+        "warn" if rep["verdict"] == "warn" else rep["verdict"])
+    if write:
+        (run_capsule_dir / "rtl_checks.json").write_text(json.dumps(res, indent=2))
+    return res
+
+
 def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
                fc: str | None, write: bool = False, *, target: str) -> dict | None:
     """Run the full RTL-check suite (FileCheck trace/kernel + Python numeric screen) on one run dir.
@@ -274,7 +312,13 @@ def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
     # self-hosted target, fully derived from facts_rec. Verdict rides this check.
     if compiled.get("kernel") is not None:
         if not kernel_p.is_file():
-            return None
+            # The same endpoint, a DIFFERENT emitted artifact: a target whose codegen endpoint is an
+            # LLVM-dialect MLIR module has no hand-authored kernel.S — its machine code only exists once a
+            # real toolchain compiles the lowering. Screen the words that emit path recorded instead. This
+            # branch is why the family census below reports a denominator: returning None here is what made
+            # 18 consecutive rounds of the RTL-checks arm read as "nothing wrong" when nothing was looked at.
+            obj = _screen_object(run_capsule_dir, facts_rec, capsule, fc, target, write=write)
+            return obj
         res = {"capsule": (capsule or {}).get("name") or run_capsule_dir.name,
                "filecheck": {}, "screen": None}
         from . import isa_taxonomy as IT
@@ -360,11 +404,23 @@ def prescreen(run_capsule_dir: Path, target: str | None = None) -> dict | None:
 
 
 def iter_run_dirs(root: Path):
-    if (root / "generated" / "instruction_trace.json").is_file():
+    """Every capsule run dir under ``root`` that carries an artifact SOME check family consumes. Keyed on
+    the union of the families' entry artifacts, not just the RoCC trace: keyed on the trace alone, the CLI
+    silently found nothing for a target whose compiler emits a lowering — the same blind spot that made the
+    advisory itself come out empty. ``screen_run`` still decides applicability per dir."""
+    from . import rtl_object_screen as OS
+
+    entry = ("instruction_trace.json", "kernel.S", OS.WORDS_ARTIFACT)
+    if any((root / "generated" / a).is_file() for a in entry):
         yield root
         return
-    for t in root.rglob("generated/instruction_trace.json"):
-        yield t.parent.parent
+    seen: set[Path] = set()
+    for a in entry:
+        for t in sorted(root.rglob(f"generated/{a}")):
+            d = t.parent.parent
+            if d not in seen:
+                seen.add(d)
+                yield d
 
 
 def main(argv: list[str] | None = None) -> int:

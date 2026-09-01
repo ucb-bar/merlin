@@ -84,6 +84,63 @@ def derive_march(model: IsaModel) -> str:
     return march
 
 
+#: The base-ISA FORM each standard opcode value belongs to, for a RISC-V-substrate target. Same status as
+#: the constants above: a fixed external fact of stock RISC-V, always compared as DATA against a target's
+#: own derived ``opcode_table`` before use (see :func:`base_isa_opcode_groups`) — never assumed present.
+#: The group names are FORMS, not target vocabulary, so they mean the same thing for every such target.
+_OPCODE_FORMS: dict[str, frozenset[int]] = {
+    "memory": frozenset({_LOAD, _STORE, _OPV_LOAD_FP, _OPV_STORE_FP}),
+    # Split by DIRECTION as well, because the two answer different questions: "which accesses carry an
+    # address-space selector" needs both, while "did this kernel ever write its result" needs only writes.
+    "memory_load": frozenset({_LOAD, _OPV_LOAD_FP}),
+    "memory_store": frozenset({_STORE, _OPV_STORE_FP}),
+    "fp_compute": frozenset({_OP_FP}),
+    "fused_multiply_add": frozenset(_FMA),
+    "int_compute": frozenset({_OP, _OP_IMM}),
+    "control_flow": frozenset(_BTYPE | _JTYPE | {_JALR}),
+    "ordering": frozenset({_MISC_MEM}),
+    # Where a RISC-V-substrate target's CSR accesses live — the window a check must look in to ask "does
+    # this kernel read any of the machine's own status/identity registers".
+    "system": frozenset({_SYSTEM}),
+    # CUSTOM0..3 — where a RISC-V-substrate target puts its own extension: the SIMT warp-control ops on a
+    # GPU-class core, an accelerator command port on others. WHICH op sits at which (opcode, funct3) is
+    # never guessed here; it comes from the target's derived ``runtime_abi.sfu_ops`` (see
+    # :mod:`merlin.targetgen.rtl_object_screen`). This group only says "these opcode values are the
+    # extension window", which is a property of the base ISA.
+    "custom_extension": frozenset(_CUSTOM),
+}
+
+
+def base_isa_opcode_groups(model: IsaModel) -> dict[str, frozenset[int]]:
+    """Group a fixed-format target's OWN derived opcode values by their standard base-ISA form.
+
+    The point is to let a static check ask "which of the emitted words are memory accesses" or "which are
+    the extension window" **without** naming a target, an opcode, or a mnemonic: the values come from the
+    target's ``opcode_table`` (derived from its RTL decoder) and are intersected with the standard form
+    windows of the base ISA the model itself declares. A target whose decoder omits a form simply has no
+    entry for it, so a caller drops that check rather than inventing one.
+
+    Returns ``{}`` unless the model is fixed-format AND declares a RISC-V base family — for any other
+    substrate the standard values above do not apply, and returning them anyway would be exactly the
+    "assumed encoding" this repo forbids. Empty groups are omitted, so ``"memory" in groups`` is a real
+    capability test.
+
+    Values are masked to the OPCODE FIELD's width, because that is the width a decoded word's opcode field
+    carries: an opcode-table entry may be wider (an extension selector carved off the top), and the same
+    masking is what the disassembler's reverse map does."""
+    if not model.is_fixed_format() or not model.base_isa_family().startswith("riscv"):
+        return {}
+    hi, lo = model.field_layout["opcode"]
+    fmask = (1 << (hi - lo + 1)) - 1
+    values = {int(v) & fmask for v in model.opcode_table.values()}
+    out: dict[str, frozenset[int]] = {}
+    for form, window in _OPCODE_FORMS.items():
+        present = window & values
+        if present:
+            out[form] = frozenset(present)
+    return out
+
+
 class TranscodeError(ValueError):
     """A word the derived model cannot faithfully re-map (an unknown opcode, or a PC-relative form the
     changed instruction stride would corrupt). Raised rather than emitting a silently-wrong word."""

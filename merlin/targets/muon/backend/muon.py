@@ -582,6 +582,35 @@ def build_forkfree_bsp(workdir: str | Path, *, target: str = "radiance", num_war
                               occupancy=(OCCUPANCY_SYMBOL, num_warps))
 
 
+def _text_words(obj: Path, model, *, objcopy: Path | None = None) -> list[int]:
+    """The instruction words of an object's ``.text``, at the model's own instruction width."""
+    from merlin.targetgen.contract.toolchain import mlir_bin
+
+    oc = objcopy or mlir_bin("llvm-objcopy")
+    binf = obj.with_suffix(obj.suffix + ".text.bin")
+    subprocess.run([str(oc), "-O", "binary", "--only-section=.text", str(obj), str(binf)],
+                   capture_output=True)
+    if not binf.is_file():
+        return []
+    raw, stride = binf.read_bytes(), model.inst_width // 8
+    return [int.from_bytes(raw[i:i + stride], "little") for i in range(0, len(raw) - stride + 1, stride)]
+
+
+def _record_emitted_words(workdir: Path, words: list[int], model, *, source: str,
+                          symbol: str | None = None, lint_enforced: bool = False) -> None:
+    """Record the kernel's machine-code word stream for the static RTL/ISA screen (arm-4's advisory).
+
+    Only the emit path knows WHICH of the objects it produced is the final machine code, so it is the emit
+    path that records it, under the core-owned convention name. Never fatal: a build must not fail because
+    an advisory could not be recorded."""
+    try:
+        from merlin.targetgen import rtl_object_screen as OS
+        OS.write_words(workdir, words, inst_width=model.inst_width, source=source, symbol=symbol,
+                       lint_enforced=lint_enforced)
+    except Exception:  # noqa: BLE001 — advisory bookkeeping, never a build failure
+        pass
+
+
 def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[str | Path] | None = None,
                             *, target: str = "radiance", march: str | None = None, num_warps: int = 1) -> Path:
     """FORK-FREE build of a self-contained kernel: STOCK clang compiles the kernel C to rv32, the derived
@@ -651,6 +680,8 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
                        capture_output=True)
         words = FixedFormatTranscoder(model).transcode_text(binf.read_bytes())
         _lint_words(words)
+        _record_emitted_words(work, words, model, source="kernel_muon.S (flat .text re-map)",
+                              lint_enforced=True)
         ks = work / "kernel_muon.S"
         ks.write_text(emit_kernel_asm(words, model.inst_width))
         a = subprocess.run([str(mc), "--triple=riscv32", "--filetype=obj", str(ks), "-o", str(kobj)],
@@ -670,7 +701,10 @@ def compile_kernel_forkfree(kernel_c: str, workdir: str | Path, bsp_objs: list[s
         subprocess.run([str(objcopy), "-O", "binary", "--only-section=.text", str(kobj), str(ktext)],
                        capture_output=True)
         stride, wb = model.inst_width // 8, ktext.read_bytes()
-        _lint_words([int.from_bytes(wb[i:i + stride], "little") for i in range(0, len(wb), stride)])
+        _words = [int.from_bytes(wb[i:i + stride], "little") for i in range(0, len(wb), stride)]
+        _lint_words(_words)
+        _record_emitted_words(work, _words, model, source="kernel_muon.o (reloc-preserving transcode)",
+                              lint_enforced=True)
 
     # 4. FORK-FREE link: boot/runtime (regenerated fork-free from source if not supplied) + the kernel.
     if bsp_objs is None:
@@ -809,6 +843,13 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     kobj, mobj = work / "kernel_muon.o", work / "main_muon.o"
     muon_bsp.transcode_boot_object(kobj_rv, kobj, isa_model=model)
     muon_bsp.transcode_boot_object(mobj_rv, mobj, isa_model=model)
+    # Record the KERNEL's words for the static screen — the kernel object only, never the harness main or
+    # the BSP: those are runner-owned, and an advisory about them would be an advisory about our own code.
+    # lint_enforced=False: unlike compile_kernel_forkfree, this path does not itself reject an undecodable
+    # word, so the screen's legality result here is a real finding rather than an attestation.
+    _record_emitted_words(work, _text_words(kobj, model), model,
+                          source="kernel_muon.o (MLIR lowering, reloc-preserving transcode)",
+                          symbol=kernel_symbol, lint_enforced=False)
 
     # 4. fork-free link: from-source BSP + harness main + MLIR kernel
     bsp_objs = build_forkfree_bsp(work, target=target, num_warps=num_warps)
