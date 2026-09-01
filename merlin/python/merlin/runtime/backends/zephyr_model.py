@@ -579,7 +579,7 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     from ...llvmlower.impr_features import (PEROP_BLOCK_NAME, PEROP_NR_FILL_NAME,
                                             ensure_perop_block)
     # The N-fill request is a SEARCH KNOB, off by default, because its sign is model-dependent: on the
-    # K1 it measured 1.159x FASTER on spectformer int8 and 1.196x SLOWER on small_llama int8, both far
+    # K1 it measured 1.160x FASTER on spectformer int8 and 1.196x SLOWER on small_llama int8, both far
     # outside the 2.6% band. The accumulator is i32, not i8, so at VLEN=256 an NR=16 tile is already
     # LMUL m4 and widening pushes it to m8 and spills (decoded at 128^3: 0 -> 6 accumulator spill ops).
     # Passing vlen here is the ONLY thing that turns it on, so the default path is byte-identical.

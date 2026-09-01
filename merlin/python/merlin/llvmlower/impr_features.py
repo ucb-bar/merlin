@@ -1804,7 +1804,7 @@ def _perop_nr_fill_unresolved(_passes):
 # register (perop_blocks.nr_cap_for_dtypes). MEASURED on the live K1 (VLEN=256, whole model, per-op
 # blocking on both arms, interleaved same-session arms, n=3, min-of-n, cos identical per model):
 #
-#   spectformer_int8_full        2,077,035,312 -> 1,791,853,206 cyc   1.159x FASTER
+#   spectformer_int8_full        2,066,414,196 -> 1,781,260,404 cyc   1.160x FASTER
 #   small_llama_int8_consistent      8,822,088 ->    10,547,988 cyc   1.196x SLOWER
 #
 # Both are far outside the board's 2.6% band, and they point OPPOSITE ways. The mechanism is visible in
@@ -1824,7 +1824,7 @@ register(ImprFeature(
     action_class="KNOB",
     description="widen each contraction's per-op N cap until its NARROWEST element fills a whole "
                 "vector register at the board's VLEN, instead of every op sharing one element count. "
-                "MEASURED model-dependent on the K1: 1.159x faster on spectformer int8, 1.196x slower "
+                "MEASURED model-dependent on the K1: 1.160x faster on spectformer int8, 1.196x slower "
                 "on small_llama int8 -- because the i32 accumulator is what sets LMUL, so a wider N "
                 "tile can push it from m4 to m8 and spill (decoded: 0 -> 6 accumulator spill ops). A "
                 "search knob, not a default. Default-off; baseline byte-identical.",

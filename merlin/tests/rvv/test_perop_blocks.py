@@ -323,7 +323,7 @@ def test_a_shape_that_cannot_take_the_wider_tile_keeps_the_narrower_one():
 
 
 def test_the_n_fill_knob_is_off_by_default_and_only_turns_on_by_request():
-    """Its SIGN is model-dependent (K1: 1.159x faster on spectformer int8, 1.196x SLOWER on small_llama
+    """Its SIGN is model-dependent (K1: 1.160x faster on spectformer int8, 1.196x SLOWER on small_llama
     int8, both outside the 2.6% band), so it must be a search knob and NOT a default. The mechanism is
     visible in the object: the i32 accumulator sets LMUL, so NR=16 is already e32,m4 with zero
     accumulator spills and NR=32 is e32,m8 with six. This pins the wiring that keeps it opt-in."""
@@ -358,6 +358,6 @@ def test_the_n_fill_measurement_is_recorded_with_BOTH_signs():
     from merlin.llvmlower.impr_features import PEROP_NR_FILL_NAME
 
     desc = F.get(PEROP_NR_FILL_NAME).description
-    assert "1.159x faster" in desc and "1.196x slower" in desc
+    assert "1.160x faster" in desc and "1.196x slower" in desc
     assert "m4" in desc and "m8" in desc          # the mechanism, not just the numbers
     assert "search knob, not a default" in desc
