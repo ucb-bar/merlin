@@ -338,6 +338,10 @@ _ARM = ""               # set in main(): the arm being run (enforces the per-arm
 _ADD_TOOLS: tuple = ()  # set in main(): --with-tool    (ABLATION: grant these on top of the rung)
 _DROP_TOOLS: tuple = () # set in main(): --without-tool (ABLATION: withhold these from the rung)
 _DRIVER = "auto"        # set in main(): agent driver (auto|converse|claudecode|opencode); auto routes by model
+#: set in main(): "subscription" | "bedrock". The claude CLI's --model name depends on it -- a Bedrock
+#: inference-profile id is not serveable by a subscription CLI, and handing it one kills the agent turn
+#: in 0 ms while the round goes on to report a workflow failure as if the agent had run.
+_PROVIDER = "subscription"
 _SUBAGENT_MODEL = ""    # set in main(): delegate/subagent model for tier-within-agent (converse driver)
 _BACKGROUND_MODEL = ""  # set in main(): background/mechanical model (converse driver; reserved)
 READY_MARKER = "READY_FOR_BARRIER"  # realistic: agent drops submission/<this> to self-declare done
@@ -1393,7 +1397,7 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
         # empty env here and takes its existing native/Bedrock path unchanged.
         import agent_bridge as _BR
         _bridge_env = _BR.claude_env(model)
-        _cli_model = _BR.claude_model_name(model)
+        _cli_model = _BR.claude_model_name(model, provider=_PROVIDER)
         inner = (f'claude --print --model {_cli_model} --effort {effort} '
                  f'--permission-mode bypassPermissions --add-dir {ws} '
                  f'--output-format stream-json --verbose < {ws_task}')
@@ -1901,9 +1905,11 @@ def main(argv: list[str] | None = None) -> int:
         os.environ.pop("MERLIN_MODEL_BUDGET_S", None)
     arm = a.arm
     global _EXPERIMENT, _ARM, _DRIVER, _SUBAGENT_MODEL, _BACKGROUND_MODEL, _ADD_TOOLS, _DROP_TOOLS
+    global _PROVIDER
     _EXPERIMENT = a.experiment
     _ARM = arm
     _DRIVER = a.driver
+    _PROVIDER = a.provider
     _SUBAGENT_MODEL = a.subagent_model
     _BACKGROUND_MODEL = a.background_model
     # Fail closed on an unknown tool name BEFORE any spend: a typo would otherwise ablate nothing and

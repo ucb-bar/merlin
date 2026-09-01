@@ -314,8 +314,29 @@ def claude_env(model: str, *, force: bool | None = None) -> dict:
     }
 
 
-def claude_model_name(model: str, *, force: bool | None = None) -> str:
-    return bridged_name(model, "claude", force=force) or _MT.resolve(model)
+def claude_model_name(model: str, *, force: bool | None = None,
+                      provider: str = "bedrock") -> str:
+    """The name to hand the claude CLI's ``--model``, for this model and PROVIDER.
+
+    ``model_tiers.MODELS`` maps an alias to a BEDROCK inference profile, which is the right answer only
+    when the CLI is pointed at Bedrock. Under a subscription the CLI speaks to Anthropic directly and
+    understands the aliases itself, so resolving through that map hands it an id it cannot serve.
+
+    Measured 2026-09-01: ``--model opus --provider subscription`` reached the CLI as
+    ``us.anthropic.claude-opus-4-6-v1`` and the round died instantly with "There's an issue with the
+    selected model ... It may not exist or you may not have access to it." The agent turn took 0 ms, and
+    the round then went on to grade an unchanged submission and report a workflow-conformance failure --
+    so a provider/name mismatch presented itself as an agent that did not do its work.
+
+    The bridge still applies where it applies: a non-Anthropic model reaches the claude CLI only through
+    the LiteLLM proxy, and that routing is independent of the provider.
+    """
+    bridged = bridged_name(model, "claude", force=force)
+    if bridged:
+        return bridged
+    if str(provider) == "subscription":
+        return model                       # the CLI resolves its own aliases; do not Bedrock-ise them
+    return _MT.resolve(model)
 
 
 def sandbox_binds() -> list[str]:
