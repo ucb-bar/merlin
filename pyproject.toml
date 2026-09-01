@@ -86,6 +86,12 @@ merlin-rvv-autotune = "merlin.mining.autotune:main"
 merlin-rvv-beam = "merlin.mining.beam_cli:main"
 merlin-rvv-opt = "merlin.mining.op_sweep:main"
 merlin-cca-route = "merlin.mining.route_report:main"
+# Offline, bit-exact bundle rewrite: store weights in the layout their consumer wants, so the
+# model stops re-laying-out weights on every inference. The analysis + rewrite already existed
+# and were tested; nothing could RUN them, so the *_pretransposed bundles on disk had been
+# hand-driven from a REPL. See merlin/python/merlin/baselines/pretranspose_cli.py for the
+# decided precedence against the conflicting `fuse_transpose_b` schedule lever.
+merlin-bundle-pretranspose = "merlin.baselines.pretranspose_cli:main"
 merlin-compile = "merlin.compile_cli:main"
 merlin-compare = "merlin.compare.cli:main"
 merlin-liveness = "merlin.liveness.cli:main"
