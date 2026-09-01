@@ -105,8 +105,14 @@ def _ar() -> str | None:
 BUILDABLE_TRANSPORTS: frozenset = frozenset({"host_instruction", None})
 
 
-def _unbuildable_reason(device: str) -> str | None:
-    """Why this path cannot build ``device``, or None when it can."""
+def boundary_buildable(device: str) -> str | None:
+    """Why no path in this repo can emit ``device``'s host/device boundary, or None when one can.
+
+    PUBLIC because the composition axis needs it. ``targetgen.boundary`` classifies a capsule's
+    accelerator/host seam from ELIGIBILITY alone, which silently claims a crossing on a target whose
+    seam nothing can compile -- so it has to be able to ask, and a private cross-package import is how
+    that drifts. Same predicate, one name.
+    """
     try:
         from merlin.system.derive import link_for
         from merlin.targetgen.target_experiment import load_capability_manifest
@@ -172,7 +178,7 @@ def build_device_objects(device: str,
     # mlir-translate fails obscurely, and worse, the shim would declare an extern kernel symbol that
     # nothing in the archive defines. Declining with the transport named is the honest answer, and it
     # is the first consumer of the transport axis the Link derives.
-    unbuildable = _unbuildable_reason(device)
+    unbuildable = boundary_buildable(device)
     if unbuildable:
         return DeviceBuild(device=device, skipped=(("all", unbuildable),))
 

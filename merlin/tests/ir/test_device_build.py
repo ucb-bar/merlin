@@ -136,9 +136,9 @@ def test_a_device_this_path_cannot_compile_is_declined_with_its_transport():
 
     This is the first consumer of the transport axis the Link derives -- before it, `endpoint_kind`
     answered four questions at once and none of them was 'can this be compiled here'."""
-    from merlin.llvmlower.device_build import _unbuildable_reason
+    from merlin.llvmlower.device_build import boundary_buildable
 
-    verdicts = {t: _unbuildable_reason(t) for t in ("gemmini", "radiance", "atlas",
+    verdicts = {t: boundary_buildable(t) for t in ("gemmini", "radiance", "atlas",
                                                     "saturn_opu_mxv256d128")}
     declined = {t: why for t, why in verdicts.items() if why}
     if not declined:
@@ -149,10 +149,10 @@ def test_a_device_this_path_cannot_compile_is_declined_with_its_transport():
 
 def test_the_decline_happens_before_any_work(tmp_path):
     """Named early so the reason is the transport, not a confusing failure three tools later."""
-    from merlin.llvmlower.device_build import _unbuildable_reason
+    from merlin.llvmlower.device_build import boundary_buildable
 
     target = next((t for t in ("saturn_opu_mxv256d128", "radiance", "atlas")
-                   if _unbuildable_reason(t)), None)
+                   if boundary_buildable(t)), None)
     if target is None:
         pytest.skip("no non-compilable device resolvable here")
     b = build_device_objects(target, _SIGS, _DTS, package_dir=_PKG or (tmp_path / "nope"),

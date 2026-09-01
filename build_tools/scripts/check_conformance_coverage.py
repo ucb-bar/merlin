@@ -213,10 +213,24 @@ def main(argv=None) -> int:
                     print(f"       {kind:32s} covered only INCIDENTALLY — every capsule containing it "
                           f"is named for a different shape, so nothing is built to prove it")
                 if comp.get("unreadable_capsules"):
-                    print(f"   UNREADABLE    : {len(comp['unreadable_capsules'])} capsule(s) whose "
-                          f"composition could not be determined")
-                    for name, why in sorted(comp["unreadable_capsules"].items()):
-                        print(f"     ? {name:32s} {why}")
+                    # TWO DIFFERENT FACTS, and they license different actions. "We could not read this
+                    # capsule" is a defect in the capsule -- fix the capsule. "This target's seam cannot
+                    # be emitted by any path here" is a defect in the toolchain -- build the transport,
+                    # or stop claiming the shape. Printing both under one word sent readers to the wrong
+                    # one.
+                    und = {n: w for n, w in comp["unreadable_capsules"].items() if "undeterminable" in w}
+                    bad = {n: w for n, w in comp["unreadable_capsules"].items() if n not in und}
+                    if bad:
+                        print(f"   UNREADABLE    : {len(bad)} capsule(s) whose composition could not "
+                              f"be determined")
+                        for name, why in sorted(bad.items()):
+                            print(f"     ? {name:32s} {why}")
+                    if und:
+                        print(f"   UNBUILDABLE   : {len(und)} capsule(s) are accelerator-eligible on a "
+                              f"target whose host/device seam no path in this repo can emit, so their "
+                              f"composition is UNDETERMINABLE -- not covered, and not a capsule defect")
+                        for name, why in sorted(und.items()):
+                            print(f"     ? {name:32s} {why}")
             elif comp:
                 print(f"   composition   : {comp.get('status')} — {comp.get('detail', '')}")
             mem = r.get("memory_mapping") or {}

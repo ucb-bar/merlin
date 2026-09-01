@@ -40,6 +40,10 @@ from pathlib import Path
 
 #: An accelerator-eligible region, in the sequence vocabulary this module classifies.
 ACCEL = "A"
+#: Accelerator-ELIGIBLE, but no path in this repo can emit this target's host/device boundary, so
+#: whether the work crosses the seam is UNDETERMINABLE. Never folded into ``A`` (which would claim a
+#: crossing nothing can compile) nor into ``H`` (which would claim the target refused the work).
+UNBUILDABLE = "?A"
 #: A region the target's capability model does not admit — the host/scalar lane carries it.
 HOST = "H"
 
@@ -66,6 +70,7 @@ class BoundaryProfile:
     n_accel_regions: int = 0
     n_host_regions: int = 0
     n_unresolved: int = 0
+    n_unbuildable: int = 0
     accel_segments: int = 0
     host_segments: int = 0
     detail: str = ""
@@ -78,7 +83,8 @@ class BoundaryProfile:
     def to_dict(self) -> dict:
         return {"boundary": self.kind, "contains": sorted(self.contains), "grammar": self.grammar,
                 "n_accel_regions": self.n_accel_regions, "n_host_regions": self.n_host_regions,
-                "n_unresolved": self.n_unresolved, "accel_segments": self.accel_segments,
+                "n_unresolved": self.n_unresolved, "n_unbuildable": self.n_unbuildable,
+                "accel_segments": self.accel_segments,
                 "host_segments": self.host_segments, "detail": self.detail}
 
 
@@ -270,6 +276,21 @@ def _sequence_from_linalg(module, target: str) -> tuple[list[str], int]:
     return seq, unresolved
 
 
+def _unbuildable_seam(target: str) -> str | None:
+    """Why ``target``'s host/device boundary cannot be emitted, or None when it can.
+
+    Delegates to the ONE predicate that owns the answer (``llvmlower.device_build.boundary_buildable``)
+    rather than re-deriving the transport here, so the composition axis and the builder can never
+    disagree about which targets have a compilable seam. An unresolvable target answers None -- "we
+    could not tell" is the caller's existing UNKNOWN path, not a claim of unbuildability.
+    """
+    try:
+        from merlin.llvmlower.device_build import boundary_buildable
+        return boundary_buildable(target)
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
 def profile_iface_text(text: str) -> BoundaryProfile:
     """Classify a ``merlin_iface`` capsule from its text.
 
@@ -335,6 +356,23 @@ def profile_path(path: str | Path, target: str) -> BoundaryProfile:
     except Exception as e:                                     # noqa: BLE001
         return BoundaryProfile(grammar="linalg", detail=f"unparseable: {type(e).__name__}: {e}")
     seq, unresolved = _sequence_from_linalg(module, target)
+    # AN ELIGIBLE REGION IS NOT A CROSSING WE CAN EMIT. Eligibility says the capability manifest admits
+    # the work; it says nothing about whether any path in this repo can compile the seam that carries it.
+    # On a device_native target the boundary is a DRAM address contract honoured by the harness, not a
+    # linkable call, so `device_build` refuses it outright -- and yet this function would happily label
+    # every admitted region `A` and let a corpus report `H->A->H` covered on a target where that seam is
+    # uncompilable. UNKNOWN with the reason instead, and NOT by dropping the regions: dropping them turns
+    # [A,H,A] into [H] and reports a host-only capsule, which is a stronger false claim than the one it
+    # replaces.
+    n_eligible = sum(1 for x in seq if x == ACCEL)
+    unbuildable = _unbuildable_seam(target) if n_eligible else None
+    if unbuildable:
+        return BoundaryProfile(
+            kind=UNKNOWN, grammar="linalg", n_unresolved=unresolved, n_unbuildable=n_eligible,
+            n_host_regions=sum(1 for x in seq if x == HOST),
+            detail=f"{n_eligible} of {len(seq)} linalg region(s) are accelerator-eligible, but "
+                   f"{unbuildable} -- so whether this program crosses the seam is undeterminable, "
+                   f"not proven")
     segs = segments(seq)
     return BoundaryProfile(
         kind=classify_sequence(seq), contains=tuple(sorted(patterns_in_sequence(seq))),

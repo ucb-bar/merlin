@@ -181,3 +181,59 @@ class TestGapReport:
     def test_unreadable_capsules_travel_with_the_gap(self):
         gap = B.uncovered_boundaries({"by_kind": {}}, {"by_kind": {}, "unreadable": {"c": "why"}})
         assert gap["unreadable_capsules"] == {"c": "why"}
+
+
+class TestUnbuildableSeam:
+    """An ELIGIBLE region is not a crossing this repo can emit.
+
+    Eligibility says the capability manifest admits the work. It says nothing about whether any path
+    here can compile the seam that carries it: on a ``device_native`` target the boundary is a DRAM
+    address contract honoured by the harness, not a linkable call, and ``device_build`` refuses it
+    outright. Without this check the axis labels every admitted region ``A`` and a corpus can report
+    ``H->A->H`` covered on a target whose seam is uncompilable.
+    """
+
+    def test_the_two_kinds_of_target_disagree_and_that_is_the_point(self):
+        from merlin.llvmlower.device_build import boundary_buildable
+
+        # host_instruction: a real call the device shim can emit.
+        assert boundary_buildable("gemmini") is None
+        # device_native: the device fetches its own stream; there is no host-side call to build.
+        assert boundary_buildable("atlas"), "atlas' seam is not compilable by any path in this repo"
+
+    def test_an_unresolvable_target_is_not_called_unbuildable(self):
+        # "we could not tell" must reach the caller's existing UNKNOWN path, never a claim that the
+        # seam cannot be built -- the same distinction the module keeps everywhere else.
+        assert B._unbuildable_seam("definitely_not_a_target_xyz") is None
+
+    def test_an_unbuildable_target_reports_undeterminable_not_a_shape(self, tmp_path):
+        # The `prov.level` attribute is what routes a capsule to the linalg grammar (linalg_iface.
+        # is_linalg_on_tensors); without it this would silently fall through to the merlin_iface parser
+        # and the test would skip, which is the shape of a check that cannot fail.
+        module = tmp_path / "capsule.linalg.mlir"
+        module.write_text(textwrap.dedent("""
+            module attributes {prov.level = "linalg-on-tensors"} {
+              func.func @forward(%a: tensor<16x16xbf16>, %b: tensor<16x16xbf16>) -> tensor<16x16xbf16> {
+                %0 = tensor.empty() : tensor<16x16xbf16>
+                %1 = linalg.matmul ins(%a, %b : tensor<16x16xbf16>, tensor<16x16xbf16>)
+                                   outs(%0 : tensor<16x16xbf16>) -> tensor<16x16xbf16>
+                return %1 : tensor<16x16xbf16>
+              }
+            }
+        """).strip(), encoding="utf-8")
+        prof = B.profile_path(module, "atlas")
+        assert prof.grammar == "linalg", f"fixture did not reach the linalg path: {prof.detail}"
+        assert prof.kind == B.UNKNOWN, (
+            f"an eligible region on an unbuildable seam must be UNDETERMINABLE, got {prof.kind!r}")
+        assert prof.kind != B.HOST_ONLY, "never H: the target did not refuse the work"
+        assert "undeterminable" in prof.detail
+
+    def test_dropping_unbuildable_regions_would_have_been_worse(self):
+        # Guards the implementation choice, not just the outcome. Had the unbuildable regions simply
+        # been dropped from the sequence, [A,H,A] would compress to [H] and the capsule would report as
+        # a proven HOST-ONLY program -- a stronger false claim than the `A` it replaced.
+        assert B.classify_sequence(["H"]) == B.HOST_ONLY
+        assert B.classify_sequence(["A", "H", "A"]) == B.A_H_A
+
+    def test_the_field_is_reported_so_a_reader_can_see_how_many(self):
+        assert "n_unbuildable" in B.BoundaryProfile().to_dict()
