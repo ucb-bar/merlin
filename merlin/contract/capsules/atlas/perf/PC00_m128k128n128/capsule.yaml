@@ -49,18 +49,10 @@ expected:
 required_oracle_tiers:
 - L0
 - L1
+- L2
 - L3
-- L4
 vcs: optional
 firesim: optional
-inapplicable_oracle_tiers:
-  L2: 'functional core cannot corroborate an RTL result for this target: the ISA encodes
-    dma.config.chN and dma.wait.chN to the same word, so an assembled program that
-    needs both cannot be decoded back (resolving it as wait leaves the DMA channel
-    unarmed and the kernel stalls at its first VLOAD; resolving it as config deletes
-    the barriers and every output reads back zero). The core also treats VMEM as byte-addressed
-    where the RTL treats it as word-addressed, and reads the fp8->bf16 unpack scale
-    as a divisor where the RTL reads a biased exponent. Graded on the RTL tiers instead.'
 pytorch_ref:
   op: k_chain
   dtype: bf16

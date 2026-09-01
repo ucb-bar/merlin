@@ -21,13 +21,6 @@ operation:
 numeric_policy:
   compare: tolerance_float
   dtype: bf16
-  # atol is bounded by FALSIFIABILITY, not convention: at the corpus default 0.25 -- wider than
-  # this output's entire range -- a constant answer satisfied the comparison at every element, so
-  # the capsule passed without the kernel computing anything (it was the sole apparent survivor of
-  # a corpus-wide preload defect, returning a constant). Ceiling below is the largest atol under
-  # which the best constant still fails, derived from the golden itself (numeric_falsifiability);
-  # this sits at half of it, still ~8x the measured bf16 slice error.
-  # falsifiability ceiling: 0.0690
   atol: 0.0345
   rtol: 0.02
 expected:
@@ -39,18 +32,10 @@ expected:
 required_oracle_tiers:
 - L0
 - L1
+- L2
 - L3
-- L4
 vcs: optional
 firesim: optional
-inapplicable_oracle_tiers:
-  L2: 'functional core cannot corroborate an RTL result for this target: the ISA encodes
-    dma.config.chN and dma.wait.chN to the same word, so an assembled program that
-    needs both cannot be decoded back (resolving it as wait leaves the DMA channel
-    unarmed and the kernel stalls at its first VLOAD; resolving it as config deletes
-    the barriers and every output reads back zero). The core also treats VMEM as byte-addressed
-    where the RTL treats it as word-addressed, and reads the fp8->bf16 unpack scale
-    as a divisor where the RTL reads a biased exponent. Graded on the RTL tiers instead.'
 pytorch_ref:
   op: softmax
   dtype: bf16

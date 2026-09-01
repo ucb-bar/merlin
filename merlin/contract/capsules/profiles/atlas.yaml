@@ -17,7 +17,7 @@ datapath:
   # registers a vsim via MERLIN_EXT_ATLAS_VSIM. Without it there is no L4 adapter and not_run_is_not_pass
   # reports every capsule `incomplete` -- never a pass. That is fail-closed on purpose: a checkout that
   # cannot run the certifying tier should not be able to claim a certified result.
-  required_oracle_tiers: [L0, L1, L3, L4]
+  required_oracle_tiers: [L0, L1, L2, L3]
   # This datapath admits only NORMAL fp8 operands: an operand whose exponent field is zero reaches the
   # multiplier array as zero, in the MXU and in the XLU's fp8->bf16 unpack alike. Measured on the arc
   # cosim, not assumed: the movement capsule AT1_mvin_mvout does no arithmetic at all, its 30 divergent

@@ -31,11 +31,6 @@ operation:
     model: lstmnetvit
     dtype: fp8_e4m3
     out: Y0
-    # Selects the fp8 BUNDLE (the fake-quant capture whose numerics this capstone is about). It does
-    # NOT select the scalar/RVV datapath: that follows what the bundle's IR actually carries, which is f32
-    # end to end (weight-only fake-quant, zero fp8 tokens in model.mlir), derived by compile_cli's
-    # ir_scalar_dtype. The fp8 datapath format is `dtype` above -- the MESH operand format, threaded as
-    # routing_dtype and executed on the matrix unit.
     compile_dtype: fp8
     arg_order:
     - I0
@@ -46,12 +41,6 @@ operation:
 numeric_policy:
   compare: tolerance_float
   dtype: f32
-  # atol is bounded by FALSIFIABILITY, not convention. At the corpus default 0.25 -- wider than this
-  # output's entire range [0.0056, 0.2024] -- an ALL-ZEROS answer satisfied the comparison at every
-  # element, so this whole-model capstone would have certified a device that stored nothing. Ceiling
-  # below is the largest atol under which the best possible constant still fails, derived from the
-  # golden itself (numeric_falsifiability.max_falsifiable_atol); this sits at half of it.
-  # falsifiability ceiling: 0.0983
   atol: 0.0491
   rtol: 0.02
 expected:
@@ -64,18 +53,10 @@ expected:
 required_oracle_tiers:
 - L0
 - L1
+- L2
 - L3
-- L4
 vcs: optional
 firesim: optional
-inapplicable_oracle_tiers:
-  L2: 'functional core cannot corroborate an RTL result for this target: the ISA encodes
-    dma.config.chN and dma.wait.chN to the same word, so an assembled program that
-    needs both cannot be decoded back (resolving it as wait leaves the DMA channel
-    unarmed and the kernel stalls at its first VLOAD; resolving it as config deletes
-    the barriers and every output reads back zero). The core also treats VMEM as byte-addressed
-    where the RTL treats it as word-addressed, and reads the fp8->bf16 unpack scale
-    as a divisor where the RTL reads a biased exponent. Graded on the RTL tiers instead.'
 gate:
   after_op_pass_fraction: 0.8
 pytorch_ref:

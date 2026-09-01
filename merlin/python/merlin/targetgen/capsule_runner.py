@@ -7,9 +7,9 @@ on top:
     L0  independent numeric golden   (capsule_golden vs reference(cb))   -- catches a wrong cb
     L1  reference(cb) == simulate(cb)                                    -- cb internal consistency
     trace  rocc_decode(lowered.llvm.mlir) + trace_check(expected, cb)    -- instruction coverage
-    L2  spike      oracle == golden == reference == simulate
-    L3  verilator  oracle == golden == reference == simulate  (cycle-accurate, RTL)
-    L4  VCS        (config-gated adapter; see vcs/firesim adapters)
+    L2  model      oracle == golden == reference == simulate   (spike, or an RTL-DERIVED model)
+    L3  elaborated RTL, cycle-accurate -- VCS | GSIM | Verilator, whichever is available (in that
+        cost order; they agree cycle-for-cycle, so the tier records WHICH engine answered)
     L5  FireSim    (config-gated adapter)
 
 The integrity backbone: a **mandatory** tier (one listed in the capsule's ``required_oracle_tiers``)
@@ -60,7 +60,10 @@ SUITE = "gemmini-capsule-bench"
 CONTRACT_VERSION = "0.1"
 
 # tier -> simulator name understood by the gemmini backend / adapters
-_TIER_SIM = {"L2": "spike", "L3": "verilator", "L4": "vcs", "L5": "firesim"}
+#: Tier -> the sim a target CONVENTIONALLY runs there. L3 names the elaborated-RTL class rather than one
+#: binary: vcs, gsim and verilator all answer at that fidelity and the engine is picked by availability
+#: (see ``program_oracle.select_rtl_engine``), so the result records which one ran.
+_TIER_SIM = {"L2": "spike", "L3": "elaborated_rtl", "L4": "vcs", "L5": "firesim"}
 _RTL_TIERS = {"L3", "L4", "L5"}
 
 
@@ -611,15 +614,17 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
                 f"oracle needs the model project to lay out operands; set runner.model_ext in the contract")
         from .program_oracle import (program_functional_adapter, program_oracle_adapter,
                                       program_verilator_adapter)
-        adapters = {"L2": program_functional_adapter(target, model_ext=model_ext),
-                    "L3": program_oracle_adapter(target, model_ext=model_ext)}
-        # L4 (ADDITIVE, env-routed): a program-driven Verilator sim of the target's RTL top — the first
-        # truly RTL-CERTIFIED tier (arc cosim L3 is the RTL-derived functional gold; this runs the
-        # elaborated Verilog). Present only if the target registers a vsim (MERLIN_EXT_<TARGET>_VSIM);
-        # otherwise None -> no L4. The REQUIRED/gold tier stays L3 — L4 is additive certification.
-        vl = program_verilator_adapter(target, model_ext=model_ext)
-        if vl is not None:
-            adapters["L4"] = vl
+        # A tier index is a FIDELITY, not a simulator: L2 is the model tier, L3 is elaborated RTL. The
+        # arc cosim is a model compiled FROM the RTL (`rtl_derived_model`, `derived_from_rtl: False`), so
+        # it sits at L2 — it used to sit at L3, which on every other target means elaborated RTL, and
+        # that collision is how a model result gets read as an RTL certification.
+        adapters = {"L2": program_oracle_adapter(target, model_ext=model_ext)}
+        # L3: the elaborated-RTL engine, chosen by availability (vcs > gsim > verilator) in
+        # program_oracle.select_rtl_engine. None when the target registers no engine -> no L3, reported
+        # unavailable rather than silently resolved to the model tier below it.
+        rtl = program_verilator_adapter(target, model_ext=model_ext)
+        if rtl is not None:
+            adapters["L3"] = rtl
         return adapters
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
     if so is not None:                                               # optional ADDITIVE bespoke sim (chipyard)
