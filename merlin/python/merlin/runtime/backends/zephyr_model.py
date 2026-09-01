@@ -576,20 +576,26 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     if not blocking:
         return prepared, features
     from ...llvmlower import perop_blocks as _pb
-    from ...llvmlower.impr_features import PEROP_BLOCK_NAME, ensure_perop_block
+    from ...llvmlower.impr_features import (PEROP_BLOCK_NAME, PEROP_NR_FILL_NAME,
+                                            ensure_perop_block)
+    # The N-fill request is a SEARCH KNOB, off by default, because its sign is model-dependent: on the
+    # K1 it measured 1.159x FASTER on spectformer int8 and 1.196x SLOWER on small_llama int8, both far
+    # outside the 2.6% band. The accumulator is i32, not i8, so at VLEN=256 an NR=16 tile is already
+    # LMUL m4 and widening pushes it to m8 and spills (decoded at 128^3: 0 -> 6 accumulator spill ops).
+    # Passing vlen here is the ONLY thing that turns it on, so the default path is byte-identical.
+    nr_fill_vlen = vlen if PEROP_NR_FILL_NAME in features else None
+    features = features - {PEROP_NR_FILL_NAME}
     if PEROP_BLOCK_NAME in features:
         from ...kernels.shapes import contraction_shapes as _cshapes
         # The N-tile cap follows the board's vector length: a fixed element count on a wider unit
         # is spent as a smaller LMUL rather than as more work per instruction (measured: the same
         # model emitted e8,m1 at VLEN=128 and e8,mf4 -- a quarter of a register -- at VLEN=512).
-        # `vlen=` also lets each contraction's N cap be widened for ITS OWN narrowest element width:
-        # NR is an element count, so 16 elements is LMUL m2 at e32 but only mf2 -- half a register --
-        # at e8, which is the waste `perop_nr_cap`'s docstring documents and cannot itself fix (it
-        # scales with VLEN, and the element width was discarded before it could be seen). Measured
-        # effect on the block tables of the models on disk: MAC-weighted NR 16.00 -> 32.00 on every
-        # int8 model, and UNCHANGED on fp32 -- see perop_blocks.nr_cap_for_dtypes.
+        # `vlen=nr_fill_vlen` is None unless the N-fill knob asked for it (see above). When it is set,
+        # each contraction's N cap is widened for ITS OWN narrowest element width; measured effect on
+        # the block tables of the models on disk is MAC-weighted NR 16.00 -> 32.00 on every int8 model
+        # and UNCHANGED on fp32 -- see perop_blocks.nr_cap_for_dtypes.
         table = _pb.block_table(_cshapes(prepared), mr_cap=perop_mr_cap(),
-                                nr_cap=perop_nr_cap(vlen), harts=harts, vlen=vlen)
+                                nr_cap=perop_nr_cap(vlen), harts=harts, vlen=nr_fill_vlen)
         if table:
             prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
             features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}

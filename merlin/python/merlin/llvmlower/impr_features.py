@@ -1762,6 +1762,52 @@ def _perop_sentinel_unresolved(_passes):
         "untagged and silently scalar.")
 
 
+PEROP_NR_FILL_NAME = "perop_nr_fill_register"
+
+
+def _perop_nr_fill_unresolved(_passes):
+    """Same contract as the block sentinel: a REQUEST consumed at preparation time, never a pass."""
+    raise RuntimeError(
+        f"{PEROP_NR_FILL_NAME!r} reached the lowering pipeline unresolved. It must be consumed by "
+        "runtime.backends.zephyr_model.prepare_for_lowering, which is where the per-op block table is "
+        "derived and is therefore the only place the board's vector length can widen an N cap.")
+
+
+# A SEARCH KNOB, deliberately not a default, because its SIGN depends on the model. NR is an element
+# count, so one number is a different fraction of the register file at each element width; this asks
+# block_table to widen each contraction's N cap until its narrowest element fills a whole vector
+# register (perop_blocks.nr_cap_for_dtypes). MEASURED on the live K1 (VLEN=256, whole model, per-op
+# blocking on both arms, interleaved same-session arms, n=3, min-of-n, cos identical per model):
+#
+#   spectformer_int8_full        2,077,035,312 -> 1,791,853,206 cyc   1.159x FASTER
+#   small_llama_int8_consistent      8,822,088 ->    10,547,988 cyc   1.196x SLOWER
+#
+# Both are far outside the board's 2.6% band, and they point OPPOSITE ways. The mechanism is visible in
+# the emitted object and explains why: the accumulator is i32, not i8, so at VLEN=256 an NR=16 tile is
+# already LMUL m4 and NR=32 pushes it to m8 -- the whole register file in one group. Decoded at 128^3
+# int8 MR=4: NR=16 emits `e32,m4` with ZERO accumulator spill ops; NR=32 emits `e32,m8` with SIX
+# (vs8r.v x3 + vl8re8.v x3), i.e. the carried accumulator round-trips through the stack every K-tile.
+# Whether the wider tile wins is therefore a per-model question about how much of the model is wide
+# enough to pay for that -- exactly the kind of question the beam exists to answer and a hand-picked
+# default cannot. So it ships forkable and off.
+#
+# `implies` the block sentinel because it has no meaning without per-op blocking: there is no per-op N
+# cap to widen otherwise. schedule_replace stays False -- it changes the TABLE, not the schedule shape,
+# and the replacement schedule comes from the block feature it implies.
+register(ImprFeature(
+    name=PEROP_NR_FILL_NAME,
+    action_class="KNOB",
+    description="widen each contraction's per-op N cap until its NARROWEST element fills a whole "
+                "vector register at the board's VLEN, instead of every op sharing one element count. "
+                "MEASURED model-dependent on the K1: 1.159x faster on spectformer int8, 1.196x slower "
+                "on small_llama int8 -- because the i32 accumulator is what sets LMUL, so a wider N "
+                "tile can push it from m4 to m8 and spill (decoded: 0 -> 6 accumulator spill ops). A "
+                "search knob, not a default. Default-off; baseline byte-identical.",
+    edit_pipeline=_perop_nr_fill_unresolved,
+    implies=frozenset({PEROP_BLOCK_NAME}),
+))
+
+
 # Registered so the SEARCH can reach it. The beam composes candidate feature sets through
 # `impr_features.get`/`normalize`, so an unregistered name is not "rejected" -- it is silently never
 # proposed (`wholemodel_proposer._composes` catches the KeyError and returns False). An unregisterable

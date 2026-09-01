@@ -320,3 +320,44 @@ def test_a_shape_that_cannot_take_the_wider_tile_keeps_the_narrower_one():
     odd = [_S("linalg.matmul", (64, 24), (288,), dtypes=("i8", "i8", "i32"))]
     blocks = set(pb.block_table(odd, mr_cap=4, nr_cap=16, vlen=256).values())
     assert blocks and all(nr <= 24 for _mr, nr in blocks), blocks
+
+
+def test_the_n_fill_knob_is_off_by_default_and_only_turns_on_by_request():
+    """Its SIGN is model-dependent (K1: 1.159x faster on spectformer int8, 1.196x SLOWER on small_llama
+    int8, both outside the 2.6% band), so it must be a search knob and NOT a default. The mechanism is
+    visible in the object: the i32 accumulator sets LMUL, so NR=16 is already e32,m4 with zero
+    accumulator spills and NR=32 is e32,m8 with six. This pins the wiring that keeps it opt-in."""
+    import inspect
+
+    from merlin.llvmlower.impr_features import PEROP_NR_FILL_NAME
+    from merlin.runtime.backends import zephyr_model as zm
+
+    prep = inspect.getsource(zm.prepare_for_lowering)
+    # the ONLY thing that turns it on
+    assert "nr_fill_vlen = vlen if PEROP_NR_FILL_NAME in features else None" in prep
+    assert "vlen=nr_fill_vlen" in prep, "block_table must receive the GATED vlen, not the raw one"
+    # and the sentinel is stripped so it can never reach lowering
+    assert "features = features - {PEROP_NR_FILL_NAME}" in prep
+
+
+def test_the_n_fill_knob_implies_the_blocking_it_has_no_meaning_without():
+    from merlin.llvmlower import impr_features as F
+    from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME, PEROP_NR_FILL_NAME
+
+    assert F.get(PEROP_NR_FILL_NAME).implies == frozenset({PEROP_BLOCK_NAME})
+    assert F.normalize([PEROP_NR_FILL_NAME]) == frozenset({PEROP_NR_FILL_NAME, PEROP_BLOCK_NAME})
+    # it changes the TABLE, not the schedule shape, so it must not claim a schedule replacement
+    # (two replacements cannot compose, and the block feature it implies is already one)
+    assert F.get(PEROP_NR_FILL_NAME).schedule_replace is False
+
+
+def test_the_n_fill_measurement_is_recorded_with_BOTH_signs():
+    """A lever measured faster on one model and slower on another must record both, or the next reader
+    turns it on citing half the evidence."""
+    from merlin.llvmlower import impr_features as F
+    from merlin.llvmlower.impr_features import PEROP_NR_FILL_NAME
+
+    desc = F.get(PEROP_NR_FILL_NAME).description
+    assert "1.159x faster" in desc and "1.196x slower" in desc
+    assert "m4" in desc and "m8" in desc          # the mechanism, not just the numbers
+    assert "search knob, not a default" in desc

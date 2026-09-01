@@ -134,6 +134,41 @@ def nr_cap_for_dtypes(nr_cap: int, vlen: int | None, dtypes) -> int:
     return max(int(nr_cap), int(vlen) // int(bits))
 
 
+# ---------------------------------------------------------------------------------------------------
+# THE int8 K LOOP AS EMITTED TODAY, and what is actually left in it. Read off the LINKED ELF at 128^3
+# int8 with per-op blocking (`innermost_vector_loop()` -- NOT `innermost_loop()`, which on this ELF
+# finds a 2-byte support back-edge and reports an empty body):
+#
+#     lb x4                    the four scalar A loads (A-scalarization: scalar bytes, no lane ladder)
+#     vle8.v x1 + vsext.vf2 x1 the shared B row, loaded ONCE and widened i8 -> i16
+#     vwmacc.vx x4             four widening MACs, scalar operand, into four resident accumulators
+#     vsetvli x1               <-- the one genuine residual, see below
+#     addi / c.addi / bne      loop bookkeeping
+#
+# ~12 instructions for 4 MACs. Four defects were previously listed against this loop; measured against
+# the code above, they resolve as:
+#
+#   "a redundant vsext.vf2 ahead of an already-widening vwmacc"  -- REFUTED, and it must not be
+#     removed. `vwmacc` widens 2x, while i8 x i8 -> i32 is 4x, so i8 -(vsext.vf2)-> i16 -(vwmacc.vx,
+#     e16->e32)-> i32 is the MINIMAL legal chain on RVV; there is no 4x-widening MAC. Confirmed by the
+#     emitted spellings (`e16,m2` for the operands, `e32,m4` for the accumulator), and there is exactly
+#     ONE vsext per B row shared across all four MACs, not one per MAC.
+#   "an M-outermost, unblocked nest that re-streams the whole weight set per row" -- ADDRESSED: the
+#     loop is MR-blocked with A as scalars, and MAC-weighted MR went 1.00 -> 4.00 across the five
+#     recaptures on disk once the cap was raised.
+#   "a fractional vsetvli e16,mf2 capping VL=16" -- DOES NOT HOLD at VLEN=256 with per-op blocking: the
+#     emitted spellings are whole-register (`m2`/`m4`). Widening N further to fill a register at the
+#     NARROW element width is a separate, measured, MODEL-DEPENDENT knob -- see
+#     `nr_cap_for_dtypes` and `impr_features.PEROP_NR_FILL_NAME`.
+#   "a loop-invariant vsetvli sitting inside the K loop" -- CONFIRMED, and quantified: exactly one, so
+#     ~8% of a 12-instruction body. Left in place deliberately. The loop spans two SEW domains (e16 for
+#     the operands, e32 for the accumulator), and hoisting it belongs to LLVM's own vsetvli-insertion
+#     pass; this repo does not fork the toolchain, so the alternative would be to work around a
+#     backend pass from the schedule, which is how inert levers get added. Recorded as a small, known
+#     residual rather than chased.
+# ---------------------------------------------------------------------------------------------------
+
+
 def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
                 harts: int = 1,
                 vlen: int | None = None) -> dict[str, tuple[int, int]]:

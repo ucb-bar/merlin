@@ -59,6 +59,12 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # MR cap 11,338,272 -> per-op at MR=4 8,856,276. The first step is the class-wide clamp being gone;
     # the second is the A-reuse register block.
     ("perop_register_block", True),
+    # The N-fill knob, right after the blocking it implies. Ranked here rather than defaulted because
+    # its SIGN is model-dependent: MEASURED on the K1, 1.159x FASTER on spectformer int8 and 1.196x
+    # SLOWER on small_llama int8, both far outside the 2.6% band. The i32 accumulator is what sets
+    # LMUL, so a wider N tile can push it from m4 to m8 and spill (decoded: 0 -> 6 accumulator spill
+    # ops at 128^3). A per-model question, which is what the beam is for.
+    ("perop_nr_fill_register", False),
     ("fuse_transpose_b", False),                          # transpose: 38% byte-traffic, measured -6.5% openvla
     ("accumulator_resident_wholemodel_vf_mrpad", True),   # matmul MR register block: 1.49x rdt2 matmul bucket
     ("vectorize_reduction", True),                        # reduce/softmax: 2nd byte-traffic family, was unvectorized
