@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -96,6 +97,23 @@ def _l3_barrier_decision(l3_all_pass: bool, rnd: int, max_rounds: int) -> str:
     return "iterate"
 
 
+def _l3_fix_verdict(vv: dict, attempt: int) -> dict:
+    """Redacted L3 feedback for the next fix round, including Arm4's answer-free RTL readback."""
+    out = {
+        "stage": "verilator_checkpoint", "attempt": attempt, "all_pass": False,
+        "n_passed": vv["n_passed"], "n_capsules": vv["n_capsules"],
+        "note": "CYCLE-ACCURATE (verilator/L3) results — fix the capsules failing at L3, then "
+                "re-run agent_selfcheck (spike) clean before declaring READY again.",
+        "per_capsule": vv["per_capsule"],
+    }
+    if vv.get("rtl_checks") is not None:
+        out["rtl_checks"] = vv["rtl_checks"]
+        out["rtl_checks_note"] = (
+            "Answer-free RTL structural feedback regenerated from this L3 attempt's emitted "
+            "lowering/trace. Read and address it during this fix round.")
+    return out
+
+
 def _authoring_completion(numeric_all_pass: bool, workflow_conformant: bool) -> bool:
     """The agent may leave the authoring loop only when both in-sandbox gates are evidenced."""
     return bool(numeric_all_pass and workflow_conformant)
@@ -105,6 +123,23 @@ def _formal_completion(numeric_all_pass: bool, workflow_conformant: bool,
                        official_grade_complete: bool) -> bool:
     """Formal success additionally requires the outer, post-freeze public+hidden L3 grade."""
     return bool(numeric_all_pass and workflow_conformant and official_grade_complete)
+
+
+def _workflow_conformance(tpath: Path, submission_dir: Path, arm: str, endpoint_kind: str,
+                          resolved_tools) -> tuple[dict, bool]:
+    """Recompute the workflow verdict from the *current* authoring transcript and submission.
+
+    The resolved bundle tools, not the driver's legacy arm spelling, select Arm4's extra requirements.
+    Every caller gets the same fail-closed exception handling so an unavailable checker can never leave a
+    stale ``True`` from an earlier round in force.
+    """
+    try:
+        import conformance as _CONF
+        conf = _CONF.compute(tpath, submission_dir, arm, endpoint_kind,
+                             resolved_tools=resolved_tools)
+    except Exception as exc:  # noqa: BLE001 — conformance is a formal gate; unavailable means false
+        conf = {"conformant": False, "error": f"{type(exc).__name__}: {exc}"}
+    return conf, conf.get("conformant") is True
 
 
 def _official_grade_result(returncode: int, run_dir: Path, *, required_tier: str = "L3") -> dict:
@@ -308,6 +343,203 @@ _BACKGROUND_MODEL = ""  # set in main(): background/mechanical model (converse d
 READY_MARKER = "READY_FOR_BARRIER"  # realistic: agent drops submission/<this> to self-declare done
 # Merlin-arm-only docs staged into the workspace alongside the (shared) graded task.
 MERLIN_WS_DOCS = ("TASK_ADDENDUM.md", "ALLOWED_MERLIN_TOOLS.md", "MERLIN_PROVENANCE_TEMPLATE.md")
+_TREATMENT_BUNDLE_DECLARATIONS = (
+    "input_bundle_manifest.yaml", "allowed_files.txt", "tools.txt",
+)
+
+
+def _file_digest(path: Path) -> tuple[str, int]:
+    """Return ``(sha256, bytes)`` for one ordinary file, refusing symlink indirection."""
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeError(f"treatment input is not an ordinary file: {path}")
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as stream:
+        while chunk := stream.read(8 * 1024 * 1024):
+            digest.update(chunk)
+            size += len(chunk)
+    return digest.hexdigest(), size
+
+
+def _treatment_file_row(name: str, path: Path, *, required: bool) -> dict:
+    """A stable row for a treatment file, including intentional absence of optional docs."""
+    if path.exists() or path.is_symlink():
+        digest, size = _file_digest(path)
+        return {"name": name, "path": str(path), "present": True,
+                "n_bytes": size, "sha256": digest}
+    if required:
+        raise RuntimeError(f"required treatment input is missing: {path}")
+    return {"name": name, "path": str(path), "present": False,
+            "n_bytes": 0, "sha256": None}
+
+
+def _treatment_snapshot_record(ws: Path, run_dir: Path, bundle_dir: Path,
+                               resolved_tools) -> dict:
+    """Seal the exact prompt/docs and tool declarations that define one agent treatment.
+
+    The bundle input payload already has its own immutable snapshot.  These files live outside that
+    payload but still determine what the agent is told and which brokers start, so they need an equally
+    explicit binding.  Optional declarations are represented by an absence row: creating one after setup
+    is drift too (notably ``tools.txt``, whose later appearance changes tool resolution).
+    """
+    specs: list[tuple[str, Path, bool]] = [
+        ("served/TASK.md", ws / "TASK.md", True),
+        ("archived/TASK.md", run_dir / "TASK.md", True),
+        ("archived_bundle/input_bundle_manifest.yaml",
+         run_dir / "input_bundle_manifest.yaml", True),
+    ]
+    specs.extend((f"served/{name}", ws / name, False) for name in MERLIN_WS_DOCS)
+    specs.extend((f"source_bundle/{name}", bundle_dir / name,
+                  name == "input_bundle_manifest.yaml")
+                 for name in _TREATMENT_BUNDLE_DECLARATIONS)
+    rows = [_treatment_file_row(name, path, required=required)
+            for name, path, required in specs]
+    if len({row["name"] for row in rows}) != len(rows):
+        raise RuntimeError("treatment input names are not unique")
+    by_name = {row["name"]: row for row in rows}
+    if (by_name["archived_bundle/input_bundle_manifest.yaml"]["sha256"]
+            != by_name["source_bundle/input_bundle_manifest.yaml"]["sha256"]):
+        raise RuntimeError(
+            "source input bundle manifest changed while the run was being staged")
+
+    tool_ids = list(resolved_tools)
+    if any(not isinstance(tool, str) or not tool for tool in tool_ids):
+        raise RuntimeError("resolved tool ids must be non-empty strings")
+    if len(set(tool_ids)) != len(tool_ids):
+        raise RuntimeError("resolved tool ids must be unique")
+    aggregate = hashlib.sha256()
+    for row in sorted(rows, key=lambda item: item["name"]):
+        aggregate.update(row["name"].encode("utf-8"))
+        aggregate.update(b"\0")
+        aggregate.update(b"1" if row["present"] else b"0")
+        aggregate.update(b"\0")
+        aggregate.update(str(row["n_bytes"]).encode("ascii"))
+        aggregate.update(b"\0")
+        aggregate.update((row["sha256"] or "-").encode("ascii"))
+        aggregate.update(b"\n")
+    for index, tool_id in enumerate(tool_ids):
+        aggregate.update(f"tool\0{index}\0{tool_id}\n".encode("utf-8"))
+    return {
+        "version": 1,
+        "content_sha256": aggregate.hexdigest(),
+        "n_files_present": sum(bool(row["present"]) for row in rows),
+        "files": rows,
+        "resolved_tool_ids": tool_ids,
+    }
+
+
+def _verify_treatment_snapshot(expected: Mapping, ws: Path, run_dir: Path,
+                               bundle_dir: Path, resolved_tools) -> dict:
+    """Recompute a treatment binding and fail closed on any prompt/tool drift."""
+    if not isinstance(expected, Mapping) or expected.get("version") != 1:
+        raise RuntimeError("persisted treatment snapshot is missing or malformed")
+    try:
+        observed = _treatment_snapshot_record(ws, run_dir, bundle_dir, resolved_tools)
+    except RuntimeError as exc:
+        raise RuntimeError(f"experiment treatment drifted after setup: {exc}") from exc
+    if dict(expected) != observed:
+        expected_rows = {row.get("name"): row for row in expected.get("files", [])
+                         if isinstance(row, Mapping)}
+        observed_rows = {row["name"]: row for row in observed["files"]}
+        changed = sorted(name for name in set(expected_rows) | set(observed_rows)
+                         if expected_rows.get(name) != observed_rows.get(name))
+        if expected.get("resolved_tool_ids") != observed["resolved_tool_ids"]:
+            changed.append("resolved_tool_ids")
+        raise RuntimeError(
+            "experiment treatment drifted after setup: "
+            + (", ".join(changed) if changed else "aggregate/metadata mismatch"))
+    return observed
+
+
+def _snapshot_path_for_live_path(snapshot_root: Path, live_path: Path, repo: Path) -> Path:
+    """Map a declared live destination to its private bundle-snapshot location."""
+    live_path = live_path.absolute()
+    repo = repo.absolute()
+    try:
+        return snapshot_root / "repo" / live_path.relative_to(repo)
+    except ValueError:
+        return snapshot_root / "external" / Path(*live_path.parts[1:])
+
+
+def _hidden_snapshot_dir(snapshot_root: Path, te, repo: Path) -> Path:
+    """Resolve this target's hidden sibling inside the immutable bundle snapshot, never live."""
+    corpus = Path(te.capsule_corpus)
+    live_corpus = corpus if corpus.is_absolute() else repo / corpus
+    return _snapshot_path_for_live_path(snapshot_root, live_corpus.parent / "hidden", repo)
+
+
+def _subtree_snapshot_record(root: Path) -> dict:
+    """Canonical file/count/byte binding for an operator-only frozen subtree."""
+    if root.is_symlink() or not root.is_dir():
+        raise RuntimeError(f"hidden snapshot subtree is missing or unsafe: {root}")
+    rows: list[dict] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise RuntimeError(f"hidden snapshot subtree contains a symlink: {path}")
+        if path.is_dir():
+            continue
+        digest, size = _file_digest(path)
+        rows.append({"path": path.relative_to(root).as_posix(),
+                     "n_bytes": size, "sha256": digest})
+    if not rows:
+        raise RuntimeError(f"hidden snapshot subtree is empty: {root}")
+    aggregate = hashlib.sha256()
+    for row in rows:
+        aggregate.update(row["path"].encode("utf-8"))
+        aggregate.update(b"\0")
+        aggregate.update(str(row["n_bytes"]).encode("ascii"))
+        aggregate.update(b"\0")
+        aggregate.update(row["sha256"].encode("ascii"))
+        aggregate.update(b"\n")
+    return {
+        "version": 1,
+        "path": str(root.resolve(strict=True)),
+        "content_sha256": aggregate.hexdigest(),
+        "n_files": len(rows),
+        "n_bytes": sum(row["n_bytes"] for row in rows),
+        "n_capsules": sum(Path(row["path"]).name == "capsule.yaml" for row in rows),
+    }
+
+
+def _verify_subtree_snapshot(expected: Mapping) -> tuple[Path, dict]:
+    """Verify a persisted hidden-subtree record and return its already-frozen path."""
+    if not isinstance(expected, Mapping) or expected.get("version") != 1:
+        raise RuntimeError("persisted hidden subtree snapshot is missing or malformed")
+    raw_path = expected.get("path")
+    if not isinstance(raw_path, str) or not raw_path:
+        raise RuntimeError("persisted hidden subtree snapshot path is missing")
+    root = Path(raw_path)
+    observed = _subtree_snapshot_record(root)
+    if dict(expected) != observed:
+        raise RuntimeError(
+            f"hidden capsule snapshot drifted after setup at {root}: "
+            f"expected {expected.get('content_sha256')}, observed {observed['content_sha256']}")
+    return root, observed
+
+
+def _verify_persisted_run_inputs(environment: Mapping, *, identity: Mapping,
+                                 task_scope: Mapping, ws: Path, run_dir: Path,
+                                 bundle_dir: Path, resolved_tools,
+                                 expected_hidden_dir: Path | None = None) -> Path | None:
+    """Common fail-closed gate for resume and the post-authoring official grade."""
+    if not isinstance(environment, Mapping):
+        raise RuntimeError("persisted environment record is missing or malformed")
+    for field, observed in identity.items():
+        if environment.get(field) != observed:
+            raise RuntimeError(
+                f"persisted environment {field} changed "
+                f"({environment.get(field)!r} != {observed!r})")
+    if environment.get("task_scope") != dict(task_scope):
+        raise RuntimeError("descriptor-derived task scope drifted")
+    _verify_treatment_snapshot(
+        environment.get("treatment_snapshot"), ws, run_dir, bundle_dir, resolved_tools)
+    if expected_hidden_dir is None:
+        return None
+    hidden_dir, _ = _verify_subtree_snapshot(environment.get("hidden_capsule_snapshot"))
+    if hidden_dir.resolve(strict=True) != expected_hidden_dir.resolve(strict=True):
+        raise RuntimeError(
+            "hidden capsule record does not name this target's private bundle-snapshot subtree")
+    return hidden_dir
 
 
 def _te():
@@ -350,11 +582,10 @@ def _manifest():
 
 
 def answer_files() -> list[Path]:
-    """Every answer-bearing GOLDEN file the agent must NOT see — DERIVED from the declared capsule corpus
-    (+ its sibling corpora) via the shared sandbox module, not a hard-coded isa/layers/model_slices list.
-    Hidden capsules / oracle / grader / memory are masked by the shared answer-mask pass (bwrap_cmd)."""
-    from merlin.targetgen.sandbox import golden_files
-    return golden_files(_te())
+    """Every answer-bearing value file the agent must not see (goldens + model weights)."""
+    from merlin.targetgen.sandbox import golden_files, weight_files
+    te = _te()
+    return [*golden_files(te), *weight_files(te)]
 
 
 def _denied_subpaths_under(rel: str, bundle: dict) -> list[str]:
@@ -391,9 +622,10 @@ def assemble_copy_workspace(bundle: dict, ws: Path) -> dict:
 
     def _is_answer_name(n: str) -> bool:
         # Any golden (golden.yaml/json/mlir, any nesting) or example expected-output, matched by pattern
-        # so nested / non-.yaml / non-_g0 answers do not escape the copy drop (parity with the sandbox mask
-        # in answer_surfaces.golden_files).
-        return n.startswith("golden.") or n.startswith("expected_command_buffer")
+        # so nested / non-.yaml / non-_g0 answers do not escape the copy drop, plus externalized model
+        # weights and their optional provenance manifest (parity with answer_surfaces.{golden,weight}_files).
+        return (n.startswith("golden.") or n.startswith("expected_command_buffer")
+                or n.endswith(".safetensors") or n.endswith(".safetensors.manifest.json"))
 
     def _ignore(dirpath, names):
         skip = set()
@@ -821,10 +1053,9 @@ def _corpus_probe_paths() -> tuple[Path, Path]:
 
 
 def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
-    """Confirm the agent's view withholds answers. bwrap: probe the masked golden. none: confirm the
-    COPIED workspace has no golden.yaml and no hidden capsules anywhere under it."""
+    """Confirm the agent view withholds goldens, model weights, and hidden capsules."""
     if sandbox == "bwrap":
-        # Search the agent's VIEW (the bound corpus trees) for ANY readable golden/expected file —
+        # Search the agent's VIEW for ANY readable golden/expected/weight file —
         # independent of golden_files(), so a golden the mask FAILED to enumerate is STILL caught (the past
         # leak was exactly such a miss). Masked answers appear as empty /dev/null overlays (test -s false);
         # a corpus root that is tmpfs-hidden yields nothing (no false leak).
@@ -842,7 +1073,11 @@ def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
         # inputs readable — while this self-test still reported OK, because it only
         # ever looked for answer VALUES. A readable held-out test set is its own
         # integrity problem, so it is a LEAK here.
-        script = (f'for f in $(find {roots_sh} \\( -name "golden.*" -o -name "expected_command_buffer*" \\) '
+        script = (f'for f in $(find {roots_sh} \\( -name "golden.*" '
+                  f'-o -name "expected_command_buffer*" '
+                  f'-o -name "expected_instruction_coverage.yaml" '
+                  f'-o -name "*.safetensors" '
+                  f'-o -name "*.safetensors.manifest.json" \\) '
                   f'2>/dev/null); do test -s "$f" && echo "LEAK:$f"; done; '
                   f'for f in $(find {roots_sh} -path "*/hidden/*" -name "capsule.yaml" 2>/dev/null); '
                   f'do test -s "$f" && echo "LEAK:$f"; done; echo DONE')
@@ -853,10 +1088,13 @@ def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
                 "n_answer_files_masked": len(answer_files()),
                 "leaked_answer_files": leaked[:10]}
     # sandbox == none: assert no answer is reachable. (1) the bench_contract COPY (small) holds no
-    # golden/hidden; (2) no workspace symlink resolves into the real merlin/contract/capsules tree
+    # golden/weights/hidden; (2) no workspace symlink resolves into the real merlin/contract/capsules tree
     # (which would re-expose goldens). Avoid walking the symlinked 307MB toolchain.
     bc = ws / "merlin/contract"
     goldens = [str(p) for p in bc.rglob("golden.yaml")] if bc.exists() else []
+    weights = ([str(p) for p in bc.rglob("*.safetensors")]
+               + [str(p) for p in bc.rglob("*.safetensors.manifest.json")]
+               if bc.exists() else [])
     hidden = [str(p) for p in bc.rglob("hidden") if "capsules" in str(p)] if bc.exists() else []
     real_caps = str((C.REPO / "merlin/contract" / "capsules").resolve())
     bad_links = []
@@ -865,10 +1103,11 @@ def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
             p = Path(root) / d
             if p.is_symlink() and str(p.resolve()).startswith(real_caps):
                 bad_links.append(str(p))
-    leak = bool(goldens or hidden or bad_links)
+    leak = bool(goldens or weights or hidden or bad_links)
     _g, spec = _corpus_probe_paths()               # a real corpus spec (derived), for the presence flag
     return {"pilot_golden_visible_to_agent": "LEAK" if leak else "OK",
-            "goldens_in_workspace": goldens[:10], "hidden_in_workspace": hidden[:10],
+            "goldens_in_workspace": goldens[:10], "weights_in_workspace": weights[:10],
+            "hidden_in_workspace": hidden[:10],
             "symlinks_into_capsules": bad_links[:10], "spec_present": spec.exists()}
 
 
@@ -1099,8 +1338,11 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
     # TASK.md must live INSIDE the bound workspace: run_dir is under runs/ which bwrap tmpfs-masks,
     # so a stdin redirect from run_dir/TASK.md is invisible inside the sandbox (empty stdin).
     ws_task = ws / "TASK.md"
-    if rnd == 0:
-        _build_task(arm, ws, run_dir, sandbox=sandbox)
+    # Setup stages and seals the task BEFORE writing environment.yaml.  Rebuilding here used to leave
+    # environment provenance unable to say what prompt was served, and a resumed round zero could silently
+    # pick up changed bundle prose.  Missing after setup is corruption, not an invitation to regenerate.
+    if not ws_task.is_file():
+        raise RuntimeError(f"sealed task is missing before agent launch: {ws_task}")
     # Under bwrap the oracle is masked, so the agent's self-check (agent_selfcheck.py) can't grade in-box.
     # Start the driver-side BROKER (oracle available, outside the sandbox) + stage the in-box shim, so the
     # agent gets a REDACTED on-demand self-check (numeric diff, no goldens) without the oracle ever entering
@@ -1775,6 +2017,7 @@ def main(argv: list[str] | None = None) -> int:
             return 6
 
     bundle = RX._load_bundle(arm)
+    bundle_dir = C.BUNDLES / RX.ARM_BUNDLE[arm]
     from merlin.targetgen.sandbox import bwrap as _BWS
     run_dir = C.RUNS / arm / a.run_id
     _resuming = run_dir.exists() and a.resume
@@ -1793,8 +2036,12 @@ def main(argv: list[str] | None = None) -> int:
         _BWS.remove_bundle_snapshot(ws)
         shutil.rmtree(ws_root)
     run_dir.mkdir(parents=True, exist_ok=_resuming)
-    shutil.copy(C.BUNDLES / RX.ARM_BUNDLE[arm] / "input_bundle_manifest.yaml",
-                run_dir / "input_bundle_manifest.yaml")
+    _archived_bundle_manifest = run_dir / "input_bundle_manifest.yaml"
+    if _resuming:
+        if not _archived_bundle_manifest.is_file():
+            raise RuntimeError("resume refused: archived input bundle manifest is missing")
+    else:
+        shutil.copy(bundle_dir / "input_bundle_manifest.yaml", _archived_bundle_manifest)
 
     if _have_ws:
         print(f"[resume] reusing existing workspace + submission at {ws}")
@@ -1811,6 +2058,8 @@ def main(argv: list[str] | None = None) -> int:
         viol = []  # copy workspace contains no symlinks into denied paths by construction
     _bundle_snapshot_record = None
     _model_host_lane_snapshot = None
+    _hidden_snapshot_record = None
+    _hidden_dir = None
     if a.sandbox == "bwrap":
         # Both fresh setup and resume arrive here. Verify before exporting the host-only pointer; every
         # in-process grade and every operator-side broker inherits it, while bwrap_cmd strips it from the
@@ -1819,6 +2068,11 @@ def main(argv: list[str] | None = None) -> int:
         _snapshot_root = _BWS.bundle_snapshot_root(ws).resolve(strict=True)
         _bundle_snapshot_record = _BWS.snapshot_record(ws)
         _te_setup = _te()
+        _hidden_dir = _hidden_snapshot_dir(_snapshot_root, _te_setup, C.REPO)
+        _hidden_snapshot_record = _subtree_snapshot_record(_hidden_dir)
+        if _hidden_snapshot_record["n_capsules"] <= 0:
+            raise RuntimeError(
+                f"hidden capsule snapshot contains no capsules: {_hidden_snapshot_record['path']}")
         if _te_setup.host_lane is not None:
             _, _model_host_lane_snapshot = _te_setup.resolve_host_lane(
                 root=_snapshot_root / "repo")
@@ -1829,24 +2083,73 @@ def main(argv: list[str] | None = None) -> int:
         # Do not let an inherited pointer bind an explicitly unsandboxed diagnostic to another run.
         os.environ.pop(_MODEL_HOST_SNAPSHOT_ROOT_ENV, None)
         os.environ.pop(_MODEL_HOST_SNAPSHOT_REQUIRED_ENV, None)
+
+    # Stage every prompt/document before provenance is written.  On resume these bytes are NEVER rebuilt
+    # from the current worktree; they must match the treatment record from the first invocation.
+    if not _resuming:
+        _build_task(arm, ws, run_dir, sandbox=a.sandbox)
+    elif not (ws / "TASK.md").is_file():
+        raise RuntimeError("resume refused: sealed workspace TASK.md is missing")
+
+    _resolved_tool_ids = _resolved_tools()
+    _task_scope_record = _task_runtime_scope(_te(), a.sandbox)
+    if (_hidden_snapshot_record is not None
+            and _hidden_snapshot_record["n_capsules"] != _task_scope_record["held_out_capsules"]):
+        raise RuntimeError(
+            "live descriptor scope and frozen hidden snapshot disagree at setup: "
+            f"{_task_scope_record['held_out_capsules']} vs "
+            f"{_hidden_snapshot_record['n_capsules']}")
+    _environment_path = run_dir / "environment.yaml"
+    if _resuming:
+        try:
+            _environment_record = yaml.safe_load(_environment_path.read_text()) or {}
+        except Exception as exc:  # noqa: BLE001 — provenance is a formal resume gate
+            raise RuntimeError(f"resume refused: environment record unreadable: {exc}") from exc
+        _identity = {
+            "run_id": a.run_id, "arm": arm, "sandbox": a.sandbox,
+            "bundle_id": bundle["bundle_id"],
+        }
+        _expected_hidden_dir = (_hidden_snapshot_dir(_snapshot_root, _te(), C.REPO)
+                                if a.sandbox == "bwrap" else None)
+        try:
+            _hidden_dir = _verify_persisted_run_inputs(
+                _environment_record, identity=_identity, task_scope=_task_scope_record,
+                ws=ws, run_dir=run_dir, bundle_dir=bundle_dir,
+                resolved_tools=_resolved_tool_ids, expected_hidden_dir=_expected_hidden_dir)
+        except RuntimeError as exc:
+            raise RuntimeError(f"resume refused: {exc}") from exc
+        if _hidden_dir is not None:
+            _hidden_snapshot_record = dict(_environment_record["hidden_capsule_snapshot"])
+        # Preserve the original setup record verbatim.  In particular, do not replace its start time,
+        # exact task hash, or account with whichever process happens to perform the resume.
+    else:
+        _treatment_snapshot = _treatment_snapshot_record(
+            ws, run_dir, bundle_dir, _resolved_tool_ids)
     mask = mask_selftest(ws, bundle, a.sandbox)
-    (run_dir / "environment.yaml").write_text(yaml.safe_dump({
-        "run_id": a.run_id, "arm": arm, "model": a.model, "effort": a.effort,
-        # driver + provider decide how a dollar figure must be READ later: a subscription run's cost is
-        # notional, a bedrock run's is metered spend against the budget. Recording them here is what
-        # lets a cross-model rollup keep the two apart instead of summing them into one wrong total.
-        "driver": _DRIVER, "provider": a.provider,
-        "subagent_model": _SUBAGENT_MODEL or None, "background_model": _BACKGROUND_MODEL or None,
-        "sandbox": a.sandbox, "qa_loop": True, "pilot": ["A0", "A2", "A4", "B0"],
-        "workspace_path": str(ws), "workspace_copy_report": copy_report,
-        "bundle_input_snapshot": _bundle_snapshot_record,
-        "model_host_lane_snapshot": _model_host_lane_snapshot,
-        "repo_sha": C.repo_sha(), "bundle_id": bundle["bundle_id"],
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "isolation_violations": viol, "denied_paths_checked": denied_names,
-        "golden_mask_selftest": mask,
-        "account": account_info,  # which subscription/org budget this arm drew from (provenance)
-    }, sort_keys=False))
+    if not _resuming:
+        _environment_record = {
+            "run_id": a.run_id, "arm": arm, "model": a.model, "effort": a.effort,
+            # driver + provider decide how a dollar figure must be READ later: a subscription run's cost
+            # is notional, a bedrock run's is metered spend against the budget.
+            "driver": _DRIVER, "provider": a.provider,
+            "subagent_model": _SUBAGENT_MODEL or None, "background_model": _BACKGROUND_MODEL or None,
+            "sandbox": a.sandbox, "qa_loop": True,
+            "task_scope": _task_scope_record,
+            "workspace_path": str(ws), "workspace_copy_report": copy_report,
+            "bundle_input_snapshot": _bundle_snapshot_record,
+            "hidden_capsule_snapshot": _hidden_snapshot_record,
+            "model_host_lane_snapshot": _model_host_lane_snapshot,
+            "repo_sha": C.repo_sha(), "bundle_id": bundle["bundle_id"],
+            # The explicit list remains convenient for analysis; treatment_snapshot binds it to the
+            # source declarations and to the exact task/docs that instructed the agent.
+            "resolved_tools": list(_resolved_tool_ids),
+            "treatment_snapshot": _treatment_snapshot,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "isolation_violations": viol, "denied_paths_checked": denied_names,
+            "golden_mask_selftest": mask,
+            "account": account_info,  # which subscription/org budget this arm drew from (provenance)
+        }
+        _environment_path.write_text(yaml.safe_dump(_environment_record, sort_keys=False))
     if viol:
         print(f"ISOLATION FAILURE: {viol}", file=sys.stderr)
         return 3
@@ -1939,6 +2242,11 @@ def main(argv: list[str] | None = None) -> int:
     verdict = {"all_pass": False}
     workflow_conformant = False
     rnd = 0
+    # Survives a --resume where the numeric/workflow checkpoint is already complete and the normal round
+    # loop therefore does not launch again.  ``finalize.transcript`` is deliberately excluded: it is a
+    # docs-only turn, not the authoring workflow whose mandatory tools must be evidenced.
+    _saved_authoring_transcripts = sorted((run_dir / "rounds").glob("round_*.transcript.jsonl"))
+    _latest_authoring_tpath = _saved_authoring_transcripts[-1] if _saved_authoring_transcripts else None
     if _resuming and state_p.exists():
         st = yaml.safe_load(state_p.read_text()) or {}
         rounds_summary = st.get("rounds", []) or []
@@ -2014,12 +2322,8 @@ def main(argv: list[str] | None = None) -> int:
         # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
         # the run's verdict is a grade of the submission as the session left it.
         verdict = qa_grade(ws, run_dir, state["tick"] + 1, a.no_oracle, a.qa_timeout)
-        try:
-            import conformance as _CONF
-            conf = _CONF.compute(tpath, ws / "submission", arm, _endpoint_kind)
-        except Exception as _e:  # noqa: BLE001
-            conf = {"conformant": False, "error": f"{type(_e).__name__}: {_e}"}
-        workflow_conformant = conf.get("conformant") is True
+        conf, workflow_conformant = _workflow_conformance(
+            tpath, ws / "submission", arm, _endpoint_kind, _resolved_tools())
         rounds_summary.append({"round": 0, "mode": "continuous", "agent_rc": rc,
                                "grades": state["tick"] + 1,
                                "all_pass": verdict.get("all_pass", False),
@@ -2073,6 +2377,7 @@ def main(argv: list[str] | None = None) -> int:
         except subprocess.TimeoutExpired:
             rc, tpath = 124, run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
             print(f"[round {rnd}] agent TIMEOUT")
+        _latest_authoring_tpath = tpath
 
         # Daily-quota wall: a provider DAILY token limit (429 'too many tokens per day') has no short
         # window reset to sleep to, so retrying burns every remaining round producing empty results
@@ -2144,18 +2449,14 @@ def main(argv: list[str] | None = None) -> int:
         rsum = ET.parse_transcript(tpath, billing_mode=_billing_mode(a.model),
                                    trust_cli_cost=_trust_cli_cost(a.model))
         audit = audit_transcript(tpath, arm)
-        # dev-conformance FLAG (never a grade gate): did the agent develop the way this arm mandates?
-        try:
-            import conformance as _CONF
-            conf = _CONF.compute(tpath, ws / "submission", arm, _endpoint_kind)
-            workflow_conformant = conf.get("conformant") is True
-            _bad = _CONF.failing_checks(conf)
-            if _bad:
-                print(f"[round {rnd}] NOT CONFORMANT — failing: {', '.join(_bad)} "
-                      "(numeric grade still reports; formal completion remains blocked)")
-        except Exception as _e:  # noqa: BLE001
-            workflow_conformant = False
-            conf = {"conformant": False, "error": f"{type(_e).__name__}: {_e}"}
+        # Dev-conformance GATE: numeric progress is still reported, but a nonconformant workflow cannot
+        # advance to the official claim-bearing grade.
+        conf, workflow_conformant = _workflow_conformance(
+            tpath, ws / "submission", arm, _endpoint_kind, _resolved_tools())
+        _bad = [k for k, v in (conf.get("checks") or {}).items() if v is False]
+        if _bad:
+            print(f"[round {rnd}] NOT CONFORMANT — failing: {', '.join(_bad)} "
+                  "(numeric grade still reports; formal completion remains blocked)")
         rounds_summary.append({"round": rnd, "agent_rc": rc, "conformance": conf,
                                "all_pass": verdict.get("all_pass"),
                                "workflow_conformant": workflow_conformant,
@@ -2292,8 +2593,16 @@ def main(argv: list[str] | None = None) -> int:
             npass += int(l3 == "pass")
             per.append({"capsule": name, "l3_status": l3, "failure_plane": info.get("failure_plane")})
         nc = len(red) or 20
+        # The Arm4 qa wrapper can derive the same answer-free RTL structural block from this attempt's
+        # generated traces.  Carry it into the L3 fix verdict so that a fix round can obey (and prove) its
+        # mandatory RTL-feedback readback instead of receiving a reduced verdict with that surface absent.
+        _rtl_block = getattr(_qc, "_rtl_block", None)
+        try:
+            rtl_checks = _rtl_block(vruns) if callable(_rtl_block) else None
+        except Exception as _e:  # noqa: BLE001 — advisory data stays non-numeric, but absence is explicit
+            rtl_checks = {"error": f"{type(_e).__name__}: {_e}"}
         return {"attempt": attempt, "all_pass": npass == nc and nc > 0, "n_passed": npass,
-                "n_capsules": nc, "per_capsule": per}
+                "n_capsules": nc, "per_capsule": per, "rtl_checks": rtl_checks}
 
     verilator_attempts: list = []
     _ready_marker = (ws / "submission" / READY_MARKER).exists()
@@ -2339,18 +2648,44 @@ def main(argv: list[str] | None = None) -> int:
             # 'iterate' — NON-terminal: redacted L3 failures back + clear a false READY (agent must earn it again) + fix round
             (ws / "qa").mkdir(exist_ok=True)
             (ws / "qa" / "verdict.json").write_text(json.dumps(
-                {"stage": "verilator_checkpoint", "attempt": vatt, "all_pass": False,
-                 "n_passed": vv["n_passed"], "n_capsules": vv["n_capsules"],
-                 "note": "CYCLE-ACCURATE (verilator/L3) results — fix the capsules failing at L3, then "
-                         "re-run agent_selfcheck (spike) clean before declaring READY again.",
-                 "per_capsule": vv["per_capsule"]}, indent=2))
+                _l3_fix_verdict(vv, vatt), indent=2))
             (ws / "submission" / READY_MARKER).unlink(missing_ok=True)
             _fr = time.time()
+            _fix_rc = 0
+            _fix_tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
             try:
-                launch_agent(ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd, a.round_timeout, arm=arm)
+                _fix_rc, _fix_tpath = launch_agent(
+                    ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd, a.round_timeout, arm=arm)
             except subprocess.TimeoutExpired:
+                _fix_rc = 124
                 print("[verilator fix-round] agent TIMEOUT")
             active_wall_s += time.time() - _fr
+            # A fix round may replace the compiler after the previously-conformant round.  Recompute from
+            # THIS transcript + THIS submission immediately; retaining the old True would let prior tool
+            # use mask a hand-authored/non-RTL final workflow.
+            _latest_authoring_tpath = _fix_tpath
+            conf, workflow_conformant = _workflow_conformance(
+                _fix_tpath, ws / "submission", arm, _endpoint_kind, _resolved_tools())
+            _fix_bad = [k for k, v in (conf.get("checks") or {}).items() if v is False]
+            if _fix_bad:
+                print(f"[verilator fix-round {rnd}] NOT CONFORMANT — failing: "
+                      f"{', '.join(_fix_bad)} (formal completion remains blocked)")
+            _fix_effort = ET.parse_transcript(
+                _fix_tpath, billing_mode=_billing_mode(a.model),
+                trust_cli_cost=_trust_cli_cost(a.model))
+            rounds_summary.append({
+                "round": rnd, "mode": "verilator_fix", "agent_rc": _fix_rc,
+                "conformance": conf, "workflow_conformant": workflow_conformant,
+                "authoring_complete": _authoring_complete(),
+                "l3_attempt_repaired": vatt,
+                "tokens_total": _fix_effort.get("tokens_total"),
+                "tokens_output": _fix_effort.get("tokens_output"),
+                "tokens_cached": _fix_effort.get("tokens_cached"),
+                "tokens_input": _fix_effort.get("tokens_input"),
+                "tokens_reasoning": _fix_effort.get("tokens_reasoning"),
+                "tool_calls": _fix_effort.get("tool_calls"),
+                "estimated_cost_usd": _fix_effort.get("estimated_cost_usd"),
+            })
             rnd += 1
             _checkpoint(rnd)
         # realistic (abc2): the verilator barrier IS the definition of done. Make it drive `converged`
@@ -2359,6 +2694,17 @@ def main(argv: list[str] | None = None) -> int:
             verdict["all_pass"] = bool(vv["all_pass"])
             verdict["n_passed"], verdict["n_capsules"] = vv["n_passed"], vv["n_capsules"]
             _checkpoint(rnd)
+
+    # The authoring tree may have changed in an L3 fix round (or this process may have resumed from an
+    # older checkpoint).  Refresh once more before treating it as converged.  No transcript means no
+    # persisted tool evidence and therefore fails closed.
+    if _latest_authoring_tpath is not None:
+        final_conformance, workflow_conformant = _workflow_conformance(
+            _latest_authoring_tpath, ws / "submission", arm, _endpoint_kind, _resolved_tools())
+    else:
+        final_conformance = {"conformant": False, "error": "no authoring transcript"}
+        workflow_conformant = False
+    _checkpoint(rnd)
 
     # On convergence, give the agent ONE bounded turn to finalize its own REPORT.md/docs to the
     # VERIFIED result (the relaunch design means the converging round's agent never saw the passing
@@ -2373,6 +2719,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[finalize] regrade_all_pass={finalize['regrade_all_pass']} "
               f"restored={finalize['restored_after_regression']} "
               f"stamped={finalize['status_line_stamped_by_driver']}")
+        # Finalize is instructed to edit docs only, but the submission is not trusted until checked.  Scan
+        # the final bytes against the last authoring workflow so code changes/regressions cannot inherit a
+        # pre-finalize conformance True.
+        final_conformance, workflow_conformant = _workflow_conformance(
+            _latest_authoring_tpath, ws / "submission", arm, _endpoint_kind, _resolved_tools())
+        _checkpoint(rnd)
     # cumulative wall = active work (rounds + finalize, across ALL invocations) + rate-limit sleeps
     wall = round(active_wall_s + rate_limit_wait_s, 3)
 
@@ -2406,6 +2758,7 @@ def main(argv: list[str] | None = None) -> int:
         "authoring_complete": _authoring_complete(),
         "numeric_all_pass": bool(verdict.get("all_pass", False)),
         "workflow_conformant": workflow_conformant,
+        "final_conformance": final_conformance,
         "cost_capped": cost_capped,   # stopped by the batch dollar ceiling, not convergence/max_rounds
         "n_rounds": len(rounds_summary), "wall_seconds": wall, "finalize": finalize,
         "timing": timing,
@@ -2431,24 +2784,48 @@ def main(argv: list[str] | None = None) -> int:
         if dst.exists():
             shutil.rmtree(dst)
         shutil.copytree(wsub, dst, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+    if wsub.exists() and workflow_conformant:
+        # Last gate before the official process performs its public grade + freeze + hidden grade.  The
+        # authoring loop can last across worktree edits and quota-window resumes, so setup-time hashing is
+        # not enough: recompute every treatment byte and the private snapshot content now, fail closed on
+        # drift, and hand the grader only the already-frozen hidden path.
+        _current_scope = _task_runtime_scope(_te(), a.sandbox)
+        _official_hidden_dir = None
+        if a.sandbox == "bwrap":
+            _BWS.verify_bundle_snapshot(ws, bundle, repo=C.REPO)
+            _verified_snapshot_root = _BWS.bundle_snapshot_root(ws).resolve(strict=True)
+            _expected_hidden_dir = _hidden_snapshot_dir(
+                _verified_snapshot_root, _te(), C.REPO)
+        else:
+            _expected_hidden_dir = None
+        try:
+            _official_hidden_dir = _verify_persisted_run_inputs(
+                _environment_record,
+                identity={"run_id": a.run_id, "arm": arm, "sandbox": a.sandbox,
+                          "bundle_id": bundle["bundle_id"]},
+                task_scope=_current_scope, ws=ws, run_dir=run_dir,
+                bundle_dir=bundle_dir, resolved_tools=_resolved_tools(),
+                expected_hidden_dir=_expected_hidden_dir)
+        except RuntimeError as exc:
+            raise RuntimeError(f"official grade refused: {exc}") from exc
         grade_cmd = [sys.executable, str(C.EXP / "scripts" / "grade_agent_run.py"),
                      "--run-dir", str(run_dir), "--arm", arm, "--model", a.model,
                      "--capsules", str(_pilot_subset())]
-        # Hidden grading must NOT use the public-only materialized subset (_pilot_subset) — it holds no
-        # hidden capsules, so rglob finds zero and hidden grades a vacuous 0/0. Point the hidden phase at
-        # this target's OWN hidden dir, DERIVED from the descriptor's capsule_corpus (its sibling
-        # `hidden/`), so it is target-aware and never picks up another target's hidden set nested under a
-        # shared parent (e.g. grading gemmini must not sweep capsules/atlas/hidden).
-        _cc = Path(_te().capsule_corpus)
-        _hidden_dir = (_cc if _cc.is_absolute() else (C.REPO / _cc)).parent / "hidden"
-        if _hidden_dir.is_dir():
-            grade_cmd += ["--hidden-capsules", str(_hidden_dir)]
+        # bwrap formal runs consume the immutable operator-only copy, never the live worktree/symlink.
+        # The unsandboxed mode is an explicit untrusted diagnostic and retains its historical live path.
+        if _official_hidden_dir is None:
+            _cc = Path(_te().capsule_corpus)
+            _official_hidden_dir = (_cc if _cc.is_absolute() else (C.REPO / _cc)).parent / "hidden"
+        if _official_hidden_dir.is_dir():
+            grade_cmd += ["--hidden-capsules", str(_official_hidden_dir)]
         if a.no_oracle:
             grade_cmd.append("--no-oracle")
         if a.skip_hidden:
             grade_cmd.append("--skip-hidden")
         grade_proc = subprocess.run(grade_cmd, cwd=str(C.REPO))
         official_grade = _official_grade_result(grade_proc.returncode, run_dir)
+    elif wsub.exists():
+        official_grade["failures"] = ["workflow_nonconformant"]
     formal_complete = _formal_completion(bool(verdict.get("all_pass")), workflow_conformant,
                                          official_grade["complete"])
     qa_summary.update({"converged": formal_complete, "formal_complete": formal_complete,

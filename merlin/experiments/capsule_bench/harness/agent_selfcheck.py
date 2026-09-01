@@ -17,7 +17,8 @@ here — only functional/numerical correctness.
   # focus on the ones still failing:
   python agent_selfcheck.py --sim verilator --capsules B3_conv2d_im2col_i8,A1_mvin_mvout
 
-What it does NOT reveal: golden output tensors, hidden capsules, or the reference oracle. It tells you
+What it does NOT reveal: golden output tensors, private model weights, hidden capsules, or the reference
+oracle. It tells you
 WHETHER and roughly WHERE you are wrong (mismatch_count, failing plane) — not the answer.
 """
 from __future__ import annotations

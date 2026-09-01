@@ -1,10 +1,10 @@
-# Addendum — `merlin_assisted` pilot (read together with the task above)
+# Addendum — Arm4 `merlin_assisted_rtlchecks` full suite (read together with the task above)
 
-Everything in the task above (the shared `TASK_pilot.md`) applies **unchanged**: same four pilot
-capsules (`A0_config_smoke`, `A2_single_tile_matmul`, `A4_acc_scale_i8`, `B0_quantized_linear_i8`),
-same deliverable layout under `submission/`, same 4 CLI entrypoints, same redacted QA gate, same
-integrity rules, same final status line. This addendum **only adds** Merlin-tooling allowances and a
-provenance ask. It does not relax or change how you are graded.
+Everything in the generated task above applies **unchanged**: the runtime-generated scope block is
+authoritative for the full admitted public/dev cohort, including its operator/slice cases and the
+resource-bounded full-model capstones. The deliverable layout under `submission/`, 4 CLI entrypoints,
+redacted QA gate, integrity rules, and final status line remain unchanged. This addendum **only adds**
+Merlin-tooling requirements and a provenance ask. It does not relax or change how you are graded.
 
 ## What's different for this arm
 
@@ -28,17 +28,23 @@ final package must still be self-contained + oracle-free). As your FIRST actions
    - `python -c "from merlin.targetgen import rtl_backend as R; print(R.derived_levers(R.target_profile('gemmini')))"`
 3. **Ground the ISA in RTL facts** (mesh DIM, opcode/funct legality, dtypes, memories) instead of guessing:
    - `python -c "from merlin.targetgen.rtl.facts import load_facts; import json; print(json.dumps(load_facts('gemmini')['facts'],indent=1)[:2000])"`
-4. **Scaffold generators** (`targetgen/synthesize/`, `targetgen/generate/`) — start from a generated
-   dialect/pass/tablegen scaffold and fill it in, rather than hand-writing MLIR from scratch.
-5. **Every round, READ the `rtl_checks` block** in your redacted `qa/verdict.json` and fix exactly what it
+4. **Scaffold generators** (`targetgen/synthesize/`, `targetgen/generate/`) — actually invoke one before
+   your first submission edit and print the returned generated paths so the measured transcript contains
+   a concrete generation witness. This zero-argument plan is a reliable starting point:
+   - `python -c "from merlin.targetgen.generate import target_repo; a=target_repo.generate_skeleton('gemmini'); print([x.relpath for x in a])"`
+   Use the generated shape as the scaffold for your xDSL package rather than hand-writing it from scratch.
+5. **Every round, READ the real `rtl_checks` block** in your redacted `qa/verdict.json` (for example,
+   `jq '.rtl_checks' qa/verdict.json`) and fix exactly what it
    flags (illegal funct/opcode, wrong tile count, missing instruction class). It is RTL-grounded truth the
    functional sim alone cannot give you — it is the reason this arm exists.
 
-Do 1–3 before you author each round: derive the levers + facts from the RTL, then author against them.
+Do 1–4 before the first submission edit in each authoring round: derive the CCA seam, levers, facts, and
+scaffold first, print their non-empty results, then author against them. Mentions in comments/`echo` do not
+count; the workflow gate verifies the real API calls and their returned evidence.
 
 ## Rules for this arm (in addition to the task's hard rules)
 
-- This is a **fresh, measured `merlin_assisted` pilot run.** Your wall-time, tokens, cost, tool-calls,
+- This is a **fresh, measured Arm4 `merlin_assisted_rtlchecks` full-suite run.** Your wall-time, tokens, cost, tool-calls,
   and iteration count are recorded as the "effort to converge."
 - **Use only files in your working directory.** Do not reach denied paths on the real filesystem, do not
   work around the sandbox. The reference/simulator oracle, hidden capsules, withheld goldens, the grader
@@ -52,8 +58,9 @@ Do 1–3 before you author each round: derive the levers + facts from the RTL, t
   the redacted `qa/verdict.json` is your only allowed feedback signal.
 - Produce a **self-contained generated artifact** under `submission/` (manifest.yaml + your `mlir_oot/`
   sources + REPORT.md + docs/). It is invoked only through its CLI entrypoints, never imported.
-- **Iterate** against the redacted public/dev QA verdict until `A0/A2/A4/B0` all pass or the round
-  budget is exhausted. **Hidden grading is post-freeze and hidden repair is disabled** — you never see
+- **Iterate** against the redacted public/dev QA verdict until every capsule in the authoritative
+  runtime-generated public/dev scope passes or the round budget is exhausted. **Hidden grading is
+  post-freeze and hidden repair is disabled** — you never see
   or repair against the hidden capsules; they only prove your backend computes rather than memorizes.
 - Write your final `REPORT.md` and `docs/iteration_notes.md` **from artifacts, not claims** (what the
   entrypoints actually emitted, what the verdict actually said).

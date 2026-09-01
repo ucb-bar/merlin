@@ -5,9 +5,10 @@ arm bundle's ``allowed`` paths bound back, its ``denied`` sub-paths re-masked (d
 writable. On top go the claude runtime binds, the toolchain binds, and finally the derived answer masks.
 
 ``apply_answer_masks`` masks EVERY derived answer surface that a legit bind would otherwise re-expose
-(goldens/hidden live under the bound ``merlin/contract`` tree; memory under the bound ``~/.claude``). It
-adds a mask ONLY for a surface that is currently exposed — so a surface already hidden by deny-by-default
-needs no overlay (and we never /dev/null-overlay a path whose parent tmpfs would make the mount fail).
+(goldens/model weights/hidden live under the bound ``merlin/contract`` tree; memory under the bound
+``~/.claude``). It adds a mask ONLY for a surface that is currently exposed — so a surface already hidden
+by deny-by-default needs no overlay (and we never /dev/null-overlay a path whose parent tmpfs would make
+the mount fail).
 
 ``coverage_gap`` is the hermetic guard: it replays the ordered mount table and returns the answer
 surfaces still reachable. Empty == the sandbox masks the full derived answer set. This runs WITHOUT

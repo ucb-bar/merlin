@@ -10,6 +10,7 @@ and registers its RTL with mlc; no per-target code.
 """
 from __future__ import annotations
 
+import hashlib
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -197,6 +198,10 @@ class TargetExperiment:
     # declared, not derived). Names under ``artifacts/targets/<target>/``.
     prior_backends: tuple[str, ...]
     path: Path                         # the descriptor file this came from
+    # Digest of the exact descriptor bytes parsed into this object.  Keeping the load-time identity
+    # closes a TOCTOU hole in formal cohort materialization: a descriptor edited after loading must not
+    # be represented by a cohort record carrying the new file digest and the old parsed exclusions.
+    descriptor_sha256: str
     # OPTIONAL: the KNOWN-GOOD self-contained model program the pre-flight runs end-to-end through the
     # grading oracle (assemble→cosim→readback, compared bit-exact to its own golden) to prove the oracle
     # produces a correct verdict BEFORE a paid run — not just that ``arc_available`` is True. Genuinely
@@ -232,6 +237,19 @@ class TargetExperiment:
     # :func:`~merlin.targetgen.contract.materialize.materialize_public_capsules`, which refuses an
     # exclusion that matches no capsule so a typo cannot quietly widen the set back open.
     graded_exclude: tuple[str, ...] = ()
+    # Optional decomposition of ``graded_exclude`` for formal cohort provenance.  Capability exclusions
+    # must be independently proven by the frozen hardware predicate; resource exclusions must be an
+    # explicit model-only allowlist under a named policy, with the retained representative models named.
+    graded_capability_exclude: tuple[str, ...] = ()
+    graded_resource_exclude: tuple[str, ...] = ()
+    graded_resource_policy: str | None = None
+    graded_required_models: tuple[str, ...] = ()
+    # Claim-bearing descriptors pin their expected source/admitted cardinalities.  Exclusion lists pin
+    # the public names; hidden names stay sealed and only their counts are declared.
+    graded_expected_source_capsules: int | None = None
+    graded_expected_admitted_capsules: int | None = None
+    hidden_expected_source_capsules: int | None = None
+    hidden_expected_admitted_capsules: int | None = None
     # OPTIONAL: which DISCOVERED memory group is this device's on-chip OPERAND store, given as the name
     # prefix its sibling banks share. Only the LABEL is declared; the capacity itself stays RTL-derived
     # (mlc's discovered depth x row_bytes, summed over the group). This exists because mlc classifies a
@@ -349,11 +367,77 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
     """Load + validate a ``target_experiment.yaml`` descriptor. Shared-spec paths are kept as the bundle-
     convention STRINGS (so the governance check compares like-for-like); the capsule corpus is resolved."""
     p = Path(descriptor)
-    doc = yaml.safe_load(p.read_text())
+    descriptor_bytes = p.read_bytes()
+    doc = yaml.safe_load(descriptor_bytes.decode("utf-8"))
     if not isinstance(doc, dict) or not doc.get("target"):
         raise ValueError(f"{p}: not a target-experiment descriptor (missing 'target')")
     root = repo_root()
     hw = doc.get("hardware_spec") or {}
+    grading = doc.get("grading") or {}
+    if not isinstance(grading, dict):
+        raise ValueError(f"{p}: grading must be a mapping")
+    resource_bound = grading.get("resource_bound") or {}
+    expected_cohort = grading.get("expected_cohort") or {}
+    hidden_admission = grading.get("hidden_capability_admission") or {}
+    for field, value in (("grading.resource_bound", resource_bound),
+                         ("grading.expected_cohort", expected_cohort),
+                         ("grading.hidden_capability_admission", hidden_admission)):
+        if not isinstance(value, dict):
+            raise ValueError(f"{p}: {field} must be a mapping")
+
+    def names(value, *, field: str) -> tuple[str, ...]:
+        if value is None:
+            return ()
+        if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
+            raise ValueError(f"{p}: {field} must be a list of non-empty capsule names")
+        out = tuple(value)
+        if len(set(out)) != len(out):
+            raise ValueError(f"{p}: {field} contains duplicate capsule names")
+        return out
+
+    def count(mapping: dict, key: str, *, field: str) -> int | None:
+        if key not in mapping:
+            return None
+        value = mapping[key]
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"{p}: {field}.{key} must be a non-negative integer")
+        return value
+
+    legacy_exclude = names(grading.get("exclude_capsules"), field="grading.exclude_capsules")
+    capability_exclude = names(grading.get("capability_exclude_capsules"),
+                               field="grading.capability_exclude_capsules")
+    resource_exclude = names(resource_bound.get("exclude_capsules"),
+                             field="grading.resource_bound.exclude_capsules")
+    required_models = names(resource_bound.get("required_admitted_models"),
+                            field="grading.resource_bound.required_admitted_models")
+    split_exclude = capability_exclude + resource_exclude
+    if legacy_exclude and split_exclude:
+        raise ValueError(f"{p}: grading may use legacy exclude_capsules or the explicit capability/"
+                         "resource split, not both")
+    overlap = sorted(set(capability_exclude) & set(resource_exclude))
+    if overlap:
+        raise ValueError(f"{p}: capability and resource exclusions overlap: {overlap}")
+    if resource_exclude and (not resource_bound.get("policy") or not required_models):
+        raise ValueError(f"{p}: resource exclusions require a named policy and admitted model capstones")
+    if set(required_models) & set(split_exclude):
+        raise ValueError(f"{p}: a required admitted model is also excluded")
+
+    expected_source = count(expected_cohort, "source_capsules", field="grading.expected_cohort")
+    expected_admitted = count(expected_cohort, "admitted_capsules", field="grading.expected_cohort")
+    if (expected_source is None) != (expected_admitted is None):
+        raise ValueError(f"{p}: grading.expected_cohort must declare both source and admitted counts")
+    if expected_source is not None and expected_source != expected_admitted + len(split_exclude):
+        raise ValueError(
+            f"{p}: grading.expected_cohort arithmetic does not match the declared exclusions")
+    hidden_source = count(hidden_admission, "source_capsules",
+                          field="grading.hidden_capability_admission")
+    hidden_admitted = count(hidden_admission, "admitted_capsules",
+                            field="grading.hidden_capability_admission")
+    if (hidden_source is None) != (hidden_admitted is None):
+        raise ValueError(
+            f"{p}: grading.hidden_capability_admission must declare both source and admitted counts")
+    if hidden_source is not None and hidden_admitted > hidden_source:
+        raise ValueError(f"{p}: hidden admitted count exceeds its sealed source count")
     return TargetExperiment(
         target=str(doc["target"]),
         isa_headers=tuple(hw.get("isa_headers") or []),
@@ -366,11 +450,20 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         operand_store=(lambda v: str(v) if v else None)((doc.get("rtl") or {}).get("operand_store")),
         prior_backends=tuple((doc.get("answer_surfaces") or {}).get("prior_backends") or ()),
         path=p,
+        descriptor_sha256=hashlib.sha256(descriptor_bytes).hexdigest(),
         preflight_smoke_program=(lambda s: str(s) if s else None)(
             (doc.get("preflight") or {}).get("smoke_program")),
         declared_contract=(lambda s: str(s) if s else None)(hw.get("target_contract")),
         backend_package_dir=(lambda s: str(s) if s else None)(doc.get("backend_package_dir")),
-        graded_exclude=tuple(str(x) for x in ((doc.get("grading") or {}).get("exclude_capsules") or ())),
+        graded_exclude=legacy_exclude or split_exclude,
+        graded_capability_exclude=capability_exclude,
+        graded_resource_exclude=resource_exclude,
+        graded_resource_policy=(lambda s: str(s) if s else None)(resource_bound.get("policy")),
+        graded_required_models=required_models,
+        graded_expected_source_capsules=expected_source,
+        graded_expected_admitted_capsules=expected_admitted,
+        hidden_expected_source_capsules=hidden_source,
+        hidden_expected_admitted_capsules=hidden_admitted,
         host_lane=HostLane.from_mapping(doc.get("host_lane"), descriptor=p),
     )
 

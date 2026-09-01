@@ -1,7 +1,7 @@
 """Thorough sandbox access audit — spawn the REAL agent bwrap sandbox for an arm's bundle and probe,
 from INSIDE it, that EVERY answer surface is unreadable and the FULL test CONTRACT + granted tools ARE
 readable. Stronger than the sampled ``mask_selftest``: it enumerates the complete derived answer-surface
-set (goldens, hidden capsules, prior backends, oracle/grader modules, experimenter memory + session
+set (goldens, private model weights, hidden capsules, prior backends, oracle/grader modules, memory + session
 transcripts) and the per-capsule contract files, and checks each one for real inside the sandbox.
 
 Target-general: everything is derived from the bundle manifest + the descriptor's answer surfaces (via

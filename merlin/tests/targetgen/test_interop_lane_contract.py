@@ -25,7 +25,7 @@ import json
 import pytest
 
 from merlin.common.paths import merlin_dir
-from merlin.targetgen.capsule_runner import lane_report
+from merlin.targetgen.capsule_runner import dispatch_boundary_report, lane_report
 
 _SCHEMA = merlin_dir() / "contract/schemas/capsule.schema.json"
 _RUNNER = merlin_dir() / "python/merlin/targetgen/capsule_runner.py"
@@ -76,7 +76,11 @@ def test_an_ordinary_capsule_is_untouched():
 
 def test_composition_passes_only_when_every_named_lane_carried_work():
     rep = lane_report({"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}},
-                      {"on_mesh": {"matmul": 3}, "scalar_rvv_lane": {"add": 2}})
+                      {"on_mesh": {"matmul": 3}, "scalar_rvv_lane": {"add": 2}},
+                      {"dispatch_ledger": [
+                          {"ordinal": 0, "symbol": "mm", "lane": "on_mesh", "status": "pass"},
+                          {"ordinal": 1, "symbol": "add", "lane": "scalar_rvv_lane",
+                           "status": "pass"}]})
     assert rep["unexercised"] == [], "both lanes carried work — this is the capability under test"
     assert rep["observed"] == ["on_mesh", "scalar_rvv_lane"]
 
@@ -85,7 +89,9 @@ def test_a_lane_that_carried_nothing_is_named():
     """The actionable direction: an unnamed failure turns a composition capsule into a single-backend
     capsule nobody notices."""
     rep = lane_report({"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}},
-                      {"on_mesh": {"matmul": 3}})
+                      {"on_mesh": {"matmul": 3}},
+                      {"dispatch_ledger": [
+                          {"ordinal": 0, "symbol": "mm", "lane": "on_mesh", "status": "pass"}]})
     assert rep["unexercised"] == ["scalar_rvv_lane"]
     assert rep["observed"] == ["on_mesh"]
 
@@ -97,12 +103,12 @@ def test_an_empty_lane_entry_counts_as_no_work():
     assert lane_report({"lanes": {"require": ["on_mesh"]}}, None)["unexercised"] == ["on_mesh"]
 
 
-def test_lane_names_are_the_plans_own_keys_not_a_fixed_list():
-    """A target whose routing plan reports different lane names needs no change here."""
+def test_an_unknown_lane_cannot_self_authorize_from_a_plan():
+    """Only runner-owned lane vocabulary can carry a formal requirement."""
     rep = lane_report({"lanes": {"require": ["some_future_lane"]}},
                       {"some_future_lane": {"op": 1}, "another": {"op": 2}})
-    assert rep["unexercised"] == []
-    assert rep["observed"] == ["another", "some_future_lane"]
+    assert rep["unexercised"] == ["some_future_lane"]
+    assert rep["observed"] == []
 
 
 # --------------------------------------------------------------- a plan is not an execution
@@ -116,37 +122,65 @@ def test_lane_names_are_the_plans_own_keys_not_a_fixed_list():
 #     host lane, so the mesh never ran and the capsule's own lane requirement was unverifiable.
 
 def test_only_a_mapping_of_op_counts_is_a_lane():
-    """The plan carries metadata beside its lanes; metadata never 'carried work'."""
+    """Neither plan lanes nor plan metadata prove that dynamic work completed."""
     plan = {"on_mesh": {"matmul": 15}, "scalar_rvv_lane": {"add": 3},
             "n_mesh_ops": 15, "n_scalar_ops": 401, "note": "…", "mesh_matmul_extents": [{"m": 8}]}
     rep = lane_report({"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}, plan)
-    assert rep["observed"] == ["on_mesh", "scalar_rvv_lane"], (
-        "ints, strings and lists are not lanes even when truthy")
+    assert rep["observed"] == []
+    assert rep["unexercised"] == ["on_mesh", "scalar_rvv_lane"]
 
 
 def test_execution_accounting_overrides_the_plan():
     """A lane the router filled but the hardware never ran did NOT carry work."""
     plan = {"on_mesh": {"matmul": 15}, "scalar_rvv_lane": {"add": 3}}
     exec_none = {"matmul_layers_routed": 15, "matmul_layers_on_mesh": 0,
-                 "matmul_layers_host_fallback": 15}
+                 "matmul_layers_host_fallback": 15,
+                 "dispatch_ledger": [
+                     {"ordinal": 0, "symbol": "mm", "lane": "host_fallback", "status": "pass"},
+                     {"ordinal": 1, "symbol": "add", "lane": "scalar_rvv_lane", "status": "pass"}]}
     rep = lane_report({"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}, plan, exec_none)
     assert rep["unexercised"] == ["on_mesh"]
-    assert rep["evidence"] == "execution"
+    assert rep["evidence"] == "dynamic_dispatch_ledger"
 
 
 def test_execution_accounting_can_also_confirm_a_lane():
     plan = {"on_mesh": {"matmul": 15}, "scalar_rvv_lane": {"add": 3}}
     exec_ok = {"matmul_layers_routed": 15, "matmul_layers_on_mesh": 15,
-               "matmul_layers_host_fallback": 0}
+               "matmul_layers_host_fallback": 0,
+               "dispatch_ledger": [
+                   {"ordinal": 0, "symbol": "mm", "lane": "on_mesh", "status": "pass"},
+                   {"ordinal": 1, "symbol": "add", "lane": "scalar_rvv_lane", "status": "pass"}]}
     rep = lane_report({"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}, plan, exec_ok)
     assert rep["unexercised"] == []
 
 
-def test_a_plan_only_verdict_says_so():
-    """Without execution accounting the report is about intent, and must admit it."""
+def test_a_plan_only_verdict_fails_closed():
+    """Without a dynamic ledger, no lane is credited."""
     rep = lane_report({"lanes": {"require": ["on_mesh"]}}, {"on_mesh": {"matmul": 1}})
-    assert rep["evidence"] == "routing_plan"
-    assert "PLANNED" in rep["caveat"] or "planned" in rep["caveat"].lower()
+    assert rep["evidence"] == "missing"
+    assert rep["unexercised"] == ["on_mesh"]
+    assert "routing" in rep["caveat"].lower()
+
+
+def test_dynamic_ledger_proves_a_h_a_and_routing_topology():
+    def entry(i, lane):
+        return {"ordinal": i, "symbol": f"k{i}", "lane": lane, "status": "pass"}
+
+    seam = dispatch_boundary_report({"dispatch_ledger": [
+        entry(0, "on_mesh"), entry(1, "scalar_rvv_lane"), entry(2, "on_mesh")]})
+    assert seam["boundary"] == "A->H->A" and "A->H->A" in seam["contains"]
+
+    routing = dispatch_boundary_report({"dispatch_ledger": [
+        entry(0, "on_mesh"), entry(1, "scalar_rvv_lane"), entry(2, "on_mesh"),
+        entry(3, "scalar_rvv_lane")]})
+    assert routing["boundary"] == "routing"
+    assert routing["accel_segments"] == 2 and routing["host_segments"] == 2
+
+
+def test_boundary_report_never_uses_a_static_plan_as_execution():
+    rep = dispatch_boundary_report({"routing_plan": {
+        "on_mesh": {"matmul": 2}, "scalar_rvv_lane": {"add": 1}}})
+    assert rep["status"] == "missing" and rep["boundary"] == "UNKNOWN"
 
 
 def test_an_interop_capsule_runs_on_the_mesh_lane():

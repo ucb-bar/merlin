@@ -8,8 +8,9 @@ must be explicitly re-masked on top. This module ENUMERATES that set from the ta
 descriptor + a single DECLARED oracle/grader registry — never a per-target hand-list — so a new target
 gets a correct, complete mask from its ``target_experiment.yaml`` with zero copied policy.
 
-The set has six origins, all derived:
-  * ``golden``        — every ``golden.yaml`` under the declared capsule corpus + its sibling corpora
+The set has seven origins, all derived:
+  * ``golden``        — every golden and expected grading-coverage file under the capsule corpora
+  * ``weight``        — externalized model weights (the private inputs from which model goldens derive)
   * ``hidden``        — the hidden-capsule dir (the corpus's ``hidden/`` sibling) + the holdout
                         SPECIFICATION sidecars (``capsules/profiles/*.hidden.yaml``)
   * ``prior_backend`` — the reference exemplars the descriptor's ``answer_surfaces.prior_backends`` names
@@ -71,7 +72,7 @@ class AnswerSurface:
     label: str          # human label for diagnostics
     path: Path          # absolute host path
     kind: str           # "file" -> /dev/null overlay ; "dir" -> tmpfs
-    origin: str         # golden | hidden | prior_backend | oracle | grader | memory | example
+    origin: str         # golden | weight | hidden | prior_backend | oracle | grader | memory | example
 
 
 def experimenter_memory_dir() -> Path:
@@ -83,7 +84,7 @@ def experimenter_memory_dir() -> Path:
 
 
 def golden_files(te: TargetExperiment) -> list[Path]:
-    """Every golden/answer file the agent must not read. Globbed RECURSIVELY (any extension, any nesting
+    """Every golden/expected-grading file the agent must not read. Globbed recursively (any nesting
     depth) from the DECLARED corpus + its sibling corpora AND the whole capsule tree — so a run never sees
     a DEEPER-nested capsule's or ANOTHER target's golden (both escaped the old one-level ``*/golden.yaml``
     glob) — plus every example expected-output. Generic: no hard-coded ``isa/layers/model_slices`` list and
@@ -95,11 +96,15 @@ def golden_files(te: TargetExperiment) -> list[Path]:
     corpora += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
     # The full capsule tree, in addition to the declared corpus: masks nested + other-target goldens the
     # declared one-level glob would miss (e.g. capsules/<target>/isa/<capsule>/golden.yaml). rglob only
-    # matches files literally named ``golden.*`` — capsule INPUTS (interface MLIR, spec) stay visible.
+    # matches only grading artifacts — capsule INPUTS (loader, linalg/interface MLIR, spec) stay visible.
     corpora.append(root / "merlin/contract/capsules")
     for corpus in corpora:
         if corpus and corpus.is_dir():
             files += sorted(corpus.rglob("golden.*"))
+            # Instruction-coverage expectations are used by the grader in the same way as numerical
+            # goldens. Exposing them tells the agent the exact command mix it must synthesize, so they
+            # are an answer surface even though their filename does not begin with ``golden``.
+            files += sorted(corpus.rglob("expected_instruction_coverage.yaml"))
     # Every example expected-output (``expected_command_buffer_g0/g1/g2…`` and any ``expected_*`` artifact),
     # not just the single ``_g0`` literal that used to be masked.
     ex_dir = root / "merlin/contract/examples"
@@ -113,6 +118,22 @@ def golden_files(te: TargetExperiment) -> list[Path]:
             seen.add(f)
             out.append(f)
     return out
+
+
+def weight_files(te: TargetExperiment) -> list[Path]:
+    """Every externalized capsule-weight file the agent must not read.
+
+    Whole-model weights remain available to the operator-side grader and are copied into the immutable
+    bundle snapshot, but exposing their values to the bring-up agent exposes the private model instance
+    from which its withheld golden was computed.  Sweep the complete capsule tree, just as
+    :func:`golden_files` does, so broad contract grants cannot leak another target's model weights.
+    Both the safetensors blob and an optional manifest are covered by suffix, with no per-model list.
+    """
+    caps_root = repo_root() / "merlin/contract/capsules"
+    if not caps_root.is_dir():
+        return []
+    files = [*caps_root.rglob("*.safetensors"), *caps_root.rglob("*.safetensors.manifest.json")]
+    return sorted({path for path in files if path.is_file()})
 
 
 def _evicted_oracle_modules() -> list[Path]:
@@ -145,6 +166,9 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
     for g in golden_files(te):
         origin = "example" if examples_dir in g.parents else "golden"
         out.append(AnswerSurface(f"{origin}:{g.relative_to(root)}", g, "file", origin))
+    for weights in weight_files(te):
+        out.append(AnswerSurface(
+            f"weight:{weights.relative_to(root)}", weights, "file", "weight"))
 
     # Mask EVERY hidden-capsule dir under the capsule tree, not only THIS target's declared one. The bundle
     # grants the frozen ABI (``merlin/contract/``) broadly, which re-exposes the SHARED
@@ -210,9 +234,12 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
 def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
     """The path-fragment tokens the transcript audit flags as answer/grader/oracle READS — DERIVED from
     the same declared registry + descriptor as the filesystem mask, so there is one source of truth (no
-    parallel hand-list to drift). ``answer`` = goldens/hidden/oracle-modules/prior-backends/grader-private;
-    ``grader`` = grader-module stems; ``oracle_subpath`` = the oracle-callable helper subpaths."""
-    answer: list[str] = ["golden.yaml", "expected_command_buffer"]
+    parallel hand-list to drift). ``answer`` = goldens/weights/hidden/oracle-modules/prior-backends/
+    grader-private; ``grader`` = grader-module stems; ``oracle_subpath`` = the oracle-callable helper
+    subpaths."""
+    answer: list[str] = [
+        "golden.yaml", "expected_command_buffer", "expected_instruction_coverage.yaml",
+    ]
     # A token for EVERY hidden-capsule dir (this target's + the shared one + any other target's), matching
     # the filesystem mask above — the trailing two path components identify each hidden set (e.g.
     # "radiance/hidden", "capsules/hidden", "atlas/hidden"). A read of any is an answer surface.
@@ -228,6 +255,12 @@ def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
     # suffix identifies every one of them, so a new target's sidecar is covered the day it appears.
     if (_caps / "profiles").is_dir():
         answer.append(".hidden.yaml")
+    # Weight filenames are legitimately DECLARED in agent-visible capsule YAML/MLIR. A bare
+    # ``.safetensors`` token would therefore accuse an agent that greps its public interface of reading
+    # the private blob. Qualify by category/capsule/file: a real path read still matches, while a public
+    # declaration containing only ``capsule.weights.safetensors`` does not.
+    for _weights in weight_files(te):
+        answer.append("/".join(_weights.parts[-3:]))
     for rel in ORACLE_MODULES:
         # "merlin/runtime/reference" etc. — drop the merlin/python prefix + the .py suffix
         frag = rel[len("merlin/python/"):] if rel.startswith("merlin/python/") else rel

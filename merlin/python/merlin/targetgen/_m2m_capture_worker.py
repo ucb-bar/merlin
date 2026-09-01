@@ -61,6 +61,42 @@ def _to_native(t):
     return t
 
 
+def _mlir_dtype(torch_dtype) -> str:
+    """Canonical MLIR element spelling for a captured torch tensor dtype.
+
+    Do not infer this from JSON values: ``_to_native`` deliberately converts tensors through float64,
+    so integral-looking values and genuinely integral tensors are indistinguishable after serialization.
+    """
+    import torch
+
+    spelling = {
+        torch.bool: "i1",
+        torch.int8: "i8", torch.uint8: "ui8",
+        torch.int16: "i16", torch.int32: "i32", torch.int64: "i64",
+        torch.float16: "f16", torch.bfloat16: "bf16", torch.float32: "f32",
+        torch.float64: "f64",
+    }
+    for name, mlir in (("float8_e4m3fn", "f8E4M3FN"),
+                       ("float8_e5m2", "f8E5M2")):
+        dtype = getattr(torch, name, None)
+        if dtype is not None:
+            spelling[dtype] = mlir
+    if torch_dtype not in spelling:
+        raise RuntimeError(f"unsupported captured input dtype: {torch_dtype}")
+    return spelling[torch_dtype]
+
+
+def _input_abi(inputs):
+    """Flatten the loader's input pytree and preserve each tensor leaf's real shape and dtype."""
+    import torch
+
+    leaves, _spec = torch.utils._pytree.tree_flatten(inputs)
+    bad = [type(x).__name__ for x in leaves if not isinstance(x, torch.Tensor)]
+    if bad:
+        raise RuntimeError(f"model loader inputs must have only tensor leaves; got {bad}")
+    return leaves, [{"shape": list(x.shape), "dtype": _mlir_dtype(x.dtype)} for x in leaves]
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="m2m capsule capture worker (runs in the m2m venv).")
     ap.add_argument("--loader", required=True, help="path to a .py exposing get_model_and_inputs()")
@@ -103,7 +139,8 @@ def main(argv=None) -> int:
     with torch.no_grad():
         y = mdl(*inputs)
     outputs = _to_native(y)
-    input_prov = [_to_native(x) for x in inputs]
+    input_leaves, input_abi = _input_abi(inputs)
+    input_prov = [_to_native(x) for x in input_leaves]
 
     (out / "inputs.json").write_text(json.dumps(input_prov), encoding="utf-8")
     (out / "golden.json").write_text(json.dumps(outputs), encoding="utf-8")
@@ -112,6 +149,9 @@ def main(argv=None) -> int:
         "path_taken": getattr(res, "path_taken", None), "dtype": a.dtype,
         "linalg_ops": res.mlir_text.count("linalg."), "func_name": a.func_name,
         "weights": weights_path,
+        # The only authoritative dtype record that survives JSON serialization. The parent verifies this
+        # independently against the captured @forward signature before declaring capsule inputs.
+        "input_abi": input_abi,
     }
     (out / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     # a machine-readable tail line the parent greps for, even if warnings precede it

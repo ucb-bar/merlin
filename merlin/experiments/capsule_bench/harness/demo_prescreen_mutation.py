@@ -26,7 +26,7 @@ import _common as C  # noqa: E402 — active target (descriptor-driven), bootstr
 REPO = C.REPO
 
 import yaml  # noqa: E402
-from merlin.targetgen import rocc_decode as RD            # noqa: E402
+from merlin.targetgen.rocc import decode as RD           # noqa: E402 (was targetgen.rocc_decode)
 from merlin.targetgen import rtl_check_compiler as CC     # noqa: E402
 from merlin.targetgen import rtl_check_runner as RUN      # noqa: E402
 from merlin.targetgen import rtl_checks as RC             # noqa: E402

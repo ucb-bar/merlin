@@ -38,7 +38,7 @@ import yaml
 import _common as C
 
 # Substrings that name a real answer artifact (golden value / expected cb / reference / oracle output).
-_ANSWER_PATH_HINTS = ("golden", "expected_command_buffer", "reference_output", "/oracle", "hidden",
+_ANSWER_PATH_HINTS = ("golden", "expected_command_buffer", "reference_output", ".safetensors", "/oracle", "hidden",
                       "grader_private", "numeric_report", "score_capsule")
 
 

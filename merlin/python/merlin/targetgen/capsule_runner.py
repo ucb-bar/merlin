@@ -1082,40 +1082,57 @@ def lane_report(capsule: dict, routing_plan: dict | None,
 
     Returns ``None`` when the capsule declares no ``lanes.require`` (the ordinary case).
 
-    Two things this must not do, both of which it did and both of which produced a hollow pass on the
-    first capsule to use it:
-
-    * **A routing plan is not an execution.** ``plan["on_mesh"]`` lists the ops the router ASSIGNED to the
-      mesh; whether they ran there is a different fact, recorded in ``mesh_execution``. Measured on the
-      same submission: 15 matmuls assigned to the mesh, 15 host fallbacks at run time. So when per-layer
-      accounting exists it decides ``on_mesh``, and the plan is only consulted where no accounting does.
-    * **Not every key of the plan is a lane.** The plan also carries ``n_mesh_ops``, ``n_scalar_ops``,
-      ``mesh_matmul_extents`` and ``note``; scanning it for truthy keys reported those as lanes that
-      "carried work". A lane entry is a MAPPING of op -> count, so only dict-valued keys are lanes.
+    A routing plan is never evidence here. It lists assignments, not completed calls, and previously
+    allowed an interop capsule's scalar lane to pass without one dynamic host call. Only the ordered,
+    runner-owned dispatch ledger carries a lane requirement; missing evidence fails closed.
     """
     req = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
     if not req:
         return None
-    plan = routing_plan or {}
-    lanes = {k: v for k, v in plan.items() if isinstance(v, dict)}
-    carried = {k for k, v in lanes.items() if v}
     me = mesh_execution or {}
-    # The mesh lane is the one we have real per-layer accounting for; when it exists, believe it.
-    if me:
-        on = me.get("matmul_layers_on_mesh")
-        if on is not None:
-            if int(on) > 0:
-                carried.add("on_mesh")
-            else:
-                carried.discard("on_mesh")
+    ledger = me.get("dispatch_ledger")
+    carried = ({str(e.get("lane")) for e in ledger
+                if isinstance(e, dict) and e.get("status") == "pass"
+                and e.get("lane") in ("on_mesh", "scalar_rvv_lane")}
+               if isinstance(ledger, list) else set())
     unexercised = [ln for ln in req if ln not in carried]
     out = {"required": req, "observed": sorted(carried), "unexercised": unexercised,
-           "evidence": ("execution" if me.get("matmul_layers_on_mesh") is not None else "routing_plan")}
-    if out["evidence"] == "routing_plan":
-        out["caveat"] = ("no per-layer execution accounting was recorded, so this reports what the "
-                         "router PLANNED, not what ran; a lane can appear here and still have executed "
-                         "nothing")
+           "evidence": "dynamic_dispatch_ledger" if isinstance(ledger, list) else "missing"}
+    if not isinstance(ledger, list):
+        out["caveat"] = ("no runner-owned dynamic dispatch ledger was recorded; static routing and "
+                         "aggregate counters cannot prove that a required lane carried work")
     return out
+
+
+def dispatch_boundary_report(mesh_execution: dict | None) -> dict:
+    """Classify the *executed* host/accelerator sequence from the runtime ledger."""
+    from . import boundary as _bd
+
+    ledger = (mesh_execution or {}).get("dispatch_ledger")
+    if not isinstance(ledger, list):
+        return {"status": "missing", "boundary": _bd.UNKNOWN, "contains": [],
+                "detail": "runner-owned dynamic dispatch ledger is missing"}
+    sequence: list[str] = []
+    unresolved = 0
+    for entry in ledger:
+        lane = entry.get("lane") if isinstance(entry, dict) else None
+        if lane == "on_mesh":
+            sequence.append(_bd.ACCEL)
+        elif lane in ("scalar_rvv_lane", "host_fallback", "mesh_unavailable"):
+            sequence.append(_bd.HOST)
+        else:
+            unresolved += 1
+    segs = _bd.segments(sequence)
+    return {"status": "pass" if sequence and not unresolved else "fail",
+            "boundary": _bd.classify_sequence(sequence),
+            "contains": sorted(_bd.patterns_in_sequence(sequence)),
+            "n_dynamic_calls": len(ledger),
+            "n_accel_calls": sum(x == _bd.ACCEL for x in sequence),
+            "n_host_calls": sum(x == _bd.HOST for x in sequence),
+            "n_unresolved": unresolved,
+            "accel_segments": sum(k == _bd.ACCEL for k, _ in segs),
+            "host_segments": sum(k == _bd.HOST for k, _ in segs),
+            "detail": "derived only from completed calls in the runner-owned dispatch ledger"}
 
 def _absent_outputs(nrep: dict) -> list[str]:
     """Outputs the kernel DECLARED (present in the interface/golden) but never wrote — or wrote at the
@@ -1493,6 +1510,35 @@ def _kill_tree(pid: int, *, grace: float = 5.0) -> None:
 def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int,
                          package_dir: str | Path | None = None,
                          budget_s: float | None = None) -> dict:
+    """Serialize whole-model grades whose nested mesh artifacts use shared global run paths.
+
+    ``compile_model`` currently keys ``mesh_run`` and ``mesh_verify`` artifacts by layer shape/index,
+    not by the outer capsule/submission.  Two processes can therefore overwrite the exact LLVM/ELF and
+    oracle evidence the other is still producing.  A cross-process target lock makes those artifacts
+    single-writer until the paths themselves gain an outer-grade namespace.  This deliberately slows
+    only model capsules; ordinary op/slice grading remains parallel.
+    """
+    import fcntl
+    import tempfile
+
+    safe_target = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(target or "none"))
+    lock_root = Path(tempfile.gettempdir()) / f"merlin-model-grade-locks-{os.getuid()}"
+    lock_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    lock_path = lock_root / f"{safe_target}.lock"
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        result = _grade_model_capsule_unlocked(
+            capsule, target=target, timeout=timeout, package_dir=package_dir, budget_s=budget_s)
+        result["model_grade_serialization"] = {
+            "scope": f"target:{target}",
+            "reason": "nested mesh_run/mesh_verify artifact paths are shape/index keyed",
+        }
+        return result
+
+
+def _grade_model_capsule_unlocked(capsule: dict, *, target: str | None = None, timeout: int,
+                                  package_dir: str | Path | None = None,
+                                  budget_s: float | None = None) -> dict:
     """Grade a whole-model capsule, under a wall-clock budget when one is set.
 
     ``budget_s`` (default: :func:`model_budget_seconds`) is a ceiling on the CAPSULE, not on a step.
@@ -1682,6 +1728,282 @@ def _verified_model_host_lane_snapshot() -> tuple[Path | None, dict[str, Any] | 
     }
 
 
+def _model_asset(capsule_root: Path, declared: object, role: str) -> Path:
+    """Resolve one declared model-capsule asset without permitting aliases or escapes."""
+    if not isinstance(declared, str) or not declared.strip():
+        raise ValueError(f"model capsule does not declare its {role} asset")
+    rel = Path(declared)
+    if rel.is_absolute() or ".." in rel.parts:
+        raise ValueError(f"model capsule {role} path must stay inside the capsule: {declared!r}")
+    lexical = capsule_root / rel
+    if lexical.is_symlink() or not lexical.is_file():
+        raise ValueError(f"model capsule {role} asset is missing or a symlink: {declared!r}")
+    resolved = lexical.resolve(strict=True)
+    if capsule_root not in resolved.parents:
+        raise ValueError(f"model capsule {role} asset escapes its frozen directory: {declared!r}")
+    return resolved
+
+
+def _file_identity(path: Path) -> dict[str, Any]:
+    import hashlib
+
+    h = hashlib.sha256()
+    size = 0
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1024 * 1024), b""):
+            size += len(block)
+            h.update(block)
+    return {"sha256": h.hexdigest(), "size_bytes": size}
+
+
+def _content_identity(files: dict[str, Path], *, root: Path | None = None) -> dict[str, Any]:
+    """Stable identity of a role-keyed set; paths do not participate in its content hash."""
+    import hashlib
+
+    artifacts = {}
+    for role, path in sorted(files.items()):
+        rel = str(path.relative_to(root)) if root is not None else path.name
+        artifacts[role] = {"path": rel, **_file_identity(path)}
+    canonical = json.dumps(artifacts, sort_keys=True, separators=(",", ":")).encode()
+    return {"version": 1, "content_sha256": hashlib.sha256(canonical).hexdigest(),
+            "artifacts": artifacts, "missing": []}
+
+
+def _write_deterministic_npz(path: Path, arrays: dict[str, Any]) -> None:
+    """Write an np.load-compatible archive whose bytes do not contain wall-clock timestamps."""
+    import io
+    import zipfile
+
+    import numpy as np
+
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
+        for name, array in sorted(arrays.items()):
+            payload = io.BytesIO()
+            np.save(payload, np.ascontiguousarray(array), allow_pickle=False)
+            member = zipfile.ZipInfo(f"{name}.npy", date_time=(1980, 1, 1, 0, 0, 0))
+            member.compress_type = zipfile.ZIP_STORED
+            member.external_attr = 0o100444 << 16
+            archive.writestr(member, payload.getvalue())
+
+
+def _numpy_dtype(dtype: str):
+    import numpy as np
+
+    dtypes = {"f64": np.float64, "f32": np.float32, "f16": np.float16,
+              "i64": np.int64, "i32": np.int32, "i16": np.int16, "i8": np.int8,
+              "i1": np.int8}
+    if dtype not in dtypes:
+        # A bf16 array cannot be reconstructed from decoded YAML values without an explicit bit-level
+        # representation.  Guessing by casting to f32 would make the runtime consume different bytes.
+        raise ValueError(f"capsule runtime-bundle adapter cannot losslessly encode dtype {dtype!r}")
+    return dtypes[dtype]
+
+
+def _model_runtime_bundle(capsule: dict, *, timeout: int):
+    """Context manager yielding a read-only capture bundle made only from frozen capsule assets.
+
+    The model capsule intentionally exposes a linalg interface, external weights and an independent
+    golden instead of a live model2MLIR capture directory.  Whole-model execution needs the equivalent
+    runtime files.  This adapter reconstructs those files deterministically, validates their ABI against
+    the capsule's frozen loader via torch.export, and checks every source/bundle digest both before and
+    after compilation.  It never resolves ``out/artifacts/recaptures`` and never captures/downloads a
+    model.
+    """
+    import contextlib
+    import shutil
+    import subprocess
+    import tempfile
+
+    import numpy as np
+
+    @contextlib.contextmanager
+    def _materialized():
+        raw_root = capsule.get("__dir__")
+        if not raw_root:
+            raise ValueError("model capsule has no frozen source directory")
+        lexical_root = Path(raw_root)
+        if lexical_root.is_symlink() or not lexical_root.is_dir():
+            raise ValueError("model capsule source directory is missing or a symlink")
+        root = lexical_root.resolve(strict=True)
+        op_attrs = (capsule.get("operation") or {}).get("attributes") or {}
+        ref = capsule.get("pytorch_ref") or {}
+
+        interface_names = [str(x) for x in
+                           (capsule.get("linalg_mlir"), capsule.get("interface_mlir")) if x]
+        if not interface_names or len(set(interface_names)) != 1:
+            raise ValueError(
+                "model capsule linalg_mlir/interface_mlir declarations are absent or inconsistent")
+        interface = _model_asset(root, interface_names[0], "linalg interface")
+        loader = _model_asset(root, ref.get("loader"), "PyTorch loader")
+        weights = _model_asset(root, op_attrs.get("weights"), "external weights")
+        golden_yaml = _model_asset(root, "golden.yaml", "independent golden")
+        capsule_yaml = _model_asset(root, "capsule.yaml", "capsule declaration")
+        source_files = {"capsule_declaration": capsule_yaml, "loader": loader,
+                        "linalg_interface": interface, "external_weights": weights,
+                        "independent_golden": golden_yaml}
+        source_before = _content_identity(source_files, root=root)
+
+        golden_doc = yaml.safe_load(golden_yaml.read_text(encoding="utf-8"))
+        if not isinstance(golden_doc, dict):
+            raise ValueError("model capsule golden.yaml is not a mapping")
+        prov = golden_doc.get("oracle_provenance") or {}
+        if prov.get("pytorch_source") != loader.name or prov.get("linalg_mlir") != interface.name:
+            raise ValueError("golden provenance does not name the capsule's declared loader/interface")
+        input_specs = list(capsule.get("inputs") or [])
+        input_names = [str(x.get("name")) for x in input_specs]
+        output_name = str(op_attrs.get("out") or "")
+        declared_order = list(op_attrs.get("arg_order") or [])
+        golden_order = list(prov.get("arg_order") or [])
+        if declared_order != input_names + [output_name] or golden_order != declared_order:
+            raise ValueError("capsule/golden argument order is inconsistent")
+        golden_inputs = prov.get("inputs") or {}
+        outputs = golden_doc.get("outputs") or {}
+        if set(golden_inputs) != set(input_names) or set(outputs) != {output_name}:
+            raise ValueError("capsule golden input/output names do not exactly match its declaration")
+
+        from ..common.mlir_query import forward_signature
+        from ..llvmlower.weights_pack import load_safetensors_header
+
+        signature, output_signature = forward_signature(interface)
+        header, _payload = load_safetensors_header(weights)
+        if len(signature) != len(header) + len(input_names):
+            raise ValueError(
+                f"interface has {len(signature)} arguments but frozen weights+inputs account for "
+                f"{len(header)}+{len(input_names)}")
+        if len(output_signature) != 1:
+            raise ValueError("capsule runtime-bundle adapter requires exactly one model output")
+
+        arrays: dict[str, np.ndarray] = {}
+        first_input = len(signature) - len(input_names)
+        for offset, (decl, name) in enumerate(zip(input_specs, input_names)):
+            shape, dtype = signature[first_input + offset]
+            source = golden_inputs[name]
+            if list(decl.get("shape") or []) != list(shape) or list(source.get("shape") or []) != list(shape):
+                raise ValueError(f"frozen input {name!r} shape disagrees with the interface")
+            if str(decl.get("dtype") or "") != dtype:
+                raise ValueError(
+                    f"frozen input {name!r} declares dtype {decl.get('dtype')!r} but the executable "
+                    f"interface requires {dtype!r}")
+            decoded = source.get("decoded")
+            if decoded is None:
+                raise ValueError(f"frozen input {name!r} has no decoded row-major values")
+            array = np.asarray(decoded, dtype=_numpy_dtype(dtype))
+            if array.size != int(np.prod(shape, dtype=np.int64)):
+                raise ValueError(f"frozen input {name!r} element count disagrees with its shape")
+            arrays[f"in{offset}"] = np.ascontiguousarray(array.reshape(shape))
+
+        out_shape, out_dtype = output_signature[0]
+        output_array = np.asarray(outputs[output_name], dtype=_numpy_dtype(out_dtype))
+        if output_array.size != int(np.prod(out_shape, dtype=np.int64)):
+            raise ValueError("frozen golden element count disagrees with interface output shape")
+        output_array = np.ascontiguousarray(output_array.reshape(out_shape))
+
+        temp = Path(tempfile.mkdtemp(prefix="merlin_frozen_capsule_bundle_"))
+        bundle = temp / "bundle"
+        bundle.mkdir(mode=0o700)
+        try:
+            shutil.copyfile(interface, bundle / "model.mlir")
+            shutil.copyfile(weights, bundle / "weights.safetensors")
+            # The linalg's prov.weights_file is capsule-relative and remains byte-identical.  Keep an
+            # alias with that declared name instead of rewriting incompatible/unproven IR.
+            shutil.copyfile(weights, bundle / weights.name)
+            _write_deterministic_npz(bundle / "inputs.npz", arrays)
+            with (bundle / "golden.npy").open("wb") as fh:
+                np.save(fh, output_array, allow_pickle=False)
+
+            from .capsule_source import _m2m_python
+
+            torch_python = _m2m_python()
+            worker = Path(__file__).with_name("_capsule_bundle_worker.py").resolve(strict=True)
+            if not torch_python.is_file():
+                raise ValueError(f"torch interpreter unavailable for frozen loader validation: {torch_python}")
+            request = {
+                "loader": str(loader), "weights": str(weights),
+                "inputs_npz": str(bundle / "inputs.npz"),
+                "golden_npy": str(bundle / "golden.npy"),
+                "signature": [{"shape": list(shape), "dtype": dtype}
+                              for shape, dtype in signature],
+                "numeric_policy": capsule.get("numeric_policy") or {},
+            }
+            request_path = temp / "request.json"
+            request_path.write_text(json.dumps(request, sort_keys=True), encoding="utf-8")
+            env = dict(os.environ)
+            # The worker has no hub code path.  These additionally force common model clients offline
+            # if a future frozen loader imports one; an attempted checkout must fail, not mutate inputs.
+            env.update({"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
+                        "HF_DATASETS_OFFLINE": "1", "WANDB_MODE": "offline"})
+            run = subprocess.run([str(torch_python), str(worker), "--request", str(request_path)],
+                                 cwd=str(root), env=env, capture_output=True, text=True,
+                                 timeout=max(30, min(int(timeout), 300)))
+            marker = "__CAPSULE_BUNDLE_ABI__ "
+            line = next((ln[len(marker):] for ln in run.stdout.splitlines()
+                         if ln.startswith(marker)), None)
+            if run.returncode != 0 or line is None:
+                detail = (run.stderr or run.stdout or "no diagnostic")[-1200:]
+                raise ValueError(
+                    f"frozen loader/weights/interface/golden validation failed (rc={run.returncode}): "
+                    f"{detail}")
+            report = json.loads(line)
+            if (report.get("loader_sha256") != source_before["artifacts"]["loader"]["sha256"] or
+                    report.get("weights_sha256") !=
+                    source_before["artifacts"]["external_weights"]["sha256"]):
+                raise ValueError("loader or weights changed while the export ABI was being validated")
+            manifest = report.get("manifest")
+            order = report.get("input_order")
+            if not isinstance(manifest, dict) or set(manifest) != {str(i) for i in range(len(signature))}:
+                raise ValueError("loader validator returned an incomplete forward-argument manifest")
+            if not isinstance(order, dict) or sorted(order.values()) != list(range(len(input_names))):
+                raise ValueError("loader validator returned an invalid input order")
+            (bundle / "weights.safetensors.manifest.json").write_text(
+                json.dumps(manifest, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+            (bundle / "input_order.json").write_text(
+                json.dumps(order, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+
+            bundle_files = {p.name: p for p in bundle.iterdir() if p.is_file()}
+            bundle_before = _content_identity(bundle_files)
+            source_after_materialize = _content_identity(source_files, root=root)
+            if source_after_materialize["content_sha256"] != source_before["content_sha256"]:
+                raise ValueError("frozen capsule assets changed while constructing the runtime bundle")
+            for path in bundle_files.values():
+                path.chmod(0o444)
+            bundle.chmod(0o555)
+            provenance = {
+                "version": 1,
+                "source": source_before,
+                "bundle": bundle_before,
+                "construction": "frozen_capsule_assets_v1",
+                "interface_reused_byte_exact": True,
+                "live_recapture_used": False,
+                "network_or_model_checkout_used": False,
+                "validation": {k: report.get(k) for k in
+                               ("torch_export", "golden_validated", "weights_validated_exact",
+                                "loader_input_count")},
+                "tool": {"worker_sha256": _file_identity(worker)["sha256"],
+                         "python": report.get("python"),
+                         "python_version": report.get("python_version"),
+                         "torch_version": report.get("torch_version")},
+            }
+
+            def verify_unchanged() -> None:
+                source_after = _content_identity(source_files, root=root)
+                bundle_after = _content_identity(bundle_files)
+                if source_after["content_sha256"] != source_before["content_sha256"]:
+                    raise ValueError("frozen capsule assets changed during whole-model compilation")
+                if bundle_after["content_sha256"] != bundle_before["content_sha256"]:
+                    raise ValueError("constructed runtime bundle changed during whole-model compilation")
+
+            yield bundle, provenance, verify_unchanged
+        finally:
+            if bundle.exists():
+                bundle.chmod(0o700)
+                for path in bundle.iterdir():
+                    if path.is_file() and not path.is_symlink():
+                        path.chmod(0o600)
+            shutil.rmtree(temp, ignore_errors=True)
+
+    return _materialized()
+
+
 def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, timeout: int,
                                 package_dir: str | Path | None = None) -> dict:
     """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
@@ -1775,6 +2097,12 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
                 linalg_path = lp
                 linalg_mlir = lp.read_text(encoding="utf-8")
                 break
+    if target and cdir:
+        # The declaration-side composition is derived independently from the capsule interface.  Later
+        # the model check compares it with the runtime ledger, so M2's A->H->A seam cannot be credited
+        # from a static routing plan and M3's must-accelerate claim cannot pass on synthesized tiles alone.
+        from . import boundary as _boundary
+        result["boundary_expectation"] = _boundary.profile_capsule(cdir, target).to_dict()
     from ..xdsl_dialects.lowering.passes import MODEL_BOUNDARY_CAPSTONE
     _requires_boundary_plane = MODEL_BOUNDARY_CAPSTONE in (
         capsule.get("pass_requirements") or ())
@@ -1813,11 +2141,20 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
         # is the independently frozen RVV host lane -- two things that a single name would conflate.
         _pkg = str(package_dir) if package_dir else None
         _host_package_arg = str(_host_package) if _host_package is not None else None
-        out = compile_model(model, dtype, target=target, run=run_where, verify=True,
-                            package=_host_package_arg,
-                            auto_capture=True, timeout=timeout, linalg_mlir=linalg_mlir,
-                            mesh_verify=mesh_verify, mesh_package=_pkg,
-                            routing_dtype=_attrs.get("dtype"))
+        # A model capsule is itself the frozen capture.  Resolving a same-named live recapture here
+        # let mutable operator state choose the program/golden after launch (and made capsule-local
+        # models impossible to run at all).  Materialize the exact runtime ABI from the declared,
+        # digest-bound capsule assets and forbid compile_model's recapture resolver on this path.
+        with _model_runtime_bundle(capsule, timeout=timeout) as (
+                _capture_bundle, _bundle_provenance, _verify_bundle_unchanged):
+            result["model_runtime_bundle"] = _bundle_provenance
+            out = compile_model(model, dtype, target=target, run=run_where, verify=True,
+                                package=_host_package_arg,
+                                auto_capture=False, timeout=timeout, linalg_mlir=linalg_mlir,
+                                mesh_verify=mesh_verify, mesh_package=_pkg,
+                                routing_dtype=_attrs.get("dtype"),
+                                capture_bundle=_capture_bundle)
+            _verify_bundle_unchanged()
     except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
         result.update(status="incomplete",
                       failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
@@ -1868,6 +2205,11 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
         result["mesh_execution"] = out["mesh_execution"]
     if out.get("mesh_tile_verification") is not None:         # synthesized tiles of the routed shapes
         result["mesh_tile_verification"] = out["mesh_tile_verification"]
+    if result.get("mesh_execution") is not None:
+        result["boundary_execution"] = dispatch_boundary_report(result["mesh_execution"])
+        _lane = lane_report(capsule, result.get("routing_plan"), result["mesh_execution"])
+        if _lane is not None:
+            result["lane_report"] = _lane
     # A quantized whole model diverges from the fp32 golden BY DESIGN (int8/fp8 rounding). When the strict
     # gate rejects it only on that expected drop, accept it if the cosine similarity to the golden still
     # clears a quant floor (MERLIN_MODEL_QUANT_COS, default 0.90) — reasonable quantization error is a pass,
@@ -1950,7 +2292,7 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
         # `scalar_rvv_lane`), so this asserts against what the compiler reported rather than a vocabulary
         # invented here; a capsule naming a lane the plan does not report fails closed with that lane
         # named, which is the actionable direction.
-        _lane_rep = lane_report(capsule, result.get("routing_plan"), model_exec)
+        _lane_rep = result.get("lane_report")
         if _lane_rep is not None:
             result["lane_report"] = _lane_rep
             _model_ok = not _lane_rep["unexercised"]
@@ -3219,17 +3561,39 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--timeout", type=int, default=600)
     a = ap.parse_args(argv)
 
+    if not a.capsule and not a.capsules_root:
+        ap.error("one of --capsule or --capsules-root is required")
+    labels = None
     if a.capsule:
         caps = [load_capsule(a.capsule, contract=a.contract)]
     else:
         labels = set(a.labels.split(",")) if a.labels else None
         caps = discover_capsules(a.capsules_root, labels=labels, contract=a.contract)
+    # AN EMPTY COHORT IS NOT A PASS. `npass == len(results)` is vacuously true at zero, so a root that
+    # matched nothing printed "0/0 pass" and exited 0 -- byte-identical to a suite that ran and passed.
+    # Measured: a capsules root built from symlinked capsule dirs discovers nothing, because
+    # `discover_capsules` walks with `rglob`, which does not descend into symlinked directories. The run
+    # reported success without grading a single capsule. Refuse the verdict instead, and say which of
+    # the two reasons it was so the caller does not have to guess.
+    if not caps:
+        where = a.capsule or a.capsules_root
+        why = (f" at label(s) {sorted(labels)}" if labels else "")
+        print(f"no capsule discovered under {str(where)!r}{why} -- refusing to report a verdict over "
+              f"an empty cohort (capsule discovery does not descend into symlinked directories)",
+              file=sys.stderr)
+        return 2
     results = run_suite(caps, a.package, runs_root=a.runs_root, contract=a.contract,
                         timeout=a.timeout, target=a.target)
     npass = sum(1 for r in results if r["status"] == "pass")
     for r in results:
         print(f"  [{r['status']:10s}] {r['capsule']}")
     print(f"\n{npass}/{len(results)} pass")
+    # Same fail-closed reasoning one level down: capsules were discovered but the suite returned no
+    # row for any of them, so nothing was measured and there is no verdict to report.
+    if not results:
+        print(f"{len(caps)} capsule(s) discovered but the suite returned no result row -- "
+              f"nothing was measured", file=sys.stderr)
+        return 2
     return 0 if npass == len(results) else 1
 
 

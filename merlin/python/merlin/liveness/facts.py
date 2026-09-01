@@ -130,7 +130,10 @@ def _fill_acc_ctrl_mask(out: SiliconFacts) -> None:
     OR'd into one mask so a consumer can strip them to recover the raw row index. Derived from the target's
     RoCC ISA constants (``readout_bits``), never a literal; ``None`` when not derivable (acc check skips)."""
     try:
-        from merlin.targetgen.rocc_decode import isa_constants
+        # `targetgen.rocc_decode` was folded into the `targetgen.rocc` package; the old top-level
+        # alias is gone, so this import raised ModuleNotFoundError and the except below swallowed
+        # it -- the mask came back None and the accumulator check silently SKIPPED.
+        from merlin.targetgen.rocc.decode import isa_constants
 
         isa = isa_constants(out.target)
         bits = [isa.get(k) for k in ("FULL_C_BIT", "ACC_I8", "ACC_ACCUM")]

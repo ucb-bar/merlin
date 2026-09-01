@@ -9,13 +9,158 @@ was 900 s -- a PER-STEP subprocess cap, which a grade making many such calls can
 from __future__ import annotations
 
 import json
+import hashlib
+import shutil
 import time
+from pathlib import Path
 
 import pytest
 
 from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen import capsule_grade as CGR
 from merlin.targetgen.capsule_common import NOT_MEASURED_STATUSES
+
+
+_EXACT_ARTIFACTS = ("input_interface", "command_buffer", "lowered_llvm", "kernel_object",
+                    "package_kernel_elf", "instruction_trace")
+
+
+def _copy_model_capsule(tmp_path, name="M3_host_island_seam_gemmini"):
+    source = Path(__file__).parents[2] / "contract" / "capsules" / "model" / name
+    copied = tmp_path / name
+    shutil.copytree(source, copied)
+    return CR.load_capsule(copied)
+
+
+def test_frozen_capsule_runtime_bundle_is_stable_and_resolvable(tmp_path):
+    """The public capsule, not a mutable recapture, supplies every whole-model runtime argument."""
+    cap = _copy_model_capsule(tmp_path)
+    identities = []
+    for _ in range(2):
+        with CR._model_runtime_bundle(cap, timeout=60) as (bundle, provenance, verify):
+            from merlin.runtime.dispatch_runtime import resolve_forward_args
+
+            args = resolve_forward_args(bundle)
+            assert [list(a.shape) for a in args] == [[32], [32], [32, 32], [32, 32], [16, 32]]
+            assert provenance["construction"] == "frozen_capsule_assets_v1"
+            assert provenance["interface_reused_byte_exact"] is True
+            assert provenance["live_recapture_used"] is False
+            assert provenance["validation"]["golden_validated"] is True
+            identities.append(provenance["bundle"]["content_sha256"])
+            verify()
+    assert identities[0] == identities[1], "npz/container timestamps must not change bundle identity"
+
+
+def test_frozen_capsule_runtime_bundle_rejects_mutated_weights(tmp_path):
+    """Matching shapes/names cannot spoof a model instance: loader and safetensor values must agree."""
+    cap = _copy_model_capsule(tmp_path)
+    weights = Path(cap["__dir__"]) / "capsule.weights.safetensors"
+    mutated = bytearray(weights.read_bytes())
+    mutated[-1] ^= 1
+    weights.write_bytes(mutated)
+    with pytest.raises(ValueError, match="validation failed"):
+        with CR._model_runtime_bundle(cap, timeout=60):
+            pass
+
+
+def test_frozen_capsule_runtime_bundle_rejects_asset_spoof(tmp_path):
+    """A declared loader may not escape the frozen capsule or arrive through a mutable symlink."""
+    cap = _copy_model_capsule(tmp_path)
+    cap["pytorch_ref"]["loader"] = "../capsule.pytorch.py"
+    with pytest.raises(ValueError, match="must stay inside"):
+        with CR._model_runtime_bundle(cap, timeout=60):
+            pass
+
+
+def test_frozen_capsule_runtime_bundle_rejects_missing_golden(tmp_path):
+    cap = _copy_model_capsule(tmp_path)
+    (Path(cap["__dir__"]) / "golden.yaml").unlink()
+    with pytest.raises(ValueError, match="missing or a symlink"):
+        with CR._model_runtime_bundle(cap, timeout=60):
+            pass
+
+
+def test_mesh_invocation_identity_binds_real_operands():
+    from merlin import compile_cli
+
+    a = compile_cli._mesh_invocation_id("mesh_layer_16x16x16_i8_i32", [[1]], [[2]])
+    same = compile_cli._mesh_invocation_id("mesh_layer_16x16x16_i8_i32", [[1]], [[2]])
+    different = compile_cli._mesh_invocation_id("mesh_layer_16x16x16_i8_i32", [[3]], [[2]])
+    assert a == same
+    assert a != different
+
+
+def test_model_check_rejects_one_run_directory_with_two_contents():
+    row = _valid_model_row()
+    calls = [x for x in row["mesh_execution"]["dispatch_ledger"] if x["lane"] == "on_mesh"]
+    calls[1]["cert_run_id"] = calls[0]["cert_run_id"]
+    calls[1]["artifact_identity"]["run_id"] = calls[0]["artifact_identity"]["run_id"]
+    check = CGR.model_execution_check(row, {"lanes": {"require": ["on_mesh"]}})
+    assert check["status"] == "fail"
+    assert "model_call_run_id_content_collision" in check["violations"]
+
+
+def _identity(tag: str) -> dict:
+    artifacts = {name: {"sha256": hashlib.sha256(f"{tag}:{name}".encode()).hexdigest(),
+                        "size_bytes": len(tag) + len(name) + 1}
+                 for name in _EXACT_ARTIFACTS}
+    canonical = json.dumps(artifacts, sort_keys=True, separators=(",", ":")).encode()
+    return {"version": 1, "run_id": tag,
+            "content_sha256": hashlib.sha256(canonical).hexdigest(),
+            "artifacts": artifacts, "missing": []}
+
+
+def _trace(identity: dict) -> dict:
+    return {"required": True, "status": "pass", "drives_accelerator": True,
+            "n_instructions": 7,
+            "artifact_sha256": identity["artifacts"]["instruction_trace"]["sha256"]}
+
+
+def _mesh_entry(ordinal: int, symbol: str) -> dict:
+    identity = _identity(f"call-{ordinal}-{symbol}")
+    return {"ordinal": ordinal, "symbol": symbol, "lane": "on_mesh", "status": "pass",
+            "cert_run_id": identity["run_id"], "artifact_identity": identity,
+            "trace_check": _trace(identity),
+            "oracle_evidence": {"result": "pass", "derived_from_rtl": True,
+                                "cycle_accurate": True, "kind": "rtl_verilator"}}
+
+
+def _tile(tag: str) -> dict:
+    identity = _identity(tag)
+    return {"status": "pass", "oracle_result": "pass", "derived_from_rtl": True,
+            "cycle_accurate": True, "artifact_identity": identity,
+            "trace_check": _trace(identity)}
+
+
+def _valid_model_row() -> dict:
+    ledger = [_mesh_entry(0, "mesh0"),
+              {"ordinal": 1, "symbol": "host0", "lane": "scalar_rvv_lane", "status": "pass"},
+              _mesh_entry(2, "mesh1")]
+    return {
+        "mesh_execution": {"matmul_layers_routed": 2, "matmul_layers_on_mesh": 2,
+                           "matmul_layers_host_fallback": 0,
+                           "matmul_layers_oracle_unavailable": 0,
+                           "matmul_layers_unrouted": 0,
+                           "mesh_route_symbols": ["mesh0", "mesh1"],
+                           "dispatch_ledger": ledger},
+        "mesh_tile_verification": {"n_tiles": 2, "n_passed": 2, "n_failed": 0,
+                                   "n_unavailable": 0, "n_unsynthesizable": 0,
+                                   "per_tile": [_tile("tile0"), _tile("tile1")]},
+        "lane_report": {"required": ["on_mesh", "scalar_rvv_lane"],
+                        "observed": ["on_mesh", "scalar_rvv_lane"], "unexercised": [],
+                        "evidence": "dynamic_dispatch_ledger"},
+        "boundary_expectation": {"boundary": "A->H->A", "contains": ["A->H->A"],
+                                 "n_unresolved": 0},
+        "boundary_execution": {"status": "pass", "boundary": "A->H->A",
+                               "contains": ["A", "A->H->A"], "n_unresolved": 0},
+    }
+
+
+def _remove_scalar_lane(row: dict) -> None:
+    ledger = row["mesh_execution"]["dispatch_ledger"]
+    ledger.pop(1)
+    ledger[1]["ordinal"] = 1
+    row["lane_report"].update(observed=["on_mesh"], unexercised=["scalar_rvv_lane"])
 
 
 def test_budget_is_unlimited_by_default(monkeypatch):
@@ -117,6 +262,175 @@ def test_the_stopped_capsule_is_reported_by_name(tmp_path, monkeypatch):
     # neither numerator nor denominator -- and all_pass therefore still reachable
     assert score["n_capsules"] == 2 and score["n_passed"] == 2
     assert score["functional_pass"] == 1
+
+
+def test_model_rows_use_execution_evidence_without_fabricating_an_instruction_trace(tmp_path, monkeypatch):
+    """A mixed formal cohort has two honest structural obligations, covering one denominator."""
+    pkg, caps = tmp_path / "pkg", tmp_path / "caps"
+    pkg.mkdir(); caps.mkdir()
+    discovered = [
+        {"name": "A0", "kind": "op", "label": "public"},
+        {"name": "M2", "kind": "model", "label": "public"},
+    ]
+    results = [
+        {"capsule": "A0", "kind": "op", "label": "public", "status": "pass",
+         "numeric": {"status": "pass"}, "trace_check": {"status": "pass"},
+         "tiers": {"L3": "pass"}},
+        {"capsule": "M2", "kind": "model", "label": "public", "status": "pass",
+         "numeric": {"status": "pass"}, "tiers": {"L3": "pass"}, **_valid_model_row()},
+    ]
+    monkeypatch.setattr(CGR, "load_package", lambda d, contract=None: _StubPkg())
+    monkeypatch.setattr(CGR, "integrity_scan", lambda p: None)
+    monkeypatch.setattr(CGR, "build_package", lambda p: None)
+    monkeypatch.setattr(CGR.CR, "discover_capsules", lambda *a, **k: discovered)
+    monkeypatch.setattr(CGR.CR, "run_suite", lambda *a, **k: results)
+    monkeypatch.setattr(CGR.CV, "aggregate", lambda *a, **k: {
+        "by_tier_reached": {}, "instruction_class_coverage": {}, "mode_coverage": {},
+        "unavailable": {}, "acceleratable_coverage": {},
+    })
+
+    score = CGR.grade(str(pkg), capsules_root=str(caps), runs_root=str(tmp_path / "runs"),
+                      target="gemmini", contract=None, oracle_adapters={})
+
+    assert score["structural_evidence_scope"] == {
+        "n_instruction_trace_capsules": 1, "n_model_execution_capsules": 1}
+    assert score["trace_all_pass"] is True
+    assert score["model_execution_all_pass"] is True
+    assert score["structural_evidence_all_pass"] is True
+    model = next(r for r in score["per_capsule"] if r.get("kind") == "model")
+    assert model["trace"] is None, "do not fabricate a model-level instruction trace"
+    assert model["model_execution_check"]["status"] == "pass"
+
+
+def test_model_execution_evidence_fails_closed_on_unmeasured_layer():
+    row = _valid_model_row()
+    row["mesh_execution"]["matmul_layers_oracle_unavailable"] = 1
+    check = CGR.model_execution_check(row)
+    assert check["status"] == "fail"
+    assert "model_layer_oracle_unavailable" in check["violations"]
+
+
+@pytest.mark.parametrize("mutation,capsule,reason", [
+    (lambda r: r["mesh_execution"].update({"matmul_layers_unrouted": 1}), None,
+     "model_contraction_layer_unrouted"),
+    (lambda r: r.pop("lane_report", None), {"lanes": {"require": ["on_mesh"]}},
+     "required_lane_report_missing"),
+    (_remove_scalar_lane,
+     {"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}},
+     "required_model_lane_unexercised"),
+    (lambda r: r["mesh_tile_verification"].update({"per_tile": []}), None,
+     "model_tile_evidence_missing_or_malformed"),
+    (lambda r: r["mesh_tile_verification"]["per_tile"][0].update({"derived_from_rtl": False}),
+     None, "model_tile_not_rtl_derived"),
+    (lambda r: r["mesh_tile_verification"]["per_tile"][0].update({"cycle_accurate": False}),
+     None, "model_tile_not_cycle_accurate"),
+    (lambda r: r["mesh_tile_verification"].update({"n_passed": 1}), None,
+     "not_all_model_tiles_certified"),
+])
+def test_model_execution_evidence_rejects_structural_mutations(mutation, capsule, reason):
+    row = _valid_model_row()
+    mutation(row)
+    check = CGR.model_execution_check(row, capsule)
+    assert check["status"] == "fail"
+    assert reason in check["violations"]
+
+
+@pytest.mark.parametrize("mutation,reason", [
+    (lambda r: r["mesh_execution"].pop("dispatch_ledger"),
+     "dynamic_dispatch_ledger_missing_or_malformed"),
+    (lambda r: r["mesh_execution"]["dispatch_ledger"][0]["trace_check"].update(
+        {"drives_accelerator": False}), "model_call_accelerator_trace_missing_or_invalid"),
+    (lambda r: r["mesh_execution"]["dispatch_ledger"][0]["artifact_identity"]["artifacts"]
+        ["lowered_llvm"].update({"sha256": "0" * 64}),
+     "model_call_artifact_identity_digest_mismatch"),
+    (lambda r: r["mesh_execution"]["dispatch_ledger"][0]["oracle_evidence"].update(
+        {"cycle_accurate": False}), "model_call_oracle_fidelity_missing_or_invalid"),
+    (lambda r: r["mesh_execution"].update({"matmul_layers_on_mesh": 3}),
+     "model_mesh_counter_ledger_mismatch"),
+    (lambda r: r["mesh_tile_verification"]["per_tile"][0]["trace_check"].update(
+        {"drives_accelerator": False}), "model_tile_accelerator_trace_missing_or_invalid"),
+    (lambda r: r["boundary_execution"].update(
+        {"boundary": "A->A", "contains": ["A->A"]}),
+     "model_a_h_a_seam_not_exercised"),
+])
+def test_model_dynamic_proof_rejects_spoofed_missing_or_mutated_evidence(mutation, reason):
+    row = _valid_model_row()
+    mutation(row)
+    check = CGR.model_execution_check(
+        row, {"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}})
+    assert check["status"] == "fail"
+    assert reason in check["violations"]
+
+
+def test_exact_cert_identity_changes_when_emitted_artifact_mutates(tmp_path):
+    """A reused run pathname is not the identity; changing exact LLVM must change the content ID."""
+    from types import SimpleNamespace
+    from merlin.targetgen import oot_runner
+
+    generated = tmp_path / "generated"
+    generated.mkdir()
+    names = {"input.interface.mlir", "command_buffer.json", "lowered.llvm.mlir", "kernel.o",
+             "package_kernel.elf", "instruction_trace.json"}
+    for name in names:
+        (generated / name).write_bytes(("first:" + name).encode())
+    paths = SimpleNamespace(generated=generated)
+    before = oot_runner._cert_artifact_identity(paths, "same-run")
+    (generated / "lowered.llvm.mlir").write_bytes(b"mutated exact llvm")
+    after = oot_runner._cert_artifact_identity(paths, "same-run")
+    assert before["run_id"] == after["run_id"]
+    assert before["content_sha256"] != after["content_sha256"]
+    assert (before["artifacts"]["lowered_llvm"]["sha256"]
+            != after["artifacts"]["lowered_llvm"]["sha256"])
+
+
+def test_exact_model_cert_rejects_cpu_only_lowered_llvm(tmp_path, monkeypatch):
+    """Correct command-buffer math cannot replace evidence that the emitted artifact drives the mesh."""
+    from types import SimpleNamespace
+    from merlin.targetgen import oot_runner
+    from merlin.targetgen import provenance
+    from merlin.runtime import reference, simulator
+    from merlin.runtime.backends import base as backends
+
+    package = tmp_path / "pkg"
+    package.mkdir()
+    tool = package / "tool"
+    tool.write_text("stub")
+    iface = tmp_path / "model.interface.mlir"
+    iface.write_text("module {}")
+    pkg = SimpleNamespace(tool=tool, directory=package)
+
+    def _entry(_pkg, name, _input, output_json=None, timeout=0):
+        if name == "emit_command_buffer":
+            output_json.write_text("{}")
+            stdout = ""
+        elif name == "lower_target_to_llvm":
+            stdout = "module {}"  # deliberately no inline asm / custom opcode
+        else:
+            stdout = "module {}"
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(oot_runner, "load_package", lambda *a, **k: pkg)
+    monkeypatch.setattr(oot_runner, "integrity_scan", lambda *a, **k: None)
+    monkeypatch.setattr(oot_runner, "build_package", lambda *a, **k: None)
+    monkeypatch.setattr(oot_runner, "run_entrypoint", _entry)
+    monkeypatch.setattr(oot_runner.schemas, "validate_command_buffer", lambda *a, **k: None)
+    monkeypatch.setattr(oot_runner.schemas, "validate", lambda *a, **k: None)
+    monkeypatch.setattr(provenance, "toolchain_shas", lambda *a, **k: {})
+    monkeypatch.setattr(reference, "reference_outputs", lambda *a, **k: {})
+    monkeypatch.setattr(reference, "outputs_match", lambda *a, **k: True)
+    monkeypatch.setattr(simulator, "simulate", lambda *a, **k: {"outputs": {}})
+    monkeypatch.setattr(backends, "get_backend", lambda *_: SimpleNamespace(available=lambda _s: False))
+    monkeypatch.setattr(oot_runner, "_record", lambda *a, **k: None)
+
+    result = oot_runner.certify(package, iface, runs_root=tmp_path / "runs", run_id="cpu-only",
+                                simulator="verilator", target="gemmini",
+                                require_accelerator_trace=True)
+    assert result["status"] == "fail"
+    assert result["failure"]["plane"] == "trace_check"
+    assert result["trace_check"]["status"] == "fail"
+    trace = (tmp_path / "runs" / "runs" / "gemmini-contract" / "cpu-only" / "generated"
+             / "instruction_trace.json")
+    assert trace.is_file() and json.loads(trace.read_text())["instructions"] == []
 
 
 class _StubPkg:

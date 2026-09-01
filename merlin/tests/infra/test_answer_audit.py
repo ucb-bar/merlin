@@ -84,6 +84,18 @@ def test_no_answer_reference_is_clean(audit, tmp_path):
     assert r["hits"] == []
 
 
+def test_grep_of_public_weight_filename_declaration_is_clean(audit, tmp_path):
+    """The interface names its private input; inspecting that public declaration is not reading it."""
+    tp = _transcript(
+        tmp_path,
+        'grep -n "safetensors" model/M2_microvit_gemmini/capsule.interface.mlir',
+        '1:builtin.module attributes {prov.weights_file = "capsule.weights.safetensors"}',
+    )
+    r = audit(tp, arm="merlin_assisted")
+    assert r["clean"] is True
+    assert r["hits"] == []
+
+
 def test_grep_l_finding_own_tool_is_recon_not_leak(audit, tmp_path):
     # `grep -l capsule_grade` (path-listing search) that surfaces only the agent's OWN granted shim is
     # advisory reconnaissance — it returned a filename, not answer content. Must NOT break clean.

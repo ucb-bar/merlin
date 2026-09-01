@@ -308,12 +308,11 @@ def build_loader_src(spec: dict) -> str:
 # ------------------------------------------------------------------------------------------------
 @dataclass
 class CapsuleArtifacts:
-    """Everything a grounded capsule needs. ``pytorch_src`` + ``linalg_mlir`` are agent-VISIBLE (realistic
-    lowering context). The masked answer surface is ``golden`` (the host-eager OUTPUT, written to
-    ``golden.yaml`` and hidden by the sandbox's ``golden.*`` glob). ``weights_path`` is NOT an answer: for a
-    whole-model capsule the externalized weights are a legitimate compile INPUT the linalg references, so they
-    ship VISIBLE alongside the interface. Only ``kind == model`` capsules ever carry a ``.safetensors`` (op
-    capsules write none), so a weight file can never leak an op's answer."""
+    """Everything a grounded capsule needs. ``pytorch_src`` + ``linalg_mlir`` are agent-visible realistic
+    lowering context. ``golden`` is the host-eager output and ``weights_path`` is the private model instance
+    from which that output derives; both are operator-side answer surfaces masked from the agent. The weights
+    still ship in the complete capsule bundle because the grader needs the exact external compile/runtime input
+    named by the linalg. Only ``kind == model`` capsules ever carry a ``.safetensors``; op capsules write none."""
     op: str
     dtype: str
     pytorch_src: str
@@ -695,10 +694,6 @@ def write_pytorch_capsule(entry: dict, binding, out_root, *, source: "PytorchRef
 # to end via model2MLIR, graded vs its host torch-eager output — GATED so it runs only once the op suite
 # has proven itself (>= a pass fraction). The interface is the whole linalg module (positional).
 # ------------------------------------------------------------------------------------------------
-def _all_integral(nested) -> bool:
-    return all(float(v) == int(v) for v in _flatten(nested))
-
-
 # canonical operand token -> the `merlin-compile --target rvv --dtype` token the whole-model grader uses.
 _COMPILE_DTYPE = {"int8": "int8", "i8": "int8", "fp8_e4m3": "fp8", "fp8": "fp8",
                   "f32": "fp32", "fp32": "fp32", "fp16": "fp16", "bf16": "fp32"}
@@ -706,6 +701,48 @@ _COMPILE_DTYPE = {"int8": "int8", "i8": "int8", "fp8_e4m3": "fp8", "fp8": "fp8",
 
 def compile_dtype(token: str) -> str:
     return _COMPILE_DTYPE.get(token, "fp32")
+
+
+def model_input_abi(art: CapsuleArtifacts) -> list[dict]:
+    """Return the captured model's runtime-input ABI, cross-checked at both sides of capture.
+
+    The worker records torch tensor leaf dtypes *before* JSON conversion. The linalg interface records the
+    compiler-visible ABI after capture. Externalized parameters precede runtime leaves in model2MLIR's
+    ``@forward`` signature, so its trailing leaves must agree exactly. Refuse generation if either record is
+    absent or drifts; guessing from decoded values is invalid (an f32 tensor may contain only integral values).
+    """
+    from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
+
+    loader_abi = (art.meta or {}).get("input_abi")
+    if not isinstance(loader_abi, list) or len(loader_abi) != len(art.inputs):
+        raise M2MUnavailable(
+            "model capture has no complete input_abi from the loader; refusing to infer dtypes from JSON "
+            f"values (abi={loader_abi!r}, decoded_inputs={len(art.inputs)})")
+    try:
+        iface_args = parse_linalg_mlir(art.linalg_mlir)["args"]
+    except Exception as e:  # noqa: BLE001 - turn any malformed captured ABI into a closed generation error
+        raise M2MUnavailable(f"could not read captured model @forward ABI: {e}") from e
+    if len(iface_args) < len(loader_abi):
+        raise M2MUnavailable(
+            f"captured @forward has {len(iface_args)} args for {len(loader_abi)} loader input leaves")
+    runtime_args = iface_args[-len(loader_abi):] if loader_abi else []
+    out: list[dict] = []
+    for i, (decl, iface, decoded) in enumerate(zip(loader_abi, runtime_args, art.inputs, strict=True)):
+        loader_shape = [int(x) for x in (decl.get("shape") or [])]
+        loader_dtype = str(decl.get("dtype") or "")
+        decoded_shape = _shape_of(decoded)
+        iface_shape = [int(x) for x in (iface.get("shape") or [])]
+        iface_dtype = str(iface.get("dtype") or "")
+        if not loader_dtype or loader_shape != decoded_shape:
+            raise M2MUnavailable(
+                f"loader input leaf I{i} ABI {loader_shape}/{loader_dtype!r} disagrees with decoded "
+                f"input shape {decoded_shape}")
+        if (loader_shape, loader_dtype) != (iface_shape, iface_dtype):
+            raise M2MUnavailable(
+                f"loader input leaf I{i} ABI {loader_shape}/{loader_dtype} disagrees with captured "
+                f"@forward runtime arg {iface_shape}/{iface_dtype}")
+        out.append({"shape": loader_shape, "dtype": loader_dtype})
+    return out
 
 
 def resolve_model_loader(entry: dict, m2m_dir: str | Path | None = None) -> Path:
@@ -848,10 +885,11 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
 
     d = Path(out_root) / entry["cat"] / entry["name"]
     d.mkdir(parents=True, exist_ok=True)
-    in_names = [f"I{i}" for i in range(len(art.inputs))]
+    input_abi = model_input_abi(art)
+    in_names = [f"I{i}" for i in range(len(input_abi))]
     idt = binding.cap_dtype(binding.operand_dtype)
-    inputs = [{"name": nm, "role": "input", "shape": _shape_of(art.inputs[i]),
-               "dtype": ("i64" if _all_integral(art.inputs[i]) else idt)}
+    inputs = [{"name": nm, "role": "input", "shape": input_abi[i]["shape"],
+               "dtype": input_abi[i]["dtype"]}
               for i, nm in enumerate(in_names)]
     out_name = entry.get("out", "Y0")
     gate = entry.get("gate") or {"after_op_pass_fraction": 0.8}
@@ -920,7 +958,7 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
                     "rather than asserted ungrounded"}),
         },
     }
-    prov = {nm: {"shape": _shape_of(art.inputs[i]), "decoded": _flatten(art.inputs[i])}
+    prov = {nm: {"shape": input_abi[i]["shape"], "decoded": _flatten(art.inputs[i])}
             for i, nm in enumerate(in_names)}
     golden = {
         "golden_source": "host_torch_eager",

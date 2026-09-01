@@ -31,6 +31,8 @@ GRANTED = [
 # Real answer surfaces. Each MUST trip it.
 ANSWERS = [
     "merlin/contract/capsules/isa/A2_single_tile_matmul/golden.yaml",
+    "merlin/contract/capsules/isa/A2_single_tile_matmul/expected_instruction_coverage.yaml",
+    "merlin/contract/capsules/model/M2_microvit_gemmini/capsule.weights.safetensors",
     # A holdout path. The token under test is the trailing "capsules/hidden" pair, so the capsule
     # name is immaterial to the assertion — and naming a real one would publish a holdout.
     "merlin/contract/capsules/hidden/PLACEHOLDER_hidden/capsule.yaml",
@@ -56,6 +58,12 @@ def test_no_answer_token_is_a_bare_generic_word(tokens):
 def test_granted_contract_paths_do_not_trip_the_audit(path, tokens):
     hit = [t for t in tokens if t in path]
     assert not hit, f"granted path {path} matched answer token(s) {hit}"
+
+
+def test_public_weight_filename_declaration_does_not_trip_the_audit(tokens):
+    """Capsule YAML/MLIR must name the private file without that public declaration reading its bytes."""
+    declaration = 'prov.weights_file = "capsule.weights.safetensors"'
+    assert not [token for token in tokens if token in declaration]
 
 
 @pytest.mark.parametrize("path", ANSWERS)
