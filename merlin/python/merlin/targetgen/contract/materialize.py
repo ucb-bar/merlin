@@ -480,12 +480,25 @@ def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None,
             if (cap.get("name") or cy.parent.name) in exclude:
                 continue
             sem = cap.get("semantic") or {}
-            dts = sorted({str(t.get("dtype")) for t in (cap.get("inputs") or []) if t.get("dtype")})
+            # A BLOCK-SCALE OPERAND IS NOT THE COMPUTE. `role: scale` is a shared-exponent stream --
+            # one e8m0 per fixed-length group of the operand it scales (`scale_of`) -- so its dtype is
+            # not a compute dtype and its shape is not a compute extent. Counting it did two things:
+            #
+            #   * invented cells that name the scale's own dtype (`contraction/e8m0/partial`), which no
+            #     capsule can ever be "about"; and
+            #   * made every microscaling capsule PERMANENTLY `partial`. A scale plane is
+            #     `[K/group, M]`, i.e. deliberately small: for radiance, `[1, 16]` against tile 16, and
+            #     `1 % 16 != 0`, so `contraction|attention/mxfp{4,6,8}/aligned` was uncoverable BY
+            #     CONSTRUCTION -- 6 cells that stayed in the requirement and could never be closed.
+            #
+            # Judge the capsule by the operands it computes over.
+            compute_inputs = [t for t in (cap.get("inputs") or []) if t.get("role") != "scale"]
+            dts = sorted({str(t.get("dtype")) for t in compute_inputs if t.get("dtype")})
             if not dts:
                 continue
             align = None
             if tile_dim and tile_dim > 0:
-                extents = [int(x) for t in (cap.get("inputs") or [])
+                extents = [int(x) for t in compute_inputs
                            for x in (t.get("shape") or []) if str(x).lstrip("-").isdigit()]
                 # "partial" if ANY extent leaves a remainder: one ragged axis is enough to exercise the
                 # tile-edge path, and that is what we are trying to certify.
