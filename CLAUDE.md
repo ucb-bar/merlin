@@ -156,6 +156,33 @@ related, code_refs`). **Point-in-time reports** (results/findings/status/present
   `check_docs_freshness.py --json` and fixed by the **`docs-doctor`** skill (reconcile, then bump the date).
 - Enable the pre-commit gate per clone: `python build_tools/scripts/install_git_hooks.py`.
 
+# Experiment-run convention — one continuous session, per-capsule tiering
+
+A capsule-bench run is **one long-lived agent session, re-graded underneath it**. This is the DEFAULT
+(`--continuous`, `BooleanOptionalAction`, default True); `--no-continuous` exists only to reproduce a
+legacy round-based run. Do not reintroduce round relaunches: they discard the agent's context at every
+barrier and defer every verdict to the next one. Measured on `merlincirct_arm4_func_20260901_v4`, three
+round-based grades scored 19 / 18 / 19 of 33 while the agent rebuilt context each round.
+
+Three properties are **gated, not documented-and-hoped-for**
+(`merlin/tests/infra/test_continuous_is_the_default.py`, `test_promotion_wiring.py`):
+
+1. **No round barrier** — a background grader re-grades a *snapshot copy* every `--grade-interval`
+   seconds and refreshes `qa/verdict.json`, so feedback reaches the agent while it works.
+2. **Per-capsule tiering, never a batch** — `capsule_runner` walks each capsule cheapest-first, so a
+   capsule clearing the loop tier (L2) continues to the cert tier (L3) *in the same grade*; and
+   `tier_promote.promote` enqueues a cert job the moment a loop verdict lands, so **capsule 2's L3
+   starts while the agent is still on capsule 1's L2**.
+3. **The certificate is kept** — `tier_promote.record_cert` resolves the `pending` entry against the
+   digest of the bytes that earned it (never re-hashed, so a cert is not re-attributed to bytes edited
+   since). An unattributable result is *not recorded* rather than guessed.
+
+Promotion is deliberately wrapped in a `try/except` so it can never gate a run — which is exactly why
+a broken promotion is indistinguishable from an idle one. Five separate defects hid in that one path
+(a rejected sim name, a `/tmp` slot dir owned by another user, an unrecognised child flag, discarded
+child output, an unrecorded cert), and every one presented as "nothing needed promoting". If you touch
+this path, add a test; a comment cannot detect silence. See `.claude/skills/capsule-run-shape/SKILL.md`.
+
 # Commit message convention
 
 Commit messages describe the **change to the code/files** and read as if a human developer wrote them.
