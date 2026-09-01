@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 
 SELFCHECK = Path(__file__).resolve().parent / "agent_selfcheck.py"
+from grading_env import grading_python as _grading_python  # noqa: E402
 
 
 def _should_stop(ch: Path, orig_ppid: int) -> str | None:
@@ -101,7 +102,10 @@ def main(argv=None):
             (ch / f"done_{rid}").write_text("plateau")
             continue
         to = int(r.get("timeout", 1800))
-        argv2 = [sys.executable, str(SELFCHECK),
+        # The GRADING interpreter, not this broker's: an orchestrator venv (Ray, a batch driver) cannot
+        # necessarily import the submission's dependencies, and handing it the grade turns every capsule
+        # into a parse-plane ModuleNotFoundError attributed to the agent. See simjob_broker.grading_python.
+        argv2 = [_grading_python(), str(SELFCHECK),
                  "--submission", str(ws / "submission"),
                  "--sim", str(r.get("sim", "spike")),
                  "--capsules", str(r.get("capsules", "all")),

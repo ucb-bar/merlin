@@ -43,7 +43,10 @@ def _public_capsules() -> Path:
 
 
 PUBLIC_CAPSULES = _public_capsules()
-PY = sys.executable
+# The GRADING interpreter, not this broker's — see grading_env.
+from grading_env import announce as _announce_py  # noqa: E402
+
+PY = _announce_py("simjob_broker")
 # Driver-side sim toolchain env — resolve via ext_path('chipyard') (honors .env), NOT a hard-coded
 # path. This is the host-side broker (runs sims OUTSIDE the sandbox), so it must find spike/riscv-gcc
 # in the conda env itself; the previous '/path/to/...' placeholder left spike off PATH -> L2 n=0/1.
