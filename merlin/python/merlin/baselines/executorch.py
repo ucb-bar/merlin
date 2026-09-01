@@ -640,6 +640,7 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
               int8_subgraph: bool = False, int8_whole_model: bool | None = None,
               full_fidelity: bool = True,
               export_env: dict[str, str] | None = None,
+              num_executions: int = 1,
               runner_override: Path | None = None) -> BaselineResult:
     """Run one (model, variant) through the ExecuTorch+XNNPACK arm end-to-end -> BaselineResult.
 
@@ -775,7 +776,7 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     do_board = k1_exec.board_available() if run_board is None else run_board
     if do_board:
         try:
-            _do_board(res, runner, exp, mmap_model=mmap_model)
+            _do_board(res, runner, exp, mmap_model=mmap_model, num_executions=num_executions)
         except k1_exec.BoardUnavailable as e:
             res.gap_reason = res.gap_reason or f"K1 board run failed: {str(e)[:250]}"
         except Exception as e:  # noqa: BLE001
@@ -788,9 +789,13 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
 
 
 def _do_board(res: BaselineResult, runner: Path, exp: "ExportResult",
-              *, mmap_model: bool = False) -> None:
+              *, mmap_model: bool = False, num_executions: int = 1) -> None:
     """Run on the board and fill correctness + E2E/region profile from the executor_runner run."""
-    br = _run_on_board(res, runner, exp, mmap_model=mmap_model)
+    # num_executions is threaded so a COMPARISON can match protocols. It defaults to 1, which is
+    # what every historical cell used -- but a single execution against an ours-side min-of-n is not
+    # apples-to-apples, and min-of-n favours whichever side gets it. Matching them is the only way the
+    # ratio means anything at the few-percent level this comparison now sits at.
+    br = _run_on_board(res, runner, exp, mmap_model=mmap_model, num_executions=num_executions)
     res.ran = br.ran
     if br.wall_ns is not None:
         res.e2e_wall_ns = br.wall_ns
