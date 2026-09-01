@@ -3,13 +3,13 @@
 This is the step that turns a certified microkernel into a compiler capability. Everything before it
 produced a kernel that was correct in isolation; nothing before it made a model *use* one.
 
-**The rewrite is structural, not textual.** The three existing board backends
-(``ours_board``/``xnnpack_board``/``openblas_board``) match a contraction with a regex over one line of
-MLIR and anchor the declaration they insert with a second regex. They are grandfathered in
-``regex_allowlist.txt`` with the migration target written next to them ("-> xDSL / str.find"), and that
-list only ever shrinks — so a fourth copy would be a regression. More to the point, a line-oriented
-matcher cannot see what decides legality here: the element types, the iterator types, and the indexing
-maps. This walks the IR.
+**The rewrite is structural, not textual.** The three board backends
+(``ours_board``/``xnnpack_board``/``openblas_board``) used to match a contraction with a regex over one
+line of MLIR and anchor their inserted declaration with a second one; they now share a single
+bracket-balanced reader (``runtime/backends/_matmul_routing``) and their allowlist entries are gone. A
+scanner is right for them because they must leave every byte outside the matched construct untouched.
+It would be wrong here: what decides legality at this seam is the element types, the iterator types and
+the indexing maps, none of which a text reader can see. This walks the IR.
 
 **Candidates come from the existing classifier, not a new one.** :func:`kernels.shapes.observe_contractions`
 already recognises both named contractions and the contraction *generics* that the int8 rewrite produces
