@@ -163,3 +163,76 @@ def test_dtype_comparability_states_the_per_dtype_caveats():
     # every measured/not-measured cell carries the field.
     for st in (executorch_cell("bitvla", "int8"), executorch_cell("bitvla", "fp16")):
         assert "dtype_comparability" in st
+
+
+# ---------------------------------------------------------------------------------------
+# Bundle identity. (model, dtype) does NOT determine the comparand: `bundle.resolve()`
+# prefers `<model>_<variant>_full` (real/native architecture) over the older TRUNCATED
+# `_consistent` bundle when both exist, so two runs of the "same" cell can be two
+# different models. A beam wall recorded on rdt2_int8_consistent was divided by an
+# ExecuTorch reference exported at native depth and the ratio was quoted as a headline.
+# The direction survived (ours ran the SMALLER model and was still slower, so the true
+# gap is worse) but the number was not citable -- and nothing in the code could say so.
+# ---------------------------------------------------------------------------------------
+
+def test_a_bundle_mismatch_is_refused_rather_than_ratioed():
+    from merlin.compare.executorch_column import bundle_mismatch_reason
+
+    assert bundle_mismatch_reason("rdt2_int8_full", "rdt2_int8_full") is None
+    why = bundle_mismatch_reason("rdt2_int8_consistent", "rdt2_int8_full")
+    assert why and "MISMATCH" in why
+    assert "rdt2_int8_consistent" in why and "rdt2_int8_full" in why
+    assert "not a speedup" in why          # says what the consequence IS
+
+
+def test_an_unrecorded_bundle_identity_is_refused_not_assumed_to_match():
+    """The recurring failure in this repo is a check that could not run reporting success. An empty
+    bundle_id means the producer did not record what it measured; that is UNKNOWN, not a match."""
+    from merlin.compare.executorch_column import bundle_mismatch_reason
+
+    for ours, ref in (("", "rdt2_int8_full"), ("rdt2_int8_full", ""), ("", "")):
+        why = bundle_mismatch_reason(ours, ref)
+        assert why and "UNKNOWN" in why, (ours, ref, why)
+
+
+def test_the_cell_yields_not_measured_with_a_reason_instead_of_a_number():
+    """The plan's gate: a mismatch must produce status='not_measured' and a concrete reason, never a
+    wall a caller could divide by."""
+    cell = executorch_cell("bitvla", "int8", ours_bundle_id="bitvla_int8_consistent")
+    assert cell["executorch_status"] == "not_measured"
+    assert cell["executorch_wall_ns"] is None
+    assert cell["reason"]
+    assert "bundle" in cell["reason"].lower()
+    # the identities are surfaced either way, so a reader can check by eye
+    assert "ref_bundle_id" in cell and "ours_bundle_id" in cell
+
+
+def test_omitting_ours_bundle_id_keeps_the_display_only_behaviour():
+    """Callers that only DISPLAY the ExecuTorch column and never form a ratio must not be broken by the
+    guard -- but the cell still reports the reference's bundle identity."""
+    cell = executorch_cell("bitvla", "int8")
+    assert cell["ours_bundle_id"] is None
+    assert "ref_bundle_id" in cell
+
+
+def test_the_measurement_record_carries_the_bundle_it_was_taken_on():
+    """The guard is only as good as the field it reads: BaselineResult must carry bundle_id, and it
+    must survive a JSON round-trip (old records without it load as UNKNOWN, not as a match)."""
+    import json
+    from pathlib import Path
+    from tempfile import mkdtemp
+
+    from merlin.baselines.contract import BaselineResult
+
+    r = BaselineResult(framework="executorch", model="rdt2", variant="int8",
+                       built=True, ran=True, cos=1.0, e2e_wall_ns=123,
+                       bundle_id="rdt2_int8_full")
+    d = Path(mkdtemp()) / "baseline_result.json"
+    d.write_text(json.dumps({k: v for k, v in r.__dict__.items()
+                             if k not in ("regions", "scalar_fallbacks")}
+                            | {"regions": [], "scalar_fallbacks": []}))
+    assert BaselineResult.load(d).bundle_id == "rdt2_int8_full"
+    # a record predating the field loads with an EMPTY id, which the guard treats as UNKNOWN
+    raw = json.loads(d.read_text()); raw.pop("bundle_id")
+    d.write_text(json.dumps(raw))
+    assert BaselineResult.load(d).bundle_id == ""

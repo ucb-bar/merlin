@@ -113,6 +113,17 @@ class BaselineResult:
     timestamp: str = ""
     notes: str = ""
 
+    #: The capture bundle this measurement was actually taken on -- the DIRECTORY NAME under
+    #: ``recaptures/``, e.g. ``rdt2_int8_full`` vs ``rdt2_int8_consistent``. Part of the measurement,
+    #: not metadata: ``bundle.resolve()`` prefers ``<model>_<variant>_full`` (the real/native
+    #: architecture) over the older TRUNCATED ``_consistent`` bundle when both exist, so two runs of
+    #: the "same" (model, variant) can be two different models. A comparison keyed on (model, dtype)
+    #: alone cannot see that, and one shipped: a beam wall recorded on ``rdt2_int8_consistent`` was
+    #: divided by an ExecuTorch reference exported at native depth, and the resulting "N x behind"
+    #: figure was quoted. Empty means the producer did not record it, which is not the same as a match
+    #: -- a consumer must treat empty as UNKNOWN and refuse to compare, never as "presumably the same".
+    bundle_id: str = ""
+
     def __post_init__(self) -> None:
         if not isinstance(self.framework, str) or self.framework not in FRAMEWORKS:
             raise ValueError(f"unknown framework {self.framework!r}; expected one of {FRAMEWORKS}")

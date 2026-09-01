@@ -114,13 +114,50 @@ def _not_measured_reason(model: str, variant: str, rows: list) -> str:
     return f"no executorch {variant} result under {_BASELINE_TREE} (board run not yet performed)"
 
 
-def executorch_cell(model: str, dtype: str, *, root: Path | None = None) -> dict:
+def bundle_mismatch_reason(ours_bundle_id: str, ref_bundle_id: str) -> str | None:
+    """Why these two measurements are not comparable, or None if they are.
+
+    (model, dtype) is NOT a sufficient key. ``bundle.resolve()`` prefers ``<model>_<variant>_full``
+    (the real/native architecture) over the older TRUNCATED ``_consistent`` bundle when both exist, so
+    two runs of the "same" cell can be two different models. That is not hypothetical: a beam wall
+    recorded on ``rdt2_int8_consistent`` was divided by an ExecuTorch reference exported at native
+    depth, and the ratio was quoted as a headline. The direction happened to survive (ours ran the
+    SMALLER model and was still slower, so the true gap is worse), but the number was not citable, and
+    nothing in the code could have said so.
+
+    UNKNOWN is refused as firmly as a mismatch. An empty ``bundle_id`` means the producer did not
+    record which bundle it measured -- treating that as "presumably the same" is precisely how the bad
+    ratio got published, and it is the failure mode this repo keeps hitting: a check that could not run
+    reporting success.
+    """
+    if not ours_bundle_id or not ref_bundle_id:
+        missing = [n for n, v in (("ours", ours_bundle_id), ("reference", ref_bundle_id)) if not v]
+        return (f"bundle identity UNKNOWN for {' and '.join(missing)}: cannot verify the two "
+                "measurements are on the same capture, and (model, dtype) does not determine it "
+                "(_full is a different model from _consistent, not a smaller capture of it). "
+                "Re-measure with bundle_id recorded on both sides.")
+    if ours_bundle_id != ref_bundle_id:
+        return (f"bundle MISMATCH: ours measured on {ours_bundle_id!r}, the reference on "
+                f"{ref_bundle_id!r}. These are different models, not different runs of one -- a ratio "
+                "between them is not a speedup. Re-measure both on one bundle.")
+    return None
+
+
+def executorch_cell(model: str, dtype: str, *, root: Path | None = None,
+                    ours_bundle_id: str | None = None) -> dict:
     """The ExecuTorch column for a ``(model, dtype)`` cell — structured + honestly labeled.
 
     Returns a dict always carrying ``executorch_status`` (``measured`` | ``not_measured``),
     ``executorch_wall_ns`` (a real number ONLY when a passing ExecuTorch run of the SAME variant
     exists, else ``None``), the ``variant`` selected, the per-model ``gate_basis`` honesty label, the
     comparability ``label``, and — when not measured — a concrete ``reason``.
+
+    ``ours_bundle_id`` is the capture bundle OUR side was measured on. Pass it whenever this cell will
+    be divided by an ours-number: the reference's own ``bundle_id`` is compared against it and a
+    mismatch (or an unrecorded identity on either side) yields ``not_measured`` with a concrete reason
+    INSTEAD OF A NUMBER. Omitting it keeps the historical behavior for callers that only display the
+    ExecuTorch column and never form a ratio; the cell still reports ``ref_bundle_id`` so a reader can
+    check by eye.
     """
     root = root or repo_root()
     variant = _DTYPE_TO_VARIANT.get(dtype, dtype)
@@ -130,10 +167,27 @@ def executorch_cell(model: str, dtype: str, *, root: Path | None = None) -> dict
     basis = gate_basis(model)
     if passing:
         r = passing[0]
+        ref_bundle = getattr(r, "bundle_id", "") or ""
+        mismatch = (bundle_mismatch_reason(ours_bundle_id, ref_bundle)
+                    if ours_bundle_id is not None else None)
+        if mismatch is not None:
+            return {
+                "executorch_status": "not_measured",
+                "executorch_wall_ns": None,
+                "variant": variant,
+                "ref_bundle_id": ref_bundle,
+                "ours_bundle_id": ours_bundle_id,
+                "gate_basis": basis,
+                "label": EXECUTORCH_LABEL,
+                "dtype_comparability": dtype_comparability(dtype),
+                "reason": mismatch,
+            }
         return {
             "executorch_status": "measured",
             "executorch_wall_ns": float(r.e2e_wall_ns),
             "variant": r.variant,
+            "ref_bundle_id": ref_bundle,
+            "ours_bundle_id": ours_bundle_id,
             "cos": r.cos,
             "rel": r.rel,
             "rvv_coverage_overall": r.rvv_coverage_overall,
@@ -146,6 +200,8 @@ def executorch_cell(model: str, dtype: str, *, root: Path | None = None) -> dict
         "executorch_status": "not_measured",
         "executorch_wall_ns": None,
         "variant": variant,
+        "ref_bundle_id": "",
+        "ours_bundle_id": ours_bundle_id,
         "gate_basis": basis,
         "label": EXECUTORCH_LABEL,
         "dtype_comparability": dtype_comparability(dtype),
