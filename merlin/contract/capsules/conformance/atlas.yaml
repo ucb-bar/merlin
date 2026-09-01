@@ -1,0 +1,646 @@
+# DERIVED — regenerate with:
+#   build_tools/scripts/check_conformance_coverage.py --target atlas --write merlin/contract/capsules/conformance/atlas.yaml
+# Do not hand-edit: the point of this file is that it is evidence, not authorship.
+target: atlas
+generated_by: merlin.targetgen.conformance.spec
+derivation:
+  admitted: capability manifest compute_units[].semantic_capabilities (family x dtype)
+  observed: model_coverage.regions_from_module over each captured model (name-first, provenance-tag fallback;
+    unresolved regions not counted)
+  required: admitted INTERSECT observed, x tile alignment where the target tiles
+  cell_vocabulary: "(semantic_family, dtype, tile_alignment) \u2014 identical to contract.materialize.cert_capsule_cover,\
+    \ so the existing cover measures this spec without a second definition of a cell"
+boundaries:
+  tile_edge: 32
+  tile_edge_is_hardware_fact: true
+  tile_edge_source: capability manifest (declared mesh/tile rows)
+  block_scale_group: null
+  block_scale_source: ''
+  operand_store_bytes: null
+  operand_store_source: ''
+  extent_probes:
+  - boundary: tile_edge
+    edge: 32
+    source: capability manifest (declared mesh/tile rows)
+    points:
+    - 31
+    - 32
+    - 33
+    - 64
+composition:
+  required:
+    A:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - tiny_llama_fp32_full
+    A->A:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - tiny_llama_fp32_full
+    A->H->A:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - tiny_llama_fp32_full
+    H:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - spectformer_int8_full
+    - tiny_llama_fp32_full
+    H->A->H:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - tiny_llama_fp32_full
+    routing:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - tiny_llama_fp32_full
+  whole_model_shape:
+    gemma2_2b_int8: routing
+    gemma2_2b_int8_full: routing
+    gemma2_2b_int8_full_seq8: routing
+    gemma2_2b_int8_full_seq8_pretransposed: routing
+    gemma2_2b_int8_full_seq8_sliced: routing
+    gemma2_2b_int8_full_seq8_sliced_tiledhead: routing
+    gemma2_2b_int8_full_spec: routing
+    gemma2_2b_int8_full_spec_pretransposed: routing
+    gemma2_2b_int8_section1: routing
+    gemma2_2b_int8_section12: routing
+    gemma2_2b_int8_section2: routing
+    gemma2_2b_int8_spec: routing
+    gemma2_2b_int8_spec_pretransposed: routing
+    lstmnetvit_fp8: H
+    lstmnetvit_int8: H
+    small_llama: routing
+    small_llama_fp8: routing
+    small_llama_int8: routing
+    spectformer_int8_full: H
+    tiny_llama_fp32_full: routing
+  captures_unreadable: {}
+  axis_basis: "the composition shapes the real captures CONTAIN \u2014 not just the shape each capture\
+    \ has as a whole. A model classifies as `routing` end to end, yet it contains isolated dispatches,\
+    \ adjacent accelerator pairs and host islands, and each of those is a composition the corpus must\
+    \ exercise somewhere. Taking only the whole-model label would demand `routing` and nothing else, the\
+    \ narrowest reading of the richest evidence"
+  why_orthogonal: the composition axis is NOT crossed with family/dtype/alignment. A cross product would
+    demand cells like `movement/i8/partial/routing` that no real model presents, manufacturing uncovered
+    cells nobody should build; composition is a property of how a program is assembled, not of the arithmetic
+    in it
+memory_mapping:
+  required:
+    fits_double:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - spectformer_int8_full
+    - tiny_llama_fp32_full
+    fits_single:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - spectformer_int8_full
+    - tiny_llama_fp32_full
+    spills:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - spectformer_int8_full
+    - tiny_llama_fp32_full
+  region_counts:
+    fits_double: 13965
+    fits_single: 2073
+    spills: 5717
+  capacity_rows: 49152
+  captures_unreadable: {}
+  why: ''
+  axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
+    own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
+    capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
+    on a hardware-interlocked target nothing else will report it either -- the schedule is correct whatever
+    it chooses
+diagnostics:
+  n_cells: 12
+  captures_read:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  captures_unreadable: {}
+  families_observed:
+    contraction: 2403
+    elementwise_map: 9473
+    movement: 6330
+    normalization: 1146
+    reduction: 2356
+  families_observed_via_primitives: {}
+  families_needed_but_not_admitted:
+  - normalization
+  - reduction
+  families_admitted_but_no_model_uses: []
+  alignment_axis:
+  - aligned
+  - partial
+  notes:
+  - 2 family/families appear in a real capture but the hardware declares no capability for them (normalization,
+    reduction); those are compiler work for the scalar/vector lane, not accelerator cells, and are excluded
+    from the requirement rather than silently counted as covered
+  axis_basis:
+    semantic_family: observed in a real capture (or all of its primitives were)
+    dtype: "ADMITTED ONLY \u2014 the captures are single-precision, so dtype demand is not observable\
+      \ from them; every dtype the hardware declares for an observed family is required"
+    tile_alignment: 'both, wherever the target tiles: a unit that only ever sees whole tiles has never
+      exercised its tail path'
+personas: {}
+cells:
+- cell: contraction/bf16/aligned
+  family: contraction
+  dtype: bf16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  n_regions: 2403
+- cell: contraction/bf16/partial
+  family: contraction
+  dtype: bf16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  n_regions: 2403
+- cell: contraction/fp8_e4m3/aligned
+  family: contraction
+  dtype: fp8_e4m3
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  n_regions: 2403
+- cell: contraction/fp8_e4m3/partial
+  family: contraction
+  dtype: fp8_e4m3
+  alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  n_regions: 2403
+- cell: elementwise_map/bf16/aligned
+  family: elementwise_map
+  dtype: bf16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  - vector_unit
+  n_regions: 9473
+- cell: elementwise_map/bf16/partial
+  family: elementwise_map
+  dtype: bf16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  - vector_unit
+  n_regions: 9473
+- cell: elementwise_map/fp8_e4m3/aligned
+  family: elementwise_map
+  dtype: fp8_e4m3
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  - vector_unit
+  n_regions: 9473
+- cell: elementwise_map/fp8_e4m3/partial
+  family: elementwise_map
+  dtype: fp8_e4m3
+  alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  - vector_unit
+  n_regions: 9473
+- cell: movement/bf16/aligned
+  family: movement
+  dtype: bf16
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  n_regions: 6330
+- cell: movement/bf16/partial
+  family: movement
+  dtype: bf16
+  alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  n_regions: 6330
+- cell: movement/fp8_e4m3/aligned
+  family: movement
+  dtype: fp8_e4m3
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  n_regions: 6330
+- cell: movement/fp8_e4m3/partial
+  family: movement
+  dtype: fp8_e4m3
+  alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - mxu
+  n_regions: 6330
