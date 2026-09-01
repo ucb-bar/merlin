@@ -772,26 +772,76 @@ def _timing_block(res: Any) -> "tuple[list[dict] | None, dict | None]":
     return ([dict(o) for o in block.observations] or None), cap
 
 
-def _load_verilator_runner(vsim_dir: Path):
-    """Import the vsim dir's conventional ``verilator_run.py`` (``run_program`` symmetric with
+#: Elaborated-RTL engines, each as (ext_path key suffix, conventional wrapper filename). Every engine
+#: exposes the SAME ``run_program``; merlin never names a binary or a target. Adding an engine is one row
+#: here plus a wrapper beside its build — the priority among them lives in ``rtl_engine_policy``.
+_RTL_ENGINES: dict[str, tuple[str, str]] = {
+    "vcs": ("vcs", "vcs_run.py"),
+    "gsim": ("gsim", "gsim_run.py"),
+    "verilator": ("vsim", "verilator_run.py"),
+}
+
+
+def _rtl_engine_dir(target: str, engine: str) -> Path | None:
+    """Where ``engine``'s build for ``target`` lives, or None when it registers none."""
+    suffix, _ = _RTL_ENGINES[engine]
+    try:
+        return Path(ext_path(f"{target}_{suffix}"))
+    except KeyError:
+        return None
+
+
+def _rtl_engine_probe(target: str, engine: str):
+    """``() -> (available, reason)`` for one engine: its dir must be registered AND hold its wrapper."""
+    def probe():
+        _, fname = _RTL_ENGINES[engine]
+        d = _rtl_engine_dir(target, engine)
+        if d is None:
+            return False, f"no MERLIN_EXT_{target.upper()}_{_RTL_ENGINES[engine][0].upper()} registered"
+        w = d / fname
+        if not w.is_file():
+            return False, f"{fname} absent under {d}"
+        return True, f"{fname} at {d}"
+    return probe
+
+
+def select_rtl_engine(target: str) -> dict:
+    """Pick this target's elaborated-RTL engine (see :mod:`rtl_engine_policy`). Raises
+    :class:`OracleUnavailable` when none can run, so the tier reports unavailable rather than silently
+    resolving to a lower-fidelity oracle."""
+    from . import rtl_engine_policy as _pol
+    try:
+        return _pol.select(target, {e: _rtl_engine_probe(target, e) for e in _RTL_ENGINES})
+    except _pol.NoEngineAvailable as exc:
+        raise OracleUnavailable(str(exc)) from exc
+
+
+def _load_rtl_runner(engine_dir: Path, filename: str):
+    """Import an engine dir's conventional wrapper (``run_program`` symmetric with
     ``cosim_atlas.run_program``) BY PATH — target-agnostic (merlin never names the sim binary). Raises
     :class:`OracleUnavailable` if the wrapper is absent / exposes no ``run_program``."""
-    wrapper = Path(vsim_dir) / "verilator_run.py"
+    wrapper = Path(engine_dir) / filename
     if not wrapper.is_file():
-        raise OracleUnavailable(f"verilator runner absent: {wrapper} (build the vsim + verilator_run.py)")
-    spec = importlib.util.spec_from_file_location("_merlin_verilator_run", wrapper)
+        raise OracleUnavailable(f"RTL runner absent: {wrapper}")
+    spec = importlib.util.spec_from_file_location("_merlin_rtl_run", wrapper)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     if not hasattr(mod, "run_program"):
-        raise OracleUnavailable(f"verilator runner {wrapper} exposes no run_program")
+        raise OracleUnavailable(f"RTL runner {wrapper} exposes no run_program")
     return mod
+
+
+def _load_verilator_runner(vsim_dir: Path):
+    """Back-compat shim: the Verilator wrapper specifically."""
+    return _load_rtl_runner(Path(vsim_dir), _RTL_ENGINES["verilator"][1])
 
 
 def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: dict | None = None,
                                  kernel_s: Path | None = None, program: str | None = None,
                                  inputs: list[dict] | None = None, fix_itype_rd: bool = True,
                                  max_cycles: int = 20000, workdir, timeout: int = 600,
-                                 per_cycle_csv: "str | Path | None" = None) -> dict[str, Any]:
+                                 per_cycle_csv: "str | Path | None" = None,
+                                 engine: str = "verilator") -> dict[str, Any]:
     """Assemble (model venv / stock LLVM) → run on the target's program-driven Verilator RTL sim → read
     back. Mirrors :func:`run_program_oracle` (same ``emit_bundle`` words+preload, same output-layout
     resolution) but the runner is the external Verilator ``run_program`` instead of the arc cosim. The
@@ -800,7 +850,7 @@ def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: d
     as the read region — no functional-tier ``dram_base`` relocation. Returns the SAME result shape
     ``{"outputs": {name: list}, "cycles": int, "oracle": f"{target}-verilator-rtl"}``. Raises
     :class:`OracleUnavailable` if the vsim / wrapper is absent, or the program does not halt."""
-    runner = _load_verilator_runner(vsim_dir)
+    runner = _load_rtl_runner(Path(vsim_dir), _RTL_ENGINES[engine][1])
     bundle = emit_bundle(model_ext=model_ext, program=program, kernel_s=kernel_s, inputs=inputs,
                          fix_itype_rd=fix_itype_rd, workdir=Path(workdir), timeout=timeout)
     words = bundle["words"]
@@ -838,8 +888,8 @@ def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: d
                                        spec["physical"]).tolist()
     # The one tier here that runs the ELABORATED Verilog, so the only one entitled to say RTL.
     out: dict[str, Any] = {"outputs": outputs, "cycles": int(res.get("cycles") or 0),
-                           "oracle": {"kind": f"{target}-verilator-rtl", "derived_from_rtl": True,
-                                      "fidelity": "elaborated_rtl"}}
+                           "oracle": {"kind": f"{target}-{engine}-rtl", "derived_from_rtl": True,
+                                      "fidelity": "elaborated_rtl", "engine": engine}}
     # WHATEVER FINER TIMING THIS ORACLE COULD SEE, carried instead of discarded. The run already paid
     # for it: the sim evaluated the RTL's own top-level activity ports on every cycle whether anyone
     # read them or not, so the marginal cost of keeping the decomposition is a load per cycle. A
@@ -860,11 +910,11 @@ def program_verilator_adapter(target: str, *, model_ext: str) -> Callable | None
     tier is honestly ADDITIVE and target-agnostic (any external_backend target that ships a vsim gets it,
     with no target literal here)."""
     try:
-        vsim_dir = ext_path(f"{target}_vsim")
-    except KeyError:
-        return None
-    if not (Path(vsim_dir) / "verilator_run.py").is_file():
-        return None
+        selection = select_rtl_engine(target)
+    except OracleUnavailable:
+        return None                       # no elaborated-RTL engine at all -> the tier is honestly absent
+    engine = selection["engine"]
+    vsim_dir = _rtl_engine_dir(target, engine)
 
     def run(cb, fourth_text, workdir, timeout):
         wd = Path(workdir)
@@ -883,6 +933,7 @@ def program_verilator_adapter(target: str, *, model_ext: str) -> Callable | None
         # as the SUBMISSION's defect. A harness limit must not be reported as an agent's bug, and the
         # asymmetry between two tiers of the same target had no reason behind it.
         return run_program_verilator_oracle(target, model_ext=model_ext, vsim_dir=vsim_dir, cb=cb,
+                                            engine=engine,
                                             kernel_s=ks, workdir=wd, timeout=timeout,
                                             max_cycles=derive_cycle_budget(cb), per_cycle_csv=_csv)
     return run
