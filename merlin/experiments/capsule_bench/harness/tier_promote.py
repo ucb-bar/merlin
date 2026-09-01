@@ -243,8 +243,15 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
         st.setdefault(w.capsule, {})[cert_tier] = {"status": "pending", "digest": digest}
         jid = f"promo{len(promoted)}_{digest}_{w.capsule}"[:80]
         if not (ch / f"simreq_{jid}.json").exists():
+            # Ask for the LOOP tier beside the cert tier. Requesting the cert tier alone drops the loop
+            # tier the capsule declares MANDATORY, and an unreached mandatory tier is scored
+            # NOT_RUN_IS_NOT_PASS -- so the response came back `pass: false` no matter how the cert
+            # actually went, and a capsule could never be recorded as certified. Measured: `--tiers L3`
+            # gave `{L2: unavailable, L3: pass}` -> fail on a submission that passes `--tiers L2,L3`
+            # byte-for-byte.
             (ch / f"simreq_{jid}.json").write_text(_j.dumps(
-                {"sim": _NEUTRAL_SIM, "capsules": w.capsule, "workers": 1, "tiers": cert_tier,
+                {"sim": _NEUTRAL_SIM, "capsules": w.capsule, "workers": 1,
+                 "tiers": f"{loop_tier},{cert_tier}",
                  "promoted": True, "submitted_at": time.time()}))
             promoted.append(w.capsule)
     _save_tier_state(ws, st)

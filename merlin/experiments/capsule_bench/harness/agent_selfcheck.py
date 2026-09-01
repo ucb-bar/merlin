@@ -22,6 +22,7 @@ WHETHER and roughly WHERE you are wrong (mismatch_count, failing plane) — not 
 """
 from __future__ import annotations
 import argparse, json, os, shutil, sys
+import yaml
 from pathlib import Path
 
 
@@ -115,6 +116,42 @@ def select_tiers(full: dict, default: dict, requested: str) -> tuple[dict, str |
         return {}, (f"--tiers names {missing}, which this endpoint does not reach; "
                     f"reachable: {sorted(full)}")
     return {t: ad for t, ad in full.items() if t in want}, None
+
+
+def mandatory_tiers(capsules_root: Path, want: set[str] | None = None) -> set[str]:
+    """The tiers the capsules to be graded declare MANDATORY, read from the capsules themselves.
+
+    Derived, never a literal: a capsule's ``required_oracle_tiers`` is the only statement of what must run
+    for it to pass, and it differs per capsule and per target.
+    """
+    out: set[str] = set()
+    for cf in Path(capsules_root).rglob("capsule.yaml"):
+        if want is not None and cf.parent.name not in want:
+            continue
+        try:
+            doc = yaml.safe_load(cf.read_text()) or {}
+        except Exception:  # noqa: BLE001 -- an unreadable capsule states no requirement
+            continue
+        out |= {str(t).strip().upper() for t in (doc.get("required_oracle_tiers") or [])}
+    return out
+
+
+def restore_mandatory_tiers(adapters: dict, full: dict, needed: set[str]) -> tuple[dict, list[str]]:
+    """Add back any REACHABLE mandatory tier the selection dropped. Returns ``(adapters, added)``.
+
+    A selection that omits a mandatory tier cannot score a pass, however well the tiers it DID run went:
+    the missing one is scored ``NOT_RUN_IS_NOT_PASS``, so every row reads as a backend failure while the
+    oracle that ran says ``pass``. Measured on radiance: ``--tiers L3`` alone reported ``pass: false`` with
+    ``{L2: unavailable, L3: pass}`` on a submission that passes ``--tiers L2,L3`` byte-for-byte -- and
+    across two runs and six repeats, ~25000 L3-only self-checks produced not one pass while L2 passed
+    normally. Widening is the honest repair rather than refusing, because the tier the caller asked for
+    still runs; what changes is that the mandatory one runs beside it. The caller REPORTS what was added
+    (never silently), so a wider ladder than requested is visible in the result.
+    """
+    add = sorted((needed & set(full)) - set(adapters))
+    if not add:
+        return adapters, []
+    return {**adapters, **{t: full[t] for t in add}}, add
 
 
 def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, dict, str]:
@@ -332,6 +369,11 @@ def main(argv=None):
     if _err:
         print(json.dumps({"error": _err}))
         return 2
+    # An explicitly-named ladder that drops a MANDATORY tier cannot score a pass -- see
+    # restore_mandatory_tiers. Widen it back to include what the graded capsules require, and report it.
+    _want_caps = None if a.capsules == "all" else {s.strip() for s in a.capsules.split(",") if s.strip()}
+    adapters, _tiers_added = restore_mandatory_tiers(
+        adapters, full, mandatory_tiers(PUBLIC_CAPSULES, _want_caps))
     # barrier = the deepest resolved RTL tier: chipyard maps from --sim; any other target uses its
     # single contract-derived tier (atlas -> L3 program oracle), so read it from the adapters.
     barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" else max(adapters) if adapters else "L3"
@@ -548,6 +590,9 @@ def main(argv=None):
            "all_pass": npass == n and n > 0, "per_capsule": rows,
            "submission_digest": _sub_digest,
            "n_declined": n_declined,
+           # A ladder wider than the one asked for is REPORTED, never silent: the caller needs to know
+           # its --tiers was widened, and by which tier, to read the verdict it gets back.
+           **({"tiers_added_for_mandatory": _tiers_added} if _tiers_added else {}),
            "note": f"Self-check on {sim} ({barrier_tier}). You see EVERYTHING your dialect produced — "
                    "command buffer, decoded trace + instruction counts, sim console, and your artifacts "
                    "copied to ./selfcheck_out/. The diff stats (mismatch_count, magnitudes) are YOUR "

@@ -307,8 +307,15 @@ def main(argv=None):
                 if _tiers:                   # validated downstream against the RESOLVED adapter map
                     argv2 += ["--tiers", _tiers]
                 (ch / f"simrun_{jid}").write_text("running")
+                # KEEP the child's output. It used to go to DEVNULL, so a cert that crashed left the
+                # single classified token `plane/category` and nothing else -- thousands of failed certs
+                # across many runs with no diagnostic anywhere, and the cause had to be reproduced by hand
+                # outside the harness. The log is operator-side (never shown to the agent) and holds
+                # compiler/sim output, not goldens. Truncated per job, so it cannot grow without bound.
+                _joblog = (ch / f"simlog_{jid}.txt").open("w")
                 proc = subprocess.Popen(["timeout", str(to + 120)] + argv2, cwd=str(ws),
-                                        env=_sim_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                        env=_sim_env(), stdout=_joblog, stderr=subprocess.STDOUT)
+                _joblog.close()
                 running[jid] = {"proc": proc, "slot": slot, "resp_tmp": str(resp_tmp), "sim": sim,
                                 "promoted": bool(r.get("promoted"))}
                 claimed.add(jid)

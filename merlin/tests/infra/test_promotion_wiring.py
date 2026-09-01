@@ -60,7 +60,11 @@ def test_a_passing_capsule_produces_a_cert_job(tmp_path):
     reqs = list(ch.glob("simreq_*.json"))
     assert len(reqs) == 1
     r = json.loads(reqs[0].read_text())
-    assert r["capsules"] == "A" and r["tiers"] == "L3" and r["promoted"] is True
+    # The job asks for the LOOP tier beside the cert tier. Requesting "L3" alone dropped the loop tier
+    # the capsule declares mandatory, and an unreached mandatory tier is scored NOT_RUN_IS_NOT_PASS -- so
+    # the response came back `pass: false` however the cert itself went, and no capsule could ever be
+    # recorded as certified. See test_mandatory_tiers_are_never_dropped.py for the measured case.
+    assert r["capsules"] == "A" and r["tiers"] == "L2,L3" and r["promoted"] is True
 
 
 def test_a_failing_capsule_buys_no_cert_time(tmp_path):
