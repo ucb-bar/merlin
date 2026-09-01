@@ -412,3 +412,36 @@ def test_the_broadcast_pricing_and_its_decision_are_recorded_not_re_derivable():
     assert "out of scope" in src
     # the negative result it would otherwise be confused with is still recorded
     assert "4.9x more vector instructions" in src and "1.28x SLOWER" in src
+
+
+def test_the_implies_closure_terminates_and_validates_what_it_adds():
+    """`normalize` closes the feature set under `implies`, so it has to be a real fixpoint loop and not
+    a single pass. Pinned because the next person to declare an implication will rely on all four:
+    a chain closes fully, a cycle terminates instead of spinning, precedence is not accidental
+    (`fs | X if fs else fs` must parse as `(fs | X) if fs else fs`), and an implied name that is not
+    registered RAISES rather than being silently added to the set the whole pipeline then keys off.
+    """
+    probes = ("_t_cycle_a", "_t_cycle_b", "_t_chain_1", "_t_chain_2", "_t_bad")
+    try:
+        F.register(F.ImprFeature(name="_t_cycle_a", action_class="PASS", description="t",
+                                 implies=frozenset({"_t_cycle_b"})))
+        F.register(F.ImprFeature(name="_t_cycle_b", action_class="PASS", description="t",
+                                 implies=frozenset({"_t_cycle_a"})))
+        F.register(F.ImprFeature(name="_t_chain_1", action_class="PASS", description="t",
+                                 implies=frozenset({"_t_chain_2"})))
+        F.register(F.ImprFeature(name="_t_chain_2", action_class="PASS", description="t",
+                                 implies=frozenset({"erase_self_copy"})))
+        F.register(F.ImprFeature(name="_t_bad", action_class="PASS", description="t",
+                                 implies=frozenset({"_t_does_not_exist"})))
+
+        assert F.normalize(["_t_cycle_a"]) == frozenset({"_t_cycle_a", "_t_cycle_b"})
+        assert F.normalize(["_t_chain_1"]) == frozenset(
+            {"_t_chain_1", "_t_chain_2", "erase_self_copy"})
+        with pytest.raises(KeyError, match="_t_does_not_exist"):
+            F.normalize(["_t_bad"])
+        # precedence / empty in -> empty out, and a feature with no implications is unchanged
+        assert F.normalize(frozenset()) == frozenset()
+        assert F.normalize(["erase_self_copy"]) == frozenset({"erase_self_copy"})
+    finally:
+        for n in probes:
+            F._REGISTRY.pop(n, None)
