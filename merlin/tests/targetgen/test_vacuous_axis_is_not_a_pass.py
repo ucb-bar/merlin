@@ -52,3 +52,20 @@ def test_the_gate_treats_a_vacuous_axis_as_a_failure():
     assert "axis_undeterminable" in src, (
         "a vacuous axis is not ratchetable, so a known-missing fact cannot be carried deliberately")
     assert "bad or vacuous" in src, "a vacuous axis does not affect the exit status"
+
+
+def test_the_conformance_consumer_forwards_the_reason():
+    """The `why` existed and was thrown away between the spec and the report.
+
+    The spec writer persists `memory_mapping.why` -- the deriver's own account of why it could not
+    resolve the operand store -- but `uncovered()` forwarded only `by_regime` and then hardcoded
+    `status = "ok"`, so the verdict was clobbered even when the reason was present. Measured
+    2026-09-01: mx_gemmini's spec carried the full string while its report read
+    `0 / 0 required regime(s) (operand store None rows)`.
+    """
+    from merlin.common.paths import repo_root
+    src = (repo_root() / "merlin/python/merlin/targetgen/conformance.py").read_text(encoding="utf-8")
+    call = src[src.index("mgap = MR.uncovered_regimes("):][:600]
+    assert '"why"' in call, "uncovered_regimes is called without the spec's recorded reason"
+    assert 'mgap.setdefault("status", "ok")' in call, (
+        'the consumer still hardcodes status "ok", which clobbers an UNDETERMINABLE verdict')

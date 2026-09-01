@@ -540,8 +540,15 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
         from merlin.targetgen import memory_regime as MR
         mem_corpus = MR.corpus_regimes(corpus_roots, str(spec_doc.get("target") or ""),
                                        labels=labels, exclude=exclude)
-        mgap = MR.uncovered_regimes({"by_regime": mem_req}, mem_corpus)
-        mgap["status"] = "ok"
+        # PASS THE REASON THROUGH. The spec writer persists `why` -- the deriver's own account of why it
+        # could not resolve the operand store -- but this call used to forward only `by_regime` and then
+        # hardcode status "ok", so an axis that requires nothing BECAUSE WE COULD NOT DERIVE IT was
+        # reported as a satisfied 0/0. Measured 2026-09-01: mx_gemmini and radiance both read
+        # `0 / 0 required regime(s) (operand store None rows)`.
+        mgap = MR.uncovered_regimes(
+            {"by_regime": mem_req, "why": (spec_doc.get("memory_mapping") or {}).get("why") or ""},
+            mem_corpus)
+        mgap.setdefault("status", "ok")           # never overwrite an UNDETERMINABLE verdict
         mgap["covered_by"] = mem_corpus["by_regime"]
         mgap["region_counts"] = (spec_doc.get("memory_mapping") or {}).get("region_counts") or {}
         out["memory_mapping"] = mgap
