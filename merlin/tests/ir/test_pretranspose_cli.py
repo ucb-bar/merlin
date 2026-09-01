@@ -61,9 +61,9 @@ def test_dry_run_reports_the_split_and_writes_nothing(capsys, tmp_path):
     assert "hoistable" in out and "MiB" in out
     assert sorted(p.name for p in src.iterdir()) == before, "--dry-run must not touch the source"
     assert not any(tmp_path.iterdir()), "--dry-run must not write anywhere"
-    # the default destination must be a SIBLING that does not exist yet, never the source
-    assert not (src.parent / f"{src.name}_pretransposed").samefile(src) if (
-        src.parent / f"{src.name}_pretransposed").exists() else True
+    # the default destination is a SIBLING of the source, never the source itself
+    dst = src.parent / f"{src.name}_pretransposed"
+    assert dst != src and dst.parent == src.parent
 
 
 @pytest.mark.skipif(_bundle_with_transposes() is None, reason="no bundle with weight transposes")
