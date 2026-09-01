@@ -214,6 +214,13 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=8, help="parallel sim workers (verilator/vcs)")
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--out", default="", help="optional: also write the redacted JSON here")
+    # THE FLAG select_tiers WAS WRITTEN FOR. It existed as a function with six tests pinning it and no
+    # way to reach it: argparse never accepted --tiers, so the broker's promotion jobs -- which always
+    # forward `--tiers <cert_tier>` -- died on "unrecognized arguments: --tiers L3" before doing any
+    # work, and the broker reported that as "no verdict produced". Measured on
+    # merlincirct_arm4_func_20260901_v4: 19 promotion jobs, every one killed by argparse.
+    ap.add_argument("--tiers", default="", help="comma-separated tiers to grade (default: this "
+                                               "target's cheap loop ladder), e.g. L3 for a cert run")
     ap.add_argument("--shape-coverage", action="store_true",
                     help="INSTEAD of the capsule suite, probe whether your backend LOWERS the same "
                          "contraction at one tile and at two tiles in each of M, K and N. Costs no "
@@ -248,6 +255,22 @@ def main(argv=None):
 
     _tgt, _sim_via = _target_sim_via()
     adapters, sim = _adapters(a.sim, _tgt, _sim_via)
+    if a.tiers:
+        # Validate the REQUEST against everything the endpoint can reach, not against the cheap loop
+        # ladder -- that conflation is exactly what select_tiers documents, and it is why a cert tier
+        # (derived as oracle_adapters - qa_loop_adapters) could never be asked for.
+        _full = dict(CR.oracle_adapters(_tgt, _sim_via))
+        _full.update(adapters)                     # a --sim-selected tier is reachable by definition
+        adapters, _tier_err = select_tiers(_full, adapters, a.tiers)
+        if _tier_err:
+            # Fail CLOSED and leave the reason on disk. Exiting without writing --out is what produced
+            # the broker's contentless "no verdict produced".
+            out = {"error": _tier_err, "all_pass": False, "sim": sim, "tiers_requested": a.tiers}
+            txt = json.dumps(out, indent=2); print(txt)
+            if a.out:
+                Path(a.out).write_text(txt)
+            _log_telemetry(out, a.capsules)
+            return 2
     # barrier = the deepest resolved RTL tier: chipyard maps from --sim; any other target uses its
     # single contract-derived tier (atlas -> L3 program oracle), so read it from the adapters.
     barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" else max(adapters) if adapters else "L3"

@@ -254,7 +254,8 @@ def main(argv=None):
             tmp = j["resp_tmp"]
             try:
                 out = _strip_golden(json.loads(Path(tmp).read_text())) if Path(tmp).exists() else \
-                    {"error": "no verdict produced", "all_pass": False}
+                    {"error": f"no verdict produced (rc={rc}); child output in "
+                              f"simlog_{jid}.txt", "all_pass": False}
             except Exception as e:
                 out = {"error": f"verdict parse: {e}", "all_pass": False}
             if rc == 124:                                  # timeout exit
@@ -270,6 +271,11 @@ def main(argv=None):
                     _promote(ws, ch, out, _LOOP_TIER, _CERT_TIER, _COVER, sys.stderr)
                 except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
                     print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
+            if j.get("log"):
+                try:
+                    j["log"].close()
+                except Exception:  # noqa: BLE001 -- closing a log must never break the reap
+                    pass
             if j["slot"]:
                 j["slot"].unlink(missing_ok=True)
             running.pop(jid)
@@ -327,10 +333,17 @@ def main(argv=None):
                 if _tiers:                   # validated downstream against the RESOLVED adapter map
                     argv2 += ["--tiers", _tiers]
                 (ch / f"simrun_{jid}").write_text("running")
+                # KEEP THE CHILD'S OUTPUT. This was stdout/stderr=DEVNULL, so when a job exited without
+                # writing its verdict file the only trace was the broker's own "no verdict produced" --
+                # a job that failed and a job that produced nothing were indistinguishable, and the
+                # REASON was gone. Measured on merlincirct_arm4_func_20260901_v4: 19 promotion jobs
+                # answered "no verdict produced" with no diagnostic anywhere on disk. The log is
+                # per-job, beside the response, so a failure can be read after the fact.
+                job_log = (ch / f"simlog_{jid}.txt").open("wb")
                 proc = subprocess.Popen(["timeout", str(to + 120)] + argv2, cwd=str(ws),
-                                        env=_sim_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                        env=_sim_env(), stdout=job_log, stderr=subprocess.STDOUT)
                 running[jid] = {"proc": proc, "slot": slot, "resp_tmp": str(resp_tmp), "sim": sim,
-                                "promoted": bool(r.get("promoted"))}
+                                "promoted": bool(r.get("promoted")), "log": job_log}
                 claimed.add(jid)
         time.sleep(a.poll)
     # drain on STOP
