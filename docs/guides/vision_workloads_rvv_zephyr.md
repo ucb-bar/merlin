@@ -7,7 +7,7 @@ last_verified: 2026-08-04
 related: [tinyllama_int8_rvv_zephyr, model2mlir, rvv_e2e, zephyr, compilation_strategies]
 code_refs:
   - merlin/python/merlin/compile_cli.py
-  - merlin/python/merlin/rvvgen/apply.py
+  - merlin/python/merlin/mining/apply.py
   - merlin/python/merlin/llvmlower/frozen_blocks.py
   - merlin/python/merlin/llvmlower/impr_features.py
   - merlin/python/merlin/llvmlower/c_runtime.py

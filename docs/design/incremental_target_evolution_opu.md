@@ -16,7 +16,7 @@ code_refs:
   - merlin/python/merlin/llvmlower/impr_features.py
   - merlin/python/merlin/kernels/cca.py
   - merlin/python/merlin/kernels/cca_contract.py
-  - merlin/python/merlin/rvvgen/registry.py
+  - merlin/python/merlin/mining/registry.py
   - merlin/python/merlin/kernels/census.py
   - merlin/python/merlin/kernels/shapes.py
   - merlin/python/merlin/llvmlower/passes_quant_int.py
@@ -166,7 +166,7 @@ exact case — `merlin/python/merlin/llvmlower/custom_isa.py:1-21`:
 > `.insn` directive inside the inline asm … Standard rv64gcv needs none of this; it is the on-ramp
 > for Saturn custom instructions.
 
-So the OPU delta needs **no** LLVM change, and `rvvgen/registry.py:25`'s cflags allowlist already
+So the OPU delta needs **no** LLVM change, and `mining/registry.py:25`'s cflags allowlist already
 admits `-march` without code changes if one is ever wanted.
 
 ### 1.3 The historical failure is the acceptance bar

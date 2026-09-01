@@ -10,8 +10,8 @@ code_refs:
   - merlin/python/merlin/kernels/cca_contract.py
   - merlin/python/merlin/kernels/action_catalog.py
   - merlin/python/merlin/kernels/trace.py
-  - merlin/python/merlin/rvvgen/beam.py
-  - merlin/python/merlin/rvvgen/wholemodel_proposer.py
+  - merlin/python/merlin/mining/beam.py
+  - merlin/python/merlin/mining/wholemodel_proposer.py
   - merlin/python/merlin/llvmlower/op_profile.py
   - build_tools/scripts/run_autonomous_beam_experiment.py
 ---
@@ -114,7 +114,7 @@ number of additive passes (transpose fusion, self-copy erase, reduction, activat
 
 ## The beam engine
 
-`rvvgen/beam.run_beam` — generation by generation: propose → mint fork (`fork_from_action` /
+`mining/beam.run_beam` — generation by generation: propose → mint fork (`fork_from_action` /
 `wholemodel_proposer`) → certify (`runner.certify_rvv`) → rank → keep top-k → next depth (which
 *stacks* another lever onto a survivor).
 

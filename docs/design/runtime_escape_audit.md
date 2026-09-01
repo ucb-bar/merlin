@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-07-19
 related: [expert_gap_attribution, compiler_plane]
-code_refs: [merlin/python/merlin/kernels/escape_audit.py, merlin/python/merlin/rvvgen/escape_sweep.py, merlin/python/merlin/llvmlower/selfcopy.py, merlin/python/merlin/kernels/cca.py, build_tools/scripts/k1_escape_cost.py]
+code_refs: [merlin/python/merlin/kernels/escape_audit.py, merlin/python/merlin/mining/escape_sweep.py, merlin/python/merlin/llvmlower/selfcopy.py, merlin/python/merlin/kernels/cca.py, build_tools/scripts/k1_escape_cost.py]
 ---
 
 # Runtime escapes: making a whole defect CLASS visible
@@ -55,7 +55,7 @@ not be. When the enclosing spans do not form a containment chain the depth numbe
 
 ## What the sweep found
 
-`rvvgen/escape_sweep.py` fans the audit across {op} x {dtype} x {model} x {baseline, feature}. Over
+`mining/escape_sweep.py` fans the audit across {op} x {dtype} x {model} x {baseline, feature}. Over
 42 cells (7 ops x 2 dtypes, plus 7 whole models, each with and without `erase_self_copy`), all
 readable, no unknowns:
 

@@ -177,7 +177,7 @@ cannot be provisioned by a `git clone`. Set `MERLIN_K1_HOST=root@<board-ip>` and
 `spike rv64gcv` gives bit-exact RVV correctness (and cycle counts under the simulator); only the
 real-wall-clock speedup claims require the board, and those steps record `not_run` when it is absent.
 Board-SSH note: the campus path filters inbound `:22` to that segment, so the board also listens on
-**2222** and `.env` sets `MERLIN_K1_SSH_PORT=2222` (honored across all ssh/scp by `rvvgen/k1.py`); a
+**2222** and `.env` sets `MERLIN_K1_SSH_PORT=2222` (honored across all ssh/scp by `mining/k1.py`); a
 board that pings but hangs on `:22` is not down — use 2222.
 
 **Gemmini / Saturn / Muon simulators.** Gemmini functional (spike, L2) and RTL-cycle (verilator, L3)

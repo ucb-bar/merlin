@@ -67,11 +67,11 @@ flowchart TD
         F["ImprFeature registry<br/>edit_schedule / edit_pipeline hooks"]
     end
 
-    subgraph SEARCH["⑥ SEARCH — beam over knob/feature combinations (rvvgen/beam.py, autotune.py)"]
+    subgraph SEARCH["⑥ SEARCH — beam over knob/feature combinations (mining/beam.py, autotune.py)"]
         B["run_beam(): expand → certify → rank → keep top-k"]
     end
 
-    subgraph CERT["⑦ CERTIFY — K-ladder (rvvgen/runner.py)"]
+    subgraph CERT["⑦ CERTIFY — K-ladder (mining/runner.py)"]
         K["K0 load → K3 spike correctness (cos-gate) →<br/>K4 histogram → K5 K1 silicon → K6 Δ vs baseline"]
     end
 
@@ -85,7 +85,7 @@ flowchart TD
     LA --> D
     D --> AC --> F --> B --> K
     K -->|residual divergence| D
-    K -->|certified Δ| REPORT["evidence report<br/>(rvvgen/report.py, mine.py)"]
+    K -->|certified Δ| REPORT["evidence report<br/>(mining/report.py, mine.py)"]
 ```
 
 The dashed back-edge — *certified result → residual divergence → re-compare* — is the iterative
@@ -438,7 +438,7 @@ paired with residency); exhaustive 2^N over features is intractable. Beam search
 expert oracle rather than a raw scalar. It is also the natural fit for the iterative loop: each
 generation's residual divergences seed the next generation's proposals.
 
-### 5.2 The search (`rvvgen/beam.py::run_beam`)
+### 5.2 The search (`mining/beam.py::run_beam`)
 
 ```python
 def run_beam(seed_pkg, model_dir, curated_text, op_key, *, runs_root,
@@ -543,7 +543,7 @@ flowchart LR
   same outputs. This is the auditable spine.
 - **Proposer is pluggable.** The default `kernels/rvv_knobs.py::propose_forks` is a deterministic
   **gap-router**: a divergence key → a fixed list of levers (e.g. "lmul_class" → widen-N knob). The
-  **optional** `rvvgen/tuning_agent.py::propose_forks_llm` renders a versioned prompt from the
+  **optional** `mining/tuning_agent.py::propose_forks_llm` renders a versioned prompt from the
   divergences + knobs, calls `common.llm.complete` (its only tool), parses JSON proposals — and then
   **every override is clamped against `_KNOWN_OVERRIDE_KEYS`; unknown keys are dropped and noted.**
   No LLM output reaches the compiler unvalidated. Both proposers emit the identical `ForkProposal`
@@ -643,15 +643,15 @@ artifact. And the iterative loop has twice corrected a *human* hypothesis with a
 | Typed action catalog | `kernels/action_catalog.py` |
 | Default-off feature registry | `llvmlower/impr_features.py` |
 | Pipeline / schedule seams | `llvmlower/pipeline.py` (`build_rvv_pipeline(features=)`, `lower_to_llvm_ir`) |
-| Fork minting + lineage | `rvvgen/fork.py`, `rvvgen/from_strategy.py` |
-| Apply / threading | `rvvgen/apply.py`, `runtime/backends/zephyr_model.py::build_app` |
-| Beam (knob merge) | `rvvgen/beam.py` |
-| Beam (feature extension, K1-ranked) | `rvvgen/autotune.py` |
+| Fork minting + lineage | `mining/fork.py`, `mining/from_strategy.py` |
+| Apply / threading | `mining/apply.py`, `runtime/backends/zephyr_model.py::build_app` |
+| Beam (knob merge) | `mining/beam.py` |
+| Beam (feature extension, K1-ranked) | `mining/autotune.py` |
 | Deterministic proposer (gap-router) | `kernels/rvv_knobs.py` |
-| Optional LLM proposer | `rvvgen/tuning_agent.py` |
-| K-ladder certification | `rvvgen/runner.py` |
-| Ranking / sweep | `rvvgen/sweep.py` |
-| Evidence report / driver | `rvvgen/report.py`, `rvvgen/mine.py` |
+| Optional LLM proposer | `mining/tuning_agent.py` |
+| K-ladder certification | `mining/runner.py` |
+| Ranking / sweep | `mining/sweep.py` |
+| Evidence report / driver | `mining/report.py`, `mining/mine.py` |
 | Gemmini targetgen agent | `targetgen/agent/`, `targetgen/rocc/decode.py` |
 | Tests | `tests/test_decode_rvv.py`, `test_cca.py`, `test_action_catalog.py`, `test_impr_features.py`, `test_rvv_beam.py`, `test_tuning_agent.py`, `test_rvv_runner.py` |
 
@@ -854,8 +854,8 @@ certified scores. There are two engines, used for two questions:
 
 | Engine | File | A node is a… | Ranked by | Answers |
 |---|---|---|---|---|
-| **knob-merge beam** | `rvvgen/beam.py::run_beam` | knob dict (tile/vector/contraction-strategy/patterns) | lexicographic *toward the expert* (spike) | "which schedule knobs close the structural gap to the expert kernel" |
-| **feature-set beam** | `rvvgen/autotune.py::beam_search` | `frozenset` of `impr_features` names | measured **K1 wall-time** | "which combination of mined features is fastest on real silicon" |
+| **knob-merge beam** | `mining/beam.py::run_beam` | knob dict (tile/vector/contraction-strategy/patterns) | lexicographic *toward the expert* (spike) | "which schedule knobs close the structural gap to the expert kernel" |
+| **feature-set beam** | `mining/autotune.py::beam_search` | `frozenset` of `impr_features` names | measured **K1 wall-time** | "which combination of mined features is fastest on real silicon" |
 
 Both exist because the loop has two phases: the knob-merge beam drives the *structural* search
 (match the expert's fingerprint on spike, where instruction-count is the proxy); the feature-set beam
@@ -867,7 +867,7 @@ drives the *performance* search (rank real silicon wall-time once features exist
   `knobs.yaml`, `manifest.yaml`. Every search starts here and **never edits it**.
 - **The feature registry** `llvmlower/impr_features.py` — the default-off features a node may enable.
 - **The route table** `kernels/rvv_knobs.py::_ROUTES` — divergence-key → lever(s) (the deterministic
-  proposer). Optional alternative: the LLM proposer `rvvgen/tuning_agent.py`.
+  proposer). Optional alternative: the LLM proposer `mining/tuning_agent.py`.
 - **The expert fingerprint** — `curated_text` (the expert kernel source/fingerprint) for the
   structural score, and the mined `expert_cca.yaml` from a `mining_rvv_v*` run for the divergences.
 - **The model workload** `model_dir` (a captured model slice + `golden.npy`) — fixed across the search.
@@ -885,7 +885,7 @@ baseline is never mutated, only forked.
 
 ### 12.4 Scoring and pruning — exact code
 
-Lexicographic, correctness-dominant (`rvvgen/sweep.py::rank_results`):
+Lexicographic, correctness-dominant (`mining/sweep.py::rank_results`):
 
 ```python
 def key(n):
@@ -896,7 +896,7 @@ def key(n):
 return sorted(scored, key=key, reverse=True)
 ```
 
-Pruning (`rvvgen/beam.py`, per generation `d`): expand each parent into ≤`width` forks (default 3),
+Pruning (`mining/beam.py`, per generation `d`): expand each parent into ≤`width` forks (default 3),
 certify all in parallel, then `survivors = [n for n in rank_results(gen) if n["gate_ok"]][:top_k]`
 (default `top_k=2`). **An incorrect node can never survive** (gate dominates), and the beam stops if a
 generation yields no correct survivors. `structural_match` pulls survivors *toward the expert's
@@ -905,12 +905,12 @@ shape rather than on whatever happens to retire fewest spike instructions.
 
 ### 12.5 How beams combine — the two merge mechanisms
 
-1. **Implicit knob merge** (`rvvgen/from_strategy.py::mint_fork`): a child *deep-copies the parent's
+1. **Implicit knob merge** (`mining/from_strategy.py::mint_fork`): a child *deep-copies the parent's
    whole knob dict* and `knobs.update(overrides)` — so it inherits everything the parent had plus one
    new lever. A depth-2 winner is literally `seed → (widen N) → (widen N + outerproduct)`; beneficial
    knob **combinations** are discovered by depth traversal, no set algebra.
 
-2. **Explicit feature-set union** (`rvvgen/autotune.py::beam_search`): a survivor with features
+2. **Explicit feature-set union** (`mining/autotune.py::beam_search`): a survivor with features
    `{A,B}` spawns `{A,B,C}, {A,B,D}, …` (one feature added per step), all re-benchmarked, top-`width`
    kept:
 
@@ -935,7 +935,7 @@ The beam is deterministic by default; the proposer is the **one** pluggable seam
 
 - **Default — deterministic gap-router** (`kernels/rvv_knobs.py::propose_forks`): divergence key →
   fixed lever list. Same divergences ⇒ same proposals.
-- **Optional — LLM proposer** (`rvvgen/tuning_agent.py::propose_forks_llm`): renders a versioned
+- **Optional — LLM proposer** (`mining/tuning_agent.py::propose_forks_llm`): renders a versioned
   prompt from the divergences + knobs, calls `common.llm.complete` (its only tool), parses JSON
   proposals — **then every override is clamped against `_KNOWN_OVERRIDE_KEYS`; unknown keys are
   dropped and noted.** No LLM output reaches the compiler unvalidated, and both proposers emit the
@@ -1077,7 +1077,7 @@ lever was retired as structurally inapplicable to small-M VLA matmuls rather tha
 
 ### 14.2 How a fork is applied (the seam)
 
-The fork's `compiler_features` thread through one entry point — `rvvgen/apply.py::apply_rvv_package`:
+The fork's `compiler_features` thread through one entry point — `mining/apply.py::apply_rvv_package`:
 
 ```python
 return zm.build_app(model_dir, work, board=board, backend="rvv",

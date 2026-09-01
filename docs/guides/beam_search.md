@@ -6,12 +6,12 @@ owner: rvvgen
 last_verified: 2026-07-22
 related: [getting_started, reproducibility, kernel_mining, rvv_e2e, adding_a_target, dse_guidance]
 code_refs:
-  - merlin/python/merlin/rvvgen/beam.py
-  - merlin/python/merlin/rvvgen/beam_cli.py
-  - merlin/python/merlin/rvvgen/wholemodel_proposer.py
-  - merlin/python/merlin/rvvgen/fork_from_action.py
-  - merlin/python/merlin/rvvgen/runner.py
-  - merlin/python/merlin/rvvgen/k1.py
+  - merlin/python/merlin/mining/beam.py
+  - merlin/python/merlin/mining/beam_cli.py
+  - merlin/python/merlin/mining/wholemodel_proposer.py
+  - merlin/python/merlin/mining/fork_from_action.py
+  - merlin/python/merlin/mining/runner.py
+  - merlin/python/merlin/mining/k1.py
   - merlin/python/merlin/kernels/action_catalog.py
   - merlin/python/merlin/targetgen/publish.py
   - build_tools/scripts/rvv_chia_beam.py
@@ -45,12 +45,12 @@ is credited only when the gate passes and the measurement is real K1 silicon —
 |---|---|---|
 | frozen control | `out/artifacts/targets/rvv/hand_v0/` | the hand-authored, UNoptimized baseline the beam forks FROM and measures AGAINST. Never modified (guarded by `test_impr_features`; the beam asserts it byte-unchanged pre/post). |
 | expert CCA | `kernels/cca.lift_asm` + `kernels/decode/rvv` | deterministically lifts the CCA (compute/vector/memory facets) from a decoded expert objdump. **No LLM authors it.** |
-| proposer | `rvvgen/fork_from_action.propose_forks_from_cca` | routes each CCA divergence through `kernels/action_catalog` to a concrete fork (a knob/feature override) or an honest deferred work-item. |
-| certify | `rvvgen/runner.certify_rvv` | builds one fork, runs the K-ladder (K2 build, K3 spike correctness, K5 K1 build+run, K6 speedup), gates on cos/rel. K1 cos-vs-golden is the correctness gate when spike is absent. |
-| engine | `rvvgen/beam.run_beam` | gen-by-gen: propose → mint fork → certify → rank on **real K1 speedup** → keep top-k → escalate unmet promises → next gen. Writes `beam_tree.yaml`. |
+| proposer | `mining/fork_from_action.propose_forks_from_cca` | routes each CCA divergence through `kernels/action_catalog` to a concrete fork (a knob/feature override) or an honest deferred work-item. |
+| certify | `mining/runner.certify_rvv` | builds one fork, runs the K-ladder (K2 build, K3 spike correctness, K5 K1 build+run, K6 speedup), gates on cos/rel. K1 cos-vs-golden is the correctness gate when spike is absent. |
+| engine | `mining/beam.run_beam` | gen-by-gen: propose → mint fork → certify → rank on **real K1 speedup** → keep top-k → escalate unmet promises → next gen. Writes `beam_tree.yaml`. |
 | escalation | `beam._escalations` + `action_catalog.route_escalated` | when a fork's asm did NOT achieve its promised facet, route the next-stronger class (knob → heuristic → pass → codegen). |
-| orchestration | `rvvgen/beam_cli` (`merlin-rvv-beam`) | aet-instruments the beam (parent run + one child `summary_metrics.json` per fork) and serializes the board. |
-| board lock | `rvvgen/k1.board_lock` | a host-wide file `flock` — serializes physical-board access across ALL processes/sessions (concurrent beams, other users). |
+| orchestration | `mining/beam_cli` (`merlin-rvv-beam`) | aet-instruments the beam (parent run + one child `summary_metrics.json` per fork) and serializes the board. |
+| board lock | `mining/k1.board_lock` | a host-wide file `flock` — serializes physical-board access across ALL processes/sessions (concurrent beams, other users). |
 | publishing | `targetgen/publish` (`merlin-target-publish`) | branch-per-version: the frozen baseline → `baseline` branch, each certified champion → `stable/<pkg>`. Verified against a local `file://` remote; no GitHub push. |
 
 ## Reproduce a run
@@ -70,7 +70,7 @@ first, then `check_repro_env.py` to see what is runnable here.
   `xnnpack_f32_gemm_rvv.objdump`); whole-model cells also need capture bundles under
   `out/artifacts/recaptures/` (see [model2MLIR frontend](model2mlir.md)) and per-dtype expert fixtures.
 - **Required — a measurement substrate.** The board path (`k1_board`) needs the K1 reachable —
-  `MERLIN_K1_HOST`, `MERLIN_K1_SSH_KEY`, `MERLIN_K1_TOOLCHAIN` (see `rvvgen/k1.py`); check with
+  `MERLIN_K1_HOST`, `MERLIN_K1_SSH_KEY`, `MERLIN_K1_TOOLCHAIN` (see `mining/k1.py`); check with
   `.venv/bin/python -c "from merlin.rvvgen import k1; print(k1.available())"`. **The physical K1 board
   is not fresh-machine reproducible** (see [Getting started §5](getting_started.md), incl. the SSH
   port-2222 note); **spike rv64gcv is the correctness/cycles fallback** — only the real-wall-clock

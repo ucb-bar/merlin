@@ -11,7 +11,7 @@ code_refs:
   - merlin/python/merlin/runtime/backends/zephyr_model.py
   - merlin/runtime/c/libomp_zephyr.c
   - merlin/runtime/c/omp_static_schedule.h
-  - merlin/python/merlin/rvvgen/k1.py
+  - merlin/python/merlin/mining/k1.py
   - merlin/python/merlin/targetgen/publish.py
   - build_tools/scripts/k1_multicore_scaling.py
   - build_tools/scripts/check_repro_env.py

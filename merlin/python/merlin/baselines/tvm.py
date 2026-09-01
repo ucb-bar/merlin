@@ -247,7 +247,11 @@ try:
     emit(stage="torch_imported", torch=torch.__version__)
 
     # 1. Reproduce the seeded capture instance (== workloads/capture_consistent.py).
-    workloads = os.path.join(os.environ["MERLIN_MODEL2MLIR"], "workloads")
+    # BOTH spellings: `.env` sets MERLIN_M2M_DIR, this module was written against MERLIN_MODEL2MLIR.
+    # `bundle.m2m_root()` is the one resolver that already accepts either (plus the .env file itself),
+    # so reading os.environ directly here is what turned a configured checkout into a bare KeyError.
+    from .bundle import model2mlir_root
+    workloads = os.path.join(str(model2mlir_root()), "workloads")
     sys.path.insert(0, os.path.join(workloads, model))
     sys.path.insert(0, workloads)
     from loader import get_model_and_inputs  # type: ignore

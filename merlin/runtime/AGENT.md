@@ -15,9 +15,11 @@ compiled model via its MLIR C-runtime interface. Hand-authored source (cannot be
 - Target-specific codegen (that's a target/backend concern). Compiled objects/ELFs → `build/`.
 
 ## Used by
-`merlin.runtime.backends.{spike_model,zephyr_model}`, `merlin.rvvgen.k1`, `merlin.baselines.buddy`.
+`merlin.runtime.backends.{spike_model,zephyr_model}`, `merlin.mining.k1`, `merlin.baselines.buddy`.
 
 ## Notes
-`c/{merlin_hal.h,hal_linux.c,hal_baremetal_spike.c}` are **untracked** forward-scaffolding for a
-not-yet-built lean replay runtime (`merlin_program.c`); they are not wired in yet — do not treat as
-live code. Every subdirectory has an AGENT.md.
+`c/{merlin_hal.h,hal_linux.c,hal_baremetal_spike.c}` are **tracked** (`git ls-files merlin/runtime/c`)
+forward-scaffolding for a not-yet-built lean replay runtime; they are not wired in yet — do not treat
+as live code. Note the runtime they scaffold for, `merlin_program.c`, does **not exist** in the tree
+despite being named as a consumer in three docstrings; `xdsl_dialects/lowering/arena_plan.py` says so
+in its own header. Every subdirectory has an AGENT.md.

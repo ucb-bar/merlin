@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-07-19
 related: [expert_gap_attribution]
-code_refs: [build_tools/scripts/k1_codegen_vs_handc.py, merlin/python/merlin/rvvgen/k1.py, merlin/python/merlin/llvmlower/impr_features.py, merlin/runtime/backends/ours_board/ours_gemm_rvv_shim.c]
+code_refs: [build_tools/scripts/k1_codegen_vs_handc.py, merlin/python/merlin/mining/k1.py, merlin/python/merlin/llvmlower/impr_features.py, merlin/runtime/backends/ours_board/ours_gemm_rvv_shim.c]
 ---
 
 # Where the whole-model codegen-vs-hand-C gap lives

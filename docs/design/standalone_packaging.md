@@ -42,7 +42,7 @@ The wheel is **not** standalone today. Two independent facts cause it:
   verilator, riscv-gcc, VCS, the K1 board, XNNPACK/OpenBLAS/Saturn checkouts, m2m, clang,
   mlir-translate, Muon (VCS/cyclotron), ModelBlaster — every one reads a `MERLIN_*` env var with a
   default (see `runtime/backends/{gemmini,spike,muon,zephyr_model,vcs}.py`, `llvmlower/toolchain.py`,
-  `rvvgen/k1.py`, `kernels/build_asm.py`). They fail gracefully at *use* time if unset, so a
+  `mining/k1.py`, `kernels/build_asm.py`). They fail gracefully at *use* time if unset, so a
   standalone install imports fine and the CLIs that don't touch them work. Leave these as-is;
   document them as optional extras.
 - **Output dirs are a separate, smaller problem.** Many sites write to `repo_root()/artifacts|tmp|build`
@@ -65,7 +65,7 @@ argument for a single central resolver.
 | Data class | Representative call sites (file:line) | Reaches | Env override? |
 |---|---|---|---|
 | **schemas** | `common/schemas.py:33` (`parents[3]/"schemas"`); `common/paths.py:32` (`schemas_dir`) | `merlin/schemas/*.schema.yaml` | ✅ `MERLIN_SCHEMAS_DIR` |
-| **prompts** | `kernels/agent_mine.py:26`; `rvvgen/tuning_agent.py:29` (`parents[3]/"prompts"`) | `merlin/prompts/*.md` | ❌ none |
+| **prompts** | `kernels/agent_mine.py:26`; `mining/tuning_agent.py:29` (`parents[3]/"prompts"`) | `merlin/prompts/*.md` | ❌ none |
 | **benchmarks** | `kernels/validate.py:26`; `design_pressure/cli.py:36`; `dse_guidance/{loader,study,case_study,cli,…}.py` (many, via `merlin_dir()/"benchmarks"`) | `merlin/benchmarks/**` | ⚠️ partial — `MERLIN_BENCH_DIR` only in `kernels/validate.py:23`; dse_guidance/design_pressure ignore it |
 | **targets/contracts** | `targetgen/synthesize/{dialect_plan.py:72,target_contract.py:100}` (`targets_dir()`); `xdsl_dialects/lowering/{pipeline.py:34,target_lowering.py:52}` (`parents[5]`) | `merlin/targets/<t>/contracts/**` | ❌ none (`targets_dir()` has no env) |
 | **contract ABI** | `targetgen/contract/{schemas.py:16,31; toolchain.py:17}`; `targetgen/oot_starterkit/cmdbuf.py:13` | `merlin/contract/**` | ✅ `MERLIN_CONTRACT_DIR` |
@@ -76,14 +76,14 @@ argument for a single central resolver.
 
 `llvmlower/toolchain.py:17,22,29,36` (m2m/clang/mlir-translate); `runtime/backends/gemmini.py:46-76`,
 `spike.py:39-50`, `muon.py:68-106`, `zephyr_model.py:100,619`, `vcs.py:21`;
-`kernels/build_asm.py:173-219`; `rvvgen/k1.py:27-65`; `cost_model/calibrate.py:39`;
+`kernels/build_asm.py:173-219`; `mining/k1.py:27-65`; `cost_model/calibrate.py:39`;
 `targetgen/rtl/muon_introspect.py:30-34`. All have `MERLIN_*` defaults; document as optional extras.
 
 ### 1c. Output writes — Phase P4, not a hard blocker
 
 `common/artifacts.py:238,314,334,346`; `dse/{cli,experiment,calibrate_npu}.py`;
 `dse_guidance/cli.py`; `design_pressure/{cli,synthesize}.py`; `plotting/plot_paper_style.py:21`;
-`rvvgen/autotune.py:98,153` — all under `repo_root()/{artifacts,tmp,build}`. Redirectable today via
+`mining/autotune.py:98,153` — all under `repo_root()/{artifacts,tmp,build}`. Redirectable today via
 `MERLIN_REPO_ROOT`; give it a clearer work-dir story in P4.
 
 ## 2. The packaging wrinkle: data lives OUTSIDE the package root
@@ -134,7 +134,7 @@ Then migrate the **1a** call sites to `data_path(...)` (or the class-specific `s
 `prompts_dir()` / `contract_dir()` wrappers that call it). Grouped work:
 
 - **schemas** (2 sites): `common/schemas.py:33`, keep `MERLIN_SCHEMAS_DIR` first.
-- **prompts** (2): `kernels/agent_mine.py:26`, `rvvgen/tuning_agent.py:29` → new `prompts_dir()`.
+- **prompts** (2): `kernels/agent_mine.py:26`, `mining/tuning_agent.py:29` → new `prompts_dir()`.
 - **benchmarks** (~15, mostly `dse_guidance/*`): route all through one `bench_dir()` that honors
   `MERLIN_BENCH_DIR` (fixes the partial-override gap), then `data_path`/repo fallback.
 - **contract** (3): already has `MERLIN_CONTRACT_DIR`; add `data_path` fallback.
@@ -142,12 +142,12 @@ Then migrate the **1a** call sites to `data_path(...)` (or the class-specific `s
   clear "requires the `[targets]`/`[board]` data or a repo checkout" error.
 
 Retire the ad-hoc `parents[N]` / private `_REPO` / `_repo_root()` duplicates
-(`compare/{driver,empirical,structural}.py`, `rvvgen/{mine,autotune,k1}.py`, `targetgen/rtl/*`,
+(`compare/{driver,empirical,structural}.py`, `mining/{mine,autotune,k1}.py`, `targetgen/rtl/*`,
 `kernels/decode/objdump.py`, …) in favor of the single resolver so future moves can't rebreak them.
 
 ## 5. The hard part — runtime C compiled at use time
 
-`llvmlower/codegen.py`, `runtime/backends/{spike_model,zephyr_model}.py`, `rvvgen/k1.py`, and
+`llvmlower/codegen.py`, `runtime/backends/{spike_model,zephyr_model}.py`, `mining/k1.py`, and
 `kernels/ceiling_drivers/multishape_compare.py` **compile `merlin/runtime/{c,abi}/*.c` at runtime**.
 Bundling the sources as package data is necessary but not sufficient — the compile step reads them by
 path. Approach: resolve via `data_path("runtime","c",...)`, and when running from a wheel, copy the

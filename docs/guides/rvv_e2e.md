@@ -11,7 +11,7 @@ code_refs:
   - merlin/python/merlin/llvmlower/pipeline.py
   - merlin/python/merlin/llvmlower/passes_quant_int.py
   - merlin/python/merlin/runtime/backends/spike.py
-  - merlin/python/merlin/rvvgen/k1.py
+  - merlin/python/merlin/mining/k1.py
   - merlin/tests/rvv/test_rvv_spike.py
   - merlin/tests/rvv/test_smolvla_rvv.py
   - merlin/tests/rvv/test_vla_models_rvv.py
@@ -120,7 +120,7 @@ governs cleanly).
 
 ## 4. Verify on the real K1 board (optional, cycle truth)
 
-The K1 backend (`rvvgen/k1.py`) cross-compiles the kernel (`-march=rv64gcv -mabi=lp64d`, VLEN=256,
+The K1 backend (`mining/k1.py`) cross-compiles the kernel (`-march=rv64gcv -mabi=lp64d`, VLEN=256,
 glibc Linux userspace), scp's it, and runs it over SSH — cycle counts via `rdtime`. It is **fail-closed**:
 `k1.available()` is False (→ rung `not_run`, never a false pass) unless `MERLIN_K1_HOST` is set and the
 board is reachable.

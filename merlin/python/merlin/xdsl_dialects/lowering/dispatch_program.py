@@ -26,12 +26,14 @@ from typing import Any
 from .._common import HAS_XDSL
 from .outline import OutlineError, OutlineResult, outline_dispatches
 
-# Driver-side glue ops the runtime can evaluate directly (not compiled kernels).
-VIEW_OPS = (
-    "tensor.extract_slice", "tensor.insert_slice", "tensor.expand_shape",
-    "tensor.collapse_shape", "tensor.cast", "tensor.empty", "tensor.extract",
-    "tensor.from_elements", "tensor.pad", "arith.constant",
-)
+# NOTE: a `VIEW_OPS` tuple used to sit here, claiming to name "driver-side glue ops the runtime can
+# evaluate directly". Nothing imported it, and it was WRONG in both directions against the only
+# authority on the question -- `runtime.dispatch_runtime._eval_view`, which is the code that actually
+# evaluates them. It listed tensor.extract_slice / insert_slice / cast / extract / from_elements, none
+# of which _eval_view handles, and omitted linalg.fill / tensor.concat / tensor.splat, which it does.
+# An unused constant that misstates a fact is worse than no constant: the next reader treats it as the
+# spec. Deleted rather than corrected, because there is no second copy of this list to keep in sync --
+# ask `_eval_view`.
 
 
 @dataclass
