@@ -235,6 +235,42 @@ def perop_nr_cap(vlen: int | None) -> int:
     return _PEROP_NR_CAP * (int(vlen) // _PEROP_NR_CAP_REF_VLEN)
 
 
+#: M-tile cap for a per-op register block. NOT the same kind of number as the NR cap above: NR is a
+#: LANE count (a vector-length question), MR is an ACCUMULATOR-ROW count (a register-file question) --
+#: MR rows of NR lanes must sit in registers across the whole K loop, so MR is bounded by pressure, not
+#: by VLEN. 4 is the point this repo has measured end to end, so it is the point offered here.
+#:
+#: ``perop_blocks.DEFAULT_MR`` is 1 and stays 1 -- it is the module default for callers that pass no
+#: cap. The reason IT gives for pinning 1 (at MR>1 the A column is rebuilt with a vmv/vslideup lane
+#: ladder) was TRUE and is now FIXED: ``accum_microkernel`` admits the integer element types and sinks
+#: integer widenings below the lane extract, so int8 MR>1 reaches ``vwmacc.vx`` from a scalar (measured:
+#: ``vrgather.vi`` 4 -> 0, ``vmacc.vv`` -> ``vwmacc.vx``). A SECOND defect then hid the win -- the
+#: per-tile ``@memrefCopy`` self-copy, worth 187,520 instructions at 64^3 in BOTH dtypes -- and that is
+#: now implied by every MR>1 recipe (``impr_features._tile_epilogue_hygiene``).
+#:
+#: With both fixed, MEASURED on the live K1 (VLEN=256, 128^3, interleaved same-session arms, n=3 x 5
+#: iterations, min-of-n, cos-gated) -- per-op MR=1 vs MR=4 on the same lowering:
+#:
+#:   f32   3,783,252 -> 1,181,928 cyc   2,388,555 -> 746,588 ns   3.20x   cos 1.000000
+#:   int8  1,930,566 -> 1,223,376 cyc   1,219,091 -> 772,504 ns   1.58x   cos 0.999959 (both arms)
+#:
+#: Both are far outside the board's 2.6% noise band. Raising the cap does not FORCE MR=4 anywhere:
+#: ``from_strategy._rvv_best_block`` treats it as an upper bound and returns only a divisor of the
+#: observed gcd(M) that its lowering predicate accepts, so a shape with no clean M-tile still gets
+#: MR=1. That is why this is a cap and not a pin.
+_PEROP_MR_CAP = 4
+
+
+def perop_mr_cap() -> int:
+    """The M-tile cap offered to the per-op block policy.
+
+    Deliberately takes no ``vlen``: MR is a register-file bound, not a vector-length one, so unlike
+    :func:`perop_nr_cap` there is nothing about the board's width to scale by. See the measurements on
+    :data:`_PEROP_MR_CAP`.
+    """
+    return _PEROP_MR_CAP
+
+
 _PEROP_KC = 16
 
 DEFAULT_RAM_BYTES = 256 * 1024 * 1024   # spike/chipyard `ram0` default (0x10000000)
@@ -546,7 +582,14 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # The N-tile cap follows the board's vector length: a fixed element count on a wider unit
         # is spent as a smaller LMUL rather than as more work per instruction (measured: the same
         # model emitted e8,m1 at VLEN=128 and e8,mf4 -- a quarter of a register -- at VLEN=512).
-        table = _pb.block_table(_cshapes(prepared), nr_cap=perop_nr_cap(vlen), harts=harts)
+        # `vlen=` also lets each contraction's N cap be widened for ITS OWN narrowest element width:
+        # NR is an element count, so 16 elements is LMUL m2 at e32 but only mf2 -- half a register --
+        # at e8, which is the waste `perop_nr_cap`'s docstring documents and cannot itself fix (it
+        # scales with VLEN, and the element width was discarded before it could be seen). Measured
+        # effect on the block tables of the models on disk: MAC-weighted NR 16.00 -> 32.00 on every
+        # int8 model, and UNCHANGED on fp32 -- see perop_blocks.nr_cap_for_dtypes.
+        table = _pb.block_table(_cshapes(prepared), mr_cap=perop_mr_cap(),
+                                nr_cap=perop_nr_cap(vlen), harts=harts, vlen=vlen)
         if table:
             prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
             features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}
@@ -756,7 +799,7 @@ extern const unsigned char _binary_weights_bin_start[];
 #define MERLIN_WARMUP {warmup}
 #define MERLIN_BUILD_HASH "{build_hash}"
 
-static float OUT[MERLIN_OUT_ELEMS];
+#define OUT ((float *)MERLIN_OUTPUT_PTR[0])
 static merlin_descriptor_t DESCS[MERLIN_N_ARGS];
 
 K_THREAD_STACK_DEFINE(merlin_worker_stack, MERLIN_WORKER_STACK);
@@ -813,15 +856,33 @@ static void merlin_worker(void *a, void *b, void *c) {{
    * the pool; only the MERLIN_ITERS runs after them are reported. Every iteration reuses
    * the same arena and output buffer, so a steady-state drift in iter_cycles is real
    * (allocator churn / leak), not measurement setup. */
+  merlin_reset_session();
   for (int w = 0; w < MERLIN_WARMUP; w++) {{
-    merlin_run(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_WEIGHTS_BASE,
-               MERLIN_INPUT_PTR, OUT, DESCS);
+    merlin_prepare_step(w);
+    merlin_run_multi(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_WEIGHTS_BASE,
+                     MERLIN_INPUT_PTR, MERLIN_OUTPUT_PTR, DESCS);
+#if MERLIN_N_STATE_PAIRS > 0
+    if (merlin_commit_state(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_INPUT_PTR,
+                            MERLIN_OUTPUT_PTR, MERLIN_N_STATE_PAIRS,
+                            MERLIN_STATE_INPUT_ARGS, MERLIN_STATE_OUTPUT_INDICES) != 0) {{
+      printk("FAIL state ABI mismatch during warmup\n"); k_sem_give(&merlin_done); return;
+    }}
+#endif
   }}
+  merlin_reset_session();
 {dbg.pre_run}  uint64_t c0 = rd_mcycle();
   for (int it = 0; it < MERLIN_ITERS; it++) {{
     uint64_t i0 = rd_mcycle();
-    merlin_run(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_WEIGHTS_BASE,
-               MERLIN_INPUT_PTR, OUT, DESCS);
+    merlin_prepare_step(it);
+    merlin_run_multi(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_WEIGHTS_BASE,
+                     MERLIN_INPUT_PTR, MERLIN_OUTPUT_PTR, DESCS);
+#if MERLIN_N_STATE_PAIRS > 0
+    if (merlin_commit_state(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_INPUT_PTR,
+                            MERLIN_OUTPUT_PTR, MERLIN_N_STATE_PAIRS,
+                            MERLIN_STATE_INPUT_ARGS, MERLIN_STATE_OUTPUT_INDICES) != 0) {{
+      printk("FAIL state ABI mismatch during timed session\n"); k_sem_give(&merlin_done); return;
+    }}
+#endif
     uint64_t i1 = rd_mcycle();
     printk("METRIC iter_cycles %d %llu\\n", it, (unsigned long long)(i1 - i0));
   }}
@@ -1859,11 +1920,15 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
     metrics, argmax, sumval = {}, None, None
     out_hash: dict[str, Any] | None = None
     iter_cycles: list[int] = []
+    iter_wall_ns: list[int] = []
+    stage_wall_ns: dict[str, list[int]] = {}
     for l in console.splitlines():
         if l.startswith("METRIC "):
             parts = l.split()
             if parts[1] == "iter_cycles":       # METRIC iter_cycles <i> <cycles>
                 iter_cycles.append(int(parts[3]))
+            elif parts[1] == "iter_wall_ns":    # K1: METRIC iter_wall_ns <i> <ns>
+                iter_wall_ns.append(int(parts[3]))
             else:
                 # Most metrics are counters, but not all: `build_hash` is a hex identity string. A
                 # parser that assumes int() crashes on the first non-numeric metric and takes the whole
@@ -1893,6 +1958,18 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
             p_ = l.split()
             if len(p_) >= 4:
                 out_hash = {"algo": p_[1], "elems": int(p_[2]), "value": int(p_[3]) & 0xFFFFFFFF}
+        elif l.startswith("STAGE "):
+            # K1 multi-program protocol: STAGE <session-repeat> <program> <wall-ns>.
+            # Keep the repeat index structural: missing/duplicate rows are evidence of an invalid
+            # diagnostic series, not values that should be silently packed into a shorter list.
+            p_ = l.split()
+            if len(p_) == 4:
+                repeat, name, value = int(p_[1]), p_[2], int(p_[3])
+                values = stage_wall_ns.setdefault(name, [])
+                if repeat != len(values):
+                    raise ZephyrModelError(
+                        f"non-contiguous STAGE series for {name}: expected {len(values)}, got {repeat}")
+                values.append(value)
     res = {"outputs": flat, "prefix": flat, "argmax": argmax, "sum": sumval,
            "metrics": metrics, "console": console}
     if out_hash is not None:
@@ -1907,6 +1984,11 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
     if iter_cycles:
         res["iter_cycles"] = iter_cycles
         res["sustained"] = _sustained_stats(iter_cycles)
+    if iter_wall_ns:
+        res["iter_wall_ns"] = iter_wall_ns
+        res["sustained_wall_ns"] = _sustained_stats(iter_wall_ns)
+    if stage_wall_ns:
+        res["stage_wall_ns"] = stage_wall_ns
     return res
 
 

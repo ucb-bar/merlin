@@ -453,13 +453,22 @@ _RVV_ROUTES: list[_Route] = [
         # ours leaves a contraction class unclaimed; an expert claims every class it computes.
         when=lambda d: bool(d.ours) and not d.expert,
         action_class="PASS",
-        target_seam="impr_features:per_op_register_block (tag each contraction, match by attribute)",
+        target_seam="impr_features:perop_register_block (tag each contraction, match by attribute)",
         change="choose the register block PER CONTRACTION instead of per op class: a pre-pass tags each "
                "contraction with the largest block legal for ITS OWN extents and the schedule emits one "
                "tile+vectorize arm per distinct block, matched by attribute (the "
                "transform.structured.match attributes{...} form the elementwise arms already use). "
                "Today one degenerate extent in a class forces the whole class off the vector path.",
-        forkable_now=False,
+        # WAS forkable_now=False as a deferred work-item; that is stale documentation, not a blocker.
+        # The machinery is wired end to end: `llvmlower/perop_blocks.block_table` derives the table from
+        # the PREPARED IR, `tag_prepared_mlir` tags it, and `zephyr_model.prepare_for_lowering` swaps
+        # the sentinel for the concrete `ensure_perop_block` feature. What was actually broken
+        # was this line's SEAM NAME: it read `per_op_register_block`, and the sentinel is
+        # `perop_register_block` -- `fork_from_action` splits the seam and puts that string straight into
+        # `compiler_features`, so a fork minted from this route died with "unknown impr feature" instead
+        # of running. A dead seam string and a False flag are the same failure wearing two hats, and the
+        # honesty test in merlin/tests/kernels/test_action_catalog.py now fails the build on either.
+        forkable_now=True,
         expected_effect="every contraction is vectorized at its own legal width instead of the class "
                         "being clamped by its smallest member — measured loss on whisper_tiny: its N=1 "
                         "decode step drops the 1500-wide encoder attention to scalar, 34% of all MACs",

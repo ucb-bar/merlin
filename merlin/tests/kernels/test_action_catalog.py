@@ -1,6 +1,7 @@
 """R4: CCA divergences -> typed compiler-action catalog (FLAG/HEURISTIC/PASS/KNOB)."""
 from __future__ import annotations
 
+from merlin.common.paths import repo_root
 from merlin.kernels import action_catalog as ac
 from merlin.kernels import cca, cca_compare
 
@@ -302,3 +303,77 @@ class TestAnUnverifiableActionIsNotAnAchievedOne:
                          correctness_ok=True, speedup=1.2)
         assert step.achieved is True and step.promise_checkable is True
         assert "closed" in step.to_line()
+
+
+# ---------------------------------------------------------------------------------------
+# Seam honesty. A route's `target_seam` is not documentation: `mining/fork_from_action`
+# splits an `impr_features:` seam and puts the resulting string STRAIGHT into
+# `compiler_features`. So a seam naming something that does not exist mints a fork that
+# dies with "unknown impr feature" rather than running -- and it looks, from the outside,
+# exactly like the lever not working. That is what `coverage.unclaimed_op_classes` did:
+# its seam read `per_op_register_block` while the sentinel is `perop_register_block`, and
+# it also carried `forkable_now=False`, so the dead name was never exercised.
+# ---------------------------------------------------------------------------------------
+
+#: Names a seam may resolve to that are NOT registered ImprFeatures. `perop_register_block` is a
+#: SENTINEL: `zephyr_model.prepare_for_lowering` derives the per-op block table from the prepared IR
+#: and swaps the sentinel for the concrete `ensure_perop_block(...)` feature before lowering, so it is
+#: deliberately absent from the registry -- if it reached `normalize` it SHOULD raise.
+_SEAM_SENTINELS = {"perop_register_block"}
+
+
+def _impr_seam_feature(seam: str) -> str | None:
+    return seam.split(":", 1)[1].split()[0] if seam.startswith("impr_features:") else None
+
+
+def test_every_impr_features_seam_names_something_that_exists():
+    """Applies to EVERY route, forkable or not: a seam that names nothing is a broken reference
+    whether or not anything currently follows it."""
+    from merlin.kernels import action_catalog as ac
+    from merlin.llvmlower import impr_features as F
+
+    known = set(F.known()) | _SEAM_SENTINELS
+    dead = []
+    for r in ac._RVV_ROUTES:
+        feat = _impr_seam_feature(r.target_seam)
+        if feat is not None and feat not in known:
+            dead.append((r.axis, feat, r.forkable_now))
+    assert not dead, f"routes name non-existent impr features: {dead}"
+
+
+def test_a_forkable_seam_mints_a_fork_the_lowering_can_actually_resolve():
+    """`forkable_now=True` is a promise that the beam can mint this fork and it will build. Assert the
+    proposer produces a real feature override (not a demoted work-item) for every such seam."""
+    from merlin.kernels import action_catalog as ac
+    from merlin.mining.fork_from_action import action_to_fork
+
+    broken = []
+    for r in ac._RVV_ROUTES:
+        feat = _impr_seam_feature(r.target_seam)
+        if feat is None or not r.forkable_now:
+            continue
+        # `action_to_fork` consumes a CompilerAction; build the one this route would produce. Only the
+        # seam/flag/axis matter to the mapping, so a minimal stand-in is honest here.
+        action = ac.CompilerAction(
+            divergence_axis=r.axis, action_class=r.action_class, target_seam=r.target_seam,
+            change=r.change, forkable_now=r.forkable_now, expected_effect=r.expected_effect,
+            backend="rvv", evidence=(), intended_facet=r.intended_facet)
+        fork = action_to_fork(action, {})
+        if not fork.forkable or fork.overrides.get("compiler_features") != [feat]:
+            broken.append((r.axis, feat, fork.forkable, fork.overrides))
+    assert not broken, f"forkable seams that do not mint a usable fork: {broken}"
+
+
+def test_per_op_register_block_is_forkable_because_it_is_wired():
+    """The flag flipped only after checking the machinery, so pin what makes it true: the sentinel is
+    consumed by the whole-model preparation, which derives + tags + swaps in the concrete feature."""
+    from merlin.kernels import action_catalog as ac
+    from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME
+
+    route = next(r for r in ac._RVV_ROUTES
+                 if r.axis == "coverage.unclaimed_op_classes")
+    assert route.forkable_now is True
+    assert _impr_seam_feature(route.target_seam) == PEROP_BLOCK_NAME
+    src = (repo_root() / "merlin/python/merlin/runtime/backends/zephyr_model.py").read_text()
+    assert "if PEROP_BLOCK_NAME in features:" in src           # the sentinel IS consumed
+    assert "ensure_perop_block(table, _PEROP_KC)" in src       # ...and swapped for the real feature

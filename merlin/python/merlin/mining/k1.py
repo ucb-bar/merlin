@@ -456,13 +456,14 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                     force_scalar: bool | None = None,
                     parallel: bool = False,
                     parallel_harts: int | None = None,
+                    fallback_policy: str = "allow",
                     mmap_weights: bool | None = None,
                     kernel_backend: str | None = None,
                     dispatch_timing: bool = False, op_profile: bool = False,
                     ours_mr: int = 4, ours_pack_b: bool = False) -> Path:
     """Cross-compile a K1 Linux RVV binary from the workload + RVV package.
 
-    Reuses the EXACT spike/Zephyr lowering (``zephyr_model._prepare_model_mlir`` ->
+    Reuses the EXACT spike/Zephyr lowering (``zephyr_model.prepare_for_lowering`` ->
     ``lower_model_file(vectorize=True, transform_schedule=pkg.schedule_text)``) so the K1 binary
     executes the same emitted RVV as the spike correctness run, and the same data-driven C runtime
     artifacts (``c_runtime.generate`` -> model_gen.h / model_call.c / weights.bin / model_io.h).
@@ -503,13 +504,31 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     from ..runtime.backends import zephyr_model as zm
 
     # 1. model.mlir -> normalize (same prep passes as the package/spike build) -> model.ll.
-    prepared = zm._prepare_model_mlir(model_dir / "model.mlir", work, int8_compute=pkg.is_int8)
+    #
+    # `prepare_for_lowering`, NOT the lower-level `_prepare_model_mlir` this used to call. That was a
+    # real gap, not a style point: three feature families live in the preparation layer, not in the
+    # pass pipeline -- per-op register blocking (the `perop_register_block` sentinel is derived from the
+    # PREPARED IR, tagged onto it, and swapped for a concrete feature), the non-contraction vec-rank
+    # tagging, and matrix-unit routing. Calling the low-level helper meant a package naming any of them
+    # either silently lowered as the BASELINE (nothing tags the IR, so no schedule arm matches and every
+    # contraction falls to convert-linalg-to-loops) or died in `normalize` on the unresolved sentinel.
+    # Since the K1 is this repo's performance oracle, that made those levers unmeasurable on silicon --
+    # while this function's own docstring claimed it "reuses the EXACT spike/Zephyr lowering". Both
+    # `zephyr_model.build_app` and `spike_model.build` go through this same entry point, so now all
+    # three agree by construction.
+    feats_in = frozenset(getattr(pkg, "compiler_features", []) or []) or None
+    prepared, feats = zm.prepare_for_lowering(
+        model_dir / "model.mlir", work, int8_compute=pkg.is_int8, features=feats_in,
+        harts=(int(parallel_harts) if parallel_harts else 1), vlen=VLEN)
+    feats = feats or None
     # XNNPACK kernel-backend (default-off, additive): rewrite the routable f32 linalg.matmul ops
     # in the PREPARED MLIR to external calls (@merlin_xnn_gemm_f32). Everything else lowers
     # unchanged. n_xnn_routed records the count; the shim .o is built + linked below.
     _dt = ["-DMERLIN_DISPATCH_TIMING"] if dispatch_timing else []
     xnn_obj = None
     n_xnn_routed = 0
+    n_xnn_candidates = 0
+    n_xnn_eligible = 0
     if kernel_backend == "xnnpack":
         from ..runtime.backends import xnnpack_board as xb
 
@@ -611,7 +630,9 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # impr-fork compiler features (PASS/HEURISTIC/PATTERN). Without threading these the K1 build
     # silently used the BASELINE codegen for any feature-bearing fork — invalidating its
     # benchmark. Pass through so the K1 binary matches what spike certified.
-    feats = frozenset(getattr(pkg, "compiler_features", []) or []) or None
+    # `feats` was resolved above by prepare_for_lowering (which may have swapped a sentinel for a
+    # concrete, table-specific feature) — do NOT re-read the package's raw list here, or the schedule
+    # would be built from a name the IR was never tagged for.
     if force_scalar is None:
         force_scalar = bool(os.environ.get("MERLIN_K1_FORCE_SCALAR"))
     if parallel_harts:

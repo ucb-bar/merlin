@@ -1742,6 +1742,47 @@ def ensure_vec_noncontraction(lanes: int) -> str:
 PEROP_BLOCK_NAME = "perop_register_block"
 
 
+def _perop_sentinel_unresolved(_passes):
+    """Reached only if the sentinel survived to lowering, which is a BUG -- so raise, loudly.
+
+    ``perop_register_block`` is a REQUEST, not a lowering edit: the block table can only be derived
+    from the PREPARED module, so ``zephyr_model.prepare_for_lowering`` derives it, tags the IR, and
+    swaps this name for the concrete ``ensure_perop_block(...)`` feature. If the sentinel is still
+    enabled at ``apply_pipeline`` time, the caller skipped that step -- and the consequence is
+    invisible: nothing tagged the IR, so no schedule arm matches and EVERY contraction falls to
+    ``convert-linalg-to-loops`` while the build reports success and the numbers stay correct. That is
+    the measured deepjscc "2.56x regression that looks like a bad block but is an untagged build".
+    Failing here is the only way that gets noticed.
+    """
+    raise RuntimeError(
+        f"{PEROP_BLOCK_NAME!r} reached the lowering pipeline unresolved. It must be consumed by "
+        "runtime.backends.zephyr_model.prepare_for_lowering, which derives the per-op block table "
+        "from the prepared IR, tags the contractions, and replaces this sentinel with the concrete "
+        "ensure_perop_block(...) feature. Lowering with it still set would leave every contraction "
+        "untagged and silently scalar.")
+
+
+# Registered so the SEARCH can reach it. The beam composes candidate feature sets through
+# `impr_features.get`/`normalize`, so an unregistered name is not "rejected" -- it is silently never
+# proposed (`wholemodel_proposer._composes` catches the KeyError and returns False). An unregisterable
+# lever is an unsearchable one, which is the exact failure this whole line of work is about.
+# `schedule_replace=True` is honest: what it resolves TO emits a complete transform schedule, so the
+# composition rule must refuse stacking it with another replacement.
+register(ImprFeature(
+    name=PEROP_BLOCK_NAME,
+    action_class="PASS",
+    description="request PER-CONTRACTION register blocking: derive the widest block legal for each "
+                "contraction's OWN extents (and its own narrowest element width) from the prepared "
+                "IR, tag each contraction, and emit one tile+vectorize arm per distinct block. "
+                "Resolved by prepare_for_lowering into a concrete, table-specific feature; a "
+                "sentinel, so it must never reach lowering itself. Replaces the class-wide clamps "
+                "(one degenerate extent in a class otherwise forces the whole class off the vector "
+                "path). Default-off; baseline byte-identical.",
+    edit_pipeline=_perop_sentinel_unresolved,
+    schedule_replace=True,
+))
+
+
 def ensure_perop_block(table, kc: int) -> str:
     """Register (on demand) the per-op-blocked schedule for THIS model's block table.
 

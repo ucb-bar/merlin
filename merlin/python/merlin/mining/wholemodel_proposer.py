@@ -47,6 +47,18 @@ from ..kernels.knobs import ForkProposal
 # facet field — plus the additive passes as a teacher-idle fallback. The teacher (engine 1) supplies
 # the rest from real divergences.
 RANKED_LEVERS: list[tuple[str, bool]] = [
+    # PER-CONTRACTION register blocking, first because it SUPERSEDES the two hand-picked class-wide
+    # clamps below it rather than competing with them. `WHOLEMODEL_VF_NR_BMM = 8` and `MR_mm = 1` are
+    # single numbers a human chose for a whole op CLASS, and a class is not shape-homogeneous: one
+    # degenerate extent in it forces every member off the vector path. This lever derives the widest
+    # block legal for each contraction on its own extents and its own element width instead. It could
+    # not be listed here before: the name was unregistered, and `_feature_fork` -> `_composes` catches
+    # the resulting KeyError and returns False, so the lever would have been silently never proposed
+    # rather than rejected. MEASURED on the live K1 (small_llama int8, whole model, interleaved
+    # same-session arms, cos identical on every arm): no blocking 290,015,352 cyc -> per-op at the old
+    # MR cap 11,338,272 -> per-op at MR=4 8,856,276. The first step is the class-wide clamp being gone;
+    # the second is the A-reuse register block.
+    ("perop_register_block", True),
     ("fuse_transpose_b", False),                          # transpose: 38% byte-traffic, measured -6.5% openvla
     ("accumulator_resident_wholemodel_vf_mrpad", True),   # matmul MR register block: 1.49x rdt2 matmul bucket
     ("vectorize_reduction", True),                        # reduce/softmax: 2nd byte-traffic family, was unvectorized

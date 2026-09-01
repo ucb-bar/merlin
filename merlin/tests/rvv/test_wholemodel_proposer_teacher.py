@@ -210,3 +210,63 @@ def test_ours_section_cca_none_when_family_absent(tmp_path):
 def test_make_per_op_teacher_proposer_requires_inputs():
     with pytest.raises(ValueError):
         W.make_per_op_teacher_proposer()   # no precomputed divergences and no model_dir+build_fn
+
+
+# ---------------------------------------------------------------------------------------
+# A lever that cannot be REGISTERED is a lever that is silently never proposed:
+# `_feature_fork` -> `_composes` -> `impr_features.normalize` raises KeyError on an unknown
+# name, `_composes` catches it and returns False, and the fork is dropped without a word.
+# So "is every ranked lever registered" is not a tidiness check -- it is the difference
+# between a searchable lever and an inert one.
+# ---------------------------------------------------------------------------------------
+
+def test_every_ranked_lever_is_registered_so_the_beam_can_actually_propose_it():
+    from merlin.llvmlower import impr_features as I
+    from merlin.mining.wholemodel_proposer import RANKED_LEVERS
+
+    known = set(I.known())
+    missing = [f for f, _ in RANKED_LEVERS if f not in known]
+    assert not missing, f"ranked levers the proposer cannot compose (silently dropped): {missing}"
+
+
+def test_every_ranked_lever_actually_yields_a_forkable_proposal():
+    """The stronger form: registration is necessary but not sufficient -- the proposal must come out
+    forkable, with the lever in its feature set."""
+    from merlin.mining.wholemodel_proposer import RANKED_LEVERS, census_hardcode_forks
+
+    proposed = {tuple(sorted(fp.overrides.get("compiler_features") or ())): fp
+                for fp in census_hardcode_forks([])}
+    for feat, _ in RANKED_LEVERS:
+        fp = proposed.get((feat,))
+        assert fp is not None, f"{feat} produced no fork"
+        assert fp.forkable, f"{feat} produced a non-forkable proposal"
+
+
+def test_per_op_register_block_is_a_ranked_lever_and_ranks_above_the_class_wide_clamps():
+    """It SUPERSEDES the class-wide MR_mm/NR_bmm clamps rather than competing with them, so it must be
+    offered before them: a class is not shape-homogeneous, and one degenerate extent in it otherwise
+    forces every member off the vector path."""
+    from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME
+    from merlin.mining.wholemodel_proposer import RANKED_LEVERS
+
+    names = [f for f, _ in RANKED_LEVERS]
+    assert PEROP_BLOCK_NAME in names
+    assert names.index(PEROP_BLOCK_NAME) < names.index("accumulator_resident_wholemodel_vf_mrpad")
+
+
+def test_the_sentinel_fails_loud_if_it_ever_reaches_lowering_unresolved():
+    """Registering the sentinel makes it searchable, but it is a REQUEST, not a lowering edit. If it
+    survives to `apply_pipeline` nothing tagged the IR, so every contraction silently falls to
+    convert-linalg-to-loops with correct numbers and a successful build -- the one failure mode no
+    correctness gate can see. It must raise instead."""
+    import pytest as _pytest
+
+    from merlin.llvmlower import pipeline as P
+    from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME
+
+    with _pytest.raises(RuntimeError) as e:
+        P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset([PEROP_BLOCK_NAME]))
+    assert "prepare_for_lowering" in str(e.value)
+    assert "untagged" in str(e.value) or "scalar" in str(e.value)
+    # ...and the frozen baseline is untouched by the registration
+    assert P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset()) == P.build_rvv_pipeline("/tmp/s.mlir")

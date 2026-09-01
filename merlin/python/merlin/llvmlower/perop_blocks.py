@@ -62,18 +62,81 @@ def shape_key(op: str, parallel: "tuple[int, ...]", reduction: "tuple[int, ...]"
     return f"{op}:{par}:{red}"
 
 
-#: Default M-tile for a per-op block. **Not** a shape decision — an instruction-selection one, and it
-#: is measured: this micro-kernel wants the ``vfmacc.vf`` form, where the A operand arrives as a SCALAR
-#: (one ``flw``). That only happens at MR=1; at MR>1 the A column is read as ``vector<MRx1>`` and
-#: rebuilt with a vmv/vslideup lane ladder whose register pressure spills the accumulator. Measured on
-#: deepjscc int8 (spike): maximising block AREA picks MR=4 and runs **2.56x slower** than MR=1
-#: (1,242,115,001 vs 484,690,000 cycles) at bit-identical output. It is also why the hand-frozen
-#: champion pins ``MR_mm=1``. So per-op blocking varies NR and leaves MR alone.
+#: Default M-tile for a per-op block: the value used when a caller passes no ``mr_cap``. Kept at 1 so
+#: no existing caller moves; callers that want the register block pass one (the whole-model backend
+#: passes ``zephyr_model.perop_mr_cap()``).
+#:
+#: HISTORY, because the reason recorded here was right about the mechanism and wrong about the
+#: conclusion, and it cost the repo the lever twice over. It said: MR>1 reads the A column as
+#: ``vector<MRx1>`` and rebuilds it with a vmv/vslideup lane ladder, citing deepjscc int8 on spike at
+#: **2.56x slower** than MR=1 (1,242,115,001 vs 484,690,000 cycles, bit-identical output). Two things
+#: are now measured about that:
+#:
+#: 1. The ladder was real and is FIXED. ``accum_microkernel.scalarize_a_reads`` admitted only float
+#:    element types, and ``sink_extf_through_extract`` only ``arith.extf`` -- so on int8 there was no
+#:    path to a scalar A operand at all. With the integer element types admitted and integer widenings
+#:    sunk below the lane extract, int8 MR=4 emits ``vwmacc.vx`` from a scalar: measured on the object,
+#:    ``vrgather.vi`` 4 -> 0, ``vmacc.vv`` 4 -> 0, ``vwmacc.vx`` 0 -> 4, and ONE ``vle8.v`` now feeds
+#:    FOUR MACs where MR=1 needs four loads.
+#: 2. A SECOND defect, not named here, was the larger one and is dtype-independent: bufferizing the
+#:    tiled reduction leaves a per-tile ``memref.copy %x, %x`` that survives as an opaque
+#:    ``@memrefCopy`` call. At 64^3 it cost 187,520 instructions in f32 AND int8, turning a 1.45-1.88x
+#:    cheaper kernel into a ~2.1x net loss -- PC-histogram attributed, and exactly equal to the
+#:    observed cycle delta. Every MR>1 recipe now implies the erase
+#:    (``impr_features._tile_epilogue_hygiene``).
+#:
+#: With both fixed, MR=4 BEATS MR=1 on the live K1 at 128^3 (interleaved same-session arms, n=3,
+#: min-of-n, cos-gated): f32 3.20x, int8 1.58x. So "MR>1 is intrinsically bad here" was never true --
+#: it was two removable compiler defects, and pinning MR=1 is what kept them invisible.
 DEFAULT_MR = 1
 
 
+#: MLIR element-type tokens -> width in bits. Only the spellings a contraction's ``dtypes`` triple can
+#: carry; an unknown token yields None so the caller FAILS OPEN to the dtype-blind cap rather than
+#: guessing a width (a wrong width would silently pick a wrong N tile).
+_ELEM_BITS = {"i8": 8, "si8": 8, "ui8": 8, "f8E4M3FN": 8, "f8E5M2": 8,
+              "i16": 16, "f16": 16, "bf16": 16,
+              "i32": 32, "f32": 32, "i64": 64, "f64": 64}
+
+
+def narrowest_elem_bits(dtypes) -> int | None:
+    """Width of the NARROWEST element in a contraction's ``(lhs, rhs, out)`` triple, or None.
+
+    None is returned for an empty or unrecognised triple, and that is the honest answer: a synthetic
+    shape and an observer that could not read the types are indistinguishable here, and both must fall
+    back to the dtype-blind cap rather than have a width invented for them.
+    """
+    bits = [_ELEM_BITS[str(t)] for t in (dtypes or ()) if str(t) in _ELEM_BITS]
+    return min(bits) if bits else None
+
+
+def nr_cap_for_dtypes(nr_cap: int, vlen: int | None, dtypes) -> int:
+    """Widen ``nr_cap`` so this contraction's narrowest element still fills a whole vector register.
+
+    NR is an ELEMENT count, so the same NR is a different fraction of the register file at each element
+    width: at VLEN=256, NR=16 is 512 bits at e32 (LMUL m2), 256 at e16 (m1) and only 128 at e8 --
+    ``mf2``, half a register, i.e. half the datapath idle on every int8 op. ``perop_nr_cap`` already
+    scales the cap with VLEN, which is the other half of the same problem, but it cannot see the element
+    width because ``_rvv_best_block`` discarded ``ContractionShape.dtypes``.
+
+    The rule is derived, not tuned: ask for at least ``vlen // narrowest_element_bits`` elements, and
+    never LOWER the cap the caller asked for. With no ``vlen`` or no readable dtype the caller's cap is
+    returned unchanged, so this is byte-identical wherever it cannot be justified.
+
+    It is a CAP either way: ``from_strategy._rvv_best_block`` returns only a divisor of the observed
+    ``gcd(N)`` that its lowering predicate accepts, so a shape that cannot take the wider tile keeps the
+    narrower one. Whether the wider tile is faster on a given chip is a cycle question that belongs to
+    whoever runs it -- the same standard ``perop_nr_cap`` sets for its own axis.
+    """
+    bits = narrowest_elem_bits(dtypes)
+    if not vlen or bits is None:
+        return int(nr_cap)
+    return max(int(nr_cap), int(vlen) // int(bits))
+
+
 def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
-                harts: int = 1) -> dict[str, tuple[int, int]]:
+                harts: int = 1,
+                vlen: int | None = None) -> dict[str, tuple[int, int]]:
     """``{shape_key: (MR, NR)}`` — the widest block legal for EACH contraction on its own.
 
     Uses the measured predicate (``_rvv_best_block`` over a single extent pair), so a per-op block is
@@ -83,8 +146,15 @@ def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
     untagged, so no arm matches them and they lower through ``convert-linalg-to-loops`` — which is
     exactly what happens today, except now it costs only that op instead of its whole class.
 
-    ``mr_cap`` defaults to :data:`DEFAULT_MR` = 1 for the measured reason documented there; raising it
-    is a performance experiment, not a correctness one.
+    ``mr_cap`` defaults to :data:`DEFAULT_MR` = 1 only so callers that pass nothing do not move; see
+    that constant for why the reason it used to give no longer holds. Raising it is a performance
+    choice, not a correctness one either way: the cap is an upper BOUND, and ``_rvv_best_block``
+    returns only a divisor of the observed ``gcd(M)`` that its lowering predicate accepts, so a shape
+    with no clean M-tile still comes back at MR=1.
+
+    ``vlen``, when given, lets each contraction's N cap be widened for ITS OWN narrowest element width
+    (:func:`nr_cap_for_dtypes`) instead of every op sharing one element count. Omitted -> byte-identical
+    to the dtype-blind behavior.
 
     ``harts`` is the hart count the image will be lowered for, and it changes the ANSWER without
     changing the KEY. The multicore stage wraps each ``linalg.matmul`` in an ``scf.forall`` over N
@@ -111,7 +181,10 @@ def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
             tpar = tuple(int(d) for d in tile.parallel)
             if len(tpar) >= 2:
                 pairs.append((tpar[-2], tpar[-1]))
-        mr, nr = _rvv_best_block(mr_cap, nr_cap, pairs or [(par[-2], par[-1])])
+        # PER-SHAPE N cap: widened for this contraction's own narrowest element width when the board's
+        # vlen is known (see nr_cap_for_dtypes). vlen=None -> the caller's cap, unchanged.
+        shape_nr_cap = nr_cap_for_dtypes(nr_cap, vlen, getattr(s, "dtypes", ()))
+        mr, nr = _rvv_best_block(mr_cap, shape_nr_cap, pairs or [(par[-2], par[-1])])
         if nr <= 1:
             continue
         out[shape_key(s.op, par, red)] = (int(mr), int(nr))
@@ -162,15 +235,56 @@ def tag_prepared_mlir(prepared: "Any", table: dict[str, tuple[int, int]], *,
         # idempotent: the pipeline runs this same pass again and finds nothing left to specialize
         "PassManager.parse('builtin.module(func.func(linalg-specialize-generic-ops))', ctx)"
         ".run(mod.operation)\n"
+        "import json\n"
         "with ctx, ir.Location.unknown():\n"
-        "    n = tag_perop_blocks(mod, ctx)\n"
+        "    n, hit, untagged = tag_perop_blocks(mod, ctx)\n"
         "open(dst, 'w').write(str(mod.operation))\n"
-        "print('OK perop_blocks tagged', n)\n", encoding="utf-8")
+        "print('OK perop_blocks tagged', n)\n"
+        "print('MERLIN_PEROP_AGREEMENT', json.dumps("
+        "{'hit': sorted(hit), 'untagged': sorted(untagged)}))\n", encoding="utf-8")
     proc = subprocess.run([str(m2m_python()), str(script), str(prepared), str(out)],
                           capture_output=True, text=True, timeout=3600)
     if proc.returncode != 0 or not out.is_file():
         raise RuntimeError(f"per-op block tagging failed:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
+    _assert_priced_is_tagged(table, proc.stdout)
     return out
+
+
+class BlockAgreementError(RuntimeError):
+    """A contraction the block policy PRICED was not tagged, so it will lower to scalar loops.
+
+    This is a hard failure on purpose. The two sides are computed at different points in the pipeline:
+    ``block_table`` prices ``kernels.shapes.contraction_shapes`` of the PREPARED module, while
+    ``tag_prepared_mlir`` tags the module AFTER ``linalg-specialize-generic-ops``. Anything the policy
+    priced but the tagger cannot find has been renamed, split, fused or routed away in between -- and an
+    untagged contraction matches no schedule arm, so it silently falls to ``convert-linalg-to-loops``.
+    A silent scalar fallback is the single most expensive failure mode on this path (the measured
+    deepjscc "2.56x regression that looks like a bad block but is an untagged build"), and it produces
+    CORRECT numbers, so no correctness gate catches it. Failing the build is the only way it gets seen.
+    """
+
+
+def _assert_priced_is_tagged(table: dict[str, tuple[int, int]], stdout: str) -> None:
+    """Compare the priced key set against the keys the tagger actually matched."""
+    import json
+
+    line = next((l for l in stdout.splitlines()
+                 if l.startswith("MERLIN_PEROP_AGREEMENT ")), None)
+    if line is None:
+        # An older/other tagger that does not report. Say so rather than pass silently -- a guard that
+        # cannot run must not look like a guard that ran (this exact shape has burned this repo before).
+        raise BlockAgreementError(
+            "per-op block tagging did not report its agreement line; cannot verify that every priced "
+            "contraction was tagged, and an untagged one lowers to scalar loops without any gate "
+            "noticing. Refusing to continue.")
+    rep = json.loads(line.split(" ", 1)[1])
+    missed = sorted(set(table) - set(rep.get("hit", ())))
+    if missed:
+        raise BlockAgreementError(
+            f"{len(missed)} contraction(s) were priced by the block policy but not tagged, so they "
+            f"would lower to scalar loops: {missed[:8]}"
+            + (f" (+{len(missed) - 8} more)" if len(missed) > 8 else "")
+            + f"; the tagger saw these untagged geometries instead: {rep.get('untagged', [])[:8]}")
 
 
 def runner_rewrite_src(table: dict[str, tuple[int, int]]) -> str:
@@ -207,8 +321,17 @@ def _merlin_shape_key(op):
 
 
 def tag_perop_blocks(module, ctx):
-    """Set merlin.blk_<MR>x<NR> on each named contraction whose geometry is in the table."""
+    """Set merlin.blk_<MR>x<NR> on each named contraction whose geometry is in the table.
+
+    Returns ``(n_tagged, hit_keys, seen_untagged)``. The two key sets are what makes the
+    priced-vs-tagged disagreement DETECTABLE: merlin prices the PRE-specialization contraction set and
+    this runs on the POST-specialization one, so a shape the policy priced can simply not be here --
+    and an untagged contraction matches no schedule arm and falls to convert-linalg-to-loops in
+    silence. Reporting both sides lets the caller fail the build instead of shipping a scalar model.
+    """
     n = 0
+    hit = set()
+    seen_untagged = set()
     def walk(op):
         nonlocal n
         for region in op.regions:
@@ -220,14 +343,16 @@ def tag_perop_blocks(module, ctx):
                     key = _merlin_shape_key(inner)
                     blk = _MERLIN_BLOCK_TABLE.get(key)
                     if blk is None:
+                        seen_untagged.add(str(key))
                         continue
                     tok = "bmm" if inner.operation.name.endswith("batch_matmul") else "mm"
                     with ctx:
                         inner.operation.attributes["merlin.blk_%s_%dx%d" % (tok, blk[0], blk[1])] = \
                             ir.UnitAttr.get()
+                    hit.add(key)
                     n += 1
     walk(module.operation)
-    return n
+    return n, hit, seen_untagged
 '''
 
 

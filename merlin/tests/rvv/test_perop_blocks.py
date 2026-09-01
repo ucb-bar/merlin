@@ -15,16 +15,18 @@ from __future__ import annotations
 
 import pytest
 
+from merlin.common.paths import repo_root
 from merlin.llvmlower import perop_blocks as pb
 
 
 class _S:
     """Stand-in for a ContractionShape (op + parallel + reduction extents)."""
 
-    def __init__(self, op, parallel, reduction=()):
+    def __init__(self, op, parallel, reduction=(), dtypes=()):
         self.op = op
         self.parallel = tuple(parallel)
         self.reduction = tuple(reduction)
+        self.dtypes = tuple(dtypes)
 
 
 def test_each_contraction_gets_its_own_block():
@@ -49,12 +51,33 @@ def test_a_one_lane_op_is_left_out_not_forced_on_the_class():
     assert len(cov["unclaimed"]) == 1
 
 
-def test_mr_is_pinned_at_one_by_default():
-    """MR>1 is 2.56x SLOWER on this micro-kernel (measured, deepjscc): the vfmacc.vf form needs a
-    SCALAR A operand, and MR>1 rebuilds the A column with a vmv/vslideup ladder that spills."""
+def test_mr_defaults_to_one_but_the_cap_is_a_cap_not_a_pin():
+    """The default stays 1 so a caller that passes no cap does not move.
+
+    This test used to be titled "MR is PINNED at one by default" and justified by "MR>1 is 2.56x
+    SLOWER (measured, deepjscc)". That reading is superseded: the ladder it blamed was a real defect in
+    `accum_microkernel` (no integer path to a scalar A operand) and is fixed, and the LARGER cost was a
+    separate per-tile `@memrefCopy` self-copy now implied by every MR>1 recipe. With both fixed, MR=4
+    beats MR=1 on the live K1 at 128^3: f32 3.20x, int8 1.58x, cos-gated. So what must hold is not that
+    MR is pinned, but that the cap behaves as an upper BOUND -- honouring a caller that raises it, and
+    still returning MR=1 where no clean M-tile exists.
+    """
     assert pb.DEFAULT_MR == 1
-    shapes = [_S("linalg.matmul", (64, 256), (288,))]      # M=64 would admit MR=4 on area alone
-    assert set(pb.block_table(shapes, nr_cap=16).values()) == {(1, 16)}
+    shapes = [_S("linalg.matmul", (64, 256), (288,))]      # M=64 admits MR=4
+    assert set(pb.block_table(shapes, nr_cap=16).values()) == {(1, 16)}          # default unchanged
+    assert set(pb.block_table(shapes, mr_cap=4, nr_cap=16).values()) == {(4, 16)}  # cap honoured
+    # ...and a shape with no clean M-tile is NOT forced up to the cap
+    odd = [_S("linalg.matmul", (17, 256), (288,))]
+    assert set(pb.block_table(odd, mr_cap=4, nr_cap=16).values()) == {(1, 16)}
+
+
+def test_the_whole_model_backend_offers_the_measured_mr_cap():
+    """The cap is only a lever if the whole-model path actually passes it -- a default-off knob nobody
+    passes is the failure mode this whole line of work is about."""
+    from merlin.runtime.backends import zephyr_model as zm
+    assert zm.perop_mr_cap() == 4
+    src = (repo_root() / "merlin/python/merlin/runtime/backends/zephyr_model.py").read_text()
+    assert "mr_cap=perop_mr_cap()" in src, "block_table must be called with the MR cap"
 
 
 def test_the_tag_names_the_op_class():
@@ -199,3 +222,101 @@ def test_the_vector_length_reaches_the_block_table():
     assert "vlen: int | None" in prep, "prepare_for_lowering must accept it"
     build = inspect.getsource(zm.build_app)
     assert "vlen=vlen" in build, "build_app must pass it down"
+
+
+# ---------------------------------------------------------------------------------------
+# Priced-vs-tagged agreement. The two sides are computed at DIFFERENT points: `block_table`
+# prices `contraction_shapes` of the PREPARED module; `tag_prepared_mlir` tags the module
+# AFTER `linalg-specialize-generic-ops`. A contraction priced but not tagged matches no
+# schedule arm and falls to `convert-linalg-to-loops` -- producing CORRECT numbers, so no
+# correctness gate catches it. That is the measured deepjscc "2.56x regression that looks
+# like a bad block but is an untagged build". Hence: hard failure.
+# ---------------------------------------------------------------------------------------
+
+def test_a_priced_but_untagged_contraction_is_a_hard_failure():
+    table = {"linalg.matmul:64x256:288": (1, 16), "linalg.matmul:32x32:32": (4, 16)}
+    stdout = ('OK perop_blocks tagged 1\n'
+              'MERLIN_PEROP_AGREEMENT {"hit": ["linalg.matmul:64x256:288"], '
+              '"untagged": ["linalg.matmul:31x32:32"]}\n')
+    with pytest.raises(pb.BlockAgreementError) as e:
+        pb._assert_priced_is_tagged(table, stdout)
+    assert "linalg.matmul:32x32:32" in str(e.value)
+    assert "scalar" in str(e.value)                      # says what the consequence IS
+    assert "linalg.matmul:31x32:32" in str(e.value)      # ...and what the tagger saw instead
+
+
+def test_full_agreement_passes():
+    table = {"linalg.matmul:64x256:288": (1, 16)}
+    pb._assert_priced_is_tagged(
+        table, 'MERLIN_PEROP_AGREEMENT {"hit": ["linalg.matmul:64x256:288"], "untagged": []}\n')
+
+
+def test_a_guard_that_cannot_run_must_not_report_success():
+    """The repo's recurring failure: a check that could not run reported SUCCESS. If the tagger emits
+    no agreement line, the guard has no evidence and must refuse -- not pass."""
+    with pytest.raises(pb.BlockAgreementError) as e:
+        pb._assert_priced_is_tagged({"linalg.matmul:64x256:288": (1, 16)},
+                                    "OK perop_blocks tagged 1\n")
+    assert "cannot verify" in str(e.value)
+
+
+def test_the_tagger_reports_both_sides_of_the_agreement():
+    """The runner source must actually produce the line the guard parses, and report the key sets
+    (a count alone cannot distinguish 'tagged a different op' from 'tagged the priced one')."""
+    src = pb.runner_rewrite_src({"linalg.matmul:64x256:288": (1, 16)})
+    assert "return n, hit, seen_untagged" in src
+    assert "hit.add(key)" in src
+    assert "seen_untagged.add(str(key))" in src
+
+
+# ---------------------------------------------------------------------------------------
+# Dtype-aware N cap. NR is an ELEMENT count, so one number is a different fraction of the
+# register file at each element width: at VLEN=256, NR=16 is m2 at e32, m1 at e16 and only
+# mf2 -- half a register -- at e8. `perop_nr_cap` already scales with VLEN; it could not
+# see the element width because `_rvv_best_block` discarded ContractionShape.dtypes.
+# ---------------------------------------------------------------------------------------
+
+def test_the_n_cap_widens_for_narrow_elements_and_never_narrows():
+    # e8 on a 256-bit unit needs 32 elements to fill one register; e32 already fills two at 16.
+    assert pb.nr_cap_for_dtypes(16, 256, ("i8", "i8", "i32")) == 32
+    assert pb.nr_cap_for_dtypes(16, 256, ("f32", "f32", "f32")) == 16
+    assert pb.nr_cap_for_dtypes(16, 256, ("bf16", "bf16", "f32")) == 16
+    # never LOWER what the caller asked for, even where the width would allow less
+    assert pb.nr_cap_for_dtypes(32, 256, ("f32", "f32", "f32")) == 32
+    # ...and it is the NARROWEST element that decides (an i8 x i8 -> i32 op is an e8 op)
+    assert pb.narrowest_elem_bits(("i8", "i8", "i32")) == 8
+
+
+def test_an_unreadable_dtype_falls_back_to_the_blind_cap_rather_than_guessing():
+    """A synthetic shape and an observer that could not read the types look the same here. Inventing a
+    width would silently pick a wrong N tile, so both must fall back to the caller's cap."""
+    assert pb.narrowest_elem_bits(()) is None
+    assert pb.narrowest_elem_bits(("not_a_type",)) is None
+    assert pb.nr_cap_for_dtypes(16, 256, ()) == 16
+    assert pb.nr_cap_for_dtypes(16, 256, ("not_a_type", "x", "y")) == 16
+    assert pb.nr_cap_for_dtypes(16, None, ("i8", "i8", "i32")) == 16   # no vlen -> unchanged
+
+
+def test_block_table_without_vlen_is_byte_identical_to_the_dtype_blind_behaviour():
+    """The widening is opt-in: omitting vlen must not move a single block."""
+    shapes = [_S("linalg.matmul", (64, 256), (288,)),
+              _S("linalg.batch_matmul", (6, 1500, 1500), (64,))]
+    assert (pb.block_table(shapes, mr_cap=4, nr_cap=16)
+            == pb.block_table(shapes, mr_cap=4, nr_cap=16, vlen=None))
+
+
+def test_the_widened_cap_reaches_the_chosen_block_for_an_int8_contraction():
+    """End to end through block_table: an e8 contraction whose N admits 32 must GET 32 once the board's
+    vlen is known, and an f32 one at the same extents must not move."""
+    i8 = [_S("linalg.matmul", (64, 256), (288,), dtypes=("i8", "i8", "i32"))]
+    f32 = [_S("linalg.matmul", (64, 256), (288,), dtypes=("f32", "f32", "f32"))]
+    assert set(pb.block_table(i8, mr_cap=4, nr_cap=16, vlen=256).values()) == {(4, 32)}
+    assert set(pb.block_table(i8, mr_cap=4, nr_cap=16).values()) == {(4, 16)}      # opt-in only
+    assert set(pb.block_table(f32, mr_cap=4, nr_cap=16, vlen=256).values()) == {(4, 16)}
+
+
+def test_a_shape_that_cannot_take_the_wider_tile_keeps_the_narrower_one():
+    """It is a CAP, not a pin: N=24 has no legal 32-wide tile, so the widening must not force one."""
+    odd = [_S("linalg.matmul", (64, 24), (288,), dtypes=("i8", "i8", "i32"))]
+    blocks = set(pb.block_table(odd, mr_cap=4, nr_cap=16, vlen=256).values())
+    assert blocks and all(nr <= 24 for _mr, nr in blocks), blocks
