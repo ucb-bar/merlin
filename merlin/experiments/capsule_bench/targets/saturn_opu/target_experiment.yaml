@@ -95,6 +95,9 @@ host_lane:
   commit: UNKNOWN
   # The pinned artifact as it exists in this tree: the transform schedule + knobs that ARE the host
   # lane's codegen. Repo-root-relative.
+  # WHICH PRECISION LANE THIS IS (see gemmini's descriptor for why it is declared rather than
+  # discovered): checkable at load time, and cross-checked against the package's own knobs by `resolve`.
+  dtype_strategy: fp32
   package: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
   requires_paths:
     - manifest.yaml

@@ -95,15 +95,24 @@ host_lane:
     All of this experiment's whole-model capstones declare compile_dtype=int8, so the frozen package
     must declare dtype_strategy=int8_w8a8. Frozen for the duration of the experiment.
   repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
-  branch: UNKNOWN
   # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
   # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
   # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
   # CONTENT check over the bytes this experiment actually reads. Fill the sha in the moment a checkout
   # exists; never invent one.
-  commit: UNKNOWN
   # The pinned artifact as it exists in this tree: the transform schedule + knobs that ARE the host
   # lane's codegen. Repo-root-relative.
+  # WHICH PRECISION LANE THIS IS, declared so the profile key is checkable at load time. `resolve`
+  # cross-checks it against the package's own knobs, so a package filed under the wrong precision is
+  # refused instead of quietly grading a submission against arithmetic it cannot produce.
+  dtype_strategy: int8_w8a8
+  # NOT `published`, and `branch: UNKNOWN` was the honest answer to a question that should not have
+  # been asked. This package never existed upstream: its manifest records
+  # `authoring.mode: deterministic_generated_from_spec` and
+  # `publication.promoted_by: merlin.rvvgen.promote_champion` at 20260726T121824Z, certified by
+  # k1_board on run k1_int8_wholemodel_ab_tiny_llama. A branch name here would be a fiction; the pin
+  # is the package tree digest, which is a content check and strictly stronger than a name.
+  provenance: in_tree_minted
   package: out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8
   requires_paths:
     - manifest.yaml

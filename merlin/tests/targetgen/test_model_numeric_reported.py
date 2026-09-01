@@ -66,7 +66,11 @@ def test_the_number_is_labelled_with_the_lane_it_came_from():
 
 
 def test_every_rejection_path_carries_the_numeric_verdict():
-    seg = _fn("_grade_model_capsule")
+    # The grading body lives in `_grade_model_capsule_INLINE`; `_grade_model_capsule` is the wrapper
+    # that decides whether to run it in-process or in a subprocess. Inspecting the wrapper found none
+    # of these categories and the test failed for a rename it was written to catch -- which is the
+    # weakness of asserting on source text, so it now names the function that actually holds them.
+    seg = _fn("_grade_model_capsule_inline")
     # The places a model capsule is turned down after the gate has already run and its arithmetic IS
     # known: unmeasurable layers, must_accelerate fallback, and a tier that ran and failed. A path where
     # NOTHING ran is deliberately not among them -- it reports `not_compared`, because a comparison that

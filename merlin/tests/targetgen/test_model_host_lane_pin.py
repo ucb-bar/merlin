@@ -222,7 +222,13 @@ def test_model_grade_refuses_descriptor_package_of_the_wrong_datatype(monkeypatc
         _CAPSULE, target="gemmini", timeout=1, package_dir="submission-under-test")
 
     assert result["status"] == "incomplete"
-    assert "compile_dtype='int8' requires 'int8_w8a8'" in result["failure"]["detail"]
+    # The refusal now happens EARLIER -- at host-lane resolution, where the descriptor's declared
+    # dtype_strategy is compared against the package's own knobs -- rather than after resolution when
+    # the loaded strategy met the capsule's compile dtype. Both are the same protection; asserting the
+    # substance rather than one layer's wording keeps this test about the guarantee. What must not
+    # change is that BOTH precisions are named, so a reader can see which two things disagreed.
+    detail = result["failure"]["detail"]
+    assert "int8_w8a8" in detail and "fp32" in detail, detail
     assert not called, "a cross-datatype host package must be rejected before compilation"
 
 
@@ -231,7 +237,7 @@ def test_model_grade_refuses_host_package_drift_during_compile(monkeypatch):
     after = {"package_sha256": "b" * 64, "dtype_strategy": "int8_w8a8"}
 
     class Experiment:
-        def resolve_host_lane(self, *, root=None):
+        def resolve_host_lane(self, *, root=None, dtype=None):
             return repo_root() / "frozen-test-host", after
 
     monkeypatch.setattr(capsule_runner, "_resolve_model_host_lane", lambda target, dtype: (

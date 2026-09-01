@@ -124,7 +124,7 @@ def test_quantized_drop_within_tolerance_still_passes_when_it_ran_on_the_mesh(mo
     """The quant-tolerance allowance survives — but it now also requires the layers to have RUN."""
     from pathlib import Path
     from merlin.targetgen.target_experiment import TargetExperiment
-    monkeypatch.setattr(TargetExperiment, "resolve_host_lane", lambda self, *, root=None: (
+    monkeypatch.setattr(TargetExperiment, "resolve_host_lane", lambda self, *, root=None, dtype=None: (
         Path("/frozen/int8"), {"package_sha256": "a" * 64, "dtype_strategy": "int8_w8a8"}))
     _mesh(monkeypatch, ran=15, fell=0, status="run_mismatch",
           verify={"gate_ok": False, "fp32_cos": 0.962})
@@ -135,7 +135,7 @@ def test_quantized_drop_within_tolerance_still_passes_when_it_ran_on_the_mesh(mo
 def test_quantized_gross_defect_still_fails(monkeypatch):
     from pathlib import Path
     from merlin.targetgen.target_experiment import TargetExperiment
-    monkeypatch.setattr(TargetExperiment, "resolve_host_lane", lambda self, *, root=None: (
+    monkeypatch.setattr(TargetExperiment, "resolve_host_lane", lambda self, *, root=None, dtype=None: (
         Path("/frozen/int8"), {"package_sha256": "a" * 64, "dtype_strategy": "int8_w8a8"}))
     _mesh(monkeypatch, ran=15, fell=0, status="run_mismatch",
           verify={"gate_ok": False, "fp32_cos": 0.42})

@@ -44,40 +44,69 @@ def test_there_are_descriptors_to_check():
     assert DESCRIPTORS
 
 
+def _profiles(lane: dict) -> list[dict]:
+    """Every declared lane, whether the descriptor uses the single or the keyed form."""
+    if "profiles" not in lane:
+        return [lane]
+    shared = {k: v for k, v in lane.items() if k not in ("profiles", "default")}
+    return [{**shared, **body} for body in lane["profiles"].values()]
+
+
 @pytest.mark.parametrize("descriptor", DESCRIPTORS, ids=lambda p: p.parent.name)
 def test_every_target_declares_a_frozen_host_lane(descriptor):
     lane = _lane(descriptor)
     assert lane, f"{descriptor}: no `host_lane:` block — the host compiler would be unpinned"
-    for field in ("description", "repo_canonical", "branch", "commit", "package",
-                  "requires_paths", "read_only", "deny_modification"):
-        assert field in lane, f"{descriptor}: host_lane is missing `{field}`"
-    assert lane["read_only"], f"{descriptor}: host_lane grants nothing read-only"
-    assert lane["deny_modification"], f"{descriptor}: host_lane denies no modification surface"
+    for prof in _profiles(lane):
+        for field in ("description", "repo_canonical", "package",
+                      "requires_paths", "read_only", "deny_modification"):
+            assert field in prof, f"{descriptor}: host_lane is missing `{field}`"
+        assert prof["read_only"], f"{descriptor}: host_lane grants nothing read-only"
+        assert prof["deny_modification"], f"{descriptor}: host_lane denies no modification surface"
+        # WHICH PRECISION LANE, so the profile key means something and a package filed under the wrong
+        # one is refused at load rather than discovered by a numeric failure.
+        assert prof.get("dtype_strategy"), f"{descriptor}: host_lane declares no dtype_strategy"
 
 
 @pytest.mark.parametrize("descriptor", DESCRIPTORS, ids=lambda p: p.parent.name)
-def test_commit_is_a_sha_or_an_explicit_unknown(descriptor):
-    """A pin's revision is either a full sha or the word UNKNOWN. Never absent, never invented.
+def test_the_revision_pin_matches_how_the_package_came_to_exist(descriptor):
+    """A pin's revision is never absent and never invented — but which pin is honest depends on the
+    package's provenance, and conflating the two is what produced a fictional branch name.
 
-    An empty or missing commit reads as "no pin needed"; UNKNOWN reads as "nobody could determine
-    this", which is a different fact and the one that is true here — the branch lives on a remote this
-    repo publishes to and does not vendor, so the pin is carried by content (``package`` +
-    ``requires_paths``) instead.
+    ``published``: the package was checked out of ``repo_canonical``, so ``branch`` names it and
+    ``commit`` is a full sha or the word UNKNOWN. UNKNOWN is not "no pin needed" — it is "nobody could
+    determine this", which is the true state here, because the branch lives on a remote this repo
+    publishes to and does not vendor; the pin is then carried by content (``package`` +
+    ``requires_paths`` + the tree digest).
+
+    ``in_tree_minted``: the package was GENERATED here and never existed upstream, so there is no
+    revision to name. Requiring one produced exactly one answer -- ``branch: UNKNOWN`` -- which reads
+    as a failed lookup rather than as "this question does not apply". Such a lane must therefore NOT
+    carry a branch, and its identity rests on the content digest, which is the stronger check anyway.
     """
-    commit = _lane(descriptor).get("commit")
-    assert commit, f"{descriptor}: host_lane.commit is empty; write the sha or the word UNKNOWN"
-    commit = str(commit)
-    assert commit == "UNKNOWN" or (len(commit) == 40 and all(c in "0123456789abcdef" for c in commit)), \
-        f"{descriptor}: host_lane.commit {commit!r} is neither a 40-char sha nor UNKNOWN"
+    for prof in _profiles(_lane(descriptor)):
+        provenance = prof.get("provenance", "published")
+        assert provenance in ("published", "in_tree_minted"), \
+            f"{descriptor}: unknown host_lane.provenance {provenance!r}"
+        if provenance == "in_tree_minted":
+            assert "branch" not in prof, (
+                f"{descriptor}: an in-tree-minted lane must not name a branch; it never existed "
+                f"upstream, so any value here is a fiction")
+            continue
+        assert prof.get("branch"), f"{descriptor}: a published lane must name its branch"
+        commit = prof.get("commit")
+        assert commit, f"{descriptor}: host_lane.commit is empty; write the sha or the word UNKNOWN"
+        commit = str(commit)
+        assert commit == "UNKNOWN" or (len(commit) == 40 and all(c in "0123456789abcdef" for c in commit)), \
+            f"{descriptor}: host_lane.commit {commit!r} is neither a 40-char sha nor UNKNOWN"
 
 
 @pytest.mark.parametrize("descriptor", DESCRIPTORS, ids=lambda p: p.parent.name)
 def test_read_only_and_denied_never_name_the_same_path(descriptor):
     """Deny wins in the sandbox binder. A path on both lists grants nothing at all, so "read-only"
     would quietly become "not there" — the arm would lose the frozen lane and nothing would say so."""
-    lane = _lane(descriptor)
-    clash = set(lane["read_only"]) & set(lane["deny_modification"])
-    assert not clash, f"{descriptor}: {sorted(clash)} is both granted and denied"
+    for prof in _profiles(_lane(descriptor)):
+        clash = set(prof["read_only"]) & set(prof["deny_modification"])
+        assert not clash, f"{descriptor}: {sorted(clash)} is both granted and denied"
 
 
 @pytest.mark.parametrize("descriptor", DESCRIPTORS, ids=lambda p: p.parent.name)

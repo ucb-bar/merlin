@@ -49,6 +49,19 @@ class HostLane:
     requires_paths: tuple[str, ...]
     read_only: tuple[str, ...]
     deny_modification: tuple[str, ...]
+    #: Which precision lane this package IS, in ``compile_cli._DTYPE_STRATEGY``'s vocabulary. Declared
+    #: rather than discovered so a profile key is checkable at LOAD time; ``resolve`` still cross-checks
+    #: it against the package's own manifest, so a package whose knobs drift from its declaration is
+    #: refused rather than silently used for the wrong dtype.
+    dtype_strategy: str | None = None
+    #: How this package came to exist, closed vocabulary. ``published`` means it was checked out of
+    #: ``repo_canonical`` and ``branch`` names the revision. ``in_tree_minted`` means it was generated
+    #: HERE (promote_champion) and never existed upstream -- for which a branch name would be a
+    #: fiction, so one is not required and the pin is carried by the package digest instead.
+    provenance: str = "published"
+
+    #: The provenance values a descriptor may declare.
+    PROVENANCE = ("published", "in_tree_minted")
 
     @classmethod
     def from_mapping(cls, value: Any, *, descriptor: Path) -> "HostLane | None":
@@ -57,8 +70,18 @@ class HostLane:
         if not isinstance(value, dict):
             raise ValueError(
                 f"{descriptor}: `host_lane` must be a mapping, got {type(value).__name__}")
-        required = ("description", "repo_canonical", "branch", "commit", "package",
-                    "requires_paths", "read_only", "deny_modification")
+        provenance = str(value.get("provenance", "published"))
+        if provenance not in cls.PROVENANCE:
+            raise ValueError(f"{descriptor}: host_lane.provenance must be one of "
+                             f"{list(cls.PROVENANCE)}, got {provenance!r}")
+        required = ["description", "repo_canonical", "package",
+                    "requires_paths", "read_only", "deny_modification"]
+        # A published lane must name the revision it was published at. An in-tree-minted one must not
+        # be made to invent one: gemmini's int8 package records
+        # `authoring.mode: deterministic_generated_from_spec` and was never checked out of the remote,
+        # so `branch: UNKNOWN` was the honest answer to a question that should not have been asked.
+        if provenance == "published":
+            required += ["branch", "commit"]
         missing = [name for name in required if name not in value]
         if missing:
             raise ValueError(f"{descriptor}: host_lane is missing required field(s) {missing}")
@@ -72,12 +95,14 @@ class HostLane:
         return cls(
             description=str(value["description"]),
             repo_canonical=str(value["repo_canonical"]),
-            branch=str(value["branch"]),
-            commit=str(value["commit"]),
+            branch=str(value.get("branch", "")) or "UNKNOWN",
+            commit=str(value.get("commit", "")) or "UNKNOWN",
             package=str(value["package"]),
             requires_paths=paths("requires_paths"),
             read_only=paths("read_only"),
             deny_modification=paths("deny_modification"),
+            dtype_strategy=(lambda v: str(v) if v else None)(value.get("dtype_strategy")),
+            provenance=provenance,
         )
 
     def resolve(self, *, root: Path | None = None, descriptor: Path | None = None) \
@@ -170,9 +195,87 @@ class HostLane:
             "target": loaded.name,
             "run_id": loaded.run_id,
             "dtype_strategy": loaded.dtype_strategy,
+            "declared_dtype_strategy": self.dtype_strategy,
+            "provenance": self.provenance,
             "schedule_file": schedule_rel.as_posix(),
         }
+        # DECLARED vs LOADED, checked here rather than at the call site. The grading path already
+        # compared the loaded strategy against the capsule's compile dtype; what it could not catch was
+        # a descriptor whose profile key says one lane and whose package is another, because nothing
+        # held the descriptor's own claim. With both recorded, a package whose knobs drift from the
+        # declaration it is filed under is refused instead of quietly serving the wrong precision.
+        if self.dtype_strategy and str(loaded.dtype_strategy) != self.dtype_strategy:
+            raise ValueError(
+                f"host_lane package {self.package!r} declares dtype_strategy "
+                f"{self.dtype_strategy!r} in the descriptor but its manifest says "
+                f"{loaded.dtype_strategy!r}; the descriptor and the package disagree about which "
+                f"precision lane this is")
         return package, identity
+
+
+@dataclass(frozen=True)
+class HostLaneMatrix:
+    """The host lanes a target can be graded against, keyed by precision.
+
+    The host lane was one package per target, but it was never really one: gemmini needs the int8
+    package while the other five need the fp32 one, and the descriptor expressed that by having a
+    different `package` and giving up on `branch`. Making it a keyed set says the real shape -- a lane
+    is (compiler package x board), and which one applies follows the capsule's compile dtype.
+
+    Single-mapping descriptors keep loading unchanged: they become a one-entry matrix whose default is
+    that entry, so nothing that has one lane has to learn about two.
+    """
+
+    default: str
+    profiles: dict
+
+    @classmethod
+    def from_mapping(cls, value: Any, *, descriptor: Path) -> "HostLaneMatrix | None":
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError(
+                f"{descriptor}: `host_lane` must be a mapping, got {type(value).__name__}")
+        if "profiles" not in value:
+            lane = HostLane.from_mapping(value, descriptor=descriptor)
+            key = lane.dtype_strategy or "default"
+            return cls(default=key, profiles={key: lane})
+        raw = value["profiles"]
+        if not isinstance(raw, dict) or not raw:
+            raise ValueError(f"{descriptor}: host_lane.profiles must be a non-empty mapping")
+        shared = {k: v for k, v in value.items() if k not in ("profiles", "default")}
+        profiles = {}
+        for name, body in raw.items():
+            if not isinstance(body, dict):
+                raise ValueError(f"{descriptor}: host_lane.profiles.{name} must be a mapping")
+            profiles[str(name)] = HostLane.from_mapping({**shared, **body}, descriptor=descriptor)
+        default = str(value.get("default") or "")
+        if default not in profiles:
+            raise ValueError(f"{descriptor}: host_lane.default must name one of "
+                             f"{sorted(profiles)}, got {default!r}")
+        return cls(default=default, profiles=profiles)
+
+    def for_dtype(self, dtype: str | None) -> HostLane:
+        """The lane a capsule compiled at ``dtype`` is graded against.
+
+        NEVER falls back across precision. Serving an fp32 lane to an int8 capsule would grade a
+        submission against a host compiler that cannot produce the arithmetic the capsule declares, and
+        the mismatch would show up as a numeric failure attributed to the accelerator.
+        """
+        if dtype is None:
+            return self.profiles[self.default]
+        try:
+            from merlin.compile_cli import _DTYPE_STRATEGY
+            strategy = _DTYPE_STRATEGY.get(dtype)
+        except Exception:                          # noqa: BLE001 -- no mapping is not a wrong mapping
+            strategy = None
+        if strategy is None:
+            return self.profiles[self.default]
+        if strategy in self.profiles:
+            return self.profiles[strategy]
+        raise ValueError(
+            f"no host lane declared for dtype {dtype!r} (strategy {strategy!r}); this target declares "
+            f"{sorted(self.profiles)}. Refusing to substitute another precision's lane")
 
 
 @dataclass(frozen=True)
@@ -244,7 +347,7 @@ class TargetExperiment:
     # OPTIONAL for legacy/minimal descriptors. Targeted whole-model grading requires it and fails closed
     # when absent; keeping None loadable lets descriptor tooling report the omission instead of making
     # unrelated onboarding helpers crash while parsing an otherwise useful partial descriptor.
-    host_lane: HostLane | None = None
+    host_lanes: HostLaneMatrix | None = None
     # OPTIONAL: which BOARD this target's host lane compiles for, a key of ``merlin.runtime.boards``.
     #
     # Nothing declared it anywhere, and the omission was silent in the worst way: ``system_for`` returns
@@ -259,10 +362,22 @@ class TargetExperiment:
     # omission instead of fabricating a host, since a made-up host is worse than an absent one.
     host_board: str | None = None
 
-    def resolve_host_lane(self, *, root: Path | None = None) -> tuple[Path, dict[str, Any]]:
-        if self.host_lane is None:
+    @property
+    def host_lane(self) -> HostLane | None:
+        """This target's DEFAULT host lane, for the readers that predate the matrix."""
+        return None if self.host_lanes is None else self.host_lanes.profiles[self.host_lanes.default]
+
+    def resolve_host_lane(self, *, root: Path | None = None,
+                          dtype: str | None = None) -> tuple[Path, dict[str, Any]]:
+        """Validate and identify the host lane a capsule at ``dtype`` is graded against.
+
+        ``dtype=None`` keeps the pre-matrix behaviour (the declared default), so every existing caller
+        is unchanged; passing one selects the profile whose precision matches, and raises rather than
+        substituting when this target declares no lane for it.
+        """
+        if self.host_lanes is None:
             raise ValueError(f"{self.path}: targeted whole-model grading requires a host_lane declaration")
-        return self.host_lane.resolve(root=root, descriptor=self.path)
+        return self.host_lanes.for_dtype(dtype).resolve(root=root, descriptor=self.path)
 
     def declared_contract_path(self) -> Path | None:
         """The declared contract as an absolute path, if the descriptor names one that exists."""
@@ -384,7 +499,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         declared_contract=(lambda s: str(s) if s else None)(hw.get("target_contract")),
         backend_package_dir=(lambda s: str(s) if s else None)(doc.get("backend_package_dir")),
         graded_exclude=tuple(str(x) for x in ((doc.get("grading") or {}).get("exclude_capsules") or ())),
-        host_lane=HostLane.from_mapping(doc.get("host_lane"), descriptor=p),
+        host_lanes=HostLaneMatrix.from_mapping(doc.get("host_lane"), descriptor=p),
         host_board=(lambda v: str(v) if v else None)((doc.get("host") or {}).get("board")),
     )
 

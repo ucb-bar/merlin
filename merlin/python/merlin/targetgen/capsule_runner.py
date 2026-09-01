@@ -458,14 +458,57 @@ def _bespoke_sim_via(target: str) -> str:
     return ""
 
 
+def chipyard_l3_selection(target: str) -> dict:
+    """Which elaborated-RTL engine certifies ``target`` on the chipyard sim, and what it was chosen over.
+
+    Routed through :mod:`rtl_engine_policy` rather than naming a binary, for the reason that module was
+    written: a tier index is a FIDELITY, not a simulator, and binding ``L3 = verilator`` made the choice
+    invisible and unchangeable. The program-oracle path already selects this way; the chipyard path did
+    not, so on a chipyard target the policy never ran at all and a faster engine could not be adopted
+    without editing this function.
+
+    The probe is the backend's own availability check. A backend that does not know an engine RAISES
+    (measured: ``available('gsim')`` -> ``GemminiError: unknown simulator 'gsim'``), which the policy
+    records as a reason rather than treating as a crash -- so an engine this target cannot run is
+    reported as passed-over WITH why, and the day it can run it is selected with no change here.
+    """
+    from ..runtime.backends import base as _backends
+    from . import rtl_engine_policy as _pol
+
+    backend = _backends.get_backend(target)
+
+    def _probe(engine: str):
+        def run() -> tuple[bool, str]:
+            ok = bool(backend.available(engine))       # may raise; the policy records that as a reason
+            return (ok, f"{engine} reports available for {target!r}" if ok
+                    else f"{engine} reports unavailable for {target!r}")
+        return run
+
+    return _pol.select(target, {e: _probe(e) for e in _pol.ENGINE_PRIORITY})
+
+
 def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
     """The concrete oracle adapters a DECLARED sim ENGINE provides (additive registry, mirroring
-    ``sandbox.toolchain.SIM_TOOLCHAINS``): ``chipyard`` elaborates spike (L2) + verilator (L3). An
-    unknown/absent engine contributes none (the arc RTL tier still carries the grade). A new bespoke sim
-    registers one branch here — the engine name is DERIVED from the target's contract, never assumed."""
+    ``sandbox.toolchain.SIM_TOOLCHAINS``): ``chipyard`` elaborates spike (L2) + an elaborated-RTL engine
+    (L3) chosen by :func:`chipyard_l3_selection`. An unknown/absent engine contributes none (the arc RTL
+    tier still carries the grade). A new bespoke sim registers one branch here — the engine name is
+    DERIVED from the target's contract, never assumed."""
     if sim_via == "chipyard":
-        return {"L2": _spike_verilator_adapter("spike", target),
-                "L3": _spike_verilator_adapter("verilator", target)}
+        adapters: dict[str, Callable] = {"L2": _spike_verilator_adapter("spike", target)}
+        try:
+            sel = chipyard_l3_selection(target)
+        except Exception as exc:  # noqa: BLE001 — no elaborated-RTL engine: NO L3, never a silent demotion
+            # Reported, not substituted. A tier that cannot run must come back absent; resolving it to
+            # the model tier below is how a functional result gets read as an RTL certification.
+            print(f"[oracle] {target}: no elaborated-RTL engine for L3 — {exc}", flush=True)
+            return adapters
+        # The selection is RECORDED, not carried in this dict: every key here is a TIER name and every
+        # value a callable (`min(full)` picks the fastest tier, and tier filters compare keys against a
+        # capsule's declared tiers), so a metadata entry would be read as a tier.
+        from . import rtl_engine_policy as _pol
+        print(f"[oracle] {target} L3 engine: {_pol.describe(sel)}", flush=True)
+        adapters["L3"] = _spike_verilator_adapter(sel["engine"], target)
+        return adapters
     return {}
 
 
@@ -1591,7 +1634,12 @@ def _resolve_model_host_lane(target: str, dtype: str):
         raise ValueError(
             f"descriptor {descriptor} names target {experiment.target!r}, not {target!r}")
     snapshot_repo, snapshot_identity = _verified_model_host_lane_snapshot()
-    package, identity = experiment.resolve_host_lane(root=snapshot_repo)
+    # SELECT the lane by dtype, rather than validating whichever single lane the descriptor happened to
+    # declare. The cross-check below already refused a mismatch, so a target needing two precisions had
+    # no way to express it and simply failed for one of them; the matrix makes the selection the
+    # descriptor's to state, and the check below stays as the belt-and-braces that catches a package
+    # whose knobs drifted from the profile it is filed under.
+    package, identity = experiment.resolve_host_lane(root=snapshot_repo, dtype=dtype)
     if snapshot_identity is not None:
         identity["run_snapshot"] = snapshot_identity
 
@@ -1848,7 +1896,12 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
                         _snapshot_before.get("content_sha256")):
                     result["host_lane_snapshot_after"] = _snapshot_after
                     raise ValueError("model host-lane run snapshot changed during grading")
-            _, _host_after = _host_experiment.resolve_host_lane(root=_snapshot_repo_after)
+            # RE-RESOLVE THE SAME LANE, not the default one. The check below compares package digests
+            # before and after; resolving a different profile would compare two different packages and
+            # report drift that never happened (or, worse, miss real drift by comparing the wrong pair)
+            # the moment a target declares more than one precision.
+            _, _host_after = _host_experiment.resolve_host_lane(
+                root=_snapshot_repo_after, dtype=dtype)
         except Exception as e:  # noqa: BLE001
             result.update(status="incomplete",
                           failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",

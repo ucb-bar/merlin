@@ -70,11 +70,18 @@ def _host_lane_grants(te: TargetExperiment) -> tuple[list[dict], list[dict]]:
     "read-only" grant silently becomes no grant at all. That is checked here rather than documented,
     because a grant that quietly evaporates is exactly the class of bug this repo has already shipped.
     """
-    lane = te.host_lane
-    if not lane:
+    # UNION ACROSS EVERY DECLARED PROFILE, not just the default. An arm is graded on whatever dtype its
+    # capsules declare, so it must be able to read the lane it will actually be compiled with -- granting
+    # only the default lane would leave a second-precision capsule graded against a package the agent
+    # was never shown, which is the same invisibility the pin exists to prevent. A no-op for a target
+    # with one profile.
+    if te.host_lanes is None:
         return [], []
-    read_only = list(lane.read_only)
-    deny = list(lane.deny_modification)
+    lanes = list(te.host_lanes.profiles.values())
+    read_only, deny = [], []
+    for lane in lanes:
+        read_only += [p for p in lane.read_only if p not in read_only]
+        deny += [p for p in lane.deny_modification if p not in deny]
     if not read_only and not deny:
         raise ValueError(f"{te.path}: `host_lane` declares neither `read_only` nor `deny_modification`; "
                          f"a lane that is pinned by nothing is not pinned")
