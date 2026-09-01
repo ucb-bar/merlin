@@ -4,8 +4,6 @@ source_role: pytorch_model_slice
 source_reference: 'int8 GEMM -> host LayerNorm -> int8 GEMM: the A->H->A seam as the
   subject of a capsule rather than a by-product of a whole model'
 label: public
-pass_requirements:
-- model-boundary-capstone
 interface_mlir: capsule.interface.mlir
 inputs:
 - name: I0
@@ -49,6 +47,10 @@ vcs: optional
 firesim: optional
 gate:
   after_op_pass_fraction: 0.0
+lanes:
+  require:
+  - on_mesh
+  - scalar_rvv_lane
 pytorch_ref:
   op: model
   dtype: i8
@@ -59,3 +61,5 @@ semantic:
   generalization_axis: model
   must_accelerate: true
   eligible: auto
+pass_requirements:
+- model-boundary-capstone

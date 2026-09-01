@@ -1090,6 +1090,16 @@ def _semantic_block(entry: dict, binding: CorpusBinding) -> dict:
     # never carry must_accelerate, whatever the corpus default says.
     must_default = False if kind == "model" else bool(defaults.get("must_accelerate", False))
     block["must_accelerate"] = bool(authored.get("must_accelerate", must_default))
+    # WHY the strongest assertion was withheld. The schema has a field for it, and for the interop and
+    # host-island capsules it is the whole contract: they withhold ``must_accelerate`` on purpose,
+    # because host-lane work is the behaviour under test rather than a fallback failure, and the demand
+    # they DO make is `lanes.require`. That reason was hand-written into the capsule after generation
+    # and therefore deleted by the next regeneration -- measured on three gemmini capsules at once --
+    # which left a withheld assertion looking like an author who simply never made one. Same argument
+    # as the block around it: emit it from the profile so a regen preserves it.
+    reason = authored.get("not_asserted_reason", defaults.get("not_asserted_reason"))
+    if reason:
+        block["not_asserted_reason"] = reason
     block["eligible"] = authored.get("eligible", defaults.get("eligible", "auto"))
     # FAMILIES THIS CAPSULE FUSES, so that a fused-only family can be covered at all.
     #

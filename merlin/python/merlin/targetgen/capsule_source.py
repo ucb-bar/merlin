@@ -709,11 +709,24 @@ def compile_dtype(token: str) -> str:
 
 
 def resolve_model_loader(entry: dict, m2m_dir: str | Path | None = None) -> Path:
-    """A model capsule entry names either a workload (``model: small_llama``) or an explicit ``loader``."""
+    """A model capsule entry names either a workload (``model: small_llama``) or an explicit ``loader``.
+
+    A relative ``loader`` is resolved REPO-ROOT-FIRST, then against the m2m checkout. Both roots are
+    needed and the order matters: a whole-model capsule whose network is defined in THIS repo (the
+    self-contained case -- the capsule's own ``capsule.pytorch.py`` is the source of record) can then be
+    named by the repo-root-relative path this repo already uses for every other in-tree reference, while
+    a capsule that names a model2MLIR workload keeps working unchanged. Resolving only against the m2m
+    root, as this did, made the in-repo case unnameable: every whole-model capsule had to keep its
+    network in an external checkout, which is exactly the dependency that leaves a capsule unbuildable
+    from a clean clone.
+    """
     root = Path(m2m_dir) if m2m_dir else _m2m_dir()
     if entry.get("loader"):
         p = Path(entry["loader"])
-        return p if p.is_absolute() else (root / p)
+        if p.is_absolute():
+            return p
+        in_repo = repo_root() / p
+        return in_repo if in_repo.is_file() else (root / p)
     name = entry.get("model")
     if not name:
         raise ValueError("model capsule entry needs 'model' (workload name) or 'loader' (path)")
@@ -796,6 +809,52 @@ def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, lis
                 classes.append(c)
     return family, classes
 
+
+
+def _model_semantic_block(entry: dict, family: str | None, classes) -> dict:
+    """The generalization-intent block for a whole-model capsule.
+
+    Three things are decided here, and the profile entry's ``generalization`` block overrides each --
+    the same authored-override channel ``corpus_spec._semantic_block`` already honours for every other
+    capsule kind. The model path used to ignore it entirely, which caused two failures at once:
+
+    * ``must_accelerate`` was FORCED false by the mere presence of ``lanes.require``. The reasoning is
+      sound for a whole real model, whose norms have nowhere but the host to go -- but it is wrong for a
+      capsule whose subject is the seam itself. The host-island capsule needs BOTH: its two int8 GEMMs
+      must reach the mesh (``must_accelerate``) *and* its LayerNorm island must land on the host lane
+      (``lanes.require``). Forcing them apart made declaring the lane contract silently WEAKEN the mesh
+      assertion, so the automatic withholding is now a default an author can override, not a mandate.
+    * ``not_asserted_reason`` could only ever say "the demand could not be derived". A capsule that
+      withholds the assertion ON PURPOSE had no way to say so from the profile, so the reason was
+      hand-written into the generated capsule and deleted by the next regeneration.
+    """
+    grounded = bool(family and classes)
+    authored = entry.get("generalization")
+    authored = dict(authored) if isinstance(authored, dict) else {}
+    interop = bool((entry.get("lanes") or {}).get("require"))
+    block: dict = {}
+    if family:
+        block["semantic_family"] = family
+    block["generalization_axis"] = authored.get("generalization_axis", "model")
+    block["must_accelerate"] = bool(authored.get("must_accelerate", grounded and not interop))
+    # A WITHHELD ASSERTION ALWAYS SAYS WHY. The two reasons are different facts and must not be
+    # conflated: "we could not derive the demand" is about our own reach, while "host-lane work is the
+    # subject" is about the capsule. Deriving both means a synthesized interop capsule carries the
+    # explanation without anyone typing it, and the profile text is an override rather than the only
+    # source -- silence here reads as an author who simply never made a claim.
+    reason = authored.get("not_asserted_reason")
+    if not reason and not grounded:
+        reason = ("the accelerator demand could not be derived from this model's linalg against this "
+                  "target's declared capabilities and role census, so must_accelerate is withheld "
+                  "rather than asserted ungrounded")
+    if not reason and interop:
+        reason = ("interop capsule: composition across lanes is the behaviour under test, so host-lane "
+                  "work is expected and required. The accelerator demand is expressed as lanes.require, "
+                  "which fails unless every named lane actually carried work.")
+    if reason and not block["must_accelerate"]:
+        block["not_asserted_reason"] = reason
+    block["eligible"] = authored.get("eligible", "auto")
+    return block
 
 def _checked_lanes(entry: dict, binding) -> list[str]:
     """The lanes an interop capsule requires, REFUSED at generation time if this target cannot populate one.
@@ -904,21 +963,7 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         # OWES is what makes it resolvable, and therefore what gives must_accelerate something to bite on:
         # an eligible region that falls back to the CPU is a hard failure. Only asserted when the demand
         # was actually grounded; an ungrounded assertion would fail a conformant submission.
-        "semantic": {
-            **({"semantic_family": _model_family} if _model_family else {}),
-            "generalization_axis": "model",
-            # An INTEROP capsule requires lane composition, so a region reaching the scalar/vector lane is
-            # the behaviour under test -- asserting must_accelerate there would fail a conformant
-            # submission for doing exactly what the capsule asks.
-            "must_accelerate": bool(_model_family and _model_classes
-                                    and not ((entry.get("lanes") or {}).get("require"))),
-            "eligible": "auto",
-            **({} if (_model_family and _model_classes) else {
-                "not_asserted_reason":
-                    "the accelerator demand could not be derived from this model's linalg against this "
-                    "target's declared capabilities and role census, so must_accelerate is withheld "
-                    "rather than asserted ungrounded"}),
-        },
+        "semantic": _model_semantic_block(entry, _model_family, _model_classes),
     }
     prov = {nm: {"shape": _shape_of(art.inputs[i]), "decoded": _flatten(art.inputs[i])}
             for i, nm in enumerate(in_names)}

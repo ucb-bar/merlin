@@ -60,14 +60,8 @@ semantic:
   semantic_family: contraction
   generalization_axis: model
   must_accelerate: false
-  # WITHHELD ON PURPOSE, and the reason is the capsule's subject. This is the interop capsule: its
-  # point is that work is carried across BOTH lanes -- part of the model on the mesh, the rest on the
-  # target's own scalar/RVV lane -- so "every eligible region must reach the accelerator" is the wrong
-  # bar and would fail the exact behaviour under test. The demand it does make is the `lanes.require`
-  # block above, which is stricter than must_accelerate here: it fails unless EVERY named lane actually
-  # carried work, so the mesh cannot be silently skipped either.
-  not_asserted_reason: >-
-    interop capsule: composition across lanes is the behaviour under test, so host/RVV-lane work is
-    expected and required. The accelerator demand is expressed as lanes.require [on_mesh,
-    scalar_rvv_lane], which fails unless both lanes carried work.
+  not_asserted_reason: 'interop capsule: composition across lanes is the behaviour
+    under test, so host/RVV-lane work is expected and required. The accelerator demand
+    is expressed as lanes.require [on_mesh, scalar_rvv_lane], which fails unless both
+    lanes carried work.'
   eligible: auto

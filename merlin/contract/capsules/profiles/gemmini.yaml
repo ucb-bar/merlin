@@ -420,7 +420,10 @@ capsules:
    operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'small_llama int8 composed across the systolic mesh and the host scalar/RVV lane — asserts both lanes carried work',
    label: public, gate: {after_op_pass_fraction: 0.8},
-   lanes: {require: [on_mesh, scalar_rvv_lane]}}
+   lanes: {require: [on_mesh, scalar_rvv_lane]},
+   generalization: {not_asserted_reason: 'interop capsule: composition across lanes is the behaviour
+     under test, so host/RVV-lane work is expected and required. The accelerator demand is expressed as
+     lanes.require [on_mesh, scalar_rvv_lane], which fails unless both lanes carried work.'}}
 # CYCLE-ACCURATE WHOLE MODEL. The three capstones above are the corpus's strongest claim and the one
 # claim no hardware ever checked: at 497 KB of interface MLIR against 6.6 MB of weights, none of them
 # can be afforded at the cycle-accurate tier, so "the compiler handles a real network end to end" rests
@@ -435,7 +438,11 @@ capsules:
    operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'microvit int8 — tile-sized vision+recurrent control net (overlapping patch-merge, pooled-reduction attention, depthwise MixFFN, pixel-shuffle/max-pool fusion, LSTM cell), composed across the systolic mesh and the host lane',
    label: public, gate: {after_op_pass_fraction: 0.8},
-   lanes: {require: [on_mesh, scalar_rvv_lane]}}
+   lanes: {require: [on_mesh, scalar_rvv_lane]},
+   pass_requirements: [model-boundary-capstone],
+   generalization: {not_asserted_reason: 'The model deliberately contains required scalar/RVV host
+     islands, so whole-model all-region acceleration is not the claim; lanes.require independently
+     requires mesh execution.'}}
 
 # ---------------------------------------------------------------------------------------------------
 # COMPOSITION COVERAGE: the host-island seam, on its own.
@@ -462,6 +469,13 @@ capsules:
    operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'int8 GEMM -> host LayerNorm -> int8 GEMM: the A->H->A seam as the subject of a capsule rather than a by-product of a whole model',
    label: public, gate: {after_op_pass_fraction: 0.0},
+   pass_requirements: [model-boundary-capstone],
+   lanes: {require: [on_mesh, scalar_rvv_lane]},
+   # BOTH assertions, and the capsule is meaningless without either. `must_accelerate` demands the two
+   # int8 GEMMs reach the mesh; `lanes.require` demands the LayerNorm island actually land on the host
+   # lane. A whole real model withholds must_accelerate because its norms have nowhere but the host to
+   # go -- but here the seam IS the subject, so the mesh side must stay asserted.
+   generalization: {must_accelerate: true},
    comment: 'M3: the A->H->A seam as the subject of a capsule. An int8 GEMM on the mesh, a LayerNorm
      on the host lane (this target declares no normalization capability, so the island is host work
      because the hardware cannot do it), and the value back to the mesh for a second int8 GEMM. The

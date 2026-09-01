@@ -1194,7 +1194,12 @@ def _write_capsule(entry, binding, out_root):
 #:                      a fused implementation against the parts it replaces. The field has been declared
 #:                      on four capsules since they were written and consumed by nothing, which is the
 #:                      same thing as not existing.
-_DECLARED_BLOCKS = ("performance", "comparison_group")
+#: ``pass_requirements`` the compiler-obligation classes a capsule demands, which is the ONLY link
+#:                      between a catalogued pass and a concrete capsule that requires it
+#:                      (``check_pass_obligations.py`` rejects a pass no capsule obliges). It was
+#:                      hand-written onto two capsules and unknown to this generator, so every
+#:                      regeneration silently deleted the corpus's only pass obligations.
+_DECLARED_BLOCKS = ("performance", "comparison_group", "pass_requirements")
 
 
 def _carry_declared_blocks(entry: dict, cap: dict) -> bool:

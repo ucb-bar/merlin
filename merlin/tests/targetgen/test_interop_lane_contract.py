@@ -53,18 +53,49 @@ def test_schema_accepts_a_declared_lane_pair_and_rejects_junk():
 
 
 def test_must_accelerate_is_withheld_when_lanes_are_declared():
-    """The inversion that makes interop capsules gradeable at all."""
-    src = _SOURCE.read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree)
-              if isinstance(n, ast.FunctionDef) and n.name == "write_model_capsule")
-    seg = ast.get_source_segment(src, fn) or ""
-    assert '"must_accelerate"' in seg
-    # the must_accelerate expression must consult the lanes declaration
-    ma = seg.split('"must_accelerate"', 1)[1].split("\n\n", 1)[0]
-    assert "lanes" in ma, (
-        "must_accelerate must be withheld for a capsule that declares lanes — an eligible region "
+    """The inversion that makes interop capsules gradeable at all.
+
+    Asserted on the BLOCK the generator emits, not on the source text of the function that emits it.
+    The previous form grepped `write_model_capsule` for the literal ``"must_accelerate"``, which broke
+    the moment the logic moved into a helper -- and, worse, could not express the rule it was guarding,
+    only that two words appeared near each other.
+    """
+    from merlin.targetgen.capsule_source import _model_semantic_block
+
+    interop = {"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}
+    block = _model_semantic_block(interop, "contraction", ["COMPUTE_PRELOADED"])
+    assert block["must_accelerate"] is False, (
+        "must_accelerate must be withheld for a capsule that declares lanes -- an eligible region "
         "reaching the other lane is the behaviour under test, not a violation")
+    assert block.get("not_asserted_reason"), "a withheld assertion must say why it was withheld"
+
+
+def test_a_seam_capsule_may_reclaim_must_accelerate_explicitly():
+    """Withholding is a DEFAULT, not a mandate, and the host-island capsule is why.
+
+    A whole real model withholds the assertion because its norms have nowhere but the host to go. But a
+    capsule whose SUBJECT is the seam needs both halves at once: its accelerator regions must reach the
+    mesh AND its host island must land on the host lane. Forcing them apart made declaring the lane
+    contract silently WEAKEN the mesh assertion, so an explicit authored claim wins.
+    """
+    from merlin.targetgen.capsule_source import _model_semantic_block
+
+    seam = {"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]},
+            "generalization": {"must_accelerate": True}}
+    block = _model_semantic_block(seam, "contraction", ["COMPUTE_PRELOADED"])
+    assert block["must_accelerate"] is True
+    assert "not_asserted_reason" not in block, (
+        "an assertion that was MADE must not also carry a reason for withholding it")
+
+
+def test_an_ungrounded_model_capsule_says_so():
+    """No family or no instruction classes means the demand could not be derived. Withheld, and the
+    reason is the derived one -- never silence, which reads as an author who simply never claimed."""
+    from merlin.targetgen.capsule_source import _model_semantic_block
+
+    block = _model_semantic_block({}, None, [])
+    assert block["must_accelerate"] is False
+    assert "could not be derived" in block["not_asserted_reason"]
 
 
 def test_an_ordinary_capsule_is_untouched():
