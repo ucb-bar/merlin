@@ -445,3 +445,63 @@ def test_the_implies_closure_terminates_and_validates_what_it_adds():
     finally:
         for n in probes:
             F._REGISTRY.pop(n, None)
+
+
+def test_every_mr_gt_1_recipe_implies_the_tile_epilogue_hygiene():
+    """Enumerated by CONSTRUCTION, not by hand — because hand-enumeration already failed once.
+
+    The `implies` mechanism was added to eight v3 registration sites and MISSED `ensure_perop_block`,
+    which is the whole-model per-op path: the one the board builds by default and the one every
+    measurement in this line of work went through. Cost, measured on small_llama int8 with a spike PC
+    histogram over the linked ELF: `memrefCopy` was 28.15% of all retired instructions -- more than
+    `forward` itself at 27.09% -- and removing it took total instructions 5,574,201 -> 3,523,665
+    (1.58x), with `forward` unchanged.
+
+    So this test does not check a list of names. It EXERCISES each on-demand registrar at MR>1 and at
+    MR=1 and asserts the rule, so a ninth registrar added later fails here rather than silently
+    shipping the defect a tenth time.
+    """
+    from merlin.llvmlower.selfcopy import FEATURE as SELF_COPY
+
+    mr_gt_1 = {
+        "ensure_v3_microkernel":            lambda: F.ensure_v3_microkernel(4, 16, 16),
+        "ensure_v3_scalable_microkernel":   lambda: F.ensure_v3_scalable_microkernel(4, 16, 16),
+        "ensure_v3_kblocked_microkernel":   lambda: F.ensure_v3_kblocked_microkernel(4, 16, 16),
+        "ensure_v3_unrolled_microkernel":   lambda: F.ensure_v3_unrolled_microkernel(4, 16, 16),
+        "ensure_v3_perop_microkernel":      lambda: F.ensure_v3_perop_microkernel(4, 16, 4, 8, 16),
+        "ensure_perop_block":               lambda: F.ensure_perop_block(
+            {"linalg.matmul:128x128:128": (4, 16)}, 16),
+    }
+    mr_eq_1 = {
+        "ensure_v3_microkernel":            lambda: F.ensure_v3_microkernel(1, 16, 16),
+        "ensure_v3_scalable_microkernel":   lambda: F.ensure_v3_scalable_microkernel(1, 16, 16),
+        "ensure_v3_kblocked_microkernel":   lambda: F.ensure_v3_kblocked_microkernel(1, 16, 16),
+        "ensure_v3_unrolled_microkernel":   lambda: F.ensure_v3_unrolled_microkernel(1, 16, 16),
+        "ensure_v3_perop_microkernel":      lambda: F.ensure_v3_perop_microkernel(1, 16, 4, 8, 16),
+        "ensure_perop_block":               lambda: F.ensure_perop_block(
+            {"linalg.matmul:17x128:128": (1, 16)}, 16),
+    }
+
+    for who, make in mr_gt_1.items():
+        feat = F.get(make())
+        assert SELF_COPY in feat.implies, (
+            f"{who} registers an MR>1 recipe that does NOT imply {SELF_COPY!r}: it will emit a per-tile "
+            f"memref.copy %x, %x and pay for it (measured at 28% of retired instructions on the path "
+            f"that missed this)")
+    for who, make in mr_eq_1.items():
+        feat = F.get(make())
+        assert SELF_COPY not in feat.implies, (
+            f"{who} implies the erase at MR=1, where MR=1+erase measured byte-identical — that moves a "
+            f"validated control for no effect")
+
+
+def test_the_statically_registered_mr_gt_1_features_imply_it_too():
+    """The named whole-model points, which are not reached through a registrar."""
+    from merlin.llvmlower.selfcopy import FEATURE as SELF_COPY
+
+    for name in ("accumulator_resident_wholemodel_vf_mr4",
+                 "accumulator_resident_wholemodel_vf_mrpad",
+                 "accumulator_resident_microkernel_v3"):
+        assert SELF_COPY in F.get(name).implies, name
+    # ...and the MR_mm=1 control still does not
+    assert SELF_COPY not in F.get("accumulator_resident_wholemodel_vf").implies

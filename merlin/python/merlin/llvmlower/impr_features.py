@@ -1883,6 +1883,15 @@ def ensure_perop_block(table, kc: int) -> str:
         edit_pipeline=_accumulator_resident_v3_pipeline,
         edit_schedule=lambda _t, _text=text: _text,
         schedule_replace=True,
+        # The tile-epilogue hygiene, keyed on the WIDEST matmul block in the table. This site was
+        # missed when `implies` was added to the eight other v3 registration points, and it is the one
+        # that mattered most: it is the whole-model per-op path, so every board build went out paying
+        # for a per-tile `memref.copy %x, %x` that does nothing. MEASURED on small_llama int8, spike
+        # PC histogram over the linked ELF: `memrefCopy` was 28.15% of all retired instructions --
+        # more than `forward` itself at 27.09% -- while the scalar-math routines everyone (including
+        # this session) had been ranking first were 1.88%, i.e. inside the board's noise band. A static
+        # instruction count had put those at 16.63%; the dynamic profile is what corrected it.
+        implies=_tile_epilogue_hygiene(max((mr for mr, _nr in table.values()), default=1)),
     ))
     return name
 
