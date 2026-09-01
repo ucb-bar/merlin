@@ -88,3 +88,64 @@ def test_every_target_that_ships_capstones_also_ships_an_interop_capsule():
         if not any((e.get("lanes") or {}).get("require") for e in ents):
             missing.append(target)
     assert not missing, f"targets shipping capstones but no interop capsule: {missing}"
+
+
+def _experiment_targets() -> list[str]:
+    """Every target that ships an experiment descriptor.
+
+    DISCOVERED, never listed. A hardcoded roster is how a guard silently stops covering the target
+    added after it was written -- and mx_gemmini is exactly that target here: it ships a corpus and was
+    absent from the parametrization above, so nothing checked its lanes at all.
+    """
+    root = merlin_dir() / "experiments/capsule_bench/targets"
+    return sorted(p.name for p in root.iterdir() if (p / "target_experiment.yaml").is_file())
+
+
+def _materialized_lane_declarations(target: str) -> list[tuple[str, pathlib.Path, list[str]]]:
+    """``(capsule name, path, required lanes)`` for every GRADED capsule on disk for ``target``.
+
+    Mirrors ``boundary.corpus_boundaries``' selection rules -- the graded roots, the label filter, the
+    descriptor's grading exclusions -- so this reads the same corpus the grader does.
+    """
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    desc = merlin_dir() / "experiments/capsule_bench/targets" / target / "target_experiment.yaml"
+    te = load_target_experiment(desc)
+    exclude = set(getattr(te, "graded_exclude", ()) or ())
+    out: list[tuple[str, pathlib.Path, list[str]]] = []
+    for root in te.graded_roots():
+        for cy in sorted(pathlib.Path(root).glob("*/capsule.yaml")):
+            cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            name = str(cap.get("name") or cy.parent.name)
+            if name in exclude or str(cap.get("label")) not in {"public", "dev"}:
+                continue
+            want = [str(x) for x in ((cap.get("lanes") or {}).get("require") or [])]
+            if want:
+                out.append((name, cy.parent, want))
+    return out
+
+
+@pytest.mark.parametrize("target", _experiment_targets())
+def test_every_materialized_lane_declaration_is_reachable_on_its_target(target):
+    """The profile check above is necessary but NOT sufficient: it reads the SPEC, and the grader reads
+    the CORPUS. Those diverge whenever a profile entry is renamed and the old materialized directory is
+    not deleted -- and one had: radiance shipped a public, graded ``MX0_interop_scalar_lane`` requiring
+    ``in_contract_vector_scalar`` on a target whose every declared unit is a mesh kind, long after the
+    profile entry had been renamed to ``MX0_interop_rvv_lane_lstm`` with the reachable lane. Both guards
+    passed, because neither of them looked at what actually ships.
+    """
+    try:
+        have = reachable_lanes(target)
+    except (FileNotFoundError, OSError) as exc:
+        # A target contract is a GENERATED artifact under out/, absent in a fresh clone. "We could not
+        # resolve this target's units" is not "its lanes are fine" -- skip loudly with the missing path
+        # rather than let an unresolvable target read as a passing one.
+        pytest.skip(f"cannot resolve declared units for {target!r}: {exc}")
+    offenders = [
+        f"{name} ({path}) requires {[l for l in want if l not in have]}, target offers {sorted(have)}"
+        for name, path, want in _materialized_lane_declarations(target)
+        if any(l not in have for l in want)
+    ]
+    assert not offenders, (
+        "materialized capsule(s) requiring an unreachable lane -- unpassable by any submission:\n  "
+        + "\n  ".join(offenders))
