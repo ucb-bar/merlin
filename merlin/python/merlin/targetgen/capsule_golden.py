@@ -301,6 +301,16 @@ def canonical_input_raws(capsule: dict, capsule_dir: str | Path | None = None) -
     list of per-element raw hex). This is the canonical device preload for a float target's program
     oracle: it must run on the SAME operands the golden used (the atlas exact-fp8 palette), NOT the
     integer-engine ``Tensor.deterministic`` 0..3 fill (whose bytes-as-fp8 collapse to subnormal/zero).
+
+    When a spec records no raw hex but DOES record decoded values, the bytes are ENCODED from those values
+    into the tensor's own declared dtype (:func:`merlin.runtime.fp8_formats.encode_bytes`). Only the fp8
+    palette was ever written as raw hex, so every bf16/fp16/f32 capsule returned nothing here and its
+    kernel was preloaded with NOTHING — it ran on empty DRAM and its output was graded as though the
+    kernel had failed to store. The encoding is the inverse of the shared decoder, so a value that came
+    out of the golden's own dtype round-trips exactly; a dtype the format table does not know, or a
+    sub-byte format whose packing is the caller's choice, yields nothing (fail closed) rather than a
+    guessed byte image.
+
     Empty for integer capsules (which record no raws and are reproduced on the Tensor engine)."""
     gy = _load_golden_yaml(capsule_dir)
     if not gy:
@@ -317,6 +327,68 @@ def canonical_input_raws(capsule: dict, capsule_dir: str | Path | None = None) -
         raws = spec.get("fp8_raw_hex") or spec.get("raw_hex")
         if raws:
             out[name] = bytes(int(x, 16) & 0xFF for x in raws)
+    for name, spec in _decoded_inputs(ins).items():
+        if name in out:
+            continue                                   # recorded device bytes always win over re-encoding
+        enc = _encode_leaf(capsule, name, spec)
+        if enc is not None:
+            out[name] = enc
+    return out
+
+
+def _leaf_dtype(capsule: dict, name: str) -> str | None:
+    """The declared dtype of leaf ``name``, read off the capsule's own input list (never inferred)."""
+    for t in (capsule.get("inputs") or []):
+        if t.get("name") == name:
+            return t.get("dtype")
+    return None
+
+
+def _encode_leaf(capsule: dict, name: str, values: list) -> bytes | None:
+    """Device bytes for one leaf's decoded values, or None when this capsule cannot supply them: no
+    declared dtype, a dtype outside the shared float table (integer capsules included — they are
+    reproduced on the Tensor engine, not preloaded), or a sub-byte format. Never guesses a width."""
+    dtype = _leaf_dtype(capsule, name)
+    if not dtype:
+        return None
+    import numpy as _np
+
+    from merlin.runtime import fp8_formats as _ff
+    try:
+        raw = _ff.encode_bytes(values, dtype)
+        width = _ff.storage_bits(dtype) // 8
+        codes = _np.frombuffer(raw, dtype=f"<u{width}").astype(_np.uint32)
+        back = _ff._decode(codes, dtype)
+    except (KeyError, ValueError):
+        return None
+    want = _np.asarray(values, dtype=_np.float32).ravel()
+    # REFUSE a lossy re-encoding. The oracle must run on the SAME operands the golden used; if the
+    # recorded values do not sit exactly on this dtype's grid (a golden that stored pre-quantization
+    # floats for a narrow format), encoding them hands the device operands the golden never saw and
+    # grades the kernel against the wrong reference. No preload is the honest answer there.
+    if back.shape != want.shape or not _np.array_equal(back, want):
+        return None
+    return raw
+
+
+def _decoded_inputs(ins: dict) -> dict[str, list]:
+    """``{name: flat row-major values}`` for the tensor specs that record decoded values."""
+    out: dict[str, list] = {}
+    for name, spec in ins.items():
+        if not isinstance(spec, dict):
+            continue
+        decoded = spec.get("decoded")
+        if decoded is None:
+            continue
+        flat: list = []
+        stack = [decoded]
+        while stack:                                   # flatten any nesting to row-major order
+            cur = stack.pop(0)
+            if isinstance(cur, list):
+                stack = list(cur) + stack
+            else:
+                flat.append(cur)
+        out[name] = flat
     return out
 
 

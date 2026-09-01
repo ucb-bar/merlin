@@ -176,3 +176,56 @@ def e8m0_decode(code: int) -> float:
     if c == E8M0["nan_code"]:
         return float("nan")
     return float(2.0 ** (c - E8M0["bias"]))
+
+
+def float_to_codes(values, fmt: str) -> np.ndarray:
+    """Encode float values to this format's integer CODE patterns — the inverse of :func:`_decode`.
+
+    Derived by inverting the decoder itself rather than re-deriving a layout: for any format that fits in
+    <=16 bits every code is decoded once and the nearest one is selected, so encode(decode(c)) == c by
+    construction and the two directions can never drift apart. A wide format (f32) is the identity view
+    (its 2**32 codes are not enumerable, and a float32 already IS the stored pattern).
+
+    Ties land on the EVEN code (IEEE round-half-to-even). Values outside the finite range saturate to the
+    largest finite magnitude of the matching sign rather than becoming inf — a preload operand that
+    silently turned into inf would poison the whole comparison. NaN is refused (fail closed): the caller
+    has a value the device cannot be handed.
+    """
+    t = canonical_float(fmt)
+    a = np.asarray(values, dtype=np.float32).ravel()
+    if np.isnan(a).any():
+        raise ValueError(f"cannot encode NaN into {t} (fail closed)")
+    bits = storage_bits(t)
+    if bits >= 32:                                     # f32: the value already is the stored pattern
+        return np.ascontiguousarray(a).view(np.uint32).copy()
+    codes = np.arange(1 << bits, dtype=np.uint32)
+    vals = _decode(codes, t)
+    keep = np.isfinite(vals)
+    codes, vals = codes[keep], vals[keep]
+    order = np.argsort(vals, kind="stable")
+    codes, vals = codes[order], vals[order].astype(np.float64)
+    # Clamp to the grid FIRST. An out-of-range magnitude (including a float32 inf, which is what
+    # `biggest * 2` becomes) otherwise makes both neighbour distances inf, and the nearest-of-two
+    # comparison then silently selects the second-largest code instead of saturating.
+    a64 = np.clip(a.astype(np.float64), vals[0], vals[-1])
+    hi = np.clip(np.searchsorted(vals, a64), 1, len(vals) - 1)
+    lo = hi - 1
+    dlo, dhi = np.abs(a64 - vals[lo]), np.abs(vals[hi] - a64)
+    pick = np.where(dhi < dlo, hi, lo)
+    tie = dlo == dhi                                   # round-half-to-even on the CODE pattern
+    if tie.any():
+        even_hi = (codes[hi] & 1) == 0
+        pick = np.where(tie, np.where(even_hi, hi, lo), pick)
+    return codes[pick]
+
+
+def encode_bytes(values, fmt: str) -> bytes:
+    """Little-endian stored bytes for ``values`` in ``fmt`` — the device preload image. Refuses a
+    sub-byte format, where an element has no standalone byte and packing is the caller's layout
+    decision, not this module's."""
+    t = canonical_float(fmt)
+    bits = storage_bits(t)
+    if bits % 8:
+        raise ValueError(f"{t} stores {bits} bits per element — packing is the caller's layout choice")
+    width = bits // 8
+    return float_to_codes(values, t).astype(f"<u{width}").tobytes()
