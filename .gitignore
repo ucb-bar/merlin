@@ -150,6 +150,13 @@ selfcheck_out/
 !/out/artifacts/targets/rvv/hand_v0/**
 !/out/artifacts/targets/rvv/hand_v0_int8/**
 !/out/artifacts/targets/rvv/impr_tuned_*/**
+# A target descriptor's FROZEN host lane must be readable from the sandbox workspace, which is built
+# from tracked content -- an untracked package resolves to nothing there and the run dies in setup
+# before the agent starts. Track exactly the files the descriptor pins in `requires_paths` (the
+# schedule + knobs + manifest that ARE the codegen), never the package's regenerable measurement runs.
+!/out/artifacts/targets/rvv/rvv_tuned_*/manifest.yaml
+!/out/artifacts/targets/rvv/rvv_tuned_*/schedule.mlir
+!/out/artifacts/targets/rvv/rvv_tuned_*/knobs.yaml
 # hand-authored reference baselines for other targets that tests load (keep suite reproducible)
 !/out/artifacts/targets/gemmini/hand_v0/**
 !/out/artifacts/targets/radiance/hand_v0/**
