@@ -64,6 +64,80 @@ def _committed_facts_path(target: str):
 
 
 
+#: Freshness verdicts. Three states, because "we cannot tell" is not "fresh".
+FRESH, STALE, UNDETERMINABLE = "fresh", "stale", "undeterminable"
+
+
+def freshness(target: str, *, path: str | Path | None = None) -> dict:
+    """Is the cached fact artifact still the one the CURRENT extractor would produce?
+
+    ``ensure_facts`` regenerates only when the cache is COLD, so a cache written by an older extractor
+    is served indefinitely. That is a provenance defect, not a performance detail: a hardware verdict
+    attributed to the wrong elaboration is worse than no verdict.
+
+    Comparing does NOT require a CIRCT re-extraction, which is the stated reason the comparison was
+    skipped. Two checks settle it from file hashes alone:
+
+    * **extractor identity** -- one hash of the extractor module. If it moved, the artifact was produced
+      by different code and its facts may differ in ways no input hash would show.
+    * **provenance shape** -- the set of input KEYS the current extractor records. Measured 2026-09-01:
+      gemmini's live cache records ``{target, hw_mlir, hw_sha, fir_sha, isa_sha, extractor_sha}`` and is
+      missing ``core_hw_mlir``/``core_hw_sha``, which the current extractor adds -- so the cached facts
+      do not name the HW dialect that was actually read. A cache that cannot say what it read is stale
+      whatever its hashes say.
+
+    Returns ``{"status", "reason", "target", "path", "recorded", "expected"}``. Never raises: an
+    unreadable or absent artifact is UNDETERMINABLE, never FRESH.
+    """
+    import hashlib
+    import json as _json
+
+    try:
+        art = Path(path) if path else rtl_facts_path(target)
+    except Exception as e:  # noqa: BLE001 -- unresolvable target
+        return {"status": UNDETERMINABLE, "reason": f"cannot resolve a facts path: {e}",
+                "target": target, "path": None, "recorded": {}, "expected": {}}
+    if not art.is_file():
+        return {"status": UNDETERMINABLE, "reason": f"no facts artifact at {art}",
+                "target": target, "path": str(art), "recorded": {}, "expected": {}}
+    try:
+        doc = _json.loads(art.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return {"status": UNDETERMINABLE, "reason": f"facts artifact is unreadable: {e}",
+                "target": target, "path": str(art), "recorded": {}, "expected": {}}
+
+    recorded = dict(doc.get("inputs") or {})
+    try:
+        from merlin.targetgen.rtl import circt_introspect as _ci
+        src = Path(_ci.__file__)
+        want_extractor = hashlib.sha256(src.read_bytes()).hexdigest()[:16]
+        want_keys = set(_ci.INPUT_KEYS)
+    except Exception as e:  # noqa: BLE001 -- extractor not importable here
+        return {"status": UNDETERMINABLE,
+                "reason": f"cannot identify the current extractor: {type(e).__name__}: {e}",
+                "target": target, "path": str(art), "recorded": recorded, "expected": {}}
+
+    expected = {"extractor_sha": want_extractor, "input_keys": sorted(want_keys)}
+    got_extractor = recorded.get("extractor_sha")
+    if not got_extractor:
+        return {"status": STALE, "reason": "the artifact records no extractor_sha, so the code that "
+                                          "produced it cannot be identified",
+                "target": target, "path": str(art), "recorded": recorded, "expected": expected}
+    if got_extractor != want_extractor:
+        return {"status": STALE,
+                "reason": f"produced by a different extractor (recorded {got_extractor}, current "
+                          f"{want_extractor}); re-derive rather than serving older facts",
+                "target": target, "path": str(art), "recorded": recorded, "expected": expected}
+    missing = sorted(want_keys - set(recorded))
+    if missing:
+        return {"status": STALE,
+                "reason": f"the artifact does not record the input(s) {missing} the current extractor "
+                          f"reads, so it cannot say what it was derived from",
+                "target": target, "path": str(art), "recorded": recorded, "expected": expected}
+    return {"status": FRESH, "reason": "extractor identity and provenance shape both match",
+            "target": target, "path": str(art), "recorded": recorded, "expected": expected}
+
+
 def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
     """Resolve the facts artifact and GUARANTEE it exists, REGENERATING it from the RTL into the
     purgeable cache when the cache is cold.

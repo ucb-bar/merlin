@@ -483,6 +483,14 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16] if path.is_file() else "missing"
 
 
+#: The input keys THIS extractor records in every fact artifact. `facts.freshness` compares an
+#: artifact's recorded key set against this: an artifact missing a key the current extractor reads
+#: cannot say what it was derived from, which makes it stale however its hashes look. Keep this in
+#: step with the `"inputs"` block built in `build_facts`.
+INPUT_KEYS = ("target", "hw_mlir", "hw_sha", "core_hw_mlir", "core_hw_sha",
+              "fir_sha", "isa_sha", "extractor_sha")
+
+
 def _core_hw_input(target: str) -> dict[str, str]:
     """The CORE HW dialect that mlc discovery and the pipeline-depth walk read, as provenance fields.
 
