@@ -52,7 +52,13 @@ def main(argv: "list[str] | None" = None) -> int:
                          "3584 MB region was correctly refused against a 256 MB declaration)")
     ap.add_argument("--package", required=True,
                     help="RVV package directory under out/artifacts/targets/ (schedule + cflags)")
-    ap.add_argument("--harts", type=int, default=2)
+    # 1, not 2. The script this came from defaulted to 2, a leftover from a two-core config that does
+    # not route on the U250 -- and `zephyr_model.build_app` correctly REFUSES it: only one hart of
+    # firesim_kodiak_opu can execute vector code, and an extra RVV worker would trap on its first
+    # vector instruction and deadlock the barrier as a timeout with no fault printed. The board
+    # descriptor is the authority on this, so the default is the value that is safe on a 1-hart board
+    # and the flag is there for boards that have more.
+    ap.add_argument("--harts", type=int, default=1)
     ap.add_argument("--vlen", type=int, default=512)
     ap.add_argument("--arena-mb", type=int, default=0,
                     help="0 = derive from the model's activation peak (see below)")

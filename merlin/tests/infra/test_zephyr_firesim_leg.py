@@ -86,3 +86,13 @@ def test_the_help_text_explains_the_board_argument_is_a_correctness_knob():
                        cwd=repo_root())
     assert r.returncode == 0
     assert "DRAM" in r.stdout
+
+
+def test_the_hart_default_is_safe_on_a_one_hart_board():
+    """The script this came from defaulted to 2 harts, a leftover from a two-core config that does not
+    route on the U250 -- and build_app correctly refuses it, because only one hart of that board can
+    execute vector code and an extra RVV worker deadlocks the barrier as a timeout with no fault
+    printed. A default that fails on the board the driver exists for is not a default."""
+    src = _src()
+    assert 'ap.add_argument("--harts", type=int, default=1)' in src
+    assert "deadlock the barrier" in src          # the reason, so nobody raises it back
