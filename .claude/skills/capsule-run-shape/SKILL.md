@@ -7,7 +7,14 @@ description: How a capsule-bench run is shaped and why — one continuous agent 
 
 ## The shape
 
-**One long-lived agent session, re-graded underneath it.** Default; no flag needed.
+**`--schedule continuous` with a long `--round-timeout`** (e.g. 43200). Rounds are not a terminator:
+the run stops on evidence (converged / plateaued) or a declared budget, and the post-freeze
+public+hidden L3 grade still runs, so a formal success is reachable.
+
+**Not `--continuous`.** That is the legacy single-session path: it re-grades under one session but skips
+the post-freeze public+hidden grade, returns 1, and hardcodes `formal_complete=False`. Measured
+2026-09-01: both gemmini sessions closed after ~1.5 h at 18/33 with `grades=2` when the agent stopped,
+well inside a 12 h round timeout.
 
 ```
 agent works continuously

@@ -1,9 +1,11 @@
-"""The recommended run shape is the DEFAULT run shape, and the ladder that makes it work is enforced.
+"""The recommended run shape, and the per-capsule ladder that makes it work, are enforced.
 
 An operator should not have to know a flag to get the behaviour the experiment is designed around:
 
-  * ONE long-lived agent session, re-graded underneath it -- not round relaunches that discard the
-    agent's context at every barrier and defer every verdict to the next one;
+  * the CERTIFIED continuous path (`--schedule continuous` with a long `--round-timeout`), where the
+    round count is not a terminator and the post-freeze public+hidden L3 grade still runs -- NOT the
+    legacy `--continuous` single-session path, which reports progress and can never report a formal
+    success;
   * per-capsule tiering, so a capsule that clears the loop tier goes to the certifying tier
     IMMEDIATELY -- capsule 2's L3 starts while the agent is still working on capsule 1's L2;
   * and the certificate that costs minutes of RTL is KEPT, not discarded.
@@ -37,22 +39,33 @@ def _mod(name: str):
     return mod
 
 
-def test_continuous_mode_is_on_without_asking_for_it():
-    """A run launched with no mode flag must be the continuous one."""
+def test_the_legacy_single_session_path_is_not_the_default():
+    """`--continuous` must stay opt-in, because it can never report a formal success.
+
+    It keeps one agent session and re-grades underneath it, which sounds like the shape we want -- but
+    it does NOT run the post-freeze public+hidden L3 grade: it returns 1 and hardcodes
+    `formal_complete=False`. Measured 2026-09-01: launched with `--continuous`, both gemmini sessions
+    closed after ~1.5h at 18/33 with `grades=2` when the AGENT stopped, well inside a 12h
+    --round-timeout, and no formal verdict was reachable. Defaulting to it would make formal success
+    impossible for every run.
+    """
     src = (HARNESS / "run_baseline_qa_loop.py").read_text(encoding="utf-8")
-    idx = src.index('"--continuous"')
-    decl = src[idx:idx + 400]
-    assert "BooleanOptionalAction" in decl and "default=True" in decl, (
-        "--continuous is not default-on, so an operator who does not know the flag gets round "
-        "relaunches: the agent's context is discarded at every barrier and each verdict waits for "
-        "the next one")
+    decl = src[src.index('"--continuous"'):][:400]
+    assert "action=\"store_true\"" in decl, (
+        "--continuous is no longer opt-in; the legacy progress-only path must not be the default "
+        "because it cannot run the post-freeze public+hidden L3 grade")
 
 
-def test_the_legacy_round_mode_is_still_reachable():
-    """Default-on must not remove the ability to reproduce an old round-based run."""
+def test_the_certified_continuous_path_still_ignores_the_round_cap():
+    """`--schedule continuous` is the certified path: rounds are not a terminator.
+
+    A run must stop on EVIDENCE (converged, plateaued) or on a declared budget -- never because an
+    arithmetic round cap ran out while the submission was still improving.
+    """
     src = (HARNESS / "run_baseline_qa_loop.py").read_text(encoding="utf-8")
-    assert "BooleanOptionalAction" in src[src.index('"--continuous"'):][:400], (
-        "there is no --no-continuous escape hatch")
+    assert 'a.schedule == "rounds"' in src, "the rounds/continuous distinction is gone"
+    assert "1_000_000" in src, (
+        "continuous mode no longer lifts the round cap, so a productive run can be cut at --max-rounds")
 
 
 def test_a_loop_pass_still_enqueues_the_cert_tier_immediately():

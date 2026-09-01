@@ -158,11 +158,16 @@ related, code_refs`). **Point-in-time reports** (results/findings/status/present
 
 # Experiment-run convention — one continuous session, per-capsule tiering
 
-A capsule-bench run is **one long-lived agent session, re-graded underneath it**. This is the DEFAULT
-(`--continuous`, `BooleanOptionalAction`, default True); `--no-continuous` exists only to reproduce a
-legacy round-based run. Do not reintroduce round relaunches: they discard the agent's context at every
-barrier and defer every verdict to the next one. Measured on `merlincirct_arm4_func_20260901_v4`, three
-round-based grades scored 19 / 18 / 19 of 33 while the agent rebuilt context each round.
+A capsule-bench run uses **`--schedule continuous` with a long `--round-timeout`** (e.g. 43200). In that
+mode the round COUNT is not a terminator: the run stops on EVIDENCE (converged, plateaued) or a declared
+budget, `--max-rounds` is ignored, and the post-freeze public+hidden L3 grade still runs — so a formal
+success is reachable. Use a long round timeout so agent sessions are long and barriers are rare.
+
+**Do NOT use `--continuous`.** It is a legacy single-session path: it keeps one session and re-grades
+underneath it, but it does not run the post-freeze public+hidden grade, returns 1, and hardcodes
+`formal_complete=False`. Measured 2026-09-01: launched that way, both gemmini sessions closed after
+~1.5 h at 18/33 with `grades=2` when the AGENT stopped — well inside a 12 h `--round-timeout` — and no
+formal verdict was reachable.
 
 Three properties are **gated, not documented-and-hoped-for**
 (`merlin/tests/infra/test_continuous_is_the_default.py`, `test_promotion_wiring.py`):

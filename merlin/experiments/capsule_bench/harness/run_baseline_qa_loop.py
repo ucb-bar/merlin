@@ -1826,24 +1826,23 @@ def main(argv: list[str] | None = None) -> int:
                          "past its round's own 4h timeout, wrote nothing, and the round never graded. "
                          "0 = no ceiling (an operator certification run wants that; a per-round gate "
                          "does not).")
-    # DEFAULT ON. Round relaunches throw away the agent's context at every barrier and delay every
-    # verdict to the next one; continuous mode keeps ONE session and re-grades underneath it. The
-    # per-capsule ladder is what makes that work: capsule_runner walks each capsule cheapest-first, so
-    # a capsule that clears the loop tier goes straight to the certifying tier IN THE SAME GRADE, and
-    # tier_promote additionally enqueues a cert job the moment a loop verdict lands -- so capsule 2's
-    # L3 starts while the agent is still working on capsule 1's L2, and record_cert keeps the result.
+    # NOT default-on, and deliberately so: this is the LEGACY single-session path. It keeps one agent
+    # session and re-grades underneath it, but it does NOT run the post-freeze public+hidden L3 grade, so
+    # it can report progress and can NEVER report a formal success (it returns 1 and hardcodes
+    # formal_complete=False). The certified continuous path is `--schedule continuous`, where the round
+    # COUNT is not a terminator: the run stops on EVIDENCE (converged, plateaued) or on a declared budget,
+    # and `--max-rounds` is ignored. Pair it with a long `--round-timeout` (e.g. 43200) so each agent
+    # session is long and barriers are rare.
     #
-    # Measured on merlincirct_arm4_func_20260901_v4: three round-based grades scored 19/18/19 of 33
-    # while the agent rebuilt context each round; nothing about the round barrier helped it.
-    # Opt out with --no-continuous only to reproduce an old round-based run.
-    ap.add_argument("--continuous", action=argparse.BooleanOptionalAction, default=True,
-                    help="CONTINUOUS mode (DEFAULT): one long-lived agent session instead of round "
-                         "relaunches. A background grader re-grades the workspace every "
-                         "--grade-interval seconds and refreshes qa/verdict.json, so the agent's "
-                         "feedback is continuous rather than arriving at a round barrier. Per-capsule "
-                         "L2->L3 promotion is immediate and its certificate is recorded. "
-                         "--max-rounds is ignored; --round-timeout bounds the single session. "
-                         "Use --no-continuous for the legacy round-relaunch behaviour.")
+    # Measured 2026-09-01: launched with `--continuous`, both gemmini sessions ended after ~1.5h at 18/33
+    # with `grades=2` and `formal_complete=False` -- the session closed when the agent stopped, well inside
+    # a 12h --round-timeout, and no formal verdict was reachable.
+    ap.add_argument("--continuous", action="store_true",
+                    help="LEGACY single-session mode: one long-lived agent session with a background "
+                         "grader every --grade-interval seconds, instead of round relaunches. Reports "
+                         "progress only -- it does NOT run the post-freeze public+hidden L3 grade and so "
+                         "can never report a formal success. For the certified continuous path use "
+                         "`--schedule continuous` with a long --round-timeout.")
     ap.add_argument("--grade-interval", type=int, default=900,
                     help="seconds between background grades in --continuous mode (default 900)")
     # Default sandbox=bwrap: enforced FS isolation (the agent cannot read a masked answer surface at all),
