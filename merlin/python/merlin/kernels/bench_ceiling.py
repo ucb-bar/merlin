@@ -25,6 +25,11 @@ toolchain/spike is unavailable, the bench won't build, the run fails, or the req
 ``(M,N,K)`` is not among the sizes the bench actually executes. Each ceiling row records
 exactly which bench/kernel produced it and how the cycle count was parsed.
 
+Reading the console is deliberately three-valued (:class:`CycleReading`): PARSED, ABSENT (this
+bench does not sweep that size), and UNPARSEABLE (it DID measure the size but the console did not
+say so in a shape we recognize). The last is a tooling defect and is reported, never quietly
+downgraded to "not measured" and never turned into a cycle count of 0.
+
 The ``fingerprint_key`` ``(op, dtype, shape_regime)`` matches
 :class:`merlin.kernels.compare.RvvFingerprint`'s key, so a ceiling row joins 1:1 to a
 compiler-measured cycle count for the same op-shape.
@@ -33,8 +38,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -88,68 +93,297 @@ def shape_regime(op: str, M: int, N: int, K: int) -> str:
     return "rectangular"
 
 
+# ------------------------------------------------------- console reading (three states, no regex)
+#
+# These benches have no machine-readable output mode: their printf'd console text IS the contract.
+# It is fixed by the corpus's own C sources, so we anchor on those literals and then VALIDATE the
+# token we pulled out, refusing anything that is not a plain non-negative decimal.
+#
+# Three outcomes, never collapsed:
+#   ABSENT       the bench does not measure this size (its sweep never printed that header)
+#   UNPARSEABLE  the size WAS measured but the cycle line could not be read -> the console format
+#                drifted; we must say so
+#   PARSED       a real number
+# UNPARSEABLE never becomes ABSENT and neither ever becomes 0: an unmeasurable ceiling is UNKNOWN.
+
+_PARSED = "parsed"
+_ABSENT = "absent"
+_UNPARSEABLE = "unparseable"
+
+_DIGITS = frozenset("0123456789")
+
+
+@dataclass(frozen=True)
+class CycleReading:
+    """What one bench console said about the requested size."""
+    state: str                          # _PARSED / _ABSENT / _UNPARSEABLE
+    cycles: int | None = None
+    instructions: int | None = None
+    note: str = ""                      # how it was read (goes on the ceiling row)
+    detail: str = ""                    # what went wrong, when state is _UNPARSEABLE
+
+    @classmethod
+    def absent(cls) -> "CycleReading":
+        return cls(_ABSENT)
+
+    @classmethod
+    def unparseable(cls, detail: str) -> "CycleReading":
+        return cls(_UNPARSEABLE, detail=detail)
+
+
+def _leading_count(text: str) -> tuple[int | None, int]:
+    r"""Read ``\s*(\d+)`` off the FRONT of ``text`` -> ``(value, index just past the digits)``.
+
+    Only ASCII digits: the spike console is ASCII, and refusing an exotic digit is the safe side of
+    "refuse rather than coerce". A sign, a dot, or a letter stops the run, so ``-5`` and ``1.2`` are
+    refused, exactly as the old ``(\d+)`` (which could not match a leading '-') did.
+    """
+    i = 0
+    while i < len(text) and text[i].isspace():
+        i += 1
+    j = i
+    while j < len(text) and text[j] in _DIGITS:
+        j += 1
+    if j == i:
+        return None, 0
+    return int(text[i:j]), j
+
+
+def _square_shape_header(line: str, size: int) -> bool:
+    r"""True for vec-igemm's sweep header at ``size``.
+
+    Live console line (spike, saturn ``vec-igemm``)::
+
+        Calculating a (32 x 32) x (32 x 32) matrix multiplication...
+
+    printf source: ``"Calculating a (%d x %d) x (%d x %d) matrix multiplication...\n"`` with the
+    same ``s`` in all four slots. The old pattern was
+    ``\(\s*S\s*x\s*S\s*\)\s*x\s*\(\s*S\s*x\s*S\s*\)`` — the four-operand shape with arbitrary
+    whitespace ANYWHERE inside it, including none. Deleting all whitespace from the line and
+    looking for the canonical spelling accepts exactly that set. The token is specific enough to
+    anchor on (it names the size four times), so it cannot pick a number out of another line: for
+    S=4 it does not match ``(64 x 64) x (64 x 64)`` or ``(14 x 4) x (4 x 4)``.
+    """
+    return f"({size}x{size})x({size}x{size})" in "".join(line.split())
+
+
+def _took_cycles(line: str) -> int | None:
+    r"""``The execution took 26055 cycles.`` -> 26055; ``None`` when the line is not that.
+
+    printf source: ``"The execution took %d cycles.\n"``. The old pattern was ``took\s+(\d+)\s+cycles``:
+    whitespace-delimited, so the count is always a whole token. Anchoring on the exact token
+    ``took`` is marginally stricter than the old substring match (which would also have fired on
+    ``mistook``), which no spelling this bench emits can hit. A ``%d`` that printed negative has no
+    all-digit token and is refused, as the old pattern also refused it.
+    """
+    parts = line.split()
+    for i, token in enumerate(parts):
+        if token != "took" or i + 2 >= len(parts):
+            continue
+        if any(c not in _DIGITS for c in parts[i + 1]) or not parts[i + 1]:
+            continue
+        if parts[i + 2].startswith("cycles"):
+            return int(parts[i + 1])
+    return None
+
+
+def _length_header(line: str, avl: int) -> bool:
+    r"""True for vec-dotprod's per-length header at ``avl``.
+
+    Live console line::
+
+        Calulating 64b dotp with vectors with length = 512
+
+    printf source: ``"Calulating <w>b dotp with vectors with length = %lu\n"`` (the bench's own
+    typo). The old pattern was ``length\s*=\s*AVL\b``; this walk is that literally — find
+    ``length``, skip whitespace, require '=', skip whitespace, then the digits must be exactly
+    ``avl`` and must not run on into another word character (so ``length = 512`` does not answer a
+    request for 51).
+    """
+    want = str(avl)
+    at = line.find("length")
+    while at >= 0:
+        i = at + len("length")
+        while i < len(line) and line[i].isspace():
+            i += 1
+        if i < len(line) and line[i] == "=":
+            i += 1
+            while i < len(line) and line[i].isspace():
+                i += 1
+            if line.startswith(want, i):
+                end = i + len(want)
+                if end == len(line) or not (line[end].isalnum() or line[end] == "_"):
+                    return True
+        at = line.find("length", at + 1)
+    return False
+
+
+def _vector_cycles(line: str) -> tuple[int, int] | None:
+    r"""``Vector cycles: 401 instructions: 401`` -> ``(401, 401)``; ``None`` otherwise.
+
+    printf source: ``"Vector cycles: %ld instructions: %ld\n"``. The old pattern was
+    ``Vector cycles:\s*(\d+)\s+instructions:\s*(\d+)`` — both counts anchored directly to their own
+    named literal, which is what makes this safe to read positionally.
+    """
+    marker, gap = "Vector cycles:", "instructions:"
+    at = line.find(marker)
+    while at >= 0:
+        rest = line[at + len(marker):]
+        cycles, end = _leading_count(rest)
+        if cycles is not None:
+            after = rest[end:]
+            if after[:1].isspace() and after.lstrip().startswith(gap):   # the old `\s+instructions:`
+                instructions, _ = _leading_count(after.lstrip()[len(gap):])
+                if instructions is not None:
+                    return cycles, instructions
+        at = line.find(marker, at + 1)
+    return None
+
+
+def _named_counter(line: str, name: str) -> int | None:
+    r"""``mcycle = 137509`` -> 137509, for the saturn ``setStats`` counter dump.
+
+    printf source: saturn ``benchmarks/common/syscalls.c`` prints ``"%s = %d\n"`` for each enabled
+    counter, and ``setStats(0)`` stores the DELTA over the measured region (``csr -= counters[i]``),
+    so ``mcycle`` here is the region's cycle count, not an absolute CSR read. Anchored on the
+    counter name as the whole left-hand side, and the right-hand side must be a bare count.
+    """
+    lhs, sep, rhs = line.partition("=")
+    if not sep or lhs.strip() != name:
+        return None
+    value, end = _leading_count(rhs)
+    if value is None or rhs[end:].strip():      # nothing but the number may follow
+        return None
+    return value
+
+
+def _colon_cycles(line: str) -> int | None:
+    r"""``core   0: 137509 cycles, ... CPI`` -> 137509 (the riscv-tests / pk ``setStats`` spelling).
+
+    This is what the retired ``:\s*(\d+)\s+cycles`` pattern read. The saturn corpus does NOT print
+    it (see :func:`_parse_sgemm`), but a pk-hosted console would, so we keep accepting it.
+    """
+    at = line.find(":")
+    while at >= 0:
+        value, end = _leading_count(line[at + 1:])
+        if value is not None:
+            after = line[at + 1 + end:]
+            if after[:1].isspace() and after.lstrip().startswith("cycles"):
+                return value
+        at = line.find(":", at + 1)
+    return None
+
+
 # ------------------------------------------------------------------------- bench registry
 @dataclass(frozen=True)
 class SaturnBench:
     """How to build + run a saturn benchmark and read a cycle number out of it.
 
     ``op``/``dtype`` are the curated kernel's canonical op + element type. ``parse`` maps
-    a requested ``(M, N, K)`` to its measured cycle/instr counts in the console text, or
-    ``None`` when that size is not among the ones the bench executes.
+    a requested ``(M, N, K)`` to a :class:`CycleReading` — a measured count, an honest ABSENT when
+    that size is not among the ones the bench executes, or UNPARSEABLE when the size WAS measured
+    but the console did not say what we know how to read.
     """
     bench: str
     op: str
     dtype: str
     kernel_ref: str
-    parse: Callable[[str, int, int, int], tuple[int, int | None] | None]
+    parse: Callable[[str, int, int, int], CycleReading]
 
 
-def _parse_igemm(console: str, M: int, N: int, K: int) -> tuple[int, int | None] | None:
-    """vec-igemm sweeps square s=4,8,16,32,64 printing a header then 'The execution took
-    N cycles.'  Match the header for the requested square size, then the next cycle line."""
+def _parse_igemm(console: str, M: int, N: int, K: int) -> CycleReading:
+    """vec-igemm sweeps squares s=4,8,16,32,64, printing a shape header then
+    ``The execution took N cycles.`` a couple of lines later."""
     if not (M == N == K):
-        return None
+        return CycleReading.absent()
     lines = console.splitlines()
-    hdr = re.compile(rf"\(\s*{M}\s*x\s*{M}\s*\)\s*x\s*\(\s*{M}\s*x\s*{M}\s*\)")
-    took = re.compile(r"took\s+(\d+)\s+cycles")
+    first_window = ""
     for i, line in enumerate(lines):
-        if hdr.search(line):
-            for nxt in lines[i:i + 4]:
-                m = took.search(nxt)
-                if m:
-                    return int(m.group(1)), None
-    return None
+        if not _square_shape_header(line, M):
+            continue
+        window = lines[i:i + 4]
+        for nxt in window:
+            cycles = _took_cycles(nxt)
+            if cycles is not None:
+                return CycleReading(_PARSED, cycles,
+                                    note=f"'The execution took N cycles.' under the ({M} x {M}) header")
+        # Keep scanning: a later header for the same size may carry the line (the old pattern
+        # searched on too). Only once every one of them is exhausted is this UNPARSEABLE.
+        first_window = first_window or " | ".join(x.strip() for x in window)
+    if first_window:
+        return CycleReading.unparseable(
+            f"vec-igemm printed the ({M} x {M}) header but no 'took N cycles' line followed it: "
+            + first_window)
+    return CycleReading.absent()          # this size is simply not in the sweep
 
 
-def _parse_dotprod(console: str, M: int, N: int, K: int) -> tuple[int, int | None] | None:
-    """vec-dotprod sweeps avl=8,64,512 for each width printing
-    'Calulating <w>b dotp ... length = <avl>' then 'Vector cycles: C instructions: I'.
-    The requested length is M (N==K==1). Width is implied by dtype but the 64b block is
-    measured first; we match on the length header regardless of width and take the FIRST
-    (64-bit) occurrence so the key is deterministic."""
+def _parse_dotprod(console: str, M: int, N: int, K: int) -> CycleReading:
+    """vec-dotprod sweeps avl=8,64,512 for each element width, printing
+    ``Calulating <w>b dotp with vectors with length = <avl>`` then
+    ``Vector cycles: C instructions: I``.
+
+    The requested length is M (N==K==1). Width is implied by dtype but the 64b block is measured
+    first; we match on the length header regardless of width and take the FIRST (64-bit)
+    occurrence so the key is deterministic."""
     if N != 1 or K != 1:
-        return None
+        return CycleReading.absent()
     lines = console.splitlines()
-    hdr = re.compile(rf"length\s*=\s*{M}\b")
-    cyc = re.compile(r"Vector cycles:\s*(\d+)\s+instructions:\s*(\d+)")
+    first_window = ""
     for i, line in enumerate(lines):
-        if hdr.search(line):
-            for nxt in lines[i:i + 3]:
-                m = cyc.search(nxt)
-                if m:
-                    return int(m.group(1)), int(m.group(2))
-    return None
+        if not _length_header(line, M):
+            continue
+        window = lines[i:i + 3]
+        for nxt in window:
+            got = _vector_cycles(nxt)
+            if got is not None:
+                return CycleReading(_PARSED, got[0], got[1],
+                                    note=f"'Vector cycles: C instructions: I' under length = {M}")
+        # This header repeats once per element width, so keep scanning the later ones (as the old
+        # pattern's search did) before calling the console unreadable.
+        first_window = first_window or " | ".join(x.strip() for x in window)
+    if first_window:
+        return CycleReading.unparseable(
+            f"vec-dotprod printed the length = {M} header but no 'Vector cycles:' line followed it: "
+            + first_window)
+    return CycleReading.absent()
 
 
-def _parse_sgemm(console: str, M: int, N: int, K: int) -> tuple[int, int | None] | None:
-    """vec-sgemm runs ONE fixed 71x71x71 sgemm under setStats, which prints a stats line
-    of the form '<code>: C cycles, ... CPI'. Only the fixed (71,71,71) shape is valid."""
+def _parse_sgemm(console: str, M: int, N: int, K: int) -> CycleReading:
+    r"""vec-sgemm runs ONE fixed 71x71x71 sgemm between ``setStats(1)``/``setStats(0)``, which dumps
+    the enabled hardware counters. Only the fixed (71,71,71) shape is valid.
+
+    The retired pattern here was ``:\s*(\d+)\s+cycles`` — the riscv-tests / pk spelling
+    ``<code>: C cycles, ... CPI``. **The saturn corpus does not print that.** Verified by building
+    and running this bench on spike from this tree; the whole console is::
+
+        sgemm M,N,K = 71,71,71
+        mcycle = 137509
+        minstret = 137514
+
+    (saturn ``benchmarks/common/syscalls.c`` prints ``"%s = %d\n"`` per counter, and ``setStats(0)``
+    has already turned each into a delta over the measured region.) So the old pattern matched
+    nothing and this bench's ceiling was silently unmeasurable — the exact failure the
+    "parse structurally" rule exists to stop. We now read the counter dump the bench actually emits,
+    and still accept the pk spelling for a pk-hosted console.
+    """
     if not (M == N == K == 71):
-        return None
-    m = re.search(r":\s*(\d+)\s+cycles", console)
-    if m:
-        return int(m.group(1)), None
-    return None
+        return CycleReading.absent()
+    cycles = instructions = None
+    for line in console.splitlines():
+        if cycles is None:
+            cycles = _named_counter(line, "mcycle")
+        if instructions is None:
+            instructions = _named_counter(line, "minstret")
+    if cycles is not None:
+        return CycleReading(_PARSED, cycles, instructions,
+                            note="saturn setStats counter dump ('mcycle = N' / 'minstret = N')")
+    for line in console.splitlines():
+        legacy = _colon_cycles(line)
+        if legacy is not None:
+            return CycleReading(_PARSED, legacy, note="pk setStats line ('<code>: N cycles')")
+    return CycleReading.unparseable(
+        "vec-sgemm ran the fixed 71x71x71 shape but neither a 'mcycle = N' counter dump nor a "
+        "'<code>: N cycles' stats line was found in its console: " + console.strip()[:300])
 
 
 # Curated benches that build standalone AND run on spike with a parseable cycle line.
@@ -238,7 +472,8 @@ def _run_saturn_elf(elf: Path, *, isa: str = DEFAULT_ISA, harts: int = 4,
 # ------------------------------------------------------------------------- public API
 def run_kernel_ceiling(source: str, kernel_ref: str, op: str, dtype: str,
                        MNK: tuple[int, int, int], *, target: str = "spike",
-                       isa: str = DEFAULT_ISA, timeout: int = 300) -> dict | None:
+                       isa: str = DEFAULT_ISA, timeout: int = 300,
+                       diagnostics: list[str] | None = None) -> dict | None:
     """Build a curated kernel standalone, run it on ``target`` (spike), and return one
     ceiling row, or ``None`` if it cannot build/run or the requested size is not measured.
 
@@ -248,6 +483,11 @@ def run_kernel_ceiling(source: str, kernel_ref: str, op: str, dtype: str,
 
     Returns a dict with: op, dtype, M, N, K, shape_regime, source, target, cycles,
     fingerprint_key (+ bench, kernel_ref, instructions, isa, note).
+
+    ``None`` covers two different things and they must not be confused by the caller: the size was
+    never measured (ordinary, silent), or the bench DID measure it but its console could not be
+    read. The second is a tooling defect, so it is written to stderr and appended to
+    ``diagnostics`` if a list is passed. Neither ever becomes a cycle count of 0.
     """
     if target != "spike":
         return None
@@ -276,10 +516,17 @@ def run_kernel_ceiling(source: str, kernel_ref: str, op: str, dtype: str,
         console = _run_saturn_elf(elf, isa=isa, timeout=timeout)
     if console is None:
         return None
-    parsed = spec.parse(console, M, N, K)
-    if parsed is None:
+    reading = spec.parse(console, M, N, K)
+    if reading.state == _UNPARSEABLE:
+        message = (f"{spec.bench}: measured the requested size but its console could not be read "
+                   f"-> ceiling UNKNOWN (not zero): {reading.detail}")
+        if diagnostics is not None:
+            diagnostics.append(message)
+        print(f"kernel-bench: {message}", file=sys.stderr)
         return None
-    cycles, instr = parsed
+    if reading.state != _PARSED or reading.cycles is None:
+        return None
+    cycles, instr = reading.cycles, reading.instructions
 
     regime = shape_regime(op, M, N, K)
     row = {
@@ -288,7 +535,7 @@ def run_kernel_ceiling(source: str, kernel_ref: str, op: str, dtype: str,
         "bench": spec.bench, "kernel_ref": spec.kernel_ref,
         "cycles": int(cycles), "isa": isa,
         "fingerprint_key": fingerprint_key(op, dtype, regime),
-        "note": f"saturn {spec.bench} on spike; parsed M=N=K={M} cycle line",
+        "note": f"saturn {spec.bench} on spike; read {reading.note}",
     }
     if instr is not None:
         row["instructions"] = int(instr)
@@ -391,11 +638,18 @@ def main(argv: list[str] | None = None) -> int:
               "cannot measure a ceiling (set MERLIN_CHIPYARD / MERLIN_SATURN_REPO).")
         return 2
 
+    diagnostics: list[str] = []
     row = run_kernel_ceiling(args.source, args.bench, args.op, args.dtype,
-                             (args.M, args.N, args.K), isa=args.isa)
+                             (args.M, args.N, args.K), isa=args.isa, diagnostics=diagnostics)
     if row is None:
-        print(f"kernel-bench: no ceiling for bench={args.bench} "
-              f"(M,N,K)=({args.M},{args.N},{args.K}) — build/run failed or size not measured.")
+        if diagnostics:
+            # The bench ran and measured this size; only reading it back failed. Say which,
+            # rather than blaming the build or the size.
+            print(f"kernel-bench: UNKNOWN ceiling for bench={args.bench} "
+                  f"(M,N,K)=({args.M},{args.N},{args.K}): " + "; ".join(diagnostics))
+        else:
+            print(f"kernel-bench: no ceiling for bench={args.bench} "
+                  f"(M,N,K)=({args.M},{args.N},{args.K}) — build/run failed or size not measured.")
         return 1
 
     print(json.dumps(row, sort_keys=True))

@@ -45,6 +45,76 @@ def test_scalar_fallback_detection():
     assert rep.scalar_fallback_symbols() == ["gemm_scalar"]
 
 
+# Both objdump flavors, captured verbatim from a live spike ELF (the saturn vec-igemm benchmark
+# built and disassembled from this tree). They differ in the prefix spacing, which is precisely why
+# the line reader must not be a pattern tuned to one of them: GNU pads the address with spaces and
+# separates it from the bytes column with a TAB; LLVM starts at column 0 and uses a space.
+_GNU_DISASM = (
+    "\n0000000080002000 <imatmul_vec_4x4>:\n"
+    "    80002000:\t5e003057          \tvmv.v.i\tv0,0\n"
+    "    80002004:\t00b50533          \tadd\ta0,a0,a1\n"
+    "    80002008:\t0005b787          \tfld\tfa5,0(a1)\n"
+    "    8000200c:\t00008067          \tret\n"
+)
+_LLVM_DISASM = (
+    "\n0000000080002000 <imatmul_vec_4x4>:\n"
+    "80002000: 5e003057     \tvmv.v.i\tv0, 0x0\n"
+    "80002004: 00b50533     \tadd\ta0, a0, a1\n"
+    "80002008: 0005b787     \tfld\tfa5, 0x0(a1)\n"
+    "8000200c: 00008067     \tret\n"
+)
+
+
+def test_classify_disasm_reads_both_objdump_flavors_identically():
+    """GNU and LLVM objdump lay the prefix out differently; the counts must not depend on that."""
+    gnu = rvv_audit.classify_disasm(_GNU_DISASM)
+    llvm = rvv_audit.classify_disasm(_LLVM_DISASM)
+    for rep in (gnu, llvm):
+        sym = rep.by_symbol["imatmul_vec_4x4"]
+        assert (sym.vector, sym.scalar_compute, sym.total) == (1, 2, 4)   # vmv | add,fld | +ret
+    assert gnu.coverage_overall == llvm.coverage_overall == pytest.approx(1 / 3)
+
+
+def test_insn_line_reader_matches_the_real_line_shapes():
+    m = rvv_audit._insn_mnemonic
+    assert m("    80002000:\t5e003057          \tvmv.v.i\tv0,0") == "vmv.v.i"
+    assert m("80002000: 5e003057     \tvmv.v.i\tv0, 0x0") == "vmv.v.i"
+    assert m("   1013c:\t02008557          \tvsetvli\ta0,a1,e32,m1,ta,ma") == "vsetvli"
+    # not instruction lines
+    assert m("Disassembly of section .text.init:") is None
+    assert m("0000000080000000 <_start>:") is None
+    assert m("") is None
+    # --no-show-raw-insn has no bytes column: refused (fail closed), exactly as before. The caller
+    # then sees zero instructions and coverage_overall None -- never a fabricated 0.0.
+    assert m("    80000000:\tli\tra,0") is None
+    assert rvv_audit.classify_disasm("0000000080000000 <s>:\n    80000000:\tli\tra,0\n"
+                                     ).coverage_overall is None
+
+
+def test_symbol_header_reader():
+    s = rvv_audit._symbol_name
+    assert s("0000000080000000 <_start>:") == "_start"
+    assert s("0000000000010120 <xnn_f32_gemm_ukernel_1x4v__rvv_u1v>:") \
+        == "xnn_f32_gemm_ukernel_1x4v__rvv_u1v"
+    assert s("  0000000080000000 <_start>:") is None      # the old pattern anchored at column 0
+    assert s("0000000080000000 <>:") is None              # `[^>]+` needed a non-empty name
+    assert s("0000000080000000 <_start>") is None         # the ':' was required
+
+
+def test_mnemonic_classes():
+    """'v' + a letter is RVV; the scalar-compute prefixes are the coverage denominator."""
+    for v in ("vsetvli", "vle32.v", "vfmacc.vv", "vmv.v.i", "vredsum.vs"):
+        assert rvv_audit._is_rvv(v) and not rvv_audit._is_scalar_compute(v)
+    for sc in ("add", "addiw", "mulw", "flw", "fsd", "sd", "lbu", "mv", "sext.w", "not"):
+        assert rvv_audit._is_scalar_compute(sc) and not rvv_audit._is_rvv(sc)
+    for neither in ("ret", "j", "beq", "jalr", "nop", "auipc", "csrr", "ecall"):
+        assert not rvv_audit._is_rvv(neither) and not rvv_audit._is_scalar_compute(neither)
+    # Quirk carried over deliberately: the `f[a-z]` alternative always swept `fence`/`fence.i` into
+    # scalar-compute, despite the comment saying fences are excluded. Preserved so coverage numbers
+    # stay comparable with every previously recorded audit; changing it is a separate decision.
+    assert rvv_audit._is_scalar_compute("fence") and rvv_audit._is_scalar_compute("fence.i")
+
+
 def test_enforce_rvv_march():
     assert rvv_audit.enforce_rvv_march("rv64gcv") == "rv64gcv"
     assert rvv_audit.enforce_rvv_march("-mattr=+v") == "-mattr=+v"   # +v style accepted
