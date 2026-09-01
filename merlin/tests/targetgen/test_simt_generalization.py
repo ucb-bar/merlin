@@ -34,9 +34,14 @@ def _fake_simt_introspect():
         "generator": {"name": "fake", "method": "synthetic SIMT introspect"},
         "inputs": {"rtl_present": True},
         "facts": {
-            "simt": {"lanes_per_warp": 8, "warps_per_core": 4, "cores": 1, "evidence": "synthetic"},
+            # `state` is REQUIRED for a block to count as derived. The bridge used to infer that from
+            # key presence, which credited a block that had merely been written -- including one whose
+            # numbers were `cfg.get(name, default)` fallbacks over a config file that was never opened.
+            # A fixture without it is now correctly worth nothing, so this one declares it.
+            "simt": {"lanes_per_warp": 8, "warps_per_core": 4, "cores": 1,
+                     "state": "derived", "evidence": "synthetic"},
             "isa": {"encoding_bits": 32, "instruction_classes": ["FOO_INVOKE", "OP"],
-                    "evidence": "synthetic"},
+                    "state": "derived", "evidence": "synthetic"},
         },
     }
     return m
