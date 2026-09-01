@@ -1355,6 +1355,39 @@ def _resolve_simt_introspect(target: str):
     return _SIMT_INTROSPECTS.get(_arc_target(target))
 
 
+#: The three states a SIMT introspect may declare for a fact block. ``derived`` is the ONLY one that
+#: makes ``derived: True`` in the bundle; ``absent`` (the input is not on this machine) and
+#: ``undeterminable`` (the input is present but carries no sound reading) both mean "not a fact".
+_DERIVED_STATE = "derived"
+
+
+def _simt_field(name: str, block: dict | None, source: str | None) -> dict:
+    """Adapt ONE fact block from a SIMT introspect to the bundle field shape.
+
+    ``derived`` is read from the block's own DECLARED ``state``, never from the block merely existing.
+    That distinction is the bug this replaced: the old expression was ``"derived": name in f``, so a
+    block of baked default values — the Muon introspect published ``lanes_per_warp=16,
+    warps_per_core=8, cores=2, threads_per_core=128`` from ``cfg.get("num_lanes", 16)`` defaults after
+    its config path resolved to a placeholder that exists on no machine — arrived here stamped
+    ``derived: True`` and was rendered to the agent as a grounded RTL fact. Key presence proves the
+    extractor RAN; it proves nothing about whether it READ anything.
+
+    An introspect that declares no ``state`` is treated as NOT derived and says so, rather than being
+    granted the benefit of the doubt: fail closed, per the repo's derive-or-report rule.
+    """
+    if not isinstance(block, dict):
+        return {"value": None, "derived": False, "source": source,
+                "evidence": f"introspect emitted no {name!r} fact block"}
+    state = block.get("state")
+    if state is None:
+        return {"value": block, "derived": False, "source": source,
+                "evidence": (f"{name!r} block declares no `state` — cannot be counted as derived "
+                             f"(introspect contract: state in derived/absent/undeterminable). "
+                             f"{block.get('evidence') or ''}").strip()}
+    return {"value": block, "derived": state == _DERIVED_STATE, "state": state, "source": source,
+            "evidence": block.get("evidence")}
+
+
 def _simt_fact_bundle(target: str) -> dict:
     """Adapt the SIMT RTL introspect to the uniform fact-bundle shape. The introspect is resolved from
     the registry by the target's declared identity, so a SIMT target no registered introspect serves is
@@ -1372,9 +1405,8 @@ def _simt_fact_bundle(target: str) -> dict:
     facts = intro.build_facts()
     f = facts.get("facts", {})
     present = facts.get("inputs", {}).get("rtl_present", False)
-    fields = {name: {"value": f.get(name), "derived": name in f,
-                     "source": facts.get("generator", {}).get("name"),
-                     "evidence": (f.get(name) or {}).get("evidence")}
+    fields = {name: _simt_field(name, f.get(name),
+                                facts.get("generator", {}).get("name"))
               for name in ("simt", "registers", "shared_memory", "fp_datapath", "isa")}
     return {"target": target,
             "method": facts.get("generator", {}).get("method", "muon RTL introspect"),
@@ -1392,7 +1424,18 @@ def simt_facts(target: str) -> dict:
     family default, never a fabricated endpoint)."""
     bundle = _simt_fact_bundle(target)
     fields = bundle.get("fields") or {}
-    isa = (fields.get("isa") or {}).get("value") or {}
+
+    def _derived(name: str) -> dict:
+        """The field's value ONLY when the introspect declared it derived — otherwise ``{}``.
+
+        Guards the manifest deriver against the failure this function was itself party to: it used to
+        read every field's value unconditionally, so a bundle whose fields were baked defaults (see
+        :func:`_simt_field`) grounded ``capabilities.simt`` and the SMEM capacity in the manifest,
+        which is how a placeholder config path ended up as a published hardware capability."""
+        rec = fields.get(name) or {}
+        return (rec.get("value") or {}) if rec.get("derived") else {}
+
+    isa = _derived("isa")
     if not isa.get("encoding_bits"):
         return {}
     itf = {"name": "self_hosted_isa",
@@ -1400,14 +1443,16 @@ def simt_facts(target: str) -> dict:
            "instruction_classes": list(isa.get("instruction_classes") or []),
            "source": bundle.get("method")}
     body: dict = {"interfaces": [itf], "source": bundle.get("method"), "target": target}
-    # SIMT execution geometry (lanes/warp, warps, cores) + shared-memory CAPACITY, DERIVED by the introspect
-    # (config + RTL) — surfaced so the manifest deriver grounds capabilities.simt / the SMEM capacity instead
-    # of a residual literal. No memory-map BASE here (not recoverable from the op graph — stays residue).
-    simt = (fields.get("simt") or {}).get("value") or {}
+    # SIMT execution geometry (lanes/warp, warps, cores) + shared-memory CAPACITY, read out of the
+    # ELABORATION by the introspect — surfaced so the manifest deriver grounds capabilities.simt / the
+    # SMEM capacity instead of a residual literal. No memory-map BASE here (not recoverable from the op
+    # graph — stays residue). Taken through _derived(), so a block the introspect could not read is
+    # simply absent from the manifest rather than grounding a capability on a number nobody measured.
+    simt = _derived("simt")
     if isinstance(simt.get("lanes_per_warp"), int):
         body["simt"] = {k: simt[k] for k in ("lanes_per_warp", "warps_per_core", "cores")
                         if isinstance(simt.get(k), int)}
-    smem = (fields.get("shared_memory") or {}).get("value") or {}
+    smem = _derived("shared_memory")
     if isinstance(smem.get("bytes_per_cluster"), int):
         body["memories"] = [{"name": "shared_memory", "bytes": smem["bytes_per_cluster"]}]
     return {"schema_version": "simt-facts/v0", "facts": body}
