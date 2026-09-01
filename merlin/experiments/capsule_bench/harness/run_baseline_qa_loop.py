@@ -1119,7 +1119,8 @@ def _language_ok(submission_dir: Path) -> tuple[bool, str]:
         return True, "language check unavailable"
 
 
-def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -> dict:
+def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int,
+             workers: int = 0) -> dict:
     """Copy the agent's submission to an operator-only scratch, grade it, return + persist the
     redacted verdict (into ws/qa/verdict.json for the next round, and archived per round)."""
     cand = run_dir / "_qa_work" / f"cand_{rnd:02d}" / "submission"
@@ -1151,7 +1152,7 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -
         import qa_check
         verdict = qa_check.run(str(cand), str(_pilot_subset()),
                                run_dir / "_qa_work" / f"runs_{rnd:02d}",
-                               {"public", "dev"}, no_oracle, timeout)
+                               {"public", "dev"}, no_oracle, timeout, workers=workers)
         out.write_text(json.dumps(verdict, indent=2))
         _write_stage_ledger(run_dir, rnd, cand, run_dir / "_qa_work" / f"runs_{rnd:02d}", verdict)
         _attach_shape_generalization(verdict, cand, run_dir, rnd, timeout=timeout)
@@ -1312,7 +1313,8 @@ def _stamp_report_status(report: Path, pass_line: str) -> bool:
 
 
 def finalize_report(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str, bundle: dict,
-                    arm: str, verdict: dict, timeout: int) -> dict:
+                    arm: str, verdict: dict, timeout: int,
+                    qa_timeout: int | None = None, qa_workers: int = 0) -> dict:
     """After convergence, give the agent ONE bounded turn — with the PASSING verdict — to finalize
     REPORT.md/docs to the verified result, WITHOUT touching code. Re-grade; if the agent regressed the
     package, restore the pre-finalize (passing) submission. Always guarantee the report's final status
@@ -1355,8 +1357,15 @@ def finalize_report(ws: Path, run_dir: Path, model: str, effort: str, sandbox: s
         # audit_transcript happy (no tokens, no answer-access hits).
         tpath.write_text("")
 
-    # re-grade: if the finalize turn broke the (passing) package, restore the snapshot
-    regrade = qa_grade(ws, run_dir, 90, False, timeout)
+    # re-grade: if the finalize turn broke the (passing) package, restore the snapshot.
+    # GRADE IT ON THE SAME TERMS THE ROUND GRADE USED. ``timeout`` here is the AGENT's finalize-turn wall
+    # cap, and it was being handed to the grader as the per-capsule ORACLE budget too — one number doing
+    # two unrelated jobs. Once the two diverge, a capsule the round grade certified can miss the shorter
+    # regrade deadline, come back not-passing, and make this restore a passing submission as though the
+    # finalize turn had regressed it. The regrade is the round grade repeated, so it gets the round
+    # grade's budget and fan-out.
+    regrade = qa_grade(ws, run_dir, 90, False, qa_timeout if qa_timeout is not None else timeout,
+                       workers=qa_workers)
     restored = False
     if not regrade.get("all_pass"):
         shutil.rmtree(ws / "submission")
@@ -1453,7 +1462,34 @@ def main(argv: list[str] | None = None) -> int:
                          "just forces more rounds, each adding a full grading pass + context re-read + "
                          "rate-limit-boundary exposure, and can cut a productive round mid-fix (rc=124). "
                          "The original abc runs used 4h and converged in ~1 productive round.")
-    ap.add_argument("--qa-timeout", type=int, default=900)
+    # Per-capsule wall budget for ONE oracle run inside the round grade. This was a bare `900` carried
+    # unexamined from the harness's first snapshot, when the graded target was a small RoCC accelerator
+    # whose cert tier is a cheap spike/verilator run. It did not move when a target arrived whose cert
+    # tier is a full RTL emulator, and it silently overrode the grader's own --timeout.
+    #
+    # Measured on radiance/GSIM across 10 graded rounds: certs that COMPLETE run 15-889 s, so a 900 s
+    # deadline sat inside the real distribution rather than above it — which capsule fell on the wrong
+    # side of it varied round to round with host load, and L3 jittered 22-32/36 on submissions whose
+    # functional tier never moved. 34-57% of every round's grade wall was spent on runs killed at the
+    # cap, which produce no verdict at all. The deadline must bound RUNAWAY work, not ordinary work.
+    #
+    # It also has to move WITH the engine's cycle budget: raising a cycle cap buys a longer simulation
+    # that this wall then cuts off, so pinning one without the other silently wastes the other.
+    ap.add_argument("--qa-timeout", type=int, default=3600,
+                    help="per-capsule oracle wall inside the round grade (s). Default 3600: ~4x the "
+                         "slowest MEASURED successful cert, so it bounds non-termination without "
+                         "clipping honest work. Raise it with the engine's cycle cap, not alone.")
+    # Fan-out for the round grade. The grader ALREADY derives a host-scaled count when this is <= 0
+    # (capsule_grade.default_grade_workers: cores-2, capped at 16, never more than the capsule count), so
+    # the default here must stay 0 — "let the grader decide". Naming a small number looks like tuning and
+    # is a downgrade: on a 48-core host the derived value is 16, so passing 4 would quarter the grade's
+    # throughput while reading like a deliberate choice.
+    #
+    # This exists to CAP the fan-out, not to create it — several arms grade concurrently on one host and
+    # each capsule is a full RTL sim, so an operator running a wide batch may need to hold the total down.
+    ap.add_argument("--qa-workers", type=int, default=0,
+                    help="parallel capsules in the round grade. 0 (default) = derive from the host "
+                         "(MERLIN_GRADE_WORKERS also honored). A positive value caps it.")
     # Default sandbox=bwrap: enforced FS isolation (the agent cannot read a masked answer surface at all),
     # AND the driver-side broker tools (async simjob oracle, self-check, arc-model isa_tools, CCA) only
     # start under bwrap. The earlier "bwrap crashes claude" blocker was a sandbox-config bug, now fixed in
@@ -1741,11 +1777,22 @@ def main(argv: list[str] | None = None) -> int:
     # and EACH wait, so a fresh --resume invocation continues exactly where it stopped — not from 0.
     state_p = run_dir / "qa_loop_state.yaml"
     rounds_summary: list = []
-    try:                             # endpoint_kind — drives the per-round dev-conformance flag (asm applies only to external_backend)
+    # endpoint_kind + the 4th artifact's name drive the per-round dev-conformance flag. BOTH are needed:
+    # the ISA-tool mandates apply to an external_backend that authors a WORD STREAM, and the 4th
+    # artifact's suffix is what separates that from the MLIR/fork-free lowering path — the same fact the
+    # prompt generator keys its own mandate on. Passing only the endpoint made the check demand a tool the
+    # prompt forbids on that path.
+    _endpoint_kind, _fourth_output = "", ""
+    try:
         from merlin.targetgen.generate_prompt import prompt_slots as _pslots
-        _endpoint_kind = _pslots(_te(), _manifest()).get("endpoint_kind", "")
+        _slots = _pslots(_te(), _manifest())
+        _endpoint_kind = _slots.get("endpoint_kind", "")
+        _fourth_output = getattr(_manifest(), "fourth_output_name", "") or ""
+        if not _fourth_output:       # fall back to the endpoint-kind default the runner itself uses
+            from merlin.targetgen.runner_config import ENDPOINT_ARTIFACT
+            _fourth_output = ENDPOINT_ARTIFACT.get(_endpoint_kind, "") or ""
     except Exception:  # noqa: BLE001
-        _endpoint_kind = ""
+        _endpoint_kind, _fourth_output = _endpoint_kind or "", _fourth_output or ""
     _best_progress = None            # plateau early-stop: best (#passed, -total_mismatch) seen so far
     _plateau_stall = 0               # consecutive rounds with no progress
     rl_waits_used = 0
@@ -1866,7 +1913,7 @@ def main(argv: list[str] | None = None) -> int:
             _checkpoint(rnd)
             continue  # retry same rnd, do NOT append to rounds_summary
 
-        verdict = qa_grade(ws, run_dir, rnd, a.no_oracle, a.qa_timeout)
+        verdict = qa_grade(ws, run_dir, rnd, a.no_oracle, a.qa_timeout, workers=a.qa_workers)
         # Cross-round MEMORY: write the harness-built round brief (progress log across all graded rounds +
         # the agent's own notes + a stale-notes nudge) so the NEXT fresh session carries its progress
         # instead of re-deriving it. Best-effort — never let a brief build failure end a run.
@@ -1893,7 +1940,7 @@ def main(argv: list[str] | None = None) -> int:
         # dev-conformance FLAG (never a grade gate): did the agent develop the way this arm mandates?
         try:
             import conformance as _CONF
-            conf = _CONF.compute(tpath, ws / "submission", arm, _endpoint_kind)
+            conf = _CONF.compute(tpath, ws / "submission", arm, _endpoint_kind, _fourth_output)
             _bad = _CONF.failing_checks(conf)
             if _bad:
                 print(f"[round {rnd}] NOT CONFORMANT — failing: {', '.join(_bad)} "
@@ -2103,7 +2150,8 @@ def main(argv: list[str] | None = None) -> int:
         print("[finalize] converged — running bounded report-finalize turn")
         _fin_start = time.time()
         finalize = finalize_report(ws, run_dir, a.model, a.effort, a.sandbox, bundle, arm, verdict,
-                                   min(a.round_timeout, 900))
+                                   min(a.round_timeout, 900),
+                                   qa_timeout=a.qa_timeout, qa_workers=a.qa_workers)
         active_wall_s += time.time() - _fin_start  # finalize is active work
         print(f"[finalize] regrade_all_pass={finalize['regrade_all_pass']} "
               f"restored={finalize['restored_after_regression']} "

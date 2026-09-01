@@ -242,7 +242,7 @@ def _loop_target_sim_via() -> tuple[str, str]:
 
 
 def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
-        no_oracle: bool, timeout: int) -> dict:
+        no_oracle: bool, timeout: int, workers: int = 0) -> dict:
     # Loop gate = L0+L1+trace + the target's full reachable oracle ladder, screened cheapest-first. The
     # adapters are resolved from the descriptor's target+sim_via via the shared factory, so a non-chipyard
     # target (arc/cyclotron) grades on its own RTL-derived tier with NO gemmini-specific path.
@@ -280,10 +280,13 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
                 f"capsule corpus {capsules_root} declares required oracle tiers {sorted(_decl)} but "
                 f"target {_target!r} reaches {_reach} — no declared tier is reachable, so this loop "
                 f"cannot grade. Refusing to substitute a tier the capsules never declared.")
+    # ``workers`` is a CAP, not the fan-out itself: grade() already derives a host-scaled worker count
+    # when max_workers <= 0, so 0 is passed straight through and keeps that derivation. Only a positive
+    # value overrides it, for an operator holding total load down across concurrently grading arms.
     score = CG.grade(submission, capsules_root=capsules_root, runs_root=str(runs_root),
                      labels=labels, contract=str(C.REPO / "merlin/contract"),
                      oracle_adapters=_loop_adapters, timeout=timeout, target=_target,
-                     no_oracle=no_oracle)
+                     no_oracle=no_oracle, max_workers=max(0, workers))
     redacted = _per_capsule_from_results(runs_root)
 
     per_capsule = []

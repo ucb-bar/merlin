@@ -102,11 +102,35 @@ def _full_selfcheck(calls: list[tuple[str, dict]]) -> bool:
     return False
 
 
-def compute(tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str) -> dict:
+def emits_word_stream(endpoint_kind: str, fourth_output_name: str = "") -> bool:
+    """Does this target's agent hand-author an INSTRUCTION WORD STREAM the ISA dev tools operate on?
+
+    Derived exactly as :func:`merlin.targetgen.generate_prompt._is_simt_mlir` derives its inverse, from the
+    same fact — the 4th artifact's filename — so the mandate and the check on that mandate cannot drift:
+
+      * ``external_backend`` + a ``.mlir`` 4th artifact  -> the agent emits an LLVM-dialect COMPILER
+        LOWERING that the runner compiles fork-free. There is no word stream. The prompt tells it in so
+        many words: "no prints, no ``.insn``/``.word``".
+      * ``external_backend`` + anything else             -> a self-hosted kernel of literal words, which
+        `isa_tools asm/lint/disasm` exist to encode and check.
+
+    Why this is not cosmetic: the ISA-tool checks used to key on ``external_backend`` ALONE, which is true
+    of both shapes. So a target on the MLIR path was required to have run `isa_tools asm` — a tool its own
+    prompt forbids it to use — and every round of it was recorded NOT CONFORMANT for correctly following
+    its instructions. The agent was doing the right thing and the checker said otherwise.
+    """
+    return endpoint_kind == "external_backend" and not str(fourth_output_name or "").endswith(".mlir")
+
+
+def compute(tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str,
+            fourth_output_name: str = "") -> dict:
     """Compute the conformance verdict for one round. Returns a dict with per-check booleans (or None when
     the check does not apply to this arm), the regex-hit detail, and the overall ``conformant`` flag."""
     assisted = arm in _ASSISTED
-    external = endpoint_kind == "external_backend"
+    # The ISA dev tools are mandated only where the agent authors an instruction word stream. On the
+    # MLIR/fork-free path the prompt mandates the LOWERING instead and forbids `.insn`/`.word`, so both
+    # ISA-tool checks are N/A there — requiring them contradicted the instructions the agent was given.
+    words = emits_word_stream(endpoint_kind, fourth_output_name)
     calls = _tool_calls(tpath)
     regex_hits = _submission_regex(sub_dir) if assisted else []   # no-regex is an ASSISTED-arm mandate (xDSL authoring)
     has_py = bool(list(sub_dir.rglob("*.py"))) if sub_dir.exists() else False
@@ -114,8 +138,8 @@ def compute(tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str) -> dict:
     checks: dict = {}
     # no-regex applies only where the arm is mandated to author in xDSL AND actually wrote python
     checks["no_regex_ok"] = (not regex_hits) if (assisted and has_py) else None
-    checks["isa_tools_used"] = _any(calls, "isa_tools") if assisted else None
-    checks["asm_used"] = _any(calls, "isa_tools.py asm", "isa_tools asm") if (assisted and external) else None
+    checks["isa_tools_used"] = _any(calls, "isa_tools") if (assisted and words) else None
+    checks["asm_used"] = _any(calls, "isa_tools.py asm", "isa_tools asm") if (assisted and words) else None
     checks["cca_used"] = _any(calls, "cca_contract", "action_catalog",
                               "check_bijection", "escalation_ladder") if assisted else None
     checks["full_selfcheck"] = _full_selfcheck(calls)
@@ -123,7 +147,10 @@ def compute(tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str) -> dict:
     applicable = [v for v in checks.values() if v is not None]
     conformant = all(applicable) if applicable else True
     return {"conformant": conformant, "checks": checks, "regex_hits": regex_hits,
-            "arm": arm, "endpoint_kind": endpoint_kind}
+            "arm": arm, "endpoint_kind": endpoint_kind,
+            # Recorded so a reader can tell an N/A that is CORRECT (this target authors no word stream)
+            # from an N/A that means the fact was never threaded in — the two used to look identical.
+            "fourth_output_name": fourth_output_name or None, "emits_word_stream": words}
 
 
 def failing_checks(verdict: dict) -> list[str]:

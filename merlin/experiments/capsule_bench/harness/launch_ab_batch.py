@@ -93,6 +93,15 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
     # the caller set it explicitly (None), so a batch that does not mention it stays byte-identical.
     if getattr(a, "plateau_rounds", None) is not None:
         cmd += ["--plateau-rounds", str(a.plateau_rounds)]
+    # The GRADE's budget, threaded for the same reason --max-wall-s is. The loop has accepted
+    # --qa-timeout/--qa-workers all along but no batch launcher could pass them, so every batched run
+    # silently took the loop's default and there was no way to set them from the launch line at all --
+    # which is why a per-capsule oracle deadline nobody had chosen went unexamined for the whole life of
+    # the harness. Forwarded only when set explicitly, so an unpatched driver is invoked as before.
+    if getattr(a, "qa_timeout", None) is not None:
+        cmd += ["--qa-timeout", str(a.qa_timeout)]
+    if getattr(a, "qa_workers", None) is not None:
+        cmd += ["--qa-workers", str(a.qa_workers)]
     cmd += extra
     # Agent driver + optional tier-within-agent models (default "" -> the per-driver default tier).
     if getattr(a, "driver", "auto") != "auto":
@@ -250,6 +259,10 @@ def main(argv=None):
                          "still failing (0 = disabled). Passed through to the arm driver.")
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
     ap.add_argument("--round-timeout", type=int, default=14400, help="per-round agent wall cap (s); large = effectively no timeout")
+    ap.add_argument("--qa-timeout", type=int, default=None,
+                    help="per-capsule oracle wall inside the round grade (s); default: the loop's")
+    ap.add_argument("--qa-workers", type=int, default=None,
+                    help="parallel capsules in the round grade; default: the loop's")
     ap.add_argument("--max-spend-usd", type=float, default=0.0,
                     help="batch DOLLAR ceiling across ALL arms (0=off). Each arm appends its per-round cost "
                          "to a shared ledger and stops before its next round once the total crosses this "

@@ -96,6 +96,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-rounds", type=int, default=40)
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
     ap.add_argument("--round-timeout", type=int, default=14400)
+    # Threaded into each arm's driver by LB._arm_cmd, like --max-wall-s and --plateau-rounds. Unset
+    # leaves the loop's own defaults, so a batch that omits them is unchanged.
+    ap.add_argument("--qa-timeout", type=int, default=None,
+                    help="per-capsule oracle wall inside the round grade (s)")
+    ap.add_argument("--qa-workers", type=int, default=None,
+                    help="parallel capsules in the round grade")
     ap.add_argument("--experiment", default="realistic")
     ap.add_argument("--sandbox", default="bwrap")
     ap.add_argument("--skip-hidden", action="store_true")

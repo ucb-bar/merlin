@@ -79,13 +79,51 @@ def _parse_operands(rest: str) -> dict[str, int]:
     return ops
 
 
+def assemble_one(model: IsaModel, mnemonic: str, operands: dict[str, int]) -> int:
+    """Assemble one instruction through whichever encoding the MODEL actually carries.
+
+    An ISA model describes its instructions in one of two derived shapes, and which one a target gets is a
+    property of that target's own RTL, not of its name:
+
+      * **signature** (``by_mnemonic``) — per-instruction fixed bits + per-operand bit maps, from a shipped
+        ISA definition. Encoded by :func:`assemble_line`.
+      * **fixed-format** (``field_layout`` + ``opcode_table``) — ONE field layout selected by an opcode
+        field, the shape an mlc/RTL decoder derivation produces for a wide-word core. ``by_mnemonic`` is
+        legitimately EMPTY here. Encoded by :func:`assemble_fixed`.
+
+    Try the signature table first (it is per-instruction, so strictly more specific), then the fixed-format
+    opcode table. A model may carry both; neither shape is assumed, and a target that has only one is not
+    special-cased.
+
+    This routing is why the two shapes must not be conflated with "has an ISA at all": ``is_empty()`` asks
+    only whether ``by_mnemonic`` is populated, so gating the assembler on it made every fixed-format target
+    unassemblable while its own encoder sat right here, fully working — and reported that as "this target
+    ships no ISA definition", i.e. as a fact about the hardware rather than a gap in this function.
+    """
+    if model.resolve(mnemonic) is not None:
+        return assemble_line(model, mnemonic, operands)
+    if model.is_fixed_format() and mnemonic in model.opcode_table:
+        return assemble_fixed(model, mnemonic, operands)
+    # Unknown to BOTH tables: report against whichever vocabulary this model actually has, so the message
+    # names the mnemonics the agent can really use rather than a table that is empty by design.
+    known = sorted(model.by_mnemonic) or sorted(model.opcode_table)
+    valid = ", ".join(known) or "(none)"
+    raise AssembleError(f"unknown instruction '{mnemonic}' — not defined by this target's ISA; "
+                        f"defined: {valid}")
+
+
 def assemble_text(model: IsaModel, text: str) -> list[int]:
-    """Assemble a small mnemonic listing → the list of 32-bit words. One instruction per line:
+    """Assemble a small mnemonic listing → the list of instruction words. One instruction per line:
     ``MNEMONIC field=value, field=value``. Also accepts ``.word 0x..`` / ``.word 123`` literal passthrough
     (for encodings the agent wants to hand-place) and skips blank lines and ``#`` / ``//`` / ``;`` comments.
+    Words are ``model.inst_width`` bits wide (32 for a classic word ISA, wider for a fixed-format core).
     Raises :class:`AssembleError` (with the 1-based line number) on any line it cannot encode faithfully."""
-    if model.is_empty():
+    # Refuse only when the model carries NEITHER encoding shape — i.e. the target genuinely ships no ISA
+    # definition. This mirrors the same test the ISA-tools broker already applies before dispatching, so a
+    # model the broker accepts can no longer be rejected one layer down.
+    if model.is_empty() and not model.is_fixed_format():
         raise AssembleError("this target ships no ISA definition; the derived assembler is unavailable")
+    mask = (1 << model.inst_width) - 1
     words: list[int] = []
     for lineno, raw in enumerate(text.splitlines(), start=1):
         line = raw.split("#", 1)[0].split("//", 1)[0].split(";", 1)[0].strip()
@@ -93,10 +131,12 @@ def assemble_text(model: IsaModel, text: str) -> list[int]:
             continue
         head, _, rest = line.partition(" ")
         try:
-            if head == ".word":
-                words.append(int(rest.strip(), 0) & 0xFFFFFFFF)
+            # A hand-placed literal is masked to the model's OWN width. Masking it to 32 truncated every
+            # wide-word literal to its low half and emitted that as though it were the instruction.
+            if head in (".word", ".quad"):
+                words.append(int(rest.strip(), 0) & mask)
             else:
-                words.append(assemble_line(model, head, _parse_operands(rest)))
+                words.append(assemble_one(model, head, _parse_operands(rest)))
         except AssembleError as e:
             raise AssembleError(f"line {lineno}: {e}") from None
     return words

@@ -202,8 +202,14 @@ def _handle(req: dict, ctx: BrokerCtx | None = None) -> dict:
             words = isa_asm.assemble_text(model, req.get("text", ""))
         except isa_asm.AssembleError as e:
             return {"error": str(e)}
-        return {"words": [f"0x{w:08x}" for w in words], "word_lines": isa_asm.to_word_lines(words),
-                "n": len(words)}
+        # Render at the MODEL's instruction width. Both of these were pinned to 32 bits, so a wide-word
+        # (fixed-format) core got its instructions printed and emitted as their low half — a silently
+        # wrong kernel rather than an error. ``to_data_lines`` picks the directive stock llvm-mc lays out
+        # little-endian at that width (.quad vs .word), which is what the oracle reads back.
+        w_hex = max(8, (model.inst_width + 3) // 4)
+        return {"words": [f"0x{w:0{w_hex}x}" for w in words],
+                "word_lines": isa_asm.to_data_lines(words, model.inst_width),
+                "inst_width": model.inst_width, "n": len(words)}
 
     if cmd in ("disasm", "lint"):
         try:
