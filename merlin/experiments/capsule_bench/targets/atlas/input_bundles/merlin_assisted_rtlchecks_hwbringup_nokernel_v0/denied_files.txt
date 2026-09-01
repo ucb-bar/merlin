@@ -2,6 +2,8 @@ merlin/python/merlin/runtime/reference.py
 merlin/python/merlin/runtime/simulator.py
 merlin/python/merlin/targetgen/generate/runtime_adapter.py
 merlin/python/merlin/xdsl_dialects/lowering/
+out/artifacts/targets/atlas/agent_spec_v1_mlir_oot/
 merlin/contract/capsules/atlas/hidden/
 experiments/capsule_bench/targets/atlas/input_bundles/grader_private_v0/
 experiments/capsule_bench/targets/atlas/runs/
+merlin/python/merlin/llvmlower/
