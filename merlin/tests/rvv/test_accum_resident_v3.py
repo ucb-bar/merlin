@@ -94,7 +94,7 @@ def test_scalarize_rewrite_is_numerically_neutral_by_construction():
     assert 'dims[-1] != "1"' in src                 # only register-tile lhs reads (trailing unit dim)
     assert 'str(owner.results[0].type) != elem' in src   # bail unless every use is a scalar extract
     # ...and `elem` is exactly the element type parsed off the read's own vector type.
-    assert 'for cand in ("f32", "f16", "bf16")' in src
+    assert 'for cand in ("f32", "f16", "bf16", "i8", "i16", "i32")' in src
     assert 'ts.endswith("x" + cand + ">")' in src
 
 
@@ -111,7 +111,7 @@ def _toolchain() -> bool:
         return False
 
 
-def _decode(features, M, N, K):
+def _decode(features, M, N, K, int8=False):
     """apply_rvv_package(hand_v0 + features) on a matmul bundle -> decoded InsnStream of model.o."""
     from merlin.kernels.decode import rvv
     from merlin.mining import workloads
@@ -122,7 +122,8 @@ def _decode(features, M, N, K):
     pkg = load_rvv_package(REPO / "out/artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(pkg, run_id="test_v3", compiler_features=list(features))
     work = Path(tempfile.mkdtemp(prefix="test_v3_"))
-    apply_rvv_package(pkg, bundle, work, board="spike_riscv64", harts=1, arena_mb=64)
+    apply_rvv_package(pkg, bundle, work, board="spike_riscv64", harts=1, arena_mb=64,
+                      int8_compute=int8)
     return rvv.decode(str(work / "model.o"))
 
 
@@ -367,3 +368,136 @@ def test_mrpad_whole_model_lowers_vectorized_with_per_op_mr(model):
     assert on.count("vfmacc.vf") > 0, "mrpad whole-model must emit vfmacc.vf (no scalar fallback)"
     assert on.count("vfmacc.vv") == 0, "no vfmacc.vv (the .vv broadcast-ladder form)"
     assert _kloop_vf_per_bload(on) == 4.0, "whole-model must contain MR=4 register-block K-loops"
+
+
+def test_scalarize_admits_the_integer_element_types_so_int8_can_reach_vwmacc_vx():
+    """The int8 contract lowers through `outerproduct` to arith.muli/addi with a `vector.extract : i8`
+    A operand. If the A-scalarization gate admits only float spellings, every int8 MR>1 register tile
+    rebuilds A with a vmv/vslideup lane ladder instead of letting the backend form `vwmacc.vx` from a
+    scalar -- which is the mechanism `perop_blocks.DEFAULT_MR` cites for pinning MR=1. So excluding
+    the integer types is what makes MR>1 look intrinsically bad on int8, and the fix belongs here and
+    not in the block policy.
+
+    This pins the ADMISSION only. Every soundness gate must remain element-type-independent: the
+    rewrite is value-identical because it replaces `vector.extract[i,0]` of a transfer_read with a
+    scalar load of that same element, and that argument never mentioned the element type.
+    """
+    from merlin.llvmlower.accum_microkernel import rewrite_source
+    src = rewrite_source()
+    for spelling in ("i8", "i16", "i32"):
+        assert f'"{spelling}"' in src, f"integer element type {spelling} not admitted"
+    # the scalar type actually built for the load must exist for every admitted spelling
+    assert "ir.IntegerType.get_signless(8, ctx)" in src
+    assert "ir.IntegerType.get_signless(16, ctx)" in src
+    assert "ir.IntegerType.get_signless(32, ctx)" in src
+    # ...and the soundness gates are untouched by the widening (they are what stop the rewrite from
+    # firing on a transpose/broadcast read or on a dropped leading dim with extent > 1).
+    assert 'if poslen > rank:' in src
+    assert 'if poslen < rank and any(e != 1 for e in src_dims[:rank - poslen]):' in src
+    assert 'not _is_identity_perm(o.operation, rank)' in src
+
+
+def test_scalarize_element_spellings_cannot_collide():
+    """`bf16` must not be read as `f16`, and `i8` must not be read inside `i16`/`i32`. The gate matches
+    on the full `x<elem>>` suffix precisely so these stay distinct; a collision would build the wrong
+    scalar type for the load and silently change the emitted arithmetic width.
+    """
+    for elem, ts in (("bf16", "vector<4x1xbf16>"), ("f16", "vector<4x1xf16>"),
+                     ("i8", "vector<4x1xi8>"), ("i16", "vector<4x1xi16>"),
+                     ("i32", "vector<4x1xi32>"), ("f32", "vector<4x1xf32>")):
+        matched = [c for c in ("f32", "f16", "bf16", "i8", "i16", "i32")
+                   if ts.endswith("x" + c + ">")]
+        assert matched == [elem], (ts, matched)
+
+
+def test_sink_accepts_the_integer_widenings_and_runs_before_scalarization():
+    """The int8 A column is widened on the VECTOR (`extsi vector<MRx1xi8> to vector<MRx1xi32>`) and
+    then lane-extracted at i32. That interposed vector widening is not a same-element-type
+    `vector.extract`, so it BLOCKS `scalarize_a_reads` outright -- which is why admitting the integer
+    element types was, on its own, measurably inert on int8.
+
+    Two things therefore have to hold, and both are pinned here:
+      * the sink accepts `arith.extsi`/`arith.extui`, not only `arith.extf`, and rebuilds with the
+        SAME widening it matched (rebuilding a fixed `arith.extf` over an integer lane is malformed);
+      * the sink runs BEFORE the scalarization in the runner, because it is a PRECONDITION of it and
+        not a cleanup after it.
+    `sext`/`zext` are exact, so lane i of widen(v) == widen(lane i of v) exactly as for `fpext`.
+    """
+    from merlin.llvmlower.accum_microkernel import rewrite_source, run_source
+    src = rewrite_source()
+    assert '_WIDEN_OPS = ("arith.extf", "arith.extsi", "arith.extui")' in src
+    assert "defop.name not in _WIDEN_OPS" in src
+    # the rebuild must reuse the matched op name, never a hardcoded float widening
+    assert "widen_name = extf.name" in src
+    assert 'widen_name, results=[ex.results[0].type]' in src
+    assert 'ir.Operation.create(\n            "arith.extf"' not in src
+    # integer scalar lane spellings admitted by the extract gate
+    assert '_SCALAR_TYS = ("f16", "bf16", "f32", "f64", "i8", "i16", "i32", "i64")' in src
+    assert "str(res.type) not in _SCALAR_TYS" in src
+    # ORDER: sink, then scalarize (and sink again for whatever scalarization exposes).
+    run = run_source()
+    first_sink = run.index("_m = sink_extf_through_extract")
+    scalarize = run.index("_n = scalarize_a_reads")
+    assert first_sink < scalarize, "sink must run BEFORE scalarize_a_reads (it unblocks it)"
+    assert run.index("_m += sink_extf_through_extract") > scalarize
+
+
+@pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
+def test_int8_mr4_register_block_emits_vwmacc_vx_not_a_gather_ladder():
+    """The measured deliverable of the int8 A-scalarization, asserted on the EMITTED object.
+
+    Before: int8 MR=4 rebuilt the A operand per row with a `vrgather.vi` lane ladder and issued
+    `vmacc.vv` (4 of each), plus a strided `vlse8.v` -- i.e. MR>1 bought no A reuse and cost a
+    ladder, which is exactly what made MR>1 look intrinsically bad on int8.
+    After: 4x `vwmacc.vx` against 4 accumulators, ZERO `vrgather`, and the shared narrow operand
+    loaded ONCE (`vle8.v` x1) instead of once per row as MR=1 does (x4). That load-once/MAC-four
+    ratio IS the A-operand reuse the register block exists to buy.
+    """
+    mr4 = _decode([_WMVF + "_mr4"], 64, 64, 64, int8=True)
+    mr1 = _decode([_WMVF], 64, 64, 64, int8=True)
+    assert mr4.count("vwmacc.vx") > 0, "int8 MR=4 must reach the scalar-operand widening MAC"
+    assert mr4.count("vrgather.vi") == 0, "no A lane-rebuild ladder"
+    assert mr4.count("vmacc.vv") == 0, "no vector-vector MAC (the ladder form)"
+    assert mr4.count("vlse8.v") == 0, "no strided narrow A load"
+    # the reuse: MR=4 loads the shared narrow operand fewer times than MR=1 for the same MAC count
+    assert mr4.count("vwmacc.vx") == mr1.count("vwmacc.vx"), "same MAC count, different reuse"
+    assert mr4.count("vle8.v") < mr1.count("vle8.v"), (
+        mr4.count("vle8.v"), mr1.count("vle8.v"))
+
+
+def _lower_ll(features, *, int8, M=64, N=64, K=64) -> str:
+    """Lower a matmul bundle through the real RVV pipeline and return the emitted LLVM IR text."""
+    from merlin.llvmlower.lower import lower_model_file
+    from merlin.mining import workloads
+    from merlin.runtime.backends import zephyr_model as zm
+
+    bundle = Path(workloads.gen_matmul_f32(tempfile.mkdtemp(prefix="ll_v3_"), M=M, N=N, K=K))
+    work = Path(tempfile.mkdtemp(prefix="ll_v3_"))
+    prepared = zm._prepare_model_mlir(bundle / "model.mlir", work, int8_compute=int8)
+    res = lower_model_file(prepared, work / "lower", targets=(), textual=True, vectorize=True,
+                           transform_schedule=None, hoist_static_allocs=False,
+                           features=frozenset(features))
+    return Path(res.ll_path).read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
+@pytest.mark.parametrize("int8", [True, False])
+def test_mr_gt_1_register_block_emits_no_per_tile_memref_copy(int8):
+    """The measured reason MR>1 never paid off, and the gate that it now does.
+
+    Bufferizing the tiled reduction leaves `memref.copy %x, %x` -- the destination subview copied
+    onto ITSELF -- in every tile epilogue, and it survives finalize-memref-to-llvm as an opaque
+    rank-generic `@memrefCopy` call. Measured on spike at 64^3, PC-histogram attributed and exact to
+    the instruction: bare MR=4 paid memrefCopy +187,520 / memcpy +98,304 / memset +24,896 against a
+    compute saving of -59,743, summing to the observed +250,977 cycle delta -- so a 1.45x cheaper
+    kernel came out 2.04x slower overall. With the erase implied, MR=4 is 1.35x (int8) / 1.27x (f32)
+    FASTER than MR=1, bit-identical.
+
+    Naming ONLY the register-block feature must be enough: this asserts the implication actuates
+    through the real lowering, not just in the feature set.
+    """
+    ll = _lower_ll([_WMVF + "_mr4"], int8=int8)
+    assert "call void @memrefCopy" not in ll, "per-tile self-copy survived into the emitted IR"
+    # ...and the MR=1 control has none to begin with, so the assertion above is not vacuous for MR>1:
+    # it must be the MR>1 lowering that would otherwise carry one.
+    assert ll.count("@memrefCopy") == 0

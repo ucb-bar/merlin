@@ -113,10 +113,20 @@ def _with_hygiene(feats: list[str]) -> list[str]:
         int8 128^3          4,230,288 -> 3,002,346 ins  85,760 -> 69,428 ticks  1.24x
         int8 256^3         27,423,003 -> 22,519,524 ins 567,986 -> 503,434 ticks 1.13x
 
-    NOT appended to the whole-model ``accumulator_resident_wholemodel*`` features: those are named
-    directly in ``compiler_features``, not resolved through this space, and their lowering has no
-    self-copy to erase (measured on int8 128^3: 4,323,737 -> 4,325,025 ins, i.e. noise). The erase is
-    a property of the v3 recipe, NOT of int8.
+    The whole-model ``accumulator_resident_wholemodel*`` features are named directly in
+    ``compiler_features`` and never reach this function, so they carry the hygiene through
+    ``ImprFeature.implies`` instead (``impr_features._tile_epilogue_hygiene``) -- same policy, other
+    entry point.
+
+    CORRECTION. This docstring previously said that family "has no self-copy to erase (measured on
+    int8 128^3: 4,323,737 -> 4,325,025 ins, i.e. noise)". That measurement is real but was taken on
+    the MR=1 member, and generalizing it to the family was wrong. Re-measured on spike at 64^3, both
+    dtypes, bit-identical output on every arm: MR=1+erase is byte-identical to MR=1 (240,369 cyc int8
+    / 231,313 f32, to the digit -- which is why the MR=1 reading looked like a family fact), while
+    ``accumulator_resident_wholemodel_vf_mr4`` emits a per-tile ``@memrefCopy`` worth 187,520
+    instructions and goes 240,369 -> 491,346 without the erase and -> 178,239 with it. The erase is a
+    property of the recipe SHAPE (an output tiled and bufferized per tile, which is what MR>1 buys),
+    exactly as the paragraph above says -- so the MR>1 members need it and the MR=1 member does not.
 
     ``hand_v0`` carries no ``microkernel`` knob block, so it never reaches this function and keeps its
     byte-identical control lowering.

@@ -65,7 +65,7 @@ def test_scalarize_gate_is_element_type_parameterized_not_f32_only():
     16-bit-float element types, or fp16 silently falls off the shared micro-kernel path."""
     from merlin.llvmlower.accum_microkernel import rewrite_source
     src = rewrite_source()
-    assert 'for cand in ("f32", "f16", "bf16")' in src
+    assert 'for cand in ("f32", "f16", "bf16", "i8", "i16", "i32")' in src
     assert 'str(owner.results[0].type) != elem' in src
 
 

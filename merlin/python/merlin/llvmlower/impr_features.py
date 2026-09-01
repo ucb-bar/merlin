@@ -40,6 +40,12 @@ class ImprFeature:
     to apply more than one full-replacement schedule feature at once (the composed, whole-model-safe
     config is a SINGLE feature with all the clamps inherent). Additive edits (``schedule_replace`` =
     False, e.g. ``lmul_widen_n``'s string substitution) layer freely on top of a replacement.
+
+    ``implies`` names features this one CANNOT be measured without -- lowering hygiene that is a
+    property of the recipe's SHAPE rather than a tuning choice. It exists because a default-off
+    feature whose payoff is cancelled by a separate default-off fix is, in practice, an inert lever:
+    the beam has to discover the conjunction, and everyone who names the feature directly in
+    ``compiler_features`` gets the cancelled version. See ``_tile_epilogue_hygiene``.
     """
     name: str
     action_class: str  # "PASS" | "HEURISTIC" | "PATTERN"
@@ -47,6 +53,7 @@ class ImprFeature:
     edit_pipeline: Callable[[list[str]], list[str]] | None = None
     edit_schedule: Callable[[str], str] | None = None
     schedule_replace: bool = False
+    implies: frozenset[str] = frozenset()
 
 
 _REGISTRY: dict[str, ImprFeature] = {}
@@ -105,13 +112,28 @@ def known() -> list[str]:
 
 
 def normalize(features) -> frozenset[str]:
-    """Accept None / list / set / frozenset -> validated frozenset (every name must be registered)."""
+    """Accept None / list / set / frozenset -> validated frozenset (every name must be registered),
+    closed under ``ImprFeature.implies``.
+
+    The closure is here, and not at each call site, because ``feats = normalize(...)`` is the single
+    point every consumer reads: the runner selection, the schedule edits, and the argv gates for the
+    self-copy erase / transpose fusion all key off this one set. Expanding anywhere later would let
+    them disagree about which features are on.
+
+    Empty in => empty out, so the frozen baseline stays byte-identical.
+    """
     if not features:
         return frozenset()
     fs = frozenset(features)
     for n in fs:
         get(n)  # raises on unknown
-    return fs
+    while True:
+        grown = fs | frozenset().union(*(get(n).implies for n in fs)) if fs else fs
+        if grown == fs:
+            return fs
+        for n in grown - fs:
+            get(n)  # an implied name must be registered too
+        fs = grown
 
 
 def apply_pipeline(passes: list[str], features: frozenset[str]) -> list[str]:
@@ -640,6 +662,40 @@ WHOLEMODEL_VF_NAME = "accumulator_resident_wholemodel_vf"
 WHOLEMODEL_VF_CAPS: tuple[int, int, int] = (4, 16, 16)
 WHOLEMODEL_VF_MR_MM = 1
 WHOLEMODEL_VF_NR_BMM = 8
+
+
+def _tile_epilogue_hygiene(mr_matmul: int | None) -> frozenset[str]:
+    """The lowering hygiene an MR>1 register-block recipe cannot be measured without.
+
+    A recipe that tiles the output and bufferizes per tile leaves, in each tile epilogue, a
+    ``memref.copy %x, %x`` -- the destination subview copied onto ITSELF -- which survives
+    ``finalize-memref-to-llvm`` as an opaque rank-generic ``@memrefCopy`` runtime call. Erasing it is
+    unconditionally value-preserving (identical SSA operand => identical base, offsets and region)
+    and is a no-op on a lowering that has none, so ``erase_self_copy`` can only help or do nothing.
+    ``mining/from_strategy._with_hygiene`` states exactly this policy for recipes reached through the
+    ``microkernel`` knob space; this function is the same policy for the features named DIRECTLY in a
+    package's ``compiler_features``, which bypass that space entirely.
+
+    MEASURED, spike, 64^3 matmul, this repo, bit-identical output on every arm:
+
+        int8   MR=1 240,369 cyc | MR=4 491,346 | MR=1+erase 240,369 | MR=4+erase 178,239
+        f32    MR=1 231,313 cyc | MR=4 495,241 | MR=1+erase 231,313 | MR=4+erase 181,503
+
+    Read those rows in order. Bare MR=4 is 2.0-2.1x SLOWER than MR=1 even though the register block
+    made the compute cheaper -- the PC histogram attributes the whole delta (+250,977 instructions,
+    exactly the cycle delta) to ``memrefCopy`` +187,520 / ``memcpy`` +98,304 / ``memset`` +24,896
+    against ``forward`` -59,743, i.e. a 1.45x cheaper kernel paying 310,720 instructions of buffer
+    copying to get there. With the erase, MR=4 is 1.35x (int8) / 1.27x (f32) FASTER than MR=1. So the
+    A-reuse register block was never the losing lever; the un-erased epilogue was.
+
+    MR<=1 returns empty deliberately. Not because the erase would be unsafe there, but because
+    MR=1+erase measured BYTE-IDENTICAL (both dtypes, same cycle count to the digit) -- there is no
+    self-copy to erase at MR=1, so implying it would move the validated ``MR_mm=1`` control's
+    declared feature set for no measured effect. This also explains the standing claim in
+    ``from_strategy._with_hygiene`` that the ``accumulator_resident_wholemodel*`` family "has no
+    self-copy to erase": that was measured on the MR=1 member, and is false for the MR>1 members.
+    """
+    return frozenset({_SELF_COPY_FEATURE}) if (mr_matmul or 1) > 1 else frozenset()
 
 
 def _accumulator_resident_v3_pre_schedule(MR: int, NR: int, KC: int,
@@ -1284,6 +1340,7 @@ def ensure_v3_kblocked_microkernel(MR: int, NR: int, KC: int) -> str:
         edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
                        _accumulator_resident_v3_kblocked_pre_schedule(_MR, _NR, _KC)),
         schedule_replace=True,
+        implies=_tile_epilogue_hygiene(MR),
     ))
     return name
 
@@ -1336,6 +1393,7 @@ def ensure_v3_unrolled_microkernel(MR: int, NR: int, KC: int) -> str:
         edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
                        _accumulator_resident_v3_unrolled_pre_schedule(_MR, _NR, _KC)),
         schedule_replace=True,
+        implies=_tile_epilogue_hygiene(MR),
     ))
     return name
 
@@ -1454,6 +1512,7 @@ def ensure_v3_scalable_microkernel(MR: int, NR: int, KC: int) -> str:
         edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
                        _accumulator_resident_v3_scalable_pre_schedule(_MR, _NR, _KC)),
         schedule_replace=True,
+        implies=_tile_epilogue_hygiene(MR),
     ))
     return name
 
@@ -1481,6 +1540,7 @@ def ensure_v3_microkernel(MR: int, NR: int, KC: int) -> str:
         edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
                        _accumulator_resident_v3_pre_schedule(_MR, _NR, _KC)),
         schedule_replace=True,
+        implies=_tile_epilogue_hygiene(MR),
     ))
     return name
 
@@ -1532,6 +1592,7 @@ def ensure_v3_perop_microkernel(MR_mm: int | None, NR_mm: int | None,
                                                              NR_bmm=_nb or 1, MR_mm=_mm or 1,
                                                              skip_mm=_sm, skip_bmm=_sb)),
         schedule_replace=True,
+        implies=_tile_epilogue_hygiene(None if skip_mm else MR_mm),
     ))
     return name
 
@@ -1750,6 +1811,7 @@ def _register_accumulator_resident_v3() -> list[str]:
             edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
                            _accumulator_resident_v3_pre_schedule(_MR, _NR, _KC)),
             schedule_replace=True,
+            implies=_tile_epilogue_hygiene(MR),
         ))
         names.append(nm)
 
@@ -1847,6 +1909,7 @@ def _register_accumulator_resident_v3() -> list[str]:
         edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(4, 16, 16,
                                                                        NR_bmm=8, MR_mm=4),
         schedule_replace=True,
+        implies=_tile_epilogue_hygiene(4),
     ))
     names.append("accumulator_resident_wholemodel_vf_mr4")
 
@@ -1882,6 +1945,7 @@ def _register_accumulator_resident_v3() -> list[str]:
                     "the MR block on every matmul in ONE schedule. batch_matmul path identical to _vf "
                     "(MR=4 + NR_bmm=8). Default-off; baseline byte-identical.",
         edit_pipeline=_accumulator_resident_v3_mrpad_pipeline,
+        implies=_tile_epilogue_hygiene(4),
         edit_schedule=lambda _t: _accumulator_resident_v3_mrpad_pre_schedule(4, 16, 16, NR_bmm=8),
         schedule_replace=True,
     ))

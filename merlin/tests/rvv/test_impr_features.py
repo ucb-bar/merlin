@@ -336,3 +336,58 @@ def test_baseline_package_has_no_features():
     if not base.is_dir():
         pytest.skip("hand_v0 package not present")
     assert load_rvv_package(base).compiler_features == []
+
+
+# ---------------------------------------------------------------------------------------
+# ImprFeature.implies -- lowering hygiene a recipe cannot be MEASURED without.
+#
+# A default-off feature whose payoff is cancelled by a SEPARATE default-off fix is an inert
+# lever in practice: the beam has to discover the conjunction, and anyone naming the feature
+# directly in `compiler_features` gets the cancelled version. Measured on spike at 64^3,
+# bit-identical output on every arm: bare MR=4 is 2.0-2.1x SLOWER than MR=1 (the per-tile
+# @memrefCopy costs 187,520 instructions), and 1.27-1.35x FASTER with the erase.
+# ---------------------------------------------------------------------------------------
+
+def test_normalize_is_closed_under_implies_and_leaves_the_baseline_empty():
+    from merlin.llvmlower.selfcopy import FEATURE as SELF_COPY
+    mr4 = "accumulator_resident_wholemodel_vf_mr4"
+    assert F.get(mr4).implies == frozenset({SELF_COPY})
+    assert F.normalize([mr4]) == frozenset({mr4, SELF_COPY})
+    # the frozen baseline must not acquire anything
+    assert F.normalize(frozenset()) == frozenset()
+    assert F.normalize(None) == frozenset()
+    # a feature with no implications is returned unchanged (no accidental growth)
+    assert F.normalize([SELF_COPY]) == frozenset({SELF_COPY})
+
+
+def test_only_the_mr_gt_1_register_blocks_imply_the_tile_epilogue_hygiene():
+    """The rule is keyed on the recipe's MATMUL register block, not on a name list.
+
+    MR=1 is excluded not because the erase would be unsafe but because MR=1+erase measured
+    BYTE-IDENTICAL (both dtypes, same cycle count to the digit) -- there is no self-copy at MR=1, so
+    implying it would move the validated MR_mm=1 control's declared feature set for no effect.
+    """
+    from merlin.llvmlower.selfcopy import FEATURE as SELF_COPY
+    assert F.get("accumulator_resident_wholemodel_vf").implies == frozenset()      # MR_mm=1 control
+    for mr_gt_1 in ("accumulator_resident_wholemodel_vf_mr4",
+                    "accumulator_resident_wholemodel_vf_mrpad"):
+        assert F.get(mr_gt_1).implies == frozenset({SELF_COPY}), mr_gt_1
+    # ...and on the on-demand v3 grid the rule follows MR, both ways
+    assert F.get(F.ensure_v3_microkernel(4, 16, 16)).implies == frozenset({SELF_COPY})
+    assert F.get(F.ensure_v3_microkernel(1, 16, 16)).implies == frozenset()
+    # per-op tables key on the matmul MR specifically
+    assert F.get(F.ensure_v3_perop_microkernel(4, 16, 4, 8, 16)).implies == frozenset({SELF_COPY})
+    assert F.get(F.ensure_v3_perop_microkernel(1, 16, 4, 8, 16)).implies == frozenset()
+
+
+def test_implied_hygiene_reaches_the_runner_argv_gate():
+    """The implication is worthless unless the argv[4] gate sees it -- that gate is what actually
+    splits the pass pipeline and erases the copy. `normalize` is the single choke point every
+    consumer reads, so closing there is what keeps the gate, the runner selection and the schedule
+    edits from disagreeing about which features are on."""
+    from merlin.llvmlower.selfcopy import FEATURE as SELF_COPY, needs_canonicalize
+    feats = F.normalize(["accumulator_resident_wholemodel_vf_mr4"])
+    assert SELF_COPY in feats
+    # the erase depends on a canonicalize+cse after bufferization; the pipeline must be able to add it
+    base = P.build_rvv_pipeline("/tmp/s.mlir")
+    assert needs_canonicalize(base) or "canonicalize" in base
