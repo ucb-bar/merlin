@@ -151,3 +151,60 @@ def system_for(target: str | None = None, *, targets=None, board: str | None = N
     names = list(targets) if targets is not None else ([target] if target else [])
     host = host_from_board(board, **board_overrides) if board else None
     return System(host=host, devices=tuple(device_for(n) for n in names))
+
+
+def host_board_for_experiment(target: str) -> tuple[str | None, str]:
+    """``(board name, why)`` for ``target``'s experiment descriptor.
+
+    Separate from :func:`system_for_experiment` so a caller can ask what is DECLARED without building a
+    System, and so the reason travels with the answer. ``None`` means the descriptor names no board --
+    reported, never defaulted.
+    """
+    try:
+        from merlin.common.paths import merlin_dir
+        from merlin.targetgen.target_experiment import load_target_experiment
+        desc = merlin_dir() / "experiments/capsule_bench/targets" / target / "target_experiment.yaml"
+        if not desc.is_file():
+            return None, f"no experiment descriptor for {target!r} at {desc}"
+        board = load_target_experiment(desc).host_board
+    except Exception as exc:                       # noqa: BLE001 -- an unreadable descriptor is not a board
+        return None, f"could not read {target!r}'s experiment descriptor: {type(exc).__name__}: {exc}"
+    if not board:
+        return None, (f"{target!r}'s descriptor declares no `host: {{board: ...}}`, so the host this "
+                      f"target's lane compiles for is unknown")
+    return board, f"declared by {target!r}'s experiment descriptor"
+
+
+def system_for_experiment(target: str, **board_overrides) -> tuple[System, str]:
+    """``(System, why)`` for ``target``, with the host taken from its experiment descriptor.
+
+    The plain :func:`system_for` needs the board passed in, and no caller had one -- so every System
+    built for a real target carried ``host=None`` and placement silently became scalar-only. This is the
+    seam that gives it a host, and it FAILS OPEN WITH A REASON rather than closed: a target with no
+    declared board still yields a usable one-device System, but the caller is handed the sentence
+    explaining why its host is absent, so "we could not tell" cannot be mistaken for "there is no
+    vector host".
+    """
+    board, why = host_board_for_experiment(target)
+    if board is None:
+        return system_for(target), why
+    # A DECLARED board must be a KNOWN board. ``runtime.boards.board`` deliberately falls back to
+    # conservative defaults for an unnamed board -- that is right for a caller deliberately trying a new
+    # one with explicit overrides, and wrong here: a typo in a descriptor would yield a plausible Host
+    # (harts=2, vlen=None) and every placement would be measured against hardware nobody has. Strict at
+    # this seam only; the general helper keeps its documented behaviour.
+    try:
+        from merlin.runtime.boards import BOARDS
+        known = set(BOARDS)
+    except Exception as exc:                       # noqa: BLE001 -- an unreadable registry is not a board
+        return system_for(target), f"could not read the board registry: {type(exc).__name__}: {exc}"
+    if board not in known:
+        return system_for(target), (
+            f"{target!r} declares board {board!r}, which did not resolve: it is not in "
+            f"merlin.runtime.boards (known: {', '.join(sorted(known))}). Refusing the conservative "
+            f"fallback here, because a defaulted host would be measured as if it were real hardware")
+    try:
+        return system_for(target, board=board, **board_overrides), why
+    except Exception as exc:                       # noqa: BLE001 -- a bad board name is not a host
+        return system_for(target), (f"{target!r} declares board {board!r}, which did not resolve: "
+                                    f"{type(exc).__name__}: {exc}")

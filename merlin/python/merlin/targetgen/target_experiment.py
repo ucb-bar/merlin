@@ -245,6 +245,19 @@ class TargetExperiment:
     # when absent; keeping None loadable lets descriptor tooling report the omission instead of making
     # unrelated onboarding helpers crash while parsing an otherwise useful partial descriptor.
     host_lane: HostLane | None = None
+    # OPTIONAL: which BOARD this target's host lane compiles for, a key of ``merlin.runtime.boards``.
+    #
+    # Nothing declared it anywhere, and the omission was silent in the worst way: ``system_for`` returns
+    # ``System(host=None, ...)`` unless a board is passed, ``place.host_units(None)`` then synthesizes
+    # only a scalar host, and every placement that should have landed on the host VECTOR lane landed on
+    # a scalar one instead -- with no error, because "no board" and "a board with no vector unit" were
+    # the same value. The only caller that had a host at all was a test, which hardcoded one.
+    #
+    # Declared rather than derived because the board is a fact about the SoC the accelerator sits in,
+    # not about the accelerator: two targets can share an RTL and be brought up on different boards.
+    # Left None where the evidence does not name one -- ``system_for_experiment`` then reports the
+    # omission instead of fabricating a host, since a made-up host is worse than an absent one.
+    host_board: str | None = None
 
     def resolve_host_lane(self, *, root: Path | None = None) -> tuple[Path, dict[str, Any]]:
         if self.host_lane is None:
@@ -372,6 +385,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         backend_package_dir=(lambda s: str(s) if s else None)(doc.get("backend_package_dir")),
         graded_exclude=tuple(str(x) for x in ((doc.get("grading") or {}).get("exclude_capsules") or ())),
         host_lane=HostLane.from_mapping(doc.get("host_lane"), descriptor=p),
+        host_board=(lambda v: str(v) if v else None)((doc.get("host") or {}).get("board")),
     )
 
 

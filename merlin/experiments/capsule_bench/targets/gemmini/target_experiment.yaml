@@ -75,6 +75,19 @@ toolchain:
 # `branch` is informational: branches move, and the same branch name on a fork and on upstream are
 # different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
 # a checkout that is the right repo on a plausible branch and missing the schedule is caught.
+# THE HOST THIS TARGET'S LANE COMPILES FOR, a key of merlin.runtime.boards.
+#
+# Declared because nothing derives it: the board is a fact about the SoC the accelerator sits in, not
+# about the accelerator. Its absence was silent -- `system_for` yields host=None, `place.host_units`
+# then synthesizes a SCALAR-ONLY host, and work that belongs on the host vector lane lands on a scalar
+# one with no error, because "no board declared" and "a board with no vector unit" were the same value.
+#
+# chipyard_kodiak, not chipyard_riscv64, on this target's own evidence: `toolchain.sim_via: chipyard`
+# says the SoC is chipyard, and `host_lane` below pins an RVV package -- so the host must have a vector
+# unit, and chipyard_kodiak is the chipyard board that declares vector harts (2 of 3, VLEN 512).
+host:
+  board: chipyard_kodiak
+
 host_lane:
   description: >-
     The int8 RVV host compiler: the scalar/vector lane every partitioned Gemmini model capsule falls
