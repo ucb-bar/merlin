@@ -88,6 +88,43 @@ def operand_store(target: str):
     return store, getattr(store, "total_rows", None)
 
 
+def store_gap(target: str) -> str:
+    """WHY ``target`` yields no operand store -- in the terms of what the extractor actually found.
+
+    "declares no operand-store capacity we can derive" is true but flattens three different situations
+    into one sentence, and they call for different work:
+
+      * no facts at all             -> run the extractor;
+      * facts with no memories      -> the memory extraction does not reach this target;
+      * memories found, no row width -> the banks ARE discovered and only their CLASSIFICATION failed.
+
+    Measured 2026-09-01: one target discovers 39 SRAM banks (a 32-bank, 64-deep, 32-byte-row register
+    file among them) and still yields no operand store, because nothing identifies WHICH bank the compute
+    unit reads its operands from. Reporting that as "declares no capacity" sends the reader to the
+    extractor, which is not where the gap is.
+    """
+    store, capacity = operand_store(target)
+    if store is not None and capacity:
+        return ""                                              # there is no gap to explain
+    try:
+        from merlin.targetgen import address_space as AS
+        space = AS.derive_address_space(target)
+    except Exception as e:                                     # noqa: BLE001 -- unresolvable target
+        return f"the address space could not be derived at all ({type(e).__name__}: {e})"
+    stores = tuple(getattr(space, "stores", ()) or ())
+    reasons = [u.reason for u in (getattr(space, "unknowns", ()) or ())
+               if getattr(u, "quantity", None) in ("stores", "row_bytes", "row_elems", "element_bits")]
+    if not stores:
+        return ("; ".join(reasons) if reasons else
+                "the facts carry no on-chip memory this reader could turn into a store")
+    named = ", ".join(f"{st.name} ({st.nbytes} bytes)" for st in stores)
+    if not any(getattr(st, "row_bytes", None) for st in stores):
+        return (f"{len(stores)} on-chip store(s) ARE derived ({named}) but none has a ROW width, so a "
+                f"byte capacity says nothing about how many rows are addressable"
+                + (f" -- {'; '.join(reasons)}" if reasons else ""))
+    return f"stores derived ({named}) but none was selectable as the operand store"
+
+
 def _rows(store, shape, dtype) -> int | None:
     try:
         return store.working_set_rows(shape, dtype)
@@ -113,7 +150,8 @@ def capsule_regime(capsule_dir: str | Path, target: str, *, store=None, capacity
     except yaml.YAMLError as e:
         return {"regime": UNKNOWN, "why": f"unparseable capsule.yaml: {type(e).__name__}"}
     if store is None or not capacity:
-        return {"regime": UNKNOWN, "why": f"{target!r} declares no operand-store capacity we can derive"}
+        return {"regime": UNKNOWN,
+                "why": f"{target!r} yields no operand store: {store_gap(target)}"}
 
     rows, unsized = 0, []
     for t in (doc.get("inputs") or []):
@@ -212,8 +250,9 @@ def required_regimes(captures: dict, target: str) -> dict:
     unreadable: dict[str, str] = {}
     if store is None or not capacity:
         return {"by_regime": {}, "region_counts": {}, "captures_unreadable": {},
-                "why": f"{target!r} declares no operand-store capacity we can derive, so no regime is "
-                       f"required of the corpus -- that is 'we do not know', never 'nothing is required'"}
+                "why": f"{target!r} yields no operand store, so no regime is required of the corpus -- "
+                       f"that is 'we do not know', never 'nothing is required'. "
+                       f"{store_gap(target)}"}
     for label, path in sorted((captures or {}).items()):
         try:
             module = mc.load_module(path)

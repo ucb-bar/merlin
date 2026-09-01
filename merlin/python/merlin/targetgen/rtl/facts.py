@@ -107,17 +107,31 @@ def freshness(target: str, *, path: str | Path | None = None) -> dict:
                 "target": target, "path": str(art), "recorded": {}, "expected": {}}
 
     recorded = dict(doc.get("inputs") or {})
+    # The artifact NAMES its producer; we verify that module's current identity. Assuming one extractor
+    # made every artifact is wrong once a second archetype has its own: a SIMT bundle is produced by a
+    # different module with a different input-key set, and checking it against the systolic extractor
+    # reported it stale for a reason that was about the CHECKER, not the artifact.
+    declared_module = recorded.get("extractor_module")
+    import importlib
     try:
-        from merlin.targetgen.rtl import circt_introspect as _ci
-        src = Path(_ci.__file__)
+        mod = (importlib.import_module(declared_module) if declared_module
+               else importlib.import_module("merlin.targetgen.rtl.circt_introspect"))
+    except Exception as e:  # noqa: BLE001 -- the named producer is not importable here
+        return {"status": UNDETERMINABLE,
+                "reason": f"the artifact names extractor {declared_module!r}, which is not importable "
+                          f"here ({type(e).__name__}: {e}), so its identity cannot be verified",
+                "target": target, "path": str(art), "recorded": recorded, "expected": {}}
+    try:
+        src = Path(mod.__file__)
         want_extractor = hashlib.sha256(src.read_bytes()).hexdigest()[:16]
-        want_keys = set(_ci.INPUT_KEYS)
-    except Exception as e:  # noqa: BLE001 -- extractor not importable here
+        want_keys = set(mod.INPUT_KEYS)
+    except Exception as e:  # noqa: BLE001
         return {"status": UNDETERMINABLE,
                 "reason": f"cannot identify the current extractor: {type(e).__name__}: {e}",
                 "target": target, "path": str(art), "recorded": recorded, "expected": {}}
 
-    expected = {"extractor_sha": want_extractor, "input_keys": sorted(want_keys)}
+    expected = {"extractor": getattr(mod, "__name__", "?"),
+                "extractor_sha": want_extractor, "input_keys": sorted(want_keys)}
     got_extractor = recorded.get("extractor_sha")
     if not got_extractor:
         return {"status": STALE, "reason": "the artifact records no extractor_sha, so the code that "

@@ -487,7 +487,7 @@ def _sha(path: Path) -> str:
 #: artifact's recorded key set against this: an artifact missing a key the current extractor reads
 #: cannot say what it was derived from, which makes it stale however its hashes look. Keep this in
 #: step with the `"inputs"` block built in `build_facts`.
-INPUT_KEYS = ("target", "hw_mlir", "hw_sha", "core_hw_mlir", "core_hw_sha",
+INPUT_KEYS = ("target", "hw_mlir", "hw_sha", "core_hw_mlir", "core_hw_sha", "extractor_module",
               "fir_sha", "isa_sha", "extractor_sha")
 
 
@@ -536,15 +536,41 @@ def _facts_from_discovery(target: str, facts: dict) -> list[str]:
         facts["arrays"].append(rec)
         sourced.append("mesh")
     caps = mlc_bridge.discovered_capacities(target)
+    if not caps:
+        # The capacity read needs a classified memory MAP (which bank the compute unit takes operands
+        # from), and the classification can fail while the bank discovery succeeds. Measured 2026-09-01:
+        # one target discovers 39 SRAM banks -- including a 32-bank, 64-deep, 32-byte-row register file --
+        # and produced facts with no `memories` key at all, which reads as "whether this device has
+        # on-chip stores is unknown" when in truth the banks are known and only their ROLE is not.
+        # Recording them under a distinct key keeps that difference legible and points the next reader at
+        # the classifier rather than at the extractor. It is deliberately NOT `memories`: an unclassified
+        # bank list must not be mistaken for a store an address space can be derived from.
+        banks = mlc_bridge.discovered_memories(target)
+        if banks:
+            facts["memories_unclassified"] = {
+                "n_banks": len(banks),
+                "banks": [b for b in banks if isinstance(b, dict)][:64],
+                "why": (f"{len(banks)} SRAM bank(s) were discovered from the RTL, but the discovered "
+                        f"memory_map does not say which of them the compute unit reads operands from, so "
+                        f"none can be promoted to an operand store. The gap is CLASSIFICATION, not "
+                        f"extraction."),
+                "source": "mlc discovered_memories (no classified memory_map)"}
+            sourced.append(f"memories_unclassified({len(banks)} banks)")
     if caps:
         keep = [m for m in facts.get("memories", []) if m.get("name") not in ("scratchpad", "accumulator")]
+        # ``row_bytes`` is the RTL SRAM WORD WIDTH of the store's representative bank, carried through
+        # so a consumer can measure a row without a compute array to measure it against. On a systolic
+        # target the array edge x datapath width derives the same number, and the two agreeing is a real
+        # cross-check; on a target with no array (SIMT) it is the only route to a row at all.
         if caps.get("operand_bytes"):
             keep.append({"name": "scratchpad", "bytes": caps["operand_bytes"],
-                         "depth": caps.get("operand_depth"), "source": "mlc_discovery"})
+                         "depth": caps.get("operand_depth"), "banks": caps.get("operand_banks"),
+                         "row_bytes": caps.get("operand_row_bytes"), "source": "mlc_discovery"})
             sourced.append("scratchpad")
         if caps.get("accumulator_bytes"):
             keep.append({"name": "accumulator", "bytes": caps["accumulator_bytes"],
-                         "depth": caps.get("accumulator_depth"), "source": "mlc_discovery"})
+                         "depth": caps.get("accumulator_depth"), "banks": caps.get("accumulator_banks"),
+                         "row_bytes": caps.get("accumulator_row_bytes"), "source": "mlc_discovery"})
             sourced.append("accumulator")
         facts["memories"] = keep
     return sourced
@@ -651,6 +677,11 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
             # unless this field does.
             **_core_hw_input(target),
             "fir_sha": fir_sha, "isa_sha": isa_sha,
+            # Which MODULE produced this, so a checker verifies the identity the artifact CLAIMS
+            # rather than assuming one extractor serves every archetype. A SIMT bundle is produced by a
+            # different module with a different input-key set; hardcoding this one's identity in the
+            # checker made every such artifact read as stale for naming no producer.
+            "extractor_module": __name__,
             "extractor_sha": _sha(Path(__file__)),  # recorded; NOT yet an invalidation trigger
             # NOTE: this field records the extractor that produced the artifact, but nothing
             # compares it. ``facts.ensure_facts`` regenerates only when the cache is COLD

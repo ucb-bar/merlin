@@ -871,42 +871,78 @@ def discovered_memories(target: str) -> list[dict] | None:
 
 def discovered_capacities(target: str) -> dict | None:
     """Total operand-scratchpad + accumulator capacity (bytes) DERIVED from mlc discovery — sum the
-    sibling banks of the representative operand/accumulator memory named in the discovered ``memory_map``
-    (banks share the name with the bank index stripped). Target-agnostic: no hardcoded bank names.
-    Returns ``{operand_bytes, accumulator_bytes, operand_depth, accumulator_depth}`` (values None when
-    not derivable)."""
+    sibling banks of the representative operand/accumulator memory named in the discovered ``memory_map``.
+    Target-agnostic: no hardcoded bank names, and the bank index may sit in ANY path segment.
+
+    Returns ``{operand_bytes, accumulator_bytes, operand_depth, accumulator_depth, operand_banks,
+    accumulator_banks, operand_row_bytes, accumulator_row_bytes}`` (values None when not derivable)."""
     mm = discovered_memory_map(target)
     mems = discovered_memories(target)
     if not mm or not mems:
         return None
 
-    def _bank_prefix(rep_name: str | None) -> str | None:
-        # sibling banks share the name with the bank-index segment ('<base>_<int>') truncated to
-        # '<base>_' — structural split, no regex (e.g. 'spad/spad_mems_0/mem_ext' -> 'spad/spad_mems_').
-        if not rep_name:
-            return None
-        segs = rep_name.split("/")
-        for i, s in enumerate(segs):
-            base, sep, num = s.rpartition("_")
-            if sep and num.isdigit():
-                return "/".join(segs[:i] + [base + "_"])
-        return None
+    def _debank(seg: str) -> str:
+        """``seg`` with its bank-index component removed. Structural split on ``_``, no regex.
+
+        The index is not reliably a SUFFIX. Measured across three targets: ``spad_mems_0`` (trailing),
+        ``mem_1`` (trailing, with an unindexed bank 0 spelled ``mem``), and ``banks_30_ext`` -- infixed,
+        which a trailing-only rule leaves un-grouped, so a 32-bank matrix register file reads as one bank.
+        Dropping every all-digit component normalizes all three; a segment that is nothing but digits is
+        left alone, since removing it would erase the segment rather than its index.
+        """
+        parts = [q for q in seg.split("_") if not q.isdigit()]
+        return "_".join(parts) if parts else seg
+
+    def _are_siblings(a: str, b: str) -> bool:
+        """Are two discovered memory paths two banks of ONE store?
+
+        The relation is structural: same segment count, differing in exactly ONE segment, and in that
+        segment differing only by a trailing ``_<int>`` bank index. That subsumes the previous
+        prefix rule and fixes the two shapes it silently missed:
+
+          * the index need not be in the LAST-but-one segment. It can sit anywhere on the path.
+          * bank 0 may carry NO index at all. Measured on the SIMT target: the discovered operand store
+            is ``shared_mem/mem/radiance_smem_bank_ext`` while its 63 siblings are
+            ``shared_mem/mem_<i>/radiance_smem_bank_ext``. No segment of the representative parses as
+            ``<base>_<int>``, so the prefix rule returned None and the whole capacity read as
+            undeterminable -- a store of 64 banks reported as no store at all.
+        """
+        sa, sb = a.split("/"), b.split("/")
+        if len(sa) != len(sb):
+            return False
+        diff = [i for i, (x, y) in enumerate(zip(sa, sb)) if x != y]
+        if len(diff) != 1:
+            return a == b          # the representative is its own (single-bank) group
+        i = diff[0]
+        return _debank(sa[i]) == _debank(sb[i])
 
     def _group(rep_name: str | None):
-        prefix = _bank_prefix(rep_name)
-        if not prefix:
-            return None, None
-        banks = [x for x in mems if x.get("name", "").startswith(prefix)]
-        if not banks:
-            return None, None
+        """``(total_bytes, per_bank_depth, n_banks, row_bytes)`` for the store ``rep_name`` represents."""
+        if not rep_name:
+            return None, None, None, None
+        rep = next((x for x in mems if x.get("name") == rep_name), None)
+        if rep is None:
+            return None, None, None, None
+        sibs = [x for x in mems if x.get("name") and _are_siblings(rep_name, x["name"])]
+        # Banks of one store are uniform. A structural sibling with a DIFFERENT geometry is not a bank
+        # of this store (a queue that happens to sit at an indexed sibling path), and summing it would
+        # inflate the capacity; requiring the representative's own geometry keeps the sum honest.
+        banks = [x for x in sibs
+                 if x.get("depth") == rep.get("depth") and x.get("row_bytes") == rep.get("row_bytes")]
+        if not banks or not rep.get("depth") or not rep.get("row_bytes"):
+            return None, None, None, None
         total = sum(b["depth"] * b["row_bytes"] for b in banks)
-        depth = banks[0]["depth"] if len({b["depth"] for b in banks}) == 1 else None
-        return total, depth
+        return total, rep["depth"], len(banks), rep["row_bytes"]
 
-    op_bytes, op_depth = _group(mm.get("operand_mem"))
-    acc_bytes, acc_depth = _group(mm.get("accum_mem"))
+    op_bytes, op_depth, op_banks, op_row = _group(mm.get("operand_mem"))
+    acc_bytes, acc_depth, acc_banks, acc_row = _group(mm.get("accum_mem"))
     return {"operand_bytes": op_bytes, "accumulator_bytes": acc_bytes,
-            "operand_depth": op_depth, "accumulator_depth": acc_depth}
+            "operand_depth": op_depth, "accumulator_depth": acc_depth,
+            "operand_banks": op_banks, "accumulator_banks": acc_banks,
+            # The RTL SRAM word width of the representative bank. This is the row width DERIVED from the
+            # memory itself, independent of any compute-array edge -- the only route to a row width on a
+            # target that has no systolic array to measure one against.
+            "operand_row_bytes": op_row, "accumulator_row_bytes": acc_row}
 
 
 def target_fact_bundle(target: str) -> dict:
@@ -1388,6 +1424,19 @@ def _simt_field(name: str, block: dict | None, source: str | None) -> dict:
             "evidence": block.get("evidence")}
 
 
+#: The input keys :func:`simt_facts` records. Declared next to the producer so
+#: :func:`merlin.targetgen.rtl.facts.freshness` can check an artifact's provenance SHAPE without
+#: knowing which archetype produced it -- the artifact names its own extractor and the extractor
+#: declares its own key set.
+INPUT_KEYS = ("target", "arc_alias", "introspect", "rtl_present", "extractor_module", "extractor_sha")
+
+
+def _module_sha() -> str:
+    """One hash of this module -- the identity of the code that produced a bundle."""
+    import hashlib
+    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
+
+
 def _simt_fact_bundle(target: str) -> dict:
     """Adapt the SIMT RTL introspect to the uniform fact-bundle shape. The introspect is resolved from
     the registry by the target's declared identity, so a SIMT target no registered introspect serves is
@@ -1453,9 +1502,64 @@ def simt_facts(target: str) -> dict:
         body["simt"] = {k: simt[k] for k in ("lanes_per_warp", "warps_per_core", "cores")
                         if isinstance(simt.get(k), int)}
     smem = _derived("shared_memory")
+    # The shared-memory CAPACITY the introspect reports, and -- separately -- the same store read out of
+    # the discovered SRAM bank list, which is where its ROW WIDTH comes from. A capacity alone cannot
+    # answer a residency question: rows are the unit a backend addresses, and until this was wired the
+    # SIMT memory axis required nothing of any corpus because no row width existed to measure against.
+    # Read the banks under the ARC ALIAS -- the same identity this function already resolved the
+    # introspect (and therefore the capacity) under. A composite SIMT SoC's shared memory IS the
+    # embedding cluster's shared memory; reading it under the merlin-facing name finds no design at all
+    # and the store reads as having no row width. This inherits a MEMORY fact only: no mesh, dim or array
+    # crosses the alias, which is the fabrication ``_arc_target`` exists to prevent.
+    alias = _arc_target(target)
+    caps = discovered_capacities(alias) or {}
+    alias_note = (None if alias == target else
+                  f"read under the arc alias {alias!r}: {target!r}'s shared memory IS that cluster's, "
+                  f"and no compute geometry crosses the alias")
+    mem: dict = {}
     if isinstance(smem.get("bytes_per_cluster"), int):
-        body["memories"] = [{"name": "shared_memory", "bytes": smem["bytes_per_cluster"]}]
-    return {"schema_version": "simt-facts/v0", "facts": body}
+        mem = {"name": "shared_memory", "bytes": smem["bytes_per_cluster"],
+               "source": "simt introspect shared_memory.bytes_per_cluster"}
+    if caps.get("operand_bytes"):
+        disc = {"name": "shared_memory", "bytes": caps["operand_bytes"],
+                "depth": caps.get("operand_depth"), "banks": caps.get("operand_banks"),
+                "row_bytes": caps.get("operand_row_bytes"),
+                "source": "sibling-bank sum over the discovered memory_map (RTL SRAM banks)"
+                          + (f"; {alias_note}" if alias_note else "")}
+        if mem and mem["bytes"] != disc["bytes"]:
+            # Two independent reads of one store's capacity. Measured 2026-09-01 on the SIMT target they
+            # AGREE (131072 both ways: 64 banks x 512 rows x 4 bytes), which is why the bank sum is
+            # trusted for the row width. A disagreement is recorded rather than resolved by preference.
+            disc["bytes_disagreement"] = (
+                f"the introspect reports {mem['bytes']} bytes per cluster while the discovered SRAM "
+                f"banks sum to {disc['bytes']}; the bank sum is used because it is the read that also "
+                f"yields a row width, and the discrepancy is unresolved")
+        mem = disc
+    if mem:
+        body["memories"] = [mem]
+    if isinstance(caps.get("accumulator_bytes"), int) and caps.get("accumulator_row_bytes"):
+        body.setdefault("memories", []).append(
+            {"name": "register_file", "bytes": caps["accumulator_bytes"],
+             "depth": caps.get("accumulator_depth"), "banks": caps.get("accumulator_banks"),
+             "row_bytes": caps.get("accumulator_row_bytes"),
+             "source": "sibling-bank sum over the discovered memory_map (RTL SRAM banks)"
+                       + (f"; {alias_note}" if alias_note else "")})
+    return {"schema_version": "simt-facts/v0",
+            "generator": {"name": __name__, "method": bundle.get("method")},
+            # A fact artifact that cannot say what code produced it cannot be checked for staleness, and
+            # a stale bundle serves facts from an older extractor indefinitely (``ensure_facts``
+            # regenerates only on a COLD cache). This block is what makes ``facts.freshness`` able to
+            # answer for a SIMT artifact at all -- before it, every SIMT bundle was STALE for the sole
+            # reason that it named no producer.
+            "inputs": {
+                "target": target,
+                "arc_alias": alias,
+                "introspect": (bundle.get("method") or "unknown"),
+                "rtl_present": bool(bundle.get("rtl_present")),
+                "extractor_module": __name__,
+                "extractor_sha": _module_sha(),
+            },
+            "facts": body}
 
 
 def _main(argv: list[str] | None = None) -> int:

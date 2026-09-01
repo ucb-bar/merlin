@@ -46,19 +46,33 @@ def _space(target: str = TARGET):
 
 # ------------------------------------------------------------------ the derivation, against real RTL
 
-def test_the_row_width_is_derived_from_geometry_times_datapath_never_declared():
-    """16 bytes is not a constant anyone typed: it is the array's column edge in the datapath's element.
+def test_the_row_width_is_derived_never_declared_and_both_routes_agree():
+    """16 bytes is not a constant anyone typed, and it is derivable TWO independent ways.
 
     The two stores of one device share a geometry and differ by element width -- a 16-column array over
     an 8-bit operand datapath gives a 16-byte operand row, the same 16 columns over the declared 32-bit
-    accumulate word give a 64-byte accumulator row. Nothing in the facts states either.
+    accumulate word give a 64-byte accumulator row. Separately, each store's representative SRAM bank
+    declares its own word width in the RTL, and mlc discovery reads it.
+
+    Both routes are kept. The array route is the only one available on a target whose extractor carries no
+    per-memory word width; the SRAM route is the only one available on an archetype with no compute array
+    to take an edge from (measured: the SIMT target's 64-bank, 4-byte-row shared memory). Where both
+    exist they must AGREE -- that equality is the check that catches a row width wrong by the packing
+    factor, and it is asserted here rather than assumed.
     """
     sp = _space()
     assert sp.array_cols and sp.array_rows, "no array geometry, no row width"
     for st in sp.stores:
         assert st.element_bits, f"{st.name}: element width must be linked to a declared datapath"
         assert st.row_bytes == sp.array_cols * (st.element_bits // 8), st.to_dict()
-        assert st.sources["row_bytes"].startswith("array cols"), "the provenance must name the derivation"
+        prov = st.sources["row_bytes"]
+        assert prov.startswith("array cols") or "RTL SRAM word width" in prov, \
+            f"the provenance must name which derivation produced the row: {prov!r}"
+        # Neither route may contradict the other: the value above IS the array product, so if the
+        # provenance names the SRAM word, the SRAM word equals the array product.
+        assert not [u for u in sp.unknowns
+                    if u.quantity == "row_bytes" and u.store == st.name], \
+            f"{st.name}: the two row-width derivations disagree -- {[u.to_dict() for u in sp.unknowns]}"
 
 
 def test_the_row_totals_and_banks_are_the_numbers_the_simulator_aborted_on():
@@ -132,16 +146,41 @@ def test_a_target_with_no_facts_reports_unknown_and_never_zero():
     assert 0 not in (d["separate_accumulator_space"], d["array"]), "an unread quantity is not a zero"
 
 
-@pytest.mark.parametrize("target,expect", [("muon", ABSENT), ("atlas", UNKNOWN)])
-def test_the_two_real_targets_that_show_both_states(target, expect):
-    """Both states occur in this repo's own artifacts: one target's extractor emits ``memories: []`` while
-    another's carries no ``memories`` key at all (mlc discovers 39 SRAMs for it and declines to classify
-    any of them, so the capacity obligation is undecidable there -- correctly)."""
+def test_a_real_target_whose_banks_are_discovered_but_unclassified_stays_unknown():
+    """mlc discovers 39 SRAM banks for this target and classifies none of them, so nothing says which
+    bank the compute unit reads operands from and the capacity obligation is undecidable -- correctly.
+
+    UNKNOWN here is a fact about our extraction, and the reason must say so: the banks ARE known, only
+    their ROLE is not, which sends the reader to the classifier rather than to the extractor.
+    """
+    target = "atlas"
     if not rtl_facts.rtl_facts_path(target).is_file():
         pytest.skip(f"no RTL-facts artifact for {target!r} in this checkout")
     sp = derive_address_space(target)
-    assert sp.stores_status == expect, [u.to_dict() for u in sp.unknowns]
+    assert sp.stores_status == UNKNOWN, [u.to_dict() for u in sp.unknowns]
     assert sp.stores == () and sp.separate_accumulator_space is None
+
+
+def test_the_simt_target_derives_a_store_without_any_compute_array():
+    """This target was previously reported ABSENT -- "declared to have no on-chip store of its own" --
+    which was a claim about hardware that has a 64-bank, 131072-byte shared memory.
+
+    It read as absent because the row width was derived ONLY as the compute array's column edge times
+    the datapath element width, and this machine has no array. The store's own RTL SRAM word width is the
+    direct measurement, and with it a row is derivable on an archetype with no array at all. ABSENT
+    remains covered where it belongs: over a synthetic artifact that really does declare ``memories: []``
+    (see the test above), which is the only place that state can be asserted without claiming it of a
+    real device.
+    """
+    target = "muon"
+    if not rtl_facts.rtl_facts_path(target).is_file():
+        pytest.skip(f"no RTL-facts artifact for {target!r} in this checkout")
+    sp = derive_address_space(target)
+    assert sp.stores_status == DERIVED, [u.to_dict() for u in sp.unknowns]
+    assert sp.array_cols is None, "the point of this case is that there is no array to measure against"
+    operand = min((s for s in sp.stores if s.row_bytes), key=lambda s: s.row_bytes)
+    assert operand.row_bytes and operand.total_rows == operand.nbytes // operand.row_bytes
+    assert "RTL SRAM word width" in operand.sources["row_bytes"], operand.sources
 
 
 def test_an_unlinkable_element_width_leaves_the_row_unknown_not_assumed():

@@ -32,6 +32,7 @@ def _current_sha() -> str:
 def _full_inputs(**over) -> dict:
     base = {k: f"<{k}>" for k in CI.INPUT_KEYS}
     base["extractor_sha"] = _current_sha()
+    base["extractor_module"] = CI.__name__          # the producer is verified by IMPORTING what it names
     base.update(over)
     return base
 
@@ -87,3 +88,53 @@ def test_input_keys_match_what_the_extractor_actually_records():
             assert "_core_hw_input(" in block, "core_hw_* are recorded via _core_hw_input"
             continue
         assert f'"{key}"' in block, f"INPUT_KEYS names {key!r} but the inputs block does not record it"
+
+
+# --- the artifact names its own producer ------------------------------------------------------------
+# A second archetype has a second extractor. Checking every artifact against the systolic one reported a
+# SIMT bundle stale for a reason that was about the CHECKER, so the artifact now names the module that
+# produced it and the checker verifies THAT module's identity.
+
+
+def test_an_artifact_naming_an_unimportable_producer_is_undeterminable(tmp_path):
+    """Not stale, and certainly not fresh: nobody could check."""
+    r = F.freshness("t", path=_artifact(tmp_path, _full_inputs(extractor_module="no.such.module")))
+    assert r["status"] == F.UNDETERMINABLE, r
+    assert "not importable" in r["reason"]
+
+
+def test_a_simt_artifact_is_checked_against_the_simt_extractor(tmp_path):
+    """The SIMT producer declares its own INPUT_KEYS; the systolic key set does not apply to it."""
+    from merlin.targetgen.rtl import mlc_bridge as MB
+    import hashlib
+    from pathlib import Path as _P
+    sha = hashlib.sha256(_P(MB.__file__).read_bytes()).hexdigest()[:16]
+    inputs = {k: f"<{k}>" for k in MB.INPUT_KEYS}
+    inputs["extractor_module"] = MB.__name__
+    inputs["extractor_sha"] = sha
+    p = tmp_path / "facts.json"
+    p.write_text(json.dumps({"schema_version": "simt-facts/v0", "inputs": inputs, "facts": {}}),
+                 encoding="utf-8")
+    r = F.freshness("t", path=p)
+    assert r["status"] == F.FRESH, r
+    assert r["expected"]["extractor"] == MB.__name__
+
+
+def test_a_simt_artifact_checked_with_a_wrong_sha_is_stale(tmp_path):
+    from merlin.targetgen.rtl import mlc_bridge as MB
+    inputs = {k: f"<{k}>" for k in MB.INPUT_KEYS}
+    inputs["extractor_module"] = MB.__name__
+    inputs["extractor_sha"] = "0" * 16
+    p = tmp_path / "facts.json"
+    p.write_text(json.dumps({"schema_version": "simt-facts/v0", "inputs": inputs, "facts": {}}),
+                 encoding="utf-8")
+    assert F.freshness("t", path=p)["status"] == F.STALE
+
+
+def test_a_legacy_artifact_naming_no_producer_still_checks_against_the_systolic_one(tmp_path):
+    """Back-compat: an artifact predating the field is checked the way it always was."""
+    inputs = _full_inputs()
+    inputs.pop("extractor_module")
+    r = F.freshness("t", path=_artifact(tmp_path, inputs))
+    assert r["status"] == F.STALE, r
+    assert "extractor_module" in r["reason"], "the missing key is what makes it stale"

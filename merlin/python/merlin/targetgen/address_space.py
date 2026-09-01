@@ -353,8 +353,16 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
     mems = body.get("memories")
     if mems is None:
         space.stores_status = UNKNOWN
-        unknowns.append(Unknown("stores", "these facts carry no `memories` list at all, so whether the "
-                                          "device has on-chip stores is UNKNOWN -- not that it has none"))
+        unclassified = body.get("memories_unclassified") or {}
+        if unclassified.get("n_banks"):
+            # Knowing the banks and not their roles is a different state from knowing nothing, and it
+            # calls for different work. Say which one this is.
+            unknowns.append(Unknown("stores", str(unclassified.get("why")) or (
+                f"{unclassified['n_banks']} SRAM bank(s) discovered but unclassified")))
+        else:
+            unknowns.append(Unknown("stores", "these facts carry no `memories` list at all, so whether "
+                                              "the device has on-chip stores is UNKNOWN -- not that it "
+                                              "has none"))
     elif not mems:
         space.stores_status = ABSENT
         unknowns.append(Unknown("stores", "the extractor produced an EMPTY memory list: this device is "
@@ -363,6 +371,7 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
         space.stores_status = DERIVED
 
     array, array_reason = _array_geometry(body)
+    _have_rtl_rows = any(isinstance(m, dict) and m.get("row_bytes") for m in (mems or []))
     if array is not None:
         space.array_name = str(array.get("name")) if array.get("name") else None
         space.array_rows, space.array_cols = int(array["rows"]), int(array["cols"])
@@ -377,11 +386,13 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
                 "row_elems", f"the array is {space.array_rows}x{space.array_cols} (not square); the row "
                              "width was taken as the COLUMN edge -- corroborate() against the RTL SRAM "
                              "widths before trusting it"))
-    elif mems:
+    elif mems and not _have_rtl_rows:
         unknowns.append(Unknown("row_elems", array_reason or "no array geometry"))
 
     datapaths = [d for d in (body.get("datapaths") or []) if isinstance(d, dict)]
-    if mems and not datapaths:
+    if mems and not datapaths and not any(isinstance(m, dict) and m.get("row_bytes") for m in mems):
+        # Only a blocker when no memory declares its own word width: with an RTL row in hand, a row is
+        # measurable without knowing what the datapath calls its element.
         unknowns.append(Unknown("element_bits", "these facts declare no `datapaths`, so no element "
                                                 "width -- and a row is only measurable in elements"))
 
@@ -406,6 +417,13 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
                                                     "quant-format registry recognizes", name))
         row_elems = space.array_cols
         row_bytes = None
+        # The memory's OWN declared word width, when the extractor carried one. This is the direct
+        # measurement -- the RTL SRAM row -- and it needs no compute array, which is what makes a row
+        # derivable on an archetype that has no array to take an edge from. The array route below stays
+        # as the second opinion, and the two are CROSS-CHECKED rather than one silently winning.
+        rtl_row_bytes = int(mem["row_bytes"]) if isinstance(mem.get("row_bytes"), int) else None
+        if rtl_row_bytes:
+            row_bytes = rtl_row_bytes
         if row_elems and bits:
             if bits % 8:
                 # A sub-byte or otherwise unaligned datapath element leaves the row width genuinely
@@ -417,7 +435,19 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
                                  "row packs the array's elements or pads each to a byte is not derivable "
                                  "from these facts -- corroborate() against the RTL row width", name))
             else:
-                row_bytes = row_elems * (bits // 8)
+                array_row_bytes = row_elems * (bits // 8)
+                if rtl_row_bytes is None:
+                    row_bytes = array_row_bytes
+                elif array_row_bytes != rtl_row_bytes:
+                    # Two independent derivations of the same physical width disagree. Neither is
+                    # preferred: a row width that is wrong by the packing factor mis-sizes every
+                    # residency verdict downstream, and picking one would hide which. The RTL word is
+                    # kept (it is the measurement of the memory itself) and the disagreement is stated.
+                    unknowns.append(Unknown(
+                        "row_bytes", f"the memory declares a {rtl_row_bytes}-byte RTL word while the "
+                                     f"array edge ({row_elems} x {dtype}) derives {array_row_bytes} "
+                                     f"bytes; the RTL word is used and the disagreement is unresolved "
+                                     f"-- corroborate() before trusting either", name))
         total_rows = row_residue = banks = bank_residue = None
         if nbytes and row_bytes:
             total_rows, row_residue = nbytes // row_bytes, nbytes % row_bytes
@@ -438,7 +468,10 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
         srcs = {"bytes_depth": str(mem.get("source") or "facts.memories")}
         if how:
             srcs["element_dtype"] = how
-        if row_bytes:
+        if row_bytes and rtl_row_bytes:
+            srcs["row_bytes"] = (f"facts.memories[{name!r}].row_bytes = {rtl_row_bytes} "
+                                 f"(RTL SRAM word width of the representative bank)")
+        elif row_bytes:
             srcs["row_bytes"] = f"array cols {row_elems} x {dtype} ({bits} bits)"
         stores.append(Store(name=name, nbytes=nbytes, depth=depth, row_elems=row_elems,
                             element_dtype=dtype, element_bits=bits, row_bytes=row_bytes,
