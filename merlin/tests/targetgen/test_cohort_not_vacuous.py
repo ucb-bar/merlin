@@ -53,3 +53,20 @@ def test_neither_capsule_nor_root_is_rejected(tmp_path: Path):
     with pytest.raises(SystemExit) as e:
         runner_main(["--package", str(tmp_path / "unused_pkg"), "--target", "gemmini"])
     assert e.value.code != 0
+
+
+def test_empty_outputs_are_not_an_exact_match():
+    """Two empty output sets must not compare equal.
+
+    `all(...)` over an empty mapping is vacuously True, so a kernel that stored NOTHING, graded
+    against a reference that recorded nothing, read as bit-exact. Same failure shape as the empty
+    cohort above: absence of evidence presenting itself as evidence.
+    """
+    from merlin.targetgen.capsule_runner import _exact_match
+
+    assert _exact_match({}, {}) is False
+    assert _exact_match({}, {"Y": [1, 2]}) is False
+    assert _exact_match({"Y": [1, 2]}, {}) is False
+    # and it still matches what it should
+    assert _exact_match({"Y": [1, 2]}, {"Y": [1, 2]}) is True
+    assert _exact_match({"Y": [1, 2]}, {"Y": [1, 3]}) is False

@@ -913,6 +913,12 @@ def qa_checkpoint_adapters(target: str, sim_via: str | None = None) -> dict[str,
 
 
 def _exact_match(a: dict, b: dict) -> bool:
+    # NO OUTPUTS IS NOT A MATCH. `all(...)` over an empty mapping is vacuously True, so two empty
+    # output sets used to compare EXACTLY EQUAL -- a kernel that stored nothing, graded against a
+    # reference that recorded nothing, read as bit-exact. Same shape as the empty-cohort verdict and
+    # the vacuous readiness GO: the absence of evidence presenting itself as evidence. Fail closed.
+    if not a or not b:
+        return False
     if set(a) != set(b):
         return False
     return all(_flat(a[k]) == _flat(b[k]) for k in a)
