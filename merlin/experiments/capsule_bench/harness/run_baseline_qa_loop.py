@@ -2442,6 +2442,27 @@ def main(argv: list[str] | None = None) -> int:
             _checkpoint(rnd)
             continue  # retry same rnd, do NOT append to rounds_summary
 
+        # THE AGENT MUST HAVE RUN BEFORE ITS WORK IS JUDGED. The two guards above cover the five-hour
+        # window and the daily token quota; neither covers a turn that never happened -- a seat out of
+        # credits until a DATE, a model name the CLI cannot serve, a failed auth. Measured 2026-09-01,
+        # both on this bench: a codex seat returned "You've hit your usage limit ... try again at Sep 6th"
+        # with an empty turn for three consecutive rounds, and a Bedrock id handed to a subscription CLI
+        # returned "There's an issue with the selected model" in 0 ms. In both cases the round proceeded
+        # to grade an unchanged submission and printed "NOT CONFORMANT -- failing: isa_tools_used,
+        # cca_used, ..." -- a harness limitation reported as an agent defect, for about three and a half
+        # hours of wall-clock. Grading is skipped and the run stops with a DISTINCT reason: a verdict
+        # about an agent that did not run is not a verdict, and continuing would spend the remaining
+        # rounds the same way.
+        _dead, _why = RL.agent_turn_dead(tpath)
+        if _dead:
+            active_wall_s += time.time() - _rstart
+            _checkpoint(rnd)  # next_round stays rnd: --resume retries THIS round once the cause is fixed
+            print(f"[round {rnd}] AGENT DID NOT RUN — {_why}. Not grading, and not reporting a "
+                  f"conformance verdict: nothing about the submission was exercised this round. The "
+                  f"submission is checkpointed; fix the driver/model/credits and relaunch with --resume "
+                  f"(same run_id) to retry this round.", flush=True)
+            break
+
         verdict = qa_grade(ws, run_dir, rnd, a.no_oracle, a.qa_timeout)
         # Cross-round MEMORY: write the harness-built round brief (progress log across all graded rounds +
         # the agent's own notes + a stale-notes nudge) so the NEXT fresh session carries its progress

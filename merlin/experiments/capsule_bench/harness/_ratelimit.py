@@ -109,3 +109,83 @@ def rounds_rate_limited(run_dir: str | Path) -> tuple[int, int]:
         elif tu > 0:
             worked += 1
     return (rejected, worked)
+
+
+#: Markers a driver leaves when its turn did not run at all, as opposed to running and achieving little.
+#: Kept as substrings of the ERROR text rather than as exact messages, because each provider words its own
+#: refusal, and matched only alongside "no tool work" so a real turn that merely mentions one of these
+#: words is never mistaken for a dead one.
+_TERMINAL_MARKERS = (
+    "usage limit",             # ChatGPT/codex seat credits exhausted (carries a retry DATE, not a window)
+    "purchase more credits",
+    "issue with the selected model",   # a model the CLI cannot serve (e.g. a Bedrock id under a seat)
+    "may not exist or you may not have access",
+    "authentication",
+    "invalid api key",
+    "unauthorized",
+)
+
+
+def agent_turn_dead(transcript_path: str | Path) -> tuple[bool, str]:
+    """``(dead, reason)`` — did this round's agent turn fail to RUN, rather than run and accomplish little?
+
+    This is the third failure class, and the one that had no guard. ``round_rejected`` covers the
+    five-hour window and ``daily_limit_hit`` the provider's daily token quota; neither covers a turn that
+    never happened because the seat is out of credits until a DATE, because the model name cannot be
+    served, or because auth failed. Measured 2026-09-01, both on this bench:
+
+      * the codex seat returned "You've hit your usage limit ... try again at Sep 6th" with
+        ``content: []`` and a 4.5 s turn, for three consecutive rounds;
+      * a Bedrock inference-profile id handed to a subscription CLI returned "There's an issue with the
+        selected model (us.anthropic.claude-opus-4-6-v1)" in 0 ms.
+
+    In BOTH cases the round went on to grade an unchanged submission and print
+    ``NOT CONFORMANT -- failing: isa_tools_used, cca_used, ...``. That is a harness limitation reported as
+    an agent defect, and roughly three and a half hours of wall-clock were spent on rounds where no agent
+    ran. A verdict about an agent that did not run is not a verdict.
+
+    Discriminated by NO TOOL WORK plus positive evidence of a terminal failure -- either a marker above,
+    an explicitly failed turn, or a reply that came only from the CLI itself (``<synthetic>``). A quiet but
+    real turn is left alone: it is unproductive, which the stage ledger already reports, not dead.
+    """
+    tool_uses = 0
+    reasons: list[str] = []
+    synthetic_only = True
+    saw_assistant = False
+    for e in _iter_events(transcript_path):
+        t = e.get("type")
+        msg = e.get("message") or {}
+        if t == "assistant":
+            saw_assistant = True
+            if isinstance(msg, dict) and str(msg.get("model", "")) not in ("<synthetic>", ""):
+                synthetic_only = False
+            if e.get("codex_turn_failed") in (True, "True"):
+                reasons.append("the driver reported the turn itself as failed")
+        txt = str(e.get("result", "")) if t == "result" else ""
+        if isinstance(msg, dict):
+            for b in (msg.get("content") or []):
+                if not isinstance(b, dict):
+                    continue
+                if b.get("type") == "tool_use":
+                    tool_uses += 1
+                elif b.get("type") == "text":
+                    txt += " " + str(b.get("text", ""))
+        low = txt.lower()
+        for m in _TERMINAL_MARKERS:
+            if m in low:
+                reasons.append(f"the driver reported {m!r}")
+                break
+    if tool_uses:
+        return False, ""                     # the agent did work; whatever else happened, it ran
+    if saw_assistant and synthetic_only:
+        reasons.append("every reply came from the CLI itself (model '<synthetic>'), so no model ran")
+    if not saw_assistant:
+        reasons.append("the transcript carries no assistant turn at all")
+    if not reasons:
+        return False, ""
+    # de-duplicate while keeping order, so a repeated provider message is stated once
+    seen: list[str] = []
+    for r in reasons:
+        if r not in seen:
+            seen.append(r)
+    return True, "; ".join(seen)
