@@ -21,7 +21,14 @@ operation:
 numeric_policy:
   compare: tolerance_float
   dtype: bf16
-  atol: 0.25
+  # atol is bounded by FALSIFIABILITY, not convention: at the corpus default 0.25 -- wider than
+  # this output's entire range -- a constant answer satisfied the comparison at every element, so
+  # the capsule passed without the kernel computing anything (it was the sole apparent survivor of
+  # a corpus-wide preload defect, returning a constant). Ceiling below is the largest atol under
+  # which the best constant still fails, derived from the golden itself (numeric_falsifiability);
+  # this sits at half of it, still ~8x the measured bf16 slice error.
+  # falsifiability ceiling: 0.0690
+  atol: 0.0345
   rtol: 0.02
 expected:
   instruction_classes:
