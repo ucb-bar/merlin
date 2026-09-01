@@ -1,0 +1,64 @@
+name: AX0_interop_vector_unit
+kind: model
+source_role: pytorch_model_slice
+source_reference: "small_llama fp8 composed across the mxu and the in-contract vector\
+  \ unit \u2014 asserts both declared units carried work"
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: I0
+  role: input
+  shape:
+  - 1
+  - 8
+  dtype: i64
+operation:
+  op: model
+  attributes:
+    model: small_llama
+    dtype: fp8_e4m3
+    out: Y0
+    compile_dtype: fp8
+    arg_order:
+    - I0
+    - Y0
+    weights: capsule.weights.safetensors
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - TensorComputeBinary
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPopE1
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+gate:
+  after_op_pass_fraction: 0.8
+lanes:
+  require:
+  - on_mesh
+  - in_contract_vector_scalar
+pytorch_ref:
+  op: model
+  dtype: fp8_e4m3
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: contraction
+  generalization_axis: model
+  must_accelerate: false
+  not_asserted_reason: 'interop capsule: composition across lanes is the behaviour
+    under test, so host-lane work is expected and required. The accelerator demand
+    is expressed as lanes.require, which fails unless every named lane actually carried
+    work.'
+  eligible: auto

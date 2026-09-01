@@ -58,14 +58,22 @@ datapath:
   # stays inapplicable — the disagreement is real either way — but the CAUSE is open, and a fix that
   # only resolves the collision should not be expected to close it. Gate any fix on landing exactly
   # 178 / 1090 / 2614 for the `_tierpolicy_v3` kernels; a new third number is not a fix.
-  inapplicable_oracle_tiers:
-    L2: >-
-      functional core cannot corroborate an RTL result for this target: the ISA encodes dma.config.chN
-      and dma.wait.chN to the same word, so an assembled program that needs both cannot be decoded back
-      (resolving it as wait leaves the DMA channel unarmed and the kernel stalls at its first VLOAD;
-      resolving it as config deletes the barriers and every output reads back zero). The core also
-      treats VMEM as byte-addressed where the RTL treats it as word-addressed, and reads the fp8->bf16
-      unpack scale as a divisor where the RTL reads a biased exponent. Graded on the RTL tiers instead.
+  # ⚠️ SUPERSEDED — the `inapplicable_oracle_tiers: {L2: ...}` declaration that stood here has been
+  # removed, because it contradicted this same file and made the corpus unregenerable. The tier-index
+  # refactor added L2 to `required_oracle_tiers` above, on the reasoning that a tier index names a
+  # FIDELITY rather than one simulator, and regenerated all 51 atlas capsules accordingly: every one of
+  # them requires L2 and none declares it inapplicable. The declaration was the only thing left saying
+  # otherwise, and `corpus_spec` rightly refuses a tier that is both required and inapplicable -- so
+  # `generate_corpus --target atlas` raised, and with it the conformance, holdout and float-grading
+  # gates. Atlas at that fidelity is reached by the program ORACLE adapter, not the model's fast
+  # functional core, which is what makes the tier applicable while everything measured below stays true.
+  #
+  # The evidence above is retained deliberately and none of it is retracted: the dma.config/dma.wait
+  # encoding collision is real, the byte-vs-word VMEM disagreement is real, the biased-exponent reading
+  # is real, and the ~2.6-3x cycle overcount on the model's fast core remains UNEXPLAINED. What changed
+  # is which engine answers at this tier, not whether those defects exist. The acceptance bar stated
+  # above still stands for anyone fixing the fast core: land exactly 178 / 1090 / 2614 for the
+  # `_tierpolicy_v3` kernels; a new third number is not a fix.
 capsules:
 - {cat: isa, name: AT0_config_smoke, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
    lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
