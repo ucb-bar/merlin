@@ -1,0 +1,49 @@
+name: RM0_deep_k_fits_single_f32
+kind: layer
+source_role: handauthored_compiler_test
+source_reference: 'derived memory-mapping coverage: a contraction whose operands occupy
+  24576 of the shared_memory''s 32768 rows (75.0%) -- it fits ONCE and cannot be double-buffered,
+  so serialising movement against compute is correct here and failing to stage is
+  not a defect'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 768
+  - 16
+  dtype: f32
+- name: X
+  role: input
+  shape:
+  - 16
+  - 768
+  dtype: f32
+operation:
+  op: matmul
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: shape
+  must_accelerate: true
+  eligible: auto
