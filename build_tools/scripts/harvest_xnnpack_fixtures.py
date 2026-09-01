@@ -81,8 +81,26 @@ def harvest_one(t: FamilyTeacher, cc: Path, xsrc: Path, ceil_inc: Path, out_dir:
             return False, f"disassemble failed: {e}"
     if "vsetvli" not in text and "vle" not in text and "vfmacc" not in text and "vadd" not in text:
         return False, "disassembly has no vector ops (not an RVV ukernel object?)"
-    (out_dir / t.fixture).write_text(text, encoding="utf-8")
+    (out_dir / t.fixture).write_text(_machine_independent(text, t.fixture), encoding="utf-8")
     return True, f"wrote {t.fixture} ({len(text)} chars) from {t.ukernel_src}"
+
+
+def _machine_independent(text: str, fixture: str) -> str:
+    """Replace objdump's leading ``<path>.o:\tfile format ...`` with the fixture name.
+
+    These fixtures are TRACKED test data and the expert CCA is lifted from them, so they should be a
+    function of the ukernel and nothing else. objdump names the object by its full path, which lives in
+    a temp dir -- so re-running the harvester rewrote all six existing fixtures with the new TMPDIR
+    (``/tmp/...`` -> ``/scratch/.../tmp/...``) and zero instruction changes. That churn is pure noise,
+    and it invites exactly the wrong reading: a diff on an expert fixture should mean the SEARCH TARGET
+    moved. The line is not parsed by the lifter (``rvv.decode_text`` keys on the ``<sym>`` section
+    headers), so normalising it costs nothing.
+    """
+    out = []
+    for line in text.splitlines():
+        head, sep, rest = line.partition(":\tfile format ")
+        out.append(f"{fixture}{sep}{rest}" if sep and head.endswith(".o") else line)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
 def main(argv: list[str] | None = None) -> int:

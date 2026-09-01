@@ -270,3 +270,103 @@ def test_the_sentinel_fails_loud_if_it_ever_reaches_lowering_unresolved():
     assert "untagged" in str(e.value) or "scalar" in str(e.value)
     # ...and the frozen baseline is untouched by the registration
     assert P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset()) == P.build_rvv_pipeline("/tmp/s.mlir")
+
+
+# ---------------------------------------------------------------------------------------
+# The transformer tail's teachers. `sin`, `cos` and `rsqrt` are census families the census
+# has emitted all along, and they were in NEITHER FAMILY_TEACHERS NOR NO_TEACHER_FAMILIES --
+# so no expert was ever lifted for them, no divergence could form, and the loop could not
+# propose anything for RoPE or RMSNorm. Measured on small_llama int8: 16.63% of an INT8
+# model's binary is scalar FLOAT, calling __kernel_sinf / __kernel_cosf / __kernel_rem_pio2f
+# and __ieee754_sqrt per element.
+# ---------------------------------------------------------------------------------------
+
+def test_the_transformer_tail_families_are_registered_one_way_or_the_other():
+    """A census family that is in neither registry is INVISIBLE, which is the failure this closes.
+    Being registered with fixture=None is fine -- that is an honest no-teacher record."""
+    from merlin.mining.wholemodel_proposer import (FAMILY_TEACHERS, NO_TEACHER_FAMILIES,
+                                                   _coverage_maps)
+    fam_map, _ = _coverage_maps()
+    known = set(FAMILY_TEACHERS) | set(NO_TEACHER_FAMILIES)
+    for f in ("sin", "cos", "rsqrt"):
+        assert f in fam_map, f"{f} is expected to be a census family"
+        assert f in known, f"census family {f!r} is in neither registry -> silently unteachable"
+
+
+def test_the_rmsnorm_teacher_is_harvested_and_lifts_as_vectorized():
+    """The expert must be LIFTED from a real disassembly, never declared -- the beam's hard principle
+    is that the CCA is tool-composed."""
+    from merlin.common.paths import repo_root
+    from merlin.kernels import cca
+    from merlin.kernels.decode import rvv
+    from merlin.mining.wholemodel_proposer import FAMILY_TEACHERS
+
+    t = FAMILY_TEACHERS["rsqrt"]
+    assert t.fixture == "xnnpack_rsqrt_rvv.objdump"
+    fx = repo_root() / "merlin/tests/data/cca_asm" / t.fixture
+    if not fx.is_file():
+        pytest.skip("rsqrt fixture not harvested in this checkout")
+    expert = cca.lift_asm(rvv.decode_text(fx.read_text()), op="rsqrt", source="expert")
+    assert expert.compute.activation_vectorization == "vectorized_polynomial"
+
+
+def test_sin_and_cos_are_honest_no_teacher_records_with_the_reason_named():
+    """XNNPACK DOES ship f32-vsin/f32-vcos RVV kernels, but they call a 2-arg xnn_round_f32 that does
+    not exist anywhere in this revision. Authoring that helper would make the EXPERT CCA something we
+    wrote, and the expert's instruction mix IS the search target -- so it must stay unharvested and
+    SAID SO, not quietly absent."""
+    from merlin.mining.wholemodel_proposer import FAMILY_TEACHERS
+
+    for f in ("sin", "cos"):
+        t = FAMILY_TEACHERS[f]
+        assert t.fixture is None, f"{f} must not claim a fixture it cannot harvest"
+        assert "xnn_round_f32" in t.note, f"{f}'s note must name the actual blocker"
+        # the ukernel_src is kept so a later XNNPACK bump can flip it by re-running the harvester
+        assert t.ukernel_src and "rvv" in t.ukernel_src
+
+
+def test_the_shim_defines_the_macro_that_blocked_the_rsqrt_harvest():
+    """`... params) XNN_OOB_READS {` parses as a declarator followed by garbage without it, and clang
+    reports "expected function body after function declarator" -- which is what skipped the RMSNorm
+    teacher. Empty expansion is faithful: the attributes change neither the instruction mix nor the
+    symbol, which is all the harvest reads."""
+    from merlin.common.paths import repo_root
+
+    h = (repo_root() / "merlin/python/merlin/kernels/ceiling_drivers/src/xnnpack/common.h").read_text()
+    assert "#define XNN_OOB_READS" in h
+    # ...and it must be INSIDE the include guard, not trailing after its #endif
+    assert h.index("#define XNN_OOB_READS") < h.rindex("#endif  // MERLIN_CEILING_XNN_COMMON_H")
+
+
+def test_the_loop_closes_from_harvested_expert_to_the_agent_leaf():
+    """The whole point, with no agent involved: a real expert fixture and our real emitted shape form
+    a divergence, route to a FORKABLE lever with a machine-readable promise, give a residual the beam
+    can escalate on, and terminate at a CODEGEN rung that needs new code."""
+    from merlin.common.paths import repo_root
+    from merlin.kernels import action_catalog as ac
+    from merlin.kernels import cca
+    from merlin.kernels.cca_compare import Divergence
+    from merlin.kernels.decode import rvv
+
+    fx = repo_root() / "merlin/tests/data/cca_asm/xnnpack_rsqrt_rvv.objdump"
+    if not fx.is_file():
+        pytest.skip("rsqrt fixture not harvested in this checkout")
+    expert = cca.lift_asm(rvv.decode_text(fx.read_text()), op="rsqrt", source="expert")
+    ours = cca.lift_asm(
+        rvv.decode_text("0000000000000000 <rmsnorm>:\n   0:\t000000ef     \tjal\tra, 0x100 "
+                        "<__ieee754_sqrtf>\n"), op="rsqrt", source="ours")
+
+    axis = "compute.activation_vectorization"
+    d = Divergence(axis=axis, backend="rvv",
+                   ours=ac._facet_value(ours, axis), expert=ac._facet_value(expert, axis))
+    assert (d.ours, d.expert) == ("scalar_libm_call", "vectorized_polynomial")
+
+    a = ac.route(d)
+    assert a.action_class == "PASS" and a.forkable_now is True
+    assert a.intended_facet == {axis: "vectorized_polynomial"}
+    # the deterministic GATE: non-empty residual when the fork did not deliver, empty when it did
+    assert ac.achieved_residual(a, ours) == [axis]
+    assert ac.achieved_residual(a, expert) == []
+    # ...and the ladder terminates at the leaf a constrained agent would be handed
+    up = ac.route_escalated(d, a.action_class)
+    assert up is not None and up.action_class == "CODEGEN" and up.forkable_now is False

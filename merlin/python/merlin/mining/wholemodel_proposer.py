@@ -108,6 +108,38 @@ FAMILY_TEACHERS: dict[str, FamilyTeacher] = {
                              "f32-vsigmoid/gen/f32-vsigmoid-rvv-rr2-p5-div-u4v.c", "rr2-p5 vsigmoid"),
     "silu": FamilyTeacher("silu", "silu", "xnnpack_sigmoid_rvv.objdump", None,
                           "SiLU = x*sigmoid; f32-vsigmoid is the closest transcendental teacher"),
+    # THE TRANSFORMER TAIL. `sin`, `cos` and `rsqrt` are census families already -- the census has
+    # emitted them all along -- and they were in NEITHER this registry NOR NO_TEACHER_FAMILIES, so no
+    # expert was ever lifted for them and no divergence could form. That is the whole reason the loop
+    # never proposed anything for RoPE or RMSNorm, measured on small_llama int8: 16.63% of an INT8
+    # model's binary is scalar FLOAT, and it calls __kernel_sinf / __kernel_cosf / __kernel_rem_pio2f
+    # (RoPE) and __ieee754_sqrt (RMSNorm's normaliser) per element.
+    #
+    # XNNPACK ships RVV kernels for exactly these, so the teacher is HARVESTED like every other one --
+    # no declared or hand-authored expert, which would have broken the "the CCA is tool-composed"
+    # principle the beam rests on.
+    "rsqrt": FamilyTeacher("rsqrt", "rsqrt", "xnnpack_rsqrt_rvv.objdump",
+                           "f32-vrsqrt/gen/f32-vrsqrt-rvv-rsqrt-u4v.c",
+                           "RMSNorm normaliser; XNNPACK uses the native rsqrt estimate + Newton, "
+                           "which lifts as a vfmacc chain (the axis distinguishes vector-inline math "
+                           "from a scalar libm call, not the specific approximation)"),
+    # sin/cos: fixture=None, an HONEST no-teacher record. XNNPACK DOES ship f32-vsin / f32-vcos RVV
+    # kernels, but they do not compile in this revision: both call a TWO-argument
+    # `xnn_round_f32(vx_div_2pi, vl)`, and no such overload exists anywhere in the tree -- the SIMD
+    # headers define a one-argument form for AVX/HVX only, and there is no RVV SIMD header at all
+    # (checked: src/xnnpack/simd/ has no rvv file, and no 2-arg xnn_round_f32 in any header). The
+    # harvester therefore skips them and says so, which is correct: authoring that helper here would
+    # make the EXPERT CCA a thing we wrote, and the expert's instruction mix IS the search target.
+    # Recorded rather than dropped so RoPE's missing teacher is a visible gap with a reason, and so
+    # the next XNNPACK bump can flip it by supplying the ukernel_src again.
+    "sin": FamilyTeacher("sin", "sin", None,
+                         "f32-vsin/gen/f32-vsin-rvv-rational-5-4-div-u4v.c",
+                         "RoPE rotation. UNHARVESTABLE in this XNNPACK revision: the RVV kernel calls "
+                         "a 2-arg xnn_round_f32 that the tree does not define. Ours pays glibc's "
+                         "__kernel_rem_pio2f as a scalar call per element; no expert to diff against."),
+    "cos": FamilyTeacher("cos", "cos", None,
+                         "f32-vcos/gen/f32-vcos-rvv-rational-5-4-div-u4v.c",
+                         "RoPE rotation, cos half. Same 2-arg xnn_round_f32 blocker as sin."),
     # reductions -> horizontal-reduce ukernels. Expert lifts reduction_form='vredsum_tree', ours
     # (scalar accumulate) 'none' -> routes to vectorize_reduction.
     "reduce": FamilyTeacher("reduce", "reduce", "xnnpack_reduce_rvv.objdump",

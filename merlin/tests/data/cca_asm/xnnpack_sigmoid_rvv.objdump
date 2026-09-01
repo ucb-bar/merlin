@@ -1,5 +1,5 @@
 
-/tmp/merlin_harvest_a5ytv3p6/xnnpack_sigmoid_rvv.o:	file format elf64-littleriscv
+xnnpack_sigmoid_rvv.objdump:	file format elf64-littleriscv
 
 Disassembly of section .text:
 

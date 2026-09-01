@@ -1,5 +1,5 @@
 
-/tmp/merlin_harvest_uittl18n/xnnpack_vbinary_mul_rvv.o:	file format elf64-littleriscv
+xnnpack_vbinary_mul_rvv.objdump:	file format elf64-littleriscv
 
 Disassembly of section .text:
 

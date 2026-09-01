@@ -456,8 +456,12 @@ _MATH_PREFIXES = ("__ieee754_", "__kernel_", "__libm_", "__")
 _MATH_SUFFIXES = ("_finite", "_r", "f", "l")
 
 _ACTIVATION_OPS = ("gelu", "silu", "sigmoid", "tanh", "erf", "exp", "softmax",
-                   # the transformer tail that pays for scalar math without being an "activation"
-                   "rope", "rmsnorm", "layer_norm", "layernorm", "norm", "sqrt", "rsqrt")
+                   # The transformer tail that pays for scalar math without being an "activation" in
+                   # the GELU sense. Needed on BOTH sides of the diff: OURS lifts from the libm CALL
+                   # (so the op tag is not required), but the EXPERT has no call -- it IS the vector
+                   # polynomial -- so without its op tag here it lifts as None and no divergence forms.
+                   "rope", "rmsnorm", "layer_norm", "layernorm", "norm",
+                   "sqrt", "rsqrt", "sin", "cos", "tan")
 _CALL_MNEMONICS = ("jal", "jalr", "call")
 
 
