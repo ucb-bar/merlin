@@ -1712,6 +1712,31 @@ def vec_noncontraction_lanes(features) -> int | None:
     return None
 
 
+# ---------------------------------------------------------------------------------------------------
+# `linalg.broadcast`, PRICED AND DECLINED. It surfaced as 8.95% of the profiled accelerator device leg
+# -- third behind linalg.generic (62.48%) and linalg.transpose (12.52%), and a lever nobody had named --
+# so it looked like a candidate for the vectorize lever right below. It is not, and the reason is the
+# same reason that lever measured inert.
+#
+# Priced from the completed profiled leg (5,032 PROF lines joined against its op_profile_table.json,
+# resolved coverage 1.00000, 300,868,459 of 3,359,861,701 ticks across 567 distinct ops), then read
+# back out of the instrumented module. Every one is a RANK-EXPANDING materialization of a small vector
+# into a large tensor -- `256xf32 -> 1x196x256xf32` (x70), `2048xf32 -> 2048x14xf32` (x64),
+# `196xf32 -> 196x256xf32` (x48) -- i.e. a scale/bias/mask vector written out at full tensor size so
+# the next elementwise op can read it index-for-index. Across all 567: 3.3 MiB read, 171.1 MiB
+# WRITTEN, a 51.9x amplification, and ZERO arithmetic.
+#
+# So it is pure memory traffic, and "vectorize the broadcast loop" cannot be the fix: wider stores do
+# not reduce the number of bytes stored. That is exactly what `vectorize_non_contraction_generics`
+# measured -- 4.9x more vector instructions, bit-identical output, 1.28x SLOWER, flat across 8/16/32
+# lanes -- because the cost was never vector width. The only real fix is to NOT materialize the tensor:
+# have the consumer read the small operand through a broadcasting indexing map and drop the broadcast
+# entirely. That is fusion / indexing-map rewriting, which is the lean-runtime fusion program and is
+# explicitly out of scope here. Recorded so the next reader does not re-derive it and reach for the
+# lever below.
+# ---------------------------------------------------------------------------------------------------
+
+
 def ensure_vec_noncontraction(lanes: int) -> str:
     """Register (on demand) the non-contraction vectorize point at ``lanes`` innermost lanes.
 

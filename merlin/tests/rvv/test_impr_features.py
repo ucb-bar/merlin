@@ -391,3 +391,24 @@ def test_implied_hygiene_reaches_the_runner_argv_gate():
     # the erase depends on a canonicalize+cse after bufferization; the pipeline must be able to add it
     base = P.build_rvv_pipeline("/tmp/s.mlir")
     assert needs_canonicalize(base) or "canonicalize" in base
+
+
+def test_the_broadcast_pricing_and_its_decision_are_recorded_not_re_derivable():
+    """`linalg.broadcast` surfaced as 8.95% of the profiled accelerator device leg -- third behind
+    generic and transpose -- and looks like a candidate for the non-contraction vectorize lever. It is
+    not: 3.3 MiB read vs 171.1 MiB WRITTEN across its 567 ops (51.9x amplification, zero arithmetic),
+    so wider stores cannot reduce the bytes stored. That is the same reason
+    `vectorize_non_contraction_generics` measured 1.28x SLOWER at 4.9x more vector instructions. The
+    finding and the decision must live next to that lever, or the next reader reaches for it."""
+    import inspect
+
+    src = inspect.getsource(F)
+    assert "PRICED AND DECLINED" in src
+    assert "51.9x amplification" in src
+    assert "171.1 MiB" in src and "3.3 MiB read" in src
+    assert "1.00000" in src                       # the profiler coverage the pricing rests on
+    # ...and it must say what the real fix is, and that it is out of scope here
+    assert "broadcasting indexing map" in src
+    assert "out of scope" in src
+    # the negative result it would otherwise be confused with is still recorded
+    assert "4.9x more vector instructions" in src and "1.28x SLOWER" in src

@@ -410,3 +410,76 @@ def test_dedupe_latest_executed_beats_absence():
         cos=0.5, rel=1.0, cos_threshold=0.9999, rel_threshold=1e-3, timestamp="20260707T020000Z")
     kept2 = aggregate.dedupe_latest([early_pass, later_fail])
     assert len(kept2) == 1 and kept2[0].ran and not kept2[0].passed
+
+
+# ---------------------------------------------------------------------------------------
+# The FOUR-WAY instruction mix. The "scalar-int / scalar-float / vector / vsetvli" split has
+# been cited from this repo with NO committed producer -- the method survived only as a
+# project note (spike -g, then map PCs with llvm-objdump) -- so any such figure was
+# unreproducible. `classify_disasm` already folded all scalar FP into scalar_compute, which is
+# correct for the coverage denominator and useless for attribution: "13.3% of retired instrs
+# are RVV and 17.8% are scalar f32" cannot be derived from "31% scalar".
+# ---------------------------------------------------------------------------------------
+
+_MIX_DUMP = """0000000000000000 <forward>:
+   0:\t5e003057     \tvsetvli\ta0, zero, e32, m2, ta, ma
+   4:\t5e003057     \tvle32.v\tv0, (a1)
+   8:\t5e003057     \tvfmacc.vf\tv0, fa0, v8
+   c:\t00000000     \tfadd.s\tfa0, fa1, fa2
+  10:\t00000000     \tfld\tfa1, 0(a2)
+  14:\t00000000     \taddi\ta0, a0, 4
+  18:\t00000000     \tld\ta1, 0(a2)
+  1c:\t00000000     \tbne\ta0, a3, 0
+
+0000000000000100 <__libc_thing>:
+ 100:\t00000000     \tfadd.s\tfa0, fa1, fa2
+"""
+
+
+def test_the_four_way_mix_is_a_partition_of_the_existing_buckets():
+    """The new fields must be SUBSETS of the old ones, never a reinterpretation: any drift makes the
+    two readings of the same binary disagree."""
+    from merlin.baselines.rvv_audit import classify_disasm
+
+    r = classify_disasm(_MIX_DUMP)
+    assert r.scalar_int + r.scalar_float == r.scalar_compute
+    assert r.vsetvl <= r.vector
+    for sc in r.by_symbol.values():
+        assert sc.scalar_int + sc.scalar_float == sc.scalar_compute, sc.symbol
+        assert sc.vsetvl <= sc.vector, sc.symbol
+
+
+def test_scalar_float_is_separated_from_scalar_int():
+    from merlin.baselines.rvv_audit import classify_disasm
+
+    fwd = classify_disasm(_MIX_DUMP).by_symbol["forward"]
+    assert fwd.scalar_float == 2, "fadd.s and fld are both scalar FP"
+    assert fwd.scalar_int == 2, "addi and ld"
+    assert fwd.vector == 3 and fwd.vsetvl == 1
+
+
+def test_the_mix_denominator_is_every_instruction_not_only_compute():
+    """`coverage_overall` answers "of the compute, how much is vector" and uses a compute-only
+    denominator. A "% of retired instructions" figure against that denominator would inflate every
+    share, which is precisely the confusion an uncommitted producer invites."""
+    from merlin.baselines.rvv_audit import classify_disasm
+
+    r = classify_disasm(_MIX_DUMP)
+    m = r.instruction_mix()
+    assert m["total"] == r.total
+    assert m["total"] > r.vector + r.scalar_compute, "the dump has control flow, so they must differ"
+    assert abs(sum(m[k] for k in ("vector_frac", "scalar_int_frac", "scalar_float_frac",
+                                  "other_frac")) - 1.0) < 1e-9
+    # vsetvl is a SUBSET of vector, so it must not be in the partition above
+    assert m["vsetvl"] <= m["vector"]
+    assert m["vector_frac"] != r.coverage_overall, "the two denominators must not be conflated"
+
+
+def test_the_mix_can_scope_out_libc_which_otherwise_drowns_the_signal():
+    """On a LINKED ELF libc's internals are real instructions but not the model's -- the same reason
+    escape_audit scopes to the functions the model object defines."""
+    from merlin.baselines.rvv_audit import classify_disasm
+
+    r = classify_disasm(_MIX_DUMP)
+    assert r.instruction_mix()["scalar_float"] == 3            # includes __libc_thing's fadd.s
+    assert r.instruction_mix(ignore=("__libc",))["scalar_float"] == 2

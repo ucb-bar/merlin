@@ -162,6 +162,18 @@ class SymbolCoverage:
     scalar_compute: int = 0    # scalar arithmetic/mem instruction count
     total: int = 0             # every decoded instruction (incl. control flow)
 
+    # --- the FOUR-WAY MIX. `scalar_compute` above folds scalar-int and scalar-float together, which
+    # is right for the coverage denominator and wrong for attribution: "13.3% of retired instructions
+    # are RVV and 17.8% are scalar f32" is a very different finding from "31% scalar", and the second
+    # cannot be derived from the first. That four-way split has been cited from this repo with NO
+    # committed producer -- the method survived only as a project note (spike -g, then map PCs with
+    # llvm-objdump) -- so any such figure was unreproducible. These are that producer, and they are
+    # SUBSETS of the fields above, never a reinterpretation of them: scalar_int + scalar_float ==
+    # scalar_compute, and vsetvl <= vector.
+    scalar_int: int = 0        # scalar integer arithmetic / load / store
+    scalar_float: int = 0      # scalar FP (f[a-z]*), the bucket that was invisible
+    vsetvl: int = 0            # vsetvli / vsetivli — vector CONFIGURATION, not vector work
+
     @property
     def coverage(self) -> float | None:
         """Fraction of *compute* instructions that are vector (None if no compute in this symbol)."""
@@ -186,6 +198,61 @@ class AuditReport:
     @property
     def scalar_compute(self) -> int:
         return sum(s.scalar_compute for s in self.by_symbol.values())
+
+    @property
+    def total(self) -> int:
+        """Every decoded instruction, control flow included -- the denominator the four-way
+        ``instruction_mix`` uses, and deliberately NOT the compute-only one ``coverage_overall`` uses."""
+        return sum(s.total for s in self.by_symbol.values())
+
+    @property
+    def scalar_int(self) -> int:
+        return sum(s.scalar_int for s in self.by_symbol.values())
+
+    @property
+    def scalar_float(self) -> int:
+        return sum(s.scalar_float for s in self.by_symbol.values())
+
+    @property
+    def vsetvl(self) -> int:
+        return sum(s.vsetvl for s in self.by_symbol.values())
+
+    def instruction_mix(self, *, ignore: tuple[str, ...] = ()) -> dict[str, float | int]:
+        """The FOUR-WAY instruction mix as fractions of every decoded instruction, plus the counts.
+
+        This is the committed producer for a figure that has been cited from this repo without one.
+        Two things it is deliberate about:
+
+        * the denominator is ``total`` -- EVERY decoded instruction, control flow included -- not
+          ``vector + scalar_compute``. ``coverage_overall`` uses the latter and answers a different
+          question ("of the compute, how much is vector"); reporting a mix against a compute-only
+          denominator would inflate every share and is not what "% of retired instructions" means.
+        * ``vsetvl`` is broken out of ``vector`` rather than added beside it. A ``vsetvli`` is vector
+          CONFIGURATION, not vector work, and counting it as vector work is how a loop that reconfigures
+          every iteration reads as well-vectorized. It is reported as a subset so both readings are
+          available and neither is implied.
+
+        ``ignore`` skips symbols by substring, which matters on a LINKED ELF: libc's internals are
+        real instructions but not the model's, and they drown the signal (the same reason
+        ``kernels.escape_audit`` scopes escapes to the functions the model object defines).
+        """
+        keep = [sc for name, sc in self.by_symbol.items()
+                if not any(g in name for g in ignore)]
+        total = sum(sc.total for sc in keep)
+        vec = sum(sc.vector for sc in keep)
+        cfg = sum(sc.vsetvl for sc in keep)
+        si = sum(sc.scalar_int for sc in keep)
+        sf = sum(sc.scalar_float for sc in keep)
+        other = total - vec - si - sf          # control flow, fences, csr, anything unclassified
+        out: dict[str, float | int] = {
+            "total": total, "vector": vec, "vsetvl": cfg,
+            "scalar_int": si, "scalar_float": sf, "other": other,
+        }
+        if total:
+            out |= {"vector_frac": vec / total, "vsetvl_frac": cfg / total,
+                    "scalar_int_frac": si / total, "scalar_float_frac": sf / total,
+                    "other_frac": other / total}
+        return out
 
     @property
     def coverage_overall(self) -> float | None:
@@ -222,8 +289,16 @@ def classify_disasm(text: str, *, source: str = "<text>") -> AuditReport:
         cur.total += 1
         if _is_rvv(mnem):
             cur.vector += 1
+            if mnem.startswith("vsetvl") or mnem.startswith("vsetivl"):
+                cur.vsetvl += 1
         elif _is_scalar_compute(mnem):
             cur.scalar_compute += 1
+            # `_is_scalar_compute` already accepts f[a-z] as "every scalar FP op"; reuse that exact
+            # test rather than restating it, so the two can never disagree about a mnemonic.
+            if mnem[0] == "f" and mnem[1] in _LOWER:
+                cur.scalar_float += 1
+            else:
+                cur.scalar_int += 1
     # drop the placeholder bucket if it stayed empty
     if report.by_symbol.get("<none>") and report.by_symbol["<none>"].total == 0:
         report.by_symbol.pop("<none>", None)
