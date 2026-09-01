@@ -22,10 +22,11 @@ Default-off: nothing here runs unless ``build_k1_binary(..., kernel_backend="xnn
 """
 from __future__ import annotations
 
-import re
 import subprocess
 from pathlib import Path
 from merlin.common.paths import work_dir
+
+from .. import _matmul_routing as _mr
 
 _HERE = Path(__file__).resolve().parent
 _SHIM_SRC = _HERE / "xnn_gemm_rvv_shim.c"
@@ -50,27 +51,21 @@ class XnnpackBoardUnavailable(RuntimeError):
     pass
 
 
-# A routable matmul line (single textual op). Captures the two ins operands + their tensor
-# types, the outs init operand + type, and the result type. The prepared model emits each
-# linalg.matmul on one line (see output/<model>/model.mlir).
-_MM_RE = re.compile(
-    r"(?P<res>%[\w$.]+)\s*=\s*linalg\.matmul\b(?P<attrs>\s*\{[^}]*\})?\s*"
-    r"ins\(\s*(?P<a>%[\w$.]+)\s*,\s*(?P<b>%[\w$.]+)\s*:\s*"
-    r"tensor<(?P<at>[^>]+)>\s*,\s*tensor<(?P<bt>[^>]+)>\s*\)\s*"
-    r"outs\(\s*(?P<c>%[\w$.]+)\s*:\s*tensor<(?P<ct>[^>]+)>\s*\)\s*"
-    r"->\s*tensor<(?P<rt>[^>]+)>")
+# The routable-matmul matcher and the MLIR matmul->external-call rewrite are SHARED with the other
+# board matmul-routing backends (see :mod:`merlin.runtime.backends._matmul_routing`): all three
+# route the same set and differ only in the shim symbol they call. Keeping one structural reader
+# is the point — three copies of a parser is three chances for the routable sets to drift apart.
+_is_routable = _mr.is_routable
 
-def _is_routable(at: str, bt: str, ct: str, rt: str) -> bool:
-    """Plain 2-D f32 matmul (mirrors xnnpack_host.classify_matmul_kernel's faithful set)."""
-    for t in (at, bt, ct, rt):
-        dims = t.split("x")
-        if dims[-1] != "f32":
-            return False
-        if len(dims) != 3:          # 2 shape dims + the element type -> rank 2
-            return False
-        if any(d.startswith("?") for d in dims[:-1]):   # static only
-            return False
-    return True
+
+def matmul_routing_coverage(mlir_text: str) -> tuple[int, int]:
+    """Return ``(n_candidates, n_eligible)`` for the exact rewrite domain.
+
+    A candidate is a parsed tensor-form ``linalg.matmul``; an eligible candidate additionally
+    satisfies :func:`_is_routable`. Recording both counts makes a paper kernel-swap cell explicit
+    about the denominator instead of proving only that *some* operation reached the expert kernel.
+    """
+    return _mr.routing_coverage(mlir_text)
 
 
 def _rewrite_matmuls(mlir_text: str, sym_base: str) -> tuple[str, int]:
@@ -78,42 +73,11 @@ def _rewrite_matmuls(mlir_text: str, sym_base: str) -> tuple[str, int]:
     decl per distinct (A,B,C,R) signature (MLIR func types are monomorphic). Each links to a thin C
     alias of the signature-agnostic shim entry ``<sym_base>``. Shared by the f32 (:func:`rewrite_matmuls_to_xnn`)
     and dynamic-int8 (:func:`rewrite_matmuls_to_qd8`) board arms — they route the SAME f32 matmuls and
-    differ only in the shim the symbol links to (plain f32 GEMM vs a dynamically-quantized qd8 GEMM)."""
-    sigs: dict[tuple, str] = {}     # (at,bt,ct,rt) -> decl sym name
-    n = 0
+    differ only in the shim the symbol links to (plain f32 GEMM vs a dynamically-quantized qd8 GEMM).
 
-    def repl(m: re.Match) -> str:
-        nonlocal n
-        at, bt, ct, rt = m["at"], m["bt"], m["ct"], m["rt"]
-        if not _is_routable(at, bt, ct, rt):
-            return m.group(0)
-        key = (at, bt, ct, rt)
-        sym = sigs.get(key)
-        if sym is None:
-            sym = f"{sym_base}_{len(sigs)}"
-            sigs[key] = sym
-        n += 1
-        return (f"{m['res']} = call @{sym}({m['a']}, {m['b']}, {m['c']}) : "
-                f"(tensor<{at}>, tensor<{bt}>, tensor<{ct}>) -> tensor<{rt}>")
-
-    body = _MM_RE.sub(repl, mlir_text)
-    if n == 0:
-        return mlir_text, 0
-
-    decls = []
-    for (at, bt, ct, rt), sym in sigs.items():
-        decls.append(
-            f'func.func private @{sym}('
-            f'%a: tensor<{at}> {{bufferization.access = "read"}}, '
-            f'%b: tensor<{bt}> {{bufferization.access = "read"}}, '
-            f'%c: tensor<{ct}> {{bufferization.access = "write"}}) -> tensor<{rt}>')
-    decl_block = "  " + "\n  ".join(decls) + "\n"
-    # Insert the decls just before the first top-level func.func (the forward), inside the module body.
-    mi = re.search(r"\n(\s*)func\.func @", body)
-    if mi is None:                              # no func to anchor on (unexpected)
-        return body, n
-    pos = mi.start() + 1                        # after the newline, before the func
-    return body[:pos] + decl_block + body[pos:], n
+    Raises :class:`~merlin.runtime.backends._matmul_routing.MatmulRoutingError` on a
+    ``linalg.matmul`` the structural reader cannot parse, rather than silently routing nothing."""
+    return _mr.rewrite_matmuls(mlir_text, sym_base)
 
 
 def rewrite_matmuls_to_xnn(mlir_text: str) -> tuple[str, int]:
