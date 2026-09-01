@@ -128,8 +128,16 @@ def rigor_findings(values: list[float], shape: tuple[int, int]) -> list[str]:
     symmetry (A == A^T). Empty list == rigorous. Target-agnostic; used by the corpus-rigor gate to keep a
     regeneration from silently degrading operand quality."""
     rows, cols = shape
-    grid = [tuple(values[r * cols:(r + 1) * cols]) for r in range(rows)]
     out: list[str] = []
+    if rows <= 0 or cols <= 0 or len(values) != rows * cols:
+        # We could not look. Previously this raised IndexError from the column comparison below, and a
+        # rigor check that raises is worse than one that fails: inside a try/except it becomes "no
+        # findings" == rigorous, which is an absence of evidence presenting itself as evidence. Report
+        # the gap as a finding instead, so a caller that treats a non-empty list as "not rigorous"
+        # refuses rather than passes.
+        return [f"operand rigor is UNDETERMINABLE: {len(values)} value(s) is not a whole {rows}x{cols} "
+                f"grid, so rows and columns cannot be compared -- this is not a clean bill of health"]
+    grid = [tuple(values[r * cols:(r + 1) * cols]) for r in range(rows)]
     if len(set(grid)) != rows:
         out.append(f"duplicate rows: only {len(set(grid))} distinct of {rows} (row-addressing bugs invisible)")
     colset = {tuple(grid[r][c] for r in range(rows)) for c in range(cols)}
@@ -182,4 +190,81 @@ def scale_rigor_findings(codes: list[list[int]]) -> list[str]:
         out.append("scale stream is constant (degenerate): a mis-indexed block scale is invisible")
     if not any(any(row[c] != row[c + 1] for c in range(len(row) - 1)) for row in codes):
         out.append("no adjacent lanes differ in any group: lane-swap scale bugs invisible")
+    return out
+
+
+# --------------------------------------------------------------------------------------------
+# Integer stimulus rigor — measured against what the ALPHABET makes achievable
+# --------------------------------------------------------------------------------------------
+# `rigor_findings` above demands EXACT distinctness of every row and column. That is the right contract
+# for the operands this module synthesizes, which draw on a prime palette large enough to make it
+# achievable. It is the wrong contract for the integer stimulus `Tensor.deterministic` produces: that
+# fill draws from lo..hi = 0..3, a FOUR-value alphabet, so a 16-column single-row operand has at most 4
+# distinct columns no matter what the fill does. Reporting that as "duplicate columns" blames the operand
+# for arithmetic.
+#
+# Measured 2026-09-01: applying the exact contract across every shipped capsule root produced 78
+# findings, of which the overwhelming majority were of exactly that kind -- (1,N) and (N,1) operands, a
+# 1x1 operand flagged as symmetric, and birthday collisions in a wide row (1017 distinct of 1024). The
+# real hazard is different in shape: distinctness that COLLAPSES to a handful of values while the
+# alphabet could have supplied many. The historical period-4 fill did that -- 8 rows of 4 columns, 8
+# achievable, 1 observed.
+
+
+def _achievable_distinct(n_axis: int, other_extent: int, alphabet: int) -> int:
+    """How many distinct slices an axis of ``n_axis`` entries COULD have, given each slice holds
+    ``other_extent`` symbols from an ``alphabet``-sized set. Capped at ``n_axis``; the exponent is
+    bounded before it is taken so a wide operand does not build an astronomical integer."""
+    if alphabet <= 1 or other_extent <= 0:
+        return 1
+    space = 1
+    for _ in range(other_extent):
+        space *= alphabet
+        if space >= n_axis:
+            return n_axis
+    return min(space, n_axis)
+
+
+#: An axis must reach this fraction of its achievable distinctness. Not 1.0: a hash-based fill collides
+#: by the birthday effect long before it exhausts the space (1017 of 1024 measured), and demanding
+#: saturation would flag that as degenerate. Half of achievable separates a collapse from a collision.
+MIN_ACHIEVED_FRACTION = 0.5
+
+
+def stimulus_rigor_findings(values, shape: tuple[int, ...], *, alphabet: int) -> list[str]:
+    """Ways an INTEGER-STIMULUS operand would hide a bug, judged against its alphabet.
+
+    ``shape`` may be any rank (collapsed to a ``(rows, cols)`` grid the way the fill itself is indexed).
+    Empty list == rigorous. A shape that cannot be compared returns a finding saying so -- never an empty
+    list, which would read as a clean bill of health.
+    """
+    from merlin.common.stimulus import grid_shape
+
+    rows, cols = grid_shape(tuple(shape))
+    vals = list(values)
+    if rows <= 0 or cols <= 0 or len(vals) != rows * cols:
+        return [f"operand rigor is UNDETERMINABLE: {len(vals)} value(s) is not a whole {rows}x{cols} "
+                f"grid, so rows and columns cannot be compared -- this is not a clean bill of health"]
+    grid = [tuple(vals[r * cols:(r + 1) * cols]) for r in range(rows)]
+    out: list[str] = []
+
+    def _axis(name: str, n: int, other: int, distinct: int, bug: str) -> None:
+        if n < 2:
+            return                       # a single row/column has no variation to have
+        want = _achievable_distinct(n, other, alphabet)
+        floor = max(2, int(want * MIN_ACHIEVED_FRACTION))
+        if want < 2:
+            return                       # the alphabet cannot supply two distinct slices; not the fill's doing
+        if distinct < floor:
+            out.append(f"{name} collapse: {distinct} distinct of {n} where the {alphabet}-symbol "
+                       f"alphabet allows {want} ({bug})")
+
+    _axis("row", rows, cols, len(set(grid)), "row-addressing bugs invisible")
+    colset = {tuple(grid[r][c] for r in range(rows)) for c in range(cols)}
+    _axis("column", cols, rows, len(colset), "col/stride bugs invisible")
+    if rows == cols and rows > 1 and all(grid[r][c] == grid[c][r]
+                                        for r in range(rows) for c in range(cols)):
+        out.append("operand is symmetric (A == A^T): a transpose/layout bug produces identical output")
+    if len({v for row in grid for v in row}) <= 1 and rows * cols > 1:
+        out.append("operand is constant (degenerate): almost any bug is invisible")
     return out

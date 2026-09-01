@@ -94,21 +94,49 @@ def test_emitted_c_fill_matches_the_python_fill(tmp_path):
 
 
 def test_no_capsule_operand_of_the_graded_corpus_is_degenerate():
-    """Corpus-level guard: the shipped gemmini capsules must not regress to hiding bugs."""
+    """Corpus-level guard: no shipped capsule, on ANY target, may regress to hiding bugs.
+
+    Two blind spots this had, both of the same kind -- a check that examines nothing reports success:
+
+      * it named three capsule roots (`isa`, `layers`, `model_slices`), so the operands of every other
+        target's corpus were never looked at. Measured 2026-09-01: six further roots ship capsules.
+      * it skipped any operand that was not rank 2, so a batched operand was never checked. A rank-3
+        operand collapses to a (rows, cols) grid the same way the fill itself does -- there is nothing
+        about it that cannot be compared.
+
+    Roots are DISCOVERED, and the per-root counts are asserted non-zero, so a root that stops
+    contributing operands fails here instead of quietly reducing the corpus under test.
+    """
     import yaml
-    from merlin.targetgen.corpus_operands import rigor_findings
+    from merlin.targetgen.corpus_operands import stimulus_rigor_findings
     root = repo_root() / "merlin" / "contract" / "capsules"
-    flagged = []
-    for cat in ("isa", "layers", "model_slices"):
-        for cy in sorted((root / cat).rglob("capsule.yaml")):
-            spec = yaml.safe_load(cy.read_text())
-            for inp in spec.get("inputs", []):
+    flagged: list[str] = []
+    checked: dict[str, int] = {}
+    for cat_dir in sorted(d for d in root.iterdir() if d.is_dir() and not d.name.startswith("_")):
+        cat = cat_dir.name
+        if cat in ("conformance", "profiles"):          # specs and policies, not capsules
+            continue
+        for cy in sorted(cat_dir.rglob("capsule.yaml")):
+            try:
+                spec = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError as e:
+                flagged.append(f"{cat}/{cy.parent.name}: unparseable capsule.yaml ({e})")
+                continue
+            for inp in spec.get("inputs", []) or []:
                 if inp.get("role") not in ("input", "weight", "bias"):
                     continue
-                shape = tuple(inp["shape"])
-                if len(shape) != 2:
+                shape = tuple(int(d) for d in (inp.get("shape") or ()))
+                if not shape:
                     continue
                 t = Tensor.deterministic(inp["name"], shape, inp.get("dtype", "i8"))
-                if rigor_findings([float(v) for v in t.data], shape):
-                    flagged.append(f"{cy.parent.name}:{inp['name']}{shape}")
-    assert not flagged, f"degenerate capsule operands: {flagged}"
+                checked[cat] = checked.get(cat, 0) + 1
+                # `Tensor.deterministic` fills over lo..hi = 0..3 whatever the dtype, so the operand's
+                # symbol alphabet is 4. Judging distinctness against the alphabet is what separates a
+                # collapse from an arithmetic impossibility: a 16-column single-row operand cannot have
+                # more than 4 distinct columns however good the fill is.
+                found = stimulus_rigor_findings(t.data, shape, alphabet=4)
+                if found:
+                    flagged.append(f"{cat}/{cy.parent.name}:{inp['name']}{shape} -> {found[0]}")
+    assert checked, f"no capsule operand was examined at all under {root} -- the guard is vacuous"
+    assert not flagged, ("degenerate capsule operands (an operand that hides a bug makes its capsule's "
+                         f"pass meaningless): {flagged}")
