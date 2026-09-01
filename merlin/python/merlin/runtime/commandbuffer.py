@@ -55,6 +55,26 @@ def pool_params(attrs: dict[str, Any], *, op: str) -> dict[str, Any]:
             raise ValueError(f"{op}: pooling attribute {key!r} has a non-integer entry: {v!r}") from e
     pv = attrs.get(POOL_PAD_VALUE_ATTR)
     out["pad_value"] = None if pv is None else int(pv)
+    # AN UNRECOGNISED POOLING ATTRIBUTE IS AN ERROR, NOT A NO-OP. The loop above reads the keys this
+    # runtime defines and ignores everything else, so a `pool_*` attribute nobody reads was accepted in
+    # silence -- the author believed they had configured a pooling stage that in fact had no effect. That
+    # is the same failure this function's docstring already refuses for a MISSING attribute ("a pooling
+    # stage whose window silently defaulted would return a correctly-shaped tensor of numbers nobody
+    # computed"), and it is worse for being invisible.
+    #
+    # Measured 2026-09-01: an agent expressed a maxpool epilogue with an invented `pool_kind` attribute.
+    # The capsule schema leaves `operation.attributes` open (it must: attributes differ per op), so the
+    # capsule validated; this function dropped the key; and the agent concluded from the validation that
+    # its formulation was legal and from the wrong answer that no schema-valid formulation existed. Three
+    # capsules stayed frozen on that misdiagnosis. Naming the accepted set turns it into a one-line fix.
+    known = set(POOL_ATTR_ARITY) | {POOL_PAD_VALUE_ATTR}
+    unread = sorted(k for k in attrs if str(k).startswith("pool") and k not in known)
+    if unread:
+        raise ValueError(
+            f"{op}: pooling attribute(s) {unread} are not read by this runtime, so they configure "
+            f"nothing -- a stage you believe you set and this engine never applies. The pooling "
+            f"attributes it reads are {sorted(POOL_ATTR_ARITY)} "
+            f"(plus the optional {POOL_PAD_VALUE_ATTR!r}); express the stage with those.")
     return out
 
 
