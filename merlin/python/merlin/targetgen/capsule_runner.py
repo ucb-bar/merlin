@@ -1516,28 +1516,50 @@ def _kill_tree(pid: int, *, grace: float = 5.0) -> None:
 def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int,
                          package_dir: str | Path | None = None,
                          budget_s: float | None = None) -> dict:
-    """Serialize whole-model grades whose nested mesh artifacts use shared global run paths.
+    """Serialize whole-model grades that would write the same nested mesh artifact directory.
 
-    ``compile_model`` currently keys ``mesh_run`` and ``mesh_verify`` artifacts by layer shape/index,
-    not by the outer capsule/submission.  Two processes can therefore overwrite the exact LLVM/ELF and
-    oracle evidence the other is still producing.  A cross-process target lock makes those artifacts
-    single-writer until the paths themselves gain an outer-grade namespace.  This deliberately slows
-    only model capsules; ordinary op/slice grading remains parallel.
+    The hazard is real: ``compile_model``'s nested mesh certifications write under a runs root shared by
+    every grade in one checkout, so two processes could overwrite the exact LLVM/ELF and oracle evidence
+    the other was still producing. The remedy WAS a lock keyed on the target, which made every
+    whole-model grade in a checkout single-writer.
+
+    Both nested paths are now content-addressed instead -- ``mesh_run`` by the exact operands
+    (``_mesh_invocation_id``) and ``mesh_verify`` by the digest of the certified interface -- so two
+    grades collide only when they are doing byte-identical work, where sharing a directory is safe by
+    construction. The lock therefore narrows to the CAPSULE's own identity: two grades of the same
+    capsule still serialize, and two different capsules no longer wait on each other.
+
+    Measured 2026-09-01, which is why this matters: two concurrent arms of one experiment in a shared
+    checkout serialized on the target lock, one blocked in ``locks_lock_inode_wait`` for 33 minutes while
+    the other certified. The lock was doing its job; its GRANULARITY was the cost.
     """
     import fcntl
+    import hashlib
     import tempfile
 
     safe_target = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(target or "none"))
+    # The capsule's own identity: its declared name plus a digest of the submission that will be graded.
+    # Falls back to the target-wide lock when neither can be determined -- a lock that cannot identify
+    # what it protects must protect everything, never nothing.
+    ident = str(capsule.get("name") or capsule.get("id") or "")
+    try:
+        payload = json.dumps(capsule, sort_keys=True, default=str).encode("utf-8")
+        ident = f"{ident}_{hashlib.sha256(payload).hexdigest()[:16]}"
+    except Exception:  # noqa: BLE001 -- unserialisable capsule: keep the name alone
+        pass
+    safe_ident = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in ident)
+    scope = f"{safe_target}.{safe_ident}" if safe_ident.strip("_") else safe_target
     lock_root = Path(tempfile.gettempdir()) / f"merlin-model-grade-locks-{os.getuid()}"
     lock_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    lock_path = lock_root / f"{safe_target}.lock"
+    lock_path = lock_root / f"{scope}.lock"
     with lock_path.open("a+", encoding="utf-8") as lock_file:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         result = _grade_model_capsule_unlocked(
             capsule, target=target, timeout=timeout, package_dir=package_dir, budget_s=budget_s)
         result["model_grade_serialization"] = {
-            "scope": f"target:{target}",
-            "reason": "nested mesh_run/mesh_verify artifact paths are shape/index keyed",
+            "scope": f"target:{target} capsule:{safe_ident or '<unidentified>'}",
+            "reason": ("nested mesh artifact paths are content-addressed, so only byte-identical work "
+                       "shares a directory; the lock covers this capsule, not the whole target"),
         }
         return result
 

@@ -1139,9 +1139,19 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
             with tempfile.TemporaryDirectory(prefix="mesh_tile_") as td:
                 iface = Path(td) / f"{entry['name']}.interface.mlir"
                 iface.write_text(mlir, encoding="utf-8")
-                res = oot_runner.certify(pkg_dir, iface, runs_root=str(rr), run_id=entry["name"],
+                # The run id must identify WHAT IS CERTIFIED, not merely its position in a plan.
+                # `mesh_tile_<i>_<op>` is index-and-op keyed, so two different whole-model grades both
+                # produce `mesh_tile_0_matmul` under one shared runs root and overwrite each other's ELF
+                # and oracle evidence -- the collision that forced whole-model grading to serialize under
+                # a target-wide lock. Binding the certified interface's digest gives each distinct tile
+                # its own directory, and leaves byte-identical work sharing one (safe: identical
+                # compiler and oracle inputs), the same discipline `_mesh_invocation_id` already applies
+                # to the mesh_run path.
+                run_id = f"{entry['name']}_{_content_id(mlir)}"
+                res = oot_runner.certify(pkg_dir, iface, runs_root=str(rr), run_id=run_id,
                                          simulator=sim, target=target, timeout=timeout,
                                          require_accelerator_trace=True)
+                rec["run_id"] = run_id
         else:
             res = _certify_tile_via_executor(target, mlir, m=M, k=K, n=N, binding=binding,
                                              timeout=timeout)
@@ -1218,6 +1228,12 @@ def _mesh_layer_id(m: int, k: int, n: int, binding, epilogue: list | None,
     if acc_scale is not None:
         parts.append(f"s{float(acc_scale):.6g}")
     return "mesh_layer_" + "_".join(parts).replace(".", "p").replace("-", "_")
+
+
+def _content_id(text: str) -> str:
+    """A short digest of exactly the bytes being certified -- the identity of the WORK, not its index."""
+    import hashlib
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 def _mesh_invocation_id(layer_id: str, A: list, W: list) -> str:
