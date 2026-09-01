@@ -30,6 +30,14 @@ would be a second, competing description of the same machine:
 
 Facts win over the residual wherever they overlap, exactly as in ``derive_manifest``.
 
+One thing, and only one, is also read from the target's **contract**: its ``compute_units`` block, as
+the BASE declaration the residual overrides (:meth:`Sources.units`). The contract is not a fourth
+trait source and gates nothing; it is consulted because a target that ships no residual file was
+otherwise credited with no compute units at all, which lost its datapath kind and degraded its
+archetype to ``unknown-datapath`` -- an absent OVERRIDE read as an absent DECLARATION. A kind that
+came from the contract is tiered :data:`TIER_CONTRACT`, never :data:`TIER_FACTS`: it is declared, and
+the RTL has not been asked.
+
 WHAT THIS MODULE REFUSES TO DO
 ------------------------------
 * It never infers a trait from a module's or a target's NAME. The interface tokens it reads
@@ -100,6 +108,7 @@ TRAITS: tuple[str, ...] = (
 #: claim as its provenance kind depends on which of these settled it.
 TIER_FACTS = "rtl_facts"                  # extracted from the target's own RTL
 TIER_RESIDUAL = "residual_declared"       # declared by a human in the residual; intent, not evidence
+TIER_CONTRACT = "contract_declared"       # declared in the target's own contract; the BASE declaration
 TIER_FAMILY = "family_default"            # the compute-unit kind's default, nothing target-specific
 TIER_NONE = "not_established"             # nothing settled it
 
@@ -215,6 +224,9 @@ class Sources:
     body: dict[str, Any] = field(default_factory=dict)
     present: tuple[str, ...] = ()
     missing: tuple[str, ...] = ()
+    #: The target's own contract, as read. NOT a fourth source of TRAITS -- it is consulted for one
+    #: thing only (see :meth:`units`), and it never overrides a residual or a fact.
+    contract: dict[str, Any] = field(default_factory=dict)
 
     def interfaces(self) -> dict[str, dict[str, Any]]:
         out: dict[str, dict[str, Any]] = {}
@@ -230,8 +242,47 @@ class Sources:
         return [dict(m) for m in (self.body.get("memories") or []) if isinstance(m, Mapping)]
 
     def units(self) -> list[dict[str, Any]]:
-        return [dict(u) for u in (self.residual.get("compute_units") or [])
+        """The target's compute units -- from the RESIDUAL if it declares any, else its CONTRACT.
+
+        THE PRECEDENCE IS DELIBERATE AND IT IS NOT ARBITRARY. A contract's ``compute_units`` block is
+        the target's own BASE declaration of what computes: every target that ships a contract has one,
+        it is schema-validated, and :mod:`merlin.targetgen.compute_units` already parses it as the
+        authority for routing. The residual is an OVERRIDE -- the side-input a human writes when the
+        base declaration is wrong or incomplete for this analysis -- so where both speak the residual
+        wins, exactly as it does for every other field this module reads.
+
+        Reading only the residual (which is what this did) meant a target that ships no residual file
+        had NO compute units at all, so its datapath kind was lost and its archetype degraded to
+        ``unknown-datapath`` -- costing it the questions its class exists to ask. That is not a fact
+        about the machine: the contract declares its kinds plainly. An absent OVERRIDE was being read
+        as an absent DECLARATION, which is the same collapse as reading UNKNOWN as False one level up.
+        """
+        declared = [dict(u) for u in (self.residual.get("compute_units") or [])
+                    if isinstance(u, Mapping)]
+        if declared:
+            return declared
+        return [dict(u) for u in (self.contract.get("compute_units") or [])
                 if isinstance(u, Mapping)]
+
+    def units_source(self) -> str:
+        """Which source supplied :meth:`units` -- ``residual`` / ``contract`` / ``none``."""
+        if [u for u in (self.residual.get("compute_units") or []) if isinstance(u, Mapping)]:
+            return "residual"
+        if [u for u in (self.contract.get("compute_units") or []) if isinstance(u, Mapping)]:
+            return "contract"
+        return "none"
+
+    def units_tier(self) -> str:
+        """The evidence tier a claim resting on :meth:`units` may cite.
+
+        Both sources are DECLARED, and neither is RTL: a kind read from a contract is not the same
+        evidence as one extracted from the design, and it must not be reported as if it were. They are
+        kept apart from each other too, because "a human wrote this into the residual for this
+        analysis" and "the target ships this in its contract" are different claims, and a reader who
+        wants to check one goes to a different file than a reader checking the other.
+        """
+        return {"residual": TIER_RESIDUAL, "contract": TIER_CONTRACT}.get(self.units_source(),
+                                                                          TIER_NONE)
 
     def unit_kinds(self) -> tuple[str, ...]:
         seen: list[str] = []
@@ -262,6 +313,23 @@ def _read_residual(target: str) -> dict[str, Any]:
     return dict(doc) if isinstance(doc, dict) else {}
 
 
+def _read_contract(target: str) -> dict[str, Any]:
+    """The target's own contract, or ``{}`` when it has none on this host.
+
+    Resolved through the target registry rather than by path, so a target that lives out-of-tree (an
+    injected reference package, ``MERLIN_TARGET_PATH``) brings its contract with it and nothing here
+    holds a per-target location. An unresolvable target is an answer -- no contract, hence no base
+    declaration -- never a raise: this is a side-input read on a profile call, and a profile call has
+    no business failing because a registry lookup did.
+    """
+    try:
+        from merlin.targetgen.target_registry import load_contract
+        doc = load_contract(target)
+    except Exception:                       # noqa: BLE001 -- no contract == no base declaration
+        return {}
+    return dict(doc) if isinstance(doc, Mapping) else {}
+
+
 def _read_facts(target: str, *, allow_extraction: bool) -> dict[str, Any]:
     """The facts artifact for ``target``, or ``{}`` when none exists on this host.
 
@@ -288,6 +356,7 @@ def _read_facts(target: str, *, allow_extraction: bool) -> dict[str, Any]:
 
 def load_sources(target: str, *, facts: Mapping[str, Any] | None = None,
                  residual: Mapping[str, Any] | None = None,
+                 contract: Mapping[str, Any] | None = None,
                  allow_extraction: bool = False) -> Sources:
     """Read the three sources for ``target``.
 
@@ -298,15 +367,22 @@ def load_sources(target: str, *, facts: Mapping[str, Any] | None = None,
     ``residual`` also accepts a fully derived capability manifest: a manifest is a superset of the
     residual's fields (it is the residual with the facts layered on), so passing one lets the profile
     see units the residual never declared but the evidence reached.
+
+    ``contract`` overrides the on-disk contract read the same way, and passing ``{}`` suppresses it
+    entirely. That matters for a test that DELETES a declaration to check the trait resting on it goes
+    UNKNOWN: without the override the base declaration on disk would quietly restore what the test
+    removed, and the test would pass while proving nothing.
     """
     doc = dict(facts) if facts is not None else _read_facts(target, allow_extraction=allow_extraction)
     res = dict(residual) if residual is not None else _read_residual(target)
+    con = dict(contract) if contract is not None else _read_contract(target)
     body = doc.get("facts") if isinstance(doc.get("facts"), Mapping) else {}
     present, missing = [], []
     (present if body else missing).append("rtl_facts")
     (present if res else missing).append("residual")
+    (present if con else missing).append("contract")
     return Sources(target=target, facts=doc, residual=res, body=dict(body or {}),
-                   present=tuple(present), missing=tuple(missing))
+                   present=tuple(present), missing=tuple(missing), contract=con)
 
 
 def elaboration_of(sources: Sources) -> Elaboration:
@@ -475,8 +551,9 @@ def archetype_of(sources: Sources) -> Archetype:
         "endpoint_kind": f"{evidence} [{tier}]",
         "dispatch": (f"endpoint_kind={endpoint!r} -> transport {dispatch!r}" if dispatch
                      else f"endpoint_kind={endpoint!r} implies no distinct transport"),
-        "datapath_kind": (f"residual compute_units declare kinds {list(kinds)}; the primary is "
-                          f"{kind!r}" if kinds else "no compute unit is declared"),
+        "datapath_kind": (f"the {sources.units_source()}'s compute_units declare kinds "
+                          f"{list(kinds)}; the primary is {kind!r} [{sources.units_tier()}]"
+                          if kinds else "no compute unit is declared in the residual or the contract"),
     }
     return Archetype(dispatch=dispatch, datapath_kind=kind, endpoint_kind=endpoint,
                      questions=tuple(questions), evidence=ev)
@@ -638,8 +715,8 @@ def _t_multiple_engine_groups(sources: Sources) -> tuple[Trait, str]:
                               f"data-movement engine grounded by {dma.evidence}"), TIER_FACTS
     if len(groups) >= 2:
         return Trait("multiple_engine_groups", True,
-                     evidence=f"the residual DECLARES {len(groups)} compute-unit kinds "
-                              f"{groups}"), TIER_RESIDUAL
+                     evidence=f"the {sources.units_source()} DECLARES {len(groups)} compute-unit "
+                              f"kinds {groups}"), sources.units_tier()
     return Trait("multiple_engine_groups", None,
                  evidence=f"{len(groups)} declared compute-unit kind(s) {groups}; no second engine "
                           f"group is evidenced ({dma.evidence})",
@@ -656,8 +733,8 @@ def _t_independent_engine_ports(sources: Sources) -> tuple[Trait, str]:
                               "different interfaces, so they cannot be one issue port"), TIER_FACTS
     if len(groups) >= 2:
         return Trait("independent_engine_ports", None,
-                     evidence=f"the residual declares {len(groups)} unit kinds {groups}, but "
-                              "declaring two units is not observing two ports",
+                     evidence=f"the {sources.units_source()} declares {len(groups)} unit kinds "
+                              f"{groups}, but declaring two units is not observing two ports",
                      missing=("evidence that two engines issue independently (a movement interface, "
                               "or a workload showing both carrying work in one run)",)), TIER_NONE
     return Trait("independent_engine_ports", None,
@@ -836,6 +913,7 @@ class TargetProfile:
 
 def derive_profile(target: str, *, facts: Mapping[str, Any] | None = None,
                    residual: Mapping[str, Any] | None = None,
+                   contract: Mapping[str, Any] | None = None,
                    allow_extraction: bool = False) -> TargetProfile:
     """Derive ``target``'s profile from RTL facts + family defaults + its residual.
 
@@ -843,7 +921,8 @@ def derive_profile(target: str, *, facts: Mapping[str, Any] | None = None,
     say, which is the whole point: a profile that had to be edited to onboard a second machine would
     be a hand-written description wearing a deriver's clothes.
     """
-    src = load_sources(target, facts=facts, residual=residual, allow_extraction=allow_extraction)
+    src = load_sources(target, facts=facts, residual=residual, contract=contract,
+                       allow_extraction=allow_extraction)
     traits: dict[str, Trait] = {}
     tiers: dict[str, str] = {}
     for name in TRAITS:
@@ -858,10 +937,11 @@ def profile_table(profiles: Sequence[TargetProfile]) -> str:
     """A side-by-side trait table for several targets -- the anti-overfit result, readable.
 
     ``+`` satisfied, ``-`` refuted, ``?`` not established. The tier letter says what settled it
-    (``f`` RTL facts, ``r`` residual declaration, ``F`` family default), so a trait that is True
-    because somebody wrote it down never reads like one the RTL grounded.
+    (``f`` RTL facts, ``r`` residual declaration, ``c`` contract declaration, ``F`` family default),
+    so a trait that is True because somebody wrote it down never reads like one the RTL grounded.
     """
-    tier_mark = {TIER_FACTS: "f", TIER_RESIDUAL: "r", TIER_FAMILY: "F", TIER_NONE: " "}
+    tier_mark = {TIER_FACTS: "f", TIER_RESIDUAL: "r", TIER_CONTRACT: "c", TIER_FAMILY: "F",
+                 TIER_NONE: " "}
     mark = {True: "+", False: "-", None: "?"}
     width = max([len(t) for t in TRAITS] + [len("trait")])
     head = "trait".ljust(width) + "".join(f"  {p.target:>18}" for p in profiles)
