@@ -350,9 +350,17 @@ def reapply_bundle_snapshot(argv: list[str], ws: Path, bundle: dict,
     ordered, appending this layer ensures that such an overlap still serves the
     experiment snapshot.  Denied subpaths are appended in the same layer and
     therefore continue to win.
+
+    The workspace bind is re-asserted LAST. A deny is normally a subpath of a grant, but an arm may deny
+    a whole tree that happens to CONTAIN the workspace (an arm withheld from ``merlin/`` while its
+    workspace lives at ``merlin/experiments/.../_qa_ws/<run>/workspace``). ``base_argv`` already binds the
+    workspace after the deny layer for exactly that reason; re-appending the deny layer here without
+    re-appending the bind put the tmpfs back on top, and bwrap died with "Can't chdir to
+    <ws>: No such file or directory" before the agent ran a single turn -- every round, scoring an empty
+    submission rather than reporting a setup failure.
     """
     repo = (repo or repo_root()).absolute()
-    return [*argv, *_bundle_mount_args(ws, bundle, repo)]
+    return [*argv, *_bundle_mount_args(ws, bundle, repo), "--bind", str(ws), str(ws)]
 
 
 def base_argv(ws: Path, bundle: dict, *, repo: Path | None = None,
