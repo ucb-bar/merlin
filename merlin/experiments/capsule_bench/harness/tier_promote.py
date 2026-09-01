@@ -333,6 +333,46 @@ def _save_tier_state(ws, st) -> None:
     f.write_text(_j.dumps(st, indent=2))
 
 
+def record_cert(ws, verdict, cert_tier, log=None) -> list[str]:
+    """Write a COMPLETED promotion's result into the tier state, against the bytes that earned it.
+
+    `promote()` marks a capsule `pending` when it enqueues the cert job, and the broker's reap skips
+    `_promote` for a job that WAS a promotion -- correctly, so a cert verdict cannot re-enqueue itself.
+    But nothing then wrote the outcome back, so a capsule stayed `pending` forever: the certificate was
+    earned on real RTL and discarded, and the next loop verdict re-certified the same bytes.
+
+    Measured on merlincirct_arm4_func_20260901_v4 and _p2: promotions fired and COMPLETED (21 and 3
+    `simdone_promo*` respectively, one verified `barrier_tier=L3 barrier_status=pass`), while both
+    tier states showed only `L3: pending` and never once `L3: pass`.
+
+    The digest is NOT recomputed here. A cert belongs to the exact bytes that were pending when the job
+    was enqueued; re-hashing now would attribute it to whatever the agent has edited since. So this only
+    resolves an existing pending entry, and leaves anything else alone -- a result with no pending entry
+    is a result we cannot attribute, and that is recorded by doing nothing rather than by guessing.
+    """
+    rows = (verdict or {}).get("per_capsule") or []
+    if not rows:
+        return []
+    st = _tier_state(ws)
+    resolved = []
+    for row in rows:
+        name = str((row or {}).get("capsule") or "")
+        if not name:
+            continue
+        entry = (st.get(name) or {}).get(cert_tier)
+        if not isinstance(entry, dict) or entry.get("status") != "pending":
+            continue                      # nothing pending for these bytes: not ours to resolve
+        passed = bool(row.get("pass"))
+        entry["status"] = "pass" if passed else "fail"
+        st[name][cert_tier] = entry
+        resolved.append(f"{name}={'pass' if passed else 'fail'}")
+    if resolved:
+        _save_tier_state(ws, st)
+        if log is not None:
+            print(f"[promote] {cert_tier} recorded: {resolved}", file=log, flush=True)
+    return resolved
+
+
 def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     """Record what the loop tier just learned, and enqueue cert jobs for what it unlocked.
 

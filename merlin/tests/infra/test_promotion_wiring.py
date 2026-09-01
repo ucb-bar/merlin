@@ -242,3 +242,75 @@ def test_no_pending_state_is_written_without_an_enqueued_job(tmp_path, monkeypat
     assert list(ch.glob("simreq_*.json")) == []
     state = json.dumps(B._tier_state(ws))
     assert "pending" not in state, "a capsule was marked pending for a job that was never enqueued"
+
+
+# ---------------------------------------------------------------------------------------------
+# A completed promotion must be RECORDED, not discarded
+# ---------------------------------------------------------------------------------------------
+def _cert_verdict(rows):
+    return {"per_capsule": [{"capsule": n, "pass": p} for n, p in rows]}
+
+
+def test_a_completed_promotion_is_recorded_as_a_cert(tmp_path):
+    """The whole point of promoting: the cert this PAID FOR on real RTL has to be kept.
+
+    `promote()` marks the capsule `pending` when it enqueues, and the broker's reap skips `_promote`
+    for a job that was itself a promotion (correct -- a cert must not re-enqueue itself). But nothing
+    wrote the outcome back, so the capsule stayed `pending` forever and the same bytes were
+    re-certified on the next loop verdict. Measured live on merlincirct_arm4_func_20260901_v4/_p2:
+    21 and 3 promotions COMPLETED, one verified `barrier_tier=L3 barrier_status=pass`, and both tier
+    states showed only `L3: pending` -- never once `L3: pass`.
+    """
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    assert B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr) == ["A"]
+    assert B._tier_state(ws)["A"]["L3"]["status"] == "pending"
+
+    B.record_cert(ws, _cert_verdict([("A", True)]), "L3", sys.stderr)
+    assert B._tier_state(ws)["A"]["L3"]["status"] == "pass", (
+        "a completed promotion left the capsule pending; the certificate was discarded")
+
+
+def test_a_failed_cert_is_recorded_as_a_failure_not_left_pending(tmp_path):
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr)
+    B.record_cert(ws, _cert_verdict([("A", False)]), "L3", sys.stderr)
+    assert B._tier_state(ws)["A"]["L3"]["status"] == "fail"
+
+
+def test_recording_preserves_the_digest_that_earned_the_cert(tmp_path):
+    """A cert belongs to the bytes that were pending, not to whatever the agent has edited since."""
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr)
+    before = dict(B._tier_state(ws)["A"]["L3"])
+    B.record_cert(ws, _cert_verdict([("A", True)]), "L3", sys.stderr)
+    after = B._tier_state(ws)["A"]["L3"]
+    assert after["digest"] == before["digest"], "the cert was re-attributed to different bytes"
+    assert after.get("components") == before.get("components")
+
+
+def test_an_unattributable_result_is_not_recorded(tmp_path):
+    """No pending entry means we cannot say which bytes earned it -- record nothing, never guess."""
+    B = _broker()
+    ws = _ws(tmp_path)
+    resolved = B.record_cert(ws, _cert_verdict([("NeverPromoted", True)]), "L3", sys.stderr)
+    assert resolved == []
+    assert "NeverPromoted" not in B._tier_state(ws)
+
+
+def test_the_broker_reap_actually_calls_the_recorder(tmp_path):
+    """Wiring, not just policy: a promoted job's verdict must reach record_cert on reap.
+
+    This file's own docstring warns that promotion is wrapped in a try/except so a broken wiring shows
+    up as *nothing happening*. That is precisely how three earlier defects in this path stayed hidden.
+    """
+    src = (HARNESS / "simjob_broker.py").read_text(encoding="utf-8")
+    assert "_TP.record_cert(" in src, "the broker reap never records a completed promotion"
+    reap = src[src.index('if not j.get("promoted")'):]
+    assert 'elif j.get("promoted")' in reap[:800], (
+        "the recorder is not on the promoted-job branch of the reap")

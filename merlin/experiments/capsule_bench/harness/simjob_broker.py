@@ -105,6 +105,7 @@ def _sim_env() -> dict:
     return e
 
 
+import tier_promote as _TP
 from tier_promote import promote as _promote, resolve_tiers as _resolve_tiers  # noqa: E402
 
 
@@ -271,6 +272,15 @@ def main(argv=None):
                     _promote(ws, ch, out, _LOOP_TIER, _CERT_TIER, _COVER, sys.stderr)
                 except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
                     print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
+            elif j.get("promoted") and not out.get("error"):
+                # A promotion's own verdict: record it, so the cert this just PAID FOR on real RTL is
+                # kept instead of discarded. Without this the capsule stays `pending` forever and the
+                # same bytes are re-certified on the next loop verdict.
+                try:
+                    _TP.record_cert(ws, out, _CERT_TIER, sys.stderr)
+                except Exception as _re:  # noqa: BLE001 -- recording must never gate a run either
+                    print(f"[promote] record skipped: {type(_re).__name__}: {_re}",
+                          file=sys.stderr, flush=True)
             if j.get("log"):
                 try:
                     j["log"].close()
