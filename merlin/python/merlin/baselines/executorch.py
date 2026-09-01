@@ -32,15 +32,19 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from merlin.baselines import bundle as _bundle
 from merlin.baselines import k1_exec, profile, rvv_audit
 from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
+from merlin.baselines.executorch_identity import (
+    ExecuTorchIdentity,
+    ExecuTorchIdentityError,
+    require_matching_executorch,
+)
 from merlin.common import artifacts
 from merlin.common.paths import build_dir, repo_root
 from merlin.mining import k1
@@ -84,13 +88,26 @@ def et_venv_python() -> Path:
 
 
 def et_venv_available() -> bool:
-    """True iff the export venv exists and can import executorch + torch."""
-    py = et_venv_python()
-    if not py.is_file():
+    """True iff the exporter exists and exactly matches the runtime source checkout."""
+    try:
+        et_identity()
+        return True
+    except ExecuTorchIdentityError:
         return False
-    r = subprocess.run([str(py), "-c", "import executorch, torch"],
-                       capture_output=True, text=True, timeout=120)
-    return r.returncode == 0
+
+
+def et_identity() -> ExecuTorchIdentity:
+    """Return the exact shared exporter/runtime-source identity or fail closed."""
+    return require_matching_executorch(et_venv_python(), _ET_SRC)
+
+
+def et_identity_error() -> str:
+    """Machine-actionable preflight reason, empty only for an exact source match."""
+    try:
+        et_identity()
+        return ""
+    except ExecuTorchIdentityError as error:
+        return str(error)
 
 
 def et_commit() -> str:
@@ -163,6 +180,10 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
     model); the correctness gate then compares ExecuTorch vs eager-torch for THIS exact config.
     ``extra_env``: passed to the export subprocess (e.g. ``M2M_LLAMA_LAYERS`` for the reduced build).
     """
+    try:
+        identity = et_identity()
+    except ExecuTorchIdentityError as error:
+        raise ExecuTorchError(str(error)) from error
     py = et_venv_python()
     loader = b.torch_loader
     if not loader.is_file():
@@ -207,14 +228,15 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
             summary = json.loads(line[len("ET_EXPORT_JSON "):])
     if not out.is_file():
         raise ExecuTorchError(f"export produced no .pte at {out}: {proc.stdout[-400:]}")
-    s = summary or {}
+    s = dict(summary or {})
+    s["executorch_identity"] = identity.as_dict()
     return ExportResult(pte=out,
                         ptd_files=[Path(p) for p in s.get("ptd_files", [])],
                         input_files=[Path(f["path"]) for f in s.get("input_files", [])],
                         golden=golden,
                         delegated_nodes=s.get("delegated_nodes"),
                         total_call_nodes=s.get("total_call_nodes"),
-                        summary=summary)
+                        summary=s)
 
 
 # --- cross-compile the executor_runner for rv64gcv (SpacemiT clang) -----------------------------
@@ -239,6 +261,10 @@ def cross_compile_runner(work: Path, *, xnnpack: bool = True, etdump: bool = Fal
     Inspector correlates back to layer fqns (the per-region ExecuTorch timing). It is a DISTINCT
     build (cached under a separate dir) from the plain runner so the two do not clobber each other.
     """
+    try:
+        et_identity()
+    except ExecuTorchIdentityError as error:
+        raise ExecuTorchError(str(error)) from error
     rvv_audit.enforce_rvv_march(k1.K1_MARCH)
     root = _toolchain_root()
     if root is None:
@@ -352,11 +378,107 @@ def audit_binary(runner: Path) -> tuple[float | None, list[ScalarFallback], dict
 
 
 # --- on-board run + parse -----------------------------------------------------------------------
+#
+# executor_runner has no --json mode, so its ET_LOG stdout/stderr IS the contract. The format
+# strings are fixed in the pinned source we build ourselves
+# (third_party/baselines/executorch/examples/portable/executor_runner/executor_runner.cpp):
+#
+#     ET_LOG(Info, "Model loaded in %f ms.", ...)
+#     ET_LOG(Info, "Iteration %" PRIu32 " of %" PRIu32 ": %f ms", ...)
+#     ET_LOG(Info, "Model executed successfully %" PRIu32 " time(s) in %f ms.", ...)
+#
+# ...and every line is prefixed by ET_LOG's own severity/timestamp/site banner. Real captured lines
+# from a K1 board run:
+#
+#   I 00:00:05.833558 executorch:executor_runner.cpp:564] Model loaded in 4463.268273 ms.
+#   I 00:00:06.075611 executorch:executor_runner.cpp:705] Iteration 1 of 1: 241.944288 ms
+#   I 00:00:06.075701 executorch:executor_runner.cpp:714] Model executed successfully 1 time(s) in 241.944288 ms.
+#
+# The retired patterns were, unanchored, over the whole console:
+#   _TIME_RE = r"Model executed successfully .* in ([\d.]+) ms"
+#   _LOAD_RE = r"Model loaded in ([\d.]+) ms"
+#   _ITER_RE = r"Iteration \d+ of \d+: ([\d.]+) ms"      (defined but never used; dropped)
+# `.` never crosses a newline, so each was confined to a single line and `re.search` returned the
+# FIRST line that matched. The replacements below preserve exactly that: scan lines in order, take
+# the first that yields a number.
+#
+# Three outcomes, never collapsed (see _ConsoleReading): PARSED, ABSENT (the marker line never
+# appeared — the run did not get that far), UNPARSEABLE (the marker line DID appear but its
+# millisecond field could not be read — a console-format change we must shout about). A reading that
+# is not PARSED stays None: an unmeasurable time is UNKNOWN and is reported as such, never 0.
 
-# executor_runner log lines we parse.
-_TIME_RE = re.compile(r"Model executed successfully .* in ([\d.]+) ms")
-_LOAD_RE = re.compile(r"Model loaded in ([\d.]+) ms")
-_ITER_RE = re.compile(r"Iteration \d+ of \d+: ([\d.]+) ms")
+_PARSED = "parsed"
+_ABSENT = "absent"
+_UNPARSEABLE = "unparseable"
+
+_EXEC_MARKER = "Model executed successfully "     # then `.* in <ms> ms`
+_EXEC_JOINER = " in "
+_LOAD_MARKER = "Model loaded in "                 # the number follows the marker directly
+
+
+@dataclass
+class _ConsoleReading:
+    """One millisecond field read out of the executor_runner console."""
+    state: str                      # _PARSED / _ABSENT / _UNPARSEABLE
+    ms: float | None = None
+    detail: str = ""                # the offending line, when state is _UNPARSEABLE
+
+    @property
+    def ns(self) -> int | None:
+        return None if self.ms is None else int(round(self.ms * 1e6))
+
+
+def _leading_ms(text: str) -> float | None:
+    """Read ``<number> ms`` off the FRONT of ``text``; ``None`` if it is not shaped like that.
+
+    This is the old ``([\\d.]+) ms`` capture group, which sat immediately after a literal, so the
+    number starts at character 0 here. The old character class was digits-and-dots only, so we
+    refuse anything else rather than coerce it — a token that is not a plain decimal (``inf``,
+    ``nan``, ``1.2.3``, a negative) yields UNKNOWN. (The old code would have crashed on ``1.2.3``:
+    the pattern matched it and ``float()`` then raised.)
+    """
+    token, sep, _rest = text.partition(" ms")
+    if not sep or not token:
+        return None
+    if any(c not in "0123456789." for c in token):
+        return None
+    try:
+        return float(token)
+    except ValueError:              # e.g. "." or "1.2.3" — matched the old class, is not a number
+        return None
+
+
+def _read_console_ms(console: str, marker: str, *, joiner: str = "") -> _ConsoleReading:
+    """First line containing ``marker`` whose millisecond field parses, as a tri-state reading.
+
+    ``joiner`` is the literal the old pattern required between the marker and the number (the
+    ``.* in `` of the execute line); empty when the number follows the marker directly. The old
+    ``.*`` was greedy, so on a line with several ``... in <n> ms`` the LAST one won — hence the
+    right-to-left search for the joiner.
+    """
+    saw_marker = ""
+    for line in console.splitlines():
+        idx = line.find(marker)
+        while idx >= 0:
+            # `re.search` restarts at the next position when a match attempt fails, so a marker
+            # that occurs several times on one line gets tried at EVERY occurrence, left to right.
+            saw_marker = saw_marker or line
+            tail = line[idx + len(marker):]
+            if not joiner:
+                ms = _leading_ms(tail)
+                if ms is not None:
+                    return _ConsoleReading(_PARSED, ms)
+            else:
+                pos = tail.rfind(joiner)
+                while pos >= 0:
+                    ms = _leading_ms(tail[pos + len(joiner):])
+                    if ms is not None:
+                        return _ConsoleReading(_PARSED, ms)
+                    pos = tail.rfind(joiner, 0, pos)
+            idx = line.find(marker, idx + 1)
+    if saw_marker:
+        return _ConsoleReading(_UNPARSEABLE, None, saw_marker.strip()[:200])
+    return _ConsoleReading(_ABSENT)
 
 
 @dataclass
@@ -367,6 +489,10 @@ class BoardRun:
     cos: float | None = None
     rel: float | None = None
     console: str = ""
+    # Console lines that carried a marker we recognize but a millisecond field we could not read.
+    # Kept distinct from "the line never appeared" so a console-format change is reported, not
+    # silently turned into a missing (or worse, zero) timing.
+    parse_warnings: list[str] = field(default_factory=list)
 
 
 def _board_free_bytes() -> int | None:
@@ -451,13 +577,21 @@ def _run_on_board(res: BaselineResult, runner: Path, exp: "ExportResult",
 
     console = proc.stdout + proc.stderr
     out.console = console
-    m = _TIME_RE.search(console)
-    if m:
+    executed = _read_console_ms(console, _EXEC_MARKER, joiner=_EXEC_JOINER)
+    if executed.state == _PARSED:
         out.ran = True
-        out.wall_ns = int(round(float(m.group(1)) * 1e6))
-    lm = _LOAD_RE.search(console)
-    if lm:
-        out.load_ns = int(round(float(lm.group(1)) * 1e6))
+        out.wall_ns = executed.ns
+    elif executed.state == _UNPARSEABLE:
+        # The runner DID report a successful execution; only its time is unreadable. Say so —
+        # `ran` stays False and `wall_ns` stays None (unknown), never 0.
+        out.parse_warnings.append(
+            f"executor_runner reported success but its time field is unreadable: {executed.detail!r}")
+    loaded = _read_console_ms(console, _LOAD_MARKER)
+    if loaded.state == _PARSED:
+        out.load_ns = loaded.ns
+    elif loaded.state == _UNPARSEABLE:
+        out.parse_warnings.append(
+            f"'Model loaded in' line present but its time field is unreadable: {loaded.detail!r}")
     # correctness: compare the dumped output to the golden OFF-DEVICE.
     if out.ran and local_out is not None and Path(local_out).is_file():
         out.cos, out.rel = _cos_rel(Path(local_out), exp.golden)
@@ -563,7 +697,9 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
         res.gap_reason = f"inputs missing: {b.root}/inputs.npz absent (needed to match golden)"
         return _finish(res, model, variant, write)
     if not et_venv_available():
-        res.gap_reason = ("ExecuTorch export venv unavailable at "
+        identity_error = et_identity_error()
+        res.gap_reason = (identity_error or
+                          "ExecuTorch export venv unavailable at "
                           f"{et_venv_python()} (build via third_party/baselines/executorch/"
                           "install_executorch.sh); cannot torch.export -> .pte")
         return _finish(res, model, variant, write)
@@ -664,9 +800,17 @@ def _do_board(res: BaselineResult, runner: Path, exp: "ExportResult",
         res.cos = br.cos
     if br.rel is not None:
         res.rel = br.rel
+    # An unreadable-but-present timing line is a TOOLING defect, not a model result: record it on
+    # the row so a console-format drift is visible instead of looking like a model that never ran.
+    for warning in br.parse_warnings:
+        res.notes += f" console-parse: {warning}"
     if not res.ran and not res.gap_reason:
-        res.gap_reason = ("K1 run produced no 'Model executed successfully' line "
-                          f"(console tail): {br.console[-300:]}")
+        if br.parse_warnings:
+            res.gap_reason = ("K1 run console could not be parsed: " + "; ".join(br.parse_warnings)
+                              + f" (console tail): {br.console[-300:]}")
+        else:
+            res.gap_reason = ("K1 run produced no 'Model executed successfully' line "
+                              f"(console tail): {br.console[-300:]}")
 
 
 def _finish(res: BaselineResult, model: str, variant: str, write: bool) -> BaselineResult:

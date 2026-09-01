@@ -6,6 +6,19 @@
 # (chipyard generators/saturn) before drawing RTL-level conclusions.
 name: saturn
 version: 0.1
+# WHERE this target's elaborated RTL is. Irreducible SETUP -- an SoC checkout holds many elaborations
+# and nothing in the RTL says which one is "saturn's", so the config is DECLARED here, in the target's
+# own contract, and read by merlin.targetgen.rtl.introspect.declared_rtl_source. Everything the
+# extractor then reports (geometry, SRAM capacities, element widths) is DERIVED from these artifacts;
+# no capacity, bank count or width is declared anywhere in this file.
+#   ext_root   a `.env` MERLIN_EXT_<NAME> key, so no absolute path is committed
+#   config     the chipyard TestHarness config that was elaborated
+#   generator  the source tree whose modules ARE this target's, as the FIRRTL's own
+#              `@[generators/<gen>/...]` provenance annotations record it (defaults to the target name)
+rtl_source:
+  ext_root: chipyard
+  config: DualSaturnV256D128ShuttleConfig
+  generator: saturn
 # Runtime backend, evicted from the core runtime/backends/ into this package's backend/ dir (a package of
 # saturn_vec.py + saturn_vec_codegen.py + saturn_vec_mlir.py). base._oot_backend_modules loads a reference
 # target's plugin.backend (the reference package root is injected as the path), so importing the backend

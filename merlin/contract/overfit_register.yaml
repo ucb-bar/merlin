@@ -36,6 +36,29 @@ version: 1
 
 entries:
 
+  # ---------------------------------------------------------------- fact-provenance gate
+  - id: fact-provenance-gate-names-the-sources-it-forbids
+    kind: target_name
+    status: triaged
+    owner: targetgen
+    items:
+      - build_tools/scripts/check_fact_provenance.py
+    why: >-
+      This gate exists to answer "was this hardware fact derived from the RTL, or from something that
+      merely models it". Answering that requires NAMING the non-RTL sources -- a cycle model, a
+      functional ISS, a hand-written device model -- because the distinction is not structural: the
+      cycle model's config is vendored inside the RTL repository, beside the Chisel it models, so a
+      path test cannot separate them. The names are the subject of the check, not a shortcut around
+      resolving a target. They are literals for the same reason the no-regex gate's own name list is:
+      a gate that had to resolve what it forbids at run time could not run before the thing it guards.
+    blocks: >-
+      Nothing. The names appear only in the classification tables of the gate itself; no library code
+      imports them, and the gate produces no fact of its own.
+    removal_condition: >-
+      When each source declares its own provenance class -- an arc model, a cycle model, an ISS -- in a
+      manifest the gate can read, the tables become a lookup and the literals go. That declaration does
+      not exist today for any of them.
+
   # ---------------------------------------------------------------- oracle + runner dispatch
   - id: oracle-and-runner-dispatch-names-reference-targets
     kind: target_coupling

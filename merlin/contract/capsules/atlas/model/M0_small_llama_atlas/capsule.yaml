@@ -35,6 +35,7 @@ numeric_policy:
 expected:
   instruction_classes:
   - TensorBaseOffset
+  - TensorComputeBinary
   - MXUWeightPush
   - MXUMatMul
   - MXUAccumulatorPopE1

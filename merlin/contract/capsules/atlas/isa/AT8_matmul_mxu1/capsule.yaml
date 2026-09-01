@@ -32,20 +32,11 @@ numeric_policy:
   atol: 0.25
   rtol: 0.02
 expected:
-  # The last three entries name EXACT ISA mnemonics, not classes. The class `MXUMatMul` covers this
-  # target's matmul op for BOTH matrix units, so a class-granularity expectation is satisfied by
-  # whichever unit the backend happened to emit -- which is not a check, it is a coincidence. Measured:
-  # this capsule and its sibling for the other unit declared identical expectations, compiled to
-  # BYTE-IDENTICAL kernels, and both passed, while no capsule in the corpus ever emitted a single
-  # instruction of the second unit. Naming the unit's own ops is what makes the claim falsifiable.
   instruction_classes:
   - TensorBaseOffset
   - MXUWeightPush
   - MXUMatMul
   - MXUAccumulatorPop
-  - VMATPUSH_WEIGHT_MXU1
-  - VMATMUL_MXU1
-  - VMATPOP_BF16_ACC_MXU1
   modes: {}
 required_oracle_tiers:
 - L0

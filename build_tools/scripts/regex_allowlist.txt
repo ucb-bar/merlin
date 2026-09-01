@@ -13,21 +13,7 @@
 
 # ---------------------------------------------------------------- PERMANENT (irreducible)
 merlin/python/merlin/kernels/markers.py                       # motif-evidence table ("heart of extraction"); by design
-merlin/python/merlin/kernels/ingest/openblas.py               # OpenBLAS kernel FILENAME convention (kernel_MxN_zvl*.c) — no structured source
-merlin/python/merlin/kernels/ingest/xnnpack.py                # XNNPACK in-file SYMBOL names (xnn_*_ukernel_*__rvv) — the API is the name
-merlin/python/merlin/kernels/ingest/autocomp.py               # Autocomp bespoke test() C-signature + kernel_<hash>.c filename
-merlin/python/merlin/kernels/ingest/triton.py                 # Triton .py source scrape; could move to `ast` (optional, low value)
-merlin/python/merlin/baselines/executorch.py                  # ExecuTorch executor_runner STDOUT — no --json mode
-merlin/python/merlin/targetgen/contract/interface_emit.py     # contract round-trip; xDSL dep forbidden by design + ingests external capsules
-merlin/python/merlin/targetgen/rtl/gen_iface_irdl.py          # normalizes a known tblgen-to-irdl output quirk
 merlin/python/merlin/targetgen/rtl/gen_arc_ports.py           # C-identifier sanitization of a name already read from JSON
-merlin/python/merlin/llvmlower/pipeline.py                    # f0x float-literal fixup: MLIR printer emits text LLVM's parser rejects (emitter bug)
-merlin/python/merlin/frontends/linalg_mlir.py                 # `} -> (...)` normalizer that ENABLES the xDSL parse (pro-structural)
-
-# ---------------------------------------------------------------- text IR repair (fix INVALID model2MLIR text BEFORE it can be parsed — not an xDSL bug)
-merlin/python/merlin/llvmlower/passes_xdsl.py                 # repairs invalid m2m IR text (rank-reduced extract/insert_slice, custom quant_ext) before xDSL can parse it
-merlin/python/merlin/llvmlower/truncate.py                    # NaN-bisection truncates @forward at a LINE index (pre-parse text op); line-addressing is inherently textual
-merlin/python/merlin/baselines/buddy.py                       # rewrites buddy-opt static_offsets in the emitted IR text (post-tool, pre-reparse)
 
 # ---------------------------------------------------------------- DEFERRED: legacy comparator (needs a validated beam-ranking migration, not a mechanical swap)
 merlin/python/merlin/kernels/compare.py                       # legacy RvvFingerprint; superseded by cca_compare.py, BUT beam.py ranks on its structural_match scalar (0.6*decisions + 0.4*histogram-cosine) and CCA has no histogram — deleting needs a CCA-based score + intentional test_rvv_beam re-baseline (can't validate rankings without the RVV toolchain here)
@@ -42,14 +28,8 @@ merlin/python/merlin/kernels/features/ast_struct.py           # 2 leaf-token reg
 # loops.py / roles.py / dispatch.py migrated to structured token parsing (features/_tokens.py); their
 # per-family branch data now lives in framework_contracts/feature_extraction/<family>.yaml.
 
-# ---------------------------------------------------------------- TODO(batch-4b): xDSL/CIRCT consumers still pending
-merlin/python/merlin/runtime/backends/ours_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find (runtime routing)
-merlin/python/merlin/runtime/backends/xnnpack_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find (runtime routing)
-merlin/python/merlin/runtime/backends/openblas_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find (runtime routing)
-merlin/python/merlin/targetgen/rtl/extract_module.py          # CIRCT HW module-subtree slice by text -> circt-opt instance graph
-
-# ---------------------------------------------------------------- TODO(batch-5b): objdump/ELF decode (needs decode/ + capstone/pyelftools)
-merlin/python/merlin/baselines/rvv_audit.py                   # objdump asm + ELF symbol headers -> decode/objdump + pyelftools
-merlin/python/merlin/kernels/bench_ceiling.py                 # bespoke saturn vec-* spike console ("took N cycles", "Vector cycles: N instructions: M") — verify against live bench before converting
+# batch-4b (xDSL/CIRCT consumers) is DRAINED: the three board matmul routers now share one
+# structural reader (runtime/backends/_matmul_routing.py) and rtl/extract_module.py tokenizes the
+# hw.module/hw.instance lines itself; both fail closed on input they cannot read.
 
 # ---------------------------------------------------------------- TODO(batch-6b): remaining RTL facts from structure

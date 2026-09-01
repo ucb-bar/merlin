@@ -8,6 +8,23 @@ target: atlas
 
 rtl:
   via: mlc            # ISA/memory/DIM DERIVED from atlas's RTL via mlc discovery
+  # WHERE the elaborated RTL is. Irreducible SETUP: the checkout holds many elaborations and nothing
+  # in the RTL says which one is atlas's, so the config is DECLARED (here, in atlas's own descriptor)
+  # and everything downstream of it is DERIVED. Read by
+  # merlin.targetgen.rtl.introspect.declared_rtl_source; nothing in library code names this config.
+  #
+  # This is the second, INDEPENDENT reader of atlas's RTL: mlc discovery answers the ISA/decode
+  # question (`via: mlc` above) and returns no memory map, while the FIRRTL census answers the
+  # structural one -- the SRAMs, their banks/depths/row widths, and the PE array -- straight out of
+  # the elaboration. They are complementary, and both are recorded so a disagreement is visible.
+  #   ext_root   a `.env` MERLIN_EXT_<NAME> key (this target elaborates in its OWN chipyard checkout,
+  #              which is why nothing had ever pointed the FIRRTL reader at it)
+  #   generator  the source tree whose modules ARE atlas's, per the FIRRTL's own
+  #              `@[generators/<gen>/...]` provenance annotations
+  elaboration:
+    ext_root: chipyard_atlas
+    config: AtlasRocketConfig
+    generator: atlas
   # NO `operand_store` is declared, deliberately. The capacity_fit contract obligation needs to know
   # this device's on-chip operand store, and mlc discovers all 39 of its SRAMs and then refuses to
   # classify them ("no memory map discovered"), so the obligation is UNDECIDABLE here and reports itself

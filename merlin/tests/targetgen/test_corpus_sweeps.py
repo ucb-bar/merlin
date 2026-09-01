@@ -599,12 +599,27 @@ def test_gemmini_admits_only_runnable_PK_and_records_PS_PC_trait_skips():
     assert {entry["label"] for entry in entries} == {"dev"}
     assert {entry["cat"] for entry in entries}.isdisjoint(
         {"isa", "layers", "model", "model_slices", "hidden"})
-    assert [(row["family"], row["gate"]["outcome"]) for row in skips] == [
-        ("PS", "refuted"), ("PC", "unestablished")]
+    # PS IS REFUTED AND PC IS NOT. The two must not collapse into one "inapplicable", because they are
+    # inapplicable for opposite reasons and only one of them is permanent.
+    #
+    # PS is the settle lever, and it CANNOT exist here: this target is not a self-hosted program, its
+    # instruction set carries no stall, and hazards resolve in a reservation station. `refuted` is the
+    # right and final answer.
+    #
+    # PC is the scheduling lever -- issue a transfer before the wait it does not depend on -- which is
+    # this archetype's ONLY lever. It was previously skipped `unestablished` because
+    # `explicit_completion` could not be derived, and that was an artefact of the fact bundle recording
+    # interfaces by name with no port list: the elaborated FIRRTL shows LoadController and
+    # StoreController each exposing `completed : { flip ready, valid, bits : UInt<6> }`, a decoupled
+    # channel tagged with the reservation-station id. So the trait is now derived True and PC's gate
+    # PASSES. It is blocked instead on its emitter (`new:instruction_reorder`), which is honest: the
+    # measurement is admissible and the thing that would generate the pair does not exist yet.
+    assert [(row["family"], row["gate"]["outcome"]) for row in skips] == [("PS", "refuted")]
     assert skips[0]["gate"]["facts"]["self_hosted_program"]["satisfied"] is False
-    assert skips[0]["gate"]["facts"]["explicit_completion"]["satisfied"] is None
-    assert skips[1]["gate"]["facts"]["independent_engine_ports"]["satisfied"] is True
-    assert blocked == [] and errors == []
+    assert skips[0]["gate"]["facts"]["explicit_completion"]["satisfied"] is True
+    assert [row["family"] for row in blocked] == ["PC"], (
+        "PC must reach the emitter gate, not be turned away at the trait gate")
+    assert errors == []
     assert {row["family"] for row in profile["_performance_template"]["blocked_unimplemented"]} == {
         "PL", "PF"}
     capsule, mlir = GC.CS.build(entries[0], binding)

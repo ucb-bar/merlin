@@ -7,6 +7,7 @@ e5m2 decodes its own layout incl. IEEE inf/NaN, and the two representable sets d
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from merlin.runtime.fp8_formats import (
     canonical_float,
@@ -93,3 +94,48 @@ def test_e8m0_block_scale_is_power_of_two_with_nan():
     assert e8m0_decode(128) == 2.0 and e8m0_decode(126) == 0.5
     assert e8m0_decode(120) == 2.0 ** -7
     assert math.isnan(e8m0_decode(0xFF))               # 0xFF is the E8M0 NaN code
+
+
+# --- encode direction ------------------------------------------------------------------------------
+# The decoder was the only direction that existed, so a capsule whose operands were recorded as decoded
+# floats (every bf16/fp16/f32 golden) could not be turned back into device bytes and was preloaded with
+# NOTHING. These pin the inverse: it must agree with the decoder code-for-code, and must refuse rather
+# than invent bytes it cannot represent.
+
+def test_encode_is_the_exact_inverse_of_decode_for_every_code():
+    from merlin.runtime.fp8_formats import _decode, float_to_codes, storage_bits
+    for fmt in ("bf16", "fp16", "fp8_e4m3", "fp8_e5m2", "fp6_e3m2", "fp4_e2m1"):
+        codes = np.arange(1 << storage_bits(fmt), dtype=np.uint32)
+        vals = _decode(codes, fmt)
+        finite = np.isfinite(vals)
+        back = _decode(float_to_codes(vals[finite], fmt), fmt)
+        assert np.array_equal(back, vals[finite]), f"{fmt}: decode(encode(v)) != v"
+
+
+def test_out_of_range_saturates_instead_of_becoming_inf():
+    """An operand that silently turned into inf would poison every comparison it took part in."""
+    from merlin.runtime.fp8_formats import _decode, float_to_codes, normal_range
+    for fmt in ("bf16", "fp16", "fp8_e4m3", "fp8_e5m2"):
+        _, biggest = normal_range(fmt)
+        # beyond THIS format's range (which overflows to float32 inf for bf16, whose largest finite
+        # value is already near float32's own -- saturation has to cope with that too)
+        with np.errstate(over="ignore"):
+            over = np.float32(biggest) * np.float32(2.0)
+        got = _decode(float_to_codes([over, -over], fmt), fmt)
+        assert np.all(np.isfinite(got)), f"{fmt}: saturation produced a non-finite value"
+        assert got[0] == biggest and got[1] == -biggest, f"{fmt}: did not saturate to the largest finite"
+
+
+def test_nan_and_sub_byte_are_refused_not_guessed():
+    from merlin.runtime.fp8_formats import encode_bytes, float_to_codes
+    with pytest.raises(ValueError):
+        float_to_codes([float("nan")], "bf16")
+    with pytest.raises(ValueError):          # 4-bit element: packing is the caller's layout decision
+        encode_bytes([0.5], "fp4_e2m1")
+
+
+def test_encoded_bytes_are_little_endian_at_the_declared_width():
+    from merlin.runtime.fp8_formats import encode_bytes
+    assert encode_bytes([1.0], "bf16") == b"\x80\x3f"          # bf16 1.0 == 0x3F80
+    assert len(encode_bytes([0.0] * 8, "bf16")) == 16
+    assert len(encode_bytes([0.0] * 8, "fp8_e4m3")) == 8

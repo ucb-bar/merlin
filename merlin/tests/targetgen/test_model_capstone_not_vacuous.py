@@ -162,8 +162,20 @@ def test_the_capstone_demand_matches_the_op_capsules_of_the_same_family():
         if not classes:
             continue
         assert fam == "contraction", fam
-        assert classes == list(b.classes_for(op="matmul", output_dtype=b.cap_dtype(b.operand_dtype))), \
-            f"{t}: the capstone's classes drifted from the target's own contraction sequence"
+        # CONTAINS, not equals. A whole model is not only its contractions: it also carries the
+        # elementwise and reduction work between them (a residual add, a SiLU, a norm), and those now
+        # owe the target's vector-compute roles instead of owing nothing, so the capstone's demand is a
+        # SUPERSET of the contraction sequence rather than exactly it. Equality held only while every
+        # non-contraction op had an empty obligation -- which is the hole that made a whole-model
+        # capstone silently indifferent to whether the machine's vector units were used at all.
+        # The guard this test exists for is unchanged: the sequence must be present, in order, and
+        # non-empty, so an emptied or drifted contraction path still fails here.
+        seq = list(b.classes_for(op="matmul", output_dtype=b.cap_dtype(b.operand_dtype)))
+        assert seq, f"{t}: the target derives no contraction sequence at all"
+        positions = [classes.index(c) for c in seq if c in classes]
+        assert len(positions) == len(seq) and positions == sorted(positions), \
+            f"{t}: the capstone's classes drifted from the target's own contraction sequence: " \
+            f"{classes} does not contain {seq} in order"
         checked += 1
     if not checked:
         pytest.skip("no target in this checkout derives a class sequence")

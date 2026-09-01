@@ -21,7 +21,6 @@ Design constraints (see the plan / contract):
 """
 from __future__ import annotations
 
-import re
 from typing import Any
 
 GRAMMAR_VERSION = "0.1"
@@ -228,17 +227,120 @@ def _commit_out_shape(cb: dict[str, Any], acc_name: str,
 
 # --------------------------------------------------------------------------- parse
 
-_RE_TENSOR = re.compile(r'%(\S+)\s*=\s*merlin_iface\.tensor\s*\{([^}]*)\}\s*:\s*(tensor<[^>]+>)')
-_RE_PACK = re.compile(r'%(\S+)\s*=\s*merlin_iface\.resident_pack\s*%(\S+)\s*\{([^}]*)\}')
-_RE_MATMUL = re.compile(r'%(\S+)\s*=\s*merlin_iface\.matmul\s*%(\S+),\s*%(\S+)\s*:')
-_RE_COMMIT = re.compile(r'%(\S+)\s*=\s*merlin_iface\.commit\s*%(\S+)\s*\{([^}]*)\}\s*:\s*\(.*?\)\s*->\s*(tensor<[^>]+>)')
-_RE_EVICT = re.compile(r'merlin_iface\.evict\s*%(\S+)')
-_RE_MOD = re.compile(r'module\s+attributes\s*\{([^}]*)\}')
-# A whole-op mnemonic line: `%dst = merlin_iface.<mnemonic> %a, %b, ... {attrs} : (types) -> type`.
-# The mnemonic (group 2) is looked up in _NAMED_OP_OPERAND_KEYS to decide whether to handle it and how
-# to name its operands; matmul/commit/etc. fall through to their own patterns (not in that table).
-_RE_NAMED_OP = re.compile(
-    r'%(\S+)\s*=\s*merlin_iface\.(\w+)\s+((?:%\S+\s*,?\s*)+)\{([^}]*)\}')
+#: The dialect prefix every op line in this grammar carries. Lines are matched by SHAPE -- an SSA
+#: result, this prefix, a mnemonic, %-prefixed operands, an optional {attrs} body, a type after ':' --
+#: rather than by one pattern per op form.
+#:
+#: Why not patterns. A pattern per form is a second grammar definition that drifts from the emitter's,
+#: and this file has already shipped the failure that causes: an op the patterns did not cover was
+#: silently DROPPED and the parse reported success, so 15 of 160 shipped capsules parsed into a command
+#: list missing their work. Shape-matching means an unknown mnemonic reaches the mnemonic check and is
+#: refused by name instead of falling through every pattern and vanishing.
+#:
+#: xDSL is deliberately NOT used here even though it is a dependency elsewhere: this module ships in the
+#: agent starter kit, where the contract forbids that dependency.
+_DIALECT = "merlin_iface."
+_MODULE_KW = "module"
+_ATTRIBUTES_KW = "attributes"
+
+
+def _braced(text: str, start: int = 0) -> tuple[str, int]:
+    """The body of the first ``{...}`` at or after ``start``, and the index just past its close.
+
+    Depth-tracked, because an attribute value may itself contain braces; taking the first ``}`` would
+    truncate the body and silently drop every attribute after it.
+    """
+    open_i = text.find("{", start)
+    if open_i == -1:
+        return "", -1
+    depth = 0
+    for i in range(open_i, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[open_i + 1:i], i + 1
+    return "", -1
+
+
+def _split_operands(text: str) -> list[str]:
+    """``%a, %b`` -> ``['a', 'b']``. Stops at the first token that does not start with ``%``."""
+    out = []
+    for tok in text.replace(",", " ").split():
+        if not tok.startswith("%"):
+            break
+        name = tok[1:].strip()
+        if name:
+            out.append(name)
+    return out
+
+
+def _op_line(line: str) -> dict | None:
+    """One ``merlin_iface`` op line, decomposed by shape, or ``None`` when the line carries no op.
+
+    Returns ``{result, mnemonic, operands, attrs_body, tail}`` where ``tail`` is everything after the
+    type colon -- enough for every form the grammar defines, without a form-specific pattern.
+    """
+    at = line.find(_DIALECT)
+    if at == -1:
+        return None
+    head = line[:at]
+    # `!merlin_iface.resident` is a TYPE, and a type never opens a statement.
+    if head.rstrip().endswith("!"):
+        return None
+    result = ""
+    if "=" in head:
+        lhs = head.split("=", 1)[0].strip()
+        if lhs.startswith("%"):
+            result = lhs[1:].strip()
+    rest = line[at + len(_DIALECT):]
+    mnemonic = ""
+    for i, ch in enumerate(rest):
+        if ch.isalnum() or ch == "_":
+            mnemonic += ch
+        else:
+            rest = rest[i:]
+            break
+    else:
+        rest = ""
+    operands = _split_operands(rest.split("{")[0].split(":")[0])
+    attrs_body, after = _braced(rest)
+    tail = rest[after:] if after != -1 else rest
+    _, _, tail = tail.partition(":")
+    return {"result": result, "mnemonic": mnemonic, "operands": operands,
+            "attrs_body": attrs_body, "tail": tail.strip()}
+
+
+def _module_attrs(text: str) -> str:
+    """The module-level attribute body, or ``""``. Found by keyword over the WHOLE text.
+
+    Scanned across the whole string rather than line by line, because MLIR may print the header
+    wrapped -- `module attributes {` then one attribute per line then `} {`. A per-line scan finds the
+    opening line, fails to find a close on it, and returns nothing, so a conformant module silently
+    loses its target and abi_version. Caught by an existing test rather than by the 499-capsule
+    equivalence check, since no shipped capsule happens to wrap its header: a narrower accept set that
+    no current input exercises is exactly the drift this rule exists to prevent.
+    """
+    at = text.find(_MODULE_KW)
+    while at != -1:
+        after = text[at + len(_MODULE_KW):]
+        kw = after.find(_ATTRIBUTES_KW)
+        brace = after.find("{")
+        # The keyword must come before the brace it introduces; otherwise this `module` is something
+        # else (a nested region, a word in a comment) and the next occurrence is tried.
+        if kw != -1 and (brace == -1 or kw < brace):
+            body, _ = _braced(after)
+            if body:
+                return body
+        at = text.find(_MODULE_KW, at + len(_MODULE_KW))
+    return ""
+
+
+def _last_type(tail: str) -> str:
+    """The result type a line declares: the text after the last ``->``, else the tail itself."""
+    _, arrow, after = tail.rpartition("->")
+    return (after if arrow else tail).strip()
 
 
 def _parse_attr_block(s: str) -> dict[str, Any]:
@@ -281,7 +383,11 @@ def _parse_value(v: str) -> Any:
         return v[1:-1]
     # typed scalar: "<num> : <type>"
     num = v.split(":")[0].strip()
-    if re.fullmatch(r"[-+]?\d+", num):
+    # An optionally-signed run of digits. `int()` alone is too permissive here: it accepts "1_000"
+    # and surrounding whitespace, which the pattern this replaces did not, and a silently different
+    # accept set in an ABI parser is the failure this module has already shipped once.
+    _digits = num[1:] if num[:1] in "+-" else num
+    if _digits.isdigit() and _digits.isascii():
         return int(num)
     try:
         return float(num)
@@ -393,8 +499,7 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
             f"{', '.join(repr(m) for m in sorted(defined_mnemonics()))}. Parsing would drop the "
             f"undefined op(s) and return a command list that is missing that work")
 
-    mod = _RE_MOD.search(text)
-    mod_attrs = _parse_attr_block(mod.group(1)) if mod else {}
+    mod_attrs = _parse_attr_block(_module_attrs(text))
     cb: dict[str, Any] = {
         "abi_version": mod_attrs.get("merlin_iface.abi_version", "0.1"),
         "target": mod_attrs.get("merlin_iface.target", ""),
@@ -402,55 +507,44 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
         "commands": [],
     }
 
-    for line in text.splitlines():
-        line = line.strip()
+    # ONE decomposition per line, then a dispatch on the mnemonic. Previously each op form had its own
+    # pattern and the line was tried against each in turn, which is what let an undefined op fall
+    # through every one of them and vanish. Here an unknown mnemonic cannot fall through: it either
+    # matched the shape and is dispatched, or it did not and the line carries no op at all.
+    for raw in text.splitlines():
+        line = raw.strip()
         if not line or line.startswith("//"):
             continue
-        m = _RE_TENSOR.search(line)
-        if m:
-            attrs = _parse_attr_block(m.group(2))
-            name = attrs.get("name", m.group(1))
-            shape, dtype = _shape_dtype(m.group(3))
+        op = _op_line(line)
+        if op is None or not op["mnemonic"]:
+            continue
+        mnem, attrs = op["mnemonic"], _parse_attr_block(op["attrs_body"])
+        srcs, result = op["operands"], op["result"]
+
+        if mnem == "tensor":
+            name = attrs.get("name", result)
+            shape, dtype = _shape_dtype(_last_type(op["tail"]))
             cb["tensors"][name] = {"shape": shape, "dtype": dtype,
                                    "role": attrs.get("role", "input")}
-            continue
-        m = _RE_PACK.search(line)
-        if m:
-            dst, src = m.group(1), m.group(2)
-            attrs = _parse_attr_block(m.group(3))
+        elif mnem == "resident_pack":
             cb["commands"].append({"opcode": "RES_PACK",
-                                   "operands": {"src": src, "dst": dst},
+                                   "operands": {"src": srcs[0], "dst": result},
                                    "attributes": {"layout": attrs.get("layout", "packed_rhs")}})
-            continue
-        m = _RE_MATMUL.search(line)
-        if m:
-            dst, lhs, rhs = m.group(1), m.group(2), m.group(3)
+        elif mnem == "matmul":
             cb["commands"].append({"opcode": "MATMUL_RESIDENT",
-                                   "operands": {"lhs": lhs, "rhs": rhs, "dst": dst}})
-            continue
-        m = _RE_NAMED_OP.search(line)
-        if m and m.group(2) in _NAMED_OP_OPERAND_KEYS:
-            dst_ssa, mnem = m.group(1), m.group(2)
-            srcs = [tok.strip().lstrip("%") for tok in m.group(3).split(",") if tok.strip()]
-            attrs = _parse_attr_block(m.group(4))
+                                   "operands": {"lhs": srcs[0], "rhs": srcs[1], "dst": result}})
+        elif mnem in _NAMED_OP_OPERAND_KEYS:
             keys = _NAMED_OP_OPERAND_KEYS[mnem]
             operands = {k: s for k, s in zip(keys, srcs)}
-            operands["dst"] = attrs.pop("name", dst_ssa)
+            operands["dst"] = attrs.pop("name", result)
             cb["commands"].append({"opcode": _NAMED_OP_TO_OPCODE[mnem],
                                    "operands": operands, "attributes": attrs})
-            continue
-        m = _RE_COMMIT.search(line)
-        if m:
-            dst_ssa, src = m.group(1), m.group(2)
-            attrs = _parse_attr_block(m.group(3))
-            dst = attrs.pop("name", dst_ssa)
+        elif mnem == "commit":
+            dst = attrs.pop("name", result)
             cb["commands"].append({"opcode": "COMMIT",
-                                   "operands": {"src": src, "dst": dst},
+                                   "operands": {"src": srcs[0], "dst": dst},
                                    "attributes": attrs})
-            continue
-        m = _RE_EVICT.search(line)
-        if m:
-            cb["commands"].append({"opcode": "EVICT", "operands": {"handle": m.group(1)}})
-            continue
+        elif mnem == "evict":
+            cb["commands"].append({"opcode": "EVICT", "operands": {"handle": srcs[0]}})
 
     return cb

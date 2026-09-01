@@ -343,7 +343,7 @@ Rows are ordered by hex value.
 | `vsqrt.bf16`             | `VR`     | `1010111` |                         | `1001101`        | `57/4D`    | Vector sqrt                       | `{m[vd], m[vd+1]} = bf16_sqrt({m[vs1], m[vs1+1]});` |
 | `vsquare.bf16`           | `VR`     | `1010111` |                         | `1001110`        | `57/4E`    | Vector Square                     | `{m[vd], m[vd+1]} = {m[vs1], m[vs1+1]} * {m[vs1], m[vs1+1]};` |
 | `vcube.bf16`             | `VR`     | `1010111` |                         | `1001111`        | `57/4F`    | Vector Cube                       | `{m[vd], m[vd+1]} = {m[vs1], m[vs1+1]} ** 3;` |
-| `vli.all`                | `VI`     | `1011111` | `000`                   |                  | `5F/0`     | Vector Load Immediate             | `m[vd][:] = imm;` |
+| `vli.all`                | `VI`     | `1011111` | `000`                   |                  | `5F/0`     | Vector Load Immediate             | `m[vd][:] = imm;` |  <!-- see the MEASURED hazard below: on hardware this clears EVERY m register, not only vd -->
 | `vli.row`                | `VI`     | `1011111` | `001`                   |                  | `5F/1`     | Vector Load Immediate             | `m[vd][0, :] = imm;` |
 | `vli.col`                | `VI`     | `1011111` | `010`                   |                  | `5F/2`     | Vector Load Immediate             | `m[vd][:, 0] = imm;` |
 | `vli.one`                | `VI`     | `1011111` | `011`                   |                  | `5F/3`     | Vector Load Immediate             | `m[vd][0, 0] = imm;` |
@@ -378,6 +378,46 @@ Rows are ordered by hex value.
 | `dma.config.ch<N>`       | `R`      | `1111111` | `000 ~ 111`             | `0000000`        | `7F/00`    | DMA Load                          | `dma.base = x[rs1]` |
 | `dma.wait.ch<N>`         | `R`      | `1111111` | `000 ~ 111`             | `0000001`        | `7F/01`    | DMA Wait                          | `wait_until_dma_channel_idle(channel=N);` |
 
+
+### 3.1 Measured hazard — `vli.all` and `vli.row` clear the WHOLE `m` register file
+
+The `m[vd]...` column above describes the architectural intent. **On the elaborated design two of these
+four are wider than that: `vli.all` and `vli.row` clear every `m` register, not only the one `vd` names.**
+Anything already staged in `m` is gone.
+
+Measured per instruction by injecting it into a passing kernel at a point where an operand is live
+(`merlin.targetgen.isa_side_effects`). Every row below was run on the elaborated Verilator RTL (L4) and
+reproduced identically on the arc cosim (L3):
+
+| instruction | declared destination | perturbs another live register? |
+|---|---|---|
+| `vli.all` | `vd` | **YES** — output collapses to a constant |
+| `vli.row` | `vd` | **YES** — output collapses to the same constant |
+| `vli.col` | `vd` | no — result byte-identical to the un-injected baseline |
+| `vli.one` | `vd` | no — result byte-identical to the un-injected baseline |
+
+`vli.col` and `vli.one` being clean is what makes this a specific hardware fact rather than "injecting
+anything breaks the kernel": the same probe, the same injection point, two different answers.
+
+This was MEASURED, not inferred, and in both directions on the program-driven Verilator RTL sim (L4) and
+reproduced identically on the arc cosim (L3):
+
+* a two-operand elementwise kernel that emitted the fill once per staged operand returned its **second
+  operand unchanged** — the second fill had wiped the first. Turning that second `vli.all` into a nop,
+  changing nothing else, made the same kernel produce the correct sum (max abs error 0.0078). The same
+  edit fixes a second two-operand kernel;
+* injecting a single `vli.all` into a *passing* kernel, after its operand was already loaded and before
+  the arithmetic consumed it, collapsed its output to a constant — the operand register had been
+  cleared despite `vd=63` naming a different register. Widening the settle after the injection from 2
+  to 256 cycles did not change this, so it is a write-set fact and not a pipeline timing hazard.
+
+**Consequence for a backend:** emit an `all`/`row` zero-fill ONCE, before any operand is loaded. Emitting
+it per-operand (a natural way to write a staging helper) destroys every operand staged so far, and the
+failure looks like arithmetic — the program decodes correctly, every instruction is of the right class,
+and only the numbers are wrong.
+
+Note the shipped reference implementation of this instruction writes only `self.vd`, so the functional
+model does NOT reproduce the hazard; the RTL tiers are the authority here.
 
 ## 4. Architectural Design Parameters
 

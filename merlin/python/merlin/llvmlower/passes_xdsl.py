@@ -11,7 +11,8 @@ These run before the upstream pipeline:
 """
 from __future__ import annotations
 
-import re
+import string
+from dataclasses import dataclass
 
 from ..frontends.linalg_mlir import make_context, parse_mlir_text  # noqa: F401
 
@@ -376,22 +377,130 @@ def preprocess_text(mlir_text: str) -> tuple[str, dict]:
 
 # --- textual variant -----------------------------------------------------------
 #
-# xDSL 0.65 re-prints rank-reducing tensor.extract_slice with truncated
-# static_sizes, so round-tripping the full smolVLA module through xDSL produces
-# invalid IR. The model artifacts keep each `quant_ext.dequantize_per_channel` on a
-# single line, so the same rewrite is done textually for whole-model lowering.
+# This path exists because a whole-model artifact needs repairs BEFORE anything can parse it,
+# and because xDSL 0.65 re-printed rank-reducing tensor.extract_slice with truncated
+# static_sizes, so a round-trip of the full module produced invalid IR. The model artifacts keep
+# each `quant_ext.dequantize_per_channel` on a single line, so the rewrite is done textually.
+#
+# The re-print bug is GONE on the pinned xDSL (0.68 round-trips `static_sizes = array<i64:
+# 1, 1, 1, 32>` intact, and parses a 2.5 MB gemma2 recapture in ~3.5 s), so this whole variant
+# could eventually be replaced by the structural :func:`preprocess_text` — but only once the two
+# model2MLIR repairs below (rank-reduced sizes, over-long slice_scatter strides) are ported to
+# xDSL rewrites and whole-model lowering is re-validated end to end. Until then it stays.
 
-_DEQUANT_RE = re.compile(
-    r"^(?P<ind>\s*)(?P<res>%\S+) = \"quant_ext\.dequantize_per_channel\""
-    r"\((?P<w>%\S+), (?P<s>%\S+), (?P<z>%\S+)\) <\{axis = (?P<axis>\d+) : i64[^}]*\}>"
-    r".* : \((?P<wty>[^,]+), (?P<sty>[^,]+), (?P<zty>[^)]+)\) -> (?P<outty>.+)$")
+# All three repairs below scan on FIXED LITERALS (`"quant_ext.dequantize_per_channel"(`,
+# `static_sizes = array<i64: `, `func.func @`, …) and index arithmetic. They have to be textual:
+# the input is INVALID IR at this point, so there is nothing to parse yet. Every one of them
+# leaves text it does not recognize byte-for-byte alone, so an unrecognized spelling reaches the
+# MLIR parser and fails there loudly instead of being half-rewritten here.
+
+_IDENT_CHARS = frozenset(string.ascii_letters + string.digits + "_")
+_DEQUANT_HEAD = ' = "quant_ext.dequantize_per_channel"('
+_AXIS_HEAD = ") <{axis = "
+_AXIS_TAIL = " : i64"
+_PROPS_CLOSE = "}>"
+_TYPES_SEP = " : ("
+_RESULT_SEP = ") -> "
 
 
-def _dequant_to_generic(m: "re.Match[str]") -> str:
-    ind, res = m["ind"], m["res"]
+def _skip_space(text: str, at: int) -> int:
+    while at < len(text) and text[at].isspace():
+        at += 1
+    return at
+
+
+def _split_operand_types(line: str, at: int) -> tuple[str, str, str, str] | None:
+    """Parse ``wty, sty, zty) -> outty`` starting at ``at``; ``outty`` runs to end of line.
+
+    The first two operand types are delimited by ``, `` and the third by ``)`` — exact for
+    the ranked tensor types this op carries, none of which contains a comma or a paren.
+    ``None`` when the tail is not that shape, so the caller can try the next candidate.
+    """
+    fields = []
+    for delimiter in (", ", ", "):
+        end = line.find(",", at)
+        if end <= at or not line.startswith(delimiter, end):
+            return None
+        fields.append(line[at:end])
+        at = end + len(delimiter)
+    end = line.find(")", at)
+    if end <= at or not line.startswith(_RESULT_SEP, end):
+        return None
+    fields.append(line[at:end])
+    outty = line[end + len(_RESULT_SEP):]
+    return (*fields, outty) if outty else None
+
+
+@dataclass
+class _Dequant:
+    """One ``quant_ext.dequantize_per_channel`` line, split into its fields.
+
+    The real line (gemma2 2b int8 recapture, ``out/artifacts/recaptures/*/model.mlir``)::
+
+        %1121 = "quant_ext.dequantize_per_channel"(%1115, %2, %1120) <{axis = 1 : i64,
+          input_dtype = "i8"}> {prov.op = "dequantize", …} :
+          (tensor<2304x2048xi8>, tensor<2048xf32>, tensor<2048xi32>) -> tensor<2304x2048xf32>
+
+    (wrapped here; it is ONE line in the artifact — which is exactly why the rewrite can be
+    done line by line without a parser).
+    """
+
+    indent: str
+    result: str
+    operands: list[str]          # weights, scales, zero points
+    axis: int
+    weight_type: str
+    scale_type: str
+    zero_type: str
+    result_type: str
+
+
+def _parse_dequant(line: str) -> "_Dequant | None":
+    """Split a dequantize line into :class:`_Dequant`, or ``None`` if it is not one."""
+    body = line.lstrip()
+    indent = line[: len(line) - len(body)]
+    head = body.find(_DEQUANT_HEAD)
+    if head < 1:
+        return None
+    result = body[:head]
+    if len(result) < 2 or not result.startswith("%") or any(c.isspace() for c in result):
+        return None
+    args_at = head + len(_DEQUANT_HEAD)
+    axis_at = body.find(_AXIS_HEAD, args_at)
+    if axis_at < 0:
+        return None
+    operands = body[args_at:axis_at].split(", ")
+    if len(operands) != 3 or not all(
+            o.startswith("%") and len(o) > 1 and not any(c.isspace() for c in o) for o in operands):
+        return None
+    digits_at = axis_at + len(_AXIS_HEAD)
+    digits_end = digits_at
+    while digits_end < len(body) and body[digits_end].isdigit():
+        digits_end += 1
+    if digits_end == digits_at or not body.startswith(_AXIS_TAIL, digits_end):
+        return None
+    props_end = body.find("}", digits_end + len(_AXIS_TAIL))
+    if props_end < 0 or not body.startswith(_PROPS_CLOSE, props_end):
+        return None
+    # The type signature is the LAST ` : (` on the line that parses as one — anything before it
+    # is the (discarded) attribute dictionary, which may itself contain a colon.
+    probe = len(body)
+    while True:
+        types_at = body.rfind(_TYPES_SEP, props_end, probe)
+        if types_at < 0:
+            return None
+        probe = types_at
+        parsed = _split_operand_types(body, types_at + len(_TYPES_SEP))
+        if parsed is not None:
+            return _Dequant(indent, result, operands, int(body[digits_at:digits_end]), *parsed)
+
+
+def _dequant_to_generic(op: "_Dequant") -> str:
+    ind, res = op.indent, op.result
     init = f"%dq_init_{res[1:]}"   # %123 -> %dq_init_123 (suffixing %123 is invalid)
-    wty, sty, zty, outty = (m[k].strip() for k in ("wty", "sty", "zty", "outty"))
-    axis = int(m["axis"])
+    wty, sty, zty, outty = (t.strip() for t in
+                            (op.weight_type, op.scale_type, op.zero_type, op.result_type))
+    axis = op.axis
     shape = outty[len("tensor<"):-1].split("x")
     elem = shape[-1]
     rank = len(shape) - 1
@@ -401,11 +510,12 @@ def _dequant_to_generic(m: "re.Match[str]") -> str:
     iters = ", ".join(['"parallel"'] * rank)
     welem = wty[len("tensor<"):-1].split("x")[-1]
     zelem = zty[len("tensor<"):-1].split("x")[-1]
+    w, s, z = op.operands
     return (
         f"{ind}{init} = tensor.empty() : {outty}\n"
         f"{ind}{res} = linalg.generic {{indexing_maps = [{ident}, {proj}, {proj}, "
         f"{ident}], iterator_types = [{iters}]}} "
-        f"ins({m['w']}, {m['s']}, {m['z']} : {wty}, {sty}, {zty}) "
+        f"ins({w}, {s}, {z} : {wty}, {sty}, {zty}) "
         f"outs({init} : {outty}) {{\n"
         f"{ind}^bb0(%w_el: {welem}, %s_el: {elem}, %z_el: {zelem}, %o_el: {elem}):\n"
         f"{ind}  %dq_wf = arith.sitofp %w_el : {welem} to {elem}\n"
@@ -416,56 +526,191 @@ def _dequant_to_generic(m: "re.Match[str]") -> str:
         f"{ind}}} -> {outty}")
 
 
-_FUNC_RE = re.compile(r"(func\.func @\w+\([^{]*?\))\s*(->\s*[^{]*?)?\s*\{")
-
-# model2MLIR emits rank-reduced tensor.extract_slice with ONLY the result dims in
-# static_sizes (e.g. sizes [32] for source tensor<1x32x32xi1>). Upstream MLIR
-# requires offsets/sizes/strides to match the SOURCE rank — left-pad sizes with 1s.
-_EXTRACT_SLICE_RE = re.compile(
-    r"\"tensor\.extract_slice\"\((?P<args>[^)]+)\) "
-    r"<\{(?P<props>[^}]*static_sizes = array<i64: (?P<sizes>[^>]+)>[^}]*)\}>"
-    r"(?P<attrs>[^:]*): \(tensor<(?P<src>[^>]+)>\)")
+_FUNC_HEAD = "func.func @"
 
 
-# Pre-fix model2MLIR artifacts that predate the slice_scatter step fix
-# (m2m/ir/decompositions.py read `step` from the `end` arg slot, so insert_slice got
-# strides[dim]=end instead of step). `step` is almost always 1; reset any stride that
-# overruns the destination back to 1. (New captures don't hit this.) Matches the full
-# attribute dict so trailing operandSegmentSizes after static_strides is fine.
-_INSERT_SLICE_RE = re.compile(
-    r"\"tensor\.insert_slice\"\((?P<args>[^)]+)\) "
-    r"<\{(?P<props>[^}]*static_sizes = array<i64: (?P<sizes>[^>]+)>"
-    r"(?P<mid>[^}]*?)static_strides = array<i64: (?P<strides>[^>]+)>"
-    r"(?P<post>[^}]*))\}>"
-    r"(?P<attrs>[^:]*): \(tensor<(?P<src>[^>]+)>, tensor<(?P<dst>[^>]+)>\)")
+def _attach_c_interface(text: str) -> tuple[str, int]:
+    """Attach ``attributes {llvm.emit_c_interface}`` to the FIRST ``func.func`` in ``text``.
+
+    Matches the signature by structure: ``func.func @name(`` … ``)`` (its first ``)``, which
+    is the argument list's, since a ranked tensor type carries no parenthesis), an optional
+    ``-> <results>``, then the body ``{``. Returns (text, number of funcs annotated).
+    """
+    at = 0
+    while True:
+        start = text.find(_FUNC_HEAD, at)
+        if start < 0:
+            return text, 0
+        at = start + 1
+        name_at = start + len(_FUNC_HEAD)
+        name_end = name_at
+        while name_end < len(text) and text[name_end] in _IDENT_CHARS:
+            name_end += 1
+        if name_end == name_at or not text.startswith("(", name_end):
+            continue
+        args_close = text.find(")", name_end)
+        brace = text.find("{", name_end)
+        if args_close < 0 or brace < 0 or brace < args_close:
+            continue                       # a `{` inside the arg list: not a signature we know
+        after_args = _skip_space(text, args_close + 1)
+        results = ""
+        if text.startswith("->", after_args):
+            body_at = text.find("{", after_args)
+            if body_at < 0:
+                continue
+            trimmed = body_at
+            while trimmed > after_args and text[trimmed - 1].isspace():
+                trimmed -= 1
+            results = text[after_args:trimmed]
+        else:
+            body_at = after_args
+            if not text.startswith("{", body_at):
+                continue
+        signature = text[start:args_close + 1]
+        return (f"{text[:start]}{signature} {results} attributes {{llvm.emit_c_interface}} {{"
+                f"{text[body_at + 1:]}"), 1
 
 
-def _fix_insert_slice(m: "re.Match[str]") -> str:
-    sizes = [int(s) for s in m["sizes"].split(",")]
-    strides = [int(s) for s in m["strides"].split(",")]
-    dst_dims = [int(d) for d in m["dst"].split("x")[:-1]]
-    fixed = [1 if sz * st > dst else st
-             for sz, st, dst in zip(sizes, strides, dst_dims)]
-    if fixed == strides:
-        return m.group(0)
-    props = m["props"].replace(
-        f"static_strides = array<i64: {m['strides']}>",
-        "static_strides = array<i64: " + ", ".join(str(s) for s in fixed) + ">", 1)
-    return (f"\"tensor.insert_slice\"({m['args']}) <{{{props}}}>"
-            f"{m['attrs']}: (tensor<{m['src']}>, tensor<{m['dst']}>)")
+_EXTRACT_HEAD = '"tensor.extract_slice"('
+_INSERT_HEAD = '"tensor.insert_slice"('
+_PROPS_OPEN = ") <{"
+_SIZES_FIELD = "static_sizes = array<i64: "
+_STRIDES_FIELD = "static_strides = array<i64: "
+_OPERAND_TYPES = ": (tensor<"
 
 
-def _fix_extract_slice(m: "re.Match[str]") -> str:
-    src_dims = m["src"].split("x")[:-1]
-    sizes = [s.strip() for s in m["sizes"].split(",")]
-    if len(sizes) >= len(src_dims):
-        return m.group(0)
-    padded = ["1"] * (len(src_dims) - len(sizes)) + sizes
-    props = m["props"].replace(
-        f"static_sizes = array<i64: {m['sizes']}>",
-        "static_sizes = array<i64: " + ", ".join(padded) + ">")
-    return (f"\"tensor.extract_slice\"({m['args']}) <{{{props}}}>"
-            f"{m['attrs']}: (tensor<{m['src']}>)")
+def _array_field(props: str, field: str, *, last: bool) -> tuple[int, int] | None:
+    """(value start, value end) of ``field = array<i64: …>`` inside a properties dict."""
+    at = props.rfind(field) if last else props.find(field)
+    if at < 0:
+        return None
+    value_at = at + len(field)
+    value_end = props.find(">", value_at)
+    return None if value_end <= value_at else (value_at, value_end)
+
+
+def _slice_op_span(line: str, head_at: int, head: str, n_types: int):
+    """Split a generic-form slice op into (args, props, attrs, types, end-of-op).
+
+    ``head_at`` indexes the op's ``"tensor.<x>_slice"(``. ``n_types`` is how many operand
+    types its signature carries (1 for extract_slice, 2 for insert_slice). ``None`` when the
+    text at ``head_at`` is not that op spelled the way model2MLIR spells it.
+    """
+    args_at = head_at + len(head)
+    args_end = line.find(")", args_at)
+    if args_end <= args_at or not line.startswith(_PROPS_OPEN, args_end):
+        return None
+    props_at = args_end + len(_PROPS_OPEN)
+    props_end = line.find("}", props_at)
+    if props_end < 0 or not line.startswith(_PROPS_CLOSE, props_end):
+        return None
+    attrs_at = props_end + len(_PROPS_CLOSE)
+    colon = line.find(":", attrs_at)
+    if colon < 0 or not line.startswith(_OPERAND_TYPES, colon):
+        return None
+    types: list[str] = []
+    at = colon + len(_OPERAND_TYPES) - len("tensor<")
+    for index in range(n_types):
+        if not line.startswith("tensor<", at):
+            return None
+        dims_at = at + len("tensor<")
+        dims_end = line.find(">", dims_at)
+        closer = ">)" if index == n_types - 1 else ">, "
+        if dims_end <= dims_at or not line.startswith(closer, dims_end):
+            return None
+        types.append(line[dims_at:dims_end])
+        at = dims_end + len(closer)
+    return (line[args_at:args_end], line[props_at:props_end],
+            line[attrs_at:colon], types, at)
+
+
+def _fix_extract_slices(line: str) -> str:
+    """Left-pad rank-reduced ``tensor.extract_slice`` static_sizes to the SOURCE rank.
+
+    model2MLIR emits the sizes with only the result dims (real op from
+    ``out/artifacts/recaptures/…/model.mlir``: ``static_sizes = array<i64: 32>`` against a
+    ``tensor<1x1x32x32xf32>`` source), while upstream MLIR requires offsets/sizes/strides all
+    at the source rank. Sizes already at (or above) the source rank are left alone.
+    """
+    out: list[str] = []
+    i = 0
+    while True:
+        at = line.find(_EXTRACT_HEAD, i)
+        if at < 0:
+            out.append(line[i:])
+            return "".join(out)
+        span = _slice_op_span(line, at, _EXTRACT_HEAD, 1)
+        if span is None:
+            out.append(line[i:at + 1])
+            i = at + 1
+            continue
+        args, props, attrs, (src,), end = span
+        field = _array_field(props, _SIZES_FIELD, last=True)
+        if field is None:
+            out.append(line[i:end])
+            i = end
+            continue
+        raw_sizes = props[field[0]:field[1]]
+        src_dims = src.split("x")[:-1]
+        sizes = [s.strip() for s in raw_sizes.split(",")]
+        if len(sizes) >= len(src_dims):
+            out.append(line[i:end])
+            i = end
+            continue
+        padded = ["1"] * (len(src_dims) - len(sizes)) + sizes
+        fixed = props.replace(f"{_SIZES_FIELD}{raw_sizes}>",
+                              _SIZES_FIELD + ", ".join(padded) + ">")
+        out.append(line[i:at])
+        out.append(f'{_EXTRACT_HEAD}{args}{_PROPS_OPEN}{fixed}{_PROPS_CLOSE}'
+                   f'{attrs}{_OPERAND_TYPES}{src}>)')
+        i = end
+
+
+def _fix_insert_slices(line: str) -> str:
+    """Reset ``tensor.insert_slice`` strides that overrun the destination back to 1.
+
+    Pre-fixes model2MLIR artifacts that predate the slice_scatter step fix (m2m's
+    ``ir/decompositions.py`` read ``step`` from the ``end`` argument slot, so insert_slice got
+    ``strides[dim] = end``). ``step`` is almost always 1; only a stride whose ``size * stride``
+    walks past the destination extent is reset. New captures do not hit this, but the
+    recaptures already on disk do, so the repair stays.
+    """
+    out: list[str] = []
+    i = 0
+    while True:
+        at = line.find(_INSERT_HEAD, i)
+        if at < 0:
+            out.append(line[i:])
+            return "".join(out)
+        span = _slice_op_span(line, at, _INSERT_HEAD, 2)
+        if span is None:
+            out.append(line[i:at + 1])
+            i = at + 1
+            continue
+        args, props, attrs, (src, dst), end = span
+        sizes_field = _array_field(props, _SIZES_FIELD, last=True)
+        strides_field = (None if sizes_field is None
+                         else _array_field(props[sizes_field[1]:], _STRIDES_FIELD, last=False))
+        if sizes_field is None or strides_field is None:
+            out.append(line[i:end])
+            i = end
+            continue
+        raw_strides = props[sizes_field[1] + strides_field[0]:sizes_field[1] + strides_field[1]]
+        sizes = [int(s) for s in props[sizes_field[0]:sizes_field[1]].split(",")]
+        strides = [int(s) for s in raw_strides.split(",")]
+        dst_dims = [int(d) for d in dst.split("x")[:-1]]
+        repaired = [1 if sz * st > extent else st
+                    for sz, st, extent in zip(sizes, strides, dst_dims)]
+        if repaired == strides:
+            out.append(line[i:end])
+            i = end
+            continue
+        fixed = props.replace(f"{_STRIDES_FIELD}{raw_strides}>",
+                              _STRIDES_FIELD + ", ".join(str(s) for s in repaired) + ">", 1)
+        out.append(line[i:at])
+        out.append(f'{_INSERT_HEAD}{args}{_PROPS_OPEN}{fixed}{_PROPS_CLOSE}'
+                   f'{attrs}{_OPERAND_TYPES}{src}>, tensor<{dst}>)')
+        i = end
 
 
 def preprocess_text_textual(mlir_text: str) -> tuple[str, dict]:
@@ -473,23 +718,11 @@ def preprocess_text_textual(mlir_text: str) -> tuple[str, dict]:
     out_lines = []
     n = 0
     for line in mlir_text.splitlines():
-        m = _DEQUANT_RE.match(line)
-        if m:
-            out_lines.append(_dequant_to_generic(m))
+        op = _parse_dequant(line)
+        if op is not None:
+            out_lines.append(_dequant_to_generic(op))
             n += 1
         else:
-            line = _EXTRACT_SLICE_RE.sub(_fix_extract_slice, line)
-            line = _INSERT_SLICE_RE.sub(_fix_insert_slice, line)
-            out_lines.append(line)
-    text = "\n".join(out_lines)
-
-    n_funcs = 0
-
-    def _attach(m: "re.Match[str]") -> str:
-        nonlocal n_funcs
-        n_funcs += 1
-        ret = m.group(2) or ""
-        return f"{m.group(1)} {ret} attributes {{llvm.emit_c_interface}} {{"
-
-    text = _FUNC_RE.sub(_attach, text, count=1)
+            out_lines.append(_fix_insert_slices(_fix_extract_slices(line)))
+    text, n_funcs = _attach_c_interface("\n".join(out_lines))
     return text, {"dequantize_lowered": n, "c_interface_funcs": n_funcs}

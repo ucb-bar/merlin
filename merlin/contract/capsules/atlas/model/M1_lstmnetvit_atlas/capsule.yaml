@@ -46,11 +46,18 @@ operation:
 numeric_policy:
   compare: tolerance_float
   dtype: f32
-  atol: 0.25
+  # atol is bounded by FALSIFIABILITY, not convention. At the corpus default 0.25 -- wider than this
+  # output's entire range [0.0056, 0.2024] -- an ALL-ZEROS answer satisfied the comparison at every
+  # element, so this whole-model capstone would have certified a device that stored nothing. Ceiling
+  # below is the largest atol under which the best possible constant still fails, derived from the
+  # golden itself (numeric_falsifiability.max_falsifiable_atol); this sits at half of it.
+  # falsifiability ceiling: 0.0983
+  atol: 0.0491
   rtol: 0.02
 expected:
   instruction_classes:
   - TensorBaseOffset
+  - TensorComputeBinary
   - MXUWeightPush
   - MXUMatMul
   - MXUAccumulatorPopE1

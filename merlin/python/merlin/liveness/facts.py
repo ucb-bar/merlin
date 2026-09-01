@@ -132,7 +132,8 @@ def _fill_acc_ctrl_mask(out: SiliconFacts) -> None:
     try:
         # `targetgen.rocc_decode` was folded into the `targetgen.rocc` package; the old top-level
         # alias is gone, so this import raised ModuleNotFoundError and the except below swallowed
-        # it -- the mask came back None and the accumulator check silently SKIPPED.
+        # it -- the mask came back None and the accumulator check silently SKIPPED. Measured: an
+        # arm-4 run was aborted in round 0 on exactly this class of stale import.
         from merlin.targetgen.rocc.decode import isa_constants
 
         isa = isa_constants(out.target)
