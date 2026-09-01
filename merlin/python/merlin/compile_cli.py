@@ -163,6 +163,90 @@ _IR_ELEMENT_SPELLING = {"int8": "i8", "fp32": "f32", "fp16": "f16", "bf16": "bf1
 _IR_ELEMENT_ORDER = ("int8", "fp16", "bf16", "fp32")
 
 
+
+def host_lane_pin_name(strategy: str) -> str:
+    """The provenance-registry artifact that pins the host lane for ``strategy``."""
+    return f"rvv_host_lane_{strategy}"
+
+
+def host_lane_identity(package_dir: "str | Path") -> dict:
+    """``{package, package_sha256, n_files, dtype_strategy, pinned_as}`` for a host-lane package.
+
+    Recorded on EVERY compile, under the same key and subkeys the grading path writes, so a graded run
+    and an ordinary one produce comparable records and a result that used an unpinned lane is
+    detectable afterwards instead of indistinguishable.
+    """
+    from pathlib import Path as _P
+    from merlin.benchharness import hash_tree
+    from merlin.common.provenance import load_artifacts
+
+    d = _P(package_dir)
+    out: dict = {"package": str(d), "package_sha256": None, "n_files": None,
+                 "dtype_strategy": None, "pinned_as": None}
+    try:
+        hashed = hash_tree(d)
+        out["package_sha256"] = hashed.get("sha256")
+        out["n_files"] = hashed.get("n_files")
+    except Exception:                              # noqa: BLE001 -- an unhashable package is not a digest
+        pass
+    try:
+        from .mining.registry import load_rvv_package
+        out["dtype_strategy"] = load_rvv_package(d).dtype_strategy
+    except Exception:                              # noqa: BLE001
+        pass
+    try:
+        for name, art in load_artifacts().items():
+            resolved = art.resolve()
+            if resolved is not None and _P(resolved).resolve() == d.resolve():
+                out["pinned_as"] = name
+                break
+    except Exception:                              # noqa: BLE001 -- an unreadable registry is not a pin
+        pass
+    return out
+
+
+def _verified_against_the_pinned_lane(package_dir: str, strategy: str) -> str:
+    """Refuse a certified champion that has drifted from the lane pinned for its precision.
+
+    ``select_champion`` picks whatever currently ranks highest. That is the right answer for tuning and
+    the wrong one for reproducing a graded result: no fp32 package declares ``publication.champion``,
+    so the fp32 choice falls out of ``_rank_key``'s newest-wins tie-break, and minting one more fp32
+    package silently redirects every unpinned compile. REFUSE rather than warn -- the failure mode is
+    that nothing is printed at all.
+
+    An undeclared pin is a warning, not a refusal: this registry is opt-in per lane, and requiring a pin
+    that nobody has written yet would break every dtype that has one package and no declaration.
+    """
+    from pathlib import Path as _P
+    from merlin.common.provenance import PinsError, load_artifacts, verify_artifact
+
+    name = host_lane_pin_name(strategy)
+    try:
+        declared = load_artifacts().get(name)
+    except PinsError:
+        declared = None
+    if declared is None:
+        print(f"[merlin-compile] host lane for dtype_strategy={strategy!r} is UNPINNED: no artifact "
+              f"{name!r} in the provenance registry, so this compile's host compiler is whatever "
+              f"currently ranks highest and is not reproducible from the registry.", flush=True)
+        return package_dir
+    pinned = declared.resolve()
+    if pinned is not None and _P(pinned).resolve() != _P(package_dir).resolve():
+        raise SystemExit(
+            f"[merlin-compile] the certified champion for dtype_strategy={strategy!r} has DRIFTED from "
+            f"the pinned host lane.\n  champion: {package_dir}\n  pinned as {name!r}: {pinned}\n"
+            f"One of the two is wrong: either promote the new package into the registry (updating its "
+            f"digest), or stop promoting it. Refusing to compile against a host lane the registry does "
+            f"not name, because a graded capsule and this compile would then use different compilers.")
+    check = verify_artifact(name)
+    if check.matches is False:
+        raise SystemExit(
+            f"[merlin-compile] the pinned host lane {name!r} has been EDITED: its tree digest is "
+            f"{(check.digest or '')[:16]} but the registry declares {(declared.digest or '')[:16]}. "
+            f"Re-record the digest deliberately, or restore the package; a silently-changed host "
+            f"compiler makes every result built with it unattributable.")
+    return package_dir
+
 def default_package(dtype: str, *, bundle: "Path | None" = None) -> str:
     """The package `merlin-compile` uses when `--package` is not given.
 
@@ -203,7 +287,7 @@ def default_package(dtype: str, *, bundle: "Path | None" = None) -> str:
             f"can ever satisfy it. Fix the map, or add {strategy!r} to mining.tuning_agent.")
     try:
         sel = select_champion("rvv", dtype_strategy=strategy)
-        return str(sel.package_dir)
+        return _verified_against_the_pinned_lane(str(sel.package_dir), strategy)
     except PublishError:
         # Fall back only WITHIN the datatype. The frozen hand baselines exist for fp32 and int8
         # only, so any other dtype has no same-datatype control to fall back to — and handing
@@ -266,10 +350,35 @@ def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
     return feats
 
 
+def _session_correctness_gate(trajectory: object, expected_steps: int) -> dict:
+    """Gate compiled output against the same-precision eager trajectory.
+
+    This is distinct from the paper's FP32 model-quality gate. The fixed thresholds catch codegen
+    faults while allowing ordinary floating-point reassociation in the lowered implementation.
+    """
+    value = dict(trajectory or {}) if isinstance(trajectory, dict) else {}
+    steps = int(value.get("steps") or 0)
+    cosine = value.get("min_cosine")
+    relative = value.get("max_relative_error")
+    top1 = int(value.get("top1_matches") or 0)
+    ok = (steps == int(expected_steps) and cosine is not None and float(cosine) >= 0.999
+          and relative is not None and float(relative) <= 0.01 and top1 == steps)
+    return {"gate_ok": ok, "scope": value.get("scope"), "steps": steps,
+            "min_cosine": cosine, "max_relative_error": relative,
+            "top1_matches": top1, "top1_agreement": value.get("top1_agreement"),
+            "reference": "eager_same_precision",
+            "thresholds": {"cosine_min": 0.999, "max_relative_error": 0.01,
+                           "top1_agreement": 1.0}}
+
+
 def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: str | None,
                 auto_capture: bool, timeout: int, harts: int = 1, iters: int = 1,
-                warmup: int = 0, kernel_backend: str | None = None,
-                mesh_target: str | None = None, mesh_package: str | None = None) -> dict:
+                warmup: int = 0, session_repeats: int | None = None,
+                kernel_backend: str | None = None,
+                fallback_policy: str = "allow",
+                mesh_target: str | None = None, mesh_package: str | None = None,
+                bundle_path: str | Path | None = None,
+                deadline_ns: int | None = None) -> dict:
     """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
 
     ``kernel_backend='mesh'`` + ``mesh_target`` runs the model's matmul LAYERS on that target's
@@ -279,26 +388,45 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     from .mining.registry import load_rvv_package
     from .runtime.backends import zephyr_model as zm
 
-    # Sustained mode runs warmup + iters passes inside ONE invocation, so the run deadline has to
-    # cover all of them. Without this, `--iters 5 --warmup 2` on a model that takes 148 s per pass
-    # needs 1034 s and dies on the 900 s default with a bare TimeoutExpired that names ssh rather
-    # than the real cause. Scale the deadline by the pass count the caller actually asked for
-    # (never shrink it — an explicit --timeout larger than the scaled value still wins).
-    passes = max(1, int(iters)) + max(0, int(warmup))
-    if passes > 1:
-        timeout = max(timeout, timeout * passes)
+    # ``timeout`` is the budget for the complete subprocess session.  The generated harness owns
+    # observations, warmups, and measurement repeats *inside that one invocation*.  Multiplying
+    # this value here double-counts the session dimensions (32 observations x 5 repeats used to
+    # turn a four-hour paper-cell budget into several weeks) and defeats fail-closed scheduling.
+    timeout = int(timeout)
+    if timeout < 1:
+        raise ValueError("timeout must be a positive whole-session budget in seconds")
 
-    bundle = _ensure_bundle(workload, dtype, auto_capture=auto_capture)
+    # A frozen paper study passes the exact content-addressed capture it validated. Resolving the
+    # workload name again here could compile a different mutable registry entry with the same name.
+    bundle = (Path(bundle_path).resolve() if bundle_path is not None
+              else _ensure_bundle(workload, dtype, auto_capture=auto_capture))
+    multi_program = False
+    session_contract_version = 0
+    session_path = bundle / "session_contract.yaml"
+    if session_path.is_file():
+        from .common.yaml import load_yaml
+        session_value = load_yaml(session_path)
+        session_contract_version = (int(session_value.get("version", 0))
+                                    if isinstance(session_value, dict) else 0)
+        multi_program = session_contract_version == 2
+    if not (bundle / "model.mlir").is_file() and not multi_program:
+        raise FileNotFoundError(
+            f"explicit capture bundle has neither model.mlir nor a version-2 session: {bundle}")
     pkg_dir = package or default_package(dtype, bundle=bundle)
     pkg = load_rvv_package(pkg_dir)
     work = Path(tempfile.mkdtemp(prefix=f"merlin_compile_{workload}_{dtype}_"))
     out: dict = {"tool": "merlin-compile", "target": "rvv", "workload": workload, "dtype": dtype,
                  "bundle": str(bundle), "package": pkg_dir, "run": run,
-                 "harts": harts, "iters": iters}
+                 "harts": harts, "iters": iters, "session_repeats": session_repeats,
+                 # WHICH HOST COMPILER THIS RESULT WAS BUILT WITH, under the same key and subkeys the
+                 # grading path records, so a graded capsule and an ordinary compile of the same model
+                 # produce comparable records. Without it a result built against an unpinned lane was
+                 # indistinguishable afterwards from one built against the pinned lane.
+                 "host_lane": host_lane_identity(pkg_dir)}
     from .runtime.dispatch_runtime import mesh_datapath
 
     refs: dict = {}
-    if verify:
+    if verify and not multi_program:
         refs["fp32"] = np.load(bundle / "golden.npy")
         w8 = bundle / "golden_w8a8.npy"
         # WHO quantizes the activations decides which golden is the right yardstick, and it is not
@@ -440,6 +568,10 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         out["cycles"] = res.get("metrics", {}).get("cycles")
         if res.get("sustained"):
             out["sustained"] = res["sustained"]
+            out["iter_cycles"] = list(res.get("iter_cycles", ()))
+        if res.get("sustained_wall_ns"):
+            out["sustained_wall_ns"] = res["sustained_wall_ns"]
+            out["iter_wall_ns"] = list(res.get("iter_wall_ns", ()))
         if refs:
             out["verify"] = {"gate_ok": bool(res.get("ok")), **{k: v for k, v in res.items()
                                                                 if k.endswith(("_cos", "_rel", "_max_rel"))}}
@@ -457,17 +589,71 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     if run == "none":
         return out
     if run == "k1":
-        if not k1.available():
+        board_available = (k1.available(deadline_ns=deadline_ns)
+                           if deadline_ns is not None else k1.available())
+        if not board_available:
             out["status"] = "not_run"; out["reason"] = "K1 board unreachable (see MERLIN_K1_HOST/port 2222)"
             return out
-        res = k1.run_on_k1(bundle, work, pkg, timeout=timeout, iters=iters, warmup=warmup)
-        out["binary"] = str(Path(work) / "v" / "merlin_k1")
-        out["status"] = "ran"; out["cycles"] = res.get("cycles"); out["vlen"] = res.get("vlen")
+        res = k1.run_on_k1(bundle, work, pkg, timeout=timeout, iters=iters, warmup=warmup,
+                           deadline_ns=deadline_ns,
+                           session_repeats=session_repeats,
+                           kernel_backend=kernel_backend,
+                           parallel_harts=(harts if harts > 1 else None),
+                           fallback_policy=fallback_policy,
+                           require_csr_vlen=(fallback_policy == "forbid"))
+        out["binary"] = res.get("local_binary")
+        out["status"] = "ran"
+        out["cycles"] = res.get("metrics", {}).get("cycles")
+        out["wall_ns"] = res.get("metrics", {}).get("wall_ns")
+        out["vlen"] = res.get("vlen")
+        out["vlen_source"] = res.get("vlen_source")
+        out["peak_rss_bytes"] = ((res.get("metrics", {}).get("peak_rss_kb") or 0) * 1024 or None)
+        out["memory_policy"] = res.get("memory_policy")
+        out["board_conditions"] = res.get("board_conditions")
+        out["trajectory_quality"] = res.get("trajectory_quality")
+        out["trajectory_correctness"] = res.get("trajectory_correctness")
+        out["stage_wall_ns"] = res.get("stage_wall_ns")
+        routed_key = {"xnnpack": "n_xnn_routed", "openblas": "n_openblas_routed",
+                      "ours": "n_ours_routed"}.get(kernel_backend or "")
+        eligible_key = {"xnnpack": "n_xnn_eligible",
+                        "openblas": "n_openblas_eligible"}.get(kernel_backend or "")
+        candidates_key = {"xnnpack": "n_xnn_candidates",
+                          "openblas": "n_openblas_candidates"}.get(kernel_backend or "")
+        out["execution"] = {
+            "mode": res.get("execution_mode"),
+            "requested_mode": res.get("requested_execution_mode"),
+            "fallback_used": res.get("fallback_used"),
+            "core_count": res.get("core_count"),
+            "requested_core_count": res.get("requested_core_count"),
+            "affinity_source": res.get("affinity_source"),
+            # These describe what the generated harness actually executed, not merely what the
+            # paper spec requested.  A capture session advances its stream/carried state within a
+            # complete semantic session; a non-session sustained benchmark repeats one input.
+            "semantic_session": session_contract_version == 2,
+            "same_input_repetition": (
+                session_contract_version != 2
+                and (session_repeats is not None or int(iters) > 1 or int(warmup) > 0)),
+            "kernel_backend": kernel_backend,
+            "n_routed": res.get(routed_key) if routed_key else None,
+            "n_eligible": res.get(eligible_key) if eligible_key else None,
+            "n_candidates": res.get(candidates_key) if candidates_key else None,
+        }
         if res.get("sustained"):
             out["sustained"] = res["sustained"]
+            out["iter_cycles"] = list(res.get("iter_cycles", ()))
+        if res.get("sustained_wall_ns"):
+            out["sustained_wall_ns"] = res["sustained_wall_ns"]
+            out["iter_wall_ns"] = list(res.get("iter_wall_ns", ()))
         if verify:
-            g = zm._gate(res["prefix"], refs)
-            out["verify"] = {"gate_ok": bool(g.get("ok")), **g}
+            if res.get("trajectory_correctness") is not None:
+                correctness = dict(res["trajectory_correctness"])
+                g = _session_correctness_gate(correctness, int(iters))
+            elif multi_program:
+                g = _session_correctness_gate(None, 1)
+            else:
+                g0 = zm._gate(res["prefix"], refs)
+                g = {"gate_ok": bool(g0.get("ok")), **g0}
+            out["verify"] = g
             out["status"] = "verified" if out["verify"]["gate_ok"] else "run_mismatch"
         return out
     out["status"] = "not_run"

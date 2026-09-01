@@ -490,8 +490,99 @@ pins:
 # a GAP rather than a pass: an artifact that verifies against nothing is self-certifying, which is exactly
 # what this registry exists to prevent. Fill it in when the build lands.
 #
+
+  gsim_compiler:
+    description: >-
+      The FIRRTL-to-C++ simulator compiler that emits the RTL-derived GSIM models. It is pinned because
+      it is part of the derivation: the same RTL through a different compiler is a different simulator,
+      and the emitted model carries no revision of its own. Measured on gemmini against the identical
+      ELF, GSIM answers in 3.31 s where Verilator takes 86.83 s (26.25x) with both reporting pass, so
+      this is the difference between a cert tier that runs per capsule and one affordable once per run.
+      The upstream commit alone does NOT describe the bytes that were read -- nine files carry 225 lines
+      of uncommitted local work WITHOUT WHICH THIS DESIGN DOES NOT COMPILE AT ALL, so each is declared
+      under local_edits and the diff itself is tracked at merlin/contract/external/gsim/. The load-bearing
+      hunks: parser/syntax.y accepts SMem/CMem/Flip as identifiers and `parameter PERIOD = 2.0`;
+      src/AST2Graph.cpp severs input->ext scheduling edges for clocked extmodules, which is what breaks
+      the false zero-delay loops GSIM manufactures through AXI/TL ready-valid paths.
+    repo_canonical: https://github.com/OpenXiangShan/gsim.git
+    commit: 50b371c60910ebe7aaabb248f8c2b8a56c3a96e6
+    branch: master
+    root_env: MERLIN_EXT_GSIM
+    requires_paths:
+      - src/AST2Graph.cpp
+      - src/splitArray.cpp
+      - src/clockOptimize.cpp
+      - parser/syntax.y
+      - build/gsim/gsim
+    local_edits:
+      include/Node.h: 04de20f71880560a2f2566607352794969b89063b05058973d422f867765f549
+      parser/syntax.y: 73aca9db9a0fe8236b3a9a8df2a6f922d55628de4d705b1072dd803153254806
+      src/AST2Graph.cpp: 98661dea5b480602c20937d9ec4eda11db82a24f2d1ca75d7f3bcaa8035263a6
+      src/Node.cpp: 49fc4e55fe7ec23145f9b621d10491932b9fe439e0fb9271b43bd8b29654d6d6
+      src/clockOptimize.cpp: d1f57f4977ed54191283c559b880c9eab8272b4310d5fb743a221c84980ca4ff
+      src/cppEmitter.cpp: 3df277f416adf6ffa5d92e8516723ebf63119d071eb9b153f5d315f46d6c046a
+      src/graphPartition.cpp: 74c5fdec53753ff0ef0ac1193139d48d5e604287c5ded3d99bd49adac852eafb
+      src/splitArray.cpp: dfccdbb9a91ba15800c8e015123aad5fb1c22508ba8ed8f4e8279e8f0711afd0
+      src/splitNodes.cpp: 4026fb78d304b104f9d1a4391ba54918b1dea0e7549e49bfd2c1f828b7dbff9d
+    notes: >-
+      The patch set is reproduced at merlin/contract/external/gsim/gsim-merlin-patches.diff so it does not
+      live only in one developer's dirty working tree, which is how it was found. Build with clang >= 19
+      via merlin/contract/external/gsim/cxxwrap.sh (system clang is 18).
+
+
 # Consumed by `merlin.common.provenance.load_artifacts` / `verify_artifact`.
 artifacts:
+
+  gemmini_gsim_model:
+    description: >-
+      The GSIM-emitted C++ model of the gemmini SoC, rooted at ChipTop. This entry is the thing the
+      smoke report said was missing -- it recorded claim_scope "smoke_only" precisely because the emitted
+      model was "not pinned to the certifying RTL revision". The elaboration is now named: the FIRRTL
+      this model was compiled from digests to 890d4677..., produced from the gemmini generator at the
+      `gemmini_rtl` pin (8c3f9923) inside the chipyard checkout, and compiled by the `gsim_compiler` pin
+      (50b371c plus its declared local edits). Rooted at ChipTop rather than TestHarness because the
+      TestHarness elaboration cannot be compiled at all: its harness clocks come from a
+      ClockSourceAtFreqMHz blackbox whose Clock-typed OUTPUT gsim mistakes for the module's clock input,
+      which orphans the whole clock net. Pruning to ChipTop removes it along with SimDRAM/SimTSI/SimUART/
+      SimJTAG, leaving exactly four blackboxes (plusarg_reader, the two IOCells, EICG_wrapper), all
+      pass-throughs or tie-offs. Measured against the identical ELF: GSIM 3.31 s vs Verilator 86.83 s,
+      both pass.
+    path: /scratch/agustin/projects/gsim-work/gemmini-soc/ChipTop.fir
+    digest: 890d4677c8b09134b323f2ced9da65f6c9779cfd7effa749159e8688a83af2aa
+    built_from:
+      - gemmini_rtl
+      - gsim_compiler
+    config: GemminiRocketConfig
+    notes: >-
+      The digest is of the pruned ChipTop FIRRTL, not of the emitted C++: the FIRRTL is what identifies
+      the hardware, while the .cpp is a compilation of it and moves whenever the compiler does (which
+      `gsim_compiler` pins separately). A cert produced by this model must record BOTH pins, since either
+      moving changes the simulator without changing the other.
+
+  rvv_host_lane_fp32:
+    description: >-
+      The frozen fp32 scalar/vector HOST compiler five targets' capsule-bench lanes are graded against.
+      Registered here because outside grading nothing pinned it: compile_cli.default_package resolves
+      the currently certified champion, and no fp32 package carries publication.champion, so the choice
+      falls out of publish._rank_key's newest-wins tie-break over 24 candidates. Minting one more fp32
+      package would silently redirect every unpinned compile and nothing would print a word. A tree
+      rather than a file: what identifies a compiler package is all of its bytes (manifest + schedule +
+      knobs), hashed with the same hasher the descriptor's host_lane pin uses.
+    path: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
+    kind: tree
+    repo_relative: true
+    digest: "cc8a6bd4aad01c878d5dfdf4c9ce4c69398f4618f5a3f8cf78f55df93a60fea9"
+
+  rvv_host_lane_int8_w8a8:
+    description: >-
+      The frozen int8 (W8A8) host compiler gemmini's capsule-bench lane is graded against. Minted in
+      this tree by merlin.rvvgen.promote_champion at 20260726T121824Z and certified on k1_board by run
+      k1_int8_wholemodel_ab_tiny_llama; it was never published upstream, which is why its descriptor
+      declares provenance in_tree_minted and names no branch. The tree digest IS its identity.
+    path: out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8
+    kind: tree
+    repo_relative: true
+    digest: "32d265324cba85abc6760a151d56b03bdc3e95c79e8ebf0bc392207c0a041d8b"
 
   firesim_opu_v256d128:
     description: >-

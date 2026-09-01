@@ -290,20 +290,34 @@ class Artifact:
     """
 
     name: str
-    path: str                              # absolute, or relative to root_env
+    path: str                              # absolute, relative to root_env, or repo-relative
     description: str = ""
-    digest: str = ""                       # sha256 of the file; empty = not yet recorded
+    digest: str = ""                       # sha256 of the file/tree; empty = not yet recorded
     root_env: str = ""
     built_from: tuple[str, ...] = ()       # pin names this was elaborated from
     config: str = ""                       # the elaborated configuration, when there is one
     notes: str = ""
+    #: ``file`` (one built file) or ``tree`` (a built DIRECTORY whose identity is all of its bytes).
+    #: A tree is hashed with the SAME hasher the host-lane pin uses, so a descriptor's
+    #: ``package_sha256`` and this registry's ``digest`` are literally the same number -- two hashers
+    #: for one question is the drift this registry exists to prevent.
+    kind: str = "file"
+    #: Resolve ``path`` against the repository root. Without this an artifact carrying no ``root_env``
+    #: resolves relative to the CURRENT DIRECTORY, so the same declaration verifies from the repo root
+    #: and reports "no file" from anywhere else -- a pin that passes in CI and fails on a laptop.
+    repo_relative: bool = False
+
+    KINDS = ("file", "tree")
 
     def resolve(self) -> Path | None:
         from .paths import env as _env
-        if not self.root_env:
-            return Path(self.path)
-        root = _env(self.root_env)
-        return None if not root else Path(root) / self.path
+        if self.root_env:
+            root = _env(self.root_env)
+            return None if not root else Path(root) / self.path
+        if self.repo_relative:
+            from .paths import repo_root
+            return repo_root() / self.path
+        return Path(self.path)
 
 
 @dataclass(frozen=True)
@@ -347,9 +361,14 @@ def load_artifacts(path: "str | Path | None" = None) -> dict[str, Artifact]:
         if digest and not isinstance(digest, str):
             raise PinsError(f"{p}: artifact {name!r} digest must be a quoted string, got "
                             f"{type(digest).__name__}")
+        kind = str(body.get("kind") or "file")
+        if kind not in Artifact.KINDS:
+            raise PinsError(f"{p}: artifact {name!r} kind must be one of {list(Artifact.KINDS)}, "
+                            f"got {kind!r}")
         out[str(name)] = Artifact(
             name=str(name), path=str(body["path"]), description=str(body.get("description") or ""),
             digest=str(digest), root_env=str(body.get("root_env") or ""),
+            kind=kind, repo_relative=bool(body.get("repo_relative", False)),
             built_from=tuple(str(b) for b in (body.get("built_from") or ())),
             config=str(body.get("config") or ""), notes=str(body.get("notes") or ""))
     return out
@@ -371,10 +390,21 @@ def verify_artifact(name: str, *, path: "str | Path | None" = None) -> ArtifactC
     if target is None:
         return ArtifactCheck(artifact=name, path=UNKNOWN, gaps=(
             f"${a.root_env} is unset, so {name!r} cannot be located",))
-    if not target.is_file():
-        return ArtifactCheck(artifact=name, path=str(target),
-                             gaps=(f"no file at {target}",))
-    got = file_digest(target)
+    if a.kind == "tree":
+        if not target.is_dir():
+            return ArtifactCheck(artifact=name, path=str(target),
+                                 gaps=(f"no directory at {target}",))
+        from merlin.benchharness import hash_tree
+        hashed = hash_tree(target)
+        got = str(hashed.get("sha256") or "")
+        if not hashed.get("present") or not got:
+            return ArtifactCheck(artifact=name, path=str(target),
+                                 gaps=(f"{target} has no hashable content",))
+    else:
+        if not target.is_file():
+            return ArtifactCheck(artifact=name, path=str(target),
+                                 gaps=(f"no file at {target}",))
+        got = file_digest(target)
     if not a.digest:
         gaps.append("no digest declared, so the file present cannot be confirmed to be the one meant")
         return ArtifactCheck(artifact=name, path=str(target), present=True, digest=got,
