@@ -242,12 +242,36 @@ def required_regimes(captures: dict, target: str) -> dict:
             "captures_unreadable": unreadable}
 
 
+#: The axis could not be derived at all -- distinct from "derived, and nothing is required".
+UNDETERMINABLE_AXIS = "undeterminable"
+
+
 def uncovered_regimes(required: dict, corpus: dict) -> dict:
     """Regimes real models present that no capsule in the corpus reaches."""
     want = [r for r in (required or {}).get("by_regime") or {} if r != UNKNOWN]
     have = {r for r in (corpus or {}).get("by_regime") or {} if r != UNKNOWN}
     missing = [r for r in ORDER if r in set(want) - have]
+    # AN AXIS THAT REQUIRES NOTHING BECAUSE WE COULD NOT DERIVE IT IS NOT A SATISFIED AXIS.
+    # `required_regimes` already returns the honest `why` when it cannot resolve the operand store --
+    # "that is 'we do not know', never 'nothing is required'" -- but that string was dropped here, so a
+    # target with no derivable capacity reported `0 / 0 required regime(s)`, which reads exactly like a
+    # closed axis. Measured 2026-09-01: mx_gemmini and radiance both printed 0/0 while their capacity
+    # was absent, and a capsule authored against that axis would have proved nothing.
+    why = (required or {}).get("why")
+    if not want and why:
+        return {
+            "status": UNDETERMINABLE_AXIS,
+            "n_required": None, "n_covered": None, "uncovered": [],
+            "corpus_regimes": sorted(have),
+            "capacity_rows": corpus.get("capacity_rows"),
+            "largest_working_set": corpus.get("largest_working_set"),
+            "why": why,
+            "note": "the memory-regime axis could not be derived, so it requires nothing YET -- this is "
+                    "UNDETERMINABLE, not covered. Deriving the operand store is a prerequisite for "
+                    "authoring any capsule against this axis.",
+        }
     return {
+        "status": "ok",
         "n_required": len(want),
         "n_covered": len(set(want) & have),
         "uncovered": missing,

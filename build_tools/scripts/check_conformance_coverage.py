@@ -234,6 +234,11 @@ def main(argv=None) -> int:
                 if lw.get("name"):
                     print(f"       largest capsule working set: {lw['name']} at "
                           f"{100.0 * float(lw.get('fraction_of_capacity') or 0):.2f}% of capacity")
+            elif mem.get("status") == "undeterminable":
+                # NOT `0 / 0`. The axis could not be derived, which is a prerequisite failure, not a
+                # closed axis. Print the reason the deriver already produced.
+                print(f"   memory regime : UNDETERMINABLE — {mem.get('why', '')}")
+                print(f"       {mem.get('note', '')}")
             elif mem:
                 print(f"   memory regime : {mem.get('status')} — {mem.get('detail', '')}")
             if r["corpus_cells_not_required"]:
@@ -254,8 +259,24 @@ def main(argv=None) -> int:
     bad += [_debt(r["target"], k, "memory") for r in reports if r["status"] == "ok"
             for k in ((r.get("memory_mapping") or {}).get("uncovered") or [])
             if _debt(r["target"], k, "memory") not in ratchet]
-    if bad and a.fail_on_uncovered:
-        print(f"\nFAIL: {len(bad)} required cell(s) uncovered and not ratcheted", file=sys.stderr)
+    # A VACUOUS AXIS IS A FAILURE, NOT A PASS. An axis that requires nothing because we could not
+    # derive it must not let a target through `--fail-on-uncovered`: nothing is uncovered only because
+    # nothing is required, and a capsule authored against it would prove nothing. Ratchetable per target
+    # + axis like any other debt, so a known-missing fact can be carried deliberately.
+    vacuous = [_debt(r["target"], "axis_undeterminable", "memory") for r in reports
+               if (r.get("memory_mapping") or {}).get("status") == "undeterminable"
+               and _debt(r["target"], "axis_undeterminable", "memory") not in ratchet]
+    for r in reports:
+        mm = r.get("memory_mapping") or {}
+        if mm.get("status") == "undeterminable":
+            print(f"\n{r['target']}: memory-regime axis is UNDETERMINABLE, so it requires nothing and "
+                  f"cannot be satisfied — {mm.get('why', '')}", file=sys.stderr)
+    if (bad or vacuous) and a.fail_on_uncovered:
+        if bad:
+            print(f"\nFAIL: {len(bad)} required cell(s) uncovered and not ratcheted", file=sys.stderr)
+        if vacuous:
+            print(f"FAIL: {len(vacuous)} axis/axes undeterminable and not ratcheted "
+                  f"(derive the missing fact; do not author against a vacuous axis)", file=sys.stderr)
         return 1
     return 0
 
