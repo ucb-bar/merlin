@@ -361,6 +361,43 @@ _RVV_ROUTES: list[_Route] = [
         expected_effect="the emitted vector ops use the intended SEW (element datapath), the "
                         "element-width half of the dtype datapath decision"),
     _Route(
+        # THE NEXT RUNG on the same axis, so a detected scalar-math loss no longer exhausts the ladder
+        # in silence. The PASS below rewrites math.exp/erf/tanh -- the GELU/softmax family. It does NOT
+        # cover the two families that dominate a transformer's non-contraction tail: the ALGEBRAIC
+        # rsqrt of RMSNorm and the TRIGONOMETRIC sin/cos of RoPE. Before this rung existed, a model
+        # paying for those routed to a pass that cannot help, measured no gain, and the escalation
+        # ladder ended -- with no work-item recording that the lever was missing rather than useless.
+        #
+        # MEASURED on small_llama int8 (model symbols only, static): 16.63% of the binary is scalar
+        # FLOAT on an INT8 model, and 36 model symbols are entirely scalar, including __ieee754_sqrt,
+        # __kernel_sinf, __kernel_cosf, __kernel_rem_pio2f and __extendbfsf2. cca._MATH_* now classifies
+        # those structurally, so the divergence is finally OBSERVABLE; this is where it escalates to.
+        axis="compute.activation_vectorization",
+        # The SAME predicate as the cheaper rung, deliberately. Which rung applies is decided by
+        # MEASUREMENT, not by a predicate hand-coded here: `route()` returns the cheapest matching
+        # class (the PASS), and `route_escalated` only reaches this one after the PASS failed to
+        # achieve the intended facet -- which is exactly what happens on a model whose math ops the
+        # polynomial emitter does not cover. Encoding "is it RoPE or GELU?" in the predicate instead
+        # would put the answer in the router, where nothing can check it, rather than in the emitted
+        # code, where the facet check already does.
+        when=lambda d: d.expert == "vectorized_polynomial" and d.ours in ("scalar_libm_call", None),
+        action_class="CODEGEN",
+        target_seam="pass:llvmlower/act_poly.py (extend the polynomial emitter's op coverage)",
+        change="add vector lowerings for the math families the minimax-polynomial pass does not "
+               "cover: (a) ALGEBRAIC rsqrt/sqrt -- a Newton-Raphson iteration on the initial estimate, "
+               "which is the RMSNorm normaliser; (b) TRIGONOMETRIC sin/cos with range reduction -- the "
+               "RoPE rotation, which currently pays glibc's __kernel_rem_pio2f argument reduction as a "
+               "scalar call of its own; (c) the soft-float conversion helpers (__extendbfsf2 and "
+               "friends), which a widened vector datapath removes outright rather than vectorises. "
+               "NEEDS NEW CODE: the existing pass emits exp/erf/tanh polynomials only, so this is an "
+               "op-coverage extension of a proven emitter, not a new mechanism -- which is exactly the "
+               "shape of task a constrained, oracle-graded capsule can hold.",
+        forkable_now=False,
+        expected_effect="the RMSNorm and RoPE generics lower to vfmacc chains instead of per-element "
+                        "scalar math calls, removing the scalar-float share from an int8 model's "
+                        "instruction mix; sized by that mix, not asserted",
+        intended_facet={"compute.activation_vectorization": "vectorized_polynomial"}),
+    _Route(
         axis="compute.activation_vectorization",
         # The mined divergence: the expert activation (GELU/sigmoid/SiLU/tanh) evaluates the
         # transcendental as a VECTORIZED polynomial (XNNPACK f32-vgelu rational-12-10 / f32-vsigmoid

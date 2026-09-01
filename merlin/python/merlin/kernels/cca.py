@@ -422,21 +422,115 @@ def _infer_register_block(stream, sew, lmul) -> tuple | None:
 # A scalar activation calls out to a transcendental libm symbol; a vectorized one evaluates an inline
 # polynomial. _LIBM_* are the callee symbols (read from resolved call-target operands, not a mnemonic
 # guess); _ACTIVATION_OPS give the region context so a matmul is never misclassified as an activation.
-_LIBM_TRANSCENDENTAL = ("exp", "erf", "tanh", "sinh", "cosh", "log", "pow")
-_ACTIVATION_OPS = ("gelu", "silu", "sigmoid", "tanh", "erf", "exp", "softmax")
+#: Scalar math routines whose presence in a CALL means per-element scalar math where a vector
+#: polynomial belongs. Split by KIND because the fix differs: a transcendental wants a range-reduced
+#: minimax polynomial, an algebraic one wants a Newton iteration on the native reciprocal/sqrt
+#: estimate, and a soft-float helper wants the conversion vectorized or the datapath widened.
+#:
+#: The list previously held only ("exp","erf","tanh","sinh","cosh","log","pow"), which is the GELU/
+#: softmax family — so it was blind to the two transcendental families that actually dominate a
+#: transformer's non-contraction tail. MEASURED on small_llama int8, model symbols only: 16.63% of the
+#: binary is scalar FLOAT on an INT8 model, and 36 model symbols are entirely scalar, among them
+#: ``__ieee754_sqrt`` (RMSNorm's rsqrt), ``__kernel_sinf`` / ``__kernel_cosf`` /
+#: ``__kernel_rem_pio2f`` (RoPE) and ``__extendbfsf2`` (a soft-float bf16 conversion). None of those
+#: matched, so ``_infer_activation_vectorization`` returned None, no divergence was raised,
+#: ``action_catalog`` was never consulted, and the beam never proposed anything. The lever was
+#: forkable the whole time; the OBSERVATION never happened.
+_MATH_TRANSCENDENTAL = frozenset({
+    "exp", "exp2", "exp10", "expm1", "erf", "erfc", "tanh", "sinh", "cosh", "atanh", "asinh",
+    "acosh", "log", "log2", "log10", "log1p", "pow",
+    # trigonometric -- RoPE. `rem_pio2` is glibc's argument reduction for sin/cos and appears as its
+    # own symbol, so a model can pay for it without any sin/cos call being visible at this call site.
+    "sin", "cos", "tan", "sincos", "asin", "acos", "atan", "atan2", "rem_pio2",
+})
+_MATH_ALGEBRAIC = frozenset({"sqrt", "rsqrt", "cbrt", "hypot"})
+#: compiler soft-float helpers (libgcc/compiler-rt). Not libm, but the same finding: a scalar call
+#: per element. `__extendbfsf2` is bf16->f32, which a widened vector datapath removes outright.
+_MATH_SOFTFLOAT = frozenset({
+    "extendbfsf2", "extendhfsf2", "extendsfdf2", "truncdfsf2", "truncsfhf2", "truncsfbf2",
+    "floatsisf", "floatsidf", "fixsfsi", "fixdfsi", "addsf3", "mulsf3", "divsf3", "subsf3",
+})
+#: glibc/libgcc name decorations, longest first so `__ieee754_` is stripped before `__`.
+_MATH_PREFIXES = ("__ieee754_", "__kernel_", "__libm_", "__")
+#: float / long-double suffixes (`expf`, `sqrtl`), and glibc's `_finite` / `_r` variants.
+_MATH_SUFFIXES = ("_finite", "_r", "f", "l")
+
+_ACTIVATION_OPS = ("gelu", "silu", "sigmoid", "tanh", "erf", "exp", "softmax",
+                   # the transformer tail that pays for scalar math without being an "activation"
+                   "rope", "rmsnorm", "layer_norm", "layernorm", "norm", "sqrt", "rsqrt")
 _CALL_MNEMONICS = ("jal", "jalr", "call")
 
 
-def _has_transcendental_libm_call(stream) -> bool:
-    """True iff a call instruction targets a transcendental libm symbol (e.g. ``jal ra, <expf>``).
-    Reads the resolved call-target operand (the ``<sym>`` objdump renders) — structured, not regex."""
+def math_call_kind(symbol: str) -> str | None:
+    """Classify a call-target symbol as ``transcendental`` / ``algebraic`` / ``softfloat``, else None.
+
+    STRUCTURAL, not substring. The retired check asked ``f"<{s}" in blob`` for each known stem, which
+    both misses the decorated spellings a real libc emits (``__ieee754_sqrt``, ``__kernel_sinf``) and
+    false-positives on any unrelated symbol that merely CONTAINS a stem — ``<merlin_single_step>``
+    contains "sin", and ``<log_write>`` contains "log". Here the decoration is peeled off and the
+    REMAINDER is matched exactly, so both failure directions go away.
+    """
+    name = (symbol or "").strip().lower()
+    if not name:
+        return None
+    for pre in _MATH_PREFIXES:                  # longest-first: __ieee754_ before __
+        if name.startswith(pre):
+            name = name[len(pre):]
+            break
+    # Candidate stems, LONGEST FIRST, tested in order rather than stripped blindly. Stripping to a
+    # fixed point over-strips every stem that itself ends in a suffix letter: `erff` -> `erf` -> `er`,
+    # `atanf` -> `atan` -> `ata`. Generating candidates and stopping at the first exact hit keeps `erf`
+    # and `atan` while still reaching `sqrt` from `sqrtf_finite`.
+    cands = [name]
+    for c in list(cands):
+        for suf in _MATH_SUFFIXES:
+            if len(c) > len(suf) and c.endswith(suf):
+                stem = c[: -len(suf)]
+                if stem not in cands:
+                    cands.append(stem)
+    for c in list(cands):                       # one more level: `sqrtf_finite` -> `sqrtf` -> `sqrt`
+        for suf in _MATH_SUFFIXES:
+            if len(c) > len(suf) and c.endswith(suf):
+                stem = c[: -len(suf)]
+                if stem not in cands:
+                    cands.append(stem)
+    for c in cands:
+        if c in _MATH_TRANSCENDENTAL:
+            return "transcendental"
+        if c in _MATH_ALGEBRAIC:
+            return "algebraic"
+        if c in _MATH_SOFTFLOAT:
+            return "softfloat"
+    return None
+
+
+def _call_target_symbols(stream) -> list[str]:
+    """Every resolved call-target symbol in the stream, read from the ``<sym>`` objdump renders."""
+    out: list[str] = []
     for i in stream.insns:
         if not any(i.raw.mnemonic.startswith(c) for c in _CALL_MNEMONICS):
             continue
-        blob = " ".join(i.raw.operands).lower()
-        if any(f"<{s}" in blob for s in _LIBM_TRANSCENDENTAL):
-            return True
-    return False
+        for tok in i.raw.operands:
+            t = str(tok)
+            if "<" in t and ">" in t:
+                out.append(t[t.index("<") + 1: t.rindex(">")])
+    return out
+
+
+def scalar_math_calls(stream) -> dict[str, str]:
+    """``{symbol: kind}`` for every scalar math routine this stream CALLS. Empty when there are none."""
+    out: dict[str, str] = {}
+    for sym in _call_target_symbols(stream):
+        kind = math_call_kind(sym)
+        if kind is not None:
+            out[sym] = kind
+    return out
+
+
+def _has_transcendental_libm_call(stream) -> bool:
+    """True iff a call targets a scalar math routine (any kind). Kept as the boolean the activation
+    inference wants; :func:`scalar_math_calls` is the form that names WHAT was found."""
+    return bool(scalar_math_calls(stream))
 
 
 def _infer_activation_vectorization(stream, op) -> str | None:

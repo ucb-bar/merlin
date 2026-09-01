@@ -267,3 +267,106 @@ def test_fixtures_present():
     for fx in ("openblas_sgemm_rvv.objdump", "xnnpack_f32_gemm_rvv.objdump",
                "ours_baseline_matmul.objdump", "ours_accum_resident_matmul.objdump"):
         assert (_ASM_DIR / fx).is_file()
+
+
+# ---------------------------------------------------------------------------------------
+# Scalar-math call classification. The detector's symbol list was the GELU/softmax family
+# only -- ("exp","erf","tanh","sinh","cosh","log","pow") -- matched as a SUBSTRING of the
+# call target. That failed in both directions: it missed every decorated spelling a real
+# libc emits (__ieee754_sqrt, __kernel_sinf) and it would false-positive on any symbol
+# that merely contains a stem (<merlin_single_step> contains "sin", <log_write> contains
+# "log"). Consequence, measured on small_llama int8: 16.63% of an INT8 model's binary is
+# scalar FLOAT and 36 model symbols are entirely scalar, yet _infer_activation_vectorization
+# returned None -- so no divergence was raised, action_catalog was never consulted, and the
+# beam never proposed the lever that was forkable the whole time.
+# ---------------------------------------------------------------------------------------
+
+def test_the_decorated_libc_spellings_are_classified():
+    """These are the exact symbols small_llama int8 calls. Every one of them used to return None."""
+    from merlin.kernels.cca import math_call_kind
+
+    assert math_call_kind("__ieee754_sqrt") == "algebraic"          # RMSNorm normaliser
+    assert math_call_kind("__ieee754_sqrtf") == "algebraic"
+    assert math_call_kind("__kernel_sinf") == "transcendental"      # RoPE
+    assert math_call_kind("__kernel_cosf") == "transcendental"
+    # glibc's argument reduction for sin/cos is its OWN symbol, so a model can pay for it
+    # without any sin/cos call being visible at the call site.
+    assert math_call_kind("__kernel_rem_pio2f") == "transcendental"
+    assert math_call_kind("__ieee754_rem_pio2f") == "transcendental"
+    assert math_call_kind("__extendbfsf2") == "softfloat"           # bf16 -> f32 soft conversion
+
+
+def test_a_stem_that_merely_appears_inside_a_symbol_is_not_a_math_call():
+    """The retired substring test would have called all of these math."""
+    from merlin.kernels.cca import math_call_kind
+
+    for sym in ("merlin_single_step", "log_write", "cosine_table", "single", "forward",
+                "memcpy", "__errno", "expand_shape", "powerdown_hook"):
+        assert math_call_kind(sym) is None, sym
+
+
+def test_a_stem_that_itself_ends_in_a_suffix_letter_survives():
+    """`erf` ends in "f" and `atan` ends in "n"; stripping suffixes to a fixed point turns `erff` into
+    `er` and `atanf` into `ata`. Candidates are tested longest-first for exactly this reason."""
+    from merlin.kernels.cca import math_call_kind
+
+    assert math_call_kind("erff") == "transcendental"
+    assert math_call_kind("erf") == "transcendental"
+    assert math_call_kind("atanf") == "transcendental"
+    assert math_call_kind("sqrtf_finite") == "algebraic"
+    assert math_call_kind("log2f") == "transcendental"
+
+
+def _stream_calling(*symbols):
+    """A decoded stream whose only interesting content is a call to each symbol."""
+    from merlin.kernels.decode import rvv
+
+    lines = ["0000000000000000 <forward>:"]
+    for i, sym in enumerate(symbols):
+        lines.append(f"   {i * 4:x}:\t000000ef     \tjal\tra, 0x100 <{sym}>")
+    return rvv.decode_text("\n".join(lines) + "\n")
+
+
+def test_the_divergence_is_now_observable_for_rope_and_rmsnorm():
+    """The whole point: the CCA must LIFT the loss, or nothing downstream can route it."""
+    from merlin.kernels import cca
+
+    s = _stream_calling("__kernel_sinf", "__kernel_cosf", "__ieee754_sqrt")
+    found = cca.scalar_math_calls(s)
+    assert set(found) == {"__kernel_sinf", "__kernel_cosf", "__ieee754_sqrt"}
+    assert set(found.values()) == {"transcendental", "algebraic"}
+    assert cca._has_transcendental_libm_call(s) is True
+    # ...and it fires even when the op label is unknown, since the CALL is the evidence
+    assert cca._infer_activation_vectorization(s, None) == "scalar_libm_call"
+    assert cca._infer_activation_vectorization(s, "rmsnorm") == "scalar_libm_call"
+
+
+def test_a_plain_kernel_is_still_never_classified_as_an_activation():
+    """The None return is what stops a matmul being mislabelled; widening the symbol set must not
+    weaken it."""
+    from merlin.kernels import cca
+
+    s = _stream_calling("memcpy", "merlin_single_step")
+    assert cca.scalar_math_calls(s) == {}
+    assert cca._infer_activation_vectorization(s, "matmul") is None
+
+
+def test_the_ladder_escalates_past_the_pass_that_cannot_cover_these_ops():
+    """The PASS emits exp/erf/tanh polynomials only. Before this rung, a model paying for rsqrt or
+    sin/cos routed to that pass, measured no gain, and the ladder ENDED -- with nothing recording that
+    the lever was missing rather than useless. Escalation must reach a CODEGEN work-item."""
+    from merlin.kernels import action_catalog as ac
+    from merlin.kernels.cca_compare import Divergence
+
+    d = Divergence(axis="compute.activation_vectorization", backend="rvv",
+                   ours="scalar_libm_call", expert="vectorized_polynomial")
+    cheap = ac.route(d)
+    assert cheap.action_class == "PASS" and cheap.forkable_now is True
+
+    up = ac.route_escalated(d, "PASS")
+    assert up is not None, "the ladder must not be exhausted at PASS"
+    assert up.action_class == "CODEGEN" and up.forkable_now is False
+    assert "act_poly" in up.target_seam
+    for token in ("rsqrt", "sin/cos", "range reduction"):
+        assert token in up.change, token
+    assert ac.route_escalated(d, "CODEGEN") is None, "and it must terminate, not loop"
