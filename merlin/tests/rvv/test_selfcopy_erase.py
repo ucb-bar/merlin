@@ -6,7 +6,10 @@ the real compiler and read the resulting LLVM IR:
 
   * on the v3 micro-kernel recipe the bufferizer leaves a per-tile `memref.copy %x, %x` that survives
     as an opaque `@memrefCopy` rank-generic runtime call — for int8 AND f32 alike;
-  * `erase_self_copy` removes that call from the emitted IR — for int8 AND f32 alike;
+  * `erase_self_copy` removes that call from the emitted IR — for int8 AND f32 alike, and an MR>1
+    recipe now `implies` it, so naming the recipe is enough (see `_tile_epilogue_hygiene`). The test
+    below still removes the implication to show the defect reappearing, because "no copy in the IR"
+    on its own cannot tell a working implication from a lowering that never had a copy;
   * on the `accumulator_resident_wholemodel_vf` recipe there is NO self-copy to begin with, so the
     feature is INERT there — which is why "turn erase_self_copy on for int8" was the wrong framing.
     The lowering is byte-identical with and without it (measured: the K1 object is the same 6,864
@@ -57,11 +60,42 @@ def _lower_ir(features: list[str], *, int8: bool, M: int = 64, N: int = 64, K: i
 
 @pytest.mark.skipif(not _m2m(), reason="model2mlir venv missing")
 @pytest.mark.parametrize("int8", [True, False])
-def test_v3_leaves_a_memrefcopy_call_and_the_erase_removes_it(int8):
+def test_the_v3_self_copy_is_real_and_the_implied_hygiene_is_what_removes_it(int8):
     """The defect and its fix are IDENTICAL for int8 and f32 — that is what makes it a recipe
-    property rather than a dtype special case."""
-    assert "memrefCopy" in _lower_ir([_V3], int8=int8)
-    assert "memrefCopy" not in _lower_ir([_V3, _ERASE], int8=int8)
+    property rather than a dtype special case.
+
+    This test used to read ``assert "memrefCopy" in _lower_ir([_V3])`` — i.e. it encoded the DEFECT as
+    the contract. That premise is now false, deliberately: an MR>1 recipe declares
+    ``implies={erase_self_copy}`` (``impr_features._tile_epilogue_hygiene``), so naming the recipe is
+    enough and the copy never reaches the emitted IR. The reason is measured — bare MR=4 was 2.04x
+    SLOWER than MR=1 on spike purely because of this call (PC-histogram attributed: memrefCopy
+    +187,520 instructions, exactly the observed cycle delta, in f32 AND int8 alike).
+
+    The original evidence is KEPT rather than deleted, because "the copy is gone" alone cannot
+    distinguish a working implication from a lowering that never had a copy. So the implication is
+    temporarily removed from the registry and the defect is shown to reappear — which is what makes it
+    load-bearing rather than cosmetic. Patching the parent's registry is sufficient even though the
+    lowering runs in a subprocess: ``normalize`` and the argv gate are both evaluated parent-side, and
+    only the resolved flag crosses the process boundary.
+    """
+    import dataclasses
+
+    from merlin.llvmlower import impr_features as F
+
+    assert F.get(_V3).implies == frozenset({_ERASE}), "the hygiene must be DECLARED, not incidental"
+
+    saved = F._REGISTRY[_V3]
+    F._REGISTRY[_V3] = dataclasses.replace(saved, implies=frozenset())
+    try:
+        assert "memrefCopy" in _lower_ir([_V3], int8=int8), (
+            "without the implication the per-tile self-copy must still be there — if it is not, this "
+            "test no longer proves the implication does anything")
+        assert "memrefCopy" not in _lower_ir([_V3, _ERASE], int8=int8)
+    finally:
+        F._REGISTRY[_V3] = saved
+
+    # ...and with the implication in place, naming ONLY the recipe is enough.
+    assert "memrefCopy" not in _lower_ir([_V3], int8=int8)
 
 
 @pytest.mark.skipif(not _m2m(), reason="model2mlir venv missing")
