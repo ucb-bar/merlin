@@ -1024,6 +1024,12 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
                          framework_commit=buddy_commit(), timestamp=artifacts.utc_stamp())
 
     b = resolve_bundle(model, variant)
+    # WHICH bundle this measurement is on. Part of the measurement, not metadata: resolve()
+    # prefers <model>_<variant>_full over the older TRUNCATED _consistent when both exist, so
+    # two runs of the "same" (model, variant) can be two different models. A ratio taken across
+    # that difference is not a speedup, and `compare.executorch_column.bundle_mismatch_reason`
+    # refuses one unless BOTH sides record this.
+    res.bundle_id = b.root.name
     if not b.mlir.is_file():
         res.gap_reason = f"capture bundle missing: {b.root}/model.mlir absent"
         return _finish(res, model, variant, write)

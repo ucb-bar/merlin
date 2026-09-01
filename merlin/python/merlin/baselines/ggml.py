@@ -681,6 +681,13 @@ def run_model(model: str, variant: str = "fp32", *, quant: str | None = None,
                          march=GGML_MARCH, toolchain="llama.cpp+ggml(RVV) / spacemit-gcc-14.3",
                          framework_commit=ggml_commit(), timestamp=artifacts.utc_stamp())
 
+    # WHICH bundle this measurement is on. ggml resolves its bundle LATER and per-variant (its
+    # correctness reference may come from a different variant than the timed run -- see
+    # `_correctness_bundle`), so record the cell's own resolve here rather than borrowing that one.
+    # A ratio taken across two different bundles is not a speedup; see
+    # compare.executorch_column.bundle_mismatch_reason.
+    res.bundle_id = _bundle.resolve(model, variant).root.name
+
     # VLA models are out of ggml scope — explicit not_built gap with a PER-MODEL precise reason
     # (backbone-arch support vs captured-forward reproducibility), never forced.
     if model in VLA_OUT_OF_SCOPE:

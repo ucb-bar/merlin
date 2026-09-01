@@ -483,3 +483,24 @@ def test_the_mix_can_scope_out_libc_which_otherwise_drowns_the_signal():
     r = classify_disasm(_MIX_DUMP)
     assert r.instruction_mix()["scalar_float"] == 3            # includes __libc_thing's fadd.s
     assert r.instruction_mix(ignore=("__libc",))["scalar_float"] == 2
+
+
+def test_every_framework_runner_records_which_bundle_it_measured():
+    """The comparand guard can only refuse a mismatch if BOTH sides record an identity. A runner that
+    does not is not "unguarded" -- it makes every comparison against it permanently UNKNOWN, which is
+    how the rdt2 ratio got published in the first place. This is a completeness gate over the declared
+    framework list, so a newly added framework fails here rather than silently producing
+    un-comparable rows."""
+    import importlib
+
+    from merlin.baselines.contract import FRAMEWORKS
+
+    missing = []
+    for fw in FRAMEWORKS:
+        mod = importlib.import_module(f"merlin.baselines.{fw}")
+        src = (mod.__file__ and __import__("pathlib").Path(mod.__file__).read_text()) or ""
+        if "res.bundle_id" not in src:
+            missing.append(fw)
+    assert not missing, (
+        f"framework runner(s) that never record bundle_id: {missing} — every comparison against them "
+        f"is permanently UNKNOWN to compare.executorch_column.bundle_mismatch_reason")

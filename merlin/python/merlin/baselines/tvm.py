@@ -593,6 +593,12 @@ def run_model(model: str, variant: str = "int8", *, work_root: Path | None = Non
                          notes=("tuning=" + ("metaschedule" if tune else "default-relax-build")))
 
     b = resolve_bundle(model, variant)
+    # WHICH bundle this measurement is on. Part of the measurement, not metadata: resolve()
+    # prefers <model>_<variant>_full over the older TRUNCATED _consistent when both exist, so
+    # two runs of the "same" (model, variant) can be two different models. A ratio taken across
+    # that difference is not a speedup, and `compare.executorch_column.bundle_mismatch_reason`
+    # refuses one unless BOTH sides record this.
+    res.bundle_id = b.root.name
     gold = golden_path(b)
     if not gold.is_file():
         res.gap_reason = f"golden missing: neither golden_w8a8.npy nor golden.npy under {b.root}"

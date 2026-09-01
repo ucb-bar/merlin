@@ -690,6 +690,12 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
         res.notes += _bundle.lowering_exactness_note(model)
 
     b = resolve_bundle(model, variant)
+    # WHICH bundle this measurement is on. Part of the measurement, not metadata: resolve()
+    # prefers <model>_<variant>_full over the older TRUNCATED _consistent when both exist, so
+    # two runs of the "same" (model, variant) can be two different models. A ratio taken across
+    # that difference is not a speedup, and `compare.executorch_column.bundle_mismatch_reason`
+    # refuses one unless BOTH sides record this.
+    res.bundle_id = b.root.name
     if not b.golden.is_file():
         res.gap_reason = f"golden missing: {b.root}/golden.npy absent (cannot gate correctness)"
         return _finish(res, model, variant, write)

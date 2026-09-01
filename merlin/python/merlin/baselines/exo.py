@@ -650,6 +650,10 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
 
     # fp32 tiny_llama capture is the legacy-named 'tiny_consistent' dir; resolve then fall back.
     b = bundle.resolve(model, variant)
+    # WHICH bundle this measurement is on -- see compare.executorch_column.bundle_mismatch_reason:
+    # resolve() prefers <model>_<variant>_full over the older TRUNCATED _consistent, so two runs
+    # of the "same" cell can be two different models and a ratio across them is not a speedup.
+    res.bundle_id = b.root.name
     if not b.mlir.is_file() and model == "tiny_llama" and variant == "fp32":
         from merlin.common.artifacts import recaptures_dir
         alt = recaptures_dir() / "tiny_consistent"
