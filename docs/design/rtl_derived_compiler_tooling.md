@@ -3,7 +3,7 @@ title: "Design: the RTL-derived compiler tooling — what it extracts, how it is
 kind: design
 status: draft
 owner: targetgen
-last_verified: 2026-08-13
+last_verified: 2026-08-31
 related: [target_agnostic_core, compiler_plane, dialect_test_bar, expert_gap_attribution, capsule_bench]
 code_refs:
   - merlin/python/merlin/targetgen/rtl/facts.py
@@ -14,6 +14,7 @@ code_refs:
   - merlin/python/merlin/targetgen/rtl_backend.py
   - merlin/python/merlin/targetgen/rtl_check_compiler.py
   - merlin/python/merlin/targetgen/rtl_check_runner.py
+  - merlin/python/merlin/targetgen/rtl_object_screen.py
   - merlin/experiments/capsule_bench/harness/qa_check_rtlchecks.py
   - merlin/experiments/capsule_bench/harness/isa_tools_broker.py
   - merlin/experiments/capsule_bench/harness/simjob_broker.py
@@ -108,6 +109,15 @@ adding compiler value, by definition. Tools are tagged `[precondition]`, `[seman
 - **Input:** `facts.json` + a capsule's declared op/shape. **Does:** `compile_trace_checks` /
   `compile_kernel_checks` bake RTL literals into `CHECK-DAG` directives; the runner renders the agent's
   emitted RoCC trace / `kernel.S` to canonical text and runs the LLVM `FileCheck` binary over it.
+- **THREE check families, routed by which artifact the endpoint actually emits** — a RoCC command-ISA
+  target's decoded trace (`generated/instruction_trace.json`), a self-hosted-ISA target's kernel assembly
+  (`generated/kernel.S`), and — added 2026-08-31 — a compiler that emits an **MLIR lowering**, whose
+  machine code exists only after a toolchain compiles it (`generated/emitted_words.json`, see §6b). The
+  third was missing, and its absence is the reference case for "a check that could not run reported
+  success": `screen_run` returned `None` for every capsule of such a target, `rtl_checks` came out `[]`,
+  and an approving note sat beside the empty list for **18 consecutive rounds across three repeats** while
+  the arm was believed to be working. Whenever a new endpoint is added, ask which family consumes its
+  output; if none does, the arm is inert for it.
 - **Artifact (gemmini A2 matmul, generated):**
   ```
   // TRACE-DAG: ABI custom=0x7b funct3=0x3
@@ -122,10 +132,41 @@ adding compiler value, by definition. Tools are tagged `[precondition]`, `[seman
   Bank conflicts, DMA backpressure, pipeline interlocks, X-propagation, real overflow are **verilator-only**.
   Known bug: the kernel-path tiling count is exact even for `resident_reuse` → false rejects.
 
+### 6b. `rtl_object_screen` — the emitted-object family `[feedback]`
+- **Input:** the machine-code word stream the target's OWN emit path records at the core-owned convention
+  name `generated/emitted_words.json` (core fixes the name; the producer writes it, because only the
+  producer knows which of the objects it built is final), plus the derived `IsaModel` and `facts.json`.
+- **Checks, each derive-or-drop and each applying to a target CLASS rather than a target:**
+  `decode_legality` (opcode field vs the derived `opcode_table`); `result_write` (a kernel with no memory
+  write cannot have produced its declared output — severity `error`, and given that severity only after
+  checking that all 35 oracle-passing runs of the reference corpus write at least once);
+  `simt_control` (warp-control ops from `runtime_abi.sfu_ops` **or** reads of the identity CSRs whose
+  provenance cites the target's RTL, against `facts.simt.warps_per_core * cores`);
+  `address_space_use` (the derived `address_spaces` + selector field over memory-window opcodes);
+  `class_coverage` (a capsule's own declared `expected.instruction_classes`).
+- **The honesty ledger is part of the output.** Every check that could not run appears in `dropped` with
+  the derivation it needed, and is absent from `checks` — neither passed nor failed. `grounded` names the
+  ones that did run, and `rtl_checks_coverage` carries the denominator (how many capsule runs were
+  screenable at all). Legality additionally reports `legality_attested_at_emit`, because an emit path that
+  already rejects an undecodable word makes a clean result an attestation rather than a discovery.
+- **Two traps this family had to be built around, both measured**, and both worth re-reading before adding
+  a check here: (1) a target can have TWO derived ISA surfaces — classifying a 64-bit fixed-format stream
+  with the target's 32-bit warp-control taxonomy reported 2 of 3 correctly-derived instructions as illegal,
+  while the fixed-format model gives 0 of 49; `is_empty()` is True for a fixed-format model, so route on
+  `is_fixed_format()`. (2) reading a CSR number out of the layout's own `csrimm` field looks right and is
+  silently dead — that field is 8 bits on a real target whose 15 own CSR numbers all exceed 4000, so the
+  count is 0 for every kernel and reads as a finding; the field to read is the one the target's own
+  transcoder writes an immediate into, and a width check refuses rather than reporting the dead zero.
+- **Honest scope:** structural only. It says nothing about numerics, and its SIMT/address-space findings
+  are advisory warnings — a serial, global-memory-only kernel is correct, just slow.
+
 ### 7. `qa_check_rtlchecks` — the arm-4 advisory `[feedback, non-gating]`
 - **Input:** the redacted round verdict + the compiled FileCheck (tool 6). **Does:** appends a non-gating
-  `rtl_checks` block with per-finding `expected`/`got`/`fix_hint`. **This is the one load-bearing,
-  default-config, agent-consumed arm-4 signal.**
+  `rtl_checks` block with per-finding `expected`/`got`/`fix_hint`, plus `rtl_checks_coverage` and the
+  per-capsule `checks_grounded`/`checks_dropped` ledger. **This is the one load-bearing, default-config,
+  agent-consumed arm-4 signal** — and the arm's prompt must NAME it, or the block arrives as unexplained
+  JSON and the treatment cannot act (it did not name it until 2026-08-31; the prompt instead told the agent
+  to "run the CIRCT RTL checks on your lowering", which only the grader can do).
 
 ### 8. `isa_tools` (broker) — asm/disasm/lint + arc `debug` `[semantics-check / arc-estimate]`
 - **Real:** the `debug` subcommand runs the command buffer on the CIRCT/arcilator model compiled from RTL

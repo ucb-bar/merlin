@@ -785,8 +785,20 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str,
             n += 1
     if has_rtl:                                                 # arm-4 only (the CIRCT / RTL-facts arm)
         L.append(f"{n}. RTL-checks arm: DERIVE the ISA / mesh / datapath from the granted RTL-extracted facts "
-                 "(`targetgen/rtl/` + the RTL facts pin) — do not hand-invent them — and run the CIRCT RTL "
-                 "checks on your lowering. Your backend must be a compilation FROM those RTL-derived facts.")
+                 "(`targetgen/rtl/` + the RTL facts pin) — do not hand-invent them. Your backend must be a "
+                 "compilation FROM those RTL-derived facts.")
+        n += 1
+        # The other half of this arm's treatment is FEEDBACK the round verdict carries, and the agent has to
+        # be told it exists or it cannot act on it: an unexplained JSON block in a verdict reads as noise.
+        # Say what it is, that it does not gate, and — the part that matters most — that `checks_dropped`
+        # means NOT INSPECTED, so a short findings list is never evidence that the rest is fine.
+        L.append(f"{n}. Each round's verdict carries an `rtl_checks` block: ADVISORY structural findings "
+                 "derived from the RTL facts + your own emitted instruction stream. It does NOT gate "
+                 "pass/fail, but every finding is something the RTL oracle would charge you for later, and "
+                 "each carries a `fix_hint`. Read `rtl_checks_coverage` and `checks_dropped` too: they say "
+                 "how many of your capsule runs could be inspected and which checks had no derivation to "
+                 "run against. A check listed there found NOTHING BECAUSE IT DID NOT RUN — treat it as "
+                 "unknown, never as clean.")
         n += 1
     return "\n".join(L) + "\n\n"
 
