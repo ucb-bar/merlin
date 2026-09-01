@@ -177,3 +177,68 @@ def test_a_rejection_names_the_field_and_the_remedy():
     assert "rejected: bad sim or capsule (constrained runner)" not in src, "the remedy-free message is back"
     assert "rejected_field" in src, "a rejection must say WHICH field it refused"
     assert "--tiers" in src, "a neutral-sim target must be told how to choose a tier"
+
+
+# ---------------------------------------------------------------------------------------------
+# The sim NAME, which the tests above never checked
+# ---------------------------------------------------------------------------------------------
+def _allowed(monkeypatch, sims):
+    """Force the broker's allowlist, the way a different target's ladder would."""
+    import simjob_broker as SB
+    monkeypatch.setattr(SB, "_allowed_sims", lambda: tuple(sims))
+
+
+def test_the_enqueued_sim_is_one_the_broker_accepts(tmp_path):
+    """The invariant the assertions above were missing, and the bug it let through.
+
+    `promote()` wrote the neutral sentinel unconditionally. The broker accepts that ONLY for a target
+    whose ladder comes from its contract; a target with a bespoke sim ladder rejects it. So on such a
+    target every promotion request was refused while the capsule had already been marked pending,
+    stranding it. Measured live: 6 requests, all "rejected: --sim 'contract' is not accepted for this
+    target", 2 capsules stuck at L3 pending. Promotion had never once fired on a bespoke-sim target,
+    and it looked exactly like "nothing needed promoting".
+    """
+    B = _broker()
+    import simjob_broker as SB
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr)
+    reqs = list(ch.glob("simreq_*.json"))
+    assert len(reqs) == 1
+    sim = json.loads(reqs[0].read_text())["sim"]
+    assert sim in SB._allowed_sims(), (
+        f"promotion enqueued --sim {sim!r}, which this broker would reject; "
+        f"it accepts {SB._allowed_sims()}")
+
+
+def test_cert_sim_names_the_ladder_sim_when_one_is_declared(tmp_path, monkeypatch):
+    B = _broker()
+    _allowed(monkeypatch, ("spike", "verilator", "vcs"))
+    assert B.cert_sim("L3") == "verilator"
+    assert B.cert_sim("L2") == "spike"
+
+
+def test_cert_sim_keeps_the_sentinel_when_that_is_all_that_is_accepted(monkeypatch):
+    """An arc-only target grades on its contract-resolved tier; --sim does not apply there."""
+    B = _broker()
+    _allowed(monkeypatch, (B._NEUTRAL_SIM,))
+    assert B.cert_sim("L3") == B._NEUTRAL_SIM
+
+
+def test_cert_sim_fails_closed_when_nothing_serves_the_tier(monkeypatch):
+    B = _broker()
+    _allowed(monkeypatch, ("spike", "verilator", "vcs"))
+    assert B.cert_sim("L9") is None, "an unknown tier must not resolve to a guessed sim"
+
+
+def test_no_pending_state_is_written_without_an_enqueued_job(tmp_path, monkeypatch):
+    """Marking pending for a job that cannot be enqueued is what stranded the capsules."""
+    B = _broker()
+    monkeypatch.setattr(B, "cert_sim", lambda tier: None)
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    promoted = B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr)
+    assert promoted == []
+    assert list(ch.glob("simreq_*.json")) == []
+    state = json.dumps(B._tier_state(ws))
+    assert "pending" not in state, "a capsule was marked pending for a job that was never enqueued"

@@ -25,6 +25,43 @@ from pathlib import Path
 _NEUTRAL_SIM = "contract"   # "grade on whatever tier this target's contract resolves to"
 
 
+def cert_sim(cert_tier: str) -> str | None:
+    """The ``--sim`` token the BROKER will accept for ``cert_tier``, or None when none does.
+
+    ``promote()`` used to write :data:`_NEUTRAL_SIM` unconditionally. That is correct only for a target
+    whose ladder comes from its own contract, where ``--sim`` does not apply and the sentinel is the ONLY
+    accepted token. A target that declares a bespoke sim ladder accepts that ladder's names and REJECTS
+    the sentinel -- so every promotion request such a target wrote was refused, while the capsule had
+    already been marked ``pending`` a few lines earlier and therefore stayed pending forever.
+
+    Measured on the live gemmini round merlincirct_arm4_func_20260901_v4: 6 promotion requests, every one
+    answered "rejected: --sim 'contract' is not accepted for this target. Use 'spike' or 'verilator' or
+    'vcs'", and 2 capsules stranded at L3 pending. Promotion had never fired on a bespoke-sim target.
+
+    Derived from the same allowlist the broker validates against, so the two cannot drift apart again.
+    Returns None rather than a guess when nothing serves the tier: the caller must then NOT enqueue, and
+    must not mark the capsule pending for a job that can never run.
+    """
+    try:
+        from simjob_broker import _allowed_sims
+        allowed = tuple(_allowed_sims())
+    except Exception:  # noqa: BLE001 -- broker not importable: keep the historical sentinel
+        return _NEUTRAL_SIM
+    if allowed == (_NEUTRAL_SIM,):
+        return _NEUTRAL_SIM
+    try:
+        import _common as _C
+        from merlin.targetgen.runner_config import runner_config_from_manifest
+        from merlin.targetgen.target_experiment import (load_capability_manifest,
+                                                        load_target_experiment)
+        te = load_target_experiment(_C.EXP / "target_experiment.yaml")
+        cfg = runner_config_from_manifest(load_capability_manifest(te.target))
+        sim = (cfg.tier_sim or {}).get(cert_tier)
+    except Exception:  # noqa: BLE001 -- unresolvable map: no promotion, and the caller says so
+        return None
+    return sim if sim in allowed else None
+
+
 def resolve_tiers(ws):
     """`(loop_tier, cert_tier, cover)` for this target, DERIVED from its own adapter map.
 
@@ -351,14 +388,23 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
                 print(f"[promote] {s.name} {tier} invalidated by {why}", file=log, flush=True)
 
     promoted = []
+    _sim = cert_sim(cert_tier)
+    if want and _sim is None:
+        # Say it once, loudly. Marking a capsule pending for a job that cannot be enqueued is how a
+        # capsule strands at `pending` and never resolves.
+        print(f"[promote] no --sim this broker accepts serves {cert_tier}; {len(want)} capsule(s) NOT "
+              f"enqueued and NOT marked pending", file=log, flush=True)
     for w in want:
-        st.setdefault(w.capsule, {})[cert_tier] = {
-            "status": "pending", "digest": digest, "components": dict(comps)}
+        if _sim is None:
+            continue
         jid = f"promo{len(promoted)}_{digest}_{w.capsule}"[:80]
         if not (ch / f"simreq_{jid}.json").exists():
             (ch / f"simreq_{jid}.json").write_text(_j.dumps(
-                {"sim": _NEUTRAL_SIM, "capsules": w.capsule, "workers": 1, "tiers": cert_tier,
+                {"sim": _sim, "capsules": w.capsule, "workers": 1, "tiers": cert_tier,
                  "promoted": True, "submitted_at": time.time()}))
+            # Mark pending only once the request is actually on the queue.
+            st.setdefault(w.capsule, {})[cert_tier] = {
+                "status": "pending", "digest": digest, "components": dict(comps)}
             promoted.append(w.capsule)
     _save_tier_state(ws, st)
     if promoted:
