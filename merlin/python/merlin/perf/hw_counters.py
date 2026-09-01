@@ -118,6 +118,11 @@ def derive_occupancy_counters(text: str) -> OccupancyCounters:
     return best
 
 
+#: Suffixes whose contents this module's `#define` parser can actually interpret. A file outside this
+#: set cannot yield a counter block whatever the hardware does, so finding none in it is not evidence.
+_C_HEADER_SUFFIXES = frozenset({".h", ".hpp", ".hh", ".hxx", ".inc"})
+
+
 def counters_for_target(target: str, *, sources=None) -> dict:
     """Derive the combination counters from ``target``'s own shipped counter header.
 
@@ -167,7 +172,20 @@ def counters_for_target(target: str, *, sources=None) -> dict:
             return {"status": "unavailable", "unreadable": unread,
                     "why": "no candidate header could be READ, so whether this target exposes "
                            "combination counters is UNKNOWN, not absent"}
-        return {"status": "absent", "read": read, "unreadable": unread,
+        # AND IT MUST BE A C HEADER. `_defines` only understands object-like `#define NAME <int>`, so a
+        # file that is not a C header can never yield a counter block no matter what the machine does --
+        # finding none in it says nothing about the hardware. Measured 2026-09-01: atlas declares its ISA
+        # source as `baremetal/assembler.py` (compute_endpoints.yaml), a PYTHON file. `read` was
+        # therefore non-empty, the guard above did not fire, and the result claimed "this target does not
+        # count overlap in hardware" on the strength of having parsed an assembler for `#define`.
+        headers = [q for q in read if Path(q).suffix.lower() in _C_HEADER_SUFFIXES]
+        if not headers:
+            return {"status": "unavailable", "read": read, "unreadable": unread,
+                    "why": f"nothing read for this target is a C header (read: "
+                           f"{[Path(q).name for q in read]}); `#define` is the only thing this parser "
+                           f"understands, so whether the target exposes combination counters is UNKNOWN, "
+                           f"not absent"}
+        return {"status": "absent", "read": read, "headers_read": headers, "unreadable": unread,
                 "why": "the shipped headers expose no counter block with per-engine singles and a "
                        "combination over them, so this target does not count overlap in hardware"}
     return {"status": "derived", "header": str(where), "counters": best.to_dict()}
