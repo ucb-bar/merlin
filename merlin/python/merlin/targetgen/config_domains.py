@@ -31,15 +31,32 @@ from typing import Any
 
 @dataclass(frozen=True)
 class Domain:
-    """A closed interval a field's value must lie in, and the RTL fact that fixes it."""
+    """What a field's value is allowed to be, and the RTL fact that fixes it.
+
+    Either a closed interval (``lo``/``hi``) or an ENUMERATED set (``allowed``). The distinction is not
+    cosmetic: a decode table that lists which codes the hardware recognises is a legal SET with holes,
+    and describing it as ``[min, max]`` would accept every unassigned code in between -- which is
+    exactly the kind of value that encodes fine, decodes fine, and only the RTL rejects.
+    """
     name: str
     lo: int
     hi: int
     unit: str
     evidence: str
+    allowed: frozenset[int] | None = None
 
     def contains(self, value: int) -> bool:
-        return self.lo <= int(value) <= self.hi
+        v = int(value)
+        if self.allowed is not None:
+            return v in self.allowed
+        return self.lo <= v <= self.hi
+
+    def describe(self) -> str:
+        if self.allowed is not None:
+            xs = sorted(self.allowed)
+            shown = ", ".join(str(x) for x in xs[:8]) + (f", … ({len(xs)} total)" if len(xs) > 8 else "")
+            return f"one of {{{shown}}}"
+        return f"[{self.lo}, {self.hi}]"
 
 
 def _int_dtype_range(dtype: str) -> tuple[int, int] | None:
@@ -88,6 +105,17 @@ def derive_domains(target: str) -> dict[str, Domain]:
                 key = f"{name}.{axis[:-1]}"          # rows -> row, cols -> col
                 out[key] = Domain(key, 0, n - 1, "index", f"arrays.{name}.{axis}={n}")
 
+    # An enumerated decode table is a SEMANTIC domain: the field width admits far more codes than the
+    # hardware assigns, and an unassigned one is precisely the value that encodes and decodes cleanly
+    # and only the RTL rejects.
+    for iface in f.get("interfaces") or []:
+        legal = iface.get("legal_funct")
+        if isinstance(legal, list) and legal and all(isinstance(x, int) for x in legal):
+            key = f"{iface.get('name') or 'decode'}.funct"
+            out[key] = Domain(key, min(legal), max(legal), "code",
+                              f"interfaces.{iface.get('name')}.legal_funct ({len(legal)} codes)",
+                              allowed=frozenset(legal))
+
     for dp in f.get("datapaths") or []:
         name, dtype = dp.get("name"), dp.get("dtype")
         rng = _int_dtype_range(dtype or "")
@@ -133,10 +161,10 @@ def check(target: str, values: dict[str, int]) -> dict[str, Any]:
             unbounded.append({"field": field, "value": value,
                               "reason": f"no derived domain for {field!r} on {target}"})
         elif d.contains(value):
-            ok.append({"field": field, "value": value, "domain": [d.lo, d.hi], "evidence": d.evidence})
+            ok.append({"field": field, "value": value, "domain": d.describe(), "evidence": d.evidence})
         else:
-            bad.append({"field": field, "value": value, "domain": [d.lo, d.hi], "unit": d.unit,
+            bad.append({"field": field, "value": value, "domain": d.describe(), "unit": d.unit,
                         "evidence": d.evidence,
-                        "detail": f"{field}={value} outside [{d.lo}, {d.hi}] fixed by {d.evidence}"})
+                        "detail": f"{field}={value} not {d.describe()} — fixed by {d.evidence}"})
     return {"target": target, "ok": ok, "violations": bad, "unbounded": unbounded,
             "checked": len(values or {}), "coverage_gaps": undecidable(target)}

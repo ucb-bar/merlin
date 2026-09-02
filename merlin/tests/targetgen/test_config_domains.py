@@ -79,3 +79,38 @@ def test_an_array_bounds_an_index_not_a_tile_dimension():
         pytest.skip("no mesh array in this checkout's facts")
     assert d["mesh.row"].unit == "index"
     assert not any(k.endswith(".tile") or "tile" in k for k in d), "no tile-dimension domain may be derived"
+
+
+def test_a_decode_table_is_an_enumerated_domain_not_an_interval():
+    """A legal-code set has HOLES. Describing it as [min, max] accepts every unassigned code between --
+    which is precisely the value that encodes fine, decodes fine, and only the RTL rejects."""
+    d = CD.derive_domains("gemmini")
+    fd = next((v for k, v in d.items() if k.endswith(".funct")), None)
+    if fd is None:
+        pytest.skip("no decode table in this checkout's facts")
+    assert fd.allowed is not None, "a legal-code set must be enumerated"
+    hole = next((x for x in range(fd.lo, fd.hi) if x not in fd.allowed), None)
+    assert hole is not None, "fixture has no hole; the interval/enumerated distinction is untestable here"
+    assert not fd.contains(hole)
+    assert fd.contains(max(fd.allowed)), "the top legal code must still pass"
+
+
+def test_a_hole_in_the_decode_table_is_reported_with_its_evidence():
+    d = CD.derive_domains("gemmini")
+    key = next((k for k in d if k.endswith(".funct")), None)
+    if key is None:
+        pytest.skip("no decode table in this checkout's facts")
+    hole = next(x for x in range(d[key].lo, d[key].hi) if x not in d[key].allowed)
+    r = CD.check("gemmini", {key: hole})
+    assert len(r["violations"]) == 1
+    assert "legal_funct" in r["violations"][0]["evidence"]
+
+
+def test_describe_reads_as_a_set_for_enumerated_and_a_range_for_intervals():
+    d = CD.derive_domains("gemmini")
+    interval = d.get("scratchpad.row")
+    if interval is not None:
+        assert interval.describe().startswith("[")
+    enum = next((v for k, v in d.items() if k.endswith(".funct")), None)
+    if enum is not None:
+        assert enum.describe().startswith("one of")
