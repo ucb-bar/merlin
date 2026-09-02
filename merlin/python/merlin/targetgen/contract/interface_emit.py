@@ -76,6 +76,15 @@ _NAMED_OP_OPERAND_KEYS = {
     # with resident_pack + evict; the fail-closed parse surfaced that instead of hiding it, and this
     # row is what finally lets them read whole.
     "conv2d": ["ifm", "weight"],
+    # A per-column bias added to an already-committed tensor: the `bias_add` COMMIT stage standing on
+    # its own, so the L5 fusion claim has an unfused half to be compared against. Its operands are in
+    # the accumulator's dtype, because that is the domain the stage runs in.
+    #
+    # Added with the op, not after it: `boundary.grammar_mnemonics` reads THIS table, so a mnemonic the
+    # emitter writes and this table does not define makes the canonical parser refuse the module -- and
+    # every capsule using it classifies UNKNOWN. Documenting the op in `interface_grammar.md` without
+    # this row is exactly the doc/parser drift the single-source design exists to prevent.
+    "bias_add": ["src", "bias"],
 }
 # Most mnemonics map to their upper-case opcode; a few need an explicit target opcode because the emitter /
 # harness / simulator spell it differently (``matmul_batched`` -> the ``BATCHED_MATMUL`` those consume, not
