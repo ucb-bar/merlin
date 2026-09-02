@@ -71,6 +71,24 @@ def _target_experiment(target: str) -> Path | None:
     return cand if cand.is_file() else None
 
 
+def _contract_target(target: str) -> str:
+    """The target name its descriptor DECLARES, falling back to the directory name.
+
+    A descriptor sits in a directory that need not match the target its contract is registered under
+    (a configuration-qualified name beside a short directory). Resolving a contract by the directory
+    name then finds nothing, which is why some targets had no derived requirement at all.
+    """
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    desc = _target_experiment(target)
+    if desc is None:
+        return target
+    try:
+        return str(getattr(load_target_experiment(desc), "target", "") or target)
+    except Exception:                              # noqa: BLE001 -- unreadable descriptor: use the dir
+        return target
+
+
 def audit(target: str, *, spec_path: Path | None = None) -> dict:
     """Derive (or load) the requirement and measure the corpus against it."""
     from merlin.targetgen.target_experiment import load_target_experiment
@@ -80,6 +98,12 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         return {"target": target, "status": "no_target_experiment",
                 "detail": f"no target_experiment.yaml for {target!r}"}
     te = load_target_experiment(desc)
+    # THE DIRECTORY NAME IS NOT ALWAYS THE TARGET NAME. A descriptor declares the target its contract is
+    # registered under, and for some targets that differs from the directory the descriptor sits in
+    # (a configuration-qualified name beside a short directory). Deriving against the directory name
+    # then fails to resolve any contract at all, which is why those targets had no requirement -- not
+    # because none could be derived, but because nobody was asking about the right name.
+    contract_target = _contract_target(target)
     roots = list(te.graded_roots())
     exclude = set(getattr(te, "graded_exclude", ()) or ())
 
@@ -89,8 +113,9 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         doc = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
         origin = f"tracked spec {spec_path}"
     else:
-        doc = CF.spec(target, caps)
-        origin = "derived now"
+        doc = CF.spec(contract_target, caps)
+        origin = ("derived now" if contract_target == target
+                  else f"derived now against contract target {contract_target!r}")
     if not doc.get("cells"):
         return {"target": target, "status": "no_requirement", "spec_origin": origin,
                 "detail": ("nothing was derived: no capability manifest resolved, or no captured model "
@@ -169,7 +194,11 @@ def main(argv=None) -> int:
         if len(targets) != 1:
             print("--write takes exactly one --target", file=sys.stderr)
             return 2
-        doc = CF.spec(targets[0], _captures())
+        # Same resolution as `audit`: derive against the target its DESCRIPTOR declares, which is not
+        # always the directory the descriptor sits in. Two call sites resolved this independently and
+        # only one of them was right, so a target whose names differ produced a requirement from
+        # `audit` and a crash from `--write` -- the path that actually creates the file.
+        doc = CF.spec(_contract_target(targets[0]), _captures())
         a.write.parent.mkdir(parents=True, exist_ok=True)
         a.write.write_text(
             "# DERIVED — regenerate with:\n"

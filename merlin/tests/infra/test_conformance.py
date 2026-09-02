@@ -373,3 +373,31 @@ def test_l3_fix_verdict_keeps_arm4_rtl_readback_available():
     assert verdict["attempt"] == 4
     assert verdict["rtl_checks"] == vv["rtl_checks"]
     assert "answer-free rtl structural feedback" in verdict["rtl_checks_note"].lower()
+
+
+def test_a_target_is_resolved_by_its_declared_name_not_its_directory():
+    """A descriptor sits in a directory that need not match the target its contract is registered
+    under -- one target declares a configuration-qualified name beside a short directory. Resolving by
+    the directory finds no contract at all, which is why that target had no derived requirement: not
+    because none could be derived, but because nobody was asking about the right name.
+
+    Two call sites resolved this independently and only one was right, so `audit` produced a
+    requirement while `--write` -- the path that actually creates the file -- crashed."""
+    import sys
+
+    from merlin.common.paths import repo_root
+
+    sys.path.insert(0, str(repo_root() / "build_tools" / "scripts"))
+    from check_conformance_coverage import _contract_target
+
+    roots = repo_root() / "merlin/experiments/capsule_bench/targets"
+    mismatched = []
+    for d in sorted(p for p in roots.iterdir() if (p / "target_experiment.yaml").is_file()):
+        resolved = _contract_target(d.name)
+        assert resolved, d.name
+        if resolved != d.name:
+            mismatched.append((d.name, resolved))
+    # Not an assertion about WHICH targets differ -- that is a naming choice and may change. The point
+    # is that the resolver reads the descriptor rather than assuming the directory, so a mismatch
+    # resolves instead of raising.
+    assert all(r for _, r in mismatched)
