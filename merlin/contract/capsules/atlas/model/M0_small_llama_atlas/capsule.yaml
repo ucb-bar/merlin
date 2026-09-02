@@ -30,10 +30,10 @@ numeric_policy:
 expected:
   instruction_classes:
   - TensorBaseOffset
-  - TensorComputeBinary
   - MXUWeightPush
   - MXUMatMul
   - MXUAccumulatorPopE1
+  - TensorComputeBinary
 required_oracle_tiers:
 - L0
 - L1
@@ -49,7 +49,7 @@ pytorch_ref:
   loader: capsule.pytorch.py
 linalg_mlir: capsule.interface.mlir
 semantic:
+  semantic_family: contraction
   generalization_axis: model
   must_accelerate: true
   eligible: auto
-  semantic_family: contraction
