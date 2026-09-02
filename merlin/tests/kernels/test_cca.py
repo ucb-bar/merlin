@@ -370,3 +370,56 @@ def test_the_ladder_escalates_past_the_pass_that_cannot_cover_these_ops():
     for token in ("rsqrt", "sin/cos", "range reduction"):
         assert token in up.change, token
     assert ac.route_escalated(d, "CODEGEN") is None, "and it must terminate, not loop"
+
+
+def test_the_c23_floatN_spellings_are_classified():
+    """The REAL defect behind a false "promise achieved". This glibc exposes its math routines under
+    the C23 type-generic names, so a binary that plainly calls sin/cos/sqrt reported ZERO scalar math
+    calls, `_infer_activation_vectorization` returned 'vectorized_polynomial' for an UNFIXED binary,
+    and `achieved_residual` came back empty -- the gate would have credited a change that never
+    happened. Measured on the K1 Linux build of small_llama int8, whose most-called math targets are
+    roundevenf (175 calls), cosf32 (128) and sinf32 (128).
+    """
+    from merlin.kernels.cca import math_call_kind
+
+    assert math_call_kind("sinf32") == "transcendental"
+    assert math_call_kind("cosf32") == "transcendental"
+    assert math_call_kind("sqrtf32") == "algebraic"
+    assert math_call_kind("sqrtf64") == "algebraic"
+    assert math_call_kind("expf32x") == "transcendental"
+    # the _FloatN suffix must be tried BEFORE the bare `f`, or sinf32 never reduces to sin
+    assert math_call_kind("sinf") == "transcendental"
+
+
+def test_the_trig_range_reduction_helper_is_counted():
+    """roundevenf is the 4th most-called symbol in the measured binary. Omitting it under-reports the
+    scalar-math share of exactly the path (RoPE) this axis exists to find."""
+    from merlin.kernels.cca import math_call_kind
+
+    for sym in ("roundevenf", "roundeven", "rintf", "truncf", "floorf", "fmodf"):
+        assert math_call_kind(sym) == "algebraic", sym
+
+
+def test_a_tail_call_is_a_call_but_an_internal_jump_is_not():
+    """glibc reaches routines by tail call (`j 0x... <sym>`), not only `jal`. But an intra-function jump
+    renders as `<sym+0x14>`, and treating that as a call would count a routine as calling itself.
+    objdump's own rendering is the discriminator -- exact symbol vs symbol+offset -- so no heuristic
+    is needed."""
+    from merlin.kernels import cca
+    from merlin.kernels.decode import rvv
+
+    tail = rvv.decode_text("0000000000000000 <f>:\n   0:\ta055     \tj\t0x100 <sinf32>\n")
+    assert cca.scalar_math_calls(tail) == {"sinf32": "transcendental"}
+
+    internal = rvv.decode_text("0000000000000000 <sinf32>:\n   0:\ta055     \tj\t0x14 <sinf32+0x14>\n")
+    assert cca.scalar_math_calls(internal) == {}, "an internal jump is not a call to the routine"
+
+
+def test_libc_internals_that_merely_look_mathy_are_still_not_math():
+    """These are real symbols from the measured binary's call-target set. The substring detector this
+    replaced would have classified several of them."""
+    from merlin.kernels.cca import math_call_kind
+
+    for sym in ("expand_dynamic_string_token", "_nl_expand_alias", "_nl_explode_name",
+                "sysinfo", "__gettext_free_exp", "_IO_vtable_check", "__libc_assert_fail"):
+        assert math_call_kind(sym) is None, sym

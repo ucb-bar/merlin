@@ -443,7 +443,12 @@ _MATH_TRANSCENDENTAL = frozenset({
     # own symbol, so a model can pay for it without any sin/cos call being visible at this call site.
     "sin", "cos", "tan", "sincos", "asin", "acos", "atan", "atan2", "rem_pio2",
 })
-_MATH_ALGEBRAIC = frozenset({"sqrt", "rsqrt", "cbrt", "hypot"})
+_MATH_ALGEBRAIC = frozenset({
+    "sqrt", "rsqrt", "cbrt", "hypot",
+    # rounding helpers the trig range reduction leans on. `roundevenf` is the 4th most-called symbol
+    # in the measured K1 binary (175 calls) -- omitting it would under-report the scalar-math share of
+    # exactly the path (RoPE) this axis exists to find.
+    "roundeven", "rint", "nearbyint", "trunc", "floor", "ceil", "round", "fmod", "remainder"})
 #: compiler soft-float helpers (libgcc/compiler-rt). Not libm, but the same finding: a scalar call
 #: per element. `__extendbfsf2` is bf16->f32, which a widened vector datapath removes outright.
 _MATH_SOFTFLOAT = frozenset({
@@ -452,8 +457,17 @@ _MATH_SOFTFLOAT = frozenset({
 })
 #: glibc/libgcc name decorations, longest first so `__ieee754_` is stripped before `__`.
 _MATH_PREFIXES = ("__ieee754_", "__kernel_", "__libm_", "__")
-#: float / long-double suffixes (`expf`, `sqrtl`), and glibc's `_finite` / `_r` variants.
-_MATH_SUFFIXES = ("_finite", "_r", "f", "l")
+#: Suffixes a math routine's name may carry. Longest first, since the candidate generator tries them
+#: in order: the C23 `_FloatN` spellings (`sinf32`, `sqrtf64`) MUST be stripped before the bare `f`,
+#: or `sinf32` never reduces to `sin`.
+#:
+#: This was the actual defect behind a false "promise achieved". The K1 glibc exposes its math
+#: routines under the C23 type-generic names -- MEASURED on the K1 Linux build of small_llama int8,
+#: whose most-called math targets are `roundevenf` (175 calls), `cosf32` (128) and `sinf32` (128) --
+#: so `scalar_math_calls` found ZERO on a binary that plainly calls them,
+#: `_infer_activation_vectorization` reported 'vectorized_polynomial' for an UNFIXED binary, and
+#: `achieved_residual` came back empty. The gate would have credited a change that never happened.
+_MATH_SUFFIXES = ("_finite", "f128x", "f32x", "f64x", "f128", "f16", "f32", "f64", "_r", "f", "l")
 
 _ACTIVATION_OPS = ("gelu", "silu", "sigmoid", "tanh", "erf", "exp", "softmax",
                    # The transformer tail that pays for scalar math without being an "activation" in
@@ -462,7 +476,22 @@ _ACTIVATION_OPS = ("gelu", "silu", "sigmoid", "tanh", "erf", "exp", "softmax",
                    # polynomial -- so without its op tag here it lifts as None and no divergence forms.
                    "rope", "rmsnorm", "layer_norm", "layernorm", "norm",
                    "sqrt", "rsqrt", "sin", "cos", "tan")
-_CALL_MNEMONICS = ("jal", "jalr", "call")
+#: Mnemonics that transfer control to a NAMED ROUTINE, for symbol extraction. Deliberately separate
+#: from :data:`_CALL_MNEMONICS`, and this separation is the point rather than tidiness.
+#:
+#: The two questions differ. ``_lift_envelope`` asks "is there a CALL instruction in this loop body",
+#: counts it with ``count_in`` (which PREFIX-matches), and must stay narrow: adding `"j"` there would
+#: match every `j*` instruction and count every intra-function jump as per-iteration call overhead.
+#: This set answers "does this instruction transfer to a routine I can name", is matched EXACTLY, and
+#: must include tail jumps because a tail call is a `j`, not a `jal`.
+#:
+#: `_CALL_MNEMONICS` was defined TWICE in this module before this split, and the later definition
+#: silently won -- so widening the earlier one had no effect at all and the bug below survived a fix.
+#:
+#: An intra-function jump is not a transfer to a routine, and objdump's own rendering separates them
+#: without a heuristic: a whole-symbol target is `<sym>`, an internal one is `<sym+0x14>`. Requiring an
+#: exact symbol is therefore the discriminator, enforced in :func:`_call_target_symbols`.
+_TRANSFER_MNEMONICS = ("jal", "jalr", "call", "j", "jr", "tail")
 
 
 def math_call_kind(symbol: str) -> str | None:
@@ -512,12 +541,22 @@ def _call_target_symbols(stream) -> list[str]:
     """Every resolved call-target symbol in the stream, read from the ``<sym>`` objdump renders."""
     out: list[str] = []
     for i in stream.insns:
-        if not any(i.raw.mnemonic.startswith(c) for c in _CALL_MNEMONICS):
+        # exact mnemonic match: `j` must not also match `jal`-family entries twice, and more
+        # importantly a prefix test would let `jalr`-like spellings in unpredictably. Compressed
+        # spellings (`c.j`, `c.jr`) are accepted by stripping the `c.` prefix.
+        mnem = i.raw.mnemonic
+        mnem = mnem[2:] if mnem.startswith("c.") else mnem
+        if mnem not in _TRANSFER_MNEMONICS:
             continue
         for tok in i.raw.operands:
             t = str(tok)
-            if "<" in t and ">" in t:
-                out.append(t[t.index("<") + 1: t.rindex(">")])
+            if "<" not in t or ">" not in t:
+                continue
+            sym = t[t.index("<") + 1: t.rindex(">")]
+            # `<sym+0x14>` is a jump WITHIN a routine -- see _TRANSFER_MNEMONICS.
+            if "+" in sym or "-" in sym:
+                continue
+            out.append(sym)
     return out
 
 
