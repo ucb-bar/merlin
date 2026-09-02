@@ -2283,31 +2283,50 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
             # one of them. Threading the exact name is also the SAFE fix: an "fp8" -> "fp8_e4m3" alias
             # would route e5m2 data onto an e4m3 unit, which is why the registry omits that alias.
             demands = CSRC.model_op_demands(linalg_mlir, routing_dtype or dtype)
-            plan = _routing.route_plan(demands, target)
-            out["routing_plan"] = _summarize_route_plan(plan)
-            # THE PLACEMENT AUTHORITY, IN SHADOW. `route_plan` stays the authority here; `place` is
-            # computed alongside and compared, so the two surfaces are held equal on real models before
-            # either is flipped. They disagree by construction today -- that is the defect the module
-            # exists to end -- and a divergence is RECORDED rather than raised, because a compile is
-            # the wrong place to discover a modelling gap.
+            # THE PLACEMENT DECIDES; THE ROUTER IS ITS LEGALITY ORACLE AND ITS CROSS-CHECK.
             #
-            # `emulated` is the fact only this surface can state: an op the host took whose format it
-            # cannot natively carry, so the lowering has to emulate it. Nothing else reports it.
+            # `place` used to run in shadow while `route_plan` decided, because the two surfaces had to
+            # be shown equal on real models before either could be trusted with the decision. They now
+            # are: over the 22 whole-model captures under `recaptures/` crossed with the four targets
+            # that resolve a contract, all 88 pairs agree lane-for-lane AND accumulate-token-for-
+            # accumulate-token. That is what makes the flip a change of authority rather than a change
+            # of behaviour -- they share `_legal_on`, so agreement is structural, not coincidental.
+            #
+            # What the flip buys is the thing routing cannot express. `route_plan` partitions by whether
+            # a DEVICE unit was legal, so the host is an absence: an op nobody could take and an op the
+            # host was chosen for land in the same bucket with the same silence. A Placement decides over
+            # the host's units too, so every op carries a device, a unit, a lane and a reason -- and
+            # `emulated` (an op the host took whose format the host cannot natively carry, so the
+            # lowering has to emulate it) becomes statable for the first time.
+            #
+            # The cost model is passed rather than defaulted. `measured_cost_for` returns None on every
+            # target today because no unit's contract records a measured rate, so pricing is inert here
+            # and placement stays declaration-order -- but a rate landing in a contract now changes the
+            # decision without changing this call, which is the whole point of `select` taking a cost.
+            #
+            # FAIL SOFT, AND SAY SO: if the system cannot be derived, the router decides and the record
+            # names it as the authority. A compile is the wrong place to discover a modelling gap.
+            _shadow = _routing.route_plan(demands, target)
+            plan, _authority = _shadow, "routing.route_plan"
             try:
                 from .system.derive import system_for_experiment as _sysfor
-                from .system.place import place as _place
+                from .system.place import measured_cost_for as _cost_for, place as _place
                 _system, _host_why = _sysfor(target)
-                _placement = _place(demands, _system)
+                _placement = _place(demands, _system, cost=_cost_for(_system))
                 _proj = _placement.as_route_plan()
-                _divergence = {k: {"placement": len(_proj[k]), "route_plan": len(plan[k])}
+                _divergence = {k: {"placement": len(_proj[k]), "route_plan": len(_shadow[k])}
                                for k in ("mesh", "fallback", "scalar_rvv")
-                               if len(_proj[k]) != len(plan[k])}
+                               if len(_proj[k]) != len(_shadow[k])}
+                plan = _proj
+                _authority = "system.place (routing.route_plan is the cross-check)"
                 out["placement"] = {**_placement.to_dict(), "host": _host_why,
-                                    "authority": "routing.route_plan (placement runs in shadow)",
+                                    "authority": _authority,
                                     "divergence": _divergence or None}
-            except Exception as _exc:              # noqa: BLE001 -- shadow must never fail a compile
+            except Exception as _exc:              # noqa: BLE001 -- a modelling gap must not fail a compile
                 out["placement"] = {"status": "unavailable",
+                                    "authority": "routing.route_plan (placement unavailable)",
                                     "why": f"{type(_exc).__name__}: {_exc}"}
+            out["routing_plan"] = {**_summarize_route_plan(plan), "authority": _authority}
             try:
                 from .targetgen import coverage_certificate as _cert
                 # ARR coverage certificate: the compiler's routing decisions (numerator) scored against

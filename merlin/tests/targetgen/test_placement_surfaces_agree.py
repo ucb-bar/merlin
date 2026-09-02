@@ -203,3 +203,102 @@ def test_the_runtime_accepts_the_host_float_on_purpose_not_by_accident():
     assert "mesh_datapath(mesh_target)" in src, "the accepted dtype must stay derived from the target"
     assert '_accept = ("f32"' in src
     assert "host lane materializes f32" in src, "the widening must keep saying why it is there"
+
+
+# --------------------------------------------------------- the placement is now the compile authority
+
+_FLIP_DEMANDS = None
+
+
+def _flip_demands():
+    """One demand per lane the compile path distinguishes, plus one nothing can take."""
+    from merlin.targetgen.routing import OpDemand
+    return [
+        OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="mm", m=16, n=16, k=32),
+        OpDemand(op="matmul", in_fmt="fp32", weight_fmt="fp32", site="mmf", m=8, n=8, k=8),
+        OpDemand(op="softmax", in_fmt="fp32", weight_fmt=None, site="sm"),
+        OpDemand(op="layer_norm", in_fmt="fp32", weight_fmt=None, site="ln"),
+    ]
+
+
+def _placement_and_plan(target):
+    from merlin.system.derive import system_for_experiment
+    from merlin.system.place import place
+    from merlin.targetgen.routing import route_plan
+    demands = _flip_demands()
+    system, _why = system_for_experiment(target)
+    return place(demands, system), route_plan(demands, target)
+
+
+@pytest.mark.parametrize("target", ["gemmini", "atlas"])
+def test_a_placement_carries_the_accumulate_token_the_router_carried(target):
+    """The mesh certifier compiles each placed contraction in its routed operand AND accumulate format
+    (`compile_cli._mesh_verify` reads `r.acc`). A placement standing in for a route result therefore has
+    to carry it, or the tile would guess its accumulator -- which is how an i8xi8 layer gets certified in
+    the wrong precision and reported as though it were the layer's own."""
+    placement, plan = _placement_and_plan(target)
+    by_demand = {id(r.demand): r.acc for r in plan["results"]}
+    for p in placement.placed:
+        assert p.acc == by_demand[id(p.demand)], (
+            f"{target}: placement's accumulate token for {p.demand.site} diverged from the router's")
+
+
+@pytest.mark.parametrize("target", ["gemmini", "atlas"])
+def test_flipping_the_authority_changed_no_reported_number(target):
+    """`compile_model` now reports the PLACEMENT's projection where it used to report the router's. That
+    is only a change of authority -- rather than a silent change of what a whole-model compile claims --
+    if the summary the report is built from is identical. Pinned on the summarizer the report actually
+    calls, not on a re-derivation of it."""
+    from merlin.compile_cli import _summarize_route_plan
+    placement, plan = _placement_and_plan(target)
+    assert _summarize_route_plan(placement.as_route_plan()) == _summarize_route_plan(plan)
+
+
+_SCORED = ("source", "op", "semantic_family", "target_eligible", "eligibility_reason",
+           "decision", "estimated_work_flops")
+
+
+@pytest.mark.parametrize("target", ["gemmini", "atlas"])
+def test_the_coverage_certificate_scores_a_placement_exactly_as_it_scored_a_route_plan(target):
+    """ARR is scored off the same dict, so flipping the authority must not move the compiler's own
+    coverage claim. Compared on the fields the ratio is BUILT from -- `unit` and `gap` are excluded
+    deliberately and pinned separately below, because those two are what the flip is for."""
+    from merlin.targetgen import coverage_certificate as cert
+    placement, plan = _placement_and_plan(target)
+    a = cert.for_target(placement.as_route_plan(), target)
+    b = cert.for_target(plan, target)
+    keep = lambda rows: [{k: r[k] for k in _SCORED} for r in rows]     # noqa: E731
+    assert keep(a["regions"]) == keep(b["regions"])
+    for key in ("arr", "n_eligible", "n_accelerated", "n_eligible_accelerated"):
+        assert a.get(key) == b.get(key), f"{target}: the flip moved {key}"
+
+
+@pytest.mark.parametrize("target", ["gemmini", "atlas"])
+def test_the_certificate_now_names_the_host_unit_where_it_used_to_report_nothing(target):
+    """The one field the flip deliberately changes. Under the router a host op carried `unit: None` --
+    indistinguishable from an op nothing looked at. Under the placement it names the host unit that took
+    it, while `gap` keeps stating that no DEVICE unit would: two facts where there used to be one
+    silence. The gap sentence is the router's own, so the surfaces cannot phrase it two ways."""
+    from merlin.targetgen import coverage_certificate as cert
+    placement, plan = _placement_and_plan(target)
+    a = {r["source"]: r for r in cert.for_target(placement.as_route_plan(), target)["regions"]}
+    b = {r["source"]: r for r in cert.for_target(plan, target)["regions"]}
+    hosted = [p for p in placement.placed if not p.on_device]
+    assert hosted, f"{target}: this corpus is supposed to contain work no device unit accepts"
+    for p in hosted:
+        src = p.demand.site or p.demand.op
+        assert b[src]["unit"] is None                      # what the router could say
+        assert a[src]["unit"] == p.unit                    # what the placement says instead
+        assert a[src]["gap"] == b[src]["gap"] is not None  # and both still say the device declined
+
+
+def test_the_host_lane_is_a_decision_with_a_reason_not_a_leftover():
+    """The reason the authority moved. `route_plan` buckets by whether a DEVICE unit was legal, so an op
+    nobody could take and an op the host was chosen for are the same silence. Every placed op names a
+    device, a unit and a why -- and an op no unit accepts is marked `emulated` instead of vanishing into
+    the fallback lane."""
+    placement, _plan = _placement_and_plan("gemmini")
+    assert all(p.why for p in placement.placed)
+    for p in placement.on_host():
+        assert p.unit is not None or p.emulated, (
+            "a host placement either names the host unit that took it or says the host must emulate it")

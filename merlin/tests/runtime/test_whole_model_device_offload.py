@@ -118,3 +118,144 @@ def test_build_device_objects_accepts_cflags():
     from merlin.llvmlower.device_build import build_device_objects
 
     assert "cflags" in inspect.signature(build_device_objects).parameters
+
+
+# ------------------------------------------------- the decision now has a production source
+
+def _placement_for(target, demands):
+    from merlin.system.derive import system_for_experiment
+    from merlin.system.place import place
+    system, _why = system_for_experiment(target)
+    return place(demands, system)
+
+
+def _demands():
+    """One contraction the mesh takes and one it cannot, at the extents `_MODEL` actually contains."""
+    from merlin.targetgen.routing import OpDemand
+    return [OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="mm", m=16, k=32, n=16),
+            OpDemand(op="matmul", in_fmt="fp32", weight_fmt="fp32", site="host_mm", m=8, k=8, n=8)]
+
+
+def test_the_selector_moves_what_the_placement_put_on_the_device_and_nothing_else():
+    from merlin.kernels.shapes import contraction_shapes
+    from merlin.system.place import device_selector
+
+    placement = _placement_for("gemmini", _demands())
+    on_dev = [p for p in placement.placed if p.on_device]
+    if not on_dev:
+        pytest.skip("no device placement derivable for gemmini in this checkout")
+    select = device_selector(placement)
+    shapes = contraction_shapes(_MODEL)
+    assert shapes, "the fixture model must contain a contraction to decide about"
+    assert [select(s) for s in shapes] == [True], (
+        "the 16x32x16 i8 contraction is the one the placement put on the mesh")
+
+
+def test_a_shape_the_placement_never_saw_is_not_moved():
+    """Fail closed. A selector that defaulted to True would move a contraction whose placement nobody
+    made -- which is exactly the silent-offload failure this seam exists to prevent."""
+    from merlin.kernels.microkernel import ContractionShape
+    from merlin.system.place import device_selector
+
+    select = device_selector(_placement_for("gemmini", _demands()))
+    assert select(ContractionShape(op="linalg.matmul", parallel=(999, 999), reduction=(999,))) is False
+
+
+def test_one_extent_triple_placed_two_ways_is_declined_rather_than_guessed():
+    """Ambiguity through the extent keying means decline, not pick-one. Once a cost model exists, the
+    same M x K x N can be placed on the device at one site and on the host at another; applying one
+    site's decision to the other is a silent miscompile."""
+    from dataclasses import replace
+
+    from merlin.kernels.microkernel import ContractionShape
+    from merlin.system.place import Placed, Placement, device_selector
+
+    d = _demands()[0]
+    both = Placement(placed=(
+        Placed(demand=d, device="gemmini", unit="mesh", lane="on_mesh", why="x"),
+        Placed(demand=replace(d, site="elsewhere"), device="host", unit="host_scalar",
+               lane="scalar_rvv_lane", why="y"),
+    ))
+    select = device_selector(both)
+    assert select(ContractionShape(op="linalg.matmul", parallel=(16, 16), reduction=(32,))) is False
+
+
+def test_a_routing_built_from_a_placement_carries_the_placements_own_datapath():
+    """The formats are READ, never defaulted: the operand is what the router matched the contraction
+    against, and the accumulate is either the rule the unit matched or -- when the contract declares no
+    accumulate matrix, which the reference systolic mesh does not -- the device's own RTL datapath fact
+    for that operand pair. A build that assumed either emits kernels in a precision nobody chose."""
+    from merlin.llvmlower.device_build import routing_for_placement
+    from merlin.system.offload import device_dtype_triples
+
+    placement = _placement_for("gemmini", _demands())
+    on_dev = [p for p in placement.placed if p.on_device]
+    if not on_dev:
+        pytest.skip("no device placement derivable for gemmini in this checkout")
+    r = routing_for_placement(placement, on_dev[0].device, "/nonexistent")
+    assert r.operand_dtype == on_dev[0].demand.in_fmt
+    if on_dev[0].acc is not None:
+        assert r.accum_dtype == on_dev[0].acc
+    else:
+        assert r.accum_dtype in {a for _i, _w, a in device_dtype_triples(on_dev[0].device)}
+    assert r.select is not None
+
+
+def test_an_accumulate_format_that_cannot_be_derived_refuses_rather_than_defaults():
+    """Both derivations exhausted -- the unit matched no rule and the device's facts name no triple for
+    this operand pair. Emitting a kernel anyway would pick the model's arithmetic by accident."""
+    from merlin.llvmlower.device_build import routing_for_placement
+    from merlin.system.place import Placed, Placement
+    from merlin.targetgen.routing import OpDemand
+
+    exotic = Placement(placed=(
+        Placed(demand=OpDemand(op="matmul", in_fmt="mxfp4", weight_fmt="mxfp4", site="a",
+                               m=16, k=32, n=16),
+               device="gemmini", unit="systolic_mesh", lane="on_mesh", acc=None, why="x"),))
+    with pytest.raises(ValueError, match="underivable"):
+        routing_for_placement(exotic, "gemmini", "/nonexistent")
+
+
+def test_a_placement_that_moved_nothing_is_a_caller_error_not_an_empty_build():
+    from merlin.llvmlower.device_build import routing_for_placement
+    from merlin.system.place import Placed, Placement
+
+    empty = Placement(placed=(Placed(demand=_demands()[1], device="host", unit="host_scalar",
+                                     lane="scalar_rvv_lane", why="host"),))
+    with pytest.raises(ValueError, match="nothing to build"):
+        routing_for_placement(empty, "gemmini", "/nonexistent")
+
+
+def test_device_placements_that_disagree_about_the_datapath_refuse_to_become_one_image():
+    """One ELF carries one device datapath. Picking the first and dropping the rest is how half a model
+    gets computed in a precision nobody selected."""
+    from merlin.llvmlower.device_build import routing_for_placement
+    from merlin.system.place import Placed, Placement
+    from merlin.targetgen.routing import OpDemand
+
+    mixed = Placement(placed=(
+        Placed(demand=OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="a",
+                               m=16, k=32, n=16),
+               device="gemmini", unit="mesh", lane="on_mesh", acc="i32", why="x"),
+        Placed(demand=OpDemand(op="matmul", in_fmt="bf16", weight_fmt="bf16", site="b",
+                               m=16, k=32, n=32),
+               device="gemmini", unit="mesh", lane="on_mesh", acc="f32", why="x"),
+    ))
+    with pytest.raises(ValueError, match="disagree about the datapath"):
+        routing_for_placement(mixed, "gemmini", "/nonexistent")
+
+
+def test_the_offload_rewrite_accepts_the_placement_derived_selector(tmp_path):
+    """End to end through the seam a whole-model build uses: a placement decides, the rewrite moves the
+    contraction, and the sidecar the device build reads names a signature. Without this the fused path
+    is reachable in principle and unreached in fact."""
+    from merlin.llvmlower.device_build import routing_for_placement
+
+    placement = _placement_for("gemmini", _demands())
+    on_dev = [p for p in placement.placed if p.on_device]
+    if not on_dev:
+        pytest.skip("no device placement derivable for gemmini in this checkout")
+    routing = routing_for_placement(placement, on_dev[0].device, "/nonexistent")
+    text, side = _prepare(tmp_path, routing)
+    assert side.get("signatures"), "the placement's decision must reach the device sidecar"
+    assert "func.call" in text and "linalg.matmul" not in text

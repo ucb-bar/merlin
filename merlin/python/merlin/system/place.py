@@ -22,7 +22,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-__all__ = ["HOST_DEVICE", "Placement", "Placed", "host_units", "place", "units_for"]
+__all__ = ["HOST_DEVICE", "Placement", "Placed", "device_selector", "host_units", "place",
+           "units_for"]
 
 #: The device name a host placement carries. Not a target: it is the absence of one, named so a
 #: report can say "host" without a caller testing for None.
@@ -38,6 +39,19 @@ class Placed:
     unit: str | None                 # the compute unit within it, when one was legal
     lane: str                        # on_mesh | in_contract_vector_scalar | scalar_rvv_lane
     why: str
+    #: The accumulate token the CHOSEN unit matched, exactly as ``routing.RouteResult.acc`` carries it.
+    #: Not decoration: the mesh certifier compiles each placed contraction in its routed operand AND
+    #: accumulate format, so a placement that omitted this could not stand in for a route result -- the
+    #: tile would have to guess its accumulator, which is how an i8xi8 layer gets certified in the wrong
+    #: precision. ``None`` means the unit declares no accumulate rule, which is a fact, not a gap.
+    acc: str | None = None
+    #: The router's own honest gap text when NO DEVICE unit accepted this op, else ``None``.
+    #:
+    #: Written by ``routing._gap_text`` rather than phrased here, so the two surfaces cannot drift into
+    #: two different sentences for one fact. Note what it is NOT: a placement on the host is not a gap in
+    #: the placement -- the host took the op and ``unit`` names which host unit did. It is a gap in the
+    #: DEVICE, which is the question the coverage certificate asks of this field.
+    gap: str | None = None
     #: True when the op landed on the host and the host does not natively carry its format -- i.e.
     #: the lowering has to emulate it. Today this is invisible; it is the honest reading of a gap.
     emulated: bool = False
@@ -103,7 +117,8 @@ class Placement:
                 "site": getattr(d, "site", None),
                 "m": getattr(d, "m", None), "n": getattr(d, "n", None), "k": getattr(d, "k", None),
                 "rank": getattr(d, "rank", None),
-                "device": pl.device, "unit": pl.unit, "lane": pl.lane,
+                "device": pl.device, "unit": pl.unit, "lane": pl.lane, "acc": pl.acc,
+                "gap": pl.gap,
                 "why": pl.why, "emulated": bool(pl.emulated),
             })
         return {"placed": rows, "lanes": self.lanes(), "n_emulated": len(self.emulated()),
@@ -197,7 +212,8 @@ def place(demands: Sequence[Any], system, *,
     rather than a change of pass. A cost model that DECLINES every candidate for a demand falls back
     to the first legal one rather than dropping it: declining to price is not declining to run.
     """
-    from merlin.targetgen.routing import OpDemand, _legal_on  # noqa: PLC2701 -- one legality predicate
+    # One legality predicate and one gap sentence, both borrowed rather than restated.
+    from merlin.targetgen.routing import OpDemand, _gap_text, _legal_on  # noqa: PLC2701
 
     pairs = units_for(system)
     placed: list[Placed] = []
@@ -215,7 +231,7 @@ def place(demands: Sequence[Any], system, *,
             # Nothing can take it, the host included -- today this is the silent case. The op still
             # goes to the host (the lowering will emulate it); what is new is that we say so.
             placed.append(Placed(demand=d, device=HOST_DEVICE, unit=None,
-                                 lane="scalar_rvv_lane", emulated=True,
+                                 lane="scalar_rvv_lane", emulated=True, gap=_gap_text(d),
                                  why=f"no unit accepts op={getattr(d, 'op', '?')} "
                                      f"in={getattr(d, 'in_fmt', '?')}; host must emulate it"))
             continue
@@ -238,9 +254,52 @@ def place(demands: Sequence[Any], system, *,
         on_host = dev == HOST_DEVICE
         placed.append(Placed(demand=d, device=dev, unit=unit.name,
                              lane=_lane_for(unit.kind, on_host),
+                             acc=_legal_on(unit, d)[1],
+                             gap=_gap_text(d) if on_host else None,
                              why=why if not on_host else f"{why} (no device accepted it)"))
 
     return Placement(placed=tuple(placed))
+
+
+def device_selector(placement: Placement) -> Callable[[Any], bool]:
+    """The offload selector this placement implies: ``shape -> should this contraction move?``.
+
+    The missing production caller. ``device_offload.rewrite_contractions_to_device`` takes ``select`` and
+    moves nothing without one, and ``DeviceRouting.select`` defaults to ``None`` -- so the fused
+    single-ELF path (host object + RVV kernels + device kernels, linked by the board build) has been
+    reachable but never reached, and every whole-model run went through the Python interpreter instead.
+    The reason was not a missing mechanism: it was that nobody had made the decision this closes over.
+
+    Deliberately keyed on EXTENTS rather than on op identity. The offload pass walks a prepared module
+    and the placement was derived from the capture, so the two hold different op handles for the same
+    contraction; the extents are what both can state. ``ContractionShape`` gives ``(M, N)`` as the last
+    two parallel dims and ``K`` as the first reduction dim, which is exactly what an ``OpDemand`` carries.
+
+    Two ways it declines, both closed rather than open:
+
+    * A contraction whose extents the demands never carried cannot be matched, so it is not moved. A
+      selector that guessed here would move a contraction whose placement nobody decided.
+    * If one extent triple was placed on a device in one site and on the host in another -- which a cost
+      model may well do once one exists -- the triple is AMBIGUOUS through this keying, and ambiguity
+      means decline. Moving it would silently apply one site's decision to another site.
+    """
+    seen: dict[tuple[int, int, int], set[bool]] = {}
+    for pl in placement.placed:
+        d = pl.demand
+        m, k, n = getattr(d, "m", None), getattr(d, "k", None), getattr(d, "n", None)
+        if m is None or k is None or n is None:
+            continue
+        seen.setdefault((int(m), int(k), int(n)), set()).add(bool(pl.on_device))
+    decided = {key: (votes == {True}) for key, votes in seen.items()}
+
+    def _select(shape) -> bool:
+        try:
+            key = (int(shape.parallel[-2]), int(shape.reduction[0]), int(shape.parallel[-1]))
+        except Exception:        # noqa: BLE001 -- a shape this selector cannot read is not one it moves
+            return False
+        return decided.get(key, False)
+
+    return _select
 
 
 def measured_cost_for(system) -> "Callable[[Any, Any], float | None] | None":
