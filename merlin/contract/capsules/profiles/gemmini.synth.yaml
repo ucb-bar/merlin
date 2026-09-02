@@ -1,0 +1,126 @@
+# DERIVED — regenerate with:
+#   build_tools/scripts/synth_capsule_corpus.py --target gemmini --write
+# Do not hand-edit. These entries exist because the target's own conformance requirement asks for
+# them: each carries the cell it was synthesized for in `source_reference`. Editing one here is a
+# claim the requirement does not make, and the next regeneration discards it.
+provenance:
+  generated_by: merlin.targetgen.corpus_synth.synthesize
+  target: gemmini
+  n_required_cells: 6
+  n_entries: 6
+  budget: 160
+  precision_preference_kept:
+  - i8
+  precision_preference_dropped:
+  - fp8_e4m3
+  - mxfp8
+  - fp16
+  - bf16
+  - f32
+  precision_note: a preference RANKS the dtypes the target already admits and can never widen them; a
+    dropped token is reported rather than silently ignored
+capsules:
+- cat: isa
+  kind: isa
+  name: SY_contraction_i8_aligned
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/i8/aligned (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+- cat: isa
+  kind: isa
+  name: SY_contraction_i8_partial
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/i8/partial (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_i8_aligned
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/i8/aligned (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes; elementwise_map is admitted only in composition with ['contraction'],
+    so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be refused by
+    the eligibility oracle as a false fallback
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  epilogue:
+  - relu
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_i8_partial
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/i8/partial (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes; elementwise_map is admitted only in composition with ['contraction'],
+    so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be refused by
+    the eligibility oracle as a false fallback
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  epilogue:
+  - relu
+- cat: isa
+  kind: isa
+  name: SY_movement_i8_aligned
+  op: movement
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/i8/aligned (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+- cat: isa
+  kind: isa
+  name: SY_movement_i8_partial
+  op: movement
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/i8/partial (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1

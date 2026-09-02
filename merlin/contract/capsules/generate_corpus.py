@@ -279,6 +279,18 @@ def load_profile(target: str, *, include_holdouts: bool = True) -> dict:
     public = PROFILES / f"{target}.yaml"
     prof = yaml.safe_load(public.read_text(encoding="utf-8")) or {}
     _merge_shared_perf(prof, source=public)
+    # SYNTHESIZED ENTRIES, appended after the hand-authored ones. They come from the target's own
+    # derived conformance requirement (build_tools/scripts/synth_capsule_corpus.py --write) and carry
+    # the cell each was synthesized for in `source_reference`. Appended rather than prepended so
+    # `expand_sweeps`' documented declaration-order semantics are untouched; its `seen` set already
+    # raises on a duplicate name, and every synthesized name is `SY_`-prefixed, so a collision with a
+    # hand-authored capsule is impossible rather than merely unlikely.
+    synth = PROFILES / f"{target}.synth.yaml"
+    if synth.is_file():
+        doc = yaml.safe_load(synth.read_text(encoding="utf-8")) or {}
+        extra = list(doc.get("capsules") or ())
+        if extra:
+            prof["capsules"] = list(prof.get("capsules") or []) + extra
     side = PROFILES / f"{target}.hidden.yaml"
     if include_holdouts and side.is_file():
         held = yaml.safe_load(side.read_text(encoding="utf-8")) or {}
@@ -1443,6 +1455,36 @@ _TILE_TOKEN = "tile"
 _MAX_SWEEP_CAPSULES = 128
 
 
+#: Entry keys whose value is a SHAPE EXTENT, and may therefore be written tile-relative.
+_EXTENT_KEYS = ("M", "K", "N", "H", "Skv", "Dv", "B")
+
+
+def _resolve_flat_extents(entry: dict, binding) -> dict:
+    """Resolve tile-relative extent tokens on a FLAT capsule entry.
+
+    ``resolve_extent`` was reachable only from sweep axes, so a flat entry had to spell its shape as
+    integers -- which bakes one target's geometry into a file that is supposed to describe a shape
+    RELATIVE to whatever edge the hardware has. Synthesized entries are written ``tile`` / ``tile-1``
+    precisely so the same entry means the same thing on a target with a different edge, and this is
+    where that promise is kept.
+
+    Inert on every existing entry: an int passes through ``resolve_extent`` unchanged, and a key that
+    is absent is not touched.
+    """
+    tile = getattr(binding, "tile_dim", None)
+    if not tile:
+        return entry
+    out = None
+    for key in _EXTENT_KEYS:
+        value = entry.get(key)
+        if not isinstance(value, str):
+            continue
+        if out is None:
+            out = dict(entry)
+        out[key] = resolve_extent(value, int(tile))
+    return out if out is not None else entry
+
+
 def resolve_extent(token, tile: int) -> int:
     """Resolve a sweep extent token against *tile* (the binding's tile edge).
 
@@ -1868,6 +1910,7 @@ def generate_target(target: str) -> list[Path]:
     entries = expand_sweeps(
         profile, binding, trait_facts=facts, skipped=_sweep_skips,
         blocked_unimplemented=_runtime_blocked, errors=_performance_errors)
+    entries = [_resolve_flat_extents(e, binding) for e in entries]
     for _s in _sweep_skips:
         print(f"  [skip] performance family {_s['family']}: gate {_s['gate']['outcome']}")
     template = copy.deepcopy(profile.get("_performance_template") or {})

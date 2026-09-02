@@ -361,6 +361,20 @@ class TargetExperiment:
     # Left None where the evidence does not name one -- ``system_for_experiment`` then reports the
     # omission instead of fabricating a host, since a made-up host is worse than an absent one.
     host_board: str | None = None
+    # OPTIONAL: the only things capsule SYNTHESIS cannot derive.
+    #
+    # `models` -- which workloads this target is FOR. The requirement's `observed` half comes from model
+    # captures, and `check_conformance_coverage._captures()` currently globs the whole recapture
+    # directory, so an untracked directory listing is the denominator of a tracked requirement.
+    # `precision_preference` -- a RANKING over the dtypes the target already admits, used only to break
+    # ties on axes no required cell pins. It is filtered against the admitted set and can never widen
+    # it; a token that does not survive is reported, not silently ignored.
+    # `max_synthesized_capsules` -- the budget that turns "too many capsules" into an error rather than
+    # a truncation, because a silently dropped point reads downstream as a covered one.
+    #
+    # Absent is not an error: a target that declares none simply gets no tie-break, and the derived
+    # requirement alone determines its corpus.
+    workload_spec: dict | None = None
 
     @property
     def host_lane(self) -> HostLane | None:
@@ -501,6 +515,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         graded_exclude=tuple(str(x) for x in ((doc.get("grading") or {}).get("exclude_capsules") or ())),
         host_lanes=HostLaneMatrix.from_mapping(doc.get("host_lane"), descriptor=p),
         host_board=(lambda v: str(v) if v else None)((doc.get("host") or {}).get("board")),
+        workload_spec=(lambda v: dict(v) if isinstance(v, dict) else None)(doc.get("workload_spec")),
     )
 
 

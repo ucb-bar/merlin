@@ -111,6 +111,19 @@ answer_surfaces:
 # `branch` is informational: branches move, and the same branch name on a fork and on upstream are
 # different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
 # a checkout that is the right repo on a plausible branch and missing the schedule is caught.
+# THE ONLY INPUT CAPSULE SYNTHESIS CANNOT DERIVE. Everything else about this target's corpus comes
+# from its own conformance requirement (admitted x observed, at the boundaries its RTL declares).
+#
+# `models` names which workloads this target is FOR -- the requirement's `observed` half is a census of
+# real captures, and without a declared roster the denominator of a tracked requirement is an untracked
+# directory listing. `precision_preference` RANKS the dtypes the target already admits, to break ties on
+# axes no required cell pins; it is filtered against the admitted set and can never widen it, and a
+# token that does not survive is reported rather than silently ignored.
+workload_spec:
+  models: [resnet50, lstmnetvit, smolvla, tiny_llama]
+  precision_preference: [int8, fp8_e4m3, mxfp8, fp16, bf16, fp32]
+  max_synthesized_capsules: 160
+
 host_lane:
   description: >-
     The RVV host compiler: the scalar/vector lane every partitioned capsule falls back to for the work
