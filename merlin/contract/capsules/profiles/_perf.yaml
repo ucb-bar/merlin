@@ -170,7 +170,14 @@ sweeps:
 blocked_unimplemented:
 
 - family: PL
-  reason: layer-scale lever and preflight promotion are not capsule-runnable
+  reason: >-
+    LOCATED. The generator this names, merlin.perf.workload_gen.plan_matmul, produces a PROGRAM PLAN --
+    a tiled, looped command buffer and its emitted kernel -- and not a capsule entry, so the missing
+    piece is the bridge between the two: a materializer that turns a plan into a capsule carrying a
+    golden. It also takes MachineFacts, KernelOps, ControlFlow and Settle, which a SELF-HOSTED-ISA
+    target supplies and a coprocessor-style one does not, so the family is reachable on a strict subset
+    of targets even once the bridge exists. Both facts are about plumbing and scope, not about the
+    lever, which was measured: the settle levers are scale-invariant across a 12x span.
   fit_axes: [K]
   comparison_roles: [tile_regime, layer_regime]
   performance:
