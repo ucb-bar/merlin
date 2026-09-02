@@ -185,6 +185,50 @@ _RVV_ROUTES: list[_Route] = [
                         "us from 3.57x to 1.90x of XNNPACK",
         intended_facet={"envelope.runtime_calls": ()}),
     _Route(
+        # THE NEXT RUNG on envelope.runtime_calls. The PASS above erases `memref.copy %x, %x` -- a SELF
+        # copy, unconditionally a no-op and free to remove. It cannot touch a copy whose source and
+        # destination differ, and those are what remain. Before this rung the ladder ENDED at that PASS:
+        # the loop forked the erase, the erase could not achieve `runtime_calls == ()`, and escalation
+        # returned None with no work-item recording that the remaining lever was missing rather than
+        # useless. Identical dead-end to the one on compute.activation_vectorization.
+        #
+        # MEASURED on small_llama int8 AFTER the self-copy erase landed (spike -g PC histogram bucketed
+        # by the nearest preceding .text symbol in the linked ELF; htif console traffic excluded as a
+        # harness artifact). Real model work 2,685,845 instructions:
+        #     forward      1,491,518   55.53%
+        #     memcpy         511,532   19.05%
+        #     memrefCopy     366,528   13.65%
+        #     memset         158,383    5.90%
+        #     copy family  1,036,443   38.59%
+        # And the call-site attribution -- the histogram carries a count per PC, and a call site IS a PC
+        # -- shows these are ONE lever, not three: `memrefCopy` calls `memcpy` 6,144 times and `memset`
+        # 24 times, while `forward` invokes `memrefCopy` just 24 times. So 24 invocations drive 38.59% of
+        # real work, about 43,000 instructions each, matching the in-source note of ~5,000 instructions
+        # for a 4x16 tile and the escape audit's ~79 per output element.
+        axis="envelope.runtime_calls",
+        # Same predicate as the cheaper rung: which one applies is decided by MEASUREMENT, not by a
+        # hand-coded test. route() returns the PASS, and route_escalated only reaches here once the
+        # emitted code failed to achieve the promise -- which is exactly what happens when the residual
+        # copies are not self-copies. The promise itself is derived from the expert's own value on the
+        # axis (an expert GEMM calls none of these), so the gate needs nothing restated.
+        when=lambda d: bool(d.ours) and not d.expert,
+        action_class="CODEGEN",
+        target_seam="pass:tile-epilogue-store-once (eliminate the rank-generic copy, not erase it)",
+        change="make the tile epilogue STORE C ONCE instead of round-tripping it through a "
+               "rank-generic strided copy. The remaining `memref.copy` ops have DISTINCT source and "
+               "destination, so erasure is invalid -- the copy has to stop being emitted. Concretely: "
+               "write the accumulator straight to its destination subview at the end of the K loop "
+               "rather than materialising a tile and copying it out, so no `@memrefCopy` call is "
+               "emitted and the `memcpy`/`memset` it drives disappear with it. NEEDS NEW CODE: no knob "
+               "or registered feature expresses it, which is why this rung is not forkable and is the "
+               "honest terminus for a constrained, oracle-graded pass slot (mining.pass_slot).",
+        forkable_now=False,
+        expected_effect="the copy family leaves the profile: measured at 38.59% of real model work "
+                        "over 24 call sites after the self-copy erase, against 2.42% for the scalar "
+                        "transcendentals on the same binary -- so this is the lever, and it is sized "
+                        "by measurement rather than asserted",
+        intended_facet={"envelope.runtime_calls": ()}),
+    _Route(
         axis="envelope.calls_in_loop",
         # The symbol-free form of the same divergence: a call in a loop body is per-iteration
         # overhead whatever it calls, so this fires even without an object symbol table.
@@ -699,10 +743,24 @@ def route_escalated(divergence: Divergence, prior_class: str) -> CompilerAction 
     ensure_backend(divergence.backend)
     floor = _CLASS_ORDER.get(prior_class, -1)
     # The measured residual already PROVES the gap on this axis, so escalation matches on axis + a
-    # stronger class + the expert having the property — NOT the original `when` predicate (which may
+    # stronger class + the expert having a KNOWN target — NOT the original `when` predicate (which may
     # gate on the BASELINE's value, e.g. ours-is-None, that no longer holds after a fork was applied).
+    #
+    # `is not None`, NOT truthiness. The test used to be `bool(divergence.expert)`, which silently
+    # disabled escalation on every axis whose target is the ABSENCE of something -- exactly the axes
+    # where the goal is "eliminate X" and the expert's value is therefore the empty tuple, 0 or False:
+    #   envelope.runtime_calls        target ()   an expert GEMM calls no runtime helper
+    #   coverage.unclaimed_op_classes target ()   an expert leaves no class unclaimed
+    #   envelope.calls_in_loop        target 0    an expert has no per-iteration call
+    # On those three the ladder could never move past its cheapest rung, no matter what the emitted code
+    # measured. That mattered: `envelope.runtime_calls`' cheap rung is the SELF-copy erase, which cannot
+    # remove a copy whose source and destination differ -- and the residual copies are 38.59% of real
+    # model work on small_llama int8 after that erase has run. The lever was unreachable by construction.
+    #
+    # None still blocks, and must: it means the axis was not lifted, so there is no target to reach and
+    # "escalate toward unknown" is not a thing to do.
     cands = [r for r in _ROUTES.get(divergence.backend, [])
-             if r.axis == divergence.axis and bool(divergence.expert)
+             if r.axis == divergence.axis and divergence.expert is not None
              and _CLASS_ORDER.get(r.action_class, 99) > floor]
     if not cands:
         return None

@@ -377,3 +377,51 @@ def test_per_op_register_block_is_forkable_because_it_is_wired():
     src = (repo_root() / "merlin/python/merlin/runtime/backends/zephyr_model.py").read_text()
     assert "if PEROP_BLOCK_NAME in features:" in src           # the sentinel IS consumed
     assert "ensure_perop_block(table, _PEROP_KC)" in src       # ...and swapped for the real feature
+
+
+# ---------------------------------------------------------------------------------------
+# Escalation on an "eliminate X" axis. The guard used to be `bool(divergence.expert)`,
+# which silently disabled escalation on every axis whose TARGET is the absence of
+# something -- the expert's value there is (), 0 or False, all falsy. Three axes were
+# affected, and one of them is the largest measured lever in the profile.
+# ---------------------------------------------------------------------------------------
+
+def _div(axis, ours, expert):
+    from merlin.kernels.cca_compare import Divergence
+    return Divergence(axis=axis, backend="rvv", ours=ours, expert=expert)
+
+
+def test_escalation_works_when_the_target_is_the_absence_of_something():
+    """envelope.runtime_calls' cheapest rung is the SELF-copy erase, which cannot remove a copy whose
+    source and destination differ. Measured on small_llama int8 AFTER that erase runs, the residual copy
+    family is 38.59% of real model work over 24 call sites -- so the ladder MUST be able to move past
+    the erase. With a truthiness guard it never could, because an expert GEMM's runtime_calls is ()."""
+    d = _div("envelope.runtime_calls", ("memcpy", "memrefCopy", "memset"), ())
+    cheap = ac.route(d)
+    assert cheap.action_class == "PASS" and cheap.forkable_now is True
+    assert cheap.intended_facet == {"envelope.runtime_calls": ()}, "the promise must be checkable"
+
+    up = ac.route_escalated(d, cheap.action_class)
+    assert up is not None, "a falsy target must not disable escalation"
+    assert up.action_class == "CODEGEN" and up.forkable_now is False
+    assert "store-once" in up.target_seam or "STORE C ONCE" in up.change
+    assert ac.route_escalated(d, "CODEGEN") is None, "and it must terminate"
+
+
+def test_a_falsy_target_is_a_target_but_an_unknown_one_is_not():
+    """(), 0 and False are legitimate targets -- "call nothing", "zero calls in the loop". None means
+    the axis was not lifted, so there is genuinely nothing to escalate toward and it must still block."""
+    assert ac.route_escalated(_div("envelope.runtime_calls", ("memcpy",), ()), "PASS") is not None
+    assert ac.route_escalated(_div("envelope.runtime_calls", ("memcpy",), None), "PASS") is None
+
+
+def test_no_route_promises_a_target_it_cannot_express():
+    """Every route on an elimination axis must carry, or derive, a promise -- otherwise the escalation
+    it feeds has nothing to check and `achieved_residual` returns [] for any emitted code at all."""
+    for axis, ours, expert in (("envelope.runtime_calls", ("memcpy",), ()),
+                               ("coverage.unclaimed_op_classes", ("linalg.batch_matmul",), ())):
+        a = ac.route(_div(axis, ours, expert))
+        if a is None:
+            continue
+        assert a.intended_facet, f"{axis} routed to an action with no checkable promise"
+        assert axis in a.intended_facet
