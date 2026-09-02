@@ -20,8 +20,8 @@ def test_arm4_hidden_capability_admission_matches_sealed_cardinalities():
     excluded_count = len(excluded)
     admitted_count = len(hidden) - excluded_count
 
-    assert te.hidden_expected_source_capsules == len(hidden) == 11
-    assert te.hidden_expected_admitted_capsules == admitted_count == 10
+    assert te.hidden_expected_source_capsules == len(hidden) == 15
+    assert te.hidden_expected_admitted_capsules == admitted_count == 14
     assert excluded_count == 1
 
 
