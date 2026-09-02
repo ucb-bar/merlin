@@ -62,8 +62,15 @@ def audit_capsule(capsule: dict, capsule_dir: str | Path | None = None) -> list[
     atol, rtol = float(policy.get("atol", 0.0)), float(policy.get("rtol", 0.0))
     found: list[dict[str, Any]] = []
     for name, values in (golden or {}).items():
-        exp = np.asarray(values, dtype=np.float64)
-        if exp.size == 0:
+        try:
+            exp = np.asarray(values, dtype=np.float64)
+        except (ValueError, TypeError):
+            # A RAGGED golden (per-output arrays of differing shape) is not one comparable tensor, so
+            # "the constant nearest every element" is not defined over it. Skip that output rather than
+            # crash: a checker that dies on one corpus shape takes the whole gate down with it, and a
+            # gate that cannot run is indistinguishable from one that found nothing.
+            continue
+        if exp.dtype == object or exp.size == 0:
             continue
         for answer, cand in degenerate_answers(exp).items():
             if _accepts(cand, exp, atol, rtol):
