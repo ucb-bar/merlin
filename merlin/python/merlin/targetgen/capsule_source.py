@@ -385,9 +385,16 @@ class PytorchRefSource:
                          scheme=spec.get("quant_scheme"))
 
     def capture_loader(self, loader_py: str | Path, dtype: str, *,
-                       workdir: str | Path | None = None) -> CapsuleArtifacts:
+                       workdir: str | Path | None = None,
+                       scheme: str | None = None) -> CapsuleArtifacts:
         """Capture an EXISTING loader file (a whole-model workload) rather than a generated op loader.
-        Same worker path; ``op`` is ``model`` and ``pytorch_src`` is the loader's own source."""
+        Same worker path; ``op`` is ``model`` and ``pytorch_src`` is the loader's own source.
+
+        ``scheme`` reaches the worker exactly as it does for an op capsule. Without it the whole-model
+        path took the DEFAULT for its dtype, and the default for int8 is weight-only -- a float matmul
+        over dequantized weights. A model capsule declaring `compile_dtype: int8` was therefore capturing
+        a program with no integer contraction in it at all, which is the wrong program for an integer
+        mesh and one no golden substitution can repair."""
         loader_py = Path(loader_py)
         if not self.available():
             raise M2MUnavailable(f"m2m venv python {self.python} or repo {self.m2m_dir} missing")
@@ -395,7 +402,8 @@ class PytorchRefSource:
             raise M2MUnavailable(f"model loader not found: {loader_py}")
         tmp = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="capsule_model_"))
         tmp.mkdir(parents=True, exist_ok=True)
-        return self._run(loader_py, "model", dtype, workdir=tmp, src=loader_py.read_text())
+        return self._run(loader_py, "model", dtype, workdir=tmp, src=loader_py.read_text(),
+                         scheme=scheme)
 
     def _run(self, loader_py: Path, op: str, dtype: str, *, workdir: Path, src: str,
              scheme: str | None = None) -> CapsuleArtifacts:
@@ -993,7 +1001,9 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
     src = source or PytorchRefSource()
     dtype = entry.get("operand_dtype") or binding.operand_dtype
     loader = resolve_model_loader(entry, src.m2m_dir)
-    art = src.capture_loader(loader, dtype)
+    # The capsule's declared scheme, not the dtype default. `quant_scheme` is how an entry says which
+    # arithmetic it means by "int8"; dropping it here silently substituted weight-only quantization.
+    art = src.capture_loader(loader, dtype, scheme=entry.get("quant_scheme"))
 
     d = Path(out_root) / entry["cat"] / entry["name"]
     d.mkdir(parents=True, exist_ok=True)

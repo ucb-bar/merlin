@@ -315,3 +315,54 @@ def test_extent_scan_matches_the_op_name_exactly():
     assert _matmul_extents(plain) == [(8, 16, 32)]
     assert _matmul_extents(tb) == [], "a transpose-b matmul must not masquerade as a plain one"
     assert _matmul_extents(plain + "\n" + tb) == [(8, 16, 32)]
+
+
+def test_a_model_capsules_declared_quant_scheme_reaches_the_capture(monkeypatch, tmp_path):
+    """The whole-model path dropped `quant_scheme` and took the DTYPE DEFAULT instead.
+
+    For int8 that default is weight-only, which emits a float matmul over dequantized weights. A model
+    capsule declaring int8 was therefore capturing a program containing no integer contraction at all --
+    the wrong program for an integer mesh, and one no golden substitution can repair.
+    """
+    from merlin.targetgen import capsule_source as CS
+
+    seen = {}
+
+    class _Src(CS.PytorchRefSource):
+        def available(self):
+            return True
+
+        def _run(self, loader_py, op, dtype, *, workdir, src, scheme=None):
+            seen.update(op=op, dtype=dtype, scheme=scheme)
+            raise CS.M2MUnavailable("stop here: the argument, not the capture, is under test")
+
+    loader = tmp_path / "loader.py"
+    loader.write_text("def get_model_and_inputs():\n    raise NotImplementedError\n", encoding="utf-8")
+
+    with pytest.raises(CS.M2MUnavailable):
+        _Src().capture_loader(loader, "int8", scheme="int8_dyn_act_int8_weight")
+    assert seen["scheme"] == "int8_dyn_act_int8_weight"
+    assert seen["op"] == "model" and seen["dtype"] == "int8"
+
+
+def test_a_model_capsule_that_declares_no_scheme_still_passes_none():
+    """Absent stays absent: the default remains the dtype's, and this must not invent a scheme."""
+    from merlin.targetgen import capsule_source as CS
+
+    seen = {}
+
+    class _Src(CS.PytorchRefSource):
+        def available(self):
+            return True
+
+        def _run(self, loader_py, op, dtype, *, workdir, src, scheme=None):
+            seen["scheme"] = scheme
+            raise CS.M2MUnavailable("stop")
+
+    import tempfile
+    from pathlib import Path as _P
+    d = _P(tempfile.mkdtemp())
+    (d / "l.py").write_text("x = 1\n", encoding="utf-8")
+    with pytest.raises(CS.M2MUnavailable):
+        _Src().capture_loader(d / "l.py", "fp32")
+    assert seen["scheme"] is None
