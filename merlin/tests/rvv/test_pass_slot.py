@@ -153,3 +153,74 @@ def test_a_refused_proposal_is_returned_alongside_its_verdict():
     bad = _proposal("read golden.npy here")
     proposal, v = ps.run_pass_slot(_action(), propose=lambda a: bad, **_ok_kwargs())
     assert proposal is bad and not v.accepted and v.stage == "cheat"
+
+
+# --------------------------------------------------------- cheat scan: strict without false alarms
+
+_MODELS = ("openvla", "small", "small_llama", "rdt", "rdt2")
+
+
+def _sc(src):
+    from merlin.mining.pass_slot import scan_cheats
+    return scan_cheats(src, models=_MODELS)
+
+
+def test_a_pass_that_dispatches_on_a_model_name_is_caught():
+    """The thing the scan is for: a lever found on one model has to transfer, so a pass that can tell
+    which model it is compiling is overfit by construction."""
+    assert "model:openvla" in _sc('if model == "openvla":\n    pass\n')
+    assert "model:openvla" in _sc('TABLE = {"openvla": 4}\n')
+
+
+def test_a_model_name_embedded_in_a_longer_identifier_is_caught():
+    """`small_llama_hack` is the pattern -- a multi-word model name inside an identifier."""
+    assert "model:small_llama" in _sc("small_llama_hack = 1\n")
+
+
+def test_a_model_name_in_a_comment_or_docstring_is_not_a_cheat():
+    """A comment cannot special-case a pass, and this repo WANTS the provenance: act_poly.py records
+    that a blanket rewrite "drove openvla whole-model cos to 0.541" -- the measurement motivating the
+    fix. Rejecting that would make every honest proposal for that module unacceptable."""
+    assert _sc("# openvla cos 0.541\nx = 1\n") == []
+    assert _sc('"""measured on openvla and small_llama."""\nx = 1\n') == []
+
+
+def test_a_short_model_token_does_not_flag_an_ordinary_identifier():
+    """The corpus model list contains short tokens (`small`, `rdt`, `pi05`). Span-matching those would
+    flag `small_m_fallback` -- a real concept in this repo -- and `rdtime`, the K1 cycle counter. So a
+    single-word token matches only exactly. A gate that rejects honest proposals is broken, not strict.
+    """
+    assert _sc("def small_m_fallback(x):\n    return x\n") == []
+    assert _sc("t = rdtime()\n") == []
+    assert _sc("rdt2_shape = 1\n") == []          # `rdt` must not match inside `rdt2_shape`
+    assert "model:small" in _sc('small = 1\n')    # but the bare token still counts
+
+
+def test_spliced_source_is_scanned_as_source_not_as_a_string():
+    """These passes splice generated source as a string literal (act_poly, accum_microkernel's
+    rewriter, perop_blocks), so a proposal's real content usually lives inside one. Comments in that
+    nested source must stay exempt, while a dispatch inside it must still be caught."""
+    assert _sc('SRC = """\n# openvla regressed here\nx = 1\n"""\n') == []
+    assert "model:openvla" in _sc('SRC = """\nif m == "openvla":\n    pass\n"""\n')
+
+
+def test_the_real_act_poly_module_passes_its_own_cheat_scan():
+    """The regression that motivated all of the above: scanning raw text rejected this module's own
+    bytes over model names in its provenance comments, so the CODEGEN rung the ladder escalates to
+    could never have an acceptable proposal."""
+    from merlin.common.paths import merlin_dir
+    from merlin.mining.pass_slot import scan_cheats
+    src = (merlin_dir() / "python" / "merlin" / "llvmlower" / "act_poly.py").read_text()
+    assert scan_cheats(src) == [], "the module under improvement must pass the gate's own cheat scan"
+
+
+def test_unparseable_source_is_reported_rather_than_passed():
+    """It cannot be gated, so it is a finding. Silently returning [] would send a broken proposal on
+    to the expensive checks and blame the failure on the build."""
+    found = _sc("def broken(:\n")
+    assert found and found[0].startswith("unparseable:")
+
+
+def test_the_answer_reading_tokens_are_still_caught():
+    assert "golden.npy" in _sc('open("golden.npy")\n')
+    assert "achieved_residual" in _sc("from x import achieved_residual\n")

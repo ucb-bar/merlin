@@ -141,14 +141,40 @@ def _certify(env: dict[str, str] | None, *, package_dir: Path, model_dir: Path, 
     arg = json.dumps({"package_dir": str(package_dir), "model_dir": str(model_dir),
                       "runs_root": str(runs_root), "run_id": run_id,
                       "targets": list(targets), "timeout": timeout})
-    proc = subprocess.run([sys.executable, "-c", script, arg], env=env, capture_output=True,
-                          text=True, timeout=timeout + 120)
+    # -X importtime so we can tell whether the module under test was ACTUALLY imported. Without that
+    # the numeric checks can pass vacuously: a package with empty features never imports a
+    # feature-gated pass, so a module whose body is `raise` builds clean and the gate credits it.
+    proc = subprocess.run([sys.executable, "-X", "importtime", "-c", script, arg], env=env,
+                          capture_output=True, text=True, timeout=timeout + 120)
+    out = {"status": "error",
+           "failure": f"certify produced no result (rc={proc.returncode}): "
+                      f"{(proc.stderr or '')[-600:]}"}
     for line in reversed((proc.stdout or "").splitlines()):
         if line.startswith("__MERLIN_RESULT__"):
-            return json.loads(line[len("__MERLIN_RESULT__"):])
-    return {"status": "error",
-            "failure": f"certify produced no result (rc={proc.returncode}): "
-                       f"{(proc.stderr or '')[-600:]}"}
+            out = json.loads(line[len("__MERLIN_RESULT__"):])
+            break
+    out["_imported"] = sorted(imported_modules(proc.stderr or ""))
+    return out
+
+
+def imported_modules(importtime_stderr: str) -> set[str]:
+    """Module names from ``python -X importtime`` output.
+
+    Parsed structurally on the ``|`` column separator -- ``import time: self [us] | cumulative |
+    imported package`` -- never by pattern. The last column is the dotted name, indented by import
+    depth, so it is stripped.
+    """
+    names: set[str] = set()
+    for line in importtime_stderr.splitlines():
+        if not line.startswith("import time:"):
+            continue
+        cols = line.split("|")
+        if len(cols) < 3:
+            continue
+        name = cols[-1].strip()
+        if name and name != "imported package":
+            names.add(name)
+    return names
 
 
 def _cos_of(rec: dict) -> float | None:
@@ -214,6 +240,17 @@ def production_gate_checks(
         c = rec.get("correctness") or {}
         if not c.get("gate_ok"):
             return False, f"correctness gate failed (cos={_cos_of(rec)})"
+        # A check that could not run must not report success. `work_pkg` has to carry the features
+        # that route through the proposed pass, or this build never imported it and "numerics are
+        # bit-exact" says nothing about the proposal. MEASURED: a proposal whose entire body was
+        # `raise RuntimeError` passed both the frozen and bit-exact checks against the empty-feature
+        # baseline, because a feature-gated pass is never imported when its feature is off.
+        imported = rec.get("_imported")
+        if imported is not None and proposal.module not in set(imported):
+            return False, (
+                f"{proposal.module} was never imported by this build, so the numeric check did not "
+                f"exercise the proposal. work_pkg={Path(work_pkg).name} must enable the feature that "
+                f"routes through this pass.")
         return True, f"cos={_cos_of(rec)}"
 
     def lift_cca(proposal: PassProposal):

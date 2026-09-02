@@ -97,7 +97,9 @@ class _FakeCertify:
     """Records each certify call and returns a scripted result, so the wiring is testable with no
     toolchain. `digests` maps run_id -> the mnemonic digest that run should appear to emit."""
 
-    def __init__(self, *, digests=None, gate_ok=True, status="ok", failure=None, cos=0.9999999):
+    def __init__(self, *, digests=None, gate_ok=True, status="ok", failure=None, cos=0.9999999,
+                 imported=(_REAL_MODULE,)):
+        self.imported = imported
         self.calls = []
         self.digests = digests or {}
         self.gate_ok, self.status, self.failure, self.cos = gate_ok, status, failure, cos
@@ -113,7 +115,8 @@ class _FakeCertify:
             f"   0:\t02b7f0d7          \t{mnem}\n")
         return {"status": self.status, "failure": self.failure,
                 "correctness": {"gate_ok": self.gate_ok, "fp32_cos": self.cos},
-                "measurement": [{"target": "spike", "cycles": 1000}]}
+                "measurement": [{"target": "spike", "cycles": 1000}],
+                "_imported": list(self.imported) if self.imported is not None else None}
 
 
 def _checks(tmp_path, cert, **kw):
@@ -252,3 +255,39 @@ def test_the_overlaid_module_resolves_while_its_siblings_stay_real():
              " print(getattr(m,'SENTINEL','NOT_SHADOWED'), hasattr(f,'normalize'))"],
             env=env, capture_output=True, text=True, timeout=180)
     assert out.stdout.strip() == "overlaid True", f"{out.stdout!r} {out.stderr[-400:]}"
+
+
+def test_bit_exact_refuses_when_the_proposed_module_was_never_imported(tmp_path):
+    """A check that could not run must not report success -- this repo's most expensive recurring
+    failure. MEASURED: a proposal whose entire body was `raise RuntimeError` passed both the frozen
+    and bit-exact checks against the empty-feature baseline, because a feature-gated pass is simply
+    never imported when its feature is off. So `work_pkg` has to enable the feature that routes
+    through the pass, and the wiring says so instead of crediting the build."""
+    cert = _FakeCertify(imported=("merlin.kernels.cca", "merlin.common.paths"))
+    ok, why = _checks(tmp_path, cert)["bit_exact_ok"](_prop())
+    assert not ok
+    assert "never imported" in why and _REAL_MODULE in why
+
+
+def test_bit_exact_still_passes_when_the_module_was_imported(tmp_path):
+    ok, why = _checks(tmp_path, _FakeCertify(imported=(_REAL_MODULE, "merlin.kernels.cca"))
+                      )["bit_exact_ok"](_prop())
+    assert ok and "cos=" in why
+
+
+def test_an_import_list_that_is_absent_does_not_block(tmp_path):
+    """A certify seam that cannot report imports (an injected fake, an older runner) must not turn
+    every proposal into a refusal -- unknown is not the same as absent."""
+    ok, _ = _checks(tmp_path, _FakeCertify(imported=None))["bit_exact_ok"](_prop())
+    assert ok
+
+
+def test_importtime_output_is_parsed_on_its_column_separator():
+    """Structural parse of the `|` columns, never a pattern. Indentation marks import depth and is
+    stripped; non-importtime lines and the header are ignored."""
+    sample = ("import time:       123 |        456 | merlin.llvmlower.act_poly\n"
+              "import time:        11 |         11 |   merlin.kernels.cca\n"
+              "import time: self [us] | cumulative | imported package\n"
+              "some unrelated stderr line\n")
+    assert w.imported_modules(sample) == {"merlin.llvmlower.act_poly", "merlin.kernels.cca"}
+    assert w.imported_modules("") == set()

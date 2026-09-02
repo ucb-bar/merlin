@@ -84,18 +84,126 @@ class PassVerdict:
         return self.stage != "unverifiable"
 
 
+def _behavioural_words(source: str, _depth: int = 0) -> tuple[set[str], set[str], bool]:
+    """Text that can affect BEHAVIOUR, as ``(exact_words, underscore_spans, parsed_ok)``.
+
+    Parsed with ``ast`` for two reasons. Comments do not appear in an AST at all, which is exactly
+    right: a comment cannot special-case a pass, and this repo WANTS model names in provenance prose
+    (``llvmlower/act_poly.py`` records that a blanket rewrite "drove openvla whole-model cos to 0.541"
+    -- the measurement that motivated the fix). Docstrings are excluded for the same reason. What
+    remains -- a name or a string the code can compare or dispatch on -- is the only place a model name
+    can change what the pass does.
+
+    A string literal that is ITSELF parseable Python is scanned AS SOURCE, recursively. That is not an
+    exotic case here: the compiler passes splice generated source as a string (``act_poly``,
+    ``accum_microkernel``'s rewriter, ``perop_blocks``), so a pass proposal's real content usually
+    lives inside one. Without the recursion the comments in that spliced source would be read as
+    behavioural string content -- which is what rejected ``act_poly.py``'s own bytes.
+
+    Structural, not regex: ``ast`` is a real parser, per the repo's no-regex rule.
+    """
+    import ast
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set(), set(), False
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = getattr(node, "body", None) or []
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                docstrings.add(id(body[0].value))
+    exact: set[str] = set()
+    spans: set[str] = set()
+
+    def _add_identifier(name: str) -> None:
+        """A whole identifier, plus its contiguous underscore-joined spans.
+
+        The spans are what catch ``small_llama_hack``: an identifier that EMBEDS a multi-word model
+        name is the overfit pattern. They are kept in a separate set from exact words because a SHORT
+        model token must not match a span -- the corpus list contains `small`, `rdt` and `pi05`, so
+        span-matching those would flag ``small_m_fallback`` and ``rdtime`` (the K1 cycle counter). A
+        gate that rejects every honest proposal is not strict, it is broken.
+        """
+        low = name.lower()
+        exact.add(low)
+        parts = [q for q in low.split("_") if q]
+        for i in range(len(parts)):
+            for j in range(i + 1, len(parts) + 1):
+                spans.add("_".join(parts[i:j]))
+
+    def _add_text(text: str) -> None:
+        cur: list[str] = []
+        for ch in text:
+            if ch.isalnum() or ch == "_":
+                cur.append(ch)
+            elif cur:
+                _add_identifier("".join(cur)); cur = []
+        if cur:
+            _add_identifier("".join(cur))
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            _add_identifier(node.id)
+        elif isinstance(node, ast.Attribute):
+            _add_identifier(node.attr)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            _add_identifier(node.name)
+        elif isinstance(node, ast.arg):
+            _add_identifier(node.arg)
+        elif isinstance(node, ast.keyword) and node.arg:
+            _add_identifier(node.arg)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for a in node.names:
+                _add_text(a.name)
+            if isinstance(node, ast.ImportFrom) and node.module:
+                _add_text(node.module)
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if id(node) in docstrings:
+                continue
+            nested = None
+            if _depth < 3 and ("\n" in node.value or "=" in node.value):
+                e2, s2, ok = _behavioural_words(node.value, _depth + 1)
+                nested = (e2, s2) if ok else None
+            if nested is not None:
+                exact |= nested[0]
+                spans |= nested[1]
+            else:
+                _add_text(node.value)
+    return exact, spans, True
+
+
 def scan_cheats(source: str, *, models: tuple[str, ...] | None = None) -> list[str]:
     """Tokens in the proposal that would let it pass the gate without doing the work.
 
     Structural and cheap, run FIRST: a proposal that reads the golden or hardcodes a model name is
     rejected before any build. ``models`` defaults to the captures on disk, so this generalises as the
     corpus grows instead of being a literal list someone has to remember to extend.
+
+    A model name is looked for only where it could change BEHAVIOUR -- an identifier or a
+    string-literal word, never a comment or docstring -- and matched as a whole WORD. Both halves were
+    needed: scanning raw text rejected ``act_poly.py``'s own bytes over the ``openvla`` in a comment
+    recording the regression that motivated it, and substring matching flagged the word "small" in
+    "small ranges" because ``small`` is in the corpus's model list. A scanner that rejects every honest
+    proposal is not a strict gate, it is a broken one.
+
+    Unparseable source is itself a finding: it cannot be gated, so it is reported rather than passed.
     """
     found = [t for t in CHEAT_TOKENS if t in source]
-    lowered = source.lower()
+    exact, spans, parsed = _behavioural_words(source)
+    if not parsed:
+        found.append("unparseable:the proposal is not valid Python, so it cannot be gated")
+        return found
     for m in (models if models is not None else model_name_tokens()):
-        # a model NAME in a compiler pass is overfit by construction
-        if m and m.lower() in lowered:
+        # a model NAME the pass can dispatch on is overfit by construction. A multi-word name is also
+        # matched inside a longer identifier (small_llama_hack); a single short token is matched only
+        # exactly, or `small` would flag `small_m_fallback` and `rdt` would flag `rdtime`.
+        if not m:
+            continue
+        low = m.lower()
+        if low in exact or ("_" in low and low in spans):
             found.append(f"model:{m}")
     return found
 
@@ -147,7 +255,10 @@ def gate(proposal: PassProposal, action, *,
                            "measurement taken against the control would silently move")
     ok, why = bit_exact_ok(proposal)
     if not ok:
-        return PassVerdict(False, "bit_exact", f"numerics changed: {why}")
+        # "bit-exactness not established", not "numerics changed": the check also fails when it could
+        # not RUN (the proposed module was never imported by the build), and reporting that as a
+        # numeric regression would send the next proposal chasing a change that never happened.
+        return PassVerdict(False, "bit_exact", f"bit-exactness not established: {why}")
     verdict = verify_promise(action, lift_cca(proposal))
     if not verdict.accepted:
         return verdict
