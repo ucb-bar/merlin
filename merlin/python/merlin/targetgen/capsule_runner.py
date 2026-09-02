@@ -2636,6 +2636,27 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
                                              f"this model executed on the {target} mesh, so there is no "
                                              f"verdict to report either way"})
             return result
+        # AN ELIGIBLE REGION THE ROUTER DECLINED IS A COMPILER DEFECT, and until now nothing gated on it:
+        # the coverage certificate counted `false_fallback` and no verdict ever read the count. This is a
+        # claim about the router's own CHOICE -- the region's family and dtype are admitted by the
+        # target's manifest and it was left on the host anyway -- so plan-derived evidence is the right
+        # evidence for it, unlike the execution questions elsewhere in this file.
+        #
+        # Gated only for a capsule that DEMANDS acceleration. An interop capsule withholds
+        # `must_accelerate` precisely because host work is the behaviour under test, and failing it for
+        # declining a region would fail the thing it exists to prove.
+        _cert = result.get("coverage_certificate") or {}
+        _false_fb = _cert.get("false_fallback_count")
+        if isinstance(_false_fb, int) and _false_fb > 0:
+            result.update(status="fail",
+                          numeric=_numeric_when_not_accelerated(
+                              st, gate, _v, _cos, engine, measured_on="host_lane_fallback"),
+                          failure={"plane": "model", "category": "FALLBACK_ON_ELIGIBLE_REGION",
+                                   "detail": f"{_false_fb} region(s) this target's capability manifest "
+                                             f"ADMITS were routed to the host anyway; the capsule "
+                                             f"declares must_accelerate, so declining work the hardware "
+                                             f"can take is a compiler defect, not a placement choice"})
+            return result
         if int(_on) == 0 or _fb:
             result.update(status="fail",
                           numeric=_numeric_when_not_accelerated(

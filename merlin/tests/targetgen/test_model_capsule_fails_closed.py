@@ -169,3 +169,32 @@ def test_an_incomplete_capstone_deliberately_blocks_all_pass():
     n_pass = sum(1 for r in graded if r["status"] == "pass")
     assert (len(graded), n_pass) == (24, 22)
     assert n_pass != len(graded), "an unrun capstone must not be silently forgiven"
+
+
+def test_declining_a_region_the_hardware_admits_is_a_failure(monkeypatch):
+    """The coverage certificate counted `false_fallback` -- regions the manifest ADMITS that the router
+    left on the host -- and no verdict ever read the count. That is a claim about the router's own
+    choice, so plan-derived evidence is the right evidence for it."""
+    r = _grade(monkeypatch, _capsule(["L0", "L1", "L2", "L3"]),
+               {"status": "verified", "verify": {"gate_ok": True},
+                "coverage_certificate": {"false_fallback_count": 3},
+                "mesh_tile_verification": {"n_tiles": 15, "n_passed": 15, "n_failed": 0,
+                                           "n_unavailable": 0, "n_unsynthesizable": 0, "ok": True},
+                "mesh_execution": {"target": "gemmini", "matmul_layers_routed": 15,
+                                   "matmul_layers_on_mesh": 15, "matmul_layers_host_fallback": 0},
+                "host_execution": {"kernels_ran": 12, "contractions_ran": 0}})
+    assert r["status"] == "fail"
+    assert r["failure"]["category"] == "FALLBACK_ON_ELIGIBLE_REGION"
+    assert "ADMITS" in r["failure"]["detail"]
+
+
+def test_no_declined_region_leaves_the_verdict_alone(monkeypatch):
+    r = _grade(monkeypatch, _capsule(["L0", "L1", "L2", "L3"]),
+               {"status": "verified", "verify": {"gate_ok": True},
+                "coverage_certificate": {"false_fallback_count": 0},
+                "mesh_tile_verification": {"n_tiles": 15, "n_passed": 15, "n_failed": 0,
+                                           "n_unavailable": 0, "n_unsynthesizable": 0, "ok": True},
+                "mesh_execution": {"target": "gemmini", "matmul_layers_routed": 15,
+                                   "matmul_layers_on_mesh": 15, "matmul_layers_host_fallback": 0},
+                "host_execution": {"kernels_ran": 12, "contractions_ran": 0}})
+    assert r["status"] == "pass"
