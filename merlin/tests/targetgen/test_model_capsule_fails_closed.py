@@ -198,3 +198,37 @@ def test_no_declined_region_leaves_the_verdict_alone(monkeypatch):
                                    "matmul_layers_on_mesh": 15, "matmul_layers_host_fallback": 0},
                 "host_execution": {"kernels_ran": 12, "contractions_ran": 0}})
     assert r["status"] == "pass"
+
+
+def test_emulated_host_ops_are_surfaced_even_though_placement_is_advisory(monkeypatch):
+    """`n_emulated` -- ops the host took in a format it cannot natively carry -- was computed by the
+    placement surface and read by nothing. The numeric gate cannot see them: emulated arithmetic is
+    CORRECT and merely slow, so a capsule passes while the model runs on a datapath nobody chose.
+
+    Reported, not gated: placement runs in shadow and routing is the authority, so this states the fact
+    without pretending to a verdict it has not earned."""
+    r = _grade(monkeypatch, _capsule(["L0", "L1", "L2", "L3"]),
+               {"status": "verified", "verify": {"gate_ok": True},
+                "placement": {"n_emulated": 2, "emulated": [{"op": "x"}, {"op": "y"}],
+                              "authority": "routing.route_plan (placement runs in shadow)"},
+                "mesh_tile_verification": {"n_tiles": 15, "n_passed": 15, "n_failed": 0,
+                                           "n_unavailable": 0, "n_unsynthesizable": 0, "ok": True},
+                "mesh_execution": {"target": "gemmini", "matmul_layers_routed": 15,
+                                   "matmul_layers_on_mesh": 15, "matmul_layers_host_fallback": 0},
+                "host_execution": {"kernels_ran": 12, "contractions_ran": 0}})
+    assert r["status"] == "pass", "advisory, not a gate: placement has not earned a verdict"
+    assert r["placement"]["n_emulated"] == 2
+    adv = [a for a in (r.get("advisories") or []) if a["category"] == "EMULATED_ON_HOST"]
+    assert adv and adv[0]["n"] == 2, "the fact only this surface can state must reach the result"
+
+
+def test_no_emulated_op_raises_no_advisory(monkeypatch):
+    r = _grade(monkeypatch, _capsule(["L0", "L1", "L2", "L3"]),
+               {"status": "verified", "verify": {"gate_ok": True},
+                "placement": {"n_emulated": 0, "emulated": []},
+                "mesh_tile_verification": {"n_tiles": 15, "n_passed": 15, "n_failed": 0,
+                                           "n_unavailable": 0, "n_unsynthesizable": 0, "ok": True},
+                "mesh_execution": {"target": "gemmini", "matmul_layers_routed": 15,
+                                   "matmul_layers_on_mesh": 15, "matmul_layers_host_fallback": 0},
+                "host_execution": {"kernels_ran": 12, "contractions_ran": 0}})
+    assert not [a for a in (r.get("advisories") or []) if a["category"] == "EMULATED_ON_HOST"]
