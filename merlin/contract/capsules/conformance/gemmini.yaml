@@ -102,6 +102,7 @@ composition:
     - gemma2_2b_int8_spec_pretransposed
     - lstmnetvit_fp8
     - lstmnetvit_int8
+    - resnet50_v1_5
     - small_llama
     - small_llama_fp8
     - small_llama_int8
@@ -163,12 +164,15 @@ composition:
     gemma2_2b_int8_spec_pretransposed: routing
     lstmnetvit_fp8: H
     lstmnetvit_int8: routing
+    resnet50_v1_5: H
     small_llama: routing
     small_llama_fp8: routing
     small_llama_int8: routing
     spectformer_int8_full: routing
     tiny_llama_fp32_full: routing
-  captures_unreadable: {}
+  captures_unreadable:
+    smolvla: "ParseError: en_min_dim\", prov.op = \"aten_min_dim\", prov.aten = \"aten.min.dim\", prov.orig_dtype\
+      \ = \"int64\"} : tensor<1xi64> into tensor<1x1xi64>\n    ^^^^^^\n    Expected '->'\n"
   axis_basis: "the composition shapes the real captures CONTAIN \u2014 not just the shape each capture\
     \ has as a whole. A model classifies as `routing` end to end, yet it contains isolated dispatches,\
     \ adjacent accelerator pairs and host islands, and each of those is a composition the corpus must\
@@ -196,6 +200,7 @@ memory_mapping:
     - gemma2_2b_int8_spec_pretransposed
     - lstmnetvit_fp8
     - lstmnetvit_int8
+    - resnet50_v1_5
     - small_llama
     - small_llama_fp8
     - small_llama_int8
@@ -217,6 +222,7 @@ memory_mapping:
     - gemma2_2b_int8_spec_pretransposed
     - lstmnetvit_fp8
     - lstmnetvit_int8
+    - resnet50_v1_5
     - small_llama
     - small_llama_fp8
     - small_llama_int8
@@ -238,16 +244,19 @@ memory_mapping:
     - gemma2_2b_int8_spec_pretransposed
     - lstmnetvit_fp8
     - lstmnetvit_int8
+    - resnet50_v1_5
     - small_llama
     - small_llama_fp8
     - spectformer_int8_full
     - tiny_llama_fp32_full
   region_counts:
-    fits_double: 9882
-    fits_single: 2626
-    spills: 9247
+    fits_double: 9991
+    fits_single: 2654
+    spills: 9606
   capacity_rows: 16384
-  captures_unreadable: {}
+  captures_unreadable:
+    smolvla: "ParseError: en_min_dim\", prov.op = \"aten_min_dim\", prov.aten = \"aten.min.dim\", prov.orig_dtype\
+      \ = \"int64\"} : tensor<1xi64> into tensor<1x1xi64>\n    ^^^^^^\n    Expected '->'\n"
   why: ''
   regime_extents:
     fits_double:
@@ -283,7 +292,7 @@ host_only:
   dtypes:
     normalization: f32
   observed_in:
-    normalization: 1146
+    normalization: 1464
   basis: 'families a real capture contains and this target''s capability manifest does not admit. The
     compiler must route them to the host lane; accelerating one is as much a defect as failing to accelerate
     an admitted family. EMPTY means no negative lane is derivable for this target -- every family its
@@ -307,18 +316,21 @@ diagnostics:
   - gemma2_2b_int8_spec_pretransposed
   - lstmnetvit_fp8
   - lstmnetvit_int8
+  - resnet50_v1_5
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
   - tiny_llama_fp32_full
-  captures_unreadable: {}
+  captures_unreadable:
+    smolvla: "ParseError: en_min_dim\", prov.op = \"aten_min_dim\", prov.aten = \"aten.min.dim\", prov.orig_dtype\
+      \ = \"int64\"} : tensor<1xi64> into tensor<1x1xi64>\n    ^^^^^^\n    Expected '->'\n"
   families_observed:
-    contraction: 2403
-    elementwise_map: 9473
-    movement: 6330
-    normalization: 1146
-    reduction: 2356
+    contraction: 2510
+    elementwise_map: 9489
+    movement: 6332
+    normalization: 1464
+    reduction: 2358
   families_observed_via_primitives: {}
   families_needed_but_not_admitted:
   - normalization
@@ -330,6 +342,8 @@ diagnostics:
   - 1 family/families appear in a real capture but the hardware declares no capability for them (normalization);
     those are compiler work for the scalar/vector lane, not accelerator cells, and are excluded from the
     requirement rather than silently counted as covered
+  - 1 capture(s) could not be read; the requirement below is NARROWER than the evidence would support
+    and must not be read as complete
   axis_basis:
     semantic_family: observed in a real capture (or all of its primitives were)
     dtype: "ADMITTED ONLY \u2014 the captures are single-precision, so dtype demand is not observable\
@@ -359,6 +373,7 @@ cells:
   - gemma2_2b_int8_spec_pretransposed
   - lstmnetvit_fp8
   - lstmnetvit_int8
+  - resnet50_v1_5
   - small_llama
   - small_llama_fp8
   - small_llama_int8
@@ -366,7 +381,7 @@ cells:
   - tiny_llama_fp32_full
   admitted_by:
   - systolic_mesh
-  n_regions: 2403
+  n_regions: 2510
 - cell: contraction/i8/partial
   family: contraction
   dtype: i8
@@ -388,6 +403,7 @@ cells:
   - gemma2_2b_int8_spec_pretransposed
   - lstmnetvit_fp8
   - lstmnetvit_int8
+  - resnet50_v1_5
   - small_llama
   - small_llama_fp8
   - small_llama_int8
@@ -395,7 +411,7 @@ cells:
   - tiny_llama_fp32_full
   admitted_by:
   - systolic_mesh
-  n_regions: 2403
+  n_regions: 2510
 - cell: elementwise_map/i8/aligned
   family: elementwise_map
   dtype: i8
@@ -417,6 +433,7 @@ cells:
   - gemma2_2b_int8_spec_pretransposed
   - lstmnetvit_fp8
   - lstmnetvit_int8
+  - resnet50_v1_5
   - small_llama
   - small_llama_fp8
   - small_llama_int8
@@ -424,7 +441,7 @@ cells:
   - tiny_llama_fp32_full
   admitted_by:
   - systolic_mesh
-  n_regions: 9473
+  n_regions: 9489
 - cell: elementwise_map/i8/partial
   family: elementwise_map
   dtype: i8
@@ -446,6 +463,7 @@ cells:
   - gemma2_2b_int8_spec_pretransposed
   - lstmnetvit_fp8
   - lstmnetvit_int8
+  - resnet50_v1_5
   - small_llama
   - small_llama_fp8
   - small_llama_int8
@@ -453,7 +471,7 @@ cells:
   - tiny_llama_fp32_full
   admitted_by:
   - systolic_mesh
-  n_regions: 9473
+  n_regions: 9489
 - cell: movement/i8/aligned
   family: movement
   dtype: i8
@@ -475,6 +493,7 @@ cells:
   - gemma2_2b_int8_spec_pretransposed
   - lstmnetvit_fp8
   - lstmnetvit_int8
+  - resnet50_v1_5
   - small_llama
   - small_llama_fp8
   - small_llama_int8
@@ -482,7 +501,7 @@ cells:
   - tiny_llama_fp32_full
   admitted_by:
   - systolic_mesh
-  n_regions: 6330
+  n_regions: 6332
 - cell: movement/i8/partial
   family: movement
   dtype: i8
@@ -504,6 +523,7 @@ cells:
   - gemma2_2b_int8_spec_pretransposed
   - lstmnetvit_fp8
   - lstmnetvit_int8
+  - resnet50_v1_5
   - small_llama
   - small_llama_fp8
   - small_llama_int8
@@ -511,7 +531,7 @@ cells:
   - tiny_llama_fp32_full
   admitted_by:
   - systolic_mesh
-  n_regions: 6330
+  n_regions: 6332
 - cell: reduction/i8/aligned
   family: reduction
   dtype: i8
@@ -533,6 +553,7 @@ cells:
   - gemma2_2b_int8_spec_pretransposed
   - lstmnetvit_fp8
   - lstmnetvit_int8
+  - resnet50_v1_5
   - small_llama
   - small_llama_fp8
   - small_llama_int8
@@ -540,7 +561,7 @@ cells:
   - tiny_llama_fp32_full
   admitted_by:
   - systolic_mesh
-  n_regions: 2356
+  n_regions: 2358
 - cell: reduction/i8/partial
   family: reduction
   dtype: i8
@@ -562,6 +583,7 @@ cells:
   - gemma2_2b_int8_spec_pretransposed
   - lstmnetvit_fp8
   - lstmnetvit_int8
+  - resnet50_v1_5
   - small_llama
   - small_llama_fp8
   - small_llama_int8
@@ -569,4 +591,4 @@ cells:
   - tiny_llama_fp32_full
   admitted_by:
   - systolic_mesh
-  n_regions: 2356
+  n_regions: 2358
