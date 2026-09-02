@@ -14,6 +14,15 @@ elaborated FIRRTL this target's facts name could not be located" — sending a r
 that was never named. gemmini's facts DO name a `.fir`, which is why its ports derive and atlas's do
 not, and that difference is the whole story.
 
+⚠️ WHAT IT WOULD TAKE TO READ THE hw DIALECT, measured so nobody re-derives it. xdsl DOES ship `hw`,
+`comb` and `seq`, so a structural parse looked like the answer — and it is not: parsing
+`atlas_hw.mlir` fails in 0.1 s with "Operation builtin.unregistered does not have a custom format",
+because the file also uses CIRCT dialects xdsl has no definitions for and an unregistered op in custom
+assembly cannot be parsed. The repo's own hw-dialect reader (`rtl.extract_module`) walks module
+DECLARATIONS and INSTANCES, not port lists. So a port reader for this dialect is new extractor work —
+a hand tokenizer over `hw.module @Name(in %a : i1, ...)` signatures — in the same area whose docstring
+already records a port pattern silently skipping what it could not read.
+
 Two fact-bundle shapes are read rather than one assumed, because both occur here: `facts.source` is a
 mapping with a `fir` key on one target and a bare string on another, and `facts.interfaces` is a
 mapping on one and a list of records on another. Assuming either turns a target with a recorded
