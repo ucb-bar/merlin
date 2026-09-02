@@ -129,3 +129,63 @@ def test_every_chosen_op_can_actually_be_materialized():
     for target in _specs():
         for entry in CS.synthesize(_spec(target))["capsules"]:
             assert entry["op"] in pool, f"{entry['name']} names unmaterializable op {entry['op']!r}"
+
+
+class TestQuantizedCapture:
+    """A capsule meant to exercise an INTEGER datapath must contain integer arithmetic.
+
+    The default int8 scheme is weight-only, which emits a float matmul over dequantized weights. That
+    is the right capture for a model ladder and the wrong PROGRAM for a capsule about a systolic
+    integer mesh -- and it cannot be repaired by substituting a golden, because the program contains no
+    integer contraction to grade. These pin the mechanism that lets an entry ask for the other one.
+    """
+
+    def test_a_quantized_capture_needs_a_weight_parameter(self):
+        """torchAO quantizes module WEIGHTS. Every default op body takes both operands as INPUTS
+        (`a @ w`), so a scheme has nothing to bind to and is silently a no-op -- measured: a capture
+        requested at W8A8 still emitted `aten.mm.default` over f32 while faithfully recording
+        `prov.quantization = "int8_dyn_act_int8_weight"`. The declared scheme was true and the program
+        was not."""
+        from merlin.targetgen.capsule_source import build_loader_src
+
+        plain = build_loader_src({"op": "linear", "dtype": "int8", "seed": 1,
+                                  "M": 16, "K": 32, "N": 16})
+        assert "nn.Linear" not in plain, "the default body is parameter-free by design"
+
+        quant = build_loader_src({"op": "linear", "dtype": "int8", "seed": 1, "M": 16, "K": 32,
+                                  "N": 16, "quant_scheme": "int8_dyn_act_int8_weight"})
+        assert "nn.Linear" in quant, "a quantized capture needs a parameter for the scheme to bind to"
+
+    def test_asking_to_quantize_a_non_contraction_is_refused(self):
+        """Only a contraction carries a weight a torchAO scheme can act on. An unquantized program
+        shipped under a quantized name is worse than a refusal."""
+        import pytest as _pytest
+
+        from merlin.targetgen.capsule_source import build_loader_src
+
+        with _pytest.raises(ValueError, match="worse than a refusal"):
+            build_loader_src({"op": "softmax", "dtype": "int8", "seed": 1, "M": 16, "K": 32, "N": 16,
+                              "quant_scheme": "int8_dyn_act_int8_weight"})
+
+    def test_the_interface_marker_accepts_an_integer_contraction(self):
+        """A contraction arrives tagged `matmul` (float `linalg.matmul`) or `int_matmul` (the
+        `aten._int_mm` form W8A8 emits). Matching only the float spelling refused the very capture
+        carrying the arithmetic a systolic mesh runs."""
+        from merlin.targetgen.capsule_source import _OP_MARKER
+
+        for op in ("matmul", "linear", "attention_qk"):
+            assert "int_matmul" in _OP_MARKER[op], f"{op} must accept an integer contraction"
+            assert "matmul" in _OP_MARKER[op], f"{op} must still accept a float contraction"
+
+    def test_the_scheme_travels_from_entry_to_capture_spec(self):
+        from merlin.targetgen.capsule_source import _capture_spec
+
+        class _B:
+            tile_dim = 16
+            operand_dtype = "int8"
+
+        spec = _capture_spec({"name": "x", "op": "linear", "M": 16, "K": 32, "N": 16,
+                              "quant_scheme": "int8_dyn_act_int8_weight"}, _B())
+        assert spec["quant_scheme"] == "int8_dyn_act_int8_weight"
+        assert "quant_scheme" not in _capture_spec(
+            {"name": "y", "op": "linear", "M": 16, "K": 32, "N": 16}, _B())

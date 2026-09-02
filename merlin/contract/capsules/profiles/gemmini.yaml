@@ -357,6 +357,16 @@ capsules:
 - {cat: model_slices, name: GF3_geglu_bf16_pt, kind: model_slice, op: geglu, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, N: 32, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch GeGLU bf16 (tiled_matmul_ws_igelu family)', label: public, modes: {}}
+# --- W8A8 CAPSULE: MECHANISM LANDED, CAPSULE NOT YET AUTHORED.
+# The plumbing is in place and verified (a capture requested at `quant_scheme: int8_dyn_act_int8_weight`
+# emits `aten._int_mm` accumulating in i32 instead of a float matmul over dequantized weights), and the
+# interface derivation now accepts `int_matmul` as a contraction marker. One step remains: torchAO
+# quantizes `nn.Linear`, whose weight is stored [N, K], while the merlin_iface builder declares the RHS
+# [K, N] -- so the shape check rightly refuses the pair. Closing it means teaching the builder the
+# transposed-RHS layout (the iface's `resident_pack` already carries a `layout` attribute), which is a
+# real feature and not a check to loosen. Declaring a capsule before then would either bake a wrong
+# layout or force the check to accept a mismatch it exists to catch.
+
 # --- THE NEGATIVE LANE. A family real captures contain that this target's manifest does NOT admit, so
 # the compiler must place it on the host -- and a target that accelerates it is as wrong as one that
 # misses admitted work. Derived, not chosen: `conformance.spec.host_only.families` reads `normalization`

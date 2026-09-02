@@ -1345,7 +1345,15 @@ def _write_capsule_inner(entry, binding, out_root):
     # interface; int/MX datapaths keep the direct-MLIR engines below (the endorsed fallback for the
     # dtypes torch/torchAO does not faithfully model, e.g. int8xint8 systolic or block-scaled MX).
     if entry.get("source") == "pytorch" or entry.get("pytorch_ref"):
-        if regime != "simt":
+        # AN ENTRY THAT NAMES A QUANTIZATION SCHEME has said which arithmetic its program must contain,
+        # so the float-regime restriction below does not apply to it. The restriction exists because a
+        # host-eager float reference cannot grade an int/MX datapath -- but that is a statement about
+        # the DEFAULT weight-only capture, which emits a float matmul over dequantized weights. A W8A8
+        # scheme emits `aten._int_mm` accumulating in i32, which IS the mesh's arithmetic, and torch
+        # eager then computes the same quantized math, so the golden is right by construction.
+        if entry.get("quant_scheme"):
+            pass
+        elif regime != "simt":
             raise ValueError(f"pytorch source for capsule {entry['name']!r} needs a float dtype "
                              f"(got regime {regime!r} for {eb.operand_dtype!r}); author int/MX capsules "
                              f"via the direct-MLIR engine")

@@ -283,6 +283,28 @@ def supported_ops() -> list[str]:
     return sorted(_OP_BODIES)
 
 
+#: A contraction whose weight is a PARAMETER rather than a second input.
+#:
+#: torchAO quantizes module WEIGHTS. Every body in ``_OP_BODIES`` takes both operands as inputs
+#: (``a @ w``), so a quantization scheme has nothing to act on and is silently a no-op -- which is why
+#: a capture requested at W8A8 still emitted ``aten.mm.default`` over f32 while faithfully recording
+#: ``prov.quantization = "int8_dyn_act_int8_weight"``. The declared scheme was true and the program was
+#: not. This body gives the quantizer a parameter to bind to; m2m externalizes it, so the captured
+#: linalg still carries a two-operand contraction and the interface derivation is unchanged.
+_PARAMETRIC_LINEAR = """
+class Model(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.f = nn.Linear({K}, {N}, bias=False)
+        with torch.no_grad():
+            self.f.weight.copy_(_r({N}, {K}))
+    def forward(self, a):
+        return self.f(a)
+def get_model_and_inputs():
+    return Model().eval(), (_r({M}, {K}),)
+"""
+
+
 def build_loader_src(spec: dict) -> str:
     """Render the PyTorch loader source for an op spec. ``spec`` carries ``op`` + the shape fields the op
     needs (M/K/N/Dv) + optional ``eps``/``causal``/``bias`` + ``seed``/``dtype``. Fail closed on an
@@ -300,6 +322,17 @@ def build_loader_src(spec: dict) -> str:
         "Cin": spec.get("Cin", 1), "Himg": spec.get("Himg", 8), "Wimg": spec.get("Wimg", 8),
         "P": spec.get("P", 2),
     }
+    # A QUANTIZED capture needs a weight PARAMETER for the scheme to bind to (see _PARAMETRIC_LINEAR).
+    # Only the contraction ops have a meaningful weight; asking for a quantized elementwise op is a
+    # request that cannot be honoured, and saying so beats emitting an unquantized program under a
+    # quantized name.
+    if spec.get("quant_scheme"):
+        if op not in ("linear", "matmul"):
+            raise ValueError(
+                f"quant_scheme is set for op {op!r}, but only a contraction carries a weight for a "
+                f"torchAO scheme to quantize; an unquantized program under a quantized name is worse "
+                f"than a refusal")
+        return _PREAMBLE.format(**fields) + _PARAMETRIC_LINEAR.format(**fields)
     return _PREAMBLE.format(**fields) + _OP_BODIES[op].format(**fields)
 
 
@@ -349,7 +382,8 @@ class PytorchRefSource:
         tmp = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="capsule_m2m_"))
         tmp.mkdir(parents=True, exist_ok=True)
         (tmp / "loader.py").write_text(loader_src, encoding="utf-8")
-        return self._run(tmp / "loader.py", spec["op"], dtype, workdir=tmp, src=loader_src)
+        return self._run(tmp / "loader.py", spec["op"], dtype, workdir=tmp, src=loader_src,
+                         scheme=spec.get("quant_scheme"))
 
     def capture_loader(self, loader_py: str | Path, dtype: str, *,
                        workdir: str | Path | None = None) -> CapsuleArtifacts:
@@ -364,12 +398,15 @@ class PytorchRefSource:
         tmp.mkdir(parents=True, exist_ok=True)
         return self._run(loader_py, "model", dtype, workdir=tmp, src=loader_py.read_text())
 
-    def _run(self, loader_py: Path, op: str, dtype: str, *, workdir: Path, src: str) -> CapsuleArtifacts:
+    def _run(self, loader_py: Path, op: str, dtype: str, *, workdir: Path, src: str,
+             scheme: str | None = None) -> CapsuleArtifacts:
         worker = Path(__file__).with_name("_m2m_capture_worker.py")
         env = dict(os.environ)
         env["MERLIN_M2M_DIR"] = str(self.m2m_dir)
         cmd = [str(self.python), str(worker), "--loader", str(loader_py),
                "--dtype", dtype, "--out", str(workdir), "--m2m-dir", str(self.m2m_dir)]
+        if scheme:
+            cmd += ["--scheme", str(scheme)]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout, env=env)
         meta_p = workdir / "meta.json"
         if proc.returncode != 0 or not meta_p.exists():
@@ -461,6 +498,12 @@ def _capture_spec(entry: dict, binding) -> dict:
         N = M                                    # Q@K^T scores are [M,M]; K rows == M (matches the builder)
     spec = {"op": op, "dtype": binding.operand_dtype, "seed": _entry_seed(entry["name"]),
             "M": M, "K": K, "N": N}
+    # WHICH QUANTIZATION the captured PROGRAM should carry, when the entry names one. The dtype default
+    # for int8 is weight-only, which emits a float matmul over dequantized weights -- correct for a
+    # model ladder, wrong for a capsule meant to exercise an integer datapath, and not fixable by
+    # substituting a golden: the program itself contains no integer contraction.
+    if entry.get("quant_scheme"):
+        spec["quant_scheme"] = str(entry["quant_scheme"])
     if op in ("rmsnorm", "gemma_4norm", "layernorm"):
         spec["eps"] = entry.get("eps", 1.0 / 65536.0)
     # optional per-op fields (batch / soft-cap / conv geometry) pass through verbatim when present
@@ -523,7 +566,17 @@ def _fused_capsule_yaml(entry: dict, binding, art, names: list[str]) -> dict:
 # mapped op -> a defining ``prov.op`` marker the captured lowering MUST carry for a merlin_iface interface
 # to be a faithful lowering of it (matmul-family lowers to a linalg.matmul; rmsnorm decomposes to a
 # reciprocal-sqrt over the mean-square). Used to derive-and-verify (not assume) the interface from the linalg.
-_OP_MARKER = {"matmul": "matmul", "linear": "matmul", "attention_qk": "matmul", "rmsnorm": "rsqrt"}
+_OP_MARKER: dict[str, tuple[str, ...]] = {
+    # A contraction may arrive tagged `matmul` (a float `linalg.matmul`) or `int_matmul` (the
+    # `aten._int_mm` form a W8A8 capture emits, a linalg.generic accumulating in i32). Both ARE the
+    # contraction; matching only the float spelling refused the very capture that carries the integer
+    # arithmetic a systolic mesh runs -- the program was right and the check was reading for the wrong
+    # word.
+    "matmul": ("matmul", "int_matmul"),
+    "linear": ("matmul", "int_matmul"),
+    "attention_qk": ("matmul", "int_matmul"),
+    "rmsnorm": ("rsqrt",),
+}
 
 
 def _tensor_types(s: str) -> list[tuple[list[int], str]]:
@@ -621,10 +674,10 @@ def linalg_to_iface(linalg_mlir: str, entry: dict, binding):
     from merlin.targetgen import corpus_spec as CS
     op = entry.get("op", "matmul")
     summ = linalg_summary(linalg_mlir)
-    marker = _OP_MARKER.get(op)
-    if marker is not None and marker not in summ["prov_ops"] and op not in summ["prov_ops"]:
+    markers = _OP_MARKER.get(op)
+    if markers is not None and not (set(markers) & set(summ["prov_ops"])) and op not in summ["prov_ops"]:
         raise M2MUnavailable(
-            f"captured linalg for {entry['name']!r} lacks the {op!r} marker op {marker!r} "
+            f"captured linalg for {entry['name']!r} lacks any {op!r} marker op {list(markers)} "
             f"(prov.op={summ['prov_ops']}) — refusing to emit a merlin_iface interface the lowering "
             f"does not support")
     cap, mlir = CS.build(entry, binding)

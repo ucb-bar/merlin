@@ -43,8 +43,20 @@ def _load_loader(loader_py: Path):
     return mod
 
 
-def _quant_for(dtype: str):
-    scheme, _cast = _SCHEME.get(dtype, (None, None))
+def _quant_for(dtype: str, override: str | None = None):
+    """The torchAO config for ``dtype``, or ``override`` when the caller names a scheme explicitly.
+
+    WHY AN OVERRIDE EXISTS. The default int8 scheme is WEIGHT-ONLY, which emits a float matmul over
+    dequantized weights -- `linalg.matmul` tagged `aten.mm.default` with an f32 datapath. That is the
+    right capture for a model ladder that quantizes weights only, and the WRONG program for a capsule
+    meant to exercise an integer systolic datapath: no golden substitution can fix a program that
+    contains no integer contraction. `int8_dyn_act_int8_weight` emits `aten._int_mm.default`
+    accumulating in i32 -- the arithmetic the mesh actually runs.
+
+    Selectable rather than switched, because the same map serves the whole-model recaptures, and
+    whether the model ladder wants W8A8 is a separate decision that must not ride along silently.
+    """
+    scheme = override or _SCHEME.get(dtype, (None, None))[0]
     if scheme is None:
         return None
     from m2m.capture.torchao_pipeline import QuantizationConfig
@@ -69,6 +81,9 @@ def main(argv=None) -> int:
     ap.add_argument("--m2m-dir", default=os.environ.get("MERLIN_M2M_DIR"),
                     help="model2MLIR repo root (for sys.path if m2m isn't installed)")
     ap.add_argument("--func-name", default="forward")
+    ap.add_argument("--scheme", default="",
+                    help="torchAO scheme name, overriding the dtype default (e.g. "
+                         "int8_dyn_act_int8_weight for a true W8A8 integer contraction)")
     a = ap.parse_args(argv)
 
     if a.m2m_dir and a.m2m_dir not in sys.path:
@@ -91,7 +106,7 @@ def main(argv=None) -> int:
     mdl = mdl.eval()
 
     weights_path = str(out / "weights.safetensors")
-    q = _quant_for(a.dtype)
+    q = _quant_for(a.dtype, a.scheme or None)
     res = m2m.convert(mdl, inputs, backend="fx_importer", quantization=q,
                       level="linalg-on-tensors", func_name=a.func_name, weights_path=weights_path)
     opaque = opaque_report(res.mlir_text)
@@ -109,6 +124,9 @@ def main(argv=None) -> int:
     (out / "golden.json").write_text(json.dumps(outputs), encoding="utf-8")
     meta = {
         "ok": bool(res.ok), "opaque": int(n_opaque), "opaque_detail": opaque,
+        # WHICH quantization actually produced this program. Without it a weight-only capture and a
+        # W8A8 one are indistinguishable after the fact, and they are different arithmetic.
+        "scheme": a.scheme or _SCHEME.get(a.dtype, (None, None))[0],
         "path_taken": getattr(res, "path_taken", None), "dtype": a.dtype,
         "linalg_ops": res.mlir_text.count("linalg."), "func_name": a.func_name,
         "weights": weights_path,
