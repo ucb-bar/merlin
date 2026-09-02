@@ -495,6 +495,29 @@ class TargetExperiment:
         """
         return [self.capsule_corpus, *(repo_root() / s for s in self.corpus_siblings())]
 
+    def perf_roots(self) -> list[Path]:
+        """The roots holding this target's PERFORMANCE capsules — empty when it ships none.
+
+        A third root set beside :meth:`graded_roots` and :meth:`hidden_roots`, and it has to exist
+        separately because performance capsules are deliberately NOT graded: they are ``label: dev``
+        A/Bs on identical work, and the underscore prefix on ``_perf`` is the mechanism that keeps
+        :meth:`corpus_siblings` from admitting them to the functional suite.
+
+        ⚠️ THAT MAKES A GRADED-ROOTS SCAN THE WRONG WAY TO FIND THEM. Measured: gemmini's fusion and
+        amortization groups (``fmb_*`` with three members, ``amort_*`` with two) live in
+        ``capsules/_perf``, so a scan of its graded roots reports "no comparison group has two members"
+        and a caller concludes the performance families do not exist. Scanning the whole corpus tree is
+        wrong in the other direction -- it finds ANOTHER target's groups, whose fusion pairs say nothing
+        about the one being launched. Per-target and underscore-prefixed is the only location that is
+        both complete and not another target's.
+        """
+        parent = self.capsule_corpus.parent
+        if not parent.is_dir():
+            return []
+        return [d for d in sorted(parent.iterdir())
+                if d.is_dir() and d.name.startswith("_")
+                and next(d.glob("*/capsule.yaml"), None) is not None]
+
     def hidden_roots(self) -> list[Path]:
         """The roots the HIDDEN grade must read — empty when the target ships no hidden capsules.
 
