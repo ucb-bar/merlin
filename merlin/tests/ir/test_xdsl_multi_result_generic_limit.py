@@ -11,6 +11,10 @@ because three plausible "fixes" are all worse than the limitation:
 
 Why not simply fix it:
 
+* **Upgrade.** CHECKED, and it does not help: xdsl 0.70.0 (the latest at the time of writing) rejects
+  the parenthesised form exactly as 0.68.0 does — verified by installing 0.70.0 into a throwaway venv
+  and running this file's reproducer against it. So this is not version debt waiting on a release, and
+  nobody needs to re-run that check.
 * **Patch site-packages.** xdsl is a pinned pip dependency (`xdsl>=0.68`); an edit there is lost on the
   next install and reviewed by nobody.
 * **Vendor `GenericOp.parse` into merlin to change one call.** Sixty lines of upstream logic that would
