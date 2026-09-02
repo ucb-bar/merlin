@@ -350,13 +350,57 @@ def cca_asm_dir() -> Path:
     return repo_root() / "merlin" / "tests" / "data" / "cca_asm"
 
 
-def expert_family_cca(family: str, *, fixture_dir: Path | None = None):
+#: DTYPE-MATCHED expert fixtures, per family. A CCA diff across dtypes manufactures divergences that
+#: are not gaps: comparing an int8 model to an f32 expert reports `compute.widening ours=True
+#: expert=False` and `compute.epilogue ours='requant_narrow' expert='none'` -- both simply restate that
+#: one side is int8, and both were OBSERVED as unrouted noise when the loop was run this way. It is the
+#: same comparand-integrity failure the bundle_id guard catches on the wall axis, one axis over: the
+#: thing being compared has to be comparable before a difference means anything.
+#:
+#: Only entries whose fixture exists are useful; a family/dtype pair with no fixture FAILS CLOSED to no
+#: expert rather than silently borrowing another dtype's. That costs a divergence and buys the guarantee
+#: that a reported one is real.
+_DTYPE_FIXTURES: dict[str, dict[str, str]] = {
+    "matmul": {"int8": "xnnpack_qd8_gemm_rvv.objdump",
+               "fp16": "xnnpack_f16_gemm_rvv.objdump",
+               "fp32": "xnnpack_f32_gemm_rvv.objdump"},
+    "addmm":  {"int8": "xnnpack_qd8_gemm_rvv.objdump",
+               "fp16": "xnnpack_f16_gemm_rvv.objdump",
+               "fp32": "xnnpack_f32_gemm_rvv.objdump"},
+    "linear": {"int8": "xnnpack_qd8_gemm_rvv.objdump",
+               "fp16": "xnnpack_f16_gemm_rvv.objdump",
+               "fp32": "xnnpack_f32_gemm_rvv.objdump"},
+}
+
+
+def expert_fixture_for(family: str, dtype: str | None = None) -> str | None:
+    """The fixture basename to lift the expert from, for this family AND dtype.
+
+    ``dtype=None`` keeps the registry's single default, so every existing caller is unchanged. A dtype
+    with no matched fixture returns None -- no expert -- rather than falling back to another dtype's,
+    because a cross-dtype diff reports differences that are only the dtype (see :data:`_DTYPE_FIXTURES`).
+    """
+    if dtype:
+        by_dtype = _DTYPE_FIXTURES.get(family)
+        if by_dtype is not None:
+            return by_dtype.get(dtype)          # None => fail closed, no expert for this pair
+    t = FAMILY_TEACHERS.get(family)
+    return t.fixture if t is not None else None
+
+
+def expert_family_cca(family: str, *, fixture_dir: Path | None = None, dtype: str | None = None):
     """Lift the per-family EXPERT CCA from its XNNPACK ukernel fixture, or None if the family has no
-    teacher / the fixture has not been harvested yet. No LLM authors it — tool-composed from asm."""
+    teacher / the fixture has not been harvested yet. No LLM authors it — tool-composed from asm.
+
+    ``dtype`` selects a dtype-MATCHED fixture where one exists (see :func:`expert_fixture_for`); a pair
+    with no matched fixture yields no expert rather than a cross-dtype comparison."""
     teacher = FAMILY_TEACHERS.get(family)
-    if teacher is None or teacher.fixture is None:
+    if teacher is None:
         return None
-    path = (fixture_dir or cca_asm_dir()) / teacher.fixture
+    fixture = expert_fixture_for(family, dtype)
+    if fixture is None:
+        return None
+    path = (fixture_dir or cca_asm_dir()) / fixture
     if not path.is_file():
         return None
     from .beam_cli import lift_expert_cca

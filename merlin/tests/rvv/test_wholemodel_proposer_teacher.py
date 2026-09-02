@@ -370,3 +370,45 @@ def test_the_loop_closes_from_harvested_expert_to_the_agent_leaf():
     # ...and the ladder terminates at the leaf a constrained agent would be handed
     up = ac.route_escalated(d, a.action_class)
     assert up is not None and up.action_class == "CODEGEN" and up.forkable_now is False
+
+
+# ---------------------------------------------------------------------------------------
+# DTYPE-MATCHED experts. A CCA diff across dtypes manufactures divergences that are not
+# gaps. OBSERVED when the loop was run with an f32 expert against an int8 model: it
+# reported `compute.widening ours=True expert=False` and `compute.epilogue
+# ours='requant_narrow' expert='none'`, both of which only restate that one side is int8.
+# Same comparand-integrity failure the bundle_id guard catches on the wall axis.
+# ---------------------------------------------------------------------------------------
+
+def test_the_expert_fixture_is_selected_by_dtype():
+    from merlin.mining.wholemodel_proposer import expert_fixture_for
+
+    assert expert_fixture_for("matmul", "int8") == "xnnpack_qd8_gemm_rvv.objdump"
+    assert expert_fixture_for("matmul", "fp16") == "xnnpack_f16_gemm_rvv.objdump"
+    assert expert_fixture_for("matmul", "fp32") == "xnnpack_f32_gemm_rvv.objdump"
+    # dtype=None keeps the registry default, so every pre-existing caller is unchanged
+    assert expert_fixture_for("matmul") == "xnnpack_f32_gemm_rvv.objdump"
+
+
+def test_an_unmatched_dtype_yields_no_expert_rather_than_another_dtype_s():
+    """Failing closed costs a divergence and buys the guarantee that a reported one is real. Borrowing
+    a different dtype's expert would report the dtype difference as a compiler gap."""
+    from merlin.mining.wholemodel_proposer import expert_family_cca, expert_fixture_for
+
+    assert expert_fixture_for("matmul", "fp8") is None
+    assert expert_family_cca("matmul", dtype="fp8") is None
+    # a family with no dtype map still resolves through the registry, not to None
+    assert expert_fixture_for("gelu", "int8") == "xnnpack_gelu_rvv.objdump"
+
+
+def test_the_matched_expert_removes_the_spurious_widening_divergence():
+    """The concrete payoff, on the real fixtures: an int8 expert widens, so `compute.widening` stops
+    being a divergence against an int8 model. An f32 expert does not, which is what produced the noise."""
+    from merlin.mining.wholemodel_proposer import expert_family_cca
+
+    e8 = expert_family_cca("matmul", dtype="int8")
+    e32 = expert_family_cca("matmul", dtype="fp32")
+    if e8 is None or e32 is None:
+        pytest.skip("gemm fixtures not harvested in this checkout")
+    assert e8.compute.widening is True, "a dynamic-int8 GEMM widens"
+    assert e32.compute.widening is False, "an f32 GEMM does not"
