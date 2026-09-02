@@ -441,6 +441,14 @@ def spec(target: str, captures: dict[str, str | Path], *,
     from merlin.targetgen import memory_regime as MR
     comp = BD.required_boundaries(captures, target)
     mem = MR.required_regimes(captures, target)
+    # The extents that REACH each required regime, resolved here because the search needs the target's
+    # address space -- exactly the I/O `corpus_synth` is not allowed to do. Emitting them into the spec
+    # keeps the synthesizer pure and keeps one definition of what a regime costs.
+    _dtypes = [c.dtype for c in cells]
+    _regime_dtype = max(set(_dtypes), key=_dtypes.count) if _dtypes else None
+    _regime_extents = MR.required_regime_extents(
+        target, sorted((mem.get("by_regime") or {}).keys()),
+        tile_dim=bnd.tile_edge or 0, dtype=_regime_dtype)
     return {
         "target": target,
         "generated_by": "merlin.targetgen.conformance.spec",
@@ -476,6 +484,13 @@ def spec(target: str, captures: dict[str, str | Path], *,
             "capacity_rows": mem.get("capacity_rows"),
             "captures_unreadable": mem.get("captures_unreadable") or {},
             "why": mem.get("why", ""),
+            # Tile-relative extents that land a capsule in each required regime, derived with the same
+            # sizing the coverage gate measures with. A regime whose value is null is one no capsule
+            # shape can reach on this target -- reported, never silently dropped. `fits_on_reuse` is
+            # always null here: a capsule's declared inputs are all live at once, so peak-live and total
+            # coincide and the regime that separates them cannot arise from inputs alone.
+            "regime_extents": _regime_extents,
+            "regime_dtype": _regime_dtype,
             "axis_basis": (
                 "the regimes real captured models put this target's operand store in, derived from the "
                 "store's own geometry (bytes / row width from the compute array and the datapath "

@@ -248,6 +248,47 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
+    # ---- the MEMORY-REGIME axis -------------------------------------------------------------------
+    # A family/dtype/alignment cell says what arithmetic the corpus must contain; it says nothing about
+    # the residency that arithmetic asks of the operand store. Measured on one target: 90.1% of 1829
+    # real contraction regions spill the store while 100% of the public capsules fit it twice over, so
+    # the corpus could not detect a memory-mapping failure of any kind. These entries close that.
+    #
+    # The extents are read from the spec, not computed here: the search needs the target's address
+    # space, and this module is pure. A regime the spec resolves to null is one no capsule shape reaches
+    # on this target -- recorded in provenance rather than dropped, because a silently absent regime
+    # reads downstream as a covered one.
+    mem_block = spec_doc.get("memory_mapping") or {}
+    regime_extents = mem_block.get("regime_extents") or {}
+    regime_dtype = str(mem_block.get("regime_dtype") or "") or (
+        sorted(admitted_dtypes)[0] if admitted_dtypes else "")
+    unreachable_regimes: list[str] = []
+    regime_op = op_for_family("contraction", admitted_ops=pool)
+    for regime in sorted(mem_block.get("required") or {}):
+        ext = regime_extents.get(regime)
+        if not ext:
+            unreachable_regimes.append(str(regime))
+            continue
+        if regime_op is None or not regime_dtype:
+            unreachable_regimes.append(str(regime))
+            continue
+        entry = {
+            "cat": "isa", "kind": "isa", "name": f"{SYNTH_PREFIX}_regime_{regime}",
+            "op": regime_op, "operand_dtype": regime_dtype,
+            "out": "Y0", "lhs": "A0", "weight": "W",
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                f"synthesized for memory regime {regime!r}: the declared inputs occupy "
+                f"{ext.get('rows')} of {ext.get('capacity_rows')} operand-store rows "
+                f"({ext.get('fraction_of_capacity')} of capacity), which is what puts this capsule in "
+                f"that regime. Extents resolved by memory_regime.extents_for_regime with the same "
+                f"sizing the coverage gate measures with"),
+            "label": "public", "modes": {},
+            "M": ext["M"], "K": ext["K"], "N": ext["N"],
+        }
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entries.append(entry)
+
     if unexpressable:
         raise SynthesisError(
             "no materializable op expresses these required cells, so synthesizing would silently leave "
@@ -271,6 +312,11 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "budget": cap,
             "precision_preference_kept": kept,
             "precision_preference_dropped": dropped,
+            "memory_regimes_unreachable": unreachable_regimes,
+            "memory_regime_note": (
+                "a regime with no capsule shape that reaches it on this target. `fits_on_reuse` is "
+                "always here: a capsule's declared inputs are all live at once, so peak-live and total "
+                "coincide and the regime that separates them cannot arise from inputs alone"),
             "precision_note": (
                 "a preference RANKS the dtypes the target already admits and can never widen them; a "
                 "dropped token is reported rather than silently ignored"),

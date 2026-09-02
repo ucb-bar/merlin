@@ -258,3 +258,71 @@ def uncovered_regimes(required: dict, corpus: dict) -> dict:
                  "memory-mapping failure of that kind; on an interlocked target the schedule is correct "
                  "whatever it chooses, so nothing else will report it either"),
     }
+
+
+#: Tile multiples the regime search walks, smallest first. Powers of two with the intermediate multiple
+#: between each pair, so a band narrower than a doubling (``fits_single`` is exactly one such band) still
+#: has a candidate inside it rather than being stepped over.
+_REGIME_MULTS = (1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512)
+
+
+def extents_for_regime(target: str, regime: str, *, tile_dim: int, dtype: str | None = None,
+                       store=None, capacity=None) -> dict | None:
+    """Tile-relative ``{M, K, N}`` that put a matmul capsule's declared inputs in ``regime``.
+
+    Found by SEARCHING with the very functions the coverage gate measures with -- :func:`classify` over
+    :func:`merlin.targetgen.address_space.working_set_rows` -- never with a second model of the store. A
+    synthesizer that predicted residency its own way could emit a capsule the gate then classifies into
+    a different regime, and the requirement would read as covered while the regime stayed untouched.
+
+    The operands are sized exactly as :func:`capsule_regime` sizes a capsule's declared inputs: ``A0`` is
+    ``[M, K]`` and ``W`` is ``[K, N]``, both live at once, so peak-live and total coincide and
+    ``fits_on_reuse`` is unreachable from a capsule's inputs alone -- asking for it returns ``None``
+    rather than a capsule that would be classified as something else.
+
+    ``None`` when the target declares no operand store we can size, or when no multiple in the search
+    reaches the regime. That is a reportable gap; it is never a quietly smaller capsule.
+    """
+    if store is None and capacity is None:
+        store, capacity = operand_store(target)
+    if store is None or not capacity or not tile_dim:
+        return None
+    tile = int(tile_dim)
+    per_row_probe = _rows(store, [tile, tile], dtype)
+    if per_row_probe is None:
+        return None
+    # TWO axes, not one. Scaling M, K and N together multiplies the working set by the square of the
+    # multiple, which steps straight over `fits_single`: on a 16384-row store that band is
+    # (8192, 16384], and square scaling jumps 8192 -> 18432. Varying the square edge and the M extent
+    # independently reaches every band. Candidates are ordered by the residency they produce, so the
+    # answer is the SMALLEST capsule in the band -- a spills capsule is paid for on every grade.
+    cands = []
+    for m_mult in _REGIME_MULTS:
+        for e_mult in _REGIME_MULTS:
+            m, edge = tile * m_mult, tile * e_mult
+            a_rows = _rows(store, [m, edge], dtype)
+            w_rows = _rows(store, [edge, edge], dtype)
+            if a_rows is None or w_rows is None:
+                return None
+            cands.append((int(a_rows) + int(w_rows), m_mult, e_mult))
+    for total, m_mult, e_mult in sorted(cands):
+        if classify(total, total, capacity) == regime:
+            tok = lambda k: f"{k}*tile" if k != 1 else "tile"      # noqa: E731 -- local spelling helper
+            return {"M": tok(m_mult), "K": tok(e_mult), "N": tok(e_mult),
+                    "rows": total, "capacity_rows": int(capacity),
+                    "fraction_of_capacity": round(total / float(capacity), 6)}
+    return None
+
+
+def required_regime_extents(target: str, regimes, *, tile_dim: int, dtype: str | None = None) -> dict:
+    """``{regime: extents-or-None}`` for every regime in ``regimes``, resolved once against one store.
+
+    Emitted into the conformance spec so :mod:`merlin.targetgen.corpus_synth` stays pure: the search
+    needs the target's address space, which is exactly the I/O the synthesizer is not allowed to do.
+    """
+    store, capacity = operand_store(target)
+    out: dict = {}
+    for regime in regimes:
+        out[str(regime)] = extents_for_regime(target, str(regime), tile_dim=tile_dim, dtype=dtype,
+                                              store=store, capacity=capacity)
+    return out
