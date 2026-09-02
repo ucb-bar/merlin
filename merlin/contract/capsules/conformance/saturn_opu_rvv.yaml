@@ -1,0 +1,214 @@
+# DERIVED — regenerate with:
+#   build_tools/scripts/check_conformance_coverage.py --target saturn_opu_rvv --write merlin/contract/capsules/conformance/saturn_opu_rvv.yaml
+# Do not hand-edit: the point of this file is that it is evidence, not authorship.
+target: saturn_opu_mxv256d128_rvv
+generated_by: merlin.targetgen.conformance.spec
+derivation:
+  admitted: capability manifest compute_units[].semantic_capabilities (family x dtype)
+  observed: model_coverage.regions_from_module over each captured model (name-first, provenance-tag fallback;
+    unresolved regions not counted)
+  required: admitted INTERSECT observed, x tile alignment where the target tiles
+  cell_vocabulary: "(semantic_family, dtype, tile_alignment) \u2014 identical to contract.materialize.cert_capsule_cover,\
+    \ so the existing cover measures this spec without a second definition of a cell"
+boundaries:
+  tile_edge: 32
+  tile_edge_is_hardware_fact: true
+  tile_edge_source: capability manifest (declared mesh/tile rows)
+  block_scale_group: null
+  block_scale_source: ''
+  operand_store_bytes: null
+  operand_store_source: ''
+  extent_probes:
+  - boundary: tile_edge
+    edge: 32
+    source: capability manifest (declared mesh/tile rows)
+    points:
+    - 31
+    - 32
+    - 33
+    - 64
+composition:
+  required:
+    H:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - spectformer_int8_full
+  whole_model_shape:
+    gemma2_2b_int8: H
+    gemma2_2b_int8_full: H
+    gemma2_2b_int8_full_seq8: H
+    gemma2_2b_int8_full_seq8_pretransposed: H
+    gemma2_2b_int8_full_seq8_sliced: H
+    gemma2_2b_int8_full_seq8_sliced_tiledhead: H
+    gemma2_2b_int8_full_spec: H
+    gemma2_2b_int8_full_spec_pretransposed: H
+    gemma2_2b_int8_section1: H
+    gemma2_2b_int8_section12: H
+    gemma2_2b_int8_section2: H
+    gemma2_2b_int8_spec: H
+    gemma2_2b_int8_spec_pretransposed: H
+    small_llama: H
+    small_llama_fp8: H
+    small_llama_int8: H
+    spectformer_int8_full: H
+  captures_unreadable: {}
+  axis_basis: "the composition shapes the real captures CONTAIN \u2014 not just the shape each capture\
+    \ has as a whole. A model classifies as `routing` end to end, yet it contains isolated dispatches,\
+    \ adjacent accelerator pairs and host islands, and each of those is a composition the corpus must\
+    \ exercise somewhere. Taking only the whole-model label would demand `routing` and nothing else, the\
+    \ narrowest reading of the richest evidence"
+  why_orthogonal: the composition axis is NOT crossed with family/dtype/alignment. A cross product would
+    demand cells like `movement/i8/partial/routing` that no real model presents, manufacturing uncovered
+    cells nobody should build; composition is a property of how a program is assembled, not of the arithmetic
+    in it
+memory_mapping:
+  required: {}
+  region_counts: {}
+  capacity_rows: null
+  captures_unreadable: {}
+  why: '''saturn_opu_mxv256d128_rvv'' declares no operand-store capacity we can derive, so no regime is
+    required of the corpus -- that is ''we do not know'', never ''nothing is required'''
+  regime_extents: {}
+  regime_dtype: i8
+  axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
+    own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
+    capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
+    on a hardware-interlocked target nothing else will report it either -- the schedule is correct whatever
+    it chooses
+host_only:
+  families:
+  - elementwise_map
+  - movement
+  - normalization
+  - reduction
+  dtypes:
+    normalization: f32
+    elementwise_map: f32
+    reduction: f32
+    movement: f32
+  observed_in:
+    elementwise_map: 8739
+    movement: 5504
+    normalization: 876
+    reduction: 2166
+  basis: 'families a real capture contains and this target''s capability manifest does not admit. The
+    compiler must route them to the host lane; accelerating one is as much a defect as failing to accelerate
+    an admitted family. EMPTY means no negative lane is derivable for this target -- every family its
+    captures contain is admitted -- and never that none is needed: a target with an empty complement simply
+    cannot be asked this question, which is a different fact from passing it'
+diagnostics:
+  n_cells: 2
+  captures_read:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  captures_unreadable: {}
+  families_observed:
+    contraction: 2049
+    elementwise_map: 8739
+    movement: 5504
+    normalization: 876
+    reduction: 2166
+  families_observed_via_primitives: {}
+  families_needed_but_not_admitted:
+  - elementwise_map
+  - movement
+  - normalization
+  - reduction
+  families_admitted_but_no_model_uses: []
+  alignment_axis:
+  - aligned
+  - partial
+  admitted_status: resolved
+  notes:
+  - 4 family/families appear in a real capture but the hardware declares no capability for them (elementwise_map,
+    movement, normalization, reduction); those are compiler work for the scalar/vector lane, not accelerator
+    cells, and are excluded from the requirement rather than silently counted as covered
+  axis_basis:
+    semantic_family: observed in a real capture (or all of its primitives were)
+    dtype: "ADMITTED ONLY \u2014 the captures are single-precision, so dtype demand is not observable\
+      \ from them; every dtype the hardware declares for an observed family is required"
+    tile_alignment: 'both, wherever the target tiles: a unit that only ever sees whole tiles has never
+      exercised its tail path'
+personas: {}
+cells:
+- cell: contraction/i8/aligned
+  family: contraction
+  dtype: i8
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - opu
+  n_regions: 2049
+- cell: contraction/i8/partial
+  family: contraction
+  dtype: i8
+  alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - opu
+  n_regions: 2049
