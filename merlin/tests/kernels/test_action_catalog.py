@@ -425,3 +425,71 @@ def test_no_route_promises_a_target_it_cannot_express():
             continue
         assert a.intended_facet, f"{axis} routed to an action with no checkable promise"
         assert axis in a.intended_facet
+
+
+# ------------------------------------------------- the ladder must terminate in something ACTIONABLE
+
+def test_every_blocked_route_says_WHERE_the_fix_goes():
+    """The escalation ladder was terminating in prose.
+
+    A route with ``forkable_now=False`` means no knob or feature expresses the fix and new code must
+    be written -- and that is where mining.pass_slot takes over. But the slot needs a MODULE to
+    overlay, and of the six blocked routes exactly one (``pass:llvmlower/act_poly.py``) named a module
+    that exists; the rest were labels like ``pass:tile-epilogue-store-once``. So the leaf could not act
+    on them, including the largest measured lever left (the residual rank-generic copies, 38.59% of
+    real work on small_llama int8). The catalog said what to fix without saying where.
+
+    A blocked route is acceptable when ANY of these holds:
+      * its seam resolves to a module the slot can overlay; or
+      * SEAMS_NEEDING_A_NEW_MODULE declares why there is none; or
+      * a stronger rung on the same axis satisfies one of the above (the ladder escalates to it, so
+        that rung is where the work-item lives).
+    """
+    from merlin.kernels import action_catalog as ac
+
+    def _ok(route) -> bool:
+        return (ac.seam_module(route.target_seam) is not None
+                or ac.seam_needs_new_module(route.target_seam) is not None)
+
+    order = ac._CLASS_ORDER
+    unactionable = []
+    for backend, routes in ac._ROUTES.items():
+        for r in routes:
+            if r.forkable_now or _ok(r):
+                continue
+            stronger = [x for x in routes
+                        if x.axis == r.axis
+                        and order.get(x.action_class, -1) > order.get(r.action_class, -1)
+                        and _ok(x)]
+            if not stronger:
+                unactionable.append(f"{backend}:{r.action_class}:{r.axis} seam={r.target_seam!r}")
+    assert not unactionable, (
+        "these blocked routes name neither a module the pass slot can overlay nor a declared reason "
+        "there is none, so the ladder dead-ends in prose:\n  " + "\n  ".join(unactionable))
+
+
+def test_seam_module_resolves_only_a_pass_seam_whose_file_really_exists():
+    """No guessing: a seam that does not resolve returns None, and the caller consults the declared
+    reasons. A `pass:` label, a feature seam and a schedule seam are all correctly not modules."""
+    from merlin.kernels import action_catalog as ac
+    assert ac.seam_module("pass:llvmlower/act_poly.py (extend coverage)") == "merlin.llvmlower.act_poly"
+    assert ac.seam_module("pass:llvmlower/does_not_exist.py") is None
+    assert ac.seam_module("pass:tile-epilogue-store-once (a label)") is None
+    assert ac.seam_module("impr_features:erase_self_copy") is None
+    assert ac.seam_module("schedule:vector_sizes") is None
+    assert ac.seam_module("") is None
+    assert ac.seam_module("no-colon-at-all") is None
+
+
+def test_every_declared_new_module_reason_belongs_to_a_real_blocked_seam():
+    """The declaration list may only shrink as passes get written. An entry naming a seam no route
+    carries is stale bookkeeping that would let a future dead-end pass the gate above."""
+    from merlin.kernels import action_catalog as ac
+    tokens = set()
+    for routes in ac._ROUTES.values():
+        for r in routes:
+            kind, sep, rest = (r.target_seam or "").partition(":")
+            if sep:
+                tokens.add(rest.strip().split(" ", 1)[0].strip())
+    stale = sorted(set(ac.SEAMS_NEEDING_A_NEW_MODULE) - tokens)
+    assert not stale, f"declared reasons for seams no route carries: {stale}"

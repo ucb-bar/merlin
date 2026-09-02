@@ -58,6 +58,32 @@ def _mirror_except(real: Path, dst: Path, chain: list[str], source: str) -> None
         _mirror_except(real / head, dst / head, chain[1:], source)
 
 
+class SeamNotActionable(RuntimeError):
+    """The escalated action names no module the slot can overlay, with the declared reason why."""
+
+
+def module_for_action(action) -> str:
+    """The dotted module an escalated action's seam points at, or raise with the declared reason.
+
+    This is the join between the ladder and the leaf. The catalog used to say WHAT to fix without
+    saying WHERE: of the six blocked routes exactly one named a module that exists, so a caller had to
+    know by hand which seam it could act on. Raising with the catalog's own declared reason keeps the
+    two honest answers distinct -- "here is the module" and "there is no module, and here is why" --
+    instead of collapsing both into None.
+    """
+    from ..kernels import action_catalog as ac
+    seam = getattr(action, "target_seam", "") or ""
+    mod = ac.seam_module(seam)
+    if mod is not None:
+        return mod
+    why = ac.seam_needs_new_module(seam)
+    raise SeamNotActionable(
+        f"seam {seam!r} names no module the pass slot can overlay. "
+        + (f"Declared reason: {why}" if why
+           else "No reason is declared either, which is a catalog bug -- see "
+                "test_action_catalog.test_every_blocked_route_says_WHERE_the_fix_goes."))
+
+
 @contextmanager
 def overlay_for(proposal: PassProposal, *, package_root: Path | None = None):
     """Yield an env mapping whose ``PYTHONPATH`` shadows ``proposal.module`` with its new source.

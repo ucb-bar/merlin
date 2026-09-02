@@ -291,3 +291,31 @@ def test_importtime_output_is_parsed_on_its_column_separator():
               "some unrelated stderr line\n")
     assert w.imported_modules(sample) == {"merlin.llvmlower.act_poly", "merlin.kernels.cca"}
     assert w.imported_modules("") == set()
+
+
+def test_module_for_action_joins_the_ladder_to_the_leaf():
+    """The escalated activation action resolves to the module the slot then overlays -- the join the
+    catalog was missing."""
+    from merlin.kernels import action_catalog as ac
+    from merlin.kernels.cca_compare import Divergence
+    d = Divergence(axis="compute.activation_vectorization", expert="vectorized_polynomial",
+                   ours="scalar_libm_call", backend="rvv")
+    esc = ac.route_escalated(d, ac.route(d).action_class)
+    assert esc is not None and esc.action_class == "CODEGEN"
+    assert w.module_for_action(esc) == _REAL_MODULE
+
+
+def test_module_for_action_raises_with_the_declared_reason_when_there_is_no_module():
+    """"There is no module, and here is why" must stay distinct from "here is the module". Collapsing
+    both into None is what let the ladder dead-end in prose unnoticed."""
+    class _A:
+        target_seam = "pass:tile-epilogue-store-once (eliminate the rank-generic copy, not erase it)"
+    with pytest.raises(w.SeamNotActionable, match="rank-generic"):
+        w.module_for_action(_A())
+
+
+def test_module_for_action_says_it_is_a_catalog_bug_when_no_reason_is_declared():
+    class _A:
+        target_seam = "pass:something-nobody-declared"
+    with pytest.raises(w.SeamNotActionable, match="catalog bug"):
+        w.module_for_action(_A())

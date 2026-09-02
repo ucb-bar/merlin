@@ -736,6 +736,76 @@ def route(divergence: Divergence) -> CompilerAction | None:
                               divergence)
 
 
+#: Blocked seams with NO module to extend -- either a new pass has to be written and added to the
+#: checkout under review, or the capability is missing from a seam that is not a module at all (a
+#: transform schedule). Declared explicitly, keyed by seam token, because the alternative is
+#: silence: :func:`seam_module` would return None either way, and "no module named" reads identically
+#: to "someone forgot to say where". Each entry is a rung the ladder can reach and the pass slot
+#: cannot, which is a fact about the compiler worth stating rather than discovering per-run.
+#:
+#: The slot's overlay deliberately REFUSES a module that does not exist: adding a file is a reviewed
+#: change, not something a gate should conjure into a temp dir. So an entry here is a work-item for a
+#: human or a reviewed agent change, not a gap in the gate.
+SEAMS_NEEDING_A_NEW_MODULE: dict[str, str] = {
+    "tile-epilogue-store-once":
+        "eliminate the rank-generic per-tile copy by storing C once. The residual copies are NOT "
+        "self-copies (source and destination differ), so erase_self_copy cannot touch them; measured "
+        "at 38.59% of real work on small_llama int8 and 33.11% on the same model in fp32, over 24 "
+        "memrefCopy call sites at ~43,000 instructions each.",
+    "rvv-microkernel-emitter":
+        "a register-blocked, accumulator-resident, VL-agnostic RVV micro-kernel emitter. "
+        "intrinsic_microkernel already demonstrates it bit-exact and spill-free from a hand-written "
+        "riscv_vector.h driver, but that is a ceiling reference with no hooks.",
+    "fuse-requant-narrowing-store":
+        "fuse the requantize + narrowing (vnclip/vfncvt) into the store epilogue.",
+    "vl-polymorphic-tail":
+        "emit a VL-agnostic vsetvli loop with a mask/vl tail instead of fixed vsetivli unrolling.",
+    "hoist-loop-invariant-call":
+        "the cheap mitigation for a per-iteration call: hoist it out of the loop, or enlarge the tile "
+        "so it amortizes. Blocked because the transform schedule cannot express either today -- this "
+        "is a SCHEDULE capability, not a new pass module. The expensive fix on the same problem is "
+        "tile-epilogue-store-once, which removes the call outright.",
+}
+
+
+def seam_module(target_seam: str, *, package_root: "Path | None" = None) -> str | None:
+    """The dotted module a seam names, or None when it names no module that exists.
+
+    Parsed structurally: the seam is ``<kind>:<token> (optional prose)``, so split on the first
+    ``:``, take the token up to the first space, and -- for a ``pass:`` seam whose token looks like a
+    source path -- check the file is really there before claiming it. No pattern matching, and no
+    guessing: a seam that does not resolve returns None and the caller consults
+    :data:`SEAMS_NEEDING_A_NEW_MODULE` for why.
+
+    This exists because the escalation ladder was terminating in prose. Of the six routes whose
+    ``forkable_now`` is False, exactly ONE (``pass:llvmlower/act_poly.py``) named a module the pass
+    slot could overlay; the rest were labels, so the leaf could not act on them -- including the
+    largest measured lever left. The catalog said what to fix without saying where.
+    """
+    from pathlib import Path as _P
+    kind, _, rest = (target_seam or "").partition(":")
+    if not _:
+        return None
+    token = rest.strip().split(" ", 1)[0].strip()
+    if not token or kind.strip() != "pass":
+        return None                      # impr_features:/schedule:/cflag: are not modules
+    if not token.endswith(".py"):
+        return None                      # a label, not a path
+    from ..common.paths import merlin_dir
+    root = _P(package_root) if package_root is not None else merlin_dir() / "python"
+    rel = _P("merlin") / token if not token.startswith("merlin/") else _P(token)
+    if not (root / rel).is_file():
+        return None
+    return ".".join(rel.with_suffix("").parts)
+
+
+def seam_needs_new_module(target_seam: str) -> str | None:
+    """The declared reason a blocked seam has no module to extend, or None if it is not one of them."""
+    kind, _, rest = (target_seam or "").partition(":")
+    token = rest.strip().split(" ", 1)[0].strip() if _ else ""
+    return SEAMS_NEEDING_A_NEW_MODULE.get(token)
+
+
 def route_escalated(divergence: Divergence, prior_class: str) -> CompilerAction | None:
     """The next-stronger action for ``divergence`` after ``prior_class`` was insufficient (its intended
     facet was not achieved by the emitted code). Returns the cheapest route whose class is strictly
