@@ -12,19 +12,31 @@ inputs:
   - 1
   - 60
   - 90
-  dtype: i8
+  dtype: f32
 - name: I1
   role: input
   shape:
   - 1
   - 1
-  dtype: i8
+  dtype: f32
 - name: I2
   role: input
   shape:
   - 1
   - 4
-  dtype: i64
+  dtype: f32
+- name: I3
+  role: input
+  shape:
+  - 3
+  - 128
+  dtype: f32
+- name: I4
+  role: input
+  shape:
+  - 3
+  - 128
+  dtype: f32
 operation:
   op: model
   attributes:
@@ -36,6 +48,8 @@ operation:
     - I0
     - I1
     - I2
+    - I3
+    - I4
     - Y0
     weights: capsule.weights.safetensors
 numeric_policy:
@@ -72,3 +86,6 @@ semantic:
   generalization_axis: model
   must_accelerate: true
   eligible: auto
+numeric_falsifiability:
+  status: not_measured
+  why: no golden output could be sized

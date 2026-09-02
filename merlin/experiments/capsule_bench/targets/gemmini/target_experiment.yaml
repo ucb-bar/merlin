@@ -38,8 +38,8 @@ grading:
   # Cardinalities are frozen without making the hidden names public. Any source-pool deletion/addition,
   # or any cohort filter that moves a row outside this declared boundary, makes readiness fail closed.
   expected_cohort:
-    source_capsules: 61
-    admitted_capsules: 47
+    source_capsules: 62
+    admitted_capsules: 48
   hidden_capability_admission:
     source_capsules: 15
     admitted_capsules: 14

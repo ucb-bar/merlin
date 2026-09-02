@@ -54,6 +54,7 @@ generated:
 - model/M1_lstmnetvit_gemmini
 - model/M2_microvit_gemmini
 - model/M3_host_island_seam_gemmini
+- model/SY_micro_model
 - model_slices/C0_mlp_linear1
 - model_slices/C1_mlp_activation_linear2
 - model_slices/C2_attention_q_projection

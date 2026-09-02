@@ -58,7 +58,7 @@ def test_every_required_cell_becomes_an_entry(target):
 
     #: Every non-cell entry must say which axis asked for it. These are the axis markers the
     #: synthesizer writes into `source_reference`; an entry matching none of them is unattributable.
-    axes = ("memory regime", "host-only family")
+    axes = ("memory regime", "host-only family", "composition axis")
     unattributed = [e["name"] for e in other
                     if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"
@@ -119,7 +119,9 @@ def test_extents_are_tile_relative_not_baked_integers():
     """The synthesized file must describe a shape RELATIVE to whatever edge the hardware has. Baking
     integers would make one target's geometry a property of a file that is supposed to be portable."""
     res = CS.synthesize(_spec("gemmini"))
-    for entry in res["capsules"]:
+    # OP-LEVEL entries only. A model capsule carries no M/K/N -- its extents live in the derived
+    # inventory that writes its loader, and demanding them here would demand a shape it does not have.
+    for entry in [e for e in res["capsules"] if e.get("op")]:
         for axis in ("M", "K", "N"):
             assert isinstance(entry[axis], str) and "tile" in entry[axis], (
                 f"{entry['name']}.{axis} = {entry[axis]!r} is not tile-relative")
@@ -140,7 +142,8 @@ def test_a_preference_cannot_widen_what_the_target_admits():
     # captures actually carry instead. Holding it to the admitted set would forbid the very capsule that
     # proves the compiler leaves unadmitted work on the host.
     accel = [e for e in res["capsules"]
-             if "on_mesh" not in ((e.get("lanes") or {}).get("forbid") or ())]
+             if e.get("operand_dtype")
+             and "on_mesh" not in ((e.get("lanes") or {}).get("forbid") or ())]
     assert {e["operand_dtype"] for e in accel} <= {"i8"}, (
         "no accelerator entry may use a dtype the requirement does not admit")
 
@@ -155,7 +158,9 @@ def test_every_chosen_op_can_actually_be_materialized():
     one would produce an entry nothing can write."""
     pool = CS.available_ops()
     for target in _specs():
-        for entry in CS.synthesize(_spec(target))["capsules"]:
+        # A model capsule names no op: its program is the derived micro model, whose per-layer ops
+        # come from this same pool by construction (micro_model.statement_for).
+        for entry in [e for e in CS.synthesize(_spec(target))["capsules"] if e.get("op")]:
             assert entry["op"] in pool, f"{entry['name']} names unmaterializable op {entry['op']!r}"
 
 

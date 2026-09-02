@@ -1343,6 +1343,59 @@ def _backfill_required_classes(cap: dict, binding) -> bool:
     return True
 
 
+def _roster_captures() -> dict:
+    """Captured bundles available as derivation evidence, keyed by model name.
+
+    Same store and key normalisation as `check_conformance_coverage._captures`, so a micro model is
+    derived from exactly the captures the requirement was derived from.
+    """
+    from merlin.common.paths import artifacts_dir
+
+    root = artifacts_dir() / "recaptures"
+    if not root.is_dir():
+        return {}
+    out = {}
+    for d in sorted(root.iterdir()):
+        m = d / "model.mlir"
+        if m.is_file():
+            out[d.name.replace("_fp32_consistent", "").replace("_consistent", "")] = m
+    return out
+
+
+def _emit_micro_model_loader(entry: dict, target: str, out_root) -> bool:
+    """Write the derived micro model's loader into its capsule directory, or say why not.
+
+    `micro_model.spec` states what a target's minimal whole-model capsule must contain -- one layer per
+    admitted family, one per family real captures contain that the manifest does not admit, sized to the
+    target's own tile edge, host layers interleaved into the INTERIOR. `emit_pytorch` turns that into the
+    loader. Doing it here rather than in `corpus_synth` is deliberate: the spec needs the captures, which
+    is I/O, and the synthesizer is pure.
+    """
+    from merlin.targetgen import micro_model as MM
+
+    captures = _roster_captures()
+    if not captures:
+        print(f"  [skip] {entry['name']}: no captured model is available to derive the inventory from")
+        return False
+    try:
+        spec = MM.spec(target, captures)
+        src = MM.emit_pytorch(spec)
+    except MM.UnwritableLayer as exc:
+        print(f"  [skip] {entry['name']}: {exc}")
+        return False
+    except Exception as exc:                       # noqa: BLE001 -- an underivable spec is not a crash
+        print(f"  [skip] {entry['name']}: micro-model spec unavailable: {type(exc).__name__}: {exc}")
+        return False
+    d = Path(out_root) / entry["cat"] / entry["name"]
+    d.mkdir(parents=True, exist_ok=True)
+    loader = d / "capsule.pytorch.py"
+    loader.write_text(src, encoding="utf-8")
+    entry["loader"] = str(loader)
+    entry.setdefault("model", entry["name"])
+    print(f"  [micro] {entry['name']}: {spec.composition()} over {len(spec.layers)} derived layer(s)")
+    return True
+
+
 def _write_capsule_inner(entry, binding, out_root):
     regime, eb = _entry_regime(entry, binding)
     # Whole-model capsule: a small representative network lowered end-to-end via model2MLIR, graded vs its
@@ -1353,6 +1406,10 @@ def _write_capsule_inner(entry, binding, out_root):
         src = CSRC.PytorchRefSource()
         if not src.available():
             print(f"  [skip] {entry['name']}: model capsule needs the m2m venv (set MERLIN_M2M_PYTHON)")
+            return None
+        # A DERIVED micro model writes its own loader first. Without this the entry names a loader that
+        # does not exist, and the capsule that the composition axis exists to produce cannot be built.
+        if entry.get("micro_model") and not _emit_micro_model_loader(entry, eb.target, out_root):
             return None
         return CSRC.write_model_capsule(entry, eb, out_root, source=src)
     # PREFERRED source: a capsule defined in PyTorch (frontend-faithful), lowered to linalg via model2MLIR

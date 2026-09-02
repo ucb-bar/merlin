@@ -333,6 +333,34 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
+    # ---- the COMPOSITION axis -----------------------------------------------------------------------
+    # The requirement derives which compositions real captures CONTAIN -- an isolated dispatch, adjacent
+    # accelerator pairs, a host island, a full routing alternation -- and nothing consumed the set, so no
+    # capsule anywhere demanded a host round trip. That is the shape a whole-model compiler actually gets
+    # wrong, because it is the one where keeping an intermediate resident and paying to move it out
+    # differ.
+    #
+    # ONE entry, not one per shape. The micro model's composition is whatever its derived layer inventory
+    # produces once host layers are interleaved into the interior; emitting a capsule per declared shape
+    # would mean inventing inventories no capture supports. The shapes this does not reach are reported.
+    composition = dict((spec_doc.get("composition") or {}).get("required") or {})
+    if composition:
+        entry = {
+            "cat": "model", "kind": "model", "name": f"{SYNTH_PREFIX}_micro_model",
+            "micro_model": True,
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                "synthesized for the composition axis: one layer per admitted family, one per family a "
+                "real capture contains that the manifest does not admit, sized to the target's own tile "
+                "edge, with host layers interleaved into the interior. Inventory and extents come from "
+                f"micro_model.spec; the shapes the requirement names are {sorted(composition)}"),
+            "label": "public", "modes": {},
+            "lanes": {"require": ["on_mesh"]},
+            "semantic": {"generalization_axis": "composition"},
+        }
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entries.append(entry)
+
     if unexpressable:
         raise SynthesisError(
             "no materializable op expresses these required cells, so synthesizing would silently leave "
@@ -356,6 +384,12 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "budget": cap,
             "precision_preference_kept": kept,
             "precision_preference_dropped": dropped,
+            "composition_shapes_required": sorted(composition),
+            "composition_note": (
+                "one micro-model capsule is synthesized for this axis, and its composition is whatever "
+                "the derived inventory produces. A shape listed here that the micro model does not "
+                "reach is not covered by synthesis -- emitting a capsule per shape would mean inventing "
+                "inventories no capture supports"),
             "host_only_unsynthesizable": unsized_host,
             "host_only_note": (
                 "a host-only family with no materializable op or no dtype observed in any capture. "
