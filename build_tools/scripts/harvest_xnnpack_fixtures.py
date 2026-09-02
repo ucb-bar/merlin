@@ -130,11 +130,18 @@ def _machine_independent(text: str, fixture: str) -> str:
     and it invites exactly the wrong reading: a diff on an expert fixture should mean the SEARCH TARGET
     moved. The line is not parsed by the lifter (``rvv.decode_text`` keys on the ``<sym>`` section
     headers), so normalising it costs nothing.
+
+    Gate on the ``:\tfile format `` separator ALONE, never on the object's extension. This function
+    also required ``head.endswith(".o")``, and adding the link step (``.o`` -> ``.so``) silently turned
+    the whole normalisation off: every fixture churned its temp path again on the next harvest with zero
+    instruction change, which is precisely the misreading the normalisation exists to prevent. A guard
+    keyed on a filename detail owned by another part of the pipeline stops firing when that detail
+    moves; the separator is what objdump actually emits.
     """
     out = []
     for line in text.splitlines():
         head, sep, rest = line.partition(":\tfile format ")
-        out.append(f"{fixture}{sep}{rest}" if sep and head.endswith(".o") else line)
+        out.append(f"{fixture}{sep}{rest}" if sep else line)
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 

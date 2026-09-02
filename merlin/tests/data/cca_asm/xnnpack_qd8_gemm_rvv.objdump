@@ -1,5 +1,5 @@
 
-/scratch/agustin/tmp/merlin_harvest_g16i3zxb/xnnpack_qd8_gemm_rvv.so:	file format elf64-littleriscv
+xnnpack_qd8_gemm_rvv.objdump:	file format elf64-littleriscv
 
 Disassembly of section .text:
 

@@ -1,5 +1,5 @@
 
-/scratch/agustin/tmp/merlin_harvest_lb51hln7/xnnpack_vbinary_add_rvv.so:	file format elf64-littleriscv
+xnnpack_vbinary_add_rvv.objdump:	file format elf64-littleriscv
 
 Disassembly of section .text:
 

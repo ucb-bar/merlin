@@ -463,16 +463,26 @@ def test_both_sides_absent_is_not_an_uncomparable_axis():
     assert not [x for x in cc.uncomparable_axes(a, b) if x[0].startswith("memory")]
 
 
-def test_the_measured_qd8_expert_blindness_is_surfaced():
-    """The concrete case: the dtype-matched int8 GEMM fixture cannot answer register blocking or
-    anything in memory, so choosing it (correctly, to avoid a cross-dtype diff) must not silently
-    retire those axes."""
+def test_the_qd8_expert_blindness_is_fixed_at_the_source():
+    """This test used to assert the blindness -- that the dtype-matched int8 GEMM fixture could answer
+    neither register blocking nor anything in memory, so five axes were silently retired by choosing
+    it. The CAUSE has since been fixed: the harvester links before disassembling, so the fixture's loop
+    structure is readable and the expert teaches those axes. Measured: qd8 went 0 -> 3 loop spans, and
+    uncomparable_axes(qd8, f32) dropped from five entries to one.
+
+    Kept rather than deleted because the mechanism it guards is still the one that matters: an expert
+    that cannot answer an axis retires that axis in silence, and `uncomparable_axes` is what makes that
+    visible. So assert the axes are ANSWERABLE now, and that whatever remains is reported."""
     from merlin.kernels import cca_compare as cc
     from merlin.mining.wholemodel_proposer import expert_family_cca
 
     e8, e32 = expert_family_cca("matmul", dtype="int8"), expert_family_cca("matmul", dtype="fp32")
     if e8 is None or e32 is None:
         pytest.skip("gemm fixtures not harvested in this checkout")
+    assert e8.compute.register_block is not None, "the int8 expert must teach the register block"
+    assert e8.memory is not None, "and it must have a memory facet to teach from"
     axes = dict(cc.uncomparable_axes(e8, e32))
-    assert axes.get("compute.register_block") == "expert"
-    assert axes.get("memory") == "expert"
+    assert "compute.register_block" not in axes
+    assert "memory" not in axes
+    # anything still unanswerable must be NAMED, not silent
+    assert all(v in ("expert", "ours") for v in axes.values())

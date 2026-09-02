@@ -70,18 +70,37 @@ def test_runtime_calls_survive_unreliable_spans():
     assert c.envelope.runtime_calls == ("malloc", "memrefCopy")   # sorted intersection of escapes
 
 
-def test_linked_f32_fixture_is_reliable_but_unlinked_dtype_fixtures_are_not():
-    """The real fixtures demonstrate both arms: the f32 fixture is from a LINKED ELF (relocated ->
-    reliable -> trustworthy calls_in_loop=0), while the newly added single-ukernel `.o` fixtures are
-    unlinked (self-targeting branches -> unreliable -> calls_in_loop honestly None)."""
-    f32 = rvv.decode_text((_DATA / "xnnpack_f32_gemm_rvv.objdump").read_text())
-    assert f32.spans_reliable() is True
-    assert cca.lift_asm(f32, op="matmul", source="expert").envelope.calls_in_loop == 0
+def test_harvested_fixtures_are_linked_and_an_unlinkable_one_stays_honest():
+    """Both arms on the real fixtures — but which fixture is in which arm has CHANGED, deliberately.
 
-    for name in ("xnnpack_qd8_gemm_rvv.objdump", "xnnpack_f16_gemm_rvv.objdump"):
+    This test used to assert that the dtype fixtures ARE unlinked, which made the defect the contract.
+    The harvester now links with `-shared -nostdlib` before disassembling and GATES on
+    `spans_reliable()`, refusing to write a fixture whose loop structure it cannot read. That matters
+    because an unlinked expert teaches NOTHING loop-scoped: register_block, accumulator_resident,
+    nr_is_vsetvlmax, calls_in_loop and the whole memory facet all lift as None, and `cca_compare` then
+    skips those axes in silence. Measured on qd8 before the fix: 48 instructions, 0 loop spans; after:
+    3 spans, and the expert finally teaches register_block=(1, vsetvlmax*4) and panel_reuse=True.
+
+    f16 is still unlinked and stays in the honest-UNKNOWN arm, for a reason worth keeping: its ukernel
+    needs `xnn_float16`, which upstream defines as EITHER native `_Float16` or a `uint16` struct
+    wrapper depending on a `#if`. Choosing one in the header shim would change which instructions the
+    kernel emits, i.e. fabricate the expert's instruction mix — so the harvester skips it with the
+    compile error recorded rather than guessing.
+    """
+    for name in ("xnnpack_f32_gemm_rvv.objdump", "xnnpack_qd8_gemm_rvv.objdump"):
         stream = rvv.decode_text((_DATA / name).read_text())
-        assert stream.spans_reliable() is False, f"{name} is an unlinked object"
-        assert cca.lift_asm(stream, op="matmul", source="expert").envelope.calls_in_loop is None
+        assert stream.spans_reliable() is True, f"{name} must be harvested LINKED"
+        c = cca.lift_asm(stream, op="matmul", source="expert")
+        assert c.envelope.calls_in_loop == 0, f"{name}: a trustworthy count, not UNKNOWN"
+        assert c.compute.register_block is not None, (
+            f"{name}: a linked expert must be able to teach the register block — that is the lesson")
+
+    f16 = _DATA / "xnnpack_f16_gemm_rvv.objdump"
+    if f16.is_file():
+        stream = rvv.decode_text(f16.read_text())
+        if not stream.spans_reliable():
+            # still unlinked: the facet must be honestly UNKNOWN, never a confident 0
+            assert cca.lift_asm(stream, op="matmul", source="expert").envelope.calls_in_loop is None
 
 
 # The same relocated loop, but its back-edge is the COMPRESSED form. `rv64gcv` includes the C
