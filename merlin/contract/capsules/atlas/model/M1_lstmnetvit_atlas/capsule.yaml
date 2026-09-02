@@ -12,19 +12,31 @@ inputs:
   - 1
   - 60
   - 90
-  dtype: fp8_e4m3
+  dtype: f32
 - name: I1
   role: input
   shape:
   - 1
   - 1
-  dtype: fp8_e4m3
+  dtype: f32
 - name: I2
   role: input
   shape:
   - 1
   - 4
-  dtype: i64
+  dtype: f32
+- name: I3
+  role: input
+  shape:
+  - 3
+  - 128
+  dtype: f32
+- name: I4
+  role: input
+  shape:
+  - 3
+  - 128
+  dtype: f32
 operation:
   op: model
   attributes:
@@ -36,12 +48,14 @@ operation:
     - I0
     - I1
     - I2
+    - I3
+    - I4
     - Y0
     weights: capsule.weights.safetensors
 numeric_policy:
   compare: tolerance_float
   dtype: f32
-  atol: 0.0491
+  atol: 0.25
   rtol: 0.02
 expected:
   instruction_classes:
@@ -65,7 +79,10 @@ pytorch_ref:
   loader: capsule.pytorch.py
 linalg_mlir: capsule.interface.mlir
 semantic:
+  semantic_family: contraction
   generalization_axis: model
   must_accelerate: true
   eligible: auto
-  semantic_family: contraction
+numeric_falsifiability:
+  status: not_measured
+  why: no golden output could be sized

@@ -53,3 +53,9 @@ semantic:
   must_accelerate: true
   eligible: auto
 spec_ref: atlas-npu:op.matmul_mxu0
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 47.01
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

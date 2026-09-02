@@ -382,6 +382,29 @@ def derive_binding(te, datapath: dict) -> CorpusBinding:
 # dict + interface MLIR. Shapes are given in TILE units in the profile and scaled by binding.tile_dim.
 # ---------------------------------------------------------------------------------------------------
 
+
+def regime_for_dtype(token: str) -> str:
+    """The numeric regime a dtype token routes to: ``int`` | ``specir`` | ``mx`` | ``simt``.
+
+    Routed purely by the token -- no target name anywhere in it. Lifted here from the generator so the
+    SYNTHESIZER can ask the same question the WRITER will answer with: an op with no direct-MLIR builder
+    can only be written by the PyTorch path, and that path is float-only, so a synthesizer that could not
+    see the regime emitted entries nothing could write.
+    """
+    from merlin.runtime.fp8_formats import canonical_float
+
+    if is_block_scaled(token):
+        return "mx"
+    try:
+        canon = canonical_float(token)
+    except KeyError:
+        canon = None
+    if canon in ("fp8_e4m3", "fp8_e5m2"):
+        return "specir"
+    if canon in ("fp16", "bf16", "f32"):
+        return "simt"
+    return "int"
+
 def _numeric_policy(binding: CorpusBinding, output_dtype: str, acc_scale: float | None) -> dict:
     np_: dict[str, Any] = {"compare": binding.compare, "dtype": binding.cap_dtype(output_dtype)}
     if not binding.integer:

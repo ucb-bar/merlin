@@ -1143,21 +1143,12 @@ def _entry_regime(entry, binding):
     """Route an entry to its numeric regime + return a per-entry binding (operand/accum overridden). ``int``
     (gemmini), ``specir`` (atlas fp8), ``mx`` (microscaling block-scaled FP), ``simt`` (IEEE fp16/bf16/f32).
     Routed purely by the entry's operand dtype token — no target name."""
-    from merlin.runtime.fp8_formats import canonical_float
     tok = entry.get("operand_dtype") or binding.operand_dtype
-    if CS.is_block_scaled(tok):
-        regime, acc = "mx", "bf16"
-    else:
-        try:
-            canon = canonical_float(tok)
-        except KeyError:
-            canon = None
-        if canon in ("fp8_e4m3", "fp8_e5m2"):
-            regime, acc = "specir", binding.accum_dtype
-        elif canon in ("fp16", "bf16", "f32"):
-            regime, acc = "simt", "f32"
-        else:
-            regime, acc = "int", binding.accum_dtype
+    # ONE definition of the routing, in corpus_spec, so the synthesizer can ask the same question this
+    # answers. A second copy here drifted from the synthesizer's view and let entries be emitted that no
+    # writer could materialize.
+    regime = CS.regime_for_dtype(tok)
+    acc = {"mx": "bf16", "simt": "f32"}.get(regime, binding.accum_dtype)
     eb = dataclasses.replace(
         binding, operand_dtype=tok, accum_dtype=acc, integer=(regime == "int"),
         compare=("exact_int" if regime == "int" else "tolerance_float"))

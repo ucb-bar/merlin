@@ -1,0 +1,108 @@
+name: PK03_k256
+kind: model_slice
+source_role: derived_sweep
+source_reference: shared reduction-depth sweep at fixed single-tile parallel extents
+  (tile=32; K=256, M=32, N=32)
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 256
+  - 32
+  dtype: fp8_e4m3
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 256
+  dtype: fp8_e4m3
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: bf16
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  modes:
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L1_tile
+  family: PK
+  lever: reduction_depth
+  claim: PREDICTS
+  comparand:
+    kind: fitted_prediction
+    against: measured_cycles_same_member
+    cancels:
+    - identical_M
+    - identical_N
+    - identical_datapath
+    demand_equal:
+    - operation
+    - M
+    - N
+    - operand_dtype
+    - accum_dtype
+  falsifier:
+    observation: residual_cycles_by_K
+    fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+    negative_control: fixed_M_and_N_across_all_K_points
+  gate:
+    traits:
+    - structural_pipeline_depth
+    instrument: cycle_count
+    capacity: four_distinct_reduction_depths
+    on_missing: skip_with_evidence
+  regime:
+    separation: K_is_the_only_varied_shape_axis
+    layout: target_native_direct_corpus_builder
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      operation: matmul
+      varied_axis: K
+    resolved:
+      source: direct
+      operand_dtype: fp8_e4m3
+      accum_dtype: bf16
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 1
+    runs: 4
+    projected_cycles: derived_at_preflight
+    basis: four_members_before_repetition
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 1099.68
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

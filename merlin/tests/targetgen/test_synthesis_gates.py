@@ -115,4 +115,9 @@ class TestCoverageMustBeEarned:
             for cell in required:
                 if cell in entry.get("source_reference", ""):
                     named.add(cell)
-        assert named == required, f"cells with no synthesized capsule naming them: {required - named}"
+        # ...or NAMED AS UNWRITABLE. A required cell whose op has no direct-MLIR builder at a dtype the
+        # PyTorch writer cannot express has no entry by construction, and the honest handling is to
+        # report it as an uncovered cell rather than to leave it silently absent from both lists.
+        reported = " ".join((doc.get("provenance") or {}).get("cells_no_writer_can_express") or ())
+        unaccounted = {c for c in required - named if c not in reported}
+        assert not unaccounted, f"cells neither covered nor reported unwritable: {unaccounted}"

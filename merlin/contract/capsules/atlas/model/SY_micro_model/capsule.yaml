@@ -1,0 +1,75 @@
+name: SY_micro_model
+kind: model
+source_role: pytorch_model_slice
+source_reference: 'synthesized for the composition axis: one layer per admitted family,
+  one per family a real capture contains that the manifest does not admit, sized to
+  the target''s own tile edge, with host layers interleaved into the interior. Inventory
+  and extents come from micro_model.spec; the shapes the requirement names are [''A'',
+  ''A->A'', ''A->H->A'', ''H'', ''H->A->H'', ''routing'']'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: I0
+  role: input
+  shape:
+  - 64
+  - 64
+  dtype: f32
+operation:
+  op: model
+  attributes:
+    model: SY_micro_model
+    dtype: fp8_e4m3
+    out: Y0
+    compile_dtype: fp8
+    arg_order:
+    - I0
+    - Y0
+    weights: capsule.weights.safetensors
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPopE1
+  - TensorComputeBinary
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+gate:
+  after_op_pass_fraction: 0.8
+lanes:
+  require:
+  - on_mesh
+pytorch_ref:
+  op: model
+  dtype: fp8_e4m3
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: contraction
+  generalization_axis: model
+  must_accelerate: false
+  not_asserted_reason: 'interop capsule: composition across lanes is the behaviour
+    under test, so host-lane work is expected and required. The accelerator demand
+    is expressed as lanes.require, which fails unless every named lane actually carried
+    work.'
+  eligible: auto
+pass_requirements:
+- region-partition
+- target-isa-lowering
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 0.6590474462509155
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

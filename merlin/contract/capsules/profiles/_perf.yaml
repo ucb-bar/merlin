@@ -240,3 +240,89 @@ blocked_unimplemented:
       runs: three_per_shape
       projected_cycles: derived_at_preflight
       basis: one_fused_member_and_two_parts
+
+# L4_boundary -- the rung the ladder NAMES and nothing occupied. It is where a placement decision is
+# actually made and paid for: what a host round trip costs against keeping the intermediate resident.
+# The functional side of this already exists as a capsule (the host-island seam); what is missing is a
+# price for it, and the instrument is the missing half -- the lane executed in the capsule path is not
+# the target's host, and there is no per-lane cycle accounting to charge a transfer to.
+- family: PB
+  reason: >-
+    per-lane cycle accounting does not exist; the capsule path executes its host lane on the
+    development machine, so a round trip cannot be charged to the target's host at all. The
+    comparison is well defined and the instrument is not.
+  fit_axes: [K]
+  comparison_roles: [island, resident]
+  performance:
+    level: L4_boundary
+    family: PB
+    lever: host_accelerator_boundary
+    claim: DIFFERENTIAL
+    comparand:
+      kind: group_arithmetic
+      against: same_work_without_the_round_trip
+      cancels: [operation_shape, operands, numeric_policy]
+      demand_equal: [M, N, K, operand_dtype, accum_dtype]
+    falsifier:
+      observation: island_cycles_minus_resident_cycles
+      fires_when: a_round_trip_is_not_more_expensive_than_keeping_the_intermediate_resident
+      negative_control: the_same_layer_sequence_with_no_host_layer
+    gate:
+      traits: [explicit_completion]
+      instrument: per_lane_cycle_count
+      capacity: complete_island_and_resident_comparison_group
+      on_missing: skip_with_evidence
+    regime:
+      separation: one_identical_shape_per_group
+      layout: island_member_and_resident_member_share_inputs
+    emitter:
+      status: new:host_island_materializer
+      entry: merlin.perf.workload_gen.plan_matmul
+      knobs: {members: [host_island_seam, resident_pair]}
+    cost:
+      tier: 1
+      runs: three_per_shape
+      projected_cycles: derived_at_preflight
+      basis: one_island_member_and_one_resident_member
+
+# L6_global -- the whole-program decision: quantization, packing, encoding, layout propagation. Its
+# canonical trait already exists in merlin.perf.profile and nothing consumed it, which is the same
+# shape as every other derived fact this plan found unused.
+- family: PG
+  reason: >-
+    no materializer emits the SAME layer in two operand encodings, so the comparison has no members.
+    The trait that gates it (multiple_operand_encodings) is derived and available; the corpus side is
+    what is absent.
+  fit_axes: [K]
+  comparison_roles: [encoding_a, encoding_b]
+  performance:
+    level: L6_global
+    family: PG
+    lever: operand_encoding
+    claim: DIFFERENTIAL
+    comparand:
+      kind: group_arithmetic
+      against: same_layer_in_the_other_encoding
+      cancels: [operation_shape, iteration_space, numeric_policy]
+      demand_equal: [M, N, K, accum_dtype]
+    falsifier:
+      observation: cycles_by_operand_encoding
+      fires_when: the_encodings_do_not_differ_in_cycles
+      negative_control: the_same_encoding_twice
+    gate:
+      traits: [multiple_operand_encodings]
+      instrument: cycle_count
+      capacity: complete_encoding_pair_comparison_group
+      on_missing: skip_with_evidence
+    regime:
+      separation: one_identical_shape_per_group
+      layout: both_members_share_logical_operands_and_differ_only_in_encoding
+    emitter:
+      status: new:encoding_variant_materializer
+      entry: merlin.targetgen.corpus_spec.build
+      knobs: {varied_parameter: operand_encoding}
+    cost:
+      tier: 1
+      runs: three_per_shape
+      projected_cycles: derived_at_preflight
+      basis: one_member_per_encoding

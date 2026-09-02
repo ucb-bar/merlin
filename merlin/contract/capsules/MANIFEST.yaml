@@ -230,3 +230,230 @@ performance_generation:
       - hoisted
       - not_hoisted
     errors: []
+  atlas:
+    shared_template:
+      path: contract/capsules/profiles/_perf.yaml
+      sha256: 2a452c4ad5eeb71929bd4f8b8429adb6a4806742b864f5103b5e315b9964509f
+    facts:
+      target: atlas
+      sha256: 3284dc10f38a1d0623c433f214ab7611dc155dbe768a12f7ba045ff31bcc6daf
+    phase:
+      category: _perf
+      label: dev
+      included_in_functional_grade: false
+      exclusion: TargetExperiment.corpus_siblings excludes underscore-prefixed categories
+    families:
+    - family: PK
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PL
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - tile_regime
+      - layer_regime
+    - family: PF
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PB
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - resident
+    - family: PG
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - encoding_a
+      - encoding_b
+    counts:
+      declared_families: 7
+      generated_families: 1
+      generated_members: 4
+      by_family:
+        PK:
+          admitted_members: 4
+          written_members: 4
+        PS:
+          admitted_members: 0
+          written_members: 0
+        PC:
+          admitted_members: 0
+          written_members: 0
+        PL:
+          admitted_members: 0
+          written_members: 0
+        PF:
+          admitted_members: 0
+          written_members: 0
+        PB:
+          admitted_members: 0
+          written_members: 0
+        PG:
+          admitted_members: 0
+          written_members: 0
+    skipped_inapplicable:
+    - family: PS
+      sweep: PS
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - self_hosted_program
+        - explicit_completion
+        satisfied:
+        - self_hosted_program
+        refuted: []
+        unestablished:
+        - explicit_completion
+        facts:
+          self_hosted_program:
+            satisfied: true
+            tier: rtl_facts
+            evidence: 'facts.interfaces: 42 legal opcodes, widest 0x26d7 -> endpoint
+              external_backend'
+            missing: []
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces ['funct_decode_table'] and carry
+              no port list, and the elaborated FIRRTL could not be read to recover
+              one (the elaborated FIRRTL this target's facts name could not be located;
+              port facts are UNKNOWN, which is not the same as the RTL exposing no
+              such port). UNKNOWN, not absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      sweep: PC
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - independent_engine_ports
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - independent_engine_ports
+        - explicit_completion
+        facts:
+          independent_engine_ports:
+            satisfied: null
+            tier: not_established
+            evidence: declared kinds ['systolic']; facts declare interfaces ['funct_decode_table']
+            missing:
+            - a second engine group at all
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces ['funct_decode_table'] and carry
+              no port list, and the elaborated FIRRTL could not be read to recover
+              one (the elaborated FIRRTL this target's facts name could not be located;
+              port facts are UNKNOWN, which is not the same as the RTL exposing no
+              such port). UNKNOWN, not absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    blocked_unimplemented:
+    - family: PL
+      status: blocked_unimplemented
+      reason: layer-scale lever and preflight promotion are not capsule-runnable
+      emitter:
+        status: new:layer_promotion_materializer
+        entry: merlin.perf.workload_gen.plan_matmul
+        knobs:
+          promotion: passing_tile_member_to_layer_sibling
+      fit_axes:
+      - K
+      comparison_roles:
+      - tile_regime
+      - layer_regime
+    - family: PF
+      status: blocked_unimplemented
+      reason: bias-add and fused-epilogue corpus builders are not runnable
+      emitter:
+        status: new:fused_epilogue_and_bias_add_builders
+        entry: merlin.targetgen.corpus_spec.build
+        knobs:
+          members:
+          - fused_matmul_bias
+          - matmul
+          - bias_add
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PB
+      status: blocked_unimplemented
+      reason: per-lane cycle accounting does not exist; the capsule path executes
+        its host lane on the development machine, so a round trip cannot be charged
+        to the target's host at all. The comparison is well defined and the instrument
+        is not.
+      emitter:
+        status: new:host_island_materializer
+        entry: merlin.perf.workload_gen.plan_matmul
+        knobs:
+          members:
+          - host_island_seam
+          - resident_pair
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - resident
+    - family: PG
+      status: blocked_unimplemented
+      reason: no materializer emits the SAME layer in two operand encodings, so the
+        comparison has no members. The trait that gates it (multiple_operand_encodings)
+        is derived and available; the corpus side is what is absent.
+      emitter:
+        status: new:encoding_variant_materializer
+        entry: merlin.targetgen.corpus_spec.build
+        knobs:
+          varied_parameter: operand_encoding
+      fit_axes:
+      - K
+      comparison_roles:
+      - encoding_a
+      - encoding_b
+    errors: []

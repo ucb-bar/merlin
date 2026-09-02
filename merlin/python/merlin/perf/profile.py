@@ -102,6 +102,7 @@ TRAITS: tuple[str, ...] = (
     "explicit_completion",
     "structural_pipeline_depth",
     "feedback_sequenced_units",
+    "multiple_operand_encodings",
 )
 
 #: Evidence tier tokens for :attr:`TargetProfile.trait_tier`. What a term built on this trait may
@@ -837,6 +838,40 @@ def _t_feedback_sequenced_units(sources: Sources) -> tuple[Trait, str]:
                  evidence=f"all {len(walk.modules)} walked modules resolved a finite depth"), TIER_FACTS
 
 
+def _t_multiple_operand_encodings(sources: Sources) -> tuple[Trait, str]:
+    """Does this target admit the SAME arithmetic in more than one operand encoding?
+
+    The L6_global rung is about a whole-program choice -- quantization, packing, encoding, layout
+    propagation -- and the comparison it makes is one layer against the same layer in another encoding.
+    A target with a single operand format has no such pair, and the right answer there is False rather
+    than an unestablished instrument: the machine genuinely cannot be asked the question.
+
+    Derived from the compute units' declared dtypes, which is where an encoding IS declared. Two units
+    each admitting one format count as two encodings for this purpose, because the comparison is over
+    the target, not over one datapath.
+    """
+    units = sources.units()
+    encodings: set[str] = set()
+    for u in units:
+        for d in (u.get("dtypes") or ()):
+            if d:
+                encodings.add(str(d))
+    if len(encodings) >= 2:
+        return Trait("multiple_operand_encodings", True,
+                     evidence=f"the {sources.units_source()} declares {len(encodings)} operand "
+                              f"encoding(s) {sorted(encodings)} across {len(units)} compute unit(s)"), \
+            sources.units_tier()
+    if units:
+        return Trait("multiple_operand_encodings", False,
+                     evidence=f"the {sources.units_source()} declares a single operand encoding "
+                              f"{sorted(encodings)}; there is no second encoding to compare against, so "
+                              f"this target cannot be asked the question"), sources.units_tier()
+    return Trait("multiple_operand_encodings", None,
+                 evidence="no compute unit could be read, so the operand encodings are unknown",
+                 missing=("a compute_units block in the contract or the residual",)), TIER_NONE
+
+
+
 _DERIVERS = {
     "self_hosted_program": _t_self_hosted_program,
     "host_dispatched_queue": _t_host_dispatched_queue,
@@ -848,6 +883,7 @@ _DERIVERS = {
     "independent_engine_ports": _t_independent_engine_ports,
     "explicit_completion": _t_explicit_completion,
     "structural_pipeline_depth": _t_structural_pipeline_depth,
+    "multiple_operand_encodings": _t_multiple_operand_encodings,
     "feedback_sequenced_units": _t_feedback_sequenced_units,
 }
 

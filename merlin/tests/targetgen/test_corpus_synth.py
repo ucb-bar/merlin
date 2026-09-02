@@ -53,8 +53,12 @@ def test_every_required_cell_becomes_an_entry(target):
             by_cell.setdefault(hit, []).append(entry)
         else:
             other.append(entry)
-    missing = [c for c in cells if c not in by_cell]
-    assert not missing, f"required cell(s) with no synthesized entry: {missing}"
+    # A cell with no entry is acceptable ONLY when it is named as unwritable. That is a real capability
+    # gap -- an op with no direct-MLIR builder at a dtype the PyTorch writer cannot express -- and the
+    # honest handling is an uncovered cell to argue about, not a silently absent one.
+    reported = " ".join(res["provenance"].get("cells_no_writer_can_express") or ())
+    missing = [c for c in cells if c not in by_cell and c not in reported]
+    assert not missing, f"required cell(s) neither synthesized nor reported unwritable: {missing}"
 
     #: Every non-cell entry must say which axis asked for it. These are the axis markers the
     #: synthesizer writes into `source_reference`; an entry matching none of them is unattributable.

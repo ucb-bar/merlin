@@ -55,3 +55,9 @@ pytorch_ref:
   dtype: bf16
   loader: capsule.pytorch.py
 linalg_mlir: capsule.linalg.mlir
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 2.468125
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

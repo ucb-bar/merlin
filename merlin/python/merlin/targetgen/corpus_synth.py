@@ -172,6 +172,47 @@ def pass_requirements_for(entry: dict, spec_doc: dict) -> list[str]:
     return sorted(dict.fromkeys(out))
 
 
+#: Dtype regimes the PyTorch writer can express. It grades a host-eager float reference with tolerance,
+#: so an int or block-scaled datapath needs the direct-MLIR engine instead -- which is exactly why an op
+#: with no builder cannot be written at those dtypes by anyone.
+_PYTORCH_REGIMES = ("simt",)
+
+
+def _writer_for(entry: dict) -> str | None:
+    """Which writer can materialize this entry -- ``builder`` / ``pytorch`` / ``None`` for neither.
+
+    ``available_ops`` is the union of the direct-MLIR BUILDERS and the PyTorch bodies, so an op can be
+    "materializable" in the abstract and still have no writer AT THIS DTYPE: the PyTorch path is float
+    only. A cell in that corner is a real capability gap and must be reported as an uncovered cell to
+    argue about, never emitted as an entry nothing can write.
+    """
+    from merlin.targetgen.corpus_spec import BUILDERS, regime_for_dtype
+
+    op = entry.get("op")
+    if op in BUILDERS:
+        return "builder"
+    try:
+        regime = regime_for_dtype(str(entry.get("operand_dtype") or ""))
+    except Exception:                              # noqa: BLE001 -- an unknown regime is not a float one
+        regime = None
+    return "pytorch" if regime in _PYTORCH_REGIMES else None
+
+
+def _mark_source(entry: dict) -> None:
+    """Say which writer can materialize this entry's op, when it is not the direct-MLIR one.
+
+    `available_ops` is the union of the direct-MLIR BUILDERS and the PyTorch bodies, so an op can be
+    materializable and still have no builder -- and an entry that does not say so goes down the
+    direct-MLIR path and dies with "no corpus builder for op". Measured: four synthesized capsules
+    failed exactly that way on the first target whose elementwise family resolved to `gelu`.
+    """
+    from merlin.targetgen.corpus_spec import BUILDERS
+
+    op = entry.get("op")
+    if op and op not in BUILDERS:
+        entry["source"] = "pytorch"
+
+
 def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                budget: int | None = None) -> dict:
     """``{"capsules": [entry...], "provenance": {...}}`` for one target's derived requirement.
@@ -206,6 +247,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
 
     entries: list[dict] = []
     unexpressable: list[str] = []
+    unwritable: list[str] = []
     for cell in sorted(cells, key=lambda c: str(c.get("cell"))):
         family = str(cell.get("family") or "")
         dtype = str(cell.get("dtype") or "")
@@ -245,6 +287,14 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         }
         if epilogue:
             entry["epilogue"] = epilogue
+        _writer = _writer_for(entry)
+        if _writer is None:
+            unwritable.append(
+                f"{cell.get('cell')} (op {op!r} has no direct-MLIR builder and dtype {dtype!r} is not "
+                f"a regime the PyTorch writer can express)")
+            continue
+        if _writer == "pytorch":
+            entry["source"] = "pytorch"
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
@@ -316,6 +366,9 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "cat": "model_slices", "kind": "model_slice",
             "name": f"{SYNTH_PREFIX}_host_only_{family}".replace("-", "_"),
             "op": op, "operand_dtype": dtype, "out": "Y0", "lhs": "A0", "weight": "W",
+            # PyTorch-sourced regardless of whether a direct-MLIR builder exists for the op: a host-only
+            # capsule is a model slice at a float dtype, and the frontend-faithful lowering is what makes
+            # it the program a real model would hand the host.
             "source": "pytorch",
             "source_role": SOURCE_ROLE,
             "source_reference": (
@@ -358,6 +411,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "lanes": {"require": ["on_mesh"]},
             "semantic": {"generalization_axis": "composition"},
         }
+        _mark_source(entry)
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
@@ -384,6 +438,11 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "budget": cap,
             "precision_preference_kept": kept,
             "precision_preference_dropped": dropped,
+            "cells_no_writer_can_express": unwritable,
+            "cells_no_writer_note": (
+                "a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch writer "
+                "cannot express. Reported as an uncovered cell to argue about rather than emitted as an "
+                "entry nothing can write; adding a builder for that op closes it"),
             "composition_shapes_required": sorted(composition),
             "composition_note": (
                 "one micro-model capsule is synthesized for this axis, and its composition is whatever "

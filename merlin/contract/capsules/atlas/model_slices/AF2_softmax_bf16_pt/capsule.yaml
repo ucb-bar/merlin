@@ -21,7 +21,7 @@ operation:
 numeric_policy:
   compare: tolerance_float
   dtype: bf16
-  atol: 0.0345
+  atol: 0.003046875
   rtol: 0.02
 expected:
   instruction_classes:
@@ -46,3 +46,14 @@ semantic:
   generalization_axis: composition
   must_accelerate: true
   eligible: auto
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 0.06896728515625
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true
+  applied_atol: 0.003046875
+  golden_scale: 0.15234375
+  rtol: 0.02
+  why: the declared absolute tolerance reached the falsifiability ceiling, so the
+    profile's own relative tolerance was applied at the golden's scale instead

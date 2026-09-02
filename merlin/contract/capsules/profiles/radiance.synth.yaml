@@ -17,6 +17,10 @@ provenance:
   - f32
   precision_preference_dropped:
   - fp8_e4m3
+  cells_no_writer_can_express: []
+  cells_no_writer_note: a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch
+    writer cannot express. Reported as an uncovered cell to argue about rather than emitted as an entry
+    nothing can write; adding a builder for that op closes it
   composition_shapes_required:
   - A->A
   - A->H->A
@@ -547,6 +551,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -566,6 +571,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -585,6 +591,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -604,6 +611,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -623,6 +631,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -642,6 +651,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -889,6 +899,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -908,6 +919,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -927,6 +939,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -946,6 +959,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -965,6 +979,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -984,6 +999,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -1003,6 +1019,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -1022,6 +1039,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -1041,6 +1059,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -1060,6 +1079,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -1079,6 +1099,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -1098,6 +1119,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
