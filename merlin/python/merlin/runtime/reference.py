@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .commandbuffer import apply_pool_stage, materialize_inputs
+from .commandbuffer import (apply_pool_stage, conv_im2col, conv_out_dims,
+                            materialize_inputs, pool_params)
 from .tensor import Tensor
 
 
@@ -19,7 +20,8 @@ from .tensor import Tensor
 #: wrote its output" — indistinguishable from a real dropped store, and unfixable by any submission.
 #: Fail closed instead (see :class:`UnmodeledOp`).
 MODELED_OPCODES = frozenset({
-    "RES_PACK", "MATMUL_RESIDENT", "MATMUL", "COMMIT", "VECTOR_MAP", "VREDUCE",
+    "RES_PACK", "MATMUL_RESIDENT", "MATMUL", "COMMIT", "VECTOR_MAP", "VREDUCE", "ATTENTION_QK",
+    "ATTENTION_PV", "CONV2D", "MOVEMENT",
 })
 
 #: Opcodes with NO effect on committed values, correctly ignored here rather than "unmodeled". ``EVICT``
@@ -42,6 +44,121 @@ class UnmodeledOp(ValueError):
         super().__init__(
             f"the integer reference engine models {sorted(MODELED_OPCODES)} and has no definition for "
             f"{sorted(set(opcodes))}")
+
+
+# The reference intentionally evaluates whole-op convolution independently of the simulator's command
+# dispatch.  Keep its accepted attribute surface explicit and fail closed: silently ignoring one of a
+# convolution's geometry knobs produces a plausible, completely wrong tensor.
+_CONV2D_ATTRS = frozenset({
+    "kernel", "stride", "padding", "dilation", "layout", "epilogue", "output_dtype",
+    "acc_scale", "requant_shift", "semantic", "pool_in_dims", "pool_size", "pool_stride",
+    "pool_padding", "pool_pad_value",
+})
+
+_ATTENTION_ATTRS = frozenset({"epilogue", "output_dtype", "acc_scale", "requant_shift", "semantic"})
+
+
+def _conv_geom(attrs: dict[str, Any], key: str, arity: int, default: list[int]) -> tuple[int, ...]:
+    value = attrs.get(key, default)
+    if not isinstance(value, list) or len(value) != arity:
+        raise ValueError(f"CONV2D {key} must be a list of {arity} int(s) (got {value!r})")
+    return tuple(int(x) for x in value)
+
+
+def _narrow_int_readout(t: Tensor, dtype: str, op: str) -> Tensor:
+    """Saturate an i32 result into its declared integer container.
+
+    This is independently spelled here so the simulator/reference comparison still catches a broken
+    command dispatch, while following the ABI's derived-bitwidth rule rather than assuming one target's
+    output width.
+    """
+    kind, digits = (dtype[:1], dtype[1:]) if dtype else ("", "")
+    if kind not in ("i", "u") or not digits.isdigit():
+        raise ValueError(
+            f"{op} output_dtype {dtype!r} is not an integer dtype; this integer engine has no "
+            f"definition for it")
+    bits, signed = int(digits), kind == "i"
+    if bits >= 32:
+        return t
+    if dtype == "i8":
+        return t.to_i8()
+    lo, hi = (-(1 << (bits - 1)), (1 << (bits - 1)) - 1) if signed else (0, (1 << bits) - 1)
+    return Tensor(t.shape, [lo if x < lo else (hi if x > hi else x) for x in t.data], dtype)
+
+
+def _attention_epilogue(t: Tensor, attrs: dict[str, Any], default_shift: int, op: str) -> Tensor:
+    unknown = sorted(set(attrs) - _ATTENTION_ATTRS)
+    if unknown:
+        raise ValueError(
+            f"{op} does not implement attribute(s) {unknown}; it implements "
+            f"{sorted(_ATTENTION_ATTRS)}")
+    for stage in attrs.get("epilogue", []):
+        if stage == "acc_scale":
+            t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+        elif stage == "requant":
+            t = t.requant(int(attrs.get("requant_shift", default_shift)))
+        elif stage == "relu":
+            t = t.relu()
+        else:
+            raise ValueError(
+                f"{op} declares epilogue stage {stage!r}, which this reference engine does not "
+                f"implement (implemented: acc_scale, requant, relu)")
+    if attrs.get("output_dtype", "i32") == "i8":
+        t = t.to_i8()
+    return t
+
+
+def _conv2d(ifm_name: str, ifm: Tensor, weight_name: str, weight: Tensor, dst: str,
+            attrs: dict[str, Any], default_shift: int) -> Tensor:
+    unknown = sorted(set(attrs) - _CONV2D_ATTRS)
+    if unknown:
+        raise ValueError(
+            f"CONV2D does not implement attribute(s) {unknown}; it implements "
+            f"{sorted(_CONV2D_ATTRS)}. Applying a conv with a parameter this engine ignored would be "
+            f"a wrong answer that still looks like a tensor")
+    layout = str(attrs.get("layout", "nhwc"))
+    if layout != "nhwc":
+        raise ValueError(f"CONV2D layout {layout!r} unsupported (nhwc only)")
+    kernel = attrs.get("kernel")
+    if not isinstance(kernel, list) or len(kernel) != 4:
+        raise ValueError(f"CONV2D needs kernel = [kh, kw, ci, co]; got {kernel!r}")
+    kh, kw, ci, co = (int(v) for v in kernel)
+    stride = _conv_geom(attrs, "stride", 2, [1, 1])
+    padding = _conv_geom(attrs, "padding", 4, [0, 0, 0, 0])
+    dilation = _conv_geom(attrs, "dilation", 2, [1, 1])
+    if len(ifm.shape) != 4:
+        raise ValueError(f"CONV2D activation {ifm_name}{ifm.shape} is not rank-4 NHWC")
+    if ifm.shape[3] != ci:
+        raise ValueError(
+            f"CONV2D channel mismatch: {ifm_name}{ifm.shape} has C={ifm.shape[3]} but kernel "
+            f"declares ci={ci}")
+    cols = conv_im2col(ifm, kh=kh, kw=kw, ci=ci, stride=stride, padding=padding,
+                       dilation=dilation, layout=layout)
+    if weight.shape != (kh * kw * ci, co):
+        raise ValueError(
+            f"CONV2D weight {weight_name}{weight.shape} is not the im2col-packed "
+            f"[Kh*Kw*Ci, Co] = [{kh * kw * ci}, {co}] the kernel attribute declares")
+    result = cols.matmul(weight)
+    for stage in attrs.get("epilogue", []):
+        if stage == "acc_scale":
+            result = result.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+        elif stage == "requant":
+            result = result.requant(int(attrs.get("requant_shift", default_shift)))
+        elif stage == "relu":
+            result = result.relu()
+        elif stage == "maxpool":
+            ho, wo = conv_out_dims(ifm.shape[1], ifm.shape[2], kh, kw,
+                                   stride, padding, dilation)
+            pool_in = pool_params(attrs, op=f"CONV2D {dst!r}")["pool_in_dims"]
+            if pool_in != (ho, wo):
+                raise ValueError(
+                    f"CONV2D {dst!r}: pool_in_dims {list(pool_in)} disagrees with the conv's own "
+                    f"output extent [{ho}, {wo}]; the pooled image is the conv's output, so the "
+                    f"declaration is wrong (or the conv geometry is)")
+            result = apply_pool_stage(result, stage, attrs, op=f"CONV2D {dst!r}")
+        else:
+            raise ValueError(f"CONV2D does not implement epilogue stage {stage!r}")
+    return _narrow_int_readout(result, str(attrs.get("output_dtype", "i32")), "CONV2D")
 
 
 def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[str, list]:
@@ -151,6 +268,56 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
             env[ops["dst"]] = t
         elif op == "VREDUCE":
             env[ops["dst"]] = env[ops["src"]].reduce_sum()
+        elif op == "ATTENTION_QK":
+            # S = Q @ K^T for an attention score block: q is [m, d], k is [n, d] (K stored ROW-per-key,
+            # so the contraction is over the trailing head dim of BOTH operands), s is [m, n]. This is
+            # the SAME definition the command-buffer simulator executes and the same one the golden
+            # engine captures (`q @ k.transpose(-2, -1)`), so the two halves of the L0 comparison agree
+            # on one computation.
+            #
+            # Modeled here because the simulator already models it: with the opcode missing from
+            # MODELED_OPCODES the reference raised UnmodeledOp on a conformant buffer, so a capsule
+            # declaring `op: attention_qk` had NO expressible command buffer at all — the submission
+            # could only be graded by abandoning the opcode the interface grammar defines for it.
+            q, k, dst = ops["q"], ops["k"], ops["dst"]
+            qt, kt = env[q], env[k]
+            (m, d), (n, d2) = qt.shape, kt.shape
+            if d != d2:
+                raise ValueError(f"ATTENTION_QK head-dim mismatch: {q}{qt.shape} vs {k}{kt.shape}")
+            k_t = Tensor((d, n), [kt.data[i * d + j] for j in range(d) for i in range(n)], kt.dtype)
+            t = _attention_epilogue(qt.matmul(k_t), attrs, default_shift, f"ATTENTION_QK {dst!r}")
+            env[dst] = t
+            outputs[dst] = t.to_list()
+        elif op == "ATTENTION_PV":
+            # P is [m, s] and V is [s, d]. Unlike ATTENTION_QK this operation does not transpose its
+            # right operand; that distinction is the native ABI, not an optional attribute.
+            p, v, dst = ops["p"], ops["v"], ops["dst"]
+            pt, vt = env[p], env[v]
+            (m, s), (s2, _) = pt.shape, vt.shape
+            if s != s2:
+                raise ValueError(f"ATTENTION_PV key-count mismatch: {p}{pt.shape} vs {v}{vt.shape}")
+            t = _attention_epilogue(pt.matmul(vt), attrs, default_shift, f"ATTENTION_PV {dst!r}")
+            env[dst] = t
+            outputs[dst] = t.to_list()
+        elif op == "CONV2D":
+            ifm_name, weight_operand, dst = ops["ifm"], ops["weight"], ops["dst"]
+            if weight_operand in resident_dequant:
+                src_name, scale_name, axis = resident_dequant[weight_operand]
+                weight = env[src_name].dequant_per_channel(env[scale_name], axis)
+            else:
+                weight_name = resident_source.get(weight_operand, weight_operand)
+                weight = env[weight_name]
+            t = _conv2d(ifm_name, env[ifm_name], weight_operand, weight, dst, attrs, default_shift)
+            env[dst] = t
+            outputs[dst] = t.to_list()
+        elif op == "MOVEMENT":
+            if "src" not in ops:
+                raise ValueError("MOVEMENT needs operands src/dst")
+            src, dst = ops["src"], ops["dst"]
+            value = env[src]
+            moved = Tensor(value.shape, list(value.data), str(attrs.get("output_dtype", value.dtype)))
+            env[dst] = moved
+            outputs[dst] = moved.to_list()
     for name, spec in cb.get("tensors", {}).items():
         if spec.get("role") == "output" and name in env and name not in outputs:
             outputs[name] = env[name].to_list()

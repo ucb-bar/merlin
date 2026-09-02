@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...common.artifacts import Artifact
+from ...runtime.commandbuffer import EPILOGUE_STAGES
 
 KNOWN_TYPES = {"resident_tensor", "accumulator"}
 KNOWN_OPS = {"res_pack", "matmul", "commit", "evict"}
@@ -43,7 +44,10 @@ except Exception:  # noqa: BLE001 - xDSL is an optional prototyping dependency
     HAS_XDSL = False
 
 
-_KNOWN_EPILOGUE = {{"bias_add", "bias", "requant", "relu", "maxpool"}}
+# The command-buffer ABI's epilogue vocabulary, rendered from the ONE definition
+# (merlin.runtime.commandbuffer.EPILOGUE_STAGES) at generation time. A generated dialect is
+# standalone, so the value is baked -- but it is baked FROM the single definition, never re-typed.
+_KNOWN_EPILOGUE = {epilogue}
 
 if HAS_XDSL:
 
@@ -237,7 +241,10 @@ def generate(dialect_plan: dict[str, Any]) -> list[Artifact]:
     dia_tmpl, test_tmpl = (_REAL_DIALECT, _REAL_TEST) if real else (_MINIMAL_DIALECT, _MINIMAL_TEST)
     return [
         Artifact(f"xdsl/{dialect}_dialect.py",
-                 dia_tmpl.format(dialect=dialect, ops=ops, types=types, DIALECT_CONST=const)),
+                 dia_tmpl.format(dialect=dialect, ops=ops, types=types, DIALECT_CONST=const,
+                                 # a set LITERAL in the canonical tuple order: `repr(set(...))`
+                                 # varies with the hash seed and a generated file must not.
+                                 epilogue="{" + ", ".join(map(repr, EPILOGUE_STAGES)) + "}")),
         Artifact(f"xdsl/test_{dialect}.py",
                  test_tmpl.format(dialect=dialect, ops=ops, types=types)),
     ]

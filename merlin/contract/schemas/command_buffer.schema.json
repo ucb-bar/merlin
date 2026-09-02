@@ -88,7 +88,9 @@
               "VECTOR_MAP",
               "VREDUCE",
               "RMSNORM",
+              "MOVEMENT",
               "ATTENTION_QK",
+              "ATTENTION_PV",
               "BATCHED_MATMUL",
               "LAYERNORM",
               "SOFTMAX",
@@ -98,6 +100,7 @@
               "ATTENTION_FULL",
               "ROPE",
               "CONV",
+              "CONV2D",
               "MATMUL_BATCHED"
             ]
           },
@@ -115,6 +118,7 @@
               },
               "epilogue": {
                 "type": "array",
+                "description": "Ordered epilogue stages. GENERATED from merlin.runtime.commandbuffer.EPILOGUE_STAGES (the single definition all engines and both ABI documents derive from); regenerate with build_tools/scripts/check_epilogue_vocabulary.py --write. Do not hand-edit this enum.",
                 "items": {
                   "type": "string",
                   "enum": [
@@ -122,7 +126,8 @@
                     "bias",
                     "requant",
                     "acc_scale",
-                    "relu"
+                    "relu",
+                    "maxpool"
                   ]
                 }
               },

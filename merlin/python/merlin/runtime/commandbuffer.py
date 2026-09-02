@@ -13,6 +13,66 @@ from typing import Any
 
 from .tensor import Tensor, pool_out_dims  # noqa: F401  (pool_out_dims re-exported: see its docstring)
 
+#: THE epilogue vocabulary of the command-buffer ABI — the ONE definition. Ordered canonically
+#: (accumulator-side stages first, readout-shaping last), and every other representation of this list is
+#: DERIVED from it: the strict JSON validator's ``epilogue`` enum
+#: (``merlin/contract/schemas/command_buffer.schema.json``), the two prose ABI documents
+#: (``command_buffer_abi.yaml``, ``interface_dialect_contract.yaml``), the interface dialect's
+#: ``KNOWN_EPILOGUE``, the generated-dialect factory's copy, and the code template the target generator
+#: emits. ``build_tools/scripts/check_epilogue_vocabulary.py`` (also a pytest in
+#: ``merlin/tests/infra/test_schema_consistency.py``) fails if any of them drifts from this tuple.
+#:
+#: WHY THIS EXISTS. There were SIX hand-maintained copies and no two of them agreed. The JSON validator
+#: listed ``bias_add/bias/requant/acc_scale/relu``; the two ABI documents listed
+#: ``bias_add/requant/acc_scale/relu/maxpool``; the three dialect copies listed
+#: ``bias/bias_add/requant/relu/maxpool``. So the validator rejected ``maxpool`` (which both ABI documents
+#: instruct an author to emit, and which all three engines below implement), and the dialect verifiers
+#: rejected ``acc_scale`` (which the validator and both documents admit). MEASURED COST, run
+#: ``merlincirct_arm4_func_20260901_codex1``: a capsule whose commit fuses a pooling readout was failed
+#: with ``command_buffer schema violation at commands/2/attributes/epilogue/0: 'maxpool' is not one of
+#: [...]`` — the author had followed the ABI document verbatim and an enum that contradicted both the
+#: document and the hardware refused it.
+#:
+#: WHY THIS IS NOT DERIVED FROM RTL FACTS, explicitly. Two reasons, in order of force:
+#:
+#: 1. WRONG SUBJECT. The command buffer is the TARGET-INDEPENDENT ABI (``abi_version 0.1``): one
+#:    validator admits buffers for every target. A vocabulary derived from one target's RTL would make
+#:    the same buffer schema-valid on one target and malformed on another, which is not what a schema
+#:    means. What this vocabulary IS is the set of stages the command-buffer ENGINES implement — the
+#:    capsule golden, the reference recomputation and the simulator, all three of which dispatch on
+#:    these names and (since the fail-closed sweep) RAISE on a name they do not implement rather than
+#:    skipping it. Siting it here, in the module all three already import for the pooling geometry, makes
+#:    the ABI's vocabulary and the engines' vocabulary the same object.
+#: 2. THE PER-TARGET DERIVATION EXISTS AND IS A DIFFERENT QUESTION — "can THIS silicon execute this
+#:    stage?" — and it already has an owner: :mod:`merlin.targetgen.capability_discovery`, whose
+#:    ``pooling`` / ``activation_mode`` / ``requant`` axes are exactly the epilogue features, read from
+#:    the target's own pinned ISA header and the configuration its RTL was elaborated from. It is the
+#:    right rung for "is this stage BUILT", and it is deliberately not consulted here.
+#:
+#:    ATTEMPTED, AND REFUSED, ON THIS CHECKOUT. ``capability_discovery.discover(<systolic target>)``
+#:    raises ``ProvenanceRefused``: the nested ISA-header repository sits at a revision the RTL pin's
+#:    container does not record, and one header is a declared off-pin local edit. So no header-derived
+#:    claim may be published from this tree at all. That is fail-closed working as intended, and it is
+#:    the second reason a derived enum is not on offer today — but note it would not have licensed a
+#:    NARROWER list either: the same target's reviewed contract already declares the pooling capability
+#:    (``semantic_capabilities: reduction ... composed_with [contraction, movement]``) on two independent
+#:    rungs, the elaborated config's ``has_max_pool = true`` and the ISA's own
+#:    ``config_st(..., pool_stride, pool_size, pool_out_dim, porows, pocols, orows, ocols, upad, lpad)``.
+#:
+#: A stage this list admits is therefore ADMISSIBLE TO THE ABI, never a promise that a given engine or a
+#: given target implements it: an engine that does not RAISES by name (see the reference/simulator COMMIT
+#: loops), and a target that cannot execute it fails at its oracle. Widening this tuple is a contract
+#: change and needs both an engine that implements the stage and a target rung that evidences it.
+#: IMPORT NOTE for whoever edits ``merlin/runtime/__init__.py`` next: the two dialect modules import this
+#: constant, so that package's ``__init__`` must stay free of anything that reaches back into
+#: ``merlin.xdsl_dialects`` (today it imports only tensor/metrics/commandbuffer/simulator/reference, none
+#: of which do). ``runtime.program`` and ``runtime.interpret`` DO import the lowering package -- adding
+#: either to ``__init__`` would close a cycle. Measured cost of the edge as it stands: 3.4 ms.
+EPILOGUE_STAGES: tuple[str, ...] = ("bias_add", "bias", "requant", "acc_scale", "relu", "maxpool")
+
+#: Set form, for membership tests.
+EPILOGUE_STAGE_SET = frozenset(EPILOGUE_STAGES)
+
 #: The attribute names a POOLING epilogue stage reads, and the arity each one must have.
 #:
 #: They ride on the COMMAND's attributes because that is where the hardware carries them: this target
