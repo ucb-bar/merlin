@@ -179,12 +179,28 @@ def admitted(target: str) -> dict[str, tuple[str, ...]]:
     an unresolvable contract yields ``{}`` so the caller reports "nothing admitted" instead of inventing
     a denominator.
     """
+    return admitted_with_reason(target)[0]
+
+
+def admitted_with_reason(target: str) -> tuple[dict[str, tuple[str, ...]], str]:
+    """:func:`admitted` plus WHY it is what it is: ``"resolved"`` / ``"unresolvable: ..."``.
+
+    ⚠️ AN EMPTY MAP HAS TWO CAUSES AND THEY LICENSE OPPOSITE ACTIONS. "This target's manifest admits no
+    family a capture contains" is a real, final answer. "This target has no generated contract to read"
+    is a missing artifact, and a requirement derived from it is not empty -- it is UNKNOWN. Both used to
+    return ``{}`` and every caller downstream saw zero cells, so a target with no contract reported the
+    same clean nothing as one whose families genuinely do not intersect.
+
+    Measured: ``saturn_opu`` and ``saturn_opu_rvv`` have no
+    ``out/artifacts/targets/<target>/contracts/`` at all, derived zero cells, and were reported as
+    having no requirement rather than as unverifiable.
+    """
     try:
         from merlin.targetgen.eligibility import capability_map_for_target
         cap_map = capability_map_for_target(target)
-    except Exception:                                      # noqa: BLE001 — unresolvable contract
-        return {}
-    return {fam: tuple(cap.dtypes or ()) for fam, cap in sorted(cap_map.items())}
+    except Exception as exc:                               # noqa: BLE001 — unresolvable contract
+        return {}, f"unresolvable: {type(exc).__name__}: {str(exc)[-160:]}"
+    return ({fam: tuple(cap.dtypes or ()) for fam, cap in sorted(cap_map.items())}, "resolved")
 
 
 def admitting_units(target: str) -> dict[tuple[str, str], tuple[str, ...]]:
@@ -316,7 +332,7 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
     requirement is a silent narrowing: a family the models need that the hardware does not admit is a
     real coverage hole, and it must be visible rather than absent.
     """
-    adm = admitted(target)
+    adm, adm_reason = admitted_with_reason(target)
     units = admitting_units(target)
     bnd = boundaries(target)
     aligns: tuple[str | None, ...] = ("aligned", "partial") if bnd.tile_edge else (None,)
@@ -389,8 +405,17 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
         "families_needed_but_not_admitted": needed_not_admitted,
         "families_admitted_but_no_model_uses": admitted_not_needed,
         "alignment_axis": list(aligns),
+        # Why the admitted side is what it is. Load-bearing when it is EMPTY: "no family intersects" is
+        # an answer, "no contract to read" is a missing artifact, and a caller that cannot tell them
+        # apart reports a target with no generated package as cleanly requiring nothing.
+        "admitted_status": adm_reason,
         "notes": [],
     }
+    if adm_reason != "resolved":
+        diagnostics["notes"].append(
+            f"this target's capability contract did not resolve ({adm_reason}), so NOTHING is admitted "
+            f"and the requirement below is UNKNOWN rather than empty; generate the target's package "
+            f"before reading any coverage number for it")
     if composite_via:
         diagnostics["notes"].append(
             f"{len(composite_via)} composite family/families ({', '.join(sorted(composite_via))}) appear "

@@ -108,12 +108,13 @@ def audit(target: str, bundles: dict[str, Path] | None = None) -> dict:
         return row
 
     def _cells(caps):
-        cells, _ = CF.required_cells(target, caps)
-        return sorted({(c.family, c.dtype, c.alignment) for c in cells})
+        cells, diag = CF.required_cells(target, caps)
+        return sorted({(c.family, c.dtype, c.alignment) for c in cells}), diag
 
     try:
-        with_claim = _cells(bundles)
-        without = _cells(derivation)
+        with_claim, _ = _cells(bundles)
+        without, diag = _cells(derivation)
+        row["admitted_status"] = diag.get("admitted_status", "unknown")
     except Exception as exc:                       # noqa: BLE001 -- an unresolvable target establishes nothing
         row["status"] = "unverifiable"
         row["detail"] = f"could not derive the requirement: {type(exc).__name__}: {exc}"
@@ -128,10 +129,26 @@ def audit(target: str, bundles: dict[str, Path] | None = None) -> dict:
         # demanded. Printable -- a cell is `admitted x observed`, which the tracked spec already states.
         "cells_depending_on_a_claim_model": [list(c) for c in dependent],
         "known_derivation_gaps": [dict(g) for g in CM.known_derivation_gaps()],
-        "status": "ok" if not dependent and not uncaptured else
-                  ("circular" if dependent else "claim_model_uncaptured"),
+        # ⚠️ A ZERO-CELL DERIVATION IS NOT A PASS. Independence is vacuously true when the requirement
+        # is empty -- nothing can depend on a held-out model if nothing is required at all -- so
+        # reporting `ok` there is the "a check that could not run reported success" failure this repo
+        # has paid for repeatedly. Measured: saturn_opu and saturn_opu_rvv derive no cell from any
+        # capture, and this gate called both of them clean.
+        "status": ("no_requirement" if not without else
+                   "circular" if dependent else
+                   "claim_model_uncaptured" if uncaptured else "ok"),
     })
-    if dependent:
+    if row.get("admitted_status", "resolved") != "resolved":
+        # Distinguished from "admits nothing a capture contains", because they license opposite
+        # actions: generate the target's package, versus accept that the families do not intersect.
+        row["status"] = "contract_unresolved"
+        row["detail"] = (f"this target's capability contract did not resolve "
+                         f"({row['admitted_status']}), so the requirement is UNKNOWN, not empty")
+    elif not without:
+        row["detail"] = ("the derivation set yields NO requirement cell, so independence is vacuous "
+                         "and nothing about circularity is established: this target's manifest admits "
+                         "no family any derivation capture contains")
+    elif dependent:
         row["detail"] = (f"{len(dependent)} requirement cell(s) exist only because a held-out model "
                          f"was read; the corpus would be built from what it claims to generalize to")
     elif uncaptured:
@@ -175,16 +192,23 @@ def main(argv=None) -> int:
                 print(f"{head} derivation={r['n_derivation']} claim={r['n_claim']} "
                       f"cells={r['n_cells_derivation_only']} "
                       f"independent={r['requirement_is_independent']}")
+            elif r.get("detail"):
+                # One line per target: the detail was printed here AND again below, so every
+                # non-ok target reported its reason twice.
+                print(f"{head}")
+                print(f"                 -> {r['detail']}")
             else:
-                print(f"{head} {r.get('detail', '')}")
-            if r.get("detail") and r["status"] != "ok":
+                print(f"{head}")
+            if r["status"] in ("circular", "claim_model_uncaptured", "no_requirement") \
+                    and r.get("detail"):
                 print(f"                 -> {r['detail']}")
         for g in CM.known_derivation_gaps():
             print(f"  [gap] {g.get('family')}/{g.get('shape_class')}: {g.get('reason', '').strip()}")
 
     circular = [r for r in rows if r["status"] == "circular"]
     unverifiable = [r for r in rows if r["status"] in
-                    ("no_captures", "unverifiable", "empty_derivation", "overlap")]
+                    ("no_captures", "unverifiable", "empty_derivation", "overlap",
+                     "no_requirement", "contract_unresolved")]
     if a.fail_on_circular and circular:
         print(f"[FAIL] {len(circular)} target(s) derive a requirement from a held-out model",
               file=sys.stderr)

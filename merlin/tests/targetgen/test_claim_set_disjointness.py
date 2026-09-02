@@ -145,3 +145,59 @@ def test_the_conv_derivation_gap_is_recorded_rather_than_hidden():
     conv = [g for g in gaps if g.get("shape_class") == "convolution"]
     assert conv, "the convolution gap is the one this split creates"
     assert conv[0].get("stood_in_by"), "name what currently covers it"
+
+
+def test_an_unresolvable_contract_is_not_an_empty_requirement():
+    """"Nothing admitted" has two causes and they license opposite actions.
+
+    "This target's manifest admits no family a capture contains" is a final answer. "This target has no
+    generated contract to read" is a missing artifact, and a requirement derived from it is UNKNOWN,
+    not empty. `conformance.admitted` returns {} for both, which is fine only if callers can tell them
+    apart -- and none could. Measured: saturn_opu and saturn_opu_rvv have no
+    out/artifacts/targets/<t>/contracts/target_contract.yaml at all, derived zero cells, and this very
+    gate reported both as `ok` with `independent=True`, because nothing can depend on a held-out model
+    when nothing is required.
+    """
+    from merlin.targetgen import conformance as CF
+
+    adm, why = CF.admitted_with_reason("gemmini")
+    assert adm and why == "resolved"
+
+    missing, why_missing = CF.admitted_with_reason("definitely_not_a_target")
+    assert missing == {}
+    assert why_missing.startswith("unresolvable:"), (
+        f"an unresolvable contract must say so, got {why_missing!r}")
+
+
+def test_a_zero_cell_derivation_is_never_reported_ok():
+    """Independence is vacuously true over an empty requirement, so `ok` there is a false pass.
+
+    This is the "a check that could not run reported success" failure this repo has paid for more than
+    once -- and this gate shipped with it until saturn_opu showed 0 cells and a clean verdict.
+    """
+    gate = _gate()
+    rep = gate.audit("definitely_not_a_target", {"gemma2_2b_int8_full": Path("a")})
+    assert rep["status"] != "ok", f"a target with no contract must not be ok: {rep}"
+    assert rep["status"] in ("contract_unresolved", "no_requirement", "unverifiable")
+    assert rep.get("detail"), "the reason must travel with the verdict"
+
+
+def test_the_written_specs_cite_no_held_out_model():
+    """The artifact, not just the derivation: a tracked spec naming a claim model IS the circularity.
+
+    gemmini's spec was derived before the split and cited lstmnetvit 28 times and tiny_llama 17 times
+    as the evidence for its requirement. The cells were the same either way -- which is the
+    independence result -- but the tracked evidence pointed at held-out models.
+    """
+    spec_dir = repo_root() / "merlin" / "contract" / "capsules" / "conformance"
+    specs = sorted(spec_dir.glob("*.yaml"))
+    if not specs:
+        pytest.skip("no conformance spec is tracked")
+    for spec in specs:
+        text = spec.read_text(encoding="utf-8")
+        cited = [m for m in CM.claim_models() if m in text]
+        # `resnet50_v1_5` also matches a bundle label; check the model tokens, which is what a
+        # citation would contain.
+        assert not cited, (
+            f"{spec.name} cites held-out model(s) {cited} as requirement evidence; regenerate it with "
+            f"--write so the requirement is derived from the derivation set alone")
