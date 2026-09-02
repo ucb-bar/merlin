@@ -379,7 +379,7 @@
     },
     "lanes": {
       "type": "object",
-      "description": "INTEROP contract. `require` names the execution lanes that must each have carried work, using the routing plan's own keys (e.g. `on_mesh`, `in_contract_vector_scalar`, `scalar_rvv_lane`). A capsule that names lanes asserts COMPOSITION across backends -- part of the model on the accelerator, part on the scalar/vector lane the target also owns -- so work reaching the other lane is the behaviour under test, not a fallback failure. `semantic.must_accelerate` is withheld for such a capsule for the same reason, unless it explicitly reclaims it. A named lane the routing plan does not report fails the capsule with that lane named.\n\n`forbid` is the NEGATIVE case and the content of a host-only capsule: lanes that must have carried NOTHING, because the target's capability manifest does not admit this capsule's family and accelerating it would be as wrong as failing to accelerate admitted work. It is honoured ONLY against execution evidence, never a routing plan -- 'the router planned no work here' is not 'the compiler put no work here', and this is the direction in which a plan-only pass is most dangerous. A lane may not appear in both lists.",
+      "description": "INTEROP contract. `require` names the execution lanes that must each have carried work, using the routing plan's own keys (e.g. `on_mesh`, `in_contract_vector_scalar`, `scalar_rvv_lane`). A capsule that names lanes asserts COMPOSITION across backends -- part of the model on the accelerator, part on the scalar/vector lane the target also owns -- so work reaching the other lane is the behaviour under test, not a fallback failure. `semantic.must_accelerate` is withheld for such a capsule for the same reason, unless it explicitly reclaims it. A named lane the routing plan does not report fails the capsule with that lane named.\n\n`forbid` is the NEGATIVE case and the content of a host-only capsule: lanes that must have carried NOTHING, because the target's capability manifest does not admit this capsule's family and accelerating it would be as wrong as failing to accelerate admitted work. It is honoured ONLY against execution evidence, never a routing plan -- 'the router planned no work here' is not 'the compiler put no work here', and this is the direction in which a plan-only pass is most dangerous. A lane may not appear in both lists.\n\nA capsule must name at least one of `require` or `forbid`. `require` alone is a composition assertion; `forbid` ALONE is a pure negative and is the honest shape for a synthesized host-only capsule -- adding a `require` for the host lane would demand evidence no op-path grade can produce, making the capsule a permanent `incomplete` instead of a test. The negative is enforceable on its own: a decoded accelerator instruction violates it.",
       "properties": {
         "require": {
           "type": "array",
@@ -396,10 +396,19 @@
           "minItems": 1
         }
       },
-      "required": [
-        "require"
-      ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "require"
+          ]
+        },
+        {
+          "required": [
+            "forbid"
+          ]
+        }
+      ]
     }
   },
   "additionalProperties": true

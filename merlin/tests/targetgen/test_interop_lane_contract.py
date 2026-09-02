@@ -39,7 +39,12 @@ def _schema() -> dict:
 def test_schema_documents_the_lane_contract():
     lanes = (_schema().get("properties") or {}).get("lanes")
     assert lanes, "the lanes contract must be documented in the capsule schema, not merely tolerated"
-    assert lanes.get("required") == ["require"], "a lanes block with no required lanes says nothing"
+    # A lanes block must assert SOMETHING, but `require` is no longer the only way to do it. A pure
+    # negative -- `forbid` alone -- is the honest shape for a host-only capsule: adding a `require` for
+    # the host lane would demand evidence no op-path grade can produce, making the capsule a permanent
+    # `incomplete` rather than a test, while the negative is enforceable on its own.
+    assert lanes.get("anyOf") == [{"required": ["require"]}, {"required": ["forbid"]}], (
+        "a lanes block must name at least one of require/forbid; an empty one says nothing")
     assert lanes.get("additionalProperties") is False, "an unknown lanes key must not pass silently"
 
 
@@ -47,7 +52,8 @@ def test_schema_accepts_a_declared_lane_pair_and_rejects_junk():
     jsonschema = pytest.importorskip("jsonschema")
     lanes = (_schema().get("properties") or {})["lanes"]
     jsonschema.validate({"require": ["on_mesh", "scalar_rvv_lane"]}, lanes)
-    for bad in ({}, {"require": []}, {"require": ["on_mesh"], "extra": 1}):
+    jsonschema.validate({"forbid": ["on_mesh"]}, lanes)          # the pure negative, on its own
+    for bad in ({}, {"require": []}, {"forbid": []}, {"require": ["on_mesh"], "extra": 1}):
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(bad, lanes)
 

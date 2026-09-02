@@ -94,7 +94,23 @@ def test_a_tier_that_actually_ran_can_pass(monkeypatch):
     # happened to the model's own layers (they shared one key, and the tile record clobbered the model one)
     r = _grade(monkeypatch, _capsule(["L0", "L1", "L2", "L3"]),
                {"status": "verified", "verify": {"gate_ok": True},
-                "mesh_tile_verification": {"n_tiles": 15, "ok": True}})
+                # A REAL tile record carries its counts. `ok: True` alone is an aggregate with no
+                # evidence under it, and the grader is right to refuse one -- that is the same shape as
+                # every other "the summary says pass" defect this suite exists to catch.
+                "mesh_tile_verification": {"n_tiles": 15, "n_passed": 15, "n_failed": 0,
+                                           "n_unavailable": 0, "n_unsynthesizable": 0, "ok": True},
+                # ...and the MODEL's own layers. A tile record alone must not carry a model capsule:
+                # certifying a synthesized tile proves the SHAPE is runnable, while the capstone is a
+                # claim about THIS model, and the two came apart once already -- a run with all 15
+                # layers on the host reported "15 of 15 tiles passed".
+                "mesh_execution": {"target": "gemmini", "matmul_layers_routed": 15,
+                                   "matmul_layers_on_mesh": 15,
+                                   "matmul_layers_host_fallback": 0},
+                # The frozen capsule this fixture loads is an INTEROP capstone: it requires the host
+                # lane as well as the mesh, because composition across the two is the behaviour under
+                # test. A stub that reports only the mesh leaves the other required lane unmeasured,
+                # and an unmeasured required lane is not a pass.
+                "host_execution": {"kernels_ran": 12, "contractions_ran": 0}})
     assert r["status"] == "pass"
     assert _passed(r) == {"L3": "pass"}                   # the declared RTL tier, named from the capsule
     # honest about what did NOT run, AND why. A bare list read as "we skipped three of the four tiers
