@@ -10,8 +10,37 @@ submitted backend never ran at all.
 """
 from __future__ import annotations
 
+import pytest
+
 import merlin.compile_cli as cc
 from merlin.targetgen import capsule_runner as R
+
+
+@pytest.fixture(autouse=True)
+def _frozen_bundle_double(monkeypatch):
+    """Replace the frozen-bundle materialization for THIS module only.
+
+    These tests are about what the grader CONCLUDES from per-layer execution counters. Bundle integrity
+    -- that a model capsule carries a loader, a linalg interface, weights whose safetensors header
+    matches the forward signature, and a golden whose provenance names both -- is a different claim with
+    its own tests (`test_model_capsule_budget`, `test_model_input_abi`), which exercise the real
+    materialization against a real capsule.
+
+    Standing that whole contract up here would make every logic assertion depend on a bundle it does not
+    care about, and the assertion would then fail for a reason unrelated to what it tests -- which is
+    exactly what happened: these all died with `KeyError: 'tiers'` before reaching their own assert.
+    """
+    import contextlib
+    from pathlib import Path as _Path
+
+    from merlin.targetgen import capsule_runner as _CR
+
+    @contextlib.contextmanager
+    def _double(capsule, *, timeout):
+        yield _Path("/frozen/test-double"), {"status": "test_double"}, lambda: None
+
+    monkeypatch.setattr(_CR, "_model_runtime_bundle", _double)
+
 
 # Real model capsules declare [L0, L1, L2] (see merlin/contract/capsules/radiance/model/*/capsule.yaml).
 # A fixture without them would make every fail-closed gate vacuous and hide exactly what these tests check.

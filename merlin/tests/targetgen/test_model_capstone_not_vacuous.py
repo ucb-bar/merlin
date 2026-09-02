@@ -26,6 +26,33 @@ from merlin.targetgen.capsule_source import model_accelerator_demand
 
 
 @pytest.fixture(autouse=True)
+def _frozen_bundle_double(monkeypatch):
+    """Replace the frozen-bundle materialization for THIS module only.
+
+    These tests are about what the grader CONCLUDES from per-layer execution counters. Bundle integrity
+    -- that a model capsule carries a loader, a linalg interface, weights whose safetensors header
+    matches the forward signature, and a golden whose provenance names both -- is a different claim with
+    its own tests (`test_model_capsule_budget`, `test_model_input_abi`), which exercise the real
+    materialization against a real capsule.
+
+    Standing that whole contract up here would make every logic assertion depend on a bundle it does not
+    care about, and the assertion would then fail for a reason unrelated to what it tests -- which is
+    exactly what happened: these all died with `KeyError: 'tiers'` before reaching their own assert.
+    """
+    import contextlib
+    from pathlib import Path as _Path
+
+    from merlin.targetgen import capsule_runner as _CR
+
+    @contextlib.contextmanager
+    def _double(capsule, *, timeout):
+        yield _Path("/frozen/test-double"), {"status": "test_double"}, lambda: None
+
+    monkeypatch.setattr(_CR, "_model_runtime_bundle", _double)
+
+
+
+@pytest.fixture(autouse=True)
 def _descriptor_pinned_host_lane(monkeypatch):
     """These tests isolate capstone verdict logic from the independently tested host-lane resolver."""
     from merlin.targetgen import capsule_runner as CR
