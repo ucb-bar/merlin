@@ -82,10 +82,18 @@ def _for_target(target: str) -> dict:
         return {"target": target, "status": "no_capture_for_any_roster_model",
                 "roster": roster, "roster_without_capture": missing}
     report = AC.coverage(used, target)
+    # THE CLAIM COUNTS WHAT WAS READ, NOT WHAT WAS SUPPLIED. A capture the region reader cannot parse
+    # contributes no regions, and reporting the supplied count beside numbers computed without it
+    # overstates the evidence -- the exact shape of "a check that could not run reads as success".
+    per_model = report.get("per_model") or {}
+    unreadable = sorted(m for m, d in per_model.items() if d.get("status") == "unreadable")
+    n_read = len(per_model) - len(unreadable)
     return {"target": target, "status": "ok", "roster": roster,
             "roster_without_capture": missing,
             "captures_used": sorted(used),
-            "claim": AC.claim_sentence({**report, "n_models": len(used)}),
+            "captures_unreadable": unreadable,
+            "n_models_read": n_read,
+            "claim": AC.claim_sentence({**report, "n_models": n_read}),
             "report": report}
 
 
@@ -113,6 +121,17 @@ def main(argv=None) -> int:
             print(f"=== {r['target']}: {r['status']}")
             if r.get("claim"):
                 print(f"    {r['claim']}")
+            if r.get("captures_unreadable"):
+                print(f"    [gap] captured but UNREADABLE by the region reader, so they contributed no "
+                      f"regions: {r['captures_unreadable']}")
+                # The two halves of the claim then rest on DIFFERENT evidence bases, and saying so is
+                # the difference between a bounded claim and a misleading one: the operator census
+                # scans the MLIR as text and still sees these models, while the routing half parses it
+                # structurally and does not. Quoting both numbers in one sentence without this note
+                # implies one denominator where there are two.
+                print("    [note] the operator census reads these models as TEXT and counts them; the "
+                      "routing and work figures parse them structurally and do not. The two halves of "
+                      "the claim above therefore rest on different evidence bases")
             if r.get("roster_without_capture"):
                 print(f"    [gap] roster models with no capture: {r['roster_without_capture']}")
             wk = ((r.get("report") or {}).get("work") or {})
