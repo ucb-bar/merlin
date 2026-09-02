@@ -360,7 +360,7 @@ def route_target(demands: list[OpDemand], target_name: str) -> list[RouteResult]
 _MESH_KINDS = {"systolic", "spatial", "simt"}
 
 
-def reachable_lanes_on(units: list) -> set[str]:
+def reachable_lanes_on(units: list, *, host_declared: bool | None = None) -> set[str]:
     """Which routing-plan lanes a target can actually populate, from its DECLARED compute units.
 
     The plan partitions every op three ways, so a lane is reachable only if the partition can put
@@ -376,7 +376,12 @@ def reachable_lanes_on(units: list) -> set[str]:
     ``in_contract_vector_scalar`` on either of them is unpassable by construction.
     """
     kinds = {getattr(u, "kind", None) for u in units}
-    lanes = {"scalar_rvv_lane"}
+    # THE HOST LANE IS NOT AUTOMATIC. It used to be added unconditionally, which made
+    # `scalar_rvv_lane` reachable on a target that declares no host at all -- so a capsule requiring it
+    # was graded against a system model with no host in it, and the lane looked available because
+    # nothing had asked whether one existed. `host_declared=None` means the caller did not ask and
+    # preserves the old reading; False is a real answer and removes the lane.
+    lanes = set() if host_declared is False else {"scalar_rvv_lane"}
     if kinds & _MESH_KINDS:
         lanes.add("on_mesh")
     if {k for k in kinds if k} - _MESH_KINDS:
@@ -389,7 +394,63 @@ def reachable_lanes(target_name: str) -> set[str]:
     :func:`route_plan` does, so reachability is judged against exactly the units that will do the routing."""
     from merlin.targetgen import target_registry as tr
 
-    return reachable_lanes_on(_cu.compute_units(tr.load_contract(target_name)))
+    return reachable_lanes_on(_cu.compute_units(tr.load_contract(target_name)),
+                              host_declared=host_is_declared(target_name))
+
+
+def host_is_declared(target_name: str) -> bool | None:
+    """Does this target declare a HOST LANE the compiler may place work on?
+
+    Keyed on the declared host lane -- the frozen scalar/RVV package every target descriptor names --
+    and NOT on ``host.board``. The two are different facts and conflating them is wrong in the direction
+    that matters: a target can own a host lane while declaring no board, which is the state four of six
+    targets are in today. The board adds harts, VLEN and a vector unit, so its absence weakens the
+    PLACEMENT model (see `host_board_gap`); it does not mean there is nowhere to put host work.
+
+    ``None`` when the question cannot be answered here (no descriptor, unreadable). That is not the same
+    as "no host": an unanswerable question must never remove a lane, only a real "no" may.
+    """
+    try:
+        from merlin.common.paths import merlin_dir
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        p = (merlin_dir() / "experiments" / "capsule_bench" / "targets" / target_name
+             / "target_experiment.yaml")
+        if not p.is_file():
+            return None
+        te = load_target_experiment(p)
+        return bool(getattr(te, "host_lanes", None) or getattr(te, "host_board", None))
+    except Exception:                              # noqa: BLE001 -- unreadable descriptor answers nothing
+        return None
+
+
+def host_board_gap(target_name: str) -> str | None:
+    """Why this target's host is under-modelled, or ``None`` when it is fully declared.
+
+    A target that declares a host LANE but no host BOARD has somewhere to put host work and no facts
+    about the machine that will run it: no hart count, no VLEN, and therefore no vector unit, so
+    `system.place.host_units` synthesizes a scalar core alone. An op that needs the host's vector lane
+    is then placed on a core the model says cannot vectorize -- silently, because nothing asks.
+
+    Returned as a REASON rather than raised: the gap is real and pre-existing on four of six targets,
+    and a shared checkout must be able to report it without every grade failing closed on it.
+    """
+    if host_is_declared(target_name) is None:
+        return None
+    try:
+        from merlin.common.paths import merlin_dir
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        te = load_target_experiment(
+            merlin_dir() / "experiments" / "capsule_bench" / "targets" / target_name
+            / "target_experiment.yaml")
+    except Exception:                              # noqa: BLE001
+        return None
+    if getattr(te, "host_board", None):
+        return None
+    return (f"{target_name} declares a host lane but no host.board, so the placement model has no hart "
+            f"count and no VLEN for it and synthesizes a scalar host unit alone; host vector capability "
+            f"is UNKNOWN rather than absent")
 
 
 def route_plan_on(demands: list[OpDemand], units: list[_cu.ComputeUnit]) -> dict:

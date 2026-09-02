@@ -149,3 +149,31 @@ def test_every_materialized_lane_declaration_is_reachable_on_its_target(target):
     assert not offenders, (
         "materialized capsule(s) requiring an unreachable lane -- unpassable by any submission:\n  "
         + "\n  ".join(offenders))
+
+
+# --- the host lane is a declared fact, not an assumption ---------------------------------------------
+
+def test_the_host_lane_is_not_added_unconditionally():
+    """It used to be. A target declaring no host at all still offered `scalar_rvv_lane`, so a capsule
+    requiring it was graded against a system model with no host in it and the lane looked available
+    because nothing had asked whether one existed."""
+    assert reachable_lanes_on([], host_declared=False) == set()
+    assert reachable_lanes_on([], host_declared=True) == {"scalar_rvv_lane"}
+
+
+def test_an_unanswerable_question_does_not_remove_a_lane():
+    """`None` is "nobody asked", not "no host". Only a real negative may take a lane away."""
+    assert reachable_lanes_on([], host_declared=None) == {"scalar_rvv_lane"}
+
+
+def test_a_declared_host_lane_is_what_makes_the_lane_reachable_not_a_board():
+    """The two are different facts, and conflating them is wrong in the direction that matters: a target
+    can own a host lane while declaring no board, which is where four of six targets are. Keying
+    reachability on the board would delete a lane those targets really have."""
+    from merlin.targetgen.routing import host_board_gap, host_is_declared
+
+    for target in ("gemmini", "atlas", "radiance"):
+        assert host_is_declared(target) is True, f"{target} declares a host lane"
+    # ...and the weaker placement model that follows from a missing board is REPORTED, not silent.
+    assert host_board_gap("gemmini") is None
+    assert "no host.board" in (host_board_gap("atlas") or "")
