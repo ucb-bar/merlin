@@ -20,10 +20,11 @@ provenance:
   host_only_unsynthesizable: []
   host_only_note: 'a host-only family with no materializable op or no dtype observed in any capture. Reported
     rather than dropped: a negative lane nobody demanded reads downstream exactly like one nothing violates'
-  memory_regimes_status: not_resolved
+  memory_regimes_status: resolved
   memory_regimes_unreachable: []
-  memory_regime_note: the spec carries no `regime_extents`; it predates the axis and must be regenerated
-    before a regime can be synthesized or declared unreachable
+  memory_regime_note: 'a regime with no capsule shape that reaches it on this target. `fits_on_reuse`
+    is always here: a capsule''s declared inputs are all live at once, so peak-live and total coincide
+    and the regime that separates them cannot arise from inputs alone'
   precision_note: a preference RANKS the dtypes the target already admits and can never widen them; a
     dropped token is reported rather than silently ignored
 capsules:
