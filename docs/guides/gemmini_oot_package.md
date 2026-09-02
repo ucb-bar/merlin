@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-09-02
 related: [whole_model_on_accelerator, reproducing_whole_model_on_rtl, gemmini_experiment, reproducibility, adding_a_target]
-code_refs: [merlin/python/merlin/targetgen/capsule_grade.py, merlin/python/merlin/targetgen/capsule_runner.py, merlin/python/merlin/targetgen/rtl_engine_policy.py, merlin/python/merlin/targetgen/contract/compile.py, merlin/python/merlin/perf/hw_counters.py, merlin/contract/hardware_pins.yaml]
+code_refs: [merlin/python/merlin/targetgen/capsule_grade.py, merlin/python/merlin/targetgen/capsule_runner.py, merlin/python/merlin/targetgen/rtl_engine_policy.py, merlin/python/merlin/targetgen/contract/compile.py, merlin/python/merlin/targetgen/publish.py, merlin/python/merlin/targetgen/oot_runner.py, merlin/python/merlin/targetgen/_capsule_bundle_worker.py, merlin/python/merlin/perf/hw_counters.py, merlin/contract/hardware_pins.yaml]
 ---
 
 # Running the certified gemmini OOT backend on a fresh machine
@@ -41,6 +41,14 @@ resource_bound:
 | **Not established** | whole-model compilation — the three capstones that would show it are excluded by `resource_bound`, and are neither passed nor refuted |
 | **Not established** | anything about `M2_microvit`, which ended `budget_exhausted` |
 
+### The number against today's corpus is 39/43, not 33/33
+
+The corpus grew after certification. Re-graded on the merged tree the package scores **39/43**, and
+all four failures are `SY_*` synthetic capsules **added after** the package was certified — none of
+them existed in the 33 it was graded against (`A0`-`A7`, `B0`-`B4`, `C0`-`C7`, `FE00/01`, `FT00/01`,
+`GC0`, `GM0/1`, `GP0/1/2`, `GS0`, `M3`). Quote 39/43 for "how does it do today" and 33/33 only with
+its cohort named.
+
 So: **do not tell anyone that 33/33 means a full model compiles.** If that is the question, the
 capsule to grade is `M0_small_llama_gemmini` (embed / RMSNorm / RoPE / attention / SwiGLU / lm_head),
 and it has not been graded. See [Grading the excluded capstones](#grading-the-excluded-capstones).
@@ -67,39 +75,67 @@ Its contract is one tool with four commands (`manifest.yaml`):
 | `emit_command_buffer` | `gemmini-opt --convert-iface-to-gemmini --emit-command-buffer=<out.json> <in.mlir>` |
 | `lower_target_to_llvm` | `gemmini-opt --convert-iface-to-gemmini --emit-target-artifact <in.mlir>` |
 
-## ⚠️ Getting the code that can grade it
+## Getting it
 
-**This is the part that does not work yet, and it is the first thing to fix.** The harness that produced
-and can reproduce `33/33` is:
-
-- branch **`arm4/functional-launch-v4`** at **`b860f1c5`**, which has **no upstream — it is not pushed**;
-- plus **107 modified tracked files** and **77 untracked files** in that working tree.
-
-Nine of those modifications are in the capsule corpus itself (`GP0`/`GP1`/`GP2` `capsule.yaml` and
-`capsule.interface.mlir`, `FT00`/`FT01` `capsule.yaml`, `profiles/gemmini.yaml`). Some of them relaxed
-what the capsule demands. **A coworker grading against the committed corpus will not get 33/33**, and the
-difference is not the compiler.
-
-Until that branch is committed and pushed, a second machine cannot reproduce this. Do that first:
+Two repos, and you need both. `gemmini-mlir` is the **backend**; the thing that compiles a model is
+Merlin, which consumes it.
 
 ```bash
-# in the arm4 worktree, with no grade running against it
-git add -- <the source paths>            # explicit pathspecs; the tree is shared
-git commit
-git push -u origin arm4/functional-launch-v4
+# 1. the driver
+git clone git@github.com:ucb-bar/merlin.git && cd merlin
+git checkout feat/target-generalization
+cp .env.example .env                                  # then point MERLIN_EXT_* at your toolchain/sims
+ln -s <llvm-23-install> third_party/llvm-install       # see the trap below -- do this first
+
+# 2. the certified backend
+merlin-target-fetch gemmini --champion stable/gemmini_xdsl_rtl_v0
 ```
 
-**Do not try to grade this package on `main` or on `feat/target-generalization`.** Their reference
-interpreter and command-buffer schema are older and lack opcodes this backend emits:
+The backend is published at **`ucb-bar/gemmini-mlir`**, branch **`stable/gemmini_xdsl_rtl_v0`**, tag
+`v0-gemmini_xdsl_rtl_v0`. That repo uses branch-per-version publishing, so each champion is its own
+branch and the landing page on `main` lists them all; nothing is overwritten by a later promotion.
 
-| | `main` lineage | `arm4/functional-launch-v4` |
+The branch carries its own provenance under `.merlin/`:
+
+```
+.merlin/CHAMPION            gemmini_xdsl_rtl_v0 68ae8bb cert_A2_verilator
+.merlin/certification.yaml  certification: pass, gate: oot_runner.certify,
+                            5 rungs x {oracle: rtl_verilator, derived_from_rtl: true,
+                                       cycle_accurate: true}
+.merlin/manifest.yaml       the contract: entrypoints + the four commands
+.merlin/provenance.yaml     the run and Merlin sha it came from
+```
+
+### Why the branch is trustworthy, and what the certification is *of*
+
+The publish gate accepts only `rtl_certified` or an `oot_runner.certify` pass — a *functional*
+simulator pass is not accepted as a substitute, deliberately. This package earned it with five
+certify runs on **cycle-accurate Verilator**, spanning families:
+
+| capsule | what it exercises | cycles |
 |---|---|---|
-| `runtime/reference.py` | 168 lines | 335 lines |
-| `MODELED_OPCODES` | 6 | 10 (`+ATTENTION_PV, ATTENTION_QK, CONV2D, MOVEMENT`) |
-| `command_buffer.schema.json` opcodes | `ATTENTION_QK` only | `+CONV2D, MOVEMENT` |
+| `A2_single_tile_matmul` | the base contraction | 302 |
+| `A4_acc_scale_i8` | accumulator scaling | 269 |
+| `A6_resident_reuse` | two matmuls on one resident weight | 525 |
+| `B1_linear_relu_i8` | a fused epilogue | 385 |
+| `GC0_conv2d_i8` | convolution via im2col | 3,863 |
 
-Measured: grading this package on the older lineage fails **6 capsules** — `A1_mvin_mvout`, `FT00`,
-`B3`, `B4`, `GP2`, `C7` — on schema vocabulary alone, with no compiler defect involved.
+All four declared entrypoints pass in each. Those are RTL cycle counts, not model estimates.
+
+### It is the 33/33 bytes
+
+Verified by diffing the published tree against the candidate that earned the verdict
+(`_qa_work/cand_01/submission` of run `merlincirct_arm4_func_20260902_codex3`):
+
+```
+certified candidate: 476 source files
+published package:   476 source files
+  only in certified: 0   only in published: 0   differing content: 0
+  digest 815d3885d82b6820 == 815d3885d82b6820
+```
+
+Not a rebuild and not a repackage. Verify your own clone with `sha256sum -c SHA256SUMS` against the
+copy tracked in Merlin at `out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/`.
 
 ## Prerequisites
 
@@ -207,25 +243,55 @@ the *thousands* for a 52-cycle window.
 Measured on the K-sweep with this package, Verilator: 20–41% of each window has **no** engine busy, and
 `min(T_compute, T_movement) − realised_overlap` leaves 70–83 cycles of overlap still available.
 
-## Grading the excluded capstones
+## The excluded capstones do not run, and it is not the compiler
 
-If the actual question is "does a full model compile", grade the three the cohort excludes. They are
-excluded by policy, not by capability, so you must stage them explicitly:
+If the question is "does a full model compile", the capsules that would answer it are the three the
+cohort excludes. **They were force-graded, and all three come back `incomplete`.** The blocker is in
+the capsule bundle, before the compiler is reached.
 
-```bash
-# stage the admitted cohort PLUS the resource-excluded capstones into one flat root
-.venv/bin/python -m merlin.targetgen.capsule_grade \
-    --package out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0 \
-    --capsules <flat root with M0/M1/GX0 re-admitted> \
-    --target gemmini --labels public \
-    --runs-root out/runs/gemmini/capstones --score .../score.json \
-    --timeout 43200 --workers 4
-```
+`_capsule_bundle_worker` compares the frozen weights against the loader's `state_dict` and raises if
+the name sets differ. Measured:
 
-Set `MERLIN_MODEL_BUDGET_S` generously — `M2` ends `budget_exhausted` at the default. And grade the
-operator capsules **in the same invocation**: a whole-model capsule is deferred unless the operator
-pass fraction clears its declared `after_op_pass_fraction`, and grading the model directory alone
-computes that fraction as `0.00` and gates everything.
+| capsule | frozen tensors | of which parametrized | loader `parametrize` refs | outcome |
+|---|---|---|---|---|
+| `M0_small_llama` | 51 | **45** | **0** | `incomplete` |
+| `GX0_interop_rvv_lane` | 51 | **45** | **0** | `incomplete` |
+| `M1_lstmnetvit` | 98 | **0** | **6** | `incomplete` (the mirror image) |
+| `M2_microvit` | 19 | 0 | 0 | `budget_exhausted` |
+| `M3_host_island_seam` | 4 | 0 | 0 | **passes at L3** |
+
+`M0`'s weights carry `blocks.N.attn.k.parametrizations.weight.original0/1/2` — a
+`torch.nn.utils.parametrize` quantization wrapper — while its loader builds plain
+`blocks.N.attn.k.weight`. 45 of 51 names are unreachable. `M1` disagrees the other way round.
+
+So the three capsules the descriptor excludes under `resource_bound` are **exactly** the three whose
+bundles are internally inconsistent: they could not have run at any budget, and the exclusion reads
+as a cost decision while masking staleness. `M3`, the one consistent multi-lane capsule, passes.
+
+**Whole-model capability on this target is therefore neither established nor refuted.** Fixing it
+means re-freezing a capsule's weights (or restoring the parametrization in its loader), which changes
+an answer key — do that deliberately, not as a side effect.
+
+### If you do want to grade them
+
+Two things will otherwise waste your time:
+
+- **Grade the models in the same invocation as the operators.** A whole-model capsule is deferred
+  unless the operator pass fraction clears its declared `after_op_pass_fraction`. Grading the model
+  directory alone computes that fraction as `0.00` and gates every model capsule with
+  `whole-model capsule deferred: op pass fraction 0.00 < gate 0.8` — which looks like a model failure
+  and is an artifact of what you passed to `--capsules`.
+- **Raise `MERLIN_MODEL_BUDGET_S`.** `M2` ends `budget_exhausted` at the default, and
+  `budget_exhausted` is not a failure — it is a capsule that never finished.
+
+### The bundle worker throws its own diagnosis away
+
+Worth knowing before you debug one of these. `_capsule_bundle_worker.main()` prints its reason to
+**stdout** and returns non-zero; the resulting `SystemExit` traceback goes to **stderr**; and the
+caller does `run.stderr or run.stdout`. So every bundle failure is reported as a two-frame traceback
+ending at `raise SystemExit(main())` and the actual cause is discarded. Reproduce the worker call
+directly, or read the loader and the safetensors key sets yourself — which is how the table above was
+obtained.
 
 ## Traps
 
@@ -243,3 +309,45 @@ computes that fraction as `0.00` and gates everything.
   them.
 - **The 11 bf16 capsules are excluded because this RTL cannot execute them.** That is a capability
   fact, not a gap in the backend.
+- **`git commit` is safe under a running grade; `checkout`/`stash`/`merge` are not.** Committing does
+  not touch working-tree files, so a grade reading the tree is unaffected. Anything that rewrites
+  files mid-grade is not.
+- **A fresh worktree has no `out/`**, which is gitignored. The publish `index` command run from one
+  listed only the packages that worktree happened to track and silently dropped a package that is
+  live on the remote. Run `index` from a checkout whose `out/artifacts/targets/<target>/` holds every
+  package you expect listed, and compare its output against `git ls-remote --heads`.
+
+## For maintainers: publishing the next champion
+
+The flow is `materialize` -> `record-cert` -> `promote` -> `publish` -> `index`, and the gate is real:
+
+```bash
+merlin-target-publish materialize  --target <t> --from <run>/submission --package-id <id> \
+                                   --certified-by-run <run-id>
+merlin-target-publish record-cert  --target <t> --champion <id> --results <certify run dirs...>
+merlin-target-publish promote      --target <t> --champion <id>
+merlin-target-publish publish      --target <t> --champion <id> --execute --confirm-push <fingerprint>
+merlin-target-publish index        --target <t> --execute --confirm-push <fingerprint>
+```
+
+Notes learned the hard way:
+
+- `--confirm-push` must equal the publish's **content fingerprint**, printed when the push is
+  refused. It changes whenever the content does, so it cannot be passed blindly — expect to run the
+  command twice.
+- `materialize` **overwrites the package directory** from the source submission. If you had added
+  anything of your own there (a `PROVENANCE.md`, a `SHA256SUMS`), it is gone; regenerate after.
+- `record-cert` preserves each rung's **tier**. A functional-simulator pass and a cycle-accurate RTL
+  pass are both `pass` to the gate but are not the same claim, and `certification.yaml` says which
+  one it is. Do not reach for `--no-gate` to skip earning it.
+- **Verify by cloning the published branch, not by inspecting the assembled tree.** The first Python
+  champion published with `entrypoints.tool: build/bin/gemmini-opt` (a CMake output path that never
+  exists for an interpreted package) and with the tool at mode `100644`. The assembled tree looked
+  right in both respects; only a clone showed otherwise. Both are fixed, and the check to run is:
+
+  ```bash
+  git clone -b <branch> git@github.com:ucb-bar/<target>-mlir.git chk && cd chk
+  git ls-tree HEAD <target>-opt      # expect 100755
+  grep -A1 '^entrypoints' manifest.yaml
+  ./<target>-opt --verify-diagnostics <some>.interface.mlir
+  ```
