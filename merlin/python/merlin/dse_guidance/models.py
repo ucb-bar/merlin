@@ -90,6 +90,14 @@ MODEL_ARCH: dict[str, ModelArch] = {
     # reference value: one input produces one output, so the single-pass capture hides no
     # host-side repetition (unlike the diffusion and decode families above, whose flat capture
     # hides a loop and therefore makes weight residency illegal until the loop is re-exposed).
+    "resnet50": ModelArch("resnet50", "feed_forward", "single_pass", 1, None, None,
+                          loop_count_source="by_construction",
+                          note="ResNet-50 v1.5 image classifier: convolution, batch norm, residual "
+                               "add and a global average pool, one pass per input with no host-side "
+                               "loop. The m2m workload directory is `resnet50_v1_5`, so a capture "
+                               "of it resolves to this base by longest-prefix match; without an "
+                               "entry here a fully captured ResNet reads as ABSENT, which is how a "
+                               "declared roster model can go missing without anything saying so."),
     "spectformer": ModelArch("spectformer", "feed_forward", "single_pass", 1, None, None,
                              loop_count_source="by_construction",
                              note="SpectFormer-Ti classifier; blocks 0-3 spectral gating "

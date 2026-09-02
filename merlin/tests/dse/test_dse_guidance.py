@@ -3136,3 +3136,36 @@ def test_loop_aware_seeds_multiply_repeated_head_by_recovered_K():
     assert ov and all(int(r["outer_loop_K"]) == 7 and r["K_source"] == "recovered_from_ir" for r in ov)
     assert all(int(r["outer_loop_K"]) == 1 for r in rows
                if r["workload"] == "openvla" and r["region_role"] == "backbone_once")
+
+
+def test_every_declared_roster_model_resolves_to_an_architecture():
+    """`_base_model` maps a capture directory to a base by longest match against MODEL_ARCH, so a model
+    ABSENT from that table reads as absent even when fully captured -- there is no error, just a
+    workload that quietly is not there. A model the targets DECLARE in workload_spec.models must
+    therefore have an entry, or its capture can never count as evidence for the requirement."""
+    import yaml
+
+    from merlin.common.paths import repo_root
+    from merlin.dse_guidance.models import MODEL_ARCH
+
+    roots = repo_root() / "merlin/experiments/capsule_bench/targets"
+    declared: set[str] = set()
+    for d in sorted(p for p in roots.iterdir() if p.is_dir()):
+        f = d / "target_experiment.yaml"
+        if not f.is_file():
+            continue
+        doc = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+        declared.update(str(m) for m in ((doc.get("workload_spec") or {}).get("models") or ()))
+    missing = sorted(m for m in declared if m not in MODEL_ARCH)
+    assert not missing, (
+        f"declared roster model(s) with no MODEL_ARCH entry: {missing}; a capture of one would resolve "
+        f"to no base and read as absent")
+
+
+def test_a_capture_dir_resolves_to_its_base_across_naming_variants():
+    """The m2m workload directory and the roster name need not agree: one says `resnet50_v1_5`, the
+    other `resnet50`. Longest-prefix resolution is what reconciles them, and it must keep doing so."""
+    from merlin.dse_guidance.models import _base_model
+
+    for dirname in ("resnet50_v1_5_int8_consistent", "resnet50_fp32_full", "resnet50_v1_5"):
+        assert _base_model(dirname) == "resnet50", dirname
