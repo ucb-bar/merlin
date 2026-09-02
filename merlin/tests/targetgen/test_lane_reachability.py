@@ -177,3 +177,15 @@ def test_a_declared_host_lane_is_what_makes_the_lane_reachable_not_a_board():
     # ...and the weaker placement model that follows from a missing board is REPORTED, not silent.
     assert host_board_gap("gemmini") is None
     assert "no host.board" in (host_board_gap("atlas") or "")
+
+
+def test_the_host_gap_names_the_soc_the_facts_are_derivable_from():
+    """A descriptor with no `host.board` is not a target with no host. Its RTL elaboration config names
+    the SoC the device is elaborated into, and that is where a hart count and VLEN would be read from.
+    Reporting only "no board declared" turns a derivable fact into a dead end and invites someone to
+    hand-write a board instead of deriving one."""
+    from merlin.targetgen.routing import host_board_gap
+
+    gap = host_board_gap("atlas") or ""
+    assert "no host.board" in gap
+    assert "elaboration names config" in gap, "the gap must name where the host facts come from"

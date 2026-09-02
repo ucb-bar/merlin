@@ -22,6 +22,8 @@ matrix unit is a deliberately bad baseline to measure a real one against.
 """
 from __future__ import annotations
 
+import pathlib
+
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -448,9 +450,27 @@ def host_board_gap(target_name: str) -> str | None:
         return None
     if getattr(te, "host_board", None):
         return None
+    # NAME THE EVIDENCE THAT DOES EXIST. A descriptor with no `host.board` is not a target with no host:
+    # its RTL elaboration config names the SoC the device is elaborated into, and that is where the hart
+    # count and VLEN would be read from. Saying only "no board declared" turns a derivable fact into a
+    # dead end and invites someone to hand-write a board instead of deriving one.
+    import yaml
+
+    try:
+        doc = yaml.safe_load(pathlib.Path(te.path).read_text(encoding="utf-8")) or {}
+    except Exception:                              # noqa: BLE001
+        doc = {}
+    elab = ((doc.get("rtl") or {}).get("elaboration") or {})
+    config, ext_root = elab.get("config"), elab.get("ext_root")
+    where = (f"; its RTL elaboration names config {config!r}"
+             + (f" under {ext_root!r}" if ext_root else "")
+             + ", which is the SoC the host facts are derivable from"
+             if config else
+             "; its descriptor names no RTL elaboration config either, so there is no derivable SoC to "
+             "read a host from")
     return (f"{target_name} declares a host lane but no host.board, so the placement model has no hart "
-            f"count and no VLEN for it and synthesizes a scalar host unit alone; host vector capability "
-            f"is UNKNOWN rather than absent")
+            f"count and no VLEN for it and synthesizes a scalar host unit alone -- host vector "
+            f"capability is UNKNOWN rather than absent{where}")
 
 
 def route_plan_on(demands: list[OpDemand], units: list[_cu.ComputeUnit]) -> dict:
