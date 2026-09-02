@@ -144,6 +144,8 @@ memory_mapping:
   captures_unreadable: {}
   why: '''radiance'' declares no operand-store capacity we can derive, so no regime is required of the
     corpus -- that is ''we do not know'', never ''nothing is required'''
+  regime_extents: {}
+  regime_dtype: fp16
   axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
     own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
     capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
@@ -151,6 +153,7 @@ memory_mapping:
     it chooses
 host_only:
   families: []
+  dtypes: {}
   observed_in: {}
   basis: 'families a real capture contains and this target''s capability manifest does not admit. The
     compiler must route them to the host lane; accelerating one is as much a defect as failing to accelerate

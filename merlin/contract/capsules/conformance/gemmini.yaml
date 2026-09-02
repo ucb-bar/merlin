@@ -225,6 +225,29 @@ memory_mapping:
   capacity_rows: 16384
   captures_unreadable: {}
   why: ''
+  regime_extents:
+    fits_double:
+      M: tile
+      K: tile
+      N: tile
+      rows: 32
+      capacity_rows: 16384
+      fraction_of_capacity: 0.001953
+    fits_single:
+      M: 512*tile
+      K: tile
+      N: tile
+      rows: 8208
+      capacity_rows: 16384
+      fraction_of_capacity: 0.500977
+    spills:
+      M: 512*tile
+      K: 2*tile
+      N: 2*tile
+      rows: 16448
+      capacity_rows: 16384
+      fraction_of_capacity: 1.003906
+  regime_dtype: i8
   axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
     own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
     capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
@@ -233,6 +256,8 @@ memory_mapping:
 host_only:
   families:
   - normalization
+  dtypes:
+    normalization: f32
   observed_in:
     normalization: 876
   basis: 'families a real capture contains and this target''s capability manifest does not admit. The
