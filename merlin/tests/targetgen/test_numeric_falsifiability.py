@@ -83,3 +83,51 @@ def _golden_from_fake(monkeypatch):
         return real(capsule, capsule_dir)
 
     monkeypatch.setattr(capsule_golden, "golden", stub)
+
+
+# --- the derived tolerance -------------------------------------------------------------------------
+# A profile declares ONE absolute tolerance for a whole target. That is the right shape for a datapath
+# error budget and the wrong shape for a small-magnitude output: measured, a softmax capsule whose golden
+# spans 0.0139..0.1523 was graded at `atol: 0.25`, so zeros, the mean and the midrange all passed it.
+
+def test_a_tolerance_below_the_ceiling_is_left_exactly_alone():
+    """The rule only fires on a vacuous policy. Tightening a sound one would reject correct submissions."""
+    pol = {"compare": "tolerance_float", "atol": 0.001, "rtol": 0.02}
+    out, prov = NF.falsifiable_policy(pol, {"Y0": [0.0, 1.0, 2.0]})
+    assert out == pol
+    assert prov["falsifiable"] is True and "applied_atol" not in prov
+
+
+def test_a_vacuous_tolerance_is_replaced_by_the_profiles_own_relative_one():
+    """Nothing is invented: `rtol` and the golden are both already declared. The substitution only stops
+    an absolute budget written for large outputs from swallowing a small one."""
+    golden = [0.01385, 0.05, 0.1523]
+    pol = {"compare": "tolerance_float", "atol": 0.25, "rtol": 0.02}
+    out, prov = NF.falsifiable_policy(pol, {"Y0": golden}, name="AF2")
+    assert out["atol"] == pytest.approx(0.02 * 0.1523)
+    assert out["atol"] < prov["ceiling_atol"], "the replacement must clear the ceiling it was called for"
+    assert prov["declared_atol"] == 0.25
+    # and the constants that used to pass no longer do
+    import numpy as np
+    exp = np.asarray(golden, dtype=np.float64)
+    for name, ans in NF.degenerate_answers(exp).items():
+        assert not NF._accepts(ans, exp, out["atol"], out["rtol"]), f"{name} still passes"
+
+
+def test_a_golden_with_no_spread_raises_rather_than_grading_on_a_loosened_tolerance():
+    """The defect is then the capsule's stimulus, not its tolerance. A silently loosened grade is how a
+    corpus ends up certifying constants."""
+    with pytest.raises(NF.UnfalsifiablePolicy):
+        NF.falsifiable_policy({"atol": 0.25, "rtol": 0.02}, {"Y0": [1.0, 1.0, 1.0]}, name="flat")
+
+
+def test_an_exact_integer_policy_is_not_applicable():
+    out, prov = NF.falsifiable_policy({"compare": "exact_int"}, {"Y0": [1, 2, 3]})
+    assert prov["status"] == "not_applicable" and "atol" not in out
+
+
+def test_a_ragged_golden_is_skipped_rather_than_crashing_the_pass():
+    """A gate that dies finds nothing. One unsizeable output must not take the whole corpus check down."""
+    out, prov = NF.falsifiable_policy({"atol": 0.25, "rtol": 0.02},
+                                      {"Y0": [[1.0, 2.0], [3.0]], "Y1": [0.0, 1.0]})
+    assert prov["status"] == "ok"

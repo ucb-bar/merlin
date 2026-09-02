@@ -39,6 +39,7 @@ from merlin.perf import workload_gen as WG                   # noqa: E402
 from merlin.perf.profile import TRAITS, derive_profile       # noqa: E402
 from merlin.targetgen import capsule_golden as CG            # noqa: E402
 from merlin.targetgen import corpus_spec as CS               # noqa: E402
+from merlin.targetgen import numeric_falsifiability as NF    # noqa: E402
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -1189,6 +1190,21 @@ def _write_capsule(entry, binding, out_root):
     dirty = _backfill_required_classes(cap, binding) or dirty
     _validate_lane_declaration(entry, binding)
     dirty = _carry_declared_blocks(entry, cap) or dirty
+    # THE TOLERANCE MUST BE FALSIFIABLE AT THIS GOLDEN'S SCALE, and here is the first point at which
+    # both the capsule and its golden exist for EVERY writer -- the same reason the generalization stamp
+    # lives here. A profile declares ONE absolute tolerance for a whole target, which is the right shape
+    # for a datapath error budget and the wrong shape for a small-magnitude output: a softmax capsule
+    # whose golden spans 0.0139..0.1523 was graded at `atol: 0.25`, so zeros, the mean and the midrange
+    # all passed it. It reported a numeric pass and proved nothing.
+    _gp = d / "golden.yaml"
+    if _gp.is_file() and (cap.get("numeric_policy") or {}).get("atol") is not None:
+        _gdoc = yaml.safe_load(_gp.read_text(encoding="utf-8")) or {}
+        _pol, _prov = NF.falsifiable_policy(cap["numeric_policy"], _gdoc.get("outputs") or {},
+                                            name=str(entry.get("name") or d.name))
+        if cap.get("numeric_policy") != _pol or cap.get("numeric_falsifiability") != _prov:
+            cap["numeric_policy"] = _pol
+            cap["numeric_falsifiability"] = _prov
+            dirty = True
     if dirty:
         capf.write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
     _write_capsule_readme(entry, cap, d)
