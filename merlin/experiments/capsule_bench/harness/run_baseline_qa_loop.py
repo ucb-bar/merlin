@@ -1913,6 +1913,14 @@ def main(argv: list[str] | None = None) -> int:
     # and EACH wait, so a fresh --resume invocation continues exactly where it stopped — not from 0.
     state_p = run_dir / "qa_loop_state.yaml"
     rounds_summary: list = []
+    # RUN-LEVEL conformance ("ever"), the view agg_by_model already reports. Conformance is computed
+    # PER ROUND from that round's tool calls, but the checks it asks about are start-of-work activities:
+    # `cca_used` wants the lever set enumerated (cca_contract check-bijection + action_catalog
+    # escalation-ladder), and a CONVERGED agent has nothing left to enumerate, so its rounds collapse to
+    # re-validation and the check goes false. Gating the exit on the CURRENT round therefore demanded
+    # evidence of exploration in the same round that proves completion -- unsatisfiable together, and a
+    # run that reached all_pass looped until something else stopped it.
+    _conf_ever: dict = {}
     try:                             # endpoint_kind — drives the per-round dev-conformance flag (asm applies only to external_backend)
         from merlin.targetgen.generate_prompt import prompt_slots as _pslots
         _endpoint_kind = _pslots(_te(), _manifest()).get("endpoint_kind", "")
@@ -2149,6 +2157,11 @@ def main(argv: list[str] | None = None) -> int:
             import conformance as _CONF
             conf = _CONF.compute(tpath, ws / "submission", arm, _endpoint_kind)
             workflow_conformant = conf.get("conformant") is True
+            for _k, _v in (conf.get("checks") or {}).items():
+                if _v is None:
+                    _conf_ever.setdefault(_k, None)          # inapplicable to this arm; never gates
+                else:
+                    _conf_ever[_k] = bool(_conf_ever.get(_k)) or bool(_v)
             _bad = _CONF.failing_checks(conf)
             if _bad:
                 print(f"[round {rnd}] NOT CONFORMANT — failing: {', '.join(_bad)} "
@@ -2300,10 +2313,15 @@ def main(argv: list[str] | None = None) -> int:
     # The cycle-accurate RTL barrier is a pass-gate only when the target's corpus makes its RTL-cert tier
     # MANDATORY. A prototype target graded on its functional oracle (L3 optional) skips it, so a normal run
     # is not blocked on a slow/hanging verilator; convergence then rides the functional-tier (L2) verdict.
+    def _conformant_over_run() -> bool:
+        """Every check this arm mandates satisfied in SOME round (never all in one -- see _conf_ever)."""
+        applicable = [v for v in _conf_ever.values() if v is not None]
+        return all(applicable) if applicable else True
+
     _run_l3, _l3_reason = _cycle_accurate_checkpoint_enabled()
     if not _run_l3:
         print(f"[verilator] cycle-accurate RTL (L3) barrier SKIPPED — {_l3_reason}")
-    if _run_l3 and workflow_conformant and (
+    if _run_l3 and _conformant_over_run() and (
             verdict.get("all_pass") or (_EXPERIMENT == "realistic" and _ready_marker)):
         # ready = spike-converged OR (realistic) the agent declared done -> run the L3 verilator barrier.
         # In realistic mode this barrier IS the definition of done; the agent already self-checked on the
