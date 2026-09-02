@@ -97,6 +97,22 @@ def _for_target(target: str) -> dict:
             "report": report}
 
 
+def _isa_coverage(target: str, kernels_dir: Path) -> dict:
+    """ISA coverage for ``target`` over the kernels in ``kernels_dir``, or the reason there is none."""
+    try:
+        from merlin.targetgen.isa_corpus_coverage import corpus_coverage
+        from merlin.targetgen.isa_model import isa_model_for_target
+    except Exception as exc:                       # noqa: BLE001
+        return {"status": "unavailable", "detail": f"{type(exc).__name__}: {exc}"}
+    files = {p.name: p for p in sorted(Path(kernels_dir).rglob("*")) if p.is_file()}
+    if not files:
+        return {"status": "no_kernels", "detail": f"no emitted kernel found under {kernels_dir}"}
+    try:
+        return {"status": "ok", **corpus_coverage(isa_model_for_target(target), files)}
+    except Exception as exc:                       # noqa: BLE001 -- an underivable ISA is not zero coverage
+        return {"status": "not_measured", "detail": f"{type(exc).__name__}: {exc}"}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -104,6 +120,10 @@ def main(argv=None) -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--require-roster", action="store_true",
                     help="fail when a declared roster model has no capture")
+    ap.add_argument("--kernels", type=Path, default=None,
+                    help="a directory of EMITTED kernels; adds the ISA-coverage figure, which has a "
+                         "different denominator (the target's own derived instruction set) and cannot "
+                         "be computed from captures alone")
     a = ap.parse_args(argv)
 
     targets = a.target or sorted(
@@ -114,6 +134,13 @@ def main(argv=None) -> int:
         return 2
 
     results = [_for_target(t) for t in targets]
+    # A SECOND denominator, reported only when the evidence for it exists. Model coverage asks how much
+    # of the roster's arithmetic reaches the accelerator; ISA coverage asks how much of the MACHINE the
+    # emitted kernels drive, and a corpus can grow indefinitely while exercising the same narrow slice.
+    # It needs a submission's emitted kernels, so it is opt-in rather than silently absent.
+    if a.kernels:
+        for r in results:
+            r["isa_coverage"] = _isa_coverage(r["target"], a.kernels)
     if a.json:
         print(json.dumps(results, indent=2, default=str))
     else:
@@ -132,6 +159,13 @@ def main(argv=None) -> int:
                 print("    [note] the operator census reads these models as TEXT and counts them; the "
                       "routing and work figures parse them structurally and do not. The two halves of "
                       "the claim above therefore rest on different evidence bases")
+            iso = r.get("isa_coverage")
+            if iso:
+                if iso.get("status") == "ok":
+                    print(f"    [isa]  {iso.get('n_exercised')} of {iso.get('n_universe')} derived "
+                          f"instruction(s) exercised by the emitted kernels")
+                else:
+                    print(f"    [isa]  not measured: {iso.get('detail')}")
             if r.get("roster_without_capture"):
                 print(f"    [gap] roster models with no capture: {r['roster_without_capture']}")
             wk = ((r.get("report") or {}).get("work") or {})
