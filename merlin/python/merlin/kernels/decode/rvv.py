@@ -37,6 +37,12 @@ class VInsn:
     vtype: VType | None           # effective vtype at this instruction (vector insns only)
 
 
+#: Key for the whole-stream bucket in the per-section index. A NUL cannot appear in an objdump symbol
+#: name, so it cannot collide with a real section -- including the empty section a stream built
+#: directly from RawInsn carries.
+_ALL_SECTIONS = "\x00all"
+
+
 @dataclass
 class InsnStream:
     insns: list[VInsn] = field(default_factory=list)
@@ -44,6 +50,14 @@ class InsnStream:
     # a full scan of the stream, and the callers ask per span: on a linked whole-model ELF (192k
     # instructions, 2138 back-edges) that turned an instant `loop_spans()` into 16 s.
     _section_at: dict[int, str] | None = field(default=None, repr=False, compare=False)
+    # section -> (addresses, instructions) in stream order, plus whether the addresses ascend, built
+    # once on first use. Same reason as `_section_at` one line up, for the other per-span scan:
+    # `insns_in` filtered the WHOLE stream per call, and its callers ask per span. MEASURED on a
+    # 30,397-instruction int8 whole-model objdump: `cca.lift_asm` spent 33.3 s of 33.9 s inside
+    # `insns_in` across 5,672 calls, which made the beam's per-fork CCA audit ~55 s and a
+    # 30-fork generation ~27 minutes.
+    _by_section: "dict[str, tuple[list[int], list[VInsn], bool]] | None" = field(
+        default=None, repr=False, compare=False)
 
     def _section_index(self) -> dict[int, str]:
         if self._section_at is None:
@@ -192,17 +206,52 @@ class InsnStream:
                 return i.raw.section
         return ""
 
+    def _section_buckets(self) -> "dict[str, tuple[list[int], list[VInsn], bool]]":
+        """Instructions grouped by section in stream order, with an ascending-address flag.
+
+        ``_ALL_SECTIONS`` holds the WHOLE stream, which is what a span with no resolvable section must
+        be filtered against (an object with no symbol headers).
+        """
+        if self._by_section is None:
+            groups: dict[str, list[VInsn]] = {}
+            for i in self.insns:
+                groups.setdefault(i.raw.section, []).append(i)
+            # The whole-stream bucket goes under a key NO section can equal. Using "" for it collided
+            # with instructions whose section IS "" -- a stream built straight from RawInsn, as the
+            # hermetic tests do -- so `setdefault("").append` appended the stream to itself and every
+            # loop-scoped count came back exactly DOUBLED (fma_in_loop 2 for a one-FMA loop). The real
+            # objdump fixtures all carry symbol headers, which is why only a synthetic stream caught it.
+            groups[_ALL_SECTIONS] = list(self.insns)
+            built: dict[str, tuple[list[int], list[VInsn], bool]] = {}
+            for name, items in groups.items():
+                addrs = [i.raw.addr for i in items]
+                ascending = all(a <= b for a, b in zip(addrs, addrs[1:]))
+                built[name] = (addrs, items, ascending)
+            self._by_section = built
+        return self._by_section
+
     def insns_in(self, span: tuple[int, int]) -> list["VInsn"]:
         """The instructions of ``span``, confined to the function the span belongs to.
 
         Addresses are unique across an object only by convention; a range must not be allowed to
         swallow the tail of a neighbouring function just because the two are adjacent. Anchoring on
         the span's own section keeps every loop-scoped count (residency, spills, register block)
-        about one function. Degrades to the plain address filter when there are no symbol headers."""
+        about one function. Degrades to the plain address filter when there are no symbol headers.
+
+        Bisects a per-section index rather than scanning the stream. Within one section a disassembly
+        lists addresses in ascending order, so the span is a contiguous slice; where that does not
+        hold (a stream assembled out of order) the flag is False and the section is filtered linearly,
+        which is still only that section rather than everything. Results are IDENTICAL to the scan,
+        stream order included -- asserted against it in the tests.
+        """
+        import bisect
         lo, hi = span
         sect = self._span_section(span)
-        return [i for i in self.insns
-                if lo <= i.raw.addr <= hi and (not sect or i.raw.section == sect)]
+        addrs, items, ascending = self._section_buckets().get(sect or _ALL_SECTIONS,
+                                                              ([], [], True))
+        if not ascending:
+            return [i for i in items if lo <= i.raw.addr <= hi]
+        return items[bisect.bisect_left(addrs, lo):bisect.bisect_right(addrs, hi)]
 
     def count_in(self, span: tuple[int, int], *mnemonic_prefixes: str) -> int:
         return sum(1 for i in self.insns_in(span)
