@@ -22,6 +22,8 @@ venv. Precision is a parameter (``dtype``): the SAME token a target's ``compute_
 """
 from __future__ import annotations
 
+import hashlib
+
 import json
 import os
 import subprocess
@@ -405,9 +407,51 @@ class PytorchRefSource:
         return self._run(loader_py, "model", dtype, workdir=tmp, src=loader_py.read_text(),
                          scheme=scheme)
 
+    def _cache_slot(self, op: str, dtype: str, src: str, scheme: str | None) -> "Path | None":
+        """Where a capture of exactly this input already lives, or ``None`` if caching is unavailable.
+
+        Keyed on everything that changes the PROGRAM -- the loader's source, the format, the capture
+        scheme, the op role -- so a changed loader misses rather than serving a stale module. Not keyed
+        on the target: a capture is a property of the model and the format, and two targets that choose
+        the same format are entitled to the same bytes.
+
+        This exists because the roster axis made whole-model captures routine. Four networks per target
+        re-captured on every corpus regeneration is tens of minutes of work whose result is identical
+        each time, and the alternative that suggests itself -- generating the entries but not building
+        them -- is the silent kind of skip this corpus is built to avoid.
+        """
+        try:
+            from merlin.common.artifacts import cache_dir
+            key = hashlib.sha256(
+                "\0".join((op, str(dtype), str(scheme or ""), str(self.m2m_dir), src)).encode()
+            ).hexdigest()[:16]
+            return cache_dir("model_capture") / f"{op}_{dtype}_{key}"
+        except Exception:            # noqa: BLE001 -- an unavailable cache is not a failed capture
+            return None
+
     def _run(self, loader_py: Path, op: str, dtype: str, *, workdir: Path, src: str,
              scheme: str | None = None) -> CapsuleArtifacts:
         worker = Path(__file__).with_name("_m2m_capture_worker.py")
+        # A CACHED CAPTURE IS THE SAME CAPTURE. Reused only when the slot holds a complete, clean result
+        # -- the same two conditions the fresh path checks below -- so a half-written slot from an
+        # interrupted run re-captures instead of serving a truncated module.
+        slot = self._cache_slot(op, dtype, src, scheme)
+        if slot is not None and (slot / "meta.json").is_file():
+            try:
+                cached = json.loads((slot / "meta.json").read_text())
+                if cached.get("ok") and cached.get("opaque", -1) == 0:
+                    return CapsuleArtifacts(
+                        op=op, dtype=dtype, pytorch_src=src,
+                        linalg_mlir=(slot / "linalg.mlir").read_text(encoding="utf-8"),
+                        inputs=json.loads((slot / "inputs.json").read_text()),
+                        golden=json.loads((slot / "golden.json").read_text()),
+                        weights_path=cached.get("weights", str(slot / "weights.safetensors")),
+                        meta=cached)
+            except Exception:        # noqa: BLE001 -- an unreadable slot is a miss, never a failure
+                pass
+        if slot is not None:
+            workdir = slot
+            workdir.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ)
         env["MERLIN_M2M_DIR"] = str(self.m2m_dir)
         cmd = [str(self.python), str(worker), "--loader", str(loader_py),
@@ -806,6 +850,54 @@ def model_input_abi(art: CapsuleArtifacts) -> list[dict]:
     return out
 
 
+#: Canonical format token -> the torchAO scheme that quantizes the ACTIVATIONS as well as the weights.
+#:
+#: Mirrors the m2m scheme catalog (``m2m.capture.torchao_schemes.TORCHAO_SCHEMES``), whose entries carry
+#: both a ``weight_dtype`` and an ``activation_dtype``; each name below is the catalog entry whose two
+#: dtypes are the format on the left. Carried here rather than imported because the catalog lives in the
+#: model2MLIR checkout and importing it pulls in torch, which this process does not have -- the same
+#: reason ``_m2m_capture_worker._SCHEME`` mirrors ``workloads/capture.py`` instead of importing it.
+#:
+#: WHY IT IS NEEDED AT ALL. The default scheme for every one of these formats is WEIGHT-ONLY, which
+#: emits a float matmul over dequantized weights. That is the wrong program for a datapath that consumes
+#: the narrow format on BOTH operands: no golden substitution can fix a capture that contains no
+#: contraction in the target's arithmetic, and the capsule then certifies the host's float math.
+_ACTIVATION_QUANTIZING_SCHEME = {
+    "int8": "int8_dyn_act_int8_weight", "i8": "int8_dyn_act_int8_weight",
+    "fp8_e4m3": "float8_dyn_act_float8_weight",
+    "mxfp4": "mx_dyn_act_mx_weight_mx4",
+    "mxfp6": "mx_dyn_act_mx_weight_mx6",
+    "nvfp4": "nvfp4_dyn_act_nvfp4_weight",
+}
+
+#: Formats a model already runs in, so a capture needs no quantization step at all.
+_UNQUANTIZED_FORMATS = frozenset({"fp32", "f32", "bf16", "fp16", "f16"})
+
+
+def activation_quantizing_scheme(fmt: str) -> str | None:
+    """The capture scheme a whole-model capsule needs at ``fmt``, or ``None`` when it needs none.
+
+    ``None`` means the format is one the model already runs in (a native float), so there is nothing to
+    quantize and the default capture is already the right program.
+
+    Raises for a format that IS quantized but whose activation-quantizing scheme is unknown here.
+    Falling back to the weight-only default would be the silent version of the bug this exists to
+    prevent: the capture would succeed, contain a float matmul, and certify arithmetic the target does
+    not perform.
+    """
+    tok = str(fmt)
+    if tok in _UNQUANTIZED_FORMATS:
+        return None
+    scheme = _ACTIVATION_QUANTIZING_SCHEME.get(tok)
+    if scheme is None:
+        raise ValueError(
+            f"no activation-quantizing capture scheme is known for format {tok!r}; the weight-only "
+            f"default would capture a float matmul over dequantized weights, which is not the "
+            f"arithmetic a datapath in this format performs. Add the scheme whose catalog entry "
+            f"declares {tok!r} as BOTH its weight_dtype and its activation_dtype")
+    return scheme
+
+
 def resolve_model_loader(entry: dict, m2m_dir: str | Path | None = None) -> Path:
     """A model capsule entry names either a workload (``model: small_llama``) or an explicit ``loader``.
 
@@ -828,7 +920,39 @@ def resolve_model_loader(entry: dict, m2m_dir: str | Path | None = None) -> Path
     name = entry.get("model")
     if not name:
         raise ValueError("model capsule entry needs 'model' (workload name) or 'loader' (path)")
-    return root / "workloads" / name / "loader.py"
+    exact = root / "workloads" / name / "loader.py"
+    if exact.is_file():
+        return exact
+    return _workload_named(root, name) or exact
+
+
+def _workload_named(root: Path, name: str) -> "Path | None":
+    """The workload directory a ROSTER name denotes, when it is not spelled the same.
+
+    A roster declares a model (``resnet50``); a workload directory carries the checkpoint revision
+    (``resnet50_v1_5``). ``dse_guidance.models`` already resolves the capture direction of this by
+    longest-prefix match -- without which a fully captured ResNet reads as ABSENT -- and the capsule
+    direction had no resolution at all, so a roster model with a revisioned workload simply could not be
+    named by a synthesized capsule.
+
+    Prefix, and only prefix: a revision suffix extends the model name, it never replaces it. Ambiguity
+    is an error rather than a pick, because two revisions are two different networks and choosing by
+    sort order would silently certify the wrong one. ``None`` when nothing matches, so the caller
+    reports the path it expected rather than a guess.
+    """
+    wroot = root / "workloads"
+    if not wroot.is_dir():
+        return None
+    hits = sorted(d for d in wroot.iterdir()
+                  if d.is_dir() and d.name.startswith(name) and (d / "loader.py").is_file())
+    if len(hits) == 1:
+        return hits[0] / "loader.py"
+    if len(hits) > 1:
+        raise ValueError(
+            f"roster model {name!r} matches {len(hits)} workload directories "
+            f"({[d.name for d in hits]}); name the revision in the roster -- picking one by sort order "
+            f"would certify a different network than the one declared")
+    return None
 
 
 def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, list[str]]:

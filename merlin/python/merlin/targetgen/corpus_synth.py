@@ -511,6 +511,70 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
+    # ---- the ROSTER axis ----------------------------------------------------------------------------
+    # The declared roster is the one thing the workload spec says that nothing consumed. Every capsule
+    # above is a SLICE -- a cell, a regime, a lane, a derived micro model -- and the claim the whole
+    # experiment builds toward is about the roster's real networks: "compile this model, at the best
+    # format this target is certified for, and lower to the accelerator everything that can be".
+    #
+    # The format is DERIVED here, by `precision_policy.best_format`, from the same three things that
+    # decide it anywhere: the manifest admits, the registry expresses, an accuracy gate certifies. The
+    # admitted set is passed in rather than re-read, so this and the cells above cannot end up with two
+    # answers to "what does this target support". A target whose preference names nothing it admits
+    # synthesizes NO roster capsule and says so -- compiling a roster model in a format the hardware
+    # lacks is not a weaker result, it is a different one.
+    roster = [str(m) for m in (ws.get("models") or ())]
+    contraction_dtypes = {str(c.get("dtype")) for c in cells
+                          if c.get("dtype") and str(c.get("family")) == "contraction"}
+    if roster and contraction_dtypes:
+        from merlin.targetgen.precision_policy import best_format
+        policy = best_format(target, preference=(ws.get("precision_preference") or None),
+                             admitted=contraction_dtypes)
+        chosen = policy.get("chosen") or {}
+        if chosen.get("capsule_dtype"):
+            # THE SCHEME, NOT THE DTYPE. A capture asked for "int8" quantizes WEIGHTS ONLY and emits a
+            # float matmul over dequantized weights -- the wrong program for a datapath that consumes the
+            # narrow format on both operands, and one no golden substitution can repair. The scheme is
+            # derived from the format rather than declared; a format whose activation-quantizing scheme
+            # is unknown raises there rather than silently capturing float arithmetic here.
+            from merlin.targetgen.capsule_source import activation_quantizing_scheme
+            scheme = activation_quantizing_scheme(chosen["capsule_dtype"])
+            for model in roster:
+                entry = {
+                    "cat": "model", "kind": "model", "op": "model",
+                    "name": f"{SYNTH_PREFIX}_model_{model}",
+                    "model": model, "out": "Y0",
+                    "operand_dtype": chosen["capsule_dtype"],
+                    **({"quant_scheme": scheme} if scheme else {}),
+                    "source_role": SOURCE_ROLE,
+                    "source_reference": (
+                        f"synthesized for the roster axis: whole model {model!r} at {chosen['format']}, "
+                        f"the highest-ranked precision this target's manifest admits for a contraction "
+                        f"out of the declared preference {policy.get('preference')}"
+                        + (f", captured with {scheme} so the program contains the target's own "
+                           f"arithmetic rather than a float matmul over dequantized weights"
+                           if scheme else "")
+                        + f". Accuracy in that format is {policy['certified']['status']}"),
+                    "label": "public",
+                    # Same deferral every whole-model capstone carries: a roster model is worth running
+                    # only once the op suite it is made of passes, or the failure says nothing.
+                    "gate": {"after_op_pass_fraction": 0.8},
+                    # The mesh is REQUIRED, not hoped for. A roster capsule that graded numerics alone
+                    # would pass a submission that ran the whole network on the host -- which is the
+                    # vacuity the op capsules had removed and the capstones did not.
+                    "lanes": {"require": ["on_mesh"]},
+                    "semantic": {"generalization_axis": "roster"},
+                }
+                _mark_source(entry)
+                entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+                entries.append(entry)
+        else:
+            unexpressable.append(
+                f"roster axis: {policy.get('status')} -- the declared preference "
+                f"{policy.get('preference')} names no format this target admits for a contraction "
+                f"(admitted: {policy.get('admitted')}), so no roster model can be compiled at a format "
+                f"the hardware has")
+
     if unexpressable:
         raise SynthesisError(
             "no materializable op expresses these required cells, so synthesizing would silently leave "

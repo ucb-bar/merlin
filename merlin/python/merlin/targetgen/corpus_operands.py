@@ -123,18 +123,67 @@ def operand_values(shape: tuple[int, int], fmt: str, salt: int, *, max_alphabet:
                      f"{rows}x{cols} operand")
 
 
+def _achievable(n: int, alphabet: int, depth: int) -> int:
+    """The most distinct ``depth``-long tuples an ``alphabet``-value stimulus can produce, capped at ``n``.
+
+    The bound that makes this a rigor check rather than an impossibility check. A tuple of ``depth``
+    values drawn from ``alphabet`` values has at most ``alphabet ** depth`` distinct forms, so demanding
+    ``n`` of them when ``n`` exceeds that is not a standard an operand can meet -- it is arithmetic.
+    Measured: a ``1 x 32`` gamma vector over the shared 4-value stimulus alphabet was reported as a
+    degenerate operand, and no stimulus over that alphabet could have made it pass.
+
+    The exponent is capped because ``alphabet ** rows`` for a tall operand is an enormous integer whose
+    only use here is to be larger than ``n``.
+    """
+    if alphabet <= 1:
+        return 1
+    return min(n, alphabet ** min(depth, 20))
+
+
+def rigor_limits(values: list[float], shape: tuple[int, int]) -> list[str]:
+    """What this operand's own alphabet makes UNREACHABLE, as opposed to what it got wrong.
+
+    Separate from :func:`rigor_findings` because the two are acted on differently: a finding is fixed by
+    choosing a better stimulus, a limit is fixed only by widening the alphabet (or the shape), which is a
+    decision about the dialect's operand types. Reporting them together would either fail a gate nothing
+    can satisfy or lose the fact entirely; they are both recorded, in the place each belongs.
+    """
+    rows, cols = shape
+    alphabet = len({float(v) for v in values})
+    out: list[str] = []
+    if _achievable(cols, alphabet, rows) < cols:
+        out.append(f"{cols} columns over a {alphabet}-value alphabet in {rows} row(s): at most "
+                   f"{_achievable(cols, alphabet, rows)} can differ, so some column swaps are invisible "
+                   f"to any stimulus over this alphabet")
+    if _achievable(rows, alphabet, cols) < rows:
+        out.append(f"{rows} rows over a {alphabet}-value alphabet in {cols} column(s): at most "
+                   f"{_achievable(rows, alphabet, cols)} can differ")
+    return out
+
+
 def rigor_findings(values: list[float], shape: tuple[int, int]) -> list[str]:
     """Advisory: report the ways an operand would HIDE a bug — duplicate rows, duplicate columns, or
     symmetry (A == A^T). Empty list == rigorous. Target-agnostic; used by the corpus-rigor gate to keep a
-    regeneration from silently degrading operand quality."""
+    regeneration from silently degrading operand quality.
+
+    Distinctness is judged against what the operand's own alphabet can ACHIEVE, not against its extent:
+    see :func:`_achievable`. Nothing that passed before passes differently -- a fully distinct operand
+    meets both bars -- but an operand that is as varied as its encoding permits is no longer reported as
+    degenerate. What it cannot reach is recorded by :func:`rigor_limits` instead of being lost.
+    """
     rows, cols = shape
     grid = [tuple(values[r * cols:(r + 1) * cols]) for r in range(rows)]
+    alphabet = len({float(v) for v in values})
     out: list[str] = []
-    if len(set(grid)) != rows:
-        out.append(f"duplicate rows: only {len(set(grid))} distinct of {rows} (row-addressing bugs invisible)")
+    want_rows = _achievable(rows, alphabet, cols)
+    if len(set(grid)) < want_rows:
+        out.append(f"duplicate rows: only {len(set(grid))} distinct of an achievable {want_rows} "
+                   f"({rows} rows) (row-addressing bugs invisible)")
     colset = {tuple(grid[r][c] for r in range(rows)) for c in range(cols)}
-    if len(colset) != cols:
-        out.append(f"duplicate columns: only {len(colset)} distinct of {cols} (col/stride bugs invisible)")
+    want_cols = _achievable(cols, alphabet, rows)
+    if len(colset) < want_cols:
+        out.append(f"duplicate columns: only {len(colset)} distinct of an achievable {want_cols} "
+                   f"({cols} columns) (col/stride bugs invisible)")
     if rows == cols and all(grid[r][c] == grid[c][r] for r in range(rows) for c in range(cols)):
         out.append("operand is symmetric (A == A^T): a transpose/layout bug produces identical output")
     if len({v for row in grid for v in row}) <= 1:

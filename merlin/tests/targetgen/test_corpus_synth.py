@@ -62,7 +62,7 @@ def test_every_required_cell_becomes_an_entry(target):
 
     #: Every non-cell entry must say which axis asked for it. These are the axis markers the
     #: synthesizer writes into `source_reference`; an entry matching none of them is unattributable.
-    axes = ("memory regime", "host-only family", "composition axis")
+    axes = ("memory regime", "host-only family", "composition axis", "roster axis")
     unattributed = [e["name"] for e in other
                     if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"
@@ -296,3 +296,82 @@ def test_no_required_cell_is_left_without_a_writer():
         prov = CS.synthesize(_spec(target))["provenance"]
         assert not prov.get("cells_no_writer_can_express"), (
             f"{target}: {prov['cells_no_writer_can_express']}")
+
+
+# --------------------------------------------------------------------- the roster axis
+
+def _ws(target: str) -> dict:
+    from merlin.targetgen.corpora import descriptor_path
+    from merlin.targetgen.target_experiment import load_target_experiment
+    return dict(getattr(load_target_experiment(descriptor_path(target)), "workload_spec", None) or {})
+
+
+def _roster_entries(target: str) -> list[dict]:
+    res = CS.synthesize(_spec(target), workload_spec=_ws(target))
+    return [e for e in res["capsules"]
+            if (e.get("semantic") or {}).get("generalization_axis") == "roster"]
+
+
+@pytest.mark.parametrize("target", ["gemmini", "atlas"])
+def test_every_declared_roster_model_gets_a_whole_model_capsule(target):
+    """The roster is the one thing the workload spec declares that nothing consumed. Every capsule the
+    other axes emit is a SLICE; the claim the experiment builds toward is about the roster's real
+    networks, and a roster nobody synthesizes a capsule for is a claim nobody can make."""
+    declared = [str(m) for m in (_ws(target).get("models") or ())]
+    if not declared:
+        pytest.skip(f"{target} declares no roster")
+    got = {e.get("model") for e in _roster_entries(target)}
+    assert got == set(declared), f"{target}: roster {declared} but capsules for {sorted(got)}"
+
+
+@pytest.mark.parametrize("target", ["gemmini", "atlas"])
+def test_the_roster_capsule_compiles_at_the_format_the_target_admits(target):
+    """Not at a format someone typed. `precision_policy.best_format` composes the declared preference
+    with what the manifest admits, and the capsule carries its answer -- so a target whose hardware has
+    no int8 datapath gets its models at the next format it does have, without anything being edited."""
+    from merlin.targetgen.precision_policy import best_format
+
+    entries = _roster_entries(target)
+    if not entries:
+        pytest.skip(f"{target} declares no roster")
+    admitted = {str(c["dtype"]) for c in (_spec(target).get("cells") or ())
+                if c.get("dtype") and str(c.get("family")) == "contraction"}
+    want = best_format(target, preference=(_ws(target).get("precision_preference") or None),
+                       admitted=admitted)["chosen"]["capsule_dtype"]
+    assert {e["operand_dtype"] for e in entries} == {want}
+
+
+@pytest.mark.parametrize("target", ["gemmini", "atlas"])
+def test_the_roster_capsule_declares_the_scheme_its_arithmetic_needs(target):
+    """A capture asked for a quantized format WEIGHT-ONLY emits a float matmul over dequantized weights
+    -- the wrong program for a datapath that consumes the narrow format on both operands, and one no
+    golden substitution can repair. The scheme is derived from the format, so the entry cannot declare a
+    precision without also declaring the arithmetic that produces it."""
+    from merlin.targetgen.capsule_source import activation_quantizing_scheme
+
+    entries = _roster_entries(target)
+    if not entries:
+        pytest.skip(f"{target} declares no roster")
+    for e in entries:
+        want = activation_quantizing_scheme(e["operand_dtype"])
+        assert e.get("quant_scheme") == want, (
+            f"{e['name']}: declares {e.get('quant_scheme')!r} for {e['operand_dtype']}, needs {want!r}")
+
+
+@pytest.mark.parametrize("target", ["gemmini", "atlas"])
+def test_the_roster_capsule_requires_the_mesh_rather_than_only_the_numbers(target):
+    """A whole-model capsule graded on numerics alone passes a submission that ran the entire network on
+    the host. That vacuity was removed from the op capsules and left in the capstones; a synthesized
+    roster capsule must not reintroduce it."""
+    for e in _roster_entries(target):
+        assert "on_mesh" in ((e.get("lanes") or {}).get("require") or ())
+
+
+def test_a_roster_whose_preference_names_nothing_admitted_reports_it_rather_than_synthesizing():
+    """Fail closed. Compiling a roster model in a format the hardware lacks is not a weaker result, it
+    is a different one -- so the axis raises naming the roster, instead of quietly picking whatever the
+    target happens to admit."""
+    doc = _spec("gemmini")
+    with pytest.raises(CS.SynthesisError, match="roster axis"):
+        CS.synthesize(doc, workload_spec={"models": ["tiny_llama"],
+                                          "precision_preference": ["mxfp4"]})

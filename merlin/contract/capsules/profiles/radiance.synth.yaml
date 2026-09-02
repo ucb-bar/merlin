@@ -7,7 +7,7 @@ provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: radiance
   n_required_cells: 56
-  n_entries: 57
+  n_entries: 61
   budget: 160
   precision_preference_kept:
   - i8
@@ -1145,6 +1145,110 @@ capsules:
     - on_mesh
   semantic:
     generalization_axis: composition
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_resnet50
+  model: resnet50
+  out: Y0
+  operand_dtype: i8
+  quant_scheme: int8_dyn_act_int8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''resnet50'' at int8, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with int8_dyn_act_int8_weight so
+    the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_lstmnetvit
+  model: lstmnetvit
+  out: Y0
+  operand_dtype: i8
+  quant_scheme: int8_dyn_act_int8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''lstmnetvit'' at int8, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with int8_dyn_act_int8_weight so
+    the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_smolvla
+  model: smolvla
+  out: Y0
+  operand_dtype: i8
+  quant_scheme: int8_dyn_act_int8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''smolvla'' at int8, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with int8_dyn_act_int8_weight so
+    the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_tiny_llama
+  model: tiny_llama
+  out: Y0
+  operand_dtype: i8
+  quant_scheme: int8_dyn_act_int8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''tiny_llama'' at int8, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with int8_dyn_act_int8_weight so
+    the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
   pass_requirements:
   - region-partition
   - target-isa-lowering

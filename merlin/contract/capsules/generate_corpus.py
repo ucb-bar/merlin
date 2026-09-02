@@ -2083,13 +2083,35 @@ def generate_target(target: str) -> list[Path]:
     # registered) aborted the run before any of the tail-path sweep capsules were written, so a coverage
     # gap stayed open for a reason that had nothing to do with it. Failures are COLLECTED, reported by
     # name, and re-raised at the end -- the run still fails, it just fails after doing the work it could.
-    written, failures = [], []
+    written, failures, unbuilt_roster = [], [], []
     for e in entries:
         family = (e.get("performance") or {}).get("family")
         try:
             w = _write_capsule(e, binding, out_root)
         except Exception as exc:                              # noqa: BLE001 — reported, never swallowed
             detail = f"{type(exc).__name__}: {str(exc)[:300]}"
+            if _is_roster_capsule(e):
+                # A ROSTER MODEL IS A DECLARED INPUT, NOT A COMPILER RESULT. The roster axis emits one
+                # whole-model capsule per model the target's `workload_spec` names, at the format the
+                # target admits -- and whether a given network can be CAPTURED at that format depends on
+                # things outside this repo: whether the loader's dataset is present, whether the m2m venv
+                # has the model's package, whether torchAO's scheme runs on this host, whether
+                # torch.export accepts the module under quantization. Measured on the four declared
+                # models: one captures, one needs an ImageNet npz, one needs a package the venv lacks,
+                # one is refused by torch.export under W8A8 while its weight-only capture succeeds.
+                #
+                # Aborting the corpus for those would make a fact about the ROSTER read as a broken
+                # generator, and would take every other capsule down with it. Recording it keeps the rule
+                # that matters -- a requirement that produced no capsule is never indistinguishable from
+                # one that is met -- because the manifest names the model and the reason, and no capsule
+                # exists to be graded, so nothing can pass in its place.
+                why = _capture_failure_reason(exc)
+                unbuilt_roster.append({"capsule": e.get("name", "?"), "model": e.get("model"),
+                                       "operand_dtype": e.get("operand_dtype"),
+                                       "quant_scheme": e.get("quant_scheme"),
+                                       "status": "not_built", "reason": why})
+                print(f"  [roster] {e.get('name')}: NOT BUILT — {why}")
+                continue
             failures.append((e.get("name", "?"), detail))
             if family:
                 _performance_errors.append({
@@ -2143,7 +2165,11 @@ def generate_target(target: str) -> list[Path]:
         "blocked_unimplemented": declared_blocked + _runtime_blocked,
         "errors": _performance_errors,
     }
-    update_provenance_manifest(written, target=target, performance_record=performance_record)
+    if unbuilt_roster:
+        print(f"  [roster] {len(unbuilt_roster)} declared roster model(s) could not be captured at this "
+              f"target's derived format; they are recorded as not_built, never as covered")
+    update_provenance_manifest(written, target=target, performance_record=performance_record,
+                               unbuilt_roster=unbuilt_roster)
     if failures:
         raise RuntimeError(
             f"{len(failures)} capsule(s) failed to generate: {', '.join(n for n, _ in failures)}; the "
@@ -2151,8 +2177,40 @@ def generate_target(target: str) -> list[Path]:
     return written
 
 
+def _capture_failure_reason(exc: Exception) -> str:
+    """The one line that says WHY a capture failed, safe to write into a tracked file.
+
+    Two things go wrong with the obvious ``str(exc)[:300]``. A capture failure carries the worker's
+    stderr, and a traceback puts its cause LAST -- so the leading 300 characters are the frames that
+    name nothing, and the recorded reason ends mid-path with no error in it, which is the same as
+    recording nothing. And the frames are absolute local paths, which must not reach MANIFEST.yaml:
+    this repo is published.
+
+    So: the last UNINDENTED line, with local paths redacted by the same helper the capsule scrubber
+    uses. Indentation is the structural signal, not a guess about wording -- a traceback indents its
+    frame and source lines and leaves the exception flush left, so the last flush-left line is the
+    thing that was raised. Taking merely the last non-empty line got this wrong on a real case: the
+    export refusal ends with a trailing frame, and the recorded reason came out as ``next(self.gen)``.
+    """
+    lines = [ln for ln in str(exc).splitlines() if ln.strip()]
+    flush = [ln for ln in lines if ln[:1] not in (" ", "\t")]
+    tail = (flush or lines or [f"{type(exc).__name__} with no message"])[-1].strip()
+    return _redact_local_paths(f"{type(exc).__name__}: {tail}")[:400]
+
+
+def _is_roster_capsule(entry: dict) -> bool:
+    """A whole-model capsule the ROSTER axis emitted, as opposed to any other model capsule.
+
+    Read off the entry's own generalization axis rather than its name, so a renamed prefix does not
+    silently reclassify a capsule into the lane that is allowed not to build.
+    """
+    return (str(entry.get("kind")) == "model"
+            and str((entry.get("semantic") or {}).get("generalization_axis") or "") == "roster")
+
+
 def update_provenance_manifest(written, cap_root=None, *, target: str | None = None,
-                               performance_record: "dict | None" = None) -> Path:
+                               performance_record: "dict | None" = None,
+                               unbuilt_roster: "list | None" = None) -> Path:
     """Rewrite ``MANIFEST.yaml``'s generated/hand_authored split from what this run actually emitted.
 
     The file's own header has always claimed the generator rewrites it, but no writer existed, so it was
@@ -2210,6 +2268,16 @@ def update_provenance_manifest(written, cap_root=None, *, target: str | None = N
         per_target = dict(man.get("performance_generation") or {})
         per_target[target] = copy.deepcopy(performance_record or {})
         man["performance_generation"] = per_target
+        # WHICH DECLARED ROSTER MODELS THIS TARGET HAS NO WHOLE-MODEL CAPSULE FOR, and why. Recorded
+        # per target and rewritten on every full run, so a model that starts capturing stops being
+        # listed rather than lingering as stale debt. An EMPTY list is written -- "no roster model is
+        # unbuilt" is a result -- while ``None`` leaves the record untouched, because a caller that did
+        # not walk the roster (a test rebuilding the split, say) has not learned that nothing is
+        # missing. The two absences must not be spelled the same way.
+        if unbuilt_roster is not None:
+            per_roster = dict(man.get("roster_generation") or {})
+            per_roster[target] = {"not_built": copy.deepcopy(unbuilt_roster)}
+            man["roster_generation"] = per_roster
     head = man_path.read_text(encoding="utf-8").split("generated_by:")[0] if man_path.is_file() else ""
     man_path.write_text(head + yaml.safe_dump(man, sort_keys=False), encoding="utf-8")
     return man_path
