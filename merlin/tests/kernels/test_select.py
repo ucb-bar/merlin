@@ -190,3 +190,92 @@ def test_prior_fn_returning_none_does_not_become_a_number():
     chosen, rejected = select_proposals([a], width=1, prior_fn=lambda p: None)
     assert [p.targets for p in chosen] == ["a"]
     assert rejected == []
+
+
+# --------------------------------------------------------------------------- starvation
+
+def _gen(props, width, starved):
+    """One generation: select, then charge the width losers so the next generation sees them aged."""
+    from merlin.mining.select import proposal_key
+    chosen, rejected = select_proposals(props, width=width,
+                                        starved_fn=lambda p: starved[proposal_key(p)])
+    for r in rejected:
+        if r.reason == "over_width":
+            starved[(r.family, r.targets)] += 1
+    return [p.targets for p in chosen]
+
+
+def test_without_aging_the_tail_of_the_proposal_list_is_unreachable_at_any_depth():
+    """The defect the aging term exists for, shown as a property rather than an anecdote.
+
+    Band and arrival order are both deterministic functions of the proposal, so re-running the same
+    proposal set picks the same prefix every time. Depth therefore refines the chosen prefix and never
+    reaches the rest: the beam's reachable lever set is `width`, not `width x depth`.
+
+    MEASURED on small_llama fp32 at width=3: perop_register_block (25.56x on the int8 whole model),
+    vectorized_transcendental_activation (that model's scalar exp is 16.48% of real work),
+    fuse_transpose_b, perop_nr_fill_register and accumulator_resident_wholemodel_vf_mrpad were each
+    proposed at all three generations and built at none.
+    """
+    props = [_Prop(t, action=_action(t, family=f"fam_{t}")) for t in "abcdef"]
+    picks = [[p.targets for p in select_proposals(props, width=2)[0]] for _ in range(4)]
+    assert all(p == picks[0] for p in picks), "selection is deterministic, as it must be"
+    reached = {t for gen in picks for t in gen}
+    assert reached == {"a", "b"}, f"four generations still reached only {sorted(reached)}"
+    assert not ({"c", "d", "e", "f"} & reached), "the tail must be the thing that starves"
+
+
+def test_aging_a_deferred_proposal_lets_depth_widen_coverage():
+    """With the aging term the same four generations reach the whole set, still deterministically."""
+    from collections import Counter
+    props = [_Prop(t, action=_action(t, family=f"fam_{t}")) for t in "abcdef"]
+    starved: Counter = Counter()
+    reached = set()
+    for _ in range(3):
+        reached |= set(_gen(props, 2, starved))
+    assert reached == set("abcdef"), f"aging still failed to reach {sorted(set('abcdef') - reached)}"
+
+
+def test_aging_is_reproducible():
+    """Age is run HISTORY, not randomness -- two identical runs must choose identically."""
+    from collections import Counter
+
+    def _run():
+        props = [_Prop(t, action=_action(t, family=f"fam_{t}")) for t in "abcdef"]
+        starved: Counter = Counter()
+        return [_gen(props, 2, starved) for _ in range(3)]
+
+    assert _run() == _run()
+
+
+def test_age_never_lifts_a_proposal_out_of_its_band():
+    """A refuted lever must not climb over a promising one merely by being passed over repeatedly.
+    Aging breaks ties INSIDE a band; the band ordering is evidence and outranks queue position."""
+    from collections import Counter
+    refuted = _Prop("refuted", action=_action("refuted", family="fa", prior=0.05))
+    unmeasured = _Prop("unmeasured", action=_action("unmeasured", family="fb"))
+    starved = Counter({("fa", "refuted"): 99})
+    chosen, _ = select_proposals([refuted, unmeasured], width=1,
+                                 starved_fn=lambda p: starved[(p.action.action_family, p.targets)])
+    assert [p.targets for p in chosen] == ["unmeasured"]
+
+
+def test_only_width_losers_age_not_illegal_ones():
+    """An illegal-on-parent rejection is a permanent verdict on the lineage, not a queue position.
+    Aging it would push a proposal that can never be built ahead of ones that can."""
+    from collections import Counter
+    applied = _action("x", family="fa", seam="schedule:s")
+    clashing = _Prop("clash", action=_action("y", family="fb", seam="schedule:s",
+                                             conflicts=("x",)))
+    ok = _Prop("ok", action=_action("z", family="fc"))
+    starved: Counter = Counter()
+    _gen([clashing, ok], 2, starved)
+    # nothing was over_width (width 2, two proposals), so nothing aged
+    assert not starved, f"unexpected aging: {dict(starved)}"
+
+
+def test_starved_fn_is_optional_and_default_behaviour_is_unchanged():
+    props = [_Prop(t, action=_action(t, family=f"fam_{t}")) for t in "abc"]
+    a, _ = select_proposals(props, width=2)
+    b, _ = select_proposals(props, width=2, starved_fn=lambda p: 0)
+    assert [p.targets for p in a] == [p.targets for p in b]

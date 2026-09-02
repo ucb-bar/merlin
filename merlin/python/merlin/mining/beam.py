@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections import Counter
 from pathlib import Path
 from typing import Any, Callable
 
@@ -31,7 +32,7 @@ from .registry import load_rvv_package
 from .runner import certify_rvv
 from .baseline import UNRECORDED as _BASELINE_UNRECORDED, attainment as _baseline_attainment
 from .prior import landing_prior_fn, seam_evidence_from_nodes
-from .select import select_proposals
+from .select import proposal_key, select_proposals
 from .sweep import rank_results, run_sweep
 
 
@@ -288,6 +289,12 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
 
     nodes: list[dict] = []
     deferred: list[dict] = []           # recorded lever-2/3 work-items the beam can't auto-apply
+    # How many past generations deferred each proposal for width. Band and arrival order are both
+    # deterministic, so without this a proposal that lost the width cut once loses identically every
+    # time -- never built, so never measured, so never able to out-rank anything. That makes the
+    # reachable lever set `width`, not `width x depth`. Charged by (family, targets), since the
+    # proposer rebuilds its proposal objects each generation.
+    starved: Counter = Counter()
     node_by_rid: dict[str, dict] = {}   # run_id -> node, for parent-speedup lookup (the margin gate)
     # run_id -> the CompilerActions applied along that fork's lineage. Kept OUT of the node because
     # nodes are serialized to beam_tree.yaml; the node carries the seam names for inspectability and
@@ -411,7 +418,13 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
             forkable, rejected = select_proposals(
                 props, width=width,
                 applied_actions=applied_by_rid.get(parent_node["run_id"], ()),
-                prior_fn=_prior)
+                prior_fn=_prior, starved_fn=lambda p: starved[proposal_key(p)])
+            # age only the width losers: an illegal-on-parent rejection is a permanent verdict on
+            # this lineage, not a queue position, so aging it would push a proposal that can never
+            # be built ahead of ones that can.
+            for r in rejected:
+                if r.reason == "over_width":
+                    starved[(r.family, r.targets)] += 1
             deferred.extend({"parent": parent_node["run_id"], "lever": p.lever,
                              "targets": p.targets, "note": p.note, "evidence": p.evidence}
                             for p in props if not p.forkable)

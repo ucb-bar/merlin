@@ -15,6 +15,18 @@ This module is the ranking step between the proposer and the truncation. It neve
 an action with no prior is ranked as UNMEASURED, which is its own band, above a measured refutation
 and below a measured success. ``evidence_prior=None`` means nobody measured it, not 0.5.
 
+There is a fourth, found by running the search: a proposal deferred ``over_width`` STARVES. Band and
+arrival order are both deterministic functions of the proposal, so a proposal that lost the width cut
+at one generation loses identically at every later one -- it never gets built, so it never becomes
+measured, so it can never out-rank anything. The beam's reachable lever set is therefore bounded by
+``width``, not by ``width x depth``: depth only refines the chosen prefix. MEASURED on small_llama
+fp32 at width=3: ``perop_register_block`` (which measures 25.56x on the int8 whole model),
+``vectorized_transcendental_activation`` (the model's scalar `exp` is 16.48% of real work),
+``fuse_transpose_b``, ``perop_nr_fill_register`` and ``accumulator_resident_wholemodel_vf_mrpad`` were
+each proposed at ALL THREE generations and built at none. ``starved_fn`` is the fix: deferring a
+proposal AGES it, and age breaks the tie inside its band, so depth widens coverage instead of
+re-exploring one prefix. It is history, not randomness, so the search stays reproducible.
+
 Nothing is dropped silently. Everything not chosen comes back in the rejection list with the reason,
 so a generation's unspent proposals stay visible in the run record — a refutation is training signal
 against a 13.45% base rate, and a search that records only what it built over-proposes.
@@ -85,9 +97,19 @@ def _family_of(prop) -> str:
     return str(getattr(prop, "targets", "") or id(prop))
 
 
+def proposal_key(p: Any) -> tuple[str, str]:
+    """The identity under which a proposal is recognised as "the same one" across generations.
+
+    ``(family, targets)`` -- what a Rejection records -- so a deferral at one generation can be
+    charged against the same proposal at the next. Not the object id: the proposer rebuilds its
+    proposals every generation, so identity has to be by content."""
+    return (_family_of(p), str(getattr(p, "targets", "")))
+
+
 def select_proposals(props: Sequence[Any], *, width: int,
                      applied_actions: Iterable[Any] = (),
                      prior_fn: Callable[[Any], float | None] | None = None,
+                     starved_fn: Callable[[Any], int] | None = None,
                      ) -> tuple[list[Any], list[Rejection]]:
     """Return ``(chosen, rejected)`` — at most ``width`` forkable proposals, best evidence first and
     diversified by action family, plus every proposal not chosen with its reason.
@@ -100,6 +122,12 @@ def select_proposals(props: Sequence[Any], *, width: int,
     ``prior_fn`` supplies a prior for actions that carry none — this is the seam through which mined
     corpus evidence (``kernels.space.corpus_prior``) reaches the search. Injected, never imported, so
     the selector stays independent of any one corpus.
+
+    ``starved_fn(proposal) -> int`` reports how many previous generations deferred this proposal for
+    width. Age breaks ties WITHIN a band and never across one: a lever the corpus refuted does not
+    climb over a promising one by being passed over repeatedly, but two equally-unmeasured proposals
+    are no longer separated forever by their arrival order. Without it the tail of the proposal list
+    is unreachable at any depth (see the module docstring for the measured instance).
 
     A proposal carrying no typed action cannot be legality-checked. It is KEPT rather than dropped —
     the legacy motif router predates the composition declarations entirely, and dropping its
@@ -121,19 +149,22 @@ def select_proposals(props: Sequence[Any], *, width: int,
                     family=_family_of(p)))
                 continue
         band = _band(_prior_of(p, prior_fn))
-        legal.append((band, order, _family_of(p), p))
+        # negated so MORE generations of starvation sorts EARLIER, inside the band.
+        starved = -int(starved_fn(p)) if starved_fn is not None else 0
+        legal.append((band, starved, order, _family_of(p), p))
 
     # Round-robin across families, taking each family's best band first. One pass per family gives
     # width distinct ideas when they exist; later passes backfill from families that have depth.
-    by_family: dict[str, list[tuple[int, int, Any]]] = {}
-    for band, order, fam, p in legal:
-        by_family.setdefault(fam, []).append((band, order, p))
+    by_family: dict[str, list[tuple[int, int, int, Any]]] = {}
+    for band, starved, order, fam, p in legal:
+        by_family.setdefault(fam, []).append((band, starved, order, p))
     for fam in by_family:
-        by_family[fam].sort(key=lambda t: (t[0], t[1]))
+        by_family[fam].sort(key=lambda t: (t[0], t[1], t[2]))
 
     # Families are visited best-first by their own best candidate, so a family holding a measured
     # winner is not made to wait behind one holding only unmeasured guesses.
-    fam_order = sorted(by_family, key=lambda f: (by_family[f][0][0], by_family[f][0][1]))
+    fam_order = sorted(by_family, key=lambda f: (by_family[f][0][0], by_family[f][0][1],
+                                                 by_family[f][0][2]))
     chosen: list[Any] = []
     chosen_ids: set[int] = set()
     depth = max((len(v) for v in by_family.values()), default=0)
@@ -143,13 +174,13 @@ def select_proposals(props: Sequence[Any], *, width: int,
                 break
             bucket = by_family[fam]
             if i < len(bucket):
-                p = bucket[i][2]
+                p = bucket[i][3]
                 chosen.append(p)
                 chosen_ids.add(id(p))
         if len(chosen) >= width:
             break
 
-    for band, order, fam, p in sorted(legal, key=lambda t: (t[0], t[1])):
+    for band, starved, order, fam, p in sorted(legal, key=lambda t: (t[0], t[1], t[2])):
         if id(p) not in chosen_ids:
             rejected.append(Rejection(
                 targets=str(getattr(p, "targets", "")), reason="over_width",
