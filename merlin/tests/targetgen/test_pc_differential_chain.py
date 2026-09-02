@@ -49,7 +49,10 @@ def _program():
 
 def _dag(separations):
     ins, eff = _program()
-    issue = DG.IssueModel(issue_cycles=1.0, stall_unit="cycles", tier="fixture",
+    # `stall_unit` is CYCLES PER UNIT of a stall instruction's immediate, not a label. This probe has
+    # no stall instruction, so an earlier draft passed a string here and never noticed -- `cost_of`
+    # only multiplies by it on the stall path.
+    issue = DG.IssueModel(issue_cycles=1.0, stall_unit=1.0, tier="fixture",
                           provenance="pc-chain test")
     return DG.build_dag(ins, eff, issue=issue, stall_mnemonic="DELAY", roles=_ROLES,
                         resolved_separations=separations)
