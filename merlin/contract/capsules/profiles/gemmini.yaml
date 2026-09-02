@@ -373,6 +373,10 @@ capsules:
      capability, so every region must land on the host and none may reach the mesh',
    label: public, modes: {},
    lanes: {require: [scalar_rvv_lane], forbid: [on_mesh]},
+   # The same classes corpus_synth derives for a synthesized entry, declared here because this capsule
+   # is hand-authored: it executes (target lowering) and its whole subject is a value crossing to a
+   # lane the accelerator does not own (boundary materialization).
+   pass_requirements: [host-seam, target-isa-lowering],
    generalization: {must_accelerate: false, not_asserted_reason: 'host-only capsule: this target admits
      no normalization family, so accelerating any region would be the defect. The demand is the inverted
      one -- lanes.forbid [on_mesh] -- checked against execution, never a routing plan.'}}

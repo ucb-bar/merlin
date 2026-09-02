@@ -134,6 +134,44 @@ def filtered_precision(preference: list[str], admitted: set[str]) -> tuple[list[
     return kept, [d for d in preference if d not in admitted]
 
 
+def pass_requirements_for(entry: dict, spec_doc: dict) -> list[str]:
+    """The compiler obligations this entry actually exercises, as requirement CLASSES.
+
+    `check_pass_obligations` rejects a catalogued pass no capsule requires, and rejects a pass that
+    discharges no obligation -- but the loop was built and left empty: two of 248 capsules declared
+    `pass_requirements`, both the capstone class, so the gate could not be turned on without rejecting
+    most of the compiler. Deriving them from what an entry DOES is the only way the count moves without
+    someone hand-labelling the corpus, and it keeps the declaration honest: a class appears because the
+    shape demands it, not because an author remembered.
+
+    Derived, never guessed:
+      * ``target-isa-lowering`` -- the capsule executes, so something must lower to the target's ISA.
+      * ``tile-schedule`` -- an extent exceeds the tile edge, so the work must be scheduled across
+        tiles rather than issued as one.
+      * ``host-seam`` -- the capsule declares a lane the accelerator does not own, so a boundary has to
+        be materialized for the value to cross.
+      * ``region-partition`` -- more than one region, so something must decide where each one goes.
+    """
+    from merlin.xdsl_dialects.lowering import passes as _P
+
+    out = [_P.TARGET_ISA_LOWERING]
+    tile = 0
+    for probe in ((spec_doc.get("boundaries") or {}).get("extent_probes") or ()):
+        tile = max(tile, int(probe.get("edge") or 0))
+    for axis in ("M", "K", "N"):
+        token = str(entry.get(axis) or "")
+        # `2*tile` and friends exceed the edge by construction; a resolved integer is compared directly.
+        if token.startswith(("2*", "4*", "8*")) or (token.isdigit() and tile and int(token) > tile):
+            out.append(_P.TILE_SCHEDULE)
+            break
+    lanes = entry.get("lanes") or {}
+    if lanes.get("forbid") or any(str(l) != "on_mesh" for l in (lanes.get("require") or ())):
+        out.append(_P.HOST_SEAM)
+    if str(entry.get("kind")) == "model" or len(lanes.get("require") or ()) > 1:
+        out.append(_P.REGION_PARTITION)
+    return sorted(dict.fromkeys(out))
+
+
 def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                budget: int | None = None) -> dict:
     """``{"capsules": [entry...], "provenance": {...}}`` for one target's derived requirement.
@@ -207,6 +245,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         }
         if epilogue:
             entry["epilogue"] = epilogue
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
     if unexpressable:

@@ -52,3 +52,6 @@ semantic:
   generalization_axis: seen
   must_accelerate: true
   eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule

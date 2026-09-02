@@ -60,6 +60,9 @@ semantic:
     so accelerating any region would be the defect. The demand is the inverted one
     -- lanes.forbid [on_mesh] -- checked against execution, never a routing plan.'
   eligible: auto
+pass_requirements:
+- host-seam
+- target-isa-lowering
 lanes:
   require:
   - scalar_rvv_lane

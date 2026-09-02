@@ -36,6 +36,9 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
 - cat: isa
   kind: isa
   name: SY_contraction_i8_partial
@@ -52,6 +55,9 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
 - cat: isa
   kind: isa
   name: SY_elementwise_map_i8_aligned
@@ -72,6 +78,9 @@ capsules:
   N: tile
   epilogue:
   - relu
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
 - cat: isa
   kind: isa
   name: SY_elementwise_map_i8_partial
@@ -92,6 +101,9 @@ capsules:
   N: tile-1
   epilogue:
   - relu
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
 - cat: isa
   kind: isa
   name: SY_movement_i8_aligned
@@ -108,6 +120,9 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
 - cat: isa
   kind: isa
   name: SY_movement_i8_partial
@@ -124,3 +139,6 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule

@@ -117,6 +117,29 @@ NORMALIZATION_CATALOG: tuple[PassInfo, ...] = (
 MODEL_BOUNDARY_CAPSTONE = "model-boundary-capstone"
 _MODEL_CAPSTONES = (MODEL_BOUNDARY_CAPSTONE,)
 
+#: Requirement classes a SYNTHESIZED capsule can declare, one per production obligation. A class rather
+#: than a capsule name, so the catalog stays target-independent while still proving that a concrete
+#: capsule carrying that class caused the invocation.
+#:
+#: These exist because the obligation loop was built and left empty: two of 248 capsules declared
+#: `pass_requirements`, both the capstone class, so `--fail-on-unrequired` would have rejected most of
+#: the compiler and the gate could not be turned on. Synthesis emits them from what each entry actually
+#: exercises, which is the only way the count moves without someone hand-labelling 180 capsules.
+REGION_PARTITION = "region-partition"          # partition/eligibility
+TILE_SCHEDULE = "tile-schedule"                # target transformation
+TARGET_ISA_LOWERING = "target-isa-lowering"    # target lowering
+HOST_SEAM = "host-seam"                        # boundary materialization
+
+#: Which obligation each class discharges. Kept beside the classes so a reader can check the mapping is
+#: onto ``OBLIGATIONS`` without tracing call sites.
+CLASS_OBLIGATION = {
+    REGION_PARTITION: "partition/eligibility",
+    TILE_SCHEDULE: "target transformation",
+    TARGET_ISA_LOWERING: "target lowering",
+    HOST_SEAM: "boundary materialization",
+    MODEL_BOUNDARY_CAPSTONE: "boundary materialization",
+}
+
 
 CATALOG: tuple[PassInfo, ...] = (
     # Dispatch formation: the roots that become units of placeable work. Structure changes, dialects

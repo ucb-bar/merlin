@@ -58,3 +58,6 @@ semantic:
   eligible: auto
   composed_families:
   - elementwise_map
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
