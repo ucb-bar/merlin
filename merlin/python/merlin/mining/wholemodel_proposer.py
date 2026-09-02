@@ -429,6 +429,71 @@ def expert_family_cca(family: str, *, fixture_dir: Path | None = None, dtype: st
     return lift_expert_cca(path, teacher.op)
 
 
+def divergences_across_teachers(ours, *, dtype: str | None = None,
+                                families: "tuple[str, ...] | None" = None,
+                                fixture_dir: "Path | None" = None):
+    """Divergences for OURS against EVERY family teacher, unioned by axis.
+
+    A whole model is not one kernel, and no single expert can answer every axis. An expert GEMM has no
+    activation, so ``compute.activation_vectorization`` is UNCOMPARABLE against it -- and comparing
+    against the GEMM teacher alone therefore reports no divergence on a model's activation cost no
+    matter how large it is.
+
+    MEASURED, and this is why the function exists: on small_llama fp32 the dynamic profile puts scalar
+    `exp` at 16.48% of real model work (``__ieee754_expf`` 11.91% + ``expf`` 4.57%), against 2.42% for
+    ALL scalar math on the int8 build of the same model. The loop run against the matmul teacher
+    reported that axis as uncomparable and raised nothing -- the single largest fp32-specific cost was
+    invisible to discovery. The gelu/sigmoid teachers answer that axis; they simply were not consulted.
+
+    Each teacher contributes only the axes IT can answer: a divergence is kept when the teacher's side
+    of the axis is populated, so a GEMM never gets to opine on activations and vice versa. First
+    teacher to answer an axis wins, in the registry's byte-traffic order, so the ranking stays the
+    census's rather than this function's. Returns ``(divergences, taught_by, uncomparable)`` -- and the
+    third element is the point: an axis NO teacher could answer is reported, not dropped.
+    """
+    from ..kernels import cca_compare
+
+    from dataclasses import asdict as _asdict
+
+    #: `compute.op` is the op LABEL, not a property of the code. A cross-family teacher differs on it
+    #: by construction -- comparing our matmul against the `mul` teacher reports ours='matmul'
+    #: expert='mul' -- which is an identity mismatch, not a gap, and it routes nowhere useful.
+    IDENTITY_AXES = ("compute.op",)
+
+    def _populated(c) -> set:
+        """Axes this CCA can actually answer -- populated, regardless of VALUE."""
+        out = set()
+        for facet in cca_compare._facet_names():
+            f = getattr(c, facet, None)
+            if f is None:
+                continue
+            out |= {f"{facet}.{k}" for k, v in _asdict(f).items() if v is not None}
+        return out
+
+    order = families if families is not None else tuple(default_teacher_families())
+    ours_axes = _populated(ours)
+    seen: dict[str, object] = {}
+    taught_by: dict[str, str] = {}
+    answered: set[str] = set()
+    for fam in order:
+        expert = expert_family_cca(fam, fixture_dir=fixture_dir, dtype=dtype)
+        if expert is None:
+            continue
+        # An axis is ANSWERED when both sides are populated -- whether or not they differ. Deriving
+        # this from the divergence list instead would mark every AGREEING axis as unanswered, which
+        # over-reports blindness and buries the axes genuinely nobody can teach.
+        answered |= _populated(expert) & ours_axes
+        for d in cca_compare.compare(expert, ours):
+            if d.axis in IDENTITY_AXES or d.axis in seen:
+                continue
+            seen[d.axis] = d
+            taught_by[d.axis] = fam
+    # axes OURS populated that no teacher could answer at all -- genuine coverage gaps in the teacher
+    # set, reported rather than dropped, because the loop can only discover what it is shown.
+    unanswered = sorted(a for a in ours_axes - answered if a not in IDENTITY_AXES)
+    return list(seen.values()), taught_by, unanswered
+
+
 def family_region_ids(model_dir: str | Path, family: str) -> list[str]:
     """The ``prov.region_id``s of the top-level @forward ops whose family matches ``family`` (matching
     either ``prov.op`` or ``prov.family``) — the section the teacher scopes OUR CCA to."""

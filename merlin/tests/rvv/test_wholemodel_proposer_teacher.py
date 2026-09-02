@@ -412,3 +412,79 @@ def test_the_matched_expert_removes_the_spurious_widening_divergence():
         pytest.skip("gemm fixtures not harvested in this checkout")
     assert e8.compute.widening is True, "a dynamic-int8 GEMM widens"
     assert e32.compute.widening is False, "an f32 GEMM does not"
+
+
+# ---------------------------------------------------------------------------------------
+# Multi-teacher discovery. A whole model is not one kernel, and no single expert can answer
+# every axis: an expert GEMM has no activation, so compute.activation_vectorization is
+# UNCOMPARABLE against it and raises nothing no matter how large the model's activation
+# cost is. MEASURED on small_llama fp32: scalar exp is 16.48% of real model work
+# (__ieee754_expf 11.91% + expf 4.57%) against 2.42% for ALL scalar math on the int8 build
+# of the same model -- and the matmul-only run reported that axis as uncomparable.
+# ---------------------------------------------------------------------------------------
+
+def _ours_with(**compute):
+    from merlin.kernels.cca import CCA, ComputeFacet
+    return CCA(op="matmul", backend=["rvv"], compute=ComputeFacet(op="matmul", **compute))
+
+
+def test_consulting_every_teacher_finds_what_one_teacher_cannot():
+    """The activation axis is answerable by the gelu/sigmoid teachers and not by matmul, so it must be
+    found when all are consulted and missed when only matmul is."""
+    from merlin.kernels import cca_compare
+    from merlin.mining.wholemodel_proposer import (divergences_across_teachers, expert_family_cca)
+
+    ours = _ours_with(activation_vectorization="scalar_libm_call")
+    if expert_family_cca("gelu") is None or expert_family_cca("matmul", dtype="fp32") is None:
+        pytest.skip("fixtures not harvested in this checkout")
+
+    matmul_only = [d.axis for d in cca_compare.compare(
+        expert_family_cca("matmul", dtype="fp32"), ours)]
+    assert "compute.activation_vectorization" not in matmul_only, (
+        "a GEMM expert cannot answer the activation axis — that is the premise")
+
+    divs, taught, unanswered = divergences_across_teachers(ours, dtype="fp32")
+    axes = {d.axis for d in divs}
+    assert "compute.activation_vectorization" in axes
+    assert taught["compute.activation_vectorization"] in ("gelu", "sigmoid", "silu", "softmax")
+
+
+def test_an_agreeing_axis_counts_as_answered_not_as_blindness():
+    """Deriving the answered set from the DIVERGENCE list marks every agreeing axis as "nobody could
+    teach it", which over-reports blindness and buries the axes genuinely nobody teaches. Observed: it
+    listed compute.accumulator_resident as unanswered while the matmul expert lifts it."""
+    from merlin.mining.wholemodel_proposer import divergences_across_teachers, expert_family_cca
+
+    e = expert_family_cca("matmul", dtype="fp32")
+    if e is None:
+        pytest.skip("gemm fixture not harvested in this checkout")
+    # copy an expert value verbatim so the axis AGREES; it must not be reported as unanswered
+    ours = _ours_with(accumulator_resident=e.compute.accumulator_resident)
+    _divs, _taught, unanswered = divergences_across_teachers(ours, dtype="fp32")
+    assert "compute.accumulator_resident" not in unanswered
+
+
+def test_the_op_label_is_not_treated_as_a_divergence():
+    """compute.op is an identity field. Comparing our matmul against the `mul` teacher reports
+    ours='matmul' expert='mul' -- a label mismatch, not a gap, and it routes nowhere. Multi-teacher
+    comparison is only sound if each teacher opines on PROPERTIES, never on which op it is."""
+    from merlin.mining.wholemodel_proposer import divergences_across_teachers
+
+    divs, _t, unanswered = divergences_across_teachers(_ours_with(), dtype="fp32")
+    assert "compute.op" not in {d.axis for d in divs}
+    assert "compute.op" not in unanswered
+
+
+def test_an_axis_no_teacher_can_answer_is_still_reported():
+    """The whole point of returning the third element: a coverage gap in the TEACHER SET must be
+    visible, not dropped, because the loop can only discover what it is shown."""
+    from merlin.mining.wholemodel_proposer import divergences_across_teachers
+
+    # `mr_adapts_to_m` is populated by no harvested fixture -- verified by enumerating what the
+    # teacher set can answer (19 axes) against the facet fields that exist. So it is a genuine
+    # coverage gap in the TEACHER SET, which is exactly what this element exists to surface.
+    ours = _ours_with(mr_adapts_to_m=False)
+    _divs, _taught, unanswered = divergences_across_teachers(ours, dtype="fp32")
+    assert "compute.mr_adapts_to_m" in unanswered, (
+        "an axis ours populates that no teacher can answer must be REPORTED, or the loop silently "
+        "treats a teacher-coverage gap as 'no gap found'")
