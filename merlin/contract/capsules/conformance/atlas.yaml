@@ -46,7 +46,6 @@ composition:
     - small_llama
     - small_llama_fp8
     - small_llama_int8
-    - tiny_llama_fp32_full
     A->A:
     - gemma2_2b_int8
     - gemma2_2b_int8_full
@@ -64,7 +63,6 @@ composition:
     - small_llama
     - small_llama_fp8
     - small_llama_int8
-    - tiny_llama_fp32_full
     A->H->A:
     - gemma2_2b_int8
     - gemma2_2b_int8_full
@@ -82,7 +80,6 @@ composition:
     - small_llama
     - small_llama_fp8
     - small_llama_int8
-    - tiny_llama_fp32_full
     H:
     - gemma2_2b_int8
     - gemma2_2b_int8_full
@@ -97,13 +94,10 @@ composition:
     - gemma2_2b_int8_section2
     - gemma2_2b_int8_spec
     - gemma2_2b_int8_spec_pretransposed
-    - lstmnetvit_fp8
-    - lstmnetvit_int8
     - small_llama
     - small_llama_fp8
     - small_llama_int8
     - spectformer_int8_full
-    - tiny_llama_fp32_full
     H->A->H:
     - gemma2_2b_int8
     - gemma2_2b_int8_full
@@ -121,7 +115,6 @@ composition:
     - small_llama
     - small_llama_fp8
     - small_llama_int8
-    - tiny_llama_fp32_full
     routing:
     - gemma2_2b_int8
     - gemma2_2b_int8_full
@@ -139,7 +132,6 @@ composition:
     - small_llama
     - small_llama_fp8
     - small_llama_int8
-    - tiny_llama_fp32_full
   whole_model_shape:
     gemma2_2b_int8: routing
     gemma2_2b_int8_full: routing
@@ -154,13 +146,10 @@ composition:
     gemma2_2b_int8_section2: routing
     gemma2_2b_int8_spec: routing
     gemma2_2b_int8_spec_pretransposed: routing
-    lstmnetvit_fp8: H
-    lstmnetvit_int8: H
     small_llama: routing
     small_llama_fp8: routing
     small_llama_int8: routing
     spectformer_int8_full: H
-    tiny_llama_fp32_full: routing
   captures_unreadable: {}
   axis_basis: "the composition shapes the real captures CONTAIN \u2014 not just the shape each capture\
     \ has as a whole. A model classifies as `routing` end to end, yet it contains isolated dispatches,\
@@ -178,8 +167,6 @@ memory_mapping:
   captures_unreadable: {}
   why: '''atlas'' declares no operand-store capacity we can derive, so no regime is required of the corpus
     -- that is ''we do not know'', never ''nothing is required'''
-  regime_extents: {}
-  regime_dtype: fp8_e4m3
   axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
     own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
     capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
@@ -189,12 +176,9 @@ host_only:
   families:
   - normalization
   - reduction
-  dtypes:
-    normalization: f32
-    reduction: f32
   observed_in:
-    normalization: 1146
-    reduction: 2356
+    normalization: 876
+    reduction: 2166
   basis: 'families a real capture contains and this target''s capability manifest does not admit. The
     compiler must route them to the host lane; accelerating one is as much a defect as failing to accelerate
     an admitted family. EMPTY means no negative lane is derivable for this target -- every family its
@@ -216,20 +200,17 @@ diagnostics:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   captures_unreadable: {}
   families_observed:
-    contraction: 2403
-    elementwise_map: 9473
-    movement: 6330
-    normalization: 1146
-    reduction: 2356
+    contraction: 2049
+    elementwise_map: 8739
+    movement: 5504
+    normalization: 876
+    reduction: 2166
   families_observed_via_primitives: {}
   families_needed_but_not_admitted:
   - normalization
@@ -238,6 +219,7 @@ diagnostics:
   alignment_axis:
   - aligned
   - partial
+  admitted_status: resolved
   notes:
   - 2 family/families appear in a real capture but the hardware declares no capability for them (normalization,
     reduction); those are compiler work for the scalar/vector lane, not accelerator cells, and are excluded
@@ -269,16 +251,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/bf16/partial
   family: contraction
   dtype: bf16
@@ -298,16 +277,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/fp8_e4m3/aligned
   family: contraction
   dtype: fp8_e4m3
@@ -327,16 +303,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/fp8_e4m3/partial
   family: contraction
   dtype: fp8_e4m3
@@ -356,16 +329,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
-  n_regions: 2403
+  n_regions: 2049
 - cell: elementwise_map/bf16/aligned
   family: elementwise_map
   dtype: bf16
@@ -385,17 +355,14 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
   - vector_unit
-  n_regions: 9473
+  n_regions: 8739
 - cell: elementwise_map/bf16/partial
   family: elementwise_map
   dtype: bf16
@@ -415,17 +382,14 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
   - vector_unit
-  n_regions: 9473
+  n_regions: 8739
 - cell: elementwise_map/fp8_e4m3/aligned
   family: elementwise_map
   dtype: fp8_e4m3
@@ -445,17 +409,14 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
   - vector_unit
-  n_regions: 9473
+  n_regions: 8739
 - cell: elementwise_map/fp8_e4m3/partial
   family: elementwise_map
   dtype: fp8_e4m3
@@ -475,17 +436,14 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
   - vector_unit
-  n_regions: 9473
+  n_regions: 8739
 - cell: movement/bf16/aligned
   family: movement
   dtype: bf16
@@ -505,16 +463,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
-  n_regions: 6330
+  n_regions: 5504
 - cell: movement/bf16/partial
   family: movement
   dtype: bf16
@@ -534,16 +489,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
-  n_regions: 6330
+  n_regions: 5504
 - cell: movement/fp8_e4m3/aligned
   family: movement
   dtype: fp8_e4m3
@@ -563,16 +515,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
-  n_regions: 6330
+  n_regions: 5504
 - cell: movement/fp8_e4m3/partial
   family: movement
   dtype: fp8_e4m3
@@ -592,13 +541,10 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mxu
-  n_regions: 6330
+  n_regions: 5504

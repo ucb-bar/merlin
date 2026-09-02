@@ -43,13 +43,10 @@ composition:
     - gemma2_2b_int8_section2
     - gemma2_2b_int8_spec
     - gemma2_2b_int8_spec_pretransposed
-    - lstmnetvit_fp8
-    - lstmnetvit_int8
     - small_llama
     - small_llama_fp8
     - small_llama_int8
     - spectformer_int8_full
-    - tiny_llama_fp32_full
   whole_model_shape:
     gemma2_2b_int8: H
     gemma2_2b_int8_full: H
@@ -64,13 +61,10 @@ composition:
     gemma2_2b_int8_section2: H
     gemma2_2b_int8_spec: H
     gemma2_2b_int8_spec_pretransposed: H
-    lstmnetvit_fp8: H
-    lstmnetvit_int8: H
     small_llama: H
     small_llama_fp8: H
     small_llama_int8: H
     spectformer_int8_full: H
-    tiny_llama_fp32_full: H
   captures_unreadable: {}
   axis_basis: "the composition shapes the real captures CONTAIN \u2014 not just the shape each capture\
     \ has as a whole. A model classifies as `routing` end to end, yet it contains isolated dispatches,\
@@ -88,8 +82,6 @@ memory_mapping:
   captures_unreadable: {}
   why: '''mx_gemmini'' declares no operand-store capacity we can derive, so no regime is required of the
     corpus -- that is ''we do not know'', never ''nothing is required'''
-  regime_extents: {}
-  regime_dtype: bf16
   axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
     own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
     capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
@@ -101,16 +93,11 @@ host_only:
   - movement
   - normalization
   - reduction
-  dtypes:
-    reduction: f32
-    movement: f32
-    normalization: f32
-    elementwise_map: f32
   observed_in:
-    elementwise_map: 9473
-    movement: 6330
-    normalization: 1146
-    reduction: 2356
+    elementwise_map: 8739
+    movement: 5504
+    normalization: 876
+    reduction: 2166
   basis: 'families a real capture contains and this target''s capability manifest does not admit. The
     compiler must route them to the host lane; accelerating one is as much a defect as failing to accelerate
     an admitted family. EMPTY means no negative lane is derivable for this target -- every family its
@@ -132,20 +119,17 @@ diagnostics:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   captures_unreadable: {}
   families_observed:
-    contraction: 2403
-    elementwise_map: 9473
-    movement: 6330
-    normalization: 1146
-    reduction: 2356
+    contraction: 2049
+    elementwise_map: 8739
+    movement: 5504
+    normalization: 876
+    reduction: 2166
   families_observed_via_primitives: {}
   families_needed_but_not_admitted:
   - elementwise_map
@@ -156,6 +140,7 @@ diagnostics:
   alignment_axis:
   - aligned
   - partial
+  admitted_status: resolved
   notes:
   - 4 family/families appear in a real capture but the hardware declares no capability for them (elementwise_map,
     movement, normalization, reduction); those are compiler work for the scalar/vector lane, not accelerator
@@ -187,16 +172,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mx_pe
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/bf16/partial
   family: contraction
   dtype: bf16
@@ -216,16 +198,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mx_pe
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/i8/aligned
   family: contraction
   dtype: i8
@@ -245,16 +224,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mx_pe
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/i8/partial
   family: contraction
   dtype: i8
@@ -274,16 +250,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mx_pe
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/mxfp4/aligned
   family: contraction
   dtype: mxfp4
@@ -303,16 +276,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mx_pe
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/mxfp4/partial
   family: contraction
   dtype: mxfp4
@@ -332,16 +302,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mx_pe
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/mxfp6/aligned
   family: contraction
   dtype: mxfp6
@@ -361,16 +328,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mx_pe
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/mxfp6/partial
   family: contraction
   dtype: mxfp6
@@ -390,16 +354,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mx_pe
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/mxfp8/aligned
   family: contraction
   dtype: mxfp8
@@ -419,16 +380,13 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mx_pe
-  n_regions: 2403
+  n_regions: 2049
 - cell: contraction/mxfp8/partial
   family: contraction
   dtype: mxfp8
@@ -448,13 +406,10 @@ cells:
   - gemma2_2b_int8_section2
   - gemma2_2b_int8_spec
   - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
   - small_llama
   - small_llama_fp8
   - small_llama_int8
   - spectformer_int8_full
-  - tiny_llama_fp32_full
   admitted_by:
   - mx_pe
-  n_regions: 2403
+  n_regions: 2049
