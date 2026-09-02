@@ -80,6 +80,12 @@ Maps to `MATMUL_RESIDENT` (`operands: {lhs, rhs, dst}`). `dst` rows × resident 
 ```
 Maps to `COMMIT` (`operands: {src, dst}`, `attributes: {epilogue, output_dtype, acc_scale?}`).
 - `epilogue` — ordered subset of `["bias_add", "requant", "acc_scale", "relu", "maxpool"]`.
+- `bias = "B"` — required iff `"bias_add"` is in `epilogue`, and it names the `role = "bias"` tensor
+  the stage adds. The stage was listed here and the role was listed above, but nothing said WHICH
+  operand the stage consumes, so a module could declare that a bias is added without saying what to
+  add. The bias is a length-`N` vector added to every row, **in the accumulator's dtype**, before any
+  requant or activation — it lands on the accumulator, which is why the vector is `i32` on an
+  `i8 x i8 -> i32` datapath and not `i8`.
 - `output_dtype ∈ {i32, i8}` — `i32` = full-width readout, `i8` = scaled/clamped readout.
 - `acc_scale : f32` — required iff `"acc_scale"` is in `epilogue`. The `: f32` suffix is honest:
   the requant applies an **f32 multiply, round-to-nearest-even, clamp to i8**.
@@ -100,6 +106,24 @@ Maps to `COMMIT` (`operands: {src, dst}`, `attributes: {epilogue, output_dtype, 
         pool_in_dims = [4, 4], pool_size = [2, 2], pool_stride = [2, 2], pool_padding = [0, 0, 0, 0]
       } : (!merlin_iface.acc<i32>) -> tensor<4x16xi32>
 ```
+
+### `merlin_iface.bias_add` — add a bias vector to a committed tensor
+```mlir
+%X  = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xi32>
+%B  = merlin_iface.tensor {name = "B", role = "bias"}  : tensor<16xi32>
+%Y0 = merlin_iface.bias_add %X, %B {name = "Y0", output_dtype = "i32"} :
+      (tensor<16x16xi32>, tensor<16xi32>) -> tensor<16x16xi32>
+```
+The `"bias_add"` commit stage standing on its own, over an already-committed tensor rather than over an
+accumulator. Same arithmetic, same length-`N`-vector-per-row broadcast, same dtype rule — its operands
+are in the **accumulator's** dtype because that is the domain the stage runs in, so a fused capsule and
+this one are performing the same addition on the same numbers.
+
+It exists so a fused epilogue has something to be measured against: the fusion claim is that
+`matmul+bias` fused costs less than the `matmul` and the `bias_add` it replaces, and that comparison
+needs the unfused halves to be expressible. A backend may map it to whatever its own vector or
+accumulator-readout path provides; a target with no separate vector class is expected to fold it into
+the readout, and its capsule then requires no vector instruction (see `expected_instruction_coverage`).
 
 ### `merlin_iface.evict` — release a resident weight
 ```mlir

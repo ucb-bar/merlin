@@ -33,7 +33,9 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
                         acc_scale: float | None = None, comment: str = "",
                         target: str = "gemmini", operand_dtype: str = "i8",
                         acc_dtype: str = "i32", scale_block: int | None = None,
-                        scale_dtype: str = "i8") -> str:
+                        scale_dtype: str = "i8", pool_attrs: dict[str, Any] | None = None,
+                        commit_rows: int | None = None, bias: str | None = None,
+                        bias_dtype: str | None = None) -> str:
     """Emit a single-matmul merlin_iface module (weight-stationary). ``target``/``operand_dtype``/
     ``acc_dtype`` default to the gemmini integer path (so existing callers are byte-identical); pass the
     target's derived MLIR dtype spellings (e.g. ``f8E4M3FN``/``bf16`` for a float MXU) to emit its ISA.
@@ -42,11 +44,33 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
     elements. A microscaling operand is (elements, per-block scales) -- declaring only the elements, as
     this interface used to, hands a backend half a number and asks it for the product, which no compiler
     can supply. When set, the two scale streams are declared as first-class input tensors alongside the
-    operands they scale. Omitted (None) leaves the module byte-identical for an unscaled target."""
+    operands they scale. Omitted (None) leaves the module byte-identical for an unscaled target.
+
+    ``bias`` names the per-column bias vector a ``bias_add`` epilogue consumes. It is a DECLARED operand
+    for the same reason the scale streams are: the commit attribute ``epilogue = ["bias_add"]`` says a
+    bias is added but not what to add, and a backend cannot reconstruct corpus data from the element
+    bytes. ``bias_dtype`` defaults to ``acc_dtype`` because that is the domain the addition happens in --
+    the bias lands on the accumulator, before any requant -- so declaring it in the operand dtype would
+    describe a different computation from the one the golden performs. Omitted (None) leaves the module
+    byte-identical for a capsule with no bias stage."""
     epi = ", ".join(f'"{e}"' for e in epilogue)
     commit_attrs = f'name = "{out}", epilogue = [{epi}], output_dtype = "{output_dtype}"'
     if acc_scale is not None:
         commit_attrs += f", acc_scale = {acc_scale} : f32"
+    if bias is not None:
+        # Names the operand the stage consumes. The golden engine reads exactly this attribute
+        # (`capsule_golden._apply_epilogue` -> `attrs["bias"]`), so a module that declares the stage
+        # without it and a golden that adds nothing would agree with each other and both be wrong.
+        commit_attrs += f', bias = "{bias}"'
+    # A POOLING epilogue is the one stage that changes the committed extent: the accumulator's rows
+    # unflatten to a plane and pool down, so the commit result type is `commit_rows`, not M. Both the
+    # geometry and the row count are passed in (computed once by the corpus builder) rather than
+    # recomputed here -- two copies of the same formula is exactly how a golden and an emitted module
+    # come to describe different tensors.
+    for k, v in (pool_attrs or {}).items():
+        commit_attrs += (f", {k} = [{', '.join(str(int(x)) for x in v)}]" if isinstance(v, list)
+                         else f", {k} = {int(v)} : i64")
+    rows = M if commit_rows is None else int(commit_rows)
     lines = []
     if comment:
         lines.append(f"// {comment}")
@@ -57,6 +81,10 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
         f'  %{lhs} = merlin_iface.tensor {{name = "{lhs}", role = "input"}} : '
         f'tensor<{M}x{K}x{operand_dtype}>',
     ]
+    if bias is not None:
+        lines.append(
+            f'  %{bias} = merlin_iface.tensor {{name = "{bias}", role = "bias"}} : '
+            f'tensor<{N}x{bias_dtype or acc_dtype}>')
     if scale_block and K % scale_block == 0:
         # A block-scaled datapath consumes one E8M0 exponent per `scale_block` K elements, per row of the
         # lhs and per column of the weight. They are declared operands, not hidden state: the scales are
@@ -74,7 +102,7 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
         f'  %acc0 = merlin_iface.matmul %{lhs}, %{weight}_res '
         f': (tensor<{M}x{K}x{operand_dtype}>, !merlin_iface.resident) -> !merlin_iface.acc<{acc_dtype}>',
         f'  %{out} = merlin_iface.commit %acc0 {{{commit_attrs}}} '
-        f': (!merlin_iface.acc<{acc_dtype}>) -> tensor<{M}x{N}x{_dt(output_dtype)}>',
+        f': (!merlin_iface.acc<{acc_dtype}>) -> tensor<{rows}x{N}x{_dt(output_dtype)}>',
         f'  merlin_iface.evict %{weight}_res : (!merlin_iface.resident) -> ()',
         "}",
     ]

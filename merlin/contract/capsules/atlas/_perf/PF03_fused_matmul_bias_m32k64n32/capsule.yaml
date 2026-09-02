@@ -1,0 +1,115 @@
+name: PF03_fused_matmul_bias_m32k64n32
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'shared epilogue-fusion group: one fused matmul+bias against the
+  matmul and the bias add it replaces, at one identical shape per group (tile=32;
+  K=64, M=32, N=32; op=fused_matmul_bias)'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 64
+  - 32
+  dtype: fp8_e4m3
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 64
+  dtype: fp8_e4m3
+- name: B
+  role: bias
+  shape:
+  - 32
+  dtype: bf16
+operation:
+  op: fused_matmul_bias
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue:
+    - bias_add
+    output_dtype: bf16
+    bias: B
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  - TensorComputeBinary
+  modes:
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L5_fusion
+  family: PF
+  lever: epilogue_fusion
+  claim: DIFFERENTIAL
+  comparand:
+    kind: group_arithmetic
+    against: sum_of_unfused_parts
+    cancels:
+    - operation_shape
+    - operands
+    - numeric_policy
+    demand_equal:
+    - M
+    - N
+    - operand_dtype
+    - accum_dtype
+  falsifier:
+    observation: fused_cycles_minus_sum_of_parts
+    fires_when: fused_cycles_are_not_lower_than_the_sum_of_parts
+    negative_control: unfused_matmul_plus_bias_add
+  gate:
+    traits:
+    - structural_pipeline_depth
+    instrument: cycle_count
+    capacity: complete_fused_and_part_comparison_group
+    on_missing: skip_with_evidence
+  regime:
+    separation: one_identical_shape_per_group
+    layout: fused_member_and_all_parts_share_inputs
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      members:
+      - fused_matmul_bias
+      - matmul
+      - bias_add
+    resolved:
+      source: direct
+      operand_dtype: fp8_e4m3
+      accum_dtype: bf16
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 1
+    runs: three_per_shape
+    projected_cycles: derived_at_preflight
+    basis: one_fused_member_and_two_parts
+comparison_group:
+  name: fmb_m32k64n32
+  role: fused

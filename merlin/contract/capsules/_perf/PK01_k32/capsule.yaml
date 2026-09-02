@@ -1,0 +1,148 @@
+name: PK01_k32
+kind: model_slice
+source_role: derived_sweep
+source_reference: shared reduction-depth sweep at fixed single-tile parallel extents
+  (tile=16; K=32, M=16, N=16)
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    relu: false
+    acc_scale: false
+    i8: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L1_tile
+  family: PK
+  lever: reduction_depth
+  claim: PREDICTS
+  comparand:
+    kind: fitted_prediction
+    against: measured_cycles_same_member
+    cancels:
+    - identical_M
+    - identical_N
+    - identical_datapath
+    demand_equal:
+    - operation
+    - M
+    - N
+    - operand_dtype
+    - accum_dtype
+  falsifier:
+    observation: residual_cycles_by_K
+    fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+    negative_control: fixed_M_and_N_across_all_K_points
+  acceptance:
+    schema_version: 1
+    analyzer: perf_pk_claim.analyze_pk_claim/v1
+    fit:
+      form: affine
+      method: ordinary_least_squares_all_L3_replicates
+      independent_variable: K
+      dependent_metric: verilator_L3_cycles
+    cohort:
+      operation: matmul
+      fixed_shape_axes:
+      - M
+      - N
+      fixed_fields:
+      - operation
+      - operand_dtype
+      - accum_dtype
+      - epilogue
+      exact_points: 4
+      K_multipliers_of_tile:
+      - 1
+      - 2
+      - 4
+      - 8
+    replicates:
+      exact_count: 3
+      identities:
+      - r000
+      - r001
+      - r002
+    evidence:
+      correctness_simulator: spike
+      correctness_tier: L2
+      timing_simulator: verilator
+      timing_tier: L3
+      spike_cycles_citable: false
+    thresholds:
+      slope_cycles_per_K_element_min_exclusive: 0.0
+      r_squared_min_inclusive: 0.995
+      residual_bound:
+        predicate: abs_residual_le_max_of_floor_and_fraction_of_observed
+        absolute_floor_cycles: 8
+        observed_cycle_fraction: 0.03
+  gate:
+    traits:
+    - structural_pipeline_depth
+    instrument: cycle_count
+    capacity: four_distinct_reduction_depths
+    on_missing: skip_with_evidence
+  regime:
+    separation: K_is_the_only_varied_shape_axis
+    layout: target_native_direct_corpus_builder
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      operation: matmul
+      varied_axis: K
+    resolved:
+      source: direct
+      operand_dtype: int8
+      accum_dtype: i32
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 1
+    runs: 4
+    projected_cycles: derived_at_preflight
+    basis: four_members_before_repetition
