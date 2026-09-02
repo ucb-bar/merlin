@@ -34,6 +34,41 @@ def _populated_pairs(fa, fb) -> dict[str, tuple]:
     return out
 
 
+def uncomparable_axes(expert: "CCA", ours: "CCA") -> list[tuple[str, str]]:
+    """Axes one side populated and the other did NOT -- returned as ``(axis, which_side_is_missing)``.
+
+    ``compare`` deliberately emits no divergence when either side is None: it cannot claim a gap it
+    cannot see, and inventing one would be worse. But SILENCE is not the same as "no gap", and the
+    difference matters because the loop can only discover what it is shown. This module already knew
+    that hazard and patched it for ONE axis -- see the MR-aware special case in ``compare``, added
+    because "an UNBLOCKED kernel lifts to register_block=None, so 'expert blocks to MR=k, ours
+    doesn't' never surfaced". Every other axis kept the blindness.
+
+    OBSERVED: selecting a dtype-matched int8 expert (correctly, to stop a cross-dtype comparison
+    manufacturing fake divergences) took the divergence count 8 -> 5. Two of the three that vanished
+    did so because the qd8 fixture lifts ``compute.register_block=None`` and no ``memory`` facet at
+    all -- so real gaps on register blocking and access pattern became invisible rather than resolved.
+    Trading visible noise for invisible blindness is the wrong trade; this makes the blindness visible.
+
+    Report this next to ``compare``'s output, the way ``build_catalog`` reports unrouted divergences.
+    """
+    out: list[tuple[str, str]] = []
+    for facet in _facet_names():
+        fe, fo = getattr(expert, facet, None), getattr(ours, facet, None)
+        if fe is None and fo is None:
+            continue
+        if fe is None or fo is None:
+            # the whole facet is missing on one side; name it once rather than per field
+            out.append((facet, "expert" if fe is None else "ours"))
+            continue
+        de, do = asdict(fe), asdict(fo)
+        for k in sorted(set(de) | set(do)):
+            ve, vo = de.get(k), do.get(k)
+            if (ve is None) != (vo is None):
+                out.append((f"{facet}.{k}", "expert" if ve is None else "ours"))
+    return out
+
+
 def _facet_names() -> tuple[str, ...]:
     """Facet fields of :class:`CCA`, reflected rather than hardcoded.
 

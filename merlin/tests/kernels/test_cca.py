@@ -423,3 +423,56 @@ def test_libc_internals_that_merely_look_mathy_are_still_not_math():
     for sym in ("expand_dynamic_string_token", "_nl_expand_alias", "_nl_explode_name",
                 "sysinfo", "__gettext_free_exp", "_IO_vtable_check", "__libc_assert_fail"):
         assert math_call_kind(sym) is None, sym
+
+
+# ---------------------------------------------------------------------------------------
+# Uncomparable axes. `compare` emits no divergence when either side is None -- correct, it
+# cannot claim a gap it cannot see. But silence is not "no gap", and the loop can only
+# discover what it is shown. This module already knew the hazard and patched ONE axis (the
+# MR-aware special case, added because an unblocked kernel lifts register_block=None so
+# "expert blocks, ours doesn't" never surfaced); every other axis kept the blindness.
+# ---------------------------------------------------------------------------------------
+
+def test_an_axis_only_one_side_can_answer_is_reported_not_silently_skipped():
+    from merlin.kernels import cca_compare as cc
+    from merlin.kernels.cca import CCA, ComputeFacet, MemoryFacet
+
+    full = CCA(op="matmul", backend=["rvv"],
+               compute=ComputeFacet(op="matmul", register_block=(4, 16), accumulator_resident=True),
+               memory=MemoryFacet(access_pattern="unit_stride"))
+    partial = CCA(op="matmul", backend=["rvv"],
+                  compute=ComputeFacet(op="matmul"))          # no block, no residency, no memory facet
+
+    axes = dict(cc.uncomparable_axes(partial, full))
+    assert axes.get("compute.register_block") == "expert"
+    assert axes.get("compute.accumulator_resident") == "expert"
+    assert axes.get("memory") == "expert", "a whole missing facet must be named once, not per field"
+    # and compare() still refuses to invent a divergence for them
+    for d in cc.compare(partial, full):
+        assert d.expert is not None and d.ours is not None
+
+
+def test_both_sides_absent_is_not_an_uncomparable_axis():
+    """Neither side lifting an axis is a coverage fact about the LIFTER, not an asymmetry between the
+    two CCAs -- reporting it would bury the asymmetries that matter."""
+    from merlin.kernels import cca_compare as cc
+    from merlin.kernels.cca import CCA, ComputeFacet
+
+    a = CCA(op="matmul", backend=["rvv"], compute=ComputeFacet(op="matmul"))
+    b = CCA(op="matmul", backend=["rvv"], compute=ComputeFacet(op="matmul"))
+    assert not [x for x in cc.uncomparable_axes(a, b) if x[0].startswith("memory")]
+
+
+def test_the_measured_qd8_expert_blindness_is_surfaced():
+    """The concrete case: the dtype-matched int8 GEMM fixture cannot answer register blocking or
+    anything in memory, so choosing it (correctly, to avoid a cross-dtype diff) must not silently
+    retire those axes."""
+    from merlin.kernels import cca_compare as cc
+    from merlin.mining.wholemodel_proposer import expert_family_cca
+
+    e8, e32 = expert_family_cca("matmul", dtype="int8"), expert_family_cca("matmul", dtype="fp32")
+    if e8 is None or e32 is None:
+        pytest.skip("gemm fixtures not harvested in this checkout")
+    axes = dict(cc.uncomparable_axes(e8, e32))
+    assert axes.get("compute.register_block") == "expert"
+    assert axes.get("memory") == "expert"
