@@ -1,7 +1,8 @@
 merlin/contract/
-merlin/contract/capsules/isa/
-merlin/contract/capsules/layers/
-merlin/contract/capsules/model_slices/
+merlin/contract/capsules/saturn_opu/isa/
+merlin/contract/capsules/saturn_opu/layers/
+merlin/contract/capsules/saturn_opu/model_slices/
 experiments/capsule_bench/targets/saturn_opu/task/
 third_party/llvm-install/
 experiments/capsule_bench/targets/saturn_opu/scripts/agent_selfcheck.py
+out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/

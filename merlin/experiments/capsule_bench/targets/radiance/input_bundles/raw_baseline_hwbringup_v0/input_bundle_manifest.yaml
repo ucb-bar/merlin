@@ -32,11 +32,22 @@ allowed:
   as: agent_selfcheck.py
   mode: ro
   note: redacted self-check
+- path: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
+  mode: ro
+  note: frozen host lane (pinned infrastructure, read-only)
 denied:
 - path: merlin/
   reason: Merlin internals (no tools for the raw arm)
+- path: out/artifacts/targets/radiance/hand_v0/
+  reason: prior backend / exemplar (answer surface)
+- path: out/artifacts/targets/radiance/radiance_mlir/
+  reason: prior backend / exemplar (answer surface)
+- path: merlin/contract/capsules/radiance/hidden/
+  reason: hidden capsules + goldens
 - path: experiments/capsule_bench/targets/radiance/input_bundles/grader_private_v0/
   reason: grader-private
 - path: experiments/capsule_bench/targets/radiance/runs/
   reason: prior submissions
+- path: merlin/python/merlin/llvmlower/
+  reason: 'frozen host lane: the experiment measures the target lane, not a second CPU backend'
 integrity_required: true

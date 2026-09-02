@@ -2,6 +2,9 @@ merlin/python/merlin/runtime/reference.py
 merlin/python/merlin/runtime/simulator.py
 merlin/python/merlin/targetgen/generate/runtime_adapter.py
 merlin/python/merlin/xdsl_dialects/lowering/
+out/artifacts/targets/radiance/hand_v0/
+out/artifacts/targets/radiance/radiance_mlir/
 merlin/contract/capsules/radiance/hidden/
 experiments/capsule_bench/targets/radiance/input_bundles/grader_private_v0/
 experiments/capsule_bench/targets/radiance/runs/
+merlin/python/merlin/llvmlower/

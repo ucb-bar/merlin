@@ -1,8 +1,11 @@
 merlin/contract/
 merlin/contract/capsules/mx_gemmini/isa/
 merlin/contract/capsules/mx_gemmini/layers/
+merlin/contract/capsules/mx_gemmini/model/
+merlin/contract/capsules/mx_gemmini/model_slices/
 experiments/capsule_bench/targets/mx_gemmini/contracts/hwbringup_mx_v0/isa_include/isa_definition.py
 experiments/capsule_bench/targets/mx_gemmini/task/
 third_party/llvm-install/
 experiments/capsule_bench/targets/mx_gemmini/contracts/hwbringup_mx_v0
 experiments/capsule_bench/targets/mx_gemmini/scripts/agent_selfcheck.py
+out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/

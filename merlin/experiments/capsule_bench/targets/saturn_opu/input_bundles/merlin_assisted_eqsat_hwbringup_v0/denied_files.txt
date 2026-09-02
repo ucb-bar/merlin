@@ -7,3 +7,4 @@ merlin/python/merlin/xdsl_dialects/lowering/
 merlin/contract/capsules/saturn_opu/hidden/
 experiments/capsule_bench/targets/saturn_opu/input_bundles/grader_private_v0/
 experiments/capsule_bench/targets/saturn_opu/runs/
+merlin/python/merlin/llvmlower/
