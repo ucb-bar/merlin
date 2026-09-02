@@ -670,6 +670,15 @@ def assemble_index_tree(target: str, dest: str | Path, *,
     return {"target": target, "entries": entries, "dest": str(dest)}
 
 
+def _interpreted(manifest: dict[str, Any]) -> bool:
+    """True when the package needs no build step: its tool is a script the tree already ships.
+
+    Read from the manifest's own ``language``, so a target that publishes a compiled backend and one
+    that publishes an interpreted one are both served without either naming the other's convention.
+    """
+    return str((manifest or {}).get("language") or "").strip().lower() in ("python",)
+
+
 def _rewrite_build_paths(build: dict[str, Any]) -> dict[str, Any]:
     """Rewrite a hoisted-gemmini build block so repo-root == {package}: ``{package}/mlir_oot`` ->
     ``{package}`` and ``mlir_oot/build`` -> ``build`` (structured string replacement, no regex)."""
@@ -711,8 +720,21 @@ def _rewrite_manifest(sel: ChampionSelection, *, layout_version: str,
 
     if contract_shaped:
         man = copy.deepcopy(src)
-        if hoisted_tree and isinstance(man.get("build"), dict):
-            man["build"] = _rewrite_build_paths(man["build"])
+        if isinstance(man.get("build"), dict):
+            if hoisted_tree:
+                man["build"] = _rewrite_build_paths(man["build"])
+            man.setdefault("entrypoints", {})["tool"] = man["build"].get("tool_output", tool_out)
+        elif _interpreted(src):
+            # A package whose language needs no build step ships its tool as a script INSIDE the
+            # tree, and the hoist moved that script to the repo root. Synthesizing a CMake build and
+            # pointing the entrypoint at `build/bin/<tool>` names a path that never exists: measured,
+            # the first python champion published with `entrypoints.tool: build/bin/gemmini-opt`
+            # while the runnable tool sat at the root, so a fetched clone could not invoke it.
+            tool = str((src.get("entrypoints") or {}).get("tool") or sel.tool_name)
+            if hoisted_tree and tool.startswith("mlir_oot/"):
+                tool = tool[len("mlir_oot/"):]
+            man.pop("build", None)
+            man.setdefault("entrypoints", {})["tool"] = tool
         else:
             man["build"] = {
                 "configure": ["cmake", "-S", "{package}", "-B", "{package}/build",
@@ -720,7 +742,7 @@ def _rewrite_manifest(sel: ChampionSelection, *, layout_version: str,
                 "command": ["cmake", "--build", "{package}/build"],
                 "tool_output": tool_out,
             }
-        man.setdefault("entrypoints", {})["tool"] = man["build"]["tool_output"]
+            man.setdefault("entrypoints", {})["tool"] = man["build"]["tool_output"]
     else:
         man = {
             "artifact_type": "mlir_oot_target_backend",
@@ -765,12 +787,15 @@ def assemble_repo_tree(sel: ChampionSelection, dest: str | Path, *, layout_versi
         shutil.rmtree(dest)
     dest.mkdir(parents=True)
 
-    # canonical buildable skeleton (same for every target)
-    _write(dest / "CMakeLists.txt", _cmakelists(sel))
-    _write(dest / "tools" / sel.tool_name / "main.cpp", _driver_cpp(sel))
-    _gitkeep(dest / "include" / sel.dialect_name)
-    _gitkeep(dest / "lib")
-    _gitkeep(dest / "test")
+    # Canonical buildable skeleton -- for a package that is actually built. An interpreted package
+    # gets none of it: shipping a CMakeLists.txt, an empty include/lib and a stub main.cpp beside a
+    # working Python tool tells a reader to build something that is not there.
+    if not _interpreted(sel.manifest):
+        _write(dest / "CMakeLists.txt", _cmakelists(sel))
+        _write(dest / "tools" / sel.tool_name / "main.cpp", _driver_cpp(sel))
+        _gitkeep(dest / "include" / sel.dialect_name)
+        _gitkeep(dest / "lib")
+        _gitkeep(dest / "test")
 
     payload = dest / "payload"
     payload.mkdir(parents=True, exist_ok=True)
@@ -825,7 +850,10 @@ def _populate_mlir_oot(sel: ChampionSelection, dest: Path, payload: Path) -> boo
                     shutil.rmtree(target)
                 shutil.copytree(entry, target)
             else:
-                shutil.copyfile(entry, target)
+                # copy2, not copyfile: an interpreted package's entrypoint is a SCRIPT, and
+                # `copyfile` drops the mode bits. The published `<target>-opt` shipped without its
+                # executable bit, so a fresh clone could not run the tool its manifest names.
+                shutil.copy2(entry, target)
     return hoisted
 
 
