@@ -571,6 +571,10 @@ capsules:
   weight: W
   out: Y0
   epilogue: [maxpool]
+  # Native pooling runs in the store DMA over inputType (the manifest's reduction/int8 capability),
+  # not over the full-width accumulator container. Identity-scale narrowing is monotone, so max and
+  # clamp commute and the bit-exact contract is the hardware operation that actually exists.
+  output_dtype: i8
   # 16 committed rows read as one 4x4 plane; a 2x2 window at stride 2 tiles it exactly, so this capsule
   # says nothing about the ragged case -- that is GP1's job.
   pool_in_dims: [4, 4]
@@ -578,7 +582,7 @@ capsules:
   pool_stride: [2, 2]
   generalization: {generalization_axis: composition}
   modes:
-    i8: false
+    i8: true
     relu: false
     acc_scale: false
 - name: GP1_matmul_maxpool_tail_i8
@@ -604,12 +608,13 @@ capsules:
   weight: W
   out: Y0
   epilogue: [maxpool]
+  output_dtype: i8
   pool_in_dims: [5, 5]
   pool_size: [2, 2]
   pool_stride: [2, 2]
   generalization: {generalization_axis: composition}
   modes:
-    i8: false
+    i8: true
     relu: false
     acc_scale: false
 - name: GP2_conv2d_maxpool_i8
@@ -630,6 +635,8 @@ capsules:
   kh: 3
   kw: 3
   epilogue: [maxpool]
+  output_dtype: i8
+  modes: {conv2d: true, k_accumulate: true, i8: true}
   # pool_in_dims is NOT declared here: for a conv it is the conv's own 6x6 output extent, derived by the
   # builder and cross-checked by the simulator against the geometry it re-derives. Two hand-typed copies
   # of one extent is how a golden and an engine come to pool different images.
