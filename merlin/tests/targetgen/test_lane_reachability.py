@@ -188,13 +188,20 @@ def test_a_self_hosted_target_needs_no_board_and_reports_no_gap():
     Reading "declares no host.board" as a gap on every target that has none was wrong in exactly that
     way: it counted four targets as under-modelled when two of them are self-hosted and correct."""
     from merlin.perf.profile import derive_profile
-    from merlin.targetgen.routing import host_board_gap
+    from merlin.targetgen.routing import facts_are_extracted, host_board_gap
 
-    for target in ("atlas", "radiance"):
+    # Self-hosted AND extracted. Both halves are load-bearing: a self-hosted verdict resting on a
+    # hand-declared interface is an assertion, and this test used to pass on such a target -- which is
+    # how two targets with very different evidence ended up reported as the same case.
+    checked = 0
+    for target in ("atlas", "radiance", "gemmini", "saturn_opu"):
         trait = (derive_profile(target).traits or {}).get("self_hosted_program")
-        if getattr(trait, "satisfied", None) is not True:
-            pytest.skip(f"{target} is not self-hosted in this checkout; the case under test is absent")
-        assert host_board_gap(target) is None, f"{target} is self-hosted; a board is inapplicable"
+        if getattr(trait, "satisfied", None) is not True or facts_are_extracted(target) is not True:
+            continue
+        assert host_board_gap(target) is None, f"{target} is self-hosted on extracted facts"
+        checked += 1
+    if not checked:
+        pytest.skip("no target in this checkout is self-hosted on extracted facts")
 
 
 def test_an_undetermined_endpoint_is_reported_as_undetermined():
@@ -207,3 +214,28 @@ def test_an_undetermined_endpoint_is_reported_as_undetermined():
     if getattr(trait, "satisfied", None) is not None:
         pytest.skip("saturn_opu's endpoint is established in this checkout")
     assert "UNKNOWN" in (host_board_gap("saturn_opu") or "")
+
+
+def test_a_self_hosted_verdict_from_a_stub_is_not_the_same_claim_as_one_from_rtl():
+    """A facts artifact can be well-formed and still be a STUB: an interface asserted by hand, carrying
+    no evidence, in a document naming no generator and no inputs. The trait it feeds answers True either
+    way, so a conclusion resting on an assertion reads exactly like one resting on decode comparisons
+    found in a named RTL module.
+
+    "This target needs no host board" is precisely the conclusion that must not be drawn from an
+    assertion, so the two cases must not collapse into one verdict."""
+    from merlin.targetgen.routing import facts_are_extracted, host_board_gap
+
+    extracted = [t for t in ("gemmini", "atlas", "radiance", "saturn_opu")
+                 if facts_are_extracted(t) is True]
+    asserted = [t for t in ("gemmini", "atlas", "radiance", "saturn_opu")
+                if facts_are_extracted(t) is False]
+    if not extracted or not asserted:
+        pytest.skip("this checkout does not carry both an extracted and a stub facts artifact")
+
+    # Whatever the per-target answers are, a self-hosted verdict backed by a stub must be REPORTED.
+    for target in asserted:
+        gap = host_board_gap(target)
+        if gap is not None:
+            assert "ASSERTED" in gap or "UNKNOWN" in gap, (
+                f"{target} rests on declared facts; its gap must say which kind of doubt applies")

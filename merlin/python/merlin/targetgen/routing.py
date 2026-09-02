@@ -426,6 +426,34 @@ def host_is_declared(target_name: str) -> bool | None:
         return None
 
 
+def facts_are_extracted(target_name: str) -> bool | None:
+    """Whether this target's RTL facts were EXTRACTED from its RTL, or merely DECLARED.
+
+    A facts artifact can be well-formed and still be a stub: an interface asserted by hand, carrying no
+    evidence string, in a document naming no generator and no input files. Downstream that reads exactly
+    like an extraction -- the trait it feeds answers `True` either way -- so a conclusion resting on an
+    assertion becomes indistinguishable from one resting on 42 decode comparisons found in a named RTL
+    module. They are not the same claim and must not report as one.
+
+    ``None`` when the artifact cannot be read at all, which is a third state again.
+    """
+    try:
+        from merlin.targetgen.rtl.facts import load_facts
+
+        doc = load_facts(target_name)
+    except Exception:                              # noqa: BLE001 -- unreadable facts answer nothing
+        return None
+    if not isinstance(doc, dict):
+        return None
+    body = doc.get("facts") or {}
+    named_generator = bool((doc.get("generator") or {}).get("name"))
+    has_inputs = bool(doc.get("inputs"))
+    # An interface with no evidence was asserted, not found. Evidence is what the extractor writes.
+    ifaces = body.get("interfaces") or []
+    any_evidence = any((i or {}).get("evidence") for i in ifaces if isinstance(i, dict))
+    return bool(named_generator and has_inputs and (any_evidence or body.get("timing")))
+
+
 def host_board_gap(target_name: str) -> str | None:
     """Why this target's host is under-modelled, or ``None`` when a board is not the right question.
 
@@ -466,6 +494,14 @@ def host_board_gap(target_name: str) -> str | None:
         self_hosted = None
 
     if self_hosted is True:
+        # ...but only where that answer was EXTRACTED. A self-hosted verdict resting on a hand-declared
+        # interface is an assertion, and "this target needs no host board" is exactly the conclusion that
+        # must not be drawn from one.
+        if facts_are_extracted(target_name) is False:
+            return (f"{target_name} reads as self-hosted, so no host.board would be needed -- but that "
+                    f"answer is ASSERTED, not extracted: its facts name no generator and no input "
+                    f"files, and its interface carries no evidence. Extract its facts before relying on "
+                    f"the absent board being correct")
         return None
     if self_hosted is None:
         return (f"{target_name} declares no host.board and its `self_hosted_program` trait is UNKNOWN, "
