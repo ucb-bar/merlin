@@ -206,7 +206,14 @@ blocked_unimplemented:
       basis: only_passing_tier_one_members_are_promoted
 
 - family: PF
-  reason: bias-add and fused-epilogue corpus builders are not runnable
+  reason: >-
+    LOCATED, not merely absent. The capsule schema already admits `bias_add` and `fused_matmul_bias`
+    as ops, a `bias` input role exists, and capsule_golden already computes a bias stage -- so the
+    grading half is in place. What is missing is upstream of the builders: `merlin_iface` declares no
+    elementwise/bias op at all, and `corpus_spec` mentions bias nowhere, so there is no interface
+    spelling for a builder to emit. Adding one is a DIALECT change that every target backend must then
+    lower; emitting the capsules before that lands would produce a comparison group no shipped backend
+    can execute.
   fit_axes: [K]
   comparison_roles: [fused, part]
   performance:
