@@ -48,6 +48,11 @@ RESUME_IN_BUDGET = "resume"    # keep going: the partial submission is finished/
 EXIT_WITH_STATUS = "exit"      # stop now: the quota resets far in the future; resume after reset
 NO_POLICY = "none"             # the round was NOT cut short
 
+# Machine-readable boundaries let the round brief refresh mutable operator guidance immediately before
+# an agent relaunch without dropping (or duplicating) this operator-critical banner.
+RESUME_NOTE_BEGIN = "<!-- merlin:resume-note:begin -->"
+RESUME_NOTE_END = "<!-- merlin:resume-note:end -->"
+
 # Distinct process exit code + status token for a weekly-quota stop (kept out of the 2..5 range the
 # loop already uses for refuse-overwrite / isolation / preflight / golden-mask failures).
 QUOTA_WEEKLY_EXIT_CODE = 42
@@ -158,12 +163,14 @@ def resume_note(reason: str) -> str:
     Tells the fresh session its work is preserved and to finish the incomplete pieces FIRST."""
     return (
         f"> ## RESUME — your previous round was cut short ({reason})\n"
+        f"{RESUME_NOTE_BEGIN}\n"
         f"> Your previous `submission/` is PRESERVED on disk — do NOT start over or re-derive it.\n"
         f"> You were interrupted mid-work. FINISH the incomplete pieces FIRST, before any refinement:\n"
         f">   1. `submission/manifest.yaml` (the run scores 0 without it — write/repair it first),\n"
         f">   2. the 4 CLI entrypoints your manifest declares (make the tool runnable end-to-end),\n"
         f">   3. the target artifact (e.g. `kernel.S` / the emitted program) for each capsule.\n"
-        f"> Only once the submission is complete and gradeable should you iterate on correctness.\n\n"
+        f"> Only once the submission is complete and gradeable should you iterate on correctness.\n"
+        f"{RESUME_NOTE_END}\n\n"
     )
 
 

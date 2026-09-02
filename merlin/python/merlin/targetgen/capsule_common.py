@@ -28,7 +28,13 @@ from .contract import schemas
 #: Counting any of them as a FAILURE is what makes ``all_pass`` unreachable, which disables an agent
 #: loop's only early exit and turns every run into a fixed-price purchase of its whole round budget.
 #: Counting one as a PASS would be a phantom certification. They are excluded and listed BY NAME.
-NOT_MEASURED_STATUSES = ("not_graded", "gated", "screened_only", "budget_exhausted")
+#: ``infrastructure_fault`` is here for the same reason as the rest and one more: it is not a
+#: measurement of the submission, so counting it as a failure would attribute a harness bug to the
+#: agent. It is NOT enough on its own, though -- excluding rows from the denominator can leave a
+#: 2-of-33 grade reading "2/2, all_pass", so :func:`capsule_grade.grade` also forces ``gradeable``
+#: False whenever any row carries it. Never measured AND never reported as success.
+NOT_MEASURED_STATUSES = ("not_graded", "gated", "screened_only", "budget_exhausted",
+                         "infrastructure_fault")
 
 
 def _flat(nested) -> list:
@@ -167,8 +173,9 @@ def run_entrypoints(pkg, package_dir: str | Path, capsule: dict, paths, *,
     dialect chooses LLVM-dialect MLIR vs a SIMT kernel). Raises CertFailure on any plane failure.
     The oracle tiers (L2+) are the caller's, since they diverge per target.
     """
-    from .oot_runner import (BackendDeclined, CertFailure, build_package, integrity_scan,
-                             load_package, run_entrypoint)
+    from .oot_runner import (INFRASTRUCTURE_PLANE, BackendDeclined, CertFailure, InfraCategory,
+                             InfraFailure, build_package, integrity_scan, load_package,
+                             run_entrypoint)
 
     if pkg is None:
         pkg = load_package(package_dir, contract=contract)
@@ -178,8 +185,27 @@ def run_entrypoints(pkg, package_dir: str | Path, capsule: dict, paths, *,
         raise CertFailure("build", _cat("ELABORATION_ERROR"), f"tool missing: {pkg.tool}")
 
     iface_rel = capsule.get("interface_mlir", "capsule.interface.mlir")
-    iface_path = Path(capsule["__dir__"]) / iface_rel if "__dir__" in capsule else Path(iface_rel)
+    cap_dir = Path(capsule["__dir__"]) if "__dir__" in capsule else None
+    iface_path = (cap_dir / iface_rel) if cap_dir is not None else Path(iface_rel)
     if not iface_path.is_file():
+        # WHOSE fault is a missing interface MLIR? Two different answers, and conflating them cost a run
+        # its official verdict. If the capsule's own staged DIRECTORY is gone, the cohort was never
+        # materialized -- or was collected out from under this grade, which is the measured case: the
+        # grader resolves the cohort symlink to a concrete staging dir once and reads capsules from it for
+        # the whole grade, and a sibling materialization rmtree'd that dir 20 s in. Every capsule after
+        # that was recorded `schema / structural_invariant_violation`, i.e. "your package is structurally
+        # invalid", 31 times, for a submission that had just scored 33/34. That is an INFRASTRUCTURE
+        # fault: nothing about the submission was measured, and it must never be spelled like a verdict.
+        # Only a capsule dir that IS present, with the interface file missing inside it, is a genuine
+        # corpus/schema defect -- and that one stays exactly as it was.
+        if cap_dir is not None and not cap_dir.is_dir():
+            raise InfraFailure(
+                INFRASTRUCTURE_PLANE, InfraCategory.COHORT_NOT_MATERIALIZED,
+                f"staged capsule input is missing: the cohort was not materialized (or its staging "
+                f"directory was removed mid-grade). Expected capsule directory {cap_dir} (for "
+                f"{iface_path.name}) does not exist. This is a harness/staging fault, NOT a defect in "
+                f"the graded submission, and nothing about the submission was measured for this "
+                f"capsule; re-materialize the cohort and re-grade.")
         raise CertFailure("schema", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
                           f"capsule interface MLIR not found: {iface_path}")
     inp = paths.generated / "input.interface.mlir"

@@ -30,6 +30,7 @@ from .capsule_common import tier_field as _tier_field
 from .capsule_common import tier_status as _tier_status
 from . import coverage_report as CV
 from .corpora import source_experiment_env
+from .oot_runner import INFRASTRUCTURE_PLANE as OOT_INFRASTRUCTURE_PLANE
 from .oot_runner import CertFailure, build_package, integrity_scan, load_package
 
 
@@ -388,6 +389,19 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     capsules_root = ([str(Path(r).resolve()) for r in capsules_root]
                      if isinstance(capsules_root, (list, tuple))
                      else str(Path(capsules_root).resolve()))
+    # HOLD the staged cohort for the duration of this grade. `.resolve()` above is deliberate (a root that
+    # moved under a sibling thread's chdir yields an empty coverage dict instead of an error) but it also
+    # turns the per-target cohort SYMLINK into one concrete `.<target>.build.<pid>.<hex>` path that is then
+    # read for the whole grade -- 10-20 min functional, ~30-40 min per capsule on the cert tier. The
+    # materializer's collector used to drop any build older than 15 minutes, and it dropped one a live
+    # grade was mid-way through: 31 of 33 capsules were then recorded as structurally invalid SUBMISSIONS.
+    # The lease makes "still being read" a fact the collector can check rather than infer from age. It is
+    # advisory and best-effort -- if it cannot be taken, the grade proceeds exactly as before.
+    try:
+        from .contract.materialize import pin_cohort_builds
+        pin_cohort_builds(*(capsules_root if isinstance(capsules_root, list) else [capsules_root]))
+    except Exception:  # noqa: BLE001 -- pinning is an optimisation for the collector, never a gate
+        pass
 
     score: dict = {
         "task": f"{target}-mlir-oot-capsule", "package": str(pkg_dir),
@@ -616,12 +630,36 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
                        f"unavailable, so the oracle never ran on them. n_passed is NOT a capability "
                        f"measurement for this run — fix the environment and re-grade before quoting it."),
         }
+    # THE HARNESS BROKE, NOT THE SUBMISSION. A capsule whose staged inputs were not on disk measured
+    # nothing at all, so it is excluded from the pass/fail denominators (NOT_MEASURED_STATUSES) — but
+    # exclusion ALONE would be the more dangerous of the two lies. Measured: 31 of 33 capsules lost their
+    # staging dir to a sibling materialization's collector; excluding them without this block leaves
+    # `2/2` and `all_pass` reachable, turning a total staging failure into a clean sweep. So the run is
+    # declared NOT gradeable and the fact is reported by name, the same fail-closed posture an empty
+    # suite and a missing oracle already get. A check that could not run must never read as success.
+    _infra = [r for r in results if r.get("status") == "infrastructure_fault"]
+    score["n_infrastructure_fault"] = len(_infra)
+    if _infra:
+        _paths = sorted({(r.get("failure") or {}).get("detail") or "unknown" for r in _infra})
+        score["infrastructure_fault"] = {
+            "n": len(_infra), "of": len(results),
+            "plane": OOT_INFRASTRUCTURE_PLANE,
+            "capsules": sorted(r["capsule"] for r in _infra)[:12],
+            "reasons": _paths[:2],
+            "detail": (f"{len(_infra)} of {len(results)} capsules could not be graded because their "
+                       f"STAGED INPUTS were missing — the capsule cohort was not materialized, or its "
+                       f"staging directory was removed while this grade was running. This is a HARNESS "
+                       f"fault: it is NOT a verdict on the submission, and n_passed/n_capsules is not a "
+                       f"measurement of it. Re-materialize the cohort and re-grade before quoting any "
+                       f"number from this run."),
+        }
     # `gradeable` means this run had a working numeric oracle. It did not, for those capsules, so it is
     # False even though an oracle was requested — the same fail-closed posture the empty suite gets.
-    score["gradeable"] = (not no_oracle) and not _empty and not _incomplete
+    score["gradeable"] = (not no_oracle) and not _empty and not _incomplete and not _infra
     score["n_not_gradeable_no_oracle"] = n_not_gradeable
     score["n_structural_pass"] = n_pass + n_not_gradeable
-    score["structural_pass"] = bool(not _empty and (n_pass + n_not_gradeable) == len(graded))
+    score["structural_pass"] = bool(not _empty and not _infra
+                                    and (n_pass + n_not_gradeable) == len(graded))
     score["numeric_all_exact"] = None if _empty else all(
         r.get("numeric", {}).get("status") == "pass" for r in graded)
     _trace_rows = [r for r in graded if r.get("kind") != "model"]

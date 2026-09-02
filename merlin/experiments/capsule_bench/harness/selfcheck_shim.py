@@ -9,9 +9,34 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sys
 import time
 from pathlib import Path
+
+
+def _request_id() -> str:
+    """A diagnostic request id which stays unique across PID-namespace and clock reuse.
+
+    Namespace PIDs are short-lived and the previous millisecond clock component wrapped every
+    1,000,000 ms.  Both values have collided in long rounds, at which point a new shim can observe an
+    old request's response and completion marker.  Keep them for operator diagnostics, but add a
+    cryptographic nonce and use the full nanosecond clock rather than a modulo clock.
+    """
+    return f"{os.getpid()}_{time.time_ns()}_{secrets.token_hex(16)}"
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Publish one channel file only after all of its bytes are durable."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
+    try:
+        with tmp.open("x", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _verdict(txt: str):
@@ -62,12 +87,13 @@ def main(argv=None):
     ws = Path(__file__).resolve().parent          # the shim lives at <ws>/agent_selfcheck.py
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
-    rid = f"{os.getpid()}_{int(time.time() * 1000) % 1000000}"
-    (ch / f"req_{rid}.json").write_text(json.dumps(
-        {"sim": a.sim, "capsules": a.capsules, "workers": a.workers, "timeout": a.timeout,
+    rid = _request_id()
+    deadline = time.time() + a.timeout + 240
+    _atomic_write(ch / f"req_{rid}.json", json.dumps(
+        {"protocol": 2, "request_id": rid, "deadline_unix_ns": int(deadline * 1_000_000_000),
+         "sim": a.sim, "capsules": a.capsules, "workers": a.workers, "timeout": a.timeout,
          "shape_coverage": bool(a.shape_coverage)}))
     resp, done = ch / f"resp_{rid}.json", ch / f"done_{rid}"
-    deadline = time.time() + a.timeout + 240
     while time.time() < deadline:
         if done.exists() and resp.exists():
             txt = resp.read_text()

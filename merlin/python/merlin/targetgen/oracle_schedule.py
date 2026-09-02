@@ -22,14 +22,11 @@ plumbing can be wired around it.
 
 Three rules do the work:
 
-1. **Content-address every verdict.** A verdict is keyed by ``(capsule, digest, tier)`` where ``digest``
-   is the submission bytes that produced it. Unchanged bytes therefore need no re-run *ever*, and changed
-   bytes invalidate exactly the capsules they affect -- not the corpus. A capsule may narrow that further
-   by declaring ``depends_on: [<component>, ...]``, and then only those components' digests are compared
-   (see :meth:`CapsuleState.invalidated_by`). Declaring nothing means depending on everything: an
-   optimization pass that edits the compiler on every iteration would otherwise re-buy the cycle-accurate
-   tier for the whole corpus per edit, and a round that re-certifies 35 capsules at minutes each to learn
-   about one never finishes.
+1. **Content-address every verdict.** Prefer the exact per-capsule executable plus hardware identity. If
+   either side lacks that identity, fall back to submission bytes and their optional component
+   decomposition. Unchanged executable bytes therefore need no re-run *ever*, while a changed executable
+   invalidates that capsule rather than the corpus. Declaring no component dependency still means depending
+   on everything; missing identity always fails closed to the broader comparison.
 2. **The cheap tier gates the expensive one.** A deeper tier is scheduled only for a capsule that has
    PASSED the shallower one, so RTL time is only ever spent on work that could plausibly certify.
 3. **The expensive tier runs on a representative subset.** Full coverage at the functional tier,
@@ -53,6 +50,7 @@ PASS, FAIL, UNKNOWN = "pass", "fail", "unknown"
 # component name can produce so they can never collide with a real one.
 WHOLE_SUBMISSION = "<whole-submission>"   # "this capsule rides on every byte" -- the undeclared default
 UNATTRIBUTED = "<unattributed>"           # submission bytes no declared component claims
+EXECUTION_ARTIFACT = "<execution-artifact>"  # exact per-capsule executable + hardware identity
 
 # Why a verdict is not a verdict about the current bytes. Kept as three distinct reasons because they are
 # three distinct states: NO_VERDICT is not-yet-known (nobody has run it), CHANGED is known-to-be-stale,
@@ -76,6 +74,7 @@ class Staleness:
 class Verdict:
     """What is known about one (capsule, tier), and for WHICH bytes it was known.
 
+    ``execution_digest`` identifies the exact executable and hardware revision when available.
     ``components`` is the per-component digest map AS OF THE RUN THAT EARNED THIS VERDICT. A verdict
     recorded before per-component digests existed carries an empty map, which makes every declared
     dependency UNDETERMINABLE and re-runs the capsule -- the fail-closed direction.
@@ -83,14 +82,16 @@ class Verdict:
     status: str
     digest: str
     components: dict[str, str] = field(default_factory=dict)
+    execution_digest: str | None = None
 
 
 @dataclass
 class CapsuleState:
     """Everything the scheduler knows about one capsule.
 
-    ``digest`` is the whole submission; ``components`` decomposes those same bytes by component, and
-    ``depends_on`` is what the capsule itself declared it rides on.
+    ``execution_digest`` identifies this capsule's current executable and hardware revision. ``digest``
+    is the whole submission; ``components`` decomposes those same bytes by component, and ``depends_on``
+    is what the capsule itself declared it rides on.
 
     The reason the decomposition exists: Phase P forks a functionally-complete compiler and then edits it
     continuously, and a whole-submission digest makes EVERY edit invalidate EVERY certificate. The cert
@@ -102,6 +103,7 @@ class CapsuleState:
     verdicts: dict[str, Verdict] = field(default_factory=dict)   # tier -> Verdict
     components: dict[str, str] = field(default_factory=dict)     # component -> digest of the CURRENT bytes
     depends_on: tuple[str, ...] | None = None      # None/() == undeclared == depends on the whole submission
+    execution_digest: str | None = None            # exact CURRENT executable + target/RTL identity
 
     def _dep_components(self) -> tuple[str, ...] | None:
         """The components this capsule's certificate rides on, or ``None`` for "the whole submission".
@@ -136,6 +138,15 @@ class CapsuleState:
         v = self.verdicts.get(tier)
         if v is None:
             return (Staleness(WHOLE_SUBMISSION, NO_VERDICT),)
+        # The executable is the narrowest safe identity for a hardware verdict. Source bytes may change
+        # without changing the program the cert tier executes; conversely, each capsule emits its own
+        # executable, so one changed artifact must not invalidate an unrelated capsule. Both sides must
+        # be well-formed SHA-256 values. A missing/legacy/malformed value falls through to the existing
+        # component or whole-submission comparison -- absence is never treated as evidence of freshness.
+        if (valid_execution_digest(self.execution_digest)
+                and valid_execution_digest(v.execution_digest)):
+            return (() if self.execution_digest == v.execution_digest
+                    else (Staleness(EXECUTION_ARTIFACT, CHANGED),))
         deps = self._dep_components()
         if deps is None:
             return () if v.digest == self.digest else (Staleness(WHOLE_SUBMISSION, CHANGED),)
@@ -157,6 +168,12 @@ class CapsuleState:
         if v is None or self.invalidated_by(tier):
             return UNKNOWN
         return v.status
+
+
+def valid_execution_digest(value: object) -> bool:
+    """Whether *value* is the lowercase, full-width SHA-256 emitted by the result reader."""
+    return (isinstance(value, str) and len(value) == 64
+            and all(c in "0123456789abcdef" for c in value))
 
 
 def _why(stale: tuple[Staleness, ...]) -> str | None:

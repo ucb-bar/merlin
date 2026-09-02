@@ -62,6 +62,126 @@ def _strip_build_state(root: Path) -> None:
             except Exception:
                 pass
 
+
+def _validate_seed_submission_source(source: str | Path, seeded: Path) -> Path:
+    """Resolve a self-contained seed and reject overlap before any destination cleanup."""
+    source_arg = Path(source).expanduser()
+    if source_arg.is_symlink():
+        raise RuntimeError(f"seed submission source must not be a symlink: {source_arg}")
+    try:
+        source_dir = source_arg.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"seed submission source does not exist: {source_arg}") from exc
+    if not source_dir.is_dir():
+        raise RuntimeError(f"seed submission source is not a directory: {source_dir}")
+    if not (source_dir / "manifest.yaml").is_file():
+        raise RuntimeError(f"seed submission has no manifest.yaml: {source_dir}")
+
+    seeded_resolved = Path(seeded).resolve(strict=False)
+    if (source_dir == seeded_resolved
+            or source_dir.is_relative_to(seeded_resolved)
+            or seeded_resolved.is_relative_to(source_dir)):
+        raise RuntimeError(
+            f"seed submission source and destination overlap: {source_dir} -> {seeded_resolved}")
+
+    # copytree's default link handling can dereference a link into data outside the declared seed.  Reject
+    # every link instead so the content identity below covers the complete input and is independently
+    # reproducible from the preserved directory.
+    for root, dirs, files in os.walk(source_dir, followlinks=False):
+        for name in (*dirs, *files):
+            path = Path(root) / name
+            if path.is_symlink():
+                raise RuntimeError(f"seed submission contains a symlink: {path}")
+    return source_dir
+
+
+def _seed_submission(ws: Path, source: str | Path, run_dir: Path) -> dict:
+    """Seed a *fresh* workspace from a preserved candidate and record its exact bytes.
+
+    A changed public contract requires a new sealed run rather than a resume.  This copies only the
+    candidate submission into that new treatment, refusing links so the seed is self-contained, and
+    removes path-bound build products before computing the identity recorded with the run.
+    """
+    seeded = Path(ws).resolve(strict=True) / "submission"
+    source_dir = _validate_seed_submission_source(source, seeded)
+
+    if seeded.is_symlink():
+        raise RuntimeError(f"seed submission destination must not be a symlink: {seeded}")
+    if seeded.exists():
+        shutil.rmtree(seeded)
+
+    ignored_dirs = {"build", "__pycache__", ".git"}
+
+    def _ignore(_directory: str, names: list[str]) -> set[str]:
+        return {name for name in names if name in ignored_dirs}
+
+    shutil.copytree(source_dir, seeded, ignore=_ignore)
+    _strip_build_state(seeded)
+
+    content = hashlib.sha256()
+    n_files = 0
+    n_bytes = 0
+    for path in sorted(p for p in seeded.rglob("*") if p.is_file()):
+        rel = path.relative_to(seeded).as_posix()
+        data = path.read_bytes()
+        content.update(rel.encode("utf-8"))
+        content.update(b"\0")
+        content.update(str(len(data)).encode("ascii"))
+        content.update(b"\0")
+        content.update(data)
+        content.update(b"\0")
+        n_files += 1
+        n_bytes += len(data)
+    record = {
+        "version": 1,
+        "source": str(source_dir),
+        "content_sha256": content.hexdigest(),
+        "n_files": n_files,
+        "n_bytes": n_bytes,
+    }
+    record_path = Path(run_dir) / "seed_submission.json"
+    record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return record
+
+
+def _stage_operator_errata(run_dir: Path, source: str | Path) -> dict:
+    """Archive a pre-launch correction that ``round_brief`` will serve to the agent."""
+    source_arg = Path(source).expanduser()
+    if source_arg.is_symlink():
+        raise RuntimeError(f"operator errata source must not be a symlink: {source_arg}")
+    try:
+        source_path = source_arg.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"operator errata source does not exist: {source_arg}") from exc
+    if not source_path.is_file():
+        raise RuntimeError(f"operator errata source is not a regular file: {source_path}")
+    data = source_path.read_bytes()
+    destination = Path(run_dir) / "ERRATA.md"
+    shutil.copyfile(source_path, destination)
+    if destination.read_bytes() != data:
+        raise RuntimeError("archived operator errata differs from its source")
+    return {
+        "source": str(source_path),
+        "n_bytes": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def _verify_operator_errata(expected: Mapping, run_dir: Path) -> None:
+    """Fail closed if a pre-launch erratum no longer matches its recorded bytes."""
+    if not isinstance(expected, Mapping):
+        raise RuntimeError("persisted operator errata record is missing or malformed")
+    path = Path(run_dir) / "ERRATA.md"
+    try:
+        observed_sha, observed_size = _file_digest(path)
+    except RuntimeError as exc:
+        raise RuntimeError(f"operator errata drifted after setup: {exc}") from exc
+    if expected.get("sha256") != observed_sha or expected.get("n_bytes") != observed_size:
+        raise RuntimeError(
+            "operator errata drifted after setup: "
+            f"expected {expected.get('sha256')}/{expected.get('n_bytes')} bytes, "
+            f"observed {observed_sha}/{observed_size} bytes")
+
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
 from merlin.common.paths import ext_path  # noqa: E402
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
@@ -97,6 +217,93 @@ def _l3_barrier_decision(l3_all_pass: bool, rnd: int, max_rounds: int) -> str:
     return "iterate"
 
 
+# --- PER-CAPSULE promotion into the cycle-accurate checkpoint ------------------------------------
+# The checkpoint used to be ALL-OR-NOTHING: it ran only when ``verdict["all_pass"]`` was true, i.e. only
+# when EVERY capsule had cleared the loop tier. MEASURED on the live run
+# merlincirct_arm4_func_20260901_codex1: 19 of 32 capsules passed the loop tier and 13 did not, so
+# ``all_pass`` was False, the whole checkpoint phase never ran, and the 19 capsules that had EARNED a
+# cycle-accurate cert got neither the cert nor any of its VERILATOR_ATTEMPTS fix rounds — because of the
+# other 13. Promotion is a PER-CAPSULE fact (a capsule that clears the loop tier is certifiable on its
+# own), so it is decided per capsule here.
+#
+# The capsules still failing the loop tier are NOT submitted: their loop-tier bug is the thing to fix
+# first, and paying minutes of cycle-accurate sim to re-learn it is waste. They are also NOT dropped —
+# each is recorded ``not_promoted`` with the reason it was held back, and a tier that DID NOT RUN is
+# never counted as a pass (see :func:`_l3_attempt_tally`). Whole-corpus completion is unaffected: the
+# attempt's ``all_pass`` is still ``n_passed == n_capsules`` over the WHOLE corpus, held-back capsules
+# included, so a partially-promoted run can never read as certified.
+def _l3_promotion(verdict: dict, loop_tier: str | None) -> tuple[list, list]:
+    """Split a loop verdict into ``(capsules eligible for the cert tier, not-promoted records)``.
+
+    Eligibility is read from the capsule's own loop-tier status when the verdict carries one, and from
+    its overall ``status`` otherwise. A row we cannot read either way is held back with that reason
+    rather than promoted — an unknown loop-tier verdict is not a pass.
+    """
+    eligible: list = []
+    held: list = []
+    for row in (verdict.get("per_capsule") or []):
+        row = row if isinstance(row, dict) else {}
+        name = str(row.get("capsule") or "")
+        tiers = row.get("tiers") or {}
+        if loop_tier and loop_tier in tiers:
+            status, basis = tiers.get(loop_tier), loop_tier
+        else:
+            status, basis = row.get("status"), "status"
+        if not name:
+            held.append({"capsule": name, "reason": "verdict row carries no capsule name",
+                         "loop_tier": loop_tier, "loop_tier_status": status})
+            continue
+        if status == "pass":
+            eligible.append(name)
+            continue
+        held.append({
+            "capsule": name,
+            "reason": f"did not pass the loop tier ({basis}={status!r}); fix the loop-tier failure "
+                      f"first — it was NOT submitted to the cycle-accurate cert",
+            "loop_tier": loop_tier, "loop_tier_status": status,
+            "failure_plane": row.get("failure_plane"), "failure_tier": row.get("failure_tier"),
+        })
+    return eligible, held
+
+
+def _l3_checkpoint_should_run(run_l3: bool, workflow_conformant: bool, eligible) -> bool:
+    """PER-CAPSULE gate: the cycle-accurate checkpoint runs when AT LEAST ONE capsule cleared the loop
+    tier — never "when all of them did". With nothing eligible there is nothing to certify, so it is
+    skipped and said out loud (an empty submission must not read as a clean checkpoint)."""
+    return bool(run_l3 and workflow_conformant and eligible)
+
+
+def _l3_attempt_tally(red: dict, not_promoted: list, cert_tier: str) -> tuple[list, int, int]:
+    """``(rows, n_passed, n_capsules)`` for ONE checkpoint attempt, over the WHOLE corpus.
+
+    ``red`` is the per-capsule readback for the capsules that WERE submitted; ``not_promoted`` are the
+    ones that were not. Only an explicit ``pass`` AT THE CERT TIER counts toward ``n_passed``: a missing
+    tier entry (the sim never ran, timed out, or the capsule was never submitted) reads as
+    ``not_promoted`` / ``None``, never as success. The denominator is the whole corpus, so an attempt
+    that certified every promoted capsule while capsules were held back still cannot reach
+    ``n_passed == n_capsules``.
+    """
+    rows: list = []
+    npass = 0
+    for name, info in sorted(red.items()):
+        status = ((info or {}).get("tiers") or {}).get(cert_tier)
+        npass += int(status == "pass")
+        rows.append({"capsule": name, "l3_status": status, "cert_tier": cert_tier,
+                     "failure_plane": (info or {}).get("failure_plane")})
+    graded = {r["capsule"] for r in rows}
+    for held in not_promoted:
+        held = held if isinstance(held, dict) else {}
+        name = str(held.get("capsule") or "")
+        if name in graded:
+            continue          # it was submitted after all; its graded row is the authority
+        rows.append({"capsule": name, "l3_status": "not_promoted", "cert_tier": cert_tier,
+                     "reason": held.get("reason"), "loop_tier": held.get("loop_tier"),
+                     "loop_tier_status": held.get("loop_tier_status"),
+                     "failure_plane": held.get("failure_plane")})
+    rows.sort(key=lambda r: r["capsule"])
+    return rows, npass, len(rows)
+
+
 def _l3_fix_verdict(vv: dict, attempt: int) -> dict:
     """Redacted L3 feedback for the next fix round, including Arm4's answer-free RTL readback."""
     out = {
@@ -106,6 +313,17 @@ def _l3_fix_verdict(vv: dict, attempt: int) -> dict:
                 "re-run agent_selfcheck (spike) clean before declaring READY again.",
         "per_capsule": vv["per_capsule"],
     }
+    # Say WHY a capsule has no cert result. Rows marked `not_promoted` were never submitted to the
+    # cycle-accurate tier because they had not passed the loop tier yet; that is a loop-tier bug to fix,
+    # not a cert failure, and it is emphatically not a pass.
+    _held = [r for r in (vv.get("per_capsule") or []) if r.get("l3_status") == "not_promoted"]
+    if _held:
+        out["n_not_promoted"] = len(_held)
+        out["not_promoted_note"] = (
+            f"{len(_held)} capsule(s) were NOT submitted to the cycle-accurate tier because they have "
+            f"not passed the loop tier yet (rows with l3_status='not_promoted'). Their cert result is "
+            f"UNKNOWN, not a pass. Fix their loop-tier failure first; they are promoted automatically "
+            f"as soon as the loop tier passes.")
     if vv.get("rtl_checks") is not None:
         out["rtl_checks"] = vv["rtl_checks"]
         out["rtl_checks_note"] = (
@@ -266,15 +484,108 @@ def _spend_over_cap(this_round_cost) -> tuple[bool, float, float]:
     return total >= cap, total, cap
 
 
+#: Safety multiple applied to a FITTED per-capsule L3 cost — the same "generous 2x" the measured-T_obs
+#: path below already applies. A margin, not a hardware fact.
+L3_BUDGET_SAFETY = 2.0
+#: Hang bound. A size-scaled budget is never granted more than this multiple of the unscaled bound: the
+#: budget's OTHER job is to stop a kernel that never reaches its stop condition, and a fit extrapolated
+#: far past its observations must not turn that bound off. Not a measurement — raise it deliberately.
+L3_BUDGET_MAX_MULT = 4
+
+
+def _l3_instruction_counts(run_dir: Path) -> dict[str, int]:
+    """``{capsule: instruction count}`` for the capsules this run has already emitted an artifact for.
+
+    The count is the length of the capsule's OWN decoded ``instruction_trace.json`` — the submission's
+    emitted RoCC stream, which is what the RTL sim actually executes and therefore what its cost scales
+    with. Read from the most recently written trace per capsule (the newest submission wins). A capsule
+    with no trace is simply absent: unsized, never assumed small.
+    """
+    out: dict[str, tuple[float, int]] = {}
+    work = run_dir / "_qa_work"
+    if not work.is_dir():
+        return {}
+    for tp in work.glob("*/runs/*/*/generated/instruction_trace.json"):
+        name = tp.parent.parent.name
+        try:
+            n = len(json.loads(tp.read_text()).get("instructions") or [])
+            mt = tp.stat().st_mtime
+        except Exception:  # noqa: BLE001 — an unreadable trace sizes nothing
+            continue
+        if n > 0 and (name not in out or mt > out[name][0]):
+            out[name] = (mt, n)
+    return {k: v[1] for k, v in out.items()}
+
+
+def _l3_cost_observations(run_dir: Path, cert_tier: str) -> list[tuple[int, float]]:
+    """``[(instruction count, adapter wall seconds)]`` for cert-tier runs that COMPLETED.
+
+    Only ``pass`` observations are used: a passing tier ran the artifact to its end, so its wall is a
+    true cost. A failed/crashed/timed-out tier's wall is bounded by whatever budget it was given, and
+    fitting a cost model to a truncated measurement is how a timeout becomes self-confirming.
+    """
+    obs: list[tuple[int, float]] = []
+    work = run_dir / "_qa_work"
+    if not work.is_dir():
+        return obs
+    for rp in work.glob("*/runs/*/*/capsule_result.json"):
+        try:
+            tier = (json.loads(rp.read_text()).get("tiers") or {}).get(cert_tier) or {}
+        except Exception:  # noqa: BLE001
+            continue
+        wall = (tier.get("timing") or {}).get("adapter_wall_s")
+        if tier.get("status") != "pass" or not wall:
+            continue
+        tp = rp.parent / "generated" / "instruction_trace.json"
+        try:
+            n = len(json.loads(tp.read_text()).get("instructions") or [])
+        except Exception:  # noqa: BLE001
+            continue
+        if n > 0:
+            obs.append((n, float(wall)))
+    return obs
+
+
+def _l3_cost_fit(obs: list[tuple[int, float]]) -> tuple[float, float, str] | None:
+    """``(seconds_per_instruction, fixed_seconds, basis)`` from the run's own cert-tier observations.
+
+    An RTL sim's wall is affine in the length of the stream it executes: a fixed build/elaborate/boot
+    term plus a per-instruction term. Two or more distinct instruction counts separate the two by least
+    squares; a single count can only give a through-origin rate, which is stated as such. Fewer than one
+    observation -> ``None``, and the caller keeps the unscaled bound rather than inventing a rate.
+    """
+    if not obs:
+        return None
+    ns = [n for n, _ in obs]
+    if len(set(ns)) < 2:
+        rate = max(w / n for n, w in obs)
+        return rate, 0.0, (f"{len(obs)} observation(s) at a single instruction count ({ns[0]}); "
+                           f"through-origin rate {rate:.4f} s/instruction (no fixed term separable)")
+    n_ = len(obs)
+    mx = sum(ns) / n_
+    my = sum(w for _, w in obs) / n_
+    sxx = sum((n - mx) ** 2 for n in ns)
+    slope = sum((n - mx) * (w - my) for n, w in obs) / sxx
+    intercept = my - slope * mx
+    slope, intercept = max(slope, 0.0), max(intercept, 0.0)
+    return slope, intercept, (f"least squares over {n_} passing {sorted(set(ns))[0]}..{sorted(ns)[-1]}"
+                              f"-instruction observations: {intercept:.0f} s fixed + "
+                              f"{slope:.4f} s/instruction")
+
+
 def _verilator_per_capsule_timeout() -> int:
-    """Per-capsule L3 (verilator RTL cert) timeout, from a T_obs that is POSITIVELY confirmed to be THIS
+    """The UNSCALED per-capsule L3 (verilator RTL cert) bound, from a T_obs that is POSITIVELY confirmed
+    to be THIS
     target's sim (generous 2x, min 900s). The readiness gate writes scripts/.oracle_timing.json — but that
     path is a symlink shared across targets, so a radiance run must NOT inherit a GemminiRocketConfig T_obs
     measured for a different, far lighter RTL (which would floor to 900s and mass-timeout every L3 capsule,
     the abc9 "L3 0/N = timeout not skill" trap). A measurement is trusted only when it is target-scoped:
     the file ``.oracle_timing.<target>.json`` OR a legacy ``.oracle_timing.json`` whose ``target`` field
     matches. An unconfirmed / foreign-config measurement is ignored in favor of a conservative bound and a
-    loud log — never a silent under-time."""
+    loud log — never a silent under-time.
+
+    This is the FLOOR, not the budget the grade runs with: :func:`_verilator_l3_budget` scales it by the
+    promoted capsules' own emitted size, because a flat bound fails a large capsule for being large."""
     import math
     tgt = _te().target
     for p in (C.EXP / "scripts" / f".oracle_timing.{tgt}.json",
@@ -291,6 +602,92 @@ def _verilator_per_capsule_timeout() -> int:
     print(f"[timeout] no target-confirmed L3 timing for {tgt!r}; using conservative 2400s. Run readiness "
           f"or the L3 measurement to record scripts/.oracle_timing.{tgt}.json", file=sys.stderr)
     return 2400
+
+
+def _verilator_l3_budget(run_dir: Path | None, capsules: list | None,
+                         cert_tier: str = "L3") -> int:
+    """The per-capsule cert-tier budget, SCALED BY CAPSULE SIZE instead of one flat number.
+
+    Why: a flat bound fails a capsule for being large. Measured on this corpus — ``GM0`` (2310 emitted
+    instructions) completed its RTL cert in 1818 s against a 2400 s flat bound, and ``GM1`` (3084
+    instructions, 1.335x) projected ~2427 s and was recorded a ``tool_crash``. Its numerics passed the
+    functional tier; nothing about the submission was wrong. A timeout attributed to the submission is
+    worse than no result, because it gets counted.
+
+    Derivation, all from THIS run's own measurements (never a literal):
+
+    1. the unscaled bound from :func:`_verilator_per_capsule_timeout` (a target-confirmed T_obs, else
+       the conservative fallback) — this is the FLOOR, so the budget can only ever grow;
+    2. the cost model ``fixed + rate * instructions`` least-squares fitted to the cert-tier walls this
+       run already observed on capsules that PASSED (:func:`_l3_cost_fit`);
+    3. the largest promoted capsule's own emitted instruction count, priced through that model and given
+       the same generous 2x margin the measured-T_obs path applies;
+    4. capped at ``L3_BUDGET_MAX_MULT`` x the unscaled bound, so the budget still bounds a hang.
+
+    Fails closed to today's behavior: with no fit (no passing cert-tier observation yet) or no sized
+    capsule, the unscaled bound is returned AND the reason is printed. A capsule whose size is unknown
+    is excluded from the pricing rather than assumed small — the floor still covers it. The whole
+    derivation is written to ``<run_dir>/l3_timeout_derivation.json`` so a budget can be audited.
+    """
+    flat = _verilator_per_capsule_timeout()
+    rec: dict = {"cert_tier": cert_tier, "unscaled_bound_s": flat, "budget_s": flat,
+                 "safety": L3_BUDGET_SAFETY, "cap_multiple": L3_BUDGET_MAX_MULT}
+    if run_dir is None:
+        return flat
+    sizes = _l3_instruction_counts(Path(run_dir))
+    names = [str(c) for c in (capsules or sizes.keys())]
+    sized = {n: sizes[n] for n in names if n in sizes}
+    rec["n_capsules"] = len(names)
+    rec["n_sized"] = len(sized)
+    rec["unsized"] = sorted(n for n in names if n not in sized)
+    obs = _l3_cost_observations(Path(run_dir), cert_tier)
+    fit = _l3_cost_fit(obs)
+    rec["n_observations"] = len(obs)
+    if not sized or fit is None:
+        rec["basis"] = ("NOT SCALED: " + ("no promoted capsule has an emitted instruction trace yet"
+                                          if not sized else
+                                          f"no passing {cert_tier} wall observed yet, so no cost model"))
+        print(f"[timeout] {cert_tier} budget NOT size-scaled ({rec['basis']}); using the unscaled "
+              f"{flat}s bound", file=sys.stderr)
+        _write_l3_budget_record(run_dir, rec)
+        return flat
+    rate, fixed, basis = fit
+    biggest, n_instr = max(sized.items(), key=lambda kv: kv[1])
+    predicted = fixed + rate * n_instr
+    scaled = int(-(-(L3_BUDGET_SAFETY * predicted) // 1))       # ceil, no math import needed
+    budget = max(flat, min(scaled, flat * L3_BUDGET_MAX_MULT))
+    rec.update({"cost_model": {"fixed_s": fixed, "s_per_instruction": rate, "basis": basis},
+                "largest_capsule": biggest, "largest_instructions": n_instr,
+                "predicted_s": predicted, "scaled_s": scaled, "budget_s": budget,
+                "capped": scaled > flat * L3_BUDGET_MAX_MULT,
+                "basis": (f"largest promoted capsule {biggest!r} emits {n_instr} instructions; "
+                          f"{basis}; predicted {predicted:.0f}s x{L3_BUDGET_SAFETY} margin "
+                          f"-> {scaled}s, floored at the {flat}s unscaled bound and capped at "
+                          f"{flat * L3_BUDGET_MAX_MULT}s")})
+    print(f"[timeout] {cert_tier} per-capsule budget {budget}s (was a flat {flat}s): {rec['basis']}",
+          flush=True)
+    _write_l3_budget_record(run_dir, rec)
+    return budget
+
+
+def _write_l3_budget_record(run_dir, rec: dict) -> None:
+    """Persist the budget derivation next to the run. A budget that decides a verdict has to be
+    auditable; a printed line scrolls away."""
+    if not Path(run_dir).is_dir():
+        return
+    try:
+        p = Path(run_dir) / "l3_timeout_derivation.json"
+        hist = []
+        if p.exists():
+            try:
+                hist = json.loads(p.read_text())
+                hist = hist if isinstance(hist, list) else [hist]
+            except Exception:  # noqa: BLE001
+                hist = []
+        hist.append({"at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), **rec})
+        p.write_text(json.dumps(hist, indent=2))
+    except Exception as e:  # noqa: BLE001 — recording must never break a grade
+        print(f"[timeout] could not record the L3 budget derivation: {e}", file=sys.stderr)
 
 
 def _cycle_accurate_checkpoint_enabled() -> tuple[bool, str]:
@@ -310,6 +707,24 @@ def _cycle_accurate_checkpoint_enabled() -> tuple[bool, str]:
     if env is not None:
         on = env.strip().lower() in ("1", "true", "yes", "on")
         return on, f"MERLIN_CAPSULE_L3_CHECKPOINT={env!r} (explicit opt-{'in' if on else 'out'})"
+    cert_tiers, hit = _cert_tiers_beyond_the_loop()
+    if not cert_tiers:
+        return False, "no cycle-accurate cert tier beyond the fast loop oracle for this target"
+    if hit:
+        return True, f"cert tier(s) {sorted(hit)} are mandatory in the pilot corpus"
+    return False, (f"cert tier(s) {sorted(cert_tiers)} are OPTIONAL for the pilot corpus (functional-tier "
+                   f"pass bar) — skipping the cycle-accurate RTL barrier; set "
+                   f"MERLIN_CAPSULE_L3_CHECKPOINT=1 to opt in")
+
+
+def _cert_tiers_beyond_the_loop() -> tuple[set, set]:
+    """``(cert tiers held back from the fast loop, the subset the pilot corpus makes MANDATORY)``.
+
+    One derivation, shared by the checkpoint gate and by the fast first grade, so the two can never
+    disagree about which tier a verdict is missing. Target-agnostic: the ladders come from
+    ``qa_checkpoint_adapters`` / ``qa_loop_adapters`` for THIS target and the mandatory set from the
+    capsules' own ``required_oracle_tiers`` — no sim name is written down here.
+    """
     from merlin.targetgen import capsule_runner as _CR
     try:
         te = _te()
@@ -319,20 +734,59 @@ def _cycle_accurate_checkpoint_enabled() -> tuple[bool, str]:
         ck, loop = {}, {}
     cert_tiers = set(ck) - set(loop)   # the cycle-accurate cert tiers held back from the fast loop
     if not cert_tiers:
-        return False, "no cycle-accurate cert tier beyond the fast loop oracle for this target"
-    mandatory: set[str] = set()
-    for cf in Path(_pilot_subset()).rglob("capsule.yaml"):
-        try:
-            doc = yaml.safe_load(cf.read_text()) or {}
-        except Exception:  # noqa: BLE001
-            continue
-        mandatory |= set(doc.get("required_oracle_tiers") or [])
-    hit = sorted(cert_tiers & mandatory)
-    if hit:
-        return True, f"cert tier(s) {hit} are mandatory in the pilot corpus"
-    return False, (f"cert tier(s) {sorted(cert_tiers)} are OPTIONAL for the pilot corpus (functional-tier "
-                   f"pass bar) — skipping the cycle-accurate RTL barrier; set "
-                   f"MERLIN_CAPSULE_L3_CHECKPOINT=1 to opt in")
+        return set(), set()
+    mandatory: set = set()
+    _roots = _pilot_subset()
+    for _r in (_roots if isinstance(_roots, (list, tuple)) else [_roots]):
+        for cf in Path(_r).rglob("capsule.yaml"):
+            try:
+                doc = yaml.safe_load(cf.read_text()) or {}
+            except Exception:  # noqa: BLE001
+                continue
+            mandatory |= set(doc.get("required_oracle_tiers") or [])
+    return cert_tiers, cert_tiers & mandatory
+
+
+def _loop_tier_name() -> str | None:
+    """The fast loop tier THIS target grades on, derived from its own adapter map (``None`` when the
+    ladder is unresolvable — promotion then falls back to the capsule's overall status)."""
+    from merlin.targetgen import capsule_runner as _CR
+    try:
+        te = _te()
+        loop = _CR.qa_loop_adapters(te.target, te.sim_via, declared_tiers=_declared_loop_tiers())
+    except Exception:  # noqa: BLE001 — unresolvable ladder: no tier name, never a guessed one
+        return None
+    return sorted(loop)[0] if loop else None
+
+
+def _cert_tier_name() -> str:
+    """The DEEPEST cert tier the checkpoint adds above the loop tier, derived per target.
+
+    ``"L3"`` only as the fallback for an unresolvable ladder, so an environment that cannot resolve its
+    adapters behaves exactly as this code did before — it is a tier LABEL, never a target or sim name.
+    """
+    cert, _ = _cert_tiers_beyond_the_loop()
+    return sorted(cert)[-1] if cert else "L3"
+
+
+def _pilot_capsule_dirs() -> dict:
+    """``{capsule name: directory}`` for the pilot corpus, read straight off each ``capsule.yaml``.
+
+    Needed because per-capsule promotion submits a SUBSET to the cert tier, and the grader selects
+    capsules by root, not by name. ``capsules_root`` already accepts several roots and discovers
+    ``capsule.yaml`` under each, so the eligible capsule DIRECTORIES are the roots — no staged copy and
+    no symlink farm (``rglob`` does not descend into symlinked directories).
+    """
+    out: dict = {}
+    _roots = _pilot_subset()
+    for _r in (_roots if isinstance(_roots, (list, tuple)) else [_roots]):
+        for cf in sorted(Path(_r).rglob("capsule.yaml")):
+            try:
+                doc = yaml.safe_load(cf.read_text()) or {}
+            except Exception:  # noqa: BLE001 — unreadable capsule: fall back to its directory name
+                doc = {}
+            out[str((doc or {}).get("name") or cf.parent.name)] = cf.parent
+    return out
 _EXPERIMENT = "full"    # set in main(): 'full' (abc1) or 'realistic' (abc2, whole-repo + self-check)
 _ARM = ""               # set in main(): the arm being run (enforces the per-arm language mandate)
 _ADD_TOOLS: tuple = ()  # set in main(): --with-tool    (ABLATION: grant these on top of the rung)
@@ -537,6 +991,8 @@ def _verify_persisted_run_inputs(environment: Mapping, *, identity: Mapping,
         raise RuntimeError("descriptor-derived task scope drifted")
     _verify_treatment_snapshot(
         environment.get("treatment_snapshot"), ws, run_dir, bundle_dir, resolved_tools)
+    if environment.get("operator_errata") is not None:
+        _verify_operator_errata(environment["operator_errata"], run_dir)
     if expected_hidden_dir is None:
         return None
     hidden_dir, _ = _verify_subtree_snapshot(environment.get("hidden_capsule_snapshot"))
@@ -1498,10 +1954,17 @@ def _language_ok(submission_dir: Path) -> tuple[bool, str]:
         return True, "language check unavailable"
 
 
-def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -> dict:
+def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int,
+             label: str = "round") -> dict:
     """Copy the agent's submission to an operator-only scratch, grade it, return + persist the
-    redacted verdict (into ws/qa/verdict.json for the next round, and archived per round)."""
-    cand = run_dir / "_qa_work" / f"cand_{rnd:02d}" / "submission"
+    redacted verdict (into ws/qa/verdict.json for the next round, and archived per round).
+
+    ``label`` names the archive namespace. It stays ``"round"`` — byte-identical file names — for every
+    round grade, so the per-round trajectory readers (`gen_trajectory_v2`, `abc_status`, which glob
+    ``verdict_round_*.json``) keep seeing exactly the rounds. A grade taken WHILE a turn is still running
+    is not a round and is filed under its own label, so it cannot be mistaken for one."""
+    _key = f"{rnd:02d}" if label == "round" else str(rnd)
+    cand = run_dir / "_qa_work" / f"cand_{_key}" / "submission"
     if cand.exists():
         shutil.rmtree(cand.parent)
     _lok, _lwhy = _language_ok(ws / "submission")
@@ -1520,19 +1983,19 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -
         shutil.copytree(ws / "submission", cand,
                         ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
         _strip_build_state(cand)   # clean, relocatable build per grade (abc9 L3-build bug)
-        out = run_dir / "qa_history" / f"verdict_round_{rnd:02d}.json"
+        out = run_dir / "qa_history" / f"verdict_{label}_{_key}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         argv = ["--submission", str(cand), "--capsules-root", str(_pilot_subset()),
-                "--out", str(out), "--runs-root", str(run_dir / "_qa_work" / f"runs_{rnd:02d}"),
+                "--out", str(out), "--runs-root", str(run_dir / "_qa_work" / f"runs_{_key}"),
                 "--timeout", str(timeout)]
         if no_oracle:
             argv.append("--no-oracle")
         import qa_check
         verdict = qa_check.run(str(cand), str(_pilot_subset()),
-                               run_dir / "_qa_work" / f"runs_{rnd:02d}",
+                               run_dir / "_qa_work" / f"runs_{_key}",
                                {"public", "dev"}, no_oracle, timeout)
         out.write_text(json.dumps(verdict, indent=2))
-        _write_stage_ledger(run_dir, rnd, cand, run_dir / "_qa_work" / f"runs_{rnd:02d}", verdict)
+        _write_stage_ledger(run_dir, rnd, cand, run_dir / "_qa_work" / f"runs_{_key}", verdict)
         _attach_shape_generalization(verdict, cand, run_dir, rnd, timeout=timeout)
     # PROMOTE off the round grade too. Promotion is hooked into both BROKERS, but a broker only sees a
     # verdict the agent ASKED for -- and a converged agent stops asking. Measured on the run that
@@ -1558,6 +2021,174 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -
     qa_dir.mkdir(exist_ok=True)
     (qa_dir / "verdict.json").write_text(json.dumps(verdict, indent=2))
     return verdict
+
+
+# --- the agent must never run a whole turn BLIND -------------------------------------------------
+# MEASURED on merlincirct_arm4_func_20260901_codex1: the agent ran its ENTIRE 6184-second turn with no
+# `qa/` directory at all, and said so itself in its closing message ("qa/verdict.json was not present").
+# The round's verdict is produced AFTER the turn, and the mandatory ladder that produces it includes the
+# cycle-accurate cert tier — one capsule (GM0) alone cost 1818s of Verilator — so under a long turn
+# (`--schedule continuous --round-timeout 43200`) the first feedback an agent can read is hours away, or
+# never. A blind agent is not a measurement of the agent.
+#
+# The fix is to make the FIRST grade fast and cheap: the LOOP tier only, published within minutes, then
+# the expensive full-ladder grade on the normal --grade-interval. What the fast grade must never do is
+# claim more than it ran: the cert tiers it withheld are NAMED in `tiers_not_run`, and `all_pass` is
+# `null` (UNKNOWN) whenever a MANDATORY tier was withheld — never `true`. A check that could not run
+# reading as SUCCESS is a recurring bug in this repo; this is not another instance of it.
+_BG_TICK_BASE = 900       # background-grade ids, disjoint from round ids (0..99): no work tree collides
+_FIRST_GRADE_POLL_S = 30  # how often to look for a submission worth grading
+
+
+def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
+    """Build the fast first verdict from the per-capsule readback. PURE, so its honesty is testable.
+
+    `n_passed` counts capsules that passed THE TIERS THAT RAN, and the document says so. `all_pass` is a
+    bool only when nothing mandatory was withheld; otherwise it is None — the JSON null that reads as
+    UNKNOWN to every consumer and is falsy to every gate, so no downstream check can mistake a partial
+    ladder for a converged run.
+    """
+    rows: list = []
+    npass = 0
+    for name, info in sorted(red.items()):
+        info = info or {}
+        npass += int(info.get("status") == "pass")
+        rows.append({"capsule": name, "status": info.get("status"),
+                     "tiers": info.get("tiers") or {},
+                     "numeric_status": info.get("numeric_status"),
+                     "mismatch_count": info.get("mismatch_count"),
+                     "trace_status": info.get("trace_status"),
+                     "trace_violations": info.get("trace_violations") or [],
+                     "failure_plane": info.get("failure_plane"),
+                     "failure_category": info.get("failure_category"),
+                     "failure_detail": info.get("failure_detail")})
+    graded, withheld = sorted(tiers_graded), sorted(tiers_withheld)
+    complete = not withheld
+    nc = len(rows)
+    return {
+        "qa_gate": "capsule_bench_v0_pilot",
+        "stage": "first_grade_loop_tier",
+        "gradeable": True,
+        "tiers_graded": graded,
+        "tiers_not_run": withheld,
+        "mandatory_tiers_complete": complete,
+        # UNKNOWN, never success: a mandatory tier that did not run may not be reported as passed.
+        "all_pass": (bool(nc > 0 and npass == nc) if complete else None),
+        "n_passed": npass,
+        "n_capsules": nc,
+        "per_capsule": rows,
+        "note": ("FAST FIRST GRADE — the LOOP tier only, published early so you are not working blind. "
+                 f"Tiers graded: {graded or 'none'}. Tiers NOT run: {withheld or 'none'} — those are "
+                 "UNKNOWN, not passed; `all_pass` is null while any mandatory tier is outstanding. The "
+                 "full mandatory-ladder grade follows on the normal interval and is the one that "
+                 "converges the run. Contains NO reference output values."),
+    }
+
+
+def _fast_loop_verdict(ws: Path, run_dir: Path, tick: int, timeout: int) -> dict:
+    """Grade the current submission at the LOOP tier ONLY and publish it as the agent's verdict.
+
+    Cheap by construction: `qa_loop_adapters` is the fast functional tier the corpus itself declares, so
+    this costs seconds-to-minutes where the checkpoint ladder costs tens of minutes per capsule. Same
+    snapshot-copy discipline as `qa_grade`, so it is safe to run while the agent is editing.
+    """
+    import qa_check as _qc
+    from merlin.targetgen import capsule_grade as _CG
+    from merlin.targetgen import capsule_runner as _CR
+    if not (ws / "submission" / "manifest.yaml").is_file():
+        raise RuntimeError("no submission/manifest.yaml to grade yet")
+    cand = run_dir / "_qa_work" / f"fcand_{tick}" / "submission"
+    if cand.parent.exists():
+        shutil.rmtree(cand.parent)
+    shutil.copytree(ws / "submission", cand,
+                    ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+    _strip_build_state(cand)
+    fruns = run_dir / "_qa_work" / f"fruns_{tick}"
+    te = _te()
+    adapters = _CR.qa_loop_adapters(te.target, te.sim_via, declared_tiers=_declared_loop_tiers())
+    _, _withheld = _cert_tiers_beyond_the_loop()
+    try:
+        _CG.grade(str(cand), capsules_root=str(_pilot_subset()), runs_root=str(fruns),
+                  labels={"public", "dev"}, contract=str(C.REPO / "merlin/contract"),
+                  oracle_adapters=adapters, timeout=timeout,
+                  max_workers=_CG.default_grade_workers(), target=te.target)
+    except Exception as e:  # noqa: BLE001 — a partial readback is still feedback, and every tier the
+        # grade did not reach stays UNKNOWN in the document below rather than reading as clean.
+        print(f"[first-grade] grade error: {type(e).__name__}: {str(e)[:200]}", flush=True)
+    verdict = _fast_loop_verdict_doc(_qc._per_capsule_from_results(fruns),
+                                     sorted(adapters), sorted(_withheld))
+    out = run_dir / "qa_history" / f"verdict_fast_{tick}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(verdict, indent=2))
+    (ws / "qa").mkdir(exist_ok=True)
+    (ws / "qa" / "verdict.json").write_text(json.dumps(verdict, indent=2))
+    return verdict
+
+
+def _start_in_turn_grader(ws: Path, run_dir: Path, a, *, interval_grades: bool):
+    """Start the in-turn grader for ONE agent turn; returns a handle for `_stop_in_turn_grader`.
+
+    Phase 1 (always): if the agent has no verdict at all, land one — the fast loop-tier grade above —
+    as soon as there is a submission to grade. Phase 2 (long turns only): keep re-grading on
+    --grade-interval with the FULL mandatory ladder, which is the grade that can converge the run.
+    Neither phase touches the driver's own `verdict`: the authoritative round verdict is still the
+    post-turn `qa_grade`, and neither phase checkpoints (a background tick is not a round number).
+    """
+    import threading
+    stop = threading.Event()
+
+    def _body() -> None:
+        if not (ws / "qa" / "verdict.json").exists():
+            landed, tries = False, 0
+            while not stop.is_set():
+                tries += 1
+                try:
+                    v = _fast_loop_verdict(ws, run_dir, _BG_TICK_BASE, min(a.qa_timeout, 900))
+                except Exception as e:  # noqa: BLE001 — no submission yet, or a mid-write tree: retry
+                    # Said out loud the first time and then periodically: a first grade that never lands
+                    # means the agent IS working blind, and that has to be visible in the log rather
+                    # than inferred later from a missing qa/ directory.
+                    if tries == 1 or tries % 10 == 0:
+                        print(f"[first-grade] not yet ({type(e).__name__}: {str(e)[:120]}); "
+                              f"retrying every {_FIRST_GRADE_POLL_S}s", flush=True)
+                    if stop.wait(_FIRST_GRADE_POLL_S):
+                        break
+                    continue
+                landed = True
+                print(f"[first-grade] loop-tier verdict published: {v.get('n_passed')}/"
+                      f"{v.get('n_capsules')} at {v.get('tiers_graded')} "
+                      f"(all_pass={v.get('all_pass')}; NOT run: {v.get('tiers_not_run')})", flush=True)
+                break
+            if not landed:
+                print("[first-grade] NO verdict landed during this turn — the agent ran without "
+                      "feedback; treat the turn's result accordingly", flush=True)
+                return
+        if not interval_grades or int(a.grade_interval) <= 0:
+            return
+        t = 0
+        while not stop.wait(max(30, int(a.grade_interval))):
+            t += 1
+            try:
+                v = qa_grade(ws, run_dir, _BG_TICK_BASE + t, a.no_oracle, a.qa_timeout,
+                             label="inturn")
+            except Exception as e:  # noqa: BLE001 — a mid-write submission must never kill the run
+                print(f"[in-turn grade {t}] skipped: {type(e).__name__}: {e}", flush=True)
+                continue
+            print(f"[in-turn grade {t}] {v.get('n_passed')}/{v.get('n_capsules')} "
+                  f"all_pass={v.get('all_pass')}", flush=True)
+
+    th = threading.Thread(target=_body, name="in-turn-grader", daemon=True)
+    th.start()
+    return th, stop
+
+
+def _stop_in_turn_grader(handle) -> None:
+    """Stop the in-turn grader before the post-turn authoritative grade runs."""
+    if not handle:
+        return
+    th, stop = handle
+    stop.set()
+    th.join(timeout=60)
 
 
 # The public suite is the set of shapes an agent can see, so a backend that keys on those shapes passes
@@ -1848,7 +2479,12 @@ def main(argv: list[str] | None = None) -> int:
                          "can never report a formal success. For the certified continuous path use "
                          "`--schedule continuous` with a long --round-timeout.")
     ap.add_argument("--grade-interval", type=int, default=900,
-                    help="seconds between background grades in --continuous mode (default 900)")
+                    help="seconds between background grades in --continuous mode, and between the "
+                         "in-turn full-ladder grades under `--schedule continuous` (default 900). The "
+                         "FIRST grade of a turn is never on this interval: it is the fast loop-tier "
+                         "grade, published as soon as there is a submission, so an agent whose turn "
+                         "outlives the interval is not working blind. 0 disables the interval grades "
+                         "(the fast first verdict still lands).")
     # Default sandbox=bwrap: enforced FS isolation (the agent cannot read a masked answer surface at all),
     # AND the driver-side broker tools (async simjob oracle, self-check, arc-model isa_tools, CCA) only
     # start under bwrap. The earlier "bwrap crashes claude" blocker was a sandbox-config bug, now fixed in
@@ -1874,6 +2510,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="TEST ONLY: override the reset epoch to wait toward (verification, not 5h)")
     ap.add_argument("--resume", action="store_true",
                     help="continue an existing run_dir (cross-window robustness) instead of refusing")
+    ap.add_argument("--seed-submission", default="", metavar="DIR",
+                    help="fresh run only: initialize submission/ from a preserved candidate while the "
+                         "new run seals its current bundle and records the candidate's exact identity")
+    ap.add_argument("--operator-errata", default="", metavar="FILE",
+                    help="fresh run only: archive a correction as ERRATA.md before the first round brief "
+                         "is assembled, with exact provenance in environment.yaml")
     # Use a SECOND subscription account (separate org five-hour budget) by pointing claude at a
     # different config dir. This is the only real way to run two agent arms truly concurrently: the
     # five-hour limit is org-wide and non-overage, so process parallelism on ONE account just
@@ -1888,6 +2530,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--account-config-dir", default=os.environ.get("CLAUDE_CONFIG_DIR", ""),
                     help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)")
     a = ap.parse_args(argv)
+    if a.resume and a.seed_submission:
+        raise RuntimeError("--seed-submission cannot be combined with --resume")
+    if a.resume and a.operator_errata:
+        raise RuntimeError("--operator-errata cannot be combined with --resume")
     # A real (spending) run MUST be sandboxed: without bwrap the agent can read any absolute path (incl.
     # denied /scratch* answer dirs), so the copy-workspace + post-hoc transcript audit alone do NOT isolate
     # it. Fail closed (parity with run_agent_experiment.py) — an unsandboxed run needs an explicit opt-in.
@@ -2046,6 +2692,13 @@ def main(argv: list[str] | None = None) -> int:
     # denied, so its --bind ws ws survives the deny-masking.
     ws_root = C.EXP / "_qa_ws" / a.run_id
     ws = ws_root / "workspace"
+    # Validate before stale-workspace cleanup: an operator may be preserving a candidate from an
+    # interrupted setup whose run directory was never completed.  If that source is inside the workspace
+    # this invocation is about to replace, refuse before ``rmtree`` can erase the only copy.
+    _seed_source_preflight = None
+    if a.seed_submission:
+        _seed_source_preflight = _validate_seed_submission_source(
+            a.seed_submission, ws / "submission")
     # Resume reuses the existing workspace+submission (cross-window continuation); a fresh run wipes any
     # stale workspace and re-stages from the golden-masked bundle.
     _have_ws = _resuming and (ws / "submission").exists()
@@ -2053,6 +2706,9 @@ def main(argv: list[str] | None = None) -> int:
         _BWS.remove_bundle_snapshot(ws)
         shutil.rmtree(ws_root)
     run_dir.mkdir(parents=True, exist_ok=_resuming)
+    _operator_errata_record = None
+    if a.operator_errata:
+        _operator_errata_record = _stage_operator_errata(run_dir, a.operator_errata)
     _archived_bundle_manifest = run_dir / "input_bundle_manifest.yaml"
     if _resuming:
         if not _archived_bundle_manifest.is_file():
@@ -2073,6 +2729,9 @@ def main(argv: list[str] | None = None) -> int:
         copy_report = assemble_copy_workspace(bundle, ws)
         denied_names = [Path(d["path"]).name for d in bundle.get("denied", [])]
         viol = []  # copy workspace contains no symlinks into denied paths by construction
+    _seed_submission_record = None
+    if a.seed_submission:
+        _seed_submission_record = _seed_submission(ws, _seed_source_preflight, run_dir)
     _bundle_snapshot_record = None
     _model_host_lane_snapshot = None
     _hidden_snapshot_record = None
@@ -2137,6 +2796,9 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(f"resume refused: {exc}") from exc
         if _hidden_dir is not None:
             _hidden_snapshot_record = dict(_environment_record["hidden_capsule_snapshot"])
+        # Carry the original record into every pre-launch check below.  The CLI intentionally forbids
+        # supplying a new erratum on resume; the archived bytes from the fresh setup remain authoritative.
+        _operator_errata_record = _environment_record.get("operator_errata")
         # Preserve the original setup record verbatim.  In particular, do not replace its start time,
         # exact task hash, or account with whichever process happens to perform the resume.
     else:
@@ -2153,6 +2815,8 @@ def main(argv: list[str] | None = None) -> int:
             "sandbox": a.sandbox, "qa_loop": True,
             "task_scope": _task_scope_record,
             "workspace_path": str(ws), "workspace_copy_report": copy_report,
+            "seed_submission": _seed_submission_record,
+            "operator_errata": _operator_errata_record,
             "bundle_input_snapshot": _bundle_snapshot_record,
             "hidden_capsule_snapshot": _hidden_snapshot_record,
             "model_host_lane_snapshot": _model_host_lane_snapshot,
@@ -2311,6 +2975,18 @@ def main(argv: list[str] | None = None) -> int:
         state = {"tick": 0, "verdict": verdict}
 
         def _grader() -> None:
+            # FIRST GRADE FAST: the interval below is 900s by default and the full ladder can take far
+            # longer than that on one capsule, so the agent would otherwise open with no verdict. Land
+            # the cheap loop-tier one first; it names the tiers it did not run and never claims them.
+            if not (ws / "qa" / "verdict.json").exists():
+                try:
+                    _fv = _fast_loop_verdict(ws, run_dir, _BG_TICK_BASE, min(a.qa_timeout, 900))
+                    print(f"[continuous] first (loop-tier) verdict: {_fv.get('n_passed')}/"
+                          f"{_fv.get('n_capsules')} all_pass={_fv.get('all_pass')} "
+                          f"NOT run: {_fv.get('tiers_not_run')}", flush=True)
+                except Exception as _fe:  # noqa: BLE001 — no submission yet: the interval grade covers it
+                    print(f"[continuous] first (loop-tier) grade skipped: "
+                          f"{type(_fe).__name__}: {_fe}", flush=True)
             while not stop.wait(max(30, int(a.grade_interval))):
                 t = state["tick"] + 1
                 try:
@@ -2329,6 +3005,10 @@ def main(argv: list[str] | None = None) -> int:
         gt = threading.Thread(target=_grader, name="continuous-grader", daemon=True)
         gt.start()
         try:
+            if _operator_errata_record is not None:
+                _verify_operator_errata(_operator_errata_record, run_dir)
+            import round_brief as _RBlaunch
+            _RBlaunch.refresh_before_launch(run_dir, ws, 0)
             rc, tpath = launch_agent(ws, run_dir, a.model, a.effort, a.sandbox, bundle, 0,
                                      a.round_timeout, arm=arm)
         except subprocess.TimeoutExpired:
@@ -2388,12 +3068,23 @@ def main(argv: list[str] | None = None) -> int:
     while _keep_going():
         print(f"\n===== ROUND {rnd} =====")
         _rstart = time.time()
+        # A verdict must land UNDER the turn, not after it. Round 0 has no previous round to inherit
+        # feedback from, and under `--schedule continuous` one turn can be the whole run — measured, an
+        # agent spent 6184s with no qa/ directory at all. The fast loop-tier grade lands one in minutes;
+        # in continuous mode the full mandatory-ladder grade then repeats on --grade-interval.
+        _bg = _start_in_turn_grader(ws, run_dir, a, interval_grades=(a.schedule == "continuous"))
         try:
+            if _operator_errata_record is not None:
+                _verify_operator_errata(_operator_errata_record, run_dir)
+            import round_brief as _RBlaunch
+            _RBlaunch.refresh_before_launch(run_dir, ws, rnd)
             rc, tpath = launch_agent(ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd,
                                      a.round_timeout, arm=arm)
         except subprocess.TimeoutExpired:
             rc, tpath = 124, run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
             print(f"[round {rnd}] agent TIMEOUT")
+        finally:
+            _stop_in_turn_grader(_bg)   # the post-turn grade below is the authoritative one
         _latest_authoring_tpath = tpath
 
         # Daily-quota wall: a provider DAILY token limit (429 'too many tokens per day') has no short
@@ -2569,21 +3260,29 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[round {rnd-1}] agent dropped {READY_MARKER} — proceeding to verilator barrier")
             break
 
-    # --- cycle-accurate L3 (verilator) checkpoint -------------------------------------------------
-    # The loop gate is spike (L2) only; this is where kernels are validated on the real RTL. Runs only
-    # when the agent is "ready" (loop-oracle-converged on the descriptor-derived public/dev set). Up to
-    # VERILATOR_ATTEMPTS chances
-    # with a fix-round between each; parallel (max_workers) so 20 capsules don't serialize. Each attempt
-    # recorded to verilator_checkpoints.json (the cycle-accurate result the agg/plots report).
-    def _verilator_grade(attempt: int) -> dict:
+    # --- cycle-accurate cert checkpoint ------------------------------------------------------------
+    # The loop gate is the fast functional tier; this is where kernels are validated on the real RTL.
+    # PER-CAPSULE (see _l3_promotion): the capsules that cleared the loop tier are submitted, the rest
+    # are recorded `not_promoted` and never counted as passes. Up to VERILATOR_ATTEMPTS chances with a
+    # fix-round between each; parallel (max_workers) so a 32-capsule corpus does not serialize. Each
+    # attempt recorded to verilator_checkpoints.json (the cycle-accurate result the agg/plots report).
+    def _verilator_grade(attempt: int, eligible: list, not_promoted: list) -> dict:
         import qa_check as _qc
         from merlin.targetgen import capsule_grade as _CG
         from merlin.targetgen import capsule_runner as _CR
+        _cert_tier = _cert_tier_name()
         vcand = run_dir / "_qa_work" / f"vcand_{attempt}" / "submission"
         if vcand.parent.exists():
             shutil.rmtree(vcand.parent)
         if not (ws / "submission" / "manifest.yaml").exists():
-            return {"attempt": attempt, "all_pass": False, "n_passed": 0, "n_capsules": 20, "per_capsule": []}
+            # Nothing to grade: every capsule is unmeasured, and unmeasured is never a pass. The
+            # denominator is still the whole corpus rather than a baked constant.
+            _rows, _np, _nc = _l3_attempt_tally({}, list(not_promoted) + [
+                {"capsule": n, "reason": "no submission/manifest.yaml to grade"} for n in eligible],
+                _cert_tier)
+            return {"attempt": attempt, "all_pass": False, "n_passed": _np, "n_capsules": _nc,
+                    "n_not_promoted": _nc, "cert_tier": _cert_tier, "per_capsule": _rows,
+                    "rtl_checks": None}
         shutil.copytree(ws / "submission", vcand,
                         ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
         _strip_build_state(vcand)   # clean, relocatable build for the L3 cert (abc9 L3-0/20 'build' bug)
@@ -2611,10 +3310,26 @@ def main(argv: list[str] | None = None) -> int:
                 _glog = None
         else:
             _glog = None
+        # SUBMIT ONLY THE PROMOTED CAPSULES. `capsules_root` accepts several roots and discovers a
+        # `capsule.yaml` under each, so the eligible capsule DIRECTORIES are the roots — the held-back
+        # capsules are simply not among them, and no minutes of cycle-accurate sim are spent re-learning
+        # a loop-tier failure the loop already reported.
+        _dirs = _pilot_capsule_dirs()
+        _roots = [str(_dirs[n]) for n in eligible if n in _dirs]
+        _unresolved = [n for n in eligible if n not in _dirs]
+        if _unresolved:
+            # A name that resolves to no capsule directory cannot be graded, and an ungraded capsule is
+            # not a pass — move it to the held-back side carrying that reason.
+            not_promoted = list(not_promoted) + [
+                {"capsule": n, "reason": "capsule directory not found in the pilot corpus"}
+                for n in _unresolved]
+            print(f"[verilator attempt {attempt}] {len(_unresolved)} promoted capsule(s) have no "
+                  f"directory in the pilot corpus — recorded not_promoted, NOT passed")
         try:
-            _CG.grade(str(vcand), capsules_root=str(_pilot_subset()), runs_root=str(vruns),
+            _CG.grade(str(vcand), capsules_root=_roots, runs_root=str(vruns),
                       labels={"public", "dev"}, contract=str(C.REPO / "merlin/contract"),
-                      oracle_adapters=adapters, timeout=_verilator_per_capsule_timeout(),
+                      oracle_adapters=adapters,
+                      timeout=_verilator_l3_budget(run_dir, eligible, _cert_tier),
                       max_workers=_CG.default_grade_workers(), target=_te().target)
         except Exception as e:
             print(f"[verilator attempt {attempt}] grade error: {str(e)[:200]}")
@@ -2624,13 +3339,11 @@ def main(argv: list[str] | None = None) -> int:
                 for r in _glog:
                     gf.write(json.dumps({"attempt": attempt, **r}) + "\n")
             print(f"[verilator attempt {attempt}] CIRCT gate: {skipped}/{len(_glog)} sims skipped (reject)")
-        red = _qc._per_capsule_from_results(vruns)
-        per, npass = [], 0
-        for name, info in sorted(red.items()):
-            l3 = (info.get("tiers") or {}).get("L3")
-            npass += int(l3 == "pass")
-            per.append({"capsule": name, "l3_status": l3, "failure_plane": info.get("failure_plane")})
-        nc = len(red) or 20
+        # Whole-corpus tally: graded rows plus the held-back ones. `all_pass` below is therefore
+        # `n_passed == n_capsules` over the FULL corpus, so promoting a subset can never make a partial
+        # run look certified.
+        per, npass, nc = _l3_attempt_tally(_qc._per_capsule_from_results(vruns), not_promoted,
+                                           _cert_tier)
         # The Arm4 qa wrapper can derive the same answer-free RTL structural block from this attempt's
         # generated traces.  Carry it into the L3 fix verdict so that a fix round can obey (and prove) its
         # mandatory RTL-feedback readback instead of receiving a reduced verdict with that surface absent.
@@ -2640,7 +3353,9 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as _e:  # noqa: BLE001 — advisory data stays non-numeric, but absence is explicit
             rtl_checks = {"error": f"{type(_e).__name__}: {_e}"}
         return {"attempt": attempt, "all_pass": npass == nc and nc > 0, "n_passed": npass,
-                "n_capsules": nc, "per_capsule": per, "rtl_checks": rtl_checks}
+                "n_capsules": nc, "n_not_promoted": sum(1 for r in per
+                                                        if r.get("l3_status") == "not_promoted"),
+                "cert_tier": _cert_tier, "per_capsule": per, "rtl_checks": rtl_checks}
 
     verilator_attempts: list = []
     _ready_marker = (ws / "submission" / READY_MARKER).exists()
@@ -2650,28 +3365,49 @@ def main(argv: list[str] | None = None) -> int:
     _run_l3, _l3_reason = _cycle_accurate_checkpoint_enabled()
     if not _run_l3:
         print(f"[verilator] cycle-accurate RTL (L3) barrier SKIPPED — {_l3_reason}")
-    if _run_l3 and workflow_conformant and (
-            verdict.get("all_pass") or (_EXPERIMENT == "realistic" and _ready_marker)):
-        # ready = spike-converged OR (realistic) the agent declared done -> run the L3 verilator barrier.
-        # In realistic mode this barrier IS the definition of done; the agent already self-checked on the
-        # tool, so this confirms on the operator side. Up to VERILATOR_ATTEMPTS with a fix-round between.
+    # PER-CAPSULE PROMOTION, not an all-or-nothing barrier. This gate used to read
+    # `verdict.get("all_pass") or (realistic and READY)`, i.e. it required the WHOLE corpus to clear the
+    # loop tier before any capsule could be certified. MEASURED on merlincirct_arm4_func_20260901_codex1:
+    # 19 of 32 capsules passed the loop tier, `all_pass` was False, and the checkpoint phase — its
+    # VERILATOR_ATTEMPTS fix rounds included — never ran at all. The 19 that had earned a cert got none
+    # because of the 13 that had not. A capsule's cert eligibility is its own fact, so the phase now runs
+    # whenever AT LEAST ONE capsule is eligible, and only the eligible ones are submitted.
+    _loop_tier = _loop_tier_name()
+    _l3_eligible, _l3_held = _l3_promotion(verdict, _loop_tier)
+    if _run_l3 and workflow_conformant and not _l3_eligible:
+        print(f"[verilator] cycle-accurate cert SKIPPED — no capsule passed the loop tier "
+              f"({_loop_tier or 'status'}), so there is nothing to certify; "
+              f"{len(_l3_held)} capsule(s) recorded not_promoted (UNKNOWN at the cert tier, not passed)")
+    if _l3_checkpoint_should_run(_run_l3, workflow_conformant, _l3_eligible):
+        # Per-capsule: every capsule that cleared the loop tier is certified now, independently of the
+        # others. In realistic mode this checkpoint is still the definition of done; the agent already
+        # self-checked on the tool, so this confirms on the operator side. Up to VERILATOR_ATTEMPTS with
+        # a fix-round between.
+        print(f"[verilator] promoting {len(_l3_eligible)}/{len(_l3_eligible) + len(_l3_held)} capsule(s) "
+              f"that passed the loop tier ({_loop_tier or 'status'}) to the cycle-accurate cert; "
+              f"{len(_l3_held)} held back (recorded not_promoted — never counted as a pass)")
         # NON-TERMINAL L3 cert: re-grade L3, and on failure hand the redacted cycle-accurate verdict back
         # for a fix round, REPEATING until L3 passes OR the round budget (max_rounds) is exhausted. A
         # premature READY / a single L3 timeout is therefore survivable (it just costs a round) — never a
         # run-ending event (the abc7 failure mode). The only success exit is all-L3-pass.
-        print(f"[verilator] L3 cert — NON-terminal ({'READY-marker' if _ready_marker else 'spike-converged'}; "
-              f"iterate to L3-pass within {a.max_rounds - rnd} remaining rounds)")
+        _why = "READY-marker" if _ready_marker else "loop-tier promotion"
+        print(f"[verilator] cert — NON-terminal ({_why}; iterate to a full-corpus cert pass within "
+              f"{a.max_rounds - rnd} remaining rounds)")
         vatt = 0
         while True:
             vatt += 1
             _vs = time.time()
-            vv = _verilator_grade(vatt)
+            vv = _verilator_grade(vatt, _l3_eligible, _l3_held)
             active_wall_s += time.time() - _vs
-            verilator_attempts.append({k: vv[k] for k in ("attempt", "all_pass", "n_passed", "n_capsules")})
+            verilator_attempts.append({k: vv.get(k) for k in
+                                       ("attempt", "all_pass", "n_passed", "n_capsules",
+                                        "n_not_promoted")})
             (run_dir / "verilator_checkpoints.json").write_text(json.dumps(
                 {"attempts": verilator_attempts, "final_all_pass": vv["all_pass"],
                  "last_per_capsule": vv["per_capsule"]}, indent=2))
-            print(f"[verilator attempt {vatt}] {vv['n_passed']}/{vv['n_capsules']} pass L3 (all_pass={vv['all_pass']})")
+            print(f"[verilator attempt {vatt}] {vv['n_passed']}/{vv['n_capsules']} pass "
+                  f"{vv.get('cert_tier')} (all_pass={vv['all_pass']}; "
+                  f"{vv.get('n_not_promoted', 0)} not_promoted)")
             # In CONTINUOUS mode the round count is not a terminator anywhere, including here: passing an
             # effectively unbounded cap keeps the decision to 'done' or 'iterate', so an L3 that has not
             # passed yet keeps being worked instead of stopping because an arithmetic budget expired.
@@ -2692,12 +3428,33 @@ def main(argv: list[str] | None = None) -> int:
             _fix_rc = 0
             _fix_tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
             try:
+                if _operator_errata_record is not None:
+                    _verify_operator_errata(_operator_errata_record, run_dir)
+                import round_brief as _RBlaunch
+                _RBlaunch.refresh_before_launch(run_dir, ws, rnd)
                 _fix_rc, _fix_tpath = launch_agent(
                     ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd, a.round_timeout, arm=arm)
             except subprocess.TimeoutExpired:
                 _fix_rc = 124
                 print("[verilator fix-round] agent TIMEOUT")
             active_wall_s += time.time() - _fr
+            # RE-DERIVE ELIGIBILITY after the fix round. The fix round changes the submission, so a
+            # capsule that was held back may now clear the loop tier — and without refreshing, per-capsule
+            # promotion would freeze the eligible set at whatever the pre-barrier round happened to
+            # measure and a newly-fixed capsule could never be certified. The refresh runs the CHEAP loop
+            # tier only. If it cannot run, the previous split stands: that can leave a capsule un-promoted
+            # for another attempt, but it can never turn a held-back capsule into a pass.
+            _rs = time.time()
+            try:
+                _refresh = _fast_loop_verdict(ws, run_dir, _BG_TICK_BASE + 100 + vatt,
+                                              min(a.qa_timeout, 900))
+                _l3_eligible, _l3_held = _l3_promotion(_refresh, _loop_tier)
+                print(f"[verilator fix-round {rnd}] loop-tier refresh: {len(_l3_eligible)} eligible, "
+                      f"{len(_l3_held)} still held back")
+            except Exception as _re:  # noqa: BLE001 — keep the previous split; never invent a promotion
+                print(f"[verilator fix-round {rnd}] loop-tier refresh unavailable "
+                      f"({type(_re).__name__}: {_re}); keeping the previous promotion split")
+            active_wall_s += time.time() - _rs   # grading is active work, like every other grade here
             # A fix round may replace the compiler after the previously-conformant round.  Recompute from
             # THIS transcript + THIS submission immediately; retaining the old True would let prior tool
             # use mask a hand-authored/non-RTL final workflow.

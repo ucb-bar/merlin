@@ -49,6 +49,25 @@ def _verdict(rows):
     return {"per_capsule": [{"capsule": n, "pass": p} for n, p in rows]}
 
 
+def _execution_verdict(rows):
+    """Rows are ``(capsule, passed, execution-byte)``; sha-shaped IDs exercise the real gate."""
+    return {"per_capsule": [
+        {"capsule": n, "pass": p, "execution_digest": c * 64} for n, p, c in rows
+    ]}
+
+
+def _capsule_result(root: Path, elf: bytes = b"program", *, merlin="1" * 40, rtl="2" * 40):
+    run = root / "A"
+    (run / "generated").mkdir(parents=True)
+    cr = run / "capsule_result.json"
+    cr.write_text(json.dumps({
+        "capsule": "A", "toolchain_shas": {"merlin": merlin, "target_rtl": rtl}
+    }))
+    (run / "run_manifest.yaml").write_text("target: test_target\n")
+    (run / "generated" / "package_kernel.elf").write_bytes(elf)
+    return cr
+
+
 # ---------------------------------------------------------------------------------------------
 def test_a_passing_capsule_produces_a_cert_job(tmp_path):
     """The whole point: an L2 pass enqueues an L3 job, with no agent involvement."""
@@ -101,6 +120,47 @@ def test_changed_bytes_re_certify(tmp_path):
     assert B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr) == ["A"]
 
 
+def test_identical_executable_survives_an_unrelated_source_edit(tmp_path):
+    """Source bytes may move while the exact program certified by RTL stays byte-identical."""
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    verdict = _execution_verdict([("A", True, "a")])
+    assert B.promote(ws, ch, verdict, "L2", "L3", None, sys.stderr) == ["A"]
+    B.record_cert(ws, _execution_verdict([("A", True, "a")]), "L3", sys.stderr)
+
+    (ws / "submission" / "manifest.yaml").write_text("x: 2")
+    assert B.promote(ws, ch, verdict, "L2", "L3", None, sys.stderr) == []
+    assert B._tier_state(ws)["A"]["L3"]["status"] == "pass"
+
+
+def test_changed_executable_invalidates_only_its_capsule(tmp_path):
+    """Execution identities are per capsule: changing A's ELF must not throw away B's cert."""
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    first = _execution_verdict([("A", True, "a"), ("B", True, "b")])
+    assert B.promote(ws, ch, first, "L2", "L3", None, sys.stderr) == ["A", "B"]
+    B.record_cert(ws, first, "L3", sys.stderr)
+
+    (ws / "submission" / "manifest.yaml").write_text("x: 2")
+    changed = _execution_verdict([("A", True, "c"), ("B", True, "b")])
+    assert B.promote(ws, ch, changed, "L2", "L3", None, sys.stderr) == ["A"]
+    assert B._tier_state(ws)["B"]["L3"]["status"] == "pass"
+
+
+def test_missing_execution_digest_falls_back_to_whole_submission(tmp_path):
+    """No artifact identity is not evidence of freshness; preserve the conservative legacy rule."""
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    verdict = _verdict([("A", True)])
+    assert B.promote(ws, ch, verdict, "L2", "L3", None, sys.stderr) == ["A"]
+    B.record_cert(ws, _cert_verdict([("A", True)]), "L3", sys.stderr)
+    (ws / "submission" / "manifest.yaml").write_text("x: 2")
+    assert B.promote(ws, ch, verdict, "L2", "L3", None, sys.stderr) == ["A"]
+
+
 def test_the_digest_tracks_content_not_time(tmp_path):
     B = _broker()
     ws = _ws(tmp_path)
@@ -108,6 +168,30 @@ def test_the_digest_tracks_content_not_time(tmp_path):
     assert B._submission_digest(ws) == d1                              # stable for identical bytes
     (ws / "submission" / "manifest.yaml").write_text("x: 2")
     assert B._submission_digest(ws) != d1
+
+
+def test_execution_digest_tracks_elf_and_hardware_but_not_merlin_source(tmp_path):
+    B = _broker()
+    base = B.execution_digest(_capsule_result(tmp_path / "base"))
+    source_edit = B.execution_digest(_capsule_result(tmp_path / "source", merlin="3" * 40))
+    elf_edit = B.execution_digest(_capsule_result(tmp_path / "elf", elf=b"changed program"))
+    rtl_edit = B.execution_digest(_capsule_result(tmp_path / "rtl", rtl="4" * 40))
+    assert base == source_edit
+    assert base != elf_edit and base != rtl_edit
+    assert isinstance(base, str) and len(base) == 64
+
+
+def test_execution_digest_fails_closed_without_concrete_hardware_identity(tmp_path):
+    B = _broker()
+    cr = _capsule_result(tmp_path / "missing", rtl="UNKNOWN")
+    assert B.execution_digest(cr) is None
+
+
+def test_both_verdict_readers_expose_the_execution_digest():
+    qa = (HARNESS / "qa_check.py").read_text(encoding="utf-8")
+    agent = (HARNESS / "agent_selfcheck.py").read_text(encoding="utf-8")
+    assert '"execution_digest": rich.get("execution_digest")' in qa
+    assert '"execution_digest": _qc._execution_digest_from_result(cr)' in agent
 
 
 def test_tier_state_records_both_tiers(tmp_path):
@@ -292,6 +376,30 @@ def test_recording_preserves_the_digest_that_earned_the_cert(tmp_path):
     after = B._tier_state(ws)["A"]["L3"]
     assert after["digest"] == before["digest"], "the cert was re-attributed to different bytes"
     assert after.get("components") == before.get("components")
+
+
+def test_recording_preserves_the_pending_execution_digest(tmp_path):
+    """Completion resolves the enqueue-time artifact identity; it never re-hashes edited files."""
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    verdict = _execution_verdict([("A", True, "a")])
+    B.promote(ws, ch, verdict, "L2", "L3", None, sys.stderr)
+    before = dict(B._tier_state(ws)["A"]["L3"])
+    B.record_cert(ws, _execution_verdict([("A", True, "a")]), "L3", sys.stderr)
+    after = B._tier_state(ws)["A"]["L3"]
+    assert after["execution_digest"] == before["execution_digest"] == "a" * 64
+
+
+def test_a_cert_for_different_execution_bytes_does_not_resolve_pending(tmp_path):
+    """The async broker may launch after an edit; its result must not be attributed to old bytes."""
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    B.promote(ws, ch, _execution_verdict([("A", True, "a")]), "L2", "L3", None, sys.stderr)
+    resolved = B.record_cert(ws, _execution_verdict([("A", True, "b")]), "L3", sys.stderr)
+    assert resolved == []
+    assert B._tier_state(ws)["A"]["L3"]["status"] == "pending"
 
 
 def test_an_unattributable_result_is_not_recorded(tmp_path):

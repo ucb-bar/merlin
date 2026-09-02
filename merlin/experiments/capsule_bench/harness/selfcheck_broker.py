@@ -20,12 +20,69 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 SELFCHECK = Path(__file__).resolve().parent / "agent_selfcheck.py"
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Publish a response/marker with no observable partial-file state."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
+    try:
+        with tmp.open("x", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _request_deadline(req: Path) -> float:
+    """Client deadline for protocol-v2 and legacy requests.
+
+    Legacy shims did not put their deadline in the payload, but their wait contract has always been
+    ``request mtime + timeout + 240 seconds``.  Recovering it here preserves those clients while making
+    their abandoned files finite work rather than a permanent restart backlog.
+    """
+    try:
+        body = json.loads(req.read_text(encoding="utf-8"))
+        explicit = body.get("deadline_unix_ns")
+        if explicit is not None:
+            return int(explicit) / 1_000_000_000
+        timeout = max(0, int(body.get("timeout", 1800)))
+    except Exception:
+        timeout = 1800
+    return req.stat().st_mtime + timeout + 240
+
+
+def _pending_requests(ch: Path, seen: set[str], *, now: float | None = None) -> list[Path]:
+    """Outstanding, live requests in arrival order.
+
+    ``seen`` is process-local, while completion markers and deadlines survive a broker restart.  All
+    three are needed: relying only on ``seen`` caused a restarted broker to rerun every historical
+    full-corpus grade before it reached the request whose client was actually waiting.
+    """
+    now = time.time() if now is None else now
+    pending: list[Path] = []
+    for req in ch.glob("req_*.json"):
+        if req.name in seen:
+            continue
+        rid = req.stem[len("req_"):]
+        if (ch / f"done_{rid}").exists() and (ch / f"resp_{rid}.json").exists():
+            continue
+        try:
+            if now > _request_deadline(req):
+                continue
+            req.stat()
+        except FileNotFoundError:
+            continue
+        pending.append(req)
+    return sorted(pending, key=lambda p: p.stat().st_mtime)
 
 
 def _should_stop(ch: Path, orig_ppid: int) -> str | None:
@@ -65,8 +122,7 @@ def main(argv=None):
         # was measured — an agent spent the remainder of its round waiting on a request submitted 10
         # minutes earlier while a later one was served, then ended the round with 3.5h of its budget
         # unused. Oldest-first also means the request the agent is actually blocked on is the one served.
-        pending = sorted((p for p in ch.glob("req_*.json") if p.name not in seen),
-                         key=lambda p: p.stat().st_mtime)
+        pending = _pending_requests(ch, seen)
         if not pending:
             time.sleep(a.poll)
             continue
@@ -79,8 +135,8 @@ def main(argv=None):
         try:
             r = json.loads(req.read_text())
         except Exception:
-            resp.write_text(json.dumps({"error": "broker: unreadable request"}))
-            (ch / f"done_{rid}").write_text("err")
+            _atomic_write(resp, json.dumps({"error": "broker: unreadable request"}))
+            _atomic_write(ch / f"done_{rid}", "err")
             continue
         to = int(r.get("timeout", 1800))
         argv2 = [sys.executable, str(SELFCHECK),
@@ -89,7 +145,9 @@ def main(argv=None):
                  "--capsules", str(r.get("capsules", "all")),
                  "--workers", str(r.get("workers", 8)),
                  "--timeout", str(to),
-                 "--out", str(resp)]
+                 # The real self-check writes --out directly.  Point it at a private name and publish
+                 # by rename only after it exits, so the shim can never read a half-written verdict.
+                 "--out", str(ch / f".resp_{rid}.{os.getpid()}.tmp")]
         # forward the shape-coverage request through the sandbox shim (the agent cannot reach the
         # oracle itself, so a flag it sets here is the only way the check runs at all)
         if r.get("shape_coverage"):
@@ -103,6 +161,8 @@ def main(argv=None):
             # Spool the child's streams to FILES, not pipes: a poll loop that never drains a PIPE
             # deadlocks as soon as the child fills the buffer, and a full-corpus self-check is chatty.
             log_out, log_err = ch / f".out_{rid}", ch / f".err_{rid}"
+            staged_resp = ch / f".resp_{rid}.{os.getpid()}.tmp"
+            staged_resp.unlink(missing_ok=True)
             aborted = False
             with log_out.open("w") as fo, log_err.open("w") as fe:
                 proc = subprocess.Popen(argv2, cwd=str(ws), stdout=fo, stderr=fe, text=True)
@@ -115,18 +175,22 @@ def main(argv=None):
                         except subprocess.TimeoutExpired:
                             proc.kill()                 # a wedged RTL sim does not get to outlive us
                             proc.wait(timeout=30)
-                        resp.write_text(json.dumps(
+                        staged_resp.unlink(missing_ok=True)
+                        _atomic_write(resp, json.dumps(
                             {"error": f"broker: self-check aborted ({why or 'timed out'})"}))
-                        (ch / f"done_{rid}").write_text("err")
+                        _atomic_write(ch / f"done_{rid}", "err")
                         aborted = True
                         break
                     time.sleep(a.poll)
-            if not aborted and not resp.exists():
-                out = log_out.read_text()[-20000:] if log_out.exists() else ""
-                err = log_err.read_text()[-300:] if log_err.exists() else ""
-                resp.write_text(out or json.dumps({"error": err}))
+            if not aborted:
+                if staged_resp.exists():
+                    os.replace(staged_resp, resp)
+                else:
+                    out = log_out.read_text()[-20000:] if log_out.exists() else ""
+                    err = log_err.read_text()[-300:] if log_err.exists() else ""
+                    _atomic_write(resp, out or json.dumps({"error": err}))
         except Exception as e:
-            resp.write_text(json.dumps({"error": f"broker: {type(e).__name__}: {str(e)[:200]}"}))
+            _atomic_write(resp, json.dumps({"error": f"broker: {type(e).__name__}: {str(e)[:200]}"}))
         # PROMOTE off the SYNCHRONOUS path too. Promotion was first hooked into the async oracle alone,
         # and a live run then showed the agent using THIS path seven times to the async path's two -- so
         # eight verdicts completed and promotion fired zero times. Wherever a verdict is produced,
@@ -142,7 +206,7 @@ def main(argv=None):
         except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
             print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
         if not (ch / f"done_{rid}").exists():
-            (ch / f"done_{rid}").write_text("ok")
+            _atomic_write(ch / f"done_{rid}", "ok")
 
 
 if __name__ == "__main__":
