@@ -558,12 +558,17 @@ def test_shipped_targets_all_consume_the_same_claim_separated_perf_template():
     assert claims == {"PREDICTS", "DIFFERENTIAL"}
     assert all(s["base"]["cat"] == "_perf" and s["base"]["label"] == "dev"
                for s in shared["sweeps"])
-    assert [s["id"] for s in shared["sweeps"]] == ["PK", "PS", "PC", "PF"]
-    # PF left `blocked_unimplemented` when its emitter arrived: the fused member can now name the bias
-    # operand its stage consumes, and the unfused half has an op to be expressed as, so the comparison
-    # group has more than one member. PL is still blocked -- its lever is layer-scale promotion, which
-    # is not capsule-runnable.
-    assert {row["family"] for row in shared["blocked_unimplemented"]} == {"PL"}
+    assert [s["id"] for s in shared["sweeps"]] == ["PK", "PS", "PC", "PF", "PL"]
+    # `blocked_unimplemented` is now EMPTY, and that is the point of the block rather than a reason to
+    # delete it: it exists so a family whose lever cannot be emitted is declared and skipped with
+    # evidence instead of quietly missing. Both former entries turned out to be stale reasons, not
+    # missing capabilities -- PF needed the fused member to be able to name its bias operand, and PL
+    # needed nothing at all beyond noticing that `resident_reuse` already varies how many tiles
+    # amortize one weight push. PC and PS remain declared as SWEEPS and skip at their own gates (PS's
+    # traits are refuted, PC's emitter does not exist), which is a different and honest state.
+    assert shared.get("blocked_unimplemented") in ([], None, {}), (
+        f"expected no blocked family, got "
+        f"{[r.get('family') for r in (shared.get('blocked_unimplemented') or [])]}")
     assert all("source" not in s["base"] and "operand_dtype" not in s["base"]
                for s in shared["sweeps"])
 
@@ -600,7 +605,8 @@ def test_gemmini_admits_the_runnable_families_and_records_PS_PC_trait_skips():
 
     # PK's four reduction depths, then PF's two shape groups of three members each. Order is the
     # declaration order in the shared template, which is what makes this readable as a whole.
-    assert [entry["performance"]["family"] for entry in entries] == ["PK"] * 4 + ["PF"] * 6
+    assert [entry["performance"]["family"] for entry in entries] == (
+        ["PK"] * 4 + ["PF"] * 6 + ["PL"] * 4)
     # PF's members are a fused capsule and the two capsules it replaces, twice, and every group is
     # complete -- a group of one cannot be compared to anything.
     groups: dict[str, list[str]] = {}
@@ -608,9 +614,16 @@ def test_gemmini_admits_the_runnable_families_and_records_PS_PC_trait_skips():
         g = entry.get("comparison_group")
         if g:
             groups.setdefault(g["name"], []).append(g["role"])
-    assert len(groups) == 2, f"expected two fusion groups, got {sorted(groups)}"
-    for name, roles in sorted(groups.items()):
+    fusion = {n: r for n, r in groups.items() if n.startswith("fmb_")}
+    amort = {n: r for n, r in groups.items() if n.startswith("amort_")}
+    assert len(fusion) == 2, f"expected two fusion groups, got {sorted(fusion)}"
+    for name, roles in sorted(fusion.items()):
         assert sorted(roles) == ["fused", "part", "part"], f"group {name} is {sorted(roles)}"
+    # PL's pair: the SAME lever at two regime scales, so both members are present or the saving has
+    # nothing to be a saving against.
+    assert len(amort) == 2, f"expected two amortization groups, got {sorted(amort)}"
+    for name, roles in sorted(amort.items()):
+        assert sorted(roles) == ["layer_regime", "tile_regime"], f"group {name} is {sorted(roles)}"
     assert {entry["operand_dtype"] for entry in entries} == {"int8"}
     assert {entry["performance"]["emitter"]["resolved"]["accum_dtype"]
             for entry in entries} == {"i32"}
@@ -640,8 +653,7 @@ def test_gemmini_admits_the_runnable_families_and_records_PS_PC_trait_skips():
     assert [row["family"] for row in blocked] == ["PC"], (
         "PC must reach the emitter gate, not be turned away at the trait gate")
     assert errors == []
-    assert {row["family"] for row in profile["_performance_template"]["blocked_unimplemented"]} == {
-        "PL"}
+    assert not (profile["_performance_template"].get("blocked_unimplemented") or [])
     capsule, mlir = GC.CS.build(entries[0], binding)
     assert capsule["numeric_policy"] == {"compare": "exact_int", "dtype": "i32"}
     assert capsule["label"] == "dev" and "merlin_iface.matmul" in mlir

@@ -27,7 +27,11 @@ import sys
 from pathlib import Path
 
 _HERE = Path(__file__).resolve()
-for _p in (_HERE.parents[2] / "merlin" / "python",):
+# The generator lives beside the capsules, not in the package tree, and `_ungradeable` imports it to
+# ask the golden engines what they can grade. Without this the gradeability check cannot run -- and a
+# check that cannot run reports `ungradeable_unchecked`, which is honest but blocks every synthesis.
+for _p in (_HERE.parents[2] / "merlin" / "python",
+           _HERE.parents[2] / "merlin" / "contract" / "capsules"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
@@ -67,6 +71,72 @@ def _workload_spec(target: str) -> dict:
     return dict(getattr(load_target_experiment(desc), "workload_spec", None) or {})
 
 
+def _gradeable_candidates(entries: list[dict]) -> list[dict]:
+    """Entries a GOLDEN ENGINE grades, i.e. the op-level ones.
+
+    A model capsule carries no `op`: its program is the derived micro model and its verdict comes from
+    the whole-model path, not from an engine selected by dtype. Asking the golden question of it raises
+    on the missing key, which reads as "gradeability could not be decided" for the whole target and
+    blocks a synthesis that is fine.
+    """
+    return [e for e in entries if e.get("op")]
+
+
+def _ungradeable(entries: list[dict], target: str) -> list[dict]:
+    """Entries whose (op, dtype) pair no golden engine can grade -- reported, never written.
+
+    ⚠️ AN OP BEING MATERIALIZABLE IS NOT THE SAME AS BEING GRADEABLE. `corpus_synth` chooses the
+    cheapest op that exercises a family and can be WRITTEN, which is the right question for a builder
+    and the wrong one for a golden: the engine is picked by the entry's DTYPE, and each engine covers a
+    different op set. Two measured cases, both of which crashed inside the writer rather than being
+    reported here:
+
+      * radiance's `attention` cells resolve to `attention_mx`, whose golden exists only in the
+        block-scaled engine, while the cells are fp16/bf16/f32 -- so the SIMT engine raised
+        "no SIMT golden for op 'attention_mx'".
+      * a body-only op at a non-float dtype needs a `quant_scheme` (a weight-only capture emits a float
+        matmul, which cannot grade an integer datapath), and without one the generator refuses it.
+
+    The check lives here rather than in `corpus_synth` because which engine grades which op is the
+    GENERATOR's knowledge; importing it into the synthesizer would make a pure module depend on the
+    thing that consumes it. Reported as a cell that could not be expressed, with the reason, so the
+    requirement shows an honest hole instead of a corpus that fails to build.
+    """
+    import generate_corpus as GC
+
+    out = []
+    for entry in entries:
+        regime, _ = GC._entry_regime(entry, _binding(target))
+        source = entry.get("source")
+        why = None
+        if source == "pytorch" and regime != "simt" and not entry.get("quant_scheme"):
+            why = (f"a pytorch-sourced capsule needs a float dtype or a declared quant_scheme; this "
+                   f"cell is {entry.get('operand_dtype')!r} (regime {regime!r})")
+        elif source is None and regime == "simt" and entry["op"] in _MX_ONLY_GOLDEN:
+            why = (f"{entry['op']!r} has a golden only in the block-scaled engine, and this cell is "
+                   f"{entry.get('operand_dtype')!r} (regime {regime!r})")
+        if why:
+            out.append({"name": entry["name"], "op": entry["op"],
+                        "dtype": entry.get("operand_dtype"), "regime": regime, "reason": why})
+    return out
+
+
+#: Ops whose golden exists ONLY in the block-scaled engine. Read from the engine's own dispatch rather
+#: than guessed: `generate_corpus._simt_golden` and `_float_golden` raise by name for these, and the
+#: block-scaled path is the only one that implements them.
+_MX_ONLY_GOLDEN = frozenset({"attention_mx", "gemv_batched"})
+
+
+def _binding(target: str):
+    import generate_corpus as GC
+    from merlin.targetgen import corpus_spec as CSPEC
+    from merlin.targetgen.corpora import descriptor_path
+    from merlin.targetgen.target_experiment import load_target_experiment
+    prof = GC.load_profile(target)
+    te = load_target_experiment(descriptor_path(target))
+    return CSPEC.derive_binding(te, prof.get("datapath") or {})
+
+
 def synth_for(target: str) -> dict:
     import yaml
 
@@ -80,6 +150,16 @@ def synth_for(target: str) -> dict:
         out = synthesize(doc, workload_spec=_workload_spec(target))
     except SynthesisError as exc:
         return {"target": target, "status": "unsynthesizable", "detail": str(exc)}
+
+    try:
+        bad = _ungradeable(_gradeable_candidates(list(out.get("capsules") or ())), target)
+    except Exception as exc:                       # noqa: BLE001 -- cannot check is not "all fine"
+        return {"target": target, "status": "ungradeable_unchecked",
+                "detail": f"could not decide gradeability: {type(exc).__name__}: {exc}", **out}
+    if bad:
+        keep = {b["name"] for b in bad}
+        out["capsules"] = [e for e in out["capsules"] if e["name"] not in keep]
+        out["ungradeable"] = bad
     return {"target": target, "status": "ok", **out}
 
 

@@ -1,0 +1,136 @@
+name: PL03_k64
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'shared cross-regime amortization pair: one pushed weight reused
+  by one tile versus by four, at identical per-tile work (tile=32; K=64; matmuls=[{''lhs'':
+  ''A0'', ''out'': ''Y0'', ''M_tiles'': 1}, {''lhs'': ''A1'', ''out'': ''Y1'', ''M_tiles'':
+  1}, {''lhs'': ''A2'', ''out'': ''Y2'', ''M_tiles'': 1}, {''lhs'': ''A3'', ''out'':
+  ''Y3'', ''M_tiles'': 1}])'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+- name: A1
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+- name: A2
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+- name: A3
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+operation:
+  op: resident_reuse
+  attributes:
+    weight: W
+    matmuls:
+    - lhs: A0
+      out: Y0
+      epilogue: []
+      output_dtype: bf16
+    - lhs: A1
+      out: Y1
+      epilogue: []
+      output_dtype: bf16
+    - lhs: A2
+      out: Y2
+      epilogue: []
+      output_dtype: bf16
+    - lhs: A3
+      out: Y3
+      epilogue: []
+      output_dtype: bf16
+    semantic: resident_reuse
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  modes:
+    resident_reuse: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L2_intra_layer
+  family: PL
+  lever: cross_regime_amortization
+  claim: DIFFERENTIAL
+  comparand:
+    kind: paired_regime
+    against: same_lever_at_tile_and_layer_scale
+    cancels:
+    - operation
+    - datapath
+    - lever
+    demand_equal:
+    - per_tile_pass_work
+    - operand_dtype
+    - accum_dtype
+  falsifier:
+    observation: per_tile_pass_saving_by_regime
+    fires_when: saving_changes_beyond_the_declared_band
+    negative_control: tile_scale_member
+  gate:
+    traits:
+    - structural_pipeline_depth
+    instrument: cycle_count_and_preflight
+    capacity: non_aliasing_DRAM_and_non_binding_IMEM
+    on_missing: skip_with_evidence
+  regime:
+    separation: tile_scale_versus_promoted_layer_scale
+    layout: identical_lever_with_looped_layer_emission
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      promotion: passing_tile_member_to_layer_sibling
+    resolved:
+      source: direct
+      operand_dtype: fp8_e4m3
+      accum_dtype: bf16
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 2
+    runs: derived_after_tier_one_promotion
+    projected_cycles: derived_at_preflight
+    basis: only_passing_tier_one_members_are_promoted
+comparison_group:
+  name: amort_k64
+  role: layer_regime

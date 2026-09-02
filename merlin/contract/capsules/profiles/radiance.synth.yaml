@@ -44,7 +44,7 @@ capsules:
 - cat: isa
   kind: isa
   name: SY_attention_bf16_aligned
-  op: attention_mx
+  op: attention_full
   operand_dtype: bf16
   out: Y0
   lhs: A0
@@ -57,13 +57,14 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
 - cat: isa
   kind: isa
   name: SY_attention_bf16_partial
-  op: attention_mx
+  op: attention_full
   operand_dtype: bf16
   out: Y0
   lhs: A0
@@ -76,13 +77,14 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
 - cat: isa
   kind: isa
   name: SY_attention_f32_aligned
-  op: attention_mx
+  op: attention_full
   operand_dtype: f32
   out: Y0
   lhs: A0
@@ -95,13 +97,14 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
 - cat: isa
   kind: isa
   name: SY_attention_f32_partial
-  op: attention_mx
+  op: attention_full
   operand_dtype: f32
   out: Y0
   lhs: A0
@@ -114,13 +117,14 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
 - cat: isa
   kind: isa
   name: SY_attention_fp16_aligned
-  op: attention_mx
+  op: attention_full
   operand_dtype: fp16
   out: Y0
   lhs: A0
@@ -133,13 +137,14 @@ capsules:
   M: tile
   K: 2*tile
   N: tile
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
 - cat: isa
   kind: isa
   name: SY_attention_fp16_partial
-  op: attention_mx
+  op: attention_full
   operand_dtype: fp16
   out: Y0
   lhs: A0
@@ -152,6 +157,7 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  source: pytorch
   pass_requirements:
   - target-isa-lowering
   - tile-schedule

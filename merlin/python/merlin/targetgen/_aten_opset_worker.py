@@ -39,7 +39,19 @@ def core_opset() -> dict:
             tags = getattr(op, "tags", ()) or ()
             if torch.Tag.core in tags:
                 ops.add(str(op))
-    return {"torch": torch.__version__, "n_core": len(ops), "ops": sorted(ops)}
+    # The DECOMPOSITION TABLE, for what it is actually for. It is the wrong denominator (it is roughly
+    # the complement of Core ATen) and it is the right way to answer a different question: given a
+    # `prov.aten` tag that is NOT core, is it a frontend COMPOSITE whose lowering is core, or an op
+    # nothing knows? `aten.conv2d.default` is the first; that distinction is what separates "this model
+    # uses composite frontend ops" from "this model contains work we cannot name".
+    decomposed = set()
+    try:
+        from torch._decomp import core_aten_decompositions
+        decomposed = {str(k) for k in core_aten_decompositions()}
+    except Exception:                              # noqa: BLE001 -- absent table is not an empty one
+        decomposed = set()
+    return {"torch": torch.__version__, "n_core": len(ops), "ops": sorted(ops),
+            "n_decomposed": len(decomposed), "decomposed": sorted(decomposed)}
 
 
 def main(argv=None) -> int:
