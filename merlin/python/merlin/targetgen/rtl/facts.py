@@ -101,7 +101,53 @@ def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
     legal set — so we emit a loud warning first rather than silently serving the degraded facts."""
     p = rtl_facts_path(target, explicit=explicit)
     if p.is_file():
-        return p
+        # The RTL is an external checkout that moves on its own, so a cache hit is only valid while the
+        # revision it was derived from is still the revision on this host. This used to return
+        # unconditionally: facts extracted weeks and several commits earlier were served as current, and
+        # nothing downstream could tell. Re-derive on drift, and honour an explicit refresh so an
+        # experiment can insist on deriving anew (MERLIN_RTL_FACTS_REFRESH=1).
+        _forced = _refresh_wanted()
+        _why = None
+        if explicit is None and not os.environ.get("MERLIN_RTL_FACTS"):
+            try:
+                _why = stale_reason(json.loads(p.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                _why = None                      # unreadable cache falls through to regeneration below
+        if not _forced and _why is None:
+            return p
+        if _forced or _why:
+            warnings.warn(
+                f"RTL facts for {target!r} are being RE-DERIVED: "
+                + ("MERLIN_RTL_FACTS_REFRESH is set" if _forced else str(_why))
+                + ". The previous artifact described a different revision of the hardware, so any number "
+                  "already attributed to it belongs to that revision, not this one.",
+                RuntimeWarning, stacklevel=2)
+            # Regenerate IN PLACE, keeping only an in-memory copy to restore from. Moving the artifact
+            # aside first looks safer and is not: `write_facts_guarded`/`_refuse_hollowed` detect a
+            # weaker re-extraction by comparing against the file AT THIS PATH, so moving it away blinds
+            # the downgrade guard. Measured, on this change, before it was caught: a re-derivation
+            # without MERLIN_MLC_DIR silently replaced the gemmini artifact with a smaller one from the
+            # Scala-header fallback, and four tests went red on the weakened legal-funct set. The
+            # ratchet ("evidence may only get RICHER") has to survive a refresh, or the refresh becomes
+            # the way to lose facts.
+            _prev = _read_facts_doc(p)
+            try:
+                return _regenerate(target, p)
+            except Exception:
+                if _prev is not None:
+                    try:
+                        p.parent.mkdir(parents=True, exist_ok=True)
+                        p.write_text(json.dumps(_prev, indent=2) + "\n", encoding="utf-8")
+                        warnings.warn(
+                            f"RTL-facts re-derivation for {target!r} FAILED; restored the previous "
+                            f"artifact, which is STALE ({_why or 'refresh requested'}). Any number "
+                            f"derived from it belongs to the earlier revision, so do not attribute a "
+                            f"new result to the current RTL until this is re-derived successfully.",
+                            RuntimeWarning, stacklevel=2)
+                        return p
+                    except OSError:
+                        pass
+                raise
     if explicit is not None or os.environ.get("MERLIN_RTL_FACTS"):
         raise FileNotFoundError(
             f"RTL facts override does not exist: {p} (explicit=/$MERLIN_RTL_FACTS is used as-is and "
@@ -118,7 +164,24 @@ def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
     # is both correct and what makes the grant mean something.
     committed = _committed_facts_path(target)
     if committed is not None and committed.is_file():
-        return committed
+        # A refresh that fell through to the committed pin would not have re-derived anything, so honour
+        # the refresh ONLY when the RTL is actually observable here. Inside the agent sandbox it is not
+        # (no external checkout is mounted), and there the committed pin is the best available answer —
+        # taking it is the honest degradation, not a silent one: `stale_reason` reports an unstamped
+        # artifact as unattributable, so a caller that needs attribution can still tell.
+        if not _refresh_wanted() or not derivation_provenance():
+            return committed
+    return _regenerate(target, p)
+
+
+
+def _regenerate(target: str, p: "Path") -> "Path":
+    """Extract facts from the RTL into ``p`` and refuse a result that carries none.
+
+    Split out of :func:`ensure_facts` so a staleness-driven re-derivation runs exactly the same
+    path as a cold cache — two regeneration routes would drift, and the one that drifts is
+    whichever has no caller watching it.
+    """
     if target in _REGENERATING:
         raise RuntimeError(f"re-entrant RTL-facts regeneration for target {target!r}")
     _warn_if_degraded(target)
@@ -345,7 +408,116 @@ def write_facts_guarded(path, doc: dict, *, allow_downgrade: bool = False) -> No
                 f"empties instruction_classes) — point the toolchain and re-run. If the hardware really "
                 f"lost these facts, pass allow_downgrade=True.")
     p.parent.mkdir(parents=True, exist_ok=True)
+    doc = {**doc, "derived_from": derivation_provenance()}   # stamp WHAT the RTL was when we read it
     p.write_text(_json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+
+
+def attribution_gap(doc: dict) -> str | None:
+    """Why ``doc``'s facts cannot be attributed to a hardware revision, or ``None`` if they can.
+
+    Separate from :func:`stale_reason` because the two answer different questions and only one of them
+    may invalidate a cache. "This artifact does not say which revision it came from" is a reporting fact
+    — a result derived from it cannot cite a commit — whereas "the revision moved" is positive evidence
+    that the artifact is wrong. Conflating them forced a re-extraction of every artifact written before
+    the stamp existed, which fails closed wherever the RTL is not reachable.
+
+    Use this when a result is about to CLAIM a hardware verdict: an artifact with a gap here can still be
+    correct, but nothing derived from it may be attributed to a commit.
+    """
+    if not (doc or {}).get("derived_from"):
+        return ("the artifact carries no derived_from stamp, so nothing derived from it can be "
+                "attributed to an RTL revision; re-derive with MERLIN_RTL_FACTS_REFRESH=1 where the "
+                "hardware checkout is reachable")
+    return None
+
+
+def _refresh_wanted() -> bool:
+    """Whether the caller has asked for facts to be derived anew regardless of the cache.
+
+    An experiment should be able to insist on this: the RTL can have changed since the last run, and a
+    result is about the hardware as it is now, not as it was when some earlier session happened to warm a
+    cache.
+    """
+    return str(os.environ.get("MERLIN_RTL_FACTS_REFRESH") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def derivation_provenance() -> dict:
+    """The observed state of every declared hardware checkout, at the moment facts are derived.
+
+    Facts are a claim about a piece of hardware, so the artifact has to say WHICH revision it is a claim
+    about. Until this existed the radiance artifact carried no revision at all, so an L3 execution-cert
+    derived from it could not be attributed to a commit -- exactly the failure `hardware_pins.yaml` was
+    written to stop ("a result attributed to the wrong hardware is worse than no result, because it gets
+    cited").
+
+    Observed, never trusted: the commit comes from the checkout as it stands, and ``dirty`` records that
+    the working tree carries changes the commit does not describe. A dirty tree is not an error here --
+    it is a legitimate state that some of this work depends on -- but it must be visible, because it is
+    what makes "commit X" an incomplete answer to "what did we read".
+
+    Returns ``{}`` when no pin is resolvable (no checkout on this host, e.g. inside the agent sandbox).
+    An empty stamp is honest: it says the facts could not be attributed, which is different from saying
+    they match.
+    """
+    out: dict[str, Any] = {}
+    try:
+        from merlin.common import provenance as _P
+        pins = _P.load_pins()
+    except Exception:  # noqa: BLE001 -- no registry reachable ⇒ nothing to attribute
+        return out
+    for name, pin in (pins or {}).items():
+        try:
+            root = os.environ.get(getattr(pin, "root_env", "") or "")
+            if not root:
+                continue
+            path = Path(root) / (getattr(pin, "path", "") or "")
+            if not path.exists():
+                continue
+            obs = _P.observe(path)
+            out[name] = {"commit": getattr(obs, "commit", None),
+                         "declared": getattr(pin, "commit", None),
+                         "dirty": sorted(getattr(obs, "dirty_paths", None) or [])[:8],
+                         "matches_pin": getattr(obs, "commit", None) == getattr(pin, "commit", None)}
+        except Exception:  # noqa: BLE001 -- one unobservable pin must not sink the whole stamp
+            continue
+    return out
+
+
+def stale_reason(doc: dict) -> str | None:
+    """Why ``doc``'s facts no longer describe the RTL on this host, or ``None`` if they still do.
+
+    This is the check the accessor never had: ``ensure_facts`` returned any cache file that existed,
+    forever, so facts derived weeks and several commits ago were served as current. The RTL is an
+    external checkout that moves independently of this repo, and every downstream number -- ISA
+    encodings, SIMT geometry, address spaces, memory capacity -- is a function of it.
+
+    Returns a sentence naming the drifted pin, so the caller can say what changed rather than only that
+    something did. An artifact with NO stamp is reported as unattributable rather than as fresh: absence
+    of evidence must not read as evidence of freshness.
+    """
+    stamped = (doc or {}).get("derived_from")
+    if stamped is None:
+        # NOT stale — unattributable, which is a different claim and must not force a re-derivation.
+        # Treating an unstamped artifact as stale invalidated every artifact predating the stamp and made
+        # each of them re-extract on first read; in any environment where the RTL is not reachable (CI, a
+        # fresh clone, the agent sandbox) that turns a working cache hit into a hard failure. We cannot
+        # know such an artifact is stale, and inventing that verdict is exactly the kind of unfounded
+        # claim this module exists to prevent. Report it via `attribution_gap`, invalidate on nothing.
+        return None
+    now = derivation_provenance()
+    if not now:
+        return None            # nothing observable here; we cannot claim drift, and say so upstream
+    for name, then in (stamped or {}).items():
+        cur = now.get(name)
+        if cur is None:
+            continue           # that checkout is not present here — not evidence of drift
+        if cur.get("commit") != (then or {}).get("commit"):
+            return (f"{name}: facts were derived at {(then or {}).get('commit')!r} but this host is at "
+                    f"{cur.get('commit')!r}")
+        if sorted(cur.get("dirty") or []) != sorted((then or {}).get("dirty") or []):
+            return (f"{name}: the checkout's uncommitted changes differ from when the facts were derived "
+                    f"(commit {cur.get('commit')!r} is the same, the bytes read are not)")
+    return None
 
 
 class FactsEmpty(RuntimeError):
