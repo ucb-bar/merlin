@@ -11,6 +11,15 @@ coverage figure becomes a slogan:
 ``observed``
     which core ops the captured models CONTAIN. A denominator of ops nobody runs is not a claim about
     a compiler.
+
+    ⚠️ ``prov.aten`` RECORDS THE FRONTEND OP, NOT THE LOWERED ONE -- which is what a provenance tag is
+    for, and it means this count is not a statement about the IR's level. Measured on
+    ``resnet50_v1_5``: its tags are ``aten.conv2d.default`` / ``aten.linear.default`` /
+    ``aten.batch_norm.default``, none of them core, while its linalg is fully decomposed (688
+    contraction regions, 54 ``linalg.matmul`` reached through im2col, batch-norm lowered to
+    ``linalg.generic``). Reading a non-core tag as "this capture is at the wrong IR level" was wrong:
+    the capture is fine and the tag is honest. So a non-core tag is classified rather than dismissed --
+    a frontend COMPOSITE whose lowering is core, or an op nothing here can name.
 ``routed``
     which of those the target's capability contract admits, via :mod:`model_coverage` -- whose third
     bucket, ``unclassified``, is reported beside the other two and never folded into either. A region
@@ -106,14 +115,27 @@ def census(captures: dict[str, str | Path], *, opset: dict | None = None) -> dic
                            "core": sorted(set(ops) & core),
                            "non_core": sorted(set(ops) - core)}
     observed_core = sorted(set(seen) & core)
+    non_core = set(seen) - core
+    # A non-core tag is a FRONTEND COMPOSITE when torch's decomposition table knows how to take it
+    # apart -- `aten.conv2d.default` -> `aten.convolution.default`. Its lowering is core even though
+    # the tag is not, so calling it "not core" and stopping there describes the tag rather than the
+    # model. What the table does NOT cover (in-place and aliasing variants: `relu_`, `add_`,
+    # `flatten.using_ints`) stays in its own bucket, because guessing that `relu_` is `relu` is exactly
+    # the name-matching this repo avoids.
+    decomposed = set((opset or {}).get("decomposed") or ())
+    composite = sorted(non_core & decomposed)
+    unclassified = sorted(non_core - decomposed)
     return {
         "n_core": len(core),
         "observed_core": observed_core,
         "n_observed_core": len(observed_core),
-        # An op a model contains that the opset does NOT declare core. Reported rather than dropped:
-        # it is real work the compiler must handle, and folding it into the core count would inflate
-        # the numerator against a denominator that never contained it.
-        "non_core_observed": sorted(set(seen) - core),
+        # Kept for callers that only want "not core"; the two buckets below say WHY.
+        "non_core_observed": sorted(non_core),
+        # A frontend composite: not core, and torch's decomposition table takes it to core ops.
+        "composite_observed": composite,
+        # Neither core nor decomposable by that table -- an in-place or aliasing variant, or something
+        # genuinely unknown. Reported, never folded into either of the other two.
+        "unclassified_observed": unclassified,
         "per_model": per_model,
         "unreadable": sorted(n for n, d in per_model.items() if d.get("status") != "ok"),
     }
@@ -208,7 +230,13 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
                    "agree": counted == routed_models},
         "observed": {"n_core_observed": cen["n_observed_core"],
                      "core_fraction": (cen["n_observed_core"] / cen["n_core"]) if cen["n_core"] else None,
-                     "non_core_observed": cen["non_core_observed"]},
+                     "non_core_observed": cen["non_core_observed"],
+                     "composite_observed": cen.get("composite_observed") or [],
+                     "unclassified_observed": cen.get("unclassified_observed") or [],
+                     "why_composites_are_separate": (
+                         "prov.aten records the FRONTEND op, so a non-core tag does not mean the "
+                         "capture is at the wrong IR level; a composite whose lowering is core is a "
+                         "different fact from an op nothing can name")},
         "precision": {"dtype_ok": dtype_ok, "dtype_blocked": dtype_blocked,
                       "why_separate": (
                           "precision is judged only over the family-admitted subset; a region whose "

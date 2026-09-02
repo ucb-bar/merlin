@@ -150,32 +150,45 @@ def test_when_both_halves_share_a_model_set_the_sentence_does_not_caveat(opset, 
     assert "did not parse" not in AC.claim_sentence(rep)
 
 
-def test_a_pre_decomposition_capture_contributes_no_core_operators(opset, tmp_path):
-    """A composite op is reported as non-core, never folded into the core numerator.
+def test_a_frontend_composite_tag_is_classified_not_dismissed(opset, tmp_path):
+    """A non-core `prov.aten` tag does NOT mean the capture is at the wrong IR level.
 
-    This is not hypothetical: the resnet50 capture in the corpus is at the TORCH level rather than the
-    Core ATen level, and every one of its eight ops (``aten.conv2d.default``, ``aten.linear.default``,
-    ``aten.batch_norm.default``, ``aten.relu_.default``, ...) is a composite whose core counterpart
-    (``aten.convolution.default``, ``aten.addmm.default``, ...) exists. Counting those as core would
-    inflate the numerator against a denominator that never contained them -- and, worse, would hide
-    that one of the four claim models is captured at a different IR level from the other three.
+    `prov.aten` records the FRONTEND op -- which is what a provenance tag is for. Measured on
+    `resnet50_v1_5`: every one of its eight tags is a composite (`aten.conv2d.default`,
+    `aten.linear.default`, `aten.batch_norm.default`, ...), and its linalg is nevertheless fully
+    decomposed -- 688 contraction regions, 54 `linalg.matmul` reached through im2col, batch-norm
+    lowered to `linalg.generic`. An earlier reading of this same data concluded the capture was at the
+    torch level and needed re-capturing; it did not.
+
+    So the census classifies instead: a composite torch's decomposition table can take apart is a
+    different fact from an op nothing can name. The in-place and aliasing variants (`relu_`, `add_`,
+    `flatten.using_ints`) land in the second bucket deliberately -- guessing that `relu_` is `relu` is
+    the name-matching this repo exists to avoid.
     """
     core = set(opset["ops"])
-    composites = ["aten.conv2d.default", "aten.linear.default", "aten.batch_norm.default",
-                  "aten.relu_.default", "aten.add_.Tensor", "aten.max_pool2d.default",
-                  "aten.flatten.using_ints"]
-    for op in composites:
-        assert op not in core, f"{op} is a composite; the core opset must not contain it"
+    decomposed = set(opset.get("decomposed") or ())
+    if not decomposed:
+        pytest.skip("this torch build exposes no decomposition table")
 
-    mod = tmp_path / "torch_level.mlir"
+    composites = ["aten.conv2d.default", "aten.linear.default", "aten.max_pool2d.default",
+                  "aten.adaptive_avg_pool2d.default"]
+    variants = ["aten.relu_.default", "aten.add_.Tensor", "aten.flatten.using_ints"]
+    for op in composites + variants:
+        assert op not in core, f"{op} is not a core op; the opset must not contain it"
+    for op in composites:
+        assert op in decomposed, f"{op} should be a known frontend composite"
+
+    mod = tmp_path / "frontend_level.mlir"
     mod.write_text("".join(f'  %x = "op"() {{prov.aten = "{op}"}} : () -> ()\n'
-                           for op in composites), encoding="utf-8")
-    cen = AC.census({"torch_level": mod}, opset=opset)
-    assert cen["n_observed_core"] == 0, "a pre-decomposition capture owns no core operators"
-    assert sorted(cen["non_core_observed"]) == sorted(composites), (
-        "its ops must be reported as non-core rather than dropped -- they are real work the compiler "
-        "must handle, and their absence from the core count is the signal that the capture is at the "
-        "wrong IR level")
+                           for op in composites + variants), encoding="utf-8")
+    cen = AC.census({"frontend": mod}, opset=opset)
+    assert cen["n_observed_core"] == 0, "none of these tags is core"
+    assert sorted(cen["composite_observed"]) == sorted(composites), (
+        "a composite whose lowering is core must be reported as such, not merely as 'not core'")
+    assert sorted(cen["unclassified_observed"]) == sorted(variants), (
+        "an in-place or aliasing variant is neither core nor decomposable, and must not be folded "
+        "into the composite bucket")
+    assert not (set(cen["composite_observed"]) & set(cen["unclassified_observed"]))
 
 
 def test_a_parse_failure_names_the_construct_not_just_the_exception(opset, tmp_path):
