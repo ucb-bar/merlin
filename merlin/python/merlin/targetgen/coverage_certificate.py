@@ -104,6 +104,38 @@ def denominator_completeness(linalg_mlir: str | None) -> dict | None:
     }
 
 
+def executed_false_fallbacks(execution: dict | None) -> dict:
+    """Which kernels the router ASSIGNED to the accelerator did not execute there.
+
+    The execution-evidenced counterpart of ``false_fallback_count``, and it is computable for a reason
+    worth stating: both halves are keyed by the SAME thing, the kernel symbol. ``mesh_route_symbols``
+    is what the router assigned; the dispatch ledger records, per completed call, which lane it went to.
+    No join to the plan's per-op demands is required -- that join does not exist, and this does not need
+    it, so the measurable half of the question is answerable without inventing the unmeasurable half.
+
+    ``status`` is ``not_measured`` when either side is absent, never an empty list of fallbacks: "no
+    symbols fell back" and "nobody recorded which symbols ran" are opposite conclusions.
+    """
+    ex = execution or {}
+    routed = ex.get("mesh_route_symbols")
+    ledger = ex.get("dispatch_ledger")
+    if not isinstance(routed, (list, tuple)) or not isinstance(ledger, list):
+        return {"status": "not_measured",
+                "detail": "the run recorded no route symbols or no dispatch ledger, so which assigned "
+                          "kernel executed where was never observed"}
+    on_accel = {str(e.get("symbol")) for e in ledger
+                if isinstance(e, dict) and e.get("status") == "pass" and e.get("lane") == "on_mesh"}
+    assigned = [str(x) for x in routed]
+    fell_back = sorted(sym for sym in assigned if sym not in on_accel)
+    return {"status": "measured", "n_routed": len(assigned),
+            "n_executed_on_accelerator": len([s for s in assigned if s in on_accel]),
+            "n_false_fallback": len(fell_back),
+            # Named, not just counted: "4 kernels fell back" gives a reader nothing to act on.
+            "false_fallback_symbols": fell_back[:64],
+            "detail": "kernels the router assigned to the accelerator that no completed call placed "
+                      "there; joined on the kernel symbol, which both records carry"}
+
+
 def build(plan: dict, cap_map: dict, *, target: str | None = None,
           linalg_mlir: str | None = None, execution: dict | None = None) -> dict:
     """Build the coverage certificate from a ``route_plan`` result and a capability map.
@@ -188,11 +220,17 @@ def build(plan: dict, cap_map: dict, *, target: str | None = None,
                           "of them executed there; when these differ, the recalls in this certificate "
                           "describe an intent the run did not carry out")}
 
+    # The execution-evidenced half of the same question, reported BESIDE the plan-derived recalls rather
+    # than replacing them: the recalls are per-region and this is per-kernel-symbol, so they are not the
+    # same denominator and collapsing them would invent a number neither record supports.
+    executed = executed_false_fallbacks(execution)
+
     return {
         "target": target,
         "denominator_source": "semantic_capabilities (independent eligibility oracle)",
         "arr_evidence": "routing_plan",
         "execution_crosscheck": xcheck,
+        "executed_false_fallbacks": executed,
         "n_regions": len(regions),
         "n_eligible": n_eligible,
         "n_accelerated": n_accelerated,

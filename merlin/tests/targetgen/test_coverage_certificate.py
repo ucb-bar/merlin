@@ -47,3 +47,45 @@ def test_an_unknown_count_leaves_agreement_undecided_rather_than_true():
                  execution={"matmul_layers_routed": "UNKNOWN",
                             "matmul_layers_on_mesh": 3})["execution_crosscheck"]
     assert x["agrees"] is None
+
+
+# --- the execution-evidenced half ---------------------------------------------------------------------
+# The plan-derived recalls are per REGION; there is no join from a region to a completed call. But both
+# `mesh_route_symbols` and the dispatch ledger key on the KERNEL SYMBOL, so "which assigned kernel did
+# not run on the accelerator" is answerable without inventing the join that does not exist.
+
+def _exec(routed, ran):
+    return {"mesh_route_symbols": list(routed),
+            "dispatch_ledger": [{"ordinal": i, "symbol": s, "lane": "on_mesh", "status": "pass"}
+                                for i, s in enumerate(ran)]}
+
+
+def test_an_assigned_kernel_that_never_ran_on_the_accelerator_is_named():
+    got = CC.executed_false_fallbacks(_exec(["k$kernel_0", "k$kernel_1"], ["k$kernel_0"]))
+    assert got["status"] == "measured"
+    assert got["n_routed"] == 2 and got["n_executed_on_accelerator"] == 1
+    assert got["false_fallback_symbols"] == ["k$kernel_1"], "a count alone is not actionable"
+
+
+def test_every_assigned_kernel_running_there_is_no_false_fallback():
+    got = CC.executed_false_fallbacks(_exec(["a", "b"], ["a", "b"]))
+    assert got["n_false_fallback"] == 0 and got["false_fallback_symbols"] == []
+
+
+def test_a_missing_ledger_is_not_measured_rather_than_no_fallbacks():
+    """"No symbols fell back" and "nobody recorded which symbols ran" are opposite conclusions."""
+    assert CC.executed_false_fallbacks({"mesh_route_symbols": ["a"]})["status"] == "not_measured"
+    assert CC.executed_false_fallbacks({"dispatch_ledger": []})["status"] == "not_measured"
+    assert CC.executed_false_fallbacks(None)["status"] == "not_measured"
+
+
+def test_a_call_that_did_not_pass_does_not_count_as_having_run_there():
+    ex = {"mesh_route_symbols": ["a"],
+          "dispatch_ledger": [{"ordinal": 0, "symbol": "a", "lane": "on_mesh", "status": "fail"}]}
+    assert CC.executed_false_fallbacks(ex)["n_false_fallback"] == 1
+
+
+def test_the_certificate_carries_it_beside_the_plan_derived_recalls():
+    cert = CC.build(_EMPTY_PLAN, {}, target="t", execution=_exec(["a", "b"], ["a"]))
+    assert cert["executed_false_fallbacks"]["n_false_fallback"] == 1
+    assert cert["arr_evidence"] == "routing_plan", "the recalls themselves are still plan-derived"
