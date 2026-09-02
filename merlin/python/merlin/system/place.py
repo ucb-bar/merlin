@@ -63,6 +63,52 @@ class Placement:
         """Ops the host took but cannot natively compute. A gap that used to be unreported."""
         return tuple(p for p in self.placed if p.emulated)
 
+    def as_route_plan(self) -> dict:
+        """This placement in ``routing.route_plan``'s own shape.
+
+        The projection that lets one authority serve both surfaces. ``route_plan`` buckets by whether a
+        legal unit was found and whether it is a mesh kind; a Placement already knows both, so the two
+        can be compared op-for-op rather than argued about. Deliberately NOT the same objects:
+        ``route_plan``'s ``results`` are ``RouteResult``s, and reconstructing those here would couple
+        this module to routing's internals -- the buckets are what every consumer actually reads.
+        """
+        out: dict[str, list] = {"mesh": [], "fallback": [], "scalar_rvv": [], "results": []}
+        for pl in self.placed:
+            out["results"].append(pl)
+            # BUCKET ON DEVICE-VS-HOST FIRST. `route_plan`'s `scalar_rvv` means "the host lane" and its
+            # `fallback` means "a declared non-mesh DEVICE unit"; a Placement also knows about host
+            # units, which routing does not, so keying on "was a unit legal" put host-vector placements
+            # in `fallback` and the two surfaces disagreed about an op neither had misplaced.
+            if not pl.on_device:
+                out["scalar_rvv"].append(pl)
+            elif pl.lane == "on_mesh":
+                out["mesh"].append(pl)
+            else:
+                out["fallback"].append(pl)
+        return out
+
+    def to_dict(self) -> dict:
+        """The record written beside a compile, one entry per placed op.
+
+        ``emulated`` is the reason this file is worth writing: it is the case nothing reports today --
+        an op the host took whose format the host cannot natively carry, so the lowering has to emulate
+        it. Silent until now, because no surface had a field for it.
+        """
+        rows = []
+        for pl in self.placed:
+            d = pl.demand
+            rows.append({
+                "op": getattr(d, "op", None),
+                "in_fmt": getattr(d, "in_fmt", None), "weight_fmt": getattr(d, "weight_fmt", None),
+                "site": getattr(d, "site", None),
+                "m": getattr(d, "m", None), "n": getattr(d, "n", None), "k": getattr(d, "k", None),
+                "rank": getattr(d, "rank", None),
+                "device": pl.device, "unit": pl.unit, "lane": pl.lane,
+                "why": pl.why, "emulated": bool(pl.emulated),
+            })
+        return {"placed": rows, "lanes": self.lanes(), "n_emulated": len(self.emulated()),
+                "emulated": [r for r in rows if r["emulated"]]}
+
     def lanes(self) -> dict[str, int]:
         out: dict[str, int] = {}
         for p in self.placed:
@@ -108,7 +154,13 @@ def units_for(system) -> list[tuple[str, Any]]:
     out: list[tuple[str, Any]] = []
     for dev in getattr(system, "devices", ()) or ():
         try:
-            for u in _cu.compute_units(_tr.load_contract(dev.name)):
+            units = list(_cu.compute_units(_tr.load_contract(dev.name)))
+            # RESOLVE COMPOSITION, exactly as routing does. A unit that `contains` another inherits its
+            # capability, and `route_candidates` has always resolved that before testing legality. This
+            # did not, so on any target declaring a containing unit the two surfaces disagreed about
+            # what that unit can do -- and the test pinning them equal happens to use targets with no
+            # composition, so nothing caught it.
+            for u in (_cu.effective(u, units) for u in units):
                 out.append((dev.name, u))
         except Exception:        # noqa: BLE001 -- an unresolvable device contributes no units
             continue

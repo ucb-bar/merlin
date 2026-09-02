@@ -2223,6 +2223,29 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
             demands = CSRC.model_op_demands(linalg_mlir, routing_dtype or dtype)
             plan = _routing.route_plan(demands, target)
             out["routing_plan"] = _summarize_route_plan(plan)
+            # THE PLACEMENT AUTHORITY, IN SHADOW. `route_plan` stays the authority here; `place` is
+            # computed alongside and compared, so the two surfaces are held equal on real models before
+            # either is flipped. They disagree by construction today -- that is the defect the module
+            # exists to end -- and a divergence is RECORDED rather than raised, because a compile is
+            # the wrong place to discover a modelling gap.
+            #
+            # `emulated` is the fact only this surface can state: an op the host took whose format it
+            # cannot natively carry, so the lowering has to emulate it. Nothing else reports it.
+            try:
+                from .system.derive import system_for_experiment as _sysfor
+                from .system.place import place as _place
+                _system, _host_why = _sysfor(target)
+                _placement = _place(demands, _system)
+                _proj = _placement.as_route_plan()
+                _divergence = {k: {"placement": len(_proj[k]), "route_plan": len(plan[k])}
+                               for k in ("mesh", "fallback", "scalar_rvv")
+                               if len(_proj[k]) != len(plan[k])}
+                out["placement"] = {**_placement.to_dict(), "host": _host_why,
+                                    "authority": "routing.route_plan (placement runs in shadow)",
+                                    "divergence": _divergence or None}
+            except Exception as _exc:              # noqa: BLE001 -- shadow must never fail a compile
+                out["placement"] = {"status": "unavailable",
+                                    "why": f"{type(_exc).__name__}: {_exc}"}
             try:
                 from .targetgen import coverage_certificate as _cert
                 # ARR coverage certificate: the compiler's routing decisions (numerator) scored against
