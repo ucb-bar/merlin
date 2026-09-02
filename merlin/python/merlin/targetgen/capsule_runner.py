@@ -1134,10 +1134,39 @@ def _oracle_kind(oracle_meta) -> str | None:
 #: counters are the middle rung of the evidence ladder below: weaker than the ordered dispatch ledger,
 #: stronger than a routing plan. This is the only place a lane name is bound to a counter, and a lane
 #: absent from it is never silently promoted -- it falls to whatever weaker evidence exists.
+#: The routing plan's own key for "executed on the accelerator". Named here rather than inline so the
+#: lane vocabulary has one home; it is a lane name, never a target name.
+_ACCELERATOR_LANE = "on_mesh"
+
 _LANE_COUNTERS: dict[str, tuple[str, str]] = {
     "on_mesh": ("mesh", "matmul_layers_on_mesh"),
     "scalar_rvv_lane": ("host", "kernels_ran"),
 }
+
+
+
+def forbids_accelerator(capsule: dict) -> bool:
+    """Does this capsule declare that work must NOT reach the accelerator?"""
+    return _ACCELERATOR_LANE in [str(x) for x in ((capsule.get("lanes") or {}).get("forbid") or ())]
+
+
+def accelerator_lane_violated(capsule: dict, trace) -> bool:
+    """True only when a forbidding capsule's emitted stream DECODES accelerator instructions.
+
+    The asymmetry here is the whole reason this is sound on a path that owns no execution record. A
+    decoded accelerator instruction proves work went there. Its ABSENCE proves nothing: the decoder
+    recognizes the ``.insn r`` form, so a ``.word``-encoded kernel that does drive the device decodes as
+    silent, and reading that silence as "the host carried it" would hand a forbidding capsule a free
+    pass. Violated, or unmeasured -- never satisfied.
+    """
+    from . import trace_check as _TCK
+
+    if not forbids_accelerator(capsule):
+        return False
+    try:
+        return bool(_TCK.drives_accelerator(trace))
+    except Exception:                              # noqa: BLE001 -- an undecodable trace measures nothing
+        return False
 
 
 def lane_report(capsule: dict, routing_plan: dict | None,
@@ -3189,6 +3218,29 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                   "no accelerator instructions emitted — the kernel did not drive the "
                                   "target's ISA (compute must happen on the device; correctness cannot "
                                   "come from the host).")
+
+            # A FORBIDDEN ACCELERATOR LANE, judged on the one thing this path can prove. `lane_report`
+            # needs a routing plan and an execution record, which only the whole-model path owns, so an
+            # op or model-slice capsule forbidding the accelerator had no verdict at all (see
+            # LANE_CONTRACT_NOT_EVALUATED).
+            #
+            # The asymmetry is deliberate and is the whole reason this is sound here. A DECODED
+            # accelerator instruction proves work went there: that is a violation, and it is a fail. Its
+            # ABSENCE proves nothing -- the decoder recognizes the `.insn r` form, so a `.word`-encoded
+            # kernel that does drive the device decodes as silent. Reading that silence as "the host
+            # carried it" would hand a forbidding capsule a free pass, which is exactly the shape of
+            # vacuous evidence this contract exists to refuse. So: violated, or unmeasured. Never
+            # satisfied.
+            if accelerator_lane_violated(capsule, trace):
+                # PROTOCOL_VIOLATION is the enum member this is: the emitted stream broke a contract the
+                # capsule declared. `_cat` would silently resolve an unknown name to RUNNER_CRASH, which
+                # would report a compiler defect as a harness crash, so the plane carries the lane
+                # vocabulary and the category stays one the enum actually has.
+                raise CertFailure("lanes", _cat("PROTOCOL_VIOLATION"),
+                                  f"capsule forbids lane {_ACCELERATOR_LANE!r} and the emitted stream "
+                                  f"decodes accelerator instructions; this target's capability manifest "
+                                  f"does not admit this capsule's family, so the compiler must leave it "
+                                  f"on the host lane.")
 
         # --- oracle tiers -------------------------------------------------------------------
         # Run every tier the config declares (tier_sim ladder) OR an injected adapter provides — so a

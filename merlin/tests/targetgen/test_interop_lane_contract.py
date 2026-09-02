@@ -289,3 +289,47 @@ def test_an_interop_capsule_runs_on_the_mesh_lane():
     import inspect
     seg = inspect.getsource(CR._grade_model_capsule_inline)
     assert 'run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or ("mesh" if target else "host")' in seg
+
+
+# --- the negative lane on the OP path ----------------------------------------------------------------
+# `lane_report` needs a routing plan and an execution record, which only the whole-model path owns. An op
+# or model-slice capsule forbidding the accelerator therefore had no verdict at all, which is what made
+# the corpus's only negative lane assertion unenforceable.
+
+def test_a_forbidding_capsule_is_violated_when_the_stream_decodes_accelerator_work(monkeypatch):
+    from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen import trace_check as TCK
+
+    monkeypatch.setattr(TCK, "drives_accelerator", lambda trace: True)
+    assert CR.accelerator_lane_violated({"lanes": {"forbid": ["on_mesh"]}}, object()) is True
+
+
+def test_silence_is_not_a_satisfied_forbid(monkeypatch):
+    """The decoder recognizes the `.insn r` form, so a `.word`-encoded kernel that DOES drive the device
+    decodes as silent. Reading that silence as "the host carried it" would hand a forbidding capsule a
+    free pass -- so absence yields no violation AND no satisfaction; the capsule stays unmeasured."""
+    from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen import trace_check as TCK
+
+    monkeypatch.setattr(TCK, "drives_accelerator", lambda trace: False)
+    assert CR.accelerator_lane_violated({"lanes": {"forbid": ["on_mesh"]}}, object()) is False
+
+
+def test_a_capsule_that_forbids_nothing_is_never_violated(monkeypatch):
+    from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen import trace_check as TCK
+
+    monkeypatch.setattr(TCK, "drives_accelerator", lambda trace: True)
+    assert CR.accelerator_lane_violated({"lanes": {"require": ["on_mesh"]}}, object()) is False
+    assert CR.accelerator_lane_violated({}, object()) is False
+
+
+def test_an_undecodable_trace_measures_nothing_rather_than_accusing(monkeypatch):
+    from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen import trace_check as TCK
+
+    def _boom(trace):
+        raise ValueError("undecodable")
+
+    monkeypatch.setattr(TCK, "drives_accelerator", _boom)
+    assert CR.accelerator_lane_violated({"lanes": {"forbid": ["on_mesh"]}}, object()) is False
