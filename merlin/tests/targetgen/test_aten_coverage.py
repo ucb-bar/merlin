@@ -147,3 +147,18 @@ def test_a_claim_that_could_not_price_the_work_says_nothing_about_it():
         "work": {"routed_fraction": None, "exact": False},
     })
     assert "loop-nest work" not in sent and sent.endswith(".")
+
+
+def test_a_fraction_below_one_never_renders_as_a_hundred_percent():
+    """Measured on a real target: the work share is 0.99996 and `{:.1%}` renders it "100.0%", which
+    reads as "all of it" while 270 regions were not routed. Only an exact 1.0 may print 100%."""
+    assert AC._pct(1.0) == "100%"
+    assert AC._pct(0.9999587925592891) == "99.996%"
+    assert AC._pct(0.886) == "88.6%"
+    assert "100" not in AC._pct(0.99999999) or AC._pct(0.99999999) == "<100%"
+
+
+def test_a_tiny_nonzero_share_never_renders_as_zero():
+    """The same guard at the bottom of the range: a share that exists must not read as absent."""
+    assert AC._pct(1e-7) == ">0%"
+    assert AC._pct(0.0) == "0.0%"

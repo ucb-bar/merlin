@@ -215,6 +215,27 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
     }
 
 
+def _pct(frac: float) -> str:
+    """A percentage that never rounds INTO a claim the number does not make.
+
+    Measured: one target's work share is 0.99996, and ``{:.1%}`` renders that "100.0%" -- read by anyone
+    as "all of it", when 270 regions were in fact not routed. A fraction below 1 is therefore given as
+    many decimals as it needs to stay distinguishable from 100%, and only an exact 1.0 prints "100%".
+    The same guard applies at the bottom: a tiny non-zero share must not render as "0.0%".
+    """
+    if frac >= 1.0:
+        return "100%"
+    for places in (1, 2, 3, 4):
+        text = f"{frac:.{places}%}"
+        if float(text.rstrip("%")) < 100.0:
+            break
+    else:
+        return "<100%"
+    if frac > 0.0 and float(text.rstrip("%")) == 0.0:
+        return ">0%"
+    return text
+
+
 def claim_sentence(report: dict) -> str:
     """The one sentence the report supports, with nothing in it that the numbers do not carry."""
     obs = report["observed"]
@@ -225,10 +246,10 @@ def claim_sentence(report: dict) -> str:
     return (
         f"Across {len(models)} captured model(s), {obs['n_core_observed']} of "
         f"{report['opset']['n_core']} PyTorch Core ATen operators appear"
-        + (f" ({frac:.1%})" if frac is not None else "")
+        + (f" ({_pct(frac)})" if frac is not None else "")
         + f"; on {report['target']}, {rt['routed']} of {rt['denominator']} classifiable regions route "
           f"to the accelerator"
-        + (f" ({rfrac:.1%})" if rfrac is not None else "")
+        + (f" ({_pct(rfrac)})" if rfrac is not None else "")
         + f", with {rt['unclassified']} region(s) unclassified and reported separately"
         + (_work_clause(report.get("work") or {}))
         + ".")
@@ -245,4 +266,4 @@ def _work_clause(wk: dict) -> str:
         return ""
     qualifier = "" if wk.get("exact") else " (a lower bound; at least one iteration nest was only "\
                                           "partially recovered)"
-    return (f"; those account for {frac:.1%} of the roster's total loop-nest work{qualifier}")
+    return (f"; those account for {_pct(frac)} of the roster's total loop-nest work{qualifier}")
