@@ -789,13 +789,32 @@ def _t_explicit_completion(sources: Sources) -> tuple[Trait, str]:
                                   f"configuration emitted rather than what the generator can emit"), \
                 TIER_FACTS
         named = list(got.get("modules") or ())
-        return Trait("explicit_completion", None,
-                     evidence=f"the elaboration exposes a completion field on {len(named)} module(s) "
-                              f"{named or 'none'}, none of them a ready/valid handshake, so a "
-                              f"completion cannot be attributed to a particular command",
+        # ⚠️ THE DECIDING RUNG RAN, SO SILENCE IS ABSENT -- not UNKNOWN. This returned None either way,
+        # which is the collapse `capability_discovery._FAMILY_DECIDED_BY` exists to prevent in the
+        # other direction: a trait nobody could measure and a trait measured absent read alike, and
+        # only the second is a result a claim can be refuted on.
+        #
+        # Measured on atlas once its CIRCT hw-dialect elaboration became readable: 84 modules, zero
+        # exposing a completion field. Its engines expose per-engine BUSY ports (vecBusy, vloadBusy,
+        # xluBusy, ...) and its decoupled channels are TileLink a/d, so the machine says a unit is
+        # busy and never which command finished -- which is exactly the bar below, not met.
+        n_read = int(pf.get("n_modules") or 0)
+        dialect = pf.get("dialect") or "fir"
+        if not named:
+            return Trait("explicit_completion", False,
+                         evidence=f"{n_read} module(s) of this target's own elaboration were read "
+                                  f"({dialect} dialect) and NONE exposes a completion field, so no "
+                                  f"engine signals that its work finished; the elaboration is the "
+                                  f"authority for what this configuration emitted, and it was read "
+                                  f"rather than missing"), TIER_FACTS
+        return Trait("explicit_completion", False,
+                     evidence=f"{len(named)} module(s) of {n_read} read ({dialect} dialect) expose a "
+                              f"completion field {named}, none of them a ready/valid handshake, so a "
+                              f"completion cannot be attributed to a particular command -- the bar "
+                              f"this trait sets, measured and not met",
                      missing=("a decoupled (ready/valid) completion channel, or an activity source "
                               "declaring completion_observable "
-                              "(merlin.perf.decompose.ActivitySource)",)), TIER_NONE
+                              "(merlin.perf.decompose.ActivitySource)",)), TIER_FACTS
     return Trait("explicit_completion", None,
                  evidence=f"the facts declare interfaces {ifaces or 'none'} and carry no port list, and "
                           f"the elaborated FIRRTL could not be read to recover one "

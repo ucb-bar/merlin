@@ -181,6 +181,132 @@ def parse_ports(fir_text: str) -> dict:
     return out
 
 
+_HW_DECLS = ("hw.module", "hw.module.extern", "hw.module.generated", "hw.module private")
+#: Port direction keywords the hw dialect spells before a port name.
+_HW_DIRECTIONS = ("in", "out", "inout")
+
+
+def _hw_port_entries(sig: str) -> list[str] | None:
+    """Split a `hw.module` signature's port list on top-level commas, or ``None`` if unreadable.
+
+    Depth is tracked over ``<>``, ``()``, ``[]`` and ``{}`` together, because an hw port type is
+    routinely nested (``!hw.array<4xi8>``, ``!hw.struct<a: i1, b: i2>``) and splitting on every comma
+    shreds it into names that do not exist. Returning None rather than a partial list is the point: a
+    signature this cannot read must be recorded as UNREADABLE, never as a module with no ports -- that
+    is the silent skip this file's own history warns about.
+    """
+    open_i = sig.find("(")
+    if open_i == -1:
+        return None
+    depth, close_i = 0, -1
+    pairs = {"(": ")", "<": ">", "[": "]", "{": "}"}
+    closers = set(pairs.values())
+    for i in range(open_i, len(sig)):
+        ch = sig[i]
+        if ch in pairs:
+            depth += 1
+        elif ch in closers:
+            depth -= 1
+            if depth == 0:
+                close_i = i
+                break
+    if close_i == -1:
+        return None
+    body, out, cur, depth = sig[open_i + 1:close_i], [], [], 0
+    for ch in body:
+        if ch in pairs:
+            depth += 1
+        elif ch in closers:
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    if "".join(cur).strip():
+        out.append("".join(cur))
+    return [e for e in (x.strip() for x in out) if e]
+
+
+def _hw_port_name(entry: str) -> tuple[str, str] | None:
+    """``(direction, port name)`` for one signature entry, or ``None`` when it cannot be read.
+
+    An entry is ``in %clock : i1`` or ``out done : i1``: a direction keyword, an optionally
+    ``%``-prefixed name, then the type after a colon. Read by splitting, not by pattern -- and an entry
+    whose direction keyword is not one of the three is refused rather than guessed at.
+    """
+    head, sep, _type = entry.partition(":")
+    if not sep:
+        return None
+    words = head.split()
+    if len(words) < 2 or words[0] not in _HW_DIRECTIONS:
+        return None
+    return words[0], words[1].lstrip("%")
+
+
+def hw_module_ports(text: str) -> tuple[dict, dict[str, str]]:
+    """``({module: ModulePorts}, {module: why})`` from a CIRCT **hw dialect** elaboration.
+
+    ⚠️ hw-DIALECT BUNDLES ARE FLATTENED. Where FIRRTL writes ``completed : { flip ready, valid, bits :
+    UInt<6> }``, the hw dialect writes three separate ports -- ``completed_ready``, ``completed_valid``,
+    ``completed_bits`` -- so the bundle has to be REGROUPED to answer the same question. A field is a
+    name segment, and its leaves are the segments that follow it, which is why a decoupled channel is
+    still recognisable as one.
+
+    The second return value is the modules whose signature could NOT be read, with the reason. A caller
+    that ignores it is back to treating an unreadable module as a module with no ports.
+    """
+    ports: dict = {}
+    unreadable: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not any(line.startswith(d) for d in _HW_DECLS):
+            continue
+        at = line.find("@")
+        if at == -1:
+            unreadable[line[:60]] = "the declaration names no symbol"
+            continue
+        rest = line[at + 1:]
+        stop = min((i for i in (rest.find("("), rest.find(" ")) if i != -1), default=-1)
+        module = rest[:stop] if stop != -1 else rest
+        module = module.strip().strip('"')
+        if not module:
+            unreadable[line[:60]] = "the symbol after @ is empty"
+            continue
+        entries = _hw_port_entries(rest)
+        if entries is None:
+            unreadable[module] = "the port list is not delimited by a matching paren pair"
+            continue
+        # field -> {leaf}, plus the direction seen for it. A port with no underscore is a scalar field
+        # of its own, matching the .fir reader's treatment of a bare top-level port.
+        fields: dict[str, set] = {}
+        directions: dict[str, str] = {}
+        refused = 0
+        for entry in entries:
+            got = _hw_port_name(entry)
+            if got is None:
+                refused += 1
+                continue
+            direction, name = got
+            segs = [s for s in name.split("_") if s]
+            for i, seg in enumerate(segs):
+                leaf = segs[i + 1] if i + 1 < len(segs) else None
+                fields.setdefault(seg, set())
+                directions.setdefault(seg, direction)
+                if leaf is not None:
+                    fields[seg].add(leaf)
+        if refused:
+            unreadable[module] = (f"{refused} of {len(entries)} port entries could not be read; the "
+                                  f"module's field list is therefore incomplete")
+            continue
+        mp = ModulePorts(module)
+        for name, leaves in sorted(fields.items()):
+            mp.fields.append(PortField(name=name, leaves=tuple(sorted(leaves)),
+                                       direction=directions.get(name, ""), port=name))
+        ports[module] = mp
+    return ports, unreadable
+
+
 def modules_exposing(ports: dict, field_name: str) -> dict:
     """``module -> PortField`` for every module exposing ``field_name`` at a port's top level."""
     found = {}
@@ -237,9 +363,32 @@ def elaboration_kind(target: str) -> tuple[str, str]:
         if isinstance(src, str) and src.endswith(".mlir"):
             hw.append(src)
     if hw:
-        return "hw_mlir", ("this target's elaboration is recorded as CIRCT hw dialect "
-                           f"({', '.join(sorted(set(hw))[:2])}), and this reader parses .fir only")
+        return "hw_mlir", ", ".join(sorted(set(hw))[:2])
     return "none", "the facts name no elaboration artifact of either kind"
+
+
+def hw_path_for(target: str) -> Path | None:
+    """The CIRCT hw-dialect elaboration this target's facts name, when it is on this host.
+
+    An absolute path the facts carry is used as-is; a bare filename is looked for beside the other
+    named artifact, since the extractor writes them together.
+    """
+    kind, detail = elaboration_kind(target)
+    if kind != "hw_mlir":
+        return None
+    names = [n.strip() for n in detail.split(",") if n.strip()]
+    absolute = [Path(n) for n in names if n.startswith("/")]
+    for cand in absolute:
+        if cand.is_file():
+            return cand
+    for base in absolute:                          # a sibling of a named absolute path
+        for n in names:
+            if n.startswith("/"):
+                continue
+            cand = base.parent / n
+            if cand.is_file():
+                return cand
+    return None
 
 
 def _why_no_fir(target: str) -> str:
@@ -248,7 +397,10 @@ def _why_no_fir(target: str) -> str:
     if kind == "fir":
         return f"the elaborated FIRRTL this target's facts name ({detail}) could not be located"
     if kind == "hw_mlir":
-        return detail
+        if hw_path_for(target) is None:
+            return (f"this target's elaboration is recorded as CIRCT hw dialect ({detail}) and that "
+                    f"file is not on this host")
+        return (f"this target's elaboration is CIRCT hw dialect ({detail}); it was read")
     return f"no elaboration artifact is named by this target's facts ({detail})"
 
 
@@ -294,7 +446,20 @@ def port_facts(target: str, *, fields=("completed", "busy"), fir=None) -> dict:
     Returns a three-state record. ``status`` is ``derived`` when the FIRRTL was read, ``unavailable``
     when it could not be found or read — never an empty answer that reads like "the RTL has none".
     """
+    # TWO ELABORATION DIALECTS, one question. A target's facts name either a FIRRTL `.fir` or a CIRCT
+    # `hw.mlir`, and the port question is the same in both -- so both are read rather than one dialect
+    # deciding whether the trait is knowable. Measured: atlas's facts name only an `hw.mlir`, and while
+    # this read `.fir` alone its ports were reported UNKNOWN against a 4.5 MB file sitting on disk.
+    #
+    # `dialect` travels in the record because the two are not interchangeable evidence: hw-dialect
+    # bundles are FLATTENED, so a field's leaves are reconstructed from name segments rather than read
+    # from a bundle, and a reader should be able to see which reading produced its answer.
     path = Path(fir) if fir else fir_path_for(target)
+    dialect = "fir"
+    if path is None or not path.is_file():
+        hw = hw_path_for(target)
+        if hw is not None:
+            path, dialect = hw, "hw"
     if path is None or not path.is_file():
         return {"status": "unavailable", "fir": str(path) if path else None,
                 "why": (f"{_why_no_fir(target)}; port facts are UNKNOWN, which is not the same as "
@@ -305,8 +470,20 @@ def port_facts(target: str, *, fields=("completed", "busy"), fir=None) -> dict:
     except OSError as e:
         return {"status": "unavailable", "fir": str(path),
                 "why": f"unreadable: {type(e).__name__}: {e}", "fields": {}}
-    ports = parse_ports(text)
-    out: dict = {"status": "derived", "fir": str(path), "n_modules": len(ports), "fields": {}}
+    if dialect == "hw":
+        ports, unreadable = hw_module_ports(text)
+        if unreadable:
+            # A signature this could not read leaves the field list INCOMPLETE, and an incomplete list
+            # answered as though complete is how "no completion port" gets concluded from a parse gap.
+            return {"status": "unavailable", "fir": str(path), "dialect": dialect,
+                    "why": (f"{len(unreadable)} module signature(s) could not be read "
+                            f"({sorted(unreadable)[:3]}), so the port list is incomplete and port "
+                            f"facts are UNKNOWN"),
+                    "fields": {}}
+    else:
+        ports = parse_ports(text)
+    out: dict = {"status": "derived", "fir": str(path), "dialect": dialect,
+                 "n_modules": len(ports), "fields": {}}
     for name in fields:
         found = modules_exposing(ports, name)
         out["fields"][name] = {
