@@ -72,8 +72,27 @@ def _bundles() -> dict[str, Path]:
 
 
 def _spec_targets() -> list[str]:
+    """The targets tracked conformance specs are FOR, read from each spec's own ``target``.
+
+    Not the filename. A spec's stem is a label and its `target:` is the key everything else resolves
+    by -- measured: `conformance/saturn_opu.yaml` declares `target: saturn_opu_mxv256d128`, and
+    auditing the stem asked about a target with no generated contract while the spec belonged to one
+    that resolves. Falls back to the stem when a spec declares nothing, so an unreadable file still
+    gets audited rather than silently skipped.
+    """
+    import yaml
+
     d = _REPO / "merlin" / "contract" / "capsules" / "conformance"
-    return sorted(p.stem for p in d.glob("*.yaml")) if d.is_dir() else []
+    if not d.is_dir():
+        return []
+    out = []
+    for path in sorted(d.glob("*.yaml")):
+        try:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError:
+            doc = {}
+        out.append(str(doc.get("target") or path.stem))
+    return sorted(set(out))
 
 
 def audit(target: str, bundles: dict[str, Path] | None = None) -> dict:

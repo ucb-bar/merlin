@@ -107,15 +107,23 @@ def test_the_gate_reports_the_requirement_as_independent_of_the_held_out_models(
     targets = gate._spec_targets()
     if not targets:
         pytest.skip("no target ships a conformance spec")
+    verified = 0
     for t in targets:
         row = gate.audit(t, bundles)
-        if row["status"] in ("no_captures", "unverifiable"):
-            pytest.skip(f"{t}: {row.get('detail')}")
-        assert row["status"] == "ok", f"{t}: {row.get('detail')}"
+        # A target whose contract does not resolve establishes NOTHING either way -- the gate's own
+        # `--fail-on-unverifiable` covers that, and asserting `ok` here would turn a missing generated
+        # package into a circularity report. What must never appear is `circular`.
+        assert row["status"] != "circular", f"{t}: {row.get('detail')}"
+        if row["status"] != "ok":
+            continue
         assert row["requirement_is_independent"] is True
         assert row["cells_depending_on_a_claim_model"] == []
         assert row["n_cells_derivation_only"] > 0, (
             "a derivation that yields no cell has established nothing")
+        verified += 1
+    assert verified, (
+        f"no target among {targets} could be verified, so this test established nothing; that is the "
+        f"failure mode it is written against, not a pass")
 
 
 def test_holding_out_everything_is_not_a_pass():
