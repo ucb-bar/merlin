@@ -2318,7 +2318,11 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
                 # contraction the matcher never matched is in neither -- it is absent, and its absence
                 # raises the recall. With the module the certificate also prices what the demands missed
                 # and states a recall FLOOR beside the headline figure.
-                out["coverage_certificate"] = _cert.for_target(plan, target, linalg_mlir=linalg_mlir)
+                # ...and the execution record when this run produced one, so a certificate built from
+                # the PLAN carries the run that either bore it out or did not, instead of being quoted
+                # as though the two were the same fact.
+                out["coverage_certificate"] = _cert.for_target(
+                    plan, target, linalg_mlir=linalg_mlir, execution=out.get("mesh_execution"))
             except Exception as e:  # noqa: BLE001 — certificate is advisory; never mask routing/functional
                 out["coverage_certificate"] = {"error": f"{type(e).__name__}: {e}"}
             if mesh_verify:

@@ -105,12 +105,19 @@ def denominator_completeness(linalg_mlir: str | None) -> dict | None:
 
 
 def build(plan: dict, cap_map: dict, *, target: str | None = None,
-          linalg_mlir: str | None = None) -> dict:
+          linalg_mlir: str | None = None, execution: dict | None = None) -> dict:
     """Build the coverage certificate from a ``route_plan`` result and a capability map.
 
     ``plan`` is the dict returned by :func:`merlin.targetgen.routing.route_plan_on` / ``route_plan``
     (needs ``results`` + the ``mesh``/``fallback``/``scalar_rvv`` buckets). ``cap_map`` is the
     independent denominator from :func:`merlin.targetgen.eligibility.capability_map_for_target`.
+
+    ``execution`` is the run's ``mesh_execution`` record, when one exists. EVERY NUMBER BELOW IS
+    DERIVED FROM THE PLAN, which lists what the router ASSIGNED and not what ran -- exactly the
+    conflation already fixed on the lane side, where one submission assigned 15 matmuls to the mesh and
+    fell back on all 15 at run time. The certificate therefore states its own evidence in ``arr_evidence``
+    and, when execution accounting exists, carries it beside the plan numbers in ``execution_crosscheck``
+    with ``agrees`` set. A disagreement means the recalls above describe intent that did not happen.
 
     ``linalg_mlir`` is the module those demands were derived FROM. Pass it and the certificate also
     reports what the demands missed; omit it and the completeness block is absent, which is itself
@@ -164,9 +171,28 @@ def build(plan: dict, cap_map: dict, *, target: str | None = None,
     unmatched_flops = 2 * int(completeness.get("unmatched_contraction_macs") or 0) if completeness else 0
     unmatched_regions = int(completeness.get("n_unmatched_contractions") or 0) if completeness else 0
 
+    # THE EVIDENCE, said out loud. A recall that reads as a measurement of the compiler when it is a
+    # summary of the router is the same defect `lane_report` was hardened against, and this surface had
+    # never been told about it.
+    xcheck = None
+    if execution:
+        def _n(v):
+            return None if v is None or isinstance(v, str) else int(v)
+        routed, ran = _n(execution.get("matmul_layers_routed")), _n(execution.get("matmul_layers_on_mesh"))
+        fell = _n(execution.get("matmul_layers_host_fallback"))
+        xcheck = {"matmul_layers_routed": routed, "matmul_layers_on_mesh": ran,
+                  "matmul_layers_host_fallback": fell,
+                  # None, never True: "nobody could tell" is not "they agree".
+                  "agrees": None if (routed is None or ran is None) else (routed == ran),
+                  "why": ("the plan assigned `routed` contraction layers to the accelerator and `on_mesh` "
+                          "of them executed there; when these differ, the recalls in this certificate "
+                          "describe an intent the run did not carry out")}
+
     return {
         "target": target,
         "denominator_source": "semantic_capabilities (independent eligibility oracle)",
+        "arr_evidence": "routing_plan",
+        "execution_crosscheck": xcheck,
         "n_regions": len(regions),
         "n_eligible": n_eligible,
         "n_accelerated": n_accelerated,
@@ -205,7 +231,8 @@ def build(plan: dict, cap_map: dict, *, target: str | None = None,
     }
 
 
-def for_target(plan: dict, target: str, *, linalg_mlir: str | None = None) -> dict:
+def for_target(plan: dict, target: str, *, linalg_mlir: str | None = None,
+               execution: dict | None = None) -> dict:
     """Convenience: load the target's declared capability map and build the certificate."""
     cap_map = _el.capability_map_for_target(target)
-    return build(plan, cap_map, target=target, linalg_mlir=linalg_mlir)
+    return build(plan, cap_map, target=target, linalg_mlir=linalg_mlir, execution=execution)
