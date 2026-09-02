@@ -1,30 +1,37 @@
 
+/scratch/agustin/tmp/merlin_harvest_c2a_q3p1/xnnpack_f32_gemm_rvv.so:	file format elf64-littleriscv
+
 Disassembly of section .text:
 
-0000000080002000 <xnn_f32_gemm_ukernel_1x4v__rvv>:
-80002000: 6e82         	c.ldsp	t4, 0x0(sp)
-80002002: 05207e57     	vsetvli	t3, zero, e32, m4, ta, mu
-80002006: 002e1313     	slli	t1, t3, 0x2
-8000200a: 8572         	c.mv	a0, t3
-8000200c: 03c5ed63     	bltu	a1, t3, 0x80002046 <xnn_f32_gemm_ukernel_1x4v__rvv+0x46>
-80002010: 0d257057     	vsetvli	zero, a0, e32, m4, ta, ma
-80002014: 8d89         	c.sub	a1, a0
-80002016: 0207ec07     	vle32.v	v24, (a5)
-8000201a: 8736         	c.mv	a4, a3
-8000201c: 979a         	c.add	a5, t1
-8000201e: 0d257057     	vsetvli	zero, a0, e32, m4, ta, ma
-80002022: 00072787     	flw	fa5, 0x0(a4)
-80002026: 0711         	c.addi	a4, 0x4
-80002028: 40c708b3     	sub	a7, a4, a2
-8000202c: 0207ee07     	vle32.v	v28, (a5)
-80002030: 979a         	c.add	a5, t1
-80002032: b3c7dc57     	vfmacc.vf	v24, fa5, v28
-80002036: fed896e3     	bne	a7, a3, 0x80002022 <xnn_f32_gemm_ukernel_1x4v__rvv+0x22>
-8000203a: 02086c27     	vse32.v	v24, (a6)
-8000203e: 86c6         	c.mv	a3, a7
-80002040: 9876         	c.add	a6, t4
-80002042: f5e9         	c.bnez	a1, 0x8000200c <xnn_f32_gemm_ukernel_1x4v__rvv+0xc>
-80002044: 8082         	c.jr	ra
-80002046: 0525f557     	vsetvli	a0, a1, e32, m4, ta, mu
-8000204a: b7d9         	c.j	0x80002010 <xnn_f32_gemm_ukernel_1x4v__rvv+0x10>
-
+0000000000000260 <xnn_f32_gemm_minmax_ukernel_1x4v__rvv>:
+     260: 6522         	c.ldsp	a0, 0x8(sp)
+     262: 6882         	c.ldsp	a7, 0x0(sp)
+     264: 00052787     	flw	fa5, 0x0(a0)
+     268: 00452707     	flw	fa4, 0x4(a0)
+     26c: 0d2072d7     	vsetvli	t0, zero, e32, m4, ta, ma
+     270: 00229393     	slli	t2, t0, 0x2
+     274: 8316         	c.mv	t1, t0
+     276: 0255ef63     	bltu	a1, t0, 0x2b4 <xnn_f32_gemm_minmax_ukernel_1x4v__rvv+0x54>
+     27a: 0d237057     	vsetvli	zero, t1, e32, m4, ta, ma
+     27e: 0207e407     	vle32.v	v8, (a5)
+     282: 979e         	c.add	a5, t2
+     284: 8736         	c.mv	a4, a3
+     286: 8532         	c.mv	a0, a2
+     288: 00072687     	flw	fa3, 0x0(a4)
+     28c: 0207e607     	vle32.v	v12, (a5)
+     290: 0711         	c.addi	a4, 0x4
+     292: b2c6d457     	vfmacc.vf	v8, fa3, v12
+     296: 1571         	c.addi	a0, -0x4
+     298: 979e         	c.add	a5, t2
+     29a: f57d         	c.bnez	a0, 0x288 <xnn_f32_gemm_minmax_ukernel_1x4v__rvv+0x28>
+     29c: 406585b3     	sub	a1, a1, t1
+     2a0: 1a87d457     	vfmax.vf	v8, v8, fa5
+     2a4: 12875457     	vfmin.vf	v8, v8, fa4
+     2a8: 02086427     	vse32.v	v8, (a6)
+     2ac: 9846         	c.add	a6, a7
+     2ae: 8e89         	c.sub	a3, a0
+     2b0: f1f9         	c.bnez	a1, 0x276 <xnn_f32_gemm_minmax_ukernel_1x4v__rvv+0x16>
+     2b2: a021         	c.j	0x2ba <xnn_f32_gemm_minmax_ukernel_1x4v__rvv+0x5a>
+     2b4: 0d25f357     	vsetvli	t1, a1, e32, m4, ta, ma
+     2b8: b7c9         	c.j	0x27a <xnn_f32_gemm_minmax_ukernel_1x4v__rvv+0x1a>
+     2ba: 8082         	c.jr	ra

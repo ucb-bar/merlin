@@ -51,7 +51,10 @@ def _harvestable() -> list[FamilyTeacher]:
     fixture (so ``silu``/``sub`` which reuse ``sigmoid``/``add`` fixtures are covered once)."""
     seen: set[str] = set()
     out: list[FamilyTeacher] = []
-    for t in FAMILY_TEACHERS.values():
+    from merlin.mining.wholemodel_proposer import dtype_fixture_teachers
+    # the dtype-matched GEMM fixtures too: they are not census-family entries, but they must be
+    # re-harvestable or they stay stuck as the unlinked versions that teach nothing loop-scoped.
+    for t in list(FAMILY_TEACHERS.values()) + dtype_fixture_teachers():
         if t.ukernel_src is None or t.fixture is None or t.fixture in seen:
             continue
         seen.add(t.fixture)
@@ -75,12 +78,44 @@ def harvest_one(t: FamilyTeacher, cc: Path, xsrc: Path, ceil_inc: Path, out_dir:
             return False, f"compile exec failed: {e}"
         if p.returncode != 0 or not obj.is_file():
             return False, f"compile failed (rc={p.returncode}): {p.stderr.strip()[-400:]}"
+        # LINK before disassembling. In an unlinked .o every branch displacement is still a zero
+        # placeholder awaiting relocation, so llvm-objdump resolves each branch to ITS OWN address --
+        # `bne a0, t5, 0x5c <sym+0x5c>` at 0x5c. No target is ever < addr, `loop_spans()` reads EMPTY,
+        # and every LOOP-SCOPED facet the expert should teach (register_block, accumulator_resident,
+        # nr_is_vsetvlmax, calls_in_loop, and the whole memory facet) lifts as None.
+        #
+        # That is not a small loss: those facets ARE the register-blocking lesson. MEASURED on the
+        # pre-existing qd8 fixture, which was harvested unlinked: 48 instructions, 0 loop spans,
+        # spans_reliable=False, and a plainly visible K loop around `vwmacc.vx` that the lifter could
+        # not see. `compare` then skipped those axes in silence, so choosing the (correct) dtype-matched
+        # int8 expert quietly retired five axes instead of answering them.
+        #
+        # -shared -nostdlib is enough: intra-function branches only need the object laid out, and a
+        # ukernel's undefined externals stay undefined in a shared object. If the link fails the
+        # fixture is SKIPPED with the reason, never written unlinked.
+        linked = Path(tmp) / (t.fixture.replace(".objdump", "") + ".so")
+        lp = subprocess.run([str(cc), "--target=riscv64-unknown-linux-gnu", "-shared", "-nostdlib",
+                             "-o", str(linked), str(obj)], capture_output=True, text=True,
+                            timeout=timeout)
+        target = linked if (lp.returncode == 0 and linked.is_file()) else None
+        if target is None:
+            return False, (f"link failed (rc={lp.returncode}), refusing to write an unlinked fixture "
+                           f"whose loop structure the lifter cannot read: {lp.stderr.strip()[-300:]}")
         try:
-            text = disassemble_text(obj)
+            text = disassemble_text(target)
         except Exception as e:  # noqa: BLE001
             return False, f"disassemble failed: {e}"
     if "vsetvli" not in text and "vle" not in text and "vfmacc" not in text and "vadd" not in text:
         return False, "disassembly has no vector ops (not an RVV ukernel object?)"
+    # A fixture whose loop structure is unreadable is a SILENTLY DEGRADED expert: it lifts every
+    # loop-scoped facet as None, and `cca_compare` then skips those axes without saying so. Refuse it
+    # rather than write one -- the decoder already knows how to tell, so use it.
+    from merlin.kernels.decode import rvv as _rvv
+    _stream = _rvv.decode_text(text)
+    if not _stream.spans_reliable():
+        return False, ("loop spans unreadable (branch displacements look unrelocated) -- this fixture "
+                       "would teach nothing about register blocking, accumulator residency or memory, "
+                       "and would do it silently. Refusing to write it.")
     (out_dir / t.fixture).write_text(_machine_independent(text, t.fixture), encoding="utf-8")
     return True, f"wrote {t.fixture} ({len(text)} chars) from {t.ukernel_src}"
 

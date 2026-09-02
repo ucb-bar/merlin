@@ -1,20 +1,20 @@
 
-xnnpack_clamp_rvv.objdump:	file format elf64-littleriscv
+/scratch/agustin/tmp/merlin_harvest_xxk3qzki/xnnpack_clamp_rvv.so:	file format elf64-littleriscv
 
 Disassembly of section .text:
 
-0000000000000000 <xnn_f32_vclamp_ukernel__rvv_u4v>:
-       0: 0006a787     	flw	fa5, 0x0(a3)
-       4: 0046a707     	flw	fa4, 0x4(a3)
-       8: 8109         	c.srli	a0, 0x2
-       a: 0d2576d7     	vsetvli	a3, a0, e32, m4, ta, ma
-       e: 0205e407     	vle32.v	v8, (a1)
-      12: 00269713     	slli	a4, a3, 0x2
-      16: 95ba         	c.add	a1, a4
-      18: 1a87d457     	vfmax.vf	v8, v8, fa5
-      1c: 12875457     	vfmin.vf	v8, v8, fa4
-      20: 02066427     	vse32.v	v8, (a2)
-      24: 8d15         	c.sub	a0, a3
-      26: 963a         	c.add	a2, a4
-      28: e101         	c.bnez	a0, 0x28 <xnn_f32_vclamp_ukernel__rvv_u4v+0x28>
-      2a: 8082         	c.jr	ra
+000000000000025a <xnn_f32_vclamp_ukernel__rvv_u4v>:
+     25a: 0006a787     	flw	fa5, 0x0(a3)
+     25e: 0046a707     	flw	fa4, 0x4(a3)
+     262: 8109         	c.srli	a0, 0x2
+     264: 0d2576d7     	vsetvli	a3, a0, e32, m4, ta, ma
+     268: 0205e407     	vle32.v	v8, (a1)
+     26c: 00269713     	slli	a4, a3, 0x2
+     270: 95ba         	c.add	a1, a4
+     272: 1a87d457     	vfmax.vf	v8, v8, fa5
+     276: 12875457     	vfmin.vf	v8, v8, fa4
+     27a: 02066427     	vse32.v	v8, (a2)
+     27e: 8d15         	c.sub	a0, a3
+     280: 963a         	c.add	a2, a4
+     282: f16d         	c.bnez	a0, 0x264 <xnn_f32_vclamp_ukernel__rvv_u4v+0xa>
+     284: 8082         	c.jr	ra

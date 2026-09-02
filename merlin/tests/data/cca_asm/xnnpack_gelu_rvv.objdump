@@ -1,100 +1,74 @@
 
-xnnpack_gelu_rvv.objdump:	file format elf64-littleriscv
+/scratch/agustin/tmp/merlin_harvest_udi2iaqu/xnnpack_gelu_rvv.so:	file format elf64-littleriscv
 
 Disassembly of section .text:
 
-0000000000000000 <xnn_f32_vgelu_ukernel__rvv_rational_12_10_div_u4v>:
-       0: 8109         	c.srli	a0, 0x2
-
-0000000000000002 <.Lpcrel_hi0>:
-       2: 00000697     	auipc	a3, 0x0
-       6: 0006a787     	flw	fa5, 0x0(a3)
-
-000000000000000a <.Lpcrel_hi1>:
-       a: 00000697     	auipc	a3, 0x0
-       e: 0006a707     	flw	fa4, 0x0(a3)
-
-0000000000000012 <.Lpcrel_hi2>:
-      12: 00000697     	auipc	a3, 0x0
-      16: 0006a687     	flw	fa3, 0x0(a3)
-
-000000000000001a <.Lpcrel_hi3>:
-      1a: 00000697     	auipc	a3, 0x0
-      1e: 0006a607     	flw	fa2, 0x0(a3)
-
-0000000000000022 <.Lpcrel_hi4>:
-      22: 00000697     	auipc	a3, 0x0
-      26: 0006a587     	flw	fa1, 0x0(a3)
-
-000000000000002a <.Lpcrel_hi5>:
-      2a: 00000697     	auipc	a3, 0x0
-      2e: 0006a507     	flw	fa0, 0x0(a3)
-
-0000000000000032 <.Lpcrel_hi6>:
-      32: 00000697     	auipc	a3, 0x0
-      36: 0006a007     	flw	ft0, 0x0(a3)
-
-000000000000003a <.Lpcrel_hi7>:
-      3a: 00000697     	auipc	a3, 0x0
-      3e: 0006a087     	flw	ft1, 0x0(a3)
-
-0000000000000042 <.Lpcrel_hi8>:
-      42: 00000697     	auipc	a3, 0x0
-      46: 0006a107     	flw	ft2, 0x0(a3)
-
-000000000000004a <.Lpcrel_hi9>:
-      4a: 00000697     	auipc	a3, 0x0
-      4e: 0006a187     	flw	ft3, 0x0(a3)
-
-0000000000000052 <.Lpcrel_hi10>:
-      52: 00000697     	auipc	a3, 0x0
-      56: 0006a207     	flw	ft4, 0x0(a3)
-
-000000000000005a <.Lpcrel_hi11>:
-      5a: 00000697     	auipc	a3, 0x0
-      5e: 0006a287     	flw	ft5, 0x0(a3)
-
-0000000000000062 <.Lpcrel_hi12>:
-      62: 00000697     	auipc	a3, 0x0
-      66: 0006a307     	flw	ft6, 0x0(a3)
-      6a: 3f8006b7     	lui	a3, 0x3f800
-      6e: f00683d3     	fmv.w.x	ft7, a3
-      72: 3f000737     	lui	a4, 0x3f000
-      76: f0070853     	fmv.w.x	fa6, a4
-      7a: 0d257757     	vsetvli	a4, a0, e32, m4, ta, ma
-      7e: 0205e407     	vle32.v	v8, (a1)
-      82: 00271793     	slli	a5, a4, 0x2
-      86: 95be         	c.add	a1, a5
-      88: 1287d657     	vfmin.vf	v12, v8, fa5
-      8c: 1ac75857     	vfmax.vf	v16, v12, fa4
-      90: 93081657     	vfmul.vv	v12, v16, v16
-      94: 5e06da57     	vfmv.v.f	v20, fa3
-      98: b2c65a57     	vfmacc.vf	v20, fa2, v12
-      9c: 5e05dc57     	vfmv.v.f	v24, fa1
-      a0: b3461c57     	vfmacc.vv	v24, v12, v20
-      a4: 5e055a57     	vfmv.v.f	v20, fa0
-      a8: b3861a57     	vfmacc.vv	v20, v12, v24
-      ac: 5e005c57     	vfmv.v.f	v24, ft0
-      b0: b3461c57     	vfmacc.vv	v24, v12, v20
-      b4: 5e00da57     	vfmv.v.f	v20, ft1
-      b8: b3861a57     	vfmacc.vv	v20, v12, v24
-      bc: 93481857     	vfmul.vv	v16, v20, v16
-      c0: 5e015a57     	vfmv.v.f	v20, ft2
-      c4: b2c1da57     	vfmacc.vf	v20, ft3, v12
-      c8: 5e025c57     	vfmv.v.f	v24, ft4
-      cc: b3461c57     	vfmacc.vv	v24, v12, v20
-      d0: 5e02da57     	vfmv.v.f	v20, ft5
-      d4: b3861a57     	vfmacc.vv	v20, v12, v24
-      d8: 5e035c57     	vfmv.v.f	v24, ft6
-      dc: b3461c57     	vfmacc.vv	v24, v12, v20
-      e0: 5e06ca57     	vmv.v.x	v20, a3
-      e4: b3861a57     	vfmacc.vv	v20, v12, v24
-      e8: 830a1657     	vfdiv.vv	v12, v16, v20
-      ec: 02c3d657     	vfadd.vf	v12, v12, ft7
-      f0: 92c85657     	vfmul.vf	v12, v12, fa6
-      f4: 92c41457     	vfmul.vv	v8, v12, v8
-      f8: 02066427     	vse32.v	v8, (a2)
-      fc: 8d19         	c.sub	a0, a4
-      fe: 963e         	c.add	a2, a5
-     100: e101         	c.bnez	a0, 0x100 <.Lpcrel_hi12+0x9e>
-     102: 8082         	c.jr	ra
+000000000000026c <xnn_f32_vgelu_ukernel__rvv_rational_12_10_div_u4v>:
+     26c: 8109         	c.srli	a0, 0x2
+     26e: 00002697     	auipc	a3, 0x2
+     272: d926a787     	flw	fa5, -0x26e(a3)
+     276: 00002697     	auipc	a3, 0x2
+     27a: d8e6a707     	flw	fa4, -0x272(a3)
+     27e: 00002697     	auipc	a3, 0x2
+     282: d8a6a687     	flw	fa3, -0x276(a3)
+     286: 00002697     	auipc	a3, 0x2
+     28a: d866a607     	flw	fa2, -0x27a(a3)
+     28e: 00002697     	auipc	a3, 0x2
+     292: d826a587     	flw	fa1, -0x27e(a3)
+     296: 00002697     	auipc	a3, 0x2
+     29a: d7e6a507     	flw	fa0, -0x282(a3)
+     29e: 00002697     	auipc	a3, 0x2
+     2a2: d7a6a007     	flw	ft0, -0x286(a3)
+     2a6: 00002697     	auipc	a3, 0x2
+     2aa: d766a087     	flw	ft1, -0x28a(a3)
+     2ae: 00002697     	auipc	a3, 0x2
+     2b2: d726a107     	flw	ft2, -0x28e(a3)
+     2b6: 00002697     	auipc	a3, 0x2
+     2ba: d6e6a187     	flw	ft3, -0x292(a3)
+     2be: 00002697     	auipc	a3, 0x2
+     2c2: d6a6a207     	flw	ft4, -0x296(a3)
+     2c6: 00002697     	auipc	a3, 0x2
+     2ca: d666a287     	flw	ft5, -0x29a(a3)
+     2ce: 00002697     	auipc	a3, 0x2
+     2d2: d626a307     	flw	ft6, -0x29e(a3)
+     2d6: 3f8006b7     	lui	a3, 0x3f800
+     2da: f00683d3     	fmv.w.x	ft7, a3
+     2de: 3f000737     	lui	a4, 0x3f000
+     2e2: f0070853     	fmv.w.x	fa6, a4
+     2e6: 0d257757     	vsetvli	a4, a0, e32, m4, ta, ma
+     2ea: 0205e407     	vle32.v	v8, (a1)
+     2ee: 00271793     	slli	a5, a4, 0x2
+     2f2: 95be         	c.add	a1, a5
+     2f4: 1287d657     	vfmin.vf	v12, v8, fa5
+     2f8: 1ac75857     	vfmax.vf	v16, v12, fa4
+     2fc: 93081657     	vfmul.vv	v12, v16, v16
+     300: 5e06da57     	vfmv.v.f	v20, fa3
+     304: b2c65a57     	vfmacc.vf	v20, fa2, v12
+     308: 5e05dc57     	vfmv.v.f	v24, fa1
+     30c: b3461c57     	vfmacc.vv	v24, v12, v20
+     310: 5e055a57     	vfmv.v.f	v20, fa0
+     314: b3861a57     	vfmacc.vv	v20, v12, v24
+     318: 5e005c57     	vfmv.v.f	v24, ft0
+     31c: b3461c57     	vfmacc.vv	v24, v12, v20
+     320: 5e00da57     	vfmv.v.f	v20, ft1
+     324: b3861a57     	vfmacc.vv	v20, v12, v24
+     328: 93481857     	vfmul.vv	v16, v20, v16
+     32c: 5e015a57     	vfmv.v.f	v20, ft2
+     330: b2c1da57     	vfmacc.vf	v20, ft3, v12
+     334: 5e025c57     	vfmv.v.f	v24, ft4
+     338: b3461c57     	vfmacc.vv	v24, v12, v20
+     33c: 5e02da57     	vfmv.v.f	v20, ft5
+     340: b3861a57     	vfmacc.vv	v20, v12, v24
+     344: 5e035c57     	vfmv.v.f	v24, ft6
+     348: b3461c57     	vfmacc.vv	v24, v12, v20
+     34c: 5e06ca57     	vmv.v.x	v20, a3
+     350: b3861a57     	vfmacc.vv	v20, v12, v24
+     354: 830a1657     	vfdiv.vv	v12, v16, v20
+     358: 02c3d657     	vfadd.vf	v12, v12, ft7
+     35c: 92c85657     	vfmul.vf	v12, v12, fa6
+     360: 92c41457     	vfmul.vv	v8, v12, v8
+     364: 02066427     	vse32.v	v8, (a2)
+     368: 8d19         	c.sub	a0, a4
+     36a: 963e         	c.add	a2, a5
+     36c: fd2d         	c.bnez	a0, 0x2e6 <xnn_f32_vgelu_ukernel__rvv_rational_12_10_div_u4v+0x7a>
+     36e: 8082         	c.jr	ra

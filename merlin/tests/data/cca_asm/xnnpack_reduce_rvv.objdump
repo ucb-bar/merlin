@@ -1,30 +1,30 @@
 
-xnnpack_reduce_rvv.objdump:	file format elf64-littleriscv
+/scratch/agustin/tmp/merlin_harvest_nltwrbko/xnnpack_reduce_rvv.so:	file format elf64-littleriscv
 
 Disassembly of section .text:
 
-0000000000000000 <xnn_f32_rsum_ukernel__rvv_u4v>:
-       0: 8109         	c.srli	a0, 0x2
-       2: 0d2577d7     	vsetvli	a5, a0, e32, m4, ta, ma
-       6: 0205e407     	vle32.v	v8, (a1)
-       a: 40f50733     	sub	a4, a0, a5
-       e: c301         	c.beqz	a4, 0xe <xnn_f32_rsum_ukernel__rvv_u4v+0xe>
-      10: 078a         	c.slli	a5, 0x2
-      12: 95be         	c.add	a1, a5
-      14: 0d2777d7     	vsetvli	a5, a4, e32, m4, ta, ma
-      18: 0205e607     	vle32.v	v12, (a1)
-      1c: 8f1d         	c.sub	a4, a5
-      1e: 078a         	c.slli	a5, 0x2
-      20: 95be         	c.add	a1, a5
-      22: 02861457     	vfadd.vv	v8, v8, v12
-      26: e301         	c.bnez	a4, 0x26 <xnn_f32_rsum_ukernel__rvv_u4v+0x26>
-      28: 0d0075d7     	vsetvli	a1, zero, e32, m1, ta, ma
-      2c: 0006a787     	flw	fa5, 0x0(a3)
-      30: 00062707     	flw	fa4, 0x0(a2)
-      34: 5e003657     	vmv.v.i	v12, 0x0
-      38: 0d257057     	vsetvli	zero, a0, e32, m4, ta, ma
-      3c: 06861457     	vfredusum.vs	v8, v8, v12
-      40: 428016d7     	vfmv.f.s	fa3, v8
-      44: 70f6f7c3     	fmadd.s	fa5, fa3, fa5, fa4, dyn
-      48: 00f62027     	fsw	fa5, 0x0(a2)
-      4c: 8082         	c.jr	ra
+0000000000000258 <xnn_f32_rsum_ukernel__rvv_u4v>:
+     258: 8109         	c.srli	a0, 0x2
+     25a: 0d2577d7     	vsetvli	a5, a0, e32, m4, ta, ma
+     25e: 0205e407     	vle32.v	v8, (a1)
+     262: 40f50733     	sub	a4, a0, a5
+     266: cf09         	c.beqz	a4, 0x280 <xnn_f32_rsum_ukernel__rvv_u4v+0x28>
+     268: 078a         	c.slli	a5, 0x2
+     26a: 95be         	c.add	a1, a5
+     26c: 0d2777d7     	vsetvli	a5, a4, e32, m4, ta, ma
+     270: 0205e607     	vle32.v	v12, (a1)
+     274: 8f1d         	c.sub	a4, a5
+     276: 078a         	c.slli	a5, 0x2
+     278: 95be         	c.add	a1, a5
+     27a: 02861457     	vfadd.vv	v8, v8, v12
+     27e: f77d         	c.bnez	a4, 0x26c <xnn_f32_rsum_ukernel__rvv_u4v+0x14>
+     280: 0d0075d7     	vsetvli	a1, zero, e32, m1, ta, ma
+     284: 0006a787     	flw	fa5, 0x0(a3)
+     288: 00062707     	flw	fa4, 0x0(a2)
+     28c: 5e003657     	vmv.v.i	v12, 0x0
+     290: 0d257057     	vsetvli	zero, a0, e32, m4, ta, ma
+     294: 06861457     	vfredusum.vs	v8, v8, v12
+     298: 428016d7     	vfmv.f.s	fa3, v8
+     29c: 70f6f7c3     	fmadd.s	fa5, fa3, fa5, fa4, dyn
+     2a0: 00f62027     	fsw	fa5, 0x0(a2)
+     2a4: 8082         	c.jr	ra

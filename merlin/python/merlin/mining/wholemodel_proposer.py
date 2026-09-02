@@ -95,6 +95,7 @@ class FamilyTeacher:
 FAMILY_TEACHERS: dict[str, FamilyTeacher] = {
     # contractions -> the existing GEMM expert fixture (MR=1, NR=vsetvlmax, accumulator-resident).
     "matmul": FamilyTeacher("matmul", "matmul", "xnnpack_f32_gemm_rvv.objdump",
+                            "f32-gemm/gen/f32-gemm-1x4v-minmax-rvv.c",
                             note="f32 GEMM ukernel 1x4v"),
     "addmm":  FamilyTeacher("addmm", "matmul", "xnnpack_f32_gemm_rvv.objdump",
                             note="linear+bias == GEMM"),
@@ -345,6 +346,19 @@ def propose_wholemodel_levers(divergences: Any, knobs: dict[str, Any]) -> list[F
 # The section-lift path (ours_section_cca) needs a built section (board/compile work) — it is wired +
 # unit-tested here with an injected build_fn, and exercised for real on the board.
 # ---------------------------------------------------------------------------------------------------
+def dtype_fixture_teachers() -> list["FamilyTeacher"]:
+    """The dtype-matched GEMM fixtures as harvestable teachers.
+
+    They are not in FAMILY_TEACHERS (which is keyed by census family, one fixture each), but they must
+    be re-harvestable: the pre-existing qd8 and f16 fixtures were built from an UNLINKED object, so
+    every loop-scoped facet lifted as None and the expert silently taught nothing about register
+    blocking, accumulator residency or memory.
+    """
+    return [FamilyTeacher(census_family="matmul", op="matmul", fixture=fx, ukernel_src=src,
+                          note="dtype-matched GEMM fixture, harvested linked")
+            for fx, src in sorted(_DTYPE_UKERNEL_SRC.items())]
+
+
 def cca_asm_dir() -> Path:
     from ..common.paths import repo_root
     return repo_root() / "merlin" / "tests" / "data" / "cca_asm"
@@ -360,6 +374,14 @@ def cca_asm_dir() -> Path:
 #: Only entries whose fixture exists are useful; a family/dtype pair with no fixture FAILS CLOSED to no
 #: expert rather than silently borrowing another dtype's. That costs a divergence and buys the guarantee
 #: that a reported one is real.
+#: Harvestable ukernel sources for the dtype-matched GEMM fixtures. The qd8 and f16 fixtures
+#: pre-existed but were harvested UNLINKED, so their loop structure was unreadable and they taught
+#: nothing about register blocking. Naming the source lets the harvester regenerate them linked.
+_DTYPE_UKERNEL_SRC: dict[str, str] = {
+    "xnnpack_qd8_gemm_rvv.objdump": "qd8-f32-qc8w-gemm/gen/qd8-f32-qc8w-gemm-1x4v-minmax-rvv.c",
+    "xnnpack_f32_gemm_rvv.objdump": "f32-gemm/gen/f32-gemm-1x4v-minmax-rvv.c",
+}
+
 _DTYPE_FIXTURES: dict[str, dict[str, str]] = {
     "matmul": {"int8": "xnnpack_qd8_gemm_rvv.objdump",
                "fp16": "xnnpack_f16_gemm_rvv.objdump",

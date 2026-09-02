@@ -1,35 +1,35 @@
 
-xnnpack_rsqrt_rvv.objdump:	file format elf64-littleriscv
+/scratch/agustin/tmp/merlin_harvest_zwib4up8/xnnpack_rsqrt_rvv.so:	file format elf64-littleriscv
 
 Disassembly of section .text:
 
-0000000000000000 <xnn_f32_vrsqrt_ukernel__rvv_rsqrt_u4v>:
-       0: 8109         	c.srli	a0, 0x2
-       2: c101         	c.beqz	a0, 0x2 <xnn_f32_vrsqrt_ukernel__rvv_rsqrt_u4v+0x2>
-       4: 0d257057     	vsetvli	zero, a0, e32, m4, ta, ma
-       8: 3fc006b7     	lui	a3, 0x3fc00
-       c: 5e06c457     	vmv.v.x	v8, a3
-      10: 5e003657     	vmv.v.i	v12, 0x0
-      14: 3f0006b7     	lui	a3, 0x3f000
-      18: f00687d3     	fmv.w.x	fa5, a3
-      1c: 7f8006b7     	lui	a3, 0x7f800
-      20: f0068753     	fmv.w.x	fa4, a3
-      24: 0d2576d7     	vsetvli	a3, a0, e32, m4, ta, ma
-      28: 0205e807     	vle32.v	v16, (a1)
-      2c: 8d15         	c.sub	a0, a3
-      2e: 068a         	c.slli	a3, 0x2
-      30: 95b6         	c.add	a1, a3
-      32: 4f021a57     	vfrsqrt7.v	v20, v16
-      36: 9307dc57     	vfmul.vf	v24, v16, fa5
-      3a: 934a1e57     	vfmul.vv	v28, v20, v20
-      3e: ae8c1e57     	vfnmsub.vv	v28, v24, v8
-      42: 934e1a57     	vfmul.vv	v20, v20, v28
-      46: 934a1e57     	vfmul.vv	v28, v20, v20
-      4a: ae8c1e57     	vfnmsub.vv	v28, v24, v8
-      4e: 63075057     	vmfeq.vf	v0, v16, fa4
-      52: 934e1857     	vfmul.vv	v16, v20, v28
-      56: 5d060857     	vmerge.vvm	v16, v16, v12, v0
-      5a: 02066827     	vse32.v	v16, (a2)
-      5e: 9636         	c.add	a2, a3
-      60: e101         	c.bnez	a0, 0x60 <xnn_f32_vrsqrt_ukernel__rvv_rsqrt_u4v+0x60>
-      62: 8082         	c.jr	ra
+0000000000000260 <xnn_f32_vrsqrt_ukernel__rvv_rsqrt_u4v>:
+     260: 8109         	c.srli	a0, 0x2
+     262: c125         	c.beqz	a0, 0x2c2 <xnn_f32_vrsqrt_ukernel__rvv_rsqrt_u4v+0x62>
+     264: 0d257057     	vsetvli	zero, a0, e32, m4, ta, ma
+     268: 3fc006b7     	lui	a3, 0x3fc00
+     26c: 5e06c457     	vmv.v.x	v8, a3
+     270: 5e003657     	vmv.v.i	v12, 0x0
+     274: 3f0006b7     	lui	a3, 0x3f000
+     278: f00687d3     	fmv.w.x	fa5, a3
+     27c: 7f8006b7     	lui	a3, 0x7f800
+     280: f0068753     	fmv.w.x	fa4, a3
+     284: 0d2576d7     	vsetvli	a3, a0, e32, m4, ta, ma
+     288: 0205e807     	vle32.v	v16, (a1)
+     28c: 8d15         	c.sub	a0, a3
+     28e: 068a         	c.slli	a3, 0x2
+     290: 95b6         	c.add	a1, a3
+     292: 4f021a57     	vfrsqrt7.v	v20, v16
+     296: 9307dc57     	vfmul.vf	v24, v16, fa5
+     29a: 934a1e57     	vfmul.vv	v28, v20, v20
+     29e: ae8c1e57     	vfnmsub.vv	v28, v24, v8
+     2a2: 934e1a57     	vfmul.vv	v20, v20, v28
+     2a6: 934a1e57     	vfmul.vv	v28, v20, v20
+     2aa: ae8c1e57     	vfnmsub.vv	v28, v24, v8
+     2ae: 63075057     	vmfeq.vf	v0, v16, fa4
+     2b2: 934e1857     	vfmul.vv	v16, v20, v28
+     2b6: 5d060857     	vmerge.vvm	v16, v16, v12, v0
+     2ba: 02066827     	vse32.v	v16, (a2)
+     2be: 9636         	c.add	a2, a3
+     2c0: f171         	c.bnez	a0, 0x284 <xnn_f32_vrsqrt_ukernel__rvv_rsqrt_u4v+0x24>
+     2c2: 8082         	c.jr	ra
