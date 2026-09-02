@@ -323,3 +323,36 @@ class TestObservationsFromCounters:
         assert q["busy_cycles.BLUE.in_program"] == 8
         assert q["overlap_cycles.observed"] == 2
         assert q["idle_cycles.no_unit_busy"] == 20 - 13
+
+    def test_across_kind_overlap_excludes_two_engines_of_one_kind(self):
+        """`eta_from_timing_block` resolves on the KIND axis, so it needs this quantity, not the other.
+
+        ALPHA computes; BETA and GAMMA both move. Their shared cycles are real overlap but they are not
+        movement/compute overlap, and charging them to the kind-axis reading would overstate what the
+        pairing achieved.
+        """
+        block = H.observations_from_counters(
+            self._VALUES, _counters(), total_cycles=100,
+            kind_of={"ALPHA": "compute", "BETA": "movement", "GAMMA": "movement"})
+        q = self._q(block)
+        assert q["overlap_cycles.observed"] == 4 + 5 + 6 + 7
+        assert q["overlap_cycles.across_kinds"] == 4 + 5 + 7, "the BETA+GAMMA 6 is within one kind"
+
+    def test_all_distinct_kinds_make_the_two_overlap_readings_agree(self):
+        block = H.observations_from_counters(
+            self._VALUES, _counters(), total_cycles=100,
+            kind_of={"ALPHA": "compute", "BETA": "movement", "GAMMA": "other"})
+        q = self._q(block)
+        assert q["overlap_cycles.across_kinds"] == q["overlap_cycles.observed"]
+
+    def test_no_kind_map_means_no_kind_axis_reading(self):
+        """A unit's kind is declared, never derived from a counter name."""
+        q = self._q(self._block())
+        assert "overlap_cycles.across_kinds" not in q
+        assert "overlap_cycles.observed" in q
+
+    def test_a_partial_kind_map_is_refused_rather_than_guessed(self):
+        q = self._q(H.observations_from_counters(self._VALUES, _counters(), total_cycles=100,
+                                                  kind_of={"ALPHA": "compute"}))
+        assert "overlap_cycles.across_kinds" not in q, (
+            "an unclassified engine makes every combination containing it unclassifiable")

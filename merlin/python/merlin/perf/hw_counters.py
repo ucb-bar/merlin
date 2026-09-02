@@ -322,7 +322,8 @@ def event_codes(text: str) -> dict:
 
 
 def observations_from_counters(values: Mapping[str, int], counters: "OccupancyCounters", *,
-                               total_cycles: int | None = None, source: str | None = None) -> dict:
+                               total_cycles: int | None = None, source: str | None = None,
+                               kind_of: Mapping[str, str] | None = None) -> dict:
     """A :mod:`merlin.perf.observations` timing block from one bracketed run's counter readings.
 
     This is the hop that was missing. The bracket emitter, the console parser, the wire contract and
@@ -351,9 +352,18 @@ def observations_from_counters(values: Mapping[str, int], counters: "OccupancyCo
     computed from a partial combination set is a lower bound that would be read as the total.
     ``alias_collisions`` is deliberately omitted rather than reported as 0: it is a property of the
     address span a program touched, and this instrument does not establish it.
+
+    ``kind_of`` maps each engine to its resource KIND and unlocks the second overlap quantity. A unit's
+    kind cannot be derived from a counter name, so it is declared or it is absent -- and the distinction
+    is load-bearing rather than cosmetic. ``overlap_cycles.observed`` counts any two engines busy
+    together; the eta a kind-axis consumer needs counts only cycles spanning two DIFFERENT kinds,
+    because two movement engines running together is not movement/compute overlap. On a machine whose
+    engines are not all distinct kinds the two numbers differ, and reporting the first where the second
+    is meant overstates the overlap that a compute/movement pairing achieved.
     """
-    from .observations import (BUSY_PREFIX, IDLE_QUANTITY, IN_PROGRAM_SUFFIX, OVERLAP_OBSERVED,
-                              PARTITIONED_KEY, TIMING_OBSERVATIONS_KEY, UNMEASURED_UNITS_KEY)
+    from .observations import (BUSY_PREFIX, IDLE_QUANTITY, IN_PROGRAM_SUFFIX, OVERLAP_ACROSS_KINDS,
+                              OVERLAP_OBSERVED, PARTITIONED_KEY, TIMING_OBSERVATIONS_KEY,
+                              UNMEASURED_UNITS_KEY)
 
     by_combo = dict(counters.by_combination)
     missing = sorted(name for name in by_combo.values() if name not in values)
@@ -378,6 +388,13 @@ def observations_from_counters(values: Mapping[str, int], counters: "OccupancyCo
         realised = sum(int(values[name]) for combo, name in by_combo.items() if len(combo) >= 2)
         entries.append({"quantity": OVERLAP_OBSERVED, "value": realised, "unit": "cycles",
                         "source": prov})
+        if kind_of:
+            missing_kinds = sorted(e for e in counters.engines if e not in kind_of)
+            if not missing_kinds:        # a partial kind map cannot classify every combination
+                across = sum(int(values[name]) for combo, name in by_combo.items()
+                             if len({kind_of[e] for e in combo}) >= 2)
+                entries.append({"quantity": OVERLAP_ACROSS_KINDS, "value": across,
+                                "unit": "cycles", "source": prov})
         if total_cycles is not None:
             charged = sum(int(values[name]) for name in by_combo.values())
             idle = int(total_cycles) - charged
