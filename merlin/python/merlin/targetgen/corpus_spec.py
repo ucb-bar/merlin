@@ -289,6 +289,26 @@ def _classes_source(te, contract: dict) -> Callable[..., list[str]]:
     classes = [c for c in order if c in pool]
 
     def _from_encoding(*, op="matmul", output_dtype=None, epilogue=(), movement=False):
+        # ⚠️ NOT `list(classes)` unconditionally. This deriver was written for the matmul family and is
+        # reached for EVERY op on a RoCC target, so it used to answer the weight-stationary systolic
+        # sequence for a pure data copy: measured, six tracked capsules (two of them HIDDEN) required
+        # PRELOAD + COMPUTE_PRELOADED of a `movement` capsule that performs no arithmetic at all. That is
+        # the fabricated requirement `isa_taxonomy.required_role_slots` fails closed to avoid, in the
+        # direction running the capsule cannot catch: a backend that correctly moves the tile and issues
+        # no multiply is marked non-conformant. `build_movement` even passes `movement=True` for exactly
+        # this reason -- the argument was accepted and discarded.
+        #
+        # Which classes belong to the contraction is READ from the shared class vocabulary
+        # (`semantic_families._ISA_CLASS_FAMILY`, whose whole job is this mapping) rather than named
+        # here. A class that table does not recognise -- CONFIG*/FLUSH plumbing, or a spelling it has
+        # not learned -- is KEPT: dropping what we cannot classify is the silent-drop this repo's
+        # parsing rule forbids, and over-requiring plumbing is harmless where over-requiring a multiply
+        # is not.
+        from merlin.targetgen import semantic_families as _sf
+
+        prims = _sf.primitives_of(_sf.from_op(op) or "")
+        if movement or (prims and "contraction" not in prims):
+            return [c for c in classes if _sf.from_isa_class(c) != "contraction"]
         return list(classes)
     return _from_encoding
 

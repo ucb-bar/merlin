@@ -232,6 +232,18 @@ def required_role_slots(*, op: str = "matmul", output_dtype: str | None = None,
         slots.append(("acc_readout", "acc_readout_scaled"))
     if "relu" in epilogue:
         slots.append(("tensor_compute_unary",))           # the vector-unary (VRELU) epilogue
+    if "bias_add" in epilogue or "bias" in epilogue:
+        # A bias epilogue adds a VECTOR to the accumulator, so it is a BINARY tensor op, not the unary
+        # one relu resolves to -- offering unary as the fallback would let a target with only a unary
+        # role satisfy a two-operand stage with a one-operand instruction.
+        #
+        # Offered, not demanded: a target that folds the bias into its accumulator read-out has no
+        # separate class for it, `required_classes_from_roles` finds no class for the slot, and the slot
+        # contributes nothing. That is the derive-or-drop this function is built on -- the alternative
+        # is demanding an instruction the datapath does not have, which marks a conformant backend
+        # non-conformant, and it is the same fabricated requirement the contraction check above exists
+        # to avoid.
+        slots.append(("tensor_compute_binary",))
     return slots
 
 
@@ -256,8 +268,11 @@ def taxonomy_for_target(target: str, *, timeout: int = 120) -> dict[str, Any]:
     """Convenience: derive the ISA taxonomy for a target by NAME, resolving its descriptor from the
     standard capsule-bench location. Returns {} if the target ships no descriptor / ISA definition
     (callers then skip the taxonomy-powered checks). Cached via :func:`derive_isa_taxonomy`."""
+    from .corpora import descriptor_path
     from .target_experiment import load_target_experiment
-    p = merlin_dir() / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
+    # Through `corpora`, which honors MERLIN_TARGET_EXPERIMENT; the convention path built here by hand
+    # read the in-tree descriptor even when a caller had pointed the run at another one.
+    p = descriptor_path(target)
     if not p.is_file():
         return {}
     try:
