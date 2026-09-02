@@ -50,6 +50,7 @@ encoding:
   # the former {f1,c_acc,acc_i8,acc_accum,full_c_bit} hex; cross-checked by test_encoding_manifest.
   semantic_class:          # RTL funct CODE -> the compiler's shared op class (the guardrail boundary:
     0: CONFIG              # codes are RTL-derived; the MVIN/MVOUT/... vocabulary is human-owned + shared).
+    1: MVIN2               # LOAD2_CMD: load-state 1, used for an independent second operand stream.
     2: MVIN                # HEADER-DERIVED: each name == gemmini.h `#define k_<NAME> <code>` (cross-checked
     3: MVOUT               # by circt_introspect.crosscheck_semantic_class_names) — this block is the
     4: COMPUTE_PRELOADED   # human-reviewed cache of those header names, kept for the codes the compiler
