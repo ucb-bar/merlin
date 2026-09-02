@@ -122,3 +122,44 @@ def test_extra_fields_ride_along_without_deciding_the_status(paths):
         cfg=_cfg(), contract=None, extra={"mesh_execution": {"matmul_layers_on_mesh": 15}})
     assert r["status"] == "pass"
     assert r["mesh_execution"]["matmul_layers_on_mesh"] == 15
+
+
+def _lane_cap(**over):
+    c = _cap(kind="model_slice", lanes={"require": ["scalar_rvv_lane"], "forbid": ["on_mesh"]})
+    c.update(over)
+    return c
+
+
+def test_a_declared_lane_contract_nothing_evaluated_is_not_a_pass(paths):
+    """`lane_report` runs only on the whole-model path, which owns a routing plan and an execution
+    record. The op tier ladder owns neither, so a capsule of another kind that declared `lanes` had its
+    assertion silently ignored -- and the corpus's ONLY negative lane assertion is exactly such a
+    capsule, which made ACCELERATED_A_FORBIDDEN_LANE unreachable for it."""
+    r = R._finalize_capsule_result(
+        name="cap", capsule=_lane_cap(), status="pass", failure=None,
+        tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "pass", True)},
+        trace_check_res={"status": "skipped", "violations": []},
+        numeric={"status": "pass"}, required={"L0", "L2"}, no_oracle=False,
+        eff_target="radiance", paths=paths, run_id="cap", cfg=_cfg(), contract=None)
+    assert r["status"] == "incomplete", "an unmeasured lane assertion must never read as a pass"
+    assert r["failure"]["category"] == "LANE_CONTRACT_NOT_EVALUATED"
+
+
+def test_a_lane_report_that_was_produced_leaves_the_verdict_alone(paths):
+    """The rule is about ABSENCE of evaluation, not about lanes. A path that did evaluate the contract
+    owns the verdict, and this must not second-guess it."""
+    r = R._finalize_capsule_result(
+        name="cap", capsule=_lane_cap(), status="pass", failure=None,
+        tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "pass", True)},
+        trace_check_res={"status": "skipped", "violations": []},
+        numeric={"status": "pass"}, required={"L0", "L2"}, no_oracle=False,
+        eff_target="radiance", paths=paths, run_id="cap", cfg=_cfg(), contract=None,
+        extra={"lane_report": {"required": ["scalar_rvv_lane"], "unexercised": [],
+                               "observed": ["scalar_rvv_lane"]}})
+    assert r["status"] == "pass"
+
+
+def test_a_capsule_declaring_no_lanes_is_untouched(paths):
+    r = _finalize(paths, status="pass",
+                  tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "pass", True)})
+    assert r["status"] == "pass"

@@ -2751,6 +2751,27 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
     # datatype (``not_applicable``; the integer L0/L1 floor on a float datapath) is the ONE exception —
     # a legitimate skip like a dropped RoCC gate, not a missing oracle. An unavailable/absent RTL oracle
     # is never not_applicable, so it still fails closed here.
+    # A DECLARED LANE CONTRACT THAT NOTHING EVALUATED IS NOT A SATISFIED ONE. `lane_report` runs only on
+    # the whole-model path, which owns a routing plan and an execution record; the op tier ladder owns
+    # neither, so a capsule of any other kind that declared `lanes` had its assertion silently ignored.
+    # Measured: the corpus's only NEGATIVE lane assertion -- `forbid: [on_mesh]` on a host-only slice --
+    # was never once evaluated, which made ACCELERATED_A_FORBIDDEN_LANE unreachable for it. A submission
+    # could accelerate the family the target's manifest does not admit and still pass the capsule
+    # written to catch exactly that.
+    #
+    # `incomplete`, never `fail`: nothing about the submission was disproved. We simply did not measure
+    # the one thing this capsule exists to assert, and an unmeasured assertion must not read as a pass.
+    _decl_lanes = capsule.get("lanes") or {}
+    if (status == "pass" and (_decl_lanes.get("require") or _decl_lanes.get("forbid"))
+            and (extra or {}).get("lane_report") is None):
+        status = "incomplete"
+        if failure is None:
+            failure = {"plane": "lanes", "category": "LANE_CONTRACT_NOT_EVALUATED",
+                       "detail": (f"capsule declares lanes {dict(_decl_lanes)}, but this grading path "
+                                  f"produced no lane report: only the whole-model path carries the "
+                                  f"routing plan and execution record a lane verdict needs. Grade it "
+                                  f"as kind=model, or do not declare the lanes")}
+
     if status == "pass" and any(getattr(t, "budget_deferred", False) for t in tiers.values()):
         # SCREENED, NOT CERTIFIED. Distinct from `incomplete` (something that should have run did not)
         # and from `pass` (it certified). The capsule cleared the cheap screen and the expensive tier was
