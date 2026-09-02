@@ -232,41 +232,74 @@ sweeps:
     shared epilogue-fusion group: one fused matmul+bias against the matmul and
     the bias add it replaces, at one identical shape per group
 
-blocked_unimplemented:
-
-- family: PL
-  reason: layer-scale lever and preflight promotion are not capsule-runnable
+# The cross-regime amortization pair. Declared as a sweep rather than blocked
+# because the lever IS expressible: `resident_reuse` pushes ONE weight and runs
+# N matmuls against it, so the tile regime is N=1 and the layer regime is N=4 --
+# identical per-tile work, identical lever, different regime scale, which is
+# exactly what the comparand asks to be held equal and what it asks to vary.
+# The promotion policy ("only passing tier-one members are promoted") is a RUN
+# ordering, not a materialization problem, and lives in `cost` where it always did.
+- id: PL
   fit_axes: [K]
   comparison_roles: [tile_regime, layer_regime]
-  performance:
-    level: L2_intra_layer
-    family: PL
-    lever: cross_regime_amortization
-    claim: DIFFERENTIAL
-    comparand:
-      kind: paired_regime
-      against: same_lever_at_tile_and_layer_scale
-      cancels: [operation, datapath, lever]
-      demand_equal: [per_tile_pass_work, operand_dtype, accum_dtype]
-    falsifier:
-      observation: per_tile_pass_saving_by_regime
-      fires_when: saving_changes_beyond_the_declared_band
-      negative_control: tile_scale_member
-    gate:
-      traits: [structural_pipeline_depth]
-      instrument: cycle_count_and_preflight
-      capacity: non_aliasing_DRAM_and_non_binding_IMEM
-      on_missing: skip_with_evidence
-    regime:
-      separation: tile_scale_versus_promoted_layer_scale
-      layout: identical_lever_with_looped_layer_emission
-    emitter:
-      status: new:layer_promotion_materializer
-      entry: merlin.perf.workload_gen.plan_matmul
-      knobs: {promotion: passing_tile_member_to_layer_sibling}
-    cost:
-      tier: 2
-      runs: derived_after_tier_one_promotion
-      projected_cycles: derived_at_preflight
-      basis: only_passing_tier_one_members_are_promoted
+  base:
+    cat: _perf
+    kind: model_slice
+    op: resident_reuse
+    weight: W
+    N_tiles: 1
+    label: dev
+    source_role: derived_sweep
+    performance:
+      level: L2_intra_layer
+      family: PL
+      lever: cross_regime_amortization
+      claim: DIFFERENTIAL
+      comparand:
+        kind: paired_regime
+        against: same_lever_at_tile_and_layer_scale
+        cancels: [operation, datapath, lever]
+        demand_equal: [per_tile_pass_work, operand_dtype, accum_dtype]
+      falsifier:
+        observation: per_tile_pass_saving_by_regime
+        fires_when: saving_changes_beyond_the_declared_band
+        negative_control: tile_scale_member
+      gate:
+        traits: [structural_pipeline_depth]
+        instrument: cycle_count_and_preflight
+        capacity: non_aliasing_DRAM_and_non_binding_IMEM
+        on_missing: skip_with_evidence
+      regime:
+        separation: tile_scale_versus_promoted_layer_scale
+        layout: identical_lever_with_looped_layer_emission
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs: {promotion: passing_tile_member_to_layer_sibling}
+      cost:
+        tier: 2
+        runs: derived_after_tier_one_promotion
+        projected_cycles: derived_at_preflight
+        basis: only_passing_tier_one_members_are_promoted
+  # One matmul against the resident weight versus four. The per-tile shape is
+  # identical in both, so the only thing that changes is how many tiles amortize
+  # the single weight push -- the saving the claim is about.
+  variants:
+  - matmuls:
+    - {lhs: A0, out: Y0, M_tiles: 1}
+    comparison_group: {name: 'amort_k{K}', role: tile_regime}
+  - matmuls:
+    - {lhs: A0, out: Y0, M_tiles: 1}
+    - {lhs: A1, out: Y1, M_tiles: 1}
+    - {lhs: A2, out: Y2, M_tiles: 1}
+    - {lhs: A3, out: Y3, M_tiles: 1}
+    comparison_group: {name: 'amort_k{K}', role: layer_regime}
+  axes:
+    K: [tile, 2*tile]
+  name: '{id}{i:02d}_k{K}'
+  source_reference: >-
+    shared cross-regime amortization pair: one pushed weight reused by one tile
+    versus by four, at identical per-tile work
+
+blocked_unimplemented:
 
