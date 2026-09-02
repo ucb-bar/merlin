@@ -289,6 +289,15 @@ def _classes_source(te, contract: dict) -> Callable[..., list[str]]:
     classes = [c for c in order if c in pool]
 
     def _from_encoding(*, op="matmul", output_dtype=None, epilogue=(), movement=False):
+        if movement:
+            # A movement capsule is a DMA load-to-store round trip, not a contraction.  The RoCC
+            # fallback previously ignored the operation and returned the full matrix sequence for every
+            # capsule, unlike both of the role-aware regimes above.  Project the target's OWN declared
+            # class labels through the same coarse-role function used to cross-check them against RTL,
+            # then omit matrix-compute commands.  Config/load/store/barrier classes remain derived from
+            # the encoding map; no target name, opcode, or per-target class list is introduced here.
+            from merlin.targetgen.rtl.mlc_bridge import _coarse_of_hand_class
+            return [c for c in classes if _coarse_of_hand_class(c) != "compute"]
         return list(classes)
     return _from_encoding
 
@@ -394,9 +403,15 @@ def _numeric_policy(binding: CorpusBinding, output_dtype: str, acc_scale: float 
     return np_
 
 
-def _resolve_output_dtype(binding: CorpusBinding, epilogue: list[str]) -> str:
-    """Output dtype: the accumulate dtype, unless an acc_scale epilogue requants to a narrow output (the
-    target declares that narrow dtype in its datapath as ``requant_output_dtype``, e.g. i8 for gemmini)."""
+def _resolve_output_dtype(binding: CorpusBinding, epilogue: list[str], requested: str | None = None) -> str:
+    """Resolve the operation's authored output dtype.
+
+    An explicit profile value wins: narrowing can be a property of a fused hardware readout, not only
+    of an ``acc_scale`` stage. Otherwise the historical acc-scale/default-accumulator rule remains.
+    """
+    if requested is not None:
+        binding.cap_dtype(str(requested))  # validate through the canonical dtype registry
+        return str(requested)
     if "acc_scale" in epilogue and binding.requant_output_dtype:
         return binding.requant_output_dtype
     return binding.accum_dtype
@@ -536,7 +551,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     lhs, weight, out = entry.get("lhs", "A0"), entry.get("weight", "W"), entry.get("out", "Y0")
     epilogue = list(entry.get("epilogue", []))
     acc_scale = entry.get("acc_scale")
-    output_dtype = _resolve_output_dtype(binding, epilogue)
+    output_dtype = _resolve_output_dtype(binding, epilogue, entry.get("output_dtype"))
     op = entry.get("op", "matmul")
     odt = binding.cap_dtype(output_dtype)
     idt = binding.cap_dtype(binding.operand_dtype)
@@ -988,7 +1003,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     Ho, Wo = conv_out_dims(H, W, kh, kw, stride, padding, dilation)
     Kdim = kh * kw * ci
     epilogue = list(entry.get("epilogue", []))
-    output_dtype = _resolve_output_dtype(binding, epilogue)
+    output_dtype = _resolve_output_dtype(binding, epilogue, entry.get("output_dtype"))
     idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(output_dtype)
     midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(output_dtype)
     attrs = {"ifm": ifm, "weight": weight, "out": out, "ci": ci, "kh": kh, "kw": kw,

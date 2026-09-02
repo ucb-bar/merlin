@@ -770,6 +770,16 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str,
                      "no data (your DMA/load silently no-ops) and scores 0 even though `lint` passes. Confirm "
                      "with `disasm` that each word decodes back to the op you intended.")
             n += 1
+        elif endpoint_kind == "inline_asm_insn":
+            # The RoCC analogue of the `.word` mandate above. Stated as the recommended route, not a
+            # command to rewrite an existing emitter: the agent owns its codegen. The rationale is the
+            # whole point — field POSITIONS are a derived fact of the target, so a hand-written shift
+            # expression is a re-derivation of something the tool already knows, and re-derivations drift.
+            L.append(f"{n}. Produce your instruction words with `python isa_tools.py asm ops.txt` rather than "
+                     "hand-packed shifts: it takes every field POSITION from this target's own derived ISA "
+                     "model, whereas a hand-built `(a << 32) | (b << 16) | ...` re-derives those positions by "
+                     "hand and is where a field quietly ends up in the wrong one. How you emit stays your call.")
+            n += 1
         if simt_mlir:
             # A SIMT-MLIR target emits an LLVM-dialect kernel LOWERING (compiled fork-free), not a self-hosted
             # word stream to assemble/lint. The mandate is that your xDSL passes BUILD the `llvm.func @<kernel>`
@@ -780,8 +790,19 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str,
                      "`.insn`/`.word`, no `mu_schedule`. Verify the module parses/`verify()`s before self_check.")
             n += 1
         else:
+            # `lint`/`disasm` answer "is this a real instruction?", which a correctly-NAMED instruction
+            # carrying a wrong field ALSO answers yes to — so a submission can be numerically green and
+            # trace-green and still diverge on the hardware plane. The check has to compare the DECODED
+            # FIELDS against the intent the command buffer already states, field by field. The named
+            # fields are the encoding-only axes generally (every target's `disasm` shows some subset);
+            # no capsule, op, or expected value is named — the step reads the same whichever capsule fails.
             L.append(f"{n}. Before every self_check, run `python isa_tools.py lint` and `disasm` on {art} and "
-                     "confirm every instruction decodes (nothing UNKNOWN or ambiguous) and the kernel halts.")
+                     "confirm every instruction decodes (nothing UNKNOWN or ambiguous) and the kernel halts. "
+                     "A clean `lint` is NOT enough — a correctly-NAMED instruction carrying a WRONG FIELD "
+                     "decodes cleanly and still diverges on the hardware plane. So also read the `disasm` "
+                     "operand fields back against what your command buffer declares for that same command — "
+                     "DMA/DRAM address and row pitch, readout dtype / element width, accumulate and dataflow "
+                     "bits, config scale — and reconcile every one that disagrees.")
             n += 1
     if has_rtl:                                                 # arm-4 only (the CIRCT / RTL-facts arm)
         L.append(f"{n}. RTL-checks arm: DERIVE the ISA / mesh / datapath from the granted RTL-extracted facts "

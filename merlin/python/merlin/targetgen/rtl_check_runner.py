@@ -48,6 +48,7 @@ _FILECHECK_CANDIDATES = [
     f"{ext_path("chipyard")}/.conda-env/riscv-tools/bin/FileCheck",
 ]
 _COMPUTE_CLASSES = {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"}
+_MVIN_CLASSES = {"MVIN", "MVIN2", "MVIN3"}
 
 
 def find_filecheck() -> str | None:
@@ -101,7 +102,7 @@ def render_trace(trace: dict, facts_rec: dict) -> str:
     hist: dict[str, int] = {}
     for i in instrs:
         hist[i.get("class")] = hist.get(i.get("class"), 0) + 1
-    n_mvin = hist.get("MVIN", 0)
+    n_mvin = sum(hist.get(c, 0) for c in _MVIN_CLASSES)
     n_mvout = hist.get("MVOUT", 0)
     n_compute = sum(hist.get(c, 0) for c in _COMPUTE_CLASSES)
     legal = _legal_funct(facts_rec)
@@ -310,7 +311,18 @@ def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
         res["filecheck"]["trace"] = {"ok": ok, "diag": diag}
     # Python numeric/lower-bound checks (capacity, multi-matmul tile bound) the RTL facts feed.
     rc_facts = CC._facts_to_rc(facts_rec)
-    rep = RC.screen(trace, capsule, rc_facts, target=target)
+    # The package's OWN emitted command buffer: the declaration that binds each kernel argument to a
+    # declared tensor, which the encoded-field-intent check needs. Absent -> that check reports skipped
+    # with that reason (never a pass); a malformed one is treated the same way.
+    cb_p = gen / "command_buffer.json"
+    command_buffer = None
+    if cb_p.is_file():
+        try:
+            cb_loaded = json.loads(cb_p.read_text())
+            command_buffer = cb_loaded if isinstance(cb_loaded, dict) else None
+        except (ValueError, OSError):
+            command_buffer = None
+    rep = RC.screen(trace, capsule, rc_facts, target=target, command_buffer=command_buffer)
     res["screen"] = rep.to_dict()
 
     # VERDICT rides the format-agnostic, RTL-grounded checks: the TRACE FileCheck (over the decoded RoCC

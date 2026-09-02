@@ -94,6 +94,21 @@ def test_screen_catches_over_capacity_spad():
     assert "T0.spad_capacity" in {c.id for c in rep.checks if c.status == "fail"}
 
 
+def test_screen_applies_operand_load_checks_to_mvin2():
+    t = _good_single_tile_trace()
+    t["instructions"][3] = {"index": 3, "class": "MVIN2", "funct": 1,
+                             "decoded": {"spad_addr": 10_000_000}}
+    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
+    assert "T0.spad_capacity" in {c.id for c in rep.checks if c.status == "fail"}
+
+
+def test_filecheck_render_counts_all_mvin_load_states():
+    t = _trace([("MVIN", 2), ("MVIN2", 1), ("MVIN3", 14)])
+    rendered = RUN.render_trace(t, FACTS)
+    assert "MVIN_COUNT 3" in rendered
+    assert "MVIN_PRESENT yes" in rendered
+
+
 def test_screen_catches_compute_before_preload():
     t = _trace([("CONFIG_EX", 0), ("CONFIG_LD", 0), ("MVIN", 2), ("CONFIG_ST", 0),
                 ("COMPUTE_PRELOADED", 4), ("PRELOAD", 6), ("MVOUT", 3)])  # compute precedes preload
