@@ -76,12 +76,26 @@ def _cost(op: str) -> tuple:
     return (operands.get(op, 3), 0 if op in BUILDERS else 1, op)
 
 
-def op_for_family(family: str, *, admitted_ops: set[str] | None = None) -> str | None:
-    """The cheapest materializable op that exercises ``family``, or None when none does."""
+def op_for_family(family: str, *, admitted_ops: set[str] | None = None,
+                  dtype: str | None = None) -> str | None:
+    """The cheapest op that exercises ``family`` AND can actually be written at ``dtype``.
+
+    WRITABILITY COMES FIRST, cost second. Ranking by cost alone picked the cheapest op in the abstract
+    and then discovered no writer could express it: measured, an elementwise cell chose `gelu` -- one
+    operand, no direct-MLIR builder -- over `bias_add`, which has a builder, and then failed at an fp8
+    dtype the PyTorch writer cannot take. Both are elementwise_map, so the cell had a writable
+    representative all along and the ranking looked past it.
+
+    ``dtype`` omitted keeps the old ordering, for callers asking the abstract question.
+    """
     pool = admitted_ops if admitted_ops is not None else available_ops()
-    cands = sorted((op for op, fam in _op_family_map().items() if fam == family and op in pool),
-                   key=_cost)
-    return cands[0] if cands else None
+    cands = [op for op, fam in _op_family_map().items() if fam == family and op in pool]
+    if dtype is None:
+        return sorted(cands, key=_cost)[0] if cands else None
+    # False sorts before True, so a writable op outranks an unwritable one whatever it costs.
+    ranked = sorted(cands, key=lambda op: (_writer_for({"op": op, "operand_dtype": dtype}) is None,
+                                           _cost(op)))
+    return ranked[0] if ranked else None
 
 
 def _fused_carrier(family: str, composed_with: tuple, pool: set[str]) -> tuple[str, list[str]] | None:
@@ -264,7 +278,8 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         if fused is not None:
             op, epilogue = fused
         else:
-            op = op_for_family(family, admitted_ops=pool)
+            # The CELL'S dtype decides which ops are writable, so it has to reach the choice.
+            op = op_for_family(family, admitted_ops=pool, dtype=dtype)
         if op is None:
             unexpressable.append(f"{cell.get('cell')} (family {family!r})")
             continue
@@ -357,8 +372,8 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     host_dtypes = dict(host_block.get("dtypes") or {})
     unsized_host: list[str] = []
     for family in sorted(str(f) for f in (host_block.get("families") or ())):
-        op = op_for_family(family, admitted_ops=pool)
         dtype = host_dtypes.get(family)
+        op = op_for_family(family, admitted_ops=pool, dtype=dtype)
         if op is None or not dtype:
             unsized_host.append(f"{family} ({'no materializable op' if op is None else 'no observed dtype'})")
             continue

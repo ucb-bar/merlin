@@ -273,3 +273,26 @@ def test_a_target_with_no_host_only_families_synthesizes_none():
     out = CS.synthesize(spec)
     assert out["provenance"]["host_only_unsynthesizable"] == []
     assert not any("host_only" in e["name"] for e in out["capsules"])
+
+
+def test_op_choice_prefers_an_op_that_can_actually_be_written_at_the_dtype():
+    """Ranking by cost alone picked the cheapest op in the ABSTRACT and then discovered no writer could
+    express it: an elementwise cell chose `gelu` -- one operand, no direct-MLIR builder -- over
+    `bias_add`, which has one, and then failed at an fp8 dtype the PyTorch writer cannot take. Both are
+    elementwise_map, so the cell had a writable representative all along."""
+    pool = CS.available_ops()
+    # A float dtype the PyTorch writer CAN express: the cheapest op wins, builder or not.
+    assert CS.op_for_family("elementwise_map", admitted_ops=pool, dtype="bf16") == "gelu"
+    # A dtype it cannot: the choice must fall to an op with a direct-MLIR builder.
+    chosen = CS.op_for_family("elementwise_map", admitted_ops=pool, dtype="fp8_e4m3")
+    from merlin.targetgen.corpus_spec import BUILDERS
+    assert chosen in BUILDERS, f"{chosen!r} has no builder and the PyTorch writer cannot take fp8"
+
+
+def test_no_required_cell_is_left_without_a_writer():
+    """The end state this axis is for: every cell every target requires has an entry something can
+    write. A cell with no writer is still REPORTED rather than dropped, so this asserts the count."""
+    for target in _specs():
+        prov = CS.synthesize(_spec(target))["provenance"]
+        assert not prov.get("cells_no_writer_can_express"), (
+            f"{target}: {prov['cells_no_writer_can_express']}")
