@@ -427,15 +427,20 @@ def host_is_declared(target_name: str) -> bool | None:
 
 
 def host_board_gap(target_name: str) -> str | None:
-    """Why this target's host is under-modelled, or ``None`` when it is fully declared.
+    """Why this target's host is under-modelled, or ``None`` when a board is not the right question.
 
-    A target that declares a host LANE but no host BOARD has somewhere to put host work and no facts
-    about the machine that will run it: no hart count, no VLEN, and therefore no vector unit, so
-    `system.place.host_units` synthesizes a scalar core alone. An op that needs the host's vector lane
-    is then placed on a core the model says cannot vectorize -- silently, because nothing asks.
+    WHETHER A BOARD IS NEEDED IS ITSELF DERIVED, from the ``self_hosted_program`` trait, and getting
+    this wrong in the obvious direction is easy: "declares no host.board" reads as a gap on every
+    target that has none, when for some of them a board is not missing but inapplicable.
 
-    Returned as a REASON rather than raised: the gap is real and pre-existing on four of six targets,
-    and a shared checkout must be able to report it without every grade failing closed on it.
+    * ``self_hosted_program`` TRUE -- the target runs its own program on its own scalar core, and its
+      scalar/vector lane is in-contract. There is no external host to declare, and demanding a board
+      would be demanding a fact the machine does not have.
+    * FALSE -- the target is a coprocessor reached from a host, so a board is REQUIRED: without it the
+      placement model has no hart count and no VLEN and synthesizes a scalar host unit alone, and an op
+      needing the host's vector lane is placed on a core the model says cannot vectorize.
+    * UNKNOWN -- undetermined, and reported as such. Not folded into either: a target whose endpoint
+      nobody could establish is not thereby a self-hosted one.
     """
     if host_is_declared(target_name) is None:
         return None
@@ -450,27 +455,26 @@ def host_board_gap(target_name: str) -> str | None:
         return None
     if getattr(te, "host_board", None):
         return None
-    # NAME THE EVIDENCE THAT DOES EXIST. A descriptor with no `host.board` is not a target with no host:
-    # its RTL elaboration config names the SoC the device is elaborated into, and that is where the hart
-    # count and VLEN would be read from. Saying only "no board declared" turns a derivable fact into a
-    # dead end and invites someone to hand-write a board instead of deriving one.
-    import yaml
 
+    self_hosted = None
     try:
-        doc = yaml.safe_load(pathlib.Path(te.path).read_text(encoding="utf-8")) or {}
-    except Exception:                              # noqa: BLE001
-        doc = {}
-    elab = ((doc.get("rtl") or {}).get("elaboration") or {})
-    config, ext_root = elab.get("config"), elab.get("ext_root")
-    where = (f"; its RTL elaboration names config {config!r}"
-             + (f" under {ext_root!r}" if ext_root else "")
-             + ", which is the SoC the host facts are derivable from"
-             if config else
-             "; its descriptor names no RTL elaboration config either, so there is no derivable SoC to "
-             "read a host from")
-    return (f"{target_name} declares a host lane but no host.board, so the placement model has no hart "
-            f"count and no VLEN for it and synthesizes a scalar host unit alone -- host vector "
-            f"capability is UNKNOWN rather than absent{where}")
+        from merlin.perf.profile import derive_profile
+
+        trait = (derive_profile(target_name).traits or {}).get("self_hosted_program")
+        self_hosted = getattr(trait, "satisfied", None)
+    except Exception:                              # noqa: BLE001 -- no profile answers nothing
+        self_hosted = None
+
+    if self_hosted is True:
+        return None
+    if self_hosted is None:
+        return (f"{target_name} declares no host.board and its `self_hosted_program` trait is UNKNOWN, "
+                f"so whether it even needs one is undetermined; establish the trait before treating the "
+                f"absent board as a gap or as correct")
+    return (f"{target_name} is NOT self-hosted -- it is reached from a host -- and declares no "
+            f"host.board, so the placement model has no hart count and no VLEN for it and synthesizes "
+            f"a scalar host unit alone; an op needing the host's vector lane is then placed on a core "
+            f"the model says cannot vectorize")
 
 
 def route_plan_on(demands: list[OpDemand], units: list[_cu.ComputeUnit]) -> dict:

@@ -174,18 +174,36 @@ def test_a_declared_host_lane_is_what_makes_the_lane_reachable_not_a_board():
 
     for target in ("gemmini", "atlas", "radiance"):
         assert host_is_declared(target) is True, f"{target} declares a host lane"
-    # ...and the weaker placement model that follows from a missing board is REPORTED, not silent.
+    # ...and a board is a SEPARATE question, answered per target rather than assumed: gemmini declares
+    # one, and atlas needs none because it is self-hosted. Neither is a gap, and the lane is reachable
+    # on both regardless -- which is the property this test exists for.
     assert host_board_gap("gemmini") is None
-    assert "no host.board" in (host_board_gap("atlas") or "")
 
 
-def test_the_host_gap_names_the_soc_the_facts_are_derivable_from():
-    """A descriptor with no `host.board` is not a target with no host. Its RTL elaboration config names
-    the SoC the device is elaborated into, and that is where a hart count and VLEN would be read from.
-    Reporting only "no board declared" turns a derivable fact into a dead end and invites someone to
-    hand-write a board instead of deriving one."""
+def test_a_self_hosted_target_needs_no_board_and_reports_no_gap():
+    """WHETHER A BOARD IS NEEDED IS ITSELF DERIVED. A self-hosted target runs its own program on its own
+    scalar core and its scalar/vector lane is in-contract, so there is no external host to declare and
+    demanding a board would demand a fact the machine does not have.
+
+    Reading "declares no host.board" as a gap on every target that has none was wrong in exactly that
+    way: it counted four targets as under-modelled when two of them are self-hosted and correct."""
+    from merlin.perf.profile import derive_profile
     from merlin.targetgen.routing import host_board_gap
 
-    gap = host_board_gap("atlas") or ""
-    assert "no host.board" in gap
-    assert "elaboration names config" in gap, "the gap must name where the host facts come from"
+    for target in ("atlas", "radiance"):
+        trait = (derive_profile(target).traits or {}).get("self_hosted_program")
+        if getattr(trait, "satisfied", None) is not True:
+            pytest.skip(f"{target} is not self-hosted in this checkout; the case under test is absent")
+        assert host_board_gap(target) is None, f"{target} is self-hosted; a board is inapplicable"
+
+
+def test_an_undetermined_endpoint_is_reported_as_undetermined():
+    """A target whose `self_hosted_program` trait is UNKNOWN is not thereby a self-hosted one, and its
+    absent board is neither a gap nor correct until the trait is established."""
+    from merlin.perf.profile import derive_profile
+    from merlin.targetgen.routing import host_board_gap
+
+    trait = (derive_profile("saturn_opu").traits or {}).get("self_hosted_program")
+    if getattr(trait, "satisfied", None) is not None:
+        pytest.skip("saturn_opu's endpoint is established in this checkout")
+    assert "UNKNOWN" in (host_board_gap("saturn_opu") or "")
