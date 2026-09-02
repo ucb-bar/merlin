@@ -20,8 +20,11 @@ evidence. Keep them apart; conflating them is the easiest way to overstate what 
 | whole-model, CPU/vector | a captured model | RISC-V CPU + RVV | `merlin-compile --target rvv` |
 | accelerator, per capsule | a capsule | the accelerator, graded up the oracle ladder | `merlin-compile --target <t>` |
 | **whole model ON an accelerator** | a captured model | accelerator mesh + host scalar/RVV lane | `compile_model(...)`, Python only |
+| capsule corpus, agent-generated OOT backend | a capsule | the accelerator, graded up the oracle ladder | `capsule_grade --package <pkg>` |
 
-This guide covers the third. For the first two see `rvv_e2e.md` and `gemmini_experiment.md`.
+This guide covers the third. The fourth is a different artifact with a different flow and its own
+runbook — see [gemmini_oot_package](gemmini_oot_package.md) for the backend that certified 33/33 at
+L3, what that cohort does and does not cover, and how to re-run it elsewhere. For the first two see `rvv_e2e.md` and `gemmini_experiment.md`.
 
 ## Two ways to run a model on a device
 

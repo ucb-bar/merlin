@@ -15,6 +15,12 @@ model with the matmuls on gemmini, and check the answer on both a functional sim
 cycle-accurate RTL. Concepts live in [whole_model_on_accelerator](whole_model_on_accelerator.md);
 this page is the operational path and the traps.
 
+> **Which runbook do you want?** This one covers the `compile_model` path — one artifact, host plus
+> device, a whole model. If instead you were handed the **agent-generated OOT backend that certified
+> 33/33 capsules at L3**, that is a different artifact graded through `capsule_grade`, and its runbook
+> is [gemmini_oot_package](gemmini_oot_package.md). Note that 33/33 is a 34-capsule cohort which
+> **excludes the whole-model capstones**, so it is not a whole-model result.
+
 ## What you will and will not have shown
 
 Be precise about this before quoting anything, because the two runs make different claims.
