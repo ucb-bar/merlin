@@ -148,8 +148,29 @@ sweeps:
       regime:
         separation: fixed_within_each_pair_and_repeated_at_two_levels
         layout: real_producer_consumer_dependence
+      # THE REORDER ITSELF NOW EXISTS: `plan_matmul(hoist_transfers=True)` issues the
+      # activation transfer before the weight wait, with the instruction multiset
+      # preserved so a cycle delta isolates the ordering (see
+      # merlin/tests/targetgen/test_transfer_hoist.py, which pins both halves).
+      # It is sound only where completion is explicit -- the second issue reuses the
+      # DMA argument registers, which is correct because the controller latches its
+      # descriptor on accept, and gemmini's `explicit_completion` is satisfied from
+      # its own elaborated FIRRTL.
+      #
+      # What is still missing is a CAPSULE pair. A capsule states WHAT to compute; an
+      # instruction ordering is HOW, and the interface grammar deliberately does not
+      # dictate one. `_materialize_performance_entry` resolves every sweep member
+      # through a corpus BUILDER and forces `source: direct`, so declaring this family
+      # `existing` here would materialize two plain matmul capsules differing only in
+      # their `comparison_group.role` -- byte-identical programs, and a differential
+      # whose delta is noise. That is the vacuous pair this double gate exists to
+      # prevent, so the status stays honest and the family keeps skipping.
+      #
+      # The lever is measurable TODAY through the workload path (`plan_matmul` ->
+      # perf harness), which is what `entry` names. Turning it into a corpus family
+      # needs the capsule schema to be able to carry an emission ORDER.
       emitter:
-        status: new:instruction_reorder
+        status: new:capsule_pair_for_instruction_reorder
         entry: merlin.perf.workload_gen.plan_matmul
         knobs: {transformation: issue_stage_two_transfer_before_stage_one_wait}
       cost:

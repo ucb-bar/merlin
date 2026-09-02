@@ -1088,16 +1088,38 @@ def _pack_tiled(values, facts: MachineFacts, rows: int, cols: int, tile_rows: in
                                 facts.operand_dtype)
 
 
+def _issue_tile_transfer(p: _Program, facts: MachineFacts, ops: KernelOps, x: _ScalarFile, *,
+                         vmem_byte: int, dram_reg: int, nbytes: int) -> None:
+    """ISSUE one contiguous DRAM->VMEM transfer, without waiting for it.
+
+    Split out from :func:`_stage_tile` so a second transfer can be issued before the first is awaited --
+    the ``PC`` family's whole subject. The DMA argument registers are reused by the next issue, which is
+    only sound because the transfer is POSTED: this target's ``explicit_completion`` trait is satisfied
+    by its own elaborated FIRRTL (LoadController and StoreController each expose a DECOUPLED completion
+    channel), so the controller latched the descriptor when it accepted the command. That is a derived
+    fact, not an assumption about DMA engines in general, and on a target where it is UNKNOWN the family
+    that uses this skips at its gate rather than emitting a program whose correctness nobody established.
+    """
+    p.load_imm(x["dma_rd"], vmem_byte // facts.word_bytes)
+    p.emit(ops.add_imm, rd=x["dma_rs1"], rs1=dram_reg, imm=0)
+    p.load_imm(x["dma_len"], nbytes)
+    p.emit(ops.dma_load, rd=x["dma_rd"], rs1=x["dma_rs1"], rs2=x["dma_len"])
+
+
+def _await_transfer(p: _Program, ops: KernelOps) -> None:
+    """Block until the movement channel is idle. Channel-level, not per-descriptor: with two transfers
+    outstanding the first wait covers both and the second returns immediately -- which is why hoisting
+    preserves the instruction multiset instead of removing a wait."""
+    p.emit(ops.dma_wait)
+
+
 def _stage_tile(p: _Program, facts: MachineFacts, ops: KernelOps, x: _ScalarFile, *,
                 vmem_byte: int, dram_reg: int, nbytes: int) -> None:
     """One contiguous transfer from DRAM into a VMEM staging slot, then wait for it. The VMEM side is a
     machine-word index and the DRAM side a byte offset from the aperture floor -- both derived, neither
     written down."""
-    p.load_imm(x["dma_rd"], vmem_byte // facts.word_bytes)
-    p.emit(ops.add_imm, rd=x["dma_rs1"], rs1=dram_reg, imm=0)
-    p.load_imm(x["dma_len"], nbytes)
-    p.emit(ops.dma_load, rd=x["dma_rd"], rs1=x["dma_rs1"], rs2=x["dma_len"])
-    p.emit(ops.dma_wait)
+    _issue_tile_transfer(p, facts, ops, x, vmem_byte=vmem_byte, dram_reg=dram_reg, nbytes=nbytes)
+    _await_transfer(p, ops)
 
 
 def _tensor_op(p: _Program, ops: KernelOps, mnemonic: str, operands: dict, settle: int) -> None:
@@ -1108,11 +1130,21 @@ def _tensor_op(p: _Program, ops: KernelOps, mnemonic: str, operands: dict, settl
 
 
 def _inner_body(p: _Program, facts: MachineFacts, ops: KernelOps, x: _ScalarFile, settle: Settle, *,
-                first_k: bool, v_lhs: int, v_wt: int) -> None:
+                first_k: bool, v_lhs: int, v_wt: int, hoist_transfers: bool = False) -> None:
     """One K-step: stage and push the weight tile, stage the activation tile, and multiply into the
     accumulator. The first K-step OVERWRITES the accumulator so this output tile does not inherit the
-    previous one's sum; every later step accumulates into it."""
+    previous one's sum; every later step accumulates into it.
+
+    ``hoist_transfers`` issues the ACTIVATION transfer before the WEIGHT wait, so the two are outstanding
+    together instead of strictly serialized. It is the ``PC`` family's lever
+    (``issue_stage_two_transfer_before_stage_one_wait``), and the pair is a differential: the same
+    dependence chain, the same instruction MULTISET, one ordering. Nothing else about the body changes --
+    same tiles, same tensor ops, same settles -- because the comparand cancels everything but the order.
+    """
     tile_bytes = facts.tile.register_bytes
+    if hoist_transfers:
+        return _inner_body_hoisted(p, facts, ops, x, settle, first_k=first_k,
+                                   v_lhs=v_lhs, v_wt=v_wt, tile_bytes=tile_bytes)
     _stage_tile(p, facts, ops, x, vmem_byte=v_wt, dram_reg=x["w_tile"], nbytes=tile_bytes)
     p.load_imm(x["stage_addr"], v_wt // facts.word_bytes)
     _tensor_op(p, ops, ops.tile_load, {"vd": _M_WT, "rs1": x["stage_addr"], "imm": 0}, settle.tensor)
@@ -1130,10 +1162,42 @@ def _inner_body(p: _Program, facts: MachineFacts, ops: KernelOps, x: _ScalarFile
     p.emit(ops.add, rd=x["w_tile"], rs1=x["w_tile"], rs2=x["w_k_stride"])
 
 
+def _inner_body_hoisted(p: _Program, facts: MachineFacts, ops: KernelOps, x: _ScalarFile,
+                        settle: Settle, *, first_k: bool, v_lhs: int, v_wt: int,
+                        tile_bytes: int) -> None:
+    """The same K-step with both transfers outstanding before either wait.
+
+    Read against :func:`_inner_body`: the only difference is that the activation ISSUE moves ahead of
+    the weight WAIT. Every instruction that appears there appears here, once -- two issues, two waits,
+    the same three tensor ops with the same settles, the same two pointer bumps -- so a cycle difference
+    between the two is attributable to the ordering and nothing else. That equality is not a comment: it
+    is what the family's comparand cancels, and a test compares the two mnemonic multisets.
+    """
+    _issue_tile_transfer(p, facts, ops, x, vmem_byte=v_wt, dram_reg=x["w_tile"], nbytes=tile_bytes)
+    # THE HOIST: stage two's transfer, issued before stage one's wait.
+    _issue_tile_transfer(p, facts, ops, x, vmem_byte=v_lhs, dram_reg=x["a_tile"], nbytes=tile_bytes)
+    _await_transfer(p, ops)
+    p.load_imm(x["stage_addr"], v_wt // facts.word_bytes)
+    _tensor_op(p, ops, ops.tile_load, {"vd": _M_WT, "rs1": x["stage_addr"], "imm": 0}, settle.tensor)
+    _tensor_op(p, ops, ops.transpose, {"vd": _M_WT, "vs1": _M_WT}, settle.tensor)
+    _tensor_op(p, ops, ops.weight_push, {"vd": _WEIGHT_SLOT, "vs1": _M_WT}, settle.tensor)
+    # The second wait: the channel is already idle, so it retires immediately. Kept so the multiset
+    # matches the unhoisted body -- dropping it would make the pair differ by an instruction and the
+    # cycle delta would no longer isolate the ordering.
+    _await_transfer(p, ops)
+    p.load_imm(x["stage_addr"], v_lhs // facts.word_bytes)
+    _tensor_op(p, ops, ops.tile_load, {"vd": _M_LHS, "rs1": x["stage_addr"], "imm": 0}, settle.tensor)
+    mnem = ops.contract if first_k else ops.contract_accumulate
+    _tensor_op(p, ops, mnem, {"vd": _ACC_SLOT, "vs1": _M_LHS, "vs2": _WEIGHT_SLOT}, settle.mxu)
+    p.emit(ops.add, rd=x["a_tile"], rs1=x["a_tile"], rs2=x["tile_bytes"])
+    p.emit(ops.add, rd=x["w_tile"], rs1=x["w_tile"], rs2=x["w_k_stride"])
+
+
 def plan_matmul(facts: MachineFacts, ops: KernelOps, *, m: int, k: int, n: int,
                 control_flow: ControlFlow,
                 settle: Settle, A=None, W=None, origin: int | None = None, align: int = 64,
-                entry: str = "_start", subnormal_operand_flush: bool | None = None) -> MatmulPlan:
+                entry: str = "_start", subnormal_operand_flush: bool | None = None,
+                hoist_transfers: bool = False) -> MatmulPlan:
     """Generate a LOOPED, tiled ``[m, k] x [k, n]`` contraction for ``facts.target``.
 
     The emitted kernel's length does not grow with the shape: the M, N and K axes are three real backward
@@ -1187,12 +1251,14 @@ def plan_matmul(facts: MachineFacts, ops: KernelOps, *, m: int, k: int, n: int,
     # to it -- a different instruction, not a different operand, so it cannot be selected inside the loop.
     _prologue_words = len(p)
     _before_body = len(p)
-    _inner_body(p, facts, ops, x, settle, first_k=True, v_lhs=v_lhs, v_wt=v_wt)
+    _inner_body(p, facts, ops, x, settle, first_k=True, v_lhs=v_lhs, v_wt=v_wt,
+                hoist_transfers=hoist_transfers)
     _k_step_words = len(p) - _before_body
     if kt > 1:
         p.load_imm(x["k_index"], 1)
         p.label("k_loop")
-        _inner_body(p, facts, ops, x, settle, first_k=False, v_lhs=v_lhs, v_wt=v_wt)
+        _inner_body(p, facts, ops, x, settle, first_k=False, v_lhs=v_lhs, v_wt=v_wt,
+                    hoist_transfers=hoist_transfers)
         p.emit(ops.add_imm, rd=x["k_index"], rs1=x["k_index"], imm=1)
         p.branch(ops.branch_ne, "k_loop", rs1=x["k_index"], rs2=x["k_limit"])
 
